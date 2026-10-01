@@ -9,6 +9,7 @@ import {
   type BusRow,
   builderActive,
   builderProgress,
+  impactLine,
   impactOf,
   initials,
   STATE_MEANING,
@@ -51,13 +52,9 @@ export function ProjectMark({ slug, size = 20 }: { slug: string; size?: number }
 
 const VERDICT_LABEL: Record<Verdict, (l: BusLink) => string> = {
   breaks: () => "breaks",
-  older: (l) => `on ${l.pinnedVersion}`,
-  current: () => "current",
-  unknown: (l) => l.pinnedVersion,
+  passes: () => "passes",
+  unchecked: (l) => l.pinnedVersion,
 };
-
-export const IMPACT_NOTE =
-  "Impact reads the version each link pins and the state its master recorded. Field-level checking of a version against each consumer's fields lands with ISS-40.";
 
 function headerLine(p: BusProject, linksOut: number, provides: number) {
   const b = p.builder;
@@ -276,13 +273,13 @@ function Row({
           style={{ gridRow: r, gridColumn: col.get(consumer), minHeight: ROW_H }}
         >
           {links.map((l) => {
-            const verdict = isSel ? impactOf(l, c) : null;
+            const verdict = isSel ? impactOf(l) : null;
             return (
               <Chip
                 key={l.id}
                 label={verdict ? VERDICT_LABEL[verdict](l) : l.pinnedVersion}
                 tone={verdict ? VERDICT_TONE[verdict] : STATE_TONE[l.state]}
-                tip={verdict ? `${linkTip(l, names)} · ${IMPACT_NOTE}` : linkTip(l, names)}
+                tip={verdict ? `${linkTip(l, names)} · ${impactLine(l)}` : linkTip(l, names)}
                 selected={sel.kind === "link" && sel.id === l.id}
                 work={lens === "live" && builders.get(l.consumer)}
                 outside={l.outsideContract}

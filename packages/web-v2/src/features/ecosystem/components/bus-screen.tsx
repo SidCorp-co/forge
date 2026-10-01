@@ -12,7 +12,7 @@ import { ecosystemApi } from "../api";
 import { type Bus, busRows, type Tone } from "../bus";
 import { useBus, useChannelWrite, useProjectEcosystems } from "../hooks";
 import { ecosystemRoutes } from "../routes";
-import { BusDiagram, IMPACT_NOTE, type Lens, type Selection } from "./bus-diagram";
+import { BusDiagram, type Lens, type Selection } from "./bus-diagram";
 import { BusDetail } from "./bus-detail";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";
 
@@ -98,7 +98,7 @@ function LensBar({ lens, onLens }: { lens: Lens; onLens: (l: Lens) => void }) {
   return (
     <div className="flex gap-1.5">
       {opt("live", "Live", "Each link as its master last recorded it, refreshed every 15 seconds; a chip whose project's builder is running rings")}
-      {opt("impact", "Impact", `Pick a contract to see which consumers it reaches. ${IMPACT_NOTE}`)}
+      {opt("impact", "Impact", "Pick a contract to see which consumers its latest version breaks, checked against the fields and surface each one uses")}
     </div>
   );
 }

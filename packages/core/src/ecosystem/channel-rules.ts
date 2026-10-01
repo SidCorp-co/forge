@@ -10,7 +10,7 @@ import {
 } from './channel-schema.js';
 import type { ContractFacts } from './contract/citations.js';
 import { elementRefusals } from './contract/element-rules.js';
-import { compareVersions } from './contract/naming.js';
+import { type ImpactLink, linkImpact, recipientsOf } from './contract/impact.js';
 import { splitContractRef, versionKey } from './interface-rules.js';
 import {
   type Checked,
@@ -31,6 +31,7 @@ export interface ChannelWorld {
   slugOf: ReadonlyMap<string, string>;
   interfaces: ReadonlyMap<string, InterfaceDocument>;
   edges: readonly EdgeRow[];
+  links: readonly (ImpactLink & { provider: string; contractSlug: string })[];
   versions: ReadonlyMap<string, ReadonlySet<string>>;
   contracts: ContractFacts;
   documents: ReadonlyMap<string, ChannelDocument>;
@@ -73,10 +74,6 @@ export const today = () => new Date().toISOString().slice(0, 10);
 
 export const addDays = (day: string, n: number) =>
   new Date(Date.parse(`${day}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
-
-export function olderThan(versioning: 'dated' | 'semver', a: string, b: string): boolean {
-  return compareVersions(versioning, a, b) < 0;
-}
 
 const isCounterparty = (w: ChannelWorld, a: string, b: string) =>
   w.edges.some(
@@ -294,26 +291,40 @@ function changeNoticeRefusals(d: ChannelDocument, w: ChannelWorld): EcosystemRef
     }
   }
   const versioning = iface?.commitments.versioning ?? 'dated';
-  const owed = [
-    ...new Set(
-      w.edges
-        .filter(
-          (e) =>
-            e.ecosystemId === w.ecosystemId &&
-            e.providerProjectId === d.from &&
-            e.contractSlug === contract &&
-            w.active.has(e.consumerProjectId) &&
-            olderThan(versioning, e.builtAgainst, b.contractVersion),
-        )
-        .map((e) => e.consumerProjectId),
-    ),
-  ].sort();
-  if (JSON.stringify([...d.to].sort()) !== JSON.stringify(owed)) {
-    const names = owed.map((id) => w.slugOf.get(id) ?? id);
+  const reachable = w.contracts.versions.get(`${b.contract}@${b.contractVersion}`)?.recordedOn;
+  const notice = iface?.commitments.deprecationNoticeDays ?? 0;
+  if (b.classification === 'breaking' && reachable) {
+    const earliest = addDays(reachable, notice);
+    if (b.effectiveOn < earliest) {
+      out.push({
+        code: 'DEADLINE_BEFORE_REACHABLE',
+        path: '/body/effectiveOn',
+        detail: `${b.contractVersion} was recorded on ${reachable} and ${sender} promises ${notice} day(s) of notice, so a breaking change takes effect on or after ${earliest}, not ${b.effectiveOn}.`,
+      });
+    }
+  }
+  const declared = w.edges
+    .filter(
+      (e) =>
+        e.ecosystemId === w.ecosystemId &&
+        e.providerProjectId === d.from &&
+        e.contractSlug === contract &&
+        w.active.has(e.consumerProjectId),
+    )
+    .map((e) => e.consumerProjectId);
+  const impacts = w.links
+    .filter(
+      (l) => l.provider === d.from && l.contractSlug === contract && w.active.has(l.consumer),
+    )
+    .map((l) => linkImpact(versioning, b.contractVersion, m ?? null, l));
+  const owed = recipientsOf(declared, impacts);
+  const ids = owed.map((r) => r.consumer);
+  if (JSON.stringify([...d.to].sort()) !== JSON.stringify(ids)) {
+    const names = owed.map((r) => `${w.slugOf.get(r.consumer) ?? r.consumer} (${r.reason})`);
     out.push({
       code: 'RECIPIENTS_NOT_DERIVED',
       path: '/to',
-      detail: `a notice for ${b.contract} ${b.contractVersion} goes to every consumer built against an older version, and no one else: ${owed.length ? `${names.join(', ')} (${owed.join(', ')})` : 'none is owed one'}.`,
+      detail: `a notice for ${b.contract} ${b.contractVersion} goes to every consumer it breaks, every consumer core could not measure it against and every consumer with no link, and no one else: ${owed.length ? names.join(', ') : 'none is owed one'}.`,
     });
   }
   return out;

@@ -1,3 +1,4 @@
+import type { ImpactLink } from './contract/impact.js';
 import { db, type Tx } from '../db/client.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { effectiveProjectRole } from '../lib/authz.js';
@@ -32,6 +33,7 @@ import {
   readLink,
   replaceBuilderRun,
   replaceLink,
+  type StoredLink,
   type StoredRecord,
 } from './link-store.js';
 import type { Checked, EcosystemRefusal } from './refusals.js';
@@ -223,3 +225,18 @@ export const updateBuilderRun = (input: WriteInput & { id: string }) =>
 
 export const storedLink = LINK.stored;
 export const storedBuilderRun = BUILDER_RUN.stored;
+
+export function impactLink(row: StoredLink): ImpactLink & { provider: string; contractSlug: string } {
+  const doc = storedLink(row);
+  return {
+    id: row.id,
+    consumer: row.projectId,
+    module: row.modulePath,
+    pinnedVersion: row.pinnedVersion,
+    callSites: doc.callSites,
+    fieldsUsed: doc.fieldsUsed,
+    outsideContract: doc.outsideContract,
+    provider: row.providerProjectId,
+    contractSlug: row.contractSlug,
+  };
+}

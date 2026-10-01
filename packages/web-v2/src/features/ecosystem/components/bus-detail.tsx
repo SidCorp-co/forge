@@ -10,6 +10,7 @@ import {
   type BusLink,
   type BusRow,
   builderProgress,
+  impactLine,
   impactOf,
   STATE_MEANING,
   STATE_TONE,
@@ -19,7 +20,7 @@ import {
   VERDICT_TONE,
 } from "../bus";
 import { useBuilderRun, useLink } from "../hooks";
-import { IMPACT_NOTE, ProjectMark, type Selection } from "./bus-diagram";
+import { ProjectMark, type Selection } from "./bus-diagram";
 import { Loading, UnreadNotice } from "./notices";
 
 const BADGE: Record<Tone, "green" | "amber" | "red" | "neutral" | "cobalt"> = {
@@ -298,8 +299,8 @@ function ContractDetail({ bus, rows, k, onSelect }: { bus: Bus; rows: BusRow[]; 
   const names = new Map(bus.projects.map((x) => [x.id, x.slug]));
   const provider = names.get(row.ref.provider) ?? "its provider";
   const c = row.contract;
-  const breaks = row.links.filter((l) => impactOf(l, c) === "breaks");
-  const older = row.links.filter((l) => impactOf(l, c) === "older");
+  const breaks = row.links.filter((l) => impactOf(l) === "breaks");
+  const unchecked = row.links.filter((l) => impactOf(l) === "unchecked");
   return (
     <>
       <Head>
@@ -320,9 +321,9 @@ function ContractDetail({ bus, rows, k, onSelect }: { bus: Bus; rows: BusRow[]; 
           <Caption>No member&apos;s master has mapped a link to {row.ref.slug}.</Caption>
         ) : (
           row.links.map((l: BusLink) => {
-            const v = impactOf(l, c);
+            const v = impactOf(l);
             return (
-              <Tooltip key={l.id} label={`${l.module} · ${STATE_MEANING[l.state]}`} multiline>
+              <Tooltip key={l.id} label={`${l.module} · ${STATE_MEANING[l.state]} · ${impactLine(l)}`} multiline>
                 <button
                   type="button"
                   onClick={() => onSelect({ kind: "link", id: l.id })}
@@ -338,25 +339,23 @@ function ContractDetail({ bus, rows, k, onSelect }: { bus: Bus; rows: BusRow[]; 
         )}
       </Group>
       <Group title="Impact">
-        <Tooltip label={IMPACT_NOTE} multiline>
-          <span className="text-13">
-            {breaks.length === 0 && older.length === 0
-              ? row.links.length === 0
-                ? "Nothing reads it, so no change to it reaches a member."
-                : "Every mapped consumer is on the current version."
-              : [
-                  breaks.length ? `${breaks.length} breaking` : "",
-                  older.length ? `${older.length} on an older version` : "",
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-          </span>
-        </Tooltip>
-        {breaks.length + older.length > 0 ? (
-          <Caption>
-            {[...breaks, ...older].map((l) => names.get(l.consumer) ?? "a member").join(", ")}
+        <span className="text-13">
+          {breaks.length === 0 && unchecked.length === 0
+            ? row.links.length === 0
+              ? "Nothing reads it, so no change to it reaches a member."
+              : `Every mapped consumer passes against ${c?.currentVersion ?? "the latest version"}.`
+            : [
+                breaks.length ? `${breaks.length} breaking` : "",
+                unchecked.length ? `${unchecked.length} unchecked` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+        </span>
+        {breaks.map((l) => (
+          <Caption key={l.id}>
+            {names.get(l.consumer) ?? "a member"}: {impactLine(l)}
           </Caption>
-        ) : null}
+        ))}
       </Group>
     </>
   );

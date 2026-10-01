@@ -83,11 +83,18 @@ export async function loadContractFacts(
     const { classification, changes } = row.document.diff;
     measured.set(key, {
       classification,
-      changes: changes.map((c) => ({ element: c.element, level: c.level })),
+      changes: changes.map((c) => ({
+        element: c.element,
+        level: c.level,
+        kind: c.kind,
+        text: c.text,
+        check: c.check,
+      })),
     });
     versions.set(key, {
       elements: row.elements ? new Set(row.elements) : null,
       previous: row.document.previous ?? null,
+      recordedOn: row.recordedAt.toISOString().slice(0, 10),
     });
     types.set(key, { type: row.contractType, sha: row.artifactSha256 });
   }

@@ -1,15 +1,16 @@
 import type { ChannelDocument } from '../channel-schema.js';
-import type { ChangeLevel, MeasuredClassification } from './diff.js';
+import type { ChangeKind, ChangeLevel, MeasuredClassification } from './diff.js';
 import type { ContractExample, ContractIndex } from './elements.js';
 
 export interface MeasuredVersion {
   classification: MeasuredClassification;
-  changes: readonly { element: string; level: ChangeLevel }[];
+  changes: readonly { element: string; level: ChangeLevel; kind: ChangeKind; text: string; check?: string | undefined }[];
 }
 
 export interface VersionFacts {
   elements: ReadonlySet<string> | null;
   previous: string | null;
+  recordedOn: string;
 }
 
 export interface ContractFacts {
