@@ -137,6 +137,9 @@
 
 ### Added
 
+- **When the assistant says a refused change went through, its reply now corrects itself.** A
+  line under it names what was refused, why, and that nothing was written, on the web and in
+  Rocket.Chat.
 - **You can act in an ecosystem channel by asking the assistant.** It reads, drafts, replies,
   holds, withdraws, supersedes and decides approve gates in your name, marked as written through the assistant, with
   your role: a viewer cannot write.

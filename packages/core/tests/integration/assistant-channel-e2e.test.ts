@@ -238,6 +238,36 @@ describe('the assistant can do no more than the person', () => {
       ['forge_channel', w.user.platform, false],
     ]);
   });
+
+  it('records the code a real refusal carried on its audited call', async () => {
+    const { runTurnEvents } = await import('../../src/assistant/run-turn-core.js');
+    const viewer = await chatAs(w.user.viewer, w.project.plugin);
+    let round = 0;
+    const provider = {
+      id: 'fake',
+      defaultModel: 'fake',
+      async *stream() {
+        round += 1;
+        if (round === 1) {
+          yield {
+            type: 'tool_call' as const,
+            id: 'c1',
+            name: 'forge_channel',
+            arguments: JSON.stringify({ action: 'withdraw', ref: 'FP-CR-1', reason: 'x' }),
+          };
+        } else {
+          yield { type: 'chunk' as const, text: 'done' };
+        }
+        yield { type: 'done' as const };
+      },
+    };
+    const gen = runTurnEvents({ provider, model: 'fake', messages: [], tools: viewer });
+    let next = await gen.next();
+    while (!next.done) next = await gen.next();
+    expect(next.value.toolCalls.map((c) => [c.isError, c.refusalCode, c.ranAs])).toEqual([
+      [true, 'CHANNEL_WRITE_NOT_AUTHORISED', w.user.viewer],
+    ]);
+  });
 });
 
 describe('in ecosystem scope nothing internal of a counterparty is read', () => {

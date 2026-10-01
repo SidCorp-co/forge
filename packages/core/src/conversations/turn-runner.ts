@@ -11,6 +11,7 @@
  * this.
  */
 
+import { correctFalseClaims } from '../assistant/confab.js';
 import { STOPPED_BY_A_PERSON } from '../assistant/conversation-stops.js';
 import { type ExternalChatTurnResult, runExternalChatTurn } from '../assistant/external-chat.js';
 import type { ChatStreamEvent } from '../assistant/providers/types.js';
@@ -293,6 +294,7 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   // signal and closes the window as stopped.
   if (req.externalStop?.aborted) return { send: false, reason: STOPPED_BY_A_PERSON };
 
+  const firstCalls = result.toolCalls;
   const late = await req.divertAfterTurn?.(result, hook);
   if (late) return late;
 
@@ -317,6 +319,7 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     }
     result = { ...result, reply: captured };
   }
+  result = { ...result, reply: correctFalseClaims(result.reply, firstCalls).text };
 
   if (req.mayDecline) {
     if (result.terminal !== 'done' || result.reply.trim().length === 0) {
@@ -358,7 +361,8 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
         record: 'nothing',
         message: instruction,
       });
-      const text = again ? (again.captured() ?? '') : retried.reply;
+      const said = again ? (again.captured() ?? '') : retried.reply;
+      const text = correctFalseClaims(said, [...firstCalls, ...retried.toolCalls]).text;
       if (req.mayDecline && declinedTurn(text)) {
         declinedInRetry = true;
         return { ...retried, reply: '' };

@@ -22,6 +22,7 @@ import type {
   ChatStreamEvent,
   ChatStreamUsage,
 } from './providers/types.js';
+import { refusalCodeOf } from './refusal-code.js';
 import { type ChatToolset, toolError, toolResultText } from './tools/mcp-adapter.js';
 
 export const MAX_TOOL_ITERATIONS = 16;
@@ -85,6 +86,8 @@ export interface ToolCallRecord {
   resultIssueRefs: string[];
   /** The user the call ran as, from the toolset that owns it; null for a tool that acts as nobody. */
   ranAs: string | null;
+  /** The code a refused call's result named, null where it landed or named none. */
+  refusalCode: string | null;
 }
 
 export interface TurnCoreResult {
@@ -168,6 +171,7 @@ async function executeToolRound(
             resultPreview: text.slice(0, RESULT_PREVIEW_CHARS),
             resultIssueRefs: issueRefsIn(text),
             ranAs: toolset.ranAs(call.name),
+            refusalCode: result.isError === true ? refusalCodeOf(text) : null,
           },
         };
       }
