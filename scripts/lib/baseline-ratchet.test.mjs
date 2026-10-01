@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { compareBaseline } from './baseline-ratchet.mjs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { baseRev, compareBaseline, pushedFrom } from './baseline-ratchet.mjs';
 
 describe('improves: down', () => {
   const at = (files) => ({ generatedAt: '2026-01-01', files });
@@ -168,4 +172,121 @@ describe('improves: tighten', () => {
 
 it('refuses a direction it does not implement', () => {
   expect(compareBaseline('sideways', {}, {})).toEqual(['unknown direction sideways']);
+});
+
+const made = [];
+afterEach(() => {
+  while (made.length > 0) rmSync(made.pop(), { recursive: true, force: true });
+});
+
+const SEALED_ENV = { PATH: process.env.PATH ?? '', LC_ALL: 'C' };
+
+function git(cwd, ...args) {
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', env: SEALED_ENV });
+  if (r.status !== 0) throw new Error(`git ${args.join(' ')} in ${cwd}: ${r.stderr}`);
+  return r.stdout.trim();
+}
+
+/**
+ * A `dev` branch whose published tip is `before`, then a push of two commits on top, and a commit
+ * with no parent, on a history of its own. `origin/dev` stands at the pushed head, as CI's checkout leaves it.
+ */
+function pushed() {
+  const box = mkdtempSync(join(tmpdir(), 'base-rev-'));
+  made.push(box);
+  const root = join(box, 'work');
+  git(box, 'init', '-q', '-b', 'dev', root);
+  git(root, 'config', 'user.email', 'check@example.invalid');
+  git(root, 'config', 'user.name', 'check');
+  const commit = (msg) => {
+    writeFileSync(join(root, 'f.txt'), msg);
+    git(root, 'add', '-A');
+    git(root, 'commit', '-q', '-m', msg);
+    return git(root, 'rev-parse', 'HEAD');
+  };
+  const before = commit('published');
+  const first = commit('first of the push');
+  const head = commit('last of the push');
+  const stranger = git(root, 'commit-tree', `${head}^{tree}`, '-m', 'another history');
+  git(root, 'update-ref', 'refs/remotes/origin/dev', head);
+  const event = (payload) => {
+    const path = join(box, `event-${made.length}-${Math.random()}.json`);
+    writeFileSync(path, JSON.stringify(payload));
+    return { GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/heads/dev', GITHUB_EVENT_PATH: path };
+  };
+  return { box, root, before, first, head, stranger, event };
+}
+
+describe('pushedFrom: a push is one change, judged from the tip it moved its branch from', () => {
+  it('returns the pre-push tip, not HEAD~1, for a push of several commits', () => {
+    const w = pushed();
+    expect(pushedFrom(w.root, w.event({ before: w.before }), w.head)).toBe(w.before);
+    expect(w.first).toBe(git(w.root, 'rev-parse', 'HEAD~1'));
+  });
+
+  it('is null for an event that is not a push', () => {
+    const w = pushed();
+    expect(pushedFrom(w.root, { GITHUB_EVENT_NAME: 'pull_request' }, w.head)).toBeNull();
+  });
+
+  it('is null for a push that created its branch', () => {
+    const w = pushed();
+    expect(pushedFrom(w.root, w.event({ before: '0'.repeat(40) }), w.head)).toBeNull();
+  });
+
+  it('refuses by name a push whose before is not an ancestor of HEAD', () => {
+    const w = pushed();
+    expect(() => pushedFrom(w.root, w.event({ before: w.stranger }), w.head)).toThrow(
+      /not an ancestor of HEAD/,
+    );
+  });
+
+  it('refuses by name a push whose before this clone does not hold', () => {
+    const w = pushed();
+    expect(() => pushedFrom(w.root, w.event({ before: 'a'.repeat(40) }), w.head)).toThrow(
+      /absent from this clone/,
+    );
+  });
+
+  it('refuses by name a push event whose payload cannot be read', () => {
+    const w = pushed();
+    const env = { GITHUB_EVENT_NAME: 'push', GITHUB_EVENT_PATH: join(w.box, 'absent.json') };
+    expect(() => pushedFrom(w.root, env, w.head)).toThrow(
+      /payload at \$GITHUB_EVENT_PATH could not/,
+    );
+  });
+});
+
+describe('baseRev', () => {
+  it('judges a push to its merge target from the tip the push moved it from', () => {
+    const w = pushed();
+    expect(baseRev(w.root, w.event({ before: w.before }))).toBe(w.before);
+  });
+
+  it('takes the merge-base where the change is a branch off its target', () => {
+    const w = pushed();
+    git(w.root, 'checkout', '-q', '-b', 'ISS-1-a-branch', w.first);
+    writeFileSync(join(w.root, 'g.txt'), 'branch work');
+    git(w.root, 'add', '-A');
+    git(w.root, 'commit', '-q', '-m', 'branch work');
+    expect(baseRev(w.root, { GITHUB_BASE_REF: 'dev' })).toBe(w.first);
+  });
+
+  it('refuses, rather than judging HEAD~1, where no merge target can be derived', () => {
+    const w = pushed();
+    expect(() => baseRev(w.root, {})).toThrow(/no merge target could be derived/);
+  });
+
+  it('refuses, rather than judging HEAD~1, where the merge target names no ref here', () => {
+    const w = pushed();
+    expect(() => baseRev(w.root, { GITHUB_BASE_REF: 'release/9' })).toThrow(
+      /`release\/9` .* resolves to no ref here/,
+    );
+  });
+
+  it('refuses a merge target sharing no history with HEAD', () => {
+    const w = pushed();
+    git(w.root, 'update-ref', 'refs/remotes/origin/elsewhere', w.stranger);
+    expect(() => baseRev(w.root, { GITHUB_BASE_REF: 'elsewhere' })).toThrow(/no common ancestor/);
+  });
 });

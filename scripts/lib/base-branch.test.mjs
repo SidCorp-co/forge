@@ -163,6 +163,48 @@ describe('mergeTarget', () => {
     expect(mergeTarget(w.work, {}).branch).toBe('dev');
   });
 
+  it('refuses a recorded default the remote has since moved off, naming both and the refresh', () => {
+    // The checkout was cloned while the remote's default was `main`; the remote now names `dev`.
+    const w = world('main', 'dev');
+    git(w.origin, 'symbolic-ref', 'HEAD', 'refs/heads/dev');
+    const got = mergeTarget(w.work, {});
+    expect(got.branch).toBeUndefined();
+    expect(got.refusal).toContain('records `main`');
+    expect(got.refusal).toContain('now names `dev`');
+    expect(got.refusal).toContain('git remote set-head origin -a');
+    expect(baseRef(w.work, {}).refusal).toContain('now names `dev`');
+  });
+
+  it('answers from the record, and says so, where the remote cannot be asked', () => {
+    const w = world('main', 'dev');
+    git(w.work, 'remote', 'set-url', 'origin', join(w.box, 'gone.git'));
+    const said = [];
+    const write = process.stderr.write;
+    process.stderr.write = (chunk) => said.push(String(chunk)) > 0;
+    let got;
+    try {
+      got = mergeTarget(w.work, {});
+    } finally {
+      process.stderr.write = write;
+    }
+    expect(got).toEqual({ branch: 'main', source: 'origin/HEAD' });
+    expect(said.join('')).toContain('unconfirmed');
+    expect(said.join('')).toContain('git remote set-head origin -a');
+  });
+
+  it('says nothing extra where the remote confirms the record', () => {
+    const w = world('main', 'dev');
+    const said = [];
+    const write = process.stderr.write;
+    process.stderr.write = (chunk) => said.push(String(chunk)) > 0;
+    try {
+      expect(mergeTarget(w.work, {})).toEqual({ branch: 'main', source: 'origin/HEAD' });
+    } finally {
+      process.stderr.write = write;
+    }
+    expect(said).toEqual([]);
+  });
+
   it('refuses a single-branch checkout rather than inferring from the one branch it holds', () => {
     // `--depth 1 --branch dev` fetches `dev` alone and records no default. That the branch is the
     // only one here does not make it the one this work lands on, and a floor from the wrong one is

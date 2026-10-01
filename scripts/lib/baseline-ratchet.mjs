@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { baseRef } from './base-branch.mjs';
 
 const DIRECTIONS = ['down', 'shrink', 'tighten'];
@@ -13,29 +14,72 @@ function git(args, cwd) {
   }).trim();
 }
 
+const NO_COMMIT = /^0+$/;
+
+/**
+ * The tip a push event moved its branch from, read from `$GITHUB_EVENT_PATH`. A push carrying
+ * several commits is one change and is judged against that tip: `HEAD~1` sees only the last of
+ * them, so an entry withdrawn earlier in the push passed and one reworded inside it read as
+ * withdrawn. Null for any other event, and for a push that created its branch.
+ */
+export function pushedFrom(root, env, head) {
+  if (env.GITHUB_EVENT_NAME !== 'push') return null;
+  let before;
+  try {
+    before = String(JSON.parse(readFileSync(String(env.GITHUB_EVENT_PATH), 'utf8')).before ?? '');
+  } catch (err) {
+    throw new Error(
+      `a push event's payload at $GITHUB_EVENT_PATH could not be read (${err.message}), so the ` +
+        'tip this push moved its branch from is unknown and no base can be taken from it',
+    );
+  }
+  if (!before || NO_COMMIT.test(before) || before === head) return null;
+  try {
+    git(['merge-base', '--is-ancestor', before, 'HEAD'], root);
+  } catch {
+    throw new Error(
+      `this push moved its branch from ${before}, which is not an ancestor of HEAD ${head} or is ` +
+        'absent from this clone. Check out with `fetch-depth: 0`; a gated branch that was ' +
+        'force-pushed has no base to measure the push against',
+    );
+  }
+  return before;
+}
+
 /**
  * The revision this baseline is judged against: the merge-base with the branch this work will land
- * on.
+ * on, or, where that is `HEAD` itself, the tip a push moved the branch from.
  *
- * Not that branch's tip directly: on a feature branch the merge-base is what the diff is measured
- * from, but a commit pushed STRAIGHT to the base branch has the tip equal to HEAD, and comparing a
- * file to itself passes everything. `HEAD~1` is the answer for that push, and for a checkout whose
- * merge target no ref here names.
+ * Not that branch's tip directly: a commit pushed STRAIGHT to the base branch has the tip equal to
+ * HEAD, and comparing a file to itself passes everything. `HEAD~1` is left only for a checkout
+ * standing on its merge target's tip outside a push, whose last commit was judged when it landed.
+ * A merge target that cannot be derived, or that names no ref here, throws the resolver's refusal:
+ * `HEAD~1` there would judge one commit of a branch of many and say nothing.
+ *
+ * @returns {string | null} null only where HEAD, or a parent of it, does not exist
  */
-export function baseRev(root) {
+export function baseRev(root, env = process.env) {
   let head;
   try {
     head = git(['rev-parse', 'HEAD'], root);
   } catch {
     return null;
   }
-  const target = baseRef(root);
-  if (target.ref) {
-    try {
-      const mb = git(['merge-base', target.ref, 'HEAD'], root);
-      if (mb && mb !== head) return mb;
-    } catch {}
+  const target = baseRef(root, env);
+  if (target.refusal) throw new Error(target.refusal);
+  let mb;
+  try {
+    mb = git(['merge-base', target.ref, 'HEAD'], root);
+  } catch {
+    throw new Error(
+      `\`git merge-base ${target.ref} HEAD\` found no common ancestor, so this checkout holds no ` +
+        `revision where the change began. Fetch the history: \`git fetch origin ${target.branch}\`, ` +
+        'or check out with `fetch-depth: 0`',
+    );
   }
+  if (mb !== head) return mb;
+  const pushed = pushedFrom(root, env, head);
+  if (pushed) return pushed;
   try {
     return git(['rev-parse', 'HEAD~1'], root);
   } catch {
