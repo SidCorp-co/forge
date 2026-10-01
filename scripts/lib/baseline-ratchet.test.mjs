@@ -248,6 +248,14 @@ describe('pushedFrom: a push is one change, judged from the tip it moved its bra
     );
   });
 
+  it('refuses by name a readable push payload that names no before', () => {
+    const w = pushed();
+    for (const payload of [{}, { before: null }, { before: 'HEAD~3' }])
+      expect(() => pushedFrom(w.root, w.event(payload), w.head)).toThrow(
+        /names no commit as `before`/,
+      );
+  });
+
   it('refuses by name a push event whose payload cannot be read', () => {
     const w = pushed();
     const env = { GITHUB_EVENT_NAME: 'push', GITHUB_EVENT_PATH: join(w.box, 'absent.json') };

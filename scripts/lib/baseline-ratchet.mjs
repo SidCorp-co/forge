@@ -14,6 +14,7 @@ function git(args, cwd) {
   }).trim();
 }
 
+const COMMIT = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 const NO_COMMIT = /^0+$/;
 
 /**
@@ -24,16 +25,23 @@ const NO_COMMIT = /^0+$/;
  */
 export function pushedFrom(root, env, head) {
   if (env.GITHUB_EVENT_NAME !== 'push') return null;
-  let before;
+  let payload;
   try {
-    before = String(JSON.parse(readFileSync(String(env.GITHUB_EVENT_PATH), 'utf8')).before ?? '');
+    payload = JSON.parse(readFileSync(String(env.GITHUB_EVENT_PATH), 'utf8'));
   } catch (err) {
     throw new Error(
       `a push event's payload at $GITHUB_EVENT_PATH could not be read (${err.message}), so the ` +
         'tip this push moved its branch from is unknown and no base can be taken from it',
     );
   }
-  if (!before || NO_COMMIT.test(before) || before === head) return null;
+  const before = payload?.before;
+  if (typeof before !== 'string' || !COMMIT.test(before)) {
+    throw new Error(
+      `a push event's payload at $GITHUB_EVENT_PATH names no commit as \`before\` ` +
+        `(${JSON.stringify(before ?? null)}), so the tip this push moved its branch from is unknown`,
+    );
+  }
+  if (NO_COMMIT.test(before) || before === head) return null;
   try {
     git(['merge-base', '--is-ancestor', before, 'HEAD'], root);
   } catch {
