@@ -2105,8 +2105,10 @@ fn the_legend_fits_the_screen_and_l_switches_it() {
 
     // Every column and verdict word, written here rather than read off the
     // view, each the start of an item of a legend row.
+    // The cells' own marks are read the same way: `?`, `·` and `—`.
     let columns = [
-        "!", "PANE", "RUNS", "MOV", "HAND", "QUE", "BLK", "DRF", "VERDICT", "NOW", "CHANGE",
+        "!", "PANE", "RUNS", "MOV", "HAND", "QUE", "BLK", "DRF", "VERDICT", "NOW", "CHANGE", "?",
+        "·", "—",
     ];
     let words = [
         "STALL", "ASKS", "DRIFT", "ORPHAN", "NOPATH", "GATE", "DAEMON", "AGEING", "DOWN", "WAITS",
