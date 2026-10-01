@@ -33,6 +33,7 @@ import {
 import { useResumeRun } from "@/features/pipeline/hooks";
 import { usePolicyDocument } from "@/features/project-settings/config-hooks";
 import { useProjects } from "@/features/projects/hooks";
+import { canWriteProject } from "@/features/projects/write-access";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
@@ -130,7 +131,7 @@ export function IssueDetailScreen({
 
   const projectsQ = useProjects();
   const projectRole = projectsQ.data?.find((p) => p.id === projectId)?.role;
-  const canWrite = projectRole !== "viewer";
+  const canWrite = canWriteProject(projectRole);
   const policyQ = usePolicyDocument(projectId);
   const [modulePickerOpen, setModulePickerOpen] = useState(false);
 

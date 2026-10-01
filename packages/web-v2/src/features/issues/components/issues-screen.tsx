@@ -9,6 +9,7 @@ import {
 } from "@/design";
 import { PipelineBoard } from "@/features/pipeline/components/pipeline-board";
 import { useProjects } from "@/features/projects/hooks";
+import { canWriteProject } from "@/features/projects/write-access";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -34,8 +35,7 @@ interface IssuesScreenProps {
 export function IssuesScreen({ scope }: IssuesScreenProps) {
   const [view, setView] = useTabParam<IssuesView>(VIEWS, "list");
   const projectsQ = useProjects();
-  const canWrite =
-    projectsQ.data?.find((p) => p.id === scope.projectId)?.role !== "viewer";
+  const canWrite = canWriteProject(projectsQ.data?.find((p) => p.id === scope.projectId)?.role);
   // New-issue dialog — opened locally or by `?new=1`, which ⌘K pushes onto this
   // route. On this route Next keeps the screen mounted, so the query is followed, not read once.
   const [newOpen, setNewOpen] = useState(false);

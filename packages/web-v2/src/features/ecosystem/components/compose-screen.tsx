@@ -6,7 +6,8 @@ import { ecosystemApi } from "../api";
 import { useApiPage, useChannelWrite, useDocument, useProjectEcosystems } from "../hooks";
 import { type Refusal, readingOf, refusalsOf } from "@/lib/api/refusals";
 import { type DocumentType, type DocumentView, REPLY_TYPES } from "../types";
-import { type Role, writes } from "./document-actions";
+import { canWriteProject } from "@/features/projects/write-access";
+import type { Role } from "./document-actions";
 import { Loading, ReadOnlyNotice, RefusalNotice, UnreadNotice } from "./notices";
 import { useProjectNames } from "./people";
 import { TYPE_LABEL } from "./register-screen";
@@ -214,7 +215,7 @@ export function ComposeScreen({
   const ecosR = readingOf(useProjectEcosystems(projectId));
   const pageR = readingOf(useApiPage(projectId));
 
-  if (!writes(role)) {
+  if (!canWriteProject(role)) {
     return <ReadOnlyNotice role={role} slug={slug} writes="drafts and replies" />;
   }
   for (const [what, r, wanted] of [

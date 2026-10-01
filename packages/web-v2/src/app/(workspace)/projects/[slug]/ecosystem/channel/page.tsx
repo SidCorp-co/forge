@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { EcosystemPage } from "@/features/ecosystem/components/ecosystem-page";
-import { writes } from "@/features/ecosystem/components/document-actions";
+import { canWriteProject } from "@/features/projects/write-access";
 import { RegisterScreen } from "@/features/ecosystem/components/register-screen";
 import { ecosystemRoutes } from "@/features/ecosystem/routes";
 
@@ -28,7 +28,7 @@ function Register() {
       section="channel"
       title="Channel register"
       actions={(p) =>
-        writes(p.role) ? (
+        canWriteProject(p.role) ? (
           <Link
             href={ecosystemRoutes.compose(p.slug, { ecosystem: search?.get("ecosystem") ?? undefined })}
             className="inline-flex items-center rounded-md bg-accent px-[11px] py-[6px] text-13 text-on-accent"

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type RetiredModelRule,
   RULES,
+  scanSource,
   stripComments,
 } from '../../../../scripts/check-retired-model.mjs';
 
@@ -148,5 +149,89 @@ describe('the comment stripper', () => {
     const line = 'const q = `${ cfg({a: 1}) /* row.productionBranch was renamed */ }`;';
     expect(stripComments(line)).not.toContain('row.productionBranch');
     expect(hits(line)).toEqual([]);
+  });
+});
+
+const rulesIn = (file: string, source: string) => scanSource(file, source).map((f) => f.rule);
+
+describe('the binding rules, read file by file', () => {
+  it.each([
+    ['packages/core/src/x.ts', 'await createBinding(db, input);', 'binding-write-doors'],
+    ['packages/core/src/x.ts', 'await updateBinding(id, patch);', 'binding-write-doors'],
+    ['packages/core/src/x.ts', 'const p: UpdateBindingPatch = {};', 'binding-write-doors'],
+    ['packages/core/src/x.ts', 'await bindExisting(projectId, connId);', 'binding-write-doors'],
+    ['packages/core/src/x.ts', 'type I = IntegrationBindingCreateInput;', 'binding-write-doors'],
+    ['packages/web-v2/src/x.ts', 'useBindExistingConnection(projectId);', 'binding-write-doors'],
+    [
+      'packages/core/src/x.ts',
+      'await db.insert(integrationBindings).values(row);',
+      'binding-row-inserts',
+    ],
+    [
+      'packages/core/src/x.ts',
+      'sql`INSERT INTO integration_bindings (id) VALUES ($1)`',
+      'binding-row-inserts',
+    ],
+    [
+      'packages/core/src/integrations/store.ts',
+      'await db.insert(integrationBindings).values(row);',
+      'binding-row-inserts',
+    ],
+    [
+      'packages/core/src/x.ts',
+      'await db.update(integrationBindings).set({ active: false });',
+      'binding-row-updates',
+    ],
+    [
+      'packages/core/src/x.ts',
+      'sql`UPDATE integration_bindings SET active = false`',
+      'binding-row-updates',
+    ],
+  ])('%s: %s → %s', (file, source, rule) => {
+    expect(rulesIn(file, source)).toContain(rule);
+  });
+
+  it.each([
+    [
+      'packages/core/src/project-config/binding-store.ts',
+      'await db.insert(integrationBindings).values(row);',
+    ],
+    [
+      'packages/core/tests/helpers/seed-binding.ts',
+      'sql`INSERT INTO integration_bindings (id) VALUES ($1)`',
+    ],
+    [
+      'packages/core/src/project-config/binding-store.ts',
+      'await db.update(integrationBindings).set(next);',
+    ],
+    [
+      'packages/core/src/integrations/store.ts',
+      'await db.update(integrationBindings).set({ active: false });',
+    ],
+    [
+      'packages/core/tests/integration/x.test.ts',
+      'sql`UPDATE integration_bindings SET active = false`',
+    ],
+    ['packages/core/src/x.ts', 'await writeBinding(projectId, bindingId, doc);'],
+  ])('%s: %s stays green', (file, source) => {
+    expect(rulesIn(file, source)).toEqual([]);
+  });
+});
+
+describe('an exact-line allowance', () => {
+  it('lets the scrubber keep the one retired key it filters', () => {
+    expect(rulesIn('packages/observability/src/index.ts', '\t"testCredentials",')).toEqual([]);
+  });
+
+  it('allows that line only, so the same key read elsewhere in the file still goes red', () => {
+    expect(
+      rulesIn('packages/observability/src/index.ts', 'const c = env.testCredentials;'),
+    ).toContain('release-path-keys');
+  });
+
+  it('allows that file only, so the same line anywhere else still goes red', () => {
+    expect(rulesIn('packages/core/src/x.ts', '\t"testCredentials",')).toContain(
+      'release-path-keys',
+    );
   });
 });

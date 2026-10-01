@@ -20,7 +20,7 @@ let attachments: ReturnType<typeof ok> = ok([]);
 let pipelineHealth: Record<string, unknown> | undefined;
 let status = "open";
 let park: Record<string, unknown> = { state: "ready", park: null };
-let role: string = "admin";
+let role: string | null = "admin";
 let intake: "auto" | "manual" = "auto";
 let sessionContext: Record<string, unknown> | null = null;
 let policyError: Error | null = null;
@@ -276,6 +276,14 @@ describe("the issue header's start on a manual-intake project", () => {
     expect(screen.getByText("Waits for a project member to start it")).toBeInTheDocument();
   });
 
+  it("shows an org member with no project role no Start either", () => {
+    intake = "manual";
+    role = null;
+    renderScreen();
+    expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
+    expect(screen.getByText("Waits for a project member to start it")).toBeInTheDocument();
+  });
+
   it("says an issue already started is waiting for a runner, and offers no second Start", () => {
     intake = "manual";
     sessionContext = { runRelease: new Date().toISOString() };
@@ -302,5 +310,21 @@ describe("the issue header's start on a manual-intake project", () => {
     status = "needs_info";
     renderScreen();
     expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
+  });
+});
+
+// Org access without project membership reads; only a member or an admin writes.
+describe("the issue header's write actions follow the project role", () => {
+  it.each([null, "viewer"])("offers a %s role no Run pipeline, only View pipeline", (r) => {
+    role = r;
+    renderScreen();
+    expect(screen.queryByRole("button", { name: "Run pipeline" })).toBeNull();
+    expect(screen.getByRole("button", { name: "View pipeline" })).toBeInTheDocument();
+  });
+
+  it.each(["member", "admin"])("offers a %s Run pipeline", (r) => {
+    role = r;
+    renderScreen();
+    expect(screen.getByRole("button", { name: "Run pipeline" })).toBeInTheDocument();
   });
 });
