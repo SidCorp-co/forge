@@ -2528,6 +2528,9 @@
   (ISS-1313)
 
 ### Removed
+- **A checkout is the device binding's alone.** A project has no repo path or default device;
+  settings refuse both by name. Jobs and chat turns run where the box's binding points, and a
+  binding naming no folder is refused. Re-bind with `forge-runner bind`.
 - **A project no longer has a description, kind, categories, bot personality, prompt addition or
   Rocket.Chat answer mode.** Their settings are gone, stored values removed, and a request sending
   one is refused by name. The assistant replies in your language.
