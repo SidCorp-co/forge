@@ -695,7 +695,7 @@ mod tests {
         );
         assert_eq!(
             binding_to_report(&provision(Some("  ")), &chosen).as_deref(),
-            Some("/srv/projects/butlocs")
+            Some(expected.to_string_lossy().as_ref())
         );
     }
 
