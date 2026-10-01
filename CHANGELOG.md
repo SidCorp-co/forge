@@ -137,6 +137,11 @@
 
 ### Added
 
+- **You can act in an ecosystem channel by asking the assistant.** It reads the register, your
+  inbox and outbox, a conversation and a project's API page, and drafts, replies, submits, holds,
+  releases, withdraws and supersedes for you. Each document is written in your name, marked as
+  written through the assistant. A viewer's request to write is refused by name, and the
+  assistant reads only what your project sends or receives.
 - **Issues on a project that starts work by hand have a Start button.** A project member presses
   it on an open issue's page to hand it to the runners; a viewer sees who it waits for.
 - **Forge's API and MCP tools are published as machine-readable contracts.** An OpenAPI 3.1 file

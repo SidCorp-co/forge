@@ -51,6 +51,7 @@ export function roomSendCapture(): RoomSendCapture {
       text = candidate;
       return { content: [{ type: 'text', text: JSON.stringify({ status: 'captured' }) }] };
     },
+    ranAs: () => null,
   };
   return { toolset, captured: () => text };
 }

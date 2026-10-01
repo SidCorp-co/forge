@@ -36,6 +36,8 @@ export interface RegisterQuery {
   type?: DocumentType | undefined;
   party?: string | undefined;
   limit: number;
+  /** The projects a credential fenced to some of the reader's projects reads as; the rest of theirs stay out. */
+  fence?: readonly string[] | undefined;
 }
 
 export type Listed = ChannelDocument & { thread: string | null };
@@ -113,7 +115,8 @@ export async function readRegister(
   query: RegisterQuery,
 ): Promise<{ rows: RegisterRow[]; total: number }> {
   await readableEcosystem(userId, ecosystemId);
-  const mine = await readerProjects(userId);
+  const visible = await readerProjects(userId);
+  const mine = query.fence ? new Set(query.fence.filter((p) => visible.has(p))) : visible;
   const stored = await documentsWhere(db, { ecosystem: ecosystemId, published: true });
   const served = await serveAll(db, stored);
   const threadOf = new Map(stored.map((r) => [r.id, r.thread]));
@@ -121,11 +124,11 @@ export async function readRegister(
   const threads = [...new Set(docs.flatMap((d) => (d.thread ? [d.thread] : [])))];
   const held = heldThreads((await holdsOn(db, threads)).map(holdOf));
   const today = new Date().toISOString().slice(0, 10);
-  const visible = rowsOf(docs, held, today)
+  const listed = rowsOf(docs, held, today)
     .filter((r) => mine.has(r.from) || r.to.some((t) => mine.has(t)))
     .filter((r) => !query.party || r.from === query.party || r.to.includes(query.party))
     .filter((r) => !query.type || r.type === query.type)
     .filter((r) => matches(r, query.status))
     .sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? ''));
-  return { rows: visible.slice(0, query.limit), total: visible.length };
+  return { rows: listed.slice(0, query.limit), total: listed.length };
 }

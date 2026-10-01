@@ -58,14 +58,18 @@ function readerOf(full: boolean, sight: ReadonlyMap<string, Sight>) {
   };
 }
 
-export async function readApiPage(userId: string, projectId: string) {
+// cm:why a fence names the projects a credential acts for: the page is read in full only for one inside it, and as a party only through those, whatever else the person belongs to
+export async function readApiPage(userId: string, projectId: string, fence?: readonly string[]) {
   const [target] = await projectsWhere(db, { ids: [projectId] });
   if (!target) throw notFound(`project ${projectId} does not exist`);
   const access = await effectiveProjectRole(userId, projectId);
-  const full = projectRoleAtLeast(access?.role ?? null, 'viewer');
+  const fenced = (ids: ReadonlySet<string>) =>
+    fence ? new Set(fence.filter((p) => ids.has(p))) : ids;
+  const full =
+    projectRoleAtLeast(access?.role ?? null, 'viewer') && (!fence || fence.includes(projectId));
   const targetEcos = (await activeEcosystemIdsOf(db, [projectId])).map((m) => m.ecosystemId);
   const graph = await loadGraph(targetEcos);
-  const reader = full ? new Set([projectId]) : await readerProjects(userId);
+  const reader = full ? new Set([projectId]) : fenced(await readerProjects(userId));
   const sight = full ? new Map<string, Sight>() : sightOf(graph, reader, projectId);
   if (!full && sight.size === 0) {
     throw forbidden(

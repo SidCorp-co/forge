@@ -1,19 +1,18 @@
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { refused } from '../project-config/respond.js';
 import { uuid } from '../project-config/schema.js';
 import type { ChannelOutcome } from './channel-act.js';
-import { writerOf } from './channel-author.js';
+import { type ChannelNeed, channelRoleRefusal, writerOf } from './channel-author.js';
 import { supersede, withdraw } from './channel-ends.js';
 import { holdOrRelease } from './channel-holds.js';
 import { inbox, outbox, readAs, threadAs } from './channel-read.js';
 import { NUMBER_PATTERN } from './channel-schema.js';
 import { createDraft, editDraft, submit } from './channel-service.js';
-import type { ServedDocument } from './channel-world.js';
+import { viewOf } from './channel-view.js';
 import type { ChannelRefusalCode } from './refusals.js';
 
 export const channelProjectRoutes = new Hono<{ Variables: AuthVars }>();
@@ -104,27 +103,20 @@ const holdBody = zValidator('json', z.strictObject({ reason: z.string().optional
   if (!r.success) throw badRequest('a hold is { reason }, and a release is { reason? }');
 });
 
-const viewOf = (s: ServedDocument) => ({
-  id: s.id,
-  document: s.document,
-  events: s.events.map((e) => ({
-    verb: e.verb,
-    from: e.fromState,
-    to: e.toState,
-    by: { kind: e.actorKind, id: e.actorId, via: e.actorVia },
-    ...(e.reason ? { reason: e.reason } : {}),
-    ...(e.supersededBy ? { supersededBy: e.supersededBy } : {}),
-    at: e.at.toISOString(),
-  })),
-});
-
 function answer(c: Context, outcome: ChannelOutcome) {
   if (!outcome.ok) return refused(c, outcome.refusals);
   return c.json(viewOf(outcome.served));
 }
 
+async function mayAct(c: Context<{ Variables: AuthVars }>, projectId: string, need: ChannelNeed) {
+  const refusal = await channelRoleRefusal(c.get('userId'), projectId, need);
+  if (refusal) {
+    throw new HTTPException(403, { message: refusal.detail, cause: { code: 'FORBIDDEN' } });
+  }
+}
+
 async function writer(c: Context<{ Variables: AuthVars }>, projectId: string) {
-  await assertProjectAccess(projectId, c.get('userId'), 'member');
+  await mayAct(c, projectId, 'write');
   return writerOf(c);
 }
 
@@ -194,14 +186,14 @@ channelProjectRoutes.post(
 
 channelProjectRoutes.get('/:id/channel/documents/:ref', refParam, async (c) => {
   const { id, ref } = c.req.valid('param');
-  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  await mayAct(c, id, 'read');
   const view = await readAs(id, ref);
   return c.json({ ...viewOf(view), side: view.side, hold: view.hold });
 });
 
 channelProjectRoutes.get('/:id/channel/inbox', projectParam, async (c) => {
   const { id } = c.req.valid('param');
-  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  await mayAct(c, id, 'read');
   const entries = await inbox(id);
   return c.json({
     documents: entries.map((e) => ({
@@ -217,7 +209,7 @@ channelProjectRoutes.get('/:id/channel/inbox', projectParam, async (c) => {
 
 channelProjectRoutes.get('/:id/channel/outbox', projectParam, async (c) => {
   const { id } = c.req.valid('param');
-  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  await mayAct(c, id, 'read');
   const views = await outbox(id);
   return c.json({
     documents: views.map((v) => ({ ...viewOf(v), hold: v.hold })),
@@ -227,7 +219,7 @@ channelProjectRoutes.get('/:id/channel/outbox', projectParam, async (c) => {
 
 channelProjectRoutes.get('/:id/channel/threads/:number', threadParam, async (c) => {
   const { id, number } = c.req.valid('param');
-  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  await mayAct(c, id, 'read');
   const t = await threadAs(id, number);
   return c.json({
     thread: t.thread,
@@ -244,7 +236,7 @@ const holdHandler =
     number: string,
     reason: string | undefined,
   ) => {
-    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    await mayAct(c, id, 'read');
     const outcome = await holdOrRelease({
       sideProjectId: id,
       thread: number,

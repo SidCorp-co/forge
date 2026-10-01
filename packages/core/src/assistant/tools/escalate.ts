@@ -34,5 +34,6 @@ export function buildEscalationToolset(): ChatToolset {
     execute: async () => ({
       content: [{ type: 'text', text: JSON.stringify({ status: 'escalation_queued' }) }],
     }),
+    ranAs: () => null,
   };
 }

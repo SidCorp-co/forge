@@ -135,5 +135,6 @@ export function withTurnImages(inner: ChatToolset, images: readonly TurnImage[])
       const block = await attach(inner, target, kept, cut);
       return { ...result, content: [...result.content, block] };
     },
+    ranAs: (name) => inner.ranAs(name),
   };
 }
