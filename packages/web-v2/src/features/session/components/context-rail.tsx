@@ -37,6 +37,7 @@ import { useRun } from "@/features/pipeline/hooks";
 import { useDevices } from "@/features/runners/hooks";
 import { deviceHealth, deviceVersionLabel } from "@/features/runners/types";
 import { deriveAgentTasks, deriveFilesChanged, type ConversationItem } from "../types";
+import { LoadedForRun } from "./loaded-for-run";
 
 const PLATFORM_LABEL: Record<string, string> = {
   macos: "macOS",
@@ -293,6 +294,8 @@ export function ContextRail({
           </Banner>
         </Section>
       )}
+
+      <LoadedForRun metadata={session.metadata} />
 
       <Section title="Timing">
         <div className="flex flex-col gap-2.5">

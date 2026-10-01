@@ -148,6 +148,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'release-batch/recorded.ts': 'the ids passed in',
   'release-batch/releasing-recovery.ts': 'rows of one release run',
   'release-batch/service.ts': 'the ids passed in, or rows of one release run',
+  'release-batch/versions.ts': 'reads only the gate status, not yet in a release run',
   'runners/routes.ts': 'issues of dispatched or running jobs',
   'tasks/routes.ts': 'by issue id',
   'uploads/attachment-bytes.ts': 'by attachment id',
