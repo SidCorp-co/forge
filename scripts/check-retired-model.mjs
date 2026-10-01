@@ -92,7 +92,7 @@ export const RULES = [
     id: 'legacy-project-columns',
     // ISS-16 / design D8 — the `projects` columns the project document replaced, and the helpers
     // that wrote or checked them.
-    re: /\bprojects\.(?:description|kind|repoUrl|workspaceSetup)\b|\brepo_url\b|\bworkspace_setup\b|\bprojects_release_chain_(?:ok|chk)\b|\breleaseProjectChecks\b|\breleaseCrossings\b|\bsyncRepoUrlFromGitHubBinding\b|\bRepoUrlOutcome\b/g,
+    re: /\bprojects\.(?:description|kind|repoUrl|workspaceSetup)\b|\bprojects\s+SET\s+(?:description|kind|environments)\b|\brepo_url\b|\bworkspace_setup\b|\bprojects_release_chain_(?:ok|chk)\b|\breleaseProjectChecks\b|\breleaseCrossings\b|\bsyncRepoUrlFromGitHubBinding\b|\bRepoUrlOutcome\b/g,
     why: "ISS-16 dropped this `projects` column (migration `the_legacy_project_columns_are_dropped`) with every reader and writer, and moved nothing into another column: a project's repository is its document's `source.git.repository` and its setup procedure is `workspace.setup` (`project-config/source.ts:readDeclaredSource`), whether its work lands in git is `source.type`, and a project carries no description. `PATCH /api/projects/:id` and `forge_projects.update` refuse `repoUrl` and `workspaceSetup` by name. To read what an old database still holds, run `scripts/export-legacy-project-config.mjs` against it.",
   },
   {

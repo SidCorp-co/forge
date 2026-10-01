@@ -60,6 +60,7 @@ describe('the rules name the retired reader', () => {
     ['const d = projects.description;', 'legacy-project-columns'],
     ['sql`UPDATE projects SET repo_url = $1`', 'legacy-project-columns'],
     ['sql`SELECT workspace_setup FROM projects`', 'legacy-project-columns'],
+    ['sql`UPDATE projects SET environments = $1 WHERE id = $2`', 'legacy-project-columns'],
     ['sql`SELECT projects_release_chain_ok($1)`', 'legacy-project-columns'],
     ['...axes.releaseProjectChecks,', 'legacy-project-columns'],
     ['await syncRepoUrlFromGitHubBinding(args);', 'legacy-project-columns'],
