@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
+import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -101,12 +102,3 @@ authRoutes.post(
     }
   },
 );
-
-function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code: unknown }).code === '23505'
-  );
-}

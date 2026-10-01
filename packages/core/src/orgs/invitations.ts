@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type OrgMemberRole, organizationMembers, orgInvitations } from '../db/schema.js';
+import { isUniqueViolation } from '../lib/db-errors.js';
 import { generateToken, INVITATION_TTL_MS } from '../projects/invitation-token.js';
 
 /**
@@ -11,15 +12,6 @@ import { generateToken, INVITATION_TTL_MS } from '../projects/invitation-token.j
  */
 
 const MAX_INSERT_RETRIES = 3;
-
-function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code: unknown }).code === '23505'
-  );
-}
 
 export interface IssueOrgInvitationInput {
   orgId: string;

@@ -1,3 +1,4 @@
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -66,6 +67,19 @@ function makeApp() {
     // would bypass the documented enum and leak implementation detail.
     const fsError = Object.assign(new Error('disk gone'), { code: 'ENOENT' });
     throw new HTTPException(500, { message: 'persist failed', cause: fsError });
+  });
+  app.get('/failed-query', () => {
+    const pg = Object.assign(
+      new Error('duplicate key value violates unique constraint "users_email_unique"'),
+      {
+        code: '23505',
+      },
+    );
+    throw new DrizzleQueryError(
+      'insert into "users" ("email", "password_hash") values ($1, $2)',
+      ['dup@example.test', '$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA'],
+      pg,
+    );
   });
   app.notFound(notFoundHandler);
   app.onError(errorHandler);
@@ -150,5 +164,15 @@ describe('error middleware', () => {
     // response body's `code` stays within the documented enum.
     expect(body.code).toBe('INTERNAL_ERROR');
     expect(body.code).not.toBe('ENOENT');
+  });
+
+  it('names a failed query by its statement, and never serializes its params', async () => {
+    const res = await makeApp().request('/failed-query');
+    const text = await res.text();
+    expect(res.status).toBe(500);
+    expect(JSON.parse(text).details.message).toBe(
+      'Failed query: insert into "users" ("email", "password_hash") values ($1, $2)\nparams: [Redacted]',
+    );
+    expect(text).not.toMatch(/argon2|dup@example\.test/);
   });
 });

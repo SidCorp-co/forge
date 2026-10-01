@@ -14,6 +14,7 @@ import {
   runners,
 } from '../db/schema.js';
 import { assertOrgAccess, assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -338,12 +339,7 @@ deviceUserRoutes.post(
         });
         return c.json({ code, expiresAt: expiresAt.toISOString() }, 201);
       } catch (err: unknown) {
-        const isUnique =
-          typeof err === 'object' &&
-          err !== null &&
-          'code' in err &&
-          (err as { code: string }).code === '23505';
-        if (!isUnique) throw err;
+        if (!isUniqueViolation(err)) throw err;
       }
     }
     throw new HTTPException(500, { message: 'failed to mint pairing code' });

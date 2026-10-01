@@ -1,5 +1,7 @@
+import { DrizzleQueryError } from 'drizzle-orm/errors';
+import { stdSerializers } from 'pino';
 import { describe, expect, it } from 'vitest';
-import { isUniqueViolation, uniqueViolationConstraint } from './db-errors.js';
+import { isUniqueViolation, uniqueViolationConstraint, withoutQueryParams } from './db-errors.js';
 
 describe('isUniqueViolation', () => {
   it('returns true for a top-level pg error with code 23505', () => {
@@ -67,5 +69,37 @@ describe('uniqueViolationConstraint', () => {
   it('returns undefined when no constraint name is present', () => {
     expect(uniqueViolationConstraint(new Error('plain'))).toBeUndefined();
     expect(uniqueViolationConstraint(null)).toBeUndefined();
+  });
+});
+
+describe('withoutQueryParams', () => {
+  const HASH = '$argon2id$v=19$m=19456,p=1,t=2$c2FsdA$aGFzaA';
+  const failed = () =>
+    new DrizzleQueryError(
+      'insert into "users" ("email", "password_hash") values ($1, $2)',
+      ['dup@example.test', HASH],
+      Object.assign(new Error('duplicate key value'), { code: '23505' }),
+    );
+
+  it("redacts a failed query's params from what the log serializer makes of it", () => {
+    const err = failed();
+    const text = JSON.stringify(withoutQueryParams(stdSerializers.err(err), err));
+    expect(text).not.toContain(HASH);
+    expect(text).not.toContain('dup@example.test');
+    expect(text).toContain('params: [Redacted]');
+  });
+
+  it('redacts them where the failed query is the cause of another error', () => {
+    const err = new Error('register failed', { cause: failed() });
+    const text = JSON.stringify(withoutQueryParams(stdSerializers.err(err), err));
+    expect(text).not.toContain(HASH);
+  });
+
+  it('leaves what holds no failed query as it was', () => {
+    const err = new Error('kaboom');
+    expect(withoutQueryParams({ message: 'kaboom', params: [1] }, err)).toEqual({
+      message: 'kaboom',
+      params: [1],
+    });
   });
 });
