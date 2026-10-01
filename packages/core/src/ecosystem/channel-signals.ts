@@ -1,0 +1,142 @@
+import { and, eq, inArray } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { projectMembers, projects, users } from '../db/schema.js';
+import { logger } from '../logger.js';
+import { resolveNotifications } from '../notifications/auto-resolve.js';
+import { emitNotification } from '../notifications/emit.js';
+import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
+import { wakeMastersForChannel } from '../ws/master-wake.js';
+import type { ChannelDocument, ThreadHold } from './channel-schema.js';
+
+async function humans(ids: readonly string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const rows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(inArray(users.id, [...new Set(ids)]), eq(users.kind, 'human')));
+  return new Set(rows.map((r) => r.id));
+}
+
+// cm:why the people of a side are everyone holding a role on its project, explicit or derived from the org, and never its agents
+async function peopleBySide(projectIds: readonly string[]): Promise<Map<string, string[]>> {
+  const ids = [...new Set(projectIds)];
+  const [members, admins] = await Promise.all([
+    ids.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({ projectId: projectMembers.projectId, userId: projectMembers.userId })
+          .from(projectMembers)
+          .where(inArray(projectMembers.projectId, ids)),
+    projectAdminUserIdsFor(ids),
+  ]);
+  const all = new Map(ids.map((id) => [id, new Set(admins.get(id) ?? [])]));
+  for (const m of members) all.get(m.projectId)?.add(m.userId);
+  const human = await humans([...all.values()].flatMap((s) => [...s]));
+  return new Map([...all].map(([id, s]) => [id, [...s].filter((u) => human.has(u))]));
+}
+
+async function slugsOf(ids: readonly string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ id: projects.id, slug: projects.slug })
+    .from(projects)
+    .where(inArray(projects.id, [...new Set(ids)]));
+  return new Map(rows.map((r) => [r.id, r.slug]));
+}
+
+async function signal(what: string, work: () => Promise<unknown>): Promise<void> {
+  try {
+    await work();
+  } catch (err) {
+    logger.error({ err, what }, 'channel: a notification or wake failed after the write committed');
+  }
+}
+
+const holdKey = (h: ThreadHold, side: string) => `channel-hold:${h.ecosystem}:${h.thread}:${side}`;
+
+export const gateKey = (documentId: string) => `channel-gate:${documentId}`;
+
+// cm:why each side reads the notice under its own project, and a person on both sides is told once
+async function tellEachSide(
+  sides: readonly string[],
+  except: string | null,
+  emit: (side: string, recipients: string[]) => Promise<unknown>,
+): Promise<void> {
+  const people = await peopleBySide(sides);
+  const told = new Set(except ? [except] : []);
+  for (const side of sides) {
+    const recipients = (people.get(side) ?? []).filter((u) => !told.has(u));
+    for (const u of recipients) told.add(u);
+    if (recipients.length > 0) await emit(side, recipients);
+  }
+}
+
+export async function announcePublished(documentId: string, d: ChannelDocument): Promise<void> {
+  await signal('channel_document_published', async () => {
+    const slugs = await slugsOf([d.from, ...d.to]);
+    const to = d.to.map((p) => slugs.get(p) ?? p).join(', ');
+    await tellEachSide(
+      [d.from, ...d.to],
+      d.authoredBy.kind === 'person' ? d.authoredBy.id : null,
+      (side, recipients) =>
+        emitNotification({
+          recipients,
+          projectId: side,
+          type: 'channel_document_published',
+          title: `${d.number} published: ${d.subject}`,
+          body: `A ${d.type} from ${slugs.get(d.from) ?? d.from} to ${to}.`,
+          dedupeKey: `channel-published:${documentId}:${side}`,
+        }),
+    );
+  });
+  for (const side of d.to) await signal('master.wake', () => wakeMastersForChannel(side));
+}
+
+export async function announceHold(h: ThreadHold, parties: readonly string[]): Promise<void> {
+  await signal('channel_thread_held', async () => {
+    if (h.action === 'release') {
+      for (const side of parties) await resolveNotifications(holdKey(h, side));
+      return;
+    }
+    const slugs = await slugsOf([h.side]);
+    await tellEachSide(parties, h.by.id, (side, recipients) =>
+      emitNotification({
+        recipients,
+        projectId: side,
+        type: 'channel_thread_held',
+        title: `${h.thread} is held: no agent adds to it until a person releases it`,
+        body: `Held for ${slugs.get(h.side) ?? h.side}: ${h.reason ?? ''}`,
+        resolutionKey: holdKey(h, side),
+      }),
+    );
+  });
+  for (const side of parties) await signal('master.wake', () => wakeMastersForChannel(side));
+}
+
+export async function announceGatePending(documentId: string, d: ChannelDocument): Promise<void> {
+  await signal('channel_gate_pending', async () => {
+    const admins = (await projectAdminUserIdsFor([d.from])).get(d.from) ?? [];
+    const human = await humans(admins);
+    const recipients = admins.filter((u) => human.has(u));
+    if (recipients.length === 0) {
+      logger.error(
+        { documentId, number: d.number, project: d.from },
+        'channel: a document waits at its approve gate and its project has no admin to approve it',
+      );
+      return;
+    }
+    await emitNotification({
+      recipients,
+      projectId: d.from,
+      type: 'channel_gate_pending',
+      title: `${d.number} waits for your approval: ${d.subject}`,
+      body: `A ${d.type} this project wrote is held at the approve gate until an admin approves or returns it.`,
+      resolutionKey: gateKey(documentId),
+    });
+  });
+}
+
+export async function announceGateDecided(documentId: string, d: ChannelDocument): Promise<void> {
+  await signal('channel_gate_pending', () => resolveNotifications(gateKey(documentId)));
+  if (d.state === 'published') await announcePublished(documentId, d);
+}

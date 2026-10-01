@@ -4,13 +4,14 @@ import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import type { Writer } from './channel-author.js';
 import { holdRefusals, parseHold } from './channel-rules.js';
 import { HOLD_SCHEMA_ID, type HoldAction, type ThreadHold } from './channel-schema.js';
+import { announceHold } from './channel-signals.js';
 import { holdsOn, insertHold, readNumbered } from './channel-store.js';
 import { holdOf, serveAll } from './channel-world.js';
 import type { EcosystemRefusal } from './refusals.js';
 import { lockKeys } from './store.js';
 
 export type HoldOutcome =
-  | { ok: true; hold: ThreadHold; held: boolean }
+  | { ok: true; hold: ThreadHold; held: boolean; parties: string[] }
   | { ok: false; refusals: EcosystemRefusal[] };
 
 // cm:why the side is the project in the path, so a token fenced to one project acts for that side only
@@ -22,7 +23,7 @@ export async function holdOrRelease(args: {
   reason: string | undefined;
 }): Promise<HoldOutcome> {
   const { writer } = args;
-  return db.transaction(async (tx) => {
+  const outcome: HoldOutcome = await db.transaction(async (tx) => {
     await lockKeys(tx, [`channel-thread:${args.thread}`]);
     const row = await readNumbered(tx, args.thread);
     if (row?.state !== 'published') {
@@ -77,6 +78,10 @@ export async function holdOrRelease(args: {
       reason: hold.reason ?? null,
       at,
     });
-    return { ok: true, hold, held: hold.action === 'hold' };
+    const thread = documents.get(args.thread);
+    if (!thread) throw new Error(`channel: ${args.thread} was held without its document in hand`);
+    return { ok: true, hold, held: hold.action === 'hold', parties: [thread.from, ...thread.to] };
   });
+  if (outcome.ok) await announceHold(outcome.hold, outcome.parties);
+  return outcome;
 }

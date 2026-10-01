@@ -1,0 +1,29 @@
+import type { Sql } from 'postgres';
+
+export declare const SECRET_MARK: string;
+
+export interface LegacyColumn {
+  table: string;
+  column: string;
+  v1: string;
+}
+
+export declare const LEGACY_COLUMNS: LegacyColumn[];
+
+export interface LegacyReport {
+  columns: Array<LegacyColumn & { present: boolean }>;
+  projects: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    archived: boolean;
+    legacy: Record<string, unknown>;
+    bindings: Array<{ id: string; provider: string; role: string; stages: string[] }>;
+  }>;
+}
+
+export declare function redact(value: unknown, key?: string): unknown;
+export declare function presentColumns(sql: Sql): Promise<Set<string>>;
+export declare function readLegacyConfig(sql: Sql): Promise<LegacyReport>;
+export declare function withReadOnly<T>(url: string, fn: (tx: Sql) => Promise<T>): Promise<T>;
+export declare function render(report: LegacyReport, url: string): string;

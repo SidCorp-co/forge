@@ -1,7 +1,7 @@
 /**
  * ISS-16 — `scripts/export-legacy-project-config.mjs` against the database it exists for: one still
- * at the schema before migration 0332, holding every legacy column. The harness database is
- * already past 0332, so the old schema is rebuilt from every migration below it.
+ * at the schema before migration `the_legacy_project_columns_are_dropped`, holding every legacy column. The harness database is
+ * already past it, so the old schema is rebuilt from every migration below it.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -234,7 +234,7 @@ describe('the export on a database still at the old schema', () => {
     expect(await fingerprint()).toBe(before);
   });
 
-  it('names each column 0332 dropped as absent, and says plainly when none is left', async () => {
+  it('names each column the drop migration removed as absent, and says plainly when none is left', async () => {
     await sql.begin(async (tx) => {
       for (const stmt of drop) await tx.unsafe(stmt, []);
     });

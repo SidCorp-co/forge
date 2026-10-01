@@ -1,6 +1,6 @@
 {
-  "id": "3fd0aacc-201f-49b2-ac77-41389f2ae002",
-  "prevId": "4bcfe4f7-af59-42df-aa9d-409cbddefc7f",
+  "id": "a519a9ef-8edc-40cf-93b5-bc9bc00c2d72",
+  "prevId": "3999ca3b-35ea-40dc-80eb-c1695a8b220f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -15408,6 +15408,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "agent_questions_channel_gate_open_uq": {
+          "name": "agent_questions_channel_gate_open_uq",
+          "columns": [
+            {
+              "expression": "(\"origin\" ->> 'documentId')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"agent_questions\".\"status\" = 'open' and \"agent_questions\".\"origin\" ->> 'kind' = 'channel_gate'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -15457,7 +15473,7 @@
       "checkConstraints": {
         "agent_questions_origin_shape_chk": {
           "name": "agent_questions_origin_shape_chk",
-          "value": "\"agent_questions\".\"origin\" is null or (\n        (\"agent_questions\".\"origin\" ->> 'kind' = 'unresolved' and \"agent_questions\".\"origin\" ? 'reason')\n        or (\n          \"agent_questions\".\"origin\" ->> 'kind' = 'conversation'\n          and \"agent_questions\".\"origin\" ? 'adapter'\n          and \"agent_questions\".\"origin\" ? 'venueId'\n          and \"agent_questions\".\"origin\" ? 'conversationId'\n          and \"agent_questions\".\"origin\" ? 'windowId'\n        )\n      )"
+          "value": "\"agent_questions\".\"origin\" is null or (\n        (\"agent_questions\".\"origin\" ->> 'kind' = 'unresolved' and \"agent_questions\".\"origin\" ? 'reason')\n        or (\n          \"agent_questions\".\"origin\" ->> 'kind' = 'channel_gate'\n          and \"agent_questions\".\"origin\" ? 'documentId'\n          and \"agent_questions\".\"origin\" ? 'number'\n          and \"agent_questions\".\"issue_id\" is null\n          and \"agent_questions\".\"agent_session_id\" is null\n        )\n        or (\n          \"agent_questions\".\"origin\" ->> 'kind' = 'conversation'\n          and \"agent_questions\".\"origin\" ? 'adapter'\n          and \"agent_questions\".\"origin\" ? 'venueId'\n          and \"agent_questions\".\"origin\" ? 'conversationId'\n          and \"agent_questions\".\"origin\" ? 'windowId'\n        )\n      )"
         }
       },
       "isRLSEnabled": false

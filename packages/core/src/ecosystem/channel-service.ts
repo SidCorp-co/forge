@@ -1,29 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { db, type Tx } from '../db/client.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { isRecord } from '../project-config/documents.js';
-import {
-  type ChannelOutcome,
-  lockedSender,
-  notIn,
-  Refused,
-  refuse,
-  served,
-  settle,
-} from './channel-act.js';
+import { type ChannelOutcome, lockedSender, notIn, refuse, served, settle } from './channel-act.js';
 import type { Writer } from './channel-author.js';
-import { documentRefusals, parseChannelDocument, threadRoot } from './channel-rules.js';
-import {
-  type ChannelDocument,
-  DOCUMENT_SCHEMA_ID,
-  type Gate,
-  TYPE_CODES,
-} from './channel-schema.js';
+import { checked, parsedOrRefused } from './channel-checks.js';
+import { askGate } from './channel-gate-ask.js';
+import { DOCUMENT_SCHEMA_ID, type Gate, TYPE_CODES } from './channel-schema.js';
+import { announceGatePending, announcePublished } from './channel-signals.js';
 import { insertDraft, insertEvent, reserveNumber, rewriteDocument } from './channel-store.js';
-import { loadWorld, publishedChain, serve } from './channel-world.js';
+import { serve } from './channel-world.js';
 import { heldEcosystem } from './ecosystem-service.js';
 import { type EcosystemDocument, interfaceDocumentSchema } from './schema.js';
-import { lockKeys, readEcosystem, readInterfaces } from './store.js';
+import { readEcosystem, readInterfaces } from './store.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const addDays = (day: string, n: number) =>
@@ -87,12 +75,6 @@ function compose(
     ...(base.gate ? { gate: base.gate } : {}),
     body: input.body,
   };
-}
-
-function parsedOrRefused(raw: unknown): ChannelDocument {
-  const parsed = parseChannelDocument(raw);
-  if (!parsed.ok) throw new Refused(parsed.refusals);
-  return parsed.value;
 }
 
 async function ecosystemOr(tx: Tx, id: string): Promise<EcosystemDocument> {
@@ -204,30 +186,12 @@ export async function editDraft(args: {
   );
 }
 
-async function checked(
-  tx: Tx,
-  doc: ChannelDocument,
-): Promise<{ doc: ChannelDocument; thread: string | null }> {
-  const documents = await publishedChain(tx, doc.ecosystem, doc.inReplyTo);
-  const root = threadRoot(doc, documents);
-  if (root && root !== doc.number) await lockKeys(tx, [`channel-thread:${root}`]);
-  const world = await loadWorld(tx, {
-    ecosystemId: doc.ecosystem,
-    from: doc.from,
-    documents,
-    threads: root ? [root] : [],
-  });
-  const refusals = documentRefusals(doc, world);
-  if (refusals.length > 0) throw new Refused(refusals);
-  return { doc, thread: root ?? doc.number ?? null };
-}
-
 export async function submit(args: {
   projectId: string;
   documentId: string;
   writer: Writer;
 }): Promise<ChannelOutcome> {
-  return settle(() =>
+  const outcome = await settle(() =>
     db.transaction(async (tx) => {
       const row = await lockedSender(tx, args.projectId, args.documentId);
       notIn(row, ['draft'], 'submit');
@@ -275,93 +239,16 @@ export async function submit(args: {
           toState: 'published',
           ...actor,
         });
+      } else {
+        await askGate(tx, row.id, doc);
       }
       return served(tx, row.id);
     }),
   );
-}
-
-export async function decideGate(args: {
-  projectId: string;
-  documentId: string;
-  writer: Writer;
-  decision: 'approved' | 'returned';
-  note: string | undefined;
-}): Promise<ChannelOutcome> {
-  return settle(() =>
-    db.transaction(async (tx) => {
-      const row = await lockedSender(tx, args.projectId, args.documentId);
-      const { author, userId } = args.writer;
-      if (author.kind !== 'person') {
-        refuse(
-          'GATE_NOT_AUTHORISED',
-          '/gate/decidedBy',
-          'an agent never approves or returns a document; a person who is admin of the sending project does.',
-        );
-      }
-      const access = await effectiveProjectRole(userId, args.projectId);
-      if (!projectRoleAtLeast(access?.role ?? null, 'admin')) {
-        refuse(
-          'GATE_NOT_AUTHORISED',
-          '/gate/decidedBy',
-          `${userId} is not an admin of the sending project, and only its admin decides the gate.`,
-        );
-      }
-      notIn(row, ['submitted'], 'a gate decision');
-      if (args.decision === 'returned' && !args.note) {
-        refuse(
-          'GATE_RETURN_WITHOUT_NOTE',
-          '/gate/note',
-          'a returned document says what to change: send { "decision": "returned", "note": … }.',
-        );
-      }
-      const now = new Date();
-      const gate: Gate = {
-        mode: 'approve',
-        decision: args.decision,
-        decidedBy: userId,
-        decidedAt: now.toISOString(),
-        ...(args.note ? { note: args.note } : {}),
-      };
-      const stored = serve(row, []).document;
-      const state = args.decision === 'approved' ? 'published' : 'returned';
-      const next = parsedOrRefused({
-        ...stored,
-        state,
-        gate,
-        ...(state === 'published' ? { publishedAt: now.toISOString() } : {}),
-      });
-      const passed = state === 'published' ? await checked(tx, next) : { doc: next, thread: null };
-      const doc = passed.doc;
-      await rewriteDocument(tx, row.id, {
-        state,
-        number: row.number,
-        thread: passed.thread,
-        toProjectIds: doc.to,
-        inReplyTo: doc.inReplyTo ?? null,
-        author: stored.authoredBy,
-        document: doc,
-        publishedAt: state === 'published' ? now : null,
-      });
-      const actor = { actor: author, userId, at: now };
-      await insertEvent(tx, {
-        documentId: row.id,
-        verb: state === 'published' ? 'approve' : 'return',
-        fromState: 'submitted',
-        toState: state,
-        reason: args.note ?? null,
-        ...actor,
-      });
-      if (state === 'published') {
-        await insertEvent(tx, {
-          documentId: row.id,
-          verb: 'publish',
-          fromState: 'submitted',
-          toState: 'published',
-          ...actor,
-        });
-      }
-      return served(tx, row.id);
-    }),
-  );
+  if (outcome.ok) {
+    const { id, document } = outcome.served;
+    if (document.state === 'published') await announcePublished(id, document);
+    else await announceGatePending(id, document);
+  }
+  return outcome;
 }

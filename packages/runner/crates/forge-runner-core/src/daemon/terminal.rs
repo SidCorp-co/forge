@@ -2278,17 +2278,14 @@ done
 
     #[test]
     fn a_daemon_under_its_own_config_dir_hands_it_to_its_panes() {
+        let scratch = crate::test_scratch::Scratch::new("pane-env");
+        let own = scratch.path().join("forge-dev-runner");
+        let own = own.to_string_lossy();
         let env = pane_env_from(env_of(&[
             ("MCP_TOOL_TIMEOUT", "9"),
-            ("XDG_CONFIG_HOME", "/srv/forge-dev-runner"),
+            ("XDG_CONFIG_HOME", &own),
         ]));
-        assert_eq!(
-            env,
-            vec![(
-                "XDG_CONFIG_HOME".to_string(),
-                "/srv/forge-dev-runner".to_string()
-            )]
-        );
+        assert_eq!(env, vec![("XDG_CONFIG_HOME".to_string(), own.to_string())]);
     }
 
     #[test]

@@ -10,6 +10,9 @@ export const NOTIFICATION_TYPES = [
   'issue_stranded',
   'retry_rescue_threshold',
   'ops_alert',
+  'channel_document_published',
+  'channel_thread_held',
+  'channel_gate_pending',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -108,6 +111,24 @@ export const NOTIFICATION_CONTRACT: Record<NotificationType, NotificationTypeCon
     severity: 'warning',
     channels: ['bell', 'toast'],
     kind: 'condition',
+    tier: 'ticket',
+  },
+  channel_document_published: {
+    severity: 'info',
+    channels: ['bell', 'toast'],
+    kind: 'signal',
+    tier: 'ticket',
+  },
+  channel_thread_held: {
+    severity: 'warning',
+    channels: ['bell', 'toast'],
+    kind: 'condition',
+    tier: 'ticket',
+  },
+  channel_gate_pending: {
+    severity: 'warning',
+    channels: ['bell', 'toast', 'browser'],
+    kind: 'task',
     tier: 'ticket',
   },
 };
