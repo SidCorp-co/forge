@@ -9,11 +9,12 @@ import {
   exampleFiles,
   interfaceRefusals,
 } from './ecosystem.fixture.js';
+import { builderRunDocumentSchema, linkDocumentSchema } from './link-schema.js';
 import { membershipDocumentSchema } from './schema.js';
 
 describe('the emitted JSON Schemas and the zod sources agree on the design examples', () => {
   it('reads every example', () => {
-    expect(exampleFiles()).toHaveLength(14);
+    expect(exampleFiles()).toHaveLength(16);
   });
 
   it.each(exampleFiles())('accepts %s', (file) => {
@@ -23,6 +24,12 @@ describe('the emitted JSON Schemas and the zod sources agree on the design examp
     if (file.endsWith('.ecosystem.json')) expect(ecosystemRefusals(doc)).toEqual([]);
     if (file.endsWith('.membership.json')) {
       expect(parseVersionedDocument(membershipDocumentSchema, doc, 'membership').ok).toBe(true);
+    }
+    if (file.endsWith('.link.json')) {
+      expect(parseVersionedDocument(linkDocumentSchema, doc, 'link').ok).toBe(true);
+    }
+    if (file.endsWith('.builder-run.json')) {
+      expect(parseVersionedDocument(builderRunDocumentSchema, doc, 'builder-run').ok).toBe(true);
     }
   });
 });

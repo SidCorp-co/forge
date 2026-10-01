@@ -2178,6 +2178,13 @@
       "when": 1812067200000,
       "tag": "0337_the_room_scope_and_its_pins",
       "breakpoints": true
+    },
+    {
+      "idx": 338,
+      "version": "7",
+      "when": 1812153600000,
+      "tag": "0338_a_consumer_writes_its_ecosystem_links",
+      "breakpoints": true
     }
   ]
 }

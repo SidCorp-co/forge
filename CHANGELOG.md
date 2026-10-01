@@ -137,6 +137,9 @@
 
 ### Added
 
+- **A project's master can record where its code uses another member's contract.** Each link
+  pins a recorded version and lists call sites and fields used; only the consumer's own agent
+  writes it, and the ecosystem's bus shows each link's state.
 - **A chat can be asked at an ecosystem's scope.** It reads the channel documents of your projects
   in that ecosystem and still writes only from the project it was opened under. Chats can be pinned.
 - **Activity and Chat replace the top bar, switched from the sidebar.** Each mode reopens where
