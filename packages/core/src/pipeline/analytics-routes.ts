@@ -1,6 +1,5 @@
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { jobTypes } from '../db/schema.js';
@@ -10,18 +9,10 @@ import { buildInterventionsReport } from '../metrics/interventions-report.js';
 import { retryRescuesSince } from '../metrics/queries.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest, forbidden, notFound } from '../projects/route-errors.js';
 import { cycleTimeTransitionsSql } from './cycle-time-sql.js';
 import { driverComparison } from './driver-comparison.js';
 import { shippedPerDay } from './throughput-series.js';
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 async function assertProjectMember(projectId: string, userId: string): Promise<void> {
   const access = await effectiveProjectRole(userId, projectId);

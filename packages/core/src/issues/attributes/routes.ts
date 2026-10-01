@@ -17,11 +17,10 @@ import { issues } from '../../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
 import type { AuthVars } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
+import { badRequest, idParamSchema, notFound } from '../../projects/route-errors.js';
 import { loadIssueAttributes } from './read.js';
 import { setIssueAttributes } from './service.js';
 import { AttributeRefusal, type AttributeRefusalCode } from './write.js';
-
-const idParamSchema = z.object({ id: z.uuid() });
 
 const attributeSchema = z
   .object({
@@ -32,12 +31,6 @@ const attributeSchema = z
   .strict();
 
 const writeBodySchema = z.object({ attributes: z.array(attributeSchema).min(1).max(50) }).strict();
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 /**
  * The status each refusal is rendered at. A drifted registry is the server's

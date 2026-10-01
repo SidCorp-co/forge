@@ -19,6 +19,7 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { zValidator } from '../middleware/zod-validator.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
+import { badRequest, conflict, idParamSchema, notFound } from '../projects/route-errors.js';
 import { loadIssueDependencyEdges } from './dependency-read.js';
 import {
   IssueDependencyError,
@@ -31,7 +32,6 @@ import {
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
 
-const idParamSchema = z.object({ id: z.uuid() });
 const edgeParamSchema = z.object({ id: z.uuid(), edgeId: z.uuid() });
 
 const createBodySchema = z
@@ -42,15 +42,6 @@ const createBodySchema = z
     validUntil: z.iso.datetime().optional(),
   })
   .strict();
-
-const badRequest = (details: unknown, code = 'BAD_REQUEST') =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code, details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const conflict = (message: string, code: string, details?: unknown) =>
-  new HTTPException(409, { message, cause: { code, details } });
 
 export const issueDependencyRoutes = new Hono<{ Variables: AuthVars }>();
 issueDependencyRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -163,14 +154,14 @@ export function toHttpDependencyError(
       );
     case 'CYCLE_DETECTED':
       return conflict(
-        'cycle detected — adding this edge would form a loop',
         'CYCLE_DETECTED',
+        'cycle detected — adding this edge would form a loop',
         edge,
       );
     case 'CYCLE_DEPTH_EXCEEDED':
-      return conflict('cycle detection depth exceeded', 'CYCLE_DEPTH_EXCEEDED');
+      return conflict('CYCLE_DEPTH_EXCEEDED', 'cycle detection depth exceeded');
     case 'ISSUE_ARCHIVED':
-      return conflict(err.detail ?? 'an issue this edge names is archived', 'ISSUE_ARCHIVED', edge);
+      return conflict('ISSUE_ARCHIVED', err.detail ?? 'an issue this edge names is archived', edge);
     default:
       return new HTTPException(500, { message: err.code });
   }

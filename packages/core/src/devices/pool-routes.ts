@@ -21,11 +21,12 @@ import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest, conflict } from '../projects/route-errors.js';
 import { PARK_PROTECTIONS } from '../questions/protections.js';
 import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
 import { type AskAnswer, type AskInput, askQuestion, QuestionRefused } from '../questions/write.js';
 import { assertDeviceBoundToProject } from './device-project.js';
-import { badRequest, conflict, notFound, sessionParamsSchema } from './route-errors.js';
+import { notFound, sessionParamsSchema } from './route-errors.js';
 
 const ASK_REQUIRED = 'id, projectId and prompt are required';
 const askRequired = z.string({ error: ASK_REQUIRED }).min(1, { error: ASK_REQUIRED });

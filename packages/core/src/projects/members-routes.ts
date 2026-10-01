@@ -18,6 +18,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { emitNotification } from '../notifications/emit.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';
+import { badRequest, forbidden } from './route-errors.js';
 
 // Every project role is assignable (admin|member|viewer) — there is no
 // project 'owner' anymore; the org tier carries ownership.
@@ -46,17 +47,8 @@ const revokeInvitationQuerySchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
 });
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, {
-    message: 'Invalid input',
-    cause: { code: 'BAD_REQUEST', details },
-  });
-
 const notFound = (code = 'NOT_FOUND', message = 'not found') =>
   new HTTPException(404, { message, cause: { code } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 export const memberRoutes = new Hono<{ Variables: AuthVars }>();
 

@@ -14,6 +14,7 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest, idParamSchema, notFound } from '../projects/route-errors.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import {
@@ -35,17 +36,6 @@ const transitionBodySchema = z
     voidQuestions: z.string().max(2000).optional(),
   })
   .strict();
-
-const idParamSchema = z.object({ id: z.uuid() });
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = () =>
-  new HTTPException(404, { message: 'issue not found', cause: { code: 'NOT_FOUND' } });
-
-const _forbidden = (message: string, code = 'FORBIDDEN') =>
-  new HTTPException(403, { message, cause: { code } });
 
 /**
  * Map a core `TransitionError` onto the REST error contract. Status codes are
@@ -241,7 +231,7 @@ transitionRoutes.post(
       .from(issues)
       .where(eq(issues.id, id))
       .limit(1);
-    if (!issue) throw notFound();
+    if (!issue) throw notFound('issue not found');
 
     const fromStatus = issue.status as IssueStatus;
 

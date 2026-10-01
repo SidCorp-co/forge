@@ -1,12 +1,12 @@
 import { and, desc, eq, like, lt } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest, forbidden, idParamSchema, notFound } from '../projects/route-errors.js';
 import type { ActorAgency } from './actor-agency.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 import { resolveActors } from './actor-resolution.js';
@@ -30,16 +30,6 @@ const activityQuerySchema = z
 const perIssueQuerySchema = activityQuerySchema.omit({ type: true }).extend({
   projectId: projectScopeQuerySchema.shape.projectId,
 });
-const idParamSchema = z.object({ id: z.uuid() });
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 const ACTIVITY_ROW_COLUMNS = {
   id: activityLog.id,

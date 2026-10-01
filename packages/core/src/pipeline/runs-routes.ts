@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest, idParamSchema, notFound } from '../projects/route-errors.js';
 import { readPipelineRun } from './runs.js';
 import {
   cancelPipelineRun,
@@ -21,15 +22,7 @@ import {
   resumePipelineRun,
 } from './runs-control.js';
 
-const idParamSchema = z.object({ id: z.uuid() });
-
 const cancelBodySchema = z.object({ parkIssue: z.boolean().optional() });
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 const runConflict = (message: string) =>
   new HTTPException(409, { message, cause: { code: 'run_terminal' } });

@@ -35,17 +35,14 @@ export function flatten(error: {
   return { formErrors, fieldErrors };
 }
 
-export const badRequest = (details: unknown) =>
-  new HTTPException(400, {
-    message: 'Invalid input',
-    cause: { code: 'BAD_REQUEST', details },
-  });
+export const badRequest = (details: unknown, code = 'BAD_REQUEST') =>
+  new HTTPException(400, { message: 'Invalid input', cause: { code, details } });
 
-export const notFound = () =>
-  new HTTPException(404, {
-    message: 'project not found',
-    cause: { code: 'NOT_FOUND' },
-  });
+export const notFound = (message = 'project not found') =>
+  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 export const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
+
+export const conflict = (code: string, message: string, details?: unknown) =>
+  new HTTPException(409, { message, cause: details === undefined ? { code } : { code, details } });

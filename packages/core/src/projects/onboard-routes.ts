@@ -17,6 +17,7 @@ import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { requestSkillSync } from '../skills/service.js';
+import { badRequest } from './route-errors.js';
 
 // ISS-733 — the "Build Project Brain" trigger: web calls this once, after
 // bootstrap, to open a fresh chat session that runs `forge-onboard` as turn 1
@@ -31,12 +32,6 @@ const ONBOARD_MESSAGE =
   'Build the Project Brain for this project: survey the repo, then walk me through what you find before writing anything.';
 
 const onboardParamSchema = z.object({ id: z.uuid() });
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, {
-    message: 'Invalid input',
-    cause: { code: 'BAD_REQUEST', details },
-  });
 
 // NOTE: mounted under `projectRoutes` (see ./routes.ts), which applies
 // requireAuth() + assertEmailVerified() for the whole /api/projects surface —

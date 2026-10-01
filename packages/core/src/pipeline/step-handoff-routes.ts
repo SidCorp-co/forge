@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { resolveIssueKeyInProject } from '../issues/issue-route-ref.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { stepHandoffSchema } from '../memory/step-handoff-schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest } from '../projects/route-errors.js';
 import { resolveActor } from './activity.js';
 import { deleteIssueContext, getIssueContexts, writeIssueContext } from './issue-context-store.js';
 
@@ -51,9 +51,6 @@ const deleteQuerySchema = z.object({
   step: z.string().trim().min(1).max(64),
   attempt: z.coerce.number().int().positive(),
 });
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 export const stepHandoffRoutes = new Hono<{ Variables: AuthVars }>();
 stepHandoffRoutes.use('*', requireAuth(), assertEmailVerified());

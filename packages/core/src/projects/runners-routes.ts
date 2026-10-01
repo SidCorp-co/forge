@@ -13,21 +13,12 @@ import { hooks } from '../pipeline/hooks.js';
 import { clearRunnerFaultFlags } from '../runners/clear-fault-flags.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { defaultRunnerCapabilities } from '../runners/select.js';
+import { badRequest, idParamSchema } from './route-errors.js';
 
 // ISS-172 Slice A — runner-shaped binding endpoints. `POST /:id/runners`
 // upserts a (project, device, 'claude-code') runner row; `DELETE
 // /:id/runners/:runnerId` removes one binding (other projects' runners on
 // the same device are untouched).
-
-const idParamSchema = z.object({
-  id: z.uuid(),
-});
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, {
-    message: 'Invalid input',
-    cause: { code: 'BAD_REQUEST', details },
-  });
 
 const createRunnerBodySchema = z
   .object({

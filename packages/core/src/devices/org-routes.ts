@@ -6,17 +6,14 @@
 
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
 import { assertOrgAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest } from '../projects/route-errors.js';
 import { annotateDeviceBuilds } from './build-state.js';
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 const orgIdParamSchema = z.object({ orgId: z.uuid() });
 

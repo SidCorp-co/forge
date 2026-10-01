@@ -3,20 +3,14 @@
  */
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest, forbidden } from '../projects/route-errors.js';
 import { readProjectRunSessions } from './run-ledger.js';
 
 const paramsSchema = z.object({ id: z.uuid() });
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const forbidden = () =>
-  new HTTPException(403, { message: 'not a project member', cause: { code: 'FORBIDDEN' } });
 
 /** Mounted at `/api/projects`, so the route is `/api/projects/:id/run-sessions`. */
 export const runLedgerRoutes = new Hono<{ Variables: AuthVars }>();
@@ -30,7 +24,7 @@ runLedgerRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const access = await loadProjectAccess(id, c.get('userId'));
-    if (!access.role) throw forbidden();
+    if (!access.role) throw forbidden('not a project member');
     const items = await readProjectRunSessions(id);
     return c.json({ items, count: items.length });
   },

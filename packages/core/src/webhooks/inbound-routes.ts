@@ -13,10 +13,9 @@ import {
 import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
 import { rawBody } from '../middleware/zod-validator.js';
+import { badRequest, notFound } from '../projects/route-errors.js';
 import { verifyHmacSignature } from './hmac.js';
 
-const badRequest = (details: unknown, code = 'BAD_REQUEST') =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code, details } });
 const unauthorized = (code: string) =>
   new HTTPException(401, { message: 'invalid signature', cause: { code } });
 
@@ -64,9 +63,6 @@ function routeRemoved(): HTTPException {
     cause: { code: 'WEBHOOK_ROUTE_REMOVED', details: { providerHeaders: headers } },
   });
 }
-
-const notFound = () =>
-  new HTTPException(404, { message: 'project not found', cause: { code: 'NOT_FOUND' } });
 
 /**
  * Header → provider lookup, DERIVED from the declarations rather than listed here.

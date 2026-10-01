@@ -12,7 +12,6 @@ import {
   sql,
 } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import {
@@ -30,6 +29,7 @@ import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest, forbidden, idParamSchema } from '../projects/route-errors.js';
 import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
@@ -139,14 +139,6 @@ const searchQuerySchema = z
   })
   .strict();
 
-const idParamSchema = z.object({ id: z.uuid() });
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const forbidden = () =>
-  new HTTPException(403, { message: 'not a project member', cause: { code: 'FORBIDDEN' } });
-
 export function issueCostRollupQuery(issueIds: string[]) {
   const pairs = db
     .selectDistinct({
@@ -253,7 +245,7 @@ searchRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden();
+    if (!access.role) throw forbidden('not a project member');
 
     const conditions = [eq(issues.projectId, projectId)];
     const axisFree = [eq(issues.projectId, projectId)];

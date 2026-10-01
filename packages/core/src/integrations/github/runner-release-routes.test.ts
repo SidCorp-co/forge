@@ -9,6 +9,7 @@
  */
 
 import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
@@ -157,7 +158,9 @@ describe('reading them back', () => {
   });
 
   it('refuses a project the caller cannot reach', async () => {
-    authz.loadProjectAccess.mockResolvedValue(null);
+    authz.loadProjectAccess.mockRejectedValue(
+      new HTTPException(404, { message: 'project not found', cause: { code: 'NOT_FOUND' } }),
+    );
     expect((await app().request(`/api/projects/${PROJECT_ID}/runner-releases`)).status).toBe(404);
     expect((await post({ version: '0.13.3' })).status).toBe(404);
     expect(service.startRunnerRelease).not.toHaveBeenCalled();

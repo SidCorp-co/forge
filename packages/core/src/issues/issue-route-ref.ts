@@ -2,10 +2,10 @@
 // display key (`ISS-1097`), key scoped by `?projectId=` since `issSeq` is
 // unique per project, not globally (ISS-992).
 
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
+import { badRequest, forbidden, notFound } from '../projects/route-errors.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
 
@@ -14,15 +14,6 @@ const uuidSchema = z.uuid();
 export function isUuid(value: string): boolean {
   return uuidSchema.safeParse(value).success;
 }
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 const needsProjectScopeMessage = (raw: string): string =>
   `\`${raw}\` is not a uuid — it reads as a display key, like \`ISS-1097\` or its bare sequence ` +

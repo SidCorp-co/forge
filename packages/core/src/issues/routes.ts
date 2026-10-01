@@ -73,6 +73,7 @@ export {
 } from './metadata.js';
 
 import { withKernelMarker } from '../db/kernel-marker.js';
+import { badRequest, forbidden, notFound } from '../projects/route-errors.js';
 import { ReleaseNotesSchema } from './release-notes.js';
 
 export const issueCreateSchema = z
@@ -147,15 +148,6 @@ export type IssueFilters = z.infer<typeof issueFiltersSchema>;
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const issueIdParamSchema = z.object({ id: z.uuid() });
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 const sessionContextDrops = (err: SessionContextDropsUnreadKeys) =>
   new HTTPException(409, {

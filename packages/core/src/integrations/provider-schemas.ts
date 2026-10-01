@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { badRequest } from '../projects/route-errors.js';
 import { AGENT_ACCESS_VALUES } from './agent-access.js';
 import { retiredStagesField } from './binding-shape.js';
 import { getIntegration, providerNames } from './registry.js';
 import { mergeRotatedSecrets } from './rotation.js';
-import { assertVaultConfigured, badRequest } from './route-helpers.js';
+import { assertVaultConfigured } from './route-helpers.js';
 import type { IntegrationDeclaration } from './types.js';
 
 /** The sentence a caller gets for a provider this deployment does not declare. */

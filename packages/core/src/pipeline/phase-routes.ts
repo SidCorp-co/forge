@@ -1,14 +1,12 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { phaseJournalOutcomes } from '../db/schema-journal.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest, idParamSchema, notFound } from '../projects/route-errors.js';
 import { endPhase, listPhases, resumePoint, startPhase } from './phase-journal.js';
 import { readPipelineRun } from './runs.js';
-
-const idParamSchema = z.object({ id: z.uuid() });
 
 const startBodySchema = z
   .object({
@@ -27,12 +25,6 @@ const endBodySchema = z
     note: z.string().max(4000).optional(),
   })
   .strict();
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 async function runProjectFor(runId: string, userId: string, role: 'viewer' | 'member') {
   const row = await readPipelineRun(runId);

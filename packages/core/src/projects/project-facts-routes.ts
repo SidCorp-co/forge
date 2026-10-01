@@ -7,11 +7,7 @@ import {
   RETIRED_PROJECT_FACTS_CONFIG_MESSAGE,
   RETIRED_PROJECT_FACTS_MESSAGE,
 } from './project-facts.js';
-
-const idParamSchema = z.object({ id: z.uuid() });
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
+import { badRequest, idParamSchema } from './route-errors.js';
 
 const gone = () =>
   new HTTPException(410, {

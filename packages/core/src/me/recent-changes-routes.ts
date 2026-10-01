@@ -1,6 +1,5 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
@@ -8,6 +7,7 @@ import { issueArchiveSide } from '../issues/archive.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest } from '../projects/route-errors.js';
 
 interface RecentChangeItem {
   id: string;
@@ -35,9 +35,6 @@ const listQuerySchema = z
     limit: z.coerce.number().int().min(1).max(MAX_LIMIT).default(DEFAULT_LIMIT),
   })
   .strict();
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 export const meRecentChangesRoutes = new Hono<{ Variables: AuthVars }>();
 meRecentChangesRoutes.use('/recent-changes', requireAuth(), assertEmailVerified());

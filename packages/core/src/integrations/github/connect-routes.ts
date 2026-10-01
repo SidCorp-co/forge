@@ -20,11 +20,11 @@ import { loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
 import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
+import { badRequest } from '../../projects/route-errors.js';
 import {
   assertAdmin,
   assertProjectMember,
   assertVaultConfigured,
-  badRequest,
   notFound,
 } from '../route-helpers.js';
 import {

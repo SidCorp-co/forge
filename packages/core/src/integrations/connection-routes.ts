@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest } from '../projects/route-errors.js';
 import { raceWithTimeout } from './probe.js';
 import {
   applySecretsPatch,
@@ -15,7 +16,6 @@ import { getAdapter } from './registry.js';
 import { withdrawNulls } from './release-channel-schema.js';
 import {
   assertVaultConfigured,
-  badRequest,
   bindingWriteMoved,
   defaultConnectionDisplayName,
   forbidden,

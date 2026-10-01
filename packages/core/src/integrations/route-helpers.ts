@@ -26,8 +26,6 @@ export function assertVaultConfigured(): void {
   }
 }
 
-export const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 export const forbidden = () =>
   new HTTPException(403, { message: 'forbidden', cause: { code: 'FORBIDDEN' } });
 export const notFound = (entity = 'integration') =>

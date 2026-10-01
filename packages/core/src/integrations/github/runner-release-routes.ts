@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
+import { badRequest, notFound } from '../../projects/route-errors.js';
 import { startRunnerRelease } from './runner-release.js';
 import { findById, listForProject } from './runner-release-store.js';
 
@@ -31,12 +32,6 @@ const startBodySchema = z
     commit: z.string().min(1).max(200).optional(),
   })
   .strict();
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 export const runnerReleaseRoutes = new Hono<{ Variables: AuthVars }>();
 runnerReleaseRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -62,7 +57,6 @@ runnerReleaseRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access) throw notFound('project not found');
     assertProjectRole(access, 'admin');
 
     const outcome = await startRunnerRelease({
@@ -86,8 +80,7 @@ runnerReleaseRoutes.get(
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const access = await loadProjectAccess(projectId, c.get('userId'));
-    if (!access) throw notFound('project not found');
+    const _access = await loadProjectAccess(projectId, c.get('userId'));
     return c.json({ releases: await listForProject(projectId) });
   },
 );
@@ -99,8 +92,7 @@ runnerReleaseRoutes.get(
   }),
   async (c) => {
     const { projectId, id } = c.req.valid('param');
-    const access = await loadProjectAccess(projectId, c.get('userId'));
-    if (!access) throw notFound('project not found');
+    const _access = await loadProjectAccess(projectId, c.get('userId'));
     const release = await findById(id);
     if (!release || release.projectId !== projectId) throw notFound('runner release not found');
     return c.json({ release });

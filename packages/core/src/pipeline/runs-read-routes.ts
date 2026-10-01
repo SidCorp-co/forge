@@ -1,6 +1,5 @@
 import { and, count, desc, eq, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { pipelineRunStatuses, pipelineRuns } from '../db/schema.js';
@@ -8,18 +7,8 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest, forbidden, idParamSchema, notFound } from '../projects/route-errors.js';
 import { listItemsFromRows, loadPipelineRunSummary } from './runs-rollup.js';
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const idParamSchema = z.object({ id: z.uuid() });
 
 const listFiltersSchema = paginationSchema.extend({
   status: z.enum(pipelineRunStatuses).optional(),

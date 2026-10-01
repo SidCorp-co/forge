@@ -7,6 +7,7 @@
  */
 
 import { HTTPException } from 'hono/http-exception';
+import { conflict } from '../projects/route-errors.js';
 import { ABORTED_CODE, abortedSentence } from './abort-stamp.js';
 import {
   alsoBlocking,
@@ -28,18 +29,6 @@ import {
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
 import type { ReleaseRunHoldingError } from './state.js';
-
-export const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-export const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-export const conflict = (code: string, message: string, details?: unknown) =>
-  new HTTPException(409, {
-    message,
-    cause: details === undefined ? { code } : { code, details },
-  });
 
 /**
  * One refusal, carrying every reason that stood beside it.

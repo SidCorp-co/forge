@@ -5,6 +5,7 @@ import { RELEASE_ATTEMPT_STAGES } from '../db/schema-release-ledger.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest, conflict, notFound } from '../projects/route-errors.js';
 import { resolveReleaseChannels } from './channel.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
 import {
@@ -18,13 +19,10 @@ import { announceMethod } from './method.js';
 import { loadReleaseReadiness } from './readiness.js';
 import { readReleaseRecord, recordPerformedRelease } from './recorded.js';
 import {
-  badRequest,
-  conflict,
   declarationRefusal,
   finishRefusal,
   holding,
   issuesUnnamed,
-  notFound,
   recordRefusal,
   refuseMachineKeys,
   releaseBlockerHttp,
@@ -100,7 +98,6 @@ releaseBatchRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access) throw notFound('project not found');
     assertProjectRole(access, 'admin');
 
     try {
@@ -144,7 +141,6 @@ releaseBatchRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access) throw notFound('project not found');
     assertProjectRole(access, 'member');
 
     const active = await getActiveReleaseBatch(projectId);
@@ -162,7 +158,6 @@ releaseBatchRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access) throw notFound('project not found');
     assertProjectRole(access, 'member');
 
     try {
@@ -183,7 +178,6 @@ releaseBatchRoutes.get(
   async (c) => {
     const { projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    if (!access) throw notFound('project not found');
     assertProjectRole(access, 'member');
 
     const readiness = await loadReleaseReadiness(projectId);
@@ -200,7 +194,6 @@ releaseBatchRoutes.get(
   async (c) => {
     const { projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    if (!access) throw notFound('project not found');
     assertProjectRole(access, 'member');
 
     // cm:edge protocol -> packages/core/src/release-batch/readiness.ts — readiness answers the
@@ -249,7 +242,6 @@ async function loadRunForProject(runId: string, projectId: string, userId: strin
   if (!run || run.projectId !== projectId) throw notFound('release batch not found');
 
   const access = await loadProjectAccess(projectId, userId);
-  if (!access) throw notFound('project not found');
   assertProjectRole(access, 'member');
 }
 
@@ -458,7 +450,6 @@ releaseBatchRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access) throw notFound('project not found');
     assertProjectRole(access, 'admin');
 
     try {
@@ -478,7 +469,6 @@ releaseBatchRoutes.get(
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    if (!access) throw notFound('project not found');
     assertProjectRole(access, 'member');
 
     const record = await readReleaseRecord(projectId, runId);

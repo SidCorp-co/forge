@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest } from '../projects/route-errors.js';
 import {
   type ArchiveDirection,
   IssueArchiveRefusedError,
@@ -18,9 +19,6 @@ import {
 } from './archive.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 export const issueArchiveRoutes = new Hono<{ Variables: AuthVars }>();
 issueArchiveRoutes.use('*', requireAuth(), assertEmailVerified());

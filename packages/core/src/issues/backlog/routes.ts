@@ -18,6 +18,7 @@ import { queryBadRequest } from '../../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { rateLimit } from '../../middleware/rate-limit.js';
 import { zValidator } from '../../middleware/zod-validator.js';
+import { idParamSchema } from '../../projects/route-errors.js';
 import { alikeSource } from './alike-source.js';
 import { Cancellation } from './cancellation.js';
 import { emitBacklogStream } from './emitter.js';
@@ -40,8 +41,6 @@ const BUDGET_MIN_MS = 1_000;
 const BUDGET_MAX_MS = 600_000;
 const TOP_K_MIN = 1;
 const TOP_K_MAX = 50;
-
-const idParamSchema = z.object({ id: z.uuid() });
 
 /** A repeated `status=` and a comma-separated one mean the same thing; an unknown one is refused. */
 const statusList = z

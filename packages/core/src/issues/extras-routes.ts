@@ -20,6 +20,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { StartRefusedError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
 import { PolicyRefusedError } from '../project-config/dispatch-policy.js';
+import { badRequest, forbidden, idParamSchema, notFound } from '../projects/route-errors.js';
 import {
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,
@@ -34,8 +35,6 @@ import {
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
 import { triggerTerminalDispatch } from './transition.js';
-
-const idParamSchema = z.object({ id: z.uuid() });
 
 const runPipelineStepBodySchema = z.object({}).strict();
 
@@ -63,15 +62,6 @@ const pipelineTimingQuerySchema = z
     limit: z.coerce.number().int().min(1).max(5000).default(1000),
   })
   .strict();
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 export const issueExtrasRoutes = new Hono<{ Variables: AuthVars }>();
 issueExtrasRoutes.use('*', requireAuth(), assertEmailVerified());

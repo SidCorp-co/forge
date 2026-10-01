@@ -15,9 +15,10 @@ import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { PolicyRefusedError } from '../project-config/dispatch-policy.js';
+import { badRequest, conflict } from '../projects/route-errors.js';
 import { gateConditionSchema } from './gate-report.js';
 import { RunnerNotAdmittedError } from './pool-admission.js';
-import { badRequest, conflict, forbidden, notFound, sessionParamsSchema } from './route-errors.js';
+import { forbidden, notFound, sessionParamsSchema } from './route-errors.js';
 import {
   heldWorktreeSchema,
   resumeChoiceSchema,

@@ -18,6 +18,7 @@ import { integrationDeliveries } from '../db/schema.js';
 import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { badRequest } from '../projects/route-errors.js';
 import { registerCoolifyDeployRoutes } from './coolify/routes.js';
 import { findDeliveryById } from './deliveries.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
@@ -35,7 +36,6 @@ import { fetchBotRooms } from './rocketchat/rest-client.js';
 import {
   assertAdmin,
   assertProjectMember,
-  badRequest,
   bindingWriteMoved,
   broadcastIntegrationChanged,
   forbidden,
