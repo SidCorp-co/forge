@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { channelWorld, contractFacts, doc } from '../channel.fixture.js';
+import { channelWorld, contractFacts, doc, FORGE_API_2026_10_01 } from '../channel.fixture.js';
 import { type ChannelWorld, documentRefusals, parseChannelDocument } from '../channel-rules.js';
 import { clone, type Doc, example, interfaceRefusals } from '../ecosystem.fixture.js';
 import type { InterfaceDocument } from '../schema.js';
 import type { ContractFacts } from './citations.js';
+import { indexContract } from './elements.js';
 import type { StoredVersion } from './store.js';
 import { uploadRefusals } from './upload-rules.js';
 
@@ -97,6 +98,17 @@ describe('an example matches the schema of its element in the cited version (EXA
     const d = cn();
     d.body.examples[0].payload = { issueIds: ['ISS-1303'] };
     expect(refusalsOf(d)).toContain('EXAMPLE_NOT_IN_CONTRACT /body/examples/0');
+  });
+
+  it('refuses an example whose cited schema holds a pattern the linear engine cannot run (CONTRACT_PATTERN_UNSAFE)', () => {
+    const api = structuredClone(FORGE_API_2026_10_01);
+    const body = api.paths['/api/devices/me/run-sessions'].post.requestBody?.content[
+      'application/json'
+    ].schema as { properties: { policyVersion: { pattern: string } } } | undefined;
+    if (!body) throw new Error('the fixture lost its request body');
+    body.properties.policyVersion.pattern = '^([0-9a-f])\\1{39}$';
+    const indexes = new Map([['forge/forge-api@2026-10-01', indexContract('openapi', api)]]);
+    expect(refusalsOf(cn(), { indexes })).toContain('CONTRACT_PATTERN_UNSAFE /body/examples/0');
   });
 
   it('refuses rather than passes an example whose version artifact could not be read', () => {

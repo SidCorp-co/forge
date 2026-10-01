@@ -48,9 +48,12 @@ function citationRefusals(c: Citation, f: ContractFacts): EcosystemRefusal[] {
     const index = f.indexes.get(citedKey(c.ref, home));
     const problem = index
       ? exampleProblem(index, example)
-      : `the artifact of ${c.ref}@${home} could not be read, so the example cannot be checked`;
+      : {
+          code: 'EXAMPLE_NOT_IN_CONTRACT' as const,
+          detail: `the artifact of ${c.ref}@${home} could not be read, so the example cannot be checked`,
+        };
     if (problem)
-      out.push({ code: 'EXAMPLE_NOT_IN_CONTRACT', path, detail: `${problem} (${c.ref}@${home}).` });
+      out.push({ code: problem.code, path, detail: `${problem.detail} (${c.ref}@${home}).` });
   }
   return out;
 }

@@ -109,7 +109,7 @@ describe('an example is checked against the schema of its element in the cited v
       /describes each tool's input/,
     ],
   ] as const)('refuses %s', (_n, ex, why) => {
-    expect(exampleProblem(mcp, ex)).toMatch(why);
+    expect(exampleProblem(mcp, ex)?.detail).toMatch(why);
   });
 
   it('refuses a response example where the version declares no response schema, rather than wave it through', () => {
@@ -119,14 +119,14 @@ describe('an example is checked against the schema of its element in the cited v
         direction: 'response',
         status: 200,
         payload: {},
-      }),
+      })?.detail,
     ).toMatch(/declares no JSON response schema for 200/);
     expect(
       exampleProblem(api, {
         element: 'PATCH /api/issues/{id}',
         direction: 'request',
         payload: { title: 'too long' },
-      }),
+      })?.detail,
     ).toMatch(/\/title/);
   });
 });

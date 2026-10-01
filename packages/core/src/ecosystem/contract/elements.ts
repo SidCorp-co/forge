@@ -1,6 +1,6 @@
 import Ajv2020 from 'ajv/dist/2020.js';
-import addFormats from 'ajv-formats';
 import { openApiElements } from './openapi-diff.js';
+import { boundedFormats, linearRegExp, unsafePatterns } from './safe-regex.js';
 import { jsonSchemaElements, toolsOf } from './schema-diff.js';
 
 export const INDEXED_TYPES = ['openapi', 'mcp-tools', 'json-schema'] as const;
@@ -73,25 +73,54 @@ function schemaFor(index: ContractIndex, ex: ContractExample): unknown | string 
   );
 }
 
-const ajv = new Ajv2020({ strict: false, allErrors: false, validateSchema: false });
-addFormats(ajv);
+const ajv = new Ajv2020({
+  strict: false,
+  allErrors: false,
+  validateSchema: false,
+  code: { regExp: linearRegExp },
+  formats: boundedFormats(),
+});
 
-// cm:why an example the cited schema cannot be compiled for is refused, never waved through: the check is fail-closed like every content check on the channel
-export function exampleProblem(index: ContractIndex, ex: ContractExample): string | null {
-  if (!index.elements.has(ex.element)) return `${ex.element} is not an element of this version`;
+export interface ExampleProblem {
+  code: 'EXAMPLE_NOT_IN_CONTRACT' | 'CONTRACT_PATTERN_UNSAFE';
+  detail: string;
+}
+
+const notIn = (detail: string): ExampleProblem => ({ code: 'EXAMPLE_NOT_IN_CONTRACT', detail });
+
+// cm:why an example the cited schema cannot be compiled for is refused, never waved through: the check is fail-closed like every content check on the channel, and a pattern RE2 cannot run is refused by its own name rather than run on a backtracking engine
+export function exampleProblem(index: ContractIndex, ex: ContractExample): ExampleProblem | null {
+  if (!index.elements.has(ex.element))
+    return notIn(`${ex.element} is not an element of this version`);
   const schema = schemaFor(index, ex);
-  if (typeof schema === 'string') return schema;
+  if (typeof schema === 'string') return notIn(schema);
   if (typeof schema !== 'boolean' && !isObject(schema))
-    return `${ex.element} has no schema to check against`;
+    return notIn(`${ex.element} has no schema to check against`);
+  const unsafe = unsafePatterns(schema);
+  if (unsafe.length > 0) {
+    return {
+      code: 'CONTRACT_PATTERN_UNSAFE',
+      detail: unsafe
+        .map(
+          (u) =>
+            `the schema of ${ex.element} at ${u.path} holds the pattern ${JSON.stringify(u.pattern)}, which a linear-time engine cannot run (${u.why})`,
+        )
+        .join('; '),
+    };
+  }
   let validate: ReturnType<typeof ajv.compile>;
   try {
     validate = ajv.compile(schema as object);
   } catch (err) {
-    return `the schema of ${ex.element} could not be compiled (${err instanceof Error ? err.message : String(err)})`;
+    return notIn(
+      `the schema of ${ex.element} could not be compiled (${err instanceof Error ? err.message : String(err)})`,
+    );
   }
   const ok = validate(ex.payload);
   const e = validate.errors?.[0];
   ajv.removeSchema(schema as object);
   if (ok) return null;
-  return `the payload does not match the schema of ${ex.element}: ${e ? `${e.instancePath || '/'} ${e.message ?? 'is invalid'}` : 'invalid'}`;
+  return notIn(
+    `the payload does not match the schema of ${ex.element}: ${e ? `${e.instancePath || '/'} ${e.message ?? 'is invalid'}` : 'invalid'}`,
+  );
 }
