@@ -1,46 +1,30 @@
-import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
-import { agentSessions, devices, issues, projects, runners, schedules } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { agentSessions, devices, projects, runners, schedules } from '../db/schema.js';
+import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import {
   findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { type AuthVars, restActor } from '../middleware/auth.js';
+import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';
 import { extractStewardReportFromMessages } from '../schedules/messages/skill-steward-prompt.js';
 import { writeBackScheduleLastStatus } from '../schedules/service.js';
-import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSession } from './broadcast.js';
-import {
-  createChatSessionRow,
-  dispatchChatTurn,
-  noClaudeClient,
-  resolveChatDevice,
-} from './chat-turn.js';
-import {
-  abortBodySchema,
-  buildPromptBodySchema,
-  desktopStatusSchema,
-  promptBuiltBodySchema,
-  sendBodySchema,
-  setRunnerBodySchema,
-  startBodySchema,
-} from './lifecycle-schemas.js';
+import { noClaudeClient } from './chat-turn.js';
+import { abortBodySchema, desktopStatusSchema, setRunnerBodySchema } from './lifecycle-schemas.js';
 import {
   badRequest,
   ensureSessionOwnerOrAdmin,
@@ -48,7 +32,6 @@ import {
   idParamSchema,
   notFound,
 } from './session-access.js';
-import { recordSessionCreatedActivity } from './session-activity.js';
 import { type AgentSessionPatch, finalizeScheduleSessionFailure } from './session-failure.js';
 
 export async function loadProjectBySlug(slug: string) {
@@ -66,141 +49,6 @@ export async function loadProjectBySlug(slug: string) {
 }
 
 export const agentSessionLifecycleRoutes = new Hono<{ Variables: AuthVars }>();
-
-agentSessionLifecycleRoutes.post(
-  '/start',
-  zValidator('json', startBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const input = c.req.valid('json');
-    const userId = c.get('userId');
-
-    if (input.type) {
-      throw badRequest({
-        type: 'typed agent sessions are unavailable without the retired desktop client',
-      });
-    }
-    if (!input.prompt) {
-      throw badRequest({ message: 'prompt is required' });
-    }
-
-    const project = await loadProjectBySlug(input.projectSlug);
-    if (!project) throw notFound('project not found');
-
-    const access = await loadProjectAccess(project.id, userId);
-    assertProjectRole(access, 'member');
-
-    const client = await resolveChatDevice(
-      { projectId: project.id, deviceId: null, metadata: null },
-      input.origin,
-    );
-    if (!client.isLocal && !client.deviceId) throw noClaudeClient('project');
-
-    const rawPrompt = input.prompt;
-
-    let title: string;
-    if (input.issueIds && input.issueIds.length > 0) {
-      const rows = await db
-        .select({ seq: issues.issSeq, prefix: projects.issuePrefix, title: issues.title })
-        .from(issues)
-        .innerJoin(projects, eq(projects.id, issues.projectId))
-        .where(inArray(issues.id, input.issueIds));
-      const refs = rows.map((r) => formatIssueRef(r.prefix, r.seq));
-      if (refs.length === 1) title = `${refs[0]} ${rows[0]?.title ?? ''}`.slice(0, 120);
-      else if (refs.length > 1) title = refs.join(', ').slice(0, 120);
-      else title = rawPrompt.slice(0, 120);
-    } else {
-      title = rawPrompt
-        .replace(/^You are working on issue:\s*/i, '')
-        .replace(/^You are working on the following issues:\s*/i, '')
-        .replace(/^You are working on:\s*/i, '')
-        .slice(0, 120);
-    }
-
-    // ISS-733 — a skillName must resolve to an install_only effective skill for
-    // THIS project before it can ride turn 1 as a slash-command; otherwise any
-    // caller could slash-inject an arbitrary command via /start.
-    if (input.skillName) {
-      const effective = await resolveRegisteredEffectiveSkills(project.id);
-      if (!effective.some((s) => s.name === input.skillName && s.installOnly)) {
-        throw badRequest({
-          message: `skillName '${input.skillName}' is not install_only for this project`,
-        });
-      }
-    }
-
-    const metadata: Record<string, unknown> = {};
-    if (input.issueIds?.length === 1 && input.issueIds[0]) metadata.issueId = input.issueIds[0];
-    const session = await createChatSessionRow({
-      projectId: project.id,
-      userId,
-      title,
-      repoPath: input.repoPath ?? null,
-      metadata: Object.keys(metadata).length ? metadata : null,
-    });
-    const updated = await dispatchChatTurn({
-      session,
-      project: { id: project.id, slug: project.slug, repoPath: project.repoPath },
-      client,
-      message: rawPrompt,
-      origin: input.origin ?? null,
-      pageContext: input.pageContext ?? null,
-      preBuilt: input.preBuilt ?? false,
-      attachmentIds: input.attachmentIds,
-      skillName: input.skillName ?? null,
-      model: input.model,
-      broadcastEvent: 'agent-session.created',
-    });
-
-    await recordSessionCreatedActivity(updated, restActor(c));
-    return c.json(updated, 201);
-  },
-);
-
-agentSessionLifecycleRoutes.post(
-  '/send',
-  zValidator('json', sendBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const input = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const { session } = await ensureSessionOwnerOrAdmin(input.sessionId, userId);
-
-    // Resolve the client through the SHARED path: honour an explicit runner pick
-    // (input.deviceId) when present, else reuse the session's pinned device,
-    // else pick a fresh online runner (this is what fixes the web cold start — a
-    // session created empty via `POST /` has no pin, so the old pin-only guard
-    // 409'd forever). No online remote client → 409; a rejected explicit pick
-    // gets the 'picked' wording so the user knows their choice was unavailable.
-    const client = await resolveChatDevice(session, input.origin, input.deviceId);
-    if (!client.isLocal && !client.deviceId) {
-      throw noClaudeClient(input.deviceId ? 'picked' : 'session');
-    }
-
-    const [project] = await db
-      .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
-      .from(projects)
-      .where(eq(projects.id, session.projectId))
-      .limit(1);
-    if (!project) throw notFound('project not found');
-
-    await dispatchChatTurn({
-      session,
-      project,
-      client,
-      message: input.message,
-      origin: input.origin ?? null,
-      pageContext: input.pageContext ?? null,
-      claudeSessionId: input.claudeSessionId ?? null,
-      attachmentIds: input.attachmentIds,
-      model: input.model,
-    });
-    return c.json({ ok: true });
-  },
-);
 
 agentSessionLifecycleRoutes.post(
   '/abort',
@@ -381,73 +229,6 @@ agentSessionLifecycleRoutes.post(
 
     broadcastSession(updated, 'agent-session.updated');
     return c.json(updated);
-  },
-);
-
-agentSessionLifecycleRoutes.post(
-  '/build-prompt',
-  zValidator('json', buildPromptBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const input = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const project = await loadProjectBySlug(input.projectSlug);
-    if (!project) throw notFound('project not found');
-
-    const access = await loadProjectAccess(project.id, userId);
-    assertProjectRole(access, 'member');
-
-    let deviceId = await findAvailableDeviceForProject(project.id);
-    if (!deviceId && project.defaultDeviceId) {
-      // Last-resort fallback to the (possibly offline) default device — but honor
-      // the "turn off" switch: never target a device the owner disabled.
-      const [def] = await db
-        .select({ disabledAt: devices.disabledAt })
-        .from(devices)
-        .where(eq(devices.id, project.defaultDeviceId))
-        .limit(1);
-      if (def && !def.disabledAt) deviceId = project.defaultDeviceId;
-    }
-    if (!deviceId) {
-      throw new HTTPException(503, {
-        message: 'no online device for this project',
-        cause: { code: 'NO_DEVICE' },
-      });
-    }
-
-    const requestId = randomUUID();
-    roomManager.publish(deviceRoom(deviceId), {
-      event: 'agent:build-prompt',
-      data: { requestId, projectSlug: input.projectSlug, issueIds: input.issueIds },
-    });
-
-    return c.json({ requestId });
-  },
-);
-
-// Device → core relay for the build-prompt callback. Devices POST here once
-// they've assembled the prompt; core fans the result out to whichever web
-// client is waiting on `requestId`.
-agentSessionLifecycleRoutes.post(
-  '/prompt-built',
-  zValidator('json', promptBuiltBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const input = c.req.valid('json');
-    // Broadcast org-wide on a stable room name. Web clients keyed on
-    // requestId filter the relevant message.
-    roomManager.publish('agent:prompt-built', {
-      event: 'agent:prompt-built',
-      data: {
-        requestId: input.requestId,
-        prompt: input.prompt ?? null,
-        error: input.error ?? null,
-      },
-    });
-    return c.json({ ok: true });
   },
 );
 

@@ -2094,6 +2094,13 @@
       "when": 1810944000000,
       "tag": "0323_a_project_joins_an_ecosystem_and_declares_its_interface",
       "breakpoints": true
+    },
+    {
+      "idx": 324,
+      "version": "7",
+      "when": 1811030400000,
+      "tag": "0324_a_session_that_stops_revokes_its_turn_token",
+      "breakpoints": true
     }
   ]
 }

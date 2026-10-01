@@ -10,12 +10,20 @@
 
 ### Security
 
+- **An agent session you start from the web acts as you, not as whoever paired the box.** Each
+  turn carries a short-lived token for its sender, never wider than the box owner's. Viewers and
+  older forge-runners are refused.
+- **A signed-in browser can no longer broadcast to the whole organisation's live channel.** The
+  prompt-relay route that allowed it had no caller and is gone.
 - **A box can only start work on a project it serves.** A box with no runner there, a disabled
   box or a withdrawn runner is refused before claiming anything, and told which, and what an
   admitted box is.
 - **A new token reaches only what its creator chose.** Creating one without picking permissions used
   to hand over everything; it is now refused, and full access is something you tick on purpose.
   Tokens you already hold are unchanged.
+- **A token limited to some projects can no longer act outside them.** Creating a project and
+  reading the skill-activity audit now need a token with no project list, and the runner's own
+  session callbacks refuse personal and agent tokens.
 
 - **The Attention inbox no longer shows you issues from projects you were removed from.**
   The "Awaiting input" list picked an issue because you were its assignee, or because you filed it
@@ -120,6 +128,8 @@
 
 ### Added
 
+- **Issues on a project that starts work by hand have a Start button.** A project member presses
+  it on an open issue's page to hand it to the runners; a viewer sees who it waits for.
 - **Forge's API and MCP tools are published as machine-readable contracts.** An OpenAPI 3.1 file
   and a tool list, generated from the running server and checked on every change, so neither can
   drift from what Forge serves.

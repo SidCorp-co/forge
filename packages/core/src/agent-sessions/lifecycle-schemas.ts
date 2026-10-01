@@ -55,24 +55,6 @@ export const abortBodySchema = z
 
 export const setRunnerBodySchema = z.object({ deviceId: z.uuid().nullable() }).strict();
 
-export const buildPromptBodySchema = z
-  .object({
-    projectSlug: z.string().min(1).max(120),
-    issueIds: z.array(z.uuid()).min(1).max(50),
-  })
-  .strict();
-
-export const promptBuiltBodySchema = z
-  .object({
-    requestId: z.string().min(1).max(120),
-    prompt: z.string().max(80_000).optional(),
-    error: z.string().max(2000).optional(),
-  })
-  .strict()
-  .refine((o) => o.prompt !== undefined || o.error !== undefined, {
-    message: 'prompt or error required',
-  });
-
 export const desktopStatusSchema = z
   .object({
     sessionId: z.uuid(),

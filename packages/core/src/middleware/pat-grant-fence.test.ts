@@ -227,6 +227,21 @@ describe('a path kept out of the grammar is refused with its reason', () => {
     expect(refusal?.message).toContain('(/api/pat)');
     expect(refusal?.message).toContain('could widen its own grant');
   });
+
+  it.each([
+    '/api/agent-sessions/s1/ack',
+    '/api/agent-sessions/s1/events',
+    '/api/agent-sessions/s1/inbox/3/ack',
+    '/api/agent-sessions/s1/inbox/3/applied',
+  ])('refuses the runner callback POST %s as the device plane', async (path) => {
+    const refusal = await refusalFor(path, ['*'], 'POST', 2);
+    expect(refusal?.code).toBe('PAT_NOT_PERMITTED');
+    expect(refusal?.message).toContain("the paired box's own plane");
+  });
+
+  it('keeps a session read beside those callbacks reachable', async () => {
+    expect(await refusalFor('/api/agent-sessions/s1/events', ['*'], 'GET', 2)).toBeNull();
+  });
 });
 
 describe('a token minted before the menu grew keeps its reach', () => {

@@ -524,6 +524,7 @@ export const personalAccessTokens = pgTable(
     userActiveIdx: index('pat_user_active_idx').on(t.userId, t.revokedAt),
     tokenPrefixIdx: index('pat_token_prefix_idx').on(t.tokenPrefix),
     deviceIdIdx: index('pat_device_id_idx').on(t.deviceId),
+    liveNameIdx: index('pat_live_name_idx').on(t.name).where(isNull(t.revokedAt)),
   }),
 );
 

@@ -20,6 +20,7 @@ import {
   assertOrgAccess,
   assertOrgRoleOnProject,
   assertProjectRole,
+  assertUnfenced,
   loadPersonalOrgId,
   loadProjectAccess,
   maxProjectRole,
@@ -112,6 +113,7 @@ projectRoutes.post(
     }
   }),
   async (c) => {
+    assertUnfenced('creating a project');
     const { slug, name, description, kind, orgId: requestedOrgId } = c.req.valid('json');
     const userId = c.get('userId');
 

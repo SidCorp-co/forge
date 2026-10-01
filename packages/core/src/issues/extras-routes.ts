@@ -18,7 +18,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
-import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
+import { StartRefusedError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
 import { PolicyRefusedError } from '../project-config/dispatch-policy.js';
 import {
   EMPTY_USAGE_TOTALS,
@@ -38,6 +38,8 @@ import { triggerTerminalDispatch } from './transition.js';
 const idParamSchema = z.object({ id: z.uuid() });
 
 const runPipelineStepBodySchema = z.object({}).strict();
+
+const START_ROLE = 'member' as const;
 
 const batchPatchBodySchema = z
   .object({
@@ -312,27 +314,28 @@ issueExtrasRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    if (!projectRoleAtLeast(access.role, START_ROLE)) {
+      throw new HTTPException(403, {
+        message: `START_REQUIRES_MEMBER: starting an issue's pipeline requires project ${START_ROLE} access, and this caller's role on the project is ${access.role ?? 'none'}.`,
+        cause: {
+          code: 'START_REQUIRES_MEMBER',
+          details: { required: START_ROLE, role: access.role },
+        },
+      });
+    }
 
     try {
-      await triggerPipelineStepManual({
+      const { startedAt } = await triggerPipelineStepManual({
         projectId: issue.projectId,
         issueId: issue.id,
         status: issue.status,
         actor: restActor(c),
         reason: { manual: true },
       });
-      return c.json({ issueId: issue.id, status: 'awaiting_release' }, 202);
+      return c.json({ issueId: issue.id, status: issue.status, startedAt }, 202);
     } catch (err) {
-      if (err instanceof ActiveJobConflictError) {
-        throw new HTTPException(409, {
-          message: `active ${err.type} job already running for this issue`,
-          cause: {
-            code: 'JOB_ALREADY_ACTIVE',
-            existingJobId: err.existingJobId,
-            type: err.type,
-          },
-        });
+      if (err instanceof StartRefusedError) {
+        throw new HTTPException(409, { message: err.message, cause: { code: err.code } });
       }
       if (err instanceof PolicyRefusedError) {
         throw new HTTPException(409, { message: err.message, cause: { code: err.code } });

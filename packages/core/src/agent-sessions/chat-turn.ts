@@ -98,36 +98,48 @@ export async function resolveChatDevice(
   session: Pick<AgentSessionRow, 'projectId' | 'deviceId' | 'metadata'>,
   origin?: string | null,
   overrideDeviceId?: string | null,
+  /** Only a box whose heartbeat declared this capability `true` is picked. */
+  requireCapability?: string,
 ): Promise<ChatClient> {
   if (origin === 'desktop') return { deviceId: null, isLocal: true, migrated: false };
+  const need = requireCapability ? { requireCapability } : {};
   const pinned =
     ((session.metadata ?? {}) as { deviceId?: string }).deviceId ?? session.deviceId ?? null;
   if (overrideDeviceId) {
     const picked = await findChatCapableDeviceForProject(session.projectId, overrideDeviceId, {
       allowLimited: true,
+      ...need,
     });
     if (!picked) return { deviceId: null, isLocal: false, migrated: false };
     return { deviceId: picked, isLocal: false, migrated: !!pinned && picked !== pinned };
   }
   if (pinned) {
-    const capable = await findChatCapableDeviceForProject(session.projectId, pinned);
+    const capable = await findChatCapableDeviceForProject(session.projectId, pinned, need);
     if (capable) return { deviceId: capable, isLocal: false, migrated: false };
     const liveButLimited = await findChatCapableDeviceForProject(session.projectId, pinned, {
       allowLimited: true,
+      ...need,
     });
     if (!liveButLimited) {
       const [dev] = await db
-        .select({ status: devices.status, disabledAt: devices.disabledAt })
+        .select({
+          status: devices.status,
+          disabledAt: devices.disabledAt,
+          capabilities: devices.capabilities,
+        })
         .from(devices)
         .where(eq(devices.id, pinned))
         .limit(1);
+      const declares =
+        !requireCapability ||
+        (dev?.capabilities as Record<string, unknown> | null)?.[requireCapability] === true;
       // A turned-off device is ignored even when online + pinned — fall through to
       // pick another available device (or report no client).
-      if (dev?.status === 'online' && !dev.disabledAt)
+      if (dev?.status === 'online' && !dev.disabledAt && declares)
         return { deviceId: pinned, isLocal: false, migrated: false };
     }
   }
-  const deviceId = await findAvailableDeviceForProject(session.projectId);
+  const deviceId = await findAvailableDeviceForProject(session.projectId, need);
   // Migration = we had a pin but could not honour it and landed on another live
   // device. A pinless session is a true cold start, not a migration.
   const migrated = !!pinned && !!deviceId && deviceId !== pinned;
@@ -257,9 +269,9 @@ export interface DispatchChatTurnArgs {
   skillName?: string | null;
   model?: ModelTier | null | undefined;
   /**
-   * The token this session acts under in place of the box's own, minted for the person it
-   * answers (`session-credential.ts`). Carried on a cold start only: the runner writes it into
-   * the session's MCP config once, when the session is spawned.
+   * The token this turn acts under in place of the box's own, minted for the person it answers
+   * (`session-credential.ts`). A follow-up carries one too: the previous turn's was revoked when
+   * that turn stopped, so the runner respawns the session under this one.
    */
   credential?: string | undefined;
 }
@@ -308,9 +320,9 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // the remote branch only ever publishes a WS event, it never writes the DB.
   const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
   const resumable = !!claudeSessionId && !migrated;
-  if (args.credential && (resumable || isLocal)) {
+  if (args.credential && isLocal) {
     throw new Error(
-      `dispatchChatTurn: session ${session.id} was handed a turn credential on a ${isLocal ? 'local' : 'resumed'} turn, which carries none — the credential is written when a remote session is spawned, so it would be dropped`,
+      `dispatchChatTurn: session ${session.id} was handed a turn credential on a local turn, which no runner receives, so it would be dropped`,
     );
   }
   const model =
@@ -451,6 +463,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         mcpServersOverride,
         ...(model ? { model } : {}),
         ...(attachments.length ? { attachments } : {}),
+        ...(args.credential ? { forgeToken: args.credential } : {}),
       },
     });
   }

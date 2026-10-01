@@ -159,9 +159,10 @@ pub(crate) fn heartbeat_body(
 ) -> serde_json::Value {
     let mut body = serde_json::json!({
         "agentVersion": version,
-        // A session handed a `forgeToken` on `agent:start` runs under it (ISS-17); core picks
-        // only a box that says so for a turn that answers a person.
-        "capabilities": { "turnCredential": true },
+        // A session handed a `forgeToken` on `agent:start` runs under it (ISS-17), and so does
+        // a follow-up handed one on `agent:send` (ISS-27); core picks only a box that says so
+        // for a turn that answers a person.
+        "capabilities": { "turnCredential": true, "followUpCredential": true },
     });
     if let Some(commit) = commit {
         body["agentCommit"] = serde_json::Value::String(commit.to_string());
@@ -284,6 +285,7 @@ mod tests {
     fn every_heartbeat_declares_it_carries_a_turn_credential() {
         let body = heartbeat_body("0.17.17", None, &Conditions::default());
         assert_eq!(body["capabilities"]["turnCredential"], true, "{body}");
+        assert_eq!(body["capabilities"]["followUpCredential"], true, "{body}");
     }
 
     fn fixture() -> serde_json::Value {

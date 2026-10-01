@@ -86,9 +86,10 @@ describe('dispatchAutonomous', () => {
 });
 
 describe('dispatchDriveManual', () => {
-  it('releases the issue and wakes the boxes, minting nothing', async () => {
+  it('stamps the start, returns its time and wakes the boxes, minting nothing', async () => {
+    dbExecute.mockResolvedValueOnce([{ started_at: '2026-10-01T09:00:00Z' }] as never);
     await expect(dispatchDriveManual({ ...BASE, status: 'open' })).resolves.toEqual({
-      released: true,
+      startedAt: '2026-10-01T09:00:00Z',
     });
 
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
@@ -103,5 +104,12 @@ describe('dispatchDriveManual', () => {
       'AUTONOMOUS_NOT_AT_ENTRY',
     );
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
+  });
+
+  it('refuses by name when the row it stamped is gone, waking nobody', async () => {
+    await expect(dispatchDriveManual({ ...BASE, status: 'open' })).rejects.toThrow(
+      'vanished while it was being started',
+    );
+    expect(wakeMastersForProject).not.toHaveBeenCalled();
   });
 });

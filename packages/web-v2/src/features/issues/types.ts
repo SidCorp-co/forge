@@ -236,6 +236,8 @@ export interface IssueDetail extends IssueRow {
   descriptionNodes?: BodyNode[] | null;
   labels?: IssueLabel[];
   metadata: Record<string, unknown> | null;
+  /** Opaque to the page except `runRelease`, the time a person started the issue on a manual-intake project. */
+  sessionContext?: Record<string, unknown> | null;
   /** ISS-1176 — the release note, whose `userFacing` line is the one sentence written for the person who filed. */
   releaseNotes?: ReleaseNotes | null;
 }
