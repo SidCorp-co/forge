@@ -47,3 +47,30 @@ describe("the delivery that told of a gate or a hold, once it cleared", () => {
     expect(toNotificationItem(signal)).toMatchObject({ label: "MENTION", unread: true });
   });
 });
+
+describe("a resolved row never shows the body that described it while it waited", () => {
+  const stale =
+    "A rfi this project wrote is held at the approve gate until an admin approves or returns it.";
+
+  it("drops the body from the delivery that told of the gate, once it cleared", () => {
+    const item = toNotificationItem(row({ body: stale, openMembers: 0 }));
+    expect(item.text).toBe("QE-RFI-1 waits for your approval: a question");
+    expect(item.sub).toBeUndefined();
+  });
+
+  it("drops the body from the resolved notice, which keeps its own title", () => {
+    const title = "Resolved — QE-RFI-1 approved by Ada and published as QE-RFI-1: a question";
+    const item = toNotificationItem(row({ title, body: stale, resolvedNotice: true, openMembers: 0 }));
+    expect(item).toMatchObject({ label: "RESOLVED", text: title });
+    expect(item.sub).toBeUndefined();
+  });
+
+  it("keeps the body while the gate still waits", () => {
+    expect(toNotificationItem(row({ body: stale })).sub).toBe(stale);
+  });
+
+  it("keeps a signal's body, since a signal is never resolved", () => {
+    const signal = row({ type: "mention", kind: "signal", body: "you were mentioned", openMembers: 0 });
+    expect(toNotificationItem(signal).sub).toBe("you were mentioned");
+  });
+});

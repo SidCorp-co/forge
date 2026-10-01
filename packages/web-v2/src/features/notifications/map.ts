@@ -66,6 +66,20 @@ export function deliveryResolved(row: {
   return !row.resolvedNotice && row.kind !== "signal" && row.openMembers === 0;
 }
 
+/**
+ * The second line a row reads, or none once the row is resolved: the body was written while the
+ * condition held, so a cleared delivery and its resolved notice drop it rather than say it still waits.
+ */
+export function liveBody(row: {
+  kind: string;
+  body: string | null;
+  resolvedNotice: boolean;
+  openMembers: number;
+}): string | undefined {
+  if (row.resolvedNotice || deliveryResolved(row)) return undefined;
+  return row.body ?? undefined;
+}
+
 export function toNotificationItem(
   row: NotificationRow,
   actions?: NotificationAction[],
@@ -75,7 +89,7 @@ export function toNotificationItem(
     id: row.id,
     label: row.resolvedNotice || resolved ? "RESOLVED" : typeLabel(row.type),
     text: row.title,
-    sub: row.body ?? undefined,
+    sub: liveBody(row),
     time: formatRelativeTime(row.createdAt),
     unread: row.readAt === null && !resolved,
     hue: resolved ? "green" : hueFor(row),

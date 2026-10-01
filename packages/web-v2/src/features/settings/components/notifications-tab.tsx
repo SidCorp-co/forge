@@ -34,7 +34,7 @@ import {
   primeAudio,
   setEnabled as setSoundEnabled,
 } from "@/lib/notifications/sound";
-import { deliveryResolved } from "@/features/notifications/map";
+import { deliveryResolved, liveBody } from "@/features/notifications/map";
 import { NOTIFICATIONS_PAGE_SIZE } from "../api";
 import {
   useMarkAllRead,
@@ -43,6 +43,8 @@ import {
   useUpdatePreferences,
 } from "../hooks";
 import type { NotificationRow } from "../types";
+
+const SKELETON_ROWS = ["a", "b", "c", "d", "e"] as const;
 
 function fmtTime(iso: string): string {
   const d = new Date(iso);
@@ -82,8 +84,8 @@ export function NotificationsTab() {
 
       {notificationsQ.isLoading && (
         <div className="space-y-2.5">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full rounded-lg" />
+          {SKELETON_ROWS.map((k) => (
+            <Skeleton key={k} className="h-16 w-full rounded-lg" />
           ))}
         </div>
       )}
@@ -293,7 +295,7 @@ function NotificationCard({ row }: { row: NotificationRow }) {
               )}
               <p className="fg-body-sm font-medium text-fg">{row.title}</p>
             </div>
-            {row.body && <p className="fg-caption mt-1">{row.body}</p>}
+            {liveBody(row) && <p className="fg-caption mt-1">{liveBody(row)}</p>}
             {row.members > 1 && (
               <p className="fg-caption mt-1 text-muted">
                 {`${row.openMembers} of ${row.members} still open`}
