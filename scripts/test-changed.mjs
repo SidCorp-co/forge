@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { baseRev } from './lib/baseline-ratchet.mjs';
+import { BASIS, baseRevision } from './lib/baseline-ratchet.mjs';
 import { selectionFor } from './lib/changed-selection.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -66,10 +66,14 @@ function alwaysLane(pkg) {
   return files.sort();
 }
 
-const base = baseRev(ROOT);
-if (!base) die('no base revision — a shallow or single-commit checkout cannot say what changed');
+const { rev: base, basis, refusal } = baseRevision(ROOT);
+if (refusal) die(`no base revision can be taken: ${refusal}`);
+if (!base)
+  die(
+    'no base revision — HEAD has no parent here (a single-commit checkout, or a shallow one of depth 1), so nothing says what changed',
+  );
 
-console.log(`test-changed: selecting against ${base.slice(0, 8)}`);
+console.log(`test-changed: selecting against ${base.slice(0, 8)}, ${BASIS[basis]}`);
 
 let worst = 0;
 

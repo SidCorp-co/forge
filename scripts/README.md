@@ -403,7 +403,8 @@ Also fails when an axis is declared with no probe, or probed with no declaration
 drift out of the other's sight.
 
 **Both sides of a direction check are read out of git, never off disk.** `ratchetFault` in
-`lib/baseline-ratchet.mjs` reads the declared baseline at `baseRev()` and again at `HEAD` — so a
+`lib/baseline-ratchet.mjs` reads the declared baseline at the revision `baseRevision()` returns and
+again at `HEAD` — so a
 baseline file corrected in the working tree is invisible to it, and `pnpm verify` goes on reporting
 the committed number until the fix is committed. The other checkers read the tree, which is why the
 two can disagree inside one run: `check-size-budget` can pass on a file the working tree has already
@@ -642,7 +643,7 @@ target rather than inferring it, and each named in the refusal:
 | 1 | `$GITHUB_BASE_REF` | a `pull_request` run: the base of the pull request being built |
 | 2 | `$GITHUB_REF` naming a branch on a `push` or `schedule` event | a push: the branch that took the commit; a schedule: the branch whose head it checked out |
 | 3 | `inputs.base` in the `$GITHUB_EVENT_PATH` payload | a `workflow_dispatch` run: the branch its dispatcher said the work lands on |
-| 4 | `refs/remotes/origin/HEAD` | everywhere else: the remote's recorded default |
+| 4 | `refs/remotes/origin/HEAD`, confirmed by `git ls-remote --symref origin HEAD` | everywhere else: the remote's recorded default, held to what the remote names now |
 
 Row 3 exists because `$GITHUB_REF` on a dispatch is the branch being run, not where it lands, and
 `actions/checkout` records no `origin/HEAD`: run 36764719955 dispatched a branch and
@@ -665,6 +666,12 @@ a wrong floor from it is the silently skipped migration. That checkout is refuse
 **Nothing falls back to `main`.** `baseRef(root)` then resolves the branch to `origin/<b>`,
 `refs/remotes/origin/<b>` or `<b>`, and refuses naming all three rather than measuring against a
 branch this change does not derive from.
+
+Row 4 is checked against the remote because the record does not move when the remote's default
+does: a clone taken before the default moved would measure the old base with nothing said. Where the
+remote names another branch, row 4 refuses, naming both and `git remote set-head origin -a`. Where
+the remote cannot be asked — unreachable, or silent past 10 s, which stderr says in those words —
+the record stands and stderr says it went unconfirmed and which command confirms it.
 
 Row 4 is the repository's own statement of what a pull request from this checkout targets, which is
 the merge target for any change taking the default base. For a local run aimed at some other base,
@@ -872,11 +879,17 @@ one word can — and no rule that counts words can tell that from a typo fix. Th
 of the published record one change may replace without declaring it; the meaning of a narrow edit is
 the diff review's, which sees it as two lines.
 
-Base revision comes from `baseRev()` in `lib/baseline-ratchet.mjs` — merge-base against the merge
-target `lib/base-branch.mjs` derives, with the `HEAD~1` fallback, because a commit pushed straight to
-that branch has its tip equal to `HEAD` and a rule whose base can equal its subject passes
-everything. **No base revision is exit 2**, which is
-why `lang-check` carries `fetch-depth: 0`.
+Base revision comes from `baseRevision()` in `lib/baseline-ratchet.mjs`, which returns the revision,
+the rung it came from and a refusal, and is the only form the base is handed out in — so no reader
+holds the revision without the reason it is missing. The rungs: the merge-base with the merge target
+`lib/base-branch.mjs` derives; where that is `HEAD` itself, on a push to the branch, the payload's
+`before`, so a push of several commits is judged as one change rather than by its last commit; and
+`HEAD~1` only for a local checkout standing on its target's tip and for the push that creates its
+branch. A target that cannot be derived, names no ref here or shares no history with `HEAD`, and a
+push whose `before` cannot be read or is not an ancestor, are refused by name rather than shortened
+to `HEAD~1`, which would judge one commit of many and say nothing. **No base revision is exit 2**,
+which is why `lang-check` carries `fetch-depth: 0`. The checker prints the revision it judged against
+and which rung gave it, and `test-changed.mjs` and `conformance-status.mjs` print the same refusal.
 
 ### Removing an entry is legal, and it is declared
 

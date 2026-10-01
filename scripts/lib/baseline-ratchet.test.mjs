@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { baseRev, baseRevision, compareBaseline, pushedFrom } from './baseline-ratchet.mjs';
+import * as ratchet from './baseline-ratchet.mjs';
+import { baseRevision, compareBaseline, pushedFrom } from './baseline-ratchet.mjs';
 
 describe('improves: down', () => {
   const at = (files) => ({ generatedAt: '2026-01-01', files });
@@ -275,6 +276,7 @@ describe('baseRevision', () => {
     const w = pushed();
     expect(baseRevision(w.root, w.event({ before: w.before }))).toEqual({
       rev: w.before,
+      basis: 'push',
       refusal: null,
     });
   });
@@ -285,7 +287,56 @@ describe('baseRevision', () => {
     writeFileSync(join(w.root, 'g.txt'), 'branch work');
     git(w.root, 'add', '-A');
     git(w.root, 'commit', '-q', '-m', 'branch work');
-    expect(baseRevision(w.root, { GITHUB_BASE_REF: 'dev' }).rev).toBe(w.first);
+    expect(baseRevision(w.root, { GITHUB_BASE_REF: 'dev' })).toEqual({
+      rev: w.first,
+      basis: 'merge-base',
+      refusal: null,
+    });
+  });
+
+  it('takes HEAD~1 for the push that creates its branch', () => {
+    const w = pushed();
+    expect(baseRevision(w.root, w.event({ before: '0'.repeat(40) }))).toEqual({
+      rev: w.first,
+      basis: 'parent',
+      refusal: null,
+    });
+  });
+
+  it("takes HEAD~1 for a local checkout standing on its merge target's tip", () => {
+    const w = pushed();
+    expect(baseRevision(w.root, { GITHUB_BASE_REF: 'dev' })).toEqual({
+      rev: w.first,
+      basis: 'parent',
+      refusal: null,
+    });
+  });
+
+  it("returns neither a revision nor a refusal on its target's tip with no parent", () => {
+    const box = mkdtempSync(join(tmpdir(), 'base-rev-'));
+    made.push(box);
+    git(box, 'init', '-q', '-b', 'dev', 'work');
+    const root = join(box, 'work');
+    git(root, 'config', 'user.email', 'check@example.invalid');
+    git(root, 'config', 'user.name', 'check');
+    git(root, 'commit', '-q', '--allow-empty', '-m', 'only');
+    git(root, 'update-ref', 'refs/remotes/origin/dev', 'HEAD');
+    expect(baseRevision(root, { GITHUB_BASE_REF: 'dev' })).toEqual({
+      rev: null,
+      basis: null,
+      refusal: null,
+    });
+  });
+
+  it('returns neither a revision nor a refusal where there is no HEAD', () => {
+    const box = mkdtempSync(join(tmpdir(), 'base-rev-'));
+    made.push(box);
+    git(box, 'init', '-q', '-b', 'dev', 'work');
+    expect(baseRevision(join(box, 'work'), { GITHUB_BASE_REF: 'dev' })).toEqual({
+      rev: null,
+      basis: null,
+      refusal: null,
+    });
   });
 
   it('refuses, rather than judging HEAD~1, where no merge target can be derived', () => {
@@ -317,9 +368,19 @@ describe('baseRevision', () => {
     expect(got.refusal).toMatch(/not an ancestor of HEAD/);
   });
 
-  it('is what baseRev returns the revision of, and null where it refuses', () => {
+  it('names no basis beside a refusal', () => {
     const w = pushed();
-    expect(baseRev(w.root, w.event({ before: w.before }))).toBe(w.before);
-    expect(baseRev(w.root, {})).toBeNull();
+    expect(baseRevision(w.root, {}).basis).toBeNull();
+    expect(baseRevision(w.root, w.event({ before: w.stranger })).basis).toBeNull();
+  });
+
+  it('is the only way the module hands out a base revision, so none is taken without its refusal', () => {
+    expect(Object.keys(ratchet).sort()).toEqual([
+      'BASIS',
+      'baseRevision',
+      'compareBaseline',
+      'pushedFrom',
+      'ratchetFault',
+    ]);
   });
 });

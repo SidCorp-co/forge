@@ -79,6 +79,21 @@ function dispatchedBase(env) {
 const REMOTE_HEAD_TIMEOUT_MS = 10_000;
 
 /**
+ * Why an `ls-remote` run gave no answer, or null where it exited 0. A wait that ran out is said in
+ * seconds: Node's own `spawnSync git ETIMEDOUT` reads as a crash, not as a remote that never replied.
+ *
+ * @param {import('node:child_process').SpawnSyncReturns<string>} r
+ */
+export function unansweredBecause(r) {
+  if (r.error?.code === 'ETIMEDOUT') {
+    return `no answer within ${REMOTE_HEAD_TIMEOUT_MS / 1000} s`;
+  }
+  if (r.error) return r.error.message;
+  if (r.status !== 0) return (r.stderr || `exit ${r.status}`).trim().split('\n')[0];
+  return null;
+}
+
+/**
  * The remote's own default branch, asked of it, or why it could not answer. A recorded
  * `origin/HEAD` is what the remote said at clone time; it does not move when the remote's default
  * does, and a checkout reading it measures the old base with nothing said.
@@ -90,10 +105,8 @@ function remoteDefault(root) {
     timeout: REMOTE_HEAD_TIMEOUT_MS,
     env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
   });
-  if (r.error) return { unanswered: r.error.message };
-  if (r.status !== 0) {
-    return { unanswered: (r.stderr || `exit ${r.status}`).trim().split('\n')[0] };
-  }
+  const unanswered = unansweredBecause(r);
+  if (unanswered) return { unanswered };
   const m = /^ref:\s*refs\/heads\/(\S+)\s+HEAD$/m.exec(r.stdout);
   return m ? { branch: m[1] } : { unanswered: 'the remote named no default branch' };
 }
