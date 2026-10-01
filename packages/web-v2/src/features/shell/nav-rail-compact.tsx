@@ -386,7 +386,7 @@ export function NavRailCompact({
             <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
           ))}
         </div>
-        {activeProject && ecosystemItems && ecosystemItems.length > 0 && (
+        {ecosystemItems && ecosystemItems.length > 0 && (
           <>
             <RailKicker label="Ecosystem" className="mt-2.5" />
             <div className="mt-1 flex flex-col items-center gap-3px">

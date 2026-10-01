@@ -29,7 +29,7 @@ import {
   WORKSPACE_ITEMS,
   SECONDARY_DESTINATIONS,
   PROJECT_ITEMS,
-  ECOSYSTEM_ITEMS,
+  ecosystemHref,
   activeSlug,
   buildActiveKey,
   buildBottomActiveKey,
@@ -149,8 +149,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   const activeKey = useMemo(
-    () => buildActiveKey(pathname, slug, locationSearch),
-    [pathname, slug, locationSearch],
+    () => buildActiveKey(pathname, slug),
+    [pathname, slug],
   );
   const rail = useRailProjectData({ railSlug, railProject, activeOrgId });
 
@@ -158,8 +158,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     (key: string) => {
       if (key === "whats-new") return router.push("/whats-new");
       if (key === "docs") return router.push("/docs");
-      const eco = ECOSYSTEM_ITEMS.find((it) => it.key === key);
-      if (eco) return railSlug ? router.push(eco.href(railSlug)) : undefined;
+      const eco = ecosystemHref(key);
+      if (eco) return router.push(eco);
       if (key.startsWith("proj-") && railSlug) {
         const item = PROJECT_ITEMS.find((it) => it.key === key);
         if (item) router.push(`/projects/${railSlug}${item.sub}`);

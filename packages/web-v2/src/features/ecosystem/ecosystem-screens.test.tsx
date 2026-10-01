@@ -34,7 +34,7 @@ vi.mock("@/features/projects/hooks", () => ({
 
 const api = vi.hoisted(() => ({
   ecosystemsOf: vi.fn(),
-  register: vi.fn(),
+  mine: vi.fn(),
   outbox: vi.fn(),
   document: vi.fn(),
   thread: vi.fn(),
@@ -54,7 +54,7 @@ vi.mock("@/features/questions/api", () => ({ questionsApi: questions }));
 const members = vi.hoisted(() => vi.fn(async () => [] as unknown[]));
 vi.mock("@/features/issues/api", () => ({ issuesApi: { members } }));
 
-const { RegisterScreen } = await import("./components/register-screen");
+const { ThreadsScreen } = await import("./components/threads-screen");
 const { DocumentScreen } = await import("./components/document-screen");
 
 function wrap(ui: ReactNode) {
@@ -155,72 +155,87 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-const registerScreen = (rawFilter: string | null, onFilter = vi.fn()) =>
-  wrap(
-    <RegisterScreen
-      projectId={FORGE}
-      slug="forge"
-      rawFilter={rawFilter}
-      rawEcosystem={null}
-      onFilter={onFilter}
-      onEcosystem={vi.fn()}
-    />,
-  );
+function workspace(threads: RegisterRow[], drafts: unknown[] = []) {
+  return {
+    ecosystems: [
+      {
+        id: ECO,
+        slug: "fp",
+        name: "Forge platform",
+        purpose: null,
+        code: "FP",
+        steward: { id: "o1", name: "SidCorp", mine: true },
+        visibility: "counterparties",
+        responseDays: { rfi: 3, "change-request": 5, "change-notice": 7 },
+        gate: { "change-notice": "publish", acknowledgement: "publish", rfi: "publish", "change-request": "approve", decision: "publish" },
+        members: [PLUGIN],
+      },
+    ],
+    invitations: [],
+    threads: threads.map((t) => ({ ...t, ecosystem: ECO })),
+    drafts,
+    projects: [
+      { id: FORGE, slug: "forge", name: "Forge" },
+      { id: PLUGIN, slug: "forge-plugin", name: "Forge plugin" },
+    ],
+    mine: [PLUGIN],
+  };
+}
 
-describe("the register keeps overdue and held in sight", () => {
-  it("offers the awaiting, overdue and held filters, and each one reaches core", async () => {
-    api.register.mockResolvedValue({ documents: [row({})], returned: 1, total: 1 });
-    const onFilter = vi.fn();
-    registerScreen(null, onFilter);
+const threadsScreen = (view: string | null, onParam = vi.fn()) =>
+  wrap(<ThreadsScreen filters={{ view, ecosystem: null, project: null, type: null }} onParam={onParam} />);
+
+describe("the Threads inbox keeps what needs the reader, overdue and held in sight", () => {
+  it("counts each view from core's rows and asks for the one picked", async () => {
+    api.mine.mockResolvedValue(workspace([row({ hold: null }), row({ number: "FP-RFI-2", thread: "FP-RFI-2" })]));
+    const onParam = vi.fn();
+    threadsScreen(null, onParam);
     await screen.findByText("FP-RFI-1");
-    expect(api.register).toHaveBeenCalledWith(ECO, { filter: "all", party: FORGE });
-    for (const label of ["Awaiting", "Overdue", "Held"]) {
-      fireEvent.click(screen.getByRole("button", { name: label }));
-    }
-    expect(onFilter.mock.calls.map((c) => c[0])).toEqual(["awaiting", "overdue", "held"]);
+    expect(screen.getByRole("button", { name: "Needs me1" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Held1" })).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(screen.getByRole("button", { name: "Overdue2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Held1" }));
+    expect(onParam.mock.calls).toEqual([
+      ["view", "overdue"],
+      ["view", "held"],
+    ]);
   });
 
-  it("announces which filter is on, not by its styling alone", async () => {
-    api.register.mockResolvedValue({ documents: [row({})], returned: 1, total: 1 });
-    registerScreen("held");
-    await screen.findByText("FP-RFI-1");
-    expect(screen.getByRole("button", { name: "Held" })).toHaveAttribute("aria-pressed", "true");
-    for (const label of ["All", "Awaiting", "Overdue"]) {
-      expect(screen.getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "false");
-    }
-  });
-
-  it("marks an overdue row and a held row, with who held it and why", async () => {
-    api.register.mockResolvedValue({ documents: [row({})], returned: 1, total: 1 });
-    registerScreen(null);
+  it("marks an overdue row by its days late, and a held row with a way to release it", async () => {
+    api.mine.mockResolvedValue(workspace([row({})]));
+    threadsScreen("held");
     const card = (await screen.findByText("FP-RFI-1")).closest("li") as HTMLElement;
-    expect(within(card).getByText("Overdue")).toBeInTheDocument();
     expect(within(card).getByText("Held")).toBeInTheDocument();
-    expect(screen.getByText(/Held by person 55555555 through the assistant for project 33333333: “ask the owner first”/)).toBeInTheDocument();
-    expect(screen.getByText(/Written by you through the assistant/)).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Release hold" })).toBeInTheDocument();
   });
 
-  it("names a filter the URL carries that is not one, rather than showing everything", async () => {
-    registerScreen("lost");
-    expect(await screen.findByText(/REGISTER_FILTER_UNKNOWN/)).toBeInTheDocument();
-    expect(api.register).not.toHaveBeenCalled();
+  it("says a master drafted the reply only when core holds that draft", async () => {
+    api.mine.mockResolvedValue(
+      workspace(
+        [row({ hold: null })],
+        [{ id: "d9", ecosystem: ECO, from: PLUGIN, inReplyTo: "FP-RFI-1", type: "decision", state: "draft", authoredBy: { kind: "agent", id: "a1", via: "master" }, gate: null }],
+      ),
+    );
+    threadsScreen(null);
+    expect(await screen.findByText("forge-plugin master drafted an answer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send answer" })).toBeInTheDocument();
+  });
+
+  it("names a view the URL carries that is not one, rather than showing everything", async () => {
+    api.mine.mockResolvedValue(workspace([row({})]));
+    threadsScreen("lost");
+    expect(await screen.findByText(/INBOX_VIEW_UNKNOWN/)).toBeInTheDocument();
+    expect(screen.queryByText("FP-RFI-1")).not.toBeInTheDocument();
   });
 });
 
 describe("a read that failed is unread, never empty", () => {
-  it("says the register could not be read, and never that it holds nothing", async () => {
-    api.register.mockRejectedValue(new ApiError(503, "Service Unavailable", "UPSTREAM_DOWN"));
-    registerScreen(null);
-    expect(await screen.findByText(/The register could not be read/)).toBeInTheDocument();
+  it("says the threads could not be read, and never that there are none", async () => {
+    api.mine.mockRejectedValue(new ApiError(503, "Service Unavailable", "UPSTREAM_DOWN"));
+    threadsScreen(null);
+    expect(await screen.findByText(/Your threads could not be read/)).toBeInTheDocument();
     expect(screen.getByText("UPSTREAM_DOWN")).toBeInTheDocument();
-    expect(screen.queryByText(/No documents that forge/)).not.toBeInTheDocument();
-  });
-
-  it("says the drafts could not be read when the outbox fails", async () => {
-    api.register.mockResolvedValue({ documents: [], returned: 0, total: 0 });
-    api.outbox.mockRejectedValue(new ApiError(500, "Internal Server Error"));
-    registerScreen(null);
-    expect(await screen.findByText(/This project's drafts could not be read/)).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing under/)).not.toBeInTheDocument();
   });
 });
 

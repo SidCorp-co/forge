@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { questionsApi } from "@/features/questions/api";
 import { gateQuestionKey, projectQuestionsKey } from "@/features/questions/hooks";
 import { ecosystemApi } from "./api";
-import type { RegisterFilter } from "./routes";
 import type { ContractReading } from "./types";
 
 const KEY = ["ecosystem"] as const;
@@ -42,10 +41,19 @@ export function useBuilderRun(projectId: string | undefined, runId: string | und
   });
 }
 
-export function useRegister(ecosystemId: string | undefined, projectId: string, filter: RegisterFilter) {
+/** The person's ecosystems, invitations and threads, for the menu, the inbox and the empty state. */
+export function useMyEcosystems() {
   return useQuery({
-    queryKey: [...KEY, "register", ecosystemId, projectId, filter],
-    queryFn: () => ecosystemApi.register(ecosystemId as string, { filter, party: projectId }),
+    queryKey: [...KEY, "mine"],
+    queryFn: ecosystemApi.mine,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useEcosystemDocument(ecosystemId: string | undefined) {
+  return useQuery({
+    queryKey: [...KEY, "document-of", ecosystemId],
+    queryFn: () => ecosystemApi.read(ecosystemId as string),
     enabled: Boolean(ecosystemId),
   });
 }

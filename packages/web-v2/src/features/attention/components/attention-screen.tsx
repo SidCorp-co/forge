@@ -21,7 +21,7 @@ import {
   ProjectLoader,
 } from "@/design";
 import { TONE_META, type SemanticTone } from "@/design/status";
-import { TYPE_LABEL } from "@/features/ecosystem/components/register-screen";
+import { TYPE_LABEL } from "@/features/ecosystem/types";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";

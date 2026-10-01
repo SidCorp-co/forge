@@ -1,18 +1,19 @@
 import { apiClient } from "@/lib/api/client";
 import type { Bus, BuilderRunRecord, LinkRecord } from "./bus";
-import type { RegisterFilter } from "./routes";
 import type {
   ApiPage,
   ContractVersion,
   DocumentType,
   DocumentView,
+  EcosystemDocument,
+  HeldEcosystem,
   Measurement,
   NamedProject,
   OutboxResponse,
   ProjectEcosystemsResponse,
-  RegisterResponse,
   ThreadHold,
   ThreadView,
+  WorkspaceRead,
 } from "./types";
 
 export interface DraftInput {
@@ -31,6 +32,19 @@ const json = (method: string, body?: unknown): RequestInit => ({
 });
 
 export const ecosystemApi = {
+  mine: () => apiClient<WorkspaceRead>("/ecosystems/mine"),
+
+  read: (ecosystemId: string) => apiClient<HeldEcosystem>(`/ecosystems/${ecosystemId}`),
+
+  create: (document: EcosystemDocument) =>
+    apiClient<HeldEcosystem>("/ecosystems", json("POST", { baseRevision: null, document })),
+
+  write: (ecosystemId: string, baseRevision: number, document: EcosystemDocument) =>
+    apiClient<HeldEcosystem>(`/ecosystems/${ecosystemId}`, json("PUT", { baseRevision, document })),
+
+  decide: (membershipId: string, verb: "accept" | "decline") =>
+    apiClient<unknown>(`/memberships/${membershipId}/${verb}`, json("POST")),
+
   bus: (ecosystemId: string) => apiClient<Bus>(`/ecosystems/${ecosystemId}/bus`),
 
   link: (consumerId: string, linkId: string) =>
@@ -44,12 +58,6 @@ export const ecosystemApi = {
 
   ecosystemsOf: (projectId: string) =>
     apiClient<ProjectEcosystemsResponse>(`/projects/${projectId}/ecosystems`),
-
-  register: (ecosystemId: string, opts: { filter: RegisterFilter; party: string }) => {
-    const q = new URLSearchParams({ party: opts.party, limit: "500" });
-    if (opts.filter !== "all") q.set("status", opts.filter);
-    return apiClient<RegisterResponse>(`/ecosystems/${ecosystemId}/register?${q}`);
-  },
 
   outbox: (projectId: string) => apiClient<OutboxResponse>(`${channel(projectId)}/outbox`),
 

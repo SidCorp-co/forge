@@ -66,6 +66,7 @@ vi.mock("@/features/conversations/hooks", () => ({
 }));
 vi.mock("@/features/ecosystem/hooks", () => ({
   useProjectEcosystems: () => ({ data: { memberships: [] }, isLoading: false, isError: false }),
+  useMyEcosystems: () => ({ data: undefined, isLoading: true, isError: false }),
 }));
 
 import WorkspaceLayout from "./layout";

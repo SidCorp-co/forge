@@ -11,7 +11,7 @@ import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import type { Role } from "./document-actions";
 import { Loading, ReadOnlyNotice, RefusalNotice, UnreadNotice } from "./notices";
 import { useProjectNames } from "./people";
-import { TYPE_LABEL } from "./register-screen";
+import { TYPE_LABEL } from "../types";
 
 /** The body each type carries, as a starting point to fill; core's checks decide whether it stands. */
 export const BODY_TEMPLATES: Record<DocumentType, Record<string, unknown>> = {

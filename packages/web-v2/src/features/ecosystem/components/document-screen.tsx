@@ -13,7 +13,7 @@ import { DocumentBody } from "./document-body";
 import { GatePanel } from "./gate-panel";
 import { Loading, UnreadNotice } from "./notices";
 import { AuthorLine, HoldLine, type Names, PeopleNames, useProjectNames } from "./people";
-import { TYPE_LABEL } from "./register-screen";
+import { TYPE_LABEL } from "../types";
 
 const STATUS_TEXT: Record<string, string> = {
   awaiting: "awaiting a reply",

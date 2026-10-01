@@ -56,43 +56,34 @@ const VERDICT_LABEL: Record<Verdict, (l: BusLink) => string> = {
   unchecked: (l) => l.pinnedVersion,
 };
 
-function headerLine(p: BusProject, linksOut: number, provides: number) {
+// cm:why the line under a member's name is its builder run while one is running or has failed; nothing else core serves says what that project's master is doing, so otherwise the line is left out rather than guessed
+function headerLine(p: BusProject) {
   const b = p.builder;
-  if (b) {
-    const prog = builderProgress(b);
-    if (prog.failed) {
-      return {
-        text: "builder failed",
-        tone: "bad" as const,
-        tip: `The ecosystem builder failed at ${prog.failed.name}${prog.failed.detail ? `: ${prog.failed.detail}` : ""}`,
-        progress: null,
-      };
-    }
-    if (builderActive(b)) {
-      return {
-        text: `builder ${prog.done}/${prog.total}`,
-        tone: "active" as const,
-        tip: prog.running
-          ? `The ecosystem builder is at ${prog.running.name}${prog.running.detail ? `: ${prog.running.detail}` : ""}`
-          : "The ecosystem builder has steps still to run",
-        progress: prog.total ? prog.done / prog.total : 0,
-      };
-    }
-  }
-  if (linksOut === 0) {
+  if (!b) return null;
+  const prog = builderProgress(b);
+  if (prog.failed) {
     return {
-      text: provides > 0 ? `provides ${provides}` : "not mapped",
-      tone: "idle" as const,
-      tip: `${p.slug}'s master has not mapped its links${b ? "; its last builder run wrote none" : "; no ecosystem builder run is recorded"}`,
+      text: "builder failed",
+      tone: "bad" as const,
+      tip: `The ecosystem builder failed at ${prog.failed.name}${prog.failed.detail ? `: ${prog.failed.detail}` : ""}`,
       progress: null,
     };
   }
+  if (!builderActive(b)) return null;
   return {
-    text: `${linksOut} link${linksOut === 1 ? "" : "s"}${provides ? ` · provides ${provides}` : ""}`,
-    tone: "idle" as const,
-    tip: b ? `Mapped by the builder on ${b.trigger.kind} at ${b.trigger.sha.slice(0, 7)}` : "Links written by its master",
-    progress: null,
+    text: `builder ${prog.done}/${prog.total}`,
+    tone: "active" as const,
+    tip: prog.running
+      ? `The ecosystem builder is at ${prog.running.name}${prog.running.detail ? `: ${prog.running.detail}` : ""}`
+      : "The ecosystem builder has steps still to run",
+    progress: prog.total ? prog.done / prog.total : 0,
   };
+}
+
+function headerTip(p: BusProject, reader: boolean, linksOut: number, provides: number) {
+  const mapped = linksOut === 0 ? "no link mapped" : `${linksOut} link${linksOut === 1 ? "" : "s"} out`;
+  const built = p.builder ? ` · last built on ${p.builder.trigger.kind} ${p.builder.trigger.sha.slice(0, 7)}` : "";
+  return `${p.name}${reader ? " · one of your projects" : ""} · ${mapped}${provides ? ` · provides ${provides}` : ""}${built}`;
 }
 
 function Header({
@@ -112,7 +103,7 @@ function Header({
   selected: boolean;
   onSelect: (s: Selection) => void;
 }) {
-  const line = headerLine(p, linksOut, provides);
+  const line = headerLine(p);
   return (
     <div
       className={cn(
@@ -121,7 +112,7 @@ function Header({
       )}
       style={{ gridRow: 1, gridColumn: col }}
     >
-      <Tooltip label={`${p.name}${reader ? " · the project you are reading as" : ""}`}>
+      <Tooltip label={headerTip(p, reader, linksOut, provides)} multiline>
         <button
           type="button"
           onClick={() => onSelect({ kind: "project", id: p.id })}
@@ -132,6 +123,7 @@ function Header({
           {reader ? <span className="text-11" style={{ color: "var(--accent-text)" }}>●</span> : null}
         </button>
       </Tooltip>
+      {line ? (
       <Tooltip label={line.tip} multiline>
         <button
           type="button"
@@ -147,7 +139,8 @@ function Header({
           <span className="truncate">{line.text}</span>
         </button>
       </Tooltip>
-      {line.progress !== null ? (
+      ) : null}
+      {line && line.progress !== null ? (
         <span className="h-[3px] overflow-hidden rounded-sm bg-[var(--bg-sunken)]">
           <i className="block h-full" style={{ width: `${Math.round(line.progress * 100)}%`, background: "var(--accent)" }} />
         </span>
@@ -298,14 +291,14 @@ export function BusDiagram({
   rows,
   lens,
   sel,
-  readerId,
+  readers,
   onSelect,
 }: {
   bus: Bus;
   rows: BusRow[];
   lens: Lens;
   sel: Selection;
-  readerId: string;
+  readers: ReadonlySet<string>;
   onSelect: (s: Selection) => void;
 }) {
   const names = new Map(bus.projects.map((p) => [p.id, p.slug]));
@@ -317,10 +310,10 @@ export function BusDiagram({
         ? bus.links.find((l) => l.id === sel.id)?.consumer
         : undefined;
   return (
-    <div className="eco-dots overflow-x-auto rounded-lg border border-line-subtle bg-surface px-3 pb-2 pt-1">
+    <div className="eco-dots flex-none overflow-x-auto px-4 pb-2.5 pt-1 sm:px-7">
       <div
         className={cn("relative grid", lens === "live" && "eco-live")}
-        style={{ gridTemplateColumns: `140px repeat(${bus.projects.length}, minmax(112px, 1fr))` }}
+        style={{ gridTemplateColumns: `132px repeat(${bus.projects.length}, minmax(104px, 1fr))` }}
       >
         <div style={{ gridRow: 1, gridColumn: 1 }} />
         {bus.projects.map((p, i) => (
@@ -328,7 +321,7 @@ export function BusDiagram({
             key={p.id}
             p={p}
             col={i + 2}
-            reader={p.id === readerId}
+            reader={readers.has(p.id)}
             linksOut={bus.links.filter((l) => l.consumer === p.id).length}
             provides={bus.contracts.filter((c) => c.provider === p.id).length}
             selected={selectedColumn === p.id}

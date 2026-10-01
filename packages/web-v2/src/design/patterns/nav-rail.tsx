@@ -16,6 +16,8 @@ export interface NavItem {
    *  small badge beside the label, or as a count dot on the icon when collapsed.
    *  Falsy / 0 hides it. */
   badge?: number;
+  /** A short code shown in a tinted square in place of the icon (an ecosystem's document code). */
+  mark?: string;
 }
 
 export interface NavItemGroup {
@@ -44,7 +46,7 @@ export interface NavRailProps {
   projectItems?: NavItem[];
   /** Grouped project nav. Preferred over `projectItems` when present. */
   projectClusters?: NavCluster[];
-  workspaceClusters?: Array<{ key: string; kicker: string; items: NavItem[]; icon?: NavItem["icon"]; collapsible?: boolean }>;
+  workspaceClusters?: Array<{ key: string; kicker: string; items: NavItem[]; icon?: NavItem["icon"]; collapsible?: boolean; badge?: number }>;
   activeKey: string;
   onNavigate?: (key: string) => void;
   /** Opens the searchable project switcher (the command palette). */
@@ -216,7 +218,7 @@ function NavGroup({
   onToggle,
   onNavigate,
 }: {
-  cluster: { key: string; kicker: string; items: NavItem[]; icon?: NavItem["icon"] };
+  cluster: { key: string; kicker: string; items: NavItem[]; icon?: NavItem["icon"]; badge?: number };
   activeKey: string;
   collapsed?: boolean;
   open: boolean;
@@ -246,6 +248,14 @@ function NavGroup({
       >
         <Icon name={cluster.icon ?? "ecosystem"} size={17} style={within ? { color: "var(--accent)" } : undefined} />
         <span className="flex-1 text-left">{cluster.kicker}</span>
+        {cluster.badge && cluster.badge > 0 ? (
+          <span
+            className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
+            style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: "var(--flame-700)", background: "var(--flame-50)" }}
+          >
+            {cluster.badge > 99 ? "99+" : cluster.badge}
+          </span>
+        ) : null}
         <Icon name={open ? "chevronDown" : "chevronRight"} size={14} className="text-subtle" />
       </button>
       {open && (
@@ -264,8 +274,18 @@ function NavGroup({
                   active ? "bg-accent-tint text-accent-text" : "text-muted hover:bg-hover hover:text-fg",
                 )}
               >
-                <Icon name={it.icon} size={15} style={active ? { color: "var(--accent)" } : undefined} />
-                <span className="flex-1 text-left">{it.label}</span>
+                {it.mark ? (
+                  <span
+                    aria-hidden
+                    className="grid h-[18px] min-w-[18px] flex-none place-items-center rounded-[5px] px-0.5 font-bold"
+                    style={{ fontSize: "var(--text-8-5)", background: "var(--cobalt-50)", color: "var(--cobalt-700)" }}
+                  >
+                    {it.mark}
+                  </span>
+                ) : (
+                  <Icon name={it.icon} size={15} style={active ? { color: "var(--accent)" } : undefined} />
+                )}
+                <span className="min-w-0 flex-1 truncate text-left">{it.label}</span>
                 {count > 0 && (
                   <span
                     className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"

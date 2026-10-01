@@ -1,10 +1,8 @@
-import { REGISTER_STATUSES } from "@forge/contracts/status-sets";
-
 // cm:edge contract -> packages/core/src/me/attention-routes.ts:gateItem — core links a gate question to `document(slug, number)`, so that path is part of the API and changes in both places together
 
-/** The page's filters: every status core's register filters by, sent as is, and "all". */
-export const REGISTER_FILTERS = ["all", ...REGISTER_STATUSES] as const;
-export type RegisterFilter = (typeof REGISTER_FILTERS)[number];
+/** The Threads inbox's views, one per counter at the top of the page. */
+export const INBOX_VIEWS = ["needs-me", "waiting", "overdue", "held", "working", "answered", "closed"] as const;
+export type InboxView = (typeof INBOX_VIEWS)[number];
 
 const base = (projectSlug: string) => `/projects/${encodeURIComponent(projectSlug)}/ecosystem`;
 
@@ -15,13 +13,18 @@ const query = (params: Record<string, string | undefined>) => {
   return s ? `?${s}` : "";
 };
 
+// cm:why an ecosystem spans projects from any organization, so its page, the Threads inbox and the create form live at the workspace; a document, its compose form, contracts and the API page are a project's own and stay under it
 export const ecosystemRoutes = {
-  bus: (projectSlug: string, opts: { ecosystem?: string } = {}) =>
-    `${base(projectSlug)}${query({ ecosystem: opts.ecosystem })}`,
-  register: (projectSlug: string, opts: { filter?: RegisterFilter; ecosystem?: string } = {}) =>
-    `${base(projectSlug)}/channel${query({
-      status: opts.filter && opts.filter !== "all" ? opts.filter : undefined,
+  list: () => "/ecosystems",
+  create: () => "/ecosystems/new",
+  ecosystem: (id: string) => `/ecosystems/${encodeURIComponent(id)}`,
+  settings: (id: string) => `/ecosystems/${encodeURIComponent(id)}/settings`,
+  threads: (opts: { view?: InboxView; ecosystem?: string; project?: string; type?: string } = {}) =>
+    `/ecosystems/threads${query({
+      view: opts.view && opts.view !== "needs-me" ? opts.view : undefined,
       ecosystem: opts.ecosystem,
+      project: opts.project,
+      type: opts.type,
     })}`,
   document: (projectSlug: string, ref: string) =>
     `${base(projectSlug)}/channel/${encodeURIComponent(ref)}`,
