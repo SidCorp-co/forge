@@ -41,6 +41,7 @@ const KIND_TONE: Record<AttentionKind, SemanticTone> = {
   pending_skill_update: "attention",
   unseen_draft: "attention",
   runner_offline: "infra",
+  channel_gate: "attention",
 };
 
 const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: string; bg: string }> = {
@@ -51,6 +52,7 @@ const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: stri
   pending_skill_update: { label: "Skill update", icon: "clock", ...tone("pending_skill_update") },
   unseen_draft: { label: "Unseen draft", icon: "inbox", ...tone("unseen_draft") },
   runner_offline: { label: "Runner offline", icon: "server", ...tone("runner_offline") },
+  channel_gate: { label: "Approve gate", icon: "check", ...tone("channel_gate") },
 };
 
 function tone(kind: AttentionKind): { fg: string; bg: string } {
@@ -160,8 +162,8 @@ function Group({
       </SectionTitle>
       {expanded && (
         <div className="flex flex-col gap-1.5">
-          {items.map((it, i) => (
-            <AttentionRow key={`${it.kind}-${it.link}-${i}`} item={it} onOpen={onOpen} />
+          {items.map((it) => (
+            <AttentionRow key={`${it.kind}-${it.link}-${it.questionId ?? ""}-${it.since}`} item={it} onOpen={onOpen} />
           ))}
           {matched > items.length && (
             <p className="fg-caption px-0.5 text-muted">
@@ -189,6 +191,7 @@ export function AttentionScreen() {
     failedJobs: view.failedJobs.filter(keep),
     pendingSkillUpdates: view.pendingSkillUpdates.filter(keep),
     unseenDrafts: view.unseenDrafts.filter(keep),
+    channelGates: view.channelGates.filter(keep),
     offlineRunners: view.offlineRunners.filter(keep),
   };
   const unseenDraftsTotal =
@@ -202,6 +205,7 @@ export function AttentionScreen() {
     scoped.failedJobs.length +
     scoped.pendingSkillUpdates.length +
     scoped.unseenDrafts.length +
+    scoped.channelGates.length +
     scoped.offlineRunners.length;
 
   const open = (link: string) => router.push(link);
@@ -244,6 +248,7 @@ export function AttentionScreen() {
         <div className="flex flex-col gap-6">
           <Group title="Needs review" items={scoped.needsReview} onOpen={open} />
           <Group title="Awaiting input" items={scoped.awaitingInput} onOpen={open} />
+          <Group title="Channel gates" items={scoped.channelGates} onOpen={open} />
           <Group title="Mentions" items={scoped.mentions} onOpen={open} />
           <Group title="Failed jobs" items={scoped.failedJobs} onOpen={open} />
           <Group title="Skill updates" items={scoped.pendingSkillUpdates} onOpen={open} />

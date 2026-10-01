@@ -76,6 +76,8 @@ export interface AgentQuestion {
   /** What the run needs to be told, on a free-text round. Empty string on a choice round. */
   needed: string;
   locked: boolean;
+  /** Where the question came from; a channel gate names the document waiting on it. */
+  origin?: { kind: string; documentId?: string; number?: string } | null;
 }
 
 export interface QuestionListResponse {
@@ -108,4 +110,6 @@ export type AnswerInput = GivenAnswer & {
   questionId: string;
   /** The round the person was looking at. Core refuses an answer bound to any other. */
   round: number;
+  /** A note travels with the answer only where it carries somewhere: a channel gate's return. */
+  note?: string;
 };
