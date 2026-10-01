@@ -208,10 +208,8 @@ export const uiSnapshotSchema = z.strictObject({
   issueKey: issueKey.optional(),
   filter: uiIssueFilterSchema.optional(),
   selection: z.array(issueKey).max(100).optional(),
-  /** The board open in the dock, as the person last left it (ISS-48). */
+  /** The board open in the dock, as the assistant last drew it (ISS-48). */
   board: wireframeDocSchema.optional(),
-  /** Why the board the person drew is not sendable as wireframe-v1, when it is not. */
-  boardRefused: z.string().max(500).optional(),
 });
 export type UiSnapshot = z.infer<typeof uiSnapshotSchema>;
 
@@ -228,6 +226,5 @@ export function describeUiSnapshot(s: UiSnapshot): string {
   }
   if (s.selection && s.selection.length > 0) parts.push(`${s.selection.length} selected`);
   if (s.board) parts.push(`board of ${s.board.shapes.length} shape${s.board.shapes.length === 1 ? '' : 's'}`);
-  if (s.boardRefused) parts.push('board not readable');
   return parts.join(' · ');
 }

@@ -60,13 +60,13 @@ export function uiSnapshotOf(args: {
   search: string;
   userId: string | null;
   selection: string[];
-  board?: { open: boolean; doc: UiSnapshot["board"] | null; refused: string | null };
+  board?: { open: boolean; doc: UiSnapshot["board"] | null };
 }): UiSnapshot {
   const b = args.board;
   const base = {
     v: UI_ACTION_VERSION,
     path: args.pathname.slice(0, 500),
-    ...(b?.open && b.refused ? { boardRefused: b.refused.slice(0, 500) } : b?.open && b.doc ? { board: b.doc } : {}),
+    ...(b?.open && b.doc ? { board: b.doc } : {}),
   };
   const at = projectPath(args.pathname);
   if (!at) return { ...base, route: "other" };
@@ -184,11 +184,6 @@ export function applyUiAction(action: UiAction, env: UiActionEnv): UiActionOutco
         return refuse(
           "UI_ACTION_UNAVAILABLE",
           "UI_ACTION_UNAVAILABLE: ui.board.revise needs a board open in the chat panel, and none is. Draw one with ui.board.draw. Nothing was changed.",
-        );
-      if (prior.refused)
-        return refuse(
-          "UI_ACTION_UNAVAILABLE",
-          `UI_ACTION_UNAVAILABLE: the board as the person left it is not wireframe-v1 (${prior.refused}), so it cannot be revised by id. Nothing was changed.`,
         );
       const was = prior.doc;
       const next = applyWireframePatch(was, action.params.ops);

@@ -16,8 +16,24 @@ import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/tran
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { WireframeArrowEnd, WireframeDoc, WireframeShape } from "@forge/contracts/wireframe";
 import { useEffect, useRef, useState } from "react";
-import { boardExporter, boardStore, useBoard } from "./board-store";
-import { boxText, readScene, type SceneElement } from "./scene";
+import { boardExporter, useBoard } from "./board-store";
+
+/** The text a box shows inside it. */
+function boxText(s: WireframeShape): string {
+  switch (s.type) {
+    case "list":
+      return [s.label, ...s.items].filter(Boolean).join("\n");
+    case "input":
+      return s.label ?? s.placeholder ?? "";
+    case "image":
+      return `[image] ${s.label ?? ""}`.trim();
+    case "frame":
+    case "button":
+      return s.label ?? "";
+    default:
+      return "";
+  }
+}
 
 function centre(doc: WireframeDoc, end: WireframeArrowEnd): { x: number; y: number } {
   if (!("id" in end)) return end;
@@ -102,7 +118,6 @@ export default function BoardCanvas() {
   const board = useBoard();
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const shown = useRef(-1);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!api || shown.current === board.loaded || !board.doc) return;
@@ -124,22 +139,12 @@ export default function BoardCanvas() {
     return () => boardExporter.set(null);
   }, [api]);
 
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
-
   return (
     <div className="h-full w-full" data-testid="board-canvas">
       <Excalidraw
         excalidrawAPI={setApi}
+        viewModeEnabled
         UIOptions={{ tools: { image: false } }}
-        onChange={(elements) => {
-          if (shown.current < 0) return;
-          if (timer.current) clearTimeout(timer.current);
-          timer.current = setTimeout(() => {
-            boardStore.edited(readScene(elements as unknown as SceneElement[], boardStore.get().doc?.title));
-          }, 250);
-        }}
       />
     </div>
   );

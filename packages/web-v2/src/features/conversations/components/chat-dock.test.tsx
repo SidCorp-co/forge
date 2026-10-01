@@ -19,7 +19,6 @@ vi.mock("./conversation-chat", () => ({
   ),
 }));
 vi.mock("./conversation-list", () => ({ ConversationList: () => <div data-testid="list" /> }));
-vi.mock("./context-panel", () => ({ ContextPanel: () => <div data-testid="context" /> }));
 vi.mock("./start-conversation", () => ({ StartConversation: () => <div data-testid="start" /> }));
 
 const { ChatDock } = await import("./chat-dock");
@@ -52,7 +51,7 @@ describe("the chat dock", () => {
     expect(screen.queryByTestId("chat-dock")).toBeNull();
     fireEvent.click(screen.getByText("toggle"));
     expect(screen.getByTestId("chat")).toHaveAttribute("data-project", "p1");
-    fireEvent.click(screen.getByRole("button", { name: "Close chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close Ask Agent" }));
     expect(screen.queryByTestId("chat-dock")).toBeNull();
   });
 
@@ -62,13 +61,14 @@ describe("the chat dock", () => {
     expect(screen.getByTestId("chat")).toHaveAttribute("data-draft", "About issue ISS-7: ");
   });
 
-  it("shows the conversation list and the context as tabs of the dock", () => {
+  it("has no tab strip: past conversations open from the history button", () => {
     render(<Harness projectId="p1" />);
     fireEvent.click(screen.getByText("toggle"));
-    fireEvent.click(screen.getByRole("button", { name: "Chats" }));
+    expect(screen.queryByRole("button", { name: "Chats" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Context" })).toBeNull();
+    expect(screen.queryByTestId("list")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Past conversations" }));
     expect(screen.getByTestId("list")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Context" }));
-    expect(screen.getByTestId("context")).toBeInTheDocument();
   });
 
   it("resizes by keyboard within its bounds, and the next visit reopens it at that width", () => {

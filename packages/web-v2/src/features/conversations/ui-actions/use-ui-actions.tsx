@@ -1,6 +1,6 @@
 "use client";
 
-import { describeUiSnapshot } from "@forge/contracts/ui-actions";
+import { describeUiSnapshot, type UiSnapshot } from "@forge/contracts/ui-actions";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/design";
@@ -37,6 +37,31 @@ function uiCallsOf(entryId: string, blocks: readonly CanonicalBlock[] | null | u
     if (reading) out.push({ callId: b.toolCall.id, entryId, reading });
   }
   return out;
+}
+
+/** The hover detail of the composer's "Sees" line: every field the assistant is told, one per line. */
+export function seesDetail(s: UiSnapshot, at: { project: string | null; scope: "project" | "ecosystem" }): string {
+  const lines = [
+    "What the assistant is told about the page beside the chat:",
+    `Scope: ${at.scope}`,
+    `Project: ${at.project ?? "none"}`,
+    `Route: ${s.route} (${s.path})`,
+  ];
+  if (s.issueKey) lines.push(`Issue: ${s.issueKey}`);
+  const f = s.filter;
+  if (f) {
+    const parts = [
+      f.createdBy && "created by me",
+      f.assignee && "assigned to me",
+      f.priority && `priority ${f.priority}`,
+      f.status && `status ${f.status.join("/")}`,
+      f.text && `"${f.text}"`,
+    ].filter(Boolean);
+    lines.push(`Filters: ${parts.length ? parts.join(", ") : "none"}`);
+  }
+  lines.push(`Selection: ${s.selection?.length ? s.selection.join(", ") : "none"}`);
+  if (s.board) lines.push(`Board: ${s.board.shapes.length} shape${s.board.shapes.length === 1 ? "" : "s"}`);
+  return lines.join("\n");
 }
 
 /** The page beside the chat as the typed snapshot each message carries, and its one-line reading. */
