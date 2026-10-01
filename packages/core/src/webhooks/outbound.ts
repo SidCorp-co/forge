@@ -1,4 +1,4 @@
-import { and, arrayContains, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectWebhooks } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -43,7 +43,7 @@ export async function handleDelivery(job: DeliveryJob): Promise<void> {
     .from(projectWebhooks)
     .where(eq(projectWebhooks.id, job.webhookId))
     .limit(1);
-  if (!hook || !hook.active) {
+  if (!hook?.active) {
     logger.info({ webhookId: job.webhookId }, 'webhook-delivery: skipped (missing or inactive)');
     return;
   }
@@ -98,11 +98,3 @@ export async function registerOutboundDeliveryWorker(): Promise<void> {
   });
   registered = true;
 }
-
-export function resetOutboundForTest(): void {
-  registered = false;
-}
-
-// arrayContains is imported for potential future filter push-down; the current
-// `events.includes` filter is done in JS to keep the test surface small.
-void arrayContains;

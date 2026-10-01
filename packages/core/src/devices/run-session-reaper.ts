@@ -97,7 +97,3 @@ export async function registerRunSessionReaper(): Promise<void> {
   await (boss as any).schedule(RUN_SESSION_REAPER_QUEUE, '* * * * *');
   registered = true;
 }
-
-export function resetRunSessionReaperForTest(): void {
-  registered = false;
-}

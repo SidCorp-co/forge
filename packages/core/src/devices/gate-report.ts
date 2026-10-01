@@ -8,7 +8,6 @@ import { utf16String } from '../lib/utf16-string.js';
 import { logger } from '../logger.js';
 
 export const gateVerdicts = ['clear', 'marked', 'failing_open'] as const;
-export type GateVerdict = (typeof gateVerdicts)[number];
 
 /**
  * The producer's bounds in the producer's unit: `daemon/degraded.rs` clips in

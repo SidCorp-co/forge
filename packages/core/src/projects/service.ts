@@ -8,10 +8,9 @@
  * genuinely different queries and keep their own.
  */
 
-import { and, count, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-  agentSessions,
   issues,
   type OrgMemberRole,
   organizationMembers,
@@ -125,12 +124,6 @@ export const projectListColumns = {
   orgId: projects.orgId,
 } as const;
 
-/** The projects in `ids`, name and org only. Visibility is the caller's to decide. */
-export async function listProjectsByIds(ids: string[]) {
-  if (ids.length === 0) return [];
-  return db.select(projectListColumns).from(projects).where(inArray(projects.id, ids));
-}
-
 /** One visible project, with the two membership rows the visibility join already reads. */
 export type VisibleProjectWithRole = {
   id: string;
@@ -189,20 +182,6 @@ export async function updateProject(projectId: string, updates: Record<string, u
     orgId: projects.orgId,
   });
   return row ?? null;
-}
-
-/** How many agent sessions are still live on this project. */
-export async function countActiveSessions(projectId: string): Promise<number> {
-  const [row] = await db
-    .select({ active: count() })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.projectId, projectId),
-        inArray(agentSessions.status, ['queued', 'running']),
-      ),
-    );
-  return Number(row?.active ?? 0);
 }
 
 /** The project's identity and branches plus its whole agentConfig blob. */

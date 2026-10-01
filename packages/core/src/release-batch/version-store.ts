@@ -187,10 +187,3 @@ export async function markReleaseShipped(runId: string, executor: Tx = db): Prom
       AND release_released_at IS NULL
   `);
 }
-
-export async function readReleaseVersion(runId: string): Promise<string | null> {
-  const rows = await db.execute<{ release_version: string | null }>(sql`
-    SELECT release_version FROM pipeline_runs WHERE id = ${runId} LIMIT 1
-  `);
-  return rows[0]?.release_version ?? null;
-}

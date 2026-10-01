@@ -89,7 +89,3 @@ export async function registerPhaseJournalBackfill(): Promise<void> {
   await (boss as any).schedule(PHASE_JOURNAL_BACKFILL_QUEUE, '17 * * * *');
   registered = true;
 }
-
-export function resetPhaseJournalBackfillForTest(): void {
-  registered = false;
-}

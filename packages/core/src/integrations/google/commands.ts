@@ -48,11 +48,9 @@ export class GoogleCommandError extends Error {
 /**
  * The project's usable Google binding.
  *
- * Deliberately NOT `findActiveBinding`: that helper filters on `active` at both
- * tiers, so a binding an operator switched off comes back as the same `null` an
- * absent one does, and the two refusals this issue asks to be told apart cannot
- * be. Widening the shared helper would change what every other provider sees,
- * so the classification is done here instead.
+ * Deliberately NOT a reader that filters on `active` at both tiers: there a
+ * binding an operator switched off comes back as the same `null` an absent one
+ * does, and the two refusals this issue asks to be told apart cannot be.
  */
 export async function resolveGoogleBinding(projectId: string): Promise<BindingWithConnection> {
   const rows = (await listBindingsForProject(projectId)).filter(

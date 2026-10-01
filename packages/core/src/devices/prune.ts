@@ -57,7 +57,3 @@ export async function registerDevicePrune(): Promise<void> {
   await (boss as any).schedule(DEVICE_PRUNE_QUEUE, '0 4 * * *');
   registered = true;
 }
-
-export function resetDevicePruneForTest(): void {
-  registered = false;
-}

@@ -213,7 +213,7 @@ integrationConnectionsRoutes.delete('/:id', async (c) => {
   const existing = await loadManageableConnection(id, userId);
   // Cascade: bindings reference the connection with ON DELETE CASCADE, but we
   // only soft-delete here (active=false) so existing bindings stop resolving via
-  // findActiveBinding's `connection.active` filter without dropping audit rows.
+  // the resolvers' `connection.active` filter without dropping audit rows.
   await softDeleteConnection(id);
   notifyConnectionChanged(existing.provider, id);
   return c.json({ ok: true });

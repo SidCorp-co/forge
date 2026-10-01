@@ -132,10 +132,6 @@ export async function registerReleaseUnstartedRecovery(): Promise<void> {
   registered = true;
 }
 
-export function resetReleaseUnstartedRecoveryForTest(): void {
-  registered = false;
-}
-
 async function emitWedge(row: UnstartedRow): Promise<void> {
   await emitPipelineWedge({
     projectId: row.project_id,

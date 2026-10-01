@@ -152,10 +152,6 @@ export async function registerMasterReaper(): Promise<void> {
   registered = true;
 }
 
-export function resetMasterReaperForTest(): void {
-  registered = false;
-}
-
 /**
  * Release the holds of one named session, for the daemon's socket-drop path.
  *

@@ -73,11 +73,6 @@ export function mcpServerNameFor(decl: IntegrationDeclaration, label: string): s
   return `${path.serverName}_${label.replace(/-/g, '_')}`;
 }
 
-/** Whether this provider's adapter implements core's outbound call. */
-export function providerImplementsDispatch(provider: string): boolean {
-  return typeof getIntegration(provider)?.adapter?.dispatchOutbound === 'function';
-}
-
 export async function dispatchThrough(
   provider: string,
   ctx: AdapterContext,

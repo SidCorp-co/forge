@@ -391,5 +391,3 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
   presentation: null,
   adapter: githubAdapterMethods,
 });
-
-export const githubAdapter = githubAdapterMethods;

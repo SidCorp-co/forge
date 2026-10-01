@@ -32,19 +32,6 @@ export function productionOf(document: ProjectDocument): NamedEnvironment | null
   return environmentsOf(document).find((e) => e.declaration.tier === 'production') ?? null;
 }
 
-/** The environment whose deployment names this binding; one deploy binding serves one environment. */
-export function environmentOfBinding(
-  document: ProjectDocument,
-  bindingId: string,
-): NamedEnvironment | null {
-  return (
-    environmentsOf(document).find(
-      (e) =>
-        'binding' in e.declaration.deployment && e.declaration.deployment.binding === bindingId,
-    ) ?? null
-  );
-}
-
 export function bindingOf(env: NamedEnvironment): string | null {
   return 'binding' in env.declaration.deployment ? env.declaration.deployment.binding : null;
 }

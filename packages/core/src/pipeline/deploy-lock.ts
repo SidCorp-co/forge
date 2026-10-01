@@ -104,13 +104,6 @@ async function readLockWith(
   return row ? asHolder(row) : null;
 }
 
-export async function readDeployLock(
-  projectId: string,
-  environment: string,
-): Promise<DeployLockHolder | null> {
-  return readLockWith(db, projectId, environment);
-}
-
 /** All the environments this deploy reaches, or none: refused its second, it never dispatches, and
  *  a first left held would be freed by nothing but the expiry.
  *

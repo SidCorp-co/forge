@@ -51,31 +51,6 @@ export async function updateDelivery(id: string, patch: UpdateDeliveryInput): Pr
 }
 
 /**
- * Counts outbound deliveries with the given status for a binding within the
- * lookback window. Used by the circuit breaker to decide whether to trip; the
- * owning connection's `active` flag is the breaker state.
- */
-export async function countOutboundStatusInWindow(
-  bindingId: string,
-  status: IntegrationDeliveryStatus,
-  windowMs: number,
-): Promise<number> {
-  const since = new Date(Date.now() - windowMs);
-  const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(integrationDeliveries)
-    .where(
-      and(
-        eq(integrationDeliveries.bindingId, bindingId),
-        eq(integrationDeliveries.direction, 'outbound'),
-        eq(integrationDeliveries.status, status),
-        gte(integrationDeliveries.createdAt, since),
-      ),
-    );
-  return row ? Number(row.n) : 0;
-}
-
-/**
  * Returns the last N outbound deliveries (most recent first) so the breaker
  * can ask "were the last 3 all failures?" — a stricter check than counting,
  * since a 1-failure-then-success run shouldn't trip.
@@ -101,24 +76,6 @@ export async function recentOutboundDeliveries(
     )
     .orderBy(desc(integrationDeliveries.createdAt))
     .limit(limit);
-}
-
-export async function findLastSuccessfulOutbound(
-  bindingId: string,
-): Promise<typeof integrationDeliveries.$inferSelect | null> {
-  const rows = await db
-    .select()
-    .from(integrationDeliveries)
-    .where(
-      and(
-        eq(integrationDeliveries.bindingId, bindingId),
-        eq(integrationDeliveries.direction, 'outbound'),
-        eq(integrationDeliveries.status, 'ok'),
-      ),
-    )
-    .orderBy(desc(integrationDeliveries.createdAt))
-    .limit(1);
-  return rows[0] ?? null;
 }
 
 /**

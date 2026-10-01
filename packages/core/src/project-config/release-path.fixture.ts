@@ -8,7 +8,6 @@ import {
 
 export const DOC_PROJECT = '33333333-3333-4333-8333-333333333333';
 export const PROD_BINDING = '3f1c2a9e-7b4d-4e21-9c1a-5d6e7f8a9b0c';
-export const DEV_BINDING = '9d4e5f6a-7b8c-4d9e-8f0a-1b2c3d4e5f60';
 
 export const sourceProbe = (url = 'https://api.example.com/version', path = 'sourceCommit') => ({
   type: 'http' as const,

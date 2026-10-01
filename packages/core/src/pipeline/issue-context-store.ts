@@ -49,7 +49,6 @@ const scopeSchema = z.object({
   step: z.string().trim().min(1).max(64).optional(),
   attempt: z.number().int().positive().default(1),
 });
-export type IssueContextScope = z.infer<typeof scopeSchema>;
 
 const writeInputBaseSchema = scopeSchema.extend({
   kind: z.enum(issueStepContextKinds),

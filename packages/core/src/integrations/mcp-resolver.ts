@@ -2,7 +2,6 @@ import { logger } from '../logger.js';
 import { listAgentGrantedBindings } from './agent-access-store.js';
 import { directMcpIntegrations, mcpServerNameFor } from './registry.js';
 import { decryptConnectionSecrets, effectiveConfig } from './store.js';
-import type { IntegrationDeclaration } from './types.js';
 
 export interface ProducedMcpServer {
   name: string;
@@ -87,16 +86,4 @@ export async function applyGrantedMcpServers(projectId: string): Promise<Granted
   const entries = await resolveGrantedMcpEntries(projectId, produced);
   if (produced.length === 0) return { map: null, produced };
   return { map: entries, produced };
-}
-
-export function declaredServerNames(
-  decl: IntegrationDeclaration,
-  labels: readonly string[],
-): string[] {
-  const names: string[] = [];
-  for (const label of labels) {
-    const name = mcpServerNameFor(decl, label);
-    if (name) names.push(name);
-  }
-  return names;
 }

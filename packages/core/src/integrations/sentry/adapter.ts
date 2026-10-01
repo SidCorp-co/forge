@@ -216,5 +216,3 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
   },
   adapter: sentryAdapterMethods,
 });
-
-export const sentryAdapter = sentryAdapterMethods;

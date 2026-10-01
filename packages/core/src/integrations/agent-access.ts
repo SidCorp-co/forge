@@ -6,10 +6,6 @@ export type AgentAccess = (typeof AGENT_ACCESS_VALUES)[number];
 /** The closed answer, which is what a binding gets for not choosing. */
 export const AGENT_ACCESS_CLOSED: AgentAccess = 'none';
 
-export function isAgentAccess(value: unknown): value is AgentAccess {
-  return (AGENT_ACCESS_VALUES as readonly unknown[]).includes(value);
-}
-
 export function grantHolds(
   decl: Pick<IntegrationDeclaration, 'capabilities'> | undefined,
   binding: { agentAccess: string },

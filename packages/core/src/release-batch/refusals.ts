@@ -41,9 +41,6 @@ export const conflict = (code: string, message: string, details?: unknown) =>
     cause: details === undefined ? { code } : { code, details },
   });
 
-export const serviceUnavailable = (code: string, message: string) =>
-  new HTTPException(503, { message, cause: { code } });
-
 /**
  * One refusal, carrying every reason that stood beside it.
  *

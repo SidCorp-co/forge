@@ -331,8 +331,3 @@ export async function registerReconciler(): Promise<void> {
   await (boss as any).schedule(RECONCILER_QUEUE, '* * * * *');
   registered = true;
 }
-
-/** Test-only — reset registration. */
-export function resetReconcilerForTest(): void {
-  registered = false;
-}

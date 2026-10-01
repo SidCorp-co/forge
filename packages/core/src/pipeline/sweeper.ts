@@ -58,13 +58,6 @@ import { emitPipelineWedge } from './wedge.js';
 
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
 
-/** Back-compat shim — thresholds are owned by the loop monitor now (single
- *  source: same env names, same clamps). */
-export function getZombieThresholds(): { queueMs: number; heartbeatMs: number } {
-  const t = getLoopThresholds();
-  return { queueMs: t.queueMs, heartbeatMs: t.heartbeatMs };
-}
-
 export interface ZombieSweepResult {
   queueTimedOut: number;
   turnNeverReported: number;
@@ -296,7 +289,7 @@ export async function alarmZombieSessions(
   now: Date,
   scope: SweepScope = {},
 ): Promise<ZombieSweepResult> {
-  const { queueMs, heartbeatMs } = getZombieThresholds();
+  const { queueMs, heartbeatMs } = getLoopThresholds();
   const queueCutoffIso = new Date(now.getTime() - queueMs).toISOString();
   const heartbeatCutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
   const projectClause = scope.projectId ? sql`AND s.project_id = ${scope.projectId}` : sql``;
@@ -447,7 +440,7 @@ export async function reapOrphanedOneShotRuns(
   now: Date = new Date(),
   scope: SweepScope = {},
 ): Promise<OneShotRunReapResult> {
-  const { heartbeatMs } = getZombieThresholds();
+  const { heartbeatMs } = getLoopThresholds();
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
   const deviceGraceMs = Math.max(heartbeatMs, 20 * 60_000);
   const graceCutoffIso = new Date(now.getTime() - deviceGraceMs).toISOString();
@@ -610,7 +603,7 @@ export async function reapOrphanedIssueRuns(
   now: Date = new Date(),
   scope: SweepScope = {},
 ): Promise<IssueRunReapResult> {
-  const { heartbeatMs } = getZombieThresholds();
+  const { heartbeatMs } = getLoopThresholds();
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
   const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
 
@@ -664,8 +657,4 @@ export async function registerPipelineSweeper(): Promise<void> {
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
   await (boss as any).schedule(PIPELINE_SWEEPER_QUEUE, '* * * * *');
   registered = true;
-}
-
-export function resetPipelineSweeperForTest(): void {
-  registered = false;
 }

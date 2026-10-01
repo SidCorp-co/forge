@@ -202,5 +202,3 @@ export const postmanIntegration = declareIntegration<PostmanConfig, PostmanSecre
   },
   adapter: postmanAdapterMethods,
 });
-
-export const postmanAdapter = postmanAdapterMethods;

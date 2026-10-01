@@ -2,7 +2,7 @@ import { INTEGRATIONS_QUEUE_NAME } from '../../jobs/queue-name.js';
 import { logger } from '../../logger.js';
 import { boss } from '../../queue/boss.js';
 import { recordDelivery } from '../deliveries.js';
-import type { CoolifyConfig, CoolifyTarget } from './types.js';
+import type { CoolifyConfig } from './types.js';
 
 export interface CoolifyHealthGateJob {
   jobKind: 'coolify.health-gate';
@@ -90,11 +90,6 @@ export async function enqueueCoolifyHealthGate(
     startAfter: opts.startAfterSeconds ?? HEALTH_POLL_INTERVAL_SECONDS,
     singletonKey: `health:${job.deploymentUuid}:${Date.now()}`,
   });
-}
-
-/** The target of a binding by id, or `null` when the config no longer holds it. */
-export function findTarget(config: CoolifyConfig | null, targetId: string): CoolifyTarget | null {
-  return (config?.targets ?? []).find((t) => t.id === targetId) ?? null;
 }
 
 /**

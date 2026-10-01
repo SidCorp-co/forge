@@ -1,6 +1,6 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
+import { issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type MergeMarkColumns, type MergeMarkKind, mergeMarkKindOf } from './merge-record.js';
 import type { IssueSearchField } from './search-predicate.js';
@@ -46,38 +46,6 @@ export const REST_ISSUE_LIST_COLUMNS = {
     .mapWith(issues.createdAt)
     .as('waiting_on_person_since'),
 } as const;
-
-/** One row as the two REST list endpoints select it. */
-export type RestIssueListRow = {
-  id: string;
-  projectId: string;
-  issSeq: number;
-  title: string;
-  status: IssueStatus;
-  waitingKind: WaitingKind | null;
-  priority: (typeof issues.$inferSelect)['priority'];
-  category: string | null;
-  complexity: (typeof issues.$inferSelect)['complexity'];
-  assigneeId: string | null;
-  createdById: string;
-  createdVia: (typeof issues.$inferSelect)['createdVia'];
-  reportedBy: string | null;
-  detectorKey: string | null;
-  source: (typeof issues.$inferSelect)['source'];
-  externalId: string | null;
-  reopenCount: number;
-  mergedAt: Date | null;
-  mergedCommitSha: string | null;
-  releaseBatchRunId: string | null;
-  metadata: (typeof issues.$inferSelect)['metadata'];
-  /** ISS-1237 — set only on a row a caller asked for with `includeArchived` or by key. */
-  archivedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-  waitingOnPersonSince: Date | null;
-  /** ISS-960 — present only when the query carried a search term. */
-  matchedFields?: IssueSearchField[];
-};
 
 /**
  * The names this projection deliberately does not select, so a test can assert

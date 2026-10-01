@@ -12,10 +12,6 @@ import { getIntegration } from './registry.js';
 import type { AdapterContext, IntegrationProvider } from './types.js';
 import { decryptJson, encryptJson } from './vault.js';
 
-// Reads + CRUD over the integration tables. Since the ISS-399 cutover these are
-// the live read path for resolvers / MCP tools / inbound router; the legacy
-// project_integrations helpers they replaced were removed by ISS-410 (epic F5).
-
 export type IntegrationConnectionRow = typeof integrationConnections.$inferSelect;
 export type IntegrationBindingRow = typeof integrationBindings.$inferSelect;
 
@@ -39,66 +35,6 @@ export async function findBindingById(id: string): Promise<IntegrationBindingRow
     .select()
     .from(integrationBindings)
     .where(eq(integrationBindings.id, id))
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-/**
- * The active SERVICE binding (+ its connection) for a project + provider, or none.
- *
- * Service-only ON PURPOSE, and this is the pre-flight side of
- * `integration_bindings_service_uq`, which is a PARTIAL index `WHERE role = 'service'`. Asking
- * without the role filter refuses an operator adding a service binding to a project that already
- * has a deploy binding on the same provider — a pair the index admits and ISS-1046 rule 3 requires,
- * since a coolify deploy target and a coolify service facility are different declarations about
- * the same credential. The two must admit exactly the same rows.
- */
-export async function findActiveServiceBinding(
-  projectId: string,
-  provider: IntegrationProvider,
-): Promise<BindingWithConnection | null> {
-  const rows = await db
-    .select({ binding: integrationBindings, connection: integrationConnections })
-    .from(integrationBindings)
-    .innerJoin(
-      integrationConnections,
-      eq(integrationBindings.connectionId, integrationConnections.id),
-    )
-    .where(
-      and(
-        eq(integrationBindings.projectId, projectId),
-        eq(integrationBindings.provider, provider),
-        eq(integrationBindings.role, 'service'),
-        eq(integrationBindings.active, true),
-        eq(integrationConnections.active, true),
-      ),
-    )
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-export async function findActiveServiceBindingAtLabel(
-  projectId: string,
-  provider: IntegrationProvider,
-  label: string,
-): Promise<BindingWithConnection | null> {
-  const rows = await db
-    .select({ binding: integrationBindings, connection: integrationConnections })
-    .from(integrationBindings)
-    .innerJoin(
-      integrationConnections,
-      eq(integrationBindings.connectionId, integrationConnections.id),
-    )
-    .where(
-      and(
-        eq(integrationBindings.projectId, projectId),
-        eq(integrationBindings.provider, provider),
-        eq(integrationBindings.label, label),
-        eq(integrationBindings.role, 'service'),
-        eq(integrationBindings.active, true),
-        eq(integrationConnections.active, true),
-      ),
-    )
     .limit(1);
   return rows[0] ?? null;
 }
@@ -132,29 +68,6 @@ export async function listActiveDeployBindingsForProvider(
       ),
     )
     .orderBy(asc(integrationBindings.createdAt));
-}
-
-export async function findActiveBinding(
-  projectId: string,
-  provider: IntegrationProvider,
-): Promise<BindingWithConnection | null> {
-  const rows = await db
-    .select({ binding: integrationBindings, connection: integrationConnections })
-    .from(integrationBindings)
-    .innerJoin(
-      integrationConnections,
-      eq(integrationBindings.connectionId, integrationConnections.id),
-    )
-    .where(
-      and(
-        eq(integrationBindings.projectId, projectId),
-        eq(integrationBindings.provider, provider),
-        eq(integrationBindings.active, true),
-        eq(integrationConnections.active, true),
-      ),
-    )
-    .limit(1);
-  return rows[0] ?? null;
 }
 
 /**
@@ -211,8 +124,7 @@ export function effectiveConfig<TConfig extends Record<string, unknown> = Record
 }
 
 /**
- * Build an {@link AdapterContext} from a binding+connection pair — the
- * dispatch/inbound counterpart of the legacy {@link buildContext}. Threads
+ * Build an {@link AdapterContext} from a binding+connection pair. Threads
  * `connectionId` (breaker/health target) + `bindingId` (delivery + inbound-HMAC
  * scope); config is the effective overlay; secrets come from the connection;
  * `integrationSecret` is the per-binding inbound HMAC.

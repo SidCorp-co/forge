@@ -118,11 +118,6 @@ export function resolveRetention(rule: RetentionRule, env: Env = process.env): R
   return { table: rule.table, days: parsed, rejected: null };
 }
 
-/** Every rule resolved, in the order they are stated. */
-export function resolveAllRetention(env: Env = process.env): ResolvedRetention[] {
-  return RETENTION_RULES.map((rule) => resolveRetention(rule, env));
-}
-
 /** The rule for one table, or undefined where this schema states none. */
 export function retentionRuleFor(table: string): RetentionRule | undefined {
   return RETENTION_RULES.find((rule) => rule.table === table);

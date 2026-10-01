@@ -59,7 +59,3 @@ export async function registerDeviceStaleDetector(): Promise<void> {
   await (boss as any).schedule(DEVICE_STALE_DETECTOR_QUEUE, '*/2 * * * *');
   registered = true;
 }
-
-export function resetDeviceStaleDetectorForTest(): void {
-  registered = false;
-}

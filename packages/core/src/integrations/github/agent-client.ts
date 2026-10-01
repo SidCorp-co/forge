@@ -18,7 +18,7 @@ import {
   listBindingsForProject,
 } from '../store.js';
 import { GitHubAuthError, installationToken } from './app-auth.js';
-import { buildRepoClient, GitHubClientError } from './client.js';
+import { buildRepoClient } from './client.js';
 import { inboundWebhookUrl, resolveApiBaseUrl } from './connect.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
@@ -341,9 +341,4 @@ export async function githubAgentClient(projectId: string): Promise<GitHubAgentC
 
     scrub: (text: string) => scrubText(text),
   };
-}
-
-/** Whether a thrown value is one of the two refusals a caller words differently. */
-export function isGitHubRefusal(err: unknown): err is GitHubAgentRefusal | GitHubClientError {
-  return err instanceof GitHubAgentRefusal || err instanceof GitHubClientError;
 }

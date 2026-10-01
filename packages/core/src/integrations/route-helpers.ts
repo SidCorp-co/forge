@@ -10,7 +10,6 @@ import {
   type BindingWithConnection,
   buildContextFromBinding,
   effectiveConfig,
-  findBindingWithConnectionById,
   type IntegrationBindingRow,
   type IntegrationConnectionRow,
 } from './store.js';
@@ -34,16 +33,6 @@ export const forbidden = () =>
 export const notFound = (entity = 'integration') =>
   new HTTPException(404, { message: `${entity} not found`, cause: { code: 'NOT_FOUND' } });
 
-/** 409 for the one-active-service-binding invariant (create + bind-existing). */
-export const alreadyExists = (
-  message = 'an active service binding for this provider already exists on this project',
-) => new HTTPException(409, { message, cause: { code: 'ALREADY_EXISTS' } });
-
-/**
- * Shared pre-check of the two binding-creating endpoints: one active SERVICE binding per
- * (project, provider) — 409 ALREADY_EXISTS on a clash. (Epodsystem creates check by label
- * instead — see the create route.)
- */
 export const BINDING_DOOR =
   'PUT /api/projects/:projectId/bindings/:bindingId { baseRevision, document } (a binding-v1 document)';
 
@@ -213,28 +202,6 @@ export async function runInitialHealthcheck(
     // simply leaves the connection `unverified`.
     return null;
   }
-}
-
-export async function buildCreatedBindingResponse(
-  pair: BindingWithConnection,
-  integrationSecret: string,
-): Promise<{
-  integration: ReturnType<typeof summarizeBinding>;
-  integrationSecret: string;
-  health: HealthCheckResult | null;
-}> {
-  const health = await runInitialHealthcheck(pair);
-  let refreshed: BindingWithConnection | null | undefined;
-  try {
-    refreshed = await findBindingWithConnectionById(pair.binding.id);
-  } catch {
-    refreshed = null;
-  }
-  broadcastIntegrationChanged(pair.binding.projectId, {
-    bindingId: pair.binding.id,
-    connectionId: pair.connection.id,
-  });
-  return { integration: summarizeBinding(refreshed ?? pair), integrationSecret, health };
 }
 
 export function toIso(d: Date | string | null): string | null {

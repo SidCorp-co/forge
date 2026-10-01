@@ -15,7 +15,6 @@ import { logger } from '../logger.js';
 import { WIRE_UNITS } from './gate-report.js';
 
 export const poolReadVerdicts = ['blind', 'intermittent'] as const;
-export type PoolReadVerdict = (typeof poolReadVerdicts)[number];
 
 /**
  * Both sides read this from `pool-read-report.fixture.json`. The box never truncates

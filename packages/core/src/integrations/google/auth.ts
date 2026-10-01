@@ -90,11 +90,6 @@ function credentialFingerprint(serviceAccountJson: string): string {
 
 const cache = new Map<string, GoogleAccessToken>();
 
-/** Test-only — drops every cached token so a suite starts from a cold mint. */
-export function __resetGoogleTokenCache(): void {
-  cache.clear();
-}
-
 export interface MintArgs {
   /** Cache key half. One connection's token is never reused for another. */
   connectionId: string;

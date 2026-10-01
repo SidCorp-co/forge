@@ -295,5 +295,3 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
   },
   adapter: epodsystemAdapterMethods,
 });
-
-export const epodsystemAdapter = epodsystemAdapterMethods;

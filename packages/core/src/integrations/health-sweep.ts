@@ -112,7 +112,3 @@ export async function registerIntegrationsHealthSweep(): Promise<void> {
   await (boss as any).schedule(HEALTH_SWEEP_QUEUE, '17 * * * *');
   registered = true;
 }
-
-export function resetIntegrationsHealthSweepForTest(): void {
-  registered = false;
-}

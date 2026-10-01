@@ -251,7 +251,3 @@ export async function registerRetentionSweeper(): Promise<void> {
   await (boss as any).schedule(RETENTION_QUEUE, '0 3 * * *');
   registered = true;
 }
-
-export function resetRetentionSweeperForTest(): void {
-  registered = false;
-}

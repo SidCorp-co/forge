@@ -242,5 +242,3 @@ export const googleIntegration = declareIntegration<GoogleConfig, GoogleSecrets>
   },
   adapter: googleAdapterMethods,
 });
-
-export const googleAdapter = googleAdapterMethods;
