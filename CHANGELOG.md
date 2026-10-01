@@ -11,10 +11,8 @@
 ### Security
 
 - **A token's permissions now bound what it can do over MCP too.** A token granted only
-  `issues:read` used to be able to call every MCP tool its owner's role allowed. Each tool now
-  says which permission it needs, and a call the token was not granted is refused by name before
-  the tool runs. Tokens granted everything, and tokens from before permissions existed, are
-  unchanged.
+  `issues:read` could call every MCP tool its owner's role allowed; a call outside its grant is
+  now refused by name. Full-access tokens are unchanged.
 
 - **An agent session you start from the web acts as you, not as whoever paired the box.** Each
   turn carries a short-lived token for its sender, never wider than the box owner's. Viewers and
