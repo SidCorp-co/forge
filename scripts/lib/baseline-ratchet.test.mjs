@@ -259,8 +259,13 @@ describe('pushedFrom: a push is one change, judged from the tip it moved its bra
   it('refuses by name a push event whose payload cannot be read', () => {
     const w = pushed();
     const env = { GITHUB_EVENT_NAME: 'push', GITHUB_EVENT_PATH: join(w.box, 'absent.json') };
-    expect(() => pushedFrom(w.root, env, w.head)).toThrow(
-      /payload at \$GITHUB_EVENT_PATH could not/,
+    expect(() => pushedFrom(w.root, env, w.head)).toThrow(/absent\.json could not be read/);
+  });
+
+  it('refuses by name a push event with no payload path', () => {
+    const w = pushed();
+    expect(() => pushedFrom(w.root, { GITHUB_EVENT_NAME: 'push' }, w.head)).toThrow(
+      /\$GITHUB_EVENT_PATH could not be read \(\$GITHUB_EVENT_PATH is unset\)/,
     );
   });
 });

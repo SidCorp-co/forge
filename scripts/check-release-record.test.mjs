@@ -72,7 +72,7 @@ function planted() {
 function onPush(w, payload) {
   git(w.root, 'update-ref', 'refs/remotes/origin/dev', 'HEAD');
   const event = join(w.box, 'event.json');
-  if (payload !== null) writeFileSync(event, JSON.stringify(payload));
+  if (payload) writeFileSync(event, JSON.stringify(payload));
   return spawnSync('node', [join(w.root, 'scripts', 'check-release-record.mjs')], {
     cwd: w.root,
     encoding: 'utf8',
@@ -115,11 +115,28 @@ describe('check-release-record on a push of several commits', () => {
     expect(r.status).toBe(2);
   });
 
-  it('exits 2 naming the refusal when the push payload cannot be read', () => {
+  it('exits 2 naming the payload when the push payload cannot be read', () => {
     const w = planted();
     w.commit('next');
     const r = onPush(w, null);
-    expect(r.stderr).toContain('could not be read');
+    expect(r.stderr).toContain(`${join(w.box, 'event.json')} could not be read`);
+    expect(r.status).toBe(2);
+  });
+
+  it('exits 2 naming the payload when it is not JSON', () => {
+    const w = planted();
+    w.commit('next');
+    writeFileSync(join(w.box, 'event.json'), '{ not json');
+    const r = onPush(w, undefined);
+    expect(r.stderr).toContain(`${join(w.box, 'event.json')} could not be read`);
+    expect(r.status).toBe(2);
+  });
+
+  it('exits 2 naming the field when the push payload names no before', () => {
+    const w = planted();
+    w.commit('next');
+    const r = onPush(w, {});
+    expect(r.stderr).toContain('names no commit as `before`');
     expect(r.status).toBe(2);
   });
 });

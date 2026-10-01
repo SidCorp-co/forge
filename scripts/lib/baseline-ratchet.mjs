@@ -25,19 +25,21 @@ const NO_COMMIT = /^0+$/;
  */
 export function pushedFrom(root, env, head) {
   if (env.GITHUB_EVENT_NAME !== 'push') return null;
+  const path = String(env.GITHUB_EVENT_PATH ?? '').trim();
   let payload;
   try {
-    payload = JSON.parse(readFileSync(String(env.GITHUB_EVENT_PATH), 'utf8'));
+    if (!path) throw new Error('$GITHUB_EVENT_PATH is unset');
+    payload = JSON.parse(readFileSync(path, 'utf8'));
   } catch (err) {
     throw new Error(
-      `a push event's payload at $GITHUB_EVENT_PATH could not be read (${err.message}), so the ` +
-        'tip this push moved its branch from is unknown and no base can be taken from it',
+      `a push event's payload at ${path || '$GITHUB_EVENT_PATH'} could not be read (${err.message}), ` +
+        'so the tip this push moved its branch from is unknown and no base can be taken from it',
     );
   }
   const before = payload?.before;
   if (typeof before !== 'string' || !COMMIT.test(before)) {
     throw new Error(
-      `a push event's payload at $GITHUB_EVENT_PATH names no commit as \`before\` ` +
+      `a push event's payload at ${path} names no commit as \`before\` ` +
         `(${JSON.stringify(before ?? null)}), so the tip this push moved its branch from is unknown`,
     );
   }
