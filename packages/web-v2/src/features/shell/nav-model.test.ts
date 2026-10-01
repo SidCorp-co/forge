@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ECOSYSTEM_ITEMS, buildActiveKey, buildCrumbs } from "./nav-model";
@@ -39,5 +39,31 @@ describe("the Activity sidebar's Ecosystem group", () => {
       projectName: "Forge Dev",
     });
     expect(crumbs.at(-1)?.label).toBe("Project API");
+  });
+});
+
+describe("a project page's breadcrumb names the page", () => {
+  const crumbOf = (sub: string) => {
+    const pathname = `/projects/forge-dev${sub}`;
+    const activeKey = buildActiveKey(pathname, "forge-dev");
+    return buildCrumbs({ pathname, slug: "forge-dev", activeKey, projectName: "Forge Dev" }).at(-1)?.label;
+  };
+
+  it("reads Settings on the settings page", () => {
+    expect(crumbOf("/settings")).toBe("Settings");
+  });
+
+  it.each(
+    readdirSync(PROJECT_ROUTES).filter((d) => existsSync(join(PROJECT_ROUTES, d, "page.tsx"))),
+  )("names /%s as something other than the dashboard", (dir) => {
+    expect(crumbOf(`/${dir}`)).not.toBe("Dashboard");
+  });
+
+  it("names a release run, whose route has no page of its own above it", () => {
+    expect(crumbOf("/releases/r1")).toBe("Release run");
+  });
+
+  it("reads Dashboard on the project's own page", () => {
+    expect(crumbOf("")).toBe("Dashboard");
   });
 });

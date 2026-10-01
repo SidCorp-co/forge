@@ -184,6 +184,13 @@ export function bottomTabItems(attentionCount: number): BottomTabItem[] {
   ];
 }
 
+/** Project pages the rail does not list, named for the breadcrumb. */
+const PROJECT_PAGES_OFF_RAIL = [
+  { sub: "/settings", label: "Settings" },
+  { sub: "/pipeline", label: "Pipeline" },
+  { sub: "/releases", label: "Release run" },
+];
+
 export function buildCrumbs(opts: {
   pathname: string;
   slug: string | null;
@@ -196,10 +203,14 @@ export function buildCrumbs(opts: {
 
   if (slug) {
     const page = [...PROJECT_ITEMS, ...ECOSYSTEM_ITEMS].find((it) => it.key === activeKey);
+    const base = `/projects/${slug}`;
+    const rest = pathname.startsWith(base) ? pathname.slice(base.length) : "";
+    // A project page off the rail lights the Dashboard row, but its crumb still names it.
+    const offRail = page?.key === "proj-overview" ? PROJECT_PAGES_OFF_RAIL.find((it) => matchesSub(rest, it.sub)) : undefined;
     return [
       { label: "Projects", href: "/projects" },
-      { label: projectName ?? slug, href: `/projects/${slug}` },
-      { label: page?.label ?? "Dashboard" },
+      { label: projectName ?? slug, href: base },
+      { label: offRail?.label ?? page?.label ?? "Dashboard" },
     ];
   }
 
