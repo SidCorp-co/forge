@@ -37,3 +37,10 @@ export function claimedBy(paths: readonly string[], file: string): boolean {
 export function claimedByAny(runtimes: readonly RuntimeReading[], file: string): boolean {
   return runtimes.some((r) => claimedBy(r.paths, file));
 }
+
+/** `items` from position `by` round to the one before it. */
+export function rotated<T>(items: readonly T[], by: number): T[] {
+  if (items.length === 0) return [];
+  const at = by % items.length;
+  return [...items.slice(at), ...items.slice(0, at)];
+}

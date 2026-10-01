@@ -73,9 +73,13 @@ function why(err: unknown): string {
 function filesOf(read: CompareRead): string[] | string {
   if (!Array.isArray(read.files)) return 'the compare answered no file list';
   if (read.files.length >= COMPARE_FILE_CEILING) return TOO_MANY;
-  return read.files.flatMap((f) =>
-    [f.filename, f.previous_filename].filter((p): p is string => typeof p === 'string' && p !== ''),
+  const named = (p: unknown) => typeof p === 'string' && p !== '';
+  const unnamed = read.files.some(
+    (f) =>
+      !named(f?.filename) || (f.previous_filename !== undefined && !named(f.previous_filename)),
   );
+  if (unnamed) return 'the compare answered a file entry with no name';
+  return read.files.flatMap((f) => [f.filename, f.previous_filename].filter(named) as string[]);
 }
 
 type Compared = { readonly status: string; readonly files: string[] } | { readonly why: string };
@@ -104,15 +108,18 @@ async function readCarriage(
   return { kind: 'differs', paths: [...new Set([...forward.files, ...back.files])].sort() };
 }
 
-/** What `served` holds of `judged`, from the repository `client` reads. */
+/** What `served` holds of `judged`; `spend` is asked only on a cache miss, and its reason answers. */
 export async function carriageOf(
   client: GitHubRepoClient,
   judged: string,
   served: string,
+  spend: () => string | null = () => null,
 ): Promise<Carriage> {
   const key = `${client.fullName}\u0000${judged.toLowerCase()}\u0000${served.toLowerCase()}`;
   const kept = carried.get(key);
   if (kept) return kept;
+  const spent = spend();
+  if (spent) return { kind: 'unread', why: spent };
   try {
     const read = await readCarriage(client, judged, served);
     if (read.kind !== 'unread') keep(carried, key, read);
@@ -139,10 +146,13 @@ async function readChanged(client: GitHubRepoClient, landing: string): Promise<C
 export async function changedPathsOf(
   client: GitHubRepoClient,
   landing: string,
+  spend: () => string | null = () => null,
 ): Promise<ChangedPaths> {
   const key = `${client.fullName}\u0000${landing.toLowerCase()}`;
   const kept = changed.get(key);
   if (kept) return kept;
+  const spent = spend();
+  if (spent) return { kind: 'unread', why: spent };
   try {
     const read = await readChanged(client, landing);
     if (read.kind === 'read') keep(changed, key, read);

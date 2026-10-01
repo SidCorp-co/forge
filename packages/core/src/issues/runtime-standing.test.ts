@@ -4,6 +4,7 @@ import type { ServingReading } from '../release-batch/serving-reading.js';
 import {
   carriageKey,
   type RuntimeReading,
+  rotated,
   UNWEIGHED,
   type Weighing,
 } from '../release-batch/weighing.js';
@@ -48,6 +49,18 @@ function weighing(args: {
 
 const descends: Carriage = { kind: 'descends' };
 const differs = (...paths: string[]): Carriage => ({ kind: 'differs', paths });
+
+describe('rotated', () => {
+  it('starts each pass one place further along, so a cut-short read comes first later', () => {
+    expect([0, 1, 2, 3].map((by) => rotated(['a', 'b', 'c'], by).join(''))).toEqual([
+      'abc',
+      'bca',
+      'cab',
+      'abc',
+    ]);
+    expect(rotated([], 5)).toEqual([]);
+  });
+});
 
 describe('owedRuntimes', () => {
   it('owes only the deployment where no runtime is declared', () => {

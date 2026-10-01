@@ -81,6 +81,22 @@ describe('carriageOf', () => {
       'answered no compare status',
     ],
     [
+      'a file entry with no name',
+      {
+        [cmp(J, S)]: { status: 'behind', files: [] },
+        [cmp(S, J)]: { status: 'ahead', files: [{}] },
+      },
+      'a file entry with no name',
+    ],
+    [
+      'a rename whose old name is empty',
+      {
+        [cmp(J, S)]: { status: 'behind', files: [] },
+        [cmp(S, J)]: { status: 'ahead', files: [{ filename: 'a.ts', previous_filename: '' }] },
+      },
+      'a file entry with no name',
+    ],
+    [
       'a compare answering no file list',
       { [cmp(J, S)]: { status: 'behind' }, [cmp(S, J)]: { status: 'ahead', files: [] } },
       'answered no file list',
@@ -106,6 +122,17 @@ describe('carriageOf', () => {
     const c = client({ [cmp(J, S)]: { status: 'ahead', files: [] } });
     await carriageOf(c, J, S);
     await carriageOf(c, J.toUpperCase(), S);
+    expect(c.asked).toHaveLength(1);
+  });
+
+  it('charges the budget only on a cache miss, and answers its reason without asking', async () => {
+    const c = client({ [cmp(J, S)]: { status: 'ahead', files: [] } });
+    let charged = 0;
+    const spend = () => (charged++ === 0 ? null : 'spent');
+    expect(await carriageOf(c, J, S, spend)).toEqual({ kind: 'descends' });
+    expect(await carriageOf(c, J, S, spend)).toEqual({ kind: 'descends' });
+    expect(charged).toBe(1);
+    expect(await carriageOf(c, J, P, spend)).toEqual({ kind: 'unread', why: 'spent' });
     expect(c.asked).toHaveLength(1);
   });
 
@@ -145,6 +172,14 @@ describe('changedPathsOf', () => {
     expect(read.kind === 'unread' && read.why).toContain(`could not read what ${J} changed`);
     await changedPathsOf(c, J);
     expect(c.asked).toHaveLength(2);
+  });
+
+  it('is unread where the landing compare names a file entry with no name', async () => {
+    const c = client({
+      [`/repos/o/r/commits/${J}`]: { sha: J, parents: [{ sha: P }] },
+      [cmp(P, J)]: { status: 'ahead', files: [{ filename: '' }] },
+    });
+    expect((await changedPathsOf(c, J)).kind).toBe('unread');
   });
 
   it('is unread where the landing compare answers files and no status', async () => {

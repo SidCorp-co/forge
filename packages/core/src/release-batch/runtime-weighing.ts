@@ -26,9 +26,9 @@ import {
 } from '../pipeline/pipeline-config-schema.js';
 import { type Carriage, type ChangedPaths, carriageOf, changedPathsOf } from './carriage.js';
 import { type ServingReading, servedCommits } from './serving-reading.js';
-import { carriageKey, type RuntimeReading, type Weighing } from './weighing.js';
+import { carriageKey, type RuntimeReading, rotated, type Weighing } from './weighing.js';
 
-/** New repository reads one weighing may make; the rest are said unread and asked next pass. */
+/** Uncached reads (one or two compares each) one weighing may make; a cached answer costs none. */
 export const WEIGHING_READ_LIMIT = 120;
 
 export interface WeighingDeps {
@@ -135,32 +135,34 @@ async function readerFor(projectId: string, deps: WeighingDeps): Promise<Reader>
   }
 }
 
-class Budget {
-  private spent = 0;
-  take(): boolean {
-    this.spent += 1;
-    return this.spent <= WEIGHING_READ_LIMIT;
-  }
+const OVER_BUDGET = `it was not read this pass: one weighing makes at most ${WEIGHING_READ_LIMIT} uncached repository reads, and each pass starts its reads one place further along`;
+
+/** Charged only where the cache misses; a reason once it is spent. */
+function budget(): () => string | null {
+  let spent = 0;
+  return () => {
+    spent += 1;
+    return spent <= WEIGHING_READ_LIMIT ? null : OVER_BUDGET;
+  };
 }
 
-const OVER_BUDGET = `it was not read this pass: one weighing makes at most ${WEIGHING_READ_LIMIT} repository reads, and the next pass reads it`;
+// Each pass starts one place further along, so reads a full budget cut short are first in a later pass.
+let passes = 0;
 
 async function readChanged(
   rows: readonly WaitingRow[],
   reader: Reader,
-  budget: Budget,
+  spend: () => string | null,
 ): Promise<Map<string, ChangedPaths>> {
   const out = new Map<string, ChangedPaths>();
-  for (const row of rows) {
+  for (const row of rotated(rows, passes)) {
     const landing = issueIdentities(row).source;
     if (!landing) {
       out.set(row.id, { kind: 'unread', why: 'this issue records no landing commit' });
     } else if ('why' in reader) {
       out.set(row.id, { kind: 'unread', why: reader.why });
-    } else if (!budget.take()) {
-      out.set(row.id, { kind: 'unread', why: OVER_BUDGET });
     } else {
-      out.set(row.id, await changedPathsOf(reader.client, landing));
+      out.set(row.id, await changedPathsOf(reader.client, landing, spend));
     }
   }
   return out;
@@ -170,17 +172,15 @@ async function readCarriage(
   judged: readonly string[],
   served: readonly string[],
   reader: Reader,
-  budget: Budget,
+  spend: () => string | null,
 ): Promise<Map<string, Carriage>> {
   const out = new Map<string, Carriage>();
-  for (const j of judged) {
-    for (const s of served) {
-      if (sameIdentity(j, s) || out.has(carriageKey(j, s))) continue;
-      const key = carriageKey(j, s);
-      if ('why' in reader) out.set(key, { kind: 'unread', why: reader.why });
-      else if (!budget.take()) out.set(key, { kind: 'unread', why: OVER_BUDGET });
-      else out.set(key, await carriageOf(reader.client, j, s));
-    }
+  const pairs = judged.flatMap((j) => served.filter((s) => !sameIdentity(j, s)).map((s) => [j, s]));
+  for (const [j, s] of rotated(pairs, passes) as Array<[string, string]>) {
+    const key = carriageKey(j, s);
+    if (out.has(key)) continue;
+    if ('why' in reader) out.set(key, { kind: 'unread', why: reader.why });
+    else out.set(key, await carriageOf(reader.client, j, s, spend));
   }
   return out;
 }
@@ -214,8 +214,9 @@ export async function readWeighingNow(
     return { read: true, runtimes, changed: new Map(), carriage: new Map() };
   }
   const reader = await readerFor(projectId, deps);
-  const budget = new Budget();
-  const changed = runtimes.length > 0 ? await readChanged(rows, reader, budget) : new Map();
-  const carriage = await readCarriage(judged, served, reader, budget);
+  const spend = budget();
+  passes += 1;
+  const changed = runtimes.length > 0 ? await readChanged(rows, reader, spend) : new Map();
+  const carriage = await readCarriage(judged, served, reader, spend);
   return { read: true, runtimes, changed, carriage };
 }

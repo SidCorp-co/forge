@@ -133,6 +133,16 @@ function runtimeClause(runtime: RuntimeReading): string {
 
 /** Where a verdict has to be judged to count — the one place the reading is said (ISS-1346). */
 function judgeClause(serving: ServingReading, runtimes: readonly RuntimeReading[]): string {
+  const deployment = deploymentClause(serving, runtimes);
+  if (serving.kind === 'serving' || runtimes.length === 0) return deployment;
+  // The allowance above is the deployment's: a declared runtime with nothing read still holds.
+  return (
+    `${deployment}. A criterion held in a declared runtime earns only at a build it is running — ` +
+    runtimes.map(runtimeClause).join('; ')
+  );
+}
+
+function deploymentClause(serving: ServingReading, runtimes: readonly RuntimeReading[]): string {
   if (serving.kind === 'serving' && runtimes.length > 0) {
     return (
       'record a verdict on each criterion named, judged at a commit the runtime it is held in is ' +
