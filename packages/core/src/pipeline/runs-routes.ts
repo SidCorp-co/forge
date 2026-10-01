@@ -97,17 +97,19 @@ pipelineRunRoutes.post(
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
+  zValidator('json', cancelBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
     await loadRunWithAccess(id, userId);
-    const body = cancelBodySchema.safeParse(await c.req.json().catch(() => ({})));
-    if (!body.success) throw badRequest(z.flattenError(body.error));
+    const body = c.req.valid('json');
     try {
       const result = await cancelPipelineRun(id, {
         actorUserId: userId,
         actorAgency: restActor(c).agency,
-        ...(body.data.parkIssue !== undefined ? { parkIssue: body.data.parkIssue } : {}),
+        ...(body.parkIssue !== undefined ? { parkIssue: body.parkIssue } : {}),
       });
       return c.json(result);
     } catch (err) {
