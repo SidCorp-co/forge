@@ -347,7 +347,7 @@ describe('the procedure a project that declared none is handed (ISS-1276)', () =
       plan: plan({ channels: [channel()] }),
     });
 
-    expect(out).not.toContain('Merge baseBranch → liveBranch');
+    expect(out).not.toContain('Merge baseBranch →');
     expect(out).not.toContain("forge_coolify_deploy { action:'deploy'");
     expect(out).not.toContain('CHANGELOG.md');
     expect(out).not.toContain('Forge default');

@@ -24,7 +24,6 @@ export const SCRUB_BODY_KEYS: ReadonlySet<string> = new Set([
   'sessionToken',
   'session_token',
   'bearerToken',
-  'testCredentials',
   // ISS-1036 — a GitHub App's PEM and a Google service-account key file. Both
   // are credentials with no token-shaped signature of their own, so the key
   // name is the only thing that identifies them in a structured payload.

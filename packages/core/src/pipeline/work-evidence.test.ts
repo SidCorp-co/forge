@@ -5,6 +5,8 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import { production, projectDoc } from '../project-config/release-path.fixture.js';
+import type { ProjectDocument } from '../project-config/schema.js';
 
 const queue: unknown[][] = [];
 vi.mock('../db/client.js', () => ({
@@ -14,6 +16,13 @@ vi.mock('../db/client.js', () => ({
       return { from: () => ({ ...tail, innerJoin: () => tail }) };
     },
   },
+}));
+
+const readDocument = vi.fn(
+  async (): Promise<{ revision: number; document: ProjectDocument } | null> => null,
+);
+vi.mock('../project-config/service.js', () => ({
+  readProjectDocument: () => readDocument(),
 }));
 
 vi.mock('../logger.js', () => ({
@@ -41,7 +50,7 @@ describe('collectWorkEvidence', () => {
         { payload: { step: 'code', filesModified: [{ path: 'a.ts', op: 'edit' }] } },
         { payload: { step: 'fix', commitSha: 'abc123', filesModified: [] } },
       ],
-      [{ sessionContext: { branch: 'ISS-1-foo' }, baseBranch: 'main', releaseChain: [] }],
+      [{ sessionContext: { branch: 'ISS-1-foo' }, baseBranch: 'main', projectId: 'p1' }],
     );
     const evidence = await collectWorkEvidence('iss-1');
     expect(evidence).toEqual({
@@ -61,7 +70,7 @@ describe('collectWorkEvidence', () => {
         {
           sessionContext: { branch: 'main' },
           baseBranch: 'main',
-          releaseChain: [{ branch: 'main' }],
+          projectId: 'p1',
         },
       ],
     );
@@ -81,7 +90,7 @@ describe('collectWorkEvidence', () => {
         {
           sessionContext: { branch: 'ISS-9-x' },
           baseBranch: 'main',
-          releaseChain: [{ branch: 'main' }, { branch: 'master', from: 'merge-branch' }],
+          projectId: 'p1',
         },
       ],
     );
@@ -104,7 +113,7 @@ describe('collectWorkEvidence', () => {
           },
         },
       ],
-      [{ sessionContext: null, baseBranch: 'main', releaseChain: [] }],
+      [{ sessionContext: null, baseBranch: 'main', projectId: 'p1' }],
     );
     const evidence = await collectWorkEvidence('iss-1');
     expect(evidence.implementationJobCount).toBe(1);
@@ -112,7 +121,7 @@ describe('collectWorkEvidence', () => {
   });
 
   it('returns no evidence when nothing is recorded', async () => {
-    setup([], [], [{ sessionContext: null, baseBranch: 'main', releaseChain: [] }]);
+    setup([], [], [{ sessionContext: null, baseBranch: 'main', projectId: 'p1' }]);
     const evidence = await collectWorkEvidence('iss-1');
     expect(evidence).toEqual({
       implementationJobCount: 0,
@@ -131,7 +140,7 @@ describe('collectWorkEvidence', () => {
         {
           sessionContext: { worklog: { branch: 'ISS-1003', head: 'abc1234' } },
           baseBranch: 'main',
-          releaseChain: [],
+          projectId: 'p1',
         },
       ],
     );
@@ -148,15 +157,27 @@ describe('collectWorkEvidence', () => {
         {
           sessionContext: { worklog: { branch: 'main' } },
           baseBranch: 'main',
-          releaseChain: [{ branch: 'main' }, { branch: 'release', from: 'merge-branch' }],
+          projectId: 'p1',
         },
       ],
     );
     expect((await collectWorkEvidence('iss-1')).branch).toBeNull();
   });
 
+  it('refuses the branch production deploys from, which a promotion lands on and no issue owns', async () => {
+    readDocument.mockResolvedValueOnce({
+      revision: 1,
+      document: projectDoc({
+        promotions: [{ from: 'main', to: 'release', via: 'merge' }],
+        environments: { live: production({ deploysFrom: 'release' }) },
+      }),
+    });
+    setup([], [], [{ sessionContext: { branch: 'release' }, baseBranch: 'main', projectId: 'p1' }]);
+    expect((await collectWorkEvidence('iss-1')).branch).toBeNull();
+  });
+
   it('ignores a blank sessionContext.branch string', async () => {
-    setup([], [], [{ sessionContext: { branch: '' }, baseBranch: 'main', releaseChain: [] }]);
+    setup([], [], [{ sessionContext: { branch: '' }, baseBranch: 'main', projectId: 'p1' }]);
     const evidence = await collectWorkEvidence('iss-1');
     expect(evidence.branch).toBeNull();
   });
@@ -225,7 +246,7 @@ describe('a merged commit Forge holds on the row (ISS-1318)', () => {
           mergedAt: new Date('2026-09-30T10:00:00Z'),
           mergedCommitSha: SHA,
           baseBranch: 'main',
-          releaseChain: [],
+          projectId: 'p1',
         },
       ],
     );
@@ -245,7 +266,7 @@ describe('a merged commit Forge holds on the row (ISS-1318)', () => {
           mergedAt: null,
           mergedCommitSha: SHA,
           baseBranch: 'main',
-          releaseChain: [],
+          projectId: 'p1',
         },
       ],
     );
@@ -264,7 +285,7 @@ describe('a merged commit Forge holds on the row (ISS-1318)', () => {
           mergedAt: new Date(),
           mergedCommitSha: '  ',
           baseBranch: 'main',
-          releaseChain: [],
+          projectId: 'p1',
         },
       ],
     );
@@ -272,7 +293,7 @@ describe('a merged commit Forge holds on the row (ISS-1318)', () => {
   });
 
   it('names the commit route in the refusal, beside the branch and the handoff', async () => {
-    setup([], [], [], [{ sessionContext: null, baseBranch: 'main', releaseChain: [] }]);
+    setup([], [], [], [{ sessionContext: null, baseBranch: 'main', projectId: 'p1' }]);
     const detail = await findMissingWorkEvidence('iss-1');
     expect(detail).toContain('`mark_merged` carrying `data.commit`');
     expect(detail).toContain("checks against the project's repository");
@@ -300,7 +321,7 @@ describe('findMissingWorkEvidence', () => {
   });
 
   it('returns the detail string when no evidence exists', async () => {
-    setup([], [], [], [{ sessionContext: null, baseBranch: 'main', releaseChain: [] }]);
+    setup([], [], [], [{ sessionContext: null, baseBranch: 'main', projectId: 'p1' }]);
     const detail = await findMissingWorkEvidence('iss-1');
     expect(detail).toContain('no branch, commit or code handoff');
     expect(detail).toContain('sessionContext.worklog.branch');
@@ -311,7 +332,7 @@ describe('findMissingWorkEvidence', () => {
       [],
       [],
       [],
-      [{ sessionContext: { branch: 'ISS-1-foo' }, baseBranch: 'main', releaseChain: [] }],
+      [{ sessionContext: { branch: 'ISS-1-foo' }, baseBranch: 'main', projectId: 'p1' }],
     );
     expect(await findMissingWorkEvidence('iss-1')).toBeNull();
   });
@@ -345,13 +366,13 @@ describe('missingWorkEvidenceStrict', () => {
       [],
       [],
       [],
-      [{ sessionContext: { branch: 'ISS-1-foo' }, baseBranch: 'main', releaseChain: [] }],
+      [{ sessionContext: { branch: 'ISS-1-foo' }, baseBranch: 'main', projectId: 'p1' }],
     );
     expect(await missingWorkEvidenceStrict('iss-1')).toBeNull();
 
-    setup([], [], [], [{ sessionContext: null, baseBranch: 'main', releaseChain: [] }]);
+    setup([], [], [], [{ sessionContext: null, baseBranch: 'main', projectId: 'p1' }]);
     const strict = await missingWorkEvidenceStrict('iss-1');
-    setup([], [], [], [{ sessionContext: null, baseBranch: 'main', releaseChain: [] }]);
+    setup([], [], [], [{ sessionContext: null, baseBranch: 'main', projectId: 'p1' }]);
     const open = await findMissingWorkEvidence('iss-1');
     expect(strict).toBe(open);
   });
