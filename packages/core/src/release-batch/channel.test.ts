@@ -42,7 +42,6 @@ vi.mock('../integrations/store.js', async (importActual) => {
 const {
   classifyRollback,
   closeVerification,
-  finishVerification,
   releaseRunnerLabelOf,
   resolveReleaseChannels,
   projectRunnerDeviceIds,
@@ -259,30 +258,6 @@ describe('closeVerification (ISS-1321)', () => {
   it('names the store slug where the binding carries one', () => {
     const run = () => closeVerification([{ ...refused, label: 'eu' }] as unknown as Channels);
     expect(run).toThrow(/coolify \[eu\] b-c/);
-  });
-});
-
-describe('finishVerification (ISS-1321)', () => {
-  type Channels = Parameters<typeof finishVerification>[0];
-  const good = { verify: { probes: [{ url: 'https://a.test/v' }] }, verifySource: 'environment' };
-  const bad = { verify: { probes: [{ url: 'api/version' }] }, verifySource: 'environment' };
-
-  it('refuses a probe url that is not a url on any channel, whichever sorts first', () => {
-    for (const order of [
-      [good, bad],
-      [bad, good],
-    ]) {
-      expect(() => finishVerification(order as unknown as Channels)).toThrow(
-        /RELEASE_PROBES_UNREADABLE: api\/version/,
-      );
-    }
-  });
-
-  it('answers the readable probes where every url is one', () => {
-    expect(finishVerification([good] as unknown as Channels)).toEqual({
-      kind: 'probed',
-      cfg: good.verify,
-    });
   });
 });
 

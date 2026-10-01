@@ -109,7 +109,6 @@ function everyMessage(): Array<{ code: ReasonCode; message: string }> {
     {
       code: 'RELEASE_PROBES_UNREADABLE' as ReasonCode,
       message: releaseBlockerSentence('RELEASE_PROBES_UNREADABLE', {
-        urls: ['not a url'],
         bindings: ['coolify b-1'],
       }),
     },

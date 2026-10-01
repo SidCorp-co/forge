@@ -13,7 +13,7 @@ import {
   type ReleasePlan,
   type ReleaseRollback,
 } from './plan.js';
-import { invalidProbeUrls, type VerifyConfig } from './verify.js';
+import type { VerifyConfig } from './verify.js';
 
 export type {
   CloseVerification,
@@ -108,18 +108,9 @@ export function refusedVerifyBindings(channels: readonly ReleaseChannel[]): stri
  */
 export function closeVerification(channels: readonly ReleaseChannel[]): CloseVerification {
   const refused = refusedVerifyBindings(channels);
-  if (refused.length > 0) throw new ReleaseProbesUnreadableError([], refused);
+  if (refused.length > 0) throw new ReleaseProbesUnreadableError(refused);
   const cfg = channels.find((c) => c.verify !== null)?.verify ?? null;
   return cfg ? { kind: 'probed', cfg } : { kind: 'unverified' };
-}
-
-/** `closeVerification` for a finish, where a probe url no request can be made to is named rather
- *  than met as a thrown `new URL` mid-verify. */
-export function finishVerification(channels: readonly ReleaseChannel[]): CloseVerification {
-  const verification = closeVerification(channels);
-  const urls = channels.flatMap((c) => (c.verify ? invalidProbeUrls(c.verify) : []));
-  if (urls.length > 0) throw new ReleaseProbesUnreadableError(urls);
-  return verification;
 }
 
 /** The production binding's release runner label, or `null` where none is declared. */

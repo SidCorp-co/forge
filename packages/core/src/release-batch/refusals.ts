@@ -111,9 +111,7 @@ function carrying(err: unknown, code: ReleaseBlockerCode, message: string): HTTP
 }
 
 export function unreadableProbes(err: ReleaseProbesUnreadableError): HTTPException {
-  const details: Record<string, unknown> =
-    err.bindings.length > 0 ? { urls: err.urls, bindings: err.bindings } : { urls: err.urls };
-  return releaseBlockerHttp(err, 'RELEASE_PROBES_UNREADABLE', details);
+  return releaseBlockerHttp(err, 'RELEASE_PROBES_UNREADABLE', { bindings: err.bindings });
 }
 
 export function issuesUnnamed(projectId: string): HTTPException {

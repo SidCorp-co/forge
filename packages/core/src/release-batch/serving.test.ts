@@ -127,18 +127,6 @@ describe('readServingDeployment', () => {
     expect(readLiveState).not.toHaveBeenCalled();
   });
 
-  it('answers a named refusal, not a throw, when a probe url cannot be parsed', async () => {
-    collectReleaseBlockers.mockResolvedValue({
-      projectExists: true,
-      channels: [channel({ probes: [{ url: 'api/version' }] })],
-    });
-    readLiveState.mockRejectedValue(new TypeError('Invalid URL'));
-
-    const read = await readServingDeployment(PROJECT);
-
-    expect(read).toMatchObject({ ok: false, code: 'PROBE_URL_INVALID' });
-  });
-
   it('says the project is not there rather than reporting no probes', async () => {
     collectReleaseBlockers.mockResolvedValue({ projectExists: false, channels: null });
 

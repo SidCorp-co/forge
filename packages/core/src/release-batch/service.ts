@@ -39,7 +39,6 @@ import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
 import {
   type CloseVerification,
   closeVerification,
-  finishVerification,
   type ReleaseVerification,
   resolveReleaseChannels,
   resolveReleasePlan,
@@ -333,7 +332,7 @@ export async function assertFinishable(
   // opened by it.
   if (!run.releaseVersion) throw new ReleaseVersionMissingError(runId);
 
-  return finishVerification(await resolveReleaseChannels(run.projectId));
+  return closeVerification(await resolveReleaseChannels(run.projectId));
 }
 
 export async function finishReleaseBatch(

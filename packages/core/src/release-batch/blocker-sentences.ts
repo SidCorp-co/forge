@@ -116,7 +116,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   RELEASE_WORK_UNMERGED:
     '{n} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not.',
   RELEASE_PROBES_UNREADABLE:
-    'A declared verification probe holds a url that is not a url, so no request could ever be made to it and the release would fail while reading what production is serving. Correct the probe, including its scheme.',
+    'Every runtime probe the production environment declares identifies an artifact, so no reading can say which commit production serves and the release could never be proved. Declare a probe that identifies the source on the production environment.',
   RELEASE_POOL_EMPTY:
     'This project has no runner registered, so there is no box a release could run on. Pair a box to this project first.',
   NO_RUNNER_ONLINE:
@@ -354,14 +354,10 @@ const REFUSED_DECLARATION_SENTENCE =
   'declares runtime probes that all identify the artifact, and a release proves the commit it shipped, so no release can be proved there and none closes past it. Add a probe with `"identifies": "source"` to its `verification.runtime`, or remove the probes and the release is recorded unverified.';
 
 function unreadableSentence(remedy: string, details?: Record<string, unknown>): string {
-  const urls = Array.isArray(details?.urls) ? (details.urls as string[]) : [];
   const bindings = Array.isArray(details?.bindings) ? (details.bindings as string[]) : [];
-  const parts: string[] = [];
-  if (urls.length > 0) parts.push(`${urls.join(', ')} — ${remedy}`);
-  if (bindings.length > 0) {
-    parts.push(`Production ${bindings.join(', ')} ${REFUSED_DECLARATION_SENTENCE}`);
-  }
-  return parts.length > 0 ? parts.join(' ') : remedy;
+  return bindings.length > 0
+    ? `Production ${bindings.join(', ')} ${REFUSED_DECLARATION_SENTENCE}`
+    : remedy;
 }
 
 /** The sweep is cutting a release and leaving these behind, which stops nothing. */

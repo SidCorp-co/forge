@@ -36,7 +36,6 @@ import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { criteriaHold } from './criteria-hold.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 import { getActiveReleaseBatch } from './queries.js';
-import { invalidProbeUrls } from './verify.js';
 
 export * from './blocker-sentences.js';
 
@@ -254,19 +253,16 @@ async function heldFleetBlocker(projectId: string, out: ReleaseBlocker[]): Promi
 }
 
 /**
- * A probe url no request could be made to, or a `verify` Forge refused as a declaration.
+ * A production environment whose runtime probes all identify an artifact.
  *
  * Reported where the LIVE READ stands — last on a batch, after the roster on a
  * record — because that read is where this state fails. Any earlier and it
  * displaces a refusal the caller already gets for the same project.
  */
 function unreadableProbeBlockers(channels: ReleaseChannel[], out: ReleaseBlocker[]): void {
-  const urls = channels.flatMap((c) => (c.verify ? invalidProbeUrls(c.verify) : []));
   const bindings = refusedVerifyBindings(channels);
-  if (urls.length === 0 && bindings.length === 0) return;
-  out.push(
-    blocker('RELEASE_PROBES_UNREADABLE', bindings.length > 0 ? { urls, bindings } : { urls }),
-  );
+  if (bindings.length === 0) return;
+  out.push(blocker('RELEASE_PROBES_UNREADABLE', { bindings }));
 }
 
 /**

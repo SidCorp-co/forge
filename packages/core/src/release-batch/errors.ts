@@ -35,18 +35,14 @@ export class ReleasePoolEmptyError extends Error {
 }
 
 /**
- * A declared probe no request could be made to: a url that is not a url, or a production
- * environment whose every runtime probe identifies an artifact rather than the source. Either is a defect in what was declared, never an
- * absence, so it takes no project default and no release closes past it (ISS-1286, ISS-1321).
+ * A production environment whose every runtime probe identifies an artifact rather than the
+ * source: a defect in what was declared, never an absence, so it takes no project default and no
+ * release closes past it (ISS-1286, ISS-1321). A probe url that is not a url cannot reach here:
+ * the project-v1 schema refuses it on write and again when the stored document is read.
  */
 export class ReleaseProbesUnreadableError extends Error {
-  constructor(
-    public readonly urls: string[],
-    public readonly bindings: string[] = [],
-  ) {
-    super(
-      `RELEASE_PROBES_UNREADABLE: ${[...urls, ...bindings.map((b) => `binding ${b}`)].join(', ')}`,
-    );
+  constructor(public readonly bindings: string[]) {
+    super(`RELEASE_PROBES_UNREADABLE: ${bindings.map((b) => `binding ${b}`).join(', ')}`);
     this.name = 'ReleaseProbesUnreadableError';
   }
 }

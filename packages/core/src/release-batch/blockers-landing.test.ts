@@ -46,7 +46,12 @@ const ISSUE = '66666666-6666-4666-8666-666666666666';
 
 beforeEach(() => {
   selectLimit.mockResolvedValue([
-    { id: '11111111-1111-4111-8111-111111111111', repoPath: null, repoUrl: null, baseBranch: 'main' },
+    {
+      id: '11111111-1111-4111-8111-111111111111',
+      repoPath: null,
+      repoUrl: null,
+      baseBranch: 'main',
+    },
   ]);
 });
 

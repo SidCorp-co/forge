@@ -92,7 +92,6 @@ function errorFor(
       return new ReleaseWorkUnmergedError(ids);
     case 'RELEASE_PROBES_UNREADABLE':
       return new ReleaseProbesUnreadableError(
-        (first.details?.urls as string[] | undefined) ?? [],
         (first.details?.bindings as string[] | undefined) ?? [],
       );
     case 'RELEASE_POOL_EMPTY':

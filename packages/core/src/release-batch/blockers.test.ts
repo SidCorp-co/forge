@@ -267,7 +267,7 @@ describe('collectReleaseBlockers', () => {
       (b) => b.code === 'RELEASE_PROBES_UNREADABLE',
     );
 
-    expect(bad?.details).toEqual({ urls: [], bindings: [REFUSED_NAME] });
+    expect(bad?.details).toEqual({ bindings: [REFUSED_NAME] });
   });
 
   it('answers with the check it could not run, and still runs the checks after it', async () => {

@@ -2,7 +2,7 @@ import { collectReleaseBlockers } from './blockers.js';
 import { type CloseVerification, closeVerification } from './channel.js';
 import { ReleaseProbesUnreadableError } from './errors.js';
 import type { VerifySource } from './plan.js';
-import { type LiveState, readLiveState } from './verify.js';
+import { readLiveState } from './verify.js';
 
 export interface ServingDeployment {
   /** False where production declares no source probe: nothing was read, and nothing is claimed. */
@@ -21,8 +21,7 @@ export interface ServingDeployment {
 export type ServingRead =
   | { ok: true; deployment: ServingDeployment }
   | { ok: false; code: 'NO_PROJECT' }
-  | { ok: false; code: 'PROBES_UNREADABLE'; detail: string }
-  | { ok: false; code: 'PROBE_URL_INVALID'; detail: string };
+  | { ok: false; code: 'PROBES_UNREADABLE'; detail: string };
 
 // cm:guard the identity is DERIVED on every call and never stored — a commit copied onto a row is
 // wrong the moment the next deploy lands, measured on forge-dev when prod moved ae8cdcbb0 -> 592637df9
@@ -64,16 +63,7 @@ export async function readServingDeployment(projectId: string): Promise<ServingR
 
   const { cfg } = verification;
   const channel = channels.find((c) => c.verify === cfg);
-  let state: LiveState;
-  try {
-    state = await readLiveState(cfg);
-  } catch (err) {
-    return {
-      ok: false,
-      code: 'PROBE_URL_INVALID',
-      detail: `a declared probe url could not be read as a url: ${err instanceof Error ? err.message : String(err)}`,
-    };
-  }
+  const state = await readLiveState(cfg);
 
   return {
     ok: true,
