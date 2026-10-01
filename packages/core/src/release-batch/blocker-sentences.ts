@@ -10,6 +10,7 @@ import { claimConflictSentence, readClaimConflictDetails } from './claim-conflic
 import type { ReleaseDeclaration } from './gate.js';
 import type { ReleaseChannel } from './plan.js';
 import type { ServingReading } from './serving-reading.js';
+import type { Weighing } from './weighing.js';
 
 /** The most issues one release may carry; `resolveRoster` holds every door to it. */
 export const RELEASE_ROSTER_LIMIT = 50;
@@ -79,6 +80,8 @@ export interface CollectReleaseBlockersOptions {
   /** Read by the CALLER — this enumerator reaches no network; without one the criteria check
    *  reports itself unevaluated rather than guess (ISS-1286). */
   serving?: ServingReading | undefined;
+  /** Read beside `serving` (ISS-1368), or why it failed; absent, equality alone weighs a verdict. */
+  weighing?: Weighing | string | undefined;
 }
 
 /**

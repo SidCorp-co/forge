@@ -49,12 +49,29 @@ vi.mock('../issues/release-record-required.js', async (importActual) => {
   return { ...actual, issuesMissingReleaseRecord: () => missingNotes() };
 });
 
+// On, so the criteria check runs and weighs what it is handed rather than returning first.
+vi.mock('../pipeline/auto-prod-deploy.js', () => ({ projectAutoProdDeploy: async () => true }));
+
 const { collectReleaseBlockers } = await import('./blockers.js');
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();
 
 const PROJECT_ID = '55555555-5555-4555-8555-555555555555';
 const ISSUE_A = '66666666-6666-4666-8666-666666666666';
+
+/** A reading and a weighing as the readiness door hands them in (ISS-1368): read already. */
+const SERVING = {
+  kind: 'serving' as const,
+  served: [{ commit: 'a'.repeat(40), where: 'https://example.test/api/health' }],
+  unread: [],
+  readAt: '2026-10-01T10:00:00.000Z',
+};
+const WEIGHING = {
+  read: true,
+  runtimes: [{ name: 'runner', paths: ['packages/runner'], serving: SERVING }],
+  changed: new Map([[ISSUE_A, { kind: 'read' as const, paths: ['packages/runner/a.rs'] }]]),
+  carriage: new Map([[`${'b'.repeat(40)}\u0000${'a'.repeat(40)}`, { kind: 'descends' as const }]]),
+};
 
 const PROBES = { probes: [{ url: 'https://example.test/api/health', commitPath: 'commit' }] };
 const DECLARED = {
@@ -155,6 +172,8 @@ describe('collectReleaseBlockers — no unreachable probe can withhold the answe
         plant();
         await collectReleaseBlockers(PROJECT_ID);
         await collectReleaseBlockers(PROJECT_ID, { door: 'record', issueIds: [ISSUE_A] });
+        await collectReleaseBlockers(PROJECT_ID, { serving: SERVING, weighing: WEIGHING });
+        await collectReleaseBlockers(PROJECT_ID, { serving: SERVING, weighing: 'HTTP 502' });
       } finally {
         globalThis.fetch = realFetch;
         Socket.prototype.connect = realConnect;

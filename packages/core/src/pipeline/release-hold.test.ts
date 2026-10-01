@@ -39,6 +39,7 @@ const REPORT = {
   issueId: 'iss-1',
   broken: [],
   serving: live(),
+  runtimes: [],
   uncorroborated: [],
   unearned: [
     {

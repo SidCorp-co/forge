@@ -14,6 +14,7 @@ import {
 } from './blockers.js';
 import { releaseRunnerLabelOf } from './channel.js';
 import type { ReleaseRollback, VerifySource } from './plan.js';
+import { readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
 
 export type ReleaseGapKey = string;
@@ -71,7 +72,12 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
   // ONE pass: the enumerator guards these reads and a second copy would throw away its report
   // (ISS-1127). The reading is HERE because the enumerator reaches no network (ISS-1286).
   const serving = await readServingNow(projectId).catch(() => undefined);
-  const report = await collectReleaseBlockers(projectId, { serving });
+  const weighing = serving
+    ? await readWeighingNow(projectId, serving).catch((err: unknown) =>
+        err instanceof Error ? err.message : String(err),
+      )
+    : undefined;
+  const report = await collectReleaseBlockers(projectId, { serving, weighing });
   if (!report.projectExists) return null;
   const decl = report.declaration;
   const channels = report.channels ?? [];

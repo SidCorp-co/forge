@@ -11,6 +11,7 @@ import {
   uncorroboratedWarningSentence,
 } from './blocker-sentences.js';
 import { type ServingReading, whyUncorroborated } from './serving-reading.js';
+import { UNWEIGHED, type Weighing } from './weighing.js';
 
 const NO_READING =
   'no reading of what this project is serving was passed in, and this enumerator reaches no ' +
@@ -52,6 +53,7 @@ export async function criteriaHold(
   out: ReleaseBlocker[],
   warnings: ReleaseWarning[],
   serving: ServingReading | undefined,
+  weighing: Weighing | string = UNWEIGHED,
 ): Promise<void> {
   // The roster limit bounds the per-issue comment reads below; above it
   // `RELEASE_ROSTER_OVERSIZE` is already the reason standing.
@@ -67,9 +69,15 @@ export async function criteriaHold(
     out.push(blocker('RELEASE_CHECK_UNEVALUATED', { check: 'criteria', detail: NO_READING }));
     return;
   }
+  // The caller's weighing read failed, and saying so beats weighing by equality as if it had not.
+  if (typeof weighing === 'string') {
+    const detail = `the weighing beside the serving reading could not be read: ${weighing}`;
+    out.push(blocker('RELEASE_CHECK_UNEVALUATED', { check: 'criteria', detail }));
+    return;
+  }
   const reports = await evaluate(
     'criteria',
-    async () => await unearnedCriteriaReports(waiting, serving),
+    async () => await unearnedCriteriaReports(waiting, serving, weighing),
     out,
   );
   if (!reports) return;

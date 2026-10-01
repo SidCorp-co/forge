@@ -9,21 +9,25 @@ import { commentAttachments, comments, issueAttachments, issues } from '../db/sc
 import { parseForgeRecord } from '../messaging/forge-record.js';
 import { criterionBlocksIn, longestSpelling } from '../messaging/verdict-identity.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
+import { type RuntimeReading, UNWEIGHED, type Weighing } from '../release-batch/weighing.js';
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
 import {
+  type OwedRuntimes,
+  owedRuntimes,
+  type WeighedVerdict,
+  weighVerdict,
+} from './runtime-standing.js';
+import {
+  EARNED_STANDINGS,
   type IssueIdentities,
   issueIdentities,
   standingSentence,
   type VerdictIdentity,
   type VerdictStanding,
-  verdictStanding,
 } from './verdict-standing.js';
 
 // `short` is the CLI's own "met short of its wording, judged not to block" — a real judgement.
 const EARNED_VERDICTS: ReadonlySet<string> = new Set(['pass', 'short']);
-
-// A verdict nothing could re-read is weaker evidence, not a refusal, so it earns (ISS-1286).
-const EARNED_STANDINGS: ReadonlySet<VerdictStanding> = new Set(['stands', 'uncorroborated']);
 
 /** The numbered top-level lines of an acceptance-criteria field, in order written. */
 export function acceptanceCriteriaNumbers(text: string | null | undefined): number[] {
@@ -98,6 +102,8 @@ export interface IssueCriteriaReport {
   readonly broken: readonly BrokenCitations[];
   /** What the project's declared probes answered when these verdicts were weighed. */
   readonly serving: ServingReading;
+  /** Each release runtime the project declares beside its deployment, as read then (ISS-1368). */
+  readonly runtimes: readonly RuntimeReading[];
   /** Criteria earned on a runtime nothing could re-read: earned, and weaker than a checked one. */
   readonly uncorroborated: readonly number[];
 }
@@ -121,16 +127,17 @@ const NEVER_JUDGED = 'no verdict was recorded for it';
 /** Every reason this criterion is not shown earned, in the order they are read. */
 function reasonsAgainst(
   pair: CriterionVerdict,
-  standing: VerdictStanding,
-  serving: ServingReading,
+  weighed: WeighedVerdict,
   identities: IssueIdentities,
   unresolved: readonly CitationReport[],
 ): string[] {
   const out: string[] = [];
   if (!EARNED_VERDICTS.has(pair.verdict)) {
     out.push(`its verdict is \`${pair.verdict}\`, which is not earned`);
-  } else if (!EARNED_STANDINGS.has(standing)) {
-    out.push(standingSentence(standing, pair.at, serving, identities));
+  } else if (!EARNED_STANDINGS.has(weighed.standing)) {
+    const { standing, serving, runtime, beside } = weighed;
+    const said = standingSentence(standing, pair.at, serving, identities, runtime);
+    out.push(beside.length === 0 ? said : `${said} — ${beside.join('; ')}`);
   }
   if (unresolved.length > 0) out.push(citationSentence(unresolved));
   return out;
@@ -166,38 +173,49 @@ function spokenAt(
   };
 }
 
+interface Weighed {
+  readonly serving: ServingReading;
+  readonly owed: OwedRuntimes;
+  readonly weighing: Weighing;
+}
+
 function findingsFor(
   numbers: readonly number[],
   latest: ReadonlyMap<number, CriterionVerdict>,
-  serving: ServingReading,
+  weigh: Weighed,
   identities: IssueIdentities,
   held: ReadonlySet<string>,
 ): CriteriaFindings {
   const unearned: UnearnedCriterion[] = [];
   const broken: BrokenCitations[] = [];
   const uncorroborated: number[] = [];
-  const standings = new Map<number, VerdictStanding>();
+  const weighed = new Map<number, WeighedVerdict>();
   for (const criterion of numbers) {
     const pair = latest.get(criterion);
-    if (pair) standings.set(criterion, verdictStanding(pair.at, serving, identities));
+    if (!pair) continue;
+    weighed.set(
+      criterion,
+      weighVerdict(pair.at, weigh.serving, identities, weigh.owed, weigh.weighing),
+    );
   }
   const spoken = spokenAt(
-    [...standings].map(([criterion, standing]) => ({
+    [...weighed].map(([criterion, w]) => ({
       pair: latest.get(criterion) as CriterionVerdict,
-      standing,
+      standing: w.standing,
     })),
   );
   for (const criterion of numbers) {
     const pair = latest.get(criterion);
-    const standing = standings.get(criterion);
-    if (!pair || !standing) {
+    const w = weighed.get(criterion);
+    if (!pair || !w) {
       unearned.push({ criterion, verdict: null, standing: null, why: NEVER_JUDGED });
       continue;
     }
+    const { standing } = w;
     const unresolved = unresolvedCitations(pair.cited, held);
     if (unresolved.length > 0) broken.push({ criterion, unresolved });
     const said = { ...pair, at: spoken(pair, standing) };
-    const reasons = reasonsAgainst(said, standing, serving, identities, unresolved);
+    const reasons = reasonsAgainst(said, w, identities, unresolved);
     if (standing === 'uncorroborated' && reasons.length === 0) uncorroborated.push(criterion);
     if (reasons.length === 0) continue;
     unearned.push({ criterion, verdict: pair.verdict, standing, why: reasons.join('; and ') });
@@ -221,21 +239,28 @@ function byMerge(a: CriteriaRow, b: CriteriaRow): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-async function reportFor(row: CriteriaRow, serving: ServingReading): Promise<IssueCriteriaReport> {
+async function reportFor(
+  row: CriteriaRow,
+  serving: ServingReading,
+  weighing: Weighing,
+): Promise<IssueCriteriaReport> {
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
   const identities = issueIdentities(row);
   const numbers = acceptanceCriteriaNumbers(row.acceptanceCriteria);
+  const { runtimes } = weighing;
   if (numbers.length === 0) {
-    return { issueId: row.id, unearned: [], broken: [], serving, uncorroborated: [] };
+    return { issueId: row.id, unearned: [], broken: [], serving, runtimes, uncorroborated: [] };
   }
   const latest = await latestCriterionVerdicts(row.id);
   const held = await heldAttachmentNames(row.id);
-  const found = findingsFor(numbers, latest, serving, identities, held);
+  const owed = owedRuntimes(row.id, weighing);
+  const found = findingsFor(numbers, latest, { serving, owed, weighing }, identities, held);
   return {
     issueId: row.id,
     unearned: found.unearned,
     broken: found.broken,
     serving,
+    runtimes,
     uncorroborated: found.uncorroborated,
   };
 }
@@ -246,10 +271,14 @@ async function reportFor(row: CriteriaRow, serving: ServingReading): Promise<Iss
  * `serving` is ONE reading the caller took, shared by every issue here: one project, one answer
  * about it, one moment. It is required rather than defaulted, because a missing reading earns every
  * runtime verdict exactly as a project with no probe does, and the two must not look alike.
+ *
+ * `weighing` (ISS-1368) is read by the caller beside it. It may be left out, because without it a
+ * verdict is weighed by equality alone against the deployment, which can hold one and never earn one.
  */
 export async function unearnedCriteriaReports(
   issueIds: string[],
   serving: ServingReading,
+  weighing: Weighing = UNWEIGHED,
 ): Promise<IssueCriteriaReport[]> {
   if (issueIds.length === 0) return [];
   const rows = (await db
@@ -264,7 +293,7 @@ export async function unearnedCriteriaReports(
     .where(inArray(issues.id, issueIds))) as CriteriaRow[];
   // Oldest merge first, then id, as the sweep reads the gate: every list of them agrees (ISS-1346).
   const out: IssueCriteriaReport[] = [];
-  for (const row of [...rows].sort(byMerge)) out.push(await reportFor(row, serving));
+  for (const row of [...rows].sort(byMerge)) out.push(await reportFor(row, serving, weighing));
   return out;
 }
 
@@ -272,7 +301,8 @@ export async function unearnedCriteriaReports(
 export async function issuesWithUnearnedCriteria(
   issueIds: string[],
   serving: ServingReading,
+  weighing: Weighing = UNWEIGHED,
 ): Promise<string[]> {
-  const reports = await unearnedCriteriaReports(issueIds, serving);
+  const reports = await unearnedCriteriaReports(issueIds, serving, weighing);
   return reports.filter((r) => r.unearned.length > 0).map((r) => r.issueId);
 }
