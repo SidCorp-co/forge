@@ -3,12 +3,16 @@ import { extractIssueBranchOverride, resolveIssueBranches } from '../../branches
 import {
   PIPELINE_CONFIG_DEFAULTS,
   pipelineConfigPatchSchema,
-  pipelineConfigSchema,
 } from '../../pipeline/pipeline-config-schema.js';
 import {
   PipelineConfigError,
   updatePipelineConfig,
 } from '../../pipeline/pipeline-config-service.js';
+import {
+  PIPELINE_CONFIG_UNREADABLE,
+  PipelineConfigUnreadable,
+  readStoredPipelineConfig,
+} from '../../pipeline/stored-pipeline-config.js';
 import {
   mergePluginDesignations,
   pluginDesignationsPatchSchema,
@@ -62,13 +66,17 @@ async function readProjectConfig(projectId: string) {
  * What `update` compares a base against, so `get` and `update` are talking about the same
  * document: the stored keys with this codebase's defaults filled in for the ones it has none of.
  */
-function effectivePipelineConfig(ac: Record<string, unknown>): Record<string, unknown> {
-  const stored = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
-  const parsed = pipelineConfigSchema.safeParse(stored);
-  return {
-    ...PIPELINE_CONFIG_DEFAULTS,
-    ...(parsed.success ? parsed.data : stored),
-  } as Record<string, unknown>;
+function effectivePipelineConfig(
+  projectId: string,
+  ac: Record<string, unknown>,
+): Record<string, unknown> {
+  try {
+    const stored = readStoredPipelineConfig(projectId, ac.pipelineConfig);
+    return { ...PIPELINE_CONFIG_DEFAULTS, ...stored } as Record<string, unknown>;
+  } catch (err) {
+    if (!(err instanceof PipelineConfigUnreadable)) throw err;
+    throw new Error(`BAD_REQUEST: ${PIPELINE_CONFIG_UNREADABLE}: ${err.message}`);
+  }
 }
 
 function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) {
@@ -85,7 +93,7 @@ function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) 
       releaseChain: row.releaseChain,
       ...retiredReleaseAxes(row.releaseChain),
       categories: (ac.categories as string[] | undefined) ?? [],
-      pipelineConfig: effectivePipelineConfig(ac),
+      pipelineConfig: effectivePipelineConfig(row.id, ac),
       plugins: readPluginDesignations(ac),
     },
   };
@@ -136,6 +144,9 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
             base: input.pipelineConfigBase,
           });
         } catch (err) {
+          if (err instanceof PipelineConfigUnreadable) {
+            throw new Error(`BAD_REQUEST: ${PIPELINE_CONFIG_UNREADABLE}: ${err.message}`);
+          }
           if (err instanceof PipelineConfigError) {
             if (err.code === 'PROJECT_NOT_FOUND') {
               throw new Error('NOT_FOUND: project not found');

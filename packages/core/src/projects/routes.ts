@@ -33,8 +33,8 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
-  pipelineConfigSchema,
 } from '../pipeline/pipeline-config-schema.js';
+import { readStoredPipelineConfig } from '../pipeline/stored-pipeline-config.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
 import { PERSONA_STYLE_MAX, SYSTEM_PROMPT_MAX } from './agent-config-schema.js';
@@ -517,7 +517,7 @@ projectRoutes.get(
     // Parse through schema — drops legacy keys (clarified, pipelineSteps,
     // etc.) so the response is the typed surface the FE expects. Defaults
     // fill blanks.
-    const parsed = pipelineConfigSchema.parse(stored);
+    const parsed = readStoredPipelineConfig(id, stored);
     const pipelineConfig: PipelineConfig = {
       ...PIPELINE_CONFIG_DEFAULTS,
       ...parsed,

@@ -21,6 +21,7 @@ import {
 } from './autonomous-mode.js';
 import { readPipelineConfig } from './autonomous-project.js';
 import type { HooksBus } from './hooks.js';
+import { PipelineConfigUnreadable } from './stored-pipeline-config.js';
 
 async function resumableIssue(issueId: string) {
   const [issue] = await db
@@ -222,7 +223,12 @@ export async function resumeLapsedAnswers(
   for (const { inbox, issueId, authorId } of rows) {
     const { outcome } = await resolveSessionSend(inbox, now.getTime());
     if (outcome !== 'gone' || !issueId || !authorId) continue;
-    const issue = await resumableIssue(issueId);
+    const issue = await resumableIssue(issueId).catch((err: unknown) => {
+      // One project's refused config is that project's to fix, never a stop for every other row.
+      if (!(err instanceof PipelineConfigUnreadable)) throw err;
+      logger.error({ issueId, refused: err.refused }, err.message);
+      return null;
+    });
     if (!issue) continue;
     if (!(await resumeUnasked(issue, authorId))) continue;
     resumed += 1;

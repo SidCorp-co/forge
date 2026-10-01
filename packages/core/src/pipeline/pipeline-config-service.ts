@@ -18,6 +18,7 @@ import {
   pipelineConfigSchema,
 } from './pipeline-config-schema.js';
 import type { StagesConfig } from './state-machine.js';
+import { PipelineConfigUnreadable, readStoredPipelineConfig } from './stored-pipeline-config.js';
 
 /**
  * Typed errors thrown by {@link updatePipelineConfig}. REST and MCP callers
@@ -171,6 +172,16 @@ function mergeTargetOf(stored: Record<string, unknown>): Record<string, unknown>
   return { ...PIPELINE_CONFIG_DEFAULTS, ...stored } as Record<string, unknown>;
 }
 
+/** The stored document after the write, refused by name where a patch left a key refused. */
+function readBack(projectId: string, stored: unknown, written: boolean): PipelineConfig {
+  try {
+    return readStoredPipelineConfig(projectId, stored);
+  } catch (err) {
+    if (!(err instanceof PipelineConfigUnreadable)) throw err;
+    throw new PipelineConfigUnreadable(projectId, err.refused, written);
+  }
+}
+
 /**
  * Apply a pipeline-config patch to the project's `agentConfig` jsonb document,
  * under the compare-and-swap the caller's `base` declares. Authorization is the
@@ -236,8 +247,10 @@ export async function updatePipelineConfig(
   if (!row) throw new PipelineConfigError('PROJECT_NOT_FOUND', 'project not found');
   const ac = (row.agentConfig ?? {}) as Record<string, unknown>;
   const stored = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
-  const parsed = pipelineConfigSchema.parse(stored);
-  const pipelineConfig: PipelineConfig = { ...PIPELINE_CONFIG_DEFAULTS, ...parsed };
+  const pipelineConfig: PipelineConfig = {
+    ...PIPELINE_CONFIG_DEFAULTS,
+    ...readBack(projectId, stored, Object.keys(pipelinePatch).length > 0),
+  };
 
   const warnings: string[] = [];
 

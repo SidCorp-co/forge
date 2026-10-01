@@ -89,9 +89,13 @@ describe('resolveDeclaredEntryCriteria', () => {
     expect(await resolveDeclaredEntryCriteria(PROJECT_ID, 'open')).toEqual([]);
   });
 
-  it('declares nothing when the stored config did not parse — `readPipelineConfig` answers null there, and null declares nothing', async () => {
-    readPipelineConfigMock.mockResolvedValue(null);
-    expect(await resolveDeclaredEntryCriteria(PROJECT_ID, 'closed')).toEqual([]);
+  it('refuses, naming it, a stored config the schema refuses, rather than declaring nothing (ISS-1368)', async () => {
+    const { PipelineConfigUnreadable } = await import('../pipeline/stored-pipeline-config.js');
+    const refused = [{ path: 'pipelineConfig.enabled', message: 'bad', key: 'enabled', stored: 1 }];
+    readPipelineConfigMock.mockRejectedValue(new PipelineConfigUnreadable(PROJECT_ID, refused));
+    await expect(resolveDeclaredEntryCriteria(PROJECT_ID, 'closed')).rejects.toThrow(
+      'pipelineConfig.enabled: bad',
+    );
   });
 
   it('declares nothing when the config read THROWS, so a broken read cannot freeze every status write on the project', async () => {

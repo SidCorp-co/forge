@@ -22,12 +22,16 @@ import {
 import { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } from '../issues/dependency-effects.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { logger } from '../logger.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
   isAutonomous,
   isEntryGateClosed,
 } from '../pipeline/autonomous-mode.js';
-import { pipelineConfigSchema } from '../pipeline/pipeline-config-schema.js';
+import {
+  PipelineConfigUnreadable,
+  readStoredPipelineConfig,
+} from '../pipeline/stored-pipeline-config.js';
 import type { PoolRelation } from './pool.js';
 
 const DEFAULT_ADMISSIBLE_LIMIT = 20;
@@ -63,11 +67,12 @@ export type Admission = {
   entryOnRelease: boolean;
 };
 
+/** A project of this device whose stored pipelineConfig the schema refuses, said by name. */
+export type RefusedAdmission = { projectId: string; code: string; message: string };
+
 function admissionOf(projectId: string, agentConfig: unknown): Admission | null {
   const ac = (agentConfig as { pipelineConfig?: unknown } | null) ?? {};
-  const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
-  if (!parsed.success) return null;
-  const cfg = parsed.data;
+  const cfg = readStoredPipelineConfig(projectId, ac.pipelineConfig);
   const statuses = new Set<string>(cfg.poolBacklog?.statuses ?? []);
   const entryOpen = isAutonomous(cfg) && !isEntryGateClosed(cfg);
   if (entryOpen) statuses.add(AUTONOMOUS_ENTRY_STATUS);
@@ -89,6 +94,8 @@ function admissionOf(projectId: string, agentConfig: unknown): Admission | null 
 export async function readAdmissions(args: {
   deviceId: string;
   projectId?: string | undefined;
+  /** Where a refused project is named; one refused project never empties the others' read. */
+  refused?: RefusedAdmission[] | undefined;
 }): Promise<Admission[]> {
   const projectFilter = args.projectId ? sql`AND p.id = ${args.projectId}` : sql``;
   const rows = (await db.execute(sql`
@@ -100,9 +107,23 @@ export async function readAdmissions(args: {
       ${projectFilter}
   `)) as unknown as Array<Record<string, unknown>>;
 
-  return rows
-    .map((row) => admissionOf(String(row.id), row.agent_config))
-    .filter((a): a is Admission => a !== null);
+  const out: Admission[] = [];
+  for (const row of rows) {
+    try {
+      const admission = admissionOf(String(row.id), row.agent_config);
+      if (admission) out.push(admission);
+    } catch (err) {
+      // A read naming this project asked about it alone, so the refusal is the whole answer.
+      if (!(err instanceof PipelineConfigUnreadable) || args.projectId) throw err;
+      logger.error({ projectId: err.projectId, refused: err.refused }, err.message);
+      args.refused?.push({
+        projectId: err.projectId,
+        code: 'PIPELINE_CONFIG_UNREADABLE',
+        message: err.message,
+      });
+    }
+  }
+  return out;
 }
 
 const RELATIONS = sql`
@@ -132,6 +153,7 @@ const RELATIONS = sql`
 export async function readAdmissibleIssues(args: {
   deviceId: string;
   projectId?: string | undefined;
+  refused?: RefusedAdmission[] | undefined;
 }): Promise<AdmissibleIssue[]> {
   const admissions = await readAdmissions(args);
   if (admissions.length === 0) return [];
