@@ -109,7 +109,7 @@ describe('redispatchConversationAgentTurn', () => {
       deviceId: 'device-1',
       title: 'Chat: How does X work?',
       failureReason: 'no_client_ack',
-      messages: [{ role: 'user', content: 'the built agent-chat prompt' }],
+      messages: [{ type: 'user', content: 'the built agent-chat prompt' }],
       metadata: {
         conversationAgent: {
           venue: VENUE,
@@ -239,7 +239,7 @@ describe('redispatchConversationAgentTurn \u00b7 the re-dispatch itself', () => 
       deviceId: 'device-1',
       title: 'Chat: How does X work?',
       failureReason: 'no_client_ack',
-      messages: [{ role: 'user', content: 'the built agent-chat prompt' }],
+      messages: [{ type: 'user', content: 'the built agent-chat prompt' }],
       metadata: {
         conversationAgent: {
           venue: VENUE,

@@ -47,7 +47,8 @@ export type TurnAuthorityRefusalCode =
   | 'TURN_TOKEN_NOT_LIVE'
   | 'TURN_TOKEN_FENCED'
   | 'TURN_GRANT_EMPTY'
-  | 'TURN_DEVICE_NO_ROLE';
+  | 'TURN_DEVICE_NO_ROLE'
+  | 'TURN_DEVICE_OUTRANKED';
 
 /** Why a turn will not act as the person, in words the room is shown. */
 export interface TurnAuthorityRefusal {

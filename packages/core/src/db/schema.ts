@@ -1761,6 +1761,11 @@ export const schedules = pgTable(
     appliedMessageVersions: jsonb('applied_message_versions'),
     kind: text('kind', { enum: scheduleKinds }).notNull().default('prompt'),
     script: text('script'),
+    /**
+     * Who a cron firing acts as (ISS-30): whoever last saved the schedule. Null once that account
+     * is gone, which refuses the run by name until an admin saves it again.
+     */
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

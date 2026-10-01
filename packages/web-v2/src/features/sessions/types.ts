@@ -215,6 +215,7 @@ export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
   residency_expired: "Session window expired",
   park_unanswered: "Question went unanswered",
   audit_ran_blind: "Ran without evidence",
+  session_authority_refused: "Refused: could not act as its owner",
   orphan_under_terminal_run: "Cleaned up (run ended)",
   pipeline_cancelled: "Pipeline cancelled",
   pipeline_completed: "Cleaned up (run finished)",
@@ -265,6 +266,8 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   residency_expired: "The session outlived its window — Rerun to start fresh.",
   park_unanswered: "Nobody answered the agent's question before its deadline — the work stopped and its branch was kept.",
   audit_ran_blind: "The scheduled run called no tools, so it produced no evidence — Rerun.",
+  session_authority_refused:
+    "The run never started: the person it acts as lost their role, is gone, or no free runner can carry their token — the detail names which.",
   unclassified: "The cause wasn't recorded — open the run timeline to see why.",
   queue_timeout: "No runner picked it up — check the fleet strip for an online runner.",
   heartbeat_timeout: "The runner died mid-run — Retry to re-dispatch.",

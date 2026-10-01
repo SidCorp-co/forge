@@ -32,8 +32,8 @@ import { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
 import { scheduleAck } from './conversation-agent-ack.js';
 import {
   mintSessionCredential,
-  noConversationAgentDeviceReason,
-  pickConversationAgentDevice,
+  noTurnCredentialDeviceReason,
+  pickTurnCredentialDevice,
   readSessionAsker,
   resolveSessionAuthority,
   type SessionAsker,
@@ -296,8 +296,8 @@ export async function conversationAgentDeviceAvailable(projectId: string): Promi
 export async function conversationAgentUnavailableReason(
   projectId: string,
 ): Promise<string | null> {
-  if (await pickConversationAgentDevice(projectId)) return null;
-  return (await noConversationAgentDeviceReason(projectId)) === 'runner-outdated'
+  if (await pickTurnCredentialDevice(projectId)) return null;
+  return (await noTurnCredentialDeviceReason(projectId)) === 'runner-outdated'
     ? 'the runners paired to this project are too old to act as the person asking; update forge-runner'
     : 'this project has no runner paired';
 }
@@ -352,9 +352,9 @@ export async function startConversationAgentTurn(
     return { started: false, reason: 'deduped' };
   }
 
-  const deviceId = await pickConversationAgentDevice(args.venue.projectId);
+  const deviceId = await pickTurnCredentialDevice(args.venue.projectId);
   if (!deviceId) {
-    return { started: false, reason: await noConversationAgentDeviceReason(args.venue.projectId) };
+    return { started: false, reason: await noTurnCredentialDeviceReason(args.venue.projectId) };
   }
   const asker: SessionAsker = { userId: args.asker.userId, viaTokenId: args.asker.viaTokenId };
   const authorised = await resolveSessionAuthority({

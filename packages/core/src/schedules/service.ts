@@ -1,5 +1,7 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { refusalError } from '../agent-sessions/interactive-credential.js';
+import type { SessionAsker } from '../agent-sessions/session-credential.js';
 import { db } from '../db/client.js';
 import {
   agentSessions,
@@ -184,6 +186,7 @@ export async function listScheduleRuns(id: string, actorUserId: string, limit?: 
         trigger: r.trigger,
         title: null,
         failureReason: r.error,
+        failureDetail: null,
         startedAt: toIso(r.startedAt),
         finishedAt: toIso(r.finishedAt),
         durationSeconds,
@@ -203,6 +206,7 @@ export async function listScheduleRuns(id: string, actorUserId: string, limit?: 
       status: agentSessions.status,
       title: agentSessions.title,
       failureReason: agentSessions.failureReason,
+      failureDetail: agentSessions.failureDetail,
       sessionStartedAt: agentSessions.startedAt,
       createdAt: agentSessions.createdAt,
       tick: sql<boolean>`(${agentSessions.metadata} ->> 'tick') = 'true'`,
@@ -235,6 +239,7 @@ export async function listScheduleRuns(id: string, actorUserId: string, limit?: 
       trigger: r.tick ? ('scheduled' as const) : ('manual' as const),
       title: r.title,
       failureReason: r.failureReason,
+      failureDetail: r.failureDetail,
       startedAt: toIso(start),
       finishedAt: toIso(end),
       durationSeconds,
@@ -315,6 +320,7 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
       templateKey: input.templateKey ?? null,
       params: (input.params as never) ?? null,
       mode: mode ?? null,
+      ownerId: actorUserId,
     })
     .returning();
   if (!inserted) throw new Error('schedules: insert returned no row');
@@ -369,7 +375,7 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
     throw badRequest('prompt is required when kind is "prompt"');
   }
 
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  const updates: Record<string, unknown> = { updatedAt: new Date(), ownerId: actorUserId };
   if (patch.name !== undefined) updates.name = patch.name;
   if (patch.prompt !== undefined) updates.prompt = patch.prompt;
   if (patch.kind !== undefined) updates.kind = patch.kind;
@@ -419,10 +425,12 @@ export async function deleteSchedule(id: string, actorUserId: string): Promise<v
   await db.delete(schedules).where(eq(schedules.id, id));
 }
 
+/** A manual run acts as the person who pressed it, bounded by the token they pressed it with. */
 export async function runScheduleNow(
   id: string,
-  actorUserId: string,
+  actor: SessionAsker,
 ): Promise<{ sessionId: string; message: string }> {
+  const actorUserId = actor.userId;
   const [schedule] = await db.select().from(schedules).where(eq(schedules.id, id)).limit(1);
   if (!schedule) throw notFound('schedule not found');
 
@@ -452,8 +460,9 @@ export async function runScheduleNow(
           (schedule.appliedMessageVersions as Record<string, number> | null) ?? null,
         kind: schedule.kind,
         script: schedule.script ?? null,
+        ownerId: schedule.ownerId,
       },
-      actorUserId,
+      actor,
       ...(resolvedTarget ? { resolvedTarget } : {}),
     });
   } catch (err) {
@@ -467,6 +476,7 @@ export async function runScheduleNow(
     .set({ lastStatus: result.status, lastRunAt: new Date() })
     .where(eq(schedules.id, schedule.id));
 
+  if (!result.ok && result.reason === 'refused') throw refusalError(result.refusal);
   if (!result.ok) {
     // ISS-244 — manual /run no longer queues; surface "no device online"
     // synchronously so the user knows nothing was started.

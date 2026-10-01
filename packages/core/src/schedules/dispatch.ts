@@ -1,13 +1,12 @@
 import { eq } from 'drizzle-orm';
+import { createChatSessionRow } from '../agent-sessions/chat-turn.js';
 import {
-  createChatSessionRow,
-  dispatchChatTurn,
-  resolveChatDevice,
-} from '../agent-sessions/chat-turn.js';
+  dispatchInteractiveTurn,
+  type SessionRefusal,
+} from '../agent-sessions/interactive-credential.js';
 import { db } from '../db/client.js';
 import type { ScheduleMode } from '../db/schema.js';
 import { agentSessions, projects, scheduleRuns, schedules } from '../db/schema.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -20,9 +19,15 @@ import { buildSkillImprovePrompt } from './messages/skill-improve-prompt.js';
 import { buildSkillStewardPrompt } from './messages/skill-steward-prompt.js';
 import {
   dispatchScheduleReleaseBatchRun,
-  loadCreatedBy,
   resolveScheduleTargetProject,
 } from './release-batch-dispatch.js';
+import {
+  authorizeScheduledRun,
+  failUndeliveredRun,
+  recordRefusedRun,
+  refusalOfMint,
+  scheduledAsker,
+} from './scheduled-session.js';
 import { runScheduleScript } from './script/executor.js';
 import { dispatchScheduleSentryPull } from './sentry-pull-dispatch.js';
 
@@ -130,32 +135,20 @@ export async function dispatchScheduleRun(
   const { prompt: effectivePrompt, standing: isStandingTemplate } = resolved;
 
   let resolvedProjectId = schedule.projectId;
-  let resolvedCreatedBy: string | undefined;
-
   if (schedule.targetProjectSlug) {
     const target =
       input.resolvedTarget ??
       (
         await db
-          .select({ id: projects.id, createdBy: projects.createdBy })
+          .select({ id: projects.id })
           .from(projects)
           .where(eq(projects.slug, schedule.targetProjectSlug))
           .limit(1)
       )[0];
     if (!target) return { ok: false, reason: 'project-not-found', status: 'skipped' };
     resolvedProjectId = target.id;
-    resolvedCreatedBy = target.createdBy;
   }
 
-  // FIXME(iss-257): tick-driven sessions attribute to the project creator
-  // (audit `projects.created_by`) because the activity-feed expectations want
-  // a real user. A sentinel system user requires a separate migration —
-  // tracked for follow-up. Consumers can detect tick-driven sessions by
-  // `metadata.tick === true`.
-  const userId = input.actorUserId ?? (await loadCreatedBy(resolvedProjectId, resolvedCreatedBy));
-  if (!userId) return { ok: false, reason: 'project-not-found', status: 'skipped' };
-
-  // Look up project slug + repoPath in one shot for the WS payload.
   const [project] = await db
     .select({
       id: projects.id,
@@ -167,16 +160,18 @@ export async function dispatchScheduleRun(
     .limit(1);
   if (!project) return { ok: false, reason: 'project-not-found', status: 'skipped' };
 
-  const client = await resolveChatDevice(
-    { projectId: resolvedProjectId, deviceId: null, metadata: null },
-    undefined,
-  );
-  if (!client.deviceId) {
+  const asker = scheduledAsker(input.actor, schedule.ownerId);
+  const authorised = await authorizeScheduledRun({ projectId: resolvedProjectId, asker });
+  if (authorised.kind === 'no-device') {
     return { ok: false, reason: 'no-device', status: 'skipped' };
   }
 
   const title = schedule.name?.trim() || 'Scheduled run';
-  const metadata: Record<string, unknown> = { source: 'schedule.run', scheduleId: schedule.id };
+  const metadata: Record<string, unknown> = {
+    source: 'schedule.run',
+    scheduleId: schedule.id,
+    asker,
+  };
   if (input.tick) metadata.tick = true;
   // ISS-548/ISS-556 — carry templateKey in session metadata so the session-completion
   // handler can locate the schedule row and write back applied_message_versions (one-shot)
@@ -202,7 +197,7 @@ export async function dispatchScheduleRun(
   try {
     session = await createChatSessionRow({
       projectId: resolvedProjectId,
-      userId,
+      userId: asker?.userId ?? null,
       title,
       runKind: 'system',
       runMetadata: { source: 'schedule.run', scheduleId: schedule.id },
@@ -216,42 +211,28 @@ export async function dispatchScheduleRun(
     return { ok: false, reason: 'session-failed', status: 'failed' };
   }
 
-  // If the WS publish (inside the dispatcher) throws, the row is left `running`
-  // with no claudeSessionId. Mark it failed so the schedule's `lastStatus` (and
-  // the UI) reflects reality on the next sweeper / retention pass — schedules
-  // are unattended, so we cannot rely on a user seeing a 500.
+  if (authorised.kind === 'refused') {
+    return refuseRun(session, schedule.id, authorised.refusal);
+  }
+
   let inserted: typeof agentSessions.$inferSelect;
   try {
-    inserted = await dispatchChatTurn({
+    inserted = await dispatchInteractiveTurn({
       session,
       project: { id: project.id, slug: project.slug, repoPath: project.repoPath },
-      client,
+      client: { deviceId: authorised.authority.deviceId, isLocal: false, migrated: false },
+      authority: authorised.authority,
       message: effectivePrompt,
-      // Parity with /start — web subscribers add the new session to their list.
       broadcastEvent: 'agent-session.created',
     });
   } catch (err) {
+    const refusal = refusalOfMint(err);
+    if (refusal) return refuseRun(session, schedule.id, refusal);
     logger.error(
       { err, sessionId: session.id, scheduleId: schedule.id },
       'schedule.dispatch: chat-turn dispatch failed',
     );
-    try {
-      await applyKernelTransition(db, {
-        entity: 'session',
-        to: 'failed',
-        set: { failureReason: 'ws_publish_failed' },
-        where: eq(agentSessions.id, session.id),
-        fromStatus: session.status,
-        reason: 'ws-publish-failed',
-        actor: { type: 'system' },
-        source: 'schedule',
-      });
-    } catch (cleanupErr) {
-      logger.error(
-        { err: cleanupErr, sessionId: session.id },
-        'schedule.dispatch: failed to mark session failed after dispatch failure',
-      );
-    }
+    await failUndeliveredRun(session);
     return { ok: false, reason: 'session-failed', status: 'failed', sessionId: session.id };
   }
 
@@ -278,7 +259,7 @@ export async function dispatchScheduleRun(
       scheduleId: schedule.id,
       projectId: resolvedProjectId,
       sessionId: inserted.id,
-      actorUserId: userId,
+      actorUserId: authorised.authority.value.authority.userId,
     });
   } catch (err) {
     logger.error(
@@ -288,6 +269,15 @@ export async function dispatchScheduleRun(
   }
 
   return { ok: true, sessionId: inserted.id, status: 'running', resolvedProjectId };
+}
+
+async function refuseRun(
+  session: typeof agentSessions.$inferSelect,
+  scheduleId: string,
+  refusal: SessionRefusal,
+): Promise<DispatchScheduleResult> {
+  await recordRefusedRun({ session, scheduleId, refusal });
+  return { ok: false, reason: 'refused', status: 'failed', sessionId: session.id, refusal };
 }
 
 async function dispatchScheduleScriptRun(

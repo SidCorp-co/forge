@@ -22,9 +22,10 @@ import {
 import { scheduleAck } from './conversation-agent-ack.js';
 import {
   mintSessionCredential,
-  pickConversationAgentDevice,
+  pickTurnCredentialDevice,
   resolveSessionAuthority,
 } from './session-credential.js';
+import { firstUserMessageText } from './turns-helpers.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
@@ -57,17 +58,11 @@ export async function redispatchConversationAgentTurn(
   const attempt = (prior.attempt ?? 0) + 1;
   if (attempt > MAX_FAILOVERS) return { ok: false, status: 'exhausted' };
 
-  const messages = Array.isArray(session.messages) ? session.messages : [];
-  const firstUser = messages.find(
-    (m): m is { role: string; content: string } =>
-      !!m &&
-      (m as { role?: string }).role === 'user' &&
-      typeof (m as { content?: unknown }).content === 'string',
-  );
+  const firstUser = firstUserMessageText(session.messages);
   if (!firstUser) return { ok: false, status: 'no-prompt' };
 
   if (!meta.asker) return { ok: false, status: 'no-asker' };
-  const deviceId = await pickConversationAgentDevice(session.projectId, tried);
+  const deviceId = await pickTurnCredentialDevice(session.projectId, tried);
   if (!deviceId) return { ok: false, status: 'no-device' };
   const authorised = await resolveSessionAuthority({
     asker: meta.asker,
@@ -131,7 +126,7 @@ export async function redispatchConversationAgentTurn(
         deviceId,
         value: authorised.value,
       }),
-      message: firstUser.content,
+      message: firstUser,
       ...(priorMeta.lensOverride
         ? { forceLenses: priorMeta.lensOverride as readonly MemberLens[] }
         : {}),

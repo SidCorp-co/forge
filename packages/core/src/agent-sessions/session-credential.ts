@@ -15,7 +15,7 @@ import {
   type TurnAuthorityRefusal,
 } from '../auth/turn-credential.js';
 import { db } from '../db/client.js';
-import { personalAccessTokens } from '../db/schema.js';
+import { type ProjectMemberRole, personalAccessTokens } from '../db/schema.js';
 import { deviceHolderUserId } from '../devices/workspace-credential.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { findAvailableDeviceForProject } from '../lib/device-pool.js';
@@ -45,9 +45,20 @@ export interface SessionAuthority {
 }
 
 /**
+ * The highest role a token handed to a box held at `holderRole` may carry. A viewer's box is
+ * handed read-only tokens, and a member's token cut to read reaches what a viewer reads; nothing
+ * cuts an admin's token to a lower role, so an asker above the ceiling is refused rather than
+ * handed to a box whose holder could read the token and act above their own role.
+ */
+function holderCeiling(holderRole: ProjectMemberRole): ProjectMemberRole {
+  return holderRole === 'viewer' ? 'member' : holderRole;
+}
+
+/**
  * Whether `asker` may be acted as on `deviceId` for this project, and with what: their own
  * authority, read now, intersected with what the box's holder may do on the project — a box
- * whose holder may only read is handed a token that only reads.
+ * whose holder may only read is handed a token that only reads, and a person who outranks the
+ * box's holder is refused.
  */
 export async function resolveSessionAuthority(args: {
   asker: SessionAsker;
@@ -71,6 +82,17 @@ export async function resolveSessionAuthority(args: {
         code: 'TURN_DEVICE_NO_ROLE',
         message:
           'I cannot answer this on a paired box: the box that is free is held by an account with no role on this project, so it may not act here for anyone.',
+      },
+    };
+  }
+  const askerRole = (await effectiveProjectRole(args.asker.userId, args.projectId))?.role ?? null;
+  if (holderRole && !projectRoleAtLeast(holderCeiling(holderRole), askerRole ?? 'viewer')) {
+    return {
+      ok: false,
+      refusal: {
+        code: 'TURN_DEVICE_OUTRANKED',
+        message:
+          "I will not run this on the paired box that is free: its holder holds a lower role on this project than the person it would act as, and a token handed to that box is readable by its holder. Run it on a box paired by someone holding the person's role.",
       },
     };
   }
@@ -140,7 +162,7 @@ export function agentRefusalText(started: {
 }
 
 /** A box that did not declare `TURN_CREDENTIAL_CAPABILITY` would spend its owner's credential. */
-export function pickConversationAgentDevice(
+export function pickTurnCredentialDevice(
   projectId: string,
   excludeDeviceIds: string[] = [],
 ): Promise<string | null> {
@@ -150,7 +172,7 @@ export function pickConversationAgentDevice(
   });
 }
 
-export async function noConversationAgentDeviceReason(
+export async function noTurnCredentialDeviceReason(
   projectId: string,
   excludeDeviceIds: string[] = [],
 ): Promise<'no-device' | 'runner-outdated'> {

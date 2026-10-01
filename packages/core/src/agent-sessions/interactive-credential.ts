@@ -31,28 +31,52 @@ export const FOLLOW_UP_CREDENTIAL_CAPABILITY = 'followUpCredential';
 /** Bounds a turn whose stop is never written; a turn is revoked when it stops, and may run for hours. */
 const INTERACTIVE_TURN_CREDENTIAL_TTL_MS = 8 * 60 * 60 * 1000;
 
-const refuse = (status: 403 | 409, code: string, message: string) =>
-  new HTTPException(status, { message, cause: { code } });
+/** Why a session will not run as the person it would act as, with the status a door answers it with. */
+export interface SessionRefusal {
+  status: 403 | 409;
+  code: string;
+  message: string;
+}
+
+export const refusalError = (refusal: SessionRefusal) =>
+  new HTTPException(refusal.status, { message: refusal.message, cause: { code: refusal.code } });
+
+export const RUNNER_OUTDATED_REFUSAL: SessionRefusal = {
+  status: 409,
+  code: 'RUNNER_OUTDATED',
+  message:
+    "The runner free to take this runs a forge-runner too old to act as you — it would act with its own owner's access instead, so nothing was dispatched. Update forge-runner on the box (`forge-runner update`) and try again.",
+};
 
 /**
  * A session on a paired box runs a shell in the box holder's checkout, which no Forge token
  * bounds, so a viewer is refused one rather than handed a read-only token.
  */
-export function assertMayRunSession(role: ProjectMemberRole | null | undefined): void {
+export function sessionRoleRefusal(
+  role: ProjectMemberRole | null | undefined,
+): SessionRefusal | null {
   if (!role) {
-    throw refuse(
-      403,
-      'SESSION_NO_ROLE',
-      'You hold no role on this project, so no agent session can run here as you. A project admin can add you.',
-    );
+    return {
+      status: 403,
+      code: 'SESSION_NO_ROLE',
+      message:
+        'You hold no role on this project, so no agent session can run here as you. A project admin can add you.',
+    };
   }
   if (!projectRoleAtLeast(role, 'member')) {
-    throw refuse(
-      403,
-      'SESSION_VIEWER',
-      "A viewer cannot run an agent session: it runs a shell in a paired box's checkout, which a read-only Forge token does not bound. A project admin can make you a member.",
-    );
+    return {
+      status: 403,
+      code: 'SESSION_VIEWER',
+      message:
+        "A viewer cannot run an agent session: it runs a shell in a paired box's checkout, which a read-only Forge token does not bound. A project admin can make you a member.",
+    };
   }
+  return null;
+}
+
+export function assertMayRunSession(role: ProjectMemberRole | null | undefined): void {
+  const refusal = sessionRoleRefusal(role);
+  if (refusal) throw refusalError(refusal);
 }
 
 /** Where only older runners are free a turn is refused, never handed to one that spends its holder's credential. */
@@ -73,20 +97,33 @@ export async function resolveInteractiveClient(
   if (client.isLocal || client.deviceId) return client;
   const anyBox = await resolveChatDevice(session, opts.origin, opts.overrideDeviceId);
   if (!anyBox.deviceId) throw noClaudeClient(opts.scope);
-  throw refuse(
-    409,
-    'RUNNER_OUTDATED',
-    "The runner free to take this runs a forge-runner too old to act as you — it would act with its own owner's access instead, so nothing was dispatched. Update forge-runner on the box (`forge-runner update`) and try again.",
-  );
+  throw refusalError(RUNNER_OUTDATED_REFUSAL);
 }
 
 /** Who a web turn acts as, read when the turn is dispatched; `null` for a local turn, which no box runs. */
 export type InteractiveAuthority = { deviceId: string; value: SessionAuthority } | null;
 
 /**
- * Whether `asker` may be acted as on the box `client` names, read now: a role that went away since
- * the session was opened is not acted on.
+ * Whether `asker` may be acted as on `deviceId`, read now: a role that went away since the
+ * session was opened, or since its schedule was saved, is not acted on.
  */
+export async function readBoxAuthority(args: {
+  deviceId: string;
+  projectId: string;
+  asker: SessionAsker;
+}): Promise<
+  | { ok: true; authority: NonNullable<InteractiveAuthority> }
+  | { ok: false; refusal: SessionRefusal }
+> {
+  const roleRefusal = sessionRoleRefusal(
+    (await effectiveProjectRole(args.asker.userId, args.projectId))?.role,
+  );
+  if (roleRefusal) return { ok: false, refusal: roleRefusal };
+  const got = await resolveSessionAuthority(args);
+  if (!got.ok) return { ok: false, refusal: { status: 403, ...got.refusal } };
+  return { ok: true, authority: { deviceId: args.deviceId, value: got.value } };
+}
+
 export async function authorizeInteractiveTurn(args: {
   client: ChatClient;
   projectId: string;
@@ -96,14 +133,9 @@ export async function authorizeInteractiveTurn(args: {
   const deviceId = args.client.deviceId;
   if (!deviceId)
     throw new Error('authorizeInteractiveTurn: a remote turn reached here with no box');
-  assertMayRunSession((await effectiveProjectRole(args.asker.userId, args.projectId))?.role);
-  const got = await resolveSessionAuthority({
-    asker: args.asker,
-    projectId: args.projectId,
-    deviceId,
-  });
-  if (!got.ok) throw refuse(403, got.refusal.code, got.refusal.message);
-  return { deviceId, value: got.value };
+  const read = await readBoxAuthority({ deviceId, projectId: args.projectId, asker: args.asker });
+  if (!read.ok) throw refusalError(read.refusal);
+  return read.authority;
 }
 
 /**
