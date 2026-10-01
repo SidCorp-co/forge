@@ -476,6 +476,25 @@ function parseDate(value: string, field: string): Date {
 
 export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
+  reach: 'project',
+  grant: {
+    byAction: {
+      list: 'issues:read',
+      get: 'issues:read',
+      create: 'issues:write',
+      update: 'issues:write',
+      transition: 'issues:write',
+      createTask: 'tasks:write',
+      listTasks: 'tasks:read',
+      updateTask: 'tasks:write',
+      deleteTask: 'tasks:write',
+      mark_merged: 'issues:write',
+      unmark: 'issues:write',
+      setAttributes: 'issues:write',
+      archive: 'issues:write',
+      unarchive: 'issues:write',
+    },
+  },
   description: forgeIssuesDescription(ISSUE_REF_CLAUSE),
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {

@@ -7,6 +7,7 @@ import {
   listVisibleProjectsWithRole,
   type VisibleProjectWithRole,
 } from '../../projects/service.js';
+import type { ToolGrant, ToolReach } from '../tool-grant.js';
 import { loadUserProjectRoleFlags } from './project-authz.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './project-scope.js';
 
@@ -15,6 +16,9 @@ export interface McpTool {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  grant: ToolGrant;
+  /** Required on the `/mcp` transport, where `mcpTools` refuses a tool that states none. */
+  reach?: ToolReach;
   handler: (args: Record<string, unknown>) => Promise<unknown>;
 }
 
@@ -50,7 +54,7 @@ export type McpContext = {
   /**
    * A chat turn's bound: the grant of the credential the person reached Forge with, null where
    * their project role is the whole bound (ISS-17). Absent on `/mcp`, where
-   * `principal.permissions` is the grant.
+   * `principal.permissions` is the grant each tool's declared `grant` is read against.
    */
   grant?: readonly string[] | null;
   /** ISS-150 audit-log fields, threaded through for `writeMcpAudit`. */

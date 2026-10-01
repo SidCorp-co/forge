@@ -495,10 +495,11 @@ mod tests {
             ),
             (
                 "forge-runner-core/src/daemon/terminal.rs",
-                3,
+                8,
                 "session_config_dir, the tmux socket's dir, a writer held by ISS-1265, which owes \
-                 its move to base_dir; and unoverridden_config_dir's two platform arms, a \
-                 comparison",
+                 its move to base_dir; unoverridden_config_dir's two platform arms, a \
+                 comparison; and pane_env_from, which reads XDG_CONFIG_HOME only to hand it to \
+                 the panes (ISS-10), with its tests",
             ),
             (
                 "forge-runner-core/src/mcp/config.rs",

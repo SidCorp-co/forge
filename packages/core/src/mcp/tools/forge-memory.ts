@@ -42,6 +42,8 @@ const searchInputSchema = z.object({
  */
 export const forgeMemorySearchTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_memory.search',
+  reach: 'project',
+  grant: 'knowledge:read',
   description:
     'Search project memory (issues, comments, jobs, notes, knowledge, decisions, policies). A semantic or hybrid search costs one embedding call (`embedMs` in the result names what it took, `took_ms` the whole); a keyword search costs none. When the question names an issue key, a status or a count, answer from the tracker (`forge issue …`) and do not search. strategy: "semantic" (default, cosine scores), "keyword" (Postgres FTS — exact identifiers, error codes), "hybrid" (RRF fusion; scores are fused ranks). With rerank on, a hybrid result may be `reranked: true` — read hits in list order. Rows carrying `via` are one-hop neighbours of an issue hit, appended with score 0 — context, not matches. A hit with `stale: true` was superseded (`supersededBy`); read it after the fresh ones. Hits are point-in-time: verify, then report via `forge_memory.feedback`. Step handoffs live in their own table — `forge_step_handoff.get`.',
   inputSchema: zodToMcpSchema(searchInputSchema),
@@ -67,6 +69,8 @@ export const forgeMemorySearchTool: ContextScopedMcpToolFactory = ({ principal }
  */
 export const forgeMemoryGetTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_memory.get',
+  reach: 'project',
+  grant: 'knowledge:read',
   description:
     'List memory rows for a project, filtered by source / sourceRef / metadata containment. Returns rows sorted by createdAt|updatedAt|embeddedAt + a total count. Does NOT embed — use for natural-key lookups (e.g. step handoff by run_id+step+attempt). Live rows only unless includeArchived:true, which also returns soft-deleted rows (decay, consolidation, feedback verdict=outdated, and pre-ISS-876 `<ref>__superseded-<timestamp>` dedup snapshots) — every row carries archivedAt so an archived one is never mistaken for current memory. Requires project membership.',
   inputSchema: zodToMcpSchema(getMemoryInputSchema),
@@ -84,6 +88,8 @@ export const forgeMemoryGetTool: ContextScopedMcpToolFactory = ({ principal }) =
  */
 export const forgeMemoryDeleteTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_memory.delete',
+  reach: 'project',
+  grant: 'knowledge:write',
   description:
     'Delete a memory row by (projectId, source, sourceRef). Idempotent — returns {deleted:false} when no row matches. Requires project membership.',
   inputSchema: zodToMcpSchema(deleteInputSchema),
@@ -103,6 +109,8 @@ export const forgeMemoryDeleteTool: ContextScopedMcpToolFactory = ({ principal }
  */
 export const forgeMemoryFeedbackTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_memory.feedback',
+  reach: 'project',
+  grant: 'knowledge:write',
   description:
     'Report the outcome of verifying a memory row against live code/state. verdict=confirmed stamps last_verified_at (protects the row from usage decay); verdict=outdated archives the row immediately (evidence required — what disproved it; a fresh write to the same sourceRef revives it). Agent-curated sources only (note/knowledge) — lifecycle mirrors track their source records. Call after acting on a forge_memory.search hit. Requires project write access.',
   inputSchema: zodToMcpSchema(memoryFeedbackInputSchema),
@@ -122,6 +130,8 @@ export const forgeMemoryFeedbackTool: ContextScopedMcpToolFactory = ({ principal
 
 export const forgeMemoryWriteTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_memory.write',
+  reach: 'project',
+  grant: 'knowledge:write',
   description:
     'Write (upsert) a memory row for a project. Embeds textContent via the configured embedding model and stores under the unique key (projectId, source, sourceRef) — the ref you name is ALWAYS the ref that is written, and no other row is ever modified. Re-writing an existing ref REPLACES its body; the body you replaced is kept and readable via `GET /api/memory/revisions`. Returns {id, embeddedAt, truncated, degraded, nearDuplicateOf?, dedupeScore?}. nearDuplicateOf is advisory: for note/knowledge, an existing row whose text is near-identical to yours, reported so you can decide to refine THAT record instead — to do so, re-issue the write under that exact sourceRef. degraded:true means embeddings were down and the row is keyword-searchable only until the backfill re-embeds it. Agent-authored sources (note/knowledge/policy) are quality-gated: textContent ≤8192 chars (the embedding window) and no fenced code block >5 lines — write the invariant + a file:line/SHA pointer instead of code; one-line runnable commands are fine. Requires project membership.',
   inputSchema: zodToMcpSchema(writeMemoryInputSchema),

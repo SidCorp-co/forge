@@ -43,6 +43,16 @@ const inputSchema = z
 
 export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_knowledge',
+  reach: 'project',
+  grant: {
+    byAction: {
+      list: 'knowledge:read',
+      get: 'knowledge:read',
+      upsert: 'knowledge:write',
+      delete: 'knowledge:write',
+      search: 'knowledge:read',
+    },
+  },
   description:
     'Read/write curated knowledge entries for a project (stored in `knowledge_entries`). ' +
     'Actions: `list` — project entries (body-free index; use `get` for the full body). ' +

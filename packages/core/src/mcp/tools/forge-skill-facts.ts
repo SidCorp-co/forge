@@ -13,6 +13,8 @@ const getInputSchema = z
 
 export const forgeSkillFactsListTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skill_facts.list',
+  reach: 'project',
+  grant: 'skills:read',
   description:
     'List Forge Facts — the FIXED Forge process knowledge a skill author references instead of copy-pasting (status ladder, complexity/priority/category enums, relation kinds, plan/release-notes/handoff formats, worktree protocol). Each fact carries id, tier (`mandatory` = always injected; `contextual` = insert via `{{forge:<id>}}`), namespace, and a project-resolved `preview`. Pass optional `stage` to tailor stage-specific facts (e.g. `handoff`). Call this while AUTHORING a skill to learn the real values rather than guessing. Requires project membership.',
   inputSchema: zodToMcpSchema(listInputSchema),
@@ -26,6 +28,8 @@ export const forgeSkillFactsListTool: ContextScopedMcpToolFactory = (ctx) => ({
 
 export const forgeSkillFactsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skill_facts.get',
+  reach: 'project',
+  grant: 'skills:read',
   description:
     'Fetch one Forge Fact by id (project-resolved), returning its full canonical `preview` text — the exact block a skill body gets when it references `{{forge:<id>}}`. Pass optional `stage` for stage-specific facts. Throws NOT_FOUND for an unknown id. Requires project membership.',
   inputSchema: zodToMcpSchema(getInputSchema),

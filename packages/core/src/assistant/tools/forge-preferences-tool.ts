@@ -44,6 +44,7 @@ const DESCRIPTION = [
 
 export const forgePreferencesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_preferences',
+  grant: 'account:write',
   description: DESCRIPTION,
   inputSchema: z.toJSONSchema(input) as Record<string, unknown>,
   handler: async (raw: Record<string, unknown>) => {

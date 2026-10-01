@@ -37,6 +37,10 @@ async function assertRunInProject(runId: string, projectId: string): Promise<voi
 
 export const forgePhaseTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_phase',
+  reach: 'project',
+  grant: {
+    byAction: { start: 'pipeline:write', end: 'pipeline:write', resume_point: 'pipeline:read' },
+  },
   description:
     "Declare which phase of an autonomous run you are in. Call action `start` BEFORE beginning a phase (understand, plan, code, self-review, review, merge, ship) and action `end` when it finishes, with `outcome` one of ok/failed/abandoned. The `start` call returns the `attempt` number to pass back to `end`; re-entering a phase (a review sending you back to code) starts a new attempt rather than overwriting the old one, so the journal shows the rounds. Action `resume_point` returns the newest phase with no end recorded — a session resuming after a death restarts there instead of at phase 1. You CANNOT write a review verdict here: a verdict is recorded by the runner from the reviewer's structured result, and the database refuses an agent-authored one.",
   inputSchema: zodToMcpSchema(inputSchema),

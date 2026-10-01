@@ -127,7 +127,8 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   '/orgs':
     'the guide router is mounted at the root for its public pages and its org-guide routes ride ' +
     'along there; the token path to them is /api/orgs',
-  '/mcp': 'the MCP transport, admitted by its own token door, where each tool fences itself',
+  '/mcp':
+    'the MCP transport, admitted by its own token door, where each tool declares the grant it needs and the transport reads it before the tool runs',
   '/api/auth/register': SESSION,
   '/api/auth/local': SESSION,
   '/api/auth/refresh': SESSION,

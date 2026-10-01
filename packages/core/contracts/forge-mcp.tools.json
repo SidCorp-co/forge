@@ -2591,7 +2591,7 @@
       "name": "forge_project_pm"
     },
     {
-      "description": "Create a new project in an org (orgId optional — defaults to the caller's personal org; the caller becomes a project admin). Accepts slug+name plus an optional initial baseBranch. A checkout is not a project setting: it is the device binding's (`forge-runner bind <slug> --path <dir>`). Where its work lands, its environments, promotions and deployments are its project document, written with PUT /api/projects/:id/config. PAT principals must carry the `write` scope and have a null `projectIds` allowlist (scoped PATs are refused). Returns id/slug/name/orgId/createdBy/apiKey/createdAt — the apiKey is needed for widget install and device pairing.",
+      "description": "Create a new project in an org (orgId optional — defaults to the caller's personal org; the caller becomes a project admin). Accepts slug+name plus an optional initial baseBranch. A checkout is not a project setting: it is the device binding's (`forge-runner bind <slug> --path <dir>`). Where its work lands, its environments, promotions and deployments are its project document, written with PUT /api/projects/:id/config. PAT principals must carry the `write` scope and reach no narrower than their owner: a token fenced to projects, by a project list or a bound project, is refused with PAT_ACCOUNT_ROUTE. Returns id/slug/name/orgId/createdBy/apiKey/createdAt — the apiKey is needed for widget install and device pairing.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,

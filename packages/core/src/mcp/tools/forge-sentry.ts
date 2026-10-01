@@ -56,6 +56,8 @@ type Input = z.infer<typeof inputSchema>;
 
 export const forgeSentryTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_sentry',
+  reach: 'project',
+  grant: { byAction: { list: 'projects:read', get: 'projects:read' } },
   description:
     "Read this project's Sentry error stream. Actions: list | get. " +
     'READ-ONLY: it reads Sentry and changes nothing there — no resolving, ignoring or assigning — ' +

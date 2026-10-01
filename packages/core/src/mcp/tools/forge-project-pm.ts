@@ -71,6 +71,17 @@ const inputSchema = z
 
 export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_project_pm',
+  reach: 'project',
+  grant: {
+    byAction: {
+      snapshot: 'issues:read',
+      graph: 'issues:read',
+      runner_load: 'runners:read',
+      dispatch: 'pipeline:write',
+      set_dependency: 'issues:write',
+      write_decision: 'pipeline:write',
+    },
+  },
   description:
     `PM agent action dispatcher. Actions: ${PM_ACTIONS.join(' | ')}. ` +
     'CREDENTIAL CLASS: dispatch and write_decision act on runner state and are not reachable over MCP — they refuse with PM_REQUIRES_DEVICE, and the refusal names the actions that do work. To set or retract a blocks/relates edge, forge_issues create/update data.relations also works and reads back from forge_issues get. ' +
