@@ -653,11 +653,17 @@ fn legend(form: Legend) -> Vec<String> {
                 ]
                 .map(String::from),
             );
-            let words: Vec<&str> = attention::WORDS.iter().map(|(w, _)| *w).collect();
-            out.push(format!("VERDICT: {}", words.join(" ")));
-            out.extend(
-                ["CHANGE since core's last reading", "— no earlier reading"].map(String::from),
-            );
+            // The words that are findings, after the column's meaning; the
+            // two a row with none reads go with the marks below, so the
+            // finding words keep to one row at 80 columns.
+            let (found, fine): (Vec<&str>, Vec<&str>) = attention::WORDS
+                .iter()
+                .map(|(w, _)| *w)
+                .partition(|w| w.chars().all(|c| c.is_ascii_uppercase()));
+            out.push(format!("VERDICT worst: {}", found.join(" ")));
+            out.push("CHANGE since core's last reading".into());
+            out.push("— no earlier reading".into());
+            out.push(format!("{} no finding", fine.join(" or ")));
         }
     }
     out
@@ -1258,6 +1264,12 @@ mod tests {
             }
             if legend == Legend::Short {
                 assert!(foot.contains("l explains words"), "{foot}");
+                // Whole-set read at 498bb81, F1: the short form says what the
+                // column is, not only which words it writes.
+                assert!(
+                    items.iter().any(|i| i.starts_with("VERDICT worst: STALL")),
+                    "{items:?}"
+                );
             }
         }
     }

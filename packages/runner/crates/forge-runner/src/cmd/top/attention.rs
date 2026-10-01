@@ -890,7 +890,7 @@ mod tests {
         want.sort_unstable();
         assert_eq!(listed, want);
         assert!(WORDS.iter().all(|(_, means)| !means.is_empty()));
-        let source = include_str!("attention.rs");
+        let source = forge_runner_core::test_scratch::lf(include_str!("attention.rs"));
         let code = &source[..source.find("#[cfg(test)]").unwrap()];
         let mut made = Vec::new();
         for tone in ["Tone::Red,", "Tone::Yellow,"] {

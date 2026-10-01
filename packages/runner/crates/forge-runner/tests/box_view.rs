@@ -2106,7 +2106,8 @@ fn the_legend_fits_the_screen_and_l_switches_it() {
     let mut pty = on_a_terminal_reading(&b, 80, 24, &["--interval", "5"], true);
     let f = pty.first_table().join("\n");
     assert!(
-        f.contains("VERDICT: STALL ASKS DRIFT ORPHAN NOPATH GATE DAEMON AGEING DOWN WAITS ok idle")
+        f.contains("VERDICT worst: STALL ASKS DRIFT ORPHAN NOPATH GATE DAEMON AGEING DOWN WAITS")
+            && f.contains("ok or idle no finding")
             && f.contains("l explains words")
             && !f.contains("STALL a runnable run"),
         "{f}"
