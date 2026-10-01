@@ -61,9 +61,8 @@ const emptyRow = (): TargetRow => ({
   notes: "",
 });
 
-/** Seed the editable rows from the stored config — `targets[]` if present, else
- *  the legacy single-slug pair as one row, else a single blank starter row. */
-function initialTargets(cfg: Partial<SentryConfig>): TargetRow[] {
+/** Seed the editable rows from the stored `targets[]`, else a single blank starter row. */
+export function initialTargets(cfg: Partial<SentryConfig>): TargetRow[] {
   if (Array.isArray(cfg.targets) && cfg.targets.length > 0) {
     return cfg.targets.map((t) => ({
       label: t.label ?? "",
@@ -73,17 +72,23 @@ function initialTargets(cfg: Partial<SentryConfig>): TargetRow[] {
       notes: t.notes ?? "",
     }));
   }
-  if (cfg.organizationSlug || cfg.projectSlug) {
-    return [
-      {
-        ...emptyRow(),
-        label: "default",
-        organizationSlug: cfg.organizationSlug ?? "",
-        projectSlug: cfg.projectSlug ?? "",
-      },
-    ];
-  }
   return [emptyRow()];
+}
+
+/** The top-level slugs ISS-526 retired that a stored config still carries. Core refuses such a
+ *  binding as `target_old_shape` and reads none of its targets, so the screen says so instead. */
+export function retiredSlugs(cfg: Record<string, unknown>): string[] {
+  return (["organizationSlug", "projectSlug"] as const).filter((k) => cfg[k] != null);
+}
+
+/** What the screen shows for {@link retiredSlugs}: the refusal by its code, and the one way out. */
+export function oldShapeText(retired: string[]): string {
+  return (
+    `target_old_shape: this binding's config carries ${retired.map((k) => `\`${k}\``).join(" and ")} ` +
+    "at its top level, the Sentry shape ISS-526 retired, so Forge refuses it and no Sentry project " +
+    "reaches the agents. A save cannot clear those keys: remove this integration and connect it " +
+    "again, naming each Sentry project under Sentry projects."
+  );
 }
 
 function initialForm(existing: IntegrationSummary | undefined): FormState {
@@ -185,11 +190,13 @@ export function SentrySection({ projectId }: { projectId: string }) {
   // Org-shared credential: only an org owner/admin may change config/secrets/
   // active. Test connection stays enabled (binding-level, project admin OK).
   const orgLocked = useOrgConnectionLocked(projectId, existing?.connectionId);
+  const retired = retiredSlugs((existing?.config ?? {}) as Record<string, unknown>);
   const isOrgAdmin = useIsOrgAdmin(projectId);
   const canSave =
     form.host.trim().length > 0 &&
     (!keyRequired || form.authToken.trim().length >= 8) &&
     !hasInvalidTarget &&
+    retired.length === 0 &&
     !create.isPending &&
     !update.isPending &&
     !orgLocked;
@@ -254,6 +261,8 @@ export function SentrySection({ projectId }: { projectId: string }) {
             project&apos;s agents only once the grant below is on; the target list is then shared
             with them so they query the right org/project.
           </p>
+
+          {retired.length > 0 && <Banner tone="danger">{oldShapeText(retired)}</Banner>}
 
           <Field
             label="Sentry host"

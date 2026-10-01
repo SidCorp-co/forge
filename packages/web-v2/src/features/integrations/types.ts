@@ -66,10 +66,6 @@ export interface SentryTarget {
 export interface SentryConfig {
   host: string;
   targets?: SentryTarget[];
-  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
-  organizationSlug?: string;
-  projectSlug?: string;
-  environment?: string;
 }
 
 export type { BindingSummary as IntegrationSummary } from "@forge/contracts";
