@@ -46,7 +46,6 @@ vi.mock("@/features/conversations/components/conversation-chat", () => ({
     <div data-testid="dock-chat" data-project={projectId} data-draft={initialDraft ?? ""} />
   ),
 }));
-vi.mock("@/features/conversations/components/context-panel", () => ({ ContextPanel: () => null }));
 vi.mock("@/features/conversations/components/start-conversation", () => ({ StartConversation: () => null }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => {} }));
 vi.mock("@/features/attention/hooks", () => ({ useAttention: () => ({ total: 3 }) }));
@@ -219,14 +218,14 @@ describe("the chat dock", () => {
     at("/projects/other/issues");
     mount();
     expect(screen.queryByTestId("chat-dock")).toBeNull();
-    expect(side().queryByRole("button", { name: "Chat" })).toBeNull();
+    expect(side().queryByRole("button", { name: "Ask Agent" })).toBeNull();
     const bar = within(screen.getByRole("banner"));
-    fireEvent.click(bar.getByRole("button", { name: "Chat" }));
-    expect(bar.getByRole("button", { name: "Chat" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(bar.getByRole("button", { name: "Ask Agent" }));
+    expect(bar.getByRole("button", { name: "Ask Agent" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("page")).toBeInTheDocument();
     expect(screen.getByTestId("chat-dock")).toBeInTheDocument();
     expect(screen.getByTestId("dock-chat")).toHaveAttribute("data-project", "p2");
-    fireEvent.click(screen.getByRole("button", { name: "Close chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close Ask Agent" }));
     expect(screen.queryByTestId("chat-dock")).toBeNull();
   });
 

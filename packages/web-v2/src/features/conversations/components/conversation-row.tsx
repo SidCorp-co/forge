@@ -99,15 +99,11 @@ export function ConversationRow({
         onClick={onOpen}
         aria-current={open ? "true" : undefined}
         aria-label={`Open ${conversationTitle(row)} in ${project?.name ?? "an unknown project"}`}
+        title={`${row.ecosystemId ? "Ecosystem" : "Project"} scope · ${project?.name ?? "Unknown project"}`}
         className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--link)]"
       >
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={initials} size={22} />
-        <div className="min-w-0 flex-1">
-          <span className="fg-body-sm block truncate text-fg">{conversationTitle(row)}</span>
-          <span className="fg-caption block truncate text-subtle">
-            {project?.name ?? "Unknown project"}
-          </span>
-        </div>
+        <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{conversationTitle(row)}</span>
       </button>
 
       {/* Out of the layout until wanted: an invisible group still takes its width, and four

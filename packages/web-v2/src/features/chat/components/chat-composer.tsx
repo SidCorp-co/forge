@@ -37,6 +37,7 @@ import {
   stageFiles,
   type StagingRefusal,
 } from "../attachments";
+import { SketchPad } from "./sketch/sketch-pad";
 
 /** How tall the box may grow before it scrolls instead. */
 const MAX_ROWS = 8;
@@ -127,6 +128,7 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const [value, setValue] = useState(initialValue);
   const [files, setFiles] = useState<StagedFile[]>([]);
+  const [sketching, setSketching] = useState(false);
   const [refusals, setRefusals] = useState<StagingRefusal[]>([]);
   const nextFileId = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -453,6 +455,18 @@ export function ChatComposer({
                   onClick={openPicker}
                 />
               )}
+              {attachments?.mimes.includes("image/png") && (
+                <IconButton
+                  type="button"
+                  variant="ghost"
+                  icon="sketch"
+                  aria-label="Sketch"
+                  title="Sketch something to send"
+                  className="h-11 w-11 flex-none"
+                  disabled={disabled || busy}
+                  onClick={() => setSketching(true)}
+                />
+              )}
               {hasSkills && (
                 <IconButton
                   type="button"
@@ -522,6 +536,7 @@ export function ChatComposer({
           )}
         </div>
       </div>
+      {sketching && <SketchPad open onClose={() => setSketching(false)} onAttach={(file) => take([file])} />}
     </ComposerWidthContext.Provider>
   );
 }

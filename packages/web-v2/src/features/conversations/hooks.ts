@@ -56,15 +56,6 @@ export function useConversationsAcrossProjects(projectIds: string[], archived = 
  */
 const AGENT_TURN_POLL_MS = 4000;
 
-export function useRoomToolCalls(id: string | undefined, said: number) {
-  return useQuery({
-    queryKey: ["conversations", id, "tool-calls", said],
-    queryFn: () => conversationsApi.toolCalls(id as string),
-    enabled: !!id,
-    placeholderData: (prev) => prev,
-  });
-}
-
 export function useConversation(id: string | undefined) {
   return useQuery({
     queryKey: ["conversations", id],
