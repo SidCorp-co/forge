@@ -109,6 +109,7 @@ const DESCRIPTION =
 
 export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_feedback',
+  reach: 'project',
   grant: {
     byAction: {
       submit: 'feedback:write',

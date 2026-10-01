@@ -7,7 +7,7 @@ import {
   listVisibleProjectsWithRole,
   type VisibleProjectWithRole,
 } from '../../projects/service.js';
-import type { ToolGrant } from '../tool-grant.js';
+import type { ToolGrant, ToolReach } from '../tool-grant.js';
 import { loadUserProjectRoleFlags } from './project-authz.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './project-scope.js';
 
@@ -17,6 +17,8 @@ export interface McpTool {
   description: string;
   inputSchema: Record<string, unknown>;
   grant: ToolGrant;
+  /** Required on the `/mcp` transport, where `mcpTools` refuses a tool that states none. */
+  reach?: ToolReach;
   handler: (args: Record<string, unknown>) => Promise<unknown>;
 }
 

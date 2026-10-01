@@ -803,12 +803,25 @@ pub fn job_argv(
 }
 
 pub fn pane_env() -> Vec<(String, String)> {
-    match crate::runner::process::mcp_tool_timeout_default(
-        std::env::var_os("MCP_TOOL_TIMEOUT").as_deref(),
-    ) {
-        Some(v) => vec![("MCP_TOOL_TIMEOUT".into(), v.into())],
-        None => Vec::new(),
+    pane_env_from(|k| std::env::var_os(k))
+}
+
+// cm:guard a pane's `forge-runner hook|gate|run` finds its daemon through the config dir; the
+// session server's unit inherits none of this process's environment, so a daemon run under its
+// own `XDG_CONFIG_HOME` hands it on or its panes report to the box's default daemon (ISS-10)
+fn pane_env_from(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Vec<(String, String)> {
+    let mut env = Vec::new();
+    if let Some(v) =
+        crate::runner::process::mcp_tool_timeout_default(var("MCP_TOOL_TIMEOUT").as_deref())
+    {
+        env.push(("MCP_TOOL_TIMEOUT".into(), v.into()));
     }
+    if let Some(x) = var("XDG_CONFIG_HOME") {
+        if std::path::Path::new(&x).is_absolute() {
+            env.push(("XDG_CONFIG_HOME".into(), x.to_string_lossy().into_owned()));
+        }
+    }
+    env
 }
 
 /// What another module's tests need from this one: the tmux boundary, driven
@@ -2243,17 +2256,45 @@ done
         );
     }
 
+    fn env_of(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<std::ffi::OsString> {
+        let pairs: Vec<(String, String)> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |k| pairs.iter().find(|(n, _)| n == k).map(|(_, v)| v.into())
+    }
+
     #[test]
     fn the_pane_carries_the_mcp_timeout_and_respects_an_operator_override() {
-        let env = pane_env();
-        match std::env::var_os("MCP_TOOL_TIMEOUT") {
-            Some(v) if !v.is_empty() => assert!(env.is_empty(), "an operator value must win"),
-            _ => {
-                assert_eq!(env.len(), 1);
-                assert_eq!(env[0].0, "MCP_TOOL_TIMEOUT");
-                assert!(env[0].1.parse::<u64>().is_ok(), "{:?}", env[0].1);
-            }
-        }
+        let env = pane_env_from(env_of(&[]));
+        assert_eq!(env.len(), 1);
+        assert_eq!(env[0].0, "MCP_TOOL_TIMEOUT");
+        assert!(env[0].1.parse::<u64>().is_ok(), "{:?}", env[0].1);
+        assert!(pane_env_from(env_of(&[("MCP_TOOL_TIMEOUT", "9")])).is_empty());
+    }
+
+    #[test]
+    fn a_daemon_under_its_own_config_dir_hands_it_to_its_panes() {
+        let env = pane_env_from(env_of(&[
+            ("MCP_TOOL_TIMEOUT", "9"),
+            ("XDG_CONFIG_HOME", "/srv/forge-dev-runner"),
+        ]));
+        assert_eq!(
+            env,
+            vec![(
+                "XDG_CONFIG_HOME".to_string(),
+                "/srv/forge-dev-runner".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn a_relative_config_home_is_not_handed_on_since_no_reader_honours_it() {
+        let env = pane_env_from(env_of(&[
+            ("MCP_TOOL_TIMEOUT", "9"),
+            ("XDG_CONFIG_HOME", "rel"),
+        ]));
+        assert!(env.is_empty(), "{env:?}");
     }
     /// This file as its tests read it, with a Windows checkout's CRLF made LF,
     /// so a needle spanning a line break matches on all three OSes (ISS-1274).
