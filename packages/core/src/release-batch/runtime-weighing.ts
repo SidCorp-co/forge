@@ -24,9 +24,11 @@ import {
   type ReleaseRuntimesConfig,
   releaseRuntimesSchema,
 } from '../pipeline/pipeline-config-schema.js';
+import { hostOf } from '../projects/live-source.js';
 import { type Carriage, type ChangedPaths, carriageOf, changedPathsOf } from './carriage.js';
 import { type ServingReading, servedCommits } from './serving-reading.js';
 import { carriageKey, type RuntimeReading, rotated, type Weighing } from './weighing.js';
+import { WeighingUnreadable } from './weighing-unreadable.js';
 
 /** Uncached reads (one or two compares each) one weighing may make of each kind — landings and
  *  carriages, so neither can starve the other; a cached answer costs none. */
@@ -42,7 +44,13 @@ async function declaredRuntimes(projectId: string): Promise<ReleaseRuntimesConfi
     .select({ agentConfig: projects.agentConfig })
     .from(projects)
     .where(eq(projects.id, projectId))
-    .limit(1);
+    .limit(1)
+    .catch((err: unknown) => {
+      throw new WeighingUnreadable(
+        'declaration',
+        `this project's pipelineConfig.releaseRuntimes could not be read: ${why(err)}`,
+      );
+    });
   const pc = (row?.agentConfig as Record<string, unknown> | null)?.pipelineConfig as
     | Record<string, unknown>
     | undefined;
@@ -50,16 +58,23 @@ async function declaredRuntimes(projectId: string): Promise<ReleaseRuntimesConfi
   // The patch door refuses a malformed one; one stored past it is a defect to stop on, not skip.
   const parsed = releaseRuntimesSchema.safeParse(pc.releaseRuntimes);
   if (!parsed.success) {
-    throw new Error(
-      `this project's stored pipelineConfig.releaseRuntimes is not a valid declaration: ${parsed.error.issues.map((i) => i.message).join('; ')}`,
+    const refused = parsed.error.issues.map(
+      (i) => `${['releaseRuntimes', ...i.path].join('.')}: ${i.message}`,
+    );
+    throw new WeighingUnreadable(
+      'declaration',
+      `this project's stored pipelineConfig.releaseRuntimes is not a valid declaration: ${refused.join('; ')}`,
     );
   }
   return parsed.data;
 }
 
-/** The build each online, enabled runner device of this project reports. */
-async function readProjectRunners(projectId: string, now: () => Date): Promise<ServingReading> {
-  const rows = await db
+function why(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function runnerDevices(projectId: string) {
+  return db
     .selectDistinct({ name: devices.name, commit: devices.agentCommit })
     .from(runners)
     .innerJoin(devices, eq(devices.id, runners.deviceId))
@@ -71,6 +86,16 @@ async function readProjectRunners(projectId: string, now: () => Date): Promise<S
       ),
     )
     .orderBy(devices.name);
+}
+
+/** The build each online, enabled runner device of this project reports. */
+async function readProjectRunners(projectId: string, now: () => Date): Promise<ServingReading> {
+  const rows = await runnerDevices(projectId).catch((err: unknown) => {
+    throw new WeighingUnreadable(
+      'runners',
+      `this project's runner devices could not be read: ${why(err)}`,
+    );
+  });
   const readAt = now().toISOString();
   if (rows.length === 0) {
     return {
@@ -125,15 +150,65 @@ async function judgedCommits(rows: readonly WaitingRow[]): Promise<string[]> {
   return [...judged];
 }
 
+async function verdictsOf(projectId: string, issueIds?: readonly string[]) {
+  try {
+    const rows = await rowsOf(projectId, issueIds);
+    return { rows, judged: await judgedCommits(rows) };
+  } catch (err) {
+    throw new WeighingUnreadable(
+      'verdicts',
+      `the waiting issues and the commits their verdicts name could not be read: ${why(err)}`,
+    );
+  }
+}
+
 type Reader = { client: GitHubRepoClient } | { why: string };
 
 async function readerFor(projectId: string, deps: WeighingDeps): Promise<Reader> {
   try {
     return { client: await (deps.client ?? githubRepoClient)(projectId) };
   } catch (err) {
-    if (err instanceof GitHubClientError) return { why: err.message };
-    throw err;
+    if (!(err instanceof GitHubClientError)) {
+      throw new WeighingUnreadable(
+        'repository',
+        `this project's repository binding could not be read: ${why(err)}`,
+      );
+    }
+    if (err.reason !== 'no_binding') return { why: err.message };
   }
+  const repoUrl = await repoUrlOf(projectId).catch((err: unknown) => {
+    throw new WeighingUnreadable(
+      'repository',
+      `this project's repository URL could not be read: ${why(err)}`,
+    );
+  });
+  return { why: noBinding(repoUrl) };
+}
+
+async function repoUrlOf(projectId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ repoUrl: projects.repoUrl })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return row?.repoUrl?.trim() || null;
+}
+
+function onGitHub(host: string): boolean {
+  return host === 'github.com' || host.startsWith('github.');
+}
+
+/** What a project with no GitHub binding can do, by the host its repository is on. */
+export function noBinding(repoUrl: string | null): string {
+  const reads = 'Forge reads whether one commit carries another only through a GitHub binding';
+  if (!repoUrl) {
+    return `this project has no active GitHub binding and names no repository URL, and ${reads} — where its repository is on GitHub, bind it on its Integrations page; anywhere else, a verdict earns here only at a commit this project serves exactly`;
+  }
+  const host = hostOf(repoUrl);
+  if (onGitHub(host)) {
+    return 'this project has no active GitHub binding — bind its repository on its Integrations page';
+  }
+  return `this project's repository is on ${host}, and ${reads}, which a repository there cannot have — so on this project a verdict earns only at a commit it serves exactly`;
 }
 
 const OVER_BUDGET = `it was not read this pass: one weighing makes at most ${WEIGHING_READ_LIMIT} uncached repository reads of a kind, and each pass starts its reads one place further along`;
@@ -205,8 +280,7 @@ export async function readWeighingNow(
     runnersRead ??= await readProjectRunners(projectId, now);
     runtimes.push({ name: runtime.name, paths: runtime.paths, serving: runnersRead });
   }
-  const rows = await rowsOf(projectId, issueIds);
-  const judged = await judgedCommits(rows);
+  const { rows, judged } = await verdictsOf(projectId, issueIds);
   const served = [
     ...new Set([...servedCommits(serving), ...runtimes.flatMap((r) => servedCommits(r.serving))]),
   ];

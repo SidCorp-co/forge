@@ -11,11 +11,9 @@ import { createHash } from 'node:crypto';
 import { and, eq, inArray, like, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
-import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { logger } from '../logger.js';
-import { type ServingReading, servingClause } from '../release-batch/serving-reading.js';
-import type { RuntimeReading } from '../release-batch/weighing.js';
+import { type WeighingSubject, WeighingUnreadable } from '../release-batch/weighing-unreadable.js';
 
 /** The session_context key this module owns. */
 export const RELEASE_HOLD_KEY = 'releaseHold';
@@ -107,88 +105,6 @@ export function sameReleaseHold(a: ReleaseHold | null, b: ReleaseHold): boolean 
   );
 }
 
-function criteriaNamed(numbers: readonly number[]): string {
-  if (numbers.length === 1) return `criterion ${numbers[0]}`;
-  return `each of criteria ${numbers.slice(0, -1).join(', ')} and ${numbers.at(-1)}`;
-}
-
-/** One clause per distinct reason, carrying every criterion it holds, in first-criterion order. */
-function reasonsByWhy(report: IssueCriteriaReport): string {
-  const byWhy = new Map<string, number[]>();
-  for (const c of report.unearned) byWhy.set(c.why, [...(byWhy.get(c.why) ?? []), c.criterion]);
-  return [...byWhy].map(([why, numbers]) => `${criteriaNamed(numbers)}: ${why}`).join('; ');
-}
-
-/** What one declared runtime was read as running, for the judge clause (ISS-1368). */
-function runtimeClause(runtime: RuntimeReading): string {
-  const { serving } = runtime;
-  const read =
-    serving.kind === 'serving'
-      ? servingClause(serving)
-      : serving.kind === 'unreadable'
-        ? `nothing could be read, read at ${serving.readAt}: ${serving.why}`
-        : `nothing reports it: ${serving.missing}`;
-  return `the \`${runtime.name}\` runtime, under ${runtime.paths.map((p) => `\`${p}\``).join(', ')}: ${read}`;
-}
-
-/** Where a verdict has to be judged to count — the one place the reading is said (ISS-1346). */
-function judgeClause(serving: ServingReading, runtimes: readonly RuntimeReading[]): string {
-  const deployment = deploymentClause(serving, runtimes);
-  if (serving.kind === 'serving' || runtimes.length === 0) return deployment;
-  // The allowance above is the deployment's: a declared runtime with nothing read still holds.
-  return (
-    `${deployment}. A criterion held in a declared runtime earns only at a build it is running — ` +
-    runtimes.map(runtimeClause).join('; ')
-  );
-}
-
-function deploymentClause(serving: ServingReading, runtimes: readonly RuntimeReading[]): string {
-  if (serving.kind === 'serving' && runtimes.length > 0) {
-    return (
-      'record a verdict on each criterion named, judged at a commit the runtime it is held in is ' +
-      `running — the deployment: ${servingClause(serving)}; ${runtimes.map(runtimeClause).join('; ')}`
-    );
-  }
-  if (serving.kind === 'serving') {
-    return (
-      'record a verdict on each criterion named, judged at a commit this project is serving — ' +
-      servingClause(serving)
-    );
-  }
-  if (serving.kind === 'unreadable') {
-    const asked = serving.hosts.length === 0 ? '' : ` (read from ${serving.hosts.join(', ')})`;
-    return (
-      `nothing could be read from what this project answers through${asked}, read at ` +
-      `${serving.readAt}: ${serving.why}. Record a verdict on each criterion named — a verdict ` +
-      'nothing could check still earns the criterion, and this sentence is why it reads as weaker'
-    );
-  }
-  return (
-    `nothing here can read what this project is serving: ${serving.missing}. To give it a way, ` +
-    `${serving.route}, then record a verdict on each criterion named`
-  );
-}
-
-/**
- * Owed by a person: nothing dispatched claims a row at `awaiting_release`, and the release that
- * would is the one holding it, so every act that moves the row from here is somebody's by hand.
- */
-export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
-  const reasons = reasonsByWhy(report);
-  const judge = judgeClause(report.serving, report.runtimes);
-  return {
-    code: 'RELEASE_CRITERIA_UNEARNED',
-    reason:
-      `The automatic release carries only an issue whose every acceptance criterion is earned, and ` +
-      `this one is not — ${reasons}. A person clears this: ${judge}; or, having seen ` +
-      'the change running in production, close the issue by hand; or move it out of ' +
-      '`awaiting_release` if it is not to ship.',
-    owes: 'human',
-    waitingFor:
-      'a verdict on each criterion named at the running deployment, or the issue closed by hand',
-  };
-}
-
 /**
  * The one reason every criteria-held row of a project with no runtime route shares (ISS-1346).
  * No run can clear it: nothing can read what the project serves, so no verdict a run writes can
@@ -229,16 +145,55 @@ export function gateUnreadableHold(message: string): ReleaseHold {
   };
 }
 
-export function criteriaUnreadableHold(message: string): ReleaseHold {
+/** What a criteria read failed on: what the project serves, a part of the weighing, the verdicts. */
+export type UnreadableSubject = 'serving' | WeighingSubject;
+
+const AGAIN = 'The next sweep reads it again.';
+
+const UNREADABLE: Readonly<Record<UnreadableSubject, readonly [string, string, string?]>> = {
+  declaration: [
+    "This project's stored release runtimes declaration could not be read, so the automatic " +
+      'release could not tell which runtime each criterion is weighed in',
+    "this project's `pipelineConfig.releaseRuntimes` to be corrected",
+    'Correct `pipelineConfig.releaseRuntimes` on this project, and the next sweep weighs every ' +
+      'waiting issue again.',
+  ],
+  runners: [
+    "The runner devices this project's declared release runtimes are read from could not be " +
+      'read, so the automatic release could not tell what those runtimes are running',
+    'the runner devices to be readable',
+  ],
+  repository: [
+    "This project's repository binding could not be read, so the automatic release could not " +
+      'compare the commits its verdicts name with what it serves',
+    "this project's repository binding to be readable",
+  ],
+  serving: [
+    'What this project is serving could not be read, so the automatic release could not weigh ' +
+      'any verdict against it',
+    'what this project is serving to be readable',
+  ],
+  verdicts: [
+    'The verdicts on this issue could not be read, so the automatic release could not tell ' +
+      'whether its criteria are earned',
+    'the verdicts to be readable',
+  ],
+};
+
+export function criteriaUnreadableHold(subject: UnreadableSubject, message: string): ReleaseHold {
+  const [opens, waitingFor, again = AGAIN] = UNREADABLE[subject];
   return {
     code: 'RELEASE_CRITERIA_UNREADABLE',
-    reason:
-      `The verdicts on this issue could not be read, so the automatic release could not tell ` +
-      `whether its criteria are earned: ${message}. Nothing was claimed or moved, and the next ` +
-      'sweep reads them again.',
+    reason: `${opens}: ${message}. Nothing was claimed or moved. ${again}`,
     owes: 'human',
-    waitingFor: 'the verdicts to be readable',
+    waitingFor,
   };
+}
+
+/** The hold for a criteria read that threw at `stage`; a weighing names its own subject. */
+export function unreadableHoldOf(err: unknown, stage: UnreadableSubject): ReleaseHold {
+  const subject = err instanceof WeighingUnreadable ? err.subject : stage;
+  return criteriaUnreadableHold(subject, err instanceof Error ? err.message : String(err));
 }
 
 export function queuedBehindHold(carried: number): ReleaseHold {

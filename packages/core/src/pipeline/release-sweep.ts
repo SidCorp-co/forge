@@ -30,8 +30,6 @@ import {
   clearProjectReleaseHolds,
   clearReleaseHolds,
   clearStaleReleaseHolds,
-  criteriaHold,
-  criteriaUnreadableHold,
   cutFailedHold,
   gateUnreadableHold,
   NO_ACTOR_HOLD,
@@ -41,8 +39,11 @@ import {
   refusalHold,
   runtimeUnroutedHold,
   targetUndeclaredHold,
+  type UnreadableSubject,
+  unreadableHoldOf,
   writeReleaseHolds,
 } from './release-hold.js';
+import { criteriaHold } from './release-hold-criteria.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 
 const CANDIDATE_CURSOR_KEY = 'release-sweep';
@@ -289,29 +290,29 @@ async function readGate(
 }
 
 /**
- * The criteria reports, or a hold naming why the verdicts could not be read.
+ * The criteria reports, or a hold naming which read failed: what the project serves, the weighing
+ * (its declaration, its runner devices, the verdicts it reads), or the verdicts themselves.
  *
  * One reading of what the project is serving is taken here and shared by every waiting issue: they
  * are one project's rows weighed against one answer about that project, at one moment (ISS-1286).
  * `readServingNow` answers rather than throwing for a host that will not talk — an unreachable
  * probe is a reading this gate has, not a criteria read that failed — so only a tracker or database
- * failure reaches the catch below. The weighing beside it (ISS-1368) answers a repository that will
- * not talk the same way, as a reason kept on each pair it could not read.
+ * failure reaches the catches below. The weighing beside it (ISS-1368) answers a repository that
+ * will not talk the same way, as a reason kept on each pair it could not read.
  */
 async function readCriteria(
   projectId: string,
   waiting: string[],
 ): Promise<{ ok: true; value: IssueCriteriaReport[] } | { ok: false; hold: ReleaseHold }> {
+  let stage: UnreadableSubject = 'serving';
   try {
     const serving = await readServingNow(projectId);
+    stage = 'verdicts';
     const weighing = await readWeighingNow(projectId, serving, waiting);
     return { ok: true, value: await unearnedCriteriaReports(waiting, serving, weighing) };
   } catch (err) {
     logger.error({ err, projectId }, 'release-sweep: the criteria could not be read');
-    return {
-      ok: false,
-      hold: criteriaUnreadableHold(err instanceof Error ? err.message : String(err)),
-    };
+    return { ok: false, hold: unreadableHoldOf(err, stage) };
   }
 }
 

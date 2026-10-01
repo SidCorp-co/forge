@@ -9,7 +9,7 @@ import { commentAttachments, comments, issueAttachments, issues } from '../db/sc
 import { parseForgeRecord } from '../messaging/forge-record.js';
 import { criterionBlocksIn, longestSpelling } from '../messaging/verdict-identity.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
-import { type RuntimeReading, UNWEIGHED, type Weighing } from '../release-batch/weighing.js';
+import { UNWEIGHED, type Weighing } from '../release-batch/weighing.js';
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
 import {
   type OwedRuntimes,
@@ -102,8 +102,8 @@ export interface IssueCriteriaReport {
   readonly broken: readonly BrokenCitations[];
   /** What the project's declared probes answered when these verdicts were weighed. */
   readonly serving: ServingReading;
-  /** Each release runtime the project declares beside its deployment, as read then (ISS-1368). */
-  readonly runtimes: readonly RuntimeReading[];
+  /** The runtimes this issue's change runs in, each as read then (ISS-1368): what a hold names. */
+  readonly owed: OwedRuntimes;
   /** Criteria earned on a runtime nothing could re-read: earned, and weaker than a checked one. */
   readonly uncorroborated: readonly number[];
 }
@@ -247,20 +247,19 @@ async function reportFor(
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
   const identities = issueIdentities(row);
   const numbers = acceptanceCriteriaNumbers(row.acceptanceCriteria);
-  const { runtimes } = weighing;
+  const owed = owedRuntimes(row.id, weighing);
   if (numbers.length === 0) {
-    return { issueId: row.id, unearned: [], broken: [], serving, runtimes, uncorroborated: [] };
+    return { issueId: row.id, unearned: [], broken: [], serving, owed, uncorroborated: [] };
   }
   const latest = await latestCriterionVerdicts(row.id);
   const held = await heldAttachmentNames(row.id);
-  const owed = owedRuntimes(row.id, weighing);
   const found = findingsFor(numbers, latest, { serving, owed, weighing }, identities, held);
   return {
     issueId: row.id,
     unearned: found.unearned,
     broken: found.broken,
     serving,
-    runtimes,
+    owed,
     uncorroborated: found.uncorroborated,
   };
 }
