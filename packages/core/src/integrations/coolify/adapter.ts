@@ -20,6 +20,7 @@ import {
   type OutboundDispatchInput,
   type OutboundDispatchResult,
 } from '../types.js';
+import { verifyCoolifyBindingTarget } from './binding-target.js';
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
 import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
 import { type CoolifyConfirmJob, enqueueCoolifyConfirm } from './confirm.js';
@@ -150,6 +151,7 @@ async function recordDispatchOutcome(outcome: DispatchOutcome): Promise<void> {
 }
 
 const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySecrets> = {
+  verifyBindingTarget: verifyCoolifyBindingTarget,
   async healthcheck(ctx) {
     const started = Date.now();
     const client = buildClient(ctx);

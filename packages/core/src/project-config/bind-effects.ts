@@ -25,6 +25,12 @@ export interface BindEffects {
     agentAccess: AgentAccess;
   }): Promise<ApiRefusal[]>;
   inboundSecret(connectionId: string): Promise<string>;
+  targetRefusals(input: {
+    connectionId: string;
+    provider: string;
+    config: Record<string, unknown>;
+    held: Record<string, unknown> | null;
+  }): Promise<ApiRefusal[]>;
   afterWrite(input: {
     bindingId: string;
     projectId: string;
@@ -72,6 +78,15 @@ export const bindEffects: BindEffects = {
     const provider = connection?.provider;
     const own = connection && provider ? getAdapter(provider)?.inboundSecret?.(connection) : null;
     return own ?? `whsec_${randomBytes(24).toString('hex')}`;
+  },
+
+  async targetRefusals({ connectionId, provider, config, held }) {
+    const verify = getAdapter(provider)?.verifyBindingTarget;
+    if (!verify) return [];
+    const connection = await findConnectionById(connectionId);
+    if (!connection) return [];
+    const refused = await verify({ connection, config, held });
+    return refused.map((r) => ({ ...r, path: `/target${r.path}` }));
   },
 
   async afterWrite({ bindingId, projectId, connectionId, provider, role, config, created }) {

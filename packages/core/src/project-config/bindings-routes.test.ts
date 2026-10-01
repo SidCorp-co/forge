@@ -49,6 +49,7 @@ vi.mock('../middleware/auth.js', () => ({
 const effects = vi.hoisted(() => ({
   refusals: vi.fn(async () => [] as { code: string; path: string; detail: string }[]),
   inboundSecret: vi.fn(async () => 'whsec_minted'),
+  targetRefusals: vi.fn(async () => [] as { code: string; path: string; detail: string }[]),
   afterWrite: vi.fn(async () => ({}) as Record<string, unknown>),
 }));
 vi.mock('./bind-effects.js', () => ({ bindEffects: effects }));
@@ -60,6 +61,7 @@ const { BINDING, SOURCE, call, coolifyDoc, refusalsOf, resetBindingWorld } = awa
 beforeEach(() => {
   effects.refusals.mockClear();
   effects.inboundSecret.mockClear();
+  effects.targetRefusals.mockClear();
   effects.afterWrite.mockClear();
   resetBindingWorld();
 });
@@ -321,5 +323,68 @@ describe('a binding holding keys the document has no field for', () => {
       expect.objectContaining({ code: 'BINDING_NOT_REPRESENTABLE', path: '' }),
     ]);
     expect(bindingMem.rows.get(BINDING)?.config).toEqual(held);
+  });
+});
+
+describe('a target the provider is asked about', () => {
+  it('asks the provider about the target before writing, and writes nothing it refuses', async () => {
+    effects.targetRefusals.mockResolvedValueOnce([
+      {
+        code: 'COOLIFY_APPLICATION_UNKNOWN',
+        path: '/target/applications/0/resourceUuid',
+        detail: 'Coolify has no application "y8w4c4kss8ogo8gc44ow44kc"',
+      },
+    ]);
+    const res = await call('PUT', `/bindings/${BINDING}`, {
+      baseRevision: null,
+      document: coolifyDoc(),
+    });
+    expect(res.status).toBe(422);
+    expect(await refusalsOf(res)).toEqual([
+      expect.objectContaining({
+        code: 'COOLIFY_APPLICATION_UNKNOWN',
+        path: '/target/applications/0/resourceUuid',
+      }),
+    ]);
+    expect(effects.targetRefusals).toHaveBeenCalledWith({
+      connectionId: COOLIFY_CONNECTION,
+      provider: 'coolify',
+      config: { targets: [expect.objectContaining({ resourceUuid: 'y8w4c4kss8ogo8gc44ow44kc' })] },
+      held: null,
+    });
+    expect(bindingMem.rows.size).toBe(0);
+  });
+
+  it('hands the provider what the row already holds on the same connection, so only new targets are asked about', async () => {
+    const held = {
+      targets: [{ id: 'primary', label: 'primary', resourceUuid: 'y8w4c4kss8ogo8gc44ow44kc' }],
+    };
+    seedBindingRow({
+      id: BINDING,
+      projectId: PROJECT,
+      connectionId: COOLIFY_CONNECTION,
+      provider: 'coolify',
+      role: 'deploy',
+      config: held,
+      label: '',
+      agentAccess: 'none',
+      active: true,
+      revision: 1,
+    });
+    const res = await call('PUT', `/bindings/${BINDING}`, {
+      baseRevision: 1,
+      document: coolifyDoc(),
+    });
+    expect(res.status).toBe(200);
+    expect(effects.targetRefusals).toHaveBeenCalledWith(expect.objectContaining({ held }));
+  });
+
+  it('asks the provider nothing when the document is already refused', async () => {
+    const res = await call('PUT', `/bindings/${BINDING}`, {
+      baseRevision: null,
+      document: coolifyDoc({ connection: '12121212-1212-4121-8121-121212121212' }),
+    });
+    expect(res.status).toBe(422);
+    expect(effects.targetRefusals).not.toHaveBeenCalled();
   });
 });

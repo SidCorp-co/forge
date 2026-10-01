@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import type { BindingTargetRefusal } from '../integrations/types.js';
 import type { ConfigRefusal, ConfigRefusalCode } from './rules.js';
 import { TOOL_PATTERN } from './schema.js';
 
@@ -16,7 +17,8 @@ export type ApiRefusalCode =
   | 'BINDING_LABEL_UNSUPPORTED'
   | 'BINDING_ROLLBACK_MOVED'
   | 'AGENT_ACCESS_UNSUPPORTED'
-  | 'AGENT_ACCESS_NEEDS_ORG_ADMIN';
+  | 'AGENT_ACCESS_NEEDS_ORG_ADMIN'
+  | BindingTargetRefusal['code'];
 
 export interface ApiRefusal extends Omit<ConfigRefusal, 'code'> {
   code: ApiRefusalCode;
