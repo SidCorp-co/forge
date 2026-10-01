@@ -46,6 +46,7 @@ describe('a document waiting at the approve gate reaches the attention of whoeve
       expect.objectContaining({
         kind: 'channel_gate',
         documentNumber: number,
+        documentType: 'rfi',
         link: `/projects/forge/ecosystem/channel/${number}`,
         projectSlug: 'forge',
         questionId: expect.any(String),

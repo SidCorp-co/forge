@@ -41,6 +41,7 @@ interface AttentionItem {
   cost?: { claimsHeld: number; workspacesPinned: number; dependents: number };
   /** Channel-gate only: the number of the document waiting at the approve gate. */
   documentNumber?: string;
+  documentType?: string | null;
 }
 
 interface AttentionResponse {
@@ -133,6 +134,7 @@ function gateItem(r: AttentionGateRow): AttentionItem {
     projectName: r.projectName,
     questionId: r.questionId,
     documentNumber: r.number,
+    documentType: r.documentType,
   };
 }
 

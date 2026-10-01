@@ -21,6 +21,7 @@ import {
   ProjectLoader,
 } from "@/design";
 import { TONE_META, type SemanticTone } from "@/design/status";
+import { TYPE_LABEL } from "@/features/ecosystem/components/register-screen";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -80,7 +81,7 @@ function KindTag({ kind }: { kind: AttentionKind }) {
   );
 }
 
-function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
+export function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
   return (
     <button
       type="button"
@@ -88,7 +89,11 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: st
       className="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3 py-2.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
     >
       <KindTag kind={item.kind} />
-      {item.questionId && <MonoTag hue="flame">Decision</MonoTag>}
+      {item.kind === "channel_gate" ? (
+        item.documentType && <MonoTag hue="flame">{TYPE_LABEL[item.documentType] ?? item.documentType}</MonoTag>
+      ) : (
+        item.questionId && <MonoTag hue="flame">Decision</MonoTag>
+      )}
       <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{item.title}</span>
       {item.issueRef && <MonoTag>{item.issueRef}</MonoTag>}
       {item.projectName && (

@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { organizationMembers, projectMembers, projects } from '../db/schema.js';
+import { channelDocuments } from '../db/schema-ecosystem.js';
 import { agentQuestions, isChoiceStep } from '../db/schema-questions.js';
 import { effectiveProjectRole, visibleProjectsWhere } from '../lib/authz.js';
 import { mayChoose } from '../questions/write.js';
@@ -11,6 +12,8 @@ export interface AttentionGateRow {
   questionId: string;
   number: string;
   documentId: string;
+  /** The waiting document's type, so the row names what waits rather than that a decision does. */
+  documentType: string | null;
   prompt: string;
   createdAt: Date;
   projectSlug: string;
@@ -28,9 +31,14 @@ export async function selectChannelGates(userId: string): Promise<AttentionGateR
       createdAt: agentQuestions.createdAt,
       projectSlug: projects.slug,
       projectName: projects.name,
+      documentType: channelDocuments.type,
     })
     .from(agentQuestions)
     .innerJoin(projects, eq(projects.id, agentQuestions.projectId))
+    .leftJoin(
+      channelDocuments,
+      sql`${channelDocuments.id}::text = ${agentQuestions.origin}->>'documentId'`,
+    )
     .leftJoin(
       projectMembers,
       and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
@@ -62,6 +70,7 @@ export async function selectChannelGates(userId: string): Promise<AttentionGateR
           questionId: r.questionId,
           number: r.origin.number,
           documentId: r.origin.documentId,
+          documentType: r.documentType,
           prompt: current.prompt,
           createdAt: r.createdAt,
           projectSlug: r.projectSlug,

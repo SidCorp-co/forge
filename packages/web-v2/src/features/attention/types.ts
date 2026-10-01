@@ -22,6 +22,8 @@ export interface AttentionItem {
   questionId?: string | null;
   cost?: { claimsHeld: number; workspacesPinned: number; dependents: number };
   documentNumber?: string;
+  /** Channel-gate only: the waiting document's type; null when core could not read it. */
+  documentType?: string | null;
 }
 
 export interface AttentionResponse {
