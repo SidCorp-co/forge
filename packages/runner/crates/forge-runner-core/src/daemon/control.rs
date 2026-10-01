@@ -3061,10 +3061,8 @@ mod tests {
                         .contains("handing over to a new build"),
                 "criterion 5: the closing window refuses by name until the image is replaced: {refused:?}"
             );
-            assert!(
-                drain::HANDOVER_QUIET_SECS <= 10,
-                "criterion 5: the window is bounded at ten seconds"
-            );
+            // criterion 5: the window is bounded at ten seconds.
+            const { assert!(drain::HANDOVER_QUIET_SECS <= 10) };
         }
 
         #[test]

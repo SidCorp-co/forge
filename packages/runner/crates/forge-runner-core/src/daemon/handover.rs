@@ -159,9 +159,7 @@ mod tests {
         use std::os::fd::AsRawFd;
         let dir = crate::test_scratch::Scratch::new("handover-elsewhere");
         let bound = std::os::unix::net::UnixListener::bind(dir.join("other.sock")).unwrap();
-        let why = take_listener(bound.as_raw_fd(), &sock_in(&dir))
-            .err()
-            .expect("refused");
+        let why = take_listener(bound.as_raw_fd(), &sock_in(&dir)).expect_err("refused");
         assert!(why.contains("other.sock"), "{why}");
         assert!(
             bound.local_addr().is_ok(),
@@ -174,9 +172,7 @@ mod tests {
         use std::os::fd::AsRawFd;
         let dir = crate::test_scratch::Scratch::new("handover-file");
         let file = std::fs::File::create(dir.join("plain")).unwrap();
-        let why = take_listener(file.as_raw_fd(), &sock_in(&dir))
-            .err()
-            .expect("refused");
+        let why = take_listener(file.as_raw_fd(), &sock_in(&dir)).expect_err("refused");
         assert!(why.contains("is not a socket"), "{why}");
         assert!(file.metadata().is_ok(), "the file is still open");
     }
@@ -184,9 +180,7 @@ mod tests {
     #[test]
     fn a_descriptor_that_is_not_open_is_refused() {
         let dir = crate::test_scratch::Scratch::new("handover-closed");
-        let why = take_listener(987_654, &sock_in(&dir))
-            .err()
-            .expect("refused");
+        let why = take_listener(987_654, &sock_in(&dir)).expect_err("refused");
         assert!(why.contains("is not open"), "{why}");
     }
 }
