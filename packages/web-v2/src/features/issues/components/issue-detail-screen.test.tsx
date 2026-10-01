@@ -23,6 +23,7 @@ let park: Record<string, unknown> = { state: "ready", park: null };
 let role: string = "admin";
 let intake: "auto" | "manual" = "auto";
 let sessionContext: Record<string, unknown> | null = null;
+let policyError: Error | null = null;
 const startIssue = vi.fn();
 
 const ISSUE = {
@@ -46,7 +47,10 @@ const ISSUE = {
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() }) }));
 vi.mock("@/features/projects/hooks", () => ({ useProjects: () => ({ data: [{ id: "p1", role }] }) }));
 vi.mock("@/features/project-settings/hooks", () => ({
-  usePolicy: () => ok({ declared: true, revision: 1, document: { intake: { mode: intake } } }),
+  usePolicy: () =>
+    policyError
+      ? { data: undefined, isLoading: false, isError: true, error: policyError, refetch: vi.fn() }
+      : ok({ declared: true, revision: 1, document: { intake: { mode: intake } } }),
 }));
 vi.mock("@/features/pipeline/hooks", () => ({ useResumeRun: () => ({ mutate: vi.fn(), isPending: false }) }));
 vi.mock("@/features/questions/components/decision-panel", () => ({
@@ -112,6 +116,7 @@ beforeEach(() => {
   role = "admin";
   intake = "auto";
   sessionContext = null;
+  policyError = null;
   startIssue.mockClear();
 });
 afterEach(cleanup);
@@ -283,6 +288,13 @@ describe("the issue header's start on a manual-intake project", () => {
     renderScreen();
     expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
     expect(screen.getByRole("button", { name: "Run pipeline" })).toBeInTheDocument();
+  });
+
+  it("says the policy could not be read rather than hiding the Start in silence", () => {
+    policyError = new Error("500 policy read failed");
+    renderScreen();
+    expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent("Intake policy could not be read");
   });
 
   it("offers no Start once the issue has left Open", () => {

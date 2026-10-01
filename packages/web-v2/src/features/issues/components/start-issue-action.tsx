@@ -13,7 +13,8 @@ export type StartReading =
   | { kind: "none" }
   | { kind: "start" }
   | { kind: "started"; startedAt: string }
-  | { kind: "waits" };
+  | { kind: "waits" }
+  | { kind: "unread"; reason: string };
 
 /** The role `POST /api/issues/:id/run-pipeline-step` requires (core `START_ROLE`). */
 const START_ROLES: readonly NonNullable<Role>[] = ["member", "admin"];
@@ -33,10 +34,13 @@ function startedAtOf(sessionContext: Record<string, unknown> | null | undefined)
 export function readStart(args: {
   status: IssueStatus;
   policy: PolicyRead | undefined;
+  policyError?: Error | null;
   role: Role;
   sessionContext: Record<string, unknown> | null | undefined;
 }): StartReading {
-  if (args.status !== "open" || !intakeIsManual(args.policy)) return { kind: "none" };
+  if (args.status !== "open") return { kind: "none" };
+  if (args.policyError) return { kind: "unread", reason: args.policyError.message };
+  if (!intakeIsManual(args.policy)) return { kind: "none" };
   const startedAt = startedAtOf(args.sessionContext);
   if (startedAt) return { kind: "started", startedAt };
   return args.role && START_ROLES.includes(args.role) ? { kind: "start" } : { kind: "waits" };
@@ -74,6 +78,13 @@ export function StartIssueAction({
   }
   if (reading.kind === "waits") {
     return <span className="fg-caption">Waits for a project member to start it</span>;
+  }
+  if (reading.kind === "unread") {
+    return (
+      <span className="fg-caption" role="alert" title={reading.reason}>
+        Intake policy could not be read, so whether this issue waits for a Start is unknown
+      </span>
+    );
   }
   return null;
 }

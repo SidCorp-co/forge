@@ -274,6 +274,7 @@ export function IssueDetailScreen({
   const start = readStart({
     status: issue.status,
     policy: policyQ.data,
+    policyError: policyQ.error,
     role: projectRole,
     sessionContext: issue.sessionContext,
   });
