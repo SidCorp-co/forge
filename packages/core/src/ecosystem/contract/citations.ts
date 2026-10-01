@@ -19,13 +19,6 @@ export interface ContractFacts {
   indexes: ReadonlyMap<string, ContractIndex>;
 }
 
-export const EMPTY_FACTS: ContractFacts = {
-  measured: new Map(),
-  versions: new Map(),
-  latest: new Map(),
-  indexes: new Map(),
-};
-
 export const citedKey = (ref: string, version: string) => `${ref}@${version}`;
 
 export interface Citation {

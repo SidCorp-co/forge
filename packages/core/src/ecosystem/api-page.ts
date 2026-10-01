@@ -63,13 +63,11 @@ export async function readApiPage(userId: string, projectId: string, fence?: rea
   const [target] = await projectsWhere(db, { ids: [projectId] });
   if (!target) throw notFound(`project ${projectId} does not exist`);
   const access = await effectiveProjectRole(userId, projectId);
-  const fenced = (ids: ReadonlySet<string>) =>
-    fence ? new Set(fence.filter((p) => ids.has(p))) : ids;
   const full =
     projectRoleAtLeast(access?.role ?? null, 'viewer') && (!fence || fence.includes(projectId));
   const targetEcos = (await activeEcosystemIdsOf(db, [projectId])).map((m) => m.ecosystemId);
   const graph = await loadGraph(targetEcos);
-  const reader = full ? new Set([projectId]) : fenced(await readerProjects(userId));
+  const reader = full ? new Set([projectId]) : await readerProjects(userId, fence);
   const sight = full ? new Map<string, Sight>() : sightOf(graph, reader, projectId);
   if (!full && sight.size === 0) {
     throw forbidden(

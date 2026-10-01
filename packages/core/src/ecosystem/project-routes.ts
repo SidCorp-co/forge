@@ -10,6 +10,7 @@ import { readApiPage } from './api-page.js';
 import { heldEcosystem } from './ecosystem-service.js';
 import { type HeldInterface, loadInterface, writeInterface } from './interface-service.js';
 import { membershipDocument } from './membership-rules.js';
+import { serialiseRevisions } from './routes.js';
 import { listInterfaceRevisions, membershipsWhere, readEcosystems } from './store.js';
 
 export const ecosystemProjectRoutes = new Hono<{ Variables: AuthVars }>();
@@ -60,16 +61,7 @@ ecosystemProjectRoutes.put(
 ecosystemProjectRoutes.get('/:id/interface/revisions', idParam, async (c) => {
   const { id } = c.req.valid('param');
   await assertProjectAccess(id, c.get('userId'), 'viewer');
-  const revisions = await listInterfaceRevisions(id);
-  return c.json({
-    revisions: revisions.map((r) => ({
-      revision: r.revision,
-      document: r.document,
-      writtenBy: r.writtenBy,
-      writtenAt: r.writtenAt.toISOString(),
-    })),
-    returned: revisions.length,
-  });
+  return c.json(serialiseRevisions(await listInterfaceRevisions(id)));
 });
 
 ecosystemProjectRoutes.get('/:id/api-page', idParam, async (c) =>

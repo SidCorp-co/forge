@@ -2,6 +2,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import type { OrgMemberRole } from '../db/schema.js';
 import { loadOrgRole, loadVisibleProjectIds, orgRoleAtLeast } from '../lib/authz.js';
+import type { EcosystemRefusal } from './refusals.js';
 import { activeMembersOf } from './store.js';
 
 export const notFound = (message: string) =>
@@ -9,6 +10,12 @@ export const notFound = (message: string) =>
 
 export const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
+
+export const refusedBy = (refusal: EcosystemRefusal) =>
+  new HTTPException(403, {
+    message: refusal.detail,
+    cause: { code: refusal.code, details: { refusals: [refusal] } },
+  });
 
 export async function stewardRole(
   stewardOrgId: string,
@@ -28,8 +35,13 @@ export async function assertStewardAdmin(
   }
 }
 
-export async function readerProjects(userId: string | undefined): Promise<Set<string>> {
-  return new Set(await loadVisibleProjectIds(userId));
+// cm:why a fence names the projects a credential acts for, so the reader is only those of the person's projects inside it
+export async function readerProjects(
+  userId: string | undefined,
+  fence?: readonly string[],
+): Promise<Set<string>> {
+  const visible = new Set(await loadVisibleProjectIds(userId));
+  return fence ? new Set(fence.filter((p) => visible.has(p))) : visible;
 }
 
 // cm:why an ecosystem-scoped chat reads as every member project the person holds a role in, home first; the fence never names a project the person cannot already read, so a counterparty's internals stay out

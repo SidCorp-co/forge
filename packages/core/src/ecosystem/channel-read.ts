@@ -1,8 +1,8 @@
 import { db } from '../db/client.js';
 import { notFound } from './access.js';
-import { type RegisterRow, rowsOf } from './channel-register.js';
-import { heldThreads, REPLIES } from './channel-rules.js';
-import { NUMBER_PATTERN, type ThreadHold } from './channel-schema.js';
+import { owesReply, type RegisterRow, registerRowsOver } from './channel-register.js';
+import { heldThreads, today } from './channel-rules.js';
+import { NUMBER_PATTERN, type ThreadHold, UUID_PATTERN } from './channel-schema.js';
 import {
   type DocumentRow,
   documentsWhere,
@@ -18,8 +18,6 @@ export interface PartyView extends ServedDocument {
   thread: string | null;
   hold: ThreadHold | null;
 }
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // cm:why the narrow party read: a recipient sees a document only once it is published, the sender sees its own in every state, and nobody sees another pair's
 const sideOf = (row: DocumentRow, projectId: string): PartyView['side'] | null => {
@@ -52,7 +50,7 @@ async function viewsOf(projectId: string, rows: readonly DocumentRow[]): Promise
 }
 
 export async function readAs(projectId: string, ref: string): Promise<PartyView> {
-  const row = UUID.test(ref)
+  const row = UUID_PATTERN.test(ref)
     ? await readDocument(db, ref)
     : NUMBER_PATTERN.test(ref)
       ? await readNumbered(db, ref)
@@ -79,17 +77,15 @@ export async function inbox(projectId: string): Promise<InboxEntry[]> {
   ).filter((v) => v.document.state === 'published');
   const numbers = views.flatMap((v) => (v.document.number ? [v.document.number] : []));
   const answered = await repliesFrom(db, projectId, numbers);
-  const today = new Date().toISOString().slice(0, 10);
   return views.map((v) => {
     const d = v.document;
-    const owesReply =
-      REPLIES[d.type].length > 0 && !(d.type === 'change-notice' && d.body.binding === false);
+    const owed = owesReply(d);
     const done = d.number ? answered.has(d.number) : false;
     return {
       ...v,
-      owesReply,
+      owesReply: owed,
       answered: done,
-      overdue: owesReply && !done && d.dueBy !== undefined && d.dueBy < today,
+      overdue: owed && !done && d.dueBy !== undefined && d.dueBy < today(),
     };
   });
 }
@@ -110,11 +106,6 @@ export async function threadAs(
 export async function standingOf(view: PartyView): Promise<RegisterRow | null> {
   const number = view.document.number;
   if (!number || !view.thread) return null;
-  const rows = await documentsWhere(db, { thread: view.thread });
-  const served = await serveAll(db, rows);
-  const threadOf = new Map(rows.map((r) => [r.id, r.thread]));
-  const docs = served.map((s) => ({ ...s.document, thread: threadOf.get(s.id) ?? null }));
-  const held = heldThreads((await holdsOn(db, [view.thread])).map(holdOf));
-  const today = new Date().toISOString().slice(0, 10);
-  return rowsOf(docs, held, today).find((r) => r.number === number) ?? null;
+  const rows = await registerRowsOver(await documentsWhere(db, { thread: view.thread }));
+  return rows.find((r) => r.number === number) ?? null;
 }

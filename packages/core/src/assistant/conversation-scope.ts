@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { conversationPins } from '../db/schema-conversations.js';
-import { activeEcosystemIdsOf } from '../ecosystem/store.js';
+import { isActiveMember } from '../ecosystem/store.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { readableConversation } from './conversation-access.js';
@@ -21,8 +21,7 @@ export async function ecosystemOfScope(
   scope: ConversationScope | undefined,
 ): Promise<string | null> {
   if (!scope || scope.kind === 'project') return null;
-  const active = await activeEcosystemIdsOf(db, [homeProjectId]);
-  if (active.some((m) => m.ecosystemId === scope.ecosystemId)) return scope.ecosystemId;
+  if (await isActiveMember(db, homeProjectId, scope.ecosystemId)) return scope.ecosystemId;
   throw new HTTPException(409, {
     message: `project ${homeProjectId} is not an active member of ecosystem ${scope.ecosystemId}, so a chat opened under it cannot read at that ecosystem's scope — open it under a member project, or at project scope`,
     cause: {

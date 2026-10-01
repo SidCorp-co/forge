@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { REGISTER_STATUSES } from '../../ecosystem/channel-register.js';
-import { NUMBER_PATTERN } from '../../ecosystem/channel-schema.js';
+import { NUMBER_PATTERN, UUID_PATTERN } from '../../ecosystem/channel-schema.js';
 import type { EcosystemRefusal } from '../../ecosystem/refusals.js';
 import { DOCUMENT_TYPES } from '../../ecosystem/schema.js';
 
@@ -26,9 +26,8 @@ export const CHANNEL_WRITES = [
 export const CHANNEL_ACTIONS = [...CHANNEL_READS, ...CHANNEL_WRITES] as const;
 export type ChannelAction = (typeof CHANNEL_ACTIONS)[number];
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const number = z.string().regex(NUMBER_PATTERN);
-const ref = z.string().refine((v) => UUID.test(v) || NUMBER_PATTERN.test(v));
+const ref = z.string().refine((v) => UUID_PATTERN.test(v) || NUMBER_PATTERN.test(v));
 const reason = z.string().trim().min(1).max(500);
 const content = {
   type: z.enum(DOCUMENT_TYPES),

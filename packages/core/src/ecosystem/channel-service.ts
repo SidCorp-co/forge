@@ -5,6 +5,7 @@ import { type ChannelOutcome, lockedSender, notIn, refuse, served, settle } from
 import type { Writer } from './channel-author.js';
 import { checked, parsedOrRefused } from './channel-checks.js';
 import { askGate } from './channel-gate-ask.js';
+import { addDays, today } from './channel-rules.js';
 import { DOCUMENT_SCHEMA_ID, type Gate, TYPE_CODES } from './channel-schema.js';
 import { announceGatePending, announcePublished } from './channel-signals.js';
 import { insertDraft, insertEvent, reserveNumber, rewriteDocument } from './channel-store.js';
@@ -12,10 +13,6 @@ import { serve } from './channel-world.js';
 import { heldEcosystem } from './ecosystem-service.js';
 import { type EcosystemDocument, interfaceDocumentSchema } from './schema.js';
 import { readEcosystem, readInterfaces } from './store.js';
-
-const today = () => new Date().toISOString().slice(0, 10);
-const addDays = (day: string, n: number) =>
-  new Date(Date.parse(`${day}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
 
 export interface DraftInput {
   type: unknown;

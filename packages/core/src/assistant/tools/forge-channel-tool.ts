@@ -12,9 +12,16 @@ import { supersede, withdraw } from '../../ecosystem/channel-ends.js';
 import { holdOrRelease } from '../../ecosystem/channel-holds.js';
 import { inbox, outbox, readAs, threadAs } from '../../ecosystem/channel-read.js';
 import { readRegister } from '../../ecosystem/channel-register.js';
+import { UUID_PATTERN } from '../../ecosystem/channel-schema.js';
 import { createDraft, editDraft, submit } from '../../ecosystem/channel-service.js';
-import { viewOf } from '../../ecosystem/channel-view.js';
-import { activeEcosystemIdsOf } from '../../ecosystem/store.js';
+import {
+  holdView,
+  inboxView,
+  outboxView,
+  threadView,
+  viewOf,
+} from '../../ecosystem/channel-view.js';
+import { activeEcosystemIdsOf, isActiveMember } from '../../ecosystem/store.js';
 import type { ContextScopedMcpToolFactory, McpContext } from '../../mcp/tools/lib.js';
 import {
   CHANNEL_ACTIONS,
@@ -50,8 +57,6 @@ const refusedWith = (refusals: readonly NamedRefusal[]): Answer => ({
 const one = (code: string, path: string, detail: string): Answer =>
   refusedWith([{ code, path, detail }]);
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
 function settled(outcome: ChannelOutcome): Answer {
   return outcome.ok ? viewOf(outcome.served) : refusedWith(outcome.refusals);
 }
@@ -82,7 +87,7 @@ async function soleEcosystem(projectId: string, named: string | undefined): Prom
 }
 
 async function documentId(projectId: string, ref: string): Promise<string> {
-  return UUID.test(ref) ? ref : (await readAs(projectId, ref)).id;
+  return UUID_PATTERN.test(ref) ? ref : (await readAs(projectId, ref)).id;
 }
 
 interface ReadScope {
@@ -135,33 +140,14 @@ const HANDLERS: Handlers = {
     });
     return { ecosystem, documents: rows, returned: rows.length, total };
   },
-  inbox: async (_a, side) => {
-    const entries = await inbox(side);
-    return {
-      documents: entries.map((e) => ({
-        ...viewOf(e),
-        hold: e.hold,
-        owesReply: e.owesReply,
-        answered: e.answered,
-        overdue: e.overdue,
-      })),
-    };
-  },
-  outbox: async (_a, side) => ({
-    documents: (await outbox(side)).map((v) => ({ ...viewOf(v), hold: v.hold })),
-  }),
+  inbox: async (_a, side) => ({ documents: inboxView(await inbox(side)) }),
+  outbox: async (_a, side) => ({ documents: outboxView(await outbox(side)) }),
   read: async (a, _side, _w, scope) => {
     const view = await firstParty(scope.sides, (s) => readAs(s, a.ref));
     return { ...viewOf(view), side: view.side, hold: view.hold };
   },
-  thread: async (a, _side, _w, scope) => {
-    const t = await firstParty(scope.sides, (s) => threadAs(s, a.thread));
-    return {
-      thread: t.thread,
-      documents: t.documents.map((v) => ({ ...viewOf(v), side: v.side })),
-      holds: t.holds,
-    };
-  },
+  thread: async (a, _side, _w, scope) =>
+    threadView(await firstParty(scope.sides, (s) => threadAs(s, a.thread))),
   contracts: async (a, side, w, scope) => readApiPage(w.userId, a.project ?? side, scope.sides),
   draft: async ({ ecosystem, ...input }, side, writer, scope) =>
     settled(
@@ -231,7 +217,7 @@ async function held(
 ): Promise<Answer> {
   const outcome = await holdOrRelease({ sideProjectId: side, thread, action, writer, reason });
   if (!outcome.ok) return refusedWith(outcome.refusals);
-  return { thread, held: outcome.held, hold: outcome.hold };
+  return holdView(thread, outcome);
 }
 
 const isWrite = (action: ChannelAction) => (CHANNEL_WRITES as readonly string[]).includes(action);
@@ -283,10 +269,7 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
     r: ReadScope,
   ) => Promise<Answer>;
   const ecosystemId = ctx.turn?.ecosystemId ?? null;
-  if (
-    ecosystemId &&
-    !(await activeEcosystemIdsOf(db, [side])).some((m) => m.ecosystemId === ecosystemId)
-  ) {
+  if (ecosystemId && !(await isActiveMember(db, side, ecosystemId))) {
     return one(
       'ECOSYSTEM_NOT_MEMBER',
       '/',

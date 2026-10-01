@@ -383,6 +383,14 @@ export async function activeEcosystemIdsOf(
     );
 }
 
+export async function isActiveMember(
+  tx: Tx,
+  projectId: string,
+  ecosystemId: string,
+): Promise<boolean> {
+  return (await activeEcosystemIdsOf(tx, [projectId])).some((m) => m.ecosystemId === ecosystemId);
+}
+
 export async function activeMembersOf(tx: Tx, ecosystemId: string): Promise<string[]> {
   const rows = await tx
     .select({ projectId: ecosystemMemberships.projectId })
