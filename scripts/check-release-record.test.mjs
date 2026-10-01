@@ -92,6 +92,9 @@ describe('check-release-record on a push of several commits', () => {
     w.commit('push 2 of 2: reword', record(REWORDED, PUBLISHED));
     const r = onPush(w, { before: w.before });
     expect(r.stderr).toBe('');
+    expect(r.stdout).toContain(
+      `judged against ${w.before.slice(0, 9)}, the tip this push moved its branch from`,
+    );
     expect(r.status).toBe(0);
   });
 
@@ -112,6 +115,7 @@ describe('check-release-record on a push of several commits', () => {
     const r = onPush(w, { before: stranger });
     expect(r.stderr).toContain('no base revision can be taken');
     expect(r.stderr).toContain('not an ancestor of HEAD');
+    expect(r.stderr).toContain('the next ordinary push to this branch carries a `before`');
     expect(r.status).toBe(2);
   });
 

@@ -49,12 +49,26 @@ export function pushedFrom(root, env, head) {
   } catch {
     throw new Error(
       `this push moved its branch from ${before}, which is not an ancestor of HEAD ${head} or is ` +
-        'absent from this clone. Check out with `fetch-depth: 0`; a gated branch that was ' +
-        'force-pushed has no base to measure the push against',
+        'absent from this clone. A shallow clone is fixed by checking out with `fetch-depth: 0`. ' +
+        'A force-push has no base to measure it against, and re-running will not give it one; the ' +
+        'next ordinary push to this branch carries a `before` that is its ancestor',
     );
   }
   return before;
 }
+
+const NONE = Object.freeze({ rev: null, basis: null, refusal: null });
+
+function refused(refusal) {
+  return { rev: null, basis: null, refusal };
+}
+
+/** What each `basis` is, in the words a reader of a gate's log needs. */
+export const BASIS = Object.freeze({
+  'merge-base': 'the merge-base with the merge target',
+  push: "the tip this push moved its branch from (the payload's `before`)",
+  parent: 'HEAD~1, the commit before this one',
+});
 
 /**
  * The revision this baseline is judged against: the merge-base with the branch this work will land
@@ -62,51 +76,49 @@ export function pushedFrom(root, env, head) {
  *
  * Not that branch's tip directly: a commit pushed STRAIGHT to the base branch has the tip equal to
  * HEAD, and comparing a file to itself passes everything. `HEAD~1` is left only for a checkout
- * standing on its merge target's tip outside a push, whose last commit was judged when it landed.
+ * standing on its merge target's tip outside a push, whose last commit was judged when it landed,
+ * and for the push that creates its branch, whose commits were judged where they were cut from.
  * A merge target that cannot be derived or names no ref here, and a push whose base cannot be
  * read, are a refusal: `HEAD~1` there would judge one commit of a branch of many and say nothing.
  *
- * @returns {{ rev: string | null, refusal: string | null }} `rev` null, with no refusal, only where
- *   HEAD or its parent does not exist
+ * No form returns the revision alone: a reader holding only that cannot tell a refused base from a
+ * shallow clone, and says the wrong one.
+ *
+ * @returns {{ rev: string | null, basis: 'merge-base' | 'push' | 'parent' | null,
+ *   refusal: string | null }} `basis` names the rung `rev` came from; `rev` null with no refusal
+ *   only where HEAD or its parent does not exist
  */
 export function baseRevision(root, env = process.env) {
   let head;
   try {
     head = git(['rev-parse', 'HEAD'], root);
   } catch {
-    return { rev: null, refusal: null };
+    return NONE;
   }
   const target = baseRef(root, env);
-  if (target.refusal) return { rev: null, refusal: target.refusal };
+  if (target.refusal) return refused(target.refusal);
   let mb;
   try {
     mb = git(['merge-base', target.ref, 'HEAD'], root);
   } catch {
-    return {
-      rev: null,
-      refusal:
-        `\`git merge-base ${target.ref} HEAD\` found no common ancestor, so this checkout holds no ` +
+    return refused(
+      `\`git merge-base ${target.ref} HEAD\` found no common ancestor, so this checkout holds no ` +
         `revision where the change began. Fetch the history: \`git fetch origin ${target.branch}\`, ` +
         'or check out with `fetch-depth: 0`',
-    };
+    );
   }
-  if (mb !== head) return { rev: mb, refusal: null };
+  if (mb !== head) return { rev: mb, basis: 'merge-base', refusal: null };
   try {
     const pushed = pushedFrom(root, env, head);
-    if (pushed) return { rev: pushed, refusal: null };
+    if (pushed) return { rev: pushed, basis: 'push', refusal: null };
   } catch (err) {
-    return { rev: null, refusal: err.message };
+    return refused(err.message);
   }
   try {
-    return { rev: git(['rev-parse', 'HEAD~1'], root), refusal: null };
+    return { rev: git(['rev-parse', 'HEAD~1'], root), basis: 'parent', refusal: null };
   } catch {
-    return { rev: null, refusal: null };
+    return NONE;
   }
-}
-
-/** `baseRevision`'s revision alone: null wherever none can be taken, refused or absent. */
-export function baseRev(root, env = process.env) {
-  return baseRevision(root, env).rev;
 }
 
 function readAt(root, rev, path) {

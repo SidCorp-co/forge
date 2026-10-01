@@ -3,7 +3,14 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { baseRef, branchSetFaults, ciBranches, mergeTarget, PROVED_STEP } from './base-branch.mjs';
+import {
+  baseRef,
+  branchSetFaults,
+  ciBranches,
+  mergeTarget,
+  PROVED_STEP,
+  unansweredBecause,
+} from './base-branch.mjs';
 
 const made = [];
 afterEach(() => {
@@ -237,6 +244,33 @@ describe('mergeTarget', () => {
     const box = mkdtempSync(join(tmpdir(), 'base-branch-nogit-'));
     made.push(box);
     expect(mergeTarget(box, {}).refusal).toContain('no merge target could be derived');
+  });
+});
+
+describe('unansweredBecause: why the remote gave no default', () => {
+  // The shape Node's spawnSync returns when its `timeout` kills the child.
+  const timedOut = {
+    error: Object.assign(new Error('spawnSync git ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+    status: null,
+    stderr: '',
+  };
+
+  it('says a wait that ran out in seconds, not as a spawn error', () => {
+    expect(unansweredBecause(timedOut)).toBe('no answer within 10 s');
+  });
+
+  it("passes any other spawn error's message through", () => {
+    const missing = { error: Object.assign(new Error('spawnSync git ENOENT'), { code: 'ENOENT' }) };
+    expect(unansweredBecause(missing)).toBe('spawnSync git ENOENT');
+  });
+
+  it("names a failed exit by git's first line of stderr", () => {
+    const r = { status: 128, stderr: "fatal: 'origin' does not appear\nmore\n" };
+    expect(unansweredBecause(r)).toBe("fatal: 'origin' does not appear");
+  });
+
+  it('is null for an exit of 0', () => {
+    expect(unansweredBecause({ status: 0, stdout: 'ref: refs/heads/dev\tHEAD\n' })).toBeNull();
   });
 });
 
