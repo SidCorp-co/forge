@@ -144,7 +144,9 @@ describe('the environments a project declares', () => {
       environments: { live: { url: 'https://elsewhere.example' } },
     });
     expect(res.status).toBe(400);
-    expect(JSON.stringify(res.json)).toContain('`environments` is not a field of PATCH /api/projects/:id');
+    expect(JSON.stringify(res.json)).toContain(
+      '`environments` is not a field of PATCH /api/projects/:id',
+    );
     expect(JSON.stringify(res.json)).toContain('PUT /api/projects/:id/config');
   });
 
