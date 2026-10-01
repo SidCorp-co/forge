@@ -54,7 +54,7 @@ describe("the action queue (ISS-1217)", () => {
                 slug: "sid-desk",
                 name: "SidDesk",
                 baseBranch: "staging",
-                liveBranch: "master",
+                deploysFrom: "master",
                 reason: "the git host refused the deploy key attached to this project",
               },
             ],

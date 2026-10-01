@@ -51,7 +51,6 @@ function binding(over: Partial<BindingSummary> = {}): BindingSummary {
 		projectId: PROJECT_ID,
 		provider: "coolify",
 		role: "deploy",
-		stages: ["preview", "live"],
 		config: {},
 		bindingConfig: {},
 		label: "",
@@ -178,13 +177,13 @@ describe("the release runner label on a deploy binding", () => {
 		});
 	});
 
-	// A preview-only binding ranks no release, so a field there would offer a
+	// No environment names a service binding, so a field there would offer a
 	// setting that decides nothing.
-	it("renders nothing for a deploy binding that carries no live stage", () => {
+	it("renders nothing for a service binding", () => {
 		const { container } = draw(
 			<BindingReleaseRunnerField
 				projectId={PROJECT_ID}
-				binding={binding({ stages: ["preview"] })}
+				binding={binding({ role: "service" })}
 				canEdit
 			/>,
 		);
@@ -203,7 +202,7 @@ describe("the release runner label on a deploy binding", () => {
 });
 
 describe("the release runner label on a shared connection", () => {
-	it("renders for a connection some project binds as a live deploy target", () => {
+	it("renders for a connection some project binds as a deploy target", () => {
 		draw(
 			<ConnectionReleaseRunnerField
 				connection={{ id: CONNECTION_ID, config: { releaseRunnerLabel: "other" } }}
@@ -233,11 +232,11 @@ describe("the release runner label on a shared connection", () => {
 		).toBeInTheDocument();
 	});
 
-	it("renders nothing for a connection no project binds as a live deploy target", () => {
+	it("renders nothing for a connection no project binds as a deploy target", () => {
 		const { container } = draw(
 			<ConnectionReleaseRunnerField
 				connection={{ id: CONNECTION_ID, config: {} }}
-				bindings={[binding({ role: "service", stages: [] })]}
+				bindings={[binding({ role: "service" })]}
 				canManage
 			/>,
 		);

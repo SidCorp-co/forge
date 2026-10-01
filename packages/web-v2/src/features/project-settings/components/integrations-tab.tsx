@@ -28,7 +28,6 @@ import type {
   AgentAccess,
   BindingRole,
   ConnectionSummary,
-  DeployStage,
 } from "@/features/integrations/types";
 
 // What the binding is FOR — DECLARED by the person, never derived from the
@@ -37,14 +36,6 @@ import type {
 const ROLE_SELECT_OPTIONS: SelectOption[] = [
   { value: "service", label: "Service — a project-wide facility" },
   { value: "deploy", label: "Deploy target — somewhere Forge deploys to" },
-];
-
-// A deploy binding serves one or both. A service binding serves neither, which is
-// why the control below is not merely disabled under `service` — it is unmounted
-// and its value dropped.
-const STAGE_CHOICES: { value: DeployStage; label: string; hint: string }[] = [
-  { value: "preview", label: "Preview", hint: "deployed so people can see it before it counts" },
-  { value: "live", label: "Live", hint: "real users are on it" },
 ];
 
 function connectionLabel(c: ConnectionSummary): string {
@@ -57,7 +48,6 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   const bind = useBindExistingConnection();
   const [connectionId, setConnectionId] = useState<string>("");
   const [role, setRole] = useState<BindingRole>("service");
-  const [stages, setStages] = useState<DeployStage[]>([]);
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -88,12 +78,6 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   function chooseRole(next: BindingRole) {
     setRole(next);
     setFormError(null);
-    if (next === "service") setStages([]);
-  }
-
-  function toggleStage(stage: DeployStage) {
-    setFormError(null);
-    setStages((cur) => (cur.includes(stage) ? cur.filter((s) => s !== stage) : [...cur, stage]));
   }
 
   function submit() {
@@ -104,10 +88,6 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
       );
       return;
     }
-    if (role === "deploy" && stages.length === 0) {
-      setFormError("Choose at least one stage — a deploy target has to serve Preview, Live or both.");
-      return;
-    }
     setFormError(null);
     bind.mutate(
       {
@@ -115,7 +95,6 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
         body: {
           projectId,
           role,
-          ...(role === "deploy" ? { stages } : {}),
           ...agentAccessBody(agentPathKind, agentAccess),
         },
       },
@@ -123,7 +102,6 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
         onSuccess: () => {
           setConnectionId("");
           setRole("service");
-          setStages([]);
           setAgentAccess(AGENT_ACCESS_CLOSED);
         },
       },
@@ -176,25 +154,11 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
               </Banner>
             )}
             {role === "deploy" && canDeploy && (
-              <Field label="Which stages" required>
-                <div className="flex flex-col gap-2">
-                  {STAGE_CHOICES.map((choice) => (
-                    <label key={choice.value} className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        className="mt-1"
-                        checked={stages.includes(choice.value)}
-                        onChange={() => toggleStage(choice.value)}
-                        disabled={bind.isPending}
-                      />
-                      <span className="fg-body-sm">
-                        {choice.label}
-                        <span className="text-muted"> — {choice.hint}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </Field>
+              <p className="fg-body-sm text-muted">
+                Which environment this binding deploys is the project document&apos;s: name the
+                binding in <code>environments.&lt;name&gt;.deployment.binding</code> and write the
+                document with <code>PUT /api/projects/:id/config</code>.
+              </p>
             )}
             <AgentAccessChoice
               value={agentAccess}

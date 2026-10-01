@@ -10,7 +10,6 @@ const ALIGN_BUTTON_COL = "hidden w-9 shrink-0 sm:block";
 
 export function CoolifyTargetsField({
   projectId,
-  stage,
   integrationId,
   baseUrl,
   apiToken,
@@ -19,7 +18,6 @@ export function CoolifyTargetsField({
   inherited,
 }: {
   projectId: string;
-  stage: string;
   integrationId: string | undefined;
   baseUrl: string;
   apiToken: string;
@@ -53,10 +51,10 @@ export function CoolifyTargetsField({
   return (
     <fieldset className="flex flex-col gap-3 rounded-md border border-subtle p-3">
       <legend className="fg-label px-1 text-subtle">
-        Deploy targets · this project · {stage}
+        Deploy targets · this project
       </legend>
       <p className="fg-body-sm text-muted">
-        The Coolify application(s) this project deploys for {stage}. Add
+        The Coolify application(s) this binding deploys. Add
         one row per app — e.g. a separate backend and frontend; they deploy
         together and the pipeline only completes once all succeed. Give a
         target a health URL and Forge reads it after every deploy: one that

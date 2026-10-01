@@ -127,7 +127,7 @@ function ConnectedState({
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
-          <Badge>{scopeLabel(binding.role, binding.stages)}</Badge>
+          <Badge>{scopeLabel(binding.role)}</Badge>
           <a
             href={`https://github.com/${owner}/${repo}`}
             target="_blank"

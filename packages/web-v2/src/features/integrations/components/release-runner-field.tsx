@@ -31,13 +31,12 @@ function declaredIn(config: Record<string, unknown> | undefined | null): string 
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-/** A label ranks the pool a RELEASE is offered to, so only a live deploy binding
- *  has one to declare. Rendering it elsewhere would offer a setting that decides
- *  nothing. */
-export function labelDecidesFor(
-  binding: Pick<IntegrationSummary, "role" | "stages">,
-): boolean {
-  return binding.role === "deploy" && binding.stages.includes("live");
+/** A label ranks the pool a RELEASE is offered to, and a release reads it off the deploy
+ *  binding the project document's production environment names — which no binding knows of
+ *  itself, so every deploy binding offers it and a service binding, which no environment
+ *  names, does not. */
+export function labelDecidesFor(binding: Pick<IntegrationSummary, "role">): boolean {
+  return binding.role === "deploy";
 }
 
 function Editor({
@@ -132,7 +131,7 @@ export function BindingReleaseRunnerField({
   canEdit,
 }: {
   projectId: string;
-  binding: Pick<IntegrationSummary, "id" | "role" | "stages" | "config" | "bindingConfig">;
+  binding: Pick<IntegrationSummary, "id" | "role" | "config" | "bindingConfig">;
   canEdit: boolean;
 }) {
   const update = useUpdateProviderIntegration(projectId);

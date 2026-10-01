@@ -18,7 +18,7 @@ export type DirectoryStatus =
 export type CardCapabilities = Omit<IntegrationCapabilities, "agentPath">;
 
 /** Conservative default, so an absent `meta.capabilities` renders the most restrictive archetype
- *  (no delivery log, no stage split) rather than a fabricated one. */
+ *  (no delivery log, no environment split) rather than a fabricated one. */
 export const DEFAULT_CAPABILITIES: CardCapabilities = {
   canDispatch: false,
   canReceiveWebhook: false,
@@ -30,7 +30,7 @@ export const DEFAULT_CAPABILITIES: CardCapabilities = {
   structuredRollback: false,
 };
 
-/** Card key → provider; a stage-suffixed key and a bare one map to the same provider. */
+/** Card key → provider; an environment-suffixed key and a bare one map to the same provider. */
 export function cardProvider(key: string): string {
   return key.split(":")[0] ?? key;
 }
@@ -45,15 +45,10 @@ export interface ProviderCardGroup {
   cards: StatusCard[];
 }
 
-function stageRank(card: StatusCard): number {
+function roleRank(card: StatusCard): number {
   const role = typeof card.meta?.role === "string" ? card.meta.role : undefined;
-  const stages = Array.isArray(card.meta?.stages)
-    ? (card.meta.stages as unknown[]).filter((s): s is string => typeof s === "string")
-    : undefined;
   const suffix = card.key.split(":")[1] ?? "";
-  if (role === "service" || suffix === "service") return 2;
-  const live = stages ? stages.includes("live") : suffix.includes("live");
-  return live ? 0 : 1;
+  return role === "service" || suffix === "service" ? 1 : 0;
 }
 
 export function groupCardsByProvider(cards: StatusCard[]): ProviderCardGroup[] {
@@ -70,7 +65,7 @@ export function groupCardsByProvider(cards: StatusCard[]): ProviderCardGroup[] {
     group.cards.push(card);
   }
   for (const group of groups) {
-    if (group.cards.length > 1) group.cards.sort((a, b) => stageRank(a) - stageRank(b));
+    if (group.cards.length > 1) group.cards.sort((a, b) => roleRank(a) - roleRank(b));
   }
   return groups;
 }

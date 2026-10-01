@@ -11,7 +11,7 @@ function short(sha: string): string {
 function Compared({ reach }: { reach: Extract<LiveReach, { baseSha: string }> }) {
   return (
     <span className="fg-caption font-mono">
-      {reach.baseBranch} {short(reach.baseSha)} vs {reach.liveBranch} {short(reach.liveSha)} · read{" "}
+      {reach.baseBranch} {short(reach.baseSha)} vs {reach.deploysFrom} {short(reach.liveSha)} · read{" "}
       {reach.measuredAt.slice(0, 16).replace("T", " ")}
     </span>
   );
@@ -47,7 +47,7 @@ export function LiveReachValue({ reach }: { reach: LiveReach }) {
   if (reach.state === "not_on_live") {
     return (
       <div className="flex flex-col items-end gap-1">
-        <span title={`Waiting on ${reach.baseBranch} at ${short(reach.baseSha)}, not on ${reach.liveBranch} at ${short(reach.liveSha)}, read ${reach.measuredAt}`}>
+        <span title={`Waiting on ${reach.baseBranch} at ${short(reach.baseSha)}, not on ${reach.deploysFrom} at ${short(reach.liveSha)}, read ${reach.measuredAt}`}>
           <Badge tone="red">Not on production</Badge>
         </span>
         {reach.evidence.map((e) => (
@@ -64,9 +64,9 @@ export function LiveReachValue({ reach }: { reach: LiveReach }) {
       <div className="flex flex-col items-end gap-1">
         <span
           className="fg-caption"
-          title={`${reach.baseBranch} at ${short(reach.baseSha)} against ${reach.liveBranch} at ${short(reach.liveSha)}, read ${reach.measuredAt}`}
+          title={`${reach.baseBranch} at ${short(reach.baseSha)} against ${reach.deploysFrom} at ${short(reach.liveSha)}, read ${reach.measuredAt}`}
         >
-          Nothing waiting for {reach.liveBranch}
+          Nothing waiting for {reach.deploysFrom}
         </span>
         <Unowned commits={reach.unowned} />
         <Compared reach={reach} />

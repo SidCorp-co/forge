@@ -12,7 +12,6 @@ export type {
   IntegrationDeliveryRow as IntegrationDelivery,
   ConfirmProdDeployResult,
   BindingRole,
-  DeployStage,
   CoolifyConfigInput,
   CoolifyTargetInput,
   CoolifySecretsInput,

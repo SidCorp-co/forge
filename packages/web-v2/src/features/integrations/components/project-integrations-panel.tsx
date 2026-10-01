@@ -13,7 +13,7 @@ import { formatRelativeTime } from "@/lib/utils/format";
 import { useIntegrationsStatus } from "../hooks";
 import { groupCardsByProvider, isProviderCard } from "../derive";
 import { providerIcon as registryIcon } from "../providers/registry";
-import type { DeployStage, StatusCard } from "../types";
+import type { StatusCard } from "../types";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
 import { McpServersPanel } from "./mcp-servers-panel";
 import { StatusPill, scopeLabel } from "./status-pill";
@@ -121,9 +121,9 @@ function baseProviderLabel(card: StatusCard): string {
 
 function scopeOf(card: StatusCard): string {
   const role = card.meta?.role;
-  const stages = card.meta?.stages;
+  const environment = card.meta?.environment;
   if (role === "deploy" || role === "service") {
-    return scopeLabel(role, Array.isArray(stages) ? (stages as DeployStage[]) : []);
+    return scopeLabel(role, typeof environment === "string" ? environment : null);
   }
   return card.key.split(":")[1] ?? "";
 }

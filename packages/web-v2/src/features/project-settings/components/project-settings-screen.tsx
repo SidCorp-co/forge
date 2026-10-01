@@ -34,13 +34,11 @@ import { ModulesTab } from "./modules-tab";
 import { MemoryTab } from "./memory-tab";
 import { PipelineTab } from "./pipeline-tab";
 import { RepoTab } from "./repo-tab";
-import { TestingTab } from "./testing-tab";
 
 const TAB_VALUES = [
 	"basics",
 	"repo",
 	"runners",
-	"testing",
 	"pipeline",
 	"memory",
 	"labels",
@@ -55,7 +53,6 @@ const TABS: TabItem[] = [
 	{ value: "basics", label: "Basics" },
 	{ value: "repo", label: "Repository" },
 	{ value: "runners", label: "Runners" },
-	{ value: "testing", label: "Testing" },
 	{ value: "pipeline", label: "Pipeline" },
 	{ value: "memory", label: "Memory" },
 	{ value: "labels", label: "Labels" },
@@ -158,7 +155,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 						{!canEdit && (
 							<p className="fg-body-sm mb-4 rounded-md border border-line bg-surface px-3 py-2 text-muted">
 								{isProjectAdmin
-									? "Basics, Repo, Testing, Pipeline, Integrations and Advanced need an org owner/admin — you can still manage Members and Labels."
+									? "Basics, Repo, Pipeline, Integrations and Advanced need an org owner/admin — you can still manage Members and Labels."
 									: "You have read-only access to these settings."}
 							</p>
 						)}
@@ -178,9 +175,6 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 							canEdit={canEdit || isProjectAdmin}
 							embedded
 						/>
-					)}
-					{tab === "testing" && (
-						<TestingTab projectId={project.id} canEdit={canEdit} />
 					)}
 					{tab === "pipeline" && (
 						<PipelineTab
