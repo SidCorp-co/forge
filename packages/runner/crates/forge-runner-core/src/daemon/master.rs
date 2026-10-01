@@ -2802,6 +2802,20 @@ pub(crate) fn conversation_transcript(
     ))
 }
 
+/// The transcript of `conversation_id` under `home`, or under this user's
+/// home where none is given: the one place both the turn read and the resume
+/// check look, so neither can find a file the other does not.
+fn transcript_at(
+    home: Option<&std::path::Path>,
+    cwd: &std::path::Path,
+    conversation_id: &str,
+) -> Option<std::path::PathBuf> {
+    match home {
+        Some(h) => Some(transcript_under(h, cwd, conversation_id)),
+        None => conversation_transcript(cwd, conversation_id),
+    }
+}
+
 /// Where Claude Code keeps the transcript of `conversation_id`, run in `cwd`,
 /// for a user whose home is `home`.
 pub(crate) fn transcript_under(
@@ -2809,15 +2823,54 @@ pub(crate) fn transcript_under(
     cwd: &std::path::Path,
     conversation_id: &str,
 ) -> std::path::PathBuf {
-    let encoded: String = cwd
-        .to_string_lossy()
-        .chars()
-        .map(|c| if c == '/' || c == '.' { '-' } else { c })
-        .collect();
     home.join(".claude")
         .join("projects")
-        .join(encoded)
+        .join(project_dir_name(cwd))
         .join(format!("{conversation_id}.jsonl"))
+}
+
+/// The directory Claude Code names for a project run in `cwd`: each UTF-16
+/// unit of the path that is not an ASCII letter or digit becomes `-`, and a
+/// name past 200 units is cut there and followed by a hash of the whole path.
+/// A drive's `:` and `\` are replaced like any other, so on Windows the name
+/// is one component and never an absolute path that `join` would put in place
+/// of the home it is under.
+fn project_dir_name(cwd: &std::path::Path) -> String {
+    const CAP: usize = 200;
+    let path = cwd.to_string_lossy();
+    let units: Vec<u16> = path.encode_utf16().collect();
+    let name: String = units
+        .iter()
+        .map(|&u| match u8::try_from(u) {
+            Ok(b) if b.is_ascii_alphanumeric() => char::from(b),
+            _ => '-',
+        })
+        .collect();
+    if name.len() <= CAP {
+        return name;
+    }
+    let hash = units.iter().fold(0i32, |h, &u| {
+        h.wrapping_shl(5).wrapping_sub(h).wrapping_add(i32::from(u))
+    });
+    format!(
+        "{}-{}",
+        &name[..CAP],
+        base36(i64::from(hash).unsigned_abs())
+    )
+}
+
+fn base36(mut n: u64) -> String {
+    const DIGITS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    let mut out = Vec::new();
+    loop {
+        out.push(DIGITS[(n % 36) as usize]);
+        n /= 36;
+        if n == 0 {
+            break;
+        }
+    }
+    out.reverse();
+    String::from_utf8(out).expect("base-36 digits are ASCII")
 }
 
 pub(crate) fn resume_for(
@@ -4449,7 +4502,7 @@ fn judge_resident(
         .or_else(|| {
             row.as_ref()
                 .and_then(|r| r.conversation_id.as_deref())
-                .and_then(|c| conversation_transcript(&resolved.repo_path, c))
+                .and_then(|c| transcript_at(home, &resolved.repo_path, c))
         });
     let turn = turn_of(seen.as_ref(), transcript.as_deref());
     Some(Outdated {
@@ -4591,11 +4644,7 @@ pub(crate) fn unresumable(
                 .into(),
         );
     };
-    let found = match home {
-        Some(h) => Some(transcript_under(h, repo, id)),
-        None => conversation_transcript(repo, id),
-    };
-    match found {
+    match transcript_at(home, repo, id) {
         Some(path) if path.is_file() => None,
         Some(path) => Some(format!(
             "its conversation {id} has no transcript at {}, so a successor could not resume it and would start cold, without what it was doing",
@@ -6520,6 +6569,46 @@ mod give_back_tests {
                 .join("projects")
                 .join("-home-forge-projects-apiflow--worktrees-ISS-16")
                 .join("conv-1.jsonl")
+        );
+    }
+
+    /// Each expected name is what Claude Code's own
+    /// `p.replace(/[^a-zA-Z0-9]/g, "-")`, cut at 200 and suffixed with its
+    /// 32-bit string hash in base 36, makes of the path (2.1.287, run under
+    /// node 2026-10-02).
+    #[test]
+    fn a_project_directory_is_named_as_claude_code_names_it() {
+        for (cwd, name) in [
+            (
+                r"C:\Users\runneradmin\AppData\Local\Temp\forge-outdated-judge-1",
+                "C--Users-runneradmin-AppData-Local-Temp-forge-outdated-judge-1",
+            ),
+            (
+                "/home/dev/my_repo/with space/ü😀",
+                "-home-dev-my-repo-with-space----",
+            ),
+        ] {
+            assert_eq!(project_dir_name(std::path::Path::new(cwd)), name, "{cwd}");
+        }
+        let deep = format!("/home/dev/{}repo", "deep/".repeat(45));
+        let got = project_dir_name(std::path::Path::new(&deep));
+        assert_eq!(got.len(), 207, "{got}");
+        assert!(got.ends_with("-deep--ppn32e"), "{got}");
+    }
+
+    /// The scratch directory is absolute on every platform, and on Windows it
+    /// begins with a drive: a name that kept the drive would be joined in
+    /// place of `home` and point inside the checkout itself.
+    #[test]
+    fn a_transcript_is_under_the_home_it_is_looked_for_in() {
+        let home = crate::test_scratch::Scratch::new("transcript-home");
+        let cwd = crate::test_scratch::Scratch::new("transcript-cwd");
+        let at = transcript_under(&home, &cwd, "conv-1");
+        assert_eq!(
+            at.parent().and_then(|p| p.parent()),
+            Some(home.join(".claude").join("projects").as_path()),
+            "{}",
+            at.display()
         );
     }
 
@@ -13140,8 +13229,8 @@ mod outdated_tests {
         )
         .expect("still outdated");
         assert!(
-            matches!(&again.act, OutdatedAct::Leave(r) if r.contains("can say whether its turn is over")),
-            "with its run closed only an unreadable turn holds it: {:?}",
+            matches!(&again.act, OutdatedAct::Leave(r) if r.contains("newest entry is not a turn's end") && !r.contains("run-1")),
+            "with its run closed only its turn holds it, read off the transcript the resume check found: {:?}",
             again.act
         );
 
