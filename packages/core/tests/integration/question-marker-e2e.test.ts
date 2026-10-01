@@ -131,6 +131,7 @@ async function answer(questionId: string) {
     round: 1,
     by: ownerId,
     role: 'admin',
+    via: 'web',
   });
 }
 

@@ -1,13 +1,14 @@
 import type { ToolCallRecord } from './run-turn-core.js';
+import { CHANNEL_WRITES } from './tools/forge-channel-args.js';
 
 /** A display ref as the model writes one, in the arguments and in the prose. */
-const SUBJECT_RE = /\b([A-Z][A-Z0-9]*-\d+)\b/gu;
+const SUBJECT_RE = /\b([A-Z][A-Z0-9]*-(?:(?:CN|ACK|RFI|CR|DEC)-)?\d+)\b/gu;
 
 /** `action` values that change a row. A refused read is not a claim about state. */
 const WRITE_ACTIONS: ReadonlySet<string> = new Set(['create', 'update', 'mark', 'unmark']);
 
 const LANDED_RE =
-  /\b(?:has|have|was|were|is|are)\s+(?:now\s+)?(?:been\s+)?(?:set|updated?|created?|moved?|changed?|marked?|closed?|opened?|filed?)\b|\bi(?:'ve|\s+have)?\s+(?:set|updated?|created?|moved?|marked?|changed?|closed?|filed?)\b|\b(?:successfully|done)\b/iu;
+  /\b(?:has|have|was|were|is|are)\s+(?:now\s+)?(?:been\s+)?(?:set|updated?|created?|moved?|changed?|marked?|closed?|opened?|filed?|sent|published|submitted|held|released|withdrawn|superseded|approved|returned|drafted)\b|\bi(?:'ve|\s+have)?\s+(?:set|updated?|created?|moved?|marked?|changed?|closed?|filed?|sent|published|submitted|held|released|withdrew|superseded|approved|returned|drafted)\b|\b(?:successfully|done)\b/iu;
 
 const DENIED_RE =
   /\b(?:not|never|cannot|unable|fail(?:ed|s|ure)?|refus(?:ed|es|al)|reject(?:ed|s)?|declin(?:ed|es))\b|\bno\s+(?:way|longer)\b|n['\u2019]t\b/iu;
@@ -16,7 +17,8 @@ const DENIED_RE =
 // the directive below must sit on the literal's own line: `check-source-language.mjs` reads `i18n-allow` same-line only.
 const DENIED_VI_RE = /không|chưa|thất\s*bại|từ\s*chối/iu; // i18n-allow: the phrases this matches are the ones that door's own replies are written in
 
-const CREATED_RE = /\b(?:created|filed|raised|logged|opened)\b/iu;
+const CREATED_RE =
+  /\b(?:created|filed|raised|logged|opened|sent|published|submitted|held|released|withdr[ae]wn?|superseded|approved|returned|drafted)\b/iu;
 
 const CREATED_VI_RE = /đã\s+(?:được\s+)?tạo/iu; // i18n-allow: the phrases this matches are the ones that door's own replies are written in
 
@@ -40,6 +42,10 @@ export interface ConfabProbe {
 const NOTHING: ConfabProbe = { suspected: false, claims: [] };
 
 const CLI_TOOL = 'forge';
+const CHANNEL_TOOL = 'forge_channel';
+const CHANNEL_WRITE_SET: ReadonlySet<string> = new Set(CHANNEL_WRITES);
+/** The fields a channel call names a document or conversation by. */
+const CHANNEL_TARGET_FIELDS = ['ref', 'thread', 'inReplyTo'] as const;
 const CLI_SET_FLAGS: ReadonlySet<string> = new Set(['--set', '--blocks', '--relates', '--unlink']);
 
 function cliArgvOf(record: ToolCallRecord): string[] | null {
@@ -66,9 +72,26 @@ function cliWriteOf(argv: readonly string[]): { action: string; target: string |
   return null;
 }
 
+function argsOf(record: ToolCallRecord): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(record.arguments || '{}');
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+// cm:why a channel write is a write whatever its verb, and one that names no published number (a draft, a reply, a submit by uuid) is claimed like a create: the reply can only invent the number
+function channelActionOf(record: ToolCallRecord): string | null {
+  const action = argsOf(record).action;
+  if (typeof action !== 'string' || !CHANNEL_WRITE_SET.has(action)) return null;
+  return targetRefsOf(record).length > 0 ? 'update' : 'create';
+}
+
 function actionOf(record: ToolCallRecord): string | null {
   const argv = cliArgvOf(record);
   if (argv) return cliWriteOf(argv)?.action ?? null;
+  if (record.name === CHANNEL_TOOL) return channelActionOf(record);
   try {
     const parsed = JSON.parse(record.arguments || '{}') as { action?: unknown };
     return typeof parsed.action === 'string' ? parsed.action : null;
@@ -94,7 +117,8 @@ function targetRefsOf(record: ToolCallRecord): string[] {
   try {
     const parsed = JSON.parse(record.arguments || '{}') as Record<string, unknown>;
     const refs: string[] = [];
-    for (const field of TARGET_FIELDS) {
+    const fields = record.name === CHANNEL_TOOL ? CHANNEL_TARGET_FIELDS : TARGET_FIELDS;
+    for (const field of fields) {
       const value = parsed[field];
       if (typeof value === 'string') refs.push(...refsIn(value));
     }

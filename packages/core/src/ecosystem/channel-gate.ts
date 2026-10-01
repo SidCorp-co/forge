@@ -1,7 +1,7 @@
 import type { Tx } from '../db/client.js';
 import { notIn, refuse } from './channel-act.js';
 import { checked, parsedOrRefused } from './channel-checks.js';
-import type { Author, Gate } from './channel-schema.js';
+import type { Author, Gate, PersonVia } from './channel-schema.js';
 import { announceGateDecided } from './channel-signals.js';
 import { insertEvent, readDocument, rewriteDocument } from './channel-store.js';
 import { serve } from './channel-world.js';
@@ -18,6 +18,7 @@ export async function decideChannelGate(
     optionId: string;
     note: string | undefined;
     by: string;
+    via: PersonVia;
   },
 ): Promise<() => Promise<void>> {
   await lockKeys(tx, [`channel-doc:${args.documentId}`]);
@@ -74,7 +75,7 @@ export async function decideChannelGate(
     document: doc,
     publishedAt: state === 'published' ? now : null,
   });
-  const actor: Author = { kind: 'person', id: args.by, via: 'web' };
+  const actor: Author = { kind: 'person', id: args.by, via: args.via };
   const at = { actor, userId: args.by, at: now };
   await insertEvent(tx, {
     documentId: row.id,

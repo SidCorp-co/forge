@@ -50,6 +50,7 @@ export const authorSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 export type Author = z.infer<typeof authorSchema>;
+export type PersonVia = Extract<Author, { kind: 'person' }>['via'];
 
 const exampleSchema = z.strictObject({
   element: element(),

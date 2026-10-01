@@ -172,6 +172,7 @@ describe('the read-back the box prints for itself', () => {
       round: 1,
       by: adminId,
       role: 'admin',
+      via: 'web',
     });
 
     const back = await app.request(

@@ -14,9 +14,10 @@ import {
   ok,
   openChannelWorld,
   refusal,
+  rfi,
   speaker,
 } from '../helpers/channel-world.js';
-import type { Doc } from '../helpers/ecosystem-world.js';
+import { type Doc, example } from '../helpers/ecosystem-world.js';
 import { createTestProjectMember } from '../helpers/factories.js';
 
 let w: ChannelWorld;
@@ -256,6 +257,36 @@ describe('in ecosystem scope nothing internal of a counterparty is read', () => 
         subject: 'An unsent plugin draft',
       }),
     ).id;
+    const store = example('forge-plugin.interface.json');
+    store.project = w.project.store;
+    store.publishes = {};
+    store.consumes = [
+      { contract: 'forge-plugin/driver-skill', ecosystem: w.eco, builtAgainst: '2026-09-28' },
+    ];
+    ok(
+      await say('store', 'PUT', `/api/projects/${w.project.store}/interface`, {
+        baseRevision: null,
+        document: store,
+      }),
+    );
+    const base = `/api/projects/${w.project.store}/channel`;
+    const asked = ok(
+      await say('store', 'POST', `${base}/drafts`, { ...rfi(w), to: [w.project.plugin] }),
+    );
+    ok(await say('store', 'POST', `${base}/documents/${asked.id}/submit`));
+  });
+
+  it('lists in the register only what this side is a party to, though the person belongs to the counterparty', async () => {
+    const all = ok(await say('platform', 'GET', `/api/ecosystems/${w.eco}/register`));
+    const between = all.documents.find((d: Doc) => d.from === w.project.store);
+    expect(between?.to).toEqual([w.project.plugin]);
+    const fenced = done(await call(owner, { action: 'register' }));
+    expect(fenced.documents.length).toBeGreaterThan(0);
+    expect(
+      fenced.documents.filter(
+        (d: Doc) => d.from !== w.project.forge && !d.to.includes(w.project.forge),
+      ),
+    ).toEqual([]);
   });
 
   it('reads a counterparty draft only by the REST door the person holds, never through a forge chat', async () => {
@@ -284,5 +315,90 @@ describe('in ecosystem scope nothing internal of a counterparty is read', () => 
     expect(refusedAs(await call(owner, { action: 'contracts', project: w.project.store }))).toEqual(
       ['CHANNEL_NOT_A_PARTY /project'],
     );
+  });
+});
+
+describe('the owner decides an approve gate with chat alone', () => {
+  const base = () => `/api/projects/${w.project.forge}/channel`;
+  const setGate = async (mode: 'approve' | 'publish') => {
+    const now = ok(await say('platform', 'GET', `/api/ecosystems/${w.eco}`));
+    now.document.gate.rfi = mode;
+    ok(
+      await say('platform', 'PUT', `/api/ecosystems/${w.eco}`, {
+        baseRevision: now.revision,
+        document: now.document,
+      }),
+    );
+  };
+  let waiting = '';
+  let number = '';
+
+  beforeAll(async () => {
+    await setGate('approve');
+    const id = ok(await say('masterForge', 'POST', `${base()}/drafts`, rfi(w))).id;
+    const res = ok(await say('masterForge', 'POST', `${base()}/documents/${id}/submit`));
+    expect(res.document.state).toBe('submitted');
+    waiting = id;
+    number = res.document.number;
+  });
+
+  afterAll(async () => {
+    await setGate('publish');
+  });
+
+  it("refuses a viewer deciding it, by the gate question's own authority", async () => {
+    await createTestProjectMember(w.harness.db, {
+      userId: w.user.viewer,
+      projectId: w.project.forge,
+      role: 'viewer',
+    });
+    const viewer = await chatAs(w.user.viewer, w.project.forge);
+    expect(
+      refusedAs(await call(viewer, { action: 'gate', ref: number, decision: 'approve' })),
+    ).toEqual(['QUESTION_AUTHORITY_REQUIRED /decision']);
+    const inbox = ok(
+      await say('masterPlugin', 'GET', `/api/projects/${w.project.plugin}/channel/inbox`),
+    );
+    expect(inbox.documents.some((d: Doc) => d.document.number === number)).toBe(false);
+  });
+
+  it('refuses a return without a note, and a document not waiting at the gate', async () => {
+    expect(
+      refusedAs(await call(owner, { action: 'gate', ref: waiting, decision: 'return' })),
+    ).toEqual(['GATE_RETURN_WITHOUT_NOTE /gate/note']);
+    expect(
+      refusedAs(await call(owner, { action: 'gate', ref: 'FP-CR-1', decision: 'approve' })),
+    ).toEqual(['GATE_NOT_PENDING /ref']);
+  });
+
+  it('approves it as the person, via assistant, and it reaches the other side', async () => {
+    const res = done(
+      await call(owner, {
+        action: 'gate',
+        ref: waiting,
+        decision: 'approve',
+        note: 'fine to send',
+      }),
+    );
+    expect(res.document).toMatchObject({
+      state: 'published',
+      gate: {
+        mode: 'approve',
+        decision: 'approved',
+        decidedBy: w.user.platform,
+        note: 'fine to send',
+      },
+    });
+    expect(res.events.slice(-2).map((e: Doc) => [e.verb, e.by])).toEqual([
+      ['approve', ownerAsAssistant],
+      ['publish', ownerAsAssistant],
+    ]);
+    const inbox = ok(
+      await say('masterPlugin', 'GET', `/api/projects/${w.project.plugin}/channel/inbox`),
+    );
+    expect(inbox.documents.some((d: Doc) => d.document.number === number)).toBe(true);
+    expect(
+      refusedAs(await call(owner, { action: 'gate', ref: waiting, decision: 'approve' })),
+    ).toEqual(['GATE_NOT_PENDING /ref']);
   });
 });

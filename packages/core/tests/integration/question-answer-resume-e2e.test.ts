@@ -114,6 +114,7 @@ describe('answering returns the issue only when nothing is left to answer', () =
       round: 1,
       by: ownerId,
       role: 'admin',
+      via: 'web',
     });
   }
 

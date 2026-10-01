@@ -273,6 +273,7 @@ questionRoutes.post(
             : { kind: 'text', text: body.text as string },
           round: body.round,
           userId: c.get('userId'),
+          via: 'web',
           ...(body.note === undefined ? {} : { note: body.note }),
         }),
       );

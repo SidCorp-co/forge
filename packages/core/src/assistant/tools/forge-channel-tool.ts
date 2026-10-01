@@ -13,7 +13,6 @@ import { inbox, outbox, readAs, threadAs } from '../../ecosystem/channel-read.js
 import { readRegister } from '../../ecosystem/channel-register.js';
 import { createDraft, editDraft, submit } from '../../ecosystem/channel-service.js';
 import { viewOf } from '../../ecosystem/channel-view.js';
-import type { EcosystemRefusal } from '../../ecosystem/refusals.js';
 import { activeEcosystemIdsOf } from '../../ecosystem/store.js';
 import type { ContextScopedMcpToolFactory, McpContext } from '../../mcp/tools/lib.js';
 import {
@@ -24,11 +23,12 @@ import {
   type ChannelArgs,
   parseChannelCall,
 } from './forge-channel-args.js';
+import { decideGateAs, type NamedRefusal } from './forge-channel-gate.js';
 
 const DESCRIPTION = [
   "Act in this project's ecosystem channel as the person you are answering, under their own role: a viewer reads, a member writes.",
   'Reads: register, inbox, outbox, read (one document), thread, contracts (a project API page).',
-  'Writes: draft, reply (a draft answering a number), edit, submit (publishes, or waits at the approve gate), hold and release a conversation, withdraw, supersede.',
+  'Writes: draft, reply (a draft answering a number), edit, submit (publishes, or waits at the approve gate), hold and release a conversation, withdraw, supersede, gate (approve or return a document waiting at the approve gate; an admin decides).',
   'Every document you write is authored by the person, via assistant.',
   'Show the person a draft and submit it only once they confirm; hold, withdraw and supersede need their reason.',
   'You read only documents this project sends or receives, never another pair or a counterparty internal.',
@@ -37,7 +37,7 @@ const DESCRIPTION = [
 
 type Answer = Record<string, unknown>;
 
-const refusedWith = (refusals: readonly EcosystemRefusal[]): Answer => ({
+const refusedWith = (refusals: readonly NamedRefusal[]): Answer => ({
   _mcpIsError: true,
   error: {
     code: refusals.length === 1 ? refusals[0]?.code : 'CHANNEL_REFUSED',
@@ -46,7 +46,7 @@ const refusedWith = (refusals: readonly EcosystemRefusal[]): Answer => ({
   },
 });
 
-const one = (code: EcosystemRefusal['code'], path: string, detail: string): Answer =>
+const one = (code: string, path: string, detail: string): Answer =>
   refusedWith([{ code, path, detail }]);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -174,6 +174,16 @@ const HANDLERS: Handlers = {
         reason: a.reason,
       }),
     ),
+  gate: async (a, side, writer) => {
+    const outcome = await decideGateAs({
+      side,
+      documentId: await documentId(side, a.ref),
+      decision: a.decision,
+      note: a.note,
+      writer,
+    });
+    return outcome.ok ? outcome.value : refusedWith(outcome.refusals);
+  },
 };
 
 async function held(
@@ -190,9 +200,11 @@ async function held(
 
 const isWrite = (action: ChannelAction) => (CHANNEL_WRITES as readonly string[]).includes(action);
 
-// cm:why a hold is read-gated here as on REST: who may hold is the hold rule's own HOLD_NOT_AUTHORISED, so both doors refuse a viewer with the same code
+const OWN_AUTHORITY: readonly ChannelAction[] = ['hold', 'release', 'gate'];
+
+// cm:why a hold and a gate are read-gated here as on REST: who may act is the hold rule's HOLD_NOT_AUTHORISED and the gate option's QUESTION_AUTHORITY_REQUIRED, so both doors refuse a viewer with the same code
 const roleNeeded = (action: ChannelAction) =>
-  isWrite(action) && action !== 'hold' && action !== 'release' ? 'write' : 'read';
+  isWrite(action) && !OWN_AUTHORITY.includes(action) ? 'write' : 'read';
 
 const PATH_OF: Partial<Record<ChannelAction, string>> = {
   read: '/ref',
@@ -200,6 +212,7 @@ const PATH_OF: Partial<Record<ChannelAction, string>> = {
   submit: '/ref',
   withdraw: '/ref',
   supersede: '/ref',
+  gate: '/ref',
   thread: '/thread',
   reply: '/inReplyTo',
   contracts: '/project',

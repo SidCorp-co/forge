@@ -21,6 +21,7 @@ export const CHANNEL_WRITES = [
   'release',
   'withdraw',
   'supersede',
+  'gate',
 ] as const;
 export const CHANNEL_ACTIONS = [...CHANNEL_READS, ...CHANNEL_WRITES] as const;
 export type ChannelAction = (typeof CHANNEL_ACTIONS)[number];
@@ -67,6 +68,11 @@ const BY_ACTION = {
   release: z.strictObject({ thread: number, reason: reason.optional() }),
   withdraw: z.strictObject({ ref, reason }),
   supersede: z.strictObject({ ref, by: number, reason }),
+  gate: z.strictObject({
+    ref,
+    decision: z.enum(['approve', 'return']),
+    note: z.string().trim().min(1).max(1000).optional(),
+  }),
 } satisfies Record<ChannelAction, z.ZodType>;
 
 export type ChannelArgs<A extends ChannelAction> = z.infer<(typeof BY_ACTION)[A]>;
@@ -96,6 +102,7 @@ const SHAPES: Record<ChannelAction, string> = {
   release: '{ thread, reason? }',
   withdraw: '{ ref, reason }',
   supersede: '{ ref, by: the published replacement number, reason }',
+  gate: '{ ref: a submitted document, decision: approve | return, note? (return needs one) }',
 };
 
 export function parseChannelCall(raw: Record<string, unknown>): ParsedCall {
@@ -141,6 +148,11 @@ export const CHANNEL_INPUT_SCHEMA: Record<string, unknown> = {
     inReplyTo: prop('The number this document answers.'),
     reason: prop('Why, shown to both sides.'),
     by: prop('supersede: the number of the published replacement.'),
+    decision: prop('gate: approve, or return to the writer.', {
+      type: 'string',
+      enum: ['approve', 'return'],
+    }),
+    note: prop('gate: what to change; a return needs one.'),
     status: prop('register filter.', { type: 'string', enum: [...REGISTER_STATUSES] }),
     limit: prop('register: rows, 1 to 200.', { type: 'integer' }),
   },
