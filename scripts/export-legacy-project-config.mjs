@@ -143,8 +143,8 @@ function where(url) {
 }
 
 function show(value) {
-  if (value === null || value === undefined) return 'null';
-  if (typeof value === 'string') return value.includes('\n') ? `\n${indent(value, 6)}` : value;
+  if (value === null || value === undefined) return ' null';
+  if (typeof value === 'string') return value.includes('\n') ? `\n${indent(value, 6)}` : ` ${value}`;
   return `\n${indent(JSON.stringify(value, null, 2), 6)}`;
 }
 
@@ -173,7 +173,7 @@ export function render(report, url) {
   for (const p of report.projects) {
     out.push('', `project ${p.slug} (${p.id}) "${p.name}"${p.archived ? ' [archived]' : ''}`);
     for (const [column, value] of Object.entries(p.legacy)) {
-      out.push(`  ${column}: ${show(value)}`);
+      out.push(`  ${column}:${show(value)}`);
     }
     for (const b of p.bindings) {
       out.push(`  binding ${b.id} ${b.provider} role=${b.role} stages=${JSON.stringify(b.stages)}`);
