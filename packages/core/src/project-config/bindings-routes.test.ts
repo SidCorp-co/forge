@@ -398,6 +398,39 @@ describe('a target the provider is asked about', () => {
     expect(effects.targetRefusals).toHaveBeenCalledWith(expect.objectContaining({ held }));
   });
 
+  it('hands the provider nothing held once the document names another connection, so every target is asked about', async () => {
+    const previous = '13131313-1313-4131-8131-131313131313';
+    bindingMem.connections.set(previous, {
+      id: previous,
+      provider: 'coolify',
+      ownerType: 'org',
+      ownerId: ORG,
+      active: true,
+    });
+    seedBindingRow({
+      id: BINDING,
+      projectId: PROJECT,
+      connectionId: previous,
+      provider: 'coolify',
+      role: 'deploy',
+      config: {
+        targets: [{ id: 'primary', label: 'primary', resourceUuid: 'y8w4c4kss8ogo8gc44ow44kc' }],
+      },
+      label: '',
+      agentAccess: 'none',
+      active: true,
+      revision: 1,
+    });
+    const res = await call('PUT', `/bindings/${BINDING}`, {
+      baseRevision: 1,
+      document: coolifyDoc(),
+    });
+    expect(res.status).toBe(200);
+    expect(effects.targetRefusals).toHaveBeenCalledWith(
+      expect.objectContaining({ connectionId: COOLIFY_CONNECTION, held: null }),
+    );
+  });
+
   it('asks the provider nothing when the document is already refused', async () => {
     const res = await call('PUT', `/bindings/${BINDING}`, {
       baseRevision: null,
