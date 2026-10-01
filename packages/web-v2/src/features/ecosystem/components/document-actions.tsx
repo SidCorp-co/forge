@@ -6,7 +6,7 @@ import { Button, Input, Textarea } from "@/design";
 import type { ProjectListItem } from "@/features/projects/types";
 import { ecosystemApi } from "../api";
 import { useChannelWrite } from "../hooks";
-import { refusalsOf } from "../refusal";
+import { refusalsOf } from "@/lib/api/refusals";
 import { ecosystemRoutes } from "../routes";
 import type { DocumentView } from "../types";
 import { RefusalNotice } from "./notices";

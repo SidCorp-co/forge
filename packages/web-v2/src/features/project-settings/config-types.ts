@@ -19,12 +19,6 @@ export interface V1Write {
 	document: V1Document;
 }
 
-export interface ConfigRefusal {
-	code: string;
-	path: string;
-	detail: string;
-}
-
 export interface TestingProfileRow extends Extract<V1Read, { declared: true }> {
 	profileId: string;
 }

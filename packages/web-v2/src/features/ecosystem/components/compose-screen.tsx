@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button, Checkbox, Field, Input, NativeSelect, Textarea } from "@/design";
 import { ecosystemApi } from "../api";
 import { useApiPage, useChannelWrite, useDocument, useProjectEcosystems } from "../hooks";
-import { type Refusal, readingOf, refusalsOf } from "../refusal";
+import { type Refusal, readingOf, refusalsOf } from "@/lib/api/refusals";
 import type { DocumentType, DocumentView } from "../types";
 import { type Role, writes } from "./document-actions";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";

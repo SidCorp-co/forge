@@ -1,6 +1,6 @@
 import type { AgentAccess, BindingRole } from "@forge/contracts";
-import { refusalsOf } from "@/features/project-settings/document-edit";
 import { formatApiError } from "@/lib/api/error";
+import { documentRefusals, refusalLine } from "@/lib/api/refusals";
 import { integrationConnectionsApi, integrationsApi } from "./api";
 import {
 	BINDING_SCHEMA,
@@ -137,7 +137,7 @@ export async function updateIntegration(projectId: string, id: string, input: Up
 }
 
 export function bindingRefusalText(err: unknown): string {
-	const refusals = refusalsOf(err);
+	const refusals = documentRefusals(err);
 	if (refusals.length === 0) return formatApiError(err);
-	return refusals.map((r) => `${r.code} at ${r.path || "/"}: ${r.detail}`).join(" · ");
+	return refusals.map(refusalLine).join(" · ");
 }

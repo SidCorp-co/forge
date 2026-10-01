@@ -5,7 +5,7 @@ import { Badge } from "@/design";
 import { AskAboutThis } from "@/features/conversations/components/ask-about-this";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useDocument, useThread } from "../hooks";
-import { readingOf } from "../refusal";
+import { readingOf } from "@/lib/api/refusals";
 import { ecosystemRoutes } from "../routes";
 import type { DocumentEvent, DocumentView } from "../types";
 import { DocumentActions, type Role } from "./document-actions";

@@ -1,6 +1,6 @@
 "use client";
 
-import type { Refusal } from "../refusal";
+import type { Refusal } from "@/lib/api/refusals";
 
 /** A refused write or read, shown with the code core named it by. Never a toast, never nothing. */
 export function RefusalNotice({ refusals, title = "Refused" }: { refusals: Refusal[]; title?: string }) {

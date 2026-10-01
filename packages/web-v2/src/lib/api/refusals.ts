@@ -1,4 +1,4 @@
-import { ApiError } from "@/lib/api/client";
+import { ApiError } from "./client";
 
 /** One named refusal: what was refused, where, and why, exactly as core named it. */
 export interface Refusal {
@@ -13,8 +13,17 @@ const isRefusal = (r: unknown): r is Refusal => {
   return typeof x.code === "string" && typeof x.path === "string" && typeof x.detail === "string";
 };
 
-const listed = (rows: unknown): Refusal[] =>
-  Array.isArray(rows) ? rows.filter(isRefusal) : [];
+const listed = (rows: unknown): Refusal[] => (Array.isArray(rows) ? rows.filter(isRefusal) : []);
+
+type Envelope = { code?: unknown; message?: unknown; refusals?: unknown } | undefined;
+
+const envelopeOf = (err: ApiError): Envelope => (err.body as { error?: Envelope } | undefined)?.error;
+
+/** The refusals a document write's 422 envelope names, and nothing for any other failure. */
+export function documentRefusals(err: unknown): Refusal[] {
+  if (!(err instanceof ApiError) || err.status !== 422) return [];
+  return listed(envelopeOf(err)?.refusals);
+}
 
 /**
  * Every refusal a failed request carries, whichever of core's two shapes it came in: the
@@ -24,8 +33,7 @@ const listed = (rows: unknown): Refusal[] =>
  */
 export function refusalsOf(err: unknown): Refusal[] {
   if (err instanceof ApiError) {
-    const envelope = (err.body as { error?: { code?: unknown; message?: unknown; refusals?: unknown } } | undefined)
-      ?.error;
+    const envelope = envelopeOf(err);
     const fromEnvelope = listed(envelope?.refusals);
     if (fromEnvelope.length > 0) return fromEnvelope;
     const fromDetails = listed((err.details as { refusals?: unknown } | undefined)?.refusals);
@@ -40,6 +48,8 @@ export function refusalsOf(err: unknown): Refusal[] {
   return [{ code: "REQUEST_FAILED", path: "", detail: String(err) }];
 }
 
+export const refusalLine = (r: Refusal) => `${r.code} at ${r.path || "/"}: ${r.detail}`;
+
 /** What a read came back as. `unread` is never `empty`: a list that could not be read says so. */
 export type Reading<T> =
   | { kind: "loading" }
@@ -50,7 +60,6 @@ export function readingOf<T>(q: {
   data: T | undefined;
   error: unknown;
   isError: boolean;
-  isLoading?: boolean;
 }): Reading<T> {
   if (q.isError) return { kind: "unread", refusals: refusalsOf(q.error) };
   if (q.data === undefined) return { kind: "loading" };

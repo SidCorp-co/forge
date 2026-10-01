@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Badge } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useApiPage, useContract } from "../hooks";
-import { readingOf } from "../refusal";
+import { readingOf } from "@/lib/api/refusals";
 import { ecosystemRoutes } from "../routes";
 import type { ApiPage } from "../types";
 import { Loading, UnreadNotice } from "./notices";

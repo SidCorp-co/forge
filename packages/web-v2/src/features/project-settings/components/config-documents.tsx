@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { Banner, Button, CardTitle, ErrorState, Field, Input, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { documentRefusals } from "@/lib/api/refusals";
 import {
 	useBindingDocuments,
 	useDeleteTestingProfile,
@@ -16,7 +17,6 @@ import {
 } from "../config-hooks";
 import { bindingTemplate, policyTemplate, projectTemplate, testingProfileTemplate } from "../config-templates";
 import type { V1Read } from "../config-types";
-import { refusalsOf } from "../document-edit";
 import { DocumentEditor } from "./document-editor";
 
 const UNDECLARED: V1Read = { declared: false, revision: null, document: null };
@@ -96,7 +96,7 @@ function ProfileEditor(props: {
 }
 
 function RefusedBanner({ err }: { err: unknown }) {
-	const refusals = refusalsOf(err);
+	const refusals = documentRefusals(err);
 	return (
 		<Banner tone="danger">
 			{refusals.length === 0
