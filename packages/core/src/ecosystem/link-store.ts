@@ -149,6 +149,14 @@ export async function builderRunsOf(tx: Tx, projectId: string): Promise<StoredRe
     .orderBy(desc(ecosystemBuilderRuns.createdAt), ecosystemBuilderRuns.id);
 }
 
+export async function builderRunsIn(tx: Tx, ecosystemId: string): Promise<StoredRecord[]> {
+  return tx
+    .select(runColumns)
+    .from(ecosystemBuilderRuns)
+    .where(eq(ecosystemBuilderRuns.ecosystemId, ecosystemId))
+    .orderBy(desc(ecosystemBuilderRuns.createdAt), ecosystemBuilderRuns.id);
+}
+
 export async function insertBuilderRun(
   tx: Tx,
   doc: BuilderRunWrite,

@@ -171,9 +171,9 @@ describe("the register keeps overdue and held in sight", () => {
   it("offers the awaiting, overdue and held filters, and each one reaches core", async () => {
     api.register.mockResolvedValue({ documents: [row({})], returned: 1, total: 1 });
     const onFilter = vi.fn();
-    registerScreen("overdue", onFilter);
+    registerScreen(null, onFilter);
     await screen.findByText("FP-RFI-1");
-    expect(api.register).toHaveBeenCalledWith(ECO, { filter: "overdue", party: FORGE });
+    expect(api.register).toHaveBeenCalledWith(ECO, { filter: "all", party: FORGE });
     for (const label of ["Awaiting", "Overdue", "Held"]) {
       fireEvent.click(screen.getByRole("button", { name: label }));
     }
@@ -309,6 +309,7 @@ describe("the document page shows standing, holds and who wrote it", () => {
     api.document.mockResolvedValue(view());
     wrap(
       <ChatDockProvider value={dock}>
+        {/* biome-ignore lint/a11y/useValidAriaRole: role is DocumentScreen's project-role prop, never an ARIA role on a DOM element */}
         <DocumentScreen projectId={FORGE} slug="forge" role="member" docRef="FP-RFI-1" />
       </ChatDockProvider>,
     );

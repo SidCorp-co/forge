@@ -16,6 +16,8 @@ const query = (params: Record<string, string | undefined>) => {
 };
 
 export const ecosystemRoutes = {
+  bus: (projectSlug: string, opts: { ecosystem?: string } = {}) =>
+    `${base(projectSlug)}${query({ ecosystem: opts.ecosystem })}`,
   register: (projectSlug: string, opts: { filter?: RegisterFilter; ecosystem?: string } = {}) =>
     `${base(projectSlug)}/channel${query({
       status: opts.filter && opts.filter !== "all" ? opts.filter : undefined,

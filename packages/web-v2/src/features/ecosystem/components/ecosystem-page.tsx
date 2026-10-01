@@ -9,17 +9,18 @@ import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { ecosystemRoutes } from "../routes";
 
-export type Section = "channel" | "contracts" | "api";
+export type Section = "bus" | "channel" | "contracts" | "api";
 
 const SECTIONS: { value: Section; label: string; href: (slug: string) => string }[] = [
-  { value: "channel", label: "Channel", href: (s) => ecosystemRoutes.register(s) },
+  { value: "bus", label: "Map", href: (s) => ecosystemRoutes.bus(s) },
+  { value: "channel", label: "Threads", href: (s) => ecosystemRoutes.register(s) },
   { value: "contracts", label: "Contracts", href: (s) => ecosystemRoutes.contracts(s) },
   { value: "api", label: "Project API", href: (s) => ecosystemRoutes.apiPage(s) },
 ];
 
 /**
  * Resolves the route's project slug the way the issues pages do, then frames an ecosystem page:
- * its title, and the three ecosystem sections as links so each is reachable from the others.
+ * its title, and the ecosystem sections as links so each is reachable from the others.
  */
 export function EcosystemPage({
   slug,

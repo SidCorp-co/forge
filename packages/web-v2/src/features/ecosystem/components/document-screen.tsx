@@ -124,7 +124,7 @@ export function DocumentScreen({
             {d.publishedAt ? <> · published {formatRelativeTime(d.publishedAt)}</> : null}
           </p>
           <p className="text-13">
-            <AuthorLine author={d.authoredBy} />
+            <AuthorLine author={d.authoredBy} party={d.authoredBy.kind === "agent" ? names(d.from) : undefined} />
           </p>
         </header>
 

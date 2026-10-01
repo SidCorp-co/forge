@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/api/client";
+import type { Bus, BuilderRunRecord, LinkRecord } from "./bus";
 import type { RegisterFilter } from "./routes";
 import type {
   ApiPage,
@@ -30,6 +31,17 @@ const json = (method: string, body?: unknown): RequestInit => ({
 });
 
 export const ecosystemApi = {
+  bus: (ecosystemId: string) => apiClient<Bus>(`/ecosystems/${ecosystemId}/bus`),
+
+  link: (consumerId: string, linkId: string) =>
+    apiClient<LinkRecord>(`/projects/${consumerId}/links/${linkId}`),
+
+  builderRun: (projectId: string, runId: string) =>
+    apiClient<BuilderRunRecord>(`/projects/${projectId}/builder-runs/${runId}`),
+
+  invite: (ecosystemId: string, projectId: string) =>
+    apiClient<unknown>(`/ecosystems/${ecosystemId}/invitations`, json("POST", { project: projectId })),
+
   ecosystemsOf: (projectId: string) =>
     apiClient<ProjectEcosystemsResponse>(`/projects/${projectId}/ecosystems`),
 

@@ -264,13 +264,39 @@
 .forge-caret > .forge-caret-anchor > :is(ul, ol):last-child > li:last-child::after,
 .forge-caret > .forge-caret-anchor:empty::after { content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 1px; vertical-align: text-bottom; background: var(--accent); animation: forge-caret 1s steps(1) infinite; }
 
+/* Ecosystem bus — one line per contract, one chip per link, coloured by the link's state. */
+.eco-line { position: absolute; left: 0; right: 0; top: 50%; height: 3px; margin-top: -1.5px; border-radius: 2px; background: var(--border-strong); }
+.eco-live .eco-line { background: repeating-linear-gradient(90deg, var(--border-strong) 0 10px, color-mix(in srgb, var(--border-strong) 35%, transparent) 10px 18px); background-size: 18px 3px; animation: eco-flow 1.2s linear infinite; }
+.eco-line[data-sel="true"] { background: var(--red-500) !important; animation: none !important; }
+@keyframes eco-flow { to { background-position: 18px 0; } }
+.eco-chip { position: relative; font-family: var(--font-mono); font-size: var(--text-11); font-weight: 500; line-height: 18px; border-radius: 999px; padding: 1px 9px; white-space: nowrap; cursor: pointer; background: var(--bg-surface); color: var(--fg-muted); box-shadow: inset 0 0 0 1.5px var(--border-strong); }
+.eco-chip[data-tone="ok"] { background: var(--green-50); color: var(--green-600); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--green-600) 55%, transparent); }
+.eco-chip[data-tone="warn"] { background: var(--amberw-50); color: var(--amberw-600); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--amberw-600) 55%, transparent); }
+.eco-chip[data-tone="bad"] { background: var(--red-50); color: var(--red-600); box-shadow: inset 0 0 0 1.5px var(--red-500); }
+.eco-chip[data-tone="pend"] { background: var(--bg-app); color: var(--fg-subtle); box-shadow: none; border: 1.5px dashed var(--fg-subtle); padding: 0 8px; }
+.eco-live .eco-chip[data-tone="pend"] { animation: forge-pulse 1.8s var(--ease-in-out) infinite; }
+.eco-chip[data-tone="own"] { background: var(--fg-default); color: var(--bg-surface); box-shadow: none; font-weight: 600; }
+.eco-chip[data-sel="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+.eco-chip[data-work="true"]::after { content: ""; position: absolute; inset: -2px; border-radius: 999px; animation: eco-ring 1.6s ease-out infinite; pointer-events: none; }
+@keyframes eco-ring { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); } 100% { box-shadow: 0 0 0 10px transparent; } }
+.eco-out { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--amberw-500); box-shadow: 0 0 0 2px var(--bg-app); }
+.eco-fade { opacity: 0.22; }
+.eco-key { display: inline-block; width: 16px; height: 10px; border-radius: 5px; margin-right: 5px; vertical-align: middle; }
+.eco-key[data-tone="ok"] { background: var(--green-50); box-shadow: inset 0 0 0 1px var(--green-600); }
+.eco-key[data-tone="warn"] { background: var(--amberw-50); box-shadow: inset 0 0 0 1px var(--amberw-600); }
+.eco-key[data-tone="bad"] { background: var(--red-50); box-shadow: inset 0 0 0 1px var(--red-500); }
+.eco-key[data-tone="pend"] { border: 1px dashed var(--fg-subtle); }
+.eco-key[data-tone="own"] { background: var(--fg-default); }
+.eco-dots { background-image: radial-gradient(var(--border-default) 1px, transparent 1px); background-size: 18px 18px; }
+
 /* ── Accessibility: respect reduced-motion ─────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .forge-pulse, .skeleton::after, .forge-indeterminate, .forge-highlight,
   .forge-caret > .forge-caret-anchor > :last-child:not(ul, ol)::after,
   .forge-caret > .forge-caret-anchor > :is(ul, ol):last-child > li:last-child::after,
   .forge-caret > .forge-caret-anchor:empty::after,
-  .fm-breathe, .fm-flameA, .fm-flameB, .fm-ringpulse { animation: none !important; }
+  .fm-breathe, .fm-flameA, .fm-flameB, .fm-ringpulse,
+  .eco-live .eco-line, .eco-live .eco-chip, .eco-chip::after { animation: none !important; }
   .skeleton::after { display: none; }
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }

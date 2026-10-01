@@ -32,6 +32,7 @@ describe("the Activity sidebar's Ecosystem group", () => {
 
   it("lights the row the route is on, filter included", () => {
     const at = (path: string, search = "") => buildActiveKey(path, "forge-dev", search);
+    expect(at("/projects/forge-dev/ecosystem")).toBe("eco-bus");
     expect(at("/projects/forge-dev/ecosystem/channel")).toBe("eco-channel");
     expect(at("/projects/forge-dev/ecosystem/channel", "?status=held")).toBe("eco-held");
     expect(at("/projects/forge-dev/ecosystem/channel/FP-CN-12")).toBe("eco-channel");
