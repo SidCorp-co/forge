@@ -1,3 +1,6 @@
+// @gate-input whole-tree — a rule's why is checked against every symbol the tree still names.
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   type RetiredModelRule,
@@ -234,4 +237,48 @@ describe('an exact-line allowance', () => {
       'release-path-keys',
     );
   });
+});
+
+const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
+
+/** Files outside the checker and its audit that name `symbol` as a whole word. */
+function filesNaming(symbol: string): string[] {
+  let out = '';
+  try {
+    out = execFileSync('git', ['grep', '-lw', symbol, '--', 'packages', 'scripts'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    });
+  } catch {
+    // git grep exits 1 when nothing matches: that IS the answer.
+  }
+  return out
+    .split('\n')
+    .filter((f) => f && f !== 'scripts/check-retired-model.mjs' && !f.endsWith('.test.ts'));
+}
+
+describe("a rule's why names only what still exists", () => {
+  // A why points the reader at the door that replaced the retired one. A symbol the rule does NOT
+  // itself ban is named as something kept; once it is deleted the why sends the reader to nothing.
+  const kept = RULES.flatMap((r: RetiredModelRule) =>
+    [...r.why.matchAll(/`([^`]+)`/g)]
+      .map((m) => m[1] ?? '')
+      .map((cited) => ({ id: r.id, cited, symbol: cited.split(':').pop() ?? '' }))
+      .filter(({ symbol }) => /^[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*$/.test(symbol))
+      .filter(({ symbol }) => {
+        r.re.lastIndex = 0;
+        return !r.re.test(symbol);
+      }),
+  );
+
+  it('cites at least one kept symbol, so the walk below has something to hold', () => {
+    expect(kept.length).toBeGreaterThan(10);
+  });
+
+  it.each(kept.map((k) => [k.id, k.cited, k.symbol] as const))(
+    '%s cites `%s`, which the tree still has',
+    (_id, _cited, symbol) => {
+      expect(filesNaming(symbol), `nothing outside the checker names ${symbol}`).not.toEqual([]);
+    },
+  );
 });

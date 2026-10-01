@@ -178,10 +178,10 @@ export const RULES = [
   },
   {
     id: 'binding-row-updates',
-    // ISS-15 — DELETE's switch-off and the inbound-secret rotation stay row updates; nothing else does.
+    // ISS-15 — only the inbound-secret rotation stays a row update; a switch-off is a binding document.
     re: /\.update\(integrationBindings\)|\bUPDATE integration_bindings\b/g,
     allow: [...BINDING_STORE, /^packages\/core\/src\/integrations\/store\.ts$/],
-    why: 'ISS-15: what a binding declares, `active` and `instructions` among it, is changed only by a binding-v1 document (`project-config/binding-store.ts:casBinding`). `integrations/store.ts` keeps `softDeleteBinding`, which DELETE /api/projects/:projectId/integrations/:id throws, and `setBindingInboundSecret`, which rotation writes, and nothing else. Write the document instead of updating the row.',
+    why: 'ISS-15: what a binding declares, `active` and `instructions` among it, is changed only by a binding-v1 document (`project-config/binding-store.ts:casBinding`). Switching a binding off is DELETE /api/projects/:projectId/bindings/:bindingId, which `project-config/bindings.ts:removeBinding` writes through the same document. `integrations/store.ts` keeps `setBindingInboundSecret`, which rotation writes, and nothing else. Write the document instead of updating the row.',
   },
   {
     id: 'legacy-project-columns',
