@@ -75,6 +75,58 @@ function dispatchedBase(env) {
   return { branch: base, source: 'inputs.base' };
 }
 
+/** How long the remote is given to name its default before the record is used unconfirmed. */
+const REMOTE_HEAD_TIMEOUT_MS = 10_000;
+
+/**
+ * The remote's own default branch, asked of it, or why it could not answer. A recorded
+ * `origin/HEAD` is what the remote said at clone time; it does not move when the remote's default
+ * does, and a checkout reading it measures the old base with nothing said.
+ */
+function remoteDefault(root) {
+  const r = spawnSync('git', ['ls-remote', '--symref', REMOTE, 'HEAD'], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: REMOTE_HEAD_TIMEOUT_MS,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+  });
+  if (r.error) return { unanswered: r.error.message };
+  if (r.status !== 0) {
+    return { unanswered: (r.stderr || `exit ${r.status}`).trim().split('\n')[0] };
+  }
+  const m = /^ref:\s*refs\/heads\/(\S+)\s+HEAD$/m.exec(r.stdout);
+  return m ? { branch: m[1] } : { unanswered: 'the remote named no default branch' };
+}
+
+/**
+ * The recorded default, held to what the remote says now. A disagreement is refused: the record is
+ * a measurement against a branch this work no longer lands on. A remote that cannot be asked leaves
+ * the record standing, said on stderr, since a checkout offline still knows where it was cut from.
+ */
+function confirmedDefault(root, recorded) {
+  const now = remoteDefault(root);
+  if (now.branch && now.branch !== recorded) {
+    const summary =
+      `refs/remotes/${REMOTE}/HEAD records \`${recorded}\` as the remote's default, and the remote ` +
+      `now names \`${now.branch}\``;
+    return {
+      summary,
+      refusal:
+        `${summary}.\n` +
+        `The record is stale, so measuring against it would measure against a branch this work no\n` +
+        `longer lands on. Refresh it with \`git remote set-head ${REMOTE} -a\` and run this again.`,
+    };
+  }
+  if (now.unanswered) {
+    process.stderr.write(
+      `base-branch: the merge target \`${recorded}\` is ${REMOTE}/HEAD as recorded, unconfirmed: the ` +
+        `remote could not be asked (${now.unanswered}). \`git remote set-head ${REMOTE} -a\` ` +
+        'confirms it.\n',
+    );
+  }
+  return { branch: recorded, source: `${REMOTE}/HEAD` };
+}
+
 /**
  * The branch this change will land on, from the first of `SOURCES` that answers. Each one
  * establishes the target; none infers it, and none falls back to `main`.
@@ -99,7 +151,7 @@ export function mergeTarget(root, env = process.env) {
   if (event === 'workflow_dispatch') return dispatchedBase(env);
 
   const head = git(['symbolic-ref', '--short', `refs/remotes/${REMOTE}/HEAD`], root);
-  if (head) return { branch: withoutRemote(head), source: `${REMOTE}/HEAD` };
+  if (head) return confirmedDefault(root, withoutRemote(head));
 
   return { refusal: NO_TARGET, summary: NO_TARGET_SUMMARY };
 }

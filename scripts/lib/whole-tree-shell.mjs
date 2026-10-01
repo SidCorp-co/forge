@@ -225,7 +225,7 @@ const GIT_SUBCOMMANDS = {
     min: 0,
     max: Infinity,
   },
-  'ls-remote': { flags: ['--tags'], valued: {}, min: 1, max: 2, repos: 'remote' },
+  'ls-remote': { flags: ['--tags', '--symref'], valued: {}, min: 1, max: 2, repos: 'remote' },
   'ls-tree': {
     flags: ['--name-only', '-r'],
     valued: {},

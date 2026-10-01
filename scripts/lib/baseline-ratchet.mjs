@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { baseRef } from './base-branch.mjs';
 
 const DIRECTIONS = ['down', 'shrink', 'tighten'];
@@ -13,34 +14,99 @@ function git(args, cwd) {
   }).trim();
 }
 
+const COMMIT = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
+const NO_COMMIT = /^0+$/;
+
+/**
+ * The tip a push event moved its branch from, read from `$GITHUB_EVENT_PATH`. A push carrying
+ * several commits is one change and is judged against that tip: `HEAD~1` sees only the last of
+ * them, so an entry withdrawn earlier in the push passed and one reworded inside it read as
+ * withdrawn. Null for any other event, and for a push that created its branch.
+ */
+export function pushedFrom(root, env, head) {
+  if (env.GITHUB_EVENT_NAME !== 'push') return null;
+  const path = String(env.GITHUB_EVENT_PATH ?? '').trim();
+  let payload;
+  try {
+    if (!path) throw new Error('$GITHUB_EVENT_PATH is unset');
+    payload = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (err) {
+    throw new Error(
+      `a push event's payload at ${path || '$GITHUB_EVENT_PATH'} could not be read (${err.message}), ` +
+        'so the tip this push moved its branch from is unknown and no base can be taken from it',
+    );
+  }
+  const before = payload?.before;
+  if (typeof before !== 'string' || !COMMIT.test(before)) {
+    throw new Error(
+      `a push event's payload at ${path} names no commit as \`before\` ` +
+        `(${JSON.stringify(before ?? null)}), so the tip this push moved its branch from is unknown`,
+    );
+  }
+  if (NO_COMMIT.test(before) || before === head) return null;
+  try {
+    git(['merge-base', '--is-ancestor', before, 'HEAD'], root);
+  } catch {
+    throw new Error(
+      `this push moved its branch from ${before}, which is not an ancestor of HEAD ${head} or is ` +
+        'absent from this clone. Check out with `fetch-depth: 0`; a gated branch that was ' +
+        'force-pushed has no base to measure the push against',
+    );
+  }
+  return before;
+}
+
 /**
  * The revision this baseline is judged against: the merge-base with the branch this work will land
- * on.
+ * on, or, where that is `HEAD` itself, the tip a push moved the branch from.
  *
- * Not that branch's tip directly: on a feature branch the merge-base is what the diff is measured
- * from, but a commit pushed STRAIGHT to the base branch has the tip equal to HEAD, and comparing a
- * file to itself passes everything. `HEAD~1` is the answer for that push, and for a checkout whose
- * merge target no ref here names.
+ * Not that branch's tip directly: a commit pushed STRAIGHT to the base branch has the tip equal to
+ * HEAD, and comparing a file to itself passes everything. `HEAD~1` is left only for a checkout
+ * standing on its merge target's tip outside a push, whose last commit was judged when it landed.
+ * A merge target that cannot be derived or names no ref here, and a push whose base cannot be
+ * read, are a refusal: `HEAD~1` there would judge one commit of a branch of many and say nothing.
+ *
+ * @returns {{ rev: string | null, refusal: string | null }} `rev` null, with no refusal, only where
+ *   HEAD or its parent does not exist
  */
-export function baseRev(root) {
+export function baseRevision(root, env = process.env) {
   let head;
   try {
     head = git(['rev-parse', 'HEAD'], root);
   } catch {
-    return null;
+    return { rev: null, refusal: null };
   }
-  const target = baseRef(root);
-  if (target.ref) {
-    try {
-      const mb = git(['merge-base', target.ref, 'HEAD'], root);
-      if (mb && mb !== head) return mb;
-    } catch {}
+  const target = baseRef(root, env);
+  if (target.refusal) return { rev: null, refusal: target.refusal };
+  let mb;
+  try {
+    mb = git(['merge-base', target.ref, 'HEAD'], root);
+  } catch {
+    return {
+      rev: null,
+      refusal:
+        `\`git merge-base ${target.ref} HEAD\` found no common ancestor, so this checkout holds no ` +
+        `revision where the change began. Fetch the history: \`git fetch origin ${target.branch}\`, ` +
+        'or check out with `fetch-depth: 0`',
+    };
+  }
+  if (mb !== head) return { rev: mb, refusal: null };
+  try {
+    const pushed = pushedFrom(root, env, head);
+    if (pushed) return { rev: pushed, refusal: null };
+  } catch (err) {
+    return { rev: null, refusal: err.message };
   }
   try {
-    return git(['rev-parse', 'HEAD~1'], root);
+    return { rev: git(['rev-parse', 'HEAD~1'], root), refusal: null };
   } catch {
-    return null;
+    return { rev: null, refusal: null };
   }
+}
+
+/** `baseRevision`'s revision alone: null wherever none can be taken, refused or absent. */
+export function baseRev(root, env = process.env) {
+  return baseRevision(root, env).rev;
 }
 
 function readAt(root, rev, path) {

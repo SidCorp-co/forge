@@ -231,6 +231,16 @@ describe('git, by its subcommand table', () => {
       listsRoot(run('git', { args: ['fetch', 'https://github.com/o/r.git'], cwd: FIXTURE })),
     ).toBe(true);
   });
+  it('lists a local repository asked for its default branch, and refuses one that is not a path', () => {
+    const asked = run('git', { args: ['ls-remote', '--symref', FIXTURE, 'HEAD'], cwd: FIXTURE });
+    expect(listsRoot(asked)).toBe(false);
+    expect(dirsOf(asked)).toContain(FIXTURE);
+    expect(
+      listsRoot(
+        run('git', { args: ['ls-remote', '--symref', 'https://github.com/o/r.git', 'HEAD'] }),
+      ),
+    ).toBe(true);
+  });
   it('refuses a clone that borrows the objects of a repository it names by option', () => {
     const dest = join(FIXTURE, '..', 'clone-ref-dest');
     for (const ref of [['--reference', ROOT], [`--reference=${ROOT}`]])
