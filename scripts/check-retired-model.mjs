@@ -35,6 +35,7 @@ const ALLOW = [
   // ISS-16 — the read-only export reads the dropped columns of a database that still has them.
   /^scripts\/export-legacy-project-config\.mjs$/,
   /^packages\/core\/tests\/integration\/legacy-config-export-e2e\.test\.ts$/,
+  /^packages\/core\/tests\/integration\/base-branch-drop-migration-e2e\.test\.ts$/,
   // ISS-12 — each spells a deleted key to prove the door refuses it by name.
   /^packages\/core\/src\/projects\/routes\.test\.ts$/,
   /^packages\/core\/src\/issues\/metadata-schema\.test\.ts$/,
@@ -92,8 +93,8 @@ export const RULES = [
     id: 'legacy-project-columns',
     // ISS-16 / design D8 — the `projects` columns the project document replaced, and the helpers
     // that wrote or checked them.
-    re: /\bprojects\.(?:description|kind|repoUrl|workspaceSetup)\b|\bprojects\s+SET\s+(?:description|kind|environments)\b|\brepo_url\b|\bworkspace_setup\b|\bprojects_release_chain_(?:ok|chk)\b|\breleaseProjectChecks\b|\breleaseCrossings\b|\bsyncRepoUrlFromGitHubBinding\b|\bRepoUrlOutcome\b/g,
-    why: "ISS-16 dropped this `projects` column (migration `the_legacy_project_columns_are_dropped`) with every reader and writer, and moved nothing into another column: a project's repository is its document's `source.git.repository` and its setup procedure is `workspace.setup` (`project-config/source.ts:readDeclaredSource`), whether its work lands in git is `source.type`, and a project carries no description. `PATCH /api/projects/:id` and `forge_projects.update` refuse `repoUrl` and `workspaceSetup` by name. To read what an old database still holds, run `scripts/export-legacy-project-config.mjs` against it.",
+    re: /\bprojects\.(?:description|kind|repoUrl|workspaceSetup|baseBranch|webhookSecret|apiKey|webhook_secret|api_key)\b|\bprojects\s+SET\s+(?:description|kind|environments|base_branch|webhook_secret|api_key)\b|\brepo_url\b|\bworkspace_setup\b|\bbase_branch\b|\bprojects_api_key_uq\b|\brequireProjectApiKey\b|\bgenerateApiKey\b|\/api-key\/rotate\b|\bprojects_release_chain_(?:ok|chk)\b|\breleaseProjectChecks\b|\breleaseCrossings\b|\bsyncRepoUrlFromGitHubBinding\b|\bRepoUrlOutcome\b/g,
+    why: "ISS-16 dropped this `projects` column (migrations `the_legacy_project_columns_are_dropped` and `the_branch_and_the_project_secrets_leave_the_row`) with every reader and writer, and moved nothing into another column: a project's repository is its document's `source.git.repository`, the branch work is cut from is `source.git.defaultBranch` and its setup procedure is `workspace.setup` (`project-config/source.ts:readDeclaredSource`), whether its work lands in git is `source.type`, and a project carries no description. The webhook secret is the project secret `secret://project/webhook-secret` (`project-config/service.ts:resolveProjectSecret`), and no project API key exists. `PATCH /api/projects/:id`, `POST /api/projects` and `forge_projects` refuse `repoUrl`, `workspaceSetup`, `baseBranch`, `webhookSecret` and `apiKey` by name. To read what an old database still holds, run `scripts/export-legacy-project-config.mjs` against it.",
   },
   {
     id: 'tag-mr-strategy',

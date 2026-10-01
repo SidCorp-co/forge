@@ -1,53 +1,22 @@
 "use client";
 
-// Project settings → Repository. baseBranch (where ISS-* branches are cut from),
-// persisted via PATCH /api/projects/:id. The checkout is each device binding's. Where a landed change goes is
-// the project document's, edited on the Configuration tab.
-import { useEffect, useState } from "react";
-import {
-  Button,
-  Card,
-  CardContent,
-  Field,
-  Input,
-  SectionTitle,
-} from "@/design";
+// Project settings → Repository. The branch work is cut from is the project document's
+// `source.git.defaultBranch`, shown here and edited on the Configuration tab with the rest of the
+// document. The checkout is each device binding's.
+import { Card, CardContent, Field, SectionTitle } from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
-import { useUpdateProject } from "../hooks";
 
-export function RepoTab({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
-  const update = useUpdateProject(project.id);
-
-  const [baseBranch, setBaseBranch] = useState(project.baseBranch ?? "");
-
-  useEffect(() => {
-    setBaseBranch(project.baseBranch ?? "");
-  }, [project.baseBranch]);
-
-  const norm = (v: string) => (v.trim() === "" ? null : v.trim());
-  const base = norm(baseBranch);
-  const baseMoved = base !== (project.baseBranch ?? null);
-
-  function save() {
-    if (baseMoved) update.mutate({ baseBranch: base });
-  }
-
+export function RepoTab({ project }: { project: ProjectDetail; canEdit: boolean }) {
   return (
     <Card>
       <CardContent>
         <SectionTitle className="fg-h3 mb-4">Repository</SectionTitle>
         <div className="space-y-4">
           <Field
-            label="Base branch"
-            hint="Where ISS-* branches are cut from (e.g. main). It is not where a release goes."
+            label="Default branch"
+            hint="Where ISS-* branches are cut from: the project document's source.git.defaultBranch, edited on the Configuration tab."
           >
-            <Input
-              value={baseBranch}
-              onChange={(e) => setBaseBranch(e.target.value)}
-              disabled={!canEdit}
-              placeholder="main"
-              maxLength={100}
-            />
+            <code className="fg-body">{project.baseBranch ?? "not declared"}</code>
           </Field>
 
           <div className="space-y-2">
@@ -58,20 +27,6 @@ export function RepoTab({ project, canEdit }: { project: ProjectDetail; canEdit:
               card under Pipeline shows what it declares.
             </p>
           </div>
-
-          {canEdit && (
-            <div>
-              <Button
-                variant="primary"
-                loading={update.isPending}
-                disabled={!baseMoved}
-                onClick={save}
-                className="min-h-11"
-              >
-                Save repository
-              </Button>
-            </div>
-          )}
         </div>
       </CardContent>
     </Card>

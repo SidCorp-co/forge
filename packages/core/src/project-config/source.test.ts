@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { projectDoc } from './release-path.fixture.js';
-import { remoteOf, repositoryOf, setupOf, webUrlOf } from './source.js';
+import { defaultBranchOf, remoteOf, repositoryOf, setupOf, webUrlOf } from './source.js';
 
 describe('repositoryOf', () => {
   it('is source.git.repository on a git project', () => {
@@ -10,6 +10,14 @@ describe('repositoryOf', () => {
   it('is null on a project with no git source, and with no document', () => {
     expect(repositoryOf(projectDoc({ source: 'none' }))).toBeNull();
     expect(repositoryOf(null)).toBeNull();
+  });
+});
+
+describe('defaultBranchOf', () => {
+  it('is source.git.defaultBranch, and null with no git source or no document', () => {
+    expect(defaultBranchOf(projectDoc({ defaultBranch: 'dev' }))).toBe('dev');
+    expect(defaultBranchOf(projectDoc({ source: 'none' }))).toBeNull();
+    expect(defaultBranchOf(null)).toBeNull();
   });
 });
 

@@ -6,6 +6,7 @@ import {
 } from '../branches/resolve.js';
 import { db } from '../db/client.js';
 import { issues, jobs, projects } from '../db/schema.js';
+import { readDeclaredSource } from '../project-config/source.js';
 import type { IssueSnapshot, SessionContextSnapshot } from './user.js';
 
 export type LoadedIssueSnapshot = IssueSnapshot & {
@@ -29,7 +30,7 @@ export async function loadIssueSnapshot(
       acceptanceCriteria: issues.acceptanceCriteria,
       sessionContext: issues.sessionContext,
       metadata: issues.metadata,
-      baseBranch: projects.baseBranch,
+      projectId: issues.projectId,
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -50,7 +51,7 @@ export async function loadIssueSnapshot(
         ),
       },
     },
-    { baseBranch: row.baseBranch },
+    { baseBranch: (await readDeclaredSource(row.projectId)).defaultBranch },
   );
   return {
     branchConfig,

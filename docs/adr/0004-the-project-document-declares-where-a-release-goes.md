@@ -38,7 +38,10 @@ The release path is read from the project document and nowhere else
 `release_chain`, `live_branch`, `release_model`, `release_strategy`, `autoProdDeploy`,
 `projects.environments` and a binding's `stages` have no reader and no writer. Every door that
 used to take one refuses it by name and points at `PUT /api/projects/:id/config`. ISS-16 dropped
-the `projects` columns, and `scripts/check-retired-model.mjs` (rules `release-path-keys` and
+the `projects` columns, `base_branch` among them: the default work branch 0003 kept as a column is
+`source.git.defaultBranch`, the one place both facts are now read from. It also dropped
+`webhook_secret`, now the project secret `secret://project/webhook-secret`, and `api_key`, which no
+route read. `scripts/check-retired-model.mjs` (rules `release-path-keys` and
 `legacy-project-columns`) names any of them that reappears in source.
 
 There is no data migration (design D8). An operator re-enters by hand what the old columns held,

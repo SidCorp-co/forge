@@ -6,7 +6,6 @@ export const AUTH_GATES = {
   requireUser: 'a session JWT, in the Authorization header or the session cookie',
   requirePat: 'a personal or agent access token only',
   requireDevice: 'a paired device credential only',
-  requireProjectApiKey: "a project's widget API key in X-Forge-Api-Key",
   assertEmailVerified: 'a person whose email address is verified (a device passes)',
   requireAdmin: 'a platform administrator',
   requireFreshAuth: 'a caller who re-authenticated within the window the route sets',

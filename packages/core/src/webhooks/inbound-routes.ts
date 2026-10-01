@@ -13,7 +13,10 @@ import {
 import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
 import { rawBody } from '../middleware/zod-validator.js';
+import { resolveProjectSecret } from '../project-config/service.js';
 import { verifyHmacSignature } from './hmac.js';
+
+export const WEBHOOK_SECRET = { scope: 'project', name: 'webhook-secret' } as const;
 
 const GENERIC_SIGNATURE_HEADERS = ['x-hub-signature-256', 'x-forge-signature-256'] as const;
 
@@ -103,7 +106,7 @@ webhookInboundRoutes.post(
     const rawBody = await c.req.raw.clone().text();
 
     const [project] = await db
-      .select({ id: projects.id, secret: projects.webhookSecret })
+      .select({ id: projects.id })
       .from(projects)
       .where(eq(projects.slug, slug))
       .limit(1);
@@ -176,15 +179,23 @@ webhookInboundRoutes.post(
       }
     }
 
-    if (!project.secret) {
-      throw badRequest({ slug: 'webhook not enabled' }, 'WEBHOOK_DISABLED');
+    const secret = await resolveProjectSecret(
+      project.id,
+      WEBHOOK_SECRET.scope,
+      WEBHOOK_SECRET.name,
+    );
+    if (!secret.ok) {
+      throw new HTTPException(secret.code === 'SECRET_VALUE_MISSING' ? 400 : 503, {
+        message: secret.message,
+        cause: { code: secret.code },
+      });
     }
 
     const signatureHeader =
       GENERIC_SIGNATURE_HEADERS.map((h) => c.req.header(h)).find(
         (v): v is string => typeof v === 'string' && v.length > 0,
       ) ?? null;
-    if (!verifyHmacSignature(project.secret, rawBody, signatureHeader)) {
+    if (!verifyHmacSignature(secret.value, rawBody, signatureHeader)) {
       throw unauthorized('INVALID_SIGNATURE');
     }
 

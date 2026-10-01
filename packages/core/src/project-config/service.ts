@@ -1,5 +1,5 @@
 import { getAdapter, providerCanDeploy } from '../integrations/registry.js';
-import { encryptSecret, isVaultConfigured } from '../integrations/vault.js';
+import { decryptSecret, encryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import {
   type ApiRefusal,
   isRecord,
@@ -311,6 +311,46 @@ export async function putSecret(input: {
     valueEnc: encryptSecret(input.value),
   });
   return { ok: true, secret: { ...row, ref: secretRefOf(row.scope, row.name) } };
+}
+
+export type ResolvedSecret =
+  | { ok: true; value: string }
+  | {
+      ok: false;
+      code: 'VAULT_NOT_CONFIGURED' | 'SECRET_VALUE_MISSING' | 'SECRET_VALUE_UNREADABLE';
+      message: string;
+    };
+
+export async function resolveProjectSecret(
+  projectId: string,
+  scope: string,
+  name: string,
+): Promise<ResolvedSecret> {
+  const ref = secretRefOf(scope, name);
+  if (!isVaultConfigured()) {
+    return {
+      ok: false,
+      code: 'VAULT_NOT_CONFIGURED',
+      message: `INTEGRATION_MASTER_KEY is not set on this core, so ${ref} cannot be decrypted.`,
+    };
+  }
+  const enc = await store.readSecret(projectId, scope, name);
+  if (!enc) {
+    return {
+      ok: false,
+      code: 'SECRET_VALUE_MISSING',
+      message: `this project stores no value for ${ref}; PUT /api/projects/${projectId}/secrets/${scope}/${name} first.`,
+    };
+  }
+  try {
+    return { ok: true, value: decryptSecret(enc) };
+  } catch (err) {
+    return {
+      ok: false,
+      code: 'SECRET_VALUE_UNREADABLE',
+      message: `${ref} is stored but does not decrypt under this core's INTEGRATION_MASTER_KEY (${err instanceof Error ? err.message : String(err)}); write it again.`,
+    };
+  }
 }
 
 export async function listSecretNames(projectId: string) {

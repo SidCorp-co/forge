@@ -7,6 +7,10 @@ export function repositoryOf(document: ProjectDocument | null | undefined): stri
   return document?.source.type === 'git' ? document.source.git.repository : null;
 }
 
+export function defaultBranchOf(document: ProjectDocument | null | undefined): string | null {
+  return document?.source.type === 'git' ? document.source.git.defaultBranch : null;
+}
+
 export function setupOf(document: ProjectDocument | null | undefined): string | null {
   return document?.workspace.setup ?? null;
 }
@@ -24,12 +28,27 @@ export function webUrlOf(repository: string): string {
 
 export interface DeclaredSource {
   repository: string | null;
+  defaultBranch: string | null;
   setup: string | null;
 }
 
 export async function readDeclaredSource(projectId: string): Promise<DeclaredSource> {
   const held = await readProjectDocument(projectId);
-  return { repository: repositoryOf(held?.document), setup: setupOf(held?.document) };
+  return {
+    repository: repositoryOf(held?.document),
+    defaultBranch: defaultBranchOf(held?.document),
+    setup: setupOf(held?.document),
+  };
+}
+
+export async function withDefaultBranch<T extends { projectId: string }>(
+  rows: readonly T[],
+): Promise<(T & { baseBranch: string | null })[]> {
+  const branches = new Map<string, string | null>();
+  for (const projectId of new Set(rows.map((r) => r.projectId))) {
+    branches.set(projectId, (await readDeclaredSource(projectId)).defaultBranch);
+  }
+  return rows.map((r) => ({ ...r, baseBranch: branches.get(r.projectId) ?? null }));
 }
 
 export const NO_REPOSITORY =
