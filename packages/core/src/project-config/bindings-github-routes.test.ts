@@ -107,7 +107,10 @@ describe('a github binding, and the effects every binding write runs', () => {
     const read = (await (await call('GET', `/bindings/${BINDING}`, undefined, VIEWER)).json()) as {
       document: unknown;
     };
-    expect(read.document).toEqual(githubDoc({ releaseRunnerLabel: 'release' }));
+    expect(read.document).toEqual({
+      ...githubDoc({ releaseRunnerLabel: 'release' }),
+      active: true,
+    });
   });
 
   it('mints no second secret on an update, and tells the effects it was not a create', async () => {
@@ -203,7 +206,7 @@ describe('a binding switched off, or holding nothing a document would drop', () 
     });
   });
 
-  it('is undeclared to a document, so it is written back with a null base and keeps counting', async () => {
+  it('is declared switched off at its revision, and switched back on there', async () => {
     seedBindingRow({
       id: BINDING,
       projectId: PROJECT,
@@ -214,24 +217,67 @@ describe('a binding switched off, or holding nothing a document would drop', () 
       label: '',
       agentAccess: 'none',
       active: false,
+      instructions: 'answer in the thread',
       revision: 4,
     });
     expect(
       await (await call('GET', `/bindings/${BINDING}`, undefined, VIEWER)).json(),
     ).toMatchObject({
-      declared: false,
+      declared: true,
+      revision: 4,
+      document: { active: false, instructions: 'answer in the thread' },
     });
-    const stale = await call('PUT', `/bindings/${BINDING}`, {
-      baseRevision: 4,
-      document: githubDoc(),
-    });
-    expect((await refusalsOf(stale))[0]).toMatchObject({ code: 'STALE_BASE' });
-    const res = await call('PUT', `/bindings/${BINDING}`, {
+    const fromNothing = await call('PUT', `/bindings/${BINDING}`, {
       baseRevision: null,
       document: githubDoc(),
     });
+    expect((await refusalsOf(fromNothing))[0]).toMatchObject({ code: 'STALE_BASE' });
+    const res = await call('PUT', `/bindings/${BINDING}`, {
+      baseRevision: 4,
+      document: { ...githubDoc(), active: true, instructions: 'answer in the thread' },
+    });
     expect(res.status).toBe(200);
-    expect(bindingMem.rows.get(BINDING)).toMatchObject({ active: true, revision: 5 });
+    expect(bindingMem.rows.get(BINDING)).toMatchObject({
+      active: true,
+      instructions: 'answer in the thread',
+      revision: 5,
+    });
+  });
+
+  it('switches a binding off and clears its instructions through the document, keeping the row', async () => {
+    seedBindingRow({
+      id: BINDING,
+      projectId: PROJECT,
+      connectionId: GITHUB_CONNECTION,
+      provider: 'github',
+      role: 'service',
+      config: { installationId: 42, owner: 'acme', repo: 'shop' },
+      label: '',
+      agentAccess: 'all',
+      active: true,
+      instructions: 'answer in the thread',
+      revision: 2,
+    });
+    const res = await call('PUT', `/bindings/${BINDING}`, {
+      baseRevision: 2,
+      document: { ...githubDoc(), active: false },
+    });
+    expect(res.status).toBe(200);
+    expect(bindingMem.rows.get(BINDING)).toMatchObject({
+      active: false,
+      instructions: null,
+      revision: 3,
+    });
+  });
+
+  it('refuses empty instructions by name rather than storing a second way to say none', async () => {
+    const res = await call('PUT', `/bindings/${BINDING}`, {
+      baseRevision: null,
+      document: { ...githubDoc(), instructions: '' },
+    });
+    expect(res.status).toBe(422);
+    expect((await refusalsOf(res))[0]).toMatchObject({ path: '/instructions' });
+    expect(bindingMem.rows.size).toBe(0);
   });
 
   it('lets a project admin who is no org admin put back the org connection the row already holds, and no other', async () => {
@@ -257,7 +303,7 @@ describe('a binding switched off, or holding nothing a document would drop', () 
       active: true,
     });
     const swapped = await call('PUT', `/bindings/${BINDING}`, {
-      baseRevision: null,
+      baseRevision: 4,
       document: { ...githubDoc(), connection: other },
     });
     expect((await refusalsOf(swapped))[0]).toMatchObject({
@@ -270,7 +316,7 @@ describe('a binding switched off, or holding nothing a document would drop', () 
     });
 
     const back = await call('PUT', `/bindings/${BINDING}`, {
-      baseRevision: null,
+      baseRevision: 4,
       document: githubDoc(),
     });
     expect(back.status).toBe(200);

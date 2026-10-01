@@ -275,11 +275,50 @@ describe('the binding writes binding-v1 retired', () => {
     const res = await patch(`/api/projects/${w.projectId}/integrations/${w.bindingId}`, w.token, {
       agentAccess: 'all',
     });
-    await refusedByName(res, 'agentAccess on PATCH');
+    await refusedByName(res, '`agentAccess` on PATCH');
     const rows = await harness.db.execute<{ agent_access: string }>(
       sql`SELECT agent_access FROM integration_bindings WHERE id = ${w.bindingId}`,
     );
     expect(rows[0]?.agent_access).toBe('none');
+  });
+
+  it('refuses the switch and the instructions on the integrations PATCH, and leaves the row as it was', async () => {
+    const w = await seed({});
+    const res = await patch(`/api/projects/${w.projectId}/integrations/${w.bindingId}`, w.token, {
+      active: false,
+      instructions: 'deploy at night',
+    });
+    await refusedByName(res, '`active`, `instructions` on PATCH');
+    const rows = await harness.db.execute<{ active: boolean; instructions: string | null }>(
+      sql`SELECT active, instructions FROM integration_bindings WHERE id = ${w.bindingId}`,
+    );
+    expect(rows[0]).toEqual({ active: true, instructions: null });
+  });
+
+  it('switches the binding off and sets its instructions through its document', async () => {
+    const w = await seed({});
+    const path = `/api/projects/${w.projectId}/bindings/${w.bindingId}`;
+    const read = (await (await request('GET', path, w.token)).json()) as {
+      revision: number;
+      document: Record<string, unknown>;
+    };
+    const done = await request('PUT', path, w.token, {
+      baseRevision: read.revision,
+      document: { ...read.document, active: false, instructions: 'deploy at night' },
+    });
+    expect(done.status).toBe(200);
+    const rows = await harness.db.execute<{ active: boolean; instructions: string | null }>(
+      sql`SELECT active, instructions FROM integration_bindings WHERE id = ${w.bindingId}`,
+    );
+    expect(rows[0]).toEqual({ active: false, instructions: 'deploy at night' });
+    const again = (await (await request('GET', path, w.token)).json()) as {
+      declared: boolean;
+      document: Record<string, unknown>;
+    };
+    expect(again).toMatchObject({
+      declared: true,
+      document: { active: false, instructions: 'deploy at night' },
+    });
   });
 
   it('refuses a binding created through the project integrations route or the connection route', async () => {

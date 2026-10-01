@@ -80,7 +80,7 @@ describe('binding documents', () => {
     const read = (await (await call('GET', `/bindings/${BINDING}`, undefined, VIEWER)).json()) as {
       document: unknown;
     };
-    expect(read.document).toEqual({ ...coolifyDoc(), agentAccess: 'none' });
+    expect(read.document).toEqual({ ...coolifyDoc(), agentAccess: 'none', active: true });
   });
 
   it('writes a source binding', async () => {

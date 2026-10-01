@@ -48,8 +48,8 @@ import {
   buildContextFromBinding,
   findBindingWithConnectionById,
   listBindingsForProject,
+  setBindingInboundSecret,
   softDeleteBinding,
-  updateBinding,
   updateConnection,
 } from './store.js';
 
@@ -94,8 +94,13 @@ integrationsRoutes.patch(
     const { binding, connection } = existing;
 
     const patch = c.req.valid('json');
-    if (patch.agentAccess !== undefined) {
-      throw bindingWriteMoved('agentAccess on PATCH /api/projects/:projectId/integrations/:id');
+    const moved = (['agentAccess', 'active', 'instructions'] as const).filter(
+      (key) => patch[key] !== undefined,
+    );
+    if (moved.length > 0) {
+      throw bindingWriteMoved(
+        `${moved.map((k) => `\`${k}\``).join(', ')} on PATCH /api/projects/:projectId/integrations/:id`,
+      );
     }
 
     let mergedConfig: Record<string, unknown> | undefined;
@@ -119,8 +124,7 @@ integrationsRoutes.patch(
 
     // Connection-tier config and secrets of an ORG-owned credential are managed
     // at the org tier: a project admin alone must not rotate a credential the
-    // org's projects share. The binding's `active` switch stays project-admin
-    // editable, as DELETE throws that same switch for a project admin alone (ISS-1115).
+    // org's projects share.
     if (
       connection.ownerType === 'org' &&
       (mergedConfig !== undefined || patch.secrets !== undefined)
@@ -146,12 +150,6 @@ integrationsRoutes.patch(
       if (mergedConfig !== undefined) connPatch.config = mergedConfig;
       if (mergedSecrets !== undefined) connPatch.secrets = mergedSecrets;
       await updateConnection(connection.id, connPatch);
-    }
-    if (patch.active !== undefined || patch.instructions !== undefined) {
-      const bindingPatch: Parameters<typeof updateBinding>[1] = {};
-      if (patch.active !== undefined) bindingPatch.active = patch.active;
-      if (patch.instructions !== undefined) bindingPatch.instructions = patch.instructions;
-      await updateBinding(binding.id, bindingPatch);
     }
 
     const refreshed = await findBindingWithConnectionById(id);
@@ -273,7 +271,7 @@ integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) 
   // The inbound HMAC secret is per-binding (an inbound webhook is project+env
   // scoped), so rotation targets the binding.
   const newSecret = `whsec_${randomBytes(24).toString('hex')}`;
-  await updateBinding(id, { integrationSecret: newSecret });
+  await setBindingInboundSecret(id, newSecret);
   const refreshed = await findBindingWithConnectionById(id);
   if (!refreshed) throw notFound();
   broadcastIntegrationChanged(projectId, {

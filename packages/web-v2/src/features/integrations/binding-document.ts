@@ -12,6 +12,8 @@ export interface BindingDocument {
 	role: BindingRole;
 	connection: string;
 	agentAccess?: AgentAccess;
+	active?: boolean;
+	instructions?: string;
 	target: Record<string, unknown> & { provider: string; label?: string };
 }
 

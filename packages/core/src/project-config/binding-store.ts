@@ -15,6 +15,7 @@ export interface StoredBinding {
   label: string;
   agentAccess: AgentAccess;
   active: boolean;
+  instructions: string | null;
   revision: number;
 }
 
@@ -35,6 +36,8 @@ export interface BindingWrite {
   config: Record<string, unknown>;
   label: string;
   agentAccess: AgentAccess;
+  active: boolean;
+  instructions: string | null;
 }
 
 export type BindingCasResult =
@@ -64,6 +67,7 @@ const bindingColumns = {
   label: integrationBindings.label,
   agentAccess: integrationBindings.agentAccess,
   active: integrationBindings.active,
+  instructions: integrationBindings.instructions,
   revision: integrationBindings.revision,
 };
 
@@ -127,7 +131,7 @@ export const drizzleBindingStore: BindingStore = {
         if (current && current.projectId !== write.projectId) {
           return { ok: false as const, reason: 'foreign' as const };
         }
-        const storedRevision = current?.active ? current.revision : null;
+        const storedRevision = current?.revision ?? null;
         if (storedRevision !== baseRevision) {
           return { ok: false as const, reason: 'stale' as const, storedRevision };
         }
@@ -138,10 +142,13 @@ export const drizzleBindingStore: BindingStore = {
           config: write.config,
           label: write.label,
           agentAccess: write.agentAccess,
-          active: true,
+          active: write.active,
+          instructions: write.instructions,
         };
         if (
-          current?.active &&
+          current &&
+          current.active === values.active &&
+          current.instructions === values.instructions &&
           current.connectionId === values.connectionId &&
           current.provider === values.provider &&
           current.role === values.role &&

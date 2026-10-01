@@ -18,14 +18,14 @@ import type { BindingSummary } from "../types";
 
 expect.extend(matchers);
 
-const updateBinding = vi.fn();
+const saveBinding = vi.fn();
 const updateConnection = vi.fn();
 
 vi.mock("../hooks", async (importActual) => {
 	const actual = await importActual<typeof import("../hooks")>();
 	return {
 		...actual,
-		useUpdateProviderIntegration: () => ({ mutate: updateBinding, isPending: false }),
+		useUpdateProviderIntegration: () => ({ mutate: saveBinding, isPending: false }),
 		useUpdateConnection: () => ({ mutate: updateConnection, isPending: false }),
 	};
 });
@@ -71,7 +71,7 @@ function binding(over: Partial<BindingSummary> = {}): BindingSummary {
 }
 
 beforeEach(() => {
-	updateBinding.mockReset();
+	saveBinding.mockReset();
 	updateConnection.mockReset();
 });
 
@@ -149,7 +149,7 @@ describe("the release runner label on a deploy binding", () => {
 		});
 		fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-		expect(updateBinding.mock.calls[0]?.[0]).toEqual({
+		expect(saveBinding.mock.calls[0]?.[0]).toEqual({
 			id: BINDING_ID,
 			body: { config: { releaseRunnerLabel: "release" } },
 		});
@@ -171,7 +171,7 @@ describe("the release runner label on a deploy binding", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "Clear" }));
 
-		expect(updateBinding.mock.calls[0]?.[0]).toEqual({
+		expect(saveBinding.mock.calls[0]?.[0]).toEqual({
 			id: BINDING_ID,
 			body: { config: { releaseRunnerLabel: null } },
 		});

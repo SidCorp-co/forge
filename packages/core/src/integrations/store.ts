@@ -313,23 +313,13 @@ export async function softDeleteBinding(id: string): Promise<void> {
     .where(eq(integrationBindings.id, id));
 }
 
-export interface UpdateBindingPatch {
-  integrationSecret?: string | null;
-  active?: boolean;
-  instructions?: string | null;
-}
-
-export async function updateBinding(
+export async function setBindingInboundSecret(
   id: string,
-  patch: UpdateBindingPatch,
+  integrationSecret: string,
 ): Promise<IntegrationBindingRow | null> {
-  const set: Record<string, unknown> = { updatedAt: new Date() };
-  if (patch.integrationSecret !== undefined) set.integrationSecret = patch.integrationSecret;
-  if (patch.active !== undefined) set.active = patch.active;
-  if (patch.instructions !== undefined) set.instructions = patch.instructions;
   const [row] = await db
     .update(integrationBindings)
-    .set(set)
+    .set({ integrationSecret, updatedAt: new Date() })
     .where(eq(integrationBindings.id, id))
     .returning();
   return row ?? null;

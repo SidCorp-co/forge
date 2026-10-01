@@ -307,6 +307,8 @@ export const bindingDocumentSchema = z.strictObject({
   role: z.enum(BINDING_ROLES),
   connection: uuid(),
   agentAccess: z.enum(agentAccessValues).optional(),
+  active: z.boolean().optional(),
+  instructions: z.string().min(1).max(4000).optional(),
   target: z.discriminatedUnion('provider', BINDING_TARGETS, {
     error: (issue) =>
       issue.code === 'invalid_union'

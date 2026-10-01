@@ -26,6 +26,8 @@ function toDocument(row: StoredBinding): BindingRead {
         role: row.role,
         connection: row.connectionId,
         agentAccess: row.agentAccess,
+        active: row.active,
+        ...(row.instructions === null ? {} : { instructions: row.instructions }),
         target: decoded.target,
       },
     },
@@ -34,12 +36,12 @@ function toDocument(row: StoredBinding): BindingRead {
 
 export async function readBinding(projectId: string, id: string): Promise<BindingRead | null> {
   const row = await store.readBinding(id);
-  if (!row || row.projectId !== projectId || !row.active) return null;
+  if (!row || row.projectId !== projectId) return null;
   return toDocument(row);
 }
 
 export async function listBindings(projectId: string) {
-  const rows = (await store.listProjectBindings(projectId)).filter((r) => r.active);
+  const rows = await store.listProjectBindings(projectId);
   const held: HeldBinding[] = [];
   const unrepresentable: { id: string; provider: string; role: string; reason: string }[] = [];
   for (const row of rows) {
@@ -150,7 +152,7 @@ export async function writeBinding(input: {
       ],
     };
   }
-  const storedRevision = current?.active ? current.revision : null;
+  const storedRevision = current?.revision ?? null;
   if (storedRevision !== baseRevision) {
     return { ok: false, refusals: [staleBase(baseRevision, storedRevision)] };
   }
@@ -168,6 +170,7 @@ export async function writeBinding(input: {
   }
   const encoded = encodeTarget(doc.target);
   const agentAccess = doc.agentAccess ?? 'none';
+  const active = doc.active ?? true;
   refusals.push(
     ...(await connectionRefusals(projectId, userId, doc, current?.connectionId ?? null)),
   );
@@ -200,6 +203,8 @@ export async function writeBinding(input: {
     config: encoded.config,
     label: encoded.label,
     agentAccess,
+    active,
+    instructions: doc.instructions ?? null,
     baseRevision,
     integrationSecret: () => bindEffects.inboundSecret(doc.connection),
   });
@@ -219,7 +224,7 @@ export async function writeBinding(input: {
           : {
               code: 'BINDING_IN_USE',
               path: '/role',
-              detail: `this project already has an active ${doc.target.provider} service binding labelled "${encoded.label}"; a service binding is one per provider and label, so give this one its own \`target.label\`.`,
+              detail: `this project already has a ${doc.target.provider} service binding labelled "${encoded.label}", switched on or off; a service binding is one per provider and label, so write that binding's document, or give this one its own \`target.label\`.`,
             },
       ],
     };
@@ -237,7 +242,7 @@ export async function writeBinding(input: {
     : {};
   return {
     ok: true,
-    held: { revision: result.stored.revision, document: { ...doc, agentAccess } },
+    held: { revision: result.stored.revision, document: { ...doc, agentAccess, active } },
     created: result.created,
     effects,
   };
