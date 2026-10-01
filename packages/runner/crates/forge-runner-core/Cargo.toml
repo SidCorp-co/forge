@@ -38,6 +38,8 @@ keyring = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { workspace = true }
+# `LockFileEx` over one byte past a file's end, which `std::fs::File::lock` cannot express.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_IO"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
