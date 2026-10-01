@@ -184,6 +184,7 @@ update applied ─▶ wait, admission OPEN ────────────�
                   └─ 2h and still held ─▶ deferred: never closed, nothing          the new build
                                           stopped; next update check / re-login
 exec refused (unix) ─▶ admission reopens, the old build goes on serving, the log names the path tried
+                       (no file there, or one the kernel will not run: it is never run under /bin/sh)
 not unix            ─▶ exit 0 for the service manager to start the new build, as before
 ```
 
@@ -210,7 +211,10 @@ not unix            ─▶ exit 0 for the service manager to start the new build
   another plugin set, or before the build was recorded is outdated. An outdated
   pane is not nudged, and the journal says so once per pane and reason. It is
   ended and placed again — in the same sweep, resuming its conversation — only
-  when it holds no open run, its turn is affirmatively over (its hooks say so,
+  when it holds no open run under the session this box serves it as (written
+  onto its ledger row with the carry; a pane whose row names another, or whose
+  carry left a run it could not read, is left running until that clears), its
+  turn is affirmatively over (its hooks say so,
   or, unheard since the handover, its transcript's newest entry is a turn's
   end), and its project has admissible work. Otherwise it is left running and
   the journal names why and `forge-runner master kill <slug>`, which replaces it

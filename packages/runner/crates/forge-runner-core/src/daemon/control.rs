@@ -1866,7 +1866,7 @@ mod tests {
                 &hosts,
                 "forge-dev",
             );
-            assert_eq!(moved, 1);
+            assert_eq!(moved.moved, 1);
         }
         let after = close();
         assert!(after.ok, "{after:?}");

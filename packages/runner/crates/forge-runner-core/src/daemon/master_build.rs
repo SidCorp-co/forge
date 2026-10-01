@@ -128,6 +128,7 @@ mod tests {
             placed_plugins: plugins.map(str::to_string),
             placed_at: build.map(|_| 1),
             outdated: None,
+            unattributed: None,
         }
     }
 
