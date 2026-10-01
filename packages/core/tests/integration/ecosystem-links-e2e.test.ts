@@ -215,8 +215,11 @@ describe('the read shapes', () => {
         contract: { provider: w.project.forge, slug: 'forge-api' },
         state: 'behind',
         pinnedVersion: '2026-10-01',
+        outsideContract: linkDoc().outsideContract.length,
+        updatedAt: expect.any(String),
       },
     ]);
+    expect(bus.projects.find((p: Doc) => p.id === w.project.plugin).builder).toBeNull();
     const store = ok(await say('store', 'GET', `/api/ecosystems/${w.eco}/bus`));
     expect(store.links).toEqual([]);
   });
@@ -240,6 +243,23 @@ describe('the joining project records its builder run', () => {
     expect(progressed.revision).toBe(2);
     const listed = ok(await say('plugin', 'GET', runs()));
     expect(listed.runs.map((r: Doc) => r.document.id)).toEqual([ids.run]);
+  });
+
+  it("puts the project's latest run on the bus as step states and counts, never its findings", async () => {
+    const bus = ok(await say('platform', 'GET', `/api/ecosystems/${w.eco}/bus`));
+    const builder = bus.projects.find((p: Doc) => p.id === w.project.plugin).builder;
+    expect(builder).toMatchObject({
+      id: ids.run,
+      trigger: { kind: 'joined' },
+      findings: runDoc().findings.length,
+      links: 1,
+    });
+    expect(builder.steps.map((s: Doc) => s.status)).toEqual([
+      'succeeded',
+      'succeeded',
+      'succeeded',
+    ]);
+    expect(JSON.stringify(builder)).not.toContain('api.github.com');
   });
 
   it('refuses by name what the run cannot claim', async () => {

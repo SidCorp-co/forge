@@ -43,20 +43,22 @@ const VIA: Record<Author["via"], string> = {
   cli: "from the CLI",
 };
 
-function who(author: Author, me: string | undefined, people: ReadonlyMap<string, string>): string {
-  if (author.kind === "agent") return "an agent";
+function who(author: Author, me: string | undefined, people: ReadonlyMap<string, string>, party?: string): string {
+  if (author.kind === "agent") return party ? `${party}'s master` : "an agent";
   if (author.id === me) return "you";
   return people.get(author.id) ?? `person ${author.id.slice(0, 8)}`;
 }
 
 /** Who wrote it and through what. A document written through the assistant says so plainly. */
-export function AuthorLine({ author, label = "Written" }: { author: Author; label?: string }) {
+export function AuthorLine({ author, label = "Written", party }: { author: Author; label?: string; party?: string }) {
   const me = useAuth().user?.id;
   const people = useContext(People);
+  const named = author.kind === "agent" && party !== undefined;
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
       <span>
-        {label} by {who(author, me, people)} {VIA[author.via]}
+        {label} by {who(author, me, people, party)}
+        {named ? "" : ` ${VIA[author.via]}`}
       </span>
       {author.via === "assistant" ? <Badge tone="cobalt">via assistant</Badge> : null}
       {author.kind === "agent" ? <Badge tone="neutral">agent</Badge> : null}

@@ -26,7 +26,7 @@ function Register() {
     <EcosystemPage
       slug={params?.slug}
       section="channel"
-      title="Channel register"
+      title="Threads"
       actions={(p) =>
         canWriteProject(p.role) ? (
           <Link
@@ -42,6 +42,7 @@ function Register() {
         <RegisterScreen
           projectId={project.id}
           slug={project.slug}
+          canWrite={canWriteProject(project.role)}
           rawFilter={search?.get("status") ?? null}
           rawEcosystem={search?.get("ecosystem") ?? null}
           onFilter={(f) => setParam("status", f === "all" ? null : f)}

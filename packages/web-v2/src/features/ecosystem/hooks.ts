@@ -17,6 +17,31 @@ export function useProjectEcosystems(projectId: string) {
   });
 }
 
+export function useBus(ecosystemId: string | undefined, live: boolean) {
+  return useQuery({
+    queryKey: [...KEY, "bus", ecosystemId],
+    queryFn: () => ecosystemApi.bus(ecosystemId as string),
+    enabled: Boolean(ecosystemId),
+    refetchInterval: live ? 15_000 : false,
+  });
+}
+
+export function useLink(consumerId: string | undefined, linkId: string | undefined) {
+  return useQuery({
+    queryKey: [...KEY, "link", consumerId, linkId],
+    queryFn: () => ecosystemApi.link(consumerId as string, linkId as string),
+    enabled: Boolean(consumerId && linkId),
+  });
+}
+
+export function useBuilderRun(projectId: string | undefined, runId: string | undefined) {
+  return useQuery({
+    queryKey: [...KEY, "builder-run", projectId, runId],
+    queryFn: () => ecosystemApi.builderRun(projectId as string, runId as string),
+    enabled: Boolean(projectId && runId),
+  });
+}
+
 export function useRegister(ecosystemId: string | undefined, projectId: string, filter: RegisterFilter) {
   return useQuery({
     queryKey: [...KEY, "register", ecosystemId, projectId, filter],

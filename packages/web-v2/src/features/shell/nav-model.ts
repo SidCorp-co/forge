@@ -80,7 +80,8 @@ export interface EcosystemItem extends NavItem {
 }
 
 export const ECOSYSTEM_ITEMS: EcosystemItem[] = [
-  { key: "eco-channel", label: "Channel", icon: "mail", sub: "/ecosystem/channel", href: (s) => ecosystemRoutes.register(s) },
+  { key: "eco-bus", label: "Map", icon: "ecosystem", sub: "/ecosystem", href: (s) => ecosystemRoutes.bus(s) },
+  { key: "eco-channel", label: "Threads", icon: "mail", sub: "/ecosystem/channel", href: (s) => ecosystemRoutes.register(s) },
   {
     key: "eco-awaiting",
     label: "Awaiting",
@@ -113,7 +114,8 @@ export const ECOSYSTEM_RAIL_KEYS = new Set(ECOSYSTEM_ITEMS.filter((it) => !it.st
 
 function ecosystemKey(rest: string, search: string): string | null {
   const status = new URLSearchParams(search).get("status");
-  const hits = ECOSYSTEM_ITEMS.filter((it) => matchesSub(rest, it.sub));
+  const longest = Math.max(0, ...ECOSYSTEM_ITEMS.filter((it) => matchesSub(rest, it.sub)).map((it) => it.sub.length));
+  const hits = ECOSYSTEM_ITEMS.filter((it) => matchesSub(rest, it.sub) && it.sub.length === longest);
   if (hits.length === 0) return null;
   return (hits.find((it) => it.status && it.status === status) ?? hits.find((it) => !it.status))?.key ?? null;
 }

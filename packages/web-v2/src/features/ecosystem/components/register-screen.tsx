@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { Badge, NativeSelect, SegmentedControl } from "@/design";
+import { ecosystemApi } from "../api";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useOutbox, useProjectEcosystems, useRegister } from "../hooks";
 import { readingOf } from "@/lib/api/refusals";
 import { ecosystemRoutes, REGISTER_FILTERS, type RegisterFilter } from "../routes";
 import type { RegisterRow } from "../types";
+import { ReasonAction } from "./document-actions";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";
 import { AuthorLine, HoldLine, type Names, PeopleNames, useProjectNames } from "./people";
 
@@ -35,14 +37,39 @@ export function parseFilter(raw: string | null): { filter: RegisterFilter } | { 
     : { unknown: raw };
 }
 
+// cm:why the master that drafted a document is the sending project's master, so the row names it by that project; Hold is the one control a person keeps over the masters working an open thread
+function MasterHandling({ row, projectId, names }: { row: RegisterRow; projectId: string; names: Names }) {
+  const held = row.hold?.action === "hold";
+  if (!row.thread || row.state !== "published" || (!row.open && !held)) return null;
+  return held ? (
+    <ReasonAction
+      label="Release the conversation"
+      confirmLabel="Release"
+      reason="optional"
+      run={(reason) => ecosystemApi.hold(projectId, row.thread as string, "release", reason || undefined)}
+    />
+  ) : (
+    <ReasonAction
+      label={`Hold ${names(row.from)}'s master and the rest`}
+      confirmLabel="Hold"
+      reason="required"
+      run={(reason) => ecosystemApi.hold(projectId, row.thread as string, "hold", reason)}
+    />
+  );
+}
+
 export function RegisterRowCard({
   row,
   slug,
   names,
+  projectId,
+  canWrite = false,
 }: {
   row: RegisterRow;
   slug: string;
   names: Names;
+  projectId?: string;
+  canWrite?: boolean;
 }) {
   const owing = row.recipients.filter((r) => r.status === "awaiting" || r.status === "overdue");
   return (
@@ -72,9 +99,16 @@ export function RegisterRowCard({
           <HoldLine hold={row.hold} names={names} />
         </p>
       ) : null}
-      <p className="fg-caption mt-1">
-        <AuthorLine author={row.authoredBy} />
-      </p>
+      <div className="mt-1 flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <p className="fg-caption">
+          <AuthorLine
+            author={row.authoredBy}
+            label={row.authoredBy.kind === "agent" ? "Drafted" : "Written"}
+            party={row.authoredBy.kind === "agent" ? names(row.from) : undefined}
+          />
+        </p>
+        {canWrite && projectId ? <MasterHandling row={row} projectId={projectId} names={names} /> : null}
+      </div>
     </li>
   );
 }
@@ -116,6 +150,7 @@ function Drafts({ projectId, slug }: { projectId: string; slug: string }) {
 export function RegisterScreen({
   projectId,
   slug,
+  canWrite = false,
   rawFilter,
   rawEcosystem,
   onFilter,
@@ -123,6 +158,7 @@ export function RegisterScreen({
 }: {
   projectId: string;
   slug: string;
+  canWrite?: boolean;
   rawFilter: string | null;
   rawEcosystem: string | null;
   onFilter: (f: RegisterFilter) => void;
@@ -217,7 +253,7 @@ export function RegisterScreen({
                 <>
                   <ul className="space-y-2">
                     {register.value.documents.map((row) => (
-                      <RegisterRowCard key={row.number} row={row} slug={slug} names={names} />
+                      <RegisterRowCard key={row.number} row={row} slug={slug} names={names} projectId={projectId} canWrite={canWrite} />
                     ))}
                   </ul>
                   {register.value.total > register.value.returned ? (
