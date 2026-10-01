@@ -27,6 +27,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { AdvancedTab } from "./advanced-tab";
 import { BasicsTab } from "./basics-tab";
+import { ConfigTab } from "./config-tab";
 import { IntegrationsTab } from "./integrations-tab";
 import { LabelsTab } from "./labels-tab";
 import { MembersTab } from "./members-tab";
@@ -38,6 +39,7 @@ import { RepoTab } from "./repo-tab";
 const TAB_VALUES = [
 	"basics",
 	"repo",
+	"config",
 	"runners",
 	"pipeline",
 	"memory",
@@ -52,6 +54,7 @@ type ProjectSettingsTab = (typeof TAB_VALUES)[number];
 const TABS: TabItem[] = [
 	{ value: "basics", label: "Basics" },
 	{ value: "repo", label: "Repository" },
+	{ value: "config", label: "Configuration" },
 	{ value: "runners", label: "Runners" },
 	{ value: "pipeline", label: "Pipeline" },
 	{ value: "memory", label: "Memory" },
@@ -155,7 +158,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 						{!canEdit && (
 							<p className="fg-body-sm mb-4 rounded-md border border-line bg-surface px-3 py-2 text-muted">
 								{isProjectAdmin
-									? "Basics, Repo, Pipeline, Integrations and Advanced need an org owner/admin — you can still manage Members and Labels."
+									? "Basics, Repo, Configuration, Pipeline, Integrations and Advanced need an org owner/admin — you can still manage Members and Labels."
 									: "You have read-only access to these settings."}
 							</p>
 						)}
@@ -169,6 +172,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 						<BasicsTab project={project} canEdit={canEdit} />
 					)}
 					{tab === "repo" && <RepoTab project={project} canEdit={canEdit} />}
+					{tab === "config" && <ConfigTab project={project} canEdit={canEdit} />}
 					{tab === "runners" && (
 						<ProjectRunnersScreen
 							projectId={project.id}

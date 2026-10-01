@@ -31,7 +31,7 @@ import {
   type TabItem,
 } from "@/design";
 import { useResumeRun } from "@/features/pipeline/hooks";
-import { usePolicy } from "@/features/project-settings/hooks";
+import { usePolicyDocument } from "@/features/project-settings/config-hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
@@ -130,7 +130,7 @@ export function IssueDetailScreen({
   const projectsQ = useProjects();
   const projectRole = projectsQ.data?.find((p) => p.id === projectId)?.role;
   const canWrite = projectRole !== "viewer";
-  const policyQ = usePolicy(projectId);
+  const policyQ = usePolicyDocument(projectId);
   const [modulePickerOpen, setModulePickerOpen] = useState(false);
 
   // ISS-1160 — `id` off the URL is the display key as often as the row uuid;

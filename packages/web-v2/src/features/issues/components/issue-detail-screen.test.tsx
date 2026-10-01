@@ -46,8 +46,8 @@ const ISSUE = {
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() }) }));
 vi.mock("@/features/projects/hooks", () => ({ useProjects: () => ({ data: [{ id: "p1", role }] }) }));
-vi.mock("@/features/project-settings/hooks", () => ({
-  usePolicy: () =>
+vi.mock("@/features/project-settings/config-hooks", () => ({
+  usePolicyDocument: () =>
     policyError
       ? { data: undefined, isLoading: false, isError: true, error: policyError, refetch: vi.fn() }
       : ok({ declared: true, revision: 1, document: { intake: { mode: intake } } }),

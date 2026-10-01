@@ -238,7 +238,7 @@ function BindingPanel({
             {" "}as <code>{existing.id}</code>
           </>
         ) : null}{" "}
-        and write the document with <code>PUT /api/projects/:id/config</code>. A binding no
+        on the Configuration tab of project settings. A binding no
         environment names is never dispatched.
       </p>
 
