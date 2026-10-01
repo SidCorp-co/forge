@@ -90,7 +90,7 @@ fn a_connection_made_before_the_exec_is_answered_by_the_new_image_in_the_same_pr
     let dir = forge_runner_core::test_scratch::Scratch::new("update-handover");
     let mut child = Command::new(std::env::current_exe().unwrap())
         .args(image_args())
-        .env(DIR_ENV, dir.to_path_buf())
+        .env(DIR_ENV, &*dir)
         .env_remove(handover::LISTENER_ENV)
         .stdout(Stdio::null())
         .stderr(Stdio::null())

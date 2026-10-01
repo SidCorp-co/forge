@@ -215,8 +215,9 @@ impl Drain {
     }
 
     /// Put this drain inside a handover's closing window, for a test of a
-    /// reader that has to refuse there.
-    #[cfg(test)]
+    /// reader that has to refuse there. Its readers are the control socket's
+    /// and the master sweep's, which exist on unix only.
+    #[cfg(all(test, unix))]
     pub(crate) fn close_for_test(&self, cause: &str) -> Attempt {
         let attempt = self.begin(cause).expect("no attempt is under way");
         self.close_window(&attempt);
