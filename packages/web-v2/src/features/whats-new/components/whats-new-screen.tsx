@@ -16,6 +16,7 @@ import {
 import { FORGE_RELEASES_URL } from "@/lib/changelog";
 import { formatApiError } from "@/lib/api/error";
 import { useWhatsNewStatus } from "../hooks";
+import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 /** What's New — Forge's product release feed (CHANGELOG by version, newest
  *  first, `[Unreleased]` pinned on top). Opening the page clears the nav badge
@@ -35,22 +36,20 @@ export function WhatsNewScreen() {
     // changelog prose at 1700px is unreadable.
     <PageContainer className="flex flex-col gap-4">
       <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <PageTitle className="fg-h2" hint="Forge release notes — newest first.">
-          What&apos;s New
-        </PageTitle>
+      <PageTitle hint="Forge release notes — newest first.">What&apos;s New</PageTitle>
+      <TopBarActions>
         <a
           href={FORGE_RELEASES_URL}
           target="_blank"
           rel="noreferrer"
-          className="fg-body-sm ml-auto text-[color:var(--link)] hover:underline"
+          className="fg-body-sm text-[color:var(--link)] hover:underline"
         >
           All releases on GitHub
         </a>
         <HelpButton
           summary="The Forge product changelog, pulled live from GitHub. Each release lists what changed, grouped by Added / Changed / Fixed. The newest entry (including the upcoming [Unreleased] section) is at the top; opening this page clears the 'new' badge in the sidebar."
         />
-      </div>
+      </TopBarActions>
 
       {isLoading ? (
         <div className="flex flex-col gap-4">

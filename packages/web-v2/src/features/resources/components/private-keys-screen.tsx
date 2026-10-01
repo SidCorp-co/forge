@@ -27,6 +27,7 @@ import { useState } from "react";
 import { keyInUseDetails, useDeleteSshKey, useOrgSshKeys, useTestSshKey } from "../hooks";
 import type { SshConnTestResult, WorkspaceSshKeyView } from "../types";
 import { PrivateKeyCreateSlideOver } from "./private-key-create-slideover";
+import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 /** Test a pool key's reachability against a caller-supplied SSH repo URL. */
 function TestSshKeyDialog({
@@ -193,17 +194,16 @@ export function PrivateKeysScreen({ orgId }: { orgId: string | null }) {
 
 	const body = (
 		<>
-			<div className="flex items-center justify-between gap-3">
 				<PageTitle
-					className="fg-h2"
 					hint="SSH deploy keys shared across every project in this organization — create one and reuse it, instead of a key per project."
 				>
 					Private keys
 				</PageTitle>
-				<Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)} disabled={!orgId}>
+				<TopBarActions>
+				<Button variant="primary" size="sm" icon="plus" onClick={() => setCreateOpen(true)} disabled={!orgId}>
 					Create key
 				</Button>
-			</div>
+				</TopBarActions>
 
 			<Card>
 				<CardHeader>

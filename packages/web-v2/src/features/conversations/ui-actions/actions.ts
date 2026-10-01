@@ -16,6 +16,7 @@ import {
 import { REGISTRY_ISSUE_PRIORITIES, REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
 import { applyWireframePatch, describeWireframe } from "@forge/contracts/wireframe";
 import { boardStore } from "../board/board-store";
+import { assistantFilters } from "./assistant-filters";
 import type { IssueSelectionBridge } from "./selection-bridge";
 
 /** The URL params each filter field lives in on the Issues list. */
@@ -158,6 +159,12 @@ export function applyUiAction(action: UiAction, env: UiActionEnv): UiActionOutco
       if (set.text) next.set("q", set.text);
       const qs = next.toString();
       env.go(`${issuesPath(env.slug)}${qs ? `?${qs}` : ""}`);
+      const marked: Record<string, string> = {};
+      for (const f of Object.keys(set) as UiIssueFilterField[]) {
+        const v = next.get(FIELD_PARAM[f]);
+        if (set[f] !== undefined && v) marked[FIELD_PARAM[f]] = v;
+      }
+      assistantFilters.mark(marked, mode === "replace");
       const fields = (Object.keys(set) as UiIssueFilterField[]).filter((f) => set[f] !== undefined);
       const verb = mode === "replace" ? "Filtered issues" : "Narrowed issues";
       const what = fields.map((f) => chipLabel(f, set)).join(", ");

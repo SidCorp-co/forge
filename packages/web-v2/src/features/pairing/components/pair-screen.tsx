@@ -23,6 +23,7 @@ import { useActiveOrg } from "@/features/orgs/active-org";
 import { formatApiError } from "@/lib/api/error";
 import { useAuth } from "@/providers/auth-provider";
 import { useApproveDevice } from "../hooks";
+import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 /** The value the picker carries for "this box is mine", which is not an agent id. */
 const AS_MYSELF = "";
@@ -64,8 +65,8 @@ export function PairScreen() {
 
   return (
     <div className="mx-auto flex w-full max-w-[560px] flex-col gap-4 px-6 py-8">
-      <div className="flex items-center justify-between gap-3">
-        <PageTitle className="fg-h2">Approve a device</PageTitle>
+      <PageTitle>Approve a device</PageTitle>
+      <TopBarActions>
         <HelpButton
           summary="A device running `forge-runner setup` (or `login`) is asking to pair with your account. Confirm the code matches what the CLI printed, then approve. Approving mints a device-scoped token the runner uses to accept jobs."
           actions={[
@@ -73,7 +74,7 @@ export function PairScreen() {
             "Deny — ignore the request (the code expires on its own)",
           ]}
         />
-      </div>
+      </TopBarActions>
 
       {!code ? (
         <Card>

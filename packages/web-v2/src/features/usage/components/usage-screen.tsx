@@ -20,11 +20,7 @@ export function UsageScreen() {
 
   return (
     <PageContainer>
-      <header className="mb-4">
-        <PageTitle className="fg-h2" hint={`Token spend for ${orgName} · self-hosted`}>
-          Usage
-        </PageTitle>
-      </header>
+      <PageTitle hint={`Token spend for ${orgName} · self-hosted`}>Usage</PageTitle>
 
       <EmptyState
         title="Organization usage is coming"

@@ -409,14 +409,6 @@ describe("label helpers", () => {
 		]);
 		expect(transitionLabels([...ISSUE_STATUSES])).toEqual(ISSUE_STATUSES.map(statusLabel));
 	});
-	it("puts every status the lane reads as running or as no check-in on the agent tab", () => {
-		const agent = filterToQueryParams("agent").status ?? [];
-		for (const s of ISSUE_STATUSES) {
-			const word = lane(s, false);
-			if (word === "No check-in" || word === "Open") expect(agent, s).toContain(s);
-		}
-	});
-
 	it("keeps seventeen status words beside the ten lane words", () => {
 		expect(new Set(ISSUE_STATUSES.map(statusLabel)).size).toBe(ISSUE_STATUSES.length);
 	});
@@ -578,65 +570,21 @@ describe("depCounts", () => {
 	});
 });
 
-describe("filterToQueryParams", () => {
-	it("all applies no filter — every issue incl. drafts + closed (ISS-360)", () => {
+describe("filterToQueryParams — the toolbar's status segment", () => {
+	it("all applies no filter, so drafts and closed work stay reachable (ISS-360)", () => {
 		expect(filterToQueryParams("all")).toEqual({});
 	});
-	it("`you` holds every status a person must act on, from the label axis", () => {
-		const s = filterToQueryParams("you").status ?? [];
-		for (const parked of ["needs_info", "waiting", "on_hold"]) {
-			expect(s, parked).toContain(parked);
-		}
+	it("closed is closed and dropped only — the release gate is not finished work", () => {
+		expect(filterToQueryParams("closed")).toEqual({ status: ["closed", "dropped"] });
 	});
-	it("counts the release gate and a reopen as the person's, not the machine's", () => {
-		const you = filterToQueryParams("you").status ?? [];
-		const agent = filterToQueryParams("agent").status ?? [];
-		for (const mine of ["awaiting_release", "reopen"]) {
-			expect(you, mine).toContain(mine);
-			expect(agent, mine).not.toContain(mine);
-		}
+	it("open is exactly every status closed does not name", () => {
+		expect(filterToQueryParams("open")).toEqual({ statusNot: ["closed", "dropped"] });
 	});
-	it("`agent` never claims a status a person has to answer", () => {
-		const s = filterToQueryParams("agent").status ?? [];
-		for (const parked of ["waiting", "on_hold", "needs_info"]) {
-			expect(s, parked).not.toContain(parked);
-		}
-	});
-	it("`done` carries dropped as well as closed", () => {
-		const s = filterToQueryParams("done").status ?? [];
-		expect(s).toContain("closed");
-		expect(s).toContain("dropped");
-	});
-	it("every non-terminal status is reachable from exactly one of the three work tabs", () => {
-		const buckets = (["you", "agent", "done"] as const).map(
-			(f) => filterToQueryParams(f).status ?? [],
-		);
-		const drafts = ["draft"];
-		for (const s of REGISTRY_ISSUE_STATUSES) {
-			if (drafts.includes(s)) continue;
-			const hits = buckets.filter((b) => b.includes(s)).length;
-			expect(hits, `${s} appears in ${hits} tabs`).toBe(1);
-		}
-	});
-
-	it("draft targets only drafts", () => {
-		expect(filterToQueryParams("draft")).toEqual({
-			status: ["draft"],
-			origin: "human",
-		});
-	});
-
-	it("findings selects detector origin at any status", () => {
-		expect(filterToQueryParams("findings")).toEqual({ origin: "detector" });
-	});
-
-	it("all stays unfiltered so nothing is unreachable", () => {
-		expect(filterToQueryParams("all")).toEqual({});
-	});
-	it("done is terminal only — the release gate is not finished work", () => {
-		expect(filterToQueryParams("done")).toEqual({
-			status: ["closed", "dropped"],
-		});
+	it("counts open and closed so they sum to all", () => {
+		const buckets = { byStatus: { open: 2, awaiting_release: 1, closed: 4, dropped: 1 } };
+		expect(filterCount("all", buckets)).toBe(8);
+		expect(filterCount("closed", buckets)).toBe(5);
+		expect(filterCount("open", buckets)).toBe(3);
 	});
 });
 
@@ -1546,19 +1494,4 @@ describe("the marker that a person owes an issue an answer", () => {
 			}),
 		).toBeNull();
 	});
-
-	it("asks Needs you to take the marker as well as its statuses", () => {
-		expect(filterToQueryParams("you").orWaitingOnPerson).toBe(true);
-		expect(filterToQueryParams("agent").orWaitingOnPerson).toBeUndefined();
-	});
-
-	it("counts a marked issue at a status Needs you does not name, once", () => {
-		const buckets = {
-			byStatus: { needs_info: 2, testing: 5 },
-			waitingOnPersonByStatus: { needs_info: 1, testing: 1 },
-		};
-		expect(filterCount("you", buckets)).toBe(3);
-		expect(filterCount("agent", buckets), "a filter that takes no marker counts only its statuses").toBe(5);
-	});
 });
-

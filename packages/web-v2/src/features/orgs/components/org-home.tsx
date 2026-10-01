@@ -15,7 +15,6 @@ import {
   CardContent,
   EmptyState,
   ErrorState,
-  Icon,
   PageContainer,
   Skeleton,
 } from "@/design";
@@ -24,6 +23,7 @@ import { useActiveOrg } from "../active-org";
 import { useOrgProjects } from "../hooks";
 import { OrgMembersCard } from "./org-members-card";
 import { SectionTitle, PageTitle } from "@/design/primitives/heading";
+import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 export function OrgHome() {
   const router = useRouter();
@@ -45,17 +45,14 @@ export function OrgHome() {
 
   return (
     <PageContainer>
-      <header className="mb-5 flex flex-wrap items-center gap-2.5">
-        <span className="inline-flex size-9 items-center justify-center rounded-md border border-line bg-sunken text-subtle">
-          <Icon name="users" size={18} />
-        </span>
-        <PageTitle className="fg-h2">{label}</PageTitle>
+      <PageTitle>{label}</PageTitle>
+      <TopBarActions>
         {activeOrg.isPersonal ? (
           <Badge tone="neutral">personal</Badge>
         ) : (
           <Badge tone={activeOrg.role === "owner" ? "accent" : "neutral"}>{activeOrg.role}</Badge>
         )}
-      </header>
+      </TopBarActions>
 
       {activeOrg.isPersonal ? (
         <PersonalOrgProjects orgId={activeOrg.id} />

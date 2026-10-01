@@ -137,11 +137,7 @@ export function ProjectsConsole() {
         />
       ) : (
         <>
-          <div className="mx-0.5 mb-4 flex items-center gap-2">
-            <Icon name="users" size={16} className="text-subtle" />
-            <PageTitle className="fg-h3">{scopeLabel ?? 'Projects'}</PageTitle>
-            <span className="fg-body-sm text-subtle">· projects</span>
-          </div>
+          <PageTitle>{scopeLabel ? `${scopeLabel} · projects` : 'Projects'}</PageTitle>
           <StatsBand totals={totals} />
           <ProjectsToolbar
             query={query}

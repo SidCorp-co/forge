@@ -6,7 +6,6 @@
 // `['issues','search']`, the one key the event-router invalidates.
 
 import {
-  Badge,
   BoardRowSkeleton,
   Button,
   Checkbox,
@@ -15,8 +14,6 @@ import {
   Input,
   Pagination,
   Popover,
-  Select,
-  SlideOver,
   SortableTH,
   Table,
   TBody,
@@ -27,7 +24,6 @@ import {
   useReactTable,
   type ColumnDef,
   type SegmentOption,
-  type SelectOption,
   type SortingState,
 } from "@/design";
 import { decodeFilter, decodeNumber, usePinnedViews } from "@/features/shell";
@@ -36,6 +32,7 @@ import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/providers/auth-provider";
 //
 // URL-as-state (ISS-436): every filter (q / filter / priority / assignee /
 // groupBy / sort / page) is DERIVED from the live query string via
@@ -52,6 +49,7 @@ import {
   filterCount,
   groupRows,
   priorityLabel,
+  statusLabel,
   statusesFromParam,
 } from "../derive";
 import {
@@ -71,60 +69,34 @@ import {
 } from "../types";
 import { BulkActionBar } from "./bulk-action-bar";
 import { useIssueSelectionBridge } from "@/features/conversations/ui-actions/selection-bridge";
-import { FilterChips } from "./filter-chips";
+import { IssuesToolbar, type ToolbarOption } from "./issues-toolbar";
 import { IssueTableRow, type RowAssignee } from "./issue-row-actions";
 import type { RowActions } from "./issue-table-row";
 import { useGuardedTransition } from "./use-guarded-transition";
 
-const FILTERS: SegmentOption<IssueFilter>[] = [
-  { value: "you", label: "Needs you" },
-  { value: "agent", label: "With agent" },
-  { value: "draft", label: "Draft" },
-  { value: "findings", label: "Findings" },
-  { value: "done", label: "Finished" },
+const SEGMENTS: SegmentOption<IssueFilter>[] = [
+  { value: "open", label: "Open" },
+  { value: "closed", label: "Closed" },
   { value: "all", label: "All" },
 ];
-const VALID_FILTERS: IssueFilter[] = ["all", "draft", "findings", "you", "agent", "done"];
-/* status-tuple: differs — this is the "Finished" segment's cut of the status counts, not core's
-   ISSUE_TERMINAL_STATUSES. It names which buckets that one filter chip sums, and a segment added
-   or re-cut here moves it without anything about the issue lifecycle having changed. */
-const FINISHED_CUTS = ["closed", "dropped"];
-const DEFAULT_FILTER: IssueFilter = "all";
+const VALID_FILTERS: IssueFilter[] = ["open", "closed", "all"];
+const DEFAULT_FILTER: IssueFilter = "open";
 
 function withCounts(
   options: SegmentOption<IssueFilter>[],
   buckets: IssueBuckets | undefined,
 ): SegmentOption<IssueFilter>[] {
   if (!buckets) return options;
-  const all = Object.values(buckets.byStatus).reduce<number>((n, v) => n + (v ?? 0), 0);
-  return options.map((o) => {
-    const count =
-      o.value === "all"
-        ? all
-        : o.value === "findings"
-          ? buckets.detector
-          : o.value === "draft"
-            ? buckets.humanDraft
-            : filterCount(o.value, buckets);
-    return { ...o, count, countTone: o.value === "you" ? "attention" : "neutral" };
-  });
+  return options.map((o) => ({ ...o, count: filterCount(o.value, buckets) }));
 }
 
-const GROUP_OPTIONS: SelectOption[] = [
-  { value: "none", label: "No grouping" },
-  { value: "status", label: "Group: status" },
-  { value: "priority", label: "Group: priority" },
-  { value: "creator", label: "Group: creator" },
+const GROUP_OPTIONS: ToolbarOption[] = [
+  { value: "", label: "None" },
+  { value: "status", label: "Status" },
+  { value: "priority", label: "Priority" },
+  { value: "creator", label: "Creator" },
 ];
 const VALID_GROUP_BY: GroupBy[] = ["none", "status", "priority", "creator"];
-
-const SORT_OPTIONS: SelectOption[] = [
-  { value: "createdAt:desc", label: "Newest" },
-  { value: "createdAt:asc", label: "Oldest" },
-  { value: "updatedAt:desc", label: "Recently updated" },
-  { value: "priority:desc", label: "Priority ↓" },
-  { value: "priority:asc", label: "Priority ↑" },
-];
 
 const ISSUE_COLUMNS: ColumnDef<IssueRow, unknown>[] = [
   { id: "createdAt", header: "ID", enableSorting: true, sortDescFirst: true },
@@ -155,8 +127,8 @@ function stateToSort(state: SortingState): IssueSort {
   return `${first.id}:${first.desc ? "desc" : "asc"}` as IssueSort;
 }
 
-const PRIORITY_FILTER_OPTIONS: SelectOption[] = [
-  { value: "", label: "Priority: any" },
+const PRIORITY_OPTIONS: ToolbarOption[] = [
+  { value: "", label: "Any" },
   ...ISSUE_PRIORITIES.map((p) => ({ value: p, label: priorityLabel(p) })),
 ];
 
@@ -183,7 +155,7 @@ export function IssuesListView({
   const sp = useMemo(() => new URLSearchParams(search), [search]);
   const q = sp.get("q") ?? "";
   const rawFilter = decodeFilter<IssueFilter>(sp, "filter", DEFAULT_FILTER);
-  const filter = VALID_FILTERS.includes(rawFilter) ? rawFilter : "all";
+  const filter = VALID_FILTERS.includes(rawFilter) ? rawFilter : DEFAULT_FILTER;
   const rawPriority = sp.get("priority") ?? "";
   const priority = (ISSUE_PRIORITIES as string[]).includes(rawPriority)
     ? (rawPriority as IssuePriority)
@@ -249,7 +221,7 @@ export function IssuesListView({
   const [pinOpen, setPinOpen] = useState(false);
   const pinAnchor = useRef<HTMLDivElement>(null);
   const [pinName, setPinName] = useState("");
-  const defaultPinLabel = `Issues${filter !== "all" ? ` · ${filter}` : ""}${q ? ` · "${q}"` : ""}`;
+  const defaultPinLabel = `Issues${filter !== DEFAULT_FILTER ? ` · ${filter}` : ""}${q ? ` · "${q}"` : ""}`;
 
   function onPinClick() {
     if (isPinned) {
@@ -302,19 +274,30 @@ export function IssuesListView({
   // its own name and an agent is marked rather than replaced by a class label.
   // "any agent" stays as a KIND filter above them, which is a different
   // question from "which writer" and is why it is not one of the names.
-  const creatorFilterOptions = useMemo<SelectOption[]>(
+  const { user } = useAuth();
+  const creatorOptions = useMemo<ToolbarOption[]>(
     () => [
-      { value: "", label: "Creator: anyone" },
-      { value: "agent", label: `Creator: ${ANY_AGENT_LABEL}` },
-      ...(membersQ.data ?? []).map((m) => ({
-        value: m.userId,
-        label:
-          m.kind === "agent"
-            ? `${m.displayName ?? m.email} (agent)`
-            : (m.displayName ?? m.email),
-      })),
+      { value: "", label: "Anyone" },
+      ...(user ? [{ value: user.id, label: "Me" }] : []),
+      { value: "agent", label: ANY_AGENT_LABEL },
+      ...(membersQ.data ?? [])
+        .filter((m) => m.userId !== user?.id)
+        .map((m) => ({
+          value: m.userId,
+          label: m.kind === "agent" ? `${m.displayName ?? m.email} (agent)` : (m.displayName ?? m.email),
+        })),
     ],
-    [membersQ.data],
+    [membersQ.data, user],
+  );
+  const assigneeOptions = useMemo<ToolbarOption[]>(
+    () => [
+      { value: "", label: "Anyone" },
+      ...(user ? [{ value: user.id, label: "Me" }] : []),
+      ...(membersQ.data ?? [])
+        .filter((m) => m.userId !== user?.id)
+        .map((m) => ({ value: m.userId, label: m.displayName ?? m.email })),
+    ],
+    [membersQ.data, user],
   );
 
   const memberNames = useMemo(
@@ -328,19 +311,18 @@ export function IssuesListView({
     [membersQ.data],
   );
 
-  const labelFilterOptions = useMemo<SelectOption[]>(
+  const labelOptions = useMemo<ToolbarOption[]>(
     () => [
-      { value: "", label: "Label: any" },
+      { value: "", label: "Any" },
       ...(labelsQ.data ?? [])
         .filter((l) => l.kind !== "module")
         .map((l) => ({ value: l.id, label: l.name })),
     ],
     [labelsQ.data],
   );
-
-  const moduleFilterOptions = useMemo<SelectOption[]>(
+  const moduleOptions = useMemo<ToolbarOption[]>(
     () => [
-      { value: "", label: "Module: any" },
+      { value: "", label: "Any" },
       ...modulesQ.modules.map((m) => ({ value: m.id, label: m.name })),
     ],
     [modulesQ.modules],
@@ -354,23 +336,7 @@ export function IssuesListView({
   const now = issuesQ.dataUpdatedAt || Date.now();
   const total = issuesQ.data?.totalCount ?? 0;
   const buckets = issuesQ.data?.extra?.buckets;
-  const tabs = useMemo(() => withCounts(FILTERS, buckets), [buckets]);
-  const finishedCuts = useMemo<SegmentOption<string>[]>(() => {
-    const closed = buckets?.byStatus.closed;
-    const dropped = buckets?.byStatus.dropped;
-    const both =
-      closed === undefined && dropped === undefined
-        ? undefined
-        : (closed ?? 0) + (dropped ?? 0);
-    return [
-      { value: "", label: "Both", count: both },
-      { value: "closed", label: "Closed", count: closed },
-      { value: "dropped", label: "Dropped", count: dropped },
-    ];
-  }, [buckets]);
-  const finishedCut = FINISHED_CUTS.includes(sp.get("status") ?? "")
-    ? (sp.get("status") as string)
-    : "";
+  const segments = useMemo(() => withCounts(SEGMENTS, buckets), [buckets]);
   const pageCount = Math.max(1, Math.ceil(total / ISSUES_PAGE_SIZE));
 
   const groups = useMemo(() => groupRows(rows, groupBy), [rows, groupBy]);
@@ -438,208 +404,95 @@ export function IssuesListView({
     !!label ||
     !!moduleId ||
     statusParam !== undefined;
-  const projectHasIssues = tabs.some((o) => (o.count ?? 0) > 0);
+  const projectHasIssues = segments.some((o) => (o.count ?? 0) > 0);
 
-  // ── Mobile "Filters" SlideOver (<sm): the 5 advanced Selects collapse behind
-  // a single trigger with an active-count badge so the header fits ~2 rows on
-  // phones. Same setParams handlers as the desktop Selects — no duplicated
-  // state, so applying a filter here updates the list + badge live.
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const activeFilterCount =
-    (priority ? 1 : 0) +
-    (createdBy ? 1 : 0) +
-    (label ? 1 : 0) +
-    (moduleId ? 1 : 0) +
-    (groupBy !== "none" ? 1 : 0) +
-    (sort !== "createdAt:desc" ? 1 : 0);
+  const clearAll = () =>
+    setParams({
+      q: "",
+      filter: "",
+      priority: "",
+      createdBy: "",
+      assignee: "",
+      status: "",
+      label: "",
+      module: "",
+      groupBy: "",
+      page: "",
+    });
 
   return (
     <>
       {reasonDialog}
-      <div className="flex flex-wrap items-center gap-2 px-4 pb-2 sm:px-6">
-        <Input
-          icon="search"
-          placeholder="Search issues…"
-          value={rawQ}
-          onChange={(e) => setRawQ(e.target.value)}
-          className="w-full sm:w-64"
-        />
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="filter"
-          className="min-h-11 sm:hidden"
-          onClick={() => setFiltersOpen(true)}
-        >
-          Filters
-          {activeFilterCount > 0 && <Badge tone="accent">{activeFilterCount}</Badge>}
-        </Button>
-        <div className="hidden sm:contents">
-          <Select
-            aria-label="Priority filter"
-            value={priority ?? ""}
-            options={PRIORITY_FILTER_OPTIONS}
-            onChange={(v) => setParams({ priority: v, page: "" })}
-            className="w-36"
-          />
-          <Select
-            aria-label="Creator filter"
-            value={createdBy}
-            options={creatorFilterOptions}
-            onChange={(v) => setParams({ createdBy: v, page: "" })}
-            className="w-44"
-          />
-          <Select
-            aria-label="Label filter"
-            value={label}
-            options={labelFilterOptions}
-            onChange={(v) => setParams({ label: v, page: "" })}
-            className="w-44"
-          />
-          <Select
-            aria-label="Module filter"
-            value={moduleId}
-            options={moduleFilterOptions}
-            onChange={(v) => setParams({ module: v, page: "" })}
-            className="w-44"
-          />
-          <Select
-            aria-label="Group by"
-            value={groupBy}
-            options={GROUP_OPTIONS}
-            onChange={(v) => setParams({ groupBy: v !== "none" ? v : "" })}
-            className="w-40"
-          />
-          <Select
-            aria-label="Sort"
-            value={sort}
-            options={SORT_OPTIONS}
-            onChange={(v) =>
-              setParams({ sort: v !== "createdAt:desc" ? v : "", page: "" })
-            }
-            className="w-44"
-          />
-        </div>
-        <div ref={pinAnchor} className="relative sm:ml-auto">
-          <Button
-            variant={isPinned ? "secondary" : "ghost"}
-            size="sm"
-            icon="pin"
-            aria-pressed={isPinned}
-            aria-label={isPinned ? "Pinned view" : "Pin view"}
-            onClick={onPinClick}
-          >
-            <span className="hidden sm:inline">{isPinned ? "Pinned" : "Pin view"}</span>
-          </Button>
-          <Popover
-            open={pinOpen}
-            anchor={pinAnchor}
-            onDismiss={() => setPinOpen(false)}
-            placement="bottom-end"
-            gap={8}
-            takesFocus
-            role="dialog"
-            aria-label="Pin this view"
-            className="w-72 overflow-y-auto rounded-lg border border-line bg-surface p-3 shadow-lg"
-          >
-            <p className="fg-caption mb-2 text-muted">
-              Pin this view — current filters are saved with it.
-            </p>
-            <Input
-              value={pinName}
-              onChange={(e) => setPinName(e.target.value)}
-              placeholder={defaultPinLabel}
-              aria-label="Pin name"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter") confirmPin();
-                if (e.key === "Escape") setPinOpen(false);
-              }}
-            />
-            <div className="mt-2.5 flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setPinOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" size="sm" onClick={confirmPin}>
-                Pin
-              </Button>
-            </div>
-          </Popover>
-        </div>
-      </div>
-
-      <SlideOver
-        open={filtersOpen}
-        onClose={() => setFiltersOpen(false)}
-        title="Filters"
-      >
-        <div className="flex flex-col gap-4">
-          <Select
-            aria-label="Priority filter"
-            value={priority ?? ""}
-            options={PRIORITY_FILTER_OPTIONS}
-            onChange={(v) => setParams({ priority: v, page: "" })}
-            className="w-full"
-          />
-          <Select
-            aria-label="Creator filter"
-            value={createdBy}
-            options={creatorFilterOptions}
-            onChange={(v) => setParams({ createdBy: v, page: "" })}
-            className="w-full"
-          />
-          <Select
-            aria-label="Label filter"
-            value={label}
-            options={labelFilterOptions}
-            onChange={(v) => setParams({ label: v, page: "" })}
-            className="w-full"
-          />
-          <Select
-            aria-label="Module filter"
-            value={moduleId}
-            options={moduleFilterOptions}
-            onChange={(v) => setParams({ module: v, page: "" })}
-            className="w-full"
-          />
-          <Select
-            aria-label="Group by"
-            value={groupBy}
-            options={GROUP_OPTIONS}
-            onChange={(v) => setParams({ groupBy: v !== "none" ? v : "" })}
-            className="w-full"
-          />
-          <Select
-            aria-label="Sort"
-            value={sort}
-            options={SORT_OPTIONS}
-            onChange={(v) =>
-              setParams({ sort: v !== "createdAt:desc" ? v : "", page: "" })
-            }
-            className="w-full"
-          />
-        </div>
-      </SlideOver>
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-3 sm:px-6">
-        <FilterChips
-          label="Show"
-          options={tabs}
-          value={filter}
-          onChange={(v) => setParams({ filter: v !== "all" ? v : "", page: "" })}
-        />
-        {filter === "done" && (
-          <div className="flex items-center gap-2">
-            <span className="fg-caption text-muted">Outcome</span>
-            <FilterChips
-              label="Outcome"
-              options={finishedCuts}
-              value={finishedCut}
-              onChange={(v) => setParams({ status: v, page: "" })}
-            />
+      <IssuesToolbar
+        segments={segments}
+        segment={filter}
+        onSegment={(v) => setParams({ filter: v !== DEFAULT_FILTER ? v : "", page: "" })}
+        query={rawQ}
+        onQuery={setRawQ}
+        fields={[
+          { param: "priority", title: "Priority", value: priority ?? "", options: PRIORITY_OPTIONS },
+          { param: "createdBy", title: "Created by", value: createdBy, options: creatorOptions },
+          { param: "assignee", title: "Assignee", value: assignee, options: assigneeOptions },
+          { param: "label", title: "Label", value: label, options: labelOptions },
+          { param: "module", title: "Module", value: moduleId, options: moduleOptions },
+          { param: "groupBy", title: "Group by", value: groupBy === "none" ? "" : groupBy, options: GROUP_OPTIONS },
+        ]}
+        extraChips={
+          statusParam
+            ? [{ param: "status", value: sp.get("status") ?? "", label: `Status: ${statusParam.map(statusLabel).join(", ")}` }]
+            : []
+        }
+        onParam={(param, value) => setParams({ [param]: value, page: "" })}
+        onClear={isFiltered || groupBy !== "none" ? clearAll : undefined}
+        trailing={
+          <div ref={pinAnchor} className="relative">
+            <Button
+              variant={isPinned ? "secondary" : "ghost"}
+              size="sm"
+              icon="pin"
+              aria-pressed={isPinned}
+              aria-label={isPinned ? "Pinned view" : "Pin view"}
+              onClick={onPinClick}
+            >
+              <span className="hidden sm:inline">{isPinned ? "Pinned" : "Pin view"}</span>
+            </Button>
+            <Popover
+              open={pinOpen}
+              anchor={pinAnchor}
+              onDismiss={() => setPinOpen(false)}
+              placement="bottom-end"
+              gap={8}
+              takesFocus
+              role="dialog"
+              aria-label="Pin this view"
+              className="w-72 overflow-y-auto rounded-lg border border-line bg-surface p-3 shadow-lg"
+            >
+              <p className="fg-caption mb-2 text-muted">
+                Pin this view — current filters are saved with it.
+              </p>
+              <Input
+                value={pinName}
+                onChange={(e) => setPinName(e.target.value)}
+                placeholder={defaultPinLabel}
+                aria-label="Pin name"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") confirmPin();
+                  if (e.key === "Escape") setPinOpen(false);
+                }}
+              />
+              <div className="mt-2.5 flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setPinOpen(false)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" size="sm" onClick={confirmPin}>
+                  Pin
+                </Button>
+              </div>
+            </Popover>
           </div>
-        )}
-      </div>
+        }
+      />
 
       {bulkEnabled && (
         <div className="px-4 sm:px-6">
@@ -682,7 +535,7 @@ export function IssuesListView({
                 ? `No issues tagged to ${activeModuleName ?? "this module"}.`
                 : createdBy
                   ? `No issues created by ${
-                      creatorFilterOptions.find((o) => o.value === createdBy)?.label.replace(/^Creator: /, "") ??
+                      creatorOptions.find((o) => o.value === createdBy)?.label ??
                       "that creator"
                     }.`
                   : isFiltered
@@ -696,18 +549,7 @@ export function IssuesListView({
               isFiltered
                 ? {
                     label: "Clear filters",
-                    onClick: () =>
-                      setParams({
-                        q: "",
-                        filter: "",
-                        priority: "",
-                        createdBy: "",
-                        assignee: "",
-                        status: "",
-                        label: "",
-                        module: "",
-                        page: "",
-                      }),
+                    onClick: clearAll,
                   }
                 : onNewIssue
                   ? { label: "New issue", onClick: onNewIssue }

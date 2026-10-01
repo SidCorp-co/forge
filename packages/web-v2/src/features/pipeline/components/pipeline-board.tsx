@@ -27,6 +27,7 @@ import { boardColumns, cardStatus, formatUsd, groupIssuesByLabel, runsByIssue } 
 import { useProjectIssues, useProjectRuns } from "../hooks";
 import type { PipelineIssueRow } from "../types";
 import { RunDetail } from "./run-detail";
+import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 interface PipelineBoardProps {
   scope: { projectId: string; slug: string };
@@ -76,11 +77,12 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
           : "flex h-full min-h-0 flex-col px-4 pb-4 pt-5 sm:px-6"
       }
     >
-      <header className={`mb-3 flex flex-none items-center gap-3${embedded ? " hidden" : ""}`}>
-        <PageTitle className="fg-h2" hint="One column per state an issue can be in. There is no order between them.">
+      {!embedded && (
+        <>
+        <PageTitle hint="One column per state an issue can be in. There is no order between them.">
           Pipeline
         </PageTitle>
-        <div className="ml-auto flex items-center gap-3">
+        <TopBarActions>
           <LiveDot state="live" />
           <Tooltip
             side="bottom"
@@ -88,8 +90,9 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
           >
             <IconButton icon="help" variant="ghost" size="sm" aria-label="Pipeline help" />
           </Tooltip>
-        </div>
-      </header>
+        </TopBarActions>
+        </>
+      )}
 
       {issuesQ.isError || runsQ.isError ? (
         <ErrorState

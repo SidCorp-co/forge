@@ -17,6 +17,7 @@ export { HealthDot, type HealthDotProps } from "./primitives/health-dot";
 export { Stat, type StatProps } from "./primitives/stat";
 export { Card, CardHeader, CardTitle, CardContent } from "./primitives/card";
 export { PageTitle, SectionTitle, type PageTitleProps } from "./primitives/heading";
+export { TopBarActions, TopBarSlotProvider, useTopBarSlotTargets } from "./primitives/top-bar-slot";
 export { Kicker } from "./primitives/kicker";
 export { Kbd } from "./primitives/kbd";
 export { Spinner, type SpinnerProps } from "./primitives/spinner";

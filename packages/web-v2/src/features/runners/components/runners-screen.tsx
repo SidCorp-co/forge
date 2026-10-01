@@ -52,6 +52,7 @@ import {
   UNKNOWN_COUNT,
 } from "../scope";
 import { DeviceDetail } from "./device-detail";
+import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
@@ -271,10 +272,10 @@ export function RunnersScreen() {
 
   return (
     <PageContainer className="flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-3">
-        <PageTitle className="fg-h2" hint="Paired devices that can run pipeline jobs. Status updates live.">
+      <PageTitle hint="Paired devices that can run pipeline jobs. Status updates live.">
           Runners &amp; devices
-        </PageTitle>
+      </PageTitle>
+      <TopBarActions>
         <HelpButton
           summary="Each device is a machine running the forge-runner agent. Pair new devices with a browser-approved login, watch their online status live, turn a device off to park it, or revoke access when a device is retired."
           actions={[
@@ -284,7 +285,7 @@ export function RunnersScreen() {
           ]}
           docPath="pair-a-runner"
         />
-      </div>
+      </TopBarActions>
 
       <PairPanel />
 

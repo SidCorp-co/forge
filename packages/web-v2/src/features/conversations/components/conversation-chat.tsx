@@ -15,7 +15,7 @@ import {
   EmptyState,
   ErrorState,
   IconButton,
-  PageTitle,
+  SectionTitle,
   ProjectLoader,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
@@ -229,9 +229,9 @@ export function ConversationChat({
     <header className="@container flex-none border-b border-line bg-app/95 px-4 py-3">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <PageTitle className="fg-h2 truncate">
+          <SectionTitle className="fg-h2 truncate">
             {roomQ.data ? conversationTitle(roomQ.data, messages[0]?.content) : "New conversation"}
-          </PageTitle>
+          </SectionTitle>
         </div>
         {roomQ.data && (
           <IconButton

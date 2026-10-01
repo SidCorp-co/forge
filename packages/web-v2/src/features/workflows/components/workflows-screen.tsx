@@ -118,7 +118,7 @@ export function WorkflowsScreen({ projectId }: { projectId: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="workflows-screen">
       <header className="flex flex-wrap items-center gap-3 px-4 pb-3 pt-4 sm:px-7">
-        <PageTitle className="fg-h2">Workflows</PageTitle>
+        <PageTitle>Workflows</PageTitle>
         <span className="ml-auto inline-flex overflow-hidden rounded-lg border border-line" role="tablist">
           {(["flow", "state"] as const).map((k) => (
             <button

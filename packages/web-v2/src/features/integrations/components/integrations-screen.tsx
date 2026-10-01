@@ -34,6 +34,7 @@ import { groupConnectionsByApp } from "../connection-groups";
 import { ConnectionEditDrawer } from "./connection-edit-drawer";
 import { ConnectionGroupSection } from "./connection-group";
 import { providerLabel } from "../providers/registry";
+import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 /** Per-operator, shared across tabs: which apps this person leaves open. */
 const OPEN_APPS_KEY = "web-v2:integrations-open-apps";
@@ -186,18 +187,17 @@ export function IntegrationsScreen() {
 
   return (
     <PageContainer className="flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-3">
-        <PageTitle
-          className="fg-h2"
+      <PageTitle
           hint={`Credentials in ${scopeName}, shared across projects. Configure a project's integrations in its settings → Integrations.`}
         >
           Connections
-        </PageTitle>
+      </PageTitle>
+      <TopBarActions>
         <HelpButton
           summary="A connection is a credential owned by you or one of your organizations (Coolify token, Postman key, GitHub App). Projects use a connection through bindings — share one connection with several projects without re-entering the secret. Health here is the connection's real last-known state; disabled connections stay listed so you can re-enable them."
           actions={HELP_ACTIONS}
         />
-      </div>
+      </TopBarActions>
 
       {inScope.length > 1 && (
         <div className="flex flex-wrap items-center gap-2">
