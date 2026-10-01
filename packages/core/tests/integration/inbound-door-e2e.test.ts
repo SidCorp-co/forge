@@ -78,9 +78,9 @@ beforeEach(async () => {
   `);
   await harness.db.execute(sql`
     INSERT INTO integration_bindings
-      (id, connection_id, project_id, provider, role, stages, config, active, integration_secret)
+      (id, connection_id, project_id, provider, role, config, active, integration_secret)
     VALUES (${bindingId}, ${connectionId}, ${project.id}::uuid, 'github', 'service',
-            ARRAY[]::text[], '{}'::jsonb, true, ${SECRET})
+            '{}'::jsonb, true, ${SECRET})
   `);
 });
 

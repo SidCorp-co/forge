@@ -156,8 +156,8 @@ export function projectionGround(): ProjectionGround {
       VALUES (${connectionId}, 'user', ${owner.id}, 'github', true)
     `);
     await g.harness.db.execute(sql`
-      INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, active, config)
-      VALUES (${g.bindingId}, ${connectionId}, ${g.projectId}, 'github', 'service', ARRAY[]::text[], true, '{}'::jsonb)
+      INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, active, config)
+      VALUES (${g.bindingId}, ${connectionId}, ${g.projectId}, 'github', 'service', true, '{}'::jsonb)
     `);
   });
 

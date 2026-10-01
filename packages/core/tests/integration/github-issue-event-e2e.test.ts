@@ -60,8 +60,8 @@ async function seedProject(agentConfig: Record<string, unknown> = {}) {
   const project = await createTestProject(harness.db, ownerId, { agentConfig });
   const id = randomUUID();
   await harness.db.execute(sql`
-    INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, active, config)
-    VALUES (${id}, ${connectionId}, ${project.id}, 'github', 'service', ARRAY[]::text[], true, '{}'::jsonb)
+    INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, active, config)
+    VALUES (${id}, ${connectionId}, ${project.id}, 'github', 'service', true, '{}'::jsonb)
   `);
   return { projectId: project.id, bindingId: id };
 }

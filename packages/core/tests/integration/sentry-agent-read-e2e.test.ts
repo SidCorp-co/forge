@@ -103,9 +103,9 @@ async function bindSentry(): Promise<void> {
   `);
   await harness.db.execute(sql`
     INSERT INTO integration_bindings
-      (id, connection_id, project_id, provider, role, stages, config, active, agent_access)
+      (id, connection_id, project_id, provider, role, config, active, agent_access)
     VALUES (${bindingId}, ${connectionId}, ${projectId}::uuid, 'sentry', 'service',
-            ARRAY[]::text[], ${JSON.stringify(config)}::jsonb, true, 'all')
+            ${JSON.stringify(config)}::jsonb, true, 'all')
   `);
 }
 

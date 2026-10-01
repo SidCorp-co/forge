@@ -121,8 +121,8 @@ describe('ISS-940 backlog rows carry the evidence fields (real Postgres)', () =>
         VALUES (${connectionId}, 'user', ${userId}, 'github', true)
       `);
       await harness.db.execute(sql`
-        INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, active, config)
-        VALUES (${bindingId}, ${connectionId}, ${projectId}, 'github', 'service', ARRAY[]::text[], true, '{}'::jsonb)
+        INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, active, config)
+        VALUES (${bindingId}, ${connectionId}, ${projectId}, 'github', 'service', true, '{}'::jsonb)
       `);
       return bindingId;
     }
