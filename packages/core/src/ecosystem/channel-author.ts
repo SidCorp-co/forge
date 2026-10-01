@@ -22,7 +22,6 @@ export interface ChannelCredential {
   tokenId: string | null;
 }
 
-/** The door a person's act came through, read off the credential: a session is web, a turn token assistant, any other personal token cli. */
 export async function doorOf(tokenId: string | null): Promise<PersonVia> {
   if (tokenId === null) return 'web';
   const [row] = await db

@@ -2,7 +2,7 @@
  * Archiving an issue (ISS-1237): out of every discovery read, still answered by key, reversible.
  *
  * The read side is two predicates. `issueArchiveSide` is what every read that lists or searches
- * issues composes, the shape `projects/routes.ts` already has. `memoryOfLiveIssue` is its twin for
+ * issues composes. `memoryOfLiveIssue` is its twin for
  * the memory corpus, where each issue lives again as a `memories` row with `source = 'issue'` and
  * `source_ref = issues.id`; that corpus is what recall, the alike check and knowledge search read,
  * so a filter on `issues` alone would leave the text reachable. The memory rows themselves are not

@@ -1,8 +1,7 @@
 /**
- * The one reader of a runtime probe — an HTTP endpoint asked what the application is serving.
- * Release verification (`release-batch/verify.ts`) and an environment's state
- * (`project-config/environment-state.ts`) both read through it, so a probe answers the same way
- * to both. Each caller keeps its own refusal codes; what a reading IS is decided here.
+ * The one reader of a runtime probe, for release verification (`release-batch/verify.ts`) and an
+ * environment's state (`project-config/environment-state.ts`): each keeps its own refusal codes,
+ * and what a reading IS is decided here.
  *
  * Where the two readers differed, the stricter rule was taken: exactly 200 (not any 2xx), a
  * string at the path that is non-empty once trimmed and at most {@link PROBE_VALUE_MAX}

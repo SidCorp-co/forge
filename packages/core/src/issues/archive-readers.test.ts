@@ -133,7 +133,6 @@ const NOT_DISCOVERY: Record<string, string> = {
     'counts and timings; blockers read only `on_hold` and `needs_info`',
   'projects/issue-work-records.ts':
     "which issue a waiting commit is the work of; an archived issue still owns its commits, or they would read as nobody's",
-  'projects/routes.ts': 'by issue id',
   'projects/service.ts': 'by issue id',
   'prompt/issue-snapshot.ts':
     'the one issue a job runs on, by id; an archived issue is terminal and runs no job',

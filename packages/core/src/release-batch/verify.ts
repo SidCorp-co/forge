@@ -36,9 +36,8 @@ export interface LiveState {
 }
 
 /**
- * One read of every probe, kept as two answers: health is every probe
- * answering, identity is every probe agreeing on one commit. A fleet half on
- * the new build is healthy and has no identity, so the two stay apart.
+ * One read of every probe, kept as two answers: health is every probe answering, identity is
+ * every probe agreeing on one commit — a fleet half on the new build is healthy with no identity.
  */
 export async function readLiveState(
   cfg: VerifyConfig,
@@ -81,13 +80,11 @@ export async function readLiveState(
 
 /**
  * pass-through: keep — `createReleaseBatch` wants this one answer and nothing
- * else, the commit serving before anything moved, and reads it once. It throws
- * rather than reading: `readRuntimeProbe` builds its `URL` above the `try`, so an
- * unparseable probe url rejects out of here instead of becoming a reading.
- * `verifyDeployed` and `verifyServingNow` throw the same way. Two doors screen
- * ahead of them — `createReleaseBatch` and `recordPerformedRelease`, both
- * through `collectReleaseBlockers` — which is why that throw is a 409 and not a
- * 500. `finishReleaseBatch` screens nothing (ISS-1127, ISS-1129 F3, F4).
+ * else, the commit serving before anything moved, and reads it once. It throws on
+ * an unparseable probe url (`readRuntimeProbe`), as `verifyDeployed` and
+ * `verifyServingNow` do. Two doors screen ahead of them — `createReleaseBatch` and
+ * `recordPerformedRelease`, through `collectReleaseBlockers` — so that throw is a
+ * 409, not a 500. `finishReleaseBatch` screens nothing (ISS-1127, ISS-1129 F3, F4).
  */
 export async function readLiveCommit(cfg: VerifyConfig): Promise<string | null> {
   return (await readLiveState(cfg)).identity;
@@ -317,11 +314,8 @@ export interface ServingNowArgs {
   expected: string;
 }
 
-/**
- * Like {@link VerifyOutcome}, except that the probe readings survive a GREEN: `verifyDeployed`
- * drops them because the deploy it watched is its own evidence, and a recorded release has no
- * such act to point at, so the readings ARE the record.
- */
+/** Like {@link VerifyOutcome}, except the probe readings survive a GREEN: a recorded release has
+ *  no deploy it watched to point at, so the readings ARE the record. */
 export type ServingNowOutcome =
   | { ok: true; identity: string; health: 'up'; readings: string[] }
   | {
@@ -334,10 +328,9 @@ export type ServingNowOutcome =
     };
 
 /**
- * Whether the application is serving this commit RIGHT NOW, in one read. {@link verifyDeployed} polls for the commit a release named and holds the
- * reading still first. A release that already happened has nothing to wait
- * for: polling here turns a false claim into a five-minute wait and the same
- * refusal.
+ * Whether the application is serving this commit RIGHT NOW, in one read: a release that already
+ * happened has nothing to wait for, and {@link verifyDeployed}'s polling would turn a false claim
+ * into a five-minute wait and the same refusal.
  */
 export async function verifyServingNow(args: ServingNowArgs): Promise<ServingNowOutcome> {
   const state = await readLiveState(args.cfg);

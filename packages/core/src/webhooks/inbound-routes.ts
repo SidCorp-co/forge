@@ -165,7 +165,6 @@ webhookInboundRoutes.post(
           ...(result.refusal ? { refusal: result.refusal } : {}),
         });
       } catch (err) {
-        // The signature was this router's to refuse, above; an adapter's own refusal keeps its status.
         if (err instanceof HTTPException) throw err;
         logger.error(
           { err, slug, provider: map.provider, bindingId: pair.binding.id },

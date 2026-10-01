@@ -128,7 +128,6 @@ export function holding(err: ReleaseRunHoldingError): HTTPException {
   );
 }
 
-/** The one shape `RELEASE_NOT_VERIFIED` takes on every door: the sentence, and `details.{reason,live}`. */
 function notVerified(err: ReleaseNotVerifiedError): HTTPException {
   return new HTTPException(409, {
     message: err.reason,
