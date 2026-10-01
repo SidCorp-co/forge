@@ -1,8 +1,3 @@
-// web-v2 feature module: projects — pure derivation helpers.
-//
-// All functions here are pure (no React, no I/O) so the console's business
-// logic — health derivation, list↔health join, totals, sort, filter — is unit
-// testable in `derive.test.ts` without rendering anything.
 import type { HealthKey } from '@/design';
 import type {
   ProjectConsoleItem,

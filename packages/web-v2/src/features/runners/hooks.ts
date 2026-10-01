@@ -138,7 +138,6 @@ export function useDeviceRunners(deviceId: string | null) {
 	});
 }
 
-/** Take a runner out of the pool, or put it back. */
 export function useSetRunnerAdmission(projectId: string) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
@@ -199,11 +198,6 @@ export function useProjectRunners(projectId: string | null) {
 	});
 }
 
-/**
- * Per-runner activity (status timeline + recent device sessions). Keyed
- * `['runners', runnerId, 'activity']`; `enabled` gates it so the row only
- * fetches when its Activity disclosure is open.
- */
 export function useRunnerActivity(runnerId: string, enabled: boolean) {
 	return useQuery({
 		queryKey: ["runners", runnerId, "activity"],
@@ -298,10 +292,6 @@ export function useTestGitCredential(projectId: string) {
 	});
 }
 
-/**
- * Bind a device to a project (project-centric variant — invalidates the project
- * runners list rather than the device pools).
- */
 export function useAssignDeviceToProject(projectId: string) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
@@ -324,7 +314,6 @@ export function useAssignDeviceToProject(projectId: string) {
 	});
 }
 
-/** Unassign a device from a project (project-centric: invalidates project list). */
 export function useUnassignDeviceFromProject(projectId: string) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
