@@ -2124,6 +2124,13 @@
       "breakpoints": true
     },
     {
+      "idx": 328,
+      "version": "7",
+      "when": 1811376000000,
+      "tag": "0328_a_project_writes_to_its_ecosystem_channel",
+      "breakpoints": true
+    },
+    {
       "idx": 329,
       "version": "7",
       "when": 1811462400000,

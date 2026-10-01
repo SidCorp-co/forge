@@ -15,6 +15,7 @@ import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
 import { mintPat, revokePat } from './pat.js';
+import { turnTokenDefaultName } from './pat-format.js';
 import { patIsLive } from './pat-live.js';
 import {
   PAT_GRANT_EPOCH,
@@ -191,7 +192,7 @@ export async function mintTurnCredential(args: {
   const scopes = ['read', 'write'].filter((s) => authority.scopes.includes(s));
   const minted = await mintPat({
     userId: authority.userId,
-    name: args.name ?? `turn ${new Date().toISOString()} ${randomBytes(4).toString('hex')}`,
+    name: args.name ?? turnTokenDefaultName(new Date(), randomBytes(4).toString('hex')),
     scopes,
     permissions: granted,
     projectIds: [authority.projectId],

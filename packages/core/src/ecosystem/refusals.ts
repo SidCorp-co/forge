@@ -22,7 +22,46 @@ export type EcosystemRefusalCode =
   | 'MEMBERSHIP_EXISTS'
   | 'MEMBERSHIP_TRANSITION_NOT_ALLOWED'
   | 'MEMBERSHIP_REASON_REQUIRED'
-  | 'MEMBERSHIP_IN_USE';
+  | 'MEMBERSHIP_IN_USE'
+  | ChannelRefusalCode;
+
+export type ChannelRefusalCode =
+  | 'DOCUMENT_TYPE_UNKNOWN'
+  | 'DOCUMENT_TYPE_IMMUTABLE'
+  | 'DOCUMENT_STATE_NOT_ALLOWED'
+  | 'MEMBERSHIP_NOT_ACTIVE'
+  | 'RECIPIENT_NOT_COUNTERPARTY'
+  | 'RECIPIENTS_NOT_DERIVED'
+  | 'NUMBER_NOT_IN_CHANNEL'
+  | 'NUMBER_TYPE_MISMATCH'
+  | 'PUBLISHED_WITHOUT_GATE'
+  | 'GATE_MODE_MISMATCH'
+  | 'GATE_NOT_AUTHORISED'
+  | 'GATE_RETURN_WITHOUT_NOTE'
+  | 'REPLY_WITHOUT_PARENT'
+  | 'REPLY_TO_ENDED'
+  | 'REPLY_TYPE_NOT_ALLOWED'
+  | 'REPLY_FROM_NON_RECIPIENT'
+  | 'DISPOSITION_NOT_FOR_TYPE'
+  | 'ADAPT_AFTER_SUNSET'
+  | 'CONTRACT_NOT_SENDERS'
+  | 'CLASSIFICATION_BELOW_MEASURED'
+  | 'MEASURED_CHANGE_OMITTED'
+  | 'EFFECTIVE_BEFORE_DUE'
+  | 'SUNSET_BEFORE_NOTICE_PERIOD'
+  | 'DUE_BY_TOO_SOON'
+  | 'CONTENT_CODE'
+  | 'CONTENT_INTERNAL_REF'
+  | 'CONTENT_SECRET'
+  | 'CONTENT_PRESCRIBES_IMPLEMENTATION'
+  | 'THREAD_HELD'
+  | 'THREAD_ALREADY_HELD'
+  | 'THREAD_NOT_HELD'
+  | 'HOLD_NOT_AUTHORISED'
+  | 'HOLD_WITHOUT_REASON'
+  | 'WITHDRAW_WITHOUT_REASON'
+  | 'SUPERSEDE_WITHOUT_REASON'
+  | 'SUPERSEDE_NOT_A_REPLACEMENT';
 
 export interface EcosystemRefusal {
   code: EcosystemRefusalCode | ApiRefusal['code'];
@@ -41,6 +80,30 @@ export function renameParseRefusals(refusals: readonly ApiRefusal[]): EcosystemR
           code: 'CONTRACT_TYPE_UNKNOWN',
           path: r.path,
           detail: `${r.detail}; a contract type is one of the closed vocabulary, because it decides which differ measures it.`,
+        }
+      : r,
+  );
+}
+
+export function renameDocumentParseRefusals(refusals: readonly ApiRefusal[]): EcosystemRefusal[] {
+  return refusals.map((r) =>
+    r.code === 'SCHEMA_VIOLATION' && r.path === '/type'
+      ? {
+          code: 'DOCUMENT_TYPE_UNKNOWN',
+          path: r.path,
+          detail: `${r.detail}; the channel carries five types of document and nothing else, so there is no free message.`,
+        }
+      : r,
+  );
+}
+
+export function renameHoldParseRefusals(refusals: readonly ApiRefusal[]): EcosystemRefusal[] {
+  return refusals.map((r) =>
+    r.code === 'SCHEMA_VIOLATION' && r.path === '/reason'
+      ? {
+          code: 'HOLD_WITHOUT_REASON',
+          path: r.path,
+          detail: 'a hold says why, in 1 to 1000 characters, and both sides read it.',
         }
       : r,
   );
