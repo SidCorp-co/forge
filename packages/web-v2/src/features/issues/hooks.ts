@@ -313,7 +313,7 @@ export function useMergeMarker(issueId: string) {
 
 export function useRunPipelineStep() {
   return useIssueMutation((args: { id: string }) =>
-    issuesApi.runPipelineStep(args.id), { successMessage: "Pipeline step queued" });
+    issuesApi.runPipelineStep(args.id), { successMessage: "Issue started" });
 }
 
 

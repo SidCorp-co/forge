@@ -2,12 +2,12 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { createChatSessionRow, noClaudeClient } from '../agent-sessions/chat-turn.js';
 import {
-  createChatSessionRow,
-  dispatchChatTurn,
-  noClaudeClient,
-  resolveChatDevice,
-} from '../agent-sessions/chat-turn.js';
+  authorizeInteractiveTurn,
+  dispatchInteractiveTurn,
+  resolveInteractiveClient,
+} from '../agent-sessions/interactive-credential.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
@@ -70,11 +70,16 @@ projectOnboardRoutes.post(
       });
     }
 
-    const client = await resolveChatDevice(
+    const client = await resolveInteractiveClient(
       { projectId: project.id, deviceId: null, metadata: null },
-      undefined,
+      { scope: 'project' },
     );
     if (!client.deviceId) throw noClaudeClient('project');
+    const authority = await authorizeInteractiveTurn({
+      client,
+      projectId: project.id,
+      asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
+    });
 
     // Explicit-only skill sync: push the current forge-onboard manifest to the
     // target device BEFORE dispatch, so the runner's working dir has the file
@@ -101,10 +106,11 @@ projectOnboardRoutes.post(
     });
 
     try {
-      await dispatchChatTurn({
+      await dispatchInteractiveTurn({
         session,
         project,
         client,
+        authority,
         message: ONBOARD_MESSAGE,
         skillName: ONBOARD_SKILL_NAME,
         broadcastEvent: 'agent-session.created',

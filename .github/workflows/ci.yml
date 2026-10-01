@@ -213,6 +213,11 @@ jobs:
       # needs node_modules and the prebuilt workspace deps, and lives in this always-on job
       # because a contract can move from packages/core, packages/contracts or the lockfile.
       - run: node scripts/check-api-contracts.mjs
+      # PAT surface (ISS-28): every route the running app serves under a project-reach permission
+      # must reach the PAT fence through functions the type checker resolves, one route at a
+      # time. It reads `app.routes` under tsx and runs the TypeScript compiler, so it needs
+      # node_modules and the prebuilt workspace deps, the same as the contracts above.
+      - run: node scripts/check-pat-surface.mjs
       # Conformance levels: runs each axis's checker and fails when what it
       # actually does disagrees with the level .forge/conformance.json claims
       # for it. Every gate this repo lost was lost by staying documented while
@@ -244,7 +249,6 @@ jobs:
         with:
           node-version: '22'
       - run: node scripts/check-injected-doc-modes.mjs
-      - run: node scripts/check-pat-surface.mjs
       # ISS-1046 — the readers of the retired release model that no type can see.
       - run: node scripts/check-retired-model.mjs
 

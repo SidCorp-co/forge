@@ -1,0 +1,227 @@
+import { eq, inArray } from 'drizzle-orm';
+import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
+import { db } from '../db/client.js';
+import { issues, projects } from '../db/schema.js';
+import { loadProjectAccess } from '../lib/authz.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
+import { type AuthVars, restActor } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
+import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
+import { broadcastSession } from './broadcast.js';
+import { createChatSessionRow } from './chat-turn.js';
+import {
+  assertMayRunSession,
+  authorizeInteractiveTurn,
+  dispatchInteractiveTurn,
+  resolveInteractiveClient,
+} from './interactive-credential.js';
+import { assertCallerDeclaresNoKind } from './kind-query.js';
+import { loadProjectBySlug } from './lifecycle-routes.js';
+import { sendBodySchema, startBodySchema } from './lifecycle-schemas.js';
+import { badRequest, ensureSessionOwnerOrAdmin, notFound } from './session-access.js';
+import { recordSessionCreatedActivity } from './session-activity.js';
+
+const createSchema = z
+  .object({
+    projectId: z.uuid(),
+    deviceId: z.uuid().nullable().optional(),
+    title: z.string().max(500).nullable().optional(),
+    repoPath: z.string().max(2000).nullable().optional(),
+    claudeSessionId: z.string().max(500).nullable().optional(),
+    metadata: z.unknown().optional(),
+  })
+  .strict();
+
+export const agentSessionInteractiveRoutes = new Hono<{ Variables: AuthVars }>();
+
+agentSessionInteractiveRoutes.post(
+  '/',
+  zValidator('json', createSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const input = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(input.projectId, userId);
+    assertMayRunSession(access.role);
+
+    const clientMetadata = input.metadata as Record<string, unknown> | null | undefined;
+    assertCallerDeclaresNoKind(clientMetadata, badRequest);
+
+    // Chat bootstrap: an EMPTY session row. The first turn is dispatched later
+    // through `POST /send` → the shared chat-turn dispatcher (which picks the
+    // device), so this path deliberately does NOT pin a device or dispatch.
+    const inserted = await createChatSessionRow({
+      projectId: input.projectId,
+      userId,
+      deviceId: input.deviceId ?? null,
+      title: input.title ?? null,
+      repoPath: input.repoPath ?? null,
+      claudeSessionId: input.claudeSessionId ?? null,
+      metadata: clientMetadata ?? null,
+    });
+
+    broadcastSession(inserted, 'agent-session.created');
+
+    await recordSessionCreatedActivity(inserted, restActor(c));
+
+    return c.json(inserted, 201);
+  },
+);
+
+agentSessionInteractiveRoutes.post(
+  '/start',
+  zValidator('json', startBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const input = c.req.valid('json');
+    const userId = c.get('userId');
+
+    if (input.type) {
+      throw badRequest({
+        type: 'typed agent sessions are unavailable without the retired desktop client',
+      });
+    }
+    if (!input.prompt) {
+      throw badRequest({ message: 'prompt is required' });
+    }
+
+    const project = await loadProjectBySlug(input.projectSlug);
+    if (!project) throw notFound('project not found');
+
+    const access = await loadProjectAccess(project.id, userId);
+    assertMayRunSession(access.role);
+
+    const client = await resolveInteractiveClient(
+      { projectId: project.id, deviceId: null, metadata: null },
+      { origin: input.origin, scope: 'project' },
+    );
+    const authority = await authorizeInteractiveTurn({
+      client,
+      projectId: project.id,
+      asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
+    });
+
+    const rawPrompt = input.prompt;
+
+    let title: string;
+    if (input.issueIds && input.issueIds.length > 0) {
+      const rows = await db
+        .select({ seq: issues.issSeq, prefix: projects.issuePrefix, title: issues.title })
+        .from(issues)
+        .innerJoin(projects, eq(projects.id, issues.projectId))
+        .where(inArray(issues.id, input.issueIds));
+      const refs = rows.map((r) => formatIssueRef(r.prefix, r.seq));
+      if (refs.length === 1) title = `${refs[0]} ${rows[0]?.title ?? ''}`.slice(0, 120);
+      else if (refs.length > 1) title = refs.join(', ').slice(0, 120);
+      else title = rawPrompt.slice(0, 120);
+    } else {
+      title = rawPrompt
+        .replace(/^You are working on issue:\s*/i, '')
+        .replace(/^You are working on the following issues:\s*/i, '')
+        .replace(/^You are working on:\s*/i, '')
+        .slice(0, 120);
+    }
+
+    // ISS-733 — a skillName must resolve to an install_only effective skill for
+    // THIS project before it can ride turn 1 as a slash-command; otherwise any
+    // caller could slash-inject an arbitrary command via /start.
+    if (input.skillName) {
+      const effective = await resolveRegisteredEffectiveSkills(project.id);
+      if (!effective.some((s) => s.name === input.skillName && s.installOnly)) {
+        throw badRequest({
+          message: `skillName '${input.skillName}' is not install_only for this project`,
+        });
+      }
+    }
+
+    const metadata: Record<string, unknown> = {};
+    if (input.issueIds?.length === 1 && input.issueIds[0]) metadata.issueId = input.issueIds[0];
+    const session = await createChatSessionRow({
+      projectId: project.id,
+      userId,
+      title,
+      repoPath: input.repoPath ?? null,
+      metadata: Object.keys(metadata).length ? metadata : null,
+    });
+    const updated = await dispatchInteractiveTurn({
+      session,
+      project: { id: project.id, slug: project.slug, repoPath: project.repoPath },
+      client,
+      authority,
+      message: rawPrompt,
+      origin: input.origin ?? null,
+      pageContext: input.pageContext ?? null,
+      preBuilt: input.preBuilt ?? false,
+      attachmentIds: input.attachmentIds,
+      skillName: input.skillName ?? null,
+      model: input.model,
+      broadcastEvent: 'agent-session.created',
+    });
+
+    await recordSessionCreatedActivity(updated, restActor(c));
+    return c.json(updated, 201);
+  },
+);
+
+agentSessionInteractiveRoutes.post(
+  '/send',
+  zValidator('json', sendBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const input = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const { session } = await ensureSessionOwnerOrAdmin(input.sessionId, userId);
+    if (session.status === 'running' || session.status === 'queued') {
+      throw new HTTPException(409, {
+        message:
+          'The agent is still working on this conversation, under the access of the person whose turn it is. Wait for it to finish or stop it, then send.',
+        cause: { code: 'SESSION_RUNNING' },
+      });
+    }
+
+    // Resolve the client through the SHARED path: honour an explicit runner pick
+    // (input.deviceId) when present, else reuse the session's pinned device,
+    // else pick a fresh online runner (this is what fixes the web cold start — a
+    // session created empty via `POST /` has no pin, so the old pin-only guard
+    // 409'd forever). No online remote client → 409; a rejected explicit pick
+    // gets the 'picked' wording so the user knows their choice was unavailable.
+    const client = await resolveInteractiveClient(session, {
+      origin: input.origin,
+      overrideDeviceId: input.deviceId,
+      scope: input.deviceId ? 'picked' : 'session',
+    });
+    const authority = await authorizeInteractiveTurn({
+      client,
+      projectId: session.projectId,
+      asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
+    });
+
+    const [project] = await db
+      .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
+      .from(projects)
+      .where(eq(projects.id, session.projectId))
+      .limit(1);
+    if (!project) throw notFound('project not found');
+
+    await dispatchInteractiveTurn({
+      session,
+      project,
+      client,
+      authority,
+      message: input.message,
+      origin: input.origin ?? null,
+      pageContext: input.pageContext ?? null,
+      claudeSessionId: input.claudeSessionId ?? null,
+      attachmentIds: input.attachmentIds,
+      model: input.model,
+    });
+    return c.json({ ok: true });
+  },
+);

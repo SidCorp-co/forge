@@ -15,12 +15,12 @@ import {
   broadcastTurnEdited,
   broadcastTurnTruncated,
 } from './broadcast.js';
+import { createChatSessionRow } from './chat-turn.js';
 import {
-  createChatSessionRow,
-  dispatchChatTurn,
-  noClaudeClient,
-  resolveChatDevice,
-} from './chat-turn.js';
+  authorizeInteractiveTurn,
+  dispatchInteractiveTurn,
+  resolveInteractiveClient,
+} from './interactive-credential.js';
 import {
   assertAgentChatOwner,
   assertSessionOwnerOrAdmin,
@@ -226,8 +226,12 @@ agentSessionTurnsRoutes.post(
       });
     }
 
-    const client = await resolveChatDevice(session);
-    if (!client.isLocal && !client.deviceId) throw noClaudeClient('session');
+    const client = await resolveInteractiveClient(session, { scope: 'session' });
+    const authority = await authorizeInteractiveTurn({
+      client,
+      projectId: session.projectId,
+      asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
+    });
 
     const [project] = await db
       .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
@@ -270,10 +274,11 @@ agentSessionTurnsRoutes.post(
     }
 
     broadcastTurnTruncated(locked, truncatedFromIndex);
-    const updated = await dispatchChatTurn({
+    const updated = await dispatchInteractiveTurn({
       session: locked,
       project,
       client,
+      authority,
       message: targetMessage,
     });
     return c.json({ status: updated.status });
@@ -378,8 +383,12 @@ agentSessionTurnsRoutes.post(
       });
     }
 
-    const client = await resolveChatDevice(session);
-    if (!client.isLocal && !client.deviceId) throw noClaudeClient('session');
+    const client = await resolveInteractiveClient(session, { scope: 'session' });
+    const authority = await authorizeInteractiveTurn({
+      client,
+      projectId: session.projectId,
+      asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
+    });
 
     const [project] = await db
       .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
@@ -390,7 +399,7 @@ agentSessionTurnsRoutes.post(
 
     const inserted = await createChatSessionRow({
       projectId: session.projectId,
-      userId: session.userId ?? userId,
+      userId,
       title: session.title ? `${session.title} (rerun)` : null,
       parentSessionId: id,
       metadata: {
@@ -398,10 +407,11 @@ agentSessionTurnsRoutes.post(
         rerunOfSessionId: id,
       },
     });
-    const updated = await dispatchChatTurn({
+    const updated = await dispatchInteractiveTurn({
       session: inserted,
       project,
       client,
+      authority,
       message: prompt,
       broadcastEvent: 'agent-session.created',
     });

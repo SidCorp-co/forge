@@ -35,10 +35,10 @@ import {
 import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
 import { extractTurnPreview } from './chat-preview.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
-import { createChatSessionRow } from './chat-turn.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
-import { assertCallerDeclaresNoKind, kindFromQuery } from './kind-query.js';
+import { agentSessionInteractiveRoutes } from './interactive-routes.js';
+import { kindFromQuery } from './kind-query.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
 import { applyTranscriptPatch } from './patch-transcript.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
@@ -61,7 +61,6 @@ import {
   loadSessionOr404,
   notFound,
 } from './session-access.js';
-import { recordSessionCreatedActivity } from './session-activity.js';
 import { recordReportedTranscript } from './session-events.js';
 import {
   type AgentSessionPatch,
@@ -82,17 +81,6 @@ const listQuerySchema = z
     archived: z.enum(['true', 'false']).optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(200).default(50),
-  })
-  .strict();
-
-const createSchema = z
-  .object({
-    projectId: z.uuid(),
-    deviceId: z.uuid().nullable().optional(),
-    title: z.string().max(500).nullable().optional(),
-    repoPath: z.string().max(2000).nullable().optional(),
-    claudeSessionId: z.string().max(500).nullable().optional(),
-    metadata: z.unknown().optional(),
   })
   .strict();
 
@@ -128,6 +116,7 @@ export const agentSessionRoutes = new Hono<{ Variables: AuthVars }>();
 agentSessionRoutes.use('*', requireUserOrDevice(), assertEmailVerified());
 
 agentSessionRoutes.route('/', agentSessionLifecycleRoutes);
+agentSessionRoutes.route('/', agentSessionInteractiveRoutes);
 agentSessionRoutes.route('/', agentSessionInboxRoutes);
 agentSessionRoutes.route('/', agentSessionEventsRoutes);
 
@@ -434,42 +423,6 @@ agentSessionRoutes.get(
       lastMessagePreview: previewById.get(r.id) ?? null,
     }));
     return c.json(listResponse(c, items, totalRow?.n ?? 0, fromPage(page, pageSize)));
-  },
-);
-
-agentSessionRoutes.post(
-  '/',
-  zValidator('json', createSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const input = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'member');
-
-    const clientMetadata = input.metadata as Record<string, unknown> | null | undefined;
-    assertCallerDeclaresNoKind(clientMetadata, badRequest);
-
-    // Chat bootstrap: an EMPTY session row. The first turn is dispatched later
-    // through `POST /send` → the shared chat-turn dispatcher (which picks the
-    // device), so this path deliberately does NOT pin a device or dispatch.
-    const inserted = await createChatSessionRow({
-      projectId: input.projectId,
-      userId,
-      deviceId: input.deviceId ?? null,
-      title: input.title ?? null,
-      repoPath: input.repoPath ?? null,
-      claudeSessionId: input.claudeSessionId ?? null,
-      metadata: clientMetadata ?? null,
-    });
-
-    broadcastSession(inserted, 'agent-session.created');
-
-    await recordSessionCreatedActivity(inserted, restActor(c));
-
-    return c.json(inserted, 201);
   },
 );
 

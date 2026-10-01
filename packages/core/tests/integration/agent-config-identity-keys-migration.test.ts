@@ -1,5 +1,5 @@
 /**
- * Migration `0324_agent_config_drops_its_identity_keys.sql`, read off disk and run against real
+ * Migration `0325_agent_config_drops_its_identity_keys.sql`, read off disk and run against real
  * Postgres inside a savepoint that is rolled back, the way `agent-config-shadow-keys.test.ts`
  * holds 0285.
  */
@@ -19,7 +19,7 @@ import {
 const MIGRATION = readFileSync(
   resolvePath(
     dirname(fileURLToPath(import.meta.url)),
-    '../../drizzle/migrations/0324_agent_config_drops_its_identity_keys.sql',
+    '../../drizzle/migrations/0325_agent_config_drops_its_identity_keys.sql',
   ),
   'utf8',
 );

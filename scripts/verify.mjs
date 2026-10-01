@@ -74,8 +74,9 @@ const CHECKS = [
     axis: 'knowledge',
     label: 'pat-surface',
     layer: 'shared',
-    reads: 'every router file against the PAT permission groups',
+    reads: "every route the running app serves against the PAT fence, one route's calls at a time",
     cmd: ['node', 'scripts/check-pat-surface.mjs'],
+    needs: ['deps', 'observability-build', 'contracts-build'],
     scanned:
       /^pat-surface: \d+ resource\(s\) · \d+ permission group\(s\) · \d+ covered prefix\(es\) · \d+ router file\(s\) · (\d+) route/m,
     unit: 'PAT-reachable routes',

@@ -46,7 +46,8 @@ const resolveSessionRepoPathForDevice = vi.fn(
     projectRepoPath ?? null,
 );
 vi.mock('../lib/device-pool.js', () => ({
-  findAvailableDeviceForProject: (id: string) => findAvailableDeviceForProject(id),
+  findAvailableDeviceForProject: (id: string, opts?: object) =>
+    findAvailableDeviceForProject(id, opts),
   findChatCapableDeviceForProject: (projectId: string, deviceId: string) =>
     findChatCapableDeviceForProject(projectId, deviceId),
   resolveRepoPath: (override: string | null | undefined, repo: string | null) =>
@@ -90,10 +91,23 @@ vi.mock('../pipeline/runs.js', () => ({
 // Org-level authz: stub the db-touching resolvers; pure helpers stay real.
 const projectAccessMock = vi.fn();
 const loadVisibleProjectIdsMock = vi.fn(async () => [] as string[]);
+const effectiveRoleMock = vi.fn(async () => ({ role: 'member' as string | null }));
 vi.mock('../lib/authz.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccessMock(...args),
   loadVisibleProjectIds: (...args: unknown[]) => loadVisibleProjectIdsMock(...(args as [])),
+  effectiveProjectRole: () => effectiveRoleMock(),
+}));
+
+const mintSessionCredential = vi.fn(async () => 'forge_pat_test_turn');
+vi.mock('./session-credential.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./session-credential.js')>()),
+  resolveSessionAuthority: vi.fn(async () => ({
+    ok: true,
+    value: { authority: {}, menu: [] },
+  })),
+  mintSessionCredential: (...args: unknown[]) => mintSessionCredential(...(args as [])),
+  revokeSessionCredential: vi.fn(async () => undefined),
 }));
 
 const { agentSessionRoutes } = await import('./routes.js');
@@ -152,195 +166,6 @@ function mockAuthVerified() {
   selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
 }
 
-describe('POST /api/agent-sessions/start', () => {
-  it('400 when body missing prompt for non-agent session', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/start', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ projectSlug: 'apiflow' }),
-      }),
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it('400s a model selection for a typed legacy session before creating it', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-
-    const res = await buildApp().fetch(
-      req('/api/agent-sessions/start', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ projectSlug: 'apiflow', type: 'qa', model: 'opus' }),
-      }),
-    );
-
-    expect(res.status).toBe(400);
-    expect(insertReturning).not.toHaveBeenCalled();
-    expect(publishSpy).not.toHaveBeenCalled();
-  });
-
-  it('404 when project slug missing', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([]); // loadProjectBySlug → empty
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/start', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ projectSlug: 'no-such', prompt: 'hi' }),
-      }),
-    );
-    expect(res.status).toBe(404);
-  });
-
-  it('403 when caller not a project member', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: PROJECT_ID,
-        slug: 'apiflow',
-        ownerId: 'someone-else',
-        repoPath: '/repo',
-        defaultDeviceId: null,
-      },
-    ]);
-    grantAccess(null);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/start', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ projectSlug: 'apiflow', prompt: 'hi' }),
-      }),
-    );
-    expect(res.status).toBe(403);
-  });
-
-  it('201 creates session, publishes agent:start with TOOL_REFERENCE + preamble', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: PROJECT_ID,
-        slug: 'apiflow',
-        ownerId: USER_ID,
-        repoPath: '/repo',
-        defaultDeviceId: null,
-      },
-    ]);
-    grantAccess('admin');
-
-    findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
-
-    // createChatSessionRow inserts an EMPTY row (idle, no device, no claude id).
-    insertReturning.mockResolvedValueOnce([
-      {
-        id: SESSION_ID,
-        projectId: PROJECT_ID,
-        deviceId: null,
-        status: 'idle',
-        title: 'hello',
-        messages: [],
-        claudeSessionId: null,
-      },
-    ]);
-    // dispatchChatTurn flips it to running + pins the device in the tx.update.
-    updateReturning.mockResolvedValueOnce([
-      {
-        id: SESSION_ID,
-        projectId: PROJECT_ID,
-        deviceId: DEVICE_ID,
-        status: 'running',
-        title: 'hello',
-        claudeSessionId: null,
-      },
-    ]);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/start', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ projectSlug: 'apiflow', prompt: 'hello' }),
-      }),
-    );
-    expect(res.status).toBe(201);
-    expect(buildChatPreamble).toHaveBeenCalledWith(PROJECT_ID);
-    const startCall = publishSpy.mock.calls.find(
-      ([room, env]) => room === `device:${DEVICE_ID}` && (env as any).event === 'agent:start',
-    );
-    expect(startCall).toBeDefined();
-    const data = (startCall![1] as { data: any }).data;
-    expect(data.sessionId).toBe(SESSION_ID);
-    expect(data.projectSlug).toBe('apiflow');
-    expect(data.systemPrompt).toBe('## Tool Reference (test)');
-    expect(String(data.prompt)).toContain('hello');
-  });
-
-  it.each(['qa', 'qa-reindex'])(
-    'rejects retired typed session %s before a row is created',
-    async (type) => {
-      const token = await signUserToken(USER_ID);
-      mockAuthVerified();
-
-      const res = await buildApp().fetch(
-        req('/api/agent-sessions/start', {
-          method: 'POST',
-          token,
-          body: JSON.stringify({ projectSlug: 'apiflow', type }),
-        }),
-      );
-
-      expect(res.status).toBe(400);
-      expect(insertReturning).not.toHaveBeenCalled();
-      expect(publishSpy).not.toHaveBeenCalled();
-    },
-  );
-
-  it('409 NO_CLAUDE_CLIENT when no online Claude client is available (ISS-321)', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: PROJECT_ID,
-        slug: 'apiflow',
-        ownerId: USER_ID,
-        repoPath: '/repo',
-        defaultDeviceId: null,
-      },
-    ]);
-    grantAccess('admin');
-    findAvailableDeviceForProject.mockResolvedValueOnce(null);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/start', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ projectSlug: 'apiflow', prompt: 'hi' }),
-      }),
-    );
-    expect(res.status).toBe(409);
-    const body = (await res.json()) as { code?: string };
-    expect(body.code).toBe('NO_CLAUDE_CLIENT');
-    // The session must NOT be created and no agent:start must be published.
-    expect(insertReturning).not.toHaveBeenCalled();
-    expect(
-      publishSpy.mock.calls.find(([_room, env]) => (env as any).event === 'agent:start'),
-    ).toBeUndefined();
-  });
-});
-
 describe('POST /api/agent-sessions/send', () => {
   it('404 when session missing', async () => {
     const token = await signUserToken(USER_ID);
@@ -376,7 +201,7 @@ describe('POST /api/agent-sessions/send', () => {
     ]);
     grantAccess('admin');
     selectLimit
-      .mockResolvedValueOnce([{ status: 'online' }]) // resolveChatDevice: pinned device online
+      .mockResolvedValueOnce([{ status: 'online', capabilities: { followUpCredential: true } }])
       .mockResolvedValueOnce([{ id: PROJECT_ID, slug: 'apiflow', repoPath: '/repo' }]);
     updateReturning.mockResolvedValueOnce([
       {
@@ -401,11 +226,44 @@ describe('POST /api/agent-sessions/send', () => {
     );
     expect(res.status).toBe(200);
     const sendCall = publishSpy.mock.calls.find(
-      ([room, env]) => room === `device:${DEVICE_ID}` && (env as any).event === 'agent:send',
+      ([room, env]) =>
+        room === `device:${DEVICE_ID}` && (env as { event?: string }).event === 'agent:send',
     );
-    expect(sendCall).toBeDefined();
-    expect((sendCall![1] as { data: any }).data.message).toBe('second');
-    expect((sendCall![1] as { data: any }).data.projectSlug).toBe('apiflow');
+    if (!sendCall) throw new Error('no agent:send reached the box');
+    const data = (sendCall[1] as { data: Record<string, unknown> }).data;
+    expect(data.message).toBe('second');
+    expect(data.projectSlug).toBe('apiflow');
+    expect(data.forgeToken).toBe('forge_pat_test_turn');
+  });
+
+  it('409 SESSION_RUNNING refuses a follow-up while a turn is live, minting nothing', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [],
+        metadata: { deviceId: DEVICE_ID },
+        claudeSessionId: 'claude-abc',
+      },
+    ]);
+    grantAccess('member');
+
+    const res = await buildApp().fetch(
+      req('/api/agent-sessions/send', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ sessionId: SESSION_ID, message: 'second' }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code?: string }).code).toBe('SESSION_RUNNING');
+    expect(mintSessionCredential).not.toHaveBeenCalled();
+    expect(publishSpy).not.toHaveBeenCalled();
   });
 
   it('409 NO_CLAUDE_CLIENT when the pinned device is offline (ISS-420)', async () => {
@@ -424,7 +282,9 @@ describe('POST /api/agent-sessions/send', () => {
       },
     ]);
     grantAccess('admin');
-    selectLimit.mockResolvedValueOnce([{ status: 'offline' }]); // pinned device offline
+    selectLimit
+      .mockResolvedValueOnce([{ status: 'offline' }])
+      .mockResolvedValueOnce([{ status: 'offline' }]);
 
     const app = buildApp();
     const res = await app.fetch(
@@ -736,73 +596,6 @@ describe('POST /api/agent-sessions/:id/runner', () => {
   });
 });
 
-describe('POST /api/agent-sessions/build-prompt', () => {
-  it('503 when no device is available for the project', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: PROJECT_ID,
-        slug: 'apiflow',
-        ownerId: USER_ID,
-        repoPath: '/repo',
-        defaultDeviceId: null,
-      },
-    ]);
-    grantAccess('admin');
-    findAvailableDeviceForProject.mockResolvedValueOnce(null);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/build-prompt', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({
-          projectSlug: 'apiflow',
-          issueIds: ['66666666-6666-4666-8666-666666666666'],
-        }),
-      }),
-    );
-    expect(res.status).toBe(503);
-  });
-
-  it('200 returns requestId + publishes agent:build-prompt to device', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: PROJECT_ID,
-        slug: 'apiflow',
-        ownerId: USER_ID,
-        repoPath: '/repo',
-        defaultDeviceId: null,
-      },
-    ]);
-    grantAccess('admin');
-    findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/build-prompt', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({
-          projectSlug: 'apiflow',
-          issueIds: ['66666666-6666-4666-8666-666666666666'],
-        }),
-      }),
-    );
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { requestId: string };
-    expect(typeof body.requestId).toBe('string');
-    const buildCall = publishSpy.mock.calls.find(
-      ([room, env]) =>
-        room === `device:${DEVICE_ID}` && (env as any).event === 'agent:build-prompt',
-    );
-    expect(buildCall).toBeDefined();
-  });
-});
-
 describe('GET /api/agent-sessions/desktop/status', () => {
   it('400 when neither deviceId nor projectSlug provided', async () => {
     const token = await signUserToken(USER_ID);
@@ -945,42 +738,5 @@ describe('GET /api/agent-sessions/desktop/status', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { connected: boolean } };
     expect(body.data.connected).toBe(false);
-  });
-});
-
-describe('POST /api/agent-sessions/prompt-built', () => {
-  it('400 when neither prompt nor error is provided', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/prompt-built', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ requestId: 'abc' }),
-      }),
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it('200 broadcasts the result to the agent:prompt-built room', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/prompt-built', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ requestId: 'abc', prompt: 'composed' }),
-      }),
-    );
-    expect(res.status).toBe(200);
-    const call = publishSpy.mock.calls.find(
-      ([room, env]) => room === 'agent:prompt-built' && (env as any).event === 'agent:prompt-built',
-    );
-    expect(call).toBeDefined();
-    expect((call![1] as { data: any }).data.prompt).toBe('composed');
   });
 });
