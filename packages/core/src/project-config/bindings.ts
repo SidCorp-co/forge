@@ -133,6 +133,19 @@ export async function writeBinding(input: {
       ],
     };
   }
+  const held = current ? decodeTarget(current) : null;
+  if (held && !held.ok) {
+    return {
+      ok: false,
+      refusals: [
+        {
+          code: 'BINDING_NOT_REPRESENTABLE',
+          path: '',
+          detail: `binding ${bindingId} has no binding-document form, so a document cannot replace it without losing what it holds: ${held.reason}.`,
+        },
+      ],
+    };
+  }
   const storedRevision = current?.revision ?? null;
   if (storedRevision !== baseRevision) {
     return { ok: false, refusals: [staleBase(baseRevision, storedRevision)] };

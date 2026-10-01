@@ -42,8 +42,21 @@ export function encodeTarget(target: Target): Encoded {
 
 export type Decoded = { ok: true; target: Target } | { ok: false; reason: string };
 
+const REPRESENTED: Readonly<Record<string, readonly string[]>> = {
+  coolify: ['targets'],
+  shopify: ['store', 'themeRole'],
+};
+
 export function decodeTarget(row: Pick<StoredBinding, 'provider' | 'config'>): Decoded {
   const config = isRecord(row.config) ? row.config : {};
+  const represented = REPRESENTED[row.provider];
+  const unheld = represented ? Object.keys(config).filter((k) => !represented.includes(k)) : [];
+  if (unheld.length > 0) {
+    return {
+      ok: false,
+      reason: `this ${row.provider} binding also holds ${unheld.map((k) => `\`${k}\``).join(', ')}, which a binding document has no field for; writing it back as a document would drop ${unheld.length === 1 ? 'it' : 'them'}`,
+    };
+  }
   if (row.provider === 'coolify') {
     const targets = Array.isArray(config.targets) ? config.targets : [];
     const [only] = targets;

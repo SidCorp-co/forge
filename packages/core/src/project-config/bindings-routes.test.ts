@@ -313,3 +313,50 @@ describe('a target provider the binding document does not define', () => {
     );
   });
 });
+
+describe('a binding holding keys the document has no field for', () => {
+  const held = {
+    targets: [{ id: 'primary', label: 'primary', resourceUuid: 'abcdefghijklmnopqrstu' }],
+    releaseRunnerLabel: 'release',
+    rollback: 'redeploy the previous image',
+  };
+
+  beforeEach(() => {
+    seedBindingRow({
+      id: BINDING,
+      projectId: PROJECT,
+      connectionId: COOLIFY_CONNECTION,
+      provider: 'coolify',
+      role: 'deploy',
+      config: held,
+      active: true,
+      revision: 2,
+    });
+  });
+
+  it('is listed as unrepresentable, naming each key it would lose', async () => {
+    const body = (await (await call('GET', '/bindings', undefined, VIEWER)).json()) as {
+      returned: number;
+      unrepresentable: { id: string; reason: string }[];
+    };
+    expect(body.returned).toBe(0);
+    expect(body.unrepresentable).toEqual([
+      expect.objectContaining({
+        id: BINDING,
+        reason: expect.stringContaining('`releaseRunnerLabel`, `rollback`'),
+      }),
+    ]);
+  });
+
+  it('refuses a document write over it, and the row keeps every key', async () => {
+    const res = await call('PUT', `/bindings/${BINDING}`, {
+      baseRevision: 2,
+      document: coolifyDoc(),
+    });
+    expect(res.status).toBe(422);
+    expect(await refusalsOf(res)).toEqual([
+      expect.objectContaining({ code: 'BINDING_NOT_REPRESENTABLE', path: '' }),
+    ]);
+    expect(bindingMem.rows.get(BINDING)?.config).toEqual(held);
+  });
+});

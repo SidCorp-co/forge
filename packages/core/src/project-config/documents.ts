@@ -8,7 +8,8 @@ export type ApiRefusalCode =
   | 'TESTING_PROFILE_ID_MISMATCH'
   | 'TESTING_PROFILE_IN_USE'
   | 'BINDING_ID_MISMATCH'
-  | 'BINDING_TARGET_UNSUPPORTED';
+  | 'BINDING_TARGET_UNSUPPORTED'
+  | 'BINDING_NOT_REPRESENTABLE';
 
 export interface ApiRefusal extends Omit<ConfigRefusal, 'code'> {
   code: ApiRefusalCode;
