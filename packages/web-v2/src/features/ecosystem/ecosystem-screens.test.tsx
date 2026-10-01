@@ -179,6 +179,16 @@ describe("the register keeps overdue and held in sight", () => {
     expect(onFilter.mock.calls.map((c) => c[0])).toEqual(["awaiting", "overdue", "held"]);
   });
 
+  it("announces which filter is on, not by its styling alone", async () => {
+    api.register.mockResolvedValue({ documents: [row({})], returned: 1, total: 1 });
+    registerScreen("held");
+    await screen.findByText("FP-RFI-1");
+    expect(screen.getByRole("button", { name: "Held" })).toHaveAttribute("aria-pressed", "true");
+    for (const label of ["All", "Awaiting", "Overdue"]) {
+      expect(screen.getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "false");
+    }
+  });
+
   it("marks an overdue row and a held row, with who held it and why", async () => {
     api.register.mockResolvedValue({ documents: [row({})], returned: 1, total: 1 });
     registerScreen(null);

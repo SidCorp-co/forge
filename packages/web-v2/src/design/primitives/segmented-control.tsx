@@ -36,6 +36,7 @@ export function SegmentedControl<T extends string>({
           <button
             key={opt.value}
             type="button"
+            aria-pressed={active}
             disabled={opt.disabled}
             title={opt.title}
             onClick={() => !opt.disabled && onChange?.(opt.value)}
