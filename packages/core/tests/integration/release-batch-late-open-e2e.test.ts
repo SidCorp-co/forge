@@ -13,7 +13,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import {
   createTestProject,
   createTestUser,
@@ -22,6 +22,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { collapseProbeWaits } from '../helpers/probe-window.js';
 import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 describe('a release batch opened after its own release', () => {
@@ -84,6 +85,7 @@ describe('a release batch opened after its own release', () => {
     serve(RELEASED);
     const a = await insertIssue();
     const { runId } = await claim([a], { deploy: false });
+    onTestFinished(collapseProbeWaits());
 
     const err = await finishReleaseBatch(runId, actor(), {
       commit: 'c0ffee1234567890abcdef1234567890abcdef12',

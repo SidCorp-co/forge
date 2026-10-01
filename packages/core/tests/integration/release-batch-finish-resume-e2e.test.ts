@@ -11,7 +11,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import {
   createTestProject,
   createTestUser,
@@ -20,7 +20,9 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { collapseProbeWaits } from '../helpers/probe-window.js';
+import { stubProbe } from '../helpers/production.js';
+import { PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 const closeRun = vi.hoisted(() => ({ failNext: false }));
 vi.mock('../../src/pipeline/runs.js', async (importOriginal) => {
@@ -46,6 +48,7 @@ let ownerId: string;
 let serving = BEFORE;
 let probe: Server;
 let probeUrl: string;
+let forwarded = false;
 let job: typeof import('../../src/release-batch/finish-job.js');
 
 const fx = releaseBatchFixture(
@@ -60,7 +63,7 @@ beforeAll(async () => {
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   process.env.NODE_ENV ??= 'test';
   await registerIntegrationsForTest();
-  probe = createServer((_req, res) => res.end(serving));
+  probe = createServer((_req, res) => res.end(JSON.stringify({ commit: serving })));
   await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
   probeUrl = `http://127.0.0.1:${(probe.address() as AddressInfo).port}/version`;
   job = await import('../../src/release-batch/finish-job.js');
@@ -79,13 +82,8 @@ beforeEach(async () => {
   projectId = (await createTestProject(harness.db, owner.id)).id;
   await fx.declareProduction();
   await fx.seedReleaseRunner();
-  await harness.db.execute(sql`
-    UPDATE integration_bindings
-    SET config = config || ${JSON.stringify({
-      verify: { probes: [{ url: probeUrl }], timeoutSeconds: 6, stableReads: 1 },
-    })}::jsonb
-    WHERE project_id = ${projectId} AND provider = 'coolify'
-  `);
+  if (!forwarded) stubProbe({ [PROBE_URL]: probeUrl });
+  forwarded = true;
 });
 
 async function batch() {
@@ -176,6 +174,7 @@ describe('the sweep takes up an attempt nobody is working', () => {
 
   it('probes again a resumed unverified attempt once a probe has been declared (ISS-1321)', async () => {
     const { runId, issueId } = await batch();
+    onTestFinished(collapseProbeWaits());
     await plant(runId, {
       state: 'closing',
       verification: 'unverified',

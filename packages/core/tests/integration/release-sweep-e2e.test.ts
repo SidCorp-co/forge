@@ -16,6 +16,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { fakeCoolify } from '../helpers/coolify-deployments.js';
 import {
   createTestProject,
   createTestUser,
@@ -25,12 +26,14 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { declareProductionDocument } from '../helpers/production.js';
 import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 /** The identity the issues seeded here record as serving them. */
 const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
 /** A runtime that is not that one: the head a repair replaced, as ISS-1185 carried it. */
 const REPLACED = '34450f4420ae4a3b6de40b6d3cfb2b0e66aa2f51';
+const APP = { id: 't-app', label: 'App', resourceUuid: 'app-uuid' };
 
 /** One criterion's verdict block, in the exact shape `forge record verdict` writes. */
 function verdictBlock(
@@ -66,6 +69,8 @@ describe('release sweep E2E (ISS-1117)', () => {
   let harness: TestDatabase;
   let projectId: string;
   let ownerId: string;
+  let bindingId: string;
+  const coolify = fakeCoolify();
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -134,9 +139,11 @@ describe('release sweep E2E (ISS-1117)', () => {
     const owner = await createTestUser(harness.db);
     ownerId = owner.id;
     projectId = (await createTestProject(harness.db, owner.id)).id;
+    bindingId = await declareProduction({ baseUrl: coolify.url(), targets: [APP] });
     await seedProductionDeployTrigger(harness.db, projectId, owner.id);
-    await declareProduction();
-    // ISS-1286: what the production host answers is what a runtime verdict is weighed against.
+    // ISS-1286: what production is serving is what a runtime verdict is weighed against.
+    coolify.applications.clear();
+    coolify.deployed(APP.resourceUuid, 'dep-1', SERVING, '2026-09-29T11:00:00Z');
     fx.serve(SERVING);
     await seedReleaseRunner();
   });
@@ -184,9 +191,14 @@ describe('release sweep E2E (ISS-1117)', () => {
   }, 30_000);
 
   it('cuts a release for a project that declares no probe, writing no hold (ISS-1321)', async () => {
-    await harness.db.execute(sql`
-      UPDATE integration_bindings SET config = config - 'verify' WHERE project_id = ${projectId}
-    `);
+    await declareProductionDocument(harness.db, {
+      projectId,
+      ownerId,
+      bindingId,
+      deploysFrom: 'production',
+      probes: 'none',
+      trigger: 'on-land',
+    });
     const id = await insertIssue();
     await setCriteria(id, '1. ok');
     await setLanding(id, SERVING);
