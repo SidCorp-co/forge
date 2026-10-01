@@ -184,6 +184,7 @@ describe('declaring where a tool reaches', () => {
       .map((t) => t.name)
       .sort();
     expect(account).toEqual([
+      'forge_ecosystem',
       'forge_guide',
       'forge_orgs.list',
       'forge_orgs.members',

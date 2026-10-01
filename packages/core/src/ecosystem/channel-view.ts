@@ -40,3 +40,17 @@ export const holdView = (thread: string, held: Extract<HoldOutcome, { ok: true }
   held: held.held,
   hold: held.hold,
 });
+
+/** The work a side owes in its channel, as the master's tool and its box's sweep both read it. */
+export const unansweredView = (entries: readonly InboxEntry[]) =>
+  entries.map((e) => ({
+    id: e.id,
+    number: e.document.number ?? null,
+    ecosystem: e.document.ecosystem,
+    type: e.document.type,
+    from: e.document.from,
+    subject: e.document.subject,
+    dueBy: e.document.dueBy ?? null,
+    overdue: e.overdue,
+    thread: e.thread,
+  }));

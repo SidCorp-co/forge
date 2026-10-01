@@ -65,6 +65,129 @@
       "name": "forge_agent_sessions.list"
     },
     {
+      "description": "Act in a project's ecosystem channel under the credential's own role: a viewer reads, a member writes. Reads: register, inbox, outbox, unanswered (what this side owes a reply to: the work a master takes), read (one document), thread, contracts (a project API page). Writes: draft, reply (a draft answering a number), edit, submit (publishes, or waits at the approve gate), hold and release a conversation, withdraw, supersede, gate (approve or return a document waiting at the approve gate; an admin decides). The author is stamped from the credential and never read from the arguments: in chat the person, via assistant; on /mcp an agent token writes via master and a personal one via cli. Show a person a draft and submit it only once they confirm; hold, withdraw and supersede need a reason. You read only documents this project sends or receives, never another pair or a counterparty internal; in a chat at ecosystem scope you also read those of the person's other projects in that ecosystem, and you still write only as this project. A refusal comes back as { code, path, detail }; say what was refused and why.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "register",
+              "inbox",
+              "outbox",
+              "unanswered",
+              "read",
+              "thread",
+              "contracts",
+              "draft",
+              "reply",
+              "edit",
+              "submit",
+              "hold",
+              "release",
+              "withdraw",
+              "supersede",
+              "gate"
+            ],
+            "type": "string"
+          },
+          "body": {
+            "description": "The type-specific body.",
+            "type": "object"
+          },
+          "by": {
+            "description": "supersede: the number of the published replacement.",
+            "type": "string"
+          },
+          "decision": {
+            "description": "gate: approve, or return to the writer.",
+            "enum": [
+              "approve",
+              "return"
+            ],
+            "type": "string"
+          },
+          "dueBy": {
+            "description": "YYYY-MM-DD; a default applies when omitted.",
+            "type": "string"
+          },
+          "ecosystem": {
+            "description": "Ecosystem uuid; omit when this project is in one.",
+            "type": "string"
+          },
+          "inReplyTo": {
+            "description": "The number this document answers.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "register: rows, 1 to 200.",
+            "type": "integer"
+          },
+          "note": {
+            "description": "gate: what to change; a return needs one.",
+            "type": "string"
+          },
+          "project": {
+            "description": "contracts: the project whose API page to read.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The side to act for; a token bound to one project, or the X-Forge-Project-Slug header, names it when omitted.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why, shown to both sides.",
+            "type": "string"
+          },
+          "ref": {
+            "description": "A document uuid, or its number such as FP-CN-3.",
+            "type": "string"
+          },
+          "status": {
+            "description": "register filter.",
+            "enum": [
+              "awaiting",
+              "overdue",
+              "held",
+              "answered",
+              "closed"
+            ],
+            "type": "string"
+          },
+          "subject": {
+            "description": "One-line subject, in English.",
+            "type": "string"
+          },
+          "thread": {
+            "description": "The number of the document that opened the conversation.",
+            "type": "string"
+          },
+          "to": {
+            "description": "Recipient project uuids.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "type": {
+            "description": "Document type.",
+            "enum": [
+              "change-notice",
+              "acknowledgement",
+              "rfi",
+              "change-request",
+              "decision"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "forge_channel"
+    },
+    {
       "description": "List the collaborators across your projects (projects you own or are a member of) with a membership matrix scoped to those projects. Read-only. Action: `list` (optional `search` matches email prefix; paginated). Each user includes `memberships: [{ projectId, projectSlug, role }]` limited to your visible projects. Never returns passwordHash or any auth secret.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -343,6 +466,62 @@
         "type": "object"
       },
       "name": "forge_coolify_deploy"
+    },
+    {
+      "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, bus (an ecosystem as this token may see it). Writes take { baseRevision, document } as their REST route does: interface_write (an admin), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1). The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "interface",
+              "links",
+              "link",
+              "builder_runs",
+              "builder_run",
+              "bus",
+              "interface_write",
+              "link_create",
+              "link_update",
+              "builder_run_create",
+              "builder_run_update"
+            ],
+            "type": "string"
+          },
+          "baseRevision": {
+            "description": "A write: the revision this was read at, or null for a first write.",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "document": {
+            "description": "A write: the whole document.",
+            "type": "object"
+          },
+          "ecosystem": {
+            "description": "bus: the ecosystem uuid.",
+            "type": "string"
+          },
+          "link": {
+            "description": "link, link_update: the link uuid.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project acted for; a token bound to one project, or the X-Forge-Project-Slug header, names it when omitted.",
+            "type": "string"
+          },
+          "run": {
+            "description": "builder_run, builder_run_update: the builder run uuid.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "forge_ecosystem"
     },
     {
       "description": "Submit, list, get, or review agent friction reports. action=submit: report friction, skill gaps, unclear steps, or learnings mid-run. Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it. Required fields: projectId, kind, target, summary. projectId names the project the report is ABOUT, which need not be the one you are working in; it is REQUIRED and never inferred, because a report filed into the wrong feed is never read (`forge_projects.list` prints it beside each slug — it is its own tool, not an action on one). Optional: severity (default low), targetRef, detail, suggestion. Returns {ok:true,id,signalKey} on success; {ok:false,reason:\"rate_limited\"} when the per-job cap is hit (not a 500 — agent continues). action=list: read the friction feed. Supports filters.kind/target/severity/reviewed, limit (default 25, fleet default 50). scope=\"project\" (default) reads the resolved project; scope=\"all\" unions every project you own or are a member of and adds projectId/projectSlug to each row. EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete. `truncated:true` + `truncatedBy` say which cap bit (your limit, or the hard response-size cap). action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. action=review: stamp reviewedAt on report(s) once triaged/addressed (reviewed:false clears the stamp). reportId stamps a single report (unchanged single-project behaviour). When folding a report into an issue, also pass linkedIssueId (must belong to the same project as the report, or NOT_FOUND) — it is stamped atomically with reviewedAt and returned, so the report becomes traceable to what it became. Omitting linkedIssueId on a later review call leaves any existing link untouched (back-compat); reviewed:false clears BOTH reviewedAt and linkedIssueId. Curators (e.g. forge-memory-curator, or anyone triaging feedback into an issue) SHOULD pass linkedIssueId so the loop closes. signalKey bulk-stamps every report sharing that signalKey — add scope=\"all\" to bulk-stamp across every project you can see (scope=\"all\" without signalKey is a BAD_REQUEST); returns {ok:true,count,scope,linkedIssueId}. linkedIssueId IS supported on the bulk path: N duplicate reports of one Forge defect fold into ONE issue in a single call. A report is feedback ABOUT FORGE — its projectId records where the defect was OBSERVED, not who owns the fix — so linkedIssueId may name an issue in ANY project you can see (normally the Forge project), not just the one the report was filed from. reviewed:false clears reviewedAt AND linkedIssueId.",

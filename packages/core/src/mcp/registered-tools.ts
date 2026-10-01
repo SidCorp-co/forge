@@ -9,10 +9,12 @@
 export const REGISTERED_TOOLS = [
   'forge_agent_sessions.get',
   'forge_agent_sessions.list',
+  'forge_channel',
   'forge_collaborators',
   'forge_comments',
   'forge_config',
   'forge_coolify_deploy',
+  'forge_ecosystem',
   'forge_feedback',
   'forge_github',
   'forge_google_sheets',

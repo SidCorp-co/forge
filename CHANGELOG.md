@@ -137,6 +137,9 @@
 
 ### Added
 
+- **A project's master answers its ecosystem inbox.** A document owed a reply wakes the master
+  even with no open issue. Masters and runs reach the channel, interface and links over MCP,
+  authored by their own token.
 - **Releases lists a project's versions.** Each version shows its changelog from release notes
   and its deploy attempts, each opening its log in place. Issues waiting at the release gate
   show as the next version, ready to cut.

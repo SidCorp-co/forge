@@ -10,7 +10,7 @@ import {
 } from '../../ecosystem/channel-author.js';
 import { supersede, withdraw } from '../../ecosystem/channel-ends.js';
 import { holdOrRelease } from '../../ecosystem/channel-holds.js';
-import { inbox, outbox, readAs, threadAs } from '../../ecosystem/channel-read.js';
+import { inbox, outbox, readAs, threadAs, unanswered } from '../../ecosystem/channel-read.js';
 import { readRegister } from '../../ecosystem/channel-register.js';
 import { UUID_PATTERN } from '../../ecosystem/channel-schema.js';
 import { createDraft, editDraft, submit } from '../../ecosystem/channel-service.js';
@@ -19,9 +19,11 @@ import {
   inboxView,
   outboxView,
   threadView,
+  unansweredView,
   viewOf,
 } from '../../ecosystem/channel-view.js';
 import { activeEcosystemIdsOf, isActiveMember } from '../../ecosystem/store.js';
+import { namedRefusals, type SideCodes, sideOf } from '../../mcp/tools/ecosystem-side.js';
 import type { ContextScopedMcpToolFactory, McpContext } from '../../mcp/tools/lib.js';
 import {
   CHANNEL_ACTIONS,
@@ -34,13 +36,13 @@ import {
 import { decideGateAs, type NamedRefusal } from './forge-channel-gate.js';
 
 const DESCRIPTION = [
-  "Act in this project's ecosystem channel as the person you are answering, under their own role: a viewer reads, a member writes.",
-  'Reads: register, inbox, outbox, read (one document), thread, contracts (a project API page).',
+  "Act in a project's ecosystem channel under the credential's own role: a viewer reads, a member writes.",
+  'Reads: register, inbox, outbox, unanswered (what this side owes a reply to: the work a master takes), read (one document), thread, contracts (a project API page).',
   'Writes: draft, reply (a draft answering a number), edit, submit (publishes, or waits at the approve gate), hold and release a conversation, withdraw, supersede, gate (approve or return a document waiting at the approve gate; an admin decides).',
-  'Every document you write is authored by the person, via assistant.',
-  'Show the person a draft and submit it only once they confirm; hold, withdraw and supersede need their reason.',
+  'The author is stamped from the credential and never read from the arguments: in chat the person, via assistant; on /mcp an agent token writes via master and a personal one via cli.',
+  'Show a person a draft and submit it only once they confirm; hold, withdraw and supersede need a reason.',
   "You read only documents this project sends or receives, never another pair or a counterparty internal; in a chat at ecosystem scope you also read those of the person's other projects in that ecosystem, and you still write only as this project.",
-  'A refusal comes back as { code, path, detail }; tell them what was refused and why.',
+  'A refusal comes back as { code, path, detail }; say what was refused and why.',
 ].join(' ');
 
 type Answer = Record<string, unknown>;
@@ -141,6 +143,10 @@ const HANDLERS: Handlers = {
     return { ecosystem, documents: rows, returned: rows.length, total };
   },
   inbox: async (_a, side) => ({ documents: inboxView(await inbox(side)) }),
+  unanswered: async (_a, side) => {
+    const documents = unansweredView(await unanswered(side));
+    return { project: side, documents, returned: documents.length };
+  },
   outbox: async (_a, side) => ({ documents: outboxView(await outbox(side)) }),
   read: async (a, _side, _w, scope) => {
     const view = await firstParty(scope.sides, (s) => readAs(s, a.ref));
@@ -240,16 +246,19 @@ const PATH_OF: Partial<Record<ChannelAction, string>> = {
   contracts: '/project',
 };
 
+const SIDE_CODES: SideCodes = {
+  invalid: 'CHANNEL_ARGUMENT_INVALID',
+  unbound: 'CHANNEL_TURN_UNBOUND',
+  unnamed: 'CHANNEL_PROJECT_UNNAMED',
+  outside: 'CHANNEL_PROJECT_OUTSIDE_TOKEN',
+};
+
 async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answer> {
-  const side = ctx.boundProjectId ?? null;
-  if (!side) {
-    return one(
-      'CHANNEL_TURN_UNBOUND',
-      '/',
-      'this turn answers under no project, so there is no side of a channel to act for',
-    );
-  }
-  const call = parseChannelCall(raw);
+  const { projectId: named, ...rest } = raw;
+  const resolved = await sideOf(ctx, named, SIDE_CODES);
+  if (!resolved.ok) return refusedWith([resolved.refusal]);
+  const { side } = resolved;
+  const call = parseChannelCall(rest);
   if (!call.ok) return refusedWith(call.refusals);
   const { principal } = ctx;
   const role = await channelRoleRefusal(principal.userId, side, roleNeeded(call.action));
@@ -258,7 +267,7 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
     return one(
       'CHANNEL_WRITE_NOT_AUTHORISED',
       '/action',
-      `${call.action} writes, and the token this turn runs under lacks the 'write' scope the person's own credential did not grant`,
+      `${call.action} writes, and the token this call runs under lacks the 'write' scope`,
     );
   }
   const writer = await writerOfPrincipal(principal);
@@ -286,6 +295,8 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
     if (err instanceof Unreadable) return one('CHANNEL_NOT_A_PARTY', err.path, err.message);
     if (err instanceof Ambiguous)
       return one('CHANNEL_ECOSYSTEM_AMBIGUOUS', '/ecosystem', err.message);
+    const decided = namedRefusals(err);
+    if (decided) return refusedWith(decided);
     if (err instanceof HTTPException && (err.status === 404 || err.status === 403)) {
       return one('CHANNEL_NOT_A_PARTY', PATH_OF[call.action] ?? '/', err.message);
     }
