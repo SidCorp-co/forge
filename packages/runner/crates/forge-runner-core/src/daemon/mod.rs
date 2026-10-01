@@ -588,7 +588,7 @@ pub async fn run(
                             m.version
                         );
                         if auto {
-                            match crate::update::apply(&m).await {
+                            match crate::update::apply(&m, None).await {
                                 Ok(Some(o)) => {
                                     // The new binary is already swapped on disk;
                                     // this process hands over to it once its
