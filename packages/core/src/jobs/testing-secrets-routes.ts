@@ -1,0 +1,103 @@
+import { type Context, Hono } from 'hono';
+import { getCookie } from 'hono/cookie';
+import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
+import { AUTH_COOKIE_NAME } from '../auth/cookie-names.js';
+import { verifyUserToken } from '../auth/jwt.js';
+import { isPatLike } from '../auth/pat-format.js';
+import { parseBearerHeader } from '../middleware/bearer.js';
+import { authenticatePat, type PatPrincipal } from '../middleware/require-pat.js';
+import { zValidator } from '../middleware/zod-validator.js';
+import { resolveTestingSecrets, SELF_JOB } from '../project-config/testing-secrets.js';
+
+export const jobTestingSecretsRoutes = new Hono();
+
+const SECRET_REF = /^secret:\/\/[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/;
+
+const paramSchema = z.object({
+  id: z.union([z.uuid(), z.literal(SELF_JOB)]),
+  profileId: z.string().regex(/^[a-z][a-z0-9-]{0,62}$/),
+});
+
+const unauthenticated = (message: string, code = 'UNAUTHENTICATED') =>
+  new HTTPException(401, { message, cause: { code } });
+
+const sessionRefused = () =>
+  new HTTPException(403, {
+  message:
+    'a browser or desktop session is a person signed in, and this route hands a testing secret only to the running job whose credential asks for it. A person reads a secret’s name at GET /api/projects/:id/secrets and its value nowhere.',
+  cause: { code: 'TESTING_SECRETS_SESSION_REFUSED' },
+});
+
+async function isSession(token: string): Promise<boolean> {
+  try {
+    await verifyUserToken(token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// cm:guard this door admits no session and no PAT door's grant: the job credential is a token of
+// the PAT format, and what it may read here is decided by the job it names, not by a grant.
+async function jobCredential(c: Context): Promise<PatPrincipal> {
+  const parsed = parseBearerHeader(c);
+  if (parsed.kind === 'malformed') throw unauthenticated('invalid authorization header');
+  if (parsed.kind === 'absent') {
+    const cookie = getCookie(c, AUTH_COOKIE_NAME);
+    if (cookie && (await isSession(cookie))) throw sessionRefused();
+    throw unauthenticated('authentication required: present the running job’s credential');
+  }
+  if (!isPatLike(parsed.token)) {
+    if (await isSession(parsed.token)) throw sessionRefused();
+    throw unauthenticated('invalid token', 'INVALID_TOKEN');
+  }
+  const principal = await authenticatePat(c, parsed.token, 'read');
+  if (!principal) throw unauthenticated('invalid token', 'INVALID_TOKEN');
+  return principal;
+}
+
+function refsOf(c: Context): string[] | null {
+  const refs = c.req.queries('ref');
+  if (!refs || refs.length === 0) return null;
+  const bad = refs.filter((r) => !SECRET_REF.test(r));
+  if (bad.length > 0) {
+    throw new HTTPException(400, {
+      message: `ref must be secret://<scope>/<name>, each part matching ^[a-z][a-z0-9-]{0,62}$; got ${bad.join(', ')}`,
+      cause: { code: 'SECRET_REF_SHAPE', details: { bad } },
+    });
+  }
+  return refs;
+}
+
+jobTestingSecretsRoutes.get(
+  '/:id/testing-profiles/:profileId/secrets',
+  zValidator('param', paramSchema, (r) => {
+    if (!r.success) {
+      throw new HTTPException(400, {
+        message:
+          'invalid path: the job id is a uuid or `self` (the job this credential runs) and the profile id matches ^[a-z][a-z0-9-]{0,62}$',
+        cause: { code: 'BAD_REQUEST' },
+      });
+    }
+  }),
+  async (c) => {
+    const { id, profileId } = c.req.valid('param');
+    const principal = await jobCredential(c);
+    const outcome = await resolveTestingSecrets({
+      principal,
+      jobId: id,
+      profileId,
+      refs: refsOf(c),
+    });
+    if (!outcome.ok) {
+      const { status, code, message, details } = outcome.refusal;
+      throw new HTTPException(status, {
+        message,
+        cause: { code, ...(details ? { details } : {}) },
+      });
+    }
+    c.header('Cache-Control', 'no-store');
+    return c.json(outcome.resolved);
+  },
+);

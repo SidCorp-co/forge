@@ -1,5 +1,6 @@
 import { environmentsOf } from '../../project-config/release-path.js';
 import type { ProjectDocument, TestingProfile } from '../../project-config/schema.js';
+import { JUDGING_JOB_TYPES, SELF_JOB } from '../../project-config/testing-secrets.js';
 
 /** Every environment's address, each line naming the environment and its tier. */
 export function renderTestUrls(document: ProjectDocument | null): string | undefined {
@@ -23,11 +24,16 @@ export function renderTestCreds(
   const lines = environmentsOf(document).flatMap(({ name, declaration }) =>
     declaration.testing
       ? [
-          `- ${name}: testing profile \`${declaration.testing}\` — its actors and services name \`secret://\` references, never values; read it with \`GET /api/projects/${projectId}/testing-profiles/${declaration.testing}\`. Never write a credential into a comment, a commit or a prompt.`,
+          `- ${name}: testing profile \`${declaration.testing}\` — its actors and services name \`secret://\` references, never values; read it with \`GET /api/projects/${projectId}/testing-profiles/${declaration.testing}\`.`,
         ]
       : [],
   );
-  return lines.length > 0 ? lines.join('\n') : undefined;
+  if (lines.length === 0) return undefined;
+  const route = `GET /api/jobs/${SELF_JOB}/testing-profiles/<profile>/secrets`;
+  lines.push(
+    `- To log in, a ${JUDGING_JOB_TYPES.join(', ')} job reads the values behind its environment's references with \`${route}\` (optionally \`?ref=secret://<scope>/<name>\`, repeated), sending its own credential (\`Authorization: Bearer $FORGE_PAT\`). It answers only the job that credential runs, and only while exactly one environment names a testing profile; every other caller and every other profile is refused by name. Each read is audited, and each value is scrubbed from this job's output. Never write a credential into a comment, a commit or a prompt.`,
+  );
+  return lines.join('\n');
 }
 
 /** What each named testing profile says its environment does NOT have. */

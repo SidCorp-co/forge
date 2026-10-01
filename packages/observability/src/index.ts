@@ -129,6 +129,44 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// cm:why a shorter value is too likely to be ordinary text, so the scrubber does not replace it,
+// and a caller that must have a value scrubbed refuses to hand out one this short.
+export const SCRUB_MIN_SECRET_LENGTH = 6;
+
+const scrubbable = (secrets: readonly string[]) =>
+  secrets.filter((s) => typeof s === 'string' && s.length >= SCRUB_MIN_SECRET_LENGTH);
+
+export function scrubSecretValues(text: string, secrets: readonly string[]): string {
+  let out = text;
+  for (const s of scrubbable(secrets)) {
+    out = out.split(s).join(FILTERED);
+    const escaped = JSON.stringify(s).slice(1, -1);
+    if (escaped !== s) out = out.split(escaped).join(FILTERED);
+  }
+  return out;
+}
+
+// cm:why unlike scrubStringValues this has no depth bound: a known value nested past any bound
+// would leave in plain text, and its input is parsed JSON, which holds no cycle.
+export function scrubSecretValuesDeep<T>(value: T, secrets: readonly string[]): T {
+  const known = scrubbable(secrets);
+  if (known.length === 0) return value;
+  const walk = (v: unknown): unknown => {
+    if (typeof v === 'string') return scrubSecretValues(v, known);
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') {
+      return Object.fromEntries(
+        Object.entries(v as Record<string, unknown>).map(([k, inner]) => [
+          scrubSecretValues(k, known),
+          walk(inner),
+        ]),
+      );
+    }
+    return v;
+  };
+  return walk(value) as T;
+}
+
 export function scrubLogText(text: string, extraSecrets: string[] = []): string {
   const headerKeys = Array.from(SCRUB_HEADER_KEYS).map(escapeRegExp).join('|');
   const headerRe = new RegExp(`\\b(${headerKeys})(\\s*[:=]\\s*).+`, 'gi');
@@ -146,9 +184,7 @@ export function scrubLogText(text: string, extraSecrets: string[] = []): string 
       let out = scrubPatInString(scrubUrl(line));
       out = out.replace(headerRe, `$1$2${FILTERED}`);
       for (const re of bodyRes) out = out.replace(re, `$1${FILTERED}`);
-      for (const s of extraSecrets) {
-        if (s && s.length >= 6) out = out.split(s).join(FILTERED);
-      }
+      out = scrubSecretValues(out, extraSecrets);
       out = out.replace(ENV_SECRET_ASSIGNMENT_PATTERN, `$1=${FILTERED}`);
       return out;
     })

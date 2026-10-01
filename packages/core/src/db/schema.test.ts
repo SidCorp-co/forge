@@ -298,6 +298,7 @@ describe('db/schema — job_events', () => {
       'result',
       'intervention',
       'kill_ack',
+      'secret_resolve',
     ]);
   });
 

@@ -1,0 +1,270 @@
+import { SCRUB_MIN_SECRET_LENGTH } from '@forge/observability';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { type JobType, jobEvents, jobs } from '../db/schema.js';
+import { projectSecrets } from '../db/schema-project-config.js';
+import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
+import { resolvePipelineContext } from '../jobs/active-job-context.js';
+import {
+  rememberHandedOut,
+  SECRET_RESOLVE_KIND,
+  type SecretResolveAudit,
+} from '../jobs/job-secret-scrub.js';
+import type { PatPrincipal } from '../middleware/require-pat.js';
+import { parseSecretRef, secretRefOf } from './documents.js';
+import { environmentsOf } from './release-path.js';
+import { credentialRefs, readProjectConfig, readTestingProfile } from './service.js';
+
+// cm:why `drive` is here because an autonomous project's driver walks the judging phase in the
+// same job that builds; a job of any other type is not one that logs in to judge a deployment.
+export const JUDGING_JOB_TYPES = ['test', 'smoke', 'staging', 'drive'] as const satisfies readonly JobType[];
+
+export const SELF_JOB = 'self';
+
+export type TestingSecretsRefusalCode =
+  | 'TESTING_SECRETS_NOT_A_JOB_CREDENTIAL'
+  | 'TESTING_SECRETS_JOB_AMBIGUOUS'
+  | 'TESTING_SECRETS_FOREIGN_JOB'
+  | 'TESTING_SECRETS_JOB_NOT_JUDGING'
+  | 'TESTING_SECRETS_NO_PROJECT_DOCUMENT'
+  | 'TESTING_SECRETS_NO_TESTING_ENVIRONMENT'
+  | 'TESTING_SECRETS_ENVIRONMENT_AMBIGUOUS'
+  | 'TESTING_PROFILE_NOT_NAMED'
+  | 'TESTING_PROFILE_NOT_DECLARED'
+  | 'SECRET_NOT_NAMED'
+  | 'SECRET_VALUE_MISSING'
+  | 'SECRET_VALUE_UNREADABLE'
+  | 'SECRET_TOO_SHORT_TO_SCRUB'
+  | 'VAULT_NOT_CONFIGURED';
+
+export interface TestingSecretsRefusal {
+  status: 403 | 404 | 409 | 503;
+  code: TestingSecretsRefusalCode;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+export interface ResolvedTestingSecrets {
+  jobId: string;
+  environment: string;
+  profileId: string;
+  secrets: { ref: string; value: string }[];
+}
+
+export type TestingSecretsOutcome =
+  | { ok: true; resolved: ResolvedTestingSecrets }
+  | { ok: false; refusal: TestingSecretsRefusal };
+
+const refuse = (
+  status: TestingSecretsRefusal['status'],
+  code: TestingSecretsRefusalCode,
+  message: string,
+  details?: Record<string, unknown>,
+): TestingSecretsOutcome => ({
+  ok: false,
+  refusal: { status, code, message, ...(details ? { details } : {}) },
+});
+
+const JOB_CREDENTIAL_SHAPE =
+  'The credential that reaches this route is the one a running job holds: issued to the box the job runs on and bound to the job’s project, so it names exactly one live job.';
+
+// cm:flow testing-secrets/resolve — a job credential reads the values behind the secret:// refs of
+// the one testing profile its environment names, and nothing else
+export async function resolveTestingSecrets(args: {
+  principal: PatPrincipal;
+  jobId: string;
+  profileId: string;
+  refs: readonly string[] | null;
+}): Promise<TestingSecretsOutcome> {
+  const { principal, profileId } = args;
+  const context = await resolvePipelineContext(principal);
+  if (!context.ok) {
+    return context.reason === 'ambiguous_pipeline_context'
+      ? refuse(409, 'TESTING_SECRETS_JOB_AMBIGUOUS', `${context.detail} Nothing was read.`)
+      : refuse(
+          403,
+          'TESTING_SECRETS_NOT_A_JOB_CREDENTIAL',
+          `${context.detail} ${JOB_CREDENTIAL_SHAPE}`,
+        );
+  }
+  if (context.context.jobId === null) {
+    return refuse(
+      403,
+      'TESTING_SECRETS_NOT_A_JOB_CREDENTIAL',
+      `This credential's session (${context.context.agentSessionId}) is running no job, so it judges no environment. ${JOB_CREDENTIAL_SHAPE}`,
+    );
+  }
+  const jobId = args.jobId === SELF_JOB ? context.context.jobId : args.jobId;
+  if (context.context.jobId !== jobId) {
+    return refuse(
+      403,
+      'TESTING_SECRETS_FOREIGN_JOB',
+      `This credential belongs to job ${context.context.jobId}, not job ${jobId}; a job reads only its own testing secrets.`,
+      { credentialJobId: context.context.jobId },
+    );
+  }
+
+  const [job] = await db
+    .select({ projectId: jobs.projectId, type: jobs.type })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .limit(1);
+  if (!job) {
+    return refuse(403, 'TESTING_SECRETS_FOREIGN_JOB', `job ${jobId} does not exist.`);
+  }
+  if (!(JUDGING_JOB_TYPES as readonly string[]).includes(job.type)) {
+    return refuse(
+      403,
+      'TESTING_SECRETS_JOB_NOT_JUDGING',
+      `job ${jobId} is a \`${job.type}\` job, which judges no deployment; only ${JUDGING_JOB_TYPES.join(', ')} jobs read testing secrets.`,
+    );
+  }
+
+  const project = await readProjectConfig(job.projectId);
+  if (!project) {
+    return refuse(
+      409,
+      'TESTING_SECRETS_NO_PROJECT_DOCUMENT',
+      `project ${job.projectId} declares no project document, so no environment names a testing profile.`,
+    );
+  }
+  const testing = environmentsOf(project.document).filter((e) => e.declaration.testing);
+  const [only, ...others] = testing;
+  if (!only) {
+    return refuse(
+      404,
+      'TESTING_SECRETS_NO_TESTING_ENVIRONMENT',
+      'no environment of this project names a testing profile (`environments.<name>.testing`).',
+    );
+  }
+  // cm:guard no row records which environment a job judges; with two candidates the route would be
+  // guessing, and a guess hands out the other environment's logins.
+  if (others.length > 0) {
+    const named = testing.map((e) => `${e.name} → ${e.declaration.testing}`);
+    return refuse(
+      409,
+      'TESTING_SECRETS_ENVIRONMENT_AMBIGUOUS',
+      `${testing.length} environments name a testing profile (${named.join(', ')}) and nothing on job ${jobId} records which one it judges, so the route will not pick one.`,
+      { environments: testing.map((e) => e.name) },
+    );
+  }
+  const environment = only.name;
+  if (only.declaration.testing !== profileId) {
+    return refuse(
+      403,
+      'TESTING_PROFILE_NOT_NAMED',
+      `environment \`${environment}\`, which job ${jobId} judges, names testing profile \`${only.declaration.testing}\`, not \`${profileId}\`.`,
+    );
+  }
+
+  const profile = await readTestingProfile(job.projectId, profileId);
+  if (!profile) {
+    return refuse(
+      409,
+      'TESTING_PROFILE_NOT_DECLARED',
+      `environment \`${environment}\` names testing profile \`${profileId}\`, and this project holds no profile of that id.`,
+    );
+  }
+  const named = [...new Set(credentialRefs(profile.document).map((r) => r.ref))];
+  const wanted = args.refs === null ? named : [...new Set(args.refs)];
+  const unnamed = wanted.filter((r) => !named.includes(r));
+  if (unnamed.length > 0) {
+    return refuse(
+      403,
+      'SECRET_NOT_NAMED',
+      `testing profile \`${profileId}\` names none of ${unnamed.join(', ')}; it names ${named.join(', ') || 'no secret'}.`,
+      { unnamed },
+    );
+  }
+  if (!isVaultConfigured()) {
+    return refuse(
+      503,
+      'VAULT_NOT_CONFIGURED',
+      'INTEGRATION_MASTER_KEY is not set on this core, so no secret can be decrypted; nothing was read.',
+    );
+  }
+
+  const parsed = wanted.map(parseSecretRef).filter((r) => r !== null);
+  const rows =
+    parsed.length === 0
+      ? []
+      : await db
+          .select({
+            scope: projectSecrets.scope,
+            name: projectSecrets.name,
+            enc: projectSecrets.valueEnc,
+          })
+          .from(projectSecrets)
+          .where(
+            and(
+              eq(projectSecrets.projectId, job.projectId),
+              inArray(
+                projectSecrets.scope,
+                parsed.map((p) => p.scope),
+              ),
+            ),
+          );
+  const stored = new Map(rows.map((r) => [secretRefOf(r.scope, r.name), r.enc]));
+  const missing = wanted.filter((r) => !stored.has(r));
+  if (missing.length > 0) {
+    return refuse(
+      409,
+      'SECRET_VALUE_MISSING',
+      `testing profile \`${profileId}\` names ${missing.join(', ')}, and this project stores no value for it; PUT /api/projects/${job.projectId}/secrets/<scope>/<name> first.`,
+      { missing },
+    );
+  }
+
+  const secrets: { ref: string; value: string }[] = [];
+  for (const ref of wanted) {
+    let value: string;
+    try {
+      value = decryptSecret(stored.get(ref) as Buffer);
+    } catch (err) {
+      return refuse(
+        409,
+        'SECRET_VALUE_UNREADABLE',
+        `${ref} is stored but does not decrypt under this core's INTEGRATION_MASTER_KEY (${err instanceof Error ? err.message : String(err)}); write it again.`,
+      );
+    }
+    if (value.length < SCRUB_MIN_SECRET_LENGTH) {
+      return refuse(
+        409,
+        'SECRET_TOO_SHORT_TO_SCRUB',
+        `${ref} holds a value shorter than ${SCRUB_MIN_SECRET_LENGTH} characters, which the secret scrubber does not replace, so it would reach this job's log in plain text; store a longer one.`,
+      );
+    }
+    secrets.push({ ref, value });
+  }
+
+  await writeResolveAudit(jobId, {
+    environment,
+    profile: profileId,
+    refs: wanted,
+    tokenId: principal.tokenId,
+    deviceId: principal.deviceId ?? null,
+  });
+  rememberHandedOut(
+    jobId,
+    secrets.map((s) => s.value),
+  );
+  return { ok: true, resolved: { jobId, environment, profileId, secrets } };
+}
+
+// cm:flow testing-secrets/audit after:resolve — the row commits before any value leaves, and it is
+// the row the scrubber reads to know what this job holds
+async function writeResolveAudit(jobId: string, audit: SecretResolveAudit): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`);
+    const [row] = await tx
+      .select({ max: sql<number | string | null>`max(${jobEvents.seq})` })
+      .from(jobEvents)
+      .where(eq(jobEvents.jobId, jobId));
+    await tx.insert(jobEvents).values({
+      jobId,
+      kind: SECRET_RESOLVE_KIND,
+      data: { ...audit },
+      seq: Number(row?.max ?? 0) + 1,
+    });
+  });
+}

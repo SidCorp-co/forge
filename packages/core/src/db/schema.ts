@@ -774,8 +774,22 @@ export const jobEventKinds = [
   // interventions metric (C6) counts rows with this kind.
   'intervention',
   'kill_ack',
+  'secret_resolve',
 ] as const;
 export type JobEventKind = (typeof jobEventKinds)[number];
+
+// cm:guard core writes these rows itself; a box that could post one could forge an audit row or
+// clear the scrubber's list of values a job holds.
+export const CORE_WRITTEN_JOB_EVENT_KINDS = [
+  'intervention',
+  'kill_ack',
+  'secret_resolve',
+] as const satisfies readonly JobEventKind[];
+
+export const DEVICE_POSTED_JOB_EVENT_KINDS = jobEventKinds.filter(
+  (k): k is Exclude<JobEventKind, (typeof CORE_WRITTEN_JOB_EVENT_KINDS)[number]> =>
+    !(CORE_WRITTEN_JOB_EVENT_KINDS as readonly string[]).includes(k),
+);
 
 export const jobEvents = pgTable(
   'job_events',
@@ -794,6 +808,9 @@ export const jobEvents = pgTable(
     tsIdx: index('job_events_ts_idx').on(t.ts),
     jobIdTsIdx: index('job_events_job_id_ts_idx').on(t.jobId, t.ts),
     resultKindIdx: index('job_events_result_idx').on(t.jobId).where(sql`kind = 'result'`),
+    secretResolveIdx: index('job_events_secret_resolve_idx')
+      .on(t.jobId)
+      .where(sql`kind = 'secret_resolve'`),
   }),
 );
 

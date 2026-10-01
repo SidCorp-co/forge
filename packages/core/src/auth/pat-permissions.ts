@@ -100,6 +100,10 @@ const DEVICE =
   "the paired box's own plane, admitted by the device credential minted at pairing or by a " +
   'pairing code; a personal or agent token is not a device';
 
+const JOB =
+  "a running job's own testing secrets, admitted by the job credential and decided by the job " +
+  'it names; no grant reaches them, because a grant is not a job';
+
 /**
  * Every path kept out of the grant grammar, and why. An entry is a path
  * prefix whose `:name` segments match any one segment, optionally led by one
@@ -148,6 +152,7 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   '/api/devices/login/init': DEVICE,
   '/api/devices/login/poll': DEVICE,
   'GET /api/jobs/:id/turn-verdict': DEVICE,
+  'GET /api/jobs/:id/testing-profiles': JOB,
   'POST /api/jobs/:id/events': DEVICE,
   'POST /api/jobs/:id/ack': DEVICE,
   'POST /api/jobs/:id/complete': DEVICE,
