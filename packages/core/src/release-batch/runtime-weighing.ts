@@ -21,7 +21,6 @@ import { latestCriterionVerdicts } from '../issues/criteria-verdicts.js';
 import { issueIdentities } from '../issues/verdict-standing.js';
 import { recognisableIdentity, sameIdentity } from '../messaging/verdict-identity.js';
 import type { ReleaseRuntimesConfig } from '../pipeline/pipeline-config-schema.js';
-import { PipelineConfigUnreadable } from '../pipeline/pipeline-config-unreadable.js';
 import { readStoredPipelineConfig } from '../pipeline/stored-pipeline-config.js';
 import { hostOf } from '../projects/live-source.js';
 import { type Carriage, type ChangedPaths, carriageOf, changedPathsOf } from './carriage.js';
@@ -51,14 +50,7 @@ async function declaredRuntimes(projectId: string): Promise<ReleaseRuntimesConfi
       );
     });
   const stored = (row?.agentConfig as { pipelineConfig?: unknown } | null)?.pipelineConfig;
-  try {
-    return readStoredPipelineConfig(projectId, stored).releaseRuntimes ?? [];
-  } catch (err) {
-    // The patch door refuses a malformed document; one stored past it is a defect to stop on.
-    if (err instanceof PipelineConfigUnreadable)
-      throw new WeighingUnreadable('declaration', err.message);
-    throw err;
-  }
+  return readStoredPipelineConfig(projectId, stored).releaseRuntimes ?? [];
 }
 
 function why(err: unknown): string {

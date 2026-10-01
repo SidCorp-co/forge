@@ -109,7 +109,12 @@ describe('the hold where the criteria could not be read (ISS-1368)', () => {
     [
       'declaration',
       /^This project's stored release runtimes declaration could not be read/,
-      'releaseRuntimes',
+      'release runtimes declaration',
+    ],
+    [
+      'configuration',
+      /^This project's stored pipelineConfig is refused/,
+      'stored `pipelineConfig`',
     ],
     ['runners', /^The runner devices/, 'runner devices'],
     ['repository', /^This project's repository binding/, 'repository binding'],

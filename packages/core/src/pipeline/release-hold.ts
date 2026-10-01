@@ -14,6 +14,7 @@ import { comments, issues } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { logger } from '../logger.js';
 import { type WeighingSubject, WeighingUnreadable } from '../release-batch/weighing-unreadable.js';
+import { PipelineConfigUnreadable } from './pipeline-config-unreadable.js';
 
 /** The session_context key this module owns. */
 export const RELEASE_HOLD_KEY = 'releaseHold';
@@ -146,17 +147,20 @@ export function gateUnreadableHold(message: string): ReleaseHold {
 }
 
 /** What a criteria read failed on: what the project serves, a part of the weighing, the verdicts. */
-export type UnreadableSubject = 'serving' | WeighingSubject;
+export type UnreadableSubject = 'serving' | 'configuration' | WeighingSubject;
 
 const AGAIN = 'The next sweep reads it again.';
 
 const UNREADABLE: Readonly<Record<UnreadableSubject, readonly [string, string, string?]>> = {
+  configuration: [
+    "This project's stored pipelineConfig is refused, so the automatic release reads none of it",
+    "this project's stored `pipelineConfig` to be corrected",
+    'Correct what the refusal names with a pipeline-config patch, and the next sweep reads it again.',
+  ],
   declaration: [
     "This project's stored release runtimes declaration could not be read, so the automatic " +
       'release could not tell which runtime each criterion is weighed in',
-    "this project's `pipelineConfig.releaseRuntimes` to be corrected",
-    'Correct `pipelineConfig.releaseRuntimes` on this project, and the next sweep weighs every ' +
-      'waiting issue again.',
+    "this project's stored release runtimes declaration to be readable",
   ],
   runners: [
     "The runner devices this project's declared release runtimes are read from could not be " +
@@ -192,7 +196,8 @@ export function criteriaUnreadableHold(subject: UnreadableSubject, message: stri
 
 /** The hold for a criteria read that threw at `stage`; a weighing names its own subject. */
 export function unreadableHoldOf(err: unknown, stage: UnreadableSubject): ReleaseHold {
-  const subject = err instanceof WeighingUnreadable ? err.subject : stage;
+  const named = err instanceof WeighingUnreadable ? err.subject : stage;
+  const subject = err instanceof PipelineConfigUnreadable ? 'configuration' : named;
   return criteriaUnreadableHold(subject, err instanceof Error ? err.message : String(err));
 }
 

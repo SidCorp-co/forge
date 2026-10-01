@@ -3,6 +3,7 @@ import { standingSentence, verdictStanding } from '../issues/verdict-standing.js
 import { runnerHoldClause } from '../release-batch/blocker-sentences.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
 import type { RunnerHold } from '../runners/ineligible.js';
+import { PipelineConfigUnreadable } from './pipeline-config-unreadable.js';
 import {
   cutFailedHold,
   readReleaseHold,
@@ -12,6 +13,7 @@ import {
   saidKey,
   saidOf,
   sameReleaseHold,
+  unreadableHoldOf,
   withoutAges,
   withoutReadingTimes,
   withoutResetDrift,
@@ -460,5 +462,18 @@ describe('no hold sentence names the retired commit endpoint (ISS-1346)', () => 
     expect(runtimeUnroutedHold('x', NO_BINDING_ROUTE).reason).not.toMatch(
       /commitUrl|commit endpoint/,
     );
+  });
+});
+
+describe('a refused stored pipelineConfig holds on what is refused (ISS-1368)', () => {
+  it('names the refused key, and does not send the person to releaseRuntimes', () => {
+    const path = 'pipelineConfig.autoProdDeploy';
+    const refused = [{ path, message: 'expected boolean', key: 'autoProdDeploy', stored: 'true' }];
+    const hold = unreadableHoldOf(new PipelineConfigUnreadable('p-1', refused), 'declaration');
+
+    expect(hold.code).toBe('RELEASE_CRITERIA_UNREADABLE');
+    expect(hold.reason).toContain(path);
+    expect(hold.reason).not.toContain('releaseRuntimes');
+    expect(hold.waitingFor).toBe("this project's stored `pipelineConfig` to be corrected");
   });
 });

@@ -4,7 +4,7 @@
  * document the refusal says nothing reads. Real Postgres, the document stored as a project stores it.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
   createTestUser,
@@ -17,6 +17,7 @@ import { expectNamed, REFUSED, refusalOf } from '../helpers/refused-pipeline-con
 
 let harness: TestDatabase;
 let refusedId: string;
+let ownerId: string;
 
 const named = (said: string) => expectNamed(said, refusedId);
 
@@ -33,7 +34,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await truncateAll(harness.db);
-  const ownerId = (await createTestUser(harness.db, { emailVerifiedAt: new Date() })).id;
+  ownerId = (await createTestUser(harness.db, { emailVerifiedAt: new Date() })).id;
   const org = await seedOrg(harness.db, ownerId);
   refusedId = (
     await createTestProject(harness.db, ownerId, {
@@ -84,8 +85,23 @@ describe('a one-key reader refuses a stored pipelineConfig the schema refuses, b
   it('the weekly assistant, and the projects opted into it', async () => {
     const weekly = await import('../../src/assistant/weekly/config.js');
     named(await refusalOf(() => weekly.resolveAssistantWeekly(refusedId)));
+    const weeklyOn = {
+      enabled: true,
+      pinnedIssue: 'ISS-1',
+      judgeProviderId: 'judge',
+      judgeModel: 'model',
+    };
+    const soundId = (
+      await createTestProject(harness.db, ownerId, {
+        agentConfig: { pipelineConfig: { assistantWeekly: weeklyOn } },
+      })
+    ).id;
     const refused: Array<{ projectId: string; message: string }> = [];
-    await weekly.listOptedInProjects(undefined, refused);
+
+    const listed = await weekly.listOptedInProjects(undefined, refused);
+
+    expect(listed.map((p) => p.projectId)).toEqual([soundId]);
+    expect(refused.map((r) => r.projectId)).toEqual([refusedId]);
     named(refused[0]?.message ?? '');
   });
 

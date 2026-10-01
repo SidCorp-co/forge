@@ -441,7 +441,7 @@ describe('a hold names what the issue owes and what clears it', () => {
     const reason = String(hold?.reason);
     expect(reason).not.toMatch(/^The verdicts/);
     expect(reason).toContain('releaseRuntimes.0.paths.0');
-    expect(String(hold?.waitingFor)).toContain('releaseRuntimes');
+    expect(String(hold?.waitingFor)).toContain('stored `pipelineConfig`');
   }, 30_000);
 
   it('refuses a stored path with a leading space by name when the release reads it', async () => {
