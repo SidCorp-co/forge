@@ -28,6 +28,19 @@ import {
   storeConfig,
 } from '../helpers/refused-pipeline-config.js';
 
+const sentry = vi.hoisted(() => ({
+  captured: vi.fn<(err: unknown, hint?: { tags?: { projectId?: string } }) => void>(),
+}));
+
+vi.mock('../../src/observability/sentry.js', async (original) => {
+  const real = await original<typeof import('../../src/observability/sentry.js')>();
+  return {
+    ...real,
+    isSentryEnabled: () => true,
+    Sentry: { ...real.Sentry, captureException: sentry.captured },
+  };
+});
+
 /** The parts of a reply these cases read. */
 type Reply = {
   code?: string;
@@ -131,6 +144,20 @@ describe('the pipeline-config doors refuse a stored document the schema refuses,
     ]);
   });
 
+  it('a stored null says what to send, and the patch it names repairs it', async () => {
+    await storeConfig(harness.db, refusedId, null);
+
+    const read = await call('GET', configPath());
+
+    expect(String(read.json.message)).not.toContain('Correct ``');
+    expect(String(read.json.message)).toContain(
+      'send a pipeline-config patch naming the keys to store, with an empty base',
+    );
+    const patched = await call('PATCH', configPath(), { base: {}, patch: POOL_READ });
+    expect(patched.status).toBe(200);
+    expect((await call('GET', configPath())).status).toBe(200);
+  });
+
   it('the MCP read is refused naming each key and what is stored at it', async () => {
     const tool = await configTool();
 
@@ -193,15 +220,26 @@ describe('the pipeline-config doors refuse a stored document the schema refuses,
     logged.mockRestore();
   });
 
-  it('registering the orchestrator at boot runs that scan', async () => {
+  it('registering the orchestrator at boot runs that scan, logged and reported once', async () => {
     const { registerPipelineOrchestrator } = await import('../../src/pipeline/orchestrator.js');
     const { logger } = await import('../../src/logger.js');
+    const archived = await createTestProject(harness.db, ownerId, {
+      agentConfig: { pipelineConfig: REFUSED },
+    });
+    await harness.db.execute(
+      sql`UPDATE projects SET archived_at = now() WHERE id = ${archived.id}`,
+    );
     const logged = vi.spyOn(logger, 'error');
+    sentry.captured.mockClear();
 
     registerPipelineOrchestrator({ on: () => undefined } as never);
 
-    await vi.waitFor(() => expect(logged).toHaveBeenCalled());
-    named(String(logged.mock.calls[0]?.[1]));
+    await vi.waitFor(() => expect(sentry.captured).toHaveBeenCalled());
+    const reported = sentry.captured.mock.calls.map((c) => c[1]?.tags?.projectId);
+    expect(reported).toEqual([refusedId]);
+    const scanned = logged.mock.calls.map((c) => String(c[1])).filter((m) => m.includes('refused'));
+    expect(scanned).toHaveLength(1);
+    named(scanned[0] ?? '');
     logged.mockRestore();
   });
 });

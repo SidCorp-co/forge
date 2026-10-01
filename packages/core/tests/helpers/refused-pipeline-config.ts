@@ -30,6 +30,7 @@ export function expectNamed(said: string, projectId: string): void {
   expect(said).toContain(projectId);
   expect(said).toContain(PLACE);
   expect(said).toContain('a release runtime path is a path relative to the repository root');
+  expect(said).toContain(`\`releaseRuntimes\` is ${JSON.stringify(RUNTIMES)}`);
 }
 
 export async function storeConfig(db: TestDb, projectId: string, config: unknown): Promise<void> {

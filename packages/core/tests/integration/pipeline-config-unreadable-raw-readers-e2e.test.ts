@@ -4,7 +4,8 @@
  * document the refusal says nothing reads. Real Postgres, the document stored as a project stores it.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestProject,
   createTestUser,
@@ -48,6 +49,17 @@ describe('a one-key reader refuses a stored pipelineConfig the schema refuses, b
   it('the intake gate', async () => {
     const { resolveIntakeGate } = await import('../../src/issues/intake-gate.js');
     named(await refusalOf(() => resolveIntakeGate(refusedId)));
+  });
+
+  it("names the refusal at error when a gated issue's intake is finalized", async () => {
+    const { finalizeIntake } = await import('../../src/issues/intake-gate.js');
+    const { logger } = await import('../../src/logger.js');
+    const logged = vi.spyOn(logger, 'error');
+
+    await finalizeIntake(refusedId, { id: randomUUID(), title: 'gated' });
+
+    named(String(logged.mock.calls.find((c) => String(c[1]).includes(refusedId))?.[1]));
+    logged.mockRestore();
   });
 
   it("a dispatch's stage overrides, and the per-state MCP names", async () => {
