@@ -47,6 +47,7 @@ import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar"
 import { SidebarSearch } from "@/features/shell/components/sidebar-search";
 import { SidebarBell } from "@/features/shell/components/sidebar-bell";
 import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
+import { TopBarSlotProvider } from "@/design";
 import { SidebarVersion } from "@/features/shell/components/sidebar-version";
 import { DrawerAccount } from "@/features/shell/components/drawer-account";
 
@@ -214,6 +215,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   return (
     <ChatDockProvider value={dock}>
+    <TopBarSlotProvider>
     <div className="flex h-dvh overflow-hidden bg-app">
       <div className="hidden h-full md:block" data-testid="desktop-sidebar">
         <WorkspaceSidebar
@@ -287,6 +289,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
     </div>
+    </TopBarSlotProvider>
     </ChatDockProvider>
   );
 }

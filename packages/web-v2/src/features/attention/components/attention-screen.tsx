@@ -237,14 +237,11 @@ export function AttentionScreen() {
         <RoomSub key={p.id} room={projectRoom(p.id)} />
       ))}
 
-      <header className="mb-5">
-        <PageTitle
-          className="fg-h2"
+      <PageTitle
           hint="Cross-project items waiting on you — reviews, blocked work, mentions, failures, unseen drafts, and offline runners."
         >
           Attention
-        </PageTitle>
-      </header>
+      </PageTitle>
 
       {total === 0 ? (
         <div className="grid min-h-[40vh] place-items-center">

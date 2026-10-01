@@ -280,58 +280,32 @@ export function depCounts(deps: IssueDependencies | undefined): DepCounts {
 	return { blockedBy, blocks, subtasks, hasParent };
 }
 
+/* status-tuple: differs — the toolbar's Closed segment, not core's ISSUE_TERMINAL_STATUSES: the
+   release gate (`awaiting_release`) is still open work to the person reading the list. */
+const CLOSED_STATUSES = statusesForLabels("done", "dropped");
+
+/** The search params one status segment of the toolbar stands for. */
 export function filterToQueryParams(filter: IssueFilter): {
 	status?: IssueStatus[];
 	statusNot?: IssueStatus[];
-	origin?: "detector" | "human";
-	/** Also match an issue a person owes an answer, whatever its status (ISS-1257). */
-	orWaitingOnPerson?: boolean;
 } {
-	switch (filter) {
-		case "draft":
-			return { status: ["draft"], origin: "human" };
-		case "findings":
-			return { origin: "detector" };
-		case "you":
-			return {
-				status: statusesForLabels(
-					"needs_human",
-					"paused",
-					"awaiting_release",
-					"reopened",
-				),
-				orWaitingOnPerson: true,
-			};
-		case "agent":
-			return { status: statusesForLabels("open", "running", "unheld") };
-		case "done":
-			return { status: statusesForLabels("done", "dropped") };
-		default:
-			return {};
-	}
+	if (filter === "open") return { statusNot: CLOSED_STATUSES };
+	if (filter === "closed") return { status: CLOSED_STATUSES };
+	return {};
 }
 
-/**
- * How many issues a filter segment holds, from the search's buckets. A filter that
- * also takes the issues a person owes an answer adds those at the statuses it does
- * not name, each counted once (ISS-1257).
- */
+/** How many issues a status segment holds, from the search's buckets. */
 export function filterCount(
 	filter: IssueFilter,
-	buckets: {
-		byStatus: Partial<Record<IssueStatus, number>>;
-		waitingOnPersonByStatus: Partial<Record<IssueStatus, number>>;
-	},
+	buckets: { byStatus: Partial<Record<IssueStatus, number>> },
 ): number {
-	const { status, orWaitingOnPerson } = filterToQueryParams(filter);
-	const named = new Set<string>(status ?? []);
-	let n = 0;
-	for (const s of named) n += buckets.byStatus[s as IssueStatus] ?? 0;
-	if (!orWaitingOnPerson) return n;
-	for (const [s, v] of Object.entries(buckets.waitingOnPersonByStatus)) {
-		if (!named.has(s)) n += v ?? 0;
+	let all = 0;
+	let closed = 0;
+	for (const [s, v] of Object.entries(buckets.byStatus)) {
+		all += v ?? 0;
+		if ((CLOSED_STATUSES as string[]).includes(s)) closed += v ?? 0;
 	}
-	return n;
+	return filter === "all" ? all : filter === "closed" ? closed : all - closed;
 }
 
 /**

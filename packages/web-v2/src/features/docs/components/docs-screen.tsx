@@ -18,6 +18,7 @@ import {
 import { HELP_DOCS } from "../help-content.generated";
 import { deriveToc, groupSections, HELP_SECTION_ORDER, searchDocs } from "../reader";
 import { DocsArticle, DocsLayout, type DocsNavItem, DocsSidebar } from "./docs-reader";
+import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 export function DocsScreen() {
   const searchParams = useSearchParams();
@@ -46,13 +47,13 @@ export function DocsScreen() {
 
   return (
     <PageContainer className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <PageTitle className="fg-h2">Docs</PageTitle>
+      <PageTitle>Docs</PageTitle>
+      <TopBarActions>
         <HelpButton
           summary="How to use Forge — getting started, pairing a runner, managing your organization, connecting your own assistant, and troubleshooting. Pick a page from the left, read it in the center, and jump around with the table of contents."
           actions={["Search filters the page list", "Click a TOC entry to jump to that heading"]}
         />
-      </div>
+      </TopBarActions>
 
       {HELP_DOCS.length === 0 ? (
         <Card>

@@ -41,6 +41,7 @@ import { formatDurationSec, formatUsd } from "../derive";
 import { useStepDurations, useThroughput } from "../hooks";
 import type { StepDurationRow, ThroughputRow } from "../types";
 import { RunDetail } from "./run-detail";
+import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 const TABS = [
   { value: "monitor", label: "Monitor" },
@@ -126,13 +127,12 @@ export function OpsMonitor() {
         <RoomSub key={p.id} room={projectRoom(p.id)} />
       ))}
 
-      <header className="mb-5 flex items-start justify-between gap-3">
-        <PageTitle
-          className="fg-h2"
+      <PageTitle
           hint={`Cross-project run telemetry, step durations, and spend — live across ${projects.length} project${projects.length === 1 ? "" : "s"}.`}
         >
           Ops
         </PageTitle>
+      <TopBarActions>
         <HelpButton
           summary="A live cross-project view of pipeline runs: real-time monitor, throughput and stage-duration progress, project health, and a recent-runs list."
           actions={[
@@ -141,7 +141,7 @@ export function OpsMonitor() {
           ]}
           shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
         />
-      </header>
+      </TopBarActions>
 
       <div className="overflow-x-auto">
         <Tabs tabs={TABS} value={tab} onChange={setTab} />

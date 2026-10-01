@@ -158,7 +158,8 @@ export interface IssueDependencies {
   incoming: IssueDependencyEdge[];
 }
 
-export type IssueFilter = "all" | "draft" | "findings" | "you" | "agent" | "done";
+/** The toolbar's status segment. */
+export type IssueFilter = "open" | "closed" | "all";
 
 /** Client-side grouping for the list. */
 export type GroupBy = "none" | "status" | "priority" | "creator";

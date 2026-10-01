@@ -10,6 +10,7 @@ import { VERSION_FILTERS, type ReleaseVersionFilter } from "../versions-types";
 import { EnvironmentStrip } from "./environment-strip";
 import { DraftDetail, VersionDetail } from "./version-detail";
 import { VersionList } from "./version-list";
+import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 export interface ReleasesScreenProps {
   projectId: string;
@@ -49,10 +50,9 @@ export function ReleasesScreen({ projectId, isAdmin }: ReleasesScreenProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="releases-screen">
-      <header className="flex flex-wrap items-center gap-3 px-4 pb-2 pt-4 sm:px-7">
-        <PageTitle className="fg-h2">Releases</PageTitle>
-        {list.draft && isAdmin ? (
-          <span className="ml-auto">
+      <PageTitle>Releases</PageTitle>
+      {list.draft && isAdmin ? (
+          <TopBarActions>
             <Button
               size="sm"
               disabled={!draftCuttable || cut.isPending}
@@ -61,9 +61,8 @@ export function ReleasesScreen({ projectId, isAdmin }: ReleasesScreenProps) {
             >
               Cut {list.draft.version}
             </Button>
-          </span>
+          </TopBarActions>
         ) : null}
-      </header>
       <EnvironmentStrip list={list} />
       <fieldset className="flex flex-wrap gap-1.5 border-0 px-4 pb-3 sm:px-7" aria-label="Filter versions" data-testid="version-filters">
         {VERSION_FILTERS.map((f) => (

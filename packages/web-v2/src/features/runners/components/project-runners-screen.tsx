@@ -70,6 +70,7 @@ import {
 	runnerLimitDisplay,
 	runnerVersionLabel,
 } from "../types";
+import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 function CopyButton({
 	value,
@@ -896,13 +897,13 @@ export function ProjectRunnersScreen({
 	const body = (
 		<>
 			{!embedded && (
-				<div className="flex items-center justify-between gap-3">
+				<>
 					<PageTitle
-						className="fg-h2"
 						hint="Devices that run this project's pipeline jobs. Status & provisioning update live."
 					>
 						Runners
 					</PageTitle>
+					<TopBarActions>
 					<HelpButton
 						summary="Assign paired devices to this project. Each gets its own checkout; with a declared repository, a freshly-assigned device auto-clones, syncs skills, and writes its MCP config."
 						actions={[
@@ -911,7 +912,8 @@ export function ProjectRunnersScreen({
 							"Manage devices account-wide on the Runners page",
 						]}
 					/>
-				</div>
+					</TopBarActions>
+				</>
 			)}
 
 			<GitConfigCard

@@ -35,11 +35,7 @@ export function SettingsScreen() {
         tabs={TABS}
         value={tab}
         onChange={(v) => setTab(v as SettingsTab)}
-        header={
-          <header className="mb-6">
-            <PageTitle className="fg-h2">Settings</PageTitle>
-          </header>
-        }
+        header={<PageTitle>Settings</PageTitle>}
       />
 
       <PageContainer>

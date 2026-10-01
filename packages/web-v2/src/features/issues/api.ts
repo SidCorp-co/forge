@@ -64,13 +64,10 @@ export const issuesApi = {
     if (opts.assignee) params.set("assignee", opts.assignee);
     if (opts.label) params.set("label", opts.label);
     if (opts.module) params.set("module", opts.module);
-    const { status, statusNot, origin, orWaitingOnPerson } = filterToQueryParams(
-      opts.filter ?? "all",
-    );
-    for (const s of opts.status ?? status ?? []) params.append("status", s);
-    if (orWaitingOnPerson && !opts.status) params.set("orWaitingOnPerson", "true");
-    for (const s of statusNot ?? []) params.append("statusNot", s);
-    if (origin) params.set("origin", origin);
+    // cm:why an explicit `status` (the assistant's, ISS-47) names the statuses outright, so the segment's cut is not added under it
+    const segment = opts.status ? {} : filterToQueryParams(opts.filter ?? "all");
+    for (const s of opts.status ?? segment.status ?? []) params.append("status", s);
+    for (const s of segment.statusNot ?? []) params.append("statusNot", s);
     return apiClientList<IssueRow, { buckets?: IssueBuckets }>(
       `/projects/${projectId}/issues/search?${params}`,
     );

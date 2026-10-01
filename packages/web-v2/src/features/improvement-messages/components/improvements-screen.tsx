@@ -125,14 +125,11 @@ export function ImprovementsScreen({
 
   return (
     <PageContainer className="min-h-dvh">
-      <header className="mb-4">
-        <PageTitle
-          className="fg-h2"
+      <PageTitle
           hint="Feedback from people and agents comes in; the improvement loop's proposals go out. One list for both."
         >
           Improvements
-        </PageTitle>
-      </header>
+      </PageTitle>
 
       <fieldset className="mb-3 flex flex-wrap gap-1.5 border-0 p-0" aria-label="Show">
         {IMPROVEMENT_FILTERS.map((f) => (

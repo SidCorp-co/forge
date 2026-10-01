@@ -72,11 +72,9 @@ export function OverviewScreen() {
 
   return (
     <PageContainer className="flex flex-col gap-4">
-      <header>
-        <PageTitle className="fg-h2" hint={`What the control plane is doing across ${orgLabel ?? 'your organization'}.`}>
+      <PageTitle hint={`What the control plane is doing across ${orgLabel ?? 'your organization'}.`}>
           Overview{orgLabel ? ` · ${orgLabel}` : ''}
-        </PageTitle>
-      </header>
+      </PageTitle>
 
       <LivenessBand liveness={data.liveness} thresholds={data.thresholds} />
       <WorkSitting pulse={data} nowMs={nowMs} />
