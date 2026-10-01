@@ -1,4 +1,4 @@
-import type { BottomTabItem, Crumb, NavItem } from "@/design";
+import type { BottomTabItem, NavItem } from "@/design";
 import { ecosystemRoutes } from "@/features/ecosystem/routes";
 import type { RailItem } from "./nav-rail-compact";
 
@@ -80,7 +80,8 @@ export interface EcosystemItem extends NavItem {
 }
 
 export const ECOSYSTEM_ITEMS: EcosystemItem[] = [
-  { key: "eco-channel", label: "Channel", icon: "mail", sub: "/ecosystem/channel", href: (s) => ecosystemRoutes.register(s) },
+  { key: "eco-bus", label: "Map", icon: "ecosystem", sub: "/ecosystem", href: (s) => ecosystemRoutes.bus(s) },
+  { key: "eco-channel", label: "Threads", icon: "mail", sub: "/ecosystem/channel", href: (s) => ecosystemRoutes.register(s) },
   {
     key: "eco-awaiting",
     label: "Awaiting",
@@ -113,7 +114,8 @@ export const ECOSYSTEM_RAIL_KEYS = new Set(ECOSYSTEM_ITEMS.filter((it) => !it.st
 
 function ecosystemKey(rest: string, search: string): string | null {
   const status = new URLSearchParams(search).get("status");
-  const hits = ECOSYSTEM_ITEMS.filter((it) => matchesSub(rest, it.sub));
+  const longest = Math.max(0, ...ECOSYSTEM_ITEMS.filter((it) => matchesSub(rest, it.sub)).map((it) => it.sub.length));
+  const hits = ECOSYSTEM_ITEMS.filter((it) => matchesSub(rest, it.sub) && it.sub.length === longest);
   if (hits.length === 0) return null;
   return (hits.find((it) => it.status && it.status === status) ?? hits.find((it) => !it.status))?.key ?? null;
 }
@@ -215,43 +217,4 @@ export function bottomTabItems(attentionCount: number): BottomTabItem[] {
     { key: "attention", label: "Attention", icon: "inbox", badge: attentionCount },
     { key: "more", label: "More", icon: "menu" },
   ];
-}
-
-/** Project pages the rail does not list, named for the breadcrumb. */
-const PROJECT_PAGES_OFF_RAIL = [
-  { sub: "/settings", label: "Settings" },
-  { sub: "/pipeline", label: "Pipeline" },
-  { sub: "/skill-updates", label: "Skill updates" },
-];
-
-export function buildCrumbs(opts: {
-  pathname: string;
-  slug: string | null;
-  activeKey: string;
-  projectName: string | null | undefined;
-}): Crumb[] {
-  const { pathname, slug, activeKey, projectName } = opts;
-  const wsRoot: Crumb = { label: "Workspace", href: "/" };
-  if (pathname === "/") return [wsRoot, { label: "Overview" }];
-
-  if (slug) {
-    const page = [...PROJECT_ITEMS, ...ECOSYSTEM_ITEMS].find((it) => it.key === activeKey);
-    const base = `/projects/${slug}`;
-    const rest = pathname.startsWith(base) ? pathname.slice(base.length) : "";
-    // A project page off the rail lights the Dashboard row, but its crumb still names it.
-    const offRail = page?.key === "proj-overview" ? PROJECT_PAGES_OFF_RAIL.find((it) => matchesSub(rest, it.sub)) : undefined;
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: projectName ?? slug, href: base },
-      { label: offRail?.label ?? page?.label ?? "Dashboard" },
-    ];
-  }
-
-  if (pathname.startsWith("/whats-new")) return [wsRoot, { label: "What's New" }];
-  if (pathname.startsWith("/docs")) return [wsRoot, { label: "Docs" }];
-  // Resolve the page label from the rail destinations; longest href match wins.
-  const hit = [...WORKSPACE_ITEMS, ...SECONDARY_DESTINATIONS]
-    .filter((it) => it.href !== "/" && pathname.startsWith(it.href))
-    .sort((a, b) => b.href.length - a.href.length)[0];
-  return hit ? [wsRoot, { label: hit.label }] : [wsRoot, { label: "Overview" }];
 }

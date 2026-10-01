@@ -7,11 +7,13 @@ import { loadGraph } from './graph.js';
 import { heldInterface } from './interface-service.js';
 import { type Held, storedBuilderRun, storedLink } from './link-service.js';
 import {
+  builderRunsIn,
   builderRunsOf,
   linksWhere,
   readBuilderRun,
   readLink,
   type StoredLink,
+  type StoredRecord,
 } from './link-store.js';
 import { readableEcosystem } from './membership-service.js';
 import { edgeVisible, visibleMembers } from './party.js';
@@ -83,6 +85,29 @@ export async function listBuilderRunsAs(userId: string, projectId: string) {
   return rows.map((row) => recordView({ row, document: storedBuilderRun(row) }));
 }
 
+// cm:why the bus carries each project's latest builder run as its step states and counts only: the findings and their call sites stay behind the run's own read, which the project's members hold
+function latestBuilderRuns(rows: StoredRecord[], shown: ReadonlySet<string>) {
+  const latest = new Map<string, ReturnType<typeof builderSummary>>();
+  for (const row of rows) {
+    if (!shown.has(row.projectId) || latest.has(row.projectId)) continue;
+    latest.set(row.projectId, builderSummary(row));
+  }
+  return latest;
+}
+
+function builderSummary(row: StoredRecord) {
+  const run = storedBuilderRun(row);
+  return {
+    id: row.id,
+    trigger: run.trigger,
+    steps: run.steps,
+    findings: run.findings.length,
+    links: run.links.length,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
 function currentVersions(rows: Awaited<ReturnType<typeof recordedVersions>>) {
   const latest = new Map<string, string>();
   for (const v of rows) latest.set(`${v.providerProjectId}/${v.contractSlug}`, v.version);
@@ -105,12 +130,14 @@ export async function readBus(userId: string, ecosystemId: string) {
   const shown = [
     ...new Set([...seen, ...links.flatMap((l) => [l.projectId, l.providerProjectId])]),
   ];
-  const [projects, interfaces, versions] = await Promise.all([
+  const [projects, interfaces, versions, runs] = await Promise.all([
     projectsWhere(db, { ids: shown }),
     readInterfaces(db, shown),
     recordedVersions(db, shown),
+    builderRunsIn(db, ecosystemId),
   ]);
   const latest = currentVersions(versions);
+  const builders = latestBuilderRuns(runs, new Set(shown));
   const contracts = [...interfaces].flatMap(([provider, stored]) =>
     Object.entries(heldInterface(stored, provider).document.publishes)
       .filter(([, pub]) => pub.ecosystems.includes(ecosystemId))
@@ -127,7 +154,7 @@ export async function readBus(userId: string, ecosystemId: string) {
   return {
     ecosystem: { id: eco.id, slug: doc.ecosystem.slug, name: doc.ecosystem.name },
     projects: projects
-      .map((p) => ({ id: p.id, slug: p.slug, name: p.name }))
+      .map((p) => ({ id: p.id, slug: p.slug, name: p.name, builder: builders.get(p.id) ?? null }))
       .sort((a, b) => a.slug.localeCompare(b.slug)),
     contracts: contracts.sort((a, b) =>
       `${a.provider}/${a.slug}`.localeCompare(`${b.provider}/${b.slug}`),
@@ -139,6 +166,8 @@ export async function readBus(userId: string, ecosystemId: string) {
       contract: { provider: l.providerProjectId, slug: l.contractSlug },
       state: l.state,
       pinnedVersion: l.pinnedVersion,
+      outsideContract: storedLink(l).outsideContract.length,
+      updatedAt: l.updatedAt.toISOString(),
     })),
   };
 }

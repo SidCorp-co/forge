@@ -1,12 +1,11 @@
 "use client";
 
-import { Button, PageContainer, PageTitle } from "@/design";
+import { Button, PageTitle } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { IssuesListView } from "./issues-list-view";
-import { ReleaseGatePanel } from "./release-gate-panel";
 import { NewIssueDialog } from "./new-issue-dialog";
 
 interface IssuesScreenProps {
@@ -40,17 +39,16 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   }, [pathname]);
 
   const header = (
-    <header className="mb-4 flex flex-wrap items-start justify-between gap-3 sm:mb-6">
+    <header className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 pt-4 sm:px-6 sm:pt-5">
       <div>
         {/* Two headings, only one ever visible per breakpoint (`hidden` is
             display:none, so assistive tech only sees the active one) — avoids
             depending on a responsive variant of the custom `fg-h*` classes,
             which aren't registered as Tailwind utilities. */}
         <PageTitle className="fg-h3 sm:hidden">Issues</PageTitle>
-        <PageTitle className="fg-h2 hidden sm:block">Issues</PageTitle>
-        <p className="fg-body-sm mt-1 hidden text-muted sm:block">
-          Every issue on this project, and what each one is waiting on.
-        </p>
+        <PageTitle className="fg-h2 hidden sm:block" hint="Every issue on this project, and what each one is waiting on.">
+          Issues
+        </PageTitle>
       </div>
       <div className="flex items-center gap-3">
         {canWrite && (
@@ -71,15 +69,15 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
 
   return (
     <>
-      <PageContainer className="min-h-dvh">
+      {/* cm:why no page container: the list is one table flush with the sidebar edge, and only the header and toolbar keep a gutter (ISS-49) */}
+      <div className="flex min-h-full flex-col pb-6">
         {header}
-        <ReleaseGatePanel projectId={scope.projectId} slug={scope.slug} />
         <IssuesListView
           scope={scope}
           canWrite={canWrite}
           onNewIssue={canWrite ? () => setNewOpen(true) : undefined}
         />
-      </PageContainer>
+      </div>
 
       <NewIssueDialog
         open={newOpen && canWrite}

@@ -15,7 +15,7 @@ export {
 } from './deep-link';
 export {
   WORKSPACE_ITEMS, SECONDARY_DESTINATIONS, PROJECT_ITEMS, ECOSYSTEM_ITEMS, ECOSYSTEM_RAIL_KEYS,
-  PROJECT_ITEMS_BY_SPECIFICITY, activeSlug, matchesSub, buildCrumbs,
+  PROJECT_ITEMS_BY_SPECIFICITY, activeSlug, matchesSub,
   buildActiveKey, buildBottomActiveKey, workspaceNavItems,
   compactWorkspaceRailItems, projectRailItems, bottomTabItems,
   resolveRailSlug, projectMenu, PROJECT_MENU, isProjGroup, AUTOMATION_GROUP_KEY,

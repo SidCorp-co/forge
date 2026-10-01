@@ -897,13 +897,12 @@ export function ProjectRunnersScreen({
 		<>
 			{!embedded && (
 				<div className="flex items-center justify-between gap-3">
-					<div>
-						<PageTitle className="fg-h2">Runners</PageTitle>
-						<p className="fg-body-sm text-muted">
-							Devices that run this project&apos;s pipeline jobs. Status &amp;
-							provisioning update live.
-						</p>
-					</div>
+					<PageTitle
+						className="fg-h2"
+						hint="Devices that run this project's pipeline jobs. Status & provisioning update live."
+					>
+						Runners
+					</PageTitle>
 					<HelpButton
 						summary="Assign paired devices to this project. Each gets its own checkout; with a declared repository, a freshly-assigned device auto-clones, syncs skills, and writes its MCP config."
 						actions={[

@@ -140,6 +140,11 @@
 - **A project's master answers its ecosystem inbox.** A document owed a reply wakes the master
   even with no open issue. Masters and runs reach the channel, interface and links over MCP,
   authored by their own token.
+- **An ecosystem's page is a map of its members and contracts.** One column per project, one line
+  per contract, and a chip per link coloured by its state, with builder progress in each column's
+  header. Impact shows which consumers a contract reaches; selecting anything opens its detail,
+  a link's call sites, fields and notes included. Threads name which master drafted each document,
+  and a conversation can be held from its row.
 - **Releases lists a project's versions.** Each version shows its changelog from release notes
   and its deploy attempts, each opening its log in place. Issues waiting at the release gate
   show as the next version, ready to cut.

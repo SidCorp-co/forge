@@ -16,7 +16,7 @@ export { ProjectMark, type ProjectMarkProps } from "./primitives/project-mark";
 export { HealthDot, type HealthDotProps } from "./primitives/health-dot";
 export { Stat, type StatProps } from "./primitives/stat";
 export { Card, CardHeader, CardTitle, CardContent } from "./primitives/card";
-export { PageTitle, SectionTitle } from "./primitives/heading";
+export { PageTitle, SectionTitle, type PageTitleProps } from "./primitives/heading";
 export { Kicker } from "./primitives/kicker";
 export { Kbd } from "./primitives/kbd";
 export { Spinner, type SpinnerProps } from "./primitives/spinner";
@@ -59,13 +59,12 @@ export { ConfirmDialog, type ConfirmDialogProps } from "./primitives/confirm-dia
 export { Tabs, type TabsProps, type TabItem } from "./primitives/tabs";
 export { ScreenTabs, type ScreenTabsProps } from "./patterns/screen-tabs";
 export { PageContainer, type PageContainerProps } from "./patterns/page-container";
-export { Breadcrumb, type BreadcrumbProps, type Crumb } from "./primitives/breadcrumb";
 export { Pagination, type PaginationProps } from "./primitives/pagination";
 export { Collapsible, type CollapsibleProps } from "./primitives/collapsible";
 export {
   Table, THead, TBody, TR, TH, TD, SortableTH, DataTable,
   useReactTable, getCoreRowModel, getSortedRowModel, flexRender,
-  type SortableTHProps, type DataTableProps, type ColumnDef, type SortingState, type OnChangeFn,
+  type TableProps, type SortableTHProps, type DataTableProps, type ColumnDef, type SortingState, type OnChangeFn,
 } from "./primitives/table";
 export {
   HelpButton, type HelpButtonProps, type HelpContent, type HelpShortcut,

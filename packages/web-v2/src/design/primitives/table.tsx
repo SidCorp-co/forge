@@ -27,19 +27,25 @@ export type { ColumnDef, Header, OnChangeFn, SortingState };
 
 const DEFAULT_REGION_NAME = "Table, scrolls sideways";
 
+export interface TableProps extends HTMLAttributes<HTMLTableElement> {
+  /** No card frame: a top rule only, for a table that runs edge to edge of its page. */
+  flush?: boolean;
+}
+
 export function Table({
   className,
+  flush = false,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
   ...props
-}: HTMLAttributes<HTMLTableElement>) {
+}: TableProps) {
   const [scrollerRef, edges] = useScrollEdges<HTMLDivElement>();
   const overflows = edges.start || edges.end;
   const regionName = ariaLabelledBy
     ? { "aria-labelledby": ariaLabelledBy }
     : { "aria-label": ariaLabel ?? DEFAULT_REGION_NAME };
   return (
-    <div className="relative overflow-hidden rounded-lg border border-line bg-surface has-[>[role=region]:focus-visible]:outline-2 has-[>[role=region]:focus-visible]:outline-offset-2 has-[>[role=region]:focus-visible]:outline-cobalt">
+    <div className={cn("relative overflow-hidden bg-surface has-[>[role=region]:focus-visible]:outline-2 has-[>[role=region]:focus-visible]:outline-offset-2 has-[>[role=region]:focus-visible]:outline-cobalt", flush ? "border-t border-line" : "rounded-lg border border-line")}>
       <div
         ref={scrollerRef}
         className="relative overflow-x-auto [contain:inline-size] focus-visible:shadow-none"

@@ -47,10 +47,7 @@ export function DocsScreen() {
   return (
     <PageContainer className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <PageTitle className="fg-h2">Docs</PageTitle>
-          <p className="fg-body-sm text-muted">Guides for using Forge.</p>
-        </div>
+        <PageTitle className="fg-h2">Docs</PageTitle>
         <HelpButton
           summary="How to use Forge — getting started, pairing a runner, managing your organization, connecting your own assistant, and troubleshooting. Pick a page from the left, read it in the center, and jump around with the table of contents."
           actions={["Search filters the page list", "Click a TOC entry to jump to that heading"]}
@@ -91,7 +88,7 @@ export function DocsScreen() {
               mascot={false}
             />
           ) : (
-            <DocsArticle crumbs={[doc.section, doc.title]} body={doc.body} docBasePath={doc.slug} />
+            <DocsArticle body={doc.body} docBasePath={doc.slug} />
           )}
         </DocsLayout>
       )}

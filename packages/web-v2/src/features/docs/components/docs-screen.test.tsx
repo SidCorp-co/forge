@@ -17,41 +17,40 @@ function open(search: string) {
   return render(<DocsScreen />);
 }
 
-function breadcrumb(): string | null {
-  return screen.queryByRole("navigation", { name: "Breadcrumb" })?.textContent ?? null;
+function pageHeading(): string | null {
+  return screen.queryByRole("heading", { level: 1, name: (name) => name !== "Docs" })?.textContent ?? null;
 }
 
 describe("the Docs screen opened from a link", () => {
   it("opens the page the link names", () => {
     open("path=what-done-means");
-    expect(breadcrumb()).toContain("Tell when an issue is done");
+    expect(pageHeading()).toContain("Tell when an issue is done");
   });
 
   it("opens the first page when no page is asked for", () => {
     open("");
-    expect(breadcrumb()).toContain("Getting started");
+    expect(pageHeading()).toContain("Getting started");
   });
 
   it("says a page does not exist instead of showing a different one", () => {
     open("path=no-such-page");
     expect(screen.getByText("No such help page")).toBeInTheDocument();
     expect(screen.getByText(/No help page is called "no-such-page"/)).toBeInTheDocument();
-    expect(breadcrumb()).toBeNull();
+    expect(pageHeading()).toBeNull();
   });
 
   it("says a link naming no page names none", () => {
     open("path=");
     expect(screen.getByText("No such help page")).toBeInTheDocument();
     expect(screen.getByText(/names no help page/)).toBeInTheDocument();
-    expect(breadcrumb()).toBeNull();
+    expect(pageHeading()).toBeNull();
   });
 });
 
 describe("the Connect an assistant section (ISS-1175)", () => {
   it("opens a page in the section's folder from its link", () => {
     open("path=connect-an-assistant/claude-code");
-    expect(breadcrumb()).toContain("Connect an assistant");
-    expect(breadcrumb()).toContain("Connect Claude Code");
+    expect(pageHeading()).toContain("Connect Claude Code");
   });
 
   it("lists the section after Guides, with its seven pages in reading order", () => {

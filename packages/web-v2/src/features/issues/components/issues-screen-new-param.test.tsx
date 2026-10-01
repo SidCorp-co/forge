@@ -90,7 +90,6 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", slug: "forge-dev", role: "admin" }] }),
 }));
-vi.mock("./release-gate-panel", () => ({ ReleaseGatePanel: () => null }));
 vi.mock("./issues-list-view", () => ({ IssuesListView: () => null }));
 // The dialog's own behaviour has its own tests; this stub keeps the two exits it hands back to
 // the screen — a plain close, and the close that the real dialog makes before it routes to the

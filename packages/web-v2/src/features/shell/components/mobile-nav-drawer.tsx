@@ -1,6 +1,6 @@
 "use client";
 
-// cm:why below md this drawer, opened from the More tab, is the whole of the sidebar: the project tier, the workspace destinations, the project switcher, and the search, bell and account the sidebar footer carries above md
+// cm:why below md this drawer, opened from the More tab, is the whole of the sidebar: the project tier, the workspace destinations, the project switcher, the bell beside the org picker as the sidebar has it at its top, and the search, account and version the sidebar carries above md
 import { useEffect } from "react";
 import { Icon, ProjectMark } from "@/design";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
@@ -83,6 +83,8 @@ export interface MobileNavDrawerProps {
    *  navigation below md, so nothing else carries it there (ISS-1119). */
   version?: React.ReactNode;
   search?: React.ReactNode;
+  /** The notifications bell, on the org picker's row. */
+  bell?: React.ReactNode;
   footer?: React.ReactNode;
 }
 
@@ -102,6 +104,7 @@ export function MobileNavDrawer({
   onViewAllProjects,
   version,
   search,
+  bell,
   footer,
 }: MobileNavDrawerProps) {
   // Esc closes the mobile drawer.
@@ -248,8 +251,11 @@ export function MobileNavDrawer({
       >
         {/* Org context + switcher (ISS-469) — the rail is hidden below md,
             so the drawer carries the current-org control on mobile. */}
-        <div className="px-1.5 pb-3">
-          <OrgSwitcher variant="expanded" />
+        <div className="flex items-center gap-1.5 px-1.5 pb-3">
+          <div className="min-w-0 flex-1">
+            <OrgSwitcher variant="expanded" />
+          </div>
+          {bell}
         </div>
 
         {search && <div className="px-1.5 pb-2">{search}</div>}
