@@ -41,7 +41,7 @@ export interface WorkspaceSidebarProps {
   onRoute: (href: string) => void;
   onSignOut: () => void;
   userInitials: string | undefined;
-  search: (compact: boolean) => React.ReactNode;
+  search: (variant: "compact" | "icon") => React.ReactNode;
   bell: React.ReactNode;
 }
 
@@ -78,13 +78,15 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
     onSignOut: props.onSignOut,
   };
 
-  if (mode === "chat") {
+  if (mode === "chat" && !collapsed) {
     return (
       <NavRail
         workspaceItems={[]}
         activeKey=""
         modeSwitch={<ModeSwitch mode={mode} onSwitch={onSwitchMode} />}
+        brandSearch={props.search("icon")}
         orgSwitcher={<OrgSwitcher variant="expanded" />}
+        onToggleCollapsed={props.onToggleCollapsed}
         bell={props.bell}
         body={
           <ChatSidebar slug={props.chat.slug} conversationId={props.chat.conversationId} onNavigate={onRoute} />
@@ -116,7 +118,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
         onExpand={props.onToggleCollapsed}
         version={<ForgeVersion className="text-9-5 leading-tight" />}
         modeSwitch={<ModeSwitch mode={mode} onSwitch={onSwitchMode} compact />}
-        search={props.search(true)}
+        search={props.search("compact")}
         bell={props.bell}
         {...footer}
       />
@@ -148,7 +150,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
         onToggleCollapsed={props.onToggleCollapsed}
         version={<ForgeVersion className="fg-caption truncate" />}
         modeSwitch={<ModeSwitch mode={mode} onSwitch={onSwitchMode} />}
-        search={props.search(false)}
+        brandSearch={props.search("icon")}
         bell={props.bell}
         {...footer}
       />

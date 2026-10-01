@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon, type IconName } from "@/design";
+import { Menu } from "@/design/patterns/menu";
 import { cn } from "@/lib/utils/cn";
 import type { ShellMode } from "../mode";
 
@@ -18,6 +19,7 @@ export function ModeSwitch({
   onSwitch: (to: ShellMode) => void;
   compact?: boolean;
 }) {
+  if (!compact) return <ModeSelect mode={mode} onSwitch={onSwitch} />;
   return (
     <div
       role="tablist"
@@ -51,5 +53,35 @@ export function ModeSwitch({
         );
       })}
     </div>
+  );
+}
+
+function ModeSelect({ mode, onSwitch }: { mode: ShellMode; onSwitch: (to: ShellMode) => void }) {
+  const current = MODES.find((m) => m.value === mode) ?? MODES[0];
+  return (
+    <Menu
+      align="left"
+      className="min-w-0 flex-1"
+      triggerClassName="block w-full min-w-0"
+      items={MODES.map((m) => ({
+        label: `Forge ${m.label}`,
+        icon: m.icon,
+        checked: m.value === mode,
+        onSelect: () => onSwitch(m.value),
+      }))}
+      trigger={
+        <button
+          type="button"
+          data-testid="mode-switch"
+          aria-label={`Mode: ${current.label}`}
+          className="flex w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-hover focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none"
+        >
+          <span className="fg-h3 min-w-0 flex-1 truncate" style={{ fontSize: "var(--text-16)" }}>
+            Forge <span className="text-muted">{current.label}</span>
+          </span>
+          <Icon name="chevronDown" size={14} className="flex-none text-subtle" />
+        </button>
+      }
+    />
   );
 }

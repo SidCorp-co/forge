@@ -2,7 +2,20 @@
 
 import { Icon, Kbd } from "@/design";
 
-export function SidebarSearch({ onOpen, compact = false }: { onOpen: () => void; compact?: boolean }) {
+export function SidebarSearch({ onOpen, compact = false, icon = false }: { onOpen: () => void; compact?: boolean; icon?: boolean }) {
+  if (icon) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label="Search (⌘K)"
+        title="Search (⌘K)"
+        className="inline-flex size-7 flex-none items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
+      >
+        <Icon name="search" size={16} />
+      </button>
+    );
+  }
   if (compact) {
     return (
       <button

@@ -57,7 +57,7 @@ export interface NavRailCompactProps {
   /** Global org switcher (ISS-469) — rendered under the brand, above the
    *  project switcher. Presentational slot; the layout supplies the control. */
   orgSwitcher?: React.ReactNode;
-  /** Switch to the expanded (labeled, 248px) rail. */
+  /** Switch to the expanded (labeled, 280px) rail. */
   onExpand?: () => void;
   /** Footer: jump to the What's New feed. `whatsNewBadge` shows a "new" dot. */
   onWhatsNew?: () => void;

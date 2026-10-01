@@ -231,7 +231,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           onRoute={(href) => router.push(href)}
           onSignOut={logout}
           userInitials={userInitials}
-          search={(compact) => <SidebarSearch onOpen={openPalette} compact={compact} />}
+          search={(variant) => <SidebarSearch onOpen={openPalette} compact={variant === "compact"} icon={variant === "icon"} />}
           bell={<SidebarBell ref={sidebarBellRef} count={bellCount} onToggle={() => toggleBell(sidebarBellRef)} />}
         />
       </div>

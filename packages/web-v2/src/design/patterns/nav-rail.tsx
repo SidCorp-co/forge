@@ -62,6 +62,7 @@ export interface NavRailProps {
   version?: React.ReactNode;
   modeSwitch?: React.ReactNode;
   search?: React.ReactNode;
+  brandSearch?: React.ReactNode;
   bell?: React.ReactNode;
   body?: React.ReactNode;
   /** Icon-only collapsed rail. */
@@ -216,6 +217,7 @@ export function NavRail({
   version,
   modeSwitch,
   search,
+  brandSearch,
   bell,
   body,
   collapsed = false,
@@ -277,7 +279,7 @@ export function NavRail({
     <nav
       className={cn(
         "flex h-full flex-none flex-col gap-3.5 border-r border-line bg-surface py-4 transition-[width] duration-150",
-        collapsed ? "w-[60px] px-2" : "w-[248px] px-3",
+        collapsed ? "w-[60px] px-2" : "w-[280px] px-3",
       )}
     >
       <div data-testid="brand-row" className={cn("flex items-center", collapsed ? "justify-center" : "gap-1.5 px-1")}>
@@ -293,10 +295,8 @@ export function NavRail({
         />
         {!collapsed && (
           <>
-            <span className="fg-h3 min-w-0 flex-1 truncate" style={{ fontSize: "var(--text-16)" }}>
-              Forge
-            </span>
             {modeSwitch}
+            {brandSearch}
             {onToggleCollapsed && (
               <button
                 type="button"
