@@ -65,6 +65,7 @@ async function mintDownloadTicket(
 
 export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_uploads',
+  grant: { byAction: { request: 'issues:write', fetch: 'issues:read' } },
   description:
     'Upload (action=request) or READ (action=fetch) an issue/comment/session attachment.\n' +
     'action=request — mint a short-lived, single-use upload URL WITHOUT base64-inlining ' +

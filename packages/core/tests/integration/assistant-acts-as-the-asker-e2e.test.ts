@@ -327,21 +327,37 @@ describe('a person who sent their message with an access token', () => {
     (await m.store.readMessages(conversationId, 10)).filter((x) => x.role === 'assistant').at(-1)
       ?.content ?? null;
 
-  it('is bounded by its grant: a token granted less than everything does not reach the CLI', async () => {
+  it('is bounded by its grant: the CLI runs, and the door it reaches refuses what the grant does not cover', async () => {
     const member = await person('member');
     const { mintPat } = await import('../../src/auth/pat.js');
     const pat = await mintPat({
       userId: member,
       name: 'narrow',
-      permissions: ['assistant:write', 'issues:write'],
+      permissions: ['assistant:write', 'issues:read'],
     });
     const room = await askDirectly(member, pat.row.id);
     const window = await claimOne(room.externalId, 'web');
     await m.send.routeWebWindow(window, m.windows.claimOf(window) as never);
 
     expect(toolRuns[0]?.isError).toBe(true);
-    expect(toolRuns[0]?.text).toMatch(/granted only assistant:write, issues:write/);
+    expect(toolRuns[0]?.text).toMatch(/not granted 'issues:write'/);
     expect(await commentsOnIssue()).toEqual([]);
+  });
+
+  it('writes where the narrow grant covers the write', async () => {
+    const member = await person('member');
+    const { mintPat } = await import('../../src/auth/pat.js');
+    const pat = await mintPat({
+      userId: member,
+      name: 'narrow-writer',
+      permissions: ['assistant:write', 'issues:read', 'issues:write'],
+    });
+    const room = await askDirectly(member, pat.row.id);
+    const window = await claimOne(room.externalId, 'web');
+    await m.send.routeWebWindow(window, m.windows.claimOf(window) as never);
+
+    expect(toolRuns[0]?.isError, toolRuns[0]?.text).toBe(false);
+    expect(await commentsOnIssue()).toEqual([{ authorId: member }]);
   });
 
   it('is refused by name where that token was revoked before the turn acted', async () => {

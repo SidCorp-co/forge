@@ -64,6 +64,18 @@ const inputSchema = z
 
 export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_reconcile',
+  grant: {
+    byAction: {
+      trigger: 'skills:write',
+      get: 'skills:read',
+      list: 'skills:read',
+      record_verdict: 'skills:write',
+      record_vote: 'skills:write',
+      apply: 'skills:write',
+      reject: 'skills:write',
+      acknowledge: 'skills:write',
+    },
+  },
   description: `Update Pipeline stage ② (Reconcile) tool. Actions:
   - trigger: Start a reconcile run for a skill × packet pair (admin-only). Enforces C1–C5 contract. Returns runId or a structured refusal.
   - get: Fetch a single reconcile run by runId (member-gated). Returns run status, verdict, gate, bundle snapshot, verifier votes.

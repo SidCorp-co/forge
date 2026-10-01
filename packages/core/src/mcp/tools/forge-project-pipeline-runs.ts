@@ -37,6 +37,15 @@ const inputSchema = z
 
 export const forgeProjectPipelineRunsTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_project_pipeline_runs',
+  grant: {
+    byAction: {
+      list: 'pipeline:read',
+      get: 'pipeline:read',
+      pause: 'pipeline:write',
+      resume: 'pipeline:write',
+      cancel: 'pipeline:write',
+    },
+  },
   description:
     'Lifecycle controls for project pipeline_runs. Actions: list | get | pause | resume | cancel. ' +
     'Every list row carries `liveJobs` — how many of its JOBS are still queued/dispatched/running. READ IT before treating `status` as liveness: a run stays `running` after its last job ends, so `status:"running"` with `liveJobs: 0` is usually a run nothing is working on, which filtering on status alone cannot tell apart. It is NOT proof of that: a resident master’s own run has no jobs row at all, so it reads 0 while fully live. Every row also carries `lane` — `job`, `run_session`, `master` or `system` — and `residentMaster`: on a `lane:"master"` row it is `{ sessionId, name, lastHeartbeatAt }` while that master’s session is live, and `null` once nothing holds the run, which is then an orphan like any other; off the master lane it is always `null`. Read `lane` and `residentMaster` before calling a run abandoned. ' +

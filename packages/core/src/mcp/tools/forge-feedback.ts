@@ -88,26 +88,36 @@ function buildSignalKey(
   return `self_report:${target}:${safeRef}:${kind}`;
 }
 
+const DESCRIPTION =
+  'Submit, list, get, or review agent friction reports. ' +
+  'action=submit: report friction, skill gaps, unclear steps, or learnings mid-run. ' +
+  'Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it. ' +
+  'Required fields: projectId, kind, target, summary. ' +
+  'projectId names the project the report is ABOUT, which need not be the one you are working in; it is REQUIRED and never inferred, because a report filed into the wrong feed is never read (`forge_projects.list` prints it beside each slug — it is its own tool, not an action on one). ' +
+  'Optional: severity (default low), targetRef, detail, suggestion. ' +
+  'Returns {ok:true,id,signalKey} on success; {ok:false,reason:"rate_limited"} when the per-job cap is hit (not a 500 — agent continues). ' +
+  'action=list: read the friction feed. Supports filters.kind/target/severity/reviewed, limit (default 25, fleet default 50). ' +
+  'scope="project" (default) reads the resolved project; scope="all" unions every project you own or are a member of and adds projectId/projectSlug to each row. ' +
+  'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete. `truncated:true` + `truncatedBy` say which cap bit (your limit, or the hard response-size cap). ' +
+  'action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. ' +
+  'action=review: stamp reviewedAt on report(s) once triaged/addressed (reviewed:false clears the stamp). ' +
+  'reportId stamps a single report (unchanged single-project behaviour). ' +
+  'When folding a report into an issue, also pass linkedIssueId (must belong to the same project as the report, or NOT_FOUND) — it is stamped atomically with reviewedAt and returned, so the report becomes traceable to what it became. ' +
+  'Omitting linkedIssueId on a later review call leaves any existing link untouched (back-compat); reviewed:false clears BOTH reviewedAt and linkedIssueId. ' +
+  'Curators (e.g. forge-memory-curator, or anyone triaging feedback into an issue) SHOULD pass linkedIssueId so the loop closes. ' +
+  'signalKey bulk-stamps every report sharing that signalKey — add scope="all" to bulk-stamp across every project you can see (scope="all" without signalKey is a BAD_REQUEST); returns {ok:true,count,scope,linkedIssueId}. linkedIssueId IS supported on the bulk path: N duplicate reports of one Forge defect fold into ONE issue in a single call. A report is feedback ABOUT FORGE — its projectId records where the defect was OBSERVED, not who owns the fix — so linkedIssueId may name an issue in ANY project you can see (normally the Forge project), not just the one the report was filed from. reviewed:false clears reviewedAt AND linkedIssueId.';
+
 export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_feedback',
-  description:
-    'Submit, list, get, or review agent friction reports. ' +
-    'action=submit: report friction, skill gaps, unclear steps, or learnings mid-run. ' +
-    'Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it. ' +
-    'Required fields: projectId, kind, target, summary. ' +
-    'projectId names the project the report is ABOUT, which need not be the one you are working in; it is REQUIRED and never inferred, because a report filed into the wrong feed is never read (`forge_projects.list` prints it beside each slug — it is its own tool, not an action on one). ' +
-    'Optional: severity (default low), targetRef, detail, suggestion. ' +
-    'Returns {ok:true,id,signalKey} on success; {ok:false,reason:"rate_limited"} when the per-job cap is hit (not a 500 — agent continues). ' +
-    'action=list: read the friction feed. Supports filters.kind/target/severity/reviewed, limit (default 25, fleet default 50). ' +
-    'scope="project" (default) reads the resolved project; scope="all" unions every project you own or are a member of and adds projectId/projectSlug to each row. ' +
-    'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete. `truncated:true` + `truncatedBy` say which cap bit (your limit, or the hard response-size cap). ' +
-    'action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. ' +
-    'action=review: stamp reviewedAt on report(s) once triaged/addressed (reviewed:false clears the stamp). ' +
-    'reportId stamps a single report (unchanged single-project behaviour). ' +
-    'When folding a report into an issue, also pass linkedIssueId (must belong to the same project as the report, or NOT_FOUND) — it is stamped atomically with reviewedAt and returned, so the report becomes traceable to what it became. ' +
-    'Omitting linkedIssueId on a later review call leaves any existing link untouched (back-compat); reviewed:false clears BOTH reviewedAt and linkedIssueId. ' +
-    'Curators (e.g. forge-memory-curator, or anyone triaging feedback into an issue) SHOULD pass linkedIssueId so the loop closes. ' +
-    'signalKey bulk-stamps every report sharing that signalKey — add scope="all" to bulk-stamp across every project you can see (scope="all" without signalKey is a BAD_REQUEST); returns {ok:true,count,scope,linkedIssueId}. linkedIssueId IS supported on the bulk path: N duplicate reports of one Forge defect fold into ONE issue in a single call. A report is feedback ABOUT FORGE — its projectId records where the defect was OBSERVED, not who owns the fix — so linkedIssueId may name an issue in ANY project you can see (normally the Forge project), not just the one the report was filed from. reviewed:false clears reviewedAt AND linkedIssueId.',
+  grant: {
+    byAction: {
+      submit: 'feedback:write',
+      list: 'feedback:read',
+      review: 'feedback:write',
+      get: 'feedback:read',
+    },
+  },
+  description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);

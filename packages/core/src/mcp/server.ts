@@ -9,6 +9,7 @@ import pkg from '../../package.json' with { type: 'json' };
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
 import { resolveManagedMetaPrompts } from '../skills/effective.js';
 import { forgeMcpInstructions } from './instructions.js';
+import { assertToolDeclaresGrant, toolGrantRefusal } from './tool-grant.js';
 import { toToolCallContent } from './tool-result.js';
 import {
   forgeAgentSessionsGetTool,
@@ -107,7 +108,7 @@ function projectIdFromArgs(args: Record<string, unknown>): string | null {
 }
 
 export function mcpTools(ctx: McpContext): McpTool[] {
-  return [
+  const tools: McpTool[] = [
     forgeMemorySearchTool(ctx),
     forgeMemoryWriteTool(ctx),
     forgeMemoryGetTool(ctx),
@@ -174,6 +175,8 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     forgeSentryTool(ctx),
     forgeGuideTool(ctx),
   ];
+  for (const tool of tools) assertToolDeclaresGrant(tool);
+  return tools;
 }
 
 export function toolListing(tools: McpTool[]) {
@@ -255,6 +258,14 @@ export function createMcpServer(ctx: McpContext): Server {
         content: [{ type: 'text', text: 'NOT_FOUND: project not found or not accessible' }],
         isError: true,
       };
+    }
+
+    // cm:guard the token's grant is read here, before any handler: a tool's role check alone
+    // would let a token granted `issues:read` call every tool its user's role allows.
+    const refusal = toolGrantRefusal(tool, args, principal.permissions);
+    if (refusal) {
+      writeMcpAudit({ ...auditBase, resultCode: 'forbidden' });
+      return { content: [{ type: 'text', text: `Error: ${refusal}` }], isError: true };
     }
 
     try {

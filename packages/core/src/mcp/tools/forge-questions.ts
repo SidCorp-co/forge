@@ -83,6 +83,7 @@ function refused(err: unknown): unknown {
 
 export const forgeQuestionsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_questions',
+  grant: { byAction: { ask: 'questions:write', get: 'questions:read', list: 'questions:read' } },
   description:
     'Ask a person (or a peer agent) a question against an issue, and read questions back. ' +
     'action=ask — data={issueId, prompt, blockerKind:"human"|"master_or_peer"|"machine", then EITHER ' +

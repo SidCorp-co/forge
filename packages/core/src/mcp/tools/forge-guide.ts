@@ -50,6 +50,14 @@ async function assertOrgAdmin(ctx: McpContext, orgId: string): Promise<string> {
 
 export const forgeGuideTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_guide',
+  grant: {
+    byAction: {
+      list: { none: 'the guide corpus GET /api/guides serves to anyone' },
+      get: { none: 'the guide corpus GET /api/guides serves to anyone' },
+      upsert: 'orgs:write',
+      delete: 'orgs:write',
+    },
+  },
   description:
     'Forge capability guides, fetched live. TWO TIERS, one slug space: (1) product-global guides about Forge features, defined in code, identical for every org; (2) per-ORG integration guides under the slug `integration-<provider>` (e.g. `integration-epodsystem`) documenting an external service — these are runtime-editable and shadow nothing else. ' +
     '`action=list` returns a body-free index (slug/title/summary/version) with your org overrides merged in. ' +

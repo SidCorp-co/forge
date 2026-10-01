@@ -124,6 +124,14 @@ function decodeBase64Strict(input: string): Buffer | null {
 
 export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_comments',
+  grant: {
+    byAction: {
+      list: 'issues:read',
+      create: 'issues:write',
+      update: 'issues:write',
+      delete: 'issues:write',
+    },
+  },
   description:
     'List, create, update or delete issue comments. List requires filters.issue (issue UUID). ' +
     'EVERY list response carries `returned`, `limit`, `hasMore` and `nextCursor` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +

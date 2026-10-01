@@ -67,6 +67,7 @@ function recordDeprecation(ctx: McpContext, toolName: string) {
 
 export const forgePmSetDependencyTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_pm.set_dependency',
+  grant: 'issues:write',
   description:
     '[DEPRECATED — use forge_project_pm (action=set_dependency)] Record a dependency edge (blocks/relates/duplicates/parent/decomposes) between two issues in the same project. Only `blocks` gates dispatch. ' +
     WORK_EVIDENCE_WAIVER_NOTE +
