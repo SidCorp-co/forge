@@ -30,6 +30,9 @@ export const notificationTypes = [
   'issue_stranded',
   'retry_rescue_threshold',
   'ops_alert',
+  'channel_document_published',
+  'channel_thread_held',
+  'channel_gate_pending',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

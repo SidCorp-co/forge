@@ -54,6 +54,7 @@ type StepCommon = {
   askedAt: string;
   answeredAt?: string;
   answeredBy?: string;
+  note?: string;
   sensitive?: boolean;
 };
 
@@ -101,6 +102,7 @@ export type QuestionOrigin =
       /** The transport's own id for whoever spoke, which a directory can be asked about. */
       askedByKey: string | null;
     }
+  | { kind: 'channel_gate'; documentId: string; number: string }
   | { kind: 'unresolved'; reason: string };
 
 export const agentQuestions = pgTable(
@@ -134,10 +136,21 @@ export const agentQuestions = pgTable(
     index('agent_questions_project_status_idx').on(t.projectId, t.status),
     index('agent_questions_session_idx').on(t.agentSessionId),
     index('agent_questions_issue_idx').on(t.issueId),
+    // cm:why a channel document waits at its gate on one open question, so two approvers cannot each publish a copy
+    uniqueIndex('agent_questions_channel_gate_open_uq')
+      .on(sql`(${t.origin} ->> 'documentId')`)
+      .where(sql`${t.status} = 'open' and ${t.origin} ->> 'kind' = 'channel_gate'`),
     check(
       'agent_questions_origin_shape_chk',
       sql`${t.origin} is null or (
         (${t.origin} ->> 'kind' = 'unresolved' and ${t.origin} ? 'reason')
+        or (
+          ${t.origin} ->> 'kind' = 'channel_gate'
+          and ${t.origin} ? 'documentId'
+          and ${t.origin} ? 'number'
+          and ${t.issueId} is null
+          and ${t.agentSessionId} is null
+        )
         or (
           ${t.origin} ->> 'kind' = 'conversation'
           and ${t.origin} ? 'adapter'

@@ -16,6 +16,7 @@ const {
   registerMasterWakeSubscribers,
   wakeMastersForProject,
   wakeMastersForAnswer,
+  wakeMastersForChannel,
 } = await import('./master-wake.js');
 
 /** `db.selectDistinct().from().where()` resolving to these rows. */
@@ -223,5 +224,18 @@ describe('an answer as a wake trigger', () => {
       boxes: 0,
       delivered: 0,
     });
+  });
+});
+
+describe('a channel document as a wake trigger', () => {
+  it('names the project and where to look, and nothing of the document', async () => {
+    servedBy(['dev-a']);
+
+    expect(await wakeMastersForChannel('p1')).toEqual({ boxes: 1, delivered: 1 });
+    expect(publishedEvent(0)).toBe('master.wake');
+    expect(
+      publishedData(0),
+      'a lost wake loses nothing only while the frame carries no content: the inbox is the one place a document is read',
+    ).toEqual({ projectId: 'p1', source: 'channel' });
   });
 });

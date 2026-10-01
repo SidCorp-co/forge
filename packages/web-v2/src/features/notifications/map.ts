@@ -19,6 +19,12 @@ function typeLabel(type: string): string {
       return "STRANDED";
     case "retry_rescue_threshold":
       return "RETRY";
+    case "channel_document_published":
+      return "CHANNEL";
+    case "channel_thread_held":
+      return "HELD";
+    case "channel_gate_pending":
+      return "APPROVE";
     default:
       return "EVENT";
   }

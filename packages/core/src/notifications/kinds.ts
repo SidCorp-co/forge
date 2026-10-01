@@ -43,6 +43,9 @@ export const NOTIFICATION_KIND_TABLE: Record<NotificationType, NotificationKindE
   issue_stranded: { kind: 'condition', tier: 'ticket', pendingEvaluations: 2 },
   retry_rescue_threshold: { kind: 'condition', tier: 'ticket', pendingEvaluations: 2 },
   ops_alert: { kind: 'condition', tier: 'ticket' },
+  channel_document_published: { kind: 'signal', tier: 'ticket' },
+  channel_thread_held: { kind: 'condition', tier: 'ticket' },
+  channel_gate_pending: { kind: 'task', tier: 'ticket' },
 };
 
 export function kindOf(type: NotificationType): NotificationKind {

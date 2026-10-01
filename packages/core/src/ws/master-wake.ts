@@ -62,6 +62,13 @@ export async function wakeMastersForAnswer(args: {
   });
 }
 
+// cm:why a channel wake names only the project and where to look; the document is read from the inbox, so a wake lost on a dropped socket loses nothing
+export async function wakeMastersForChannel(
+  projectId: string,
+): Promise<{ boxes: number; delivered: number }> {
+  return publishWake(projectId, { projectId, source: 'channel' });
+}
+
 async function publishWake(
   projectId: string,
   data: Record<string, unknown>,

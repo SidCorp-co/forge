@@ -16,8 +16,10 @@ import {
   questionBlockerKinds,
   questionStatuses,
 } from '../db/schema-questions.js';
+import { Refused } from '../ecosystem/channel-act.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { refused as refusedByName } from '../project-config/respond.js';
 import {
   answerAs,
   askAs,
@@ -96,6 +98,10 @@ const answerBody = z.object({
   round: z
     .number({ error: 'round is required, as an integer' })
     .int({ error: 'round is required, as an integer' }),
+  note: z
+    .string({ error: 'note must be a string' })
+    .max(1000, { error: 'note is at most 1000 characters' })
+    .optional(),
 });
 
 const voidBody = z.object({ reason: z.string().optional() });
@@ -145,6 +151,7 @@ const REFUSAL_STATUS: Record<QuestionRefusalCode, ContentfulStatusCode> = {
   QUESTION_ANSWER_WRONG_SHAPE: 400,
   QUESTION_MESSAGE_REFUSED: 400,
   QUESTION_CURSOR_INVALID: 400,
+  QUESTION_NOTE_NOT_TAKEN: 400,
 };
 
 const sessionOnly = (verb: string) =>
@@ -266,10 +273,12 @@ questionRoutes.post(
             : { kind: 'text', text: body.text as string },
           round: body.round,
           userId: c.get('userId'),
+          ...(body.note === undefined ? {} : { note: body.note }),
         }),
       );
     } catch (e) {
       if (e instanceof QuestionRefused) throw refused(e);
+      if (e instanceof Refused) return refusedByName(c, e.refusals);
       throw e;
     }
   },

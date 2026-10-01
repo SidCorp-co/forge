@@ -12,7 +12,7 @@ import { supersede, withdraw } from './channel-ends.js';
 import { holdOrRelease } from './channel-holds.js';
 import { inbox, outbox, readAs, threadAs } from './channel-read.js';
 import { NUMBER_PATTERN } from './channel-schema.js';
-import { createDraft, decideGate, editDraft, submit } from './channel-service.js';
+import { createDraft, editDraft, submit } from './channel-service.js';
 import type { ServedDocument } from './channel-world.js';
 import type { ChannelRefusalCode } from './refusals.js';
 
@@ -100,17 +100,6 @@ const supersedeBody = zValidator(
   },
 );
 
-const gateBody = zValidator(
-  'json',
-  z.strictObject({
-    decision: z.enum(['approved', 'returned']),
-    note: z.string().trim().min(1).max(1000).optional(),
-  }),
-  (r) => {
-    if (!r.success) throw badRequest('a gate decision is { decision: approved | returned, note? }');
-  },
-);
-
 const holdBody = zValidator('json', z.strictObject({ reason: z.string().optional() }), (r) => {
   if (!r.success) throw badRequest('a hold is { reason }, and a release is { reason? }');
 });
@@ -169,21 +158,6 @@ channelProjectRoutes.put('/:id/channel/documents/:doc', docParam, editBody, asyn
 channelProjectRoutes.post('/:id/channel/documents/:doc/submit', docParam, async (c) => {
   const { id, doc } = c.req.valid('param');
   return answer(c, await submit({ projectId: id, documentId: doc, writer: await writer(c, id) }));
-});
-
-channelProjectRoutes.post('/:id/channel/documents/:doc/gate', docParam, gateBody, async (c) => {
-  const { id, doc } = c.req.valid('param');
-  const { decision, note } = c.req.valid('json');
-  return answer(
-    c,
-    await decideGate({
-      projectId: id,
-      documentId: doc,
-      writer: await writer(c, id),
-      decision,
-      note,
-    }),
-  );
 });
 
 channelProjectRoutes.post(
