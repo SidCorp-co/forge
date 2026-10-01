@@ -105,9 +105,9 @@ vi.mock('../release-batch/gate.js', () => ({
 type Unearned = { criterion: number; verdict: string | null; standing: string | null; why: string };
 const SERVED = [{ commit: 'c0ffee0', where: 'h' }];
 const READING = { kind: 'serving', served: SERVED, unread: [], readAt: 'T' };
-const none = { unearned: [] as Unearned[], serving: READING, uncorroborated: [] as number[] };
+const none = { unearned: [] as Unearned[], serving: READING, runtimes: [], uncorroborated: [] };
 const noneUnearned = async (i: string[]) => i.map((id) => ({ issueId: id, ...none }));
-const unearnedCriteriaReportsMock = vi.fn(noneUnearned);
+const unearnedCriteriaReportsMock = vi.fn<(i: string[]) => Promise<object[]>>(noneUnearned);
 vi.mock('../issues/criteria-verdicts.js', () => ({
   unearnedCriteriaReports: (ids: string[]) => unearnedCriteriaReportsMock(ids),
 }));
@@ -128,6 +128,7 @@ const STOOD =
 const SUPERSEDED: Unearned = { criterion: 13, verdict: 'pass', standing: 'superseded', why: STOOD };
 
 const loadCreatedByMock = vi.fn(async (_projectId: string) => 'owner-1' as string | undefined);
+vi.mock('../release-batch/runtime-weighing.js', () => ({ readWeighingNow: async () => null }));
 vi.mock('../schedules/release-batch-dispatch.js', () => ({
   loadCreatedBy: (projectId: string) => loadCreatedByMock(projectId),
 }));

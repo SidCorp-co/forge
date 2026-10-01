@@ -15,6 +15,7 @@ import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { logger } from '../logger.js';
 import { type ServingReading, servingClause } from '../release-batch/serving-reading.js';
+import type { RuntimeReading } from '../release-batch/weighing.js';
 
 /** The session_context key this module owns. */
 export const RELEASE_HOLD_KEY = 'releaseHold';
@@ -118,8 +119,36 @@ function reasonsByWhy(report: IssueCriteriaReport): string {
   return [...byWhy].map(([why, numbers]) => `${criteriaNamed(numbers)}: ${why}`).join('; ');
 }
 
+/** What one declared runtime was read as running, for the judge clause (ISS-1368). */
+function runtimeClause(runtime: RuntimeReading): string {
+  const { serving } = runtime;
+  const read =
+    serving.kind === 'serving'
+      ? servingClause(serving)
+      : serving.kind === 'unreadable'
+        ? `nothing could be read, read at ${serving.readAt}: ${serving.why}`
+        : `nothing reports it: ${serving.missing}`;
+  return `the \`${runtime.name}\` runtime, under ${runtime.paths.map((p) => `\`${p}\``).join(', ')}: ${read}`;
+}
+
 /** Where a verdict has to be judged to count — the one place the reading is said (ISS-1346). */
-function judgeClause(serving: ServingReading): string {
+function judgeClause(serving: ServingReading, runtimes: readonly RuntimeReading[]): string {
+  const deployment = deploymentClause(serving, runtimes);
+  if (serving.kind === 'serving' || runtimes.length === 0) return deployment;
+  // The allowance above is the deployment's: a declared runtime with nothing read still holds.
+  return (
+    `${deployment}. A criterion held in a declared runtime earns only at a build it is running — ` +
+    runtimes.map(runtimeClause).join('; ')
+  );
+}
+
+function deploymentClause(serving: ServingReading, runtimes: readonly RuntimeReading[]): string {
+  if (serving.kind === 'serving' && runtimes.length > 0) {
+    return (
+      'record a verdict on each criterion named, judged at a commit the runtime it is held in is ' +
+      `running — the deployment: ${servingClause(serving)}; ${runtimes.map(runtimeClause).join('; ')}`
+    );
+  }
   if (serving.kind === 'serving') {
     return (
       'record a verdict on each criterion named, judged at a commit this project is serving — ' +
@@ -146,7 +175,7 @@ function judgeClause(serving: ServingReading): string {
  */
 export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
   const reasons = reasonsByWhy(report);
-  const judge = judgeClause(report.serving);
+  const judge = judgeClause(report.serving, report.runtimes);
   return {
     code: 'RELEASE_CRITERIA_UNEARNED',
     reason:

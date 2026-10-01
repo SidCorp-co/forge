@@ -158,6 +158,86 @@ export const poolBacklogSchema = z
 
 export type PoolBacklogConfig = z.infer<typeof poolBacklogSchema>;
 
+const RUNTIME_PATH_SHAPE =
+  'a path relative to the repository root, such as `packages/runner` or `packages/runner/`: no leading `/` or `./`, no `..` segment, no wildcard';
+
+const RUNTIME_PATH_REFUSAL = `a release runtime path is ${RUNTIME_PATH_SHAPE}`;
+
+const runtimePathSchema = z
+  .string()
+  .min(1, { message: RUNTIME_PATH_REFUSAL })
+  .max(200, { message: `${RUNTIME_PATH_REFUSAL}, of at most 200 characters` })
+  .refine(
+    (p) =>
+      !p.startsWith('/') &&
+      !p.startsWith('./') &&
+      !/[*?[\]]/.test(p) &&
+      p
+        .split('/')
+        .every(
+          (segment, i, all) =>
+            segment !== '..' && segment !== '.' && (segment !== '' || i === all.length - 1),
+        ),
+    { message: RUNTIME_PATH_REFUSAL },
+  );
+
+/** A path's own spelling, as a prefix that owns the files under it. */
+export function runtimePathPrefix(path: string): string {
+  return path.endsWith('/') ? path : `${path}/`;
+}
+
+/**
+ * ISS-1368 — a runtime a project's release is weighed against beside its deployment: the paths it
+ * runs, and where what it serves is read from. `project-runners` is the build each of this
+ * project's online runner devices reports, so it is for a project whose repository builds its own
+ * runner. Absent, the deployment is the one runtime, as before.
+ */
+export const releaseRuntimesSchema = z
+  .array(
+    z
+      .object({
+        name: z
+          .string()
+          .regex(/^[a-z][a-z0-9-]{0,39}$/, 'a lower-case name such as `runner`')
+          .refine((n) => n !== 'deployment', {
+            message: '`deployment` names the runtime every path no declared runtime claims',
+          }),
+        paths: z.array(runtimePathSchema).min(1).max(32),
+        servedBy: z.enum(['project-runners']),
+      })
+      .strict(),
+  )
+  .max(8)
+  .superRefine((runtimes, ctx) => {
+    const names = new Set<string>();
+    const owner = new Map<string, string>();
+    runtimes.forEach((runtime, i) => {
+      if (names.has(runtime.name)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [i, 'name'],
+          message: `two release runtimes are named \`${runtime.name}\`; each name is declared once`,
+        });
+      }
+      names.add(runtime.name);
+      runtime.paths.forEach((path, j) => {
+        const prefix = runtimePathPrefix(path);
+        for (const [held, by] of owner) {
+          if (by !== runtime.name && (prefix.startsWith(held) || held.startsWith(prefix))) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [i, 'paths', j],
+              message: `\`${path}\` overlaps \`${held}\`, which \`${by}\` already claims; a file runs in one release runtime, so no two paths may contain each other`,
+            });
+          }
+        }
+        owner.set(prefix, runtime.name);
+      });
+    });
+  });
+
+export type ReleaseRuntimesConfig = z.infer<typeof releaseRuntimesSchema>;
+
 export const statesConfigSchema = z
   .strictObject({
     open: entryStageConfigSchema.optional(),
@@ -245,6 +325,7 @@ const pipelineConfigObject = z.object({
     .optional(),
   mcpServers: z.record(z.string(), z.unknown()).optional(),
   autoProdDeploy: z.boolean().optional(),
+  releaseRuntimes: releaseRuntimesSchema.optional(),
   lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
   sessionResidencySeconds: z.number().int().min(0).max(3600).optional(),
   [QA_JUDGEMENT_KEY]: z.enum(QA_JUDGEMENT_MODES).optional(),

@@ -32,6 +32,8 @@ export type VerdictStanding =
   | 'uncorroborated'
   | 'unanchored';
 
+export const EARNED_STANDINGS: ReadonlySet<VerdictStanding> = new Set(['stands', 'uncorroborated']);
+
 interface LandingBlock {
   head?: unknown;
 }
@@ -117,23 +119,37 @@ function supersededSentence(
   at: VerdictIdentity | null,
   serving: ServingReading,
   identities: IssueIdentities,
+  runtime: string | null,
 ): string {
   const judged = named(at?.value ?? null);
+  if (runtime !== null && serving.kind !== 'serving') {
+    const why = serving.kind === 'undeclared' ? serving.missing : serving.why;
+    return `judged at ${judged}, and nothing reports what the \`${runtime}\` runtime is running: ${why}`;
+  }
   if (at?.kind !== 'runtime' && serving.kind !== 'serving') {
     return `judged at ${judged}, and this issue now stands at ${named(identities.source)}`;
   }
   if (serving.kind !== 'serving') {
     return `judged at ${judged}, and nothing this project declares answered what it is serving`;
   }
+  if (runtime !== null) {
+    return `judged at ${judged}, which the \`${runtime}\` runtime is not running`;
+  }
   return `judged at ${judged}, which is not a commit this project is serving`;
 }
 
+/** `runtime` names the declared release runtime the standing was decided in; null is the
+ *  deployment, said as it always was (ISS-1368). */
 export function standingSentence(
   standing: VerdictStanding,
   at: VerdictIdentity | null,
   serving: ServingReading,
   identities: IssueIdentities,
+  runtime: string | null = null,
 ): string {
+  if (runtime !== null && standing !== 'superseded') {
+    return `for the \`${runtime}\` runtime, ${standingSentence(standing, at, serving, identities)}`;
+  }
   if (standing === 'stands') {
     return `judged at ${named(at?.value ?? null)}, which this project is serving`;
   }
@@ -146,5 +162,5 @@ export function standingSentence(
     return `judged against source ${named(at?.value ?? null)}, which is still the source this issue stands at, but no runtime witnessed it — a source identity says which code was read, never that the code was running`;
   }
   if (standing === 'uncorroborated') return uncorroboratedSentence(at, serving);
-  return supersededSentence(at, serving, identities);
+  return supersededSentence(at, serving, identities, runtime);
 }

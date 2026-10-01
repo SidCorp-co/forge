@@ -39,6 +39,7 @@ const REPORT = {
   issueId: 'iss-1',
   broken: [],
   serving: live(),
+  runtimes: [],
   uncorroborated: [],
   unearned: [
     {
@@ -459,5 +460,24 @@ describe('no hold sentence names the retired commit endpoint (ISS-1346)', () => 
     expect(runtimeUnroutedHold('x', NO_BINDING_ROUTE).reason).not.toMatch(
       /commitUrl|commit endpoint/,
     );
+  });
+});
+
+describe('the hold beside a declared runtime (ISS-1368)', () => {
+  it('names a declared runtime beside an unreadable deployment, and does not let it earn unchecked', () => {
+    const why = 'runner device box reports no build commit';
+    const runner = { kind: 'unreadable' as const, why, hosts: ['box'], readAt: READ_AT };
+    const reason = criteriaHold({
+      ...REPORT,
+      serving: { kind: 'unreadable', why: 'down', hosts: [HOST], readAt: READ_AT },
+      runtimes: [{ name: 'runner', paths: ['packages/runner'], serving: runner }],
+    }).reason;
+    expect(reason).toContain(
+      'A criterion held in a declared runtime earns only at a build it is running',
+    );
+    expect(reason).toContain(
+      `the \`runner\` runtime, under \`packages/runner\`: nothing could be read`,
+    );
+    expect(reason).toContain(why);
   });
 });

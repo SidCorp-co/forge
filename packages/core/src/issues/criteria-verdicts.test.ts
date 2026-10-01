@@ -313,7 +313,14 @@ describe('unearnedCriteriaReports', () => {
   it('reports an issue with no numbered criteria as owing nothing', async () => {
     issueRows = [deployed('iss-no-criteria', 'prose with no numbered line')];
     expect(await unearnedCriteriaReports(['iss-no-criteria'], LIVE)).toEqual([
-      { issueId: 'iss-no-criteria', unearned: [], broken: [], serving: LIVE, uncorroborated: [] },
+      {
+        issueId: 'iss-no-criteria',
+        unearned: [],
+        broken: [],
+        serving: LIVE,
+        runtimes: [],
+        uncorroborated: [],
+      },
     ]);
   });
 

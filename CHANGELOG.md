@@ -3136,6 +3136,10 @@
 
 ### Fixed
 
+- **An automatic release no longer waits on a commit it already serves.** A verdict judged at an
+  earlier commit counts once production runs a later one containing it, and a runner-only change is
+  weighed against the runner build (ISS-1368).
+
 - **The CI jobs that run after the merge can run on a branch before it lands**:
   `gh workflow run CI --ref <branch> -f base=<target>`. The nightly run no longer fails its checks
   for want of a base branch (ISS-1370).
