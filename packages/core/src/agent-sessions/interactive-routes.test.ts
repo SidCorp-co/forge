@@ -305,7 +305,6 @@ describe('POST /api/agent-sessions/start', () => {
       expect.objectContaining({ sessionId: SESSION_ID, deviceId: DEVICE_ID }),
     );
   });
-
 });
 
 describe('POST /api/agent-sessions/start refuses before a row is created', () => {
