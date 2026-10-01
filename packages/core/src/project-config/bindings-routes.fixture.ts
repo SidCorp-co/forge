@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { expect } from 'vitest';
 import {
   bindingMem,
   COOLIFY_CONNECTION,
@@ -50,7 +51,15 @@ export const coolifyDoc = (overrides: Record<string, unknown> = {}) => ({
 type Refused = {
   error: { code: string; refusals: { code: string; path: string; detail: string }[] };
 };
-export const refusalsOf = async (res: Response) => ((await res.json()) as Refused).error.refusals;
+/** The refusals a response carries; a response that refused nothing fails here, naming its status. */
+export const refusalsOf = async (res: Response) => {
+  const body = (await res.json()) as Partial<Refused>;
+  expect(
+    body.error?.refusals,
+    `expected a refusal, got ${res.status} ${JSON.stringify(body)}`,
+  ).toBeDefined();
+  return (body as Refused).error.refusals;
+};
 
 /** An admin and a viewer of PROJECT, an org Coolify connection and the admin's own Shopify one. */
 export function resetBindingWorld(): void {
