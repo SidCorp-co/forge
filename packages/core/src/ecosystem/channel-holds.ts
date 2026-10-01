@@ -25,7 +25,7 @@ export async function holdOrRelease(args: {
   return db.transaction(async (tx) => {
     await lockKeys(tx, [`channel-thread:${args.thread}`]);
     const row = await readNumbered(tx, args.thread);
-    if (!row || row.state !== 'published') {
+    if (row?.state !== 'published') {
       return {
         ok: false,
         refusals: [
