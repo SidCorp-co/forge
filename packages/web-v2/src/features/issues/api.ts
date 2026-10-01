@@ -143,7 +143,7 @@ export const issuesApi = {
     }),
 
   runPipelineStep: (id: string) =>
-    apiClient<unknown>(`/issues/${id}/run-pipeline-step`, {
+    apiClient<{ issueId: string; status: IssueStatus; startedAt: string }>(`/issues/${id}/run-pipeline-step`, {
       method: "POST",
       body: "{}",
     }),

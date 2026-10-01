@@ -61,7 +61,9 @@ saying why. Dropped is final — see [Read an issue's status](?path=issue-status
 
 Look at the status on the issue's page. It shows **Open**: the work is with the
 pipeline, and nothing is needed from you. If your project starts work by hand, the
-issue waits at **Open** until whoever runs the project starts it.
+issue waits at **Open** until a project member chooses **Start** at the top of the
+issue's page. Until then the page says it waits for a project member to start it; once
+started, it says it is waiting for a runner.
 
 From then on the status says who holds the work. If an agent needs something from
 you, the status becomes **Needs info** and its question appears on the issue page.
@@ -79,7 +81,7 @@ Answer it there.
 | Symptom | What is going on |
 |---|---|
 | Choosing **New issue** only says to open a project | You are not inside a project. Open one, then choose **New issue**. |
-| The issue stays at **Open** and nothing runs | Your project starts work by hand. Ask whoever runs the project to start it. |
+| The issue stays at **Open** and nothing runs | Your project starts work by hand. A project member chooses **Start** at the top of the issue's page; a viewer cannot, so ask a member. |
 | An agent asked you something | Answer it on the issue page. The work continues once you do. |
 
 Next: [Tell when an issue is done](?path=what-done-means).

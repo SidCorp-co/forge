@@ -10,10 +10,26 @@ import {
   AUTONOMOUS_ENTRY_STATUS,
   dispatchAutonomous,
   dispatchDriveManual,
+  isEntryGateClosed,
 } from './autonomous-dispatch.js';
 import type { HooksBus } from './hooks.js';
 
-export { ActiveJobConflictError } from './enqueue-helper.js';
+export type StartRefusalCode = 'INTAKE_NOT_MANUAL' | 'PROJECT_ARCHIVED';
+
+/** Why a person's start on an issue changes nothing, named so the route can say it. */
+export class StartRefusedError extends Error {
+  constructor(
+    readonly code: StartRefusalCode,
+    readonly projectId: string,
+  ) {
+    super(
+      code === 'INTAKE_NOT_MANUAL'
+        ? `INTAKE_NOT_MANUAL: project ${projectId} has policy intake \`auto\`, so its masters take every issue at \`${AUTONOMOUS_ENTRY_STATUS}\` without a person starting it. Starting one by hand is only for a project whose policy says \`intake: { mode: "manual" }\`.`
+        : `PROJECT_ARCHIVED: project ${projectId} is archived, so nothing dispatches there. Restore the project before starting its issues.`,
+    );
+    this.name = 'StartRefusedError';
+  }
+}
 
 async function loadProjectPolicy(projectId: string): Promise<{
   policy: PolicyDocument | null;
@@ -33,10 +49,9 @@ async function loadProjectPolicy(projectId: string): Promise<{
 }
 
 /**
- * Manual fire from the issue UI (ISS-5). Since ISS-933 this OFFERS the issue
- * rather than minting work for it: core no longer starts a drive session, a
- * master opens the run itself, and a human's Run is the per-issue release that
- * a project-level gate cannot express.
+ * A person starting an issue on a project whose policy intake is `manual` (ISS-29). It OFFERS the
+ * issue rather than minting work for it (ISS-933): the stamp is what admits the entry row to its
+ * masters, and a master opens the run itself.
  */
 export async function triggerPipelineStepManual(args: {
   projectId: string;
@@ -44,9 +59,11 @@ export async function triggerPipelineStepManual(args: {
   status: IssueStatus;
   actor: Actor;
   reason: Record<string, unknown>;
-}): Promise<{ released: true }> {
-  const { policy, projectCreatedBy } = await loadProjectPolicy(args.projectId);
+}): Promise<{ startedAt: string }> {
+  const { policy, archived, projectCreatedBy } = await loadProjectPolicy(args.projectId);
+  if (archived) throw new StartRefusedError('PROJECT_ARCHIVED', args.projectId);
   if (!policy) throw new PolicyRefusedError('POLICY_UNDECLARED', args.projectId, null);
+  if (!isEntryGateClosed(policy)) throw new StartRefusedError('INTAKE_NOT_MANUAL', args.projectId);
   return dispatchDriveManual({ ...args, projectCreatedBy });
 }
 
@@ -69,12 +86,6 @@ export async function reEnqueueForIssue(args: {
   await dispatchAutonomous({ ...args, policy, projectCreatedBy });
 }
 
-/**
- * Re-export for the self-healing sweeper (Phase H, ISS-306) and the
- * reconciler. Same entry point the hook subscribers use, so a salvage does
- * not have to fire a synthetic `transition` hook (which would mutate
- * activity_log / WS broadcasts in confusing ways).
- */
 /**
  * Subscribe the pipeline orchestrator to `transition` and `issueCreated`
  * hooks. Issue creation lands the issue in `open` without emitting a

@@ -128,6 +128,8 @@
 
 ### Added
 
+- **Issues on a project that starts work by hand have a Start button.** A project member presses
+  it on an open issue's page to hand it to the runners; a viewer sees who it waits for.
 - **Forge's API and MCP tools are published as machine-readable contracts.** An OpenAPI 3.1 file
   and a tool list, generated from the running server and checked on every change, so neither can
   drift from what Forge serves.

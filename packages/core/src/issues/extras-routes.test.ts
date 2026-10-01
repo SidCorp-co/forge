@@ -86,7 +86,6 @@ function buildApp() {
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
-const JOB_ID = '44444444-4444-4444-8444-444444444444';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -167,7 +166,17 @@ describe('POST /api/issues/:id/enrich', () => {
 });
 
 describe('POST /api/issues/:id/run-pipeline-step', () => {
-  function setupHappyPath(opts: { status?: string } = {}) {
+  const STARTED_AT = '2026-10-01T09:00:00.000Z';
+  const MANUAL = { revision: 1, document: { intake: { mode: 'manual' } } };
+
+  beforeEach(() => {
+    dbExecute.mockReset();
+    readEffectivePolicy.mockReset();
+  });
+
+  function setup(
+    opts: { status?: string; role?: 'viewer' | 'member' | 'admin' | null; archived?: boolean } = {},
+  ) {
     authVerified();
     selectLimit.mockResolvedValueOnce([
       { id: ISSUE_ID, projectId: PROJECT_ID, status: opts.status ?? 'open' },
@@ -175,12 +184,13 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
       orgId: 'org-1',
-      role: 'member',
+      role: opts.role === undefined ? 'member' : opts.role,
       orgRole: null,
     });
-    selectLimit.mockResolvedValueOnce([{ createdBy: USER_ID, archivedAt: null }]);
-    selectLimit.mockResolvedValueOnce([]);
-    insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
+    selectLimit.mockResolvedValueOnce([
+      { createdBy: USER_ID, archivedAt: opts.archived ? new Date() : null },
+    ]);
+    dbExecute.mockResolvedValueOnce([{ started_at: STARTED_AT }] as never);
   }
 
   async function post(body = '{}') {
@@ -191,36 +201,61 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     });
   }
 
-  it('202 releases the issue at the entry status, minting no job', async () => {
-    setupHappyPath({ status: 'open' });
+  it('202 starts an open issue on a manual-intake project, naming when it was started', async () => {
+    readEffectivePolicy.mockResolvedValueOnce(MANUAL);
+    setup();
 
     const res = await post();
 
     expect(res.status).toBe(202);
-    expect(await res.json()).toEqual({ issueId: ISSUE_ID, status: 'awaiting_release' });
+    expect(await res.json()).toEqual({ issueId: ISSUE_ID, status: 'open', startedAt: STARTED_AT });
     expect(wakeMastersForProject).toHaveBeenCalledTimes(1);
   });
 
-  it('202 even when the policy intake is manual: the release is the human act it waits for', async () => {
-    readEffectivePolicy.mockResolvedValueOnce({
-      revision: 1,
-      document: { intake: { mode: 'manual' } },
-    });
-    setupHappyPath({ status: 'open' });
+  it.each([
+    ['a viewer', 'viewer'],
+    ['a caller with no role on the project', null],
+  ] as const)('403 START_REQUIRES_MEMBER for %s, starting nothing', async (_who, role) => {
+    setup({ role });
 
     const res = await post();
 
-    expect(res.status).toBe(202);
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { code: string; message: string; details: unknown };
+    expect(body.code).toBe('START_REQUIRES_MEMBER');
+    expect(body.message).toContain(`role on the project is ${role ?? 'none'}`);
+    expect(body.details).toEqual({ required: 'member', role });
+    expect(wakeMastersForProject).not.toHaveBeenCalled();
+    expect(dbExecute).not.toHaveBeenCalled();
   });
 
-  it('409 POLICY_UNDECLARED for a project with no policy, releasing nothing', async () => {
-    readEffectivePolicy.mockResolvedValueOnce(null as never);
-    setupHappyPath({ status: 'open' });
+  it('409 INTAKE_NOT_MANUAL on an auto-intake project, where a start would change nothing', async () => {
+    setup();
 
     const res = await post();
 
     expect(res.status).toBe(409);
-    expect(JSON.stringify(await res.json())).toContain('POLICY_UNDECLARED');
+    expect(((await res.json()) as { code: string }).code).toBe('INTAKE_NOT_MANUAL');
+    expect(wakeMastersForProject).not.toHaveBeenCalled();
+  });
+
+  it('409 PROJECT_ARCHIVED on an archived project, not a claim that it has no policy', async () => {
+    setup({ archived: true });
+
+    const res = await post();
+
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code: string }).code).toBe('PROJECT_ARCHIVED');
+  });
+
+  it('409 POLICY_UNDECLARED for a project with no policy, starting nothing', async () => {
+    readEffectivePolicy.mockResolvedValueOnce(null as never);
+    setup();
+
+    const res = await post();
+
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code: string }).code).toBe('POLICY_UNDECLARED');
     expect(wakeMastersForProject).not.toHaveBeenCalled();
   });
 
@@ -232,22 +267,15 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     expect(res.status).toBe(400);
   });
 
-  it('409 when the issue is not at the entry status', async () => {
-    authVerified();
-    selectLimit.mockResolvedValueOnce([
-      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress' },
-    ]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'member',
-      orgRole: null,
-    });
-    selectLimit.mockResolvedValueOnce([{ createdBy: USER_ID, archivedAt: null }]);
+  it('409 NOT_AT_ENTRY_STATUS when the issue is past open', async () => {
+    readEffectivePolicy.mockResolvedValueOnce(MANUAL);
+    setup({ status: 'in_progress' });
 
     const res = await post();
 
     expect(res.status).toBe(409);
+    expect(((await res.json()) as { code: string }).code).toBe('NOT_AT_ENTRY_STATUS');
+    expect(wakeMastersForProject).not.toHaveBeenCalled();
   });
 });
 
