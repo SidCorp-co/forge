@@ -142,7 +142,6 @@ export const issuesApi = {
       body: JSON.stringify({ labels }),
     }),
 
-  /** `POST /api/issues/:id/run-pipeline-step` — a person starts an open issue on a manual-intake project. */
   runPipelineStep: (id: string) =>
     apiClient<{ issueId: string; status: IssueStatus; startedAt: string }>(`/issues/${id}/run-pipeline-step`, {
       method: "POST",
