@@ -9,27 +9,25 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestDevice,
   createTestProject,
   createTestProjectMember,
   createTestUser,
+  seedProjectDocument,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { PRODUCTION_PROBE, seedProduction, stubProbe } from '../helpers/production.js';
 
 let harness: TestDatabase;
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
 let app: any;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-let probe: Server;
-let probeUrl = '';
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -49,19 +47,19 @@ beforeAll(async () => {
   app = new Hono();
   app.route('/api/projects', batch.releaseBatchRoutes);
   app.onError(err.errorHandler);
-
-  probe = createServer((_req, res) => res.end('commit-live'));
-  await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
-  probeUrl = `http://127.0.0.1:${(probe.address() as AddressInfo).port}/version`;
 }, 60_000);
 
 afterAll(async () => {
-  if (probe) await new Promise<void>((done) => probe.close(() => done()));
   if (harness) await harness.cleanup();
 });
 
 beforeEach(async () => {
   await truncateAll(harness.db);
+  stubProbe({ [PRODUCTION_PROBE]: () => Response.json({ commit: 'commit-live' }) });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 interface World {
@@ -72,26 +70,17 @@ interface World {
 
 interface Shape {
   provider?: string;
-  baseBranch?: string | null;
-  /** How many branches the chain names: 1 deploys the base, 2 crosses into `production`. */
+  /** 1: production deploys from `main`. 2: it deploys from `production`, promoted from `main`. */
   chainLength?: 1 | 2;
-  /** The crossing into the second entry. Only read where `chainLength` is 2. */
-  crossing?: string;
+  /** How the promotion into `production` crosses. Only read where `chainLength` is 2. */
+  crossing?: 'merge' | 'cherry-pick';
+  /** No production environment: Forge ships nothing for this project. */
+  noProduction?: boolean;
   procedure?: string | null;
 }
 
 async function seed(shape: Shape = {}): Promise<World> {
-  const provider = shape.provider ?? 'coolify';
   const chainLength = shape.chainLength ?? 2;
-  const crossing = shape.crossing ?? 'merge-branch';
-  const baseBranch = shape.baseBranch === undefined ? 'main' : shape.baseBranch;
-  const releaseChain =
-    baseBranch === null
-      ? []
-      : chainLength === 1
-        ? [{ branch: baseBranch }]
-        : [{ branch: baseBranch }, { branch: 'production', from: crossing }];
-
   const user = await createTestUser(harness.db);
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
   const project = await createTestProject(harness.db, user.id);
@@ -100,24 +89,36 @@ async function seed(shape: Shape = {}): Promise<World> {
     projectId: project.id,
     role: 'admin',
   });
-  await harness.db.execute(sql`
-    UPDATE projects
-       SET base_branch = ${baseBranch}, release_chain = ${JSON.stringify(releaseChain)}::jsonb,
-           repo_path = '/srv/app'
-     WHERE id = ${project.id}
-  `);
-  const connection = randomUUID();
-  await harness.db.execute(sql`
-    INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
-    VALUES (${connection}, 'user', ${user.id}, ${provider}, true)
-  `);
-  await harness.db.execute(sql`
-    INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-    VALUES (${connection}, ${project.id}, ${provider}, 'deploy', ARRAY['live'], true,
-            ${JSON.stringify({
-              verify: { probes: [{ url: probeUrl }], timeoutSeconds: 5, stableReads: 1 },
-            })}::jsonb)
-  `);
+  await harness.db.execute(
+    sql`UPDATE projects SET repo_path = '/srv/app' WHERE id = ${project.id}`,
+  );
+  if (shape.noProduction) {
+    await seedProjectDocument(harness.db, project.id, user.id, { environments: {} });
+  } else {
+    const { bindingId } = await seedProduction(harness.db, {
+      projectId: project.id,
+      ownerId: user.id,
+      provider: shape.provider ?? 'coolify',
+      deploysFrom: chainLength === 1 ? 'main' : 'production',
+    });
+    if (chainLength === 2 && shape.crossing === 'cherry-pick') {
+      await seedProjectDocument(harness.db, project.id, user.id, {
+        promotions: [{ from: 'main', to: 'production', via: 'cherry-pick' }],
+        environments: {
+          live: {
+            tier: 'production',
+            deploysFrom: 'production',
+            deployment: { binding: bindingId, trigger: 'on-request' },
+            verification: {
+              runtime: [
+                { type: 'http', url: PRODUCTION_PROBE, path: 'commit', identifies: 'source' },
+              ],
+            },
+          },
+        },
+      });
+    }
+  }
   if (shape.procedure) {
     await harness.db.execute(sql`
       INSERT INTO knowledge_entries (project_id, kind, slug, title, body)
@@ -205,7 +206,6 @@ describe('the method a release is handed (ISS-1276)', () => {
 
     expect(prompt).toContain('This project has declared none to Forge.');
     expect(prompt).toContain('Forge writes no release steps of its own');
-    expect(prompt).not.toContain('Merge baseBranch → liveBranch');
     expect(prompt).not.toContain("forge_coolify_deploy { action:'deploy'");
     expect(prompt).not.toContain('CHANGELOG.md');
   });
@@ -224,11 +224,8 @@ describe('the method a release is handed (ISS-1276)', () => {
     expect(prompt).toContain('epodsystem');
   });
 
-  // An entry with no `from` is not in this list because Postgres refuses it:
-  // `projects_release_chain_chk` requires a crossing on every entry after the first, so the
-  // deleted default's "no strategy at all" arm answered for a row the database cannot hold.
-  it.each(['cherry-pick', 'merge-branch'])(
-    'refuses nothing for a project whose chain crosses by %s',
+  it.each(['cherry-pick', 'merge'] as const)(
+    'refuses nothing for a project whose promotion crosses by %s',
     async (crossing) => {
       const w = await seed({ crossing });
 
@@ -236,36 +233,33 @@ describe('the method a release is handed (ISS-1276)', () => {
 
       expect(prompt).not.toContain('Forge has no default procedure for it');
       expect(prompt).not.toMatch(/STOP — this project declares/);
-      expect(prompt).not.toContain(`releaseStrategy: ${crossing}`);
+      expect(prompt).toContain(`promotions: main ${crossing} → production`);
     },
   );
 });
 
 describe('the branches a release reads (ISS-1276)', () => {
-  it('lists no branch blocker for a project that declares no base branch', async () => {
-    const w = await seed({ baseBranch: null });
+  it('lists no target blocker for a project that declares no production environment', async () => {
+    const w = await seed({ noProduction: true });
     await seedIssue(w);
 
-    expect((await readiness(w)).map((b) => b.code)).not.toContain('RELEASE_BRANCHES_UNDECLARED');
+    const codes = (await readiness(w)).map((b) => b.code);
+    expect(codes).toContain('NO_RELEASE_GATE');
+    expect(codes).not.toContain('RELEASE_TARGET_UNDECLARED');
   });
 
-  // ISS-1311 moved this case rather than deleting it. A project could declare no base branch and
-  // promote to a live branch anyway — `release_model` said `promote` while `base_branch` was null
-  // — and this suite proved the create did not refuse it. `0312` ABORTS on exactly that row: a
-  // release chain BEGINS at the branch work merges into, so a project with no base branch has an
-  // empty chain and ships nothing. The absence still does not pass in silence; it is refused here.
-  it('refuses a release for a project that declares no base branch, naming the gate', async () => {
-    const w = await seed({ baseBranch: null });
+  it('refuses a release for a project that declares no production environment, naming the gate', async () => {
+    const w = await seed({ noProduction: true });
     const id = await seedIssue(w);
 
     const created = await create(w, [id]);
 
     expect(created.status, JSON.stringify(created.body)).toBe(409);
     expect(created.body.code).toBe('NO_RELEASE_GATE');
-    expect(String(created.body.message)).toContain('release chain');
+    expect(String(created.body.message)).toContain('production environment');
   });
 
-  it('answers the batch context with the branches the chain names', async () => {
+  it('answers the batch context with the branches the promotion names', async () => {
     const w = await seed({ chainLength: 2 });
     const id = await seedIssue(w);
     const created = await create(w, [id]);
@@ -274,14 +268,12 @@ describe('the branches a release reads (ISS-1276)', () => {
     const ctx = await contextOf(w, created.body.runId as string);
 
     expect(ctx.status).toBe(200);
-    expect(ctx.body.baseBranch).toBe('main');
-    expect(ctx.body.liveBranch).toBe('production');
+    expect(ctx.body.defaultBranch).toBe('main');
+    expect(ctx.body.deploysFrom).toBe('production');
     expect(ctx.body.promotePlanned).toBe(true);
   });
 
-  // The context answers an equality rather than a null the caller would have to interpret, and
-  // distinguishes the two shapes in `promotePlanned`.
-  it('answers live as the base branch where the chain crosses nothing', async () => {
+  it('answers production deploying from the default branch where no promotion is declared', async () => {
     const w = await seed({ chainLength: 1 });
     const id = await seedIssue(w);
     const created = await create(w, [id]);
@@ -290,18 +282,19 @@ describe('the branches a release reads (ISS-1276)', () => {
     const ctx = await contextOf(w, created.body.runId as string);
 
     expect(ctx.status).toBe(200);
-    expect(ctx.body.baseBranch).toBe('main');
-    expect(ctx.body.liveBranch).toBe('main');
+    expect(ctx.body.defaultBranch).toBe('main');
+    expect(ctx.body.deploysFrom).toBe('main');
     expect(ctx.body.promotePlanned).toBe(false);
   });
 
-  it('names no liveBranch line in the prompt where the chain crosses nothing', async () => {
+  it('names no promotion in the prompt where production deploys from the default branch', async () => {
     const w = await seed({ chainLength: 1 });
 
     const { prompt } = await cut(w);
 
-    expect(prompt).not.toContain('liveBranch:');
-    expect(prompt).toContain('baseBranch: main');
+    expect(prompt).not.toContain('merge → production');
+    expect(prompt).toContain('promotions: main\n');
+    expect(prompt).toContain('defaultBranch: main');
     expect(prompt).toContain('## Batch Release');
   });
 });

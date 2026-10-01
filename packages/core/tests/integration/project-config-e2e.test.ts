@@ -60,8 +60,8 @@ beforeAll(async () => {
     VALUES (${connection}, 'user', ${admin.id}, 'coolify', true)
   `);
   await harness.db.execute(sql`
-    INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, active)
-    VALUES (${bindingId}, ${connection}, ${projectId}, 'coolify', 'deploy', ARRAY['live'], true)
+    INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, active)
+    VALUES (${bindingId}, ${connection}, ${projectId}, 'coolify', 'deploy', true)
   `);
 
   const device = await createTestDevice(harness.db, admin.id);

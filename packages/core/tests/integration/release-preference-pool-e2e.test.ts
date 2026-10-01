@@ -88,7 +88,7 @@ describe('a release runner label ranks the pool it does not filter', () => {
   async function withdrawLabel(): Promise<void> {
     await harness.db.execute(sql`
       UPDATE integration_bindings SET config = config - 'releaseRunnerLabel'
-      WHERE project_id = ${projectId} AND provider = 'coolify' AND 'live' = ANY(stages)
+      WHERE project_id = ${projectId} AND provider = 'coolify' AND role = 'deploy'
     `);
   }
 

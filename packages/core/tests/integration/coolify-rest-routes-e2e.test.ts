@@ -76,7 +76,7 @@ async function seed() {
 }
 
 /** A binding of either role, inserted straight in — the create route needs credentials. */
-async function seedBinding(projectId: string, role: 'deploy' | 'service', stages: string[]) {
+async function seedBinding(projectId: string, role: 'deploy' | 'service') {
   const { randomUUID } = await import('node:crypto');
   const connectionId = randomUUID();
   const bindingId = randomUUID();
@@ -86,9 +86,8 @@ async function seedBinding(projectId: string, role: 'deploy' | 'service', stages
             'coolify', '{}'::jsonb, NULL, true)
   `);
   await harness.db.execute(sql`
-    INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, config, active)
-    VALUES (${bindingId}, ${connectionId}, ${projectId}::uuid, 'coolify', ${role},
-            ${`{${stages.join(',')}}`}::text[], '{}'::jsonb, true)
+    INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, config, active)
+    VALUES (${bindingId}, ${connectionId}, ${projectId}::uuid, 'coolify', ${role}, '{}'::jsonb, true)
   `);
   return bindingId;
 }
@@ -192,39 +191,27 @@ describe('Coolify commands over REST', () => {
   });
 });
 
-// A project whose `preview` and `live` bind to ONE application cannot say so
-// without this: stages were settable only at create, so correcting the topology
-// meant deleting the binding and its credential with it (forge-dev, 2026-09-21).
-describe("a deploy binding's stages are correctable after the fact", () => {
-  it('sets both stages on one binding', async () => {
-    const { project, token } = await seed();
-    const id = await seedBinding(project.id, 'deploy', ['live']);
+// ISS-8 — the environment a deploy binding serves is the project document's, so a PATCH naming
+// `stages` is refused by name on either role, and nothing is written.
+describe('a binding PATCH naming stages', () => {
+  it.each(['deploy', 'service'] as const)(
+    'is refused by name on a %s binding, pointing at the project document',
+    async (role) => {
+      const { project, token } = await seed();
+      const id = await seedBinding(project.id, role);
 
-    const res = await call(token, `/api/projects/${project.id}/integrations/${id}`, 'PATCH', {
-      stages: ['preview', 'live'],
-    });
+      const res = await call(token, `/api/projects/${project.id}/integrations/${id}`, 'PATCH', {
+        stages: ['live'],
+      });
 
-    expect(res.status).toBe(200);
-    const rows = await harness.db.execute<{ stages: string[] }>(
-      sql`SELECT stages FROM integration_bindings WHERE id = ${id}::uuid`,
-    );
-    expect((rows[0] as { stages: string[] }).stages).toEqual(['preview', 'live']);
-  });
-
-  it('refuses stages on a binding whose role deploys nothing, naming the role', async () => {
-    const { project, token } = await seed();
-    const id = await seedBinding(project.id, 'service', []);
-
-    const res = await call(token, `/api/projects/${project.id}/integrations/${id}`, 'PATCH', {
-      stages: ['live'],
-    });
-
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { message?: string };
-    expect(body.message).toContain('service');
-    const rows = await harness.db.execute<{ stages: string[] }>(
-      sql`SELECT stages FROM integration_bindings WHERE id = ${id}::uuid`,
-    );
-    expect((rows[0] as { stages: string[] }).stages).toEqual([]);
-  });
+      expect(res.status).toBe(400);
+      const text = JSON.stringify(await res.json());
+      expect(text).toContain('a binding carries no `stages`');
+      expect(text).toContain('PUT /api/projects/:id/config');
+      const rows = await harness.db.execute<{ revision: number }>(
+        sql`SELECT revision FROM integration_bindings WHERE id = ${id}::uuid`,
+      );
+      expect((rows[0] as { revision: number }).revision).toBe(1);
+    },
+  );
 });

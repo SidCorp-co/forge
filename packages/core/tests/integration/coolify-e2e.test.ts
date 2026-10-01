@@ -41,6 +41,7 @@ beforeAll(async () => {
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   process.env.NODE_ENV ??= 'test';
 
+  (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
   const adapterMod = await import('../../src/integrations/coolify/adapter.js');
   const vaultMod = await import('../../src/integrations/vault.js');
   const storeMod = await import('../../src/integrations/store.js');

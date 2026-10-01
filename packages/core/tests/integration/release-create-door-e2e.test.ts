@@ -12,8 +12,6 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -26,13 +24,17 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import {
+  type DeclaredProbes,
+  PRODUCTION_PROBE,
+  seedProduction,
+  stubProbe,
+} from '../helpers/production.js';
 
 let harness: TestDatabase;
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
 let app: any;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-let probe: Server;
-let probeUrl = '';
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -52,23 +54,20 @@ beforeAll(async () => {
   app = new Hono();
   app.route('/api/projects', batch.releaseBatchRoutes);
   app.onError(err.errorHandler);
-
-  probe = createServer((_req, res) => res.end('commit-live'));
-  await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
-  probeUrl = `http://127.0.0.1:${(probe.address() as AddressInfo).port}/version`;
 }, 60_000);
 
 afterAll(async () => {
-  if (probe) await new Promise<void>((done) => probe.close(() => done()));
   if (harness) await harness.cleanup();
 });
 
 beforeEach(async () => {
   await truncateAll(harness.db);
+  stubProbe({ [PRODUCTION_PROBE]: () => Response.json({ commit: 'commit-live' }) });
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 const LABEL = 'release-box';
@@ -79,7 +78,10 @@ interface World {
   token: string;
 }
 
-async function seed(binding: Record<string, unknown> = {}): Promise<World> {
+async function seed(
+  binding: Record<string, unknown> = {},
+  probes: DeclaredProbes = 'source',
+): Promise<World> {
   const user = await createTestUser(harness.db);
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
   const project = await createTestProject(harness.db, user.id);
@@ -89,27 +91,15 @@ async function seed(binding: Record<string, unknown> = {}): Promise<World> {
     role: 'admin',
   });
   await harness.db.execute(sql`
-    UPDATE projects
-       SET base_branch = 'main', release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb,
-           repo_path = '/srv/app',
-           environments = ${JSON.stringify({ live: { url: 'https://app.example.test' } })}::jsonb
-     WHERE id = ${project.id}
+    UPDATE projects SET base_branch = 'main', repo_path = '/srv/app' WHERE id = ${project.id}
   `);
-  const connection = randomUUID();
-  await harness.db.execute(sql`
-    INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
-    VALUES (${connection}, 'user', ${user.id}, 'coolify', true)
-  `);
-  const config = {
-    releaseRunnerLabel: LABEL,
-    verify: { probes: [{ url: probeUrl }], timeoutSeconds: 5, stableReads: 1 },
-    ...binding,
-  };
-  await harness.db.execute(sql`
-    INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-    VALUES (${connection}, ${project.id}, 'coolify', 'deploy', ARRAY['live'], true,
-            ${JSON.stringify(config)}::jsonb)
-  `);
+  await seedProduction(harness.db, {
+    projectId: project.id,
+    ownerId: user.id,
+    config: { releaseRunnerLabel: LABEL, ...binding },
+    deploysFrom: 'production',
+    probes,
+  });
   return { projectId: project.id, userId: user.id, token: await signUserToken(user.id) };
 }
 
@@ -252,14 +242,17 @@ describe('the create door answers with the entry readiness listed first', () => 
   });
 
   it.each([
-    ['a missing release note beside an empty pool', { noted: false, runner: false, binding: {} }],
-    ['an empty pool alone', { noted: true, runner: false, binding: {} }],
     [
-      'a probe url that is not a url',
-      { noted: true, runner: true, binding: { verify: { probes: [{ url: 'example.test/v' }] } } },
+      'a missing release note beside an empty pool',
+      { noted: false, runner: false, probes: 'source' },
     ],
-  ])('agrees word for word on %s', async (_state, s) => {
-    const w = await seed(s.binding);
+    ['an empty pool alone', { noted: true, runner: false, probes: 'source' }],
+    [
+      'a production declaring only artifact probes',
+      { noted: true, runner: true, probes: 'artifact-only' },
+    ],
+  ] as const)('agrees word for word on %s', async (_state, s) => {
+    const w = await seed({}, s.probes);
     if (s.runner) await seedRunner(w);
     const ids = await seedIssues(w, 1, s.noted);
 
@@ -269,7 +262,7 @@ describe('the create door answers with the entry readiness listed first', () => 
   // A project that names no release runner is refused nothing, so there is no
   // refusal for the two doors to agree on: readiness lists nothing and the
   // create goes through (ISS-1275).
-  it('opens a batch where no live binding names a release runner', async () => {
+  it('opens a batch where the production binding names no release runner', async () => {
     const w = await seed({ releaseRunnerLabel: undefined });
     await seedRunner(w);
     const ids = await seedIssues(w, 1);

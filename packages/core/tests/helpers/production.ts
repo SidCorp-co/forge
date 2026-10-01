@@ -122,7 +122,7 @@ export function stubProbe(answers: Record<string, string | (() => Response | Pro
  * never confirms reaches the end of its 300 s window in a few reads instead of waiting it out:
  * project-v1 declares no window of its own.
  */
-export async function pastTheProbeWindow<T>(act: () => Promise<T>): Promise<T> {
+export async function pastTheProbeWindow<T>(act: () => T | Promise<T>): Promise<T> {
   const realNow = Date.now.bind(Date);
   let reads = 0;
   const clock = vi.spyOn(Date, 'now').mockImplementation(() => {
