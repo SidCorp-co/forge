@@ -1,6 +1,6 @@
 {
   "id": "e313de9b-f802-4112-855d-0e6d2874999f",
-  "prevId": "7d9d1029-426d-4b84-9e77-5eb59c912a05",
+  "prevId": "0f53bc61-6079-4abb-8903-d4a504f4b7e2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -13828,6 +13828,576 @@
         "channel_counters_last_number_chk": {
           "name": "channel_counters_last_number_chk",
           "value": "\"channel_counters\".\"last_number\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.channel_document_events": {
+      "name": "channel_document_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verb": {
+          "name": "verb",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_state": {
+          "name": "from_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "to_state": {
+          "name": "to_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_kind": {
+          "name": "actor_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_via": {
+          "name": "actor_via",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "superseded_by": {
+          "name": "superseded_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "channel_document_events_document_id_idx": {
+          "name": "channel_document_events_document_id_idx",
+          "columns": [
+            {
+              "expression": "document_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "channel_document_events_ends_once_uq": {
+          "name": "channel_document_events_ends_once_uq",
+          "columns": [
+            {
+              "expression": "document_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "verb IN ('withdraw', 'supersede')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "channel_document_events_document_id_channel_documents_id_fk": {
+          "name": "channel_document_events_document_id_channel_documents_id_fk",
+          "tableFrom": "channel_document_events",
+          "tableTo": "channel_documents",
+          "columnsFrom": [
+            "document_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "channel_document_events_user_id_users_id_fk": {
+          "name": "channel_document_events_user_id_users_id_fk",
+          "tableFrom": "channel_document_events",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "channel_document_events_verb_chk": {
+          "name": "channel_document_events_verb_chk",
+          "value": "\"channel_document_events\".\"verb\" IN ('draft', 'edit', 'submit', 'approve', 'return', 'publish', 'withdraw', 'supersede')"
+        },
+        "channel_document_events_end_chk": {
+          "name": "channel_document_events_end_chk",
+          "value": "(\"channel_document_events\".\"verb\" NOT IN ('withdraw', 'supersede') OR (\"channel_document_events\".\"reason\" IS NOT NULL AND length(\"channel_document_events\".\"reason\") BETWEEN 1 AND 500)) AND ((\"channel_document_events\".\"verb\" = 'supersede') = (\"channel_document_events\".\"superseded_by\" IS NOT NULL))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.channel_documents": {
+      "name": "channel_documents",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "ecosystem_id": {
+          "name": "ecosystem_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_project_id": {
+          "name": "from_project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to_project_ids": {
+          "name": "to_project_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "number": {
+          "name": "number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "in_reply_to": {
+          "name": "in_reply_to",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "thread": {
+          "name": "thread",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "author_kind": {
+          "name": "author_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "author_id": {
+          "name": "author_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "author_via": {
+          "name": "author_via",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document": {
+          "name": "document",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "channel_documents_number_uq": {
+          "name": "channel_documents_number_uq",
+          "columns": [
+            {
+              "expression": "number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "channel_documents_ecosystem_state_idx": {
+          "name": "channel_documents_ecosystem_state_idx",
+          "columns": [
+            {
+              "expression": "ecosystem_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "channel_documents_from_project_id_idx": {
+          "name": "channel_documents_from_project_id_idx",
+          "columns": [
+            {
+              "expression": "from_project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "channel_documents_to_project_ids_idx": {
+          "name": "channel_documents_to_project_ids_idx",
+          "columns": [
+            {
+              "expression": "to_project_ids",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "channel_documents_thread_idx": {
+          "name": "channel_documents_thread_idx",
+          "columns": [
+            {
+              "expression": "thread",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "channel_documents_ecosystem_id_ecosystems_id_fk": {
+          "name": "channel_documents_ecosystem_id_ecosystems_id_fk",
+          "tableFrom": "channel_documents",
+          "tableTo": "ecosystems",
+          "columnsFrom": [
+            "ecosystem_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "channel_documents_from_project_id_projects_id_fk": {
+          "name": "channel_documents_from_project_id_projects_id_fk",
+          "tableFrom": "channel_documents",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "from_project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "channel_documents_created_by_users_id_fk": {
+          "name": "channel_documents_created_by_users_id_fk",
+          "tableFrom": "channel_documents",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "channel_documents_type_chk": {
+          "name": "channel_documents_type_chk",
+          "value": "\"channel_documents\".\"type\" IN ('change-notice', 'acknowledgement', 'rfi', 'change-request', 'decision')"
+        },
+        "channel_documents_state_chk": {
+          "name": "channel_documents_state_chk",
+          "value": "\"channel_documents\".\"state\" IN ('draft', 'submitted', 'returned', 'published')"
+        },
+        "channel_documents_numbered_chk": {
+          "name": "channel_documents_numbered_chk",
+          "value": "\"channel_documents\".\"state\" = 'draft' OR \"channel_documents\".\"number\" IS NOT NULL"
+        },
+        "channel_documents_published_chk": {
+          "name": "channel_documents_published_chk",
+          "value": "(\"channel_documents\".\"state\" = 'published') = (\"channel_documents\".\"published_at\" IS NOT NULL)"
+        },
+        "channel_documents_author_chk": {
+          "name": "channel_documents_author_chk",
+          "value": "(\"channel_documents\".\"author_kind\" = 'agent' AND \"channel_documents\".\"author_via\" = 'master') OR (\"channel_documents\".\"author_kind\" = 'person' AND \"channel_documents\".\"author_via\" IN ('assistant', 'web', 'cli'))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.channel_thread_holds": {
+      "name": "channel_thread_holds",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "ecosystem_id": {
+          "name": "ecosystem_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "thread": {
+          "name": "thread",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "by_kind": {
+          "name": "by_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "by_id": {
+          "name": "by_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "by_via": {
+          "name": "by_via",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "side_project_id": {
+          "name": "side_project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "channel_thread_holds_thread_idx": {
+          "name": "channel_thread_holds_thread_idx",
+          "columns": [
+            {
+              "expression": "thread",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "channel_thread_holds_ecosystem_id_ecosystems_id_fk": {
+          "name": "channel_thread_holds_ecosystem_id_ecosystems_id_fk",
+          "tableFrom": "channel_thread_holds",
+          "tableTo": "ecosystems",
+          "columnsFrom": [
+            "ecosystem_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "channel_thread_holds_user_id_users_id_fk": {
+          "name": "channel_thread_holds_user_id_users_id_fk",
+          "tableFrom": "channel_thread_holds",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "channel_thread_holds_side_project_id_projects_id_fk": {
+          "name": "channel_thread_holds_side_project_id_projects_id_fk",
+          "tableFrom": "channel_thread_holds",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "side_project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "channel_thread_holds_action_chk": {
+          "name": "channel_thread_holds_action_chk",
+          "value": "\"channel_thread_holds\".\"action\" IN ('hold', 'release')"
+        },
+        "channel_thread_holds_person_chk": {
+          "name": "channel_thread_holds_person_chk",
+          "value": "\"channel_thread_holds\".\"by_kind\" = 'person' AND \"channel_thread_holds\".\"by_via\" IN ('assistant', 'web', 'cli')"
+        },
+        "channel_thread_holds_reason_chk": {
+          "name": "channel_thread_holds_reason_chk",
+          "value": "\"channel_thread_holds\".\"action\" <> 'hold' OR (\"channel_thread_holds\".\"reason\" IS NOT NULL AND length(\"channel_thread_holds\".\"reason\") BETWEEN 1 AND 1000)"
         }
       },
       "isRLSEnabled": false
