@@ -22,7 +22,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { withDefaultBranch } from '../project-config/source.js';
-import { badRequest, forbidden } from '../projects/route-errors.js';
+import { badRequest, forbidden, notFound } from '../projects/route-errors.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { revokeDeviceCredentials } from './credential.js';
@@ -113,6 +113,17 @@ devicePublicRoutes.post(
   },
 );
 
+async function ownedDevice(id: string, userId: string) {
+  const [device] = await db
+    .select({ ownerId: devices.ownerId, status: devices.status })
+    .from(devices)
+    .where(eq(devices.id, id))
+    .limit(1);
+  if (!device) throw notFound('device not found');
+  if (device.ownerId !== userId) throw forbidden('not the device owner');
+  return device;
+}
+
 export const deviceOwnerRoutes = new Hono<{ Variables: AuthVars }>();
 deviceOwnerRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -183,15 +194,7 @@ deviceOwnerRoutes.patch(
     const { name, disabled } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const [device] = await db
-      .select({ ownerId: devices.ownerId, status: devices.status })
-      .from(devices)
-      .where(eq(devices.id, id))
-      .limit(1);
-    if (!device) {
-      throw new HTTPException(404, { message: 'device not found', cause: { code: 'NOT_FOUND' } });
-    }
-    if (device.ownerId !== userId) throw forbidden('not the device owner');
+    const device = await ownedDevice(id, userId);
     // A revoked device is gone for good — its token is dead and its runners were
     // deleted; "turn on" can't bring it back (re-pair instead).
     if (disabled === false && device.status === 'revoked') {
@@ -211,9 +214,7 @@ deviceOwnerRoutes.patch(
       lastSeenAt: devices.lastSeenAt,
       pairedAt: devices.pairedAt,
     });
-    if (!updated) {
-      throw new HTTPException(404, { message: 'device not found', cause: { code: 'NOT_FOUND' } });
-    }
+    if (!updated) throw notFound('device not found');
 
     // When toggling on/off, live-refresh the owner's Runners surface + any device
     // room watchers so the badge flips without a manual reload. Best-effort.
@@ -244,15 +245,7 @@ deviceOwnerRoutes.delete(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [device] = await db
-      .select({ ownerId: devices.ownerId, status: devices.status })
-      .from(devices)
-      .where(eq(devices.id, id))
-      .limit(1);
-    if (!device) {
-      throw new HTTPException(404, { message: 'device not found', cause: { code: 'NOT_FOUND' } });
-    }
-    if (device.ownerId !== userId) throw forbidden('not the device owner');
+    await ownedDevice(id, userId);
 
     await db.transaction(async (tx) => {
       await tx.update(devices).set({ status: 'revoked' }).where(eq(devices.id, id));
@@ -291,15 +284,7 @@ deviceOwnerRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [device] = await db
-      .select({ ownerId: devices.ownerId })
-      .from(devices)
-      .where(eq(devices.id, id))
-      .limit(1);
-    if (!device) {
-      throw new HTTPException(404, { message: 'device not found', cause: { code: 'NOT_FOUND' } });
-    }
-    if (device.ownerId !== userId) throw forbidden('not the device owner');
+    await ownedDevice(id, userId);
 
     const rows = await db
       .select({

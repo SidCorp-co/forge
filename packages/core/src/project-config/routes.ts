@@ -74,6 +74,13 @@ const serialise = <T>(held: Held<T>) => ({
   updatedAt: held.updatedAt.toISOString(),
 });
 
+const secretView = (s: { ref: string; scope: string; name: string; updatedAt: Date }) => ({
+  ref: s.ref,
+  scope: s.scope,
+  name: s.name,
+  updatedAt: s.updatedAt.toISOString(),
+});
+
 function answer<T>(c: Context, outcome: WriteOutcome<T>) {
   if (!outcome.ok) return refused(c, outcome.refusals);
   return c.json({ ...serialise(outcome.held), created: outcome.created });
@@ -201,12 +208,7 @@ projectConfigRoutes.get('/:id/secrets', paramOf(idParam), async (c) => {
   await assertProjectAccess(id, c.get('userId'), 'viewer');
   const secrets = await listSecretNames(id);
   return c.json({
-    secrets: secrets.map((s) => ({
-      ref: s.ref,
-      scope: s.scope,
-      name: s.name,
-      updatedAt: s.updatedAt.toISOString(),
-    })),
+    secrets: secrets.map(secretView),
     returned: secrets.length,
   });
 });
@@ -238,12 +240,7 @@ projectConfigRoutes.put(
         cause: { code: outcome.code },
       });
     }
-    return c.json({
-      ref: outcome.secret.ref,
-      scope: outcome.secret.scope,
-      name: outcome.secret.name,
-      updatedAt: outcome.secret.updatedAt.toISOString(),
-    });
+    return c.json(secretView(outcome.secret));
   },
 );
 
