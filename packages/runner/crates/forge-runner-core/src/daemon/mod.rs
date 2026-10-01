@@ -30,6 +30,7 @@ pub mod inbox;
 pub mod job_exit;
 pub mod job_unheard;
 pub mod master;
+pub mod master_build;
 pub mod master_exit;
 pub mod master_limit;
 pub mod master_skill;
@@ -1843,7 +1844,7 @@ mod hook_repair_tests {
         );
 
         let applied = src
-            .find("— draining before restart")
+            .find("— handing over to it once this process's own work ends")
             .expect("the line the update writes once it has replaced the binary");
         let after_applied = &src[applied..];
         let next_sweep = after_applied
@@ -1865,7 +1866,7 @@ mod hook_repair_tests {
         );
         assert!(
             next_sweep < next_drain,
-            "the sweep is behind the drain, which is the wait that never ends on a busy box — so it never runs"
+            "the sweep is behind the wait on in-process work, which can last as long as a chat turn — so it runs late"
         );
     }
 }
@@ -2031,9 +2032,9 @@ mod master_skill_sweep_tests {
     fn the_skill_is_not_written_by_the_process_an_update_replaced() {
         let src = production();
         let applied = src
-            .find("— draining before restart")
+            .find("— handing over to it once this process's own work ends")
             .expect("the line the update writes once it has replaced the binary");
-        let arm = &src[applied..src[applied..].find("std::process::exit(0)").unwrap() + applied];
+        let arm = &src[applied..src[applied..].find("hand_over(&drain").unwrap() + applied];
         assert!(!arm.contains("install_master_skills("), "{arm}");
     }
 }

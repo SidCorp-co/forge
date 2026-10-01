@@ -148,6 +148,10 @@ mod tests {
             boot_id: "boot-a".into(),
             cold_started_at: 1,
             last_seen_at: 1,
+            placed_build: None,
+            placed_plugins: None,
+            placed_at: None,
+            outdated: None,
         }
     }
 
