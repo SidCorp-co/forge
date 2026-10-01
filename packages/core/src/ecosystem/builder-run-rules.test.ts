@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { type Doc, emittedAccepts, example, FP } from './ecosystem.fixture.js';
 import {
+  BUILDER_STEPS,
   type BuilderRunWorld,
   builderRunIdentityRefusals,
   checkBuilderRun,
+  declaredWithoutCallSite,
+  isOpenRun,
+  openedRun,
   parseBuilderRun,
 } from './link-rules.js';
 import { LIMITS } from './link-schema.js';
@@ -27,6 +31,7 @@ const world = (over: Partial<BuilderRunWorld> = {}): BuilderRunWorld => ({
   projectActiveIn: new Set([FP]),
   published: new Set([`${FORGE}/forge-api`, `${FORGE}/forge-mcp`]),
   links: new Set([LINK]),
+  openRun: null,
   ...over,
 });
 
@@ -129,6 +134,12 @@ const plants: [string, Doc, BuilderRunWorld, string][] = [
     'BUILDER_RUN_NOT_MEMBER /ecosystem',
   ],
   [
+    'a second open run while one is open in the same ecosystem',
+    written(() => {}),
+    world({ openRun: '0b9d0c7a-1d2b-4c3a-8e4f-5a6b7c8d9e02' }),
+    'BUILDER_RUN_ALREADY_OPEN /steps',
+  ],
+  [
     'a run naming another project',
     written((d) => (d.project = FORGE)),
     world(),
@@ -173,5 +184,54 @@ describe('an updated builder run keeps its trigger and ecosystem', () => {
     expect(builderRunIdentityRefusals(parsed(written()), next).map((r) => r.code)).toEqual([
       'BUILDER_RUN_IMMUTABLE',
     ]);
+  });
+});
+
+describe('the run a join or a push opens', () => {
+  const opened = openedRun({
+    ecosystem: FP,
+    project: PLUGIN,
+    trigger: { kind: 'joined', sha: '4b825dc642cb6eb9a060e54bf8d69288fbee4904' },
+  });
+
+  it('is a valid builder-run-v1 with every step pending, and open', () => {
+    expect(codesAt(opened as unknown as Doc, world({ links: new Set() }))).toEqual([]);
+    expect(opened.steps.map((s) => `${s.name}:${s.status}`)).toEqual(
+      BUILDER_STEPS.map((n) => `${n}:pending`),
+    );
+    expect(isOpenRun(opened)).toBe(true);
+  });
+
+  it('is finished once no step is pending or running, and a finished one opens beside an open one', () => {
+    const done = {
+      ...opened,
+      steps: opened.steps.map((s) => ({ ...s, status: 'skipped' as const })),
+    };
+    expect(isOpenRun(done)).toBe(false);
+    expect(checkBuilderRun(done, world({ openRun: FORGE, links: new Set() }))).toEqual([]);
+  });
+});
+
+describe('a declared consumption a finished run found no call site for', () => {
+  const consumes = [
+    { contract: 'forge/forge-api', ecosystem: FP, builtAgainst: '2026-10-01' },
+    { contract: 'forge/forge-mcp', ecosystem: FP, builtAgainst: '2026-10-01' },
+    { contract: 'forge/forge-api', ecosystem: FORGE, builtAgainst: '2026-10-01' },
+  ];
+
+  it('is reported by contract and pointer, and one with a call site is not', () => {
+    const got = declaredWithoutCallSite({
+      ecosystem: FP,
+      consumes,
+      called: new Set(['forge/forge-api']),
+    });
+    expect(got.map((f) => `${f.classification} ${f.contract} ${f.at}`)).toEqual([
+      'declared_without_call_site forge/forge-mcp /consumes/1',
+    ]);
+  });
+
+  it('is nothing when every declared consumption is called', () => {
+    const called = new Set(['forge/forge-api', 'forge/forge-mcp']);
+    expect(declaredWithoutCallSite({ ecosystem: FP, consumes, called })).toEqual([]);
   });
 });

@@ -219,7 +219,11 @@ describe('the read shapes', () => {
         updatedAt: expect.any(String),
       },
     ]);
-    expect(bus.projects.find((p: Doc) => p.id === w.project.plugin).builder).toBeNull();
+    expect(bus.projects.find((p: Doc) => p.id === w.project.plugin).builder).toMatchObject({
+      trigger: { kind: 'joined' },
+      findings: 0,
+      links: 0,
+    });
     const store = ok(await say('store', 'GET', `/api/ecosystems/${w.eco}/bus`));
     expect(store.links).toEqual([]);
   });
@@ -229,18 +233,24 @@ describe('the joining project records its builder run', () => {
   const post = (document: Doc, who: Parameters<typeof say>[0] = 'masterPlugin') =>
     say(who, 'POST', runs(), { baseRevision: null, document });
 
-  it('stores the run with its steps, findings and the links it wrote', async () => {
-    const made = ok(await post(runDoc()));
-    expect(emittedAccepts(made.document)).toBe(true);
-    expect(made.document).toMatchObject({ links: [ids.link], trigger: { kind: 'joined' } });
-    ids.run = made.document.id;
-    const progressed = ok(
+  it('stores the run the join opened with its steps, findings and the links it wrote', async () => {
+    const [joined] = ok(await say('plugin', 'GET', runs())).runs;
+    ids.run = joined.document.id;
+    const made = ok(
       await say('masterPlugin', 'PUT', `${runs()}/${ids.run}`, {
         baseRevision: 1,
+        document: runDoc(),
+      }),
+    );
+    expect(emittedAccepts(made.document)).toBe(true);
+    expect(made.document).toMatchObject({ links: [ids.link], trigger: { kind: 'joined' } });
+    const progressed = ok(
+      await say('masterPlugin', 'PUT', `${runs()}/${ids.run}`, {
+        baseRevision: 2,
         document: runDoc((d) => (d.steps[2].status = 'succeeded')),
       }),
     );
-    expect(progressed.revision).toBe(2);
+    expect(progressed.revision).toBe(3);
     const listed = ok(await say('plugin', 'GET', runs()));
     expect(listed.runs.map((r: Doc) => r.document.id)).toEqual([ids.run]);
   });
@@ -263,19 +273,21 @@ describe('the joining project records its builder run', () => {
   });
 
   it('refuses by name what the run cannot claim', async () => {
+    const put = (document: Doc) =>
+      say('masterPlugin', 'PUT', `${runs()}/${ids.run}`, { baseRevision: 3, document });
     expect(deniedAs(await post(runDoc(), 'plugin'))).toBe('BUILDER_RUN_WRITER_NOT_PROJECT');
     const foreign = runDoc((d) => (d.links = ['00000000-0000-4000-8000-000000000000']));
-    expect(refusal(await post(foreign))).toEqual(['BUILDER_RUN_LINK_UNKNOWN /links/0']);
+    expect(refusal(await put(foreign))).toEqual(['BUILDER_RUN_LINK_UNKNOWN /links/0']);
     const unpublished = runDoc((d) => (d.findings[0].contract.slug = 'runner'));
-    expect(refusal(await post(unpublished))).toEqual(['REF_NOT_PUBLISHED /findings/0/contract']);
-    expect(refusal(await post(runDoc((d) => (d.steps[0].status = 'done'))))).toEqual([
+    expect(refusal(await put(unpublished))).toEqual(['REF_NOT_PUBLISHED /findings/0/contract']);
+    expect(refusal(await put(runDoc((d) => (d.steps[0].status = 'done'))))).toEqual([
       'STEP_STATUS_UNKNOWN /steps/0/status',
     ]);
     const moved = runDoc((d) => (d.trigger.kind = 'push'));
     expect(
       refusal(
         await say('masterPlugin', 'PUT', `${runs()}/${ids.run}`, {
-          baseRevision: 2,
+          baseRevision: 3,
           document: moved,
         }),
       ),

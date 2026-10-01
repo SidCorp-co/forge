@@ -9,6 +9,7 @@ import {
   pointer,
 } from '../project-config/documents.js';
 import {
+  BUILDER_RUN_SCHEMA_ID,
   BUILDER_TRIGGERS,
   type BuilderRunWrite,
   builderRunWriteSchema,
@@ -259,6 +260,68 @@ export interface BuilderRunWorld {
   projectActiveIn: ReadonlySet<string>;
   published: ReadonlySet<string>;
   links: ReadonlySet<string>;
+  /** Another run of this project in this ecosystem that is still open, or null. */
+  openRun: string | null;
+}
+
+/** The steps a joined or pushed run is opened with, in the order a master works them. */
+export const BUILDER_STEPS = [
+  'read-repo',
+  'find-outbound-calls',
+  'match-contracts',
+  'write-links',
+  'check',
+  'publish-role',
+] as const;
+
+const OPEN_STEP: ReadonlySet<string> = new Set(['pending', 'running']);
+
+// cm:why a run is open while any step is still pending or running; there is no status column, so the steps are the one place it is read from, in SQL (link-store.ts:openBuilderRunOf) as here
+export const isOpenRun = (doc: Pick<BuilderRunWrite, 'steps'>) =>
+  doc.steps.some((s) => OPEN_STEP.has(s.status));
+
+export function openedRun(input: {
+  ecosystem: string;
+  project: string;
+  trigger: BuilderRunWrite['trigger'];
+}): BuilderRunWrite {
+  return {
+    $schema: BUILDER_RUN_SCHEMA_ID,
+    version: 1,
+    ecosystem: input.ecosystem,
+    project: input.project,
+    trigger: input.trigger,
+    steps: BUILDER_STEPS.map((name) => ({ name, status: 'pending' as const })),
+    findings: [],
+    links: [],
+  };
+}
+
+export interface DeclaredWithoutCallSite {
+  classification: 'declared_without_call_site';
+  contract: string;
+  at: string;
+  detail: string;
+}
+
+// cm:why a declared consumption no finished run found a call site for is said, never silently kept: the interface claims a use the code does not show
+export function declaredWithoutCallSite(input: {
+  ecosystem: string;
+  consumes: InterfaceDocument['consumes'];
+  called: ReadonlySet<string>;
+}): DeclaredWithoutCallSite[] {
+  return input.consumes.flatMap((c, i) =>
+    c.ecosystem !== input.ecosystem || input.called.has(c.contract)
+      ? []
+      : [
+          {
+            classification: 'declared_without_call_site' as const,
+            contract: c.contract,
+            at: pointer(['consumes', i]),
+            detail: `the interface declares it consumes ${c.contract} in ecosystem ${input.ecosystem}, and no link this project holds there names a call site for it; write the link the code uses, or take the consumption out of the interface.`,
+          },
+        ],
+  );
 }
 
 export const contractKey = (c: { provider: string; slug: string }) => `${c.provider}/${c.slug}`;
@@ -274,6 +337,13 @@ export function checkBuilderRun(doc: BuilderRunWrite, world: BuilderRunWorld): E
     ];
   }
   const out: EcosystemRefusal[] = [];
+  if (world.openRun !== null && isOpenRun(doc)) {
+    out.push({
+      code: 'BUILDER_RUN_ALREADY_OPEN',
+      path: '/steps',
+      detail: `builder run ${world.openRun} of project ${doc.project} in ecosystem ${doc.ecosystem} is still open; a project works one run per ecosystem at a time, so finish that one (every step succeeded, failed or skipped) before opening another.`,
+    });
+  }
   doc.findings.forEach((f, i) => {
     if (f.classification !== 'matched' || world.published.has(contractKey(f.contract))) return;
     out.push({
