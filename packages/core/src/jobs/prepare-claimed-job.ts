@@ -173,11 +173,11 @@ async function contractsNamedBy(
   try {
     return await loadContractContext(job.projectId, pathsNamedIn(text));
   } catch (err) {
-    logger.warn(
-      { err, jobId: job.id },
-      'prepare: contract context load failed, preparing without it',
+    // cm:guard a run whose contract context cannot be read is refused, never prepared without it — it would edit a call site blind (owner, 2026-10-02)
+    throw new Error(
+      `CONTRACT_CONTEXT_UNLOADABLE: prepare refused job ${job.id}: the contracts its issue's paths reach could not be read (${err instanceof Error ? err.message : String(err)})`,
+      { cause: err },
     );
-    return [];
   }
 }
 
