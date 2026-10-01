@@ -7,6 +7,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useActiveOrg } from "@/features/orgs/active-org";
+import { inActiveOrg } from "@/features/projects/derive";
 import type { ProjectListItem } from "@/features/projects/types";
 import { usePerTabState } from "@/lib/utils/use-persisted-state";
 
@@ -60,7 +61,7 @@ export function useProjectOrgScopeSync(opts: {
     if (prevOrg === activeOrgId) return; // org unchanged (incl. AC6 set-to-match)
     if (prevOrg == null) return; // initial null→org resolution is not a user switch — AC6 re-scope owns it (ISS-480 review)
     if (!slug || !activeProject) return; // not in a resolved project — fallback handles the rail
-    if (activeProject.orgId === activeOrgId) return; // switched INTO the project's org → stay (AC2)
+    if (inActiveOrg(activeProject, activeOrgId)) return; // switched INTO the project's org, or to any org for one outside them all → stay (AC2)
     // Switched to an org that does not own the open project → exit project context.
     setLastSlug(null); // drop the org-agnostic persisted slug so it can't resurrect
     router.push(exitTo);

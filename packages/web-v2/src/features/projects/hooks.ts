@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useActiveOrg } from '@/features/orgs/active-org';
 import { projectApi } from './api';
-import { mergeProjects, workspaceTotals } from './derive';
+import { inActiveOrg, mergeProjects, workspaceTotals } from './derive';
 import { usePinnedProjects } from './pins';
 import type {
   CreatedProject,
@@ -36,7 +36,7 @@ export function useOrgScopedProjects(): OrgScopedProjects {
   const { activeOrgId } = useActiveOrg();
   const q = useProjects();
   const projects = useMemo(
-    () => (q.data ?? []).filter((p) => !activeOrgId || p.orgId === activeOrgId),
+    () => (q.data ?? []).filter((p) => inActiveOrg(p, activeOrgId)),
     [q.data, activeOrgId],
   );
   const projectIds = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);

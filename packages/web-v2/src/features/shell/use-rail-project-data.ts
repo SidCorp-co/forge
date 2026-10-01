@@ -4,6 +4,7 @@
 // the compact-rail rollup (per-project liveRuns/openIssues from the projects
 // console — the "{N} live" label, the switcher pulse dots, the Issues badge).
 import { useMemo } from "react";
+import { inActiveOrg } from "@/features/projects/derive";
 import { useProjectsConsole } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import type { ProjectListItem } from "@/features/projects/types";
@@ -35,7 +36,7 @@ export function useRailProjectData(opts: {
     () =>
       projectsConsole.items
         // Scope the rail switcher to the active org (ISS-480).
-        .filter((p) => !activeOrgId || p.orgId === activeOrgId)
+        .filter((p) => inActiveOrg(p, activeOrgId))
         .map((p) => {
           const g = projectGlyph(p.id);
           return {

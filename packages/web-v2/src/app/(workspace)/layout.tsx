@@ -12,6 +12,7 @@ import {
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useAuth } from "@/providers/auth-provider";
 import { ToastLane, useToast } from "@/providers/toast-provider";
+import { inActiveOrg } from "@/features/projects/derive";
 import { useProjects } from "@/features/projects/hooks";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { ActiveOrgProvider } from "@/features/orgs/active-org";
@@ -73,7 +74,7 @@ function useShellProject(pathname: string, mode: ShellMode) {
     exitTo: mode === "chat" ? CHAT_ROOT : "/projects",
   });
   const scopedProjects = useMemo(
-    () => (projects ?? []).filter((p) => !activeOrgId || p.orgId === activeOrgId),
+    () => (projects ?? []).filter((p) => inActiveOrg(p, activeOrgId)),
     [projects, activeOrgId],
   );
   const lastRailSlugRef = useRef<string | null>(null);
@@ -130,6 +131,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const closeMore = useCallback(() => setMoreOpen(false), []);
   const closeNotifications = useCallback(() => setNotificationsOpen(false), []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a navigation closes the More sheet, so pathname is the trigger rather than an input.
   useEffect(() => {
     setMoreOpen(false);
   }, [pathname]);

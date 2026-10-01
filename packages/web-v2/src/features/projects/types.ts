@@ -98,6 +98,7 @@ export interface ProjectConsoleItem {
   orgName: string;
   orgIsPersonal: boolean;
   role: ProjectListItem['role'];
+  orgRole: ProjectListItem['orgRole'];
   createdAt: string;
   health: HealthKey;
   liveRuns: number;

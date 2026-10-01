@@ -11,7 +11,7 @@ import {
   Select,
   SessionRowSkeleton,
 } from "@/design";
-import { useOrgScopedProjects } from "@/features/projects/hooks";
+import { useProjects } from "@/features/projects/hooks";
 import { useProjectEcosystems } from "@/features/ecosystem/hooks";
 import { chatDraftPath, chatPath } from "@/features/shell/mode";
 import { formatApiError } from "@/lib/api/error";
@@ -53,7 +53,10 @@ export function ChatSidebar({
   conversationId: string | null;
   onNavigate: (href: string) => void;
 }) {
-  const { projects } = useOrgScopedProjects();
+  // Every project the person holds a role on, whatever org is active: a room is theirs to find
+  // wherever its project sits, and core still fences each read by role.
+  const { data: allProjects } = useProjects();
+  const projects = useMemo(() => allProjects ?? [], [allProjects]);
   const projectIds = useMemo(() => projects.map((p) => p.id).sort(), [projects]);
   const [archived, setArchived] = useState(false);
   const list = useConversationsAcrossProjects(projectIds, archived);
@@ -69,6 +72,7 @@ export function ChatSidebar({
 
   const byId = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const rows = filterConversations(list.rows, { projectId: filter, search });
+  const ecosystemUnpicked = scope === "ecosystem" && ecosystemId === null;
   const leave = (id: string) => {
     if (id === conversationId) onNavigate(chatPath(slug));
   };
@@ -79,6 +83,7 @@ export function ChatSidebar({
         variant="primary"
         size="sm"
         icon="plus"
+        disabled={ecosystemUnpicked}
         onClick={() => onNavigate(slug ? chatDraftPath(slug, scope === "ecosystem" ? ecosystemId : null) : chatPath(null))}
       >
         New chat
@@ -113,6 +118,7 @@ export function ChatSidebar({
           ) : (
             <p className="fg-caption text-muted">Pick the project the chat is asked from first.</p>
           ))}
+
       </div>
 
       <Input
@@ -235,12 +241,15 @@ function EcosystemPicker({
     return <p className="fg-caption text-muted">This project is an active member of no ecosystem.</p>;
   }
   return (
-    <Select
-      aria-label="Chat scope ecosystem"
-      options={active.map((m) => ({ value: m.ecosystem?.id ?? "", label: m.ecosystem?.name ?? "" }))}
-      value={value ?? ""}
-      placeholder={q.isLoading ? "Reading ecosystems…" : "Pick an ecosystem…"}
-      onChange={onChange}
-    />
+    <>
+      <Select
+        aria-label="Chat scope ecosystem"
+        options={active.map((m) => ({ value: m.ecosystem?.id ?? "", label: m.ecosystem?.name ?? "" }))}
+        value={value ?? ""}
+        placeholder={q.isLoading ? "Reading ecosystems…" : "Pick an ecosystem…"}
+        onChange={onChange}
+      />
+      {value === null ? <p className="fg-caption text-muted">Pick an ecosystem to start an ecosystem chat.</p> : null}
+    </>
   );
 }

@@ -50,6 +50,7 @@ export function mergeProjects(
       orgName: p.orgName,
       orgIsPersonal: p.orgIsPersonal,
       role: p.role,
+      orgRole: p.orgRole,
       createdAt: p.createdAt,
       health: h ? deriveHealth(h) : 'idle',
       liveRuns: h?.liveRuns ?? 0,
@@ -102,6 +103,17 @@ export function sortProjects(
   return out;
 }
 
+/**
+ * Whether a project shows under the active org. One whose org the caller is not a member of,
+ * reached through a project invite alone, shows under every org, since no switch reaches it.
+ */
+export function inActiveOrg(
+  p: Pick<ProjectListItem, 'orgId' | 'orgRole'>,
+  activeOrgId: string | null,
+): boolean {
+  return !activeOrgId || p.orgId === activeOrgId || p.orgRole === null;
+}
+
 /** Free-text (name/org) + needs-attention filter. */
 export function filterProjects(
   items: ProjectConsoleItem[],
@@ -115,7 +127,7 @@ export function filterProjects(
       !q ||
       p.name.toLowerCase().includes(q) ||
       p.orgName.toLowerCase().includes(q);
-    return matches && (!attentionOnly || isAttention(p)) && (!orgId || p.orgId === orgId);
+    return matches && (!attentionOnly || isAttention(p)) && inActiveOrg(p, orgId);
   });
 }
 
