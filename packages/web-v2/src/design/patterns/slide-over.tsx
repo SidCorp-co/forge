@@ -1,7 +1,7 @@
 "use client";
 
-import { type CSSProperties, useEffect, useRef, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import type { CSSProperties, ReactNode } from "react";
+import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Icon } from "@/design/icons/icon";
 
 export interface SlideOverProps {
@@ -9,28 +9,11 @@ export interface SlideOverProps {
   onClose: () => void;
   title?: ReactNode;
   children: ReactNode;
-  /** Drawer width. A number is treated as pixels; a string is used verbatim as
-      a CSS length (e.g. `clamp(560px, 60vw, 1024px)` for a responsive drawer). */
   width?: number | string;
-  /** Fit the body to the drawer instead of the default scrolling/padded body.
-      When `true` the body is a bounded `flex` column with no scroll + no padding
-      so the child owns its own single internal scroll region and bottom bar
-      (e.g. ChatScreen — avoids a nested double-scroll, ISS-506). Default `false`
-      preserves every existing consumer (RunDetail, project flyout, …). */
   fitBody?: boolean;
-  /** Skip the drawer's own title bar (opt-in, default `false` — every existing
-      caller keeps its header). Use when the child renders its own single title
-      + close control, to avoid a duplicate title bar (e.g. the mobile chat
-      overlay stacking on ChatScreen's header, ISS-685). */
   hideHeader?: boolean;
 }
 
-const FOCUSABLE =
-  'a[href],button:not([disabled]),textarea,input,select,[tabindex]:not([tabindex="-1"])';
-
-/** Right-hand drawer for context/detail. Esc closes it unless a control inside
-    claimed the key first; focus is trapped inside and returns to the trigger on
-    close. Backdrop blur signals background dismissal. */
 export function SlideOver({
   open,
   onClose,
@@ -41,74 +24,30 @@ export function SlideOver({
   hideHeader = false,
 }: SlideOverProps) {
   const slideOverWidth = typeof width === "number" ? `${width}px` : width;
-  const panelRef = useRef<HTMLElement>(null);
-  const restoreRef = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    if (!open) return;
-    restoreRef.current = document.activeElement as HTMLElement;
-    const panel = panelRef.current;
-    panel?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (e.defaultPrevented) return;
-        onCloseRef.current();
-        return;
-      }
-      if (e.key === "Tab" && panel) {
-        const nodes = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-          (n) => n.offsetParent !== null,
-        );
-        if (nodes.length === 0) return;
-        const first = nodes[0];
-        const last = nodes[nodes.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      restoreRef.current?.focus?.();
-    };
-  }, [open]);
-
-  if (!open) return null;
-  // On `body`: inside a sticky ancestor it paints under that ancestor's sticky siblings (ISS-1327).
-  if (typeof document === "undefined") return null;
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex justify-end"
-      style={{ background: "var(--scrim)", backdropFilter: "blur(8px)" }}
-      onClick={onClose}
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
     >
-      <aside
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        className="forge-slide flex h-full w-full max-w-[100vw] flex-col border-l border-line bg-surface shadow-lg sm:w-[var(--slide-over-w)]"
+      <SheetContent
+        side="right"
+        showCloseButton={false}
+        className="gap-0 border-line bg-surface text-fg data-[side=right]:w-full data-[side=right]:max-w-[100vw] data-[side=right]:sm:w-[var(--slide-over-w)] data-[side=right]:sm:max-w-[100vw]"
         style={{ "--slide-over-w": slideOverWidth } as CSSProperties}
-        onClick={(e) => e.stopPropagation()}
       >
-        {!hideHeader && (
+        {hideHeader ? (
+          <SheetTitle className="sr-only">{title}</SheetTitle>
+        ) : (
           <header className="flex flex-none items-center justify-between gap-3 border-b border-line px-5 py-4">
-            <div className="fg-h3">{title}</div>
-            <button
-              type="button"
-              onClick={onClose}
+            <SheetTitle className="fg-h3">{title}</SheetTitle>
+            <SheetClose
               aria-label="Close"
               className="rounded-md p-1 text-subtle transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
             >
               <Icon name="x" size={18} />
-            </button>
+            </SheetClose>
           </header>
         )}
         {fitBody ? (
@@ -116,8 +55,7 @@ export function SlideOver({
         ) : (
           <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         )}
-      </aside>
-    </div>,
-    document.body,
+      </SheetContent>
+    </Sheet>
   );
 }

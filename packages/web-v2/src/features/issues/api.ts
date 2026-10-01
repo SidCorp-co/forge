@@ -4,7 +4,6 @@ import { apiClient, apiClientList } from "@/lib/api/client";
 import { filterToQueryParams } from "./derive";
 import type {
   CreatedIssue,
-  ModuleRollupResponse,
   IssueComplexity,
   IssueCostSummary,
   IssueDependencies,
@@ -39,20 +38,6 @@ export interface CreateIssueInput {
    *  (max 10, server-validated for size/mime). Omit when none are staged. */
   attachments?: { name: string; mime: string; dataBase64: string }[];
 }
-
-/**
- * ISS-949 — the backlog counted by module. `GET /api/projects/:id/modules/rollup`.
- */
-export const modulesApi = {
-  rollup: (projectId: string, activeWithinDays?: number) => {
-    const params = new URLSearchParams();
-    if (activeWithinDays !== undefined) params.set("activeWithinDays", String(activeWithinDays));
-    const query = params.toString();
-    return apiClient<ModuleRollupResponse>(
-      `/projects/${projectId}/modules/rollup${query === "" ? "" : `?${query}`}`,
-    );
-  },
-};
 
 export const issuesApi = {
   create: (projectId: string, body: CreateIssueInput) =>
@@ -177,8 +162,7 @@ export interface IssueBuckets {
   waitingOnPersonByStatus: Partial<Record<IssueStatus, number>>;
 }
 
-/** ISS-764 — batch release API. Separate from issuesApi since these are
- *  project-level endpoints (not per-issue). */
+/** ISS-764 — the project-level batch release endpoints. */
 export interface CreateReleaseBatchResult {
   runId: string;
   jobId: string;

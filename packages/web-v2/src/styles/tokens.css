@@ -101,6 +101,31 @@
   --link:          var(--cobalt-500);
   --focus-ring:    var(--cobalt-500);
 
+  /* ===== SHADCN BRIDGE ===== */
+  --background:           var(--bg-app);
+  --foreground:           var(--fg-default);
+  --card:                 var(--bg-surface);
+  --card-foreground:      var(--fg-default);
+  --popover:              var(--bg-surface);
+  --popover-foreground:   var(--fg-default);
+  --primary:              var(--flame-500);
+  --primary-foreground:   var(--fg-on-accent);
+  --secondary:            var(--bg-sunken);
+  --secondary-foreground: var(--fg-default);
+  --muted:                var(--bg-sunken);
+  --muted-foreground:     var(--fg-muted);
+  --accent-foreground:    var(--fg-default);
+  --destructive:          var(--red-500);
+  --border:               var(--border-default);
+  --input:                var(--border-default);
+  --ring:                 var(--focus-ring);
+  --radius:               var(--r-md);
+  --chart-1:              var(--flame-500);
+  --chart-2:              var(--cobalt-500);
+  --chart-3:              var(--green-500);
+  --chart-4:              var(--amber-500);
+  --chart-5:              var(--stage-triage);
+
   /* ===== PIPELINE STAGE ACCENTS (7-step hero motif) ===== */
   --stage-triage:  #8A6BD1;
   --stage-clarify: #2D5BD6;

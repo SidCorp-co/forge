@@ -1,39 +1,19 @@
 "use client";
 
-import {
-  Button,
-  PageContainer,
-  PageTitle,
-  SegmentedControl,
-  type SegmentOption,
-} from "@/design";
-import { PipelineBoard } from "@/features/pipeline/components/pipeline-board";
+import { Button, PageContainer, PageTitle } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
-import { useTabParam } from "@/lib/utils/use-tab-param";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { IssuesInsightsView } from "./issues-insights-view";
-import { ModuleRollupView } from "./module-rollup-view";
 import { IssuesListView } from "./issues-list-view";
 import { ReleaseGatePanel } from "./release-gate-panel";
 import { NewIssueDialog } from "./new-issue-dialog";
-
-type IssuesView = "board" | "list" | "insights" | "modules";
-const VIEWS = ["list", "board", "insights", "modules"] as const;
-const VIEW_OPTIONS: SegmentOption<IssuesView>[] = [
-  { value: "list", label: "List", icon: "list" },
-  { value: "board", label: "Board", icon: "board" },
-  { value: "insights", label: "Insights", icon: "activity" },
-  { value: "modules", label: "Modules", icon: "book" },
-];
 
 interface IssuesScreenProps {
   scope: { projectId: string; slug: string };
 }
 
 export function IssuesScreen({ scope }: IssuesScreenProps) {
-  const [view, setView] = useTabParam<IssuesView>(VIEWS, "list");
   const projectsQ = useProjects();
   const canWrite = canWriteProject(projectsQ.data?.find((p) => p.id === scope.projectId)?.role);
   // New-issue dialog — opened locally or by `?new=1`, which ⌘K pushes onto this
@@ -85,45 +65,21 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
             <span className="hidden sm:inline">New issue</span>
           </Button>
         )}
-        <div className="overflow-x-auto">
-          <SegmentedControl
-            options={VIEW_OPTIONS}
-            value={view}
-            onChange={setView}
-          />
-        </div>
       </div>
     </header>
   );
 
   return (
     <>
-      {view === "board" ? (
-        // Board needs the full-height flex column the standalone /pipeline route
-        // gets, so it lives outside PageContainer and scrolls horizontally.
-        <div className="flex h-full min-h-0 flex-col">
-          <div className="flex-none px-4 pt-5 sm:px-6 sm:pt-6">{header}</div>
-          <div className="min-h-0 flex-1">
-            <PipelineBoard scope={scope} embedded canWrite={canWrite} />
-          </div>
-        </div>
-      ) : (
-        <PageContainer className="min-h-dvh">
-          {header}
-          {view === "list" ? <ReleaseGatePanel projectId={scope.projectId} slug={scope.slug} /> : null}
-          {view === "list" ? (
-            <IssuesListView
-              scope={scope}
-              canWrite={canWrite}
-              onNewIssue={canWrite ? () => setNewOpen(true) : undefined}
-            />
-          ) : view === "modules" ? (
-            <ModuleRollupView scope={scope} />
-          ) : (
-            <IssuesInsightsView scope={scope} />
-          )}
-        </PageContainer>
-      )}
+      <PageContainer className="min-h-dvh">
+        {header}
+        <ReleaseGatePanel projectId={scope.projectId} slug={scope.slug} />
+        <IssuesListView
+          scope={scope}
+          canWrite={canWrite}
+          onNewIssue={canWrite ? () => setNewOpen(true) : undefined}
+        />
+      </PageContainer>
 
       <NewIssueDialog
         open={newOpen && canWrite}

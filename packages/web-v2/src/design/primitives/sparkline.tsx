@@ -1,19 +1,17 @@
+"use client";
+
+import { Line, LineChart, YAxis } from "recharts";
+import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import { cn } from "@/lib/utils/cn";
 
 export interface SparklineProps {
-  /** Oldest → newest. Fewer than two points renders nothing. */
   points: number[];
   width?: number;
   height?: number;
-  /** Any CSS colour; defaults to the muted foreground so the number leads. */
   stroke?: string;
   className?: string;
 }
 
-/** Trend shape beside a value it does not replace: no axes, no labels, no
-    tooltip. `aria-hidden` because the value and its delta are already text —
-    a screen reader gains nothing from 24 unlabelled numbers, and the series
-    carries no datum the caller has not already written out. */
 export function Sparkline({
   points,
   width = 72,
@@ -22,32 +20,29 @@ export function Sparkline({
   className,
 }: SparklineProps) {
   if (points.length < 2) return null;
-
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const span = max - min || 1;
-  const stepX = width / (points.length - 1);
-  const pad = 1.5;
-  const usable = height - pad * 2;
-
-  const d = points
-    .map((v, i) => {
-      const x = (i * stepX).toFixed(2);
-      const y = (pad + usable - ((v - min) / span) * usable).toFixed(2);
-      return `${i === 0 ? "M" : "L"}${x},${y}`;
-    })
-    .join(" ");
-
+  const config: ChartConfig = { value: { label: "Value", color: stroke } };
+  const data = points.map((value, i) => ({ i, value }));
   return (
-    <svg
+    <ChartContainer
       aria-hidden
-      focusable="false"
-      viewBox={`0 0 ${width} ${height}`}
-      width={width}
-      height={height}
-      className={cn("shrink-0 overflow-visible", className)}
+      config={config}
+      initialDimension={{ width, height }}
+      className={cn("aspect-auto shrink-0", className)}
+      style={{ width, height }}
     >
-      <path d={d} fill="none" stroke={stroke} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
+      <LineChart data={data} margin={{ top: 1.5, right: 1, bottom: 1.5, left: 1 }} accessibilityLayer={false}>
+        <YAxis hide domain={["dataMin", "dataMax"]} />
+        <Line
+          dataKey="value"
+          type="linear"
+          stroke="var(--color-value)"
+          strokeWidth={1.5}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          dot={false}
+          isAnimationActive={false}
+        />
+      </LineChart>
+    </ChartContainer>
   );
 }

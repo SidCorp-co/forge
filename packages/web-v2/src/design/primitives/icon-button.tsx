@@ -1,17 +1,14 @@
-import type { ButtonHTMLAttributes } from "react";
-import { cn } from "@/lib/utils/cn";
+import type { ButtonHTMLAttributes, Ref } from "react";
+import { Button as ShadcnButton } from "@/components/ui/button";
 import { Icon, type IconName } from "@/design/icons/icon";
 
 type Variant = "ghost" | "secondary";
 type Size = "sm" | "md";
 
-const VARIANTS: Record<Variant, string> = {
-  ghost: "text-muted hover:bg-hover hover:text-fg border-transparent",
-  secondary: "bg-surface text-fg border-line-strong hover:bg-hover",
-};
-const SIZES: Record<Size, { box: string; icon: number }> = {
-  sm: { box: "size-7", icon: 16 },
-  md: { box: "size-9", icon: 18 },
+const VARIANT = { ghost: "ghost", secondary: "outline" } as const;
+const SIZES: Record<Size, { size: "icon-sm" | "icon"; icon: number }> = {
+  sm: { size: "icon-sm", icon: 16 },
+  md: { size: "icon", icon: 18 },
 };
 
 export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -19,22 +16,14 @@ export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
   variant?: Variant;
   size?: Size;
   "aria-label": string;
+  ref?: Ref<HTMLButtonElement>;
 }
 
-export function IconButton({ icon, variant = "ghost", size = "md", className, ...props }: IconButtonProps) {
+export function IconButton({ icon, variant = "ghost", size = "md", type = "submit", ...props }: IconButtonProps) {
   const s = SIZES[size];
   return (
-    <button
-      className={cn(
-        "inline-flex items-center justify-center rounded-md border transition-colors duration-[120ms]",
-        "disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
-        s.box,
-        VARIANTS[variant],
-        className,
-      )}
-      {...props}
-    >
+    <ShadcnButton type={type} variant={VARIANT[variant]} size={s.size} {...props}>
       <Icon name={icon} size={s.icon} />
-    </button>
+    </ShadcnButton>
   );
 }

@@ -1,4 +1,5 @@
 import type { Ref, TextareaHTMLAttributes } from "react";
+import { Textarea as ShadcnTextarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils/cn";
 
 export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
@@ -7,13 +8,12 @@ export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
 
 export function Textarea({ className, rows = 4, ...props }: TextareaProps) {
   return (
-    <textarea
+    <ShadcnTextarea
       rows={rows}
       className={cn(
-        "w-full resize-y rounded-md border border-line-strong bg-surface px-3 py-2 text-base text-fg md:text-sm",
-        "placeholder:text-disabled disabled:cursor-not-allowed disabled:opacity-50",
-        "transition-shadow focus-visible:border-[color:var(--link)] focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none",
-        "aria-[invalid=true]:border-[color:var(--red-500)] aria-[invalid=true]:focus-visible:border-[color:var(--red-500)]",
+        "field-sizing-fixed min-h-0 resize-y rounded-md border-line-strong bg-surface px-3 py-2 text-fg",
+        "placeholder:text-disabled transition-shadow focus-visible:border-[color:var(--link)] focus-visible:ring-0 focus-visible:shadow-[var(--shadow-focus)]",
+        "aria-[invalid=true]:border-[color:var(--red-500)] aria-[invalid=true]:ring-0",
         className,
       )}
       {...props}

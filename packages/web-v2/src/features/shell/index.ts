@@ -18,12 +18,11 @@ export {
   PROJECT_ITEMS_BY_SPECIFICITY, activeSlug, matchesSub, buildCrumbs,
   buildActiveKey, buildBottomActiveKey, workspaceNavItems,
   compactWorkspaceRailItems, projectRailItems, bottomTabItems,
-  resolveRailSlug,
-  type ProjItem,
+  resolveRailSlug, projectMenu, PROJECT_MENU, isProjGroup, AUTOMATION_GROUP_KEY,
+  type ProjItem, type ProjGroup, type ProjEntry, type ProjectBadges,
 } from './nav-model';
 export { buildWorkspaceCommands, type WorkspaceCommandDeps } from './commands';
 export { useProjectOrgScopeSync } from './use-project-org-scope-sync';
 export { CurrentProjectProvider, useCurrentProject } from './current-project';
 export { useRailProjectData } from './use-rail-project-data';
 export { MobileNavDrawer, type MobileNavDrawerProps } from './components/mobile-nav-drawer';
-export { type ShellMode, modeOf, switchTarget, chatPath } from './mode';

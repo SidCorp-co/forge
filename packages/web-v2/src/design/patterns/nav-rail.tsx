@@ -18,11 +18,22 @@ export interface NavItem {
   badge?: number;
 }
 
+export interface NavItemGroup {
+  key: string;
+  label: string;
+  icon: NavItem["icon"];
+  items: NavItem[];
+}
+
+export type NavEntry = NavItem | NavItemGroup;
+
+const isNavGroup = (e: NavEntry): e is NavItemGroup => "items" in e;
+
 /** A titled group of project-tier nav items (e.g. Work / Insight / Config). */
 export interface NavCluster {
   key: string;
   kicker: string;
-  items: NavItem[];
+  items: NavEntry[];
   /** When true the header gets a chevron and can be collapsed. */
   collapsible?: boolean;
 }
@@ -33,6 +44,7 @@ export interface NavRailProps {
   projectItems?: NavItem[];
   /** Grouped project nav. Preferred over `projectItems` when present. */
   projectClusters?: NavCluster[];
+  workspaceClusters?: Array<{ key: string; kicker: string; items: NavItem[]; icon?: NavItem["icon"]; collapsible?: boolean }>;
   activeKey: string;
   onNavigate?: (key: string) => void;
   /** Opens the searchable project switcher (the command palette). */
@@ -54,14 +66,16 @@ export interface NavRailProps {
   onSignOut?: () => void;
   project?: { name: string; initials: string; tint: string; ink: string };
   user?: { initials: string };
-  /** Global org switcher slot (ISS-469), pinned under the brand. Presentational
-   *  here — the caller supplies the wired control. Hidden while collapsed. */
+  /** The organization picker, on the brand row beside the logo. Hidden while collapsed. */
   orgSwitcher?: React.ReactNode;
+  /** Opens or closes the chat dock; `chatOpen` lights its footer row. */
+  onChat?: () => void;
+  chatOpen?: boolean;
   /** The product's own version, pinned to the footer (ISS-1119). Hidden while
    *  collapsed — the compact rail carries it there instead. */
   version?: React.ReactNode;
-  modeSwitch?: React.ReactNode;
   search?: React.ReactNode;
+  brandSearch?: React.ReactNode;
   bell?: React.ReactNode;
   body?: React.ReactNode;
   /** Icon-only collapsed rail. */
@@ -69,7 +83,7 @@ export interface NavRailProps {
   onToggleCollapsed?: () => void;
   /** Per-cluster open map (key ⇒ open). Missing/undefined ⇒ open. */
   groupOpen?: Record<string, boolean>;
-  onToggleGroup?: (key: string) => void;
+  onToggleGroup?: (key: string, open?: boolean) => void;
 }
 
 function NavRow({
@@ -153,6 +167,8 @@ function Cluster({
   open,
   onToggle,
   onNavigate,
+  groupOpen,
+  onToggleGroup,
 }: {
   cluster: NavCluster;
   activeKey: string;
@@ -160,16 +176,25 @@ function Cluster({
   open: boolean;
   onToggle?: () => void;
   onNavigate?: (key: string) => void;
+  groupOpen?: Record<string, boolean>;
+  onToggleGroup?: (key: string, open?: boolean) => void;
 }) {
-  // In icon-only mode clusters render flat (no header / chevron, always shown).
-  if (collapsed) {
-    return (
-      <div className="flex flex-col gap-1">
-        {cluster.items.map((it) => (
-          <NavRow key={it.key} item={it} active={it.key === activeKey} collapsed onClick={() => onNavigate?.(it.key)} />
-        ))}
-      </div>
+  const entry = (it: NavEntry, flat: boolean) =>
+    isNavGroup(it) ? (
+      <NavGroup
+        key={it.key}
+        cluster={{ key: it.key, kicker: it.label, icon: it.icon, items: it.items }}
+        activeKey={activeKey}
+        collapsed={flat}
+        open={groupOpen?.[it.key] === true || it.items.some((c) => c.key === activeKey)}
+        onToggle={() => onToggleGroup?.(it.key, groupOpen?.[it.key] !== true)}
+        onNavigate={onNavigate}
+      />
+    ) : (
+      <NavRow key={it.key} item={it} active={it.key === activeKey} collapsed={flat} onClick={() => onNavigate?.(it.key)} />
     );
+  if (collapsed) {
+    return <div className="flex flex-col gap-1">{cluster.items.map((it) => entry(it, true))}</div>;
   }
   return (
     <div className="flex flex-col gap-1">
@@ -186,10 +211,82 @@ function Cluster({
       ) : (
         <Kicker className="px-2.5 pb-1">{cluster.kicker}</Kicker>
       )}
-      {open &&
-        cluster.items.map((it) => (
-          <NavRow key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate?.(it.key)} />
+      {open && cluster.items.map((it) => entry(it, false))}
+    </div>
+  );
+}
+
+function NavGroup({
+  cluster,
+  activeKey,
+  collapsed,
+  open,
+  onToggle,
+  onNavigate,
+}: {
+  cluster: { key: string; kicker: string; items: NavItem[]; icon?: NavItem["icon"] };
+  activeKey: string;
+  collapsed?: boolean;
+  open: boolean;
+  onToggle?: () => void;
+  onNavigate?: (key: string) => void;
+}) {
+  const within = cluster.items.some((it) => it.key === activeKey);
+  if (collapsed) {
+    return (
+      <>
+        {cluster.items.map((it) => (
+          <NavRow key={it.key} item={it} active={it.key === activeKey} collapsed onClick={() => onNavigate?.(it.key)} />
         ))}
+      </>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-0.5">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-13-5 font-semibold transition-colors duration-[120ms] focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]",
+          within ? "text-fg" : "text-muted hover:bg-hover hover:text-fg",
+        )}
+      >
+        <Icon name={cluster.icon ?? "ecosystem"} size={17} style={within ? { color: "var(--accent)" } : undefined} />
+        <span className="flex-1 text-left">{cluster.kicker}</span>
+        <Icon name={open ? "chevronDown" : "chevronRight"} size={14} className="text-subtle" />
+      </button>
+      {open && (
+        <div className="ml-[19px] flex flex-col gap-0.5 border-l border-line-subtle pl-2">
+          {cluster.items.map((it) => {
+            const active = it.key === activeKey;
+            const count = it.badge && it.badge > 0 ? it.badge : 0;
+            return (
+              <button
+                key={it.key}
+                type="button"
+                onClick={() => onNavigate?.(it.key)}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-13 font-medium transition-colors duration-[120ms] focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]",
+                  active ? "bg-accent-tint text-accent-text" : "text-muted hover:bg-hover hover:text-fg",
+                )}
+              >
+                <Icon name={it.icon} size={15} style={active ? { color: "var(--accent)" } : undefined} />
+                <span className="flex-1 text-left">{it.label}</span>
+                {count > 0 && (
+                  <span
+                    className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
+                    style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: "var(--flame-700)", background: "var(--flame-50)" }}
+                  >
+                    {count > 99 ? "99+" : count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -200,6 +297,7 @@ export function NavRail({
   workspaceItems,
   projectItems,
   projectClusters,
+  workspaceClusters,
   activeKey,
   onNavigate,
   onProjectSwitch,
@@ -213,9 +311,11 @@ export function NavRail({
   project,
   user,
   orgSwitcher,
+  onChat,
+  chatOpen,
   version,
-  modeSwitch,
   search,
+  brandSearch,
   bell,
   body,
   collapsed = false,
@@ -277,7 +377,7 @@ export function NavRail({
     <nav
       className={cn(
         "flex h-full flex-none flex-col gap-3.5 border-r border-line bg-surface py-4 transition-[width] duration-150",
-        collapsed ? "w-[60px] px-2" : "w-[248px] px-3",
+        collapsed ? "w-[60px] px-2" : "w-[280px] px-3",
       )}
     >
       <div data-testid="brand-row" className={cn("flex items-center", collapsed ? "justify-center" : "gap-1.5 px-1")}>
@@ -293,10 +393,8 @@ export function NavRail({
         />
         {!collapsed && (
           <>
-            <span className="fg-h3 min-w-0 flex-1 truncate" style={{ fontSize: "var(--text-16)" }}>
-              Forge
-            </span>
-            {modeSwitch}
+            {orgSwitcher}
+            {brandSearch}
             {onToggleCollapsed && (
               <button
                 type="button"
@@ -323,10 +421,6 @@ export function NavRail({
           </button>
         </Tooltip>
       )}
-
-      {collapsed && modeSwitch}
-
-      {!collapsed && orgSwitcher}
 
       {search}
 
@@ -378,6 +472,8 @@ export function NavRail({
                 open={groupOpen?.[c.key] !== false}
                 onToggle={() => onToggleGroup?.(c.key)}
                 onNavigate={onNavigate}
+                groupOpen={groupOpen}
+                onToggleGroup={onToggleGroup}
               />
             ))}
           </div>
@@ -388,6 +484,17 @@ export function NavRail({
           {workspaceItems.map((it) => (
             <NavRow key={it.key} item={it} active={it.key === activeKey} collapsed={collapsed} onClick={() => onNavigate?.(it.key)} />
           ))}
+          {workspaceClusters?.map((c) => (
+            <NavGroup
+              key={c.key}
+              cluster={c}
+              activeKey={activeKey}
+              collapsed={collapsed}
+              open={groupOpen?.[c.key] !== false || c.items.some((it) => it.key === activeKey)}
+              onToggle={() => onToggleGroup?.(c.key)}
+              onNavigate={onNavigate}
+            />
+          ))}
         </div>
       </div>
         </>
@@ -396,6 +503,14 @@ export function NavRail({
       {/* Footer block: What's New + Docs pinned bottom-left, then the user chip. */}
       <div className="mt-auto flex flex-col gap-1 border-t border-line-subtle pt-3">
         {bell}
+        {onChat && (
+          <NavRow
+            item={{ key: "chat", label: "Chat", icon: "chat" }}
+            active={chatOpen === true}
+            collapsed={collapsed}
+            onClick={onChat}
+          />
+        )}
         {onWhatsNew && (
           <NavRow
             item={{ key: "whats-new", label: "What's New", icon: "star", badge: whatsNewBadge }}

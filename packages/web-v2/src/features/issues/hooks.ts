@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, modulesApi, releaseBatchApi } from "./api";
+import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, releaseBatchApi } from "./api";
 import { registryApi } from "./registry-api";
 import type {
   IssueLabel,
@@ -89,19 +89,6 @@ export function useProjectLabels(projectId: string | undefined) {
  * `/modules` route, so one labels fetch serves the Labels tab, the label filter, the module filter
  * and the picker off one cache entry.
  */
-/**
- * ISS-949 — the module rollup behind the Modules view. Keyed
- * `['project', projectId, 'modules', 'rollup', activeWithinDays]`.
- */
-export function useModuleRollup(projectId: string | undefined, activeWithinDays?: number) {
-  return useQuery({
-    queryKey: ["project", projectId, "modules", "rollup", activeWithinDays ?? null],
-    queryFn: () => modulesApi.rollup(projectId as string, activeWithinDays),
-    enabled: !!projectId,
-    staleTime: 30_000,
-  });
-}
-
 export function useProjectModules(projectId: string | undefined) {
   const q = useProjectLabels(projectId);
   const modules = useMemo(

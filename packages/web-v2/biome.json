@@ -34,7 +34,6 @@
           "level": "error",
           "options": {
             "paths": {
-              "@floating-ui/react": "@floating-ui/react is a behaviour library web-v2 keeps behind its own design system (ISS-1172). Import it only inside src/design/**, and give features a component or hook from @/design that passes their own types, never the library's.",
               "react-hook-form": "react-hook-form is a behaviour library web-v2 keeps behind its own design system (ISS-1172). Import it only inside src/design/**, and give features a component or hook from @/design that passes their own types, never the library's.",
               "@hookform/resolvers": "@hookform/resolvers is a behaviour library web-v2 keeps behind its own design system (ISS-1172). Import it only inside src/design/**, and give features a component or hook from @/design that passes their own types, never the library's.",
               "@tanstack/react-table": "@tanstack/react-table is a behaviour library web-v2 keeps behind its own design system (ISS-1172). Import it only inside src/design/**, and give features a component or hook from @/design that passes their own types, never the library's.",
@@ -43,7 +42,6 @@
             "patterns": [
               {
                 "group": [
-                  "@floating-ui/react/**",
                   "react-hook-form/**",
                   "@hookform/resolvers/**",
                   "@tanstack/react-table/**",

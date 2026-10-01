@@ -6,6 +6,7 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, conflict, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { assertApprovalAllowsAttempt } from './approvals.js';
 import { resolveReleaseChannels } from './channel.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
 import {
@@ -45,6 +46,7 @@ import {
 } from './service.js';
 import { readServingDeployment } from './serving.js';
 import { assertRunNotHolding, ReleaseRunHoldingError, readReleaseRunState } from './state.js';
+import { releaseVersionRoutes } from './version-routes.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 
@@ -387,6 +389,7 @@ releaseBatchRoutes.post(
       if (err instanceof ReleaseRunHoldingError) throw holding(err);
       throw err;
     }
+    await assertApprovalAllowsAttempt(runId);
     const row = await openAttempt({
       runId,
       stage: body.stage as never,
@@ -476,3 +479,5 @@ releaseBatchRoutes.get(
     return c.json(record);
   },
 );
+
+releaseBatchRoutes.route('/', releaseVersionRoutes);

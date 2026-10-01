@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 expect.extend(matchers);
@@ -37,7 +37,18 @@ vi.mock("@/features/orgs/active-org", () => ({
   ActiveOrgProvider: ({ children }: { children: React.ReactNode }) => children,
   useActiveOrg: () => ({ orgs: [], activeOrgId: null, setActiveOrg: vi.fn() }),
 }));
-vi.mock("@/features/orgs/components/org-switcher", () => ({ OrgSwitcher: () => null }));
+vi.mock("@/features/orgs/components/org-switcher", () => ({
+  OrgSwitcher: ({ variant }: { variant: string }) => <button type="button" data-testid={`org-switcher-${variant}`}>Org</button>,
+}));
+vi.mock("@/features/releases/versions-hooks", () => ({ useAwaitingApprovalCount: () => 2 }));
+vi.mock("@/features/conversations/components/conversation-chat", () => ({
+  ConversationChat: ({ projectId, initialDraft }: { projectId: string; initialDraft?: string }) => (
+    <div data-testid="dock-chat" data-project={projectId} data-draft={initialDraft ?? ""} />
+  ),
+}));
+vi.mock("@/features/conversations/components/context-panel", () => ({ ContextPanel: () => null }));
+vi.mock("@/features/conversations/components/start-conversation", () => ({ StartConversation: () => null }));
+vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => {} }));
 vi.mock("@/features/attention/hooks", () => ({ useAttention: () => ({ total: 3 }) }));
 vi.mock("@/features/whats-new/hooks", () => ({ useWhatsNewStatus: () => ({ hasUnseen: false }) }));
 vi.mock("@/features/version", () => ({ ForgeVersion: () => null }));
@@ -47,6 +58,7 @@ vi.mock("@/features/notifications/components/notifications-bell", () => ({
   NotificationsBell: ({ open }: { open: boolean }) => (open ? <div data-testid="bell-open" /> : null),
 }));
 vi.mock("@/features/conversations/hooks", () => ({
+  useConversation: () => ({ data: undefined }),
   useConversationsAcrossProjects: () => ({ rows: [], isLoading: false, error: null, refetch: vi.fn() }),
   useRenameConversation: () => ({ mutate: vi.fn() }),
   useArchiveConversation: () => ({ mutate: vi.fn() }),
@@ -60,10 +72,8 @@ vi.mock("@/features/ecosystem/hooks", () => ({
 import WorkspaceLayout from "./layout";
 
 function at(route: string) {
-  const [path, query] = route.split("?");
-  nav.pathname = path as string;
+  nav.pathname = route.split("?")[0] as string;
   window.history.replaceState(null, "", route);
-  void query;
 }
 
 function mount() {
@@ -74,187 +84,124 @@ function mount() {
   );
 }
 
-function modeTab(name: "Activity" | "Chat") {
-  return within(screen.getByTestId("mode-switch")).getByRole("tab", { name });
-}
+const rail = (collapsed: boolean) =>
+  window.localStorage.setItem("web-v2:sidebar", JSON.stringify({ collapsed, groupOpen: {} }));
+const side = () => within(screen.getByTestId("desktop-sidebar"));
+
+Element.prototype.scrollIntoView = vi.fn();
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
 
 beforeEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
   nav.push.mockReset();
   nav.replace.mockReset();
+  window.matchMedia = ((q: string) => ({
+    matches: q.includes("min-width"),
+    media: q,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })) as unknown as typeof window.matchMedia;
 });
 afterEach(cleanup);
 
-describe("the shell's mode follows the route", () => {
-  it("is Chat on a /chat route, with the chat sidebar in place of the nav", () => {
-    at("/chat/forge-dev");
-    mount();
-    expect(modeTab("Chat")).toHaveAttribute("aria-selected", "true");
-    expect(modeTab("Activity")).toHaveAttribute("aria-selected", "false");
-    expect(screen.getByTestId("chat-sidebar")).toBeInTheDocument();
-  });
-
-  it("is Activity everywhere else", () => {
+describe("the logo row", () => {
+  it("is the logo, the organization picker, search and collapse, with no mode switch", () => {
+    rail(false);
     at("/projects/forge-dev/issues");
     mount();
-    expect(modeTab("Activity")).toHaveAttribute("aria-selected", "true");
-    expect(screen.queryByTestId("chat-sidebar")).toBeNull();
-  });
-});
-
-describe("switching modes", () => {
-  it("returns to the route the mode was last on", () => {
-    at("/projects/forge-dev/issues?filter=open");
-    const view = mount();
-    at("/chat/forge-dev/c-1");
-    view.rerender(
-      <WorkspaceLayout>
-        <p>page</p>
-      </WorkspaceLayout>,
-    );
-    fireEvent.click(modeTab("Activity"));
-    expect(nav.push).toHaveBeenLastCalledWith("/projects/forge-dev/issues?filter=open");
-  });
-
-  it("keeps the project selected in the mode being left", () => {
-    at("/projects/forge-dev/issues");
-    const view = mount();
-    at("/chat/other");
-    view.rerender(
-      <WorkspaceLayout>
-        <p>page</p>
-      </WorkspaceLayout>,
-    );
-    fireEvent.click(modeTab("Activity"));
-    expect(nav.push).toHaveBeenLastCalledWith("/projects/other/issues");
-  });
-});
-
-describe("the mode switch sits on the Forge logo row", () => {
-  it.each([
-    ["Activity", "/projects/forge-dev/issues"],
-    ["Chat", "/chat/forge-dev"],
-  ])("in %s mode at desktop width", (_, route) => {
-    window.localStorage.setItem("web-v2:sidebar", JSON.stringify({ collapsed: false, groupOpen: {} }));
-    at(route);
-    mount();
-    const brand = within(within(screen.getByTestId("desktop-sidebar")).getByTestId("brand-row"));
+    const brand = within(side().getByTestId("brand-row"));
     expect(brand.getByAltText("Forge")).toBeInTheDocument();
-    expect(brand.getByTestId("mode-switch")).toBeInTheDocument();
-  });
-
-  it("keeps its own place in the compact rail", () => {
-    window.localStorage.setItem("web-v2:sidebar", JSON.stringify({ collapsed: true, groupOpen: {} }));
-    at("/projects/forge-dev/issues");
-    mount();
-    const side = within(screen.getByTestId("desktop-sidebar"));
-    expect(side.getByTestId("mode-switch")).toBeInTheDocument();
-    fireEvent.click(modeTab("Chat"));
-    expect(nav.push).toHaveBeenLastCalledWith("/chat/forge-dev");
+    expect(brand.getByTestId("org-switcher-brand")).toBeInTheDocument();
+    expect(brand.getByRole("button", { name: "Collapse sidebar" })).toBeInTheDocument();
+    expect(side().queryByTestId("org-switcher-expanded")).toBeNull();
+    expect(screen.queryByTestId("mode-switch")).toBeNull();
   });
 });
 
-describe("every top-bar item has a new home", () => {
-  it.each([
-    ["the compact rail", "/projects/forge-dev/issues", true],
-    ["the expanded rail", "/projects/forge-dev/issues", false],
-    ["the chat sidebar", "/chat/forge-dev", false],
-  ])("puts the bell and the account in %s", (_, route, collapsed) => {
-    window.localStorage.setItem("web-v2:sidebar", JSON.stringify({ collapsed, groupOpen: {} }));
-    at(route);
+describe("the project menu", () => {
+  it("lists Dashboard, Issues, Agents, Workflows, Automation and Releases, and no Library", () => {
+    rail(false);
+    at("/projects/forge-dev");
     mount();
-    expect(screen.queryByRole("banner")).toBeNull();
-    const side = within(screen.getByTestId("desktop-sidebar"));
-    expect(side.getByTestId("mode-switch")).toBeInTheDocument();
-    expect(side.getByRole("button", { name: "Account menu" })).toBeInTheDocument();
-    fireEvent.click(side.getByRole("button", { name: "Notifications, 2 open" }));
-    expect(screen.getByTestId("bell-open")).toBeInTheDocument();
+    for (const name of ["Dashboard", "Issues", "Agents", "Workflows", "Automation", "Releases"]) {
+      expect(side().getByRole("button", { name: new RegExp(`^${name}`) })).toBeInTheDocument();
+    }
+    expect(side().queryByRole("button", { name: /^Library/ })).toBeNull();
   });
 
+  it("opens the Automation group on a page inside it and lights that page", () => {
+    rail(false);
+    at("/projects/forge-dev/automation/improvements");
+    mount();
+    expect(side().getByRole("button", { name: "Automation" })).toHaveAttribute("aria-expanded", "true");
+    expect(side().getByRole("button", { name: "Improvements" })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(side().getByRole("button", { name: "Schedules" }));
+    expect(nav.push).toHaveBeenLastCalledWith("/projects/forge-dev/automation/schedules");
+  });
+
+  it("keeps the Automation group shut until it is opened, then shows its two pages", () => {
+    rail(false);
+    at("/projects/forge-dev/issues");
+    mount();
+    expect(side().queryByRole("button", { name: "Schedules" })).toBeNull();
+    fireEvent.click(side().getByRole("button", { name: "Automation" }));
+    expect(side().getByRole("button", { name: "Schedules" })).toBeInTheDocument();
+    expect(side().getByRole("button", { name: "Improvements" })).toBeInTheDocument();
+  });
+
+  it("counts the versions awaiting approval on Releases", () => {
+    rail(false);
+    at("/projects/forge-dev/releases");
+    mount();
+    expect(side().getByRole("button", { name: /^Releases/ })).toHaveTextContent("2");
+  });
+});
+
+describe("the chat dock", () => {
+  it.each([
+    ["the expanded rail", false],
+    ["the compact rail", true],
+  ])("opens from %s over the page, in the selected project, and closes", (_, collapsed) => {
+    rail(collapsed);
+    at("/projects/other/issues");
+    mount();
+    expect(screen.queryByTestId("chat-dock")).toBeNull();
+    fireEvent.click(side().getByRole("button", { name: "Chat" }));
+    expect(screen.getByText("page")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-dock")).toBeInTheDocument();
+    expect(screen.getByTestId("dock-chat")).toHaveAttribute("data-project", "p2");
+    fireEvent.click(screen.getByRole("button", { name: "Close chat" }));
+    expect(screen.queryByTestId("chat-dock")).toBeNull();
+  });
+
+  it("is what New chat opens from ⌘K, which offers no Chat mode", () => {
+    at("/projects/forge-dev/issues");
+    mount();
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    expect(screen.queryByText("Go to Chat")).toBeNull();
+    expect(screen.queryByText("Go to Activity")).toBeNull();
+    fireEvent.click(screen.getByText("New chat"));
+    expect(screen.getByTestId("dock-chat")).toHaveAttribute("data-project", "p1");
+  });
+});
+
+describe("every top-bar item has a home in the sidebar", () => {
   it.each([
     ["the compact rail", true],
     ["the expanded rail", false],
-  ])("puts the search row in %s", (_, collapsed) => {
-    window.localStorage.setItem("web-v2:sidebar", JSON.stringify({ collapsed, groupOpen: {} }));
+  ])("puts the bell, the account and search in %s", (_, collapsed) => {
+    rail(collapsed);
     at("/projects/forge-dev/issues");
     mount();
-    expect(within(screen.getByTestId("desktop-sidebar")).getByRole("button", { name: "Search (⌘K)" })).toBeInTheDocument();
-  });
-
-  it("leaves the search row out of the chat sidebar, and ⌘K still opens the palette there", () => {
-    at("/chat/forge-dev");
-    mount();
-    const side = within(screen.getByTestId("desktop-sidebar"));
-    expect(side.queryByRole("button", { name: "Search (⌘K)" })).toBeNull();
-    expect(side.getByRole("textbox", { name: "Search conversations" })).toBeInTheDocument();
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
-    expect(screen.getByText("Create issue")).toBeInTheDocument();
-  });
-
-  it("puts the breadcrumb above an Activity page", () => {
-    at("/projects/forge-dev/issues");
-    mount();
-    const crumbs = within(screen.getByTestId("page-crumbs"));
-    expect(crumbs.getByText("Forge Dev")).toBeInTheDocument();
-    expect(crumbs.getByText("Issues")).toBeInTheDocument();
-  });
-
-  it("opens the command palette from the sidebar, and it holds New issue and New chat", () => {
-    at("/projects/forge-dev/issues");
-    mount();
-    fireEvent.click(screen.getAllByRole("button", { name: "Search (⌘K)" })[0] as HTMLElement);
-    expect(screen.getByText("Create issue")).toBeInTheDocument();
-    expect(screen.getByText("New chat")).toBeInTheDocument();
-  });
-
-  it("carries search, the bell and the account in the mobile More drawer", () => {
-    at("/runners");
-    mount();
-    fireEvent.click(screen.getByRole("button", { name: "More" }));
-    const drawer = within(screen.getByRole("dialog", { name: "Navigation" }));
-    expect(drawer.getByRole("button", { name: "Search (⌘K)" })).toBeInTheDocument();
-    expect(drawer.getByRole("button", { name: "Notifications, 2 open" })).toBeInTheDocument();
-    expect(drawer.getByRole("button", { name: /Account & Settings/ })).toBeInTheDocument();
-    expect(drawer.getByRole("button", { name: /Sign out/ })).toBeInTheDocument();
-  });
-});
-
-describe("the Ecosystem group", () => {
-  it("sits in the expanded Activity sidebar and opens the register on the selected project", () => {
-    window.localStorage.setItem("web-v2:sidebar", JSON.stringify({ collapsed: false, groupOpen: {} }));
-    at("/projects/forge-dev/issues");
-    mount();
-    const side = within(screen.getByTestId("desktop-sidebar"));
-    expect(side.getByText("Ecosystem")).toBeInTheDocument();
-    fireEvent.click(side.getByRole("button", { name: "Held" }));
-    expect(nav.push).toHaveBeenLastCalledWith("/projects/forge-dev/ecosystem/channel?status=held");
-  });
-
-  it("sits in the compact rail too", () => {
-    at("/projects/forge-dev/issues");
-    mount();
-    const side = within(screen.getByTestId("desktop-sidebar"));
-    fireEvent.click(side.getByRole("button", { name: "Contracts" }));
-    expect(nav.push).toHaveBeenLastCalledWith("/projects/forge-dev/ecosystem/contracts");
-  });
-});
-
-describe("the mobile tabs", () => {
-  it("are Activity · Chat · Attention · More, shown below md where the sidebar is hidden", () => {
-    at("/runners");
-    mount();
-    const tabs = screen.getByRole("navigation", { name: "Primary" });
-    expect(tabs).toHaveClass("md:hidden");
-    expect(within(tabs).getAllByRole("button").map((b) => b.textContent?.replace(/\d+/g, ""))).toEqual([
-      "Activity",
-      "Chat",
-      "Attention",
-      "More",
-    ]);
-    act(() => {
-      fireEvent.click(within(tabs).getByRole("button", { name: "Chat" }));
-    });
-    expect(nav.push).toHaveBeenLastCalledWith("/chat/forge-dev");
+    expect(screen.queryByRole("banner")).toBeNull();
+    expect(side().getByRole("button", { name: "Account menu" })).toBeInTheDocument();
+    expect(side().getByRole("button", { name: "Search (⌘K)" })).toBeInTheDocument();
+    fireEvent.click(side().getByRole("button", { name: "Notifications, 2 open" }));
+    expect(screen.getByTestId("bell-open")).toBeInTheDocument();
   });
 });

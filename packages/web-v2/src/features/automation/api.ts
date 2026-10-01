@@ -13,6 +13,9 @@ export const pmApi = {
       body: JSON.stringify(patch),
     }),
 
+  run: (projectId: string) =>
+    apiClient<unknown>(`/projects/${encodeURIComponent(projectId)}/pm/run`, { method: "POST" }),
+
   /** `GET /api/projects/:projectId/pm/decisions` — paginated, `X-Total-Count`. */
   listDecisions: (projectId: string, params: { page?: number; pageSize?: number } = {}) => {
     const qs = new URLSearchParams();

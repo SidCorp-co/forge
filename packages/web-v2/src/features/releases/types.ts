@@ -1,4 +1,3 @@
-import type { ReleaseRoster } from "./roster";
 
 
 export type ReleaseAttemptStage = "promote" | "deploy" | "verify" | "repair";
@@ -13,7 +12,7 @@ export interface ReleaseAttempt {
 	providerRef: string | null;
 	health: "up" | "down" | null;
 	identity: string | null;
-	verdict: "ok" | "failed" | null;
+	verdict: "ok" | "failed" | "unverified" | null;
 	verdictReason: string | null;
 	readings: string[] | null;
 	account: string | null;
@@ -44,38 +43,4 @@ export interface ReleaseBoundsReading {
 	bounds: ReleaseBoundReading[];
 }
 
-/** What the probes say about production, read at request time. */
-export interface ReleaseLiveState {
-	health: "up" | "down";
-	identity: string | null;
-	readings: string[];
-	unhealthy: string[];
-	unidentified: string[];
-	disagreement: string[] | null;
-}
-
-export interface ReleaseMethod {
-	skill: string;
-	loaded: boolean;
-	detail: string | null;
-	announcedAt: string;
-}
-
 export type { ReleaseRoster, ReleaseRosterEntry } from "./roster";
-
-/** `GET /api/projects/:projectId/release-batches/:runId/state`. */
-export interface ReleaseRunState {
-	runId: string;
-	projectId: string;
-	runStatus: string;
-	roster: ReleaseRoster;
-	/** Oldest first, by `startedAt` then `id` — core's own order. */
-	attempts: ReleaseAttempt[];
-	/** `null` when the project declares no probes, or none that can be read. */
-	live: ReleaseLiveState | null;
-	verification: "probed" | "unverified" | null;
-	bounds: ReleaseBoundsReading;
-	/** `null` when the run never announced one. */
-	method: ReleaseMethod | null;
-	methodUnloaded: boolean;
-}

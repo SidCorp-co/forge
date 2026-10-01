@@ -45,7 +45,7 @@ export function SchedulesCard({ rows, now, slug }: { rows: ScheduleRow[]; now: n
               variant="primary"
               size="sm"
               icon="plus"
-              onClick={() => router.push(`/projects/${slug}/automation`)}
+              onClick={() => router.push(`/projects/${slug}/automation/schedules`)}
             >
               Create schedule
             </Button>

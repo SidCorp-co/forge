@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Card, CardContent, SectionTitle } from "@/design";
 import { AssistantWeeklySection } from "./assistant-weekly-section";
 import { PluginsSection } from "./plugins-section";
@@ -15,8 +14,6 @@ export function PipelineTab({
   canEdit: boolean;
   slug?: string;
 }) {
-  const libraryHref = slug ? `/projects/${slug}/library?tab=skills` : undefined;
-
   return (
     <Card>
       <CardContent>
@@ -28,13 +25,6 @@ export function PipelineTab({
           Which model runs each status, with which tools denied, is the policy on the Configuration
           tab.
         </p>
-        {libraryHref && (
-          <p className="fg-caption mb-4">
-            <Link href={libraryHref} className="text-accent-text hover:underline">
-              Manage or create skills in Library →
-            </Link>
-          </p>
-        )}
 
         <ReleaseSection projectId={projectId} slug={slug} />
 

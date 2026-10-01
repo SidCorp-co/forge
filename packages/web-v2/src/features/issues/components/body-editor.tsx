@@ -6,9 +6,8 @@
 // dialog.
 //
 // CodeMirror rather than a hand-rolled textarea because selection, undo and
-// caret work is exactly the thing not worth owning — it is already the repo's
-// editor engine (`features/skills/components/code-editor.tsx`), so this adds an
-// import and no dependency, and the chrome stays ours and on tokens.
+// caret work is exactly the thing not worth owning, and the chrome stays ours
+// and on tokens.
 //
 // ISS-967 also gave this toolbar a menu that inserted a `forge-*` component
 // skeleton; the owner cut it on 2026-09-14 as the wrong direction — that format

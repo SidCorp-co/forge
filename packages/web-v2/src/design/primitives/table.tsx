@@ -1,21 +1,32 @@
 "use client";
 
 import type { HTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from "react";
+import {
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+  type ColumnDef,
+  type Header,
+  type OnChangeFn,
+  type SortingState,
+} from "@tanstack/react-table";
+import {
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Icon } from "@/design/icons/icon";
 import { useScrollEdges } from "@/design/hooks/use-scroll-edges";
 import { cn } from "@/lib/utils/cn";
 
-/* Calm data table — borders do the structural work; rows hover to --bg-hover. */
+export { flexRender, getCoreRowModel, getSortedRowModel, useReactTable };
+export type { ColumnDef, Header, OnChangeFn, SortingState };
 
 const DEFAULT_REGION_NAME = "Table, scrolls sideways";
 
-/**
- * The card clips only its corners; the scroller inside it is exactly its width
- * and owns horizontal overflow. `contain: inline-size` keeps the table's
- * min-content width out of every ancestor's sizing, and `relative` makes the
- * scroller the containing block of absolutely positioned cells (an `sr-only`
- * header) so they scroll with it instead of widening the document. The focus
- * ring is the card's, since the edge cues sit over the scroller's own edges.
- */
 export function Table({
   className,
   "aria-label": ariaLabel,
@@ -35,6 +46,7 @@ export function Table({
         {...(overflows ? { role: "region", tabIndex: 0, ...regionName } : {})}
       >
         <table
+          data-slot="table"
           className={cn("w-full border-collapse text-left", className)}
           aria-label={ariaLabel}
           aria-labelledby={ariaLabelledBy}
@@ -64,31 +76,135 @@ function EdgeCue({ side, visible }: { side: "start" | "end"; visible: boolean })
 }
 
 export function THead({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn("border-b border-line", className)} {...props} />;
+  return <TableHeader className={cn("border-b border-line [&_tr]:border-b-0 [&_tr]:hover:bg-transparent", className)} {...props} />;
 }
 
-export function TBody(props: HTMLAttributes<HTMLTableSectionElement>) {
-  return <tbody {...props} />;
+export function TBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
+  return <TableBody className={className} {...props} />;
 }
 
 export function TR({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
   return (
-    <tr
+    <TableRow
       className={cn("border-b border-line-subtle transition-colors last:border-0 hover:bg-hover", className)}
       {...props}
     />
   );
 }
 
-// Vertical padding follows the global density var (set on <html data-density>);
-// horizontal padding stays fixed. Inline style wins over the utility's py so
-// compact mode tightens rows everywhere the kit Table is used.
 const DENSITY_PY = { paddingTop: "var(--density-row-py)", paddingBottom: "var(--density-row-py)" };
 
 export function TH({ className, style, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th className={cn("fg-overline px-4 font-mono", className)} style={{ ...DENSITY_PY, ...style }} {...props} />;
+  return (
+    <TableHead
+      className={cn("fg-overline h-auto px-4 font-mono whitespace-normal text-subtle", className)}
+      style={{ ...DENSITY_PY, ...style }}
+      {...props}
+    />
+  );
 }
 
 export function TD({ className, style, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("fg-body-sm px-4 text-fg", className)} style={{ ...DENSITY_PY, ...style }} {...props} />;
+  return (
+    <TableCell
+      className={cn("fg-body-sm px-4 text-fg whitespace-normal", className)}
+      style={{ ...DENSITY_PY, ...style }}
+      {...props}
+    />
+  );
+}
+
+export interface SortableTHProps<TData> extends ThHTMLAttributes<HTMLTableCellElement> {
+  header: Header<TData, unknown>;
+}
+
+export function SortableTH<TData>({ header, className, children, ...props }: SortableTHProps<TData>) {
+  const column = header.column;
+  const label = children ?? flexRender(column.columnDef.header, header.getContext());
+  if (!column.getCanSort()) {
+    return (
+      <TH className={className} {...props}>
+        {label}
+      </TH>
+    );
+  }
+  const sorted = column.getIsSorted();
+  return (
+    <TH
+      className={className}
+      aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : "none"}
+      {...props}
+    >
+      <button
+        type="button"
+        onClick={column.getToggleSortingHandler()}
+        className={cn(
+          "inline-flex items-center gap-1 uppercase tracking-[inherit] hover:text-fg",
+          sorted && "text-fg",
+        )}
+      >
+        {label}
+        <Icon
+          name={sorted === "asc" ? "arrowUp" : sorted === "desc" ? "arrowDown" : "chevronUpDown"}
+          size={12}
+          className={sorted ? "text-accent" : "text-disabled"}
+        />
+      </button>
+    </TH>
+  );
+}
+
+export interface DataTableProps<TData> {
+  columns: ColumnDef<TData, unknown>[];
+  data: TData[];
+  sorting?: SortingState;
+  onSortingChange?: OnChangeFn<SortingState>;
+  manualSorting?: boolean;
+  getRowId?: (row: TData) => string;
+  "aria-label"?: string;
+  className?: string;
+}
+
+export function DataTable<TData>({
+  columns,
+  data,
+  sorting,
+  onSortingChange,
+  manualSorting = false,
+  getRowId,
+  className,
+  "aria-label": ariaLabel,
+}: DataTableProps<TData>) {
+  const table = useReactTable({
+    columns,
+    data,
+    getRowId,
+    manualSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: manualSorting ? undefined : getSortedRowModel(),
+    ...(sorting ? { state: { sorting } } : {}),
+    onSortingChange,
+  });
+  return (
+    <Table className={className} aria-label={ariaLabel}>
+      <THead>
+        {table.getHeaderGroups().map((group) => (
+          <TR key={group.id}>
+            {group.headers.map((header) => (
+              <SortableTH key={header.id} header={header} />
+            ))}
+          </TR>
+        ))}
+      </THead>
+      <TBody>
+        {table.getRowModel().rows.map((row) => (
+          <TR key={row.id}>
+            {row.getVisibleCells().map((cell) => (
+              <TD key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TD>
+            ))}
+          </TR>
+        ))}
+      </TBody>
+    </Table>
+  );
 }

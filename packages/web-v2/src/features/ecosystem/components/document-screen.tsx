@@ -107,7 +107,7 @@ export function DocumentScreen({
             {view.standing?.overdue ? <Badge tone="red">Overdue</Badge> : null}
             {held ? <Badge tone="amber">Held</Badge> : null}
             <span className="fg-caption">{view.side === "sender" ? "you sent this" : "sent to you"}</span>
-            <AskAboutThis slug={slug} kind="document" refId={d.number ?? docRef} />
+            <AskAboutThis kind="document" refId={d.number ?? docRef} />
           </div>
           <h2 className="break-words text-16 font-semibold text-fg">{d.subject}</h2>
           <p className="fg-caption break-words">

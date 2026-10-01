@@ -1,8 +1,9 @@
 "use client";
 
-// Project-tier Schedules (rendered inside the Automation tab). Full-width table
-// on desktop, stacked cards on mobile. Real `/api/schedules` data with an enable
-// Toggle, manual run, and an expandable run-history panel (ISS-299 + history).
+// Project-tier Schedules (Automation ▸ Schedules). Full-width table on desktop,
+// stacked cards on mobile. Real `/api/schedules` data with an enable Toggle,
+// manual run, and an expandable run-history panel (ISS-299 + history); the PM
+// sweep is the first row, a schedule of kind PM whose row opens its settings.
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
@@ -29,6 +30,8 @@ import {
   Tooltip,
   TR,
 } from "@/design";
+import { usePmConfig, usePmDecisions, useRunPm, useUpdatePmConfig } from "@/features/automation/hooks";
+import { PmSettings, pmCadenceLabel } from "@/features/automation/components/pm-settings";
 import { formatApiError } from "@/lib/api/error";
 import { useRunSchedule, useScheduleRuns, useSchedules, useSetScheduleEnabled } from "../hooks";
 import {
@@ -41,10 +44,11 @@ import {
   type StewardRunReportAction,
 } from "../types";
 
-/** Distinguishes a script-kind row from a prompt-kind one — @/design tokens only. */
-function ScheduleKindBadge({ kind }: { kind: ScheduleKind }) {
+function ScheduleKindBadge({ kind }: { kind: ScheduleKind | "pm" | "improve" }) {
+  if (kind === "pm") return <Badge tone="cobalt">PM</Badge>;
+  if (kind === "improve") return <Badge tone="amber">Improve</Badge>;
   return (
-    <Badge tone={kind === "script" ? "cobalt" : "neutral"}>
+    <Badge tone={kind === "script" ? "green" : "neutral"}>
       {kind === "script" ? "Script" : "Prompt"}
     </Badge>
   );
@@ -216,7 +220,7 @@ function ScheduleHistory({ row, slug }: { row: ScheduleRow; slug: string | undef
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <ScheduleKindBadge kind={row.kind} />
+        <ScheduleKindBadge kind={row.templateKey ? "improve" : row.kind} />
         {row.targetProjectSlug && (
           <span className="fg-caption font-mono text-subtle">→ {row.targetProjectSlug}</span>
         )}
@@ -276,6 +280,7 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
   const schedulesQ = useSchedules(projectId);
   const setEnabled = useSetScheduleEnabled(projectId);
   const runMut = useRunSchedule(projectId);
+  const pmQ = usePmConfig(projectId);
 
   const rows = schedulesQ.data ?? [];
   const actions: RowActions = {
@@ -291,7 +296,7 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
       <header className="mb-6">
         <PageTitle className="fg-h2">Schedules</PageTitle>
         <p className="fg-body-sm mt-1">
-          Recurring agent runs for this project. Expand a row to see its run history.
+          Recurring runs for this project, the PM sweep among them. Expand a row to see its history or settings.
         </p>
       </header>
 
@@ -311,14 +316,25 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
         />
       )}
 
-      {!schedulesQ.isLoading && !schedulesQ.isError && rows.length === 0 && (
-        <EmptyState
-          title="No schedules yet"
-          message="Recurring agent runs for this project will appear here."
-        />
+      {!schedulesQ.isLoading && !schedulesQ.isError && (
+        <>
+          {rows.length === 0 && pmQ.isError && (
+            <EmptyState
+              title="No schedules yet"
+              message="Recurring agent runs for this project will appear here."
+            />
+          )}
+          {pmQ.isError && (
+            <ErrorState
+              title="Couldn't load the PM sweep"
+              message={formatApiError(pmQ.error)}
+              onRetry={() => pmQ.refetch()}
+            />
+          )}
+        </>
       )}
 
-      {!schedulesQ.isLoading && !schedulesQ.isError && rows.length > 0 && (
+      {!schedulesQ.isLoading && !schedulesQ.isError && (rows.length > 0 || pmQ.data) && (
         <>
           {/* Desktop / tablet: full-width table. */}
           <div className="hidden md:block">
@@ -328,6 +344,7 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
                   <TH className="w-8" aria-label="Expand" />
                   <TH className="w-12">On</TH>
                   <TH>Name · target</TH>
+                  <TH>Kind</TH>
                   <TH>Cadence</TH>
                   <TH>Next run</TH>
                   <TH>Last result</TH>
@@ -335,6 +352,7 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
                 </TR>
               </THead>
               <TBody>
+                {pmQ.data && <PmScheduleRow projectId={projectId} canManage={canManage} />}
                 {rows.map((row) => (
                   <ScheduleTableRow key={row.id} row={row} actions={actions} />
                 ))}
@@ -344,6 +362,7 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
 
           {/* Mobile: stacked cards — no horizontal page scroll. */}
           <div className="space-y-2.5 md:hidden">
+            {pmQ.data && <PmScheduleCard projectId={projectId} canManage={canManage} />}
             {rows.map((row) => (
               <ScheduleMobileCard key={row.id} row={row} actions={actions} />
             ))}
@@ -388,13 +407,13 @@ function ScheduleTableRow({ row, actions }: { row: ScheduleRow; actions: RowActi
           />
         </TD>
         <TD className="max-w-[280px]">
-          <div className="flex items-center gap-1.5">
-            <p className="fg-body-sm truncate text-fg">{row.name}</p>
-            <ScheduleKindBadge kind={row.kind} />
-          </div>
+          <p className="fg-body-sm truncate text-fg">{row.name}</p>
           {row.targetProjectSlug && (
             <span className="fg-caption font-mono">→ {row.targetProjectSlug}</span>
           )}
+        </TD>
+        <TD>
+          <ScheduleKindBadge kind={row.templateKey ? "improve" : row.kind} />
         </TD>
         <TD>
           <MonoTag>{row.cron}</MonoTag>
@@ -429,7 +448,7 @@ function ScheduleTableRow({ row, actions }: { row: ScheduleRow; actions: RowActi
       </TR>
       {open && (
         <TR>
-          <TD colSpan={7} className="bg-surface-subtle">
+          <TD colSpan={8} className="bg-surface-subtle">
             <ScheduleHistory row={row} slug={actions.slug} />
           </TD>
         </TR>
@@ -456,7 +475,7 @@ function ScheduleMobileCard({ row, actions }: { row: ScheduleRow; actions: RowAc
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
               <p className="fg-body-sm truncate text-fg">{row.name}</p>
-              <ScheduleKindBadge kind={row.kind} />
+              <ScheduleKindBadge kind={row.templateKey ? "improve" : row.kind} />
             </div>
             {row.targetProjectSlug && (
               <span className="fg-caption font-mono">→ {row.targetProjectSlug}</span>
@@ -506,6 +525,141 @@ function ScheduleMobileCard({ row, actions }: { row: ScheduleRow; actions: RowAc
         {open && (
           <div className="mt-3 border-t border-line-subtle pt-3">
             <ScheduleHistory row={row} slug={actions.slug} />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function usePmRow(projectId: string) {
+  const configQ = usePmConfig(projectId);
+  const lastQ = usePmDecisions(projectId, 1, 1);
+  const update = useUpdatePmConfig(projectId);
+  const run = useRunPm(projectId);
+  return { config: configQ.data, last: lastQ.data?.items[0] ?? null, update, run };
+}
+
+function PmLastRun({ last }: { last: { cause: string; createdAt: string } | null }) {
+  if (!last) return <span className="fg-caption text-subtle">No decision yet</span>;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <MonoTag>{last.cause}</MonoTag>
+      <span className="fg-caption text-subtle">{fmtTime(last.createdAt)}</span>
+    </span>
+  );
+}
+
+function PmScheduleRow({ projectId, canManage }: { projectId: string; canManage: boolean }) {
+  const [open, setOpen] = useState(false);
+  const { config, last, update, run } = usePmRow(projectId);
+  if (!config) return null;
+  return (
+    <>
+      <TR data-testid="pm-schedule-row">
+        <TD className="pr-0">
+          <IconButton
+            icon="chevronRight"
+            size="sm"
+            aria-label={open ? "Close PM settings" : "Open PM settings"}
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+            style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 150ms" }}
+          />
+        </TD>
+        <TD>
+          <Toggle
+            checked={config.enabled}
+            disabled={!canManage || update.isPending}
+            aria-label={`${config.enabled ? "Disable" : "Enable"} PM sweep`}
+            onChange={(next) => update.mutate({ enabled: next })}
+          />
+        </TD>
+        <TD>
+          <p className="fg-body-sm text-fg">PM sweep</p>
+        </TD>
+        <TD>
+          <ScheduleKindBadge kind="pm" />
+        </TD>
+        <TD>
+          <MonoTag>{pmCadenceLabel(config)}</MonoTag>
+        </TD>
+        <TD className="font-mono text-muted">
+          {config.enabled ? "—" : <span className="fg-caption font-sans text-subtle">Off</span>}
+        </TD>
+        <TD>
+          <PmLastRun last={last} />
+        </TD>
+        <TD className="text-right">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="play"
+            disabled={!canManage || run.isPending}
+            onClick={() => run.mutate()}
+            className="min-h-11"
+          >
+            Run
+          </Button>
+        </TD>
+      </TR>
+      {open && (
+        <TR>
+          <TD colSpan={8} className="bg-surface-subtle">
+            <PmSettings projectId={projectId} canManage={canManage} />
+          </TD>
+        </TR>
+      )}
+    </>
+  );
+}
+
+function PmScheduleCard({ projectId, canManage }: { projectId: string; canManage: boolean }) {
+  const [open, setOpen] = useState(false);
+  const { config, last, update, run } = usePmRow(projectId);
+  if (!config) return null;
+  return (
+    <Card>
+      <CardContent>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="fg-body-sm text-fg">PM sweep</p>
+            <ScheduleKindBadge kind="pm" />
+          </div>
+          <Toggle
+            checked={config.enabled}
+            disabled={!canManage || update.isPending}
+            aria-label={`${config.enabled ? "Disable" : "Enable"} PM sweep`}
+            onChange={(next) => update.mutate({ enabled: next })}
+          />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <MonoTag>{pmCadenceLabel(config)}</MonoTag>
+          <PmLastRun last={last} />
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+            className="inline-flex items-center gap-1 fg-caption text-accent focus-visible:outline-none"
+          >
+            {open ? "Hide settings" : "Settings"}
+          </button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="play"
+            disabled={!canManage || run.isPending}
+            onClick={() => run.mutate()}
+            className="min-h-11"
+          >
+            Run
+          </Button>
+        </div>
+        {open && (
+          <div className="mt-3 border-t border-line-subtle pt-3">
+            <PmSettings projectId={projectId} canManage={canManage} />
           </div>
         )}
       </CardContent>

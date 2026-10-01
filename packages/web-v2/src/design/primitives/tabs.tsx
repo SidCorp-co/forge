@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils/cn";
+import { Tabs as ShadcnTabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "./badge";
 
 export interface TabItem {
@@ -15,44 +15,27 @@ export interface TabsProps {
   onChange?: (value: string) => void;
 }
 
-/** Underline tabs (e.g. issue detail: Activity / Tasks / Comments). */
 export function Tabs({ tabs, value, onChange }: TabsProps) {
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    const i = tabs.findIndex((t) => t.value === value);
-    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-      e.preventDefault();
-      const dir = e.key === "ArrowRight" ? 1 : -1;
-      onChange?.(tabs[(i + dir + tabs.length) % tabs.length].value);
-    } else if (e.key === "Home") {
-      e.preventDefault();
-      onChange?.(tabs[0].value);
-    } else if (e.key === "End") {
-      e.preventDefault();
-      onChange?.(tabs[tabs.length - 1].value);
-    }
-  };
   return (
-    <div role="tablist" className="flex items-center gap-1 border-b border-line" onKeyDown={onKeyDown}>
-      {tabs.map((t) => {
-        const active = t.value === value;
-        return (
-          <button
-            key={t.value}
-            role="tab"
-            aria-selected={active}
-            tabIndex={active ? 0 : -1}
-            onClick={() => onChange?.(t.value)}
-            className={cn(
-              "relative inline-flex items-center gap-2 px-3 py-2.5 text-13-5 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] focus-visible:rounded-sm",
-              active ? "text-fg" : "text-muted hover:text-fg",
-            )}
-          >
-            {t.label}
-            {typeof t.count === "number" && <Badge tone={active ? "accent" : "neutral"}>{t.count}</Badge>}
-            {active && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-pill bg-accent" />}
-          </button>
-        );
-      })}
-    </div>
+    <ShadcnTabs value={value} onValueChange={(next) => onChange?.(next as string)} className="gap-0">
+      <TabsList
+        variant="line"
+        className="h-auto! w-full justify-start gap-1 rounded-none border-b border-line p-0"
+      >
+        {tabs.map((t) => {
+          const active = t.value === value;
+          return (
+            <TabsTrigger
+              key={t.value}
+              value={t.value}
+              className="h-auto flex-none gap-2 rounded-sm border-0 px-3 py-2.5 text-13-5 font-semibold text-muted hover:text-fg data-active:text-fg focus-visible:ring-0 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] after:bottom-[-1px]! after:inset-x-2! after:rounded-pill after:bg-accent"
+            >
+              {t.label}
+              {typeof t.count === "number" && <Badge tone={active ? "accent" : "neutral"}>{t.count}</Badge>}
+            </TabsTrigger>
+          );
+        })}
+      </TabsList>
+    </ShadcnTabs>
   );
 }

@@ -1,11 +1,11 @@
 import {
-  Activity, Archive, ArrowRight, Bell, BookOpen, Calendar, Check, ChevronDown,
+  Activity, Archive, ArrowDown, ArrowRight, ArrowUp, Bell, BookOpen, Calendar, Check, ChevronDown,
   ChevronLeft, ChevronRight, ChevronsUpDown, Circle, CircleHelp, Clock, Command,
   Cpu, DollarSign, Filter, Folder, GitBranch, GitFork, Inbox, Keyboard,
   LayoutGrid, Link as LinkIcon, List, Lock, LogOut, type LucideIcon, Mail,
-  Menu as MenuIcon, MessageSquare, Monitor, MoreHorizontal, PanelLeftClose, Pause, Pin, Play,
-  Pencil, Plus, RotateCw, Rows3, Search, Server, Settings, Shield, Sparkles, Square,
-  Star, Trash2, TriangleAlert, Users, Workflow, X,
+  Menu as MenuIcon, MessageSquare, Network, Monitor, MoreHorizontal, PanelLeftClose, Pause, Pin, Play,
+  Pencil, Plus, Rocket, RotateCw, Rows3, Search, Server, Settings, Shield, Sparkles, Square,
+  Star, Trash2, TriangleAlert, Users, Waypoints, Workflow, X,
   Bold, Code, Heading, Italic, ListOrdered, Quote, SquareCode,
 } from "lucide-react";
 
@@ -13,6 +13,7 @@ import {
    the production Lucide set. Screens stay readable — `<Icon name="pipeline" />`
    — and the icon set is swappable in one place. */
 const ICONS = {
+  ecosystem: Network,
   board: LayoutGrid,
   grid: LayoutGrid,
   list: List,
@@ -48,6 +49,8 @@ const ICONS = {
   rename: Pencil,
   trash: Trash2,
   arrowRight: ArrowRight,
+  arrowUp: ArrowUp,
+  arrowDown: ArrowDown,
   agent: Sparkles,
   chat: MessageSquare,
   folder: Folder,
@@ -75,6 +78,8 @@ const ICONS = {
   command: Command,
   menu: MenuIcon,
   logOut: LogOut,
+  flow: Waypoints,
+  rocket: Rocket,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

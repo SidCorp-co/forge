@@ -137,13 +137,21 @@
 
 ### Added
 
+- **Releases lists a project's versions.** Each version shows its changelog from release notes
+  and its deploy attempts, each opening its log in place. Issues waiting at the release gate
+  show as the next version, ready to cut.
+- **A release can wait for an admin before production.** The master asks with a reading from an
+  earlier environment; an admin approves or returns it with a reason. The Releases menu counts
+  the versions waiting.
+- **Workflows shows a project's flows and states as diagrams its own master writes.** Each step
+  names its file, its `cm:flow` annotation and whether the integration suite walks it.
 - **A project's master can record where its code uses another member's contract.** Each link
   pins a recorded version and lists call sites and fields used; only the consumer's own agent
   writes it, and the ecosystem's bus shows each link's state.
 - **A chat can be asked at an ecosystem's scope.** It reads the channel documents of your projects
   in that ecosystem and still writes only from the project it was opened under. Chats can be pinned.
-- **Activity and Chat replace the top bar, switched from the sidebar.** Each mode reopens where
-  you left it, on the same project. Chat shows what each answer read and wrote, and whether a tool
+- **Chat opens as a panel beside any page, and the sidebar replaces the top bar.** The panel
+  keeps the selected project. Chat shows what each answer read and wrote, and whether a tool
   ran with your permissions.
 - **When the assistant says a refused change went through, its reply now corrects itself.** A
   line under it names what was refused, why, and that nothing was written, on the web and in

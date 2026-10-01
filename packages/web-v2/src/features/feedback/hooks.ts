@@ -20,8 +20,8 @@ export function useMarkFeedbackReviewed(projectId: string | undefined) {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: ({ id, reviewed }: { id: string; reviewed: boolean }) =>
-      feedbackApi.markReviewed(id, reviewed),
+    mutationFn: ({ id, reviewed, linkedIssueId }: { id: string; reviewed: boolean; linkedIssueId?: string }) =>
+      feedbackApi.markReviewed(id, reviewed, linkedIssueId),
     onSuccess: (_data, { reviewed }) => {
       qc.invalidateQueries({ queryKey: ["feedback", projectId] });
       toast({ title: reviewed ? "Marked as reviewed" : "Marked as unreviewed", tone: "success" });

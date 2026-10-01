@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { NavRail, ScreenTabs, type NavItem } from "@/design";
 import { useAuth } from "@/providers/auth-provider";
-import { ToastLane } from "@/providers/toast-provider";
 import { useOperatorWhoami } from "../hooks";
 import { OPERATOR_SECTIONS, activeSectionFromPath, hrefForSection } from "../nav-model";
 import type { OperatorSectionKey, OperatorWhoami } from "../types";
@@ -66,7 +65,6 @@ export function OperatorShell({
         )}
 
         <main className="min-h-0 flex-1 overflow-y-auto p-6">{children}</main>
-        <ToastLane />
       </div>
     </div>
   );

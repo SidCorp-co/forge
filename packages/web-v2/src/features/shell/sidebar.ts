@@ -12,7 +12,7 @@ export interface SidebarState {
   collapse: () => void;
   /** Per-cluster open map keyed by cluster key. Missing key ⇒ open. */
   groupOpen: Record<string, boolean>;
-  toggleGroup: (key: string) => void;
+  toggleGroup: (key: string, open?: boolean) => void;
 }
 
 interface Persisted {
@@ -38,10 +38,10 @@ export function useSidebar(): SidebarState {
   );
 
   const toggleGroup = useCallback(
-    (key: string) =>
+    (key: string, open?: boolean) =>
       setState((s) => ({
         ...s,
-        groupOpen: { ...s.groupOpen, [key]: s.groupOpen[key] === false ? true : false },
+        groupOpen: { ...s.groupOpen, [key]: open ?? s.groupOpen[key] === false },
       })),
     [setState],
   );

@@ -92,7 +92,6 @@ vi.mock("@/features/projects/hooks", () => ({
 }));
 vi.mock("./release-gate-panel", () => ({ ReleaseGatePanel: () => null }));
 vi.mock("./issues-list-view", () => ({ IssuesListView: () => null }));
-vi.mock("./issues-insights-view", () => ({ IssuesInsightsView: () => null }));
 // The dialog's own behaviour has its own tests; this stub keeps the two exits it hands back to
 // the screen — a plain close, and the close that the real dialog makes before it routes to the
 // issue it created.
@@ -128,8 +127,7 @@ function paletteCreateIssue() {
   const commands = buildWorkspaceCommands({
     router,
     slug: "forge-dev",
-    railSlug: "forge-dev",
-    onSwitchMode: () => {},
+    onNewChat: () => {},
     activeProjectName: "forge-dev",
     scopedProjects: [],
     pinnedIds: new Set(),
@@ -169,16 +167,16 @@ it("opens the form when the list mounts fresh at ?new=1, as it does from another
 });
 
 it("clears new=1 on close, keeps the list's other parameters, and opens again on the next push", () => {
-  mountAt("/projects/forge-dev/issues?tab=insights&new=1");
+  mountAt("/projects/forge-dev/issues?status=open&new=1");
   expect(form()).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
   expect(form()).toBeNull();
   expect(window.location.pathname).toBe("/projects/forge-dev/issues");
-  expect(window.location.search).toBe("?tab=insights");
+  expect(window.location.search).toBe("?status=open");
 
-  act(() => router.push("/projects/forge-dev/issues?tab=insights&new=1"));
+  act(() => router.push("/projects/forge-dev/issues?status=open&new=1"));
   expect(form()).toBeInTheDocument();
 });
 
@@ -194,4 +192,12 @@ it("leaves no entry that reopens the form when Back is taken from the issue just
   await waitFor(() => expect(window.location.pathname).toBe("/projects/forge-dev/issues"));
   expect(window.location.search).toBe("");
   expect(form()).toBeNull();
+});
+
+it("is a list only: no Board, Insights or Modules view to switch to", () => {
+  mountAt("/projects/forge-dev/issues");
+  for (const name of ["List", "Board", "Insights", "Modules"]) {
+    expect(screen.queryByRole("radio", { name })).toBeNull();
+    expect(screen.queryByRole("button", { name })).toBeNull();
+  }
 });

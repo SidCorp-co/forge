@@ -21,7 +21,7 @@ import {
 } from "@/design";
 import { TONE_META } from "@/design/status";
 import {
-  NavRailCompact, PROJECT_ITEMS, WORKSPACE_ITEMS,
+  NavRailCompact, PROJECT_ITEMS, PROJECT_MENU, WORKSPACE_ITEMS,
   type RailItem, type SwitcherProject,
 } from "@/features/shell";
 import { useToast } from "@/providers/toast-provider";
@@ -621,7 +621,7 @@ export default function KitPage() {
               <div className="h-[560px] flex-1 overflow-hidden rounded-md border border-line">
                 <NavRail
                   workspaceItems={WORKSPACE_NAV}
-                  projectItems={PROJECT_NAV}
+                  projectClusters={[{ key: "project", kicker: "Project", items: PROJECT_MENU }]}
                   activeKey={navActive}
                   onNavigate={setNavActive}
                   onDocs={() => setNavActive("docs")}
