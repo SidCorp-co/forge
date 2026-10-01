@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { contentDisposition } from '../lib/attachment-headers.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { getStorage } from '../storage/index.js';
 import { loadAttachmentBytesTarget } from './attachment-bytes.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';
@@ -42,6 +42,10 @@ uploadRoutes.put(
   zValidator('param', uploadIdParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid uploadId', 'BAD_REQUEST');
   }),
+  rawBody(
+    'application/octet-stream',
+    "The file's raw bytes, not empty; its name, type and target come from the upload ticket.",
+  ),
   async (c) => {
     const { uploadId } = c.req.valid('param');
 

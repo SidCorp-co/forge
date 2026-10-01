@@ -18,7 +18,7 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { requireAnyAuth } from '../middleware/require-any-auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { AttachmentError, persistCommentAttachment } from './attachment-service.js';
 
@@ -78,6 +78,10 @@ commentAttachmentRoutes.post(
     if (!r.success)
       throw attachmentBadRequest('invalid commentId', 'BAD_REQUEST', z.flattenError(r.error));
   }),
+  rawBody(
+    'multipart/form-data',
+    'One file in the `file` field, attached to the comment; its name and media type come from the part.',
+  ),
   async (c) => {
     const { commentId } = c.req.valid('param');
     const userId = c.get('userId');
