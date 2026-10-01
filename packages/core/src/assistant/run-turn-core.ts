@@ -29,10 +29,11 @@ export const MAX_TOOL_ITERATIONS = 16;
 
 /** What `chat_logs.tool_calls` keeps of a result: enough to see what the model was shown, never the full 24k body. */
 const RESULT_PREVIEW_CHARS = 500;
-const RESULT_ISSUE_REF_RE = /\b[A-Za-z][A-Za-z0-9]{1,5}-\d{1,6}\b/g;
+/** Not preceded by `<word>-`, so the tail of a channel number (UQ-CR-3) is not an issue CR-3. */
+const RESULT_ISSUE_REF_RE = /(?<![A-Za-z0-9]-)\b[A-Za-z][A-Za-z0-9]{1,5}-\d{1,6}\b/g;
 
 /** Every issue-shaped reference a tool result named, de-duplicated. */
-function issueRefsIn(text: string): string[] {
+export function issueRefsIn(text: string): string[] {
   const seen = new Set<string>();
   for (const m of text.matchAll(RESULT_ISSUE_REF_RE)) seen.add((m[0] as string).toUpperCase());
   return [...seen];
