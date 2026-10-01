@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// ISS-1285 — the top bar and the ⌘K palette open New issue by pushing `?new=1` onto the Issues
+// ISS-1285 — the ⌘K palette opens New issue by pushing `?new=1` onto the Issues
 // list. On the list itself Next keeps the screen mounted, so only a screen that follows the query
 // after mount can answer; a mount-time read cannot. The fake router below changes the URL and
 // never remounts, which is the case the screen's own mount cannot see.
@@ -128,6 +128,8 @@ function paletteCreateIssue() {
   const commands = buildWorkspaceCommands({
     router,
     slug: "forge-dev",
+    railSlug: "forge-dev",
+    onSwitchMode: () => {},
     activeProjectName: "forge-dev",
     scopedProjects: [],
     pinnedIds: new Set(),
@@ -141,7 +143,7 @@ function paletteCreateIssue() {
   act(() => run());
 }
 
-it("opens the form when the top bar pushes ?new=1 onto the mounted Issues list", () => {
+it("opens the form when ?new=1 is pushed onto the mounted Issues list", () => {
   mountAt("/projects/forge-dev/issues");
   expect(form()).toBeNull();
 

@@ -43,7 +43,7 @@ src/
 │  ├─ primitives/           # Button, StatusChip, MonoTag, Avatar, ProjectMark,
 │  │                        #   HealthDot, Stat, Card, Kicker, Spinner, EmptyState,
 │  │                        #   Input, Field, Toggle, SegmentedControl
-│  ├─ patterns/             # KanbanCard, KanbanColumn, NavRail, TopBar,
+│  ├─ patterns/             # KanbanCard, KanbanColumn, NavRail, BottomTabBar,
 │  │                        #   CommandPalette, NotificationsMenu
 │  └─ index.ts              # barrel — import from "@/design"
 ├─ features/                # ← every screen lives here, one module per domain

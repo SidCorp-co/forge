@@ -93,6 +93,7 @@ export interface ChatComposerProps {
   onStop?: () => void;
   /** A stop is in flight. */
   stopping?: boolean;
+  initialValue?: string;
 }
 
 function bandClass(sticky: boolean, pad: string): string {
@@ -122,8 +123,9 @@ export function ChatComposer({
   slashSkills,
   onStop,
   stopping,
+  initialValue = "",
 }: ChatComposerProps) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initialValue);
   const [files, setFiles] = useState<StagedFile[]>([]);
   const [refusals, setRefusals] = useState<StagingRefusal[]>([]);
   const nextFileId = useRef(0);

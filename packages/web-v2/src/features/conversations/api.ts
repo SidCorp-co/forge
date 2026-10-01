@@ -1,5 +1,6 @@
 
 import { apiClient, apiClientList, apiPutBytes } from "@/lib/api/client";
+import type { RoomToolCalls } from "./context";
 import type {
   AgentModeOffer,
   ConversationCandidates,
@@ -58,6 +59,8 @@ export const conversationsApi = {
 
   /** `GET /api/conversations/:id` — the room, its people, its messages and its window decisions. */
   detail: (id: string) => apiClient<ConversationDetail>(`/conversations/${id}`),
+
+  toolCalls: (id: string) => apiClient<RoomToolCalls>(`/conversations/${id}/tool-calls`),
 
   /** `POST /api/conversations` — open a room in this project, with whoever it starts with. */
   open: (args: OpenConversationArgs) =>

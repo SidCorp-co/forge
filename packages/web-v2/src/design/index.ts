@@ -72,7 +72,6 @@ export { KanbanBoard, type KanbanBoardProps } from "./patterns/kanban-board";
 export { KanbanColumn, type KanbanColumnProps } from "./patterns/kanban-column";
 export { NavRail, type NavRailProps, type NavItem, type NavCluster } from "./patterns/nav-rail";
 export { BottomTabBar, type BottomTabBarProps, type BottomTabItem } from "./patterns/bottom-tab-bar";
-export { TopBar, type TopBarProps, type TopBarDensity } from "./patterns/top-bar";
 export { CommandPalette, type CommandPaletteProps, type Command, type CommandGroup } from "./patterns/command-palette";
 export { PinnedTabBar, type PinnedTabBarProps, type PinnedTab } from "./patterns/pinned-tab-bar";
 export {

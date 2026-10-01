@@ -1,14 +1,11 @@
 import type { BottomTabItem, Crumb, NavItem } from "@/design";
+import { modeOf } from "./mode";
 import type { RailItem } from "./nav-rail-compact";
 
 export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   // Overview = the all-projects home; the Attention queue is folded in here
   // (its live count rides on this row's badge).
   { key: "overview", label: "Overview", icon: "grid", href: "/" },
-  // ISS-668 — replaces the ISS-667 "Sessions" entry (mixed chat+pipeline) with
-  // a chat-only cross-project surface. Pipeline job sessions stay reachable via
-  // the project-tier Agents view + Ops monitor (see conversations-screen.tsx).
-  { key: "conversations", label: "Conversations", icon: "agent", href: "/conversations" },
   { key: "runners", label: "Runners", icon: "server", href: "/runners" },
   // ISS-628 — workspace resource management, first type = Private Keys.
   { key: "resources", label: "Resources", icon: "lock", href: "/resources" },
@@ -92,17 +89,12 @@ export function buildActiveKey(pathname: string, slug: string | null): string {
   return ws?.key ?? "overview";
 }
 
-export function buildBottomActiveKey(pathname: string, slug: string | null): string {
-  if (slug) {
-    const base = `/projects/${slug}`;
-    const rest = pathname.startsWith(base) ? pathname.slice(base.length) : "";
-    const hit = PROJECT_ITEMS_BY_SPECIFICITY.find((it) => matchesSub(rest, it.sub));
-    return hit?.key ?? "proj-overview";
-  }
-  if (pathname.startsWith("/projects")) return "projects";
+// cm:why the bottom tabs follow the route like the sidebar's mode switch does; only More is lit by state, because it opens a drawer and is no route of its own
+export function buildBottomActiveKey(pathname: string, moreOpen: boolean): string {
+  if (moreOpen) return "more";
+  if (modeOf(pathname) === "chat") return "chat";
   if (pathname.startsWith("/attention")) return "attention";
-  if (pathname.startsWith("/settings")) return "you";
-  return "";
+  return "activity";
 }
 
 export function workspaceNavItems(attentionCount: number): NavItem[] {
@@ -135,25 +127,12 @@ export function projectRailItems(openIssues: number | undefined): RailItem[] {
   }));
 }
 
-export function bottomTabItems(
-  slug: string | null,
-  attentionCount: number,
-  openIssues: number | undefined,
-): BottomTabItem[] {
-  if (slug) {
-    return [
-      { key: "proj-overview", label: "Dashboard", icon: "grid" },
-      { key: "proj-issues", label: "Issues", icon: "list", badge: openIssues },
-      { key: "chat", label: "Chat", icon: "chat" },
-      { key: "proj-agents", label: "Agents", icon: "agent" },
-      { key: "switcher", label: "Project", icon: "folder" },
-    ];
-  }
+export function bottomTabItems(attentionCount: number): BottomTabItem[] {
   return [
-    { key: "projects", label: "Projects", icon: "folder" },
+    { key: "activity", label: "Activity", icon: "activity" },
+    { key: "chat", label: "Chat", icon: "chat" },
     { key: "attention", label: "Attention", icon: "inbox", badge: attentionCount },
-    { key: "search", label: "Search", icon: "search" },
-    { key: "you", label: "You", icon: "settings" },
+    { key: "more", label: "More", icon: "menu" },
   ];
 }
 

@@ -1,10 +1,6 @@
 "use client";
 
-// Mobile drawer — the consolidated navigation menu (ISS-514): the active
-// project's tier (PROJECT_ITEMS), the workspace destinations, and the project
-// switcher. Opened from the TopBar menu button, below md. Stays mounted while
-// closed (the Esc listener is gated on `open`); the layout owns the open
-// state and closes it on route change.
+// cm:why below md this drawer, opened from the More tab, is the whole of the sidebar: the project tier, the workspace destinations, the project switcher, and the search, bell and account the sidebar footer carries above md
 import { useEffect } from "react";
 import { Icon, ProjectMark } from "@/design";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
@@ -59,11 +55,6 @@ function DrawerNavButton({
 export interface MobileNavDrawerProps {
   open: boolean;
   onClose: () => void;
-  /** True when opened from the bottom-nav "Project switcher" tab — renders the
-   *  Projects section first so it's reachable without scrolling past This
-   *  project/Workspace (ISS-685). Default `false` (TopBar menu button) keeps
-   *  the original This project -> Workspace -> Projects order. */
-  projectFirst?: boolean;
   /** Active project slug from the pathname (null on workspace screens). */
   slug: string | null;
   /** The project the rail renders (active, else last-visited, else first). */
@@ -84,12 +75,13 @@ export interface MobileNavDrawerProps {
    *  slot; the layout supplies the wired node. The drawer is the only shell
    *  navigation below md, so nothing else carries it there (ISS-1119). */
   version?: React.ReactNode;
+  search?: React.ReactNode;
+  footer?: React.ReactNode;
 }
 
 export function MobileNavDrawer({
   open,
   onClose,
-  projectFirst = false,
   slug,
   railSlug,
   railProjectName,
@@ -102,6 +94,8 @@ export function MobileNavDrawer({
   onCreateProject,
   onViewAllProjects,
   version,
+  search,
+  footer,
 }: MobileNavDrawerProps) {
   // Esc closes the mobile drawer.
   useEffect(() => {
@@ -222,23 +216,16 @@ export function MobileNavDrawer({
           <OrgSwitcher variant="expanded" />
         </div>
 
+        {search && <div className="px-1.5 pb-2">{search}</div>}
+
         <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-          {projectFirst ? (
-            <>
-              {projectsSection}
-              {thisProjectSection}
-              {workspaceSection}
-            </>
-          ) : (
-            <>
-              {thisProjectSection}
-              {workspaceSection}
-              {projectsSection}
-            </>
-          )}
+          {thisProjectSection}
+          {workspaceSection}
+          {projectsSection}
         </div>
 
-        {version && <div className="border-t border-line-subtle px-1.5 pt-2">{version}</div>}
+        {footer && <div className="flex flex-col gap-1 border-t border-line-subtle pt-2">{footer}</div>}
+        {version && <div className="px-1.5 pt-2">{version}</div>}
       </div>
     </div>
   );

@@ -19,6 +19,7 @@ import { Conversation } from "@/features/session/components/conversation";
 import { DisclosureScope } from "@/features/session/disclosure";
 import { USER_BUBBLE } from "@/features/session/layout";
 import { type MessageEntry, parseMessages } from "@/features/session/types";
+import { type Correction, withoutCorrections } from "../corrections";
 import {
   AGENT_TURN_LABEL,
   SILENCE_REASON,
@@ -54,15 +55,40 @@ function AssistantTurn({
   /** The thread's newest assistant turn — every turn above it folds its machinery (ISS-1083). */
   newestAgentId?: string;
 }) {
-  const items = parseMessages([entry]);
-  if (items.length === 0) return null;
+  const { entry: prose, corrections } = withoutCorrections(entry);
+  const items = parseMessages([prose]);
+  if (items.length === 0 && corrections.length === 0) return null;
   return (
-    <Conversation
-      items={items}
-      readOnly
-      streaming={streaming}
-      {...(newestAgentId ? { newestAgentId } : {})}
-    />
+    <>
+      {items.length > 0 && (
+        <Conversation
+          items={items}
+          readOnly
+          streaming={streaming}
+          {...(newestAgentId ? { newestAgentId } : {})}
+        />
+      )}
+      {corrections.map((c) => (
+        <CorrectionLine key={c.line} correction={c} />
+      ))}
+    </>
+  );
+}
+
+function CorrectionLine({ correction }: { correction: Correction }) {
+  return (
+    <div
+      role="alert"
+      data-testid="thread-correction"
+      className="flex items-start gap-2 rounded-md border px-3 py-2"
+      style={{ borderColor: "var(--red-500)", background: "var(--red-50)" }}
+    >
+      <Icon name="alert" size={15} className="mt-0.5 flex-none text-[color:var(--red-600)]" />
+      <p className="fg-body-sm text-fg">
+        <span className="font-semibold">Correction:</span> {correction.what} was refused (
+        <span className="font-mono">{correction.code}</span>); nothing was written.
+      </p>
+    </div>
   );
 }
 
