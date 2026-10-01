@@ -183,6 +183,13 @@ membershipRoutes.post('/:id/remove', idParam, reasonBody, (c) =>
   move(c, c.req.valid('param').id, 'remove', c.req.valid('json').reason),
 );
 
+const REGISTER_FILTER_SHAPE: Record<string, string> = {
+  status: `one of ${REGISTER_STATUSES.join(' | ')}`,
+  type: `one of ${DOCUMENT_TYPES.join(' | ')}`,
+  party: 'a project uuid',
+  limit: 'a whole number from 1 to 500',
+};
+
 const registerQuery = zValidator(
   'query',
   z.strictObject({
@@ -191,13 +198,21 @@ const registerQuery = zValidator(
     party: z.uuid().optional(),
     limit: z.coerce.number().int().min(1).max(500).default(200),
   }),
-  (r) => {
-    if (!r.success) {
-      throw new HTTPException(400, {
-        message: `the register is filtered by status (${REGISTER_STATUSES.join(' | ')}), type (one of the five), party (a project uuid) and limit (1 to 500)`,
-        cause: { code: 'BAD_REQUEST' },
-      });
-    }
+  (r, c) => {
+    if (r.success) return;
+    const keys = r.error.issues.flatMap((i) =>
+      i.code === 'unrecognized_keys' ? i.keys : [String(i.path[0] ?? '')],
+    );
+    return refused(
+      c,
+      [...new Set(keys)].map((key) => ({
+        code: 'REGISTER_FILTER_UNKNOWN',
+        path: `/${key}`,
+        detail: REGISTER_FILTER_SHAPE[key]
+          ? `the register's \`${key}\` filter is ${REGISTER_FILTER_SHAPE[key]}`
+          : `\`${key}\` is not a register filter: the register is filtered by ${Object.keys(REGISTER_FILTER_SHAPE).join(', ')}`,
+      })),
+    );
   },
 );
 

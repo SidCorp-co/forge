@@ -7506,7 +7506,7 @@
             "required": false,
             "schema": {
               "enum": [
-                "open",
+                "awaiting",
                 "overdue",
                 "held",
                 "answered",

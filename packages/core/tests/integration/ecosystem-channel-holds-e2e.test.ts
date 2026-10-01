@@ -285,7 +285,7 @@ describe('the register lists what each side is party to, with who owes the next 
   });
 
   it('filters by status, type and party', async () => {
-    const open = ok(await register('plugin', '?status=open'));
+    const open = ok(await register('plugin', '?status=awaiting'));
     expect(open.documents.map((d: Doc) => d.number)).toEqual(['FP-RFI-1']);
     const decisions = ok(await register('plugin', '?type=decision&limit=1'));
     expect(decisions).toMatchObject({ returned: 1, total: 2 });
@@ -330,11 +330,21 @@ describe('the register lists what each side is party to, with who owes the next 
 
   it('refuses a query it does not define, by name', async () => {
     const res = await register('plugin', '?status=lost');
-    expect(res.status).toBe(400);
-    expect(res.json).toMatchObject({
-      code: 'BAD_REQUEST',
-      message: expect.stringMatching(/filtered by status/),
-    });
-    expect((await register('plugin', '?colour=red')).status).toBe(400);
+    expect(res.status).toBe(422);
+    expect(res.json.error.refusals).toEqual([
+      {
+        code: 'REGISTER_FILTER_UNKNOWN',
+        path: '/status',
+        detail:
+          "the register's `status` filter is one of awaiting | overdue | held | answered | closed",
+      },
+    ]);
+    // The word the open state had before core and web agreed on one is refused like any other.
+    expect((await register('plugin', '?status=open')).json.error.refusals).toEqual([
+      expect.objectContaining({ code: 'REGISTER_FILTER_UNKNOWN', path: '/status' }),
+    ]);
+    expect((await register('plugin', '?colour=red')).json.error.refusals).toEqual([
+      expect.objectContaining({ code: 'REGISTER_FILTER_UNKNOWN', path: '/colour' }),
+    ]);
   });
 });

@@ -1,5 +1,6 @@
 import * as CONTRACT from '@forge/contracts/status-sets';
 import { describe, expect, it } from 'vitest';
+import { REGISTER_STATUSES } from '../ecosystem/channel-register.js';
 import { BLOCKER_SETTLED_STATUSES } from '../issues/dependency-effects.js';
 import { NON_OPEN_STATUSES } from '../issues/status-sets.js';
 import { REASON_REQUIRED_STATUSES } from '../issues/transition-reason.js';
@@ -36,6 +37,7 @@ const MIRRORS: Record<string, { core: readonly string[]; contract: readonly stri
     core: memoryReindexStates,
     contract: CONTRACT.MEMORY_REINDEX_STATES,
   },
+  REGISTER_STATUSES: { core: REGISTER_STATUSES, contract: CONTRACT.REGISTER_STATUSES },
 };
 
 describe('the core and contracts copies of one status answer', () => {

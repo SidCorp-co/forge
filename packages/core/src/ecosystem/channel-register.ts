@@ -7,7 +7,8 @@ import { holdOf, serveAll } from './channel-world.js';
 import { readableEcosystem } from './membership-service.js';
 import type { DocumentType } from './schema.js';
 
-export const REGISTER_STATUSES = ['open', 'overdue', 'held', 'answered', 'closed'] as const;
+/** The register's filters, in the words its rows use: `awaiting` is a row some recipient still owes. */
+export const REGISTER_STATUSES = ['awaiting', 'overdue', 'held', 'answered', 'closed'] as const;
 export type RegisterStatus = (typeof REGISTER_STATUSES)[number];
 
 export type RecipientStatus = 'awaiting' | 'answered' | 'overdue' | 'not-owed';
@@ -110,7 +111,7 @@ export async function registerRowsOver(stored: readonly DocumentRow[]): Promise<
 
 const matches = (row: RegisterRow, status: RegisterStatus | undefined) => {
   if (!status) return true;
-  if (status === 'open') return row.open;
+  if (status === 'awaiting') return row.open;
   if (status === 'overdue') return row.overdue;
   if (status === 'held') return row.hold !== null;
   if (status === 'answered') return row.recipients.some((r) => r.status === 'answered');
