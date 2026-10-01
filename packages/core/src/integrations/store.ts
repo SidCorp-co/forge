@@ -39,6 +39,30 @@ export async function findBindingById(id: string): Promise<IntegrationBindingRow
   return rows[0] ?? null;
 }
 
+async function listActivePairs(
+  projectId: string,
+  provider: IntegrationProvider,
+  role?: BindingRole,
+): Promise<BindingWithConnection[]> {
+  return db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(
+      and(
+        eq(integrationBindings.projectId, projectId),
+        eq(integrationBindings.provider, provider),
+        role ? eq(integrationBindings.role, role) : undefined,
+        eq(integrationBindings.active, true),
+        eq(integrationConnections.active, true),
+      ),
+    )
+    .orderBy(asc(integrationBindings.createdAt));
+}
+
 /**
  * Every active DEPLOY binding for a project + provider, oldest first.
  *
@@ -51,50 +75,18 @@ export async function listActiveDeployBindingsForProvider(
   projectId: string,
   provider: IntegrationProvider,
 ): Promise<BindingWithConnection[]> {
-  return db
-    .select({ binding: integrationBindings, connection: integrationConnections })
-    .from(integrationBindings)
-    .innerJoin(
-      integrationConnections,
-      eq(integrationBindings.connectionId, integrationConnections.id),
-    )
-    .where(
-      and(
-        eq(integrationBindings.projectId, projectId),
-        eq(integrationBindings.provider, provider),
-        eq(integrationBindings.role, 'deploy'),
-        eq(integrationBindings.active, true),
-        eq(integrationConnections.active, true),
-      ),
-    )
-    .orderBy(asc(integrationBindings.createdAt));
+  return listActivePairs(projectId, provider, 'deploy');
 }
 
 /**
- * All active bindings (+ connections) for a project + provider, across
- * stages and roles. Used by the inbound webhook router to find the right binding
- * when the payload carries a provider hint.
+ * All active bindings (+ connections) for a project + provider, across roles. Used by the inbound
+ * webhook router to find the right binding when the payload carries a provider hint.
  */
 export async function listActiveBindingsForProjectProvider(
   projectId: string,
   provider: IntegrationProvider,
 ): Promise<BindingWithConnection[]> {
-  return db
-    .select({ binding: integrationBindings, connection: integrationConnections })
-    .from(integrationBindings)
-    .innerJoin(
-      integrationConnections,
-      eq(integrationBindings.connectionId, integrationConnections.id),
-    )
-    .where(
-      and(
-        eq(integrationBindings.projectId, projectId),
-        eq(integrationBindings.provider, provider),
-        eq(integrationBindings.active, true),
-        eq(integrationConnections.active, true),
-      ),
-    )
-    .orderBy(asc(integrationBindings.createdAt));
+  return listActivePairs(projectId, provider);
 }
 
 /** Decrypt a connection's secrets blob, or `{}` when it has none. */
