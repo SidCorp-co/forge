@@ -383,6 +383,19 @@ export async function activeEcosystemIdsOf(
     );
 }
 
+export async function activeMembersOf(tx: Tx, ecosystemId: string): Promise<string[]> {
+  const rows = await tx
+    .select({ projectId: ecosystemMemberships.projectId })
+    .from(ecosystemMemberships)
+    .where(
+      and(
+        eq(ecosystemMemberships.ecosystemId, ecosystemId),
+        eq(ecosystemMemberships.state, 'active'),
+      ),
+    );
+  return rows.map((r) => r.projectId);
+}
+
 export async function recordedVersions(
   tx: Tx,
   providerIds: readonly string[],

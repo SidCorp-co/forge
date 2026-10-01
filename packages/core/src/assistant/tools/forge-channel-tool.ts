@@ -1,5 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db/client.js';
+import { ecosystemReadFence } from '../../ecosystem/access.js';
 import { readApiPage } from '../../ecosystem/api-page.js';
 import type { ChannelOutcome } from '../../ecosystem/channel-act.js';
 import {
@@ -31,7 +32,7 @@ const DESCRIPTION = [
   'Writes: draft, reply (a draft answering a number), edit, submit (publishes, or waits at the approve gate), hold and release a conversation, withdraw, supersede, gate (approve or return a document waiting at the approve gate; an admin decides).',
   'Every document you write is authored by the person, via assistant.',
   'Show the person a draft and submit it only once they confirm; hold, withdraw and supersede need their reason.',
-  'You read only documents this project sends or receives, never another pair or a counterparty internal.',
+  "You read only documents this project sends or receives, never another pair or a counterparty internal; in a chat at ecosystem scope you also read those of the person's other projects in that ecosystem, and you still write only as this project.",
   'A refusal comes back as { code, path, detail }; tell them what was refused and why.',
 ].join(' ');
 
@@ -84,18 +85,53 @@ async function documentId(projectId: string, ref: string): Promise<string> {
   return UUID.test(ref) ? ref : (await readAs(projectId, ref)).id;
 }
 
+interface ReadScope {
+  ecosystemId: string | null;
+  sides: readonly string[];
+}
+
 type Handlers = {
-  [A in ChannelAction]: (args: ChannelArgs<A>, side: string, writer: Writer) => Promise<Answer>;
+  [A in ChannelAction]: (
+    args: ChannelArgs<A>,
+    side: string,
+    writer: Writer,
+    scope: ReadScope,
+  ) => Promise<Answer>;
 };
 
+async function scopedEcosystem(side: string, named: string | undefined, scope: ReadScope) {
+  if (!scope.ecosystemId) return soleEcosystem(side, named);
+  if (named && named !== scope.ecosystemId) {
+    throw new Unreadable(
+      '/ecosystem',
+      `this chat reads at ecosystem ${scope.ecosystemId}'s scope, so ecosystem ${named} is outside it`,
+    );
+  }
+  return scope.ecosystemId;
+}
+
+// cm:why a widened read is the same party read as a project-scoped one, asked as each side of the fence in turn, home first; a document none of them is a party to stays unreadable
+async function firstParty<T>(sides: readonly string[], read: (side: string) => Promise<T>) {
+  let last: unknown;
+  for (const side of sides) {
+    try {
+      return await read(side);
+    } catch (err) {
+      if (!(err instanceof HTTPException && err.status === 404)) throw err;
+      last = err;
+    }
+  }
+  throw last;
+}
+
 const HANDLERS: Handlers = {
-  register: async (a, side, w) => {
-    const ecosystem = await soleEcosystem(side, a.ecosystem);
+  register: async (a, side, w, scope) => {
+    const ecosystem = await scopedEcosystem(side, a.ecosystem, scope);
     const { rows, total } = await readRegister(w.userId, ecosystem, {
       status: a.status,
       type: a.type,
       limit: a.limit,
-      fence: [side],
+      fence: scope.sides,
     });
     return { ecosystem, documents: rows, returned: rows.length, total };
   },
@@ -114,25 +150,25 @@ const HANDLERS: Handlers = {
   outbox: async (_a, side) => ({
     documents: (await outbox(side)).map((v) => ({ ...viewOf(v), hold: v.hold })),
   }),
-  read: async (a, side) => {
-    const view = await readAs(side, a.ref);
+  read: async (a, _side, _w, scope) => {
+    const view = await firstParty(scope.sides, (s) => readAs(s, a.ref));
     return { ...viewOf(view), side: view.side, hold: view.hold };
   },
-  thread: async (a, side) => {
-    const t = await threadAs(side, a.thread);
+  thread: async (a, _side, _w, scope) => {
+    const t = await firstParty(scope.sides, (s) => threadAs(s, a.thread));
     return {
       thread: t.thread,
       documents: t.documents.map((v) => ({ ...viewOf(v), side: v.side })),
       holds: t.holds,
     };
   },
-  contracts: async (a, side, w) => readApiPage(w.userId, a.project ?? side, [side]),
-  draft: async ({ ecosystem, ...input }, side, writer) =>
+  contracts: async (a, side, w, scope) => readApiPage(w.userId, a.project ?? side, scope.sides),
+  draft: async ({ ecosystem, ...input }, side, writer, scope) =>
     settled(
       await createDraft({
         projectId: side,
         writer,
-        ecosystemId: await soleEcosystem(side, ecosystem),
+        ecosystemId: await scopedEcosystem(side, ecosystem, scope),
         input,
       }),
     ),
@@ -244,9 +280,25 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
     a: Record<string, unknown>,
     s: string,
     w: Writer,
+    r: ReadScope,
   ) => Promise<Answer>;
+  const ecosystemId = ctx.turn?.ecosystemId ?? null;
+  if (
+    ecosystemId &&
+    !(await activeEcosystemIdsOf(db, [side])).some((m) => m.ecosystemId === ecosystemId)
+  ) {
+    return one(
+      'ECOSYSTEM_NOT_MEMBER',
+      '/',
+      `this chat reads at ecosystem ${ecosystemId}'s scope from project ${side}, which is no longer an active member of it, so it reads and writes nothing there`,
+    );
+  }
+  const scope: ReadScope = {
+    ecosystemId,
+    sides: ecosystemId ? await ecosystemReadFence(principal.userId, side, ecosystemId) : [side],
+  };
   try {
-    return await handler(call.args, side, writer);
+    return await handler(call.args, side, writer, scope);
   } catch (err) {
     if (err instanceof Unreadable) return one('CHANNEL_NOT_A_PARTY', err.path, err.message);
     if (err instanceof Ambiguous)

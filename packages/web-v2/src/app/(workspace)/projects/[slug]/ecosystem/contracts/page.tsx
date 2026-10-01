@@ -1,7 +1,5 @@
 "use client";
 
-// The contracts a project publishes and consumes (`/projects/[slug]/ecosystem/contracts`);
-// built by `ecosystemRoutes.contracts`.
 import { useParams } from "next/navigation";
 import { ContractsScreen } from "@/features/ecosystem/components/contracts-screen";
 import { EcosystemPage } from "@/features/ecosystem/components/ecosystem-page";

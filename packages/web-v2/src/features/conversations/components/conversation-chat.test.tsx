@@ -38,6 +38,7 @@ function detail(over: Partial<ConversationDetail> = {}): ConversationDetail {
     title: null,
     updatedAt: "2026-09-21T10:00:00.000Z",
     archivedAt: null,
+    ecosystemId: null,
     messages: [],
     windows: [],
     agentTurns: [],

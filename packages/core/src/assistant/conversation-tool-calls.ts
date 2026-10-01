@@ -10,10 +10,8 @@ import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { readableConversation } from './conversation-access.js';
 
-/** How many of a room's newest turns a read carries. */
 export const TOOL_CALL_TURNS = 200;
 
-/** One audited call as a reader of the room is shown it. */
 export interface RoomToolCall {
   turnId: string;
   at: string;
@@ -22,10 +20,8 @@ export interface RoomToolCall {
   round: number;
   isError: boolean;
   durationMs: number | null;
-  /** Null where the call ran as somebody other than this reader. */
   resultPreview: string | null;
   resultIssueRefs: string[];
-  /** False on a row audited before `ranAs` was recorded: who it ran as is unknown, not nobody. */
   ranAsRecorded: boolean;
   ranAs: string | null;
   refusalCode: string | null;
@@ -39,11 +35,6 @@ interface AuditRow {
 
 const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 
-/**
- * The calls of every audited turn, oldest first. A call's result is shown to
- * the person it ran as, or when it ran as nobody; another member's result stays
- * theirs, since it was read with permissions this reader may not hold.
- */
 export function roomToolCalls(rows: readonly AuditRow[], readerId: string): RoomToolCall[] {
   const out: RoomToolCall[] = [];
   for (const row of rows) {

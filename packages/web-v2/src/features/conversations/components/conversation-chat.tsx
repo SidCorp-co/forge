@@ -52,6 +52,7 @@ export function ConversationChat({
   conversationId,
   onConversationActive,
   initialDraft,
+  ecosystemId,
   headerActions,
   scopeChip,
 }: {
@@ -61,6 +62,7 @@ export function ConversationChat({
   /** Fires once a draft's first send has opened a real room, so the caller can follow it. */
   onConversationActive?: (id: string) => void;
   initialDraft?: string;
+  ecosystemId?: string | null;
   headerActions?: React.ReactNode;
   scopeChip?: React.ReactNode;
 }) {
@@ -166,7 +168,7 @@ export function ConversationChat({
       try {
         let id = resolvedId;
         if (!id) {
-          id = (await open.mutateAsync({ projectId })).id;
+          id = (await open.mutateAsync({ projectId, ecosystemId: ecosystemId ?? null })).id;
           setActiveId(id);
           onConversationActive?.(id);
         }
@@ -204,6 +206,7 @@ export function ConversationChat({
     send,
     upload,
     onConversationActive,
+    ecosystemId,
     settled,
     messages.length,
     pick,

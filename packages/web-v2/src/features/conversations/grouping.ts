@@ -53,3 +53,24 @@ export function groupByRecency<Row extends { updatedAt: string }>(
     (b) => b.rows.length > 0,
   );
 }
+
+export interface Section<Row> {
+  key: string;
+  label: string;
+  rows: Row[];
+}
+
+// cm:why a room is shown once: pinned first, then the rooms with other people in them, then the rest by recency, so a pinned group room is not listed twice
+export function sidebarSections<Row extends { updatedAt: string; pinned?: boolean; shape: string }>(
+  rows: Row[],
+  now = Date.now(),
+): Array<Section<Row>> {
+  const pinned = rows.filter((r) => r.pinned);
+  const shared = rows.filter((r) => !r.pinned && r.shape === "group");
+  const rest = rows.filter((r) => !r.pinned && r.shape !== "group");
+  return [
+    ...(pinned.length ? [{ key: "pinned", label: "Pinned", rows: pinned }] : []),
+    ...(shared.length ? [{ key: "shared", label: "With other people", rows: shared }] : []),
+    ...groupByRecency(rest, now),
+  ];
+}

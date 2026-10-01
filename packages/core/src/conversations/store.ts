@@ -127,6 +127,7 @@ export async function openConversationIn(
         externalId: venue.externalId,
         shape: venue.shape,
         title: venue.title ?? null,
+        ecosystemId: venue.ecosystemId ?? null,
       })
       .onConflictDoNothing({ target: [conversations.adapter, conversations.externalId] })
       .returning(selection);

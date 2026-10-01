@@ -2171,6 +2171,13 @@
       "when": 1811980800000,
       "tag": "0336_the_branch_and_the_project_secrets_leave_the_row",
       "breakpoints": true
+    },
+    {
+      "idx": 337,
+      "version": "7",
+      "when": 1812067200000,
+      "tag": "0337_the_room_scope_and_its_pins",
+      "breakpoints": true
     }
   ]
 }

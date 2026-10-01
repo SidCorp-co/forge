@@ -250,6 +250,17 @@ export function useRenameConversation() {
   });
 }
 
+export function usePinConversation() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (args: { id: string; pinned: boolean }) => conversationsApi.setPinned(args.id, args.pinned),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations", "list"] }),
+    onError: (err, args) =>
+      toast({ title: args.pinned ? "Couldn't pin" : "Couldn't unpin", description: formatApiError(err), tone: "error" }),
+  });
+}
+
 export function useDeleteConversation() {
   const qc = useQueryClient();
   const { toast } = useToast();

@@ -61,6 +61,13 @@ import { conversationAttachmentRoutes } from './conversation-attachment-routes.j
 import { foreignAttachmentIds, imagesFromAttachments } from './conversation-images.js';
 import { conversationMemberRoutes } from './conversation-member-routes.js';
 import { withDisplayNames } from './conversation-people.js';
+import {
+  conversationPinRoutes,
+  conversationScopeSchema,
+  ecosystemOfScope,
+  pinnedBy,
+  scopeIsFixed,
+} from './conversation-scope.js';
 import { ConversationModeSettledError, sendWebConversationMessage } from './conversation-send.js';
 import { conversationToolCallRoutes } from './conversation-tool-calls.js';
 
@@ -101,6 +108,7 @@ const createSchema = z
       .array(z.object({ projectId: z.uuid(), userId: z.uuid().optional() }).strict())
       .max(20)
       .optional(),
+    scope: conversationScopeSchema.optional(),
   })
   .strict();
 
@@ -109,12 +117,20 @@ const patchSchema = z
     title: z.string().max(500).nullable().optional(),
     archived: z.boolean().optional(),
     presence: z.record(z.string(), z.unknown()).nullable().optional(),
+    scope: z.unknown().optional(),
   })
   .strict()
-  .refine((v) => v.title !== undefined || v.archived !== undefined || v.presence !== undefined, {
-    error:
-      'a PATCH body must carry `title` (a string or null), `archived` (a boolean) or `presence` (an object or null)',
-  });
+  .refine(
+    (v) =>
+      v.title !== undefined ||
+      v.archived !== undefined ||
+      v.presence !== undefined ||
+      v.scope !== undefined,
+    {
+      error:
+        'a PATCH body must carry `title` (a string or null), `archived` (a boolean) or `presence` (an object or null)',
+    },
+  );
 
 const sendSchema = z
   .object({
@@ -154,6 +170,7 @@ conversationRoutes.use('*', requireAuth(), assertEmailVerified());
 conversationRoutes.route('/', conversationMemberRoutes);
 conversationRoutes.route('/', conversationAttachmentRoutes);
 conversationRoutes.route('/', conversationToolCallRoutes);
+conversationRoutes.route('/', conversationPinRoutes);
 
 /**
  * The one project a web turn runs under.
@@ -182,6 +199,10 @@ conversationRoutes.get(
     assertProjectRole(access, 'viewer', 'not a project member');
 
     const rows = await listConversationsInProject(projectId, { archived });
+    const pinned = await pinnedBy(
+      userId,
+      rows.map((r) => r.id),
+    );
 
     const roleByProject = new Map<string, boolean>();
     const visible: ConversationRow[] = [];
@@ -200,7 +221,7 @@ conversationRoutes.get(
         const people = await listParticipants(row.id);
         ok = people.some((p) => p.kind === 'person' && p.userId === userId);
       }
-      if (ok) visible.push(row);
+      if (ok) visible.push({ ...row, pinned: pinned.has(row.id) } as ConversationRow);
     }
 
     const offset = (page - 1) * pageSize;
@@ -246,6 +267,7 @@ conversationRoutes.post(
 
     const handles = input.handles ?? [];
     const people = input.people ?? [];
+    const ecosystemId = await ecosystemOfScope(input.projectId, input.scope);
 
     const conversation = await db.transaction(async (handle) => {
       const tx = handle as unknown as typeof db;
@@ -255,6 +277,7 @@ conversationRoutes.post(
         shape: 'direct',
         projectId: input.projectId,
         title: input.title ?? null,
+        ecosystemId,
       });
       await addPerson({ conversationId: room.id, userId, actorUserId: userId, tx });
       for (const named of handles) {
@@ -321,9 +344,10 @@ conversationRoutes.patch(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { title, archived, presence } = c.req.valid('json');
+    const { title, archived, presence, scope } = c.req.valid('json');
     const userId = c.get('userId');
     await writableConversation(id, userId);
+    if (scope !== undefined) throw scopeIsFixed(id);
     let roomPresence: ReturnType<typeof validateRoomPresence> | null | undefined;
     if (presence !== undefined) {
       try {

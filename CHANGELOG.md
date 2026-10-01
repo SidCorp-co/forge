@@ -137,6 +137,8 @@
 
 ### Added
 
+- **A chat can be asked at an ecosystem's scope.** It reads the channel documents of your projects
+  in that ecosystem and still writes only from the project it was opened under. Chats can be pinned.
 - **Activity and Chat replace the top bar, switched from the sidebar.** Each mode reopens where
   you left it, on the same project. Chat shows what each answer read and wrote, and whether a tool
   ran with your permissions.

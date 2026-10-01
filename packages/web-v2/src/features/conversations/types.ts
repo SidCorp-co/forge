@@ -47,6 +47,8 @@ export interface ConversationRow {
   updatedAt: string;
   /** Set = archived: out of the default list, still readable, still restorable (ISS-1028). */
   archivedAt: string | null;
+  ecosystemId: string | null;
+  pinned?: boolean;
 }
 
 export interface ConversationImage {

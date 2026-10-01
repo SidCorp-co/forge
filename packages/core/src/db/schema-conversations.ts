@@ -15,6 +15,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -22,6 +23,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { projects, users } from './schema.js';
 import type { PresenceConfig } from './schema-agent-selves.js';
+import { ecosystems } from './schema-ecosystem.js';
 
 export const conversationAdapters = ['web', 'widget', 'rocketchat', 'telegram'] as const;
 export type ConversationAdapter = (typeof conversationAdapters)[number];
@@ -79,6 +81,7 @@ export const conversations = pgTable(
      * its handles' selves (ISS-1087).
      */
     presence: jsonb('presence').$type<RoomPresence | null>(),
+    ecosystemId: uuid('ecosystem_id').references(() => ecosystems.id, { onDelete: 'restrict' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -95,6 +98,22 @@ export const conversations = pgTable(
       'conversations_mode_known',
       sql`${t.mode} IS NULL OR ${t.mode} IN ('assistant','agent')`,
     ),
+  }),
+);
+
+export const conversationPins = pgTable(
+  'conversation_pins',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    pinnedAt: timestamp('pinned_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.conversationId] }),
   }),
 );
 

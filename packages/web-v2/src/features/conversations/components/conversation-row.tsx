@@ -34,6 +34,7 @@ export interface ConversationRowActions {
   onArchive?: (archived: boolean) => void;
   /** Ask to delete it. The caller owns the confirmation, not this row. */
   onDelete?: () => void;
+  onPin?: (pinned: boolean) => void;
 }
 
 export function ConversationRow({
@@ -44,6 +45,7 @@ export function ConversationRow({
   onRename,
   onArchive,
   onDelete,
+  onPin,
 }: {
   row: ListedConversation;
   project: ProjectInfo | undefined;
@@ -109,6 +111,15 @@ export function ConversationRow({
       </button>
 
       <div className="flex flex-none items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+        {onPin && (
+          <IconButton
+            icon="pin"
+            size="sm"
+            aria-pressed={row.pinned === true}
+            aria-label={`${row.pinned ? "Unpin" : "Pin"} ${conversationTitle(row)}`}
+            onClick={() => onPin(!row.pinned)}
+          />
+        )}
         {onRename && (
           <IconButton
             icon="rename"

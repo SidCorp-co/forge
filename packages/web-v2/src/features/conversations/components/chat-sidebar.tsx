@@ -12,14 +12,16 @@ import {
   SessionRowSkeleton,
 } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
-import { chatPath } from "@/features/shell/mode";
+import { useProjectEcosystems } from "@/features/ecosystem/hooks";
+import { chatDraftPath, chatPath } from "@/features/shell/mode";
 import { formatApiError } from "@/lib/api/error";
-import { groupByRecency } from "../grouping";
+import { sidebarSections } from "../grouping";
 import {
   type ListedConversation,
   useArchiveConversation,
   useConversationsAcrossProjects,
   useDeleteConversation,
+  usePinConversation,
   useRenameConversation,
 } from "../hooks";
 import { conversationTitle } from "../types";
@@ -29,9 +31,6 @@ const SKELETON_ROWS = ["s1", "s2", "s3", "s4"];
 const ALL = "all";
 
 type Scope = "project" | "ecosystem";
-
-export const ECOSYSTEM_SCOPE_REFUSAL =
-  "Chat is not served at ecosystem scope: every chat runs under one project, and its channel tool reaches the ecosystems that project is in. Pick the project to ask from.";
 
 export function filterConversations(
   rows: ListedConversation[],
@@ -65,6 +64,8 @@ export function ChatSidebar({
   const rename = useRenameConversation();
   const archive = useArchiveConversation();
   const remove = useDeleteConversation();
+  const pin = usePinConversation();
+  const [ecosystemId, setEcosystemId] = useState<string | null>(null);
 
   const byId = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const rows = filterConversations(list.rows, { projectId: filter, search });
@@ -74,7 +75,12 @@ export function ChatSidebar({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2.5" data-testid="chat-sidebar">
-      <Button variant="primary" size="sm" icon="plus" onClick={() => onNavigate(chatPath(slug))}>
+      <Button
+        variant="primary"
+        size="sm"
+        icon="plus"
+        onClick={() => onNavigate(slug ? chatDraftPath(slug, scope === "ecosystem" ? ecosystemId : null) : chatPath(null))}
+      >
         New chat
       </Button>
 
@@ -87,19 +93,26 @@ export function ChatSidebar({
             { value: "ecosystem", label: "Ecosystem" },
           ]}
         />
-        {scope === "project" ? (
-          <Select
-            aria-label="Chat scope project"
-            options={projects.map((p) => ({ value: p.slug, label: p.name }))}
-            value={slug ?? ""}
-            placeholder="Pick a project…"
-            onChange={(s) => onNavigate(chatPath(s))}
-          />
-        ) : (
-          <p role="note" data-testid="ecosystem-scope-refused" className="fg-caption text-muted">
-            {ECOSYSTEM_SCOPE_REFUSAL}
-          </p>
-        )}
+        <Select
+          aria-label="Chat scope project"
+          options={projects.map((p) => ({ value: p.slug, label: p.name }))}
+          value={slug ?? ""}
+          placeholder="Pick a project…"
+          onChange={(s) => onNavigate(chatPath(s))}
+        />
+        {scope === "ecosystem" &&
+          (slug ? (
+            <EcosystemPicker
+              projectId={projects.find((p) => p.slug === slug)?.id}
+              value={ecosystemId}
+              onChange={(id) => {
+                setEcosystemId(id);
+                onNavigate(chatDraftPath(slug, id));
+              }}
+            />
+          ) : (
+            <p className="fg-caption text-muted">Pick the project the chat is asked from first.</p>
+          ))}
       </div>
 
       <Input
@@ -148,7 +161,7 @@ export function ChatSidebar({
           />
         )}
         <div className="space-y-3">
-          {groupByRecency(rows).map((bucket) => (
+          {sidebarSections(rows).map((bucket) => (
             <div key={bucket.key}>
               <div className="fg-overline px-1 pb-1 text-subtle">{bucket.label}</div>
               <div className="space-y-1">
@@ -166,6 +179,7 @@ export function ChatSidebar({
                         archive.mutate({ id: row.id, archived: a }, { onSuccess: () => leave(row.id) })
                       }
                       onDelete={() => setConfirming(row)}
+                      onPin={(pinned) => pin.mutate({ id: row.id, pinned })}
                     />
                   );
                 })}
@@ -195,5 +209,38 @@ export function ChatSidebar({
         onClose={() => setConfirming(null)}
       />
     </div>
+  );
+}
+
+function EcosystemPicker({
+  projectId,
+  value,
+  onChange,
+}: {
+  projectId: string | undefined;
+  value: string | null;
+  onChange: (id: string) => void;
+}) {
+  const q = useProjectEcosystems(projectId ?? "");
+  if (!projectId) return null;
+  if (q.isError) {
+    return (
+      <p role="alert" className="fg-caption text-[color:var(--red-600)]">
+        This project's ecosystems could not be read: {formatApiError(q.error)}
+      </p>
+    );
+  }
+  const active = (q.data?.memberships ?? []).filter((m) => m.document.state === "active" && m.ecosystem);
+  if (q.data && active.length === 0) {
+    return <p className="fg-caption text-muted">This project is an active member of no ecosystem.</p>;
+  }
+  return (
+    <Select
+      aria-label="Chat scope ecosystem"
+      options={active.map((m) => ({ value: m.ecosystem?.id ?? "", label: m.ecosystem?.name ?? "" }))}
+      value={value ?? ""}
+      placeholder={q.isLoading ? "Reading ecosystems…" : "Pick an ecosystem…"}
+      onChange={onChange}
+    />
   );
 }

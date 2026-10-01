@@ -1,7 +1,5 @@
 "use client";
 
-// One channel document (`/projects/[slug]/ecosystem/channel/[ref]`), by number or draft id;
-// built by `ecosystemRoutes.document`.
 import { useParams } from "next/navigation";
 import { DocumentScreen } from "@/features/ecosystem/components/document-screen";
 import { EcosystemPage } from "@/features/ecosystem/components/ecosystem-page";

@@ -24,6 +24,10 @@ export function chatPath(slug?: string | null, conversationId?: string | null): 
   return conversationId ? `${base}/${encodeURIComponent(conversationId)}` : base;
 }
 
+export function chatDraftPath(slug: string, ecosystemId?: string | null): string {
+  return ecosystemId ? `${chatPath(slug)}?${new URLSearchParams({ ecosystem: ecosystemId })}` : chatPath(slug);
+}
+
 export function routeSlug(pathname: string): string | null {
   return modeOf(pathname) === "chat" ? chatSlug(pathname) : activeSlug(pathname);
 }

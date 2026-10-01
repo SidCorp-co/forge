@@ -164,7 +164,12 @@ export function webConversationTurn(args: {
         buildChatToolContext({
           credential: await credential(),
           projectSlug: args.project.slug,
-          turn: { conversationId, speakerUserId, handleUserId },
+          turn: {
+            conversationId,
+            speakerUserId,
+            handleUserId,
+            ecosystemId: (await getConversation(conversationId))?.ecosystemId ?? null,
+          },
         }),
       ),
     }),

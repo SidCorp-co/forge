@@ -271,6 +271,14 @@ describe("the document page shows standing, holds and who wrote it", () => {
     expect(await screen.findByText(/Nobody has held|Held by person 55555555/)).toBeInTheDocument();
   });
 
+  it("offers Ask about this, opening Chat in the project about the document's number", async () => {
+    documentScreen(view());
+    await screen.findByText("Does the skill read the phase field?");
+    const ask = screen.getByRole("link", { name: /Ask about this/ });
+    const number = view().document.number as string;
+    expect(ask).toHaveAttribute("href", `/chat/forge?${new URLSearchParams({ about: `document:${number}` })}`);
+  });
+
   it("says the conversation could not be read when its thread fails", async () => {
     api.thread.mockRejectedValue(new ApiError(404, "no conversation", "NOT_FOUND"));
     documentScreen(view());

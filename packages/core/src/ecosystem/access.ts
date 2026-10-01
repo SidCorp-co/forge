@@ -1,6 +1,8 @@
 import { HTTPException } from 'hono/http-exception';
+import { db } from '../db/client.js';
 import type { OrgMemberRole } from '../db/schema.js';
 import { loadOrgRole, loadVisibleProjectIds, orgRoleAtLeast } from '../lib/authz.js';
+import { activeMembersOf } from './store.js';
 
 export const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -28,4 +30,15 @@ export async function assertStewardAdmin(
 
 export async function readerProjects(userId: string | undefined): Promise<Set<string>> {
   return new Set(await loadVisibleProjectIds(userId));
+}
+
+// cm:why an ecosystem-scoped chat reads as every member project the person holds a role in, home first; the fence never names a project the person cannot already read, so a counterparty's internals stay out
+export async function ecosystemReadFence(
+  userId: string,
+  homeProjectId: string,
+  ecosystemId: string,
+): Promise<string[]> {
+  const visible = await readerProjects(userId);
+  const members = await activeMembersOf(db, ecosystemId);
+  return [homeProjectId, ...members.filter((p) => p !== homeProjectId && visible.has(p))];
 }

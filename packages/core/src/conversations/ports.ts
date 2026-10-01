@@ -10,6 +10,7 @@ export interface ConversationVenue {
   shape: ConversationShape;
   projectId: string;
   title?: string | null;
+  ecosystemId?: string | null;
 }
 
 export interface DeliveryReceipt {

@@ -34,6 +34,7 @@ export interface ChatTurnFacts {
   speakerUserId: string | null;
   /** The handle participant answering for this project in the room; null where none is in it. */
   handleUserId: string | null;
+  ecosystemId?: string | null;
 }
 
 export type McpContext = {

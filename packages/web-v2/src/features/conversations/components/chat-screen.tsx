@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import { ErrorState, Icon, IconButton, ProjectLoader, SlideOver } from "@/design";
+import { useProjectEcosystems } from "@/features/ecosystem/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { chatConversationId, chatPath, chatSlug } from "@/features/shell/mode";
 import { formatApiError } from "@/lib/api/error";
@@ -21,16 +22,30 @@ function RoomSub({ projectId }: { projectId: string }) {
   return null;
 }
 
-function ScopeChip({ name }: { name: string }) {
+function ScopeChip({ name, ecosystem }: { name: string; ecosystem?: boolean }) {
   return (
     <span
       data-testid="scope-chip"
       className="fg-caption inline-flex max-w-[12rem] items-center gap-1 rounded-pill border border-line bg-sunken px-2 py-0.5 text-muted"
     >
-      <Icon name="folder" size={12} className="flex-none" />
+      <Icon name={ecosystem ? "link" : "folder"} size={12} className="flex-none" />
       <span className="truncate">{name}</span>
     </span>
   );
+}
+
+function RoomScopeChip({
+  project,
+  ecosystemId,
+}: {
+  project: { id: string; name: string };
+  ecosystemId: string | null;
+}) {
+  const q = useProjectEcosystems(ecosystemId ? project.id : "");
+  if (!ecosystemId) return <ScopeChip name={project.name} />;
+  const named = q.data?.memberships.find((m) => m.ecosystem?.id === ecosystemId)?.ecosystem?.name;
+  const label = named ?? (q.isError ? "an ecosystem whose name could not be read" : "ecosystem");
+  return <ScopeChip ecosystem name={`${label} · from ${project.name}`} />;
 }
 
 // cm:why the draft's first send moves the route onto the room it opened; that move must not remount the chat, or the message still being sent and its outbox would be thrown away, so the mount key changes only when the route changes for any other reason
@@ -127,7 +142,9 @@ export function ChatScreen() {
     );
   }
 
-  const draft = conversationId ? undefined : aboutDraft(new URLSearchParams(search).get("about"));
+  const params = new URLSearchParams(search);
+  const draft = conversationId ? undefined : aboutDraft(params.get("about"));
+  const ecosystemId = conversationId ? (roomQ.data?.ecosystemId ?? null) : params.get("ecosystem");
   const panel = <ContextPanel conversationId={conversationId} said={said} slug={project.slug} />;
 
   return (
@@ -135,11 +152,12 @@ export function ChatScreen() {
       <RoomSub projectId={project.id} />
       <div className="min-h-0 min-w-0 flex-1 bg-app">
         <ConversationChat
-          key={`${mountKey}:${draft ?? ""}`}
+          key={`${mountKey}:${draft ?? ""}:${conversationId ? "" : (ecosystemId ?? "")}`}
           projectId={project.id}
           conversationId={conversationId ?? undefined}
           initialDraft={draft}
-          scopeChip={<ScopeChip name={project.name} />}
+          ecosystemId={ecosystemId}
+          scopeChip={<RoomScopeChip project={project} ecosystemId={ecosystemId} />}
           onConversationActive={(id) => {
             adopt(id);
             router.replace(chatPath(project.slug, id));

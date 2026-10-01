@@ -51,6 +51,10 @@ vi.mock("@/features/conversations/hooks", () => ({
   useRenameConversation: () => ({ mutate: vi.fn() }),
   useArchiveConversation: () => ({ mutate: vi.fn() }),
   useDeleteConversation: () => ({ mutate: vi.fn(), isPending: false }),
+  usePinConversation: () => ({ mutate: vi.fn() }),
+}));
+vi.mock("@/features/ecosystem/hooks", () => ({
+  useProjectEcosystems: () => ({ data: { memberships: [] }, isLoading: false, isError: false }),
 }));
 
 import WorkspaceLayout from "./layout";

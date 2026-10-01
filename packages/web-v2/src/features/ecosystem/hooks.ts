@@ -12,6 +12,7 @@ export function useProjectEcosystems(projectId: string) {
   return useQuery({
     queryKey: [...KEY, "memberships", projectId],
     queryFn: () => ecosystemApi.ecosystemsOf(projectId),
+    enabled: Boolean(projectId),
   });
 }
 

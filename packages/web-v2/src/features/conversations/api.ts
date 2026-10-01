@@ -15,6 +15,7 @@ export interface OpenConversationArgs {
   title?: string | null;
   people?: string[];
   handles?: Array<{ userId?: string | null; projectId: string }>;
+  ecosystemId?: string | null;
 }
 
 export interface SendResult
@@ -60,6 +61,11 @@ export const conversationsApi = {
   /** `GET /api/conversations/:id` — the room, its people, its messages and its window decisions. */
   detail: (id: string) => apiClient<ConversationDetail>(`/conversations/${id}`),
 
+  setPinned: (id: string, pinned: boolean) =>
+    apiClient<{ conversationId: string; pinned: boolean }>(`/conversations/${id}/pin`, {
+      method: pinned ? "PUT" : "DELETE",
+    }),
+
   toolCalls: (id: string) => apiClient<RoomToolCalls>(`/conversations/${id}/tool-calls`),
 
   /** `POST /api/conversations` — open a room in this project, with whoever it starts with. */
@@ -68,6 +74,7 @@ export const conversationsApi = {
       method: "POST",
       body: JSON.stringify({
         projectId: args.projectId,
+        ...(args.ecosystemId ? { scope: { kind: "ecosystem", ecosystemId: args.ecosystemId } } : {}),
         ...(args.title !== undefined ? { title: args.title } : {}),
         ...(args.people?.length ? { people: args.people } : {}),
         ...(args.handles?.length
