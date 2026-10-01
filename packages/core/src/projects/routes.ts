@@ -150,9 +150,19 @@ projectRoutes.post(
   },
 );
 
-projectRoutes.get('/', async (c) => {
+const listQuery = zValidator('query', z.object({ archived: z.string().optional() }), (result) => {
+  if (!result.success) {
+    throw new HTTPException(400, {
+      message: 'archived takes one value: 1 or true lists archived projects too',
+      cause: { code: 'BAD_REQUEST' },
+    });
+  }
+});
+
+projectRoutes.get('/', listQuery, async (c) => {
   const userId = c.get('userId');
-  const includeArchived = ['1', 'true'].includes((c.req.query('archived') ?? '').toLowerCase());
+  const archived = c.req.valid('query').archived ?? '';
+  const includeArchived = ['1', 'true'].includes(archived.toLowerCase());
   // Visible = explicit membership (any role) OR org owner/admin on the
   // project's org (implicit admin) — same rule as lib/authz.ts.
   const rows = await db
