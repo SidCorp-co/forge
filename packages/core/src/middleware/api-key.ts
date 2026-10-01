@@ -3,6 +3,7 @@ import type { MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
+import { declareGate } from './declared-gate.js';
 
 export type ApiKeyProject = {
   id: string;
@@ -13,7 +14,7 @@ export type ApiKeyProject = {
 export type ApiKeyVars = { project: ApiKeyProject };
 
 export function requireProjectApiKey(): MiddlewareHandler<{ Variables: ApiKeyVars }> {
-  return async (c, next) => {
+  return declareGate('requireProjectApiKey', async (c, next) => {
     // Hono lowercases header names internally — a single lookup covers
     // every casing the widget snippet might emit.
     const key = c.req.header('x-forge-api-key');
@@ -39,5 +40,5 @@ export function requireProjectApiKey(): MiddlewareHandler<{ Variables: ApiKeyVar
 
     c.set('project', project);
     await next();
-  };
+  });
 }
