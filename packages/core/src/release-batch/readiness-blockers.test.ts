@@ -78,7 +78,7 @@ function project(over: { facts?: Record<string, unknown>; releasing?: boolean })
   // Every real project declares a repository — the pipeline cannot check one out otherwise — so
   // the fixture does too: the build/test obligations hang off that declaration, and a fixture
   // missing it would pass by owing nothing. The repo-less case is its own test.
-  selectLimit.mockResolvedValue([{ id: PROJECT_ID, repoPath: '/srv/app', baseBranch: 'main' }]);
+  selectLimit.mockResolvedValue([{ id: PROJECT_ID }]);
   heldSlugs.mockResolvedValue(Object.keys(over.facts ?? CONTRACT_KNOWLEDGE));
   readDocument.mockResolvedValue({
     revision: 1,
