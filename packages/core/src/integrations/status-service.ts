@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
-import { classifyGitRemote } from '../git/provision-credential.js';
 import { readDeployMap } from '../project-config/release-path.js';
+import { readDeclaredSource, webUrlOf } from '../project-config/source.js';
 import { getIntegration, listIntegrations } from './registry.js';
 import { notFound, toIso } from './route-helpers.js';
 import { effectiveConfig, listBindingsForProject } from './store.js';
@@ -125,7 +125,7 @@ export function buildProviderCards(opts: {
 /** Build the full status-card set for a project (caller has already authz'd). */
 export async function buildIntegrationsStatusCards(projectId: string): Promise<StatusCard[]> {
   const [project] = await db
-    .select({ repoUrl: projects.repoUrl, baseBranch: projects.baseBranch })
+    .select({ baseBranch: projects.baseBranch })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
@@ -133,9 +133,10 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
 
   // One row per active binding, joined to its connection (health/breaker live on
   // the connection). Flattened to the shape the cards below already consume.
-  const [pairs, deployMap] = await Promise.all([
+  const [pairs, deployMap, source] = await Promise.all([
     listBindingsForProject(projectId),
     readDeployMap(projectId),
+    readDeclaredSource(projectId),
   ]);
   const integrationRows = pairs.map((pair) => ({
     id: pair.binding.id,
@@ -166,8 +167,8 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
   const cards: StatusCard[] = [];
 
   // --- GitHub (repo + per-device push-cred) ---
-  const remoteUrl = project.repoUrl?.trim() ? project.repoUrl.trim() : null;
-  const transport = classifyGitRemote(remoteUrl);
+  const { repository } = source;
+  const remoteUrl = repository ? webUrlOf(repository) : null;
   const deviceCreds = runnerRows
     .filter((r) => r.deviceId)
     .map((r) => ({
@@ -178,11 +179,11 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
   cards.push({
     key: 'github',
     label: 'GitHub',
-    status: remoteUrl ? 'connected' : 'not_configured',
-    detail: remoteUrl ?? 'no repo configured',
+    status: repository ? 'connected' : 'not_configured',
+    detail: repository ?? 'the project document declares no repository',
     lastSyncAt: null,
-    configured: remoteUrl !== null,
-    meta: { transport, remoteUrl, baseBranch: project.baseBranch, deviceCreds },
+    configured: repository !== null,
+    meta: { repository, remoteUrl, baseBranch: project.baseBranch, deviceCreds },
   });
 
   // One card PER BINDING (ISS-429 — a disabled binding must not shadow an active one), for every

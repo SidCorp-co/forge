@@ -31,17 +31,15 @@ const ALLOW = [
   // This checker names what it hunts.
   /^scripts\/check-retired-model\.mjs$/,
   /^packages\/core\/tests\/integration\/release-chain-migration-ground\.ts$/,
-  // ISS-12 — the columns stand, unread, until ISS-16 drops them.
-  /^packages\/core\/src\/db\/schema\.ts$/,
-  /^packages\/core\/src\/db\/release-axes\.ts$/,
-  /^packages\/core\/tests\/integration\/environments-migration-e2e\.test\.ts$/,
   /^packages\/core\/tests\/integration\/landing-deploy-key-removed-e2e\.test\.ts$/,
+  // ISS-16 — the read-only export reads the dropped columns of a database that still has them.
+  /^scripts\/export-legacy-project-config\.mjs$/,
+  /^scripts\/export-legacy-project-config\.test\.mjs$/,
   // ISS-12 — each spells a deleted key to prove the door refuses it by name.
   /^packages\/core\/src\/projects\/routes\.test\.ts$/,
   /^packages\/core\/src\/issues\/metadata-schema\.test\.ts$/,
   /^packages\/core\/src\/project-config\/(?:routes|schema|schema-plants)\.test\.ts$/,
   /^packages\/core\/tests\/integration\/release-chain-migration-e2e\.test\.ts$/,
-  /^packages\/core\/tests\/integration\/release-chain-constraints-e2e\.test\.ts$/,
   /^packages\/core\/src\/projects\/retired-project-keys\.ts$/,
   /^packages\/core\/src\/db\/schema\.test\.ts$/,
 ];
@@ -80,7 +78,7 @@ export const RULES = [
     id: 'release-path-keys',
     // ISS-12 / design D8 — the keys the project document replaced, read or written anywhere.
     re: /\b(?:releaseChain|release_chain|liveBranch|releaseModel|releaseStrategy|autoProdDeploy|testCredentials|chainLiveBranch|retiredReleaseAxes|DeployStage|deployStages)\b|\bprojects\.environments\b|\bbinding\.stages\b/g,
-    why: "ISS-12 deleted this key with every reader and writer: where a release goes, what an environment is and how it is tested are the project document (`PUT /api/projects/:id/config`, ADR 0004), and which environment a deploy binding serves is the document's `deployment.binding`. Read `project-config/release-path.ts`. The `projects` columns stand unread until ISS-16 drops them; that file is the one allowed to spell them.",
+    why: "ISS-12 deleted this key with every reader and writer, and ISS-16 dropped its columns: where a release goes, what an environment is and how it is tested are the project document (`PUT /api/projects/:id/config`, ADR 0004), and which environment a deploy binding serves is the document's `deployment.binding`. Read `project-config/release-path.ts`.",
   },
   {
     id: 'device-binding-keys',
@@ -89,6 +87,13 @@ export const RULES = [
     re: /\bprojects\.(?:repoPath|repo_path)\b|\bdefaultDeviceId\b|\bdefault_device_id\b|\bdroppedNames\b|\bdropped_names\b|\bprojectDefaultRepoPath\b|\bresolveRepoPath\b|\bloadRepoPath\b|\bMcpServerSource\b|\bfallback_cwd\b/g,
     why: "ISS-14 deleted this with every reader and writer: a checkout is a path on one box, named by that device binding (`runners.repo_path`, `forge-runner bind <slug> --path <dir>`), and no box is a project's default. A job reads its cwd from `jobs/prepare-claimed-job.ts:resolveRunnerForDevice`, a turn from `lib/device-pool.ts:resolveSessionRepoPathForDevice`, and a binding that names none is refused CHECKOUT_UNBOUND. An agent's MCP servers are its project's granted integration bindings alone (`jobs/resolve-job-mcp-servers.ts`), so nothing is declared that could be dropped.",
     exts: ['.ts', '.tsx', '.mjs', '.js', '.rs'],
+  },
+  {
+    id: 'legacy-project-columns',
+    // ISS-16 / design D8 — the `projects` columns the project document replaced, dropped by 0332,
+    // and the helpers that wrote or checked them.
+    re: /\bprojects\.(?:description|kind|repoUrl|workspaceSetup)\b|\brepo_url\b|\bworkspace_setup\b|\bprojects_release_chain_(?:ok|chk)\b|\breleaseProjectChecks\b|\breleaseCrossings\b|\bsyncRepoUrlFromGitHubBinding\b|\bRepoUrlOutcome\b/g,
+    why: "ISS-16 dropped this `projects` column (migration 0332) with every reader and writer, and moved nothing into another column: a project's repository is its document's `source.git.repository` and its setup procedure is `workspace.setup` (`project-config/source.ts:readDeclaredSource`), whether its work lands in git is `source.type`, and a project carries no description. `PATCH /api/projects/:id` and `forge_projects.update` refuse `repoUrl` and `workspaceSetup` by name. To read what an old database still holds, run `scripts/export-legacy-project-config.mjs` against it.",
   },
   {
     id: 'tag-mr-strategy',

@@ -12,7 +12,8 @@ import {
 } from './live-source.js';
 
 const client = { fullName: 'SidCorp-co/forge' } as GitHubRepoClient;
-const GITLAB = 'git@gitlab.com:thanhnguyen21/sid-desk.git';
+const GITLAB = 'gitlab.com/thanhnguyen21/sid-desk';
+const GITLAB_SSH = 'git@gitlab.com:thanhnguyen21/sid-desk.git';
 let keyEnc: Buffer;
 
 beforeAll(() => {
@@ -31,7 +32,7 @@ function deps(over: Partial<LiveSourceDeps> & { row?: DeployKeyRow }): LiveSourc
   return {
     githubClient: over.githubClient ?? (async () => noBinding()),
     deployKey:
-      over.deployKey ?? (async () => over.row ?? { repoUrl: GITLAB, privateKeyEnc: keyEnc }),
+      over.deployKey ?? (async () => over.row ?? { repository: GITLAB, privateKeyEnc: keyEnc }),
   };
 }
 
@@ -61,17 +62,17 @@ describe('resolveLiveSource', () => {
     expect(deployKey).not.toHaveBeenCalled();
   });
 
-  it('reads with the decrypted deploy key where the project has no binding and an SSH repository', async () => {
+  it('reads the declared repository over SSH with the decrypted deploy key where the project has no binding', async () => {
     const s = await resolveLiveSource('p', deps({}));
     expect(s).toEqual({
       kind: 'deploy_key',
-      repoUrl: GITLAB,
+      repoUrl: GITLAB_SSH,
       privateKey: '-----BEGIN OPENSSH PRIVATE KEY-----\nsid-desk\n',
     });
   });
 
   it('tells a GitLab-hosted project with no key where to attach one, and never to bind GitHub', async () => {
-    const s = await resolveLiveSource('p', deps({ row: { repoUrl: GITLAB, privateKeyEnc: null } }));
+    const s = await resolveLiveSource('p', deps({ row: { repository: GITLAB, privateKeyEnc: null } }));
     expect(s.kind).toBe('refused');
     const reason = s.kind === 'refused' ? s.reason : '';
     expect(reason).toBe(
@@ -83,25 +84,20 @@ describe('resolveLiveSource', () => {
   it('offers a GitHub-hosted project with neither the binding as well as the key', async () => {
     const s = await resolveLiveSource(
       'p',
-      deps({ row: { repoUrl: 'git@github.com:SidCorp-co/forge.git', privateKeyEnc: null } }),
+      deps({ row: { repository: 'github.com/SidCorp-co/forge', privateKeyEnc: null } }),
     );
     expect(s.kind === 'refused' && s.reason).toMatch(
       /on github\.com, .*Git access, or bind the repository on its Integrations page$/,
     );
   });
 
-  it('refuses a project naming no repository at all', async () => {
-    const s = await resolveLiveSource('p', deps({ row: { repoUrl: null, privateKeyEnc: keyEnc } }));
-    expect(s.kind === 'refused' && s.reason).toMatch(/names no repository URL/);
-  });
-
-  it('refuses a deploy key beside a repository URL that is not an SSH remote', async () => {
+  it('refuses a project whose document declares no repository, naming the key to set', async () => {
     const s = await resolveLiveSource(
       'p',
-      deps({ row: { repoUrl: 'https://gitlab.com/a/b.git', privateKeyEnc: keyEnc } }),
+      deps({ row: { repository: null, privateKeyEnc: keyEnc } }),
     );
     expect(s.kind === 'refused' && s.reason).toMatch(
-      /^this project's repository URL https:\/\/gitlab\.com\/a\/b\.git is not an SSH remote/,
+      /its document declares no repository, .*`source\.git\.repository`/,
     );
   });
 
@@ -109,7 +105,7 @@ describe('resolveLiveSource', () => {
     const s = await resolveLiveSource(
       'p',
       deps({
-        row: { repoUrl: GITLAB, privateKeyEnc: Buffer.from('not a vault ciphertext at all') },
+        row: { repository: GITLAB, privateKeyEnc: Buffer.from('not a vault ciphertext at all') },
       }),
     );
     expect(s.kind === 'refused' && s.reason).toMatch(/could not be decrypted/);
@@ -136,7 +132,7 @@ describe('readProjectDivergence', () => {
   it('reads through the source the project holds', async () => {
     const github = vi.fn(async () => measured);
     const deployKey = vi.fn(async () => ({ ...measured, baseSha: 'from-git' }));
-    const key = { kind: 'deploy_key' as const, repoUrl: GITLAB, privateKey: 'k' };
+    const key = { kind: 'deploy_key' as const, repoUrl: GITLAB_SSH, privateKey: 'k' };
     const viaGit = await readProjectDivergence('p', refs, {
       source: async () => key,
       github,

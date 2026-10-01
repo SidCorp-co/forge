@@ -3,8 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { projectGitCredentials, projects, workspaceSshKeys } from '../db/schema.js';
-import { classifyGitRemote } from '../git/provision-credential.js';
+import { projectGitCredentials, workspaceSshKeys } from '../db/schema.js';
 import { testSshConnection } from '../git/ssh-keys.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
@@ -12,12 +11,18 @@ import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { getOrgSshKey } from '../orgs/ssh-keys-service.js';
+import { NO_REPOSITORY, readDeclaredSource, remoteOf } from '../project-config/source.js';
 
 export const gitCredentialRoutes = new Hono<{ Variables: AuthVars }>();
 gitCredentialRoutes.use('*', requireAuth(), assertEmailVerified());
 
 const paramSchema = z.object({ projectId: z.uuid() });
 const pickSchema = z.object({ sshKeyId: z.uuid() });
+
+async function declaredRemote(projectId: string) {
+  const { repository } = await readDeclaredSource(projectId);
+  return { repository, remote: repository ? remoteOf(repository, 'ssh') : null };
+}
 
 gitCredentialRoutes.get(
   '/:projectId/git-credential',
@@ -27,15 +32,6 @@ gitCredentialRoutes.get(
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'viewer', 'project member required');
-
-    const [project] = await db
-      .select({ repoUrl: projects.repoUrl })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    if (!project) {
-      throw new HTTPException(404, { message: 'project not found', cause: { code: 'NOT_FOUND' } });
-    }
 
     const [ref] = await db
       .select({ sshKeyId: projectGitCredentials.sshKeyId })
@@ -47,7 +43,7 @@ gitCredentialRoutes.get(
     const key = await getOrgSshKey(access.orgId, ref.sshKeyId);
     if (!key) return c.json({ configured: false as const });
 
-    return c.json({ configured: true as const, repoUrl: project.repoUrl, key });
+    return c.json({ configured: true as const, ...(await declaredRemote(projectId)), key });
   },
 );
 
@@ -81,12 +77,7 @@ gitCredentialRoutes.put(
 
     logger.info({ projectId, sshKeyId }, 'git-credential: picked pool key');
 
-    const [project] = await db
-      .select({ repoUrl: projects.repoUrl })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    return c.json({ configured: true as const, repoUrl: project?.repoUrl ?? null, key }, 201);
+    return c.json({ configured: true as const, ...(await declaredRemote(projectId)), key }, 201);
   },
 );
 
@@ -106,15 +97,6 @@ gitCredentialRoutes.post(
       });
     }
 
-    const [project] = await db
-      .select({ repoUrl: projects.repoUrl })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    if (!project) {
-      throw new HTTPException(404, { message: 'project not found', cause: { code: 'NOT_FOUND' } });
-    }
-
     const [ref] = await db
       .select({ privateKeyEnc: workspaceSshKeys.privateKeyEnc })
       .from(projectGitCredentials)
@@ -128,11 +110,11 @@ gitCredentialRoutes.post(
       });
     }
 
-    const repoUrl = project.repoUrl?.trim();
-    if (!repoUrl || classifyGitRemote(repoUrl) !== 'ssh') {
+    const { remote } = await declaredRemote(projectId);
+    if (!remote) {
       throw new HTTPException(400, {
-        message: 'set an SSH clone URL (git@host:org/repo.git) to test the deploy key',
-        cause: { code: 'NEEDS_SSH_URL' },
+        message: `${NO_REPOSITORY}, so there is no repository to test the deploy key against`,
+        cause: { code: 'NO_REPOSITORY' },
       });
     }
 
@@ -147,7 +129,7 @@ gitCredentialRoutes.post(
       });
     }
 
-    const result = await testSshConnection(repoUrl, privateKey);
+    const result = await testSshConnection(remote, privateKey);
     logger.info({ projectId, code: result.code, ok: result.ok }, 'git-credential: connection test');
     return c.json(result);
   },

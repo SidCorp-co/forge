@@ -30,7 +30,6 @@ import {
 } from '../helpers/index.js';
 
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
-const GITLAB = 'git@gitlab.com:lighthuman/portal_lh.git';
 const DEPLOY_KEY = '-----BEGIN OPENSSH PRIVATE KEY-----\nportal deploy key\n';
 let remote = '';
 
@@ -93,8 +92,8 @@ function buildPortalRepository(): void {
 async function portalProject(userId: string) {
   const p = await createTestProject(harness.db, userId);
   await createTestProjectMember(harness.db, { userId, projectId: p.id, role: 'admin' });
-  await harness.db.execute(sql`UPDATE projects SET repo_url = ${GITLAB} WHERE id = ${p.id}`);
   await seedProjectDocument(harness.db, p.id, userId, {
+    repository: 'gitlab.com/lighthuman/portal_lh',
     defaultBranch: 'staging',
     promotions: [{ from: 'staging', to: 'master', via: 'merge' }],
     environments: {

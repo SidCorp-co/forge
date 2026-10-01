@@ -2143,6 +2143,13 @@
       "when": 1811548800000,
       "tag": "0330_a_job_names_the_secrets_it_resolved",
       "breakpoints": true
+    },
+    {
+      "idx": 332,
+      "version": "7",
+      "when": 1811721600000,
+      "tag": "0332_the_legacy_project_columns_are_dropped",
+      "breakpoints": true
     }
   ]
 }

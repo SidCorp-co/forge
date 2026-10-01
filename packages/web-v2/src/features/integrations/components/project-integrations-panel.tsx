@@ -34,16 +34,12 @@ function cardIcon(key: string): IconName {
 
 function externalRepoUrl(card: StatusCard): string | null {
   const remote = card.meta?.remoteUrl;
-  if (typeof remote === "string" && /^https?:\/\//.test(remote)) {
-    return remote.replace(/\.git$/, "");
-  }
-  return null;
+  return typeof remote === "string" && remote.startsWith("https://") ? remote : null;
 }
 
 function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => void }) {
   const lastSync = formatRelativeTime(card.lastSyncAt);
   const repoUrl = externalRepoUrl(card);
-  const transport = typeof card.meta?.transport === "string" ? card.meta.transport : null;
   const clickable = Boolean(onOpen);
 
   return (
@@ -75,12 +71,6 @@ function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => vo
           </div>
 
           <p className="fg-body-sm text-muted">{card.detail}</p>
-
-          {transport && (
-            <p className="fg-body-sm text-subtle">
-              transport: <span className="font-mono">{transport}</span>
-            </p>
-          )}
 
           <div className="mt-auto flex items-center justify-between gap-2 pt-1">
             <span className="fg-body-sm text-subtle">

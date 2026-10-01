@@ -3,23 +3,12 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { check, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { releaseVersionText } from './column-checks.js';
 
-/** How a release crosses ONE edge of a chain, declared on the entry it crosses into. */
-export const releaseCrossings = ['merge-branch', 'cherry-pick'] as const;
-export type ReleaseCrossing = (typeof releaseCrossings)[number];
-
 export const bindingRoles = ['deploy', 'service', 'source'] as const;
 export type BindingRole = (typeof bindingRoles)[number];
-
-const RELEASE_CHAIN_CHK = sql`projects_release_chain_ok(release_chain)`;
 
 const BINDING_ROLE_CHK = sql`role IN ('deploy', 'service', 'source')`;
 
 export const SERVICE_ROLE_PRED = sql`role = 'service'`;
-
-/** Spread into `projects`' extras in `schema.ts`; the constraint name is what Postgres reports. */
-export const releaseProjectChecks = {
-  releaseChainChk: check('projects_release_chain_chk', RELEASE_CHAIN_CHK),
-} as const;
 
 export const agentAccessValues = ['none', 'all'] as const;
 export type AgentAccess = (typeof agentAccessValues)[number];

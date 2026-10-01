@@ -109,7 +109,6 @@ function ready() {
   selectLimit.mockResolvedValue([
     {
       repoPath: '/srv/app',
-      repoUrl: null,
       baseBranch: 'main',
     },
   ]);

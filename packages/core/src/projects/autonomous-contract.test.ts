@@ -6,20 +6,16 @@ import {
 } from './autonomous-contract.js';
 import { RESERVED_PROJECT_FACT_KEYS } from './project-facts.js';
 
-const REPO = { repoUrl: 'git@github.com:x/y.git', production: null };
-const NOTHING = { repoUrl: null, production: null };
+const REPO = { repository: 'github.com/x/y', production: null };
+const NOTHING = { repository: null, production: null };
 
 describe('declaresRepository', () => {
-  it('is the repository url', () => {
+  it('is the document declaring a repository', () => {
     expect(declaresRepository(REPO)).toBe(true);
   });
 
   it('is false when it is null', () => {
     expect(declaresRepository(NOTHING)).toBe(false);
-  });
-
-  it('counts a whitespace-only url as no repository', () => {
-    expect(declaresRepository({ ...NOTHING, repoUrl: '\n\t' })).toBe(false);
   });
 });
 

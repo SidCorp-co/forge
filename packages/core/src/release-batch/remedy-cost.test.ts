@@ -235,7 +235,6 @@ function projectRow() {
   selectLimit.mockResolvedValue([
     {
       repoPath: '/srv/app',
-      repoUrl: null,
       id: PROJECT_ID,
       baseBranch: 'main',
     },

@@ -21,6 +21,7 @@ import { logger } from '../../logger.js';
 import { promotedBranch, readDeployMap, releasePathOf } from '../../project-config/release-path.js';
 import type { ProjectDocument, TestingProfile } from '../../project-config/schema.js';
 import { listTestingProfiles, readProjectDocument } from '../../project-config/service.js';
+import { repositoryOf } from '../../project-config/source.js';
 import {
   type KnowledgeObligation,
   missingProjectKnowledge,
@@ -224,11 +225,9 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let projectFactKeys: string[] = [];
   let factsUnavailable = false;
   let missingObligations: KnowledgeObligation[] = [];
-  let repoUrl: string | null = null;
   try {
     const [row] = await db
       .select({
-        repoUrl: projects.repoUrl,
         baseBranch: projects.baseBranch,
         orgId: projects.orgId,
       })
@@ -236,7 +235,6 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       .where(eq(projects.id, projectId))
       .limit(1);
     baseBranch = row?.baseBranch ?? null;
-    repoUrl = row?.repoUrl ?? null;
 
     integrations = await loadActiveIntegrationRows(projectId, row?.orgId ?? null);
     modules = await loadProjectModules(projectId);
@@ -260,7 +258,10 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       selectOnDemandSlugsFromKnowledge(projectId),
       selectAllSlugsFromKnowledge(projectId),
     ]);
-    missingObligations = missingProjectKnowledge({ repoUrl, production }, heldSlugs);
+    missingObligations = missingProjectKnowledge(
+      { repository: repositoryOf(document), production },
+      heldSlugs,
+    );
   } catch (err) {
     factsUnavailable = true;
     alwaysInjectFacts = [];

@@ -1,8 +1,6 @@
-import { eq } from 'drizzle-orm';
-import { db } from '../../db/client.js';
 import type { BindingRole } from '../../db/schema.js';
-import { projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
+import { readDeclaredSource } from '../../project-config/source.js';
 import { decryptConnectionSecrets, type IntegrationConnectionRow } from '../store.js';
 import type { GitHubConfig, GitHubSecrets } from './types.js';
 
@@ -15,60 +13,38 @@ export function githubInboundSecret(connection: IntegrationConnectionRow): strin
   return secrets.webhookSecret ?? null;
 }
 
-/** The clone URL for a repository this App reaches. */
-export function githubHttpsRepoUrl(owner: string, repo: string): string {
-  return `https://github.com/${owner}/${repo}.git`;
-}
+export type BoundRepositoryOutcome =
+  | { kind: 'not-a-repository' }
+  | { kind: 'declared'; repository: string }
+  | { kind: 'undeclared'; bound: string; detail: string }
+  | { kind: 'conflict'; declared: string; bound: string; detail: string };
 
-/** `owner/repo` of a GitHub URL in either transport, for comparing two URLs. */
-export function repoSlugFromGitUrl(url: string): string | null {
-  const m = url
-    .trim()
-    .match(
-      /^(?:https:\/\/[^/]*github\.com\/|git@[^:]*github\.com:|ssh:\/\/git@[^/]*github\.com\/)(.+?)(?:\.git)?$/i,
-    );
-  return m?.[1]?.toLowerCase() ?? null;
-}
-
-export type RepoUrlOutcome =
-  | { kind: 'set'; repoUrl: string }
-  | { kind: 'unchanged' }
-  | { kind: 'conflict'; existing: string; bound: string };
-
-/**
- * Fill `projects.repo_url` from the repository just bound, so it is chosen once
- * in the picker rather than retyped in project settings.
- */
-export async function syncRepoUrlFromGitHubBinding(args: {
+export async function compareBoundRepository(args: {
   projectId: string;
   role: BindingRole;
   config: GitHubConfig;
-}): Promise<RepoUrlOutcome> {
+}): Promise<BoundRepositoryOutcome> {
   const { owner, repo } = args.config;
-  if (args.role !== 'service' || !owner || !repo) return { kind: 'unchanged' };
+  if (args.role !== 'service' || !owner || !repo) return { kind: 'not-a-repository' };
 
-  const bound = githubHttpsRepoUrl(owner, repo);
-  const [row] = await db
-    .select({ repoUrl: projects.repoUrl })
-    .from(projects)
-    .where(eq(projects.id, args.projectId))
-    .limit(1);
-
-  const existing = row?.repoUrl?.trim() ?? '';
-  if (existing) {
-    if (repoSlugFromGitUrl(existing) === `${owner}/${repo}`.toLowerCase())
-      return { kind: 'unchanged' };
-    logger.warn(
-      { projectId: args.projectId, existing, bound },
-      'github bind: project already clones a different repository; leaving its repo URL alone',
-    );
-    return { kind: 'conflict', existing, bound };
+  const bound = `github.com/${owner}/${repo}`;
+  const { repository: declared } = await readDeclaredSource(args.projectId);
+  if (declared === null) {
+    return {
+      kind: 'undeclared',
+      bound,
+      detail: `the project document declares no repository: set \`source.git.repository\` to "${bound}" with PUT /api/projects/:id/config. Binding a repository does not write the document.`,
+    };
   }
-
-  await db.update(projects).set({ repoUrl: bound }).where(eq(projects.id, args.projectId));
-  logger.info(
-    { projectId: args.projectId, repoUrl: bound },
-    'github bind: set the project repo URL',
+  if (declared.toLowerCase() === bound.toLowerCase()) return { kind: 'declared', repository: declared };
+  logger.warn(
+    { projectId: args.projectId, declared, bound },
+    'github bind: the bound repository is not the one the project document declares',
   );
-  return { kind: 'set', repoUrl: bound };
+  return {
+    kind: 'conflict',
+    declared,
+    bound,
+    detail: `the project document declares "${declared}", and this binding reaches "${bound}": the document is what work is cut from, so change it with PUT /api/projects/:id/config or bind the declared repository.`,
+  };
 }
