@@ -218,3 +218,131 @@ export const channelCounters = pgTable(
     lastNumberChk: check('channel_counters_last_number_chk', sql`${t.lastNumber} >= 1`),
   }),
 );
+
+const DOCUMENT_TYPE_SQL = sql.raw(
+  `('change-notice', 'acknowledgement', 'rfi', 'change-request', 'decision')`,
+);
+
+export const channelDocuments = pgTable(
+  'channel_documents',
+  {
+    id: uuid('id').primaryKey(),
+    ecosystemId: uuid('ecosystem_id')
+      .notNull()
+      .references(() => ecosystems.id, { onDelete: 'restrict' }),
+    type: text('type').notNull(),
+    fromProjectId: uuid('from_project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'restrict' }),
+    toProjectIds: uuid('to_project_ids').array().notNull(),
+    number: text('number'),
+    state: text('state').notNull(),
+    inReplyTo: text('in_reply_to'),
+    thread: text('thread'),
+    authorKind: text('author_kind').notNull(),
+    authorId: text('author_id').notNull(),
+    authorVia: text('author_via').notNull(),
+    document: jsonb('document').notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+  },
+  (t) => ({
+    numberUq: uniqueIndex('channel_documents_number_uq').on(t.number),
+    ecosystemStateIdx: index('channel_documents_ecosystem_state_idx').on(t.ecosystemId, t.state),
+    fromIdx: index('channel_documents_from_project_id_idx').on(t.fromProjectId),
+    toIdx: index('channel_documents_to_project_ids_idx').using('gin', t.toProjectIds),
+    threadIdx: index('channel_documents_thread_idx').on(t.thread),
+    typeChk: check('channel_documents_type_chk', sql`${t.type} IN ${DOCUMENT_TYPE_SQL}`),
+    stateChk: check(
+      'channel_documents_state_chk',
+      sql`${t.state} IN ('draft', 'submitted', 'returned', 'published')`,
+    ),
+    numberedChk: check(
+      'channel_documents_numbered_chk',
+      sql`${t.state} = 'draft' OR ${t.number} IS NOT NULL`,
+    ),
+    publishedChk: check(
+      'channel_documents_published_chk',
+      sql`(${t.state} = 'published') = (${t.publishedAt} IS NOT NULL)`,
+    ),
+    authorChk: check(
+      'channel_documents_author_chk',
+      sql`(${t.authorKind} = 'agent' AND ${t.authorVia} = 'master') OR (${t.authorKind} = 'person' AND ${t.authorVia} IN ('assistant', 'web', 'cli'))`,
+    ),
+  }),
+);
+
+export const channelDocumentEvents = pgTable(
+  'channel_document_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => channelDocuments.id, { onDelete: 'restrict' }),
+    verb: text('verb').notNull(),
+    fromState: text('from_state'),
+    toState: text('to_state').notNull(),
+    actorKind: text('actor_kind').notNull(),
+    actorId: text('actor_id').notNull(),
+    actorVia: text('actor_via').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    reason: text('reason'),
+    supersededBy: text('superseded_by'),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    documentIdx: index('channel_document_events_document_id_idx').on(t.documentId),
+    endsOnceUq: uniqueIndex('channel_document_events_ends_once_uq')
+      .on(t.documentId)
+      .where(sql`verb IN ('withdraw', 'supersede')`),
+    verbChk: check(
+      'channel_document_events_verb_chk',
+      sql`${t.verb} IN ('draft', 'edit', 'submit', 'approve', 'return', 'publish', 'withdraw', 'supersede')`,
+    ),
+    endChk: check(
+      'channel_document_events_end_chk',
+      sql`(${t.verb} NOT IN ('withdraw', 'supersede') OR (${t.reason} IS NOT NULL AND length(${t.reason}) BETWEEN 1 AND 500)) AND ((${t.verb} = 'supersede') = (${t.supersededBy} IS NOT NULL))`,
+    ),
+  }),
+);
+
+export const channelThreadHolds = pgTable(
+  'channel_thread_holds',
+  {
+    id: uuid('id').primaryKey(),
+    ecosystemId: uuid('ecosystem_id')
+      .notNull()
+      .references(() => ecosystems.id, { onDelete: 'restrict' }),
+    thread: text('thread').notNull(),
+    action: text('action').notNull(),
+    byKind: text('by_kind').notNull(),
+    byId: text('by_id').notNull(),
+    byVia: text('by_via').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    sideProjectId: uuid('side_project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'restrict' }),
+    reason: text('reason'),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    threadIdx: index('channel_thread_holds_thread_idx').on(t.thread, t.at),
+    actionChk: check('channel_thread_holds_action_chk', sql`${t.action} IN ('hold', 'release')`),
+    personChk: check(
+      'channel_thread_holds_person_chk',
+      sql`${t.byKind} = 'person' AND ${t.byVia} IN ('assistant', 'web', 'cli')`,
+    ),
+    reasonChk: check(
+      'channel_thread_holds_reason_chk',
+      sql`${t.action} <> 'hold' OR (${t.reason} IS NOT NULL AND length(${t.reason}) BETWEEN 1 AND 1000)`,
+    ),
+  }),
+);

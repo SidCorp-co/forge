@@ -1,6 +1,12 @@
 import { emitJsonSchema } from '../project-config/json-schema.js';
 import { SCHEMA_BASE } from '../project-config/schema.js';
 import {
+  DOCUMENT_SCHEMA_ID,
+  documentSchema,
+  HOLD_SCHEMA_ID,
+  holdSchema,
+} from './channel-schema.js';
+import {
   ecosystemDocumentSchema,
   interfaceDocumentSchema,
   membershipDocumentSchema,
@@ -13,4 +19,6 @@ export const ecosystemJsonSchemas: Readonly<Record<string, object>> = {
     `${SCHEMA_BASE}/membership-v1.json`,
   ),
   'interface-v1.json': emitJsonSchema(interfaceDocumentSchema, `${SCHEMA_BASE}/interface-v1.json`),
+  'document-v1.json': emitJsonSchema(documentSchema, DOCUMENT_SCHEMA_ID),
+  'hold-v1.json': emitJsonSchema(holdSchema, HOLD_SCHEMA_ID),
 };
