@@ -16,6 +16,7 @@ import { pathToFileURL } from 'node:url';
 
 const LABEL = 'export-legacy-project-config';
 export const SECRET_MARK = 'present, re-enter as a project secret';
+export const DISCARDED_MARK = 'present, not printed: nothing reads it after the release';
 
 export const LEGACY_COLUMNS = [
   { table: 'projects', column: 'description', v1: 'nothing: a project carries no description' },
@@ -26,12 +27,14 @@ export const LEGACY_COLUMNS = [
   {
     table: 'projects',
     column: 'webhook_secret',
-    v1: 'the project secret secret://project/webhook-secret (PUT /api/projects/:id/secrets/project/webhook-secret)',
+    v1: "nothing: no route reads it; a provider's webhook is verified with its binding's secret",
+    discard: true,
   },
   {
     table: 'projects',
     column: 'api_key',
     v1: 'nothing: no route authenticated a project API key',
+    discard: true,
   },
   {
     table: 'projects',
@@ -96,6 +99,9 @@ const rollbackOf = (b) =>
       ? { from: 'connection', value: b.connection_rollback }
       : null;
 
+const held = (c, value) =>
+  c.discard && value !== null && value !== '' ? DISCARDED_MARK : redact(value, c.column);
+
 const ident = (s) => `"${s.replaceAll('"', '""')}"`;
 
 export async function readLegacyConfig(sql) {
@@ -133,7 +139,7 @@ export async function readLegacyConfig(sql) {
       slug: p.slug,
       name: p.name,
       archived: p.archived_at !== null,
-      legacy: Object.fromEntries(projectCols.map((c) => [c.column, redact(p[c.column], c.column)])),
+      legacy: Object.fromEntries(projectCols.map((c) => [c.column, held(c, p[c.column])])),
       bindings: bindings
         .filter((b) => b.project_id === p.id)
         .map((b) => ({

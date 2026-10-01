@@ -198,8 +198,8 @@ describe('the export on a database still at the old schema', () => {
       workspace_setup: 'pnpm install',
       repo_path: '/srv/alpha',
       base_branch: 'trunk',
-      webhook_secret: exporter.SECRET_MARK,
-      api_key: exporter.SECRET_MARK,
+      webhook_secret: exporter.DISCARDED_MARK,
+      api_key: exporter.DISCARDED_MARK,
       release_chain: [{ branch: 'staging' }, { branch: 'main', from: 'merge-branch' }],
       environments: {
         live: {
@@ -260,10 +260,10 @@ describe('the export on a database still at the old schema', () => {
       /present {2}projects\.base_branch {2}→ re-enter as source\.git\.defaultBranch/,
     );
     expect(out.stdout).toMatch(
-      /present {2}projects\.webhook_secret {2}→ re-enter as the project secret secret:\/\/project\/webhook-secret/,
+      /present {2}projects\.webhook_secret {2}→ re-enter as nothing: no route reads it/,
     );
-    expect(out.stdout).toContain(`webhook_secret: ${exporter.SECRET_MARK}`);
-    expect(out.stdout).toContain(`api_key: ${exporter.SECRET_MARK}`);
+    expect(out.stdout).toContain(`webhook_secret: ${exporter.DISCARDED_MARK}`);
+    expect(out.stdout).toContain(`api_key: ${exporter.DISCARDED_MARK}`);
     for (const held of SECRETS) expect(out.stdout).not.toContain(held);
     const db = new URL(url);
     expect(out.stdout.split('\n')[0]).toBe(

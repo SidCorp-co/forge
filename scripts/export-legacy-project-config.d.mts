@@ -1,11 +1,13 @@
 import type { Sql } from 'postgres';
 
 export declare const SECRET_MARK: string;
+export declare const DISCARDED_MARK: string;
 
 export interface LegacyColumn {
   table: string;
   column: string;
   v1: string;
+  discard?: boolean;
 }
 
 export declare const LEGACY_COLUMNS: LegacyColumn[];

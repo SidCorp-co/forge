@@ -80,7 +80,6 @@ export interface ConfigStore {
     valueEnc: Buffer;
   }): Promise<SecretName>;
   deviceCheckout(projectId: string, deviceId: string): Promise<DeviceCheckout | null>;
-  readSecret(projectId: string, scope: string, name: string): Promise<Buffer | null>;
 }
 
 const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
@@ -304,21 +303,6 @@ export const drizzleConfigStore: ConfigStore = {
         ),
       );
     return new Set(rows.map((r) => secretRefOf(r.scope, r.name)));
-  },
-
-  async readSecret(projectId, scope, name) {
-    const [row] = await db
-      .select({ enc: projectSecrets.valueEnc })
-      .from(projectSecrets)
-      .where(
-        and(
-          eq(projectSecrets.projectId, projectId),
-          eq(projectSecrets.scope, scope),
-          eq(projectSecrets.name, name),
-        ),
-      )
-      .limit(1);
-    return row?.enc ?? null;
   },
 
   async putSecret({ projectId, scope, name, valueEnc }) {

@@ -124,6 +124,11 @@ export const RULES = [
     why: "ISS-16 dropped this `projects` column (migrations `the_legacy_project_columns_are_dropped` and `the_branch_and_the_project_secrets_leave_the_row`) with every reader and writer, and moved nothing into another column: a project's repository is its document's `source.git.repository`, the branch work is cut from is `source.git.defaultBranch` and its setup procedure is `workspace.setup` (`project-config/source.ts:readDeclaredSource`), whether its work lands in git is `source.type`, and a project carries no description. The webhook secret is the project secret `secret://project/webhook-secret` (`project-config/service.ts:resolveProjectSecret`), and no project API key exists. `PATCH /api/projects/:id`, `POST /api/projects` and `forge_projects` refuse `repoUrl`, `workspaceSetup`, `baseBranch`, `webhookSecret` and `apiKey` by name. To read what an old database still holds, run `scripts/export-legacy-project-config.mjs` against it.",
   },
   {
+    id: 'generic-inbound-webhook',
+    re: /secret:\/\/project\/webhook-secret|\bGENERIC_SIGNATURE_HEADERS\b|\bresolveProjectSecret\b|handler:\s*['"`]generic['"`]|webhook: generic receive/g,
+    why: "ISS-16 removed the generic inbound webhook: `POST /api/webhooks/in/:slug` with no provider header verified a project secret and then reached nothing, and now answers 410 `WEBHOOK_ROUTE_REMOVED` (`webhooks/inbound-routes.ts:routeRemoved`). A provider's webhook is verified with its integration binding's secret; there is no project webhook secret to read.",
+  },
+  {
     id: 'tag-mr-strategy',
     re: /(['"`])tag-mr\1/g,
     why: "`tag-mr` was removed by ISS-1311 (ADR 0003): it had no behaviour, no document and no project that declared it, and the migration aborts on a row carrying it rather than rewriting it. A release crosses an edge by `merge-branch` or `cherry-pick`, declared as that entry's `from`.",

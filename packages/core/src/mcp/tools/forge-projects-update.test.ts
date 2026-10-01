@@ -24,7 +24,7 @@ describe('forge_projects.update refuses the fields the project document replaced
     ['workspaceSetup', 'pnpm install', '`workspace.setup`'],
     ['workspaceSetup', null, '`workspace.setup`'],
     ['baseBranch', 'staging', '`source.git.defaultBranch`'],
-    ['webhookSecret', 'secret-of-at-least-16-chars', '`secret://project/webhook-secret`'],
+    ['webhookSecret', 'secret-of-at-least-16-chars', 'no route reads a project webhook secret'],
     ['apiKey', 'fk_x', 'no route authenticated a project API key'],
   ])('names %s (%s) and where its value lives, and writes nothing', async (field, value, owner) => {
     await expect(update({ name: 'kept', [field]: value })).rejects.toThrow(
@@ -37,7 +37,7 @@ describe('forge_projects.update refuses the fields the project document replaced
 describe('forge_projects.create refuses the fields the project row no longer holds', () => {
   it.each([
     ['baseBranch', 'main', '`source.git.defaultBranch`'],
-    ['webhookSecret', 'secret-of-at-least-16-chars', '`secret://project/webhook-secret`'],
+    ['webhookSecret', 'secret-of-at-least-16-chars', 'no route reads a project webhook secret'],
     ['apiKey', 'fk_x', 'no route authenticated a project API key'],
   ])('names %s and where its value lives, and creates nothing', async (field, value, owner) => {
     const tool = forgeProjectsCreateTool({ principal: { kind: 'user', userId: 'u-1' } } as never);

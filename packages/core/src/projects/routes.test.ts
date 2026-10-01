@@ -261,7 +261,7 @@ describe('POST /api/projects', () => {
   it.each([
     ['repoPath', '/srv/app', "lives on that box's device binding"],
     ['defaultDeviceId', '22222222-2222-4222-8222-222222222222', "no box is a project's default"],
-    ['webhookSecret', 'secret-of-at-least-16-chars', 'PUT /api/projects/:id/secrets/project/'],
+    ['webhookSecret', 'secret-of-at-least-16-chars', 'WEBHOOK_ROUTE_REMOVED'],
     ['apiKey', 'fk_x', 'no route authenticated a project API key'],
   ])(
     '400 BAD_REQUEST naming the retired field %s and where it went, and creates nothing',
@@ -545,8 +545,8 @@ describe('PATCH /api/projects/:id', () => {
     ['repoPath', null, "lives on that box's device binding"],
     ['defaultDeviceId', '22222222-2222-4222-8222-222222222222', "no box is a project's default"],
     ['defaultDeviceId', null, "no box is a project's default"],
-    ['webhookSecret', 'secret-of-at-least-16-chars', 'PUT /api/projects/:id/secrets/project/'],
-    ['webhookSecret', null, 'PUT /api/projects/:id/secrets/project/'],
+    ['webhookSecret', 'secret-of-at-least-16-chars', 'WEBHOOK_ROUTE_REMOVED'],
+    ['webhookSecret', null, 'WEBHOOK_ROUTE_REMOVED'],
     ['apiKey', 'fk_x', 'no route authenticated a project API key'],
   ])(
     '400 BAD_REQUEST naming the retired field %s (%s) and where it went, and writes nothing',
