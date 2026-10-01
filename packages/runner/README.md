@@ -212,8 +212,9 @@ not unix            ─▶ exit 0 for the service manager to start the new build
   pane is not nudged, and the journal says so once per pane and reason. It is
   ended and placed again — in the same sweep, resuming its conversation — only
   when it holds no open run under the session this box serves it as (written
-  onto its ledger row before any run is carried there; a pane whose row names
-  another is left running), its turn is affirmatively over (its hooks say so,
+  onto its ledger row with the carry; a pane whose row names another, or whose
+  carry left a run it could not read, is left running until that clears), its
+  turn is affirmatively over (its hooks say so,
   or, unheard since the handover, its transcript's newest entry is a turn's
   end), and its project has admissible work. Otherwise it is left running and
   the journal names why and `forge-runner master kill <slug>`, which replaces it

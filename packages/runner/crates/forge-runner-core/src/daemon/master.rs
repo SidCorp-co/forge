@@ -1441,14 +1441,13 @@ async fn sweep(
         if let Some(found) = deaf.take() {
             deaf_found.push(found);
         }
-        let serving = masters.get(&runner.project_id);
-        if let (Some(led), Some((session, _))) = (ledger.as_ref(), serving.as_ref()) {
-            name_the_session_served(led, &runner.project_id, session, &resolved.slug);
-        }
-        if let (true, Some((successor, name))) = (pane == PaneState::Adopted && heard, serving) {
+        if let (true, Some((successor, name))) = (
+            pane == PaneState::Adopted && heard,
+            masters.get(&runner.project_id),
+        ) {
             let pane_pid = terminal::pane_pid(&name).await;
             if let Some(led) = ledger.as_mut() {
-                carried_across(
+                carry_and_record(
                     led,
                     &runner.project_id,
                     &name,
@@ -2449,18 +2448,21 @@ pub(crate) fn carried_across(
     pane_pid: Option<u32>,
     hosts: &dyn subagent_host::Hosts,
     slug: &str,
-) -> usize {
+) -> Carried {
     let runs = match led.unclosed_runs() {
         Ok(runs) => runs,
         Err(e) => {
             tracing::warn!(
                 "[master] {slug}: cannot read the open runs to carry {pane}'s across to {successor} ({e}); they stay where they are this sweep"
             );
-            return 0;
+            return Carried {
+                moved: 0,
+                unattributed: vec![format!("none could be read ({e})")],
+            };
         }
     };
     let mut moved = 0;
-    let mut unattributed = 0;
+    let mut unattributed = Vec::new();
     for run in runs.iter().filter(|r| {
         r.ended_by.is_none()
             && r.project_id.as_deref() == Some(project_id)
@@ -2473,14 +2475,17 @@ pub(crate) fn carried_across(
         match ours {
             subagent_host::HostRead::Alive => match led.reparent_run(&run.run_id, successor) {
                 Ok(()) => moved += 1,
-                Err(e) => tracing::warn!(
-                    "[master] {slug}: run {}: cannot record it under {successor}: {e} — it stays {}'s, which no pane on this box answers for",
-                    run.run_id,
-                    run.master_session_id
-                ),
+                Err(e) => {
+                    tracing::warn!(
+                        "[master] {slug}: run {}: cannot record it under {successor}: {e} — it stays {}'s, which no pane on this box answers for",
+                        run.run_id,
+                        run.master_session_id
+                    );
+                    unattributed.push(run.run_id.clone());
+                }
             },
             subagent_host::HostRead::Gone => {}
-            subagent_host::HostRead::Unreadable => unattributed += 1,
+            subagent_host::HostRead::Unreadable => unattributed.push(run.run_id.clone()),
         }
     }
     if moved > 0 {
@@ -2488,33 +2493,71 @@ pub(crate) fn carried_across(
             "[master] {slug}: {moved} open run(s) declared from a process still running in {pane} are now recorded under {successor}, the session core serves it as, so its close and its choice answer for them"
         );
     }
-    if unattributed > 0 {
+    if !unattributed.is_empty() {
         tracing::warn!(
-            "[master] {slug}: {unattributed} open run(s) of this project are under another session and whether their recorded process runs in {pane} could not be read, so they are left where they are"
+            "[master] {slug}: {} open run(s) of this project are under another session and whether their recorded process runs in {pane} could not be read, so they are left where they are",
+            unattributed.len()
         );
     }
-    moved
+    Carried {
+        moved,
+        unattributed,
+    }
 }
 
-/// Write onto the project's `masters` row the session this box serves its
-/// pane as, before any run is carried there (ISS-1379).
+/// Carry an adopted pane's runs to the session this box serves it as, and
+/// record on its `masters` row both that session and every open run of the
+/// project the carry could not attribute (ISS-1379).
 ///
-/// Declarations, the carry and every control call the pane makes key on the
-/// registry's session; the row is what `master_exit::holding` reads, for the
-/// sweep and for `master stand-down` alike, and the pane's own hooks write it
-/// only when they next fire. A pane idle at its prompt fires none, so a pane a
-/// handover adopted under a session core re-minted read as holding nothing
-/// while its runs sat under the other, and was ended with them open.
-fn name_the_session_served(led: &Ledger, project_id: &str, session: &str, slug: &str) {
-    match led.note_master_session(project_id, session) {
-        Ok(true) => tracing::info!(
-            "[master] {slug}: its ledger row now names session {session}, the one this box serves its pane as, which is where its runs are recorded"
-        ),
-        Ok(false) => {}
-        Err(e) => tracing::warn!(
-            "[master] {slug}: cannot record session {session} on its ledger row ({e}); until it is, the pane is not judged by the runs that row names"
-        ),
+/// The row is what `master_exit::holding` reads, for the sweep's outdated
+/// judgement and for `master stand-down` alike, and the pane's own hooks write
+/// its session only when they next fire. A pane idle at its prompt fires none,
+/// so a pane a handover adopted under a session core re-minted read as
+/// holding nothing while its runs sat under the other, and was ended with them
+/// open. The row is moved first, marked as mid-carry, so a reader between the
+/// two writes is refused a count rather than handed a short one; the mark is
+/// then replaced by the runs left unattributed, or cleared where none were,
+/// which every sweep recomputes. A run the carry could not read stays under
+/// the session it had, and until it ends or is read, which runs the pane holds
+/// is not known — the session the row names now does not find it.
+pub(crate) fn carry_and_record(
+    led: &mut Ledger,
+    project_id: &str,
+    pane: &str,
+    successor: &str,
+    pane_pid: Option<u32>,
+    hosts: &dyn subagent_host::Hosts,
+    slug: &str,
+) -> Carried {
+    let mid = format!("this box is carrying {pane}'s open runs to session {successor}");
+    if let Err(e) = led.note_master_session(project_id, successor, Some(&mid)) {
+        tracing::warn!(
+            "[master] {slug}: cannot record session {successor} on {pane}'s ledger row ({e}); its runs are not carried this sweep, and the pane is judged by no count while the row and this box disagree"
+        );
+        return Carried::default();
     }
+    let carried = carried_across(led, project_id, pane, successor, pane_pid, hosts, slug);
+    let left = (!carried.unattributed.is_empty()).then(|| {
+        format!(
+            "{} open run(s) of this project are under another session and whether they run in {pane} could not be read: {}",
+            carried.unattributed.len(),
+            carried.unattributed.join(", ")
+        )
+    });
+    if let Err(e) = led.note_master_session(project_id, successor, left.as_deref()) {
+        tracing::warn!(
+            "[master] {slug}: cannot record what the carry left on {pane}'s ledger row ({e}); it reads as mid-carry, so no count of its runs is given until a sweep writes it"
+        );
+    }
+    carried
+}
+
+/// What one carry did: how many runs it moved, and the open runs of the
+/// project under another session it could not say were the pane's or not.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct Carried {
+    pub moved: usize,
+    pub unattributed: Vec<String>,
 }
 
 /// What [`placed_again`] says it did. A run is called ended with the pane only
@@ -4559,7 +4602,12 @@ mod tests {
             "one",
         );
 
-        assert_eq!(moved, 1);
+        assert_eq!(moved.moved, 1);
+        assert_eq!(
+            moved.unattributed,
+            vec!["never-read".to_string()],
+            "the one run no process was read for is named as unattributed"
+        );
         let under = |id: &str| led.run(id).unwrap().unwrap().master_session_id;
         assert_eq!(under("open-mine"), "sess-now");
         assert_eq!(
@@ -4592,7 +4640,8 @@ mod tests {
                 Some(THE_PANE),
                 &hosts,
                 "one"
-            ),
+            )
+            .moved,
             0,
             "a second sweep carries nothing twice"
         );
@@ -12829,8 +12878,7 @@ mod outdated_tests {
             .act
         };
 
-        name_the_session_served(&led, "p", "sess-new", "proj");
-        carried_across(
+        let carried = carry_and_record(
             &mut led,
             "p",
             "forge-master-proj",
@@ -12839,6 +12887,8 @@ mod outdated_tests {
             &hosts,
             "proj",
         );
+        assert_eq!(carried.moved, 1);
+        assert!(carried.unattributed.is_empty(), "{carried:?}");
         assert_eq!(
             led.run("run-1").unwrap().unwrap().master_session_id,
             "sess-new"
@@ -12871,6 +12921,93 @@ mod outdated_tests {
             judge(&led),
             OutdatedAct::Replace,
             "criterion 42: replaced once its last run has ended"
+        );
+    }
+
+    /// Review 1's F1: a run of the pane's whose process cannot be read is not
+    /// carried, and stays under the session the row named before the carry.
+    /// The row moving to the new session must not make it vanish from the
+    /// count: while it stands unattributed, nothing about the pane's runs is
+    /// known, for the sweep and for a stand-down reading the ledger alone.
+    #[test]
+    fn a_run_the_carry_could_not_read_holds_the_pane_until_it_ends() {
+        let dir = Scratch::new("outdated-unread");
+        let mut led = Ledger::open_in_memory().unwrap();
+        a_master_row(&led, Some("0.0.1 (old)"));
+        led.create_run_group(NewRun {
+            run_id: "run-3".into(),
+            project_id: "p".into(),
+            master_session_id: "sess-old".into(),
+            worktree_path: "/w/run-3".into(),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-3".into()],
+        })
+        .unwrap();
+        assert!(led.note_host("run-3", 41_201, "4400").unwrap());
+        let masters = Arc::new(Masters::new());
+        remember(
+            &masters,
+            "p",
+            &master_api::MasterSession {
+                session_id: "sess-new".into(),
+                name: "forge-master-proj".into(),
+                created: false,
+            },
+        );
+        let hosts = subagent_host::testing::FakeHosts::default();
+        let activity = agent_activity::Activities::new();
+        activity.record(
+            "sess-new",
+            agent_activity::Report {
+                event: agent_activity::Event::Stopped,
+                at: 1_000,
+                subject: None,
+                conversation: Some("conv-1"),
+                transcript: None,
+            },
+        );
+        let mut sweep = |led: &mut Ledger| {
+            carry_and_record(
+                led,
+                "p",
+                "forge-master-proj",
+                "sess-new",
+                Some(41_200),
+                &hosts,
+                "proj",
+            );
+            judge_resident(
+                led,
+                &masters,
+                &activity,
+                "forge-master-proj",
+                &resolved(&dir),
+                "p",
+                Placement::AdoptOrStart,
+            )
+            .expect("outdated")
+            .act
+        };
+
+        let OutdatedAct::Leave(reason) = sweep(&mut led) else {
+            panic!("criterion 29: replaced while run-3, unread, is open under the session before")
+        };
+        assert!(reason.contains("run-3"), "{reason}");
+        assert_eq!(
+            led.run("run-3").unwrap().unwrap().master_session_id,
+            "sess-old"
+        );
+        let row = led.master_for_project("p").unwrap();
+        let Holding::Unknown(why) = master_exit::holding(&led, row.as_ref()).unwrap() else {
+            panic!("a stand-down reading the ledger alone is refused a count too")
+        };
+        assert!(why.contains("run-3"), "{why}");
+
+        led.end_run("run-3", "master", "done").unwrap();
+        assert_eq!(
+            sweep(&mut led),
+            OutdatedAct::Replace,
+            "criterion 42: once the run it could not read has ended, the next sweep clears the mark and replaces it"
         );
     }
 
@@ -13007,9 +13144,12 @@ mod outdated_tests {
             "a placement records the build it was placed under"
         );
         assert!(
-            at("ensure_master(") < at("name_the_session_served(")
-                && at("name_the_session_served(") < at("carried_across("),
-            "criterion 29: the row names the session the registry serves before any run is carried there"
+            at("ensure_master(") < at("carry_and_record("),
+            "criterion 29: an adopted pane's runs are carried, and its row written, through the one call that does both"
+        );
+        assert!(
+            !sweep_source().contains("carried_across("),
+            "criterion 29: no carry in the sweep leaves the row naming another session"
         );
     }
 }
