@@ -7438,6 +7438,10 @@
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
           }
         },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
