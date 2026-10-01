@@ -1,7 +1,7 @@
 /**
  * ISS-1327 — the record door's `RELEASE_WORK_UNMERGED` on a project whose work lands outside git.
  *
- * The roster filter is `landing-evidence.ts`'s answer, so a website issue whose mark names no landing
+ * The roster filter is `landing-evidence.ts`'s answer, so an issue outside git whose mark names no landing
  * is unmerged though `merged_at` is set, and its sentence speaks of a landing, never of a branch.
  * Beside `blockers.test.ts`, with its mocks, because that file is at its size budget; the door is
  * also held against Postgres in `tests/integration/landing-evidence-e2e.test.ts`.
@@ -71,7 +71,7 @@ describe('RELEASE_WORK_UNMERGED on a project whose work lands outside git', () =
     const unmerged = await unmergedAtTheRecordDoor({
       mergedAt: new Date('2026-09-26T12:20:00Z'),
       mergedLanding: null,
-      kind: 'website',
+      sourceType: 'storefront',
     });
     expect(unmerged?.details).toMatchObject({ issueIds: [ISSUE], shape: 'outside_git' });
     expect(unmerged?.message).toContain('`landing`');
@@ -82,7 +82,7 @@ describe('RELEASE_WORK_UNMERGED on a project whose work lands outside git', () =
     const unmerged = await unmergedAtTheRecordDoor({
       mergedAt: new Date('2026-09-26T12:20:00Z'),
       mergedLanding: 'https://mowmentbrand.com/products/linen-tee',
-      kind: 'website',
+      sourceType: 'storefront',
     });
     expect(unmerged).toBeUndefined();
   });
@@ -91,9 +91,31 @@ describe('RELEASE_WORK_UNMERGED on a project whose work lands outside git', () =
     const unmerged = await unmergedAtTheRecordDoor({
       mergedAt: null,
       mergedLanding: null,
-      kind: 'standard',
+      sourceType: 'git',
     });
     expect(unmerged?.details).toMatchObject({ issueIds: [ISSUE], shape: 'git' });
     expect(unmerged?.message).toContain('the branch this release deployed');
+  });
+
+  it('leaves the merge check unevaluated by name on a project with no project document', async () => {
+    selectRows.mockResolvedValue([
+      {
+        id: ISSUE,
+        status: 'awaiting_release',
+        claimed: null,
+        mergedAt: new Date('2026-09-26T12:20:00Z'),
+        mergedCommitSha: null,
+        mergedLanding: null,
+        sourceType: null,
+      },
+    ]);
+    const { blockers } = await collectReleaseBlockers(PROJECT_ID, {
+      issueIds: [ISSUE],
+      door: 'record',
+    });
+    expect(blockers.find((b) => b.code === 'RELEASE_WORK_UNMERGED')).toBeUndefined();
+    const unevaluated = blockers.find((b) => b.code === 'RELEASE_CHECK_UNEVALUATED');
+    expect(unevaluated?.details).toMatchObject({ check: 'merged' });
+    expect(String(unevaluated?.details?.detail)).toContain('declares no project document');
   });
 });

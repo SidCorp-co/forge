@@ -34,7 +34,7 @@ export async function resolveScheduleTargetProject(
     projectId = target.id;
   }
   const userId =
-    input.actorUserId ?? (await loadCreatedBy(projectId, input.resolvedTarget?.createdBy));
+    input.actor?.userId ?? (await loadCreatedBy(projectId, input.resolvedTarget?.createdBy));
   if (!userId) return null;
   return { projectId, userId };
 }

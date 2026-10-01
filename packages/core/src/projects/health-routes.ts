@@ -20,8 +20,6 @@ interface ProjectHealthRow {
   id: string;
   projectName: string;
   projectSlug: string;
-  /** Free-text description (nullable in the DB → `null` here). */
-  description: string | null;
   /** Repo path/slug shown under the project name (nullable). */
   repoPath: string | null;
   throughput: number;
@@ -87,7 +85,6 @@ projectHealthRoutes.get('/health', async (c) => {
       id: projects.id,
       slug: projects.slug,
       name: projects.name,
-      description: projects.description,
       repoPath: projects.repoPath,
     })
     .from(projects)
@@ -155,7 +152,6 @@ projectHealthRoutes.get('/health', async (c) => {
       id: p.id,
       projectName: p.name,
       projectSlug: p.slug,
-      description: p.description ?? null,
       repoPath: p.repoPath ?? null,
       throughput: throughputByProject.get(p.id) ?? 0,
       totalActive,

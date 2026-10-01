@@ -28,6 +28,7 @@ import type { RequestIdVars } from '../../src/middleware/request-id.js';
 import {
   createTestProject,
   createTestUser,
+  seedProjectSource,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -83,6 +84,7 @@ beforeEach(async () => {
 async function seedEvidenceLessIssue() {
   const user = await createTestUser(harness.db);
   const project = await createTestProject(harness.db, user.id);
+  await seedProjectSource(harness.db, project.id, user.id, 'git');
   await harness.db.execute(
     sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}::uuid`,
   );

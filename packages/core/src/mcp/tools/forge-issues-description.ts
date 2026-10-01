@@ -52,13 +52,15 @@ export function forgeIssuesDescription(refClause: string): string {
     'TRANSITION. on_hold is a deliberate pause, waiting parks the issue for human review, and ' +
     'closed means the work shipped: a close on an issue with no merged_at is refused ' +
     '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped. On a ' +
-    'project whose work lands outside git (kind website) the close also needs the mark to name ' +
-    'where it landed, and a bare merged_at is refused the same way.\n' +
-    'MERGE MARK. mark_merged (data.issueId, data.target - required except on a website project - ' +
+    'project whose work lands outside git (source.type storefront or none) the close also needs ' +
+    'the mark to name where it landed, and a bare merged_at is refused the same way; a project ' +
+    'with no project document closes only on a merge Forge observed (PROJECT_DOCUMENT_NOT_FOUND ' +
+    'on a mark).\n' +
+    'MERGE MARK. mark_merged (data.issueId, data.target - required on a source.type git project - ' +
     'optional data.commit / data.landing / data.mergedAt ISO / data.note) stamps merged_at. The ' +
     'first mark stands: a landing sent over a standing mark is refused MARK_ALREADY_STANDS naming ' +
     'what stands, and unmark then mark is the correction. data.landing is the live URL, CMS entry or ' +
-    'storefront resource the work now is, required on a website project unless Forge observed a ' +
+    'storefront resource the work now is, required where source.type is not git unless Forge observed a ' +
     'merged pull request (LANDING_REQUIRED) and refused on any other (LANDING_NOT_THIS_SHAPE); ' +
     'it is stored in merged_landing and the mark reads landed. It writes merged_commit_sha ONLY from a ' +
     'record Forge holds itself: a pull request it saw merged, or - for an agent on a git project ' +

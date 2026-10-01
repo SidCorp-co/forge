@@ -7,7 +7,7 @@ const dbUpdate = vi.fn(() => ({ set: updateSet }));
 const txExecute = vi.fn(async () => undefined);
 const selectLimit = vi.fn(async () => [] as unknown[]);
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: () => ({ where: selectWhere }) }));
+const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: () => ({ where: selectWhere }) }));
 
 // The archived-issue guard reads the row itself; these tests script every select, so it answers none.
 vi.mock('../questions/issue-coupling.js', () => ({ settleOpenQuestions: async () => null }));
@@ -81,7 +81,7 @@ describe('transitionIssueStatus — run-closing decoupled from terminal-for-disp
         mergedAt: new Date('2026-09-18T00:00:00Z'),
         mergedCommitSha: null,
         mergedLanding: null,
-        kind: 'standard',
+        sourceType: 'git',
       },
     ]);
     queueUpdate('closed');

@@ -19,6 +19,7 @@ export {
   seedOrg,
   seedProductionDeployTrigger,
   seedProjectDocument,
+  seedProjectSource,
   type TestDevice,
   type TestOrg,
   type TestOrgMember,

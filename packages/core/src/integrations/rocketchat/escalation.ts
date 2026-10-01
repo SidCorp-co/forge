@@ -9,8 +9,8 @@ import { createChatSessionRow, dispatchChatTurn } from '../../agent-sessions/cha
 import type { SessionAsker } from '../../agent-sessions/session-credential.js';
 import {
   mintSessionCredential,
-  noConversationAgentDeviceReason,
-  pickConversationAgentDevice,
+  noTurnCredentialDeviceReason,
+  pickTurnCredentialDevice,
   resolveSessionAuthority,
 } from '../../agent-sessions/session-credential.js';
 import { db } from '../../db/client.js';
@@ -85,9 +85,9 @@ export async function startEscalation(args: StartEscalationArgs): Promise<StartE
     return { started: false, reason: 'deduped' };
   }
 
-  const deviceId = await pickConversationAgentDevice(args.projectId);
+  const deviceId = await pickTurnCredentialDevice(args.projectId);
   if (!deviceId) {
-    return { started: false, reason: await noConversationAgentDeviceReason(args.projectId) };
+    return { started: false, reason: await noTurnCredentialDeviceReason(args.projectId) };
   }
   const asker = { userId: args.asker.userId, viaTokenId: args.asker.viaTokenId };
   const authorised = await resolveSessionAuthority({ asker, projectId: args.projectId, deviceId });

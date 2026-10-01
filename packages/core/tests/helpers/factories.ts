@@ -282,6 +282,8 @@ export async function seedProjectDocument(
     environments: ProjectEnvironments;
     promotions?: ProjectDocument['promotions'];
     defaultBranch?: string;
+    /** `storefront` takes the store example's source, whose work lands outside git. */
+    sourceType?: keyof typeof SOURCE_EXAMPLE;
   },
 ): Promise<ProjectDocument> {
   const example = JSON.parse(
@@ -293,13 +295,17 @@ export async function seedProjectDocument(
   const defaultBranch = opts.defaultBranch ?? 'main';
   const promotions = opts.promotions ?? [];
   const branches = [...new Set([defaultBranch, ...promotions.flatMap((p) => [p.from, p.to])])];
+  const source =
+    opts.sourceType === 'storefront'
+      ? readExample(SOURCE_EXAMPLE.storefront).source
+      : {
+          type: 'git',
+          git: { repository: 'github.com/acme/test-project', defaultBranch, branches },
+        };
   const document = projectDocumentSchema.parse({
     ...example,
     project: { id: projectId, slug: `test-${projectId.slice(0, 8)}`, name: 'Test Project' },
-    source: {
-      type: 'git',
-      git: { repository: 'github.com/acme/test-project', defaultBranch, branches },
-    },
+    source,
     environments: opts.environments,
     promotions,
   });
@@ -352,4 +358,42 @@ export async function seedProductionDeployTrigger(
       },
     },
   });
+}
+
+const SOURCE_EXAMPLE = {
+  git: 'forge-dev.project.json',
+  storefront: 'store.project.json',
+} as const;
+
+function readExample(file: string) {
+  return JSON.parse(
+    readFileSync(
+      new URL(`../../src/project-config/fixtures/examples/${file}`, import.meta.url),
+      'utf8',
+    ),
+  );
+}
+
+/**
+ * A project document at revision 1 declaring `source.type` — what `issues/landing-evidence.ts`
+ * reads to decide whether the project's work lands in git. Built from the shipped example of that
+ * source type, under this project's own identity.
+ */
+export async function seedProjectSource(
+  db: TestDb,
+  projectId: string,
+  updatedBy: string,
+  type: keyof typeof SOURCE_EXAMPLE,
+): Promise<void> {
+  const example = readExample(SOURCE_EXAMPLE[type]);
+  const document = projectDocumentSchema.parse({
+    ...example,
+    project: { id: projectId, slug: `test-${projectId.slice(0, 8)}`, name: 'Test Project' },
+  });
+  await db.execute(sql`
+    INSERT INTO project_config_documents (project_id, revision, document, updated_by)
+    VALUES (${projectId}, 1, ${JSON.stringify(document)}::jsonb, ${updatedBy})
+    ON CONFLICT (project_id) DO UPDATE SET document = EXCLUDED.document,
+                                           revision = project_config_documents.revision + 1
+  `);
 }

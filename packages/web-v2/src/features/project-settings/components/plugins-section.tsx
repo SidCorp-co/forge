@@ -7,7 +7,6 @@ import {
   Banner,
   Button,
   CardTitle,
-  Checkbox,
   ConfirmDialog,
   EmptyState,
   ErrorState,
@@ -44,7 +43,6 @@ const stripKey = (r: DraftRow): PluginDesignation => ({
   marketplace: r.marketplace.trim(),
   name: r.name.trim(),
   pinnedRef: r.pinnedRef?.trim() || null,
-  autoUpdate: Boolean(r.autoUpdate),
 });
 
 function sameList(a: DraftRow[], b: PluginDesignation[]): boolean {
@@ -70,7 +68,6 @@ export function PluginsSection({
     marketplace: "",
     name: "",
     pinnedRef: null,
-    autoUpdate: false,
   });
 
   useEffect(() => {
@@ -180,14 +177,6 @@ export function PluginsSection({
                     placeholder="054d7575…"
                   />
                 </Field>
-                <div className="flex items-end pb-1">
-                  <Checkbox
-                    checked={Boolean(p.autoUpdate)}
-                    onChange={(v) => patchRow(i, { autoUpdate: v })}
-                    disabled={!canEdit}
-                    label="Auto-update"
-                  />
-                </div>
               </div>
 
               <div className="mt-2 flex items-center justify-between gap-3">

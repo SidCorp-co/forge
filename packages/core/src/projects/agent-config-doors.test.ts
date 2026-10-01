@@ -57,9 +57,15 @@ describe('agentConfig declared keys and their doors', () => {
     );
   });
 
-  it('spares in 0285 the keys the schema declared then: today less assistantWeekly, plus pipelineConfig', () => {
+  it('spares in 0285 the keys the schema declared then: today less assistantWeekly, plus the keys deleted since', () => {
     const declaredSince0285 = ['assistantWeekly'];
-    const retiredSince0285 = ['pipelineConfig'];
+    const retiredSince0285 = [
+      'pipelineConfig',
+      'personaStyle',
+      'systemPrompt',
+      'rocketChatAnswerMode',
+      'categories',
+    ];
     expect(migrationArray('declared_keys').sort()).toEqual(
       [
         ...AGENT_CONFIG_KEYS.filter((k) => !declaredSince0285.includes(k)),
@@ -106,9 +112,9 @@ describe('refuseAgentConfigRecord', () => {
   });
 
   it('refuses a declared key by naming the door that writes it', () => {
-    const messages = refusalsFor({ systemPrompt: 'hello' });
+    const messages = refusalsFor({ assistantWeekly: null });
     expect(messages).toHaveLength(1);
-    expect(messages[0]).toContain('`systemPrompt` field on `PATCH /api/projects/:id`');
+    expect(messages[0]).toContain('`assistantWeekly` field on `PATCH /api/projects/:id`');
   });
 
   it('refuses a key nothing declares rather than dropping it', () => {
@@ -163,21 +169,22 @@ describe('agentConfigSchema', () => {
         judgeModel: 'sonnet',
       },
       plugins: [{ marketplace: 'SidCorp-co/forge-plugin', name: 'forge' }],
-      personaStyle: 'terse',
-      systemPrompt: 'answer in Vietnamese',
-      rocketChatAnswerMode: 'agent',
-      categories: ['bug', 'enhancement'],
     });
     expect(parsed.success).toBe(true);
   });
 
   it('refuses a document holding an undeclared key rather than stripping it', () => {
-    const parsed = agentConfigSchema.safeParse({ personaStyle: 'terse', uxContractProfile: {} });
+    const parsed = agentConfigSchema.safeParse({ plugins: [], uxContractProfile: {} });
     expect(parsed.success).toBe(false);
   });
 
-  it('refuses a personaStyle past the cap that leaves room for migration 0245', () => {
-    expect(agentConfigSchema.safeParse({ personaStyle: 'x'.repeat(4101) }).success).toBe(false);
-    expect(agentConfigSchema.safeParse({ personaStyle: 'x'.repeat(4100) }).success).toBe(true);
+  it.each([
+    ['personaStyle', 'terse'],
+    ['systemPrompt', 'answer in Vietnamese'],
+    ['rocketChatAnswerMode', 'agent'],
+    ['categories', ['bug']],
+  ])('refuses the deleted key %s rather than storing what nothing reads', (key, value) => {
+    expect(agentConfigSchema.safeParse({ [key]: value }).success).toBe(false);
+    expect(refusalsFor({ [key]: value })[0]).toContain(`agentConfig.${key} is not a key`);
   });
 });

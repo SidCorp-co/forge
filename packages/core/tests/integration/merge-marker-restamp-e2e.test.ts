@@ -20,6 +20,7 @@ process.env.DEVICE_TOKEN_PEPPER ??= 'integration-test-pepper-padded-to-32-chars-
 import {
   createTestProject,
   createTestUser,
+  seedProjectSource,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -43,6 +44,7 @@ describe('ISS-940 re-marking an already-merged issue (real Postgres)', () => {
     await truncateAll(harness.db);
     userId = (await createTestUser(harness.db)).id;
     projectId = (await createTestProject(harness.db, userId)).id;
+    await seedProjectSource(harness.db, projectId, userId, 'git');
   });
 
   async function insertIssue(): Promise<{ id: string; projectId: string; mergedAt: null }> {

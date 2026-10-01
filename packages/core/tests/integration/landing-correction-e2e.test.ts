@@ -27,7 +27,7 @@ describe('a landing sent over a mark that stands is refused by name, never dropp
   const TYPO = 'https://mowmentbrand.com/prodcts/linen-tee';
 
   it('refuses the corrected landing at the REST door, naming what stands, and changes nothing', async () => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w);
     expect(
       (await rest('POST', `/api/issues/${id}/merge`, w.token, { target: 'ISS-38', landing: TYPO }))
@@ -49,7 +49,7 @@ describe('a landing sent over a mark that stands is refused by name, never dropp
   });
 
   it('refuses the corrected landing over forge_issues too, and changes nothing', async () => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w, { landing: TYPO });
     const before = await snapshot(id);
     const viaTool = await tool(w.pat, {
@@ -63,7 +63,7 @@ describe('a landing sent over a mark that stands is refused by name, never dropp
   });
 
   it('refuses a landing sent over a mark naming none, naming unmark first', async () => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w, { mergedAt: true });
     const before = await snapshot(id);
     const res = await rest('POST', `/api/issues/${id}/merge`, w.token, {
@@ -79,7 +79,7 @@ describe('a landing sent over a mark that stands is refused by name, never dropp
   });
 
   it('answers the exact landing re-sent as already_merged, with one comment saying nothing was stamped', async () => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w, { landing: LANDING });
     const before = await snapshot(id);
     const res = await rest('POST', `/api/issues/${id}/merge`, w.token, {
@@ -98,7 +98,7 @@ describe('a landing sent over a mark that stands is refused by name, never dropp
   });
 
   it('records the correction once the standing mark is unmarked, which is the route it names', async () => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w, { landing: TYPO });
     expect((await rest('DELETE', `/api/issues/${id}/merge`, w.token, {})).status).toBe(200);
     const res = await rest('POST', `/api/issues/${id}/merge`, w.token, {
@@ -111,8 +111,8 @@ describe('a landing sent over a mark that stands is refused by name, never dropp
 });
 
 describe('target is owed where the project moves branches, and only there', () => {
-  it('accepts a website mark with a landing and no target, at both doors', async () => {
-    const w = await world('website');
+  it('accepts a storefront mark with a landing and no target, at both doors', async () => {
+    const w = await world('storefront');
     const viaRest = await seedIssue(w);
     const res = await rest('POST', `/api/issues/${viaRest}/merge`, w.token, { landing: LANDING });
     expect(res.status).toBe(200);
@@ -127,8 +127,8 @@ describe('target is owed where the project moves branches, and only there', () =
     expect(marked.json().mark).toBe('landed');
   });
 
-  it('refuses a standard mark with no target at both doors in the words it always used', async () => {
-    const w = await world('standard');
+  it('refuses a git mark with no target at both doors in the words it always used', async () => {
+    const w = await world('git');
     const id = await seedIssue(w);
     const res = await rest('POST', `/api/issues/${id}/merge`, w.token, {});
     expect(res.status).toBe(400);
@@ -140,8 +140,8 @@ describe('target is owed where the project moves branches, and only there', () =
     expect((await stored(id)).merged_at).toBeNull();
   });
 
-  it('names the landing, not the target, when a standard mark sends a landing and no target', async () => {
-    const w = await world('standard');
+  it('names the landing, not the target, when a git mark sends a landing and no target', async () => {
+    const w = await world('git');
     const id = await seedIssue(w);
     const res = await rest('POST', `/api/issues/${id}/merge`, w.token, { landing: LANDING });
     expect(res.status).toBe(422);

@@ -70,8 +70,8 @@ registerAllIntegrations();
 const PROJECT_ID = '55555555-5555-4555-8555-555555555555';
 const ISSUE_A = '66666666-6666-4666-8666-666666666666';
 const ISSUE_B = '77777777-7777-4777-8777-777777777777';
-/** The mark's other columns and the project's kind, on a project that lands in git. */
-const GIT = { mergedCommitSha: null, mergedLanding: null, kind: 'standard' };
+/** The mark's other columns and the project's source.type, on a project that lands in git. */
+const GIT = { mergedCommitSha: null, mergedLanding: null, sourceType: 'git' };
 
 const SOURCE_PROBED = production({
   verification: { runtime: [sourceProbe('https://example.test/api/health', 'commit')] },

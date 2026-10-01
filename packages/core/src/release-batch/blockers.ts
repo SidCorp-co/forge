@@ -4,12 +4,17 @@
 // evaluated becomes an answer in the position that check held); it makes no outbound
 // request, so what is checked here is the probe DECLARATION; and it reports in the order
 // the doors refuse in, a door throwing the FIRST blocker under its existing name.
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import { issues, projects } from '../db/schema.js';
+import { issues } from '../db/schema.js';
+import { projectConfigDocuments } from '../db/schema-project-config.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
-import { landingShapeOf, landingShortfall } from '../issues/landing-evidence.js';
+import {
+  landingShapeOf,
+  landingShortfall,
+  requireLandingShape,
+} from '../issues/landing-evidence.js';
 import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
 import { logger } from '../logger.js';
 import { releaseIneligibleRunners } from '../runners/ineligible.js';
@@ -162,7 +167,7 @@ async function rosterBlockers(
   }
   if (door !== 'record') return;
   // Unmerged means what the close would refuse, on this project's shape: `landing-evidence.ts`.
-  // Judged inside the read, so a kind the reader cannot place is this check unevaluated, by name.
+  // Judged inside the read, so a source the reader cannot place is this check unevaluated, by name.
   const unmerged = await evaluate(
     'merged',
     async () => {
@@ -172,13 +177,17 @@ async function rosterBlockers(
           mergedAt: issues.mergedAt,
           mergedCommitSha: issues.mergedCommitSha,
           mergedLanding: issues.mergedLanding,
-          kind: projects.kind,
+          sourceType: sql<string | null>`${projectConfigDocuments.document} -> 'source' ->> 'type'`,
         })
         .from(issues)
-        .innerJoin(projects, eq(projects.id, issues.projectId))
+        .leftJoin(projectConfigDocuments, eq(projectConfigDocuments.projectId, issues.projectId))
         .where(inArray(issues.id, issueIds));
       return rows
-        .map((r) => ({ id: r.id, shape: landingShapeOf(r.kind), row: r }))
+        .map((r) => ({
+          id: r.id,
+          shape: requireLandingShape(landingShapeOf(r.sourceType)),
+          row: r,
+        }))
         .filter((r) => landingShortfall(r.row, r.shape) !== null);
     },
     out,

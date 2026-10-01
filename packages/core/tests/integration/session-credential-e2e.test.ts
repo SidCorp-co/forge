@@ -79,7 +79,7 @@ describe('resolveSessionAuthority', () => {
   });
 
   it('cuts the token to reads where the box holder may only read', async () => {
-    const asker = await personWith('admin');
+    const asker = await personWith('member');
     const deviceId = await boxHeldBy(await personWith('viewer'));
     const got = await sc.resolveSessionAuthority({
       asker: { userId: asker, viaTokenId: null },
@@ -90,6 +90,23 @@ describe('resolveSessionAuthority', () => {
     expect(got.value.authority.scopes).toEqual(['read']);
     expect(got.value.menu.every((p) => p.endsWith(':read'))).toBe(true);
   });
+
+  it.each([
+    ['admin', 'member'],
+    ['admin', 'viewer'],
+  ] as const)(
+    'refuses by name an %s asker on a box a %s holds, whose holder could read the token',
+    async (askerRole, holderRole) => {
+      const asker = await personWith(askerRole);
+      const deviceId = await boxHeldBy(await personWith(holderRole));
+      const got = await sc.resolveSessionAuthority({
+        asker: { userId: asker, viaTokenId: null },
+        projectId,
+        deviceId,
+      });
+      expect(got).toMatchObject({ ok: false, refusal: { code: 'TURN_DEVICE_OUTRANKED' } });
+    },
+  );
 
   it('refuses by name a box whose holder holds no role on the project', async () => {
     const asker = await personWith('member');
@@ -167,13 +184,13 @@ describe('the session token', () => {
 
 describe('the box an Agent-mode turn is handed to', () => {
   it('is only one whose runner declared it carries the asker’s token', async () => {
-    const { pickConversationAgentDevice, noConversationAgentDeviceReason } = sc;
+    const { pickTurnCredentialDevice, noTurnCredentialDeviceReason } = sc;
     const old = await createTestDevice(harness.db, ownerId);
     await bindTestRunner(harness.db, { projectId, deviceId: old.id });
     await harness.db.execute(sql`UPDATE runners SET last_seen_at = now()`);
 
-    expect(await pickConversationAgentDevice(projectId)).toBeNull();
-    expect(await noConversationAgentDeviceReason(projectId)).toBe('runner-outdated');
+    expect(await pickTurnCredentialDevice(projectId)).toBeNull();
+    expect(await noTurnCredentialDeviceReason(projectId)).toBe('runner-outdated');
 
     const current = await createTestDevice(harness.db, ownerId);
     await bindTestRunner(harness.db, { projectId, deviceId: current.id });
@@ -181,6 +198,6 @@ describe('the box an Agent-mode turn is handed to', () => {
     await harness.db.execute(
       sql`UPDATE devices SET capabilities = '{"turnCredential": true}'::jsonb WHERE id = ${current.id}`,
     );
-    expect(await pickConversationAgentDevice(projectId)).toBe(current.id);
+    expect(await pickTurnCredentialDevice(projectId)).toBe(current.id);
   });
 });

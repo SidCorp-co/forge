@@ -1,6 +1,5 @@
 export interface ProjectSummary {
   name: string;
-  agentConfig?: unknown;
 }
 
 export interface AppConfigSummary {
@@ -42,14 +41,6 @@ function renderInstructions(self: SelfSummary): string | null {
   return text ? `## Your standing instructions\n${text}` : null;
 }
 
-function readAgentConfigString(agentConfig: unknown, key: string): string | null {
-  if (!agentConfig || typeof agentConfig !== 'object') return null;
-  const value = (agentConfig as Record<string, unknown>)[key];
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
 export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   const sections: string[] = [];
   const override = input.appConfig?.systemPromptOverride?.trim();
@@ -59,21 +50,9 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   } else {
     const who = input.self ? renderWho(input.self) : null;
     if (who) sections.push(who);
-    const lines = [persona || `You are a helpful assistant for project "${input.project.name}".`];
-    const agentPrompt = readAgentConfigString(input.project.agentConfig, 'systemPrompt');
-    if (agentPrompt) lines.push(agentPrompt);
-    sections.push(lines.join('\n'));
+    sections.push(persona || `You are a helpful assistant for project "${input.project.name}".`);
     const instructions = input.self ? renderInstructions(input.self) : null;
     if (instructions) sections.push(instructions);
-  }
-
-  // ISS-609 follow-up — per-project reply-style knob (`agentConfig.personaStyle`,
-  // set from project settings → Integrations → Rocket.Chat). Additive: it tunes
-  // tone/format on TOP of the persona's safety rules, and still applies when an
-  // override replaced the base persona.
-  const style = readAgentConfigString(input.project.agentConfig, 'personaStyle');
-  if (style) {
-    sections.push(`Reply style & personality (project-configured):\n${style}`);
   }
 
   const progressFacts = input.progressFacts?.trim();

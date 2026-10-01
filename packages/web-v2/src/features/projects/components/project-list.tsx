@@ -24,7 +24,6 @@ export function ProjectList({ items, now, onTogglePin }: ProjectListProps) {
         <TR className="hover:bg-transparent">
           <TH className="w-px" />
           <TH>Project</TH>
-          <TH>Description</TH>
           <TH>Health</TH>
           <TH>Runs</TH>
           <TH>Issues</TH>
@@ -67,7 +66,6 @@ export function ProjectList({ items, now, onTogglePin }: ProjectListProps) {
                   </button>
                 </span>
               </TD>
-              <TD className="max-w-[1px] truncate text-muted">{p.description ?? '—'}</TD>
               <TD>
                 <HealthDot health={p.health} />
               </TD>

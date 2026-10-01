@@ -1,6 +1,6 @@
 "use client";
 
-// Project settings → Basics. Name + description, persisted via PATCH
+// Project settings → Basics. The name, persisted via PATCH
 // /api/projects/:id. Mirrors the account-tab dirty/save pattern.
 import { useEffect, useState } from "react";
 import {
@@ -11,7 +11,6 @@ import {
   Input,
   MonoTag,
   SectionTitle,
-  Textarea,
 } from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
 import { useUpdateProject } from "../hooks";
@@ -20,23 +19,16 @@ export function BasicsTab({ project, canEdit }: { project: ProjectDetail; canEdi
   const update = useUpdateProject(project.id);
 
   const [name, setName] = useState(project.name);
-  const [description, setDescription] = useState(project.description ?? "");
 
   // Re-hydrate when the underlying project refetches (e.g. after a save).
   useEffect(() => {
     setName(project.name);
-    setDescription(project.description ?? "");
-  }, [project.name, project.description]);
+  }, [project.name]);
 
-  const dirty = name.trim() !== project.name || (description ?? "") !== (project.description ?? "");
+  const dirty = name.trim() !== project.name;
 
   function save() {
-    const patch: Record<string, unknown> = {};
-    if (name.trim() !== project.name) patch.name = name.trim();
-    if ((description ?? "") !== (project.description ?? "")) {
-      patch.description = description.trim() === "" ? null : description.trim();
-    }
-    if (Object.keys(patch).length > 0) update.mutate(patch);
+    if (dirty) update.mutate({ name: name.trim() });
   }
 
   return (
@@ -53,15 +45,6 @@ export function BasicsTab({ project, canEdit }: { project: ProjectDetail; canEdi
               onChange={(e) => setName(e.target.value)}
               disabled={!canEdit}
               maxLength={200}
-            />
-          </Field>
-          <Field label="Description" hint="Optional. Shown on the project console.">
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              disabled={!canEdit}
-              maxLength={2000}
-              rows={3}
             />
           </Field>
           {canEdit && (

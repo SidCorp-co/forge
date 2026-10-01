@@ -1,11 +1,6 @@
 import { z } from 'zod';
 import { pluginDesignationSchema } from '../plugins/designation.js';
 
-export const PERSONA_STYLE_MAX = 4100;
-
-/** The assistant's per-project system-prompt addition, appended to the persona rather than replacing it. */
-export const SYSTEM_PROMPT_MAX = 20_000;
-
 export const assistantWeeklySchema = z
   .object({
     enabled: z.boolean(),
@@ -22,14 +17,6 @@ export const agentConfigSchema = z
     assistantWeekly: assistantWeeklySchema.optional(),
     /** Read by `plugins/designation.ts:readPluginDesignations`, unioned per device by `GET /api/devices/me/plugins`. */
     plugins: z.array(pluginDesignationSchema).optional(),
-    /** Read by `assistant/system-prompt.ts:buildSystemPrompt` — additive tone on top of the persona. */
-    personaStyle: z.string().max(PERSONA_STYLE_MAX).optional(),
-    /** Read by `assistant/system-prompt.ts:buildSystemPrompt` — the project's own prompt addition. */
-    systemPrompt: z.string().max(SYSTEM_PROMPT_MAX).optional(),
-    /** Read by `integrations/rocketchat/answer-mode.ts:readRocketChatAnswerMode`. */
-    rocketChatAnswerMode: z.enum(['fast', 'agent']).optional(),
-    /** Read by `mcp/tools/forge-config.ts:formatBaseResponse` — the issue categories this project offers. */
-    categories: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
   })
   .strict();
 
@@ -43,10 +30,6 @@ export const AGENT_CONFIG_KEYS = Object.keys(agentConfigSchema.shape) as AgentCo
 export const AGENT_CONFIG_DOORS: Record<AgentConfigKey, string> = {
   assistantWeekly: 'the `assistantWeekly` field on `PATCH /api/projects/:id`',
   plugins: '`PATCH /api/projects/:id/plugins`, or MCP `forge_config` action=update with `plugins`',
-  personaStyle: 'the `personaStyle` field on `PATCH /api/projects/:id`',
-  systemPrompt: 'the `systemPrompt` field on `PATCH /api/projects/:id`',
-  rocketChatAnswerMode: 'the `rocketChatAnswerMode` field on `PATCH /api/projects/:id`',
-  categories: 'the `categories` field on `PATCH /api/projects/:id`',
 };
 
 /**
@@ -75,7 +58,7 @@ export function agentConfigDoorMessage(key: AgentConfigKey): string {
 }
 
 export const AGENT_CONFIG_CLEAR_GUIDE =
-  'agentConfig is no longer a field on PATCH /api/projects/:id, and it cannot be cleared wholesale. Clear each value through its own door instead: send `assistantWeekly`, `personaStyle`, `systemPrompt`, `rocketChatAnswerMode` or `categories` as null on PATCH /api/projects/:id, or `plugins` as null on PATCH /api/projects/:id/plugins.';
+  'agentConfig is no longer a field on PATCH /api/projects/:id, and it cannot be cleared wholesale. Clear each value through its own door instead: send `assistantWeekly` as null on PATCH /api/projects/:id, or `plugins` as null on PATCH /api/projects/:id/plugins.';
 
 export function agentConfigUndeclaredMessage(key: string): string {
   return `agentConfig.${key} is not a key this project's configuration declares, so nothing would ever read it. The declared keys are ${AGENT_CONFIG_KEYS.join(', ')}, each written through its own door. Refused by name rather than stored, and rather than answered 200 and dropped.`;

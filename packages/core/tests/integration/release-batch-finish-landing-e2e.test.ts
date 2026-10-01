@@ -11,6 +11,7 @@ import {
   createTestProject,
   createTestUser,
   registerIntegrationsForTest,
+  seedProjectSource,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -40,7 +41,7 @@ describe('release batch finish on a website project', () => {
     const owner = await createTestUser(harness.db);
     ownerId = owner.id;
     projectId = (await createTestProject(harness.db, owner.id)).id;
-    await harness.db.execute(sql`UPDATE projects SET kind = 'website' WHERE id = ${projectId}`);
+    await seedProjectSource(harness.db, projectId, owner.id, 'storefront');
   });
 
   const fx = releaseBatchFixture(

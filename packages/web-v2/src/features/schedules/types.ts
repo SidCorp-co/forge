@@ -75,6 +75,8 @@ export interface ScheduleRun {
   trigger: ScheduleRunTrigger;
   title: string | null;
   failureReason: string | null;
+  /** The specific cause behind `failureReason`; a refused run's code leads it (ISS-30). */
+  failureDetail: string | null;
   startedAt: string | null;
   finishedAt: string | null;
   durationSeconds: number | null;

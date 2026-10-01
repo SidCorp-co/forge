@@ -35,6 +35,8 @@ export interface SeedProduction {
   name?: string;
   /** Other environments of the document, beside production. */
   others?: Environments;
+  /** Where the project's work lands; git unless a suite is about a storefront. */
+  sourceType?: 'git' | 'storefront';
 }
 
 export const PRODUCTION_PROBE = 'https://production.example.test/version';
@@ -100,6 +102,7 @@ export async function declareProductionDocument(
     defaultBranch: 'main',
     promotions: deploysFrom === 'main' ? [] : [{ from: 'main', to: deploysFrom, via: 'merge' }],
     environments: { ...(opts.others ?? {}), [opts.name ?? 'live']: production },
+    ...(opts.sourceType ? { sourceType: opts.sourceType } : {}),
   });
 }
 

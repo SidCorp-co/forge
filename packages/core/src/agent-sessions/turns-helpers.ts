@@ -17,6 +17,20 @@ export function messageRoleToTurnRole(entry: unknown): AgentSessionTurnRole | nu
 }
 
 /**
+ * The text of a session's first user message, in the shape `dispatchChatTurn` writes it
+ * (`{ type: 'user', content }`); null where it has none, which a re-dispatch reports by name.
+ */
+export function firstUserMessageText(messages: unknown): string | null {
+  if (!Array.isArray(messages)) return null;
+  for (const m of messages) {
+    if (messageRoleToTurnRole(m) !== 'user') continue;
+    const content = (m as { content?: unknown }).content;
+    if (typeof content === 'string') return content;
+  }
+  return null;
+}
+
+/**
  * Whatever shape `messages[i]` had on disk, store it under `{ value: ... }` so
  * downstream code can always read `content.value` without losing the original
  * field set (timestamp, tool calls, attachments, etc.).

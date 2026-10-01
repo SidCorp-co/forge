@@ -67,10 +67,6 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
         <HealthDot health={project.health} withLabel={false} />
       </div>
 
-      <p className="m-0 line-clamp-1 min-h-[19px] text-13 leading-snug text-muted">
-        {project.description ?? ' '}
-      </p>
-
       <div className="flex items-center gap-3.5 border-t border-line-subtle pt-3">
         <LiveCount n={project.liveRuns} />
         <Stat icon="inbox" title="In-flight issues (not closed)">

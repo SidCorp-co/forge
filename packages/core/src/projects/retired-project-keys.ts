@@ -6,6 +6,15 @@ import {
   RETIRED_PROJECT_FACTS_MESSAGE,
 } from './project-facts.js';
 
+/** The refusal for a key a strict project body does not declare: named, never stripped to a 200. */
+export function undeclaredFieldError(door: string, fields: readonly string[]) {
+  return (issue: { code?: string; keys?: readonly string[] }) => {
+    if (issue.code !== 'unrecognized_keys' || !issue.keys) return undefined;
+    const named = issue.keys.map((k) => `\`${k}\``).join(', ');
+    return `${named} ${issue.keys.length === 1 ? 'is not a field' : 'are not fields'} of ${door}, so nothing would read ${issue.keys.length === 1 ? 'it' : 'them'}: refused rather than answered 200 and dropped. The fields are ${fields.join(', ')}.`;
+  };
+}
+
 export function refuseRetiredProjectKeys(raw: unknown, ctx: z.RefinementCtx): void {
   if (!raw || typeof raw !== 'object') return;
   const retired = (path: (string | number)[], message: string) =>

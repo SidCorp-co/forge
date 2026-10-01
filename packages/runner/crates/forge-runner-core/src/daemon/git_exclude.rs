@@ -156,11 +156,12 @@ fn append_line(exclude: &Path) -> Result<bool, Refused> {
         exclude: exclude.to_path_buf(),
         error: error.to_string(),
     };
-    match std::fs::read(exclude) {
-        Ok(held) if holds_line(&held) => return Ok(false),
-        Ok(_) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(refused(e)),
+    // cm:why fast path only: a peer's mandatory Windows lock fails this read (os error 33), so any
+    // failure defers to the locked read below, which refuses a real one by name
+    if let Ok(held) = std::fs::read(exclude) {
+        if holds_line(&held) {
+            return Ok(false);
+        }
     }
     if let Some(dir) = exclude.parent() {
         std::fs::create_dir_all(dir).map_err(refused)?;

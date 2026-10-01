@@ -146,7 +146,7 @@ function ScheduleRunItem({
       <span className="fg-caption text-subtle">{fmtTime(run.startedAt)}</span>
       <span className="fg-caption font-mono text-subtle">{fmtDuration(run.durationSeconds)}</span>
       {kind === "prompt" && run.failureReason && (
-        <Tooltip label={run.failureReason}>
+        <Tooltip label={run.failureDetail ?? run.failureReason}>
           <span className="fg-caption text-danger underline decoration-dotted">why?</span>
         </Tooltip>
       )}

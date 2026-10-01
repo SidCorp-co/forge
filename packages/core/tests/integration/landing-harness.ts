@@ -12,6 +12,7 @@ import {
   createTestProject,
   createTestProjectMember,
   createTestUser,
+  seedProjectSource,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -38,7 +39,7 @@ let app: any;
 
 export type World = { projectId: string; userId: string; token: string; pat: string };
 
-export async function world(kind: 'standard' | 'website'): Promise<World> {
+export async function world(source: 'git' | 'storefront' | null): Promise<World> {
   const user = await createTestUser(database.db);
   await database.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
   const project = await createTestProject(database.db, user.id);
@@ -47,7 +48,7 @@ export async function world(kind: 'standard' | 'website'): Promise<World> {
     projectId: project.id,
     role: 'admin',
   });
-  await database.db.execute(sql`UPDATE projects SET kind = ${kind} WHERE id = ${project.id}`);
+  if (source) await seedProjectSource(database.db, project.id, user.id, source);
   return {
     projectId: project.id,
     userId: user.id,

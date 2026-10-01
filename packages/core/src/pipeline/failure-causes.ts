@@ -45,7 +45,7 @@ export const FAILURE_CAUSES = [
   /** the ack hop reaped it. 7 sessions all-time. */
   'no_client_ack',
   /** the websocket publish that carries a chat turn failed. Writers:
-   *  schedules/dispatch.ts, rocketchat/agent-chat.ts, rocketchat/escalation.ts. */
+   *  schedules/dispatch.ts, agent-sessions/conversation-agent.ts, rocketchat/escalation.ts. */
   'ws_publish_failed',
   /** project monthly budget. Writer: jobs/dispatcher.ts. */
   'forge_budget_exhausted',
@@ -62,6 +62,10 @@ export const FAILURE_CAUSES = [
   'park_unanswered',
   /** a schedule run produced no evidence. Writer: agent-sessions/schedule-evidence.ts. */
   'audit_ran_blind',
+  /** a schedule run would have acted as someone it may not act as — the owner lost their role or
+   *  is gone, or no free box can carry their token — so it never started. The refusal's code
+   *  leads `failure_detail`. Writer: schedules/scheduled-session.ts (ISS-30). */
+  'session_authority_refused',
   /** the I1 trigger reaped an active child under a terminal run. 101 sessions. */
   'orphan_under_terminal_run',
   /** run cancelled. 19 sessions, 98 jobs. */
@@ -122,6 +126,7 @@ export const FAILURE_CAUSE_ORIGIN: Record<FailureCause, FailureOrigin> = {
   residency_expired: 'forge',
   park_unanswered: 'user',
   audit_ran_blind: 'forge',
+  session_authority_refused: 'user',
   orphan_under_terminal_run: 'lifecycle',
   pipeline_cancelled: 'lifecycle',
   pipeline_completed: 'lifecycle',

@@ -83,12 +83,17 @@ like any other repeat.
 ## What counts as landed depends on the project's shape
 
 `packages/core/src/issues/landing-evidence.ts` is the one answer, and every door that decides
-whether a mark is enough calls it: the close gate (`refuseUnshippedClose`), the `merged_mark` entry
-criterion, the release-record door's `RELEASE_WORK_UNMERGED`, and the mark writer. The release
+whether a mark is enough calls it: the close gate (`refuseUnshippedClose`), the release-record
+door's `RELEASE_WORK_UNMERGED`, and the mark writer. The release
 batch's finish closes through the same transition, so it reads the same answer.
 
-`landingShapeOf` reads `projects.kind`: `website` — the store is the source of truth and a repo is
-optional — lands `outside_git`; `standard` lands in `git`; any other value is refused by name.
+`landingShapeOf` reads the project document's `source.type` (`project_config_documents`): `git`
+lands in `git`; `storefront` (the store is the source of truth) and `none` (no managed source) land
+`outside_git`; any other stored value is refused by name. A project with no project document has no
+shape (`null`): the close and the release-record door then accept only what every shape accepts —
+a merge Forge `observed` — and refuse anything else naming `SOURCE_UNDECLARED`, the mark writer
+refuses every mark `PROJECT_DOCUMENT_NOT_FOUND`, and the issue detail answers `landingShape: null`.
+Nothing defaults an undeclared project to `git`.
 The release chain is NOT the discriminator: a one-entry chain (`publish`) says how a release is
 deployed, and forge-dev is such a project and lands every change in git.
 
@@ -103,7 +108,7 @@ deployed, and forge-dev is such a project and lands every change in git.
 A close refusal names the route the shape has (`landingRoute`): `mark_merged` for `git`, and
 `mark_merged` with `data.landing` for `outside_git`, where no commit is asked for. The issue detail
 answer carries `landingShape`, so the web rail's Mark merged form asks for a landing only where the
-close will need one, without re-deriving the rule from `kind`.
+close will need one, without re-deriving the rule from the project document.
 
 `trg_issues_closed_means_shipped` (0304) still requires `merged_at` alone: it is the floor raw SQL
 cannot route around, and `merged_at` is necessary on every shape. The per-shape sufficiency is not

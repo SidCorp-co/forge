@@ -240,7 +240,10 @@ scheduleRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const result = await runScheduleNow(id, c.get('userId'));
+    const result = await runScheduleNow(id, {
+      userId: c.get('userId'),
+      viaTokenId: c.get('patTokenId') ?? null,
+    });
     return c.json(result, 202);
   },
 );
@@ -290,13 +293,8 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
               (schedule.appliedMessageVersions as Record<string, number> | null) ?? null,
             kind: schedule.kind,
             script: schedule.script ?? null,
+            ownerId: schedule.ownerId,
           },
-          // FIXME(iss-257): system-initiated sessions attribute to the
-          // project creator (audit `projects.created_by`) because
-          // activity-feed expectations want a real user. A sentinel system
-          // user requires a separate migration — tracked for follow-up.
-          // Consumers can detect tick-driven sessions by
-          // `metadata.source === 'schedule.run'` && `metadata.tick === true`.
           tick: true,
         });
       } catch (dispatchErr) {

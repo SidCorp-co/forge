@@ -105,7 +105,7 @@ function unlabelled() {
       mergedAt: new Date(),
       mergedCommitSha: null,
       mergedLanding: null,
-      kind: 'standard',
+      sourceType: 'git',
     },
   ]);
   execRows.mockResolvedValue([{ device_id: 'dev-1' }]);
