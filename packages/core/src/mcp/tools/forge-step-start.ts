@@ -48,6 +48,7 @@ function resolveStage(input: { stage?: JobType | undefined }): JobType {
 
 export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_step_start',
+  grant: 'issues:read',
   description:
     "Check in at the start of work on an issue. Never moves the issue — pass `stage` and it returns the working bundle: the issue (with `attachments[]`), the most-recent comments, the latest step handoffs, and the resolved `branchConfig` (issue override layered over project defaults — null means NOT configured; never fall back to main). The comment thread is capped to the most-recent N (oldest trimmed first) plus a hard char budget so the bundle stays under the MCP output cap; when trimmed the result carries `commentsTruncated:true` + `commentsReturned`/`commentsTotal` + a notice — fetch the full history via `forge_comments.list`. The issue body is threshold-gated: when the total size of heavy fields (description/plan/acceptanceCriteria/sessionContext) exceeds the threshold, the issue carries `bodyTruncated:true` and a `bodyManifest` (field → {chars} | null) instead of the full bodies — pull only the fields you need via `forge_issues.get { documentId, fields: ['plan', ...] }`. Small issues (under threshold) return the full body with no extra round-trip. Handoffs, branchConfig, and light scalars are never truncated. Idempotent and read-only on status — safe to re-call on resume. Call this FIRST, before any other action on the issue.",
   inputSchema: zodToMcpSchema(inputSchema),

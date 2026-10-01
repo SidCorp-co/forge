@@ -187,6 +187,15 @@ async function run(principal: McpPrincipal, input: Input, projectId: string): Pr
 
 export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: RELEASE_BATCH_TOOL,
+  grant: {
+    byAction: {
+      get: 'pipeline:read',
+      state: 'pipeline:read',
+      method: 'pipeline:read',
+      finish: 'pipeline:write',
+      abort: 'pipeline:write',
+    },
+  },
   description:
     'Read and record one release batch from inside the release_batch job that runs it — the calls its prompt names, ' +
     'on the credential the job already holds. Actions: `get` (the batch context: roster, release notes, branches, deploy plan; ' +

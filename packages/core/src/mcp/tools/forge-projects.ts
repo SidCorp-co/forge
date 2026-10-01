@@ -40,6 +40,7 @@ type ListedProject = {
 
 export const forgeProjectsListTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.list',
+  grant: 'projects:read',
   description:
     "List projects visible to the principal (explicit project membership of any role, plus org owner/admin implicit access). For PAT principals, results are additionally narrowed to the token's projectIds allowlist when set. Returns id, slug, name, orgId, role (effective: admin|member|viewer).",
   inputSchema: zodToMcpSchema(inputSchema),
@@ -79,6 +80,7 @@ const createInputSchema = z
 
 export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.create',
+  grant: 'projects:write',
   description:
     "Create a new project in an org (orgId optional — defaults to the caller's personal org; the caller becomes a project admin). Accepts slug+name plus optional initial repoPath/baseBranch. Where its work lands, its environments, promotions and deployments are its project document, written with PUT /api/projects/:id/config. PAT principals must carry the `write` scope and have a null `projectIds` allowlist (scoped PATs are refused). Returns id/slug/name/orgId/createdBy/apiKey/createdAt — the apiKey is needed for widget install and device pairing.",
   inputSchema: zodToMcpSchema(createInputSchema),
@@ -169,6 +171,7 @@ const updateInputSchema = z
  */
 export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.update',
+  grant: 'projects:write',
   description:
     "Update project settings (name, repoPath, baseBranch, workspaceSetup). Whether the project's work lands in git (`source.type`), its environments, promotions, deployments and testing profiles are NOT settings here: they are its project document, read with forge_config (action `get`, field `projectDocument`) and written with PUT /api/projects/:id/config, and a patch naming any other key is refused by name. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. `workspaceSetup` is prose describing how to bring this repo's workspace to a state a stage can build, test and commit in (install commands, hook setup, toolchain quirks) — the runner's setup agent reads it before every stage that lands in a broken workspace, so writing it once retires a per-job derivation. Record only a procedure you actually ran; null clears it. Sensitive fields (webhookSecret, apiKey, agentConfig, defaultDeviceId) stay on REST.",
   inputSchema: zodToMcpSchema(updateInputSchema),
@@ -224,6 +227,7 @@ const getInputSchema = z.object({ projectId: z.uuid() }).strict();
 
 export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.get',
+  grant: 'projects:read',
   description:
     'Fetch project detail visible to the principal — id, slug, name, orgId, createdBy, role (effective: admin|member|viewer), repoPath, workspaceSetup, baseBranch (where an ISS-* branch is cut from, NOT a release fact), defaultDeviceId, createdAt. Where work lands, what each environment is and deploys from, its address and the testing profile its testers get in through are the project document — forge_config (action `get`, field `projectDocument`) — and what an environment runs now is GET /api/projects/:id/environments/:name/state. `workspaceSetup` is the project-declared setup procedure (install commands, hook setup, toolchain quirks) — follow it rather than guessing when a checkout will not build, and if it is null and you establish one, record it via forge_projects.update. Any effective project role can read. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
   inputSchema: zodToMcpSchema(getInputSchema),
