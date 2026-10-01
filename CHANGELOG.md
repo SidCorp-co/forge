@@ -137,6 +137,9 @@
 
 ### Added
 
+- **Activity and Chat replace the top bar, switched from the sidebar.** Each mode reopens where
+  you left it, on the same project. Chat shows what each answer read and wrote, and whether a tool
+  ran with your permissions.
 - **When the assistant says a refused change went through, its reply now corrects itself.** A
   line under it names what was refused, why, and that nothing was written, on the web and in
   Rocket.Chat.
