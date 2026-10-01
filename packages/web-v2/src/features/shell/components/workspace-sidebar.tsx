@@ -10,15 +10,28 @@ import { ForgeVersion } from "@/features/version";
 import { useWhatsNewStatus } from "@/features/whats-new/hooks";
 import type { ShellMode } from "../mode";
 import { NavRailCompact } from "../nav-rail-compact";
-import { PROJECT_ITEMS, compactWorkspaceRailItems, projectRailItems, workspaceNavItems } from "../nav-model";
+import {
+  ECOSYSTEM_ITEMS,
+  ECOSYSTEM_RAIL_KEYS,
+  PROJECT_ITEMS,
+  compactWorkspaceRailItems,
+  projectRailItems,
+  workspaceNavItems,
+} from "../nav-model";
 import type { useRailProjectData } from "../use-rail-project-data";
 import { ModeSwitch } from "./mode-switch";
+
+const ECOSYSTEM_FILTER_KEYS = new Set(
+  ECOSYSTEM_ITEMS.filter((it) => it.status).map((it) => it.key),
+);
 
 export interface WorkspaceSidebarProps {
   mode: ShellMode;
   onSwitchMode: (to: ShellMode) => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  groupOpen: Record<string, boolean>;
+  onToggleGroup: (key: string) => void;
   activeKey: string;
   attentionCount: number;
   railSlug: string | null;
@@ -89,7 +102,8 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
       <NavRailCompact
         workspaceItems={compactWorkspaceRailItems(attentionCount)}
         projectItems={rail.compactActiveProject ? projectRailItems(rail.railConsole?.openIssues) : null}
-        activeKey={activeKey}
+        ecosystemItems={ECOSYSTEM_ITEMS.filter((it) => ECOSYSTEM_RAIL_KEYS.has(it.key))}
+        activeKey={ECOSYSTEM_FILTER_KEYS.has(activeKey) ? "eco-channel" : activeKey}
         activeSlug={props.railSlug}
         activeProject={rail.compactActiveProject}
         switcherProjects={rail.switcherProjects}
@@ -115,7 +129,16 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
       <NavRail
         workspaceItems={workspaceItems}
         project={rail.projectMark}
-        projectItems={rail.projectMark ? PROJECT_ITEMS : undefined}
+        projectClusters={
+          rail.projectMark
+            ? [
+                { key: "project", kicker: "Project", items: PROJECT_ITEMS },
+                { key: "ecosystem", kicker: "Ecosystem", items: ECOSYSTEM_ITEMS, collapsible: true },
+              ]
+            : undefined
+        }
+        groupOpen={props.groupOpen}
+        onToggleGroup={props.onToggleGroup}
         onProjectSwitch={() => flyout.setOpen((o) => !o)}
         onSwitcherEnter={flyout.enter}
         onSwitcherLeave={flyout.leave}

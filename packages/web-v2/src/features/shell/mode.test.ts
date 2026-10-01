@@ -69,6 +69,9 @@ describe("switching modes keeps the selected project", () => {
       "/projects/forge-dev/issues",
     );
     expect(switchTarget("activity", "/projects/other", "forge-dev")).toBe("/projects/forge-dev");
+    expect(switchTarget("activity", "/projects/other/ecosystem/channel/FP-CN-12", "forge-dev")).toBe(
+      "/projects/forge-dev/ecosystem/channel",
+    );
     expect(switchTarget("activity", null, "forge-dev")).toBe("/projects/forge-dev");
   });
 

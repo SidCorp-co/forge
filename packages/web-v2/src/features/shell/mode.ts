@@ -1,4 +1,4 @@
-import { PROJECT_ITEMS_BY_SPECIFICITY, activeSlug, matchesSub } from "./nav-model";
+import { ECOSYSTEM_ITEMS, PROJECT_ITEMS_BY_SPECIFICITY, activeSlug, matchesSub } from "./nav-model";
 
 export type ShellMode = "activity" | "chat";
 
@@ -32,7 +32,8 @@ const pathOf = (route: string) => route.split(/[?#]/)[0] ?? route;
 
 function projectSub(pathname: string, slug: string): string {
   const rest = pathname.slice(`/projects/${slug}`.length);
-  return PROJECT_ITEMS_BY_SPECIFICITY.find((it) => matchesSub(rest, it.sub))?.sub ?? "";
+  const subs = [...ECOSYSTEM_ITEMS, ...PROJECT_ITEMS_BY_SPECIFICITY].map((it) => it.sub);
+  return subs.find((sub) => matchesSub(rest, sub)) ?? "";
 }
 
 // cm:why a remembered route in another project keeps its page kind and drops the record it had open, since that record belongs to the other project; switching modes never changes which project is selected

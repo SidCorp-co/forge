@@ -71,6 +71,7 @@ export interface NavRailCompactProps {
   modeSwitch?: React.ReactNode;
   search?: React.ReactNode;
   bell?: React.ReactNode;
+  ecosystemItems?: RailItem[];
 }
 
 /** Tiny centered tier label for the compact rail (ISS-359). The faint hairline
@@ -164,6 +165,7 @@ export function NavRailCompact({
   modeSwitch,
   search,
   bell,
+  ecosystemItems,
 }: NavRailCompactProps) {
   const [flyOpen, setFlyOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -370,6 +372,17 @@ export function NavRailCompact({
                 <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
               ))}
             </div>
+
+            {ecosystemItems && ecosystemItems.length > 0 && (
+              <>
+                <RailKicker label="Ecosystem" className="mt-2.5" />
+                <div className="mt-1 flex flex-col items-center gap-3px">
+                  {ecosystemItems.map((it) => (
+                    <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
+                  ))}
+                </div>
+              </>
+            )}
 
             <div className="my-[9px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
           </>

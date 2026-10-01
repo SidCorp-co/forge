@@ -7,7 +7,7 @@ import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import type { ProjectListItem } from "@/features/projects/types";
 import { cn } from "@/lib/utils/cn";
-import { PROJECT_ITEMS, SECONDARY_DESTINATIONS, WORKSPACE_ITEMS } from "../nav-model";
+import { ECOSYSTEM_ITEMS, PROJECT_ITEMS, SECONDARY_DESTINATIONS, WORKSPACE_ITEMS } from "../nav-model";
 
 // Workspace destinations for the mobile drawer: the rail rows plus the two
 // most-wanted secondary destinations (Attention, Settings), so the workspace
@@ -128,6 +128,19 @@ export function MobileNavDrawer({
           leading={<Icon name={it.icon} size={18} />}
           label={it.label}
           badge={it.key === "proj-issues" ? openIssuesBadge : undefined}
+        />
+      ))}
+      <span className="fg-label px-1.5 pb-1 pt-2 text-fg">Ecosystem</span>
+      {ECOSYSTEM_ITEMS.map((it) => (
+        <DrawerNavButton
+          key={it.key}
+          active={it.key === activeKey}
+          onClick={() => {
+            onNavigate(it.key);
+            onClose();
+          }}
+          leading={<Icon name={it.icon} size={18} />}
+          label={it.label}
         />
       ))}
     </>

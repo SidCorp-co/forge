@@ -1,4 +1,5 @@
 import type { BottomTabItem, Crumb, NavItem } from "@/design";
+import { ecosystemRoutes } from "@/features/ecosystem/routes";
 import { modeOf } from "./mode";
 import type { RailItem } from "./nav-rail-compact";
 
@@ -35,6 +36,51 @@ export const PROJECT_ITEMS: ProjItem[] = [
   { key: "proj-library", label: "Library", icon: "book", sub: "/library" },
   { key: "proj-automation", label: "Automation", icon: "calendar", sub: "/automation" },
 ];
+
+export interface EcosystemItem extends NavItem {
+  sub: string;
+  status?: "awaiting" | "overdue" | "held";
+  href: (slug: string) => string;
+}
+
+export const ECOSYSTEM_ITEMS: EcosystemItem[] = [
+  { key: "eco-channel", label: "Channel", icon: "mail", sub: "/ecosystem/channel", href: (s) => ecosystemRoutes.register(s) },
+  {
+    key: "eco-awaiting",
+    label: "Awaiting",
+    icon: "inbox",
+    sub: "/ecosystem/channel",
+    status: "awaiting",
+    href: (s) => ecosystemRoutes.register(s, { filter: "awaiting" }),
+  },
+  {
+    key: "eco-overdue",
+    label: "Overdue",
+    icon: "alert",
+    sub: "/ecosystem/channel",
+    status: "overdue",
+    href: (s) => ecosystemRoutes.register(s, { filter: "overdue" }),
+  },
+  {
+    key: "eco-held",
+    label: "Held",
+    icon: "pause",
+    sub: "/ecosystem/channel",
+    status: "held",
+    href: (s) => ecosystemRoutes.register(s, { filter: "held" }),
+  },
+  { key: "eco-contracts", label: "Contracts", icon: "shield", sub: "/ecosystem/contracts", href: (s) => ecosystemRoutes.contracts(s) },
+  { key: "eco-api", label: "Project API", icon: "code", sub: "/ecosystem/api", href: (s) => ecosystemRoutes.apiPage(s) },
+];
+
+export const ECOSYSTEM_RAIL_KEYS = new Set(["eco-channel", "eco-contracts", "eco-api"]);
+
+function ecosystemKey(rest: string, search: string): string | null {
+  const status = new URLSearchParams(search).get("status");
+  const hits = ECOSYSTEM_ITEMS.filter((it) => matchesSub(rest, it.sub));
+  if (hits.length === 0) return null;
+  return (hits.find((it) => it.status && it.status === status) ?? hits.find((it) => !it.status))?.key ?? null;
+}
 
 /** Parse the active project slug out of the (basePath-stripped) pathname. */
 export function activeSlug(pathname: string): string | null {
@@ -74,12 +120,14 @@ export function matchesSub(rest: string, sub: string): boolean {
  *  project tier, so we light the matching `proj-*` key by matching the
  *  project-relative remainder (mirrors the old tab bar's matchesSub). Docs is
  *  lit on its own route. */
-export function buildActiveKey(pathname: string, slug: string | null): string {
+export function buildActiveKey(pathname: string, slug: string | null, search = ""): string {
   if (pathname.startsWith("/whats-new")) return "whats-new";
   if (pathname.startsWith("/docs")) return "docs";
   if (slug) {
     const base = `/projects/${slug}`;
     const rest = pathname.startsWith(base) ? pathname.slice(base.length) : "";
+    const eco = ecosystemKey(rest, search);
+    if (eco) return eco;
     const hit = PROJECT_ITEMS_BY_SPECIFICITY.find((it) => matchesSub(rest, it.sub));
     return hit?.key ?? "proj-overview";
   }
@@ -147,7 +195,7 @@ export function buildCrumbs(opts: {
   if (pathname === "/") return [wsRoot, { label: "Overview" }];
 
   if (slug) {
-    const page = PROJECT_ITEMS.find((it) => it.key === activeKey);
+    const page = [...PROJECT_ITEMS, ...ECOSYSTEM_ITEMS].find((it) => it.key === activeKey);
     return [
       { label: "Projects", href: "/projects" },
       { label: projectName ?? slug, href: `/projects/${slug}` },

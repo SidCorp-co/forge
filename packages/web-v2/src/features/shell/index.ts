@@ -14,7 +14,7 @@ export {
   buildShareLink, decodeFilter, decodeNumber,
 } from './deep-link';
 export {
-  WORKSPACE_ITEMS, SECONDARY_DESTINATIONS, PROJECT_ITEMS,
+  WORKSPACE_ITEMS, SECONDARY_DESTINATIONS, PROJECT_ITEMS, ECOSYSTEM_ITEMS, ECOSYSTEM_RAIL_KEYS,
   PROJECT_ITEMS_BY_SPECIFICITY, activeSlug, matchesSub, buildCrumbs,
   buildActiveKey, buildBottomActiveKey, workspaceNavItems,
   compactWorkspaceRailItems, projectRailItems, bottomTabItems,

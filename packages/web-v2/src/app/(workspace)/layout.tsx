@@ -29,6 +29,7 @@ import {
   WORKSPACE_ITEMS,
   SECONDARY_DESTINATIONS,
   PROJECT_ITEMS,
+  ECOSYSTEM_ITEMS,
   activeSlug,
   buildActiveKey,
   buildBottomActiveKey,
@@ -149,7 +150,10 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     [router, modeRoutes, railSlug],
   );
 
-  const activeKey = useMemo(() => buildActiveKey(pathname, slug), [pathname, slug]);
+  const activeKey = useMemo(
+    () => buildActiveKey(pathname, slug, locationSearch),
+    [pathname, slug, locationSearch],
+  );
   const crumbs = useMemo<Crumb[]>(
     () => buildCrumbs({ pathname, slug, activeKey, projectName: selectedProject?.name }),
     [pathname, slug, activeKey, selectedProject],
@@ -160,6 +164,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     (key: string) => {
       if (key === "whats-new") return router.push("/whats-new");
       if (key === "docs") return router.push("/docs");
+      const eco = ECOSYSTEM_ITEMS.find((it) => it.key === key);
+      if (eco) return railSlug ? router.push(eco.href(railSlug)) : undefined;
       if (key.startsWith("proj-") && railSlug) {
         const item = PROJECT_ITEMS.find((it) => it.key === key);
         if (item) router.push(`/projects/${railSlug}${item.sub}`);
@@ -212,6 +218,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           onSwitchMode={switchMode}
           collapsed={sidebar.collapsed}
           onToggleCollapsed={sidebar.toggleCollapsed}
+          groupOpen={sidebar.groupOpen}
+          onToggleGroup={sidebar.toggleGroup}
           activeKey={activeKey}
           attentionCount={attentionCount}
           railSlug={railSlug}

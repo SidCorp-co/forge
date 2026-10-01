@@ -173,6 +173,26 @@ describe("every top-bar item has a new home", () => {
   });
 });
 
+describe("the Ecosystem group", () => {
+  it("sits in the expanded Activity sidebar and opens the register on the selected project", () => {
+    window.localStorage.setItem("web-v2:sidebar", JSON.stringify({ collapsed: false, groupOpen: {} }));
+    at("/projects/forge-dev/issues");
+    mount();
+    const side = within(screen.getByTestId("desktop-sidebar"));
+    expect(side.getByText("Ecosystem")).toBeInTheDocument();
+    fireEvent.click(side.getByRole("button", { name: "Held" }));
+    expect(nav.push).toHaveBeenLastCalledWith("/projects/forge-dev/ecosystem/channel?status=held");
+  });
+
+  it("sits in the compact rail too", () => {
+    at("/projects/forge-dev/issues");
+    mount();
+    const side = within(screen.getByTestId("desktop-sidebar"));
+    fireEvent.click(side.getByRole("button", { name: "Contracts" }));
+    expect(nav.push).toHaveBeenLastCalledWith("/projects/forge-dev/ecosystem/contracts");
+  });
+});
+
 describe("the mobile tabs", () => {
   it("are Activity · Chat · Attention · More, shown below md where the sidebar is hidden", () => {
     at("/runners");
