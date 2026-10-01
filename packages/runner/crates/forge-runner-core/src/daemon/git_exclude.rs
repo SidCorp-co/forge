@@ -452,6 +452,39 @@ pub(crate) mod tests {
         assert_eq!(std::fs::read_to_string(&ex).unwrap(), "*.swp\n.claude/\n");
     }
 
+    /// The exclusion itself, apart from what an install does with it: a
+    /// second lock taken through another handle is not had until the first
+    /// is released.
+    #[test]
+    fn a_held_lock_keeps_a_second_one_out_until_it_is_released() {
+        let s = Scratch::new("gx-excludes");
+        let r = repo(s.path(), "r");
+        let ex = exclude_of(&r);
+        std::fs::create_dir_all(ex.parent().unwrap()).unwrap();
+        std::fs::write(&ex, "*.swp\n").unwrap();
+        let file = locked_on(&ex);
+        let lock = ExcludeLock::take(&file).unwrap();
+
+        let (had, rx) = std::sync::mpsc::channel();
+        let second = {
+            let ex = ex.clone();
+            std::thread::spawn(move || {
+                let file = locked_on(&ex);
+                let _lock = ExcludeLock::take(&file).unwrap();
+                had.send(()).unwrap();
+            })
+        };
+        let wait = std::time::Duration::from_millis(500);
+        assert!(
+            rx.recv_timeout(wait).is_err(),
+            "a second lock was had while the first was held"
+        );
+        drop(lock);
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .expect("the second lock is had once the first is released");
+        second.join().unwrap();
+    }
+
     #[test]
     fn a_checkout_its_gitignore_already_covers_gets_no_line() {
         let s = Scratch::new("gx-ignored");
