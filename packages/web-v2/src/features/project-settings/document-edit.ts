@@ -32,7 +32,6 @@ function isRefusal(row: unknown): row is ConfigRefusal {
 	return typeof r.code === "string" && typeof r.path === "string" && typeof r.detail === "string";
 }
 
-/** The `{code, path, detail}` rows a 422 carries under `error.refusals`; none for any other error. */
 export function refusalsOf(err: unknown): ConfigRefusal[] {
 	if (!(err instanceof ApiError) || err.status !== 422) return [];
 	const rows = (err.body as { error?: { refusals?: unknown } } | undefined)?.error?.refusals;
@@ -54,8 +53,6 @@ function childAt(value: unknown, segment: string): { found: boolean; value: unkn
 	return { found: false, value: undefined };
 }
 
-/** The deepest pointer along `pointer` that the document holds — where a refusal of a missing
- *  key is shown, since the key it names has no field to stand beside. */
 export function nearestHeld(document: unknown, pointer: string): string {
 	const held: string[] = [];
 	let cursor = document;
@@ -68,7 +65,6 @@ export function nearestHeld(document: unknown, pointer: string): string {
 	return pointerOf(held);
 }
 
-/** Each refusal filed under the pointer of the field that shows it. STALE_BASE is no field's. */
 export function placeRefusals(
 	document: unknown,
 	refusals: readonly ConfigRefusal[],
@@ -86,7 +82,6 @@ export interface MovedValue {
 	path: string;
 	read: unknown;
 	stored: unknown;
-	/** The person also changed this path, so re-applying their edits replaces the stored value. */
 	contested: boolean;
 }
 
@@ -98,7 +93,6 @@ function overlaps(a: readonly string[], b: readonly string[]): boolean {
 	return true;
 }
 
-/** What another writer changed between the revision a draft was read at and the stored one. */
 export function movedSince(read: unknown, fresh: unknown, held: unknown): MovedValue[] {
 	const mine = leaves(read, held);
 	return leaves(read, fresh).map((path) => ({
@@ -109,7 +103,6 @@ export function movedSince(read: unknown, fresh: unknown, held: unknown): MovedV
 	}));
 }
 
-/** The person's edits replayed over the stored document, which they then save against its revision. */
 export function reapply(read: unknown, held: unknown, fresh: unknown): V1Document {
 	return rebaseDocumentDraft({ read: read ?? {}, held, fresh }).draft;
 }
@@ -122,7 +115,6 @@ export function schemaUrl(kind: string): string {
 
 export const REMOVE = Symbol("remove");
 
-/** `document` with the value at `segments` replaced, or removed for {@link REMOVE}; never mutated. */
 export function setAt(document: unknown, segments: readonly string[], value: unknown): unknown {
 	const [head, ...rest] = segments;
 	if (head === undefined) return value;

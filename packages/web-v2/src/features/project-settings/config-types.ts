@@ -34,6 +34,18 @@ export interface TestingProfileList {
 	returned: number;
 }
 
+export interface SecretName {
+	ref: string;
+	scope: string;
+	name: string;
+	updatedAt: string;
+}
+
+export interface SecretNameList {
+	secrets: SecretName[];
+	returned: number;
+}
+
 export interface BindingList {
 	bindings: Extract<V1Read, { declared: true }>[];
 	unrepresentable: { id: string; provider: string; role: string; reason: string }[];

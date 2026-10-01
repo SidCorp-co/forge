@@ -3,6 +3,8 @@ import type {
 	BindingList,
 	EffectiveConfig,
 	EnvironmentStateList,
+	SecretName,
+	SecretNameList,
 	TestingProfileList,
 	V1Read,
 	V1Write,
@@ -31,6 +33,14 @@ export const configApi = {
 		apiClient<{ deleted: true; profileId: string }>(
 			`/projects/${id}/testing-profiles/${encodeURIComponent(profileId)}`,
 			{ method: "DELETE" },
+		),
+
+	listSecretNames: (id: string) => apiClient<SecretNameList>(`/projects/${id}/secrets`),
+
+	putSecret: (id: string, scope: string, name: string, value: string) =>
+		apiClient<SecretName>(
+			`/projects/${id}/secrets/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`,
+			{ method: "PUT", body: JSON.stringify({ value }) },
 		),
 
 	listBindings: (id: string) => apiClient<BindingList>(`/projects/${id}/bindings`),

@@ -10,6 +10,7 @@ const keys = {
 	policy: (id: string | undefined) => ["project", id, "policy"] as const,
 	profiles: (id: string | undefined) => ["project", id, "testing-profiles"] as const,
 	bindings: (id: string | undefined) => ["project", id, "bindings"] as const,
+	secrets: (id: string | undefined) => ["project", id, "secrets"] as const,
 	effective: (id: string | undefined) => ["project", id, "config-effective"] as const,
 	environments: (id: string | undefined) => ["project", id, "environment-state"] as const,
 };
@@ -34,6 +35,22 @@ export const useTestingProfiles = (id: string | undefined) =>
 
 export const useBindingDocuments = (id: string | undefined) =>
 	useRead(keys.bindings(id), id, configApi.listBindings);
+
+export const useSecretNames = (id: string | undefined) =>
+	useRead(keys.secrets(id), id, configApi.listSecretNames);
+
+export function useWriteSecret(id: string | undefined) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: (write: { scope: string; name: string; value: string }) =>
+			configApi.putSecret(id as string, write.scope, write.name, write.value),
+		onSuccess: (saved) => {
+			qc.invalidateQueries({ queryKey: keys.secrets(id) });
+			toast({ title: `A value is stored for ${saved.ref}`, tone: "success" });
+		},
+	});
+}
 
 export const useEffectiveConfig = (id: string | undefined) =>
 	useRead(keys.effective(id), id, configApi.getEffective);

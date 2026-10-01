@@ -16,6 +16,7 @@ let stored: Record<string, Held | null>;
 let sent: Array<{ path: string; baseRevision: number | null; document: Doc }>;
 let refuseWith: Refusal[] | null;
 let reads: Record<string, () => unknown>;
+let secretWrites: Array<{ path: string; body: unknown }>;
 
 const STALE: Refusal = {
 	code: "STALE_BASE",
@@ -32,6 +33,11 @@ vi.mock("@/lib/api/client", async () => {
 	return {
 		...actual,
 		apiClient: async (path: string, init?: { method?: string; body?: string }) => {
+			if (init?.method === "PUT" && path.includes("/secrets/")) {
+				secretWrites.push({ path, body: JSON.parse(init.body ?? "null") });
+				const [scope, name] = path.split("/").slice(-2);
+				return { ref: `secret://${scope}/${name}`, scope, name, updatedAt: "2026-10-01T00:00:00.000Z" };
+			}
 			if (init?.method === "PUT") {
 				const write = JSON.parse(init.body ?? "null");
 				sent.push({ path, ...write });
@@ -55,6 +61,7 @@ vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
 
 const { PolicyDocumentSection, TestingProfilesSection } = await import("./components/config-documents");
 const { EffectiveSection, EnvironmentStateSection } = await import("./components/config-readings");
+const { SecretsSection } = await import("./components/secrets-section");
 const { ApiError } = await import("@/lib/api/client");
 
 const POLICY_PATH = "/projects/p1/policy";
@@ -82,6 +89,7 @@ beforeEach(() => {
 	sent = [];
 	refuseWith = null;
 	reads = {};
+	secretWrites = [];
 	toast.mockClear();
 });
 
@@ -259,5 +267,57 @@ describe("environment state", () => {
 		};
 		draw(<EnvironmentStateSection projectId="p1" />);
 		expect(await screen.findByText("No project document is declared, so it names no environment.")).toBeInTheDocument();
+	});
+});
+
+describe("secrets", () => {
+	const profile = {
+		profileId: "beta",
+		declared: true,
+		revision: 1,
+		document: {
+			id: "beta",
+			actors: { admin: { role: "org-admin", credential: "secret://beta/admin" } },
+			services: { api: { access: "readonly", credential: "secret://beta/api-key" } },
+			limits: [],
+		},
+	};
+
+	beforeEach(() => {
+		reads["/projects/p1/testing-profiles"] = () => ({ profiles: [profile], returned: 1 });
+	});
+
+	it("marks each referenced secret stored or missing, and writes a value it never shows", async () => {
+		reads["/projects/p1/secrets"] = () => ({
+			secrets: [{ ref: "secret://beta/admin", scope: "beta", name: "admin", updatedAt: "2026-10-01T00:00:00.000Z" }],
+			returned: 1,
+		});
+		draw(<SecretsSection projectId="p1" canEdit />);
+		const admin = (await screen.findByText("secret://beta/admin", { selector: "code" })).closest("tr") as HTMLElement;
+		expect(within(admin).getByText("value stored")).toBeInTheDocument();
+		const api = screen.getByText("secret://beta/api-key", { selector: "code" }).closest("tr") as HTMLElement;
+		expect(within(api).getByText("missing — no value stored")).toBeInTheDocument();
+
+		fireEvent.click(within(api).getByRole("button", { name: "Set value" }));
+		expect(screen.getByLabelText("Scope")).toHaveValue("beta");
+		expect(screen.getByLabelText("Name")).toHaveValue("api-key");
+		const value = screen.getByLabelText("Value");
+		expect(value).toHaveAttribute("type", "password");
+		fireEvent.change(value, { target: { value: "s3cret-value" } });
+		fireEvent.click(screen.getByRole("button", { name: "Store value for secret://beta/api-key" }));
+		await waitFor(() => expect(secretWrites).toHaveLength(1));
+		expect(secretWrites[0]).toEqual({ path: "/projects/p1/secrets/beta/api-key", body: { value: "s3cret-value" } });
+		await waitFor(() => expect(screen.getByLabelText("Value")).toHaveValue(""));
+		expect(screen.queryByText(/s3cret-value/)).not.toBeInTheDocument();
+	});
+
+	it("never reads a reference as stored when the names could not be read", async () => {
+		reads["/projects/p1/secrets"] = () => {
+			throw new ApiError(500, "boom", "INTERNAL_ERROR");
+		};
+		draw(<SecretsSection projectId="p1" canEdit />);
+		expect(await screen.findByText(/The stored secret names could not be read/)).toBeInTheDocument();
+		expect(screen.getAllByText("could not be read")).toHaveLength(2);
+		expect(screen.queryByText("value stored")).not.toBeInTheDocument();
 	});
 });

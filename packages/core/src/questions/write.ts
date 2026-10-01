@@ -14,8 +14,10 @@ import {
   isChoiceStep,
   type QuestionBlockerKind,
   type QuestionOption,
+  type QuestionOrigin,
   type QuestionStep,
 } from '../db/schema-questions.js';
+import { decideChannelGate } from '../ecosystem/channel-gate.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
 import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -44,6 +46,7 @@ export type AskInput = {
   parkDeadlineAt?: Date;
   /** This round's material is private to whoever asked, so it is put to them in a direct room. */
   sensitive?: boolean;
+  origin?: Extract<QuestionOrigin, { kind: 'channel_gate' }>;
 };
 
 export class QuestionRefused extends Error {
@@ -72,6 +75,7 @@ export const questionRefusalCodes = [
   'QUESTION_ANSWER_WRONG_SHAPE',
   'QUESTION_MESSAGE_REFUSED',
   'QUESTION_CURSOR_INVALID',
+  'QUESTION_NOTE_NOT_TAKEN',
 ] as const;
 export type QuestionRefusalCode = (typeof questionRefusalCodes)[number];
 
@@ -220,7 +224,12 @@ export async function askParkQuestion(
 }
 
 async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
-  const origin = await resolveAskOrigin(executor, input.agentSessionId);
+  if (input.origin && (input.agentSessionId || input.issueId)) {
+    throw new Error(
+      'questions: a channel gate question belongs to no session and no issue, and this one names one',
+    );
+  }
+  const origin = input.origin ?? (await resolveAskOrigin(executor, input.agentSessionId));
   const [row] = await executor
     .insert(agentQuestions)
     .values({
@@ -265,6 +274,7 @@ export type AnswerInput = {
   round: number;
   by: string;
   role: ProjectMemberRole | null;
+  note?: string;
 };
 
 export function mayAnswerFreeText(role: ProjectMemberRole | null): boolean {
@@ -275,7 +285,7 @@ export function mayAnswerFreeText(role: ProjectMemberRole | null): boolean {
  * Record one answer, or refuse and leave the row exactly as it was.
  */
 export async function answerQuestion(args: AnswerInput) {
-  const committed = await db.transaction(async (tx) => {
+  const { committed, effect } = await db.transaction(async (tx) => {
     const [row] = await tx
       .select()
       .from(agentQuestions)
@@ -298,6 +308,13 @@ export async function answerQuestion(args: AnswerInput) {
     }
     const current = row.steps[row.steps.length - 1];
     if (!current) throw new QuestionRefused('this question has no round to answer');
+    const note = args.note?.trim() || undefined;
+    if (args.note !== undefined && row.origin?.kind !== 'channel_gate') {
+      throw new QuestionRefused(
+        'a note travels only with an answer that carries it somewhere, and this question carries none — a channel gate takes one; here, answer with the option alone',
+        'QUESTION_NOTE_NOT_TAKEN',
+      );
+    }
     if (current.round !== args.round) {
       throw new QuestionRefused(
         `this answer names round ${args.round} and the question is on round ${current.round} — the round you were shown has been superseded`,
@@ -314,6 +331,7 @@ export async function answerQuestion(args: AnswerInput) {
       );
     }
     let answered: QuestionStep;
+    let effect: (() => Promise<void>) | null = null;
     if (isChoiceStep(current) && args.answer.kind === 'option') {
       const optionId = args.answer.optionId;
       const option = current.options.find((o) => o.id === optionId);
@@ -334,7 +352,17 @@ export async function answerQuestion(args: AnswerInput) {
         answeredAt: now.toISOString(),
         chosenOptionId: option.id,
         answeredBy: args.by,
+        ...(note ? { note } : {}),
       };
+      if (row.origin?.kind === 'channel_gate') {
+        effect = await decideChannelGate(tx, {
+          documentId: row.origin.documentId,
+          projectId: row.projectId,
+          optionId: option.id,
+          note,
+          by: args.by,
+        });
+      }
     } else if (!isChoiceStep(current) && args.answer.kind === 'text') {
       const text = args.answer.text.trim();
       if (!text) {
@@ -366,7 +394,7 @@ export async function answerQuestion(args: AnswerInput) {
       .update(agentQuestions)
       .set({ steps, status: 'answered', updatedAt: now })
       .where(eq(agentQuestions.id, args.questionId));
-    return { ...row, steps, status: 'answered' as const };
+    return { committed: { ...row, steps, status: 'answered' as const }, effect };
   });
   await hooks.emit('questionAnswered', {
     questionId: args.questionId,
@@ -376,6 +404,7 @@ export async function answerQuestion(args: AnswerInput) {
     body: answeredBody(committed.steps.at(-1)),
   });
   void wakeMastersForAnswer({ projectId: committed.projectId, questionId: args.questionId });
+  if (effect) await effect();
   return view(committed);
 }
 

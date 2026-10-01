@@ -158,6 +158,13 @@ export async function resolveQuestionDestination(
     return { kind: 'unresolvable', reason: input.origin.reason };
   }
 
+  if (input.origin.kind === 'channel_gate') {
+    return {
+      kind: 'unresolvable',
+      reason: `${input.origin.number} waits at a channel approve gate, which an admin of this project decides signed in to Forge, where a return carries its note and the decision is recorded under their name; it is not posted to a room`,
+    };
+  }
+
   if (input.origin.adapter !== 'rocketchat') {
     return {
       kind: 'unresolvable',

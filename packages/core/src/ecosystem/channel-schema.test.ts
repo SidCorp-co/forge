@@ -137,6 +137,10 @@ describe('a hold whose shape is wrong is refused by name', () => {
     expect(codes(holdOf({ ...hold(), reason: '' }))).toEqual(['HOLD_WITHOUT_REASON']);
   });
 
+  it('a blank reason → HOLD_WITHOUT_REASON', () => {
+    expect(codes(holdOf({ ...hold(), reason: '  \n ' }))).toEqual(['HOLD_WITHOUT_REASON']);
+  });
+
   it('a hold on a reply, not a thread', () => {
     const h = { ...hold(), thread: 'FP-ACK-7' };
     expect(holdOf(h).map((r) => `${r.code} ${r.path}`)).toEqual(['SCHEMA_VIOLATION /thread']);

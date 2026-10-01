@@ -182,6 +182,7 @@ export async function projectQuestionsFor(
         agentSessionId: agentQuestions.agentSessionId,
         status: agentQuestions.status,
         blockerKind: agentQuestions.blockerKind,
+        origin: agentQuestions.origin,
         maxRounds: agentQuestions.maxRounds,
         assumed: agentQuestions.assumed,
         voidReason: agentQuestions.voidReason,
@@ -254,6 +255,7 @@ export async function answerAs(args: {
   answer: GivenAnswer;
   round: number;
   userId: string;
+  note?: string;
 }) {
   const [row] = await db
     .select({ projectId: agentQuestions.projectId })
@@ -271,6 +273,7 @@ export async function answerAs(args: {
     round: args.round,
     by: args.userId,
     role,
+    ...(args.note === undefined ? {} : { note: args.note }),
   });
 }
 

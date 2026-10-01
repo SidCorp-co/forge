@@ -9,6 +9,7 @@ import {
 	TestingProfilesSection,
 } from "./config-documents";
 import { EffectiveSection, EnvironmentStateSection } from "./config-readings";
+import { SecretsSection } from "./secrets-section";
 
 export function ConfigTab({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
 	return (
@@ -23,6 +24,7 @@ export function ConfigTab({ project, canEdit }: { project: ProjectDetail; canEdi
 				<EnvironmentStateSection projectId={project.id} />
 				<PolicyDocumentSection projectId={project.id} canEdit={canEdit} />
 				<TestingProfilesSection projectId={project.id} canEdit={canEdit} />
+				<SecretsSection projectId={project.id} canEdit={canEdit} />
 				<BindingsSection projectId={project.id} canEdit={canEdit} />
 				<EffectiveSection projectId={project.id} />
 			</CardContent>

@@ -13022,7 +13022,10 @@
                       "reconcile_gate_pending",
                       "issue_stranded",
                       "retry_rescue_threshold",
-                      "ops_alert"
+                      "ops_alert",
+                      "channel_document_published",
+                      "channel_thread_held",
+                      "channel_gate_pending"
                     ],
                     "type": "string"
                   }
@@ -16429,73 +16432,6 @@
                   "to",
                   "subject",
                   "body"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireAuth",
-          "assertEmailVerified"
-        ],
-        "x-forge-validated": [
-          "json",
-          "param"
-        ]
-      }
-    },
-    "/api/projects/{id}/channel/documents/{doc}/gate": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "doc",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "decision": {
-                    "enum": [
-                      "approved",
-                      "returned"
-                    ],
-                    "type": "string"
-                  },
-                  "note": {
-                    "maxLength": 1000,
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "decision"
                 ],
                 "type": "object"
               }
@@ -24860,6 +24796,10 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "note": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
                   "optionId": {
                     "type": "string"
                   },
