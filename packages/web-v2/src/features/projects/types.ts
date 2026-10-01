@@ -15,14 +15,14 @@ export interface ProjectListItem {
   role: ProjectMember['role'] | null;
   /** Caller's role in the project's org — null when not an org member. */
   orgRole: 'owner' | 'admin' | 'member' | null;
-  /** null for the read-only viewer tier (execution-grade key is withheld). */
-  apiKey: string | null;
   /** Non-null when the project is archived (rows appear via `?archived=1`). */
   archivedAt: string | null;
   createdAt: string;
 }
 
 export interface ProjectDetail extends Project {
+  /** The project document's `source.git.defaultBranch`; null where it declares none. */
+  baseBranch: string | null;
   members: Array<Pick<ProjectMember, 'userId' | 'role'>>;
   labels: Array<{ id: string; name: string; color: string | null }>;
   devicePool: Array<{
@@ -73,7 +73,6 @@ export interface CreatedProject {
   name: string;
   orgId: string;
   createdBy: string;
-  apiKey: string;
   createdAt: string;
 }
 

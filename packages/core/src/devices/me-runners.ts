@@ -29,7 +29,6 @@ export async function listDeviceAssignments(deviceId: string) {
       projectId: runners.projectId,
       runnerId: runners.id,
       slug: projects.slug,
-      baseBranch: projects.baseBranch,
       repoPath: runners.repoPath,
       branch: runners.branch,
       status: runners.status,
@@ -40,9 +39,13 @@ export async function listDeviceAssignments(deviceId: string) {
     .from(runners)
     .innerJoin(projects, eq(projects.id, runners.projectId))
     .where(and(eq(runners.deviceId, deviceId), eq(runners.type, 'claude-code')));
-  const setups = new Map<string, string | null>();
+  const sources = new Map<string, Awaited<ReturnType<typeof readDeclaredSource>>>();
   for (const projectId of new Set(rows.map((r) => r.projectId))) {
-    setups.set(projectId, (await readDeclaredSource(projectId)).setup);
+    sources.set(projectId, await readDeclaredSource(projectId));
   }
-  return rows.map((r) => ({ ...r, workspaceSetup: setups.get(r.projectId) ?? null }));
+  return rows.map((r) => ({
+    ...r,
+    baseBranch: sources.get(r.projectId)?.defaultBranch ?? null,
+    workspaceSetup: sources.get(r.projectId)?.setup ?? null,
+  }));
 }

@@ -112,9 +112,6 @@ export function releaseBatchFixture(
     const connectionId = randomUUID();
     const bindingId = randomUUID();
     await harness().db.execute(sql`
-      UPDATE projects SET base_branch = 'main' WHERE id = ${projectId}
-    `);
-    await harness().db.execute(sql`
       INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
       VALUES (${connectionId}, 'user', ${ownerId}, 'coolify', true)
     `);

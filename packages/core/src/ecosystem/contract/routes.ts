@@ -11,13 +11,14 @@ import { loadInterface } from '../interface-service.js';
 import type { EcosystemRefusal } from '../refusals.js';
 import { projectsWhere } from '../store.js';
 import { MAX_ARTIFACT_BYTES } from './measure.js';
+import { consumedContract, consumedMeasurements, consumedVersions } from './party-read.js';
 import { recordVersion } from './record.js';
 import { measurementsOf, versionsOf } from './store.js';
 import { type UploadBody, uploadRefusals } from './upload-rules.js';
 
 export const contractRoutes = new Hono<{ Variables: AuthVars }>();
 
-for (const path of ['/:id/contracts/:contract/*']) {
+for (const path of ['/:id/contracts/:contract/*', '/:id/consumes/:provider/:contract/*']) {
   contractRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 
@@ -41,6 +42,20 @@ const versionParam = zValidator(
       throw new HTTPException(400, {
         message:
           'invalid path: /api/projects/<uuid>/contracts/<slug>/versions/<version of 1 to 40 characters>',
+        cause: { code: 'BAD_REQUEST' },
+      });
+    }
+  },
+);
+
+const consumedParam = zValidator(
+  'param',
+  z.object({ id: z.uuid(), provider: z.uuid(), contract: slug() }),
+  (r) => {
+    if (!r.success) {
+      throw new HTTPException(400, {
+        message:
+          'invalid path: /api/projects/<consumer uuid>/consumes/<provider uuid>/<contract slug>/…',
         cause: { code: 'BAD_REQUEST' },
       });
     }
@@ -109,6 +124,33 @@ contractRoutes.get('/:id/contracts/:contract/measurements', contractParam, async
       settledAt: r.settledAt?.toISOString() ?? null,
     })),
   });
+});
+
+contractRoutes.get('/:id/consumes/:provider/:contract/versions', consumedParam, async (c) => {
+  const { id, provider, contract } = c.req.valid('param');
+  const party = await consumedContract({
+    userId: c.get('userId'),
+    consumerId: id,
+    providerId: provider,
+    contract,
+  });
+  return c.json({
+    provider: party.provider,
+    contract: `${party.provider.slug}/${contract}`,
+    ecosystems: party.ecosystems,
+    versions: await consumedVersions(provider, contract),
+  });
+});
+
+contractRoutes.get('/:id/consumes/:provider/:contract/measurements', consumedParam, async (c) => {
+  const { id, provider, contract } = c.req.valid('param');
+  await consumedContract({
+    userId: c.get('userId'),
+    consumerId: id,
+    providerId: provider,
+    contract,
+  });
+  return c.json({ measurements: await consumedMeasurements(provider, contract) });
 });
 
 contractRoutes.post('/:id/contracts/:contract/versions', contractParam, uploadBody, async (c) => {

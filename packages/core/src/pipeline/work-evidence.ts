@@ -4,6 +4,7 @@ import { issueDependencies, issueStepContexts, issues, jobs, projects } from '..
 import { WORK_EVIDENCE_WAIVER_KIND } from '../issues/dependency-effects.js';
 import { logger } from '../logger.js';
 import { promotedBranch, readReleasePath } from '../project-config/release-path.js';
+import { readDeclaredSource } from '../project-config/source.js';
 
 const IMPLEMENTATION_STEPS = ['code', 'fix', 'drive'] as const;
 
@@ -47,7 +48,6 @@ export async function collectWorkEvidence(
         sessionContext: issues.sessionContext,
         mergedAt: issues.mergedAt,
         mergedCommitSha: issues.mergedCommitSha,
-        baseBranch: projects.baseBranch,
         projectId: issues.projectId,
       })
       .from(issues)
@@ -81,8 +81,10 @@ export async function collectWorkEvidence(
   const projectRow = issueRows[0];
   const path = projectRow ? await readReleasePath(projectRow.projectId) : null;
   const excludedLive = path?.ok ? promotedBranch(path.path) : null;
-  const branch =
-    named && named !== issueRows[0]?.baseBranch && named !== excludedLive ? named : null;
+  const defaultBranch = projectRow
+    ? (await readDeclaredSource(projectRow.projectId)).defaultBranch
+    : null;
+  const branch = named && named !== defaultBranch && named !== excludedLive ? named : null;
 
   return {
     implementationJobCount: jobRows.length,

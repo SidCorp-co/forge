@@ -351,11 +351,7 @@ export const projects = pgTable(
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
-    /** Where an ISS-* branch is cut from and merges back to. NOT a release fact. */
-    baseBranch: text('base_branch'),
     agentConfig: jsonb('agent_config'),
-    webhookSecret: text('webhook_secret'),
-    apiKey: text('api_key'),
     issuePrefix: text('issue_prefix'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -363,7 +359,6 @@ export const projects = pgTable(
   (t) => ({
     orgIdIdx: index('projects_org_id_idx').on(t.orgId),
     createdByIdx: index('projects_created_by_idx').on(t.createdBy),
-    apiKeyUq: uniqueIndex('projects_api_key_uq').on(t.apiKey).where(sql`api_key IS NOT NULL`),
     archivedAtIdx: index('projects_archived_at_idx').on(t.archivedAt),
     issuePrefixFk: foreignKey({
       name: 'projects_issue_prefix_fk',

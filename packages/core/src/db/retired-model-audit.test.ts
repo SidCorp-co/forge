@@ -64,6 +64,23 @@ describe('the rules name the retired reader', () => {
     ['sql`SELECT projects_release_chain_ok($1)`', 'legacy-project-columns'],
     ['...axes.releaseProjectChecks,', 'legacy-project-columns'],
     ['await syncRepoUrlFromGitHubBinding(args);', 'legacy-project-columns'],
+    ['.select({ baseBranch: projects.baseBranch })', 'legacy-project-columns'],
+    ['const s = projects.webhookSecret;', 'legacy-project-columns'],
+    ['.where(eq(projects.apiKey, key))', 'legacy-project-columns'],
+    ["sql`UPDATE projects SET base_branch = 'main' WHERE id = $1`", 'legacy-project-columns'],
+    ['sql`SELECT p.base_branch FROM projects p`', 'legacy-project-columns'],
+    ['sql`SELECT projects.webhook_secret FROM projects`', 'legacy-project-columns'],
+    ['sql`DROP INDEX projects_api_key_uq`', 'legacy-project-columns'],
+    ['app.use(requireProjectApiKey);', 'legacy-project-columns'],
+    ['const k = generateApiKey();', 'legacy-project-columns'],
+    ["routes.post('/:id/api-key/rotate', h);", 'legacy-project-columns'],
+    ["const ref = 'secret://project/webhook-secret';", 'generic-inbound-webhook'],
+    ['const s = await resolveProjectSecret(id, scope, name);', 'generic-inbound-webhook'],
+    ['for (const h of GENERIC_SIGNATURE_HEADERS) read(h);', 'generic-inbound-webhook'],
+    [
+      "return c.json({ accepted: true, handler: 'generic', actions: 0 });",
+      'generic-inbound-webhook',
+    ],
   ])('%s → %s', (source, rule) => {
     expect(hits(source)).toContain(rule);
   });
@@ -87,6 +104,12 @@ describe('the rules leave live code alone', () => {
     'const { setup } = await readDeclaredSource(projectId);',
     'const d = issue.description;',
     'const k = label.kind;',
+    'const { defaultBranch } = await readDeclaredSource(projectId);',
+    'const base = row.baseBranch;',
+    'webhookSecret: body.webhook_secret,',
+    'secrets: { apiKey: form.apiKey.trim() },',
+    "const ref = 'secret://beta/api-key';",
+    'return c.json({ accepted: true, handler: map.provider });',
   ])('%s', (source) => {
     expect(hits(source)).toEqual([]);
   });

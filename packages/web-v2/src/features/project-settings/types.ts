@@ -5,8 +5,6 @@ import { MEMORY_REINDEX_STATES, type MemoryReindexState } from "@forge/contracts
  *  current and the destination org (403/404 otherwise). */
 export interface ProjectUpdateInput {
 	name?: string;
-	/** Where an ISS-* branch is cut from. NOT a release fact. */
-	baseBranch?: string | null;
 	/** NOT where work lands, its environments or promotions: those are the project document,
 	 *  edited on the Configuration tab, and this patch refuses them by name. */
 	orgId?: string;

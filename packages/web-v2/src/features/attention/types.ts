@@ -6,7 +6,8 @@ export type AttentionKind =
   | "failed_job"
   | "pending_skill_update"
   | "unseen_draft"
-  | "runner_offline";
+  | "runner_offline"
+  | "channel_gate";
 
 export interface AttentionItem {
   kind: AttentionKind;
@@ -21,6 +22,8 @@ export interface AttentionItem {
   blockerKind?: string | null;
   questionId?: string | null;
   cost?: { claimsHeld: number; workspacesPinned: number; dependents: number };
+  /** Channel-gate only: the document number waiting at the approve gate. */
+  documentNumber?: string;
 }
 
 /** Shape of `GET /api/me/attention` (verbatim from the core route). */
@@ -34,6 +37,8 @@ export interface AttentionResponse {
   unseenDrafts: AttentionItem[];
   /** Unclipped count behind `unseenDrafts` — render it, don't recompute it. */
   unseenDraftsTotal: number;
+  /** Channel documents waiting at an approve gate this person's role may decide. */
+  channelGates: AttentionItem[];
   total: number;
 }
 

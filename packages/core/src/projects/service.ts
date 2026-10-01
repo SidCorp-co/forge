@@ -8,7 +8,6 @@
  * genuinely different queries and keep their own.
  */
 
-import { randomBytes } from 'node:crypto';
 import { and, count, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -24,6 +23,7 @@ import { projectPolicies } from '../db/schema-project-config.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
 import { DEFAULT_POLICY } from '../project-config/default-policy.js';
+import { readDeclaredSource } from '../project-config/source.js';
 
 /** The project's id, or `null` when no project carries that slug. */
 export async function findProjectIdBySlug(slug: string): Promise<string | null> {
@@ -53,11 +53,12 @@ export type ProjectBranches = {
 /** The branch a project's pipeline cuts work from, or `null` when the project is gone. */
 export async function readProjectBranches(projectId: string): Promise<ProjectBranches | null> {
   const [row] = await db
-    .select({ baseBranch: projects.baseBranch })
+    .select({ id: projects.id })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  return row ?? null;
+  if (!row) return null;
+  return { baseBranch: (await readDeclaredSource(projectId)).defaultBranch };
 }
 
 /** A project slug already in use. Each transport maps this to its own status. */
@@ -73,13 +74,7 @@ export type NewProject = {
   name: string;
   orgId: string;
   createdBy: string;
-  baseBranch?: string | undefined;
 };
-
-/** A freshly generated project API key: `fk_` + 192 bits, the shape every validator accepts. */
-export function generateApiKey(): string {
-  return `fk_${randomBytes(24).toString('hex')}`;
-}
 
 export async function createProject(input: NewProject) {
   try {
@@ -91,8 +86,6 @@ export async function createProject(input: NewProject) {
           name: input.name,
           orgId: input.orgId,
           createdBy: input.createdBy,
-          apiKey: generateApiKey(),
-          baseBranch: input.baseBranch ?? 'main',
         })
         .returning({
           id: projects.id,
@@ -100,7 +93,6 @@ export async function createProject(input: NewProject) {
           name: projects.name,
           orgId: projects.orgId,
           createdBy: projects.createdBy,
-          apiKey: projects.apiKey,
           createdAt: projects.createdAt,
         });
       if (!project) throw new Error('projects: insert returned no row');
@@ -180,13 +172,13 @@ export async function readProjectSummary(projectId: string) {
       name: projects.name,
       orgId: projects.orgId,
       createdBy: projects.createdBy,
-      baseBranch: projects.baseBranch,
       createdAt: projects.createdAt,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  return row ?? null;
+  if (!row) return null;
+  return { ...row, baseBranch: (await readDeclaredSource(projectId)).defaultBranch };
 }
 
 export async function updateProject(projectId: string, updates: Record<string, unknown>) {
@@ -195,7 +187,6 @@ export async function updateProject(projectId: string, updates: Record<string, u
     slug: projects.slug,
     name: projects.name,
     orgId: projects.orgId,
-    baseBranch: projects.baseBranch,
   });
   return row ?? null;
 }
@@ -221,13 +212,13 @@ export async function readProjectWithConfig(projectId: string) {
       id: projects.id,
       slug: projects.slug,
       name: projects.name,
-      baseBranch: projects.baseBranch,
       agentConfig: projects.agentConfig,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  return row ?? null;
+  if (!row) return null;
+  return { ...row, baseBranch: (await readDeclaredSource(projectId)).defaultBranch };
 }
 
 /** The two jsonb fields a per-issue branch override can live on, scoped to a project so an id from elsewhere reads as absent. */

@@ -15,6 +15,7 @@ import {
   selectUnseenDraftCount,
   selectUnseenDrafts,
 } from './attention-buckets.js';
+import { type AttentionGateRow, selectChannelGates } from './attention-gates.js';
 
 type AttentionKind =
   | 'needs_review'
@@ -22,7 +23,8 @@ type AttentionKind =
   | 'mention'
   | 'failed_job'
   | 'pending_skill_update'
-  | 'unseen_draft';
+  | 'unseen_draft'
+  | 'channel_gate';
 
 interface AttentionItem {
   kind: AttentionKind;
@@ -37,6 +39,8 @@ interface AttentionItem {
   blockerKind?: string | null;
   questionId?: string | null;
   cost?: { claimsHeld: number; workspacesPinned: number; dependents: number };
+  /** Channel-gate only: the number of the document waiting at the approve gate. */
+  documentNumber?: string;
 }
 
 interface AttentionResponse {
@@ -48,6 +52,8 @@ interface AttentionResponse {
   unseenDrafts: AttentionItem[];
   /** Unclipped count behind `unseenDrafts`, which is capped. */
   unseenDraftsTotal: number;
+  /** Documents waiting at an approve gate that this person's role may decide. */
+  channelGates: AttentionItem[];
   total: number;
 }
 
@@ -117,6 +123,19 @@ function skillUpdateItem(r: AttentionReconcileRow): AttentionItem {
   };
 }
 
+function gateItem(r: AttentionGateRow): AttentionItem {
+  return {
+    kind: 'channel_gate',
+    title: r.prompt,
+    link: `/projects/${r.projectSlug}/ecosystem/channel/${r.number}`,
+    since: r.createdAt.toISOString(),
+    projectSlug: r.projectSlug,
+    projectName: r.projectName,
+    questionId: r.questionId,
+    documentNumber: r.number,
+  };
+}
+
 export const meAttentionRoutes = new Hono<{ Variables: AuthVars }>();
 meAttentionRoutes.use('/attention', requireAuth(), assertEmailVerified());
 
@@ -131,6 +150,7 @@ meAttentionRoutes.get('/attention', async (c) => {
     pendingSkillUpdateRows,
     unseenDraftRows,
     unseenDraftCountRows,
+    channelGateRows,
   ] = await Promise.all([
     selectNeedsReview(userId),
     selectAwaitingInput(userId),
@@ -139,6 +159,7 @@ meAttentionRoutes.get('/attention', async (c) => {
     selectPendingSkillUpdates(userId),
     selectUnseenDrafts(userId),
     selectUnseenDraftCount(userId),
+    selectChannelGates(userId),
   ]);
 
   const needsReview = needsReviewRows.map((r) => issueItem('needs_review', r));
@@ -147,6 +168,7 @@ meAttentionRoutes.get('/attention', async (c) => {
   const failedJobs = failedJobRows.map(failedJobItem);
   const pendingSkillUpdates = pendingSkillUpdateRows.map(skillUpdateItem);
   const unseenDrafts = unseenDraftRows.map((r) => issueItem('unseen_draft', r));
+  const channelGates = channelGateRows.map(gateItem);
   const unseenDraftsTotal = Number(unseenDraftCountRows[0]?.total ?? 0);
 
   const response: AttentionResponse = {
@@ -157,13 +179,15 @@ meAttentionRoutes.get('/attention', async (c) => {
     pendingSkillUpdates,
     unseenDrafts,
     unseenDraftsTotal,
+    channelGates,
     total:
       needsReview.length +
       awaitingInput.length +
       mentions.length +
       failedJobs.length +
       pendingSkillUpdates.length +
-      unseenDrafts.length,
+      unseenDrafts.length +
+      channelGates.length,
   };
 
   return c.json(response);

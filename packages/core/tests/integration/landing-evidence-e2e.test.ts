@@ -134,9 +134,6 @@ describe('a project whose work lands outside git (source.type storefront)', () =
     const w = await world('storefront');
     // A production environment with a deploy binding is a release gate; with no probe the
     // release is recorded unverified (ISS-1321), so the only reason left is the roster's own.
-    await harness.db.execute(
-      sql`UPDATE projects SET base_branch = 'main' WHERE id = ${w.projectId}`,
-    );
     await seedProduction(harness.db, {
       projectId: w.projectId,
       ownerId: w.userId,

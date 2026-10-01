@@ -297,6 +297,33 @@ describe('the register lists what each side is party to, with who owes the next 
     expect(none.total).toBe(0);
   });
 
+  it('serves each document with the register’s own standing, held and overdue, to both sides', async () => {
+    await w.harness.db.transaction(async (tx) => {
+      // A published row is write-once; the lapse of a due date is planted beneath the triggers.
+      await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+      await tx.execute(sql`
+        UPDATE channel_documents SET document = jsonb_set(document, '{dueBy}', '"2026-01-02"')
+         WHERE number = 'FP-RFI-1'
+      `);
+    });
+    const overdue = ok(await register('plugin', '?status=overdue'));
+    expect(overdue.documents.map((d: Doc) => d.number)).toEqual(['FP-RFI-1']);
+    for (const [who, base] of [
+      ['plugin', plugin()],
+      ['platform', forge()],
+    ] as const) {
+      const read = ok(await say(who, 'GET', `${base}/documents/FP-RFI-1`));
+      expect(read.thread).toBe('FP-RFI-1');
+      expect(read.hold).toMatchObject({ side: w.project.plugin, reason: 'ask first' });
+      expect(read.standing).toEqual({
+        open: true,
+        overdue: true,
+        owner: [w.project.plugin],
+        recipients: [{ project: w.project.plugin, status: 'overdue', answeredBy: null }],
+      });
+    }
+  });
+
   it('shows a member that is party to nothing no other pair’s documents', async () => {
     expect(ok(await register('store'))).toMatchObject({ returned: 0, total: 0 });
   });

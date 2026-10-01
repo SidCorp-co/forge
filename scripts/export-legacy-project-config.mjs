@@ -16,12 +16,26 @@ import { pathToFileURL } from 'node:url';
 
 const LABEL = 'export-legacy-project-config';
 export const SECRET_MARK = 'present, re-enter as a project secret';
+export const DISCARDED_MARK = 'present, not printed: nothing reads it after the release';
 
 export const LEGACY_COLUMNS = [
   { table: 'projects', column: 'description', v1: 'nothing: a project carries no description' },
   { table: 'projects', column: 'kind', v1: 'source.type (website → storefront, standard → git)' },
   { table: 'projects', column: 'repo_url', v1: 'source.git.repository (host/owner/repo)' },
   { table: 'projects', column: 'workspace_setup', v1: 'workspace.setup' },
+  { table: 'projects', column: 'base_branch', v1: 'source.git.defaultBranch' },
+  {
+    table: 'projects',
+    column: 'webhook_secret',
+    v1: "nothing: no route reads it; a provider's webhook is verified with its binding's secret",
+    discard: true,
+  },
+  {
+    table: 'projects',
+    column: 'api_key',
+    v1: 'nothing: no route authenticated a project API key',
+    discard: true,
+  },
   {
     table: 'projects',
     column: 'release_chain',
@@ -85,6 +99,9 @@ const rollbackOf = (b) =>
       ? { from: 'connection', value: b.connection_rollback }
       : null;
 
+const held = (c, value) =>
+  c.discard && value !== null && value !== '' ? DISCARDED_MARK : redact(value, c.column);
+
 const ident = (s) => `"${s.replaceAll('"', '""')}"`;
 
 export async function readLegacyConfig(sql) {
@@ -122,7 +139,7 @@ export async function readLegacyConfig(sql) {
       slug: p.slug,
       name: p.name,
       archived: p.archived_at !== null,
-      legacy: Object.fromEntries(projectCols.map((c) => [c.column, redact(p[c.column], c.column)])),
+      legacy: Object.fromEntries(projectCols.map((c) => [c.column, held(c, p[c.column])])),
       bindings: bindings
         .filter((b) => b.project_id === p.id)
         .map((b) => ({

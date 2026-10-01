@@ -18,7 +18,6 @@ import {
 import {
   assertOrgAccess,
   assertOrgRoleOnProject,
-  assertProjectRole,
   assertUnfenced,
   loadPersonalOrgId,
   loadProjectAccess,
@@ -26,10 +25,10 @@ import {
   orgDerivedProjectRole,
   visibleProjectsWhere,
 } from '../lib/authz.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
+import { readDeclaredSource } from '../project-config/source.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
 import { assistantWeeklySchema } from './agent-config-schema.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
@@ -43,7 +42,7 @@ import {
 } from './retired-project-keys.js';
 import { badRequest, flatten, forbidden, idParamSchema, notFound } from './route-errors.js';
 import { projectRunnerRoutes } from './runners-routes.js';
-import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
+import { createProject, ProjectSlugTakenError, readProjectBranches } from './service.js';
 
 const createProjectFields = {
   slug: z
@@ -69,10 +68,8 @@ export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
 const updateProjectFields = {
   name: z.string().trim().min(1).max(200).optional(),
-  baseBranch: z.string().trim().max(100).nullable().optional(),
   issuePrefix: z.string().trim().max(16).nullable().optional(),
   assistantWeekly: assistantWeeklySchema.nullable().optional(),
-  webhookSecret: z.string().min(16).max(128).nullable().optional(),
   // Move the project to another org. Requires org owner/admin on BOTH the
   // current org (route gate) and the target org (checked in the handler).
   orgId: z.uuid().optional(),
@@ -181,7 +178,6 @@ projectRoutes.get('/', listQuery, async (c) => {
       createdBy: projects.createdBy,
       memberRole: projectMembers.role,
       orgRole: organizationMembers.role,
-      apiKey: projects.apiKey,
       issuePrefix: projects.issuePrefix,
       archivedAt: projects.archivedAt,
       createdAt: projects.createdAt,
@@ -206,16 +202,11 @@ projectRoutes.get('/', listQuery, async (c) => {
     // the new list[0] at once. Console display is unaffected (client-sorted).
     .orderBy(projects.id);
 
-  // apiKey is returned as-is — the caller has effective access (ADR 0013
-  // documents the key is embedded in the widget page anyway). Redacting broke
-  // the desktop MCP install (key.length < 16 → 401) and the web widget
-  // snippet generator.
   return c.json(
-    rows.map(({ memberRole, orgRole, apiKey, ...row }) => {
+    rows.map(({ memberRole, orgRole, ...row }) => {
       const role = maxProjectRole(memberRole ?? null, orgDerivedProjectRole(orgRole ?? null));
       return {
         ...row,
-        apiKey: role === 'viewer' ? null : apiKey,
         role,
         orgRole: orgRole ?? null,
       };
@@ -268,66 +259,15 @@ projectRoutes.get(
       .innerJoin(devices, eq(devices.id, runners.deviceId))
       .where(and(eq(runners.projectId, id), eq(runners.type, 'claude-code')));
 
-    // apiKey is returned for member+ (ADR 0013); the viewer tier is read-only
-    // and the key is execution-grade (MCP pairing / widget), so it's withheld.
     return c.json({
       ...project,
-      apiKey: access.role === 'viewer' ? null : project.apiKey,
+      baseBranch: (await readDeclaredSource(id)).defaultBranch,
       role: access.role,
       orgRole: access.orgRole,
       members,
       labels: labelRows,
       devicePool,
     });
-  },
-);
-
-projectRoutes.post(
-  '/:id/api-key/rotate',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
-
-    // Retry on the partial unique index violation. With 192 bits of
-    // entropy a collision is astronomical, but the `create` path already
-    // wraps inserts in `isUniqueViolation`; mirror the pattern so a freak
-    // collision presents as a 503 rather than an opaque 500.
-    let updated: { id: string; apiKey: string | null } | undefined;
-    let lastErr: unknown;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const apiKey = generateApiKey();
-        [updated] = await db
-          .update(projects)
-          .set({ apiKey })
-          .where(eq(projects.id, id))
-          .returning({ id: projects.id, apiKey: projects.apiKey });
-        break;
-      } catch (err) {
-        if (isUniqueViolation(err)) {
-          lastErr = err;
-          continue;
-        }
-        throw err;
-      }
-    }
-    if (!updated) {
-      if (lastErr) {
-        throw new HTTPException(503, {
-          message: 'failed to mint a unique api key — try again',
-          cause: { code: 'API_KEY_COLLISION' },
-        });
-      }
-      throw notFound();
-    }
-
-    return c.json({ id: updated.id, apiKey: updated.apiKey });
   },
 );
 
@@ -356,12 +296,10 @@ projectRoutes.patch(
       updates.orgId = patch.orgId;
     }
     if (patch.name !== undefined) updates.name = patch.name;
-    if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
 
     const agentConfigPatch: AgentConfigKeyPatch = {};
     if (patch.assistantWeekly !== undefined)
       agentConfigPatch.assistantWeekly = patch.assistantWeekly;
-    if (patch.webhookSecret !== undefined) updates.webhookSecret = patch.webhookSecret;
 
     const [updated] = await db.transaction(async (tx) => {
       await patchAgentConfigKeys(id, agentConfigPatch, tx);
@@ -417,7 +355,6 @@ const ARCHIVE_PROJECTION = {
   name: projects.name,
   orgId: projects.orgId,
   createdBy: projects.createdBy,
-  apiKey: projects.apiKey,
   archivedAt: projects.archivedAt,
   createdAt: projects.createdAt,
 } as const;
@@ -514,11 +451,7 @@ projectRoutes.get(
     const access = await loadProjectAccess(id, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    const [project] = await db
-      .select({ baseBranch: projects.baseBranch })
-      .from(projects)
-      .where(eq(projects.id, id))
-      .limit(1);
+    const project = await readProjectBranches(id);
     if (!project) throw notFound();
 
     const [issueRow] = await db

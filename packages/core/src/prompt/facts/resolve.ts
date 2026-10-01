@@ -227,14 +227,10 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let missingObligations: KnowledgeObligation[] = [];
   try {
     const [row] = await db
-      .select({
-        baseBranch: projects.baseBranch,
-        orgId: projects.orgId,
-      })
+      .select({ orgId: projects.orgId })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
-    baseBranch = row?.baseBranch ?? null;
 
     integrations = await loadActiveIntegrationRows(projectId, row?.orgId ?? null);
     modules = await loadProjectModules(projectId);
@@ -245,6 +241,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   document = held?.document ?? null;
   if (held) {
     const read = releasePathOf(held.revision, held.document);
+    baseBranch = read.ok ? read.path.defaultBranch : null;
     deploysFrom = read.ok ? promotedBranch(read.path) : null;
     production = read.ok ? (read.path.production?.name ?? null) : null;
     const named = await listTestingProfiles(projectId);
