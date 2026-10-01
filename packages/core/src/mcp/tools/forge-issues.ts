@@ -476,6 +476,7 @@ function parseDate(value: string, field: string): Date {
 
 export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
+  reach: 'project',
   grant: {
     byAction: {
       list: 'issues:read',

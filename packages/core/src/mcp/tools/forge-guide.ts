@@ -50,6 +50,18 @@ async function assertOrgAdmin(ctx: McpContext, orgId: string): Promise<string> {
 
 export const forgeGuideTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_guide',
+  reach: {
+    byAction: {
+      list: 'public',
+      get: 'public',
+      upsert: {
+        account: "writing an org's integration guide, which every project of the org reads",
+      },
+      delete: {
+        account: "deleting an org's integration guide, which every project of the org reads",
+      },
+    },
+  },
   grant: {
     byAction: {
       list: { none: 'the guide corpus GET /api/guides serves to anyone' },
