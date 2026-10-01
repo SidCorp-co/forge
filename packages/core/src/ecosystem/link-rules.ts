@@ -1,0 +1,294 @@
+import type { z } from 'zod';
+import type { ProjectMemberRole } from '../db/schema.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
+import { projectRoleAtLeast } from '../lib/authz.js';
+import {
+  type ApiRefusal,
+  isRecord,
+  parseVersionedDocument,
+  pointer,
+} from '../project-config/documents.js';
+import {
+  BUILDER_TRIGGERS,
+  type BuilderRunWrite,
+  builderRunWriteSchema,
+  FINDING_CLASSIFICATIONS,
+  LINK_STATES,
+  type LinkWrite,
+  linkWriteSchema,
+  REPO_PATH_MESSAGE,
+  STEP_STATUSES,
+} from './link-schema.js';
+import type { Checked, EcosystemRefusal, LinkRefusalCode } from './refusals.js';
+import type { InterfaceDocument } from './schema.js';
+
+const closed = (values: readonly string[]) => `one of ${values.join(' | ')}, and nothing else`;
+
+const ENUM_RENAMES: readonly [RegExp, LinkRefusalCode, string][] = [
+  [/^\/state$/, 'LINK_STATE_UNKNOWN', `a link's state is ${closed(LINK_STATES)}`],
+  [/^\/trigger\/kind$/, 'BUILDER_TRIGGER_UNKNOWN', `a builder run is ${closed(BUILDER_TRIGGERS)}`],
+  [/^\/steps\/\d+\/status$/, 'STEP_STATUS_UNKNOWN', `a step's status is ${closed(STEP_STATUSES)}`],
+  [
+    /^\/findings\/\d+\/classification$/,
+    'FINDING_CLASSIFICATION_UNKNOWN',
+    `a finding is ${closed(FINDING_CLASSIFICATIONS)}`,
+  ],
+];
+
+export function renameLinkParseRefusals(refusals: readonly ApiRefusal[]): EcosystemRefusal[] {
+  return refusals.map((r): EcosystemRefusal => {
+    if (r.code !== 'SCHEMA_VIOLATION') return r;
+    if (r.detail === REPO_PATH_MESSAGE) {
+      return {
+        code: 'PATH_OUTSIDE_REPO',
+        path: r.path,
+        detail: `${REPO_PATH_MESSAGE}; the path names a file inside the consumer's checkout and is stored as written, never resolved.`,
+      };
+    }
+    const hit = ENUM_RENAMES.find(([re]) => re.test(r.path));
+    return hit ? { code: hit[1], path: r.path, detail: `${r.detail}; ${hit[2]}.` } : r;
+  });
+}
+
+function ownedBy(
+  claimed: unknown,
+  projectId: string,
+  path: string,
+  what: string,
+): EcosystemRefusal[] {
+  if (claimed === undefined || claimed === projectId) return [];
+  return [
+    {
+      code: 'PROJECT_ID_IMMUTABLE',
+      path,
+      detail: `project ${JSON.stringify(claimed)} is not this project; ${what} written at /api/projects/${projectId} names ${projectId}.`,
+    },
+  ];
+}
+
+function parseOwned<T>(
+  schema: z.ZodType<T>,
+  raw: unknown,
+  what: string,
+  owner: EcosystemRefusal[],
+): Checked<T> {
+  const parsed = parseVersionedDocument(schema, raw, what);
+  if (!parsed.ok) {
+    return { ok: false, refusals: [...owner, ...renameLinkParseRefusals(parsed.refusals)] };
+  }
+  return owner.length > 0 ? { ok: false, refusals: owner } : parsed;
+}
+
+export function parseLink(raw: unknown, consumerId: string): Checked<LinkWrite> {
+  const claimed = isRecord(raw) && isRecord(raw.consumer) ? raw.consumer.project : undefined;
+  const owner = ownedBy(claimed, consumerId, '/consumer/project', 'a link');
+  return parseOwned(linkWriteSchema, raw, 'link', owner);
+}
+
+export function parseBuilderRun(raw: unknown, projectId: string): Checked<BuilderRunWrite> {
+  const owner = ownedBy(
+    isRecord(raw) ? raw.project : undefined,
+    projectId,
+    '/project',
+    'a builder run',
+  );
+  return parseOwned(builderRunWriteSchema, raw, 'builder-run', owner);
+}
+
+export interface WriterFacts {
+  userId: string;
+  agency: ActorAgency;
+  role: ProjectMemberRole | null;
+}
+
+// cm:why a link and a builder run are the consuming project's own finding in its own code, so only that project's agent writes them: a person, a viewer, a counterparty's agent or a token fenced elsewhere is refused before anything is read
+export function writerRefusal(
+  facts: WriterFacts,
+  projectId: string,
+  code: 'LINK_WRITER_NOT_CONSUMER' | 'BUILDER_RUN_WRITER_NOT_PROJECT',
+): EcosystemRefusal | null {
+  if (facts.agency === 'agent' && projectRoleAtLeast(facts.role, 'member')) return null;
+  const held =
+    facts.agency !== 'agent'
+      ? `${facts.userId} acts as a person`
+      : `agent ${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}`;
+  return {
+    code,
+    path: '',
+    detail: `${held}; this is written only by project ${projectId}'s own agent (its master or a run it dispatched) holding member or above, through a token that reaches the project. The provider never writes or confirms it.`,
+  };
+}
+
+export interface ProviderSide {
+  id: string;
+  activeIn: ReadonlySet<string>;
+  interface: InterfaceDocument | null;
+}
+
+export interface LinkWorld {
+  consumerActiveIn: ReadonlySet<string>;
+  provider: ProviderSide | null;
+  versions: ReadonlySet<string>;
+  duplicateOf: string | null;
+}
+
+function guideRefusals(doc: LinkWrite): EcosystemRefusal[] {
+  if (doc.state === 'building' || doc.callSites.length > 0) return [];
+  return [
+    {
+      code: 'LINK_GUIDE_WITHOUT_CALL_SITE',
+      path: '/callSites',
+      detail: `a link in state ${doc.state} names at least one call site; only a link still being built may carry none.`,
+    },
+  ];
+}
+
+function memberRefusals(doc: LinkWrite, world: LinkWorld): EcosystemRefusal[] {
+  const out: EcosystemRefusal[] = [];
+  if (!world.consumerActiveIn.has(doc.ecosystem)) {
+    out.push({
+      code: 'LINK_CONSUMER_NOT_MEMBER',
+      path: '/ecosystem',
+      detail: `project ${doc.consumer.project} is not an active member of ecosystem ${doc.ecosystem}; a project links only inside an ecosystem it has joined.`,
+    });
+  }
+  if (world.provider && !world.provider.activeIn.has(doc.ecosystem)) {
+    out.push({
+      code: 'LINK_PROVIDER_NOT_MEMBER',
+      path: '/contract/provider',
+      detail: `provider ${doc.contract.provider} is not an active member of ecosystem ${doc.ecosystem}; a link reaches only a contract published inside an ecosystem both sides belong to.`,
+    });
+  }
+  return out;
+}
+
+function referenceRefusals(doc: LinkWrite, world: LinkWorld): EcosystemRefusal[] {
+  const ref = `${doc.contract.provider}/${doc.contract.slug}`;
+  if (doc.contract.provider === doc.consumer.project) {
+    return [
+      {
+        code: 'SELF_CONSUMPTION',
+        path: '/contract/provider',
+        detail: `${ref} is this project's own contract; a project never links to itself.`,
+      },
+    ];
+  }
+  const members = memberRefusals(doc, world);
+  if (!world.provider) {
+    return [
+      ...members,
+      {
+        code: 'REF_UNRESOLVED',
+        path: '/contract/provider',
+        detail: `no project has the id ${doc.contract.provider}.`,
+      },
+    ];
+  }
+  if (members.length > 0) return members;
+  const pub = world.provider.interface?.publishes[doc.contract.slug];
+  if (!pub?.ecosystems.includes(doc.ecosystem)) {
+    return [
+      {
+        code: 'REF_NOT_PUBLISHED',
+        path: '/contract/slug',
+        detail: `${ref} is not a contract its provider publishes in ecosystem ${doc.ecosystem}; a link reaches only a published contract, never a module or a guess.`,
+      },
+    ];
+  }
+  if (world.versions.has(doc.pinnedVersion)) return [];
+  const known = world.versions.size > 0 ? [...world.versions].sort().join(', ') : 'none yet';
+  return [
+    {
+      code: 'VERSION_UNKNOWN',
+      path: '/pinnedVersion',
+      detail: `${ref} has no recorded version "${doc.pinnedVersion}" (recorded: ${known}); pinnedVersion names a version core has recorded for that contract.`,
+    },
+  ];
+}
+
+export function checkLink(doc: LinkWrite, world: LinkWorld): EcosystemRefusal[] {
+  const out = [...guideRefusals(doc), ...referenceRefusals(doc, world)];
+  if (world.duplicateOf !== null) {
+    out.push({
+      code: 'LINK_DUPLICATE',
+      path: '/consumer/module',
+      detail: `link ${world.duplicateOf} already joins ${doc.consumer.module} to ${doc.contract.provider}/${doc.contract.slug}; a module links to a contract once, and that link is refreshed by PUT, not written again.`,
+    });
+  }
+  return out;
+}
+
+const changed = (a: unknown, b: unknown) => JSON.stringify(a) !== JSON.stringify(b);
+
+function immutable(
+  pairs: readonly [string, unknown, unknown][],
+  code: 'LINK_IDENTITY_IMMUTABLE' | 'BUILDER_RUN_IMMUTABLE',
+  what: string,
+): EcosystemRefusal[] {
+  return pairs
+    .filter(([, was, now]) => changed(was, now))
+    .map(([path, was]) => ({
+      code,
+      path,
+      detail: `${what}, so ${path} stays ${JSON.stringify(was)}; write a new one instead.`,
+    }));
+}
+
+export const linkIdentityRefusals = (stored: LinkWrite, next: LinkWrite) =>
+  immutable(
+    [
+      ['/ecosystem', stored.ecosystem, next.ecosystem],
+      ['/consumer/module', stored.consumer.module, next.consumer.module],
+      ['/contract', stored.contract, next.contract],
+    ],
+    'LINK_IDENTITY_IMMUTABLE',
+    'a link is one module joined to one contract in one ecosystem',
+  );
+
+export const builderRunIdentityRefusals = (stored: BuilderRunWrite, next: BuilderRunWrite) =>
+  immutable(
+    [
+      ['/ecosystem', stored.ecosystem, next.ecosystem],
+      ['/trigger', stored.trigger, next.trigger],
+    ],
+    'BUILDER_RUN_IMMUTABLE',
+    'a builder run is one trigger in one ecosystem',
+  );
+
+export interface BuilderRunWorld {
+  projectActiveIn: ReadonlySet<string>;
+  published: ReadonlySet<string>;
+  links: ReadonlySet<string>;
+}
+
+export const contractKey = (c: { provider: string; slug: string }) => `${c.provider}/${c.slug}`;
+
+export function checkBuilderRun(doc: BuilderRunWrite, world: BuilderRunWorld): EcosystemRefusal[] {
+  if (!world.projectActiveIn.has(doc.ecosystem)) {
+    return [
+      {
+        code: 'BUILDER_RUN_NOT_MEMBER',
+        path: '/ecosystem',
+        detail: `project ${doc.project} is not an active member of ecosystem ${doc.ecosystem}; a builder run reads its own code against an ecosystem it has joined.`,
+      },
+    ];
+  }
+  const out: EcosystemRefusal[] = [];
+  doc.findings.forEach((f, i) => {
+    if (f.classification !== 'matched' || world.published.has(contractKey(f.contract))) return;
+    out.push({
+      code: 'REF_NOT_PUBLISHED',
+      path: pointer(['findings', i, 'contract']),
+      detail: `${contractKey(f.contract)} is not a contract an active member publishes in ecosystem ${doc.ecosystem}; a finding that matched nothing published is outside_ecosystem or unknown.`,
+    });
+  });
+  doc.links.forEach((id, i) => {
+    if (world.links.has(id)) return;
+    out.push({
+      code: 'BUILDER_RUN_LINK_UNKNOWN',
+      path: pointer(['links', i]),
+      detail: `link ${id} is not one project ${doc.project} holds in ecosystem ${doc.ecosystem}; a run names only links it wrote.`,
+    });
+  });
+  return out;
+}
