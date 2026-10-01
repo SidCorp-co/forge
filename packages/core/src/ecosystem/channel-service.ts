@@ -216,6 +216,7 @@ async function checked(
     from: doc.from,
     documents,
     threads: root ? [root] : [],
+    cites: doc,
   });
   const refusals = documentRefusals(doc, world);
   if (refusals.length > 0) throw new Refused(refusals);

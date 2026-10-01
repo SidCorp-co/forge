@@ -1,5 +1,5 @@
-import { sql } from 'drizzle-orm';
 import { expect } from 'vitest';
+import { seedContractVersion } from './contract-versions.js';
 import {
   type Doc,
   type EcosystemWorld,
@@ -33,10 +33,11 @@ export async function openChannelWorld(): Promise<ChannelWorld> {
   const w = await openWorld();
   await formEcosystem(w);
   await writeInterfaces(w);
-  await w.harness.db.execute(sql`
-    INSERT INTO contract_versions (provider_project_id, contract_slug, version)
-    VALUES (${w.project.forge}, 'forge-api', '2026-10-01')
-  `);
+  await seedContractVersion(w.harness.db, {
+    providerId: w.project.forge,
+    ref: 'forge/forge-api',
+    version: '2026-10-01',
+  });
   const { mintPat } = await import('../../src/auth/pat.js');
   const agentOn = async (projectId: string) => {
     const agent = (await createTestUser(w.harness.db, { kind: 'agent' })).id;
