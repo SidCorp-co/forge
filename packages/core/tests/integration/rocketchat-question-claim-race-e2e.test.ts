@@ -8,6 +8,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { seedBinding } from '../helpers/seed-binding.js';
 
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 
@@ -113,7 +114,7 @@ async function bindRoom(rid = 'room-1'): Promise<string> {
     config: { serverUrl: 'https://chat.example.com' },
     secrets: { authToken: 'tok', userId: 'bot' },
   });
-  await store.createBinding({
+  await seedBinding({
     connectionId: connection.id,
     projectId,
     provider: 'rocketchat',

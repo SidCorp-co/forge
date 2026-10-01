@@ -362,11 +362,19 @@ describe('classifyRollback', () => {
   it('is what resolveReleaseChannels returns for the production binding', async () => {
     gatedOn();
     findBinding.mockResolvedValue(
-      binding({ provider: 'coolify', bindingConfig: { rollback: 'redeploy by hand' } }),
+      binding({ provider: 'coolify', connectionConfig: { rollback: 'redeploy by hand' } }),
     );
     expect((await resolveReleaseChannels(PROJECT_ID))[0]?.rollback).toEqual({
       kind: 'unrepresentable',
       text: 'redeploy by hand',
     });
+  });
+
+  it('reads no rollback off the binding, which binding-v1 removed', async () => {
+    gatedOn();
+    findBinding.mockResolvedValue(
+      binding({ provider: 'coolify', bindingConfig: { rollback: { mode: 'coolify-image' } } }),
+    );
+    expect((await resolveReleaseChannels(PROJECT_ID))[0]?.rollback).toBeNull();
   });
 });

@@ -1,41 +1,22 @@
-import { randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
-import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
+import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import {
-  AGENT_ACCESS_CLOSED,
-  AGENT_ACCESS_VALUES,
-  type AgentAccess,
-  agentAccessTier,
-  noAgentPathMessage,
-} from './agent-access.js';
-import { cannotDeployMessage, retiredStagesField, roleSchema } from './binding-shape.js';
 import { raceWithTimeout } from './probe.js';
 import {
   applySecretsPatch,
-  configSchemaForProvider,
   connectionConfigSchemaForProvider,
   connectionCreateSchema,
   connectionUpdateSchema,
-  splitProviderConfig,
 } from './provider-schemas.js';
-import { getAdapter, getIntegration, providerCanDeploy } from './registry.js';
+import { getAdapter } from './registry.js';
 import { withdrawNulls } from './release-channel-schema.js';
 import {
-  alreadyExists,
-  assertAdmin,
-  assertNoActiveBindingClash,
-  assertProjectMember,
   assertVaultConfigured,
   badRequest,
-  buildCreatedBindingResponse,
+  bindingWriteMoved,
   defaultConnectionDisplayName,
   forbidden,
   notFound,
@@ -47,7 +28,6 @@ import {
 } from './route-helpers.js';
 import {
   buildContextFromBinding,
-  createBinding,
   createConnection,
   findConnectionById,
   type IntegrationConnectionRow,
@@ -57,7 +37,6 @@ import {
   softDeleteConnection,
   updateConnection,
 } from './store.js';
-import type { IntegrationProvider } from './types.js';
 
 async function loadManageableConnection(
   id: string,
@@ -137,124 +116,9 @@ integrationConnectionsRoutes.post(
   },
 );
 
-// Bind an EXISTING connection to a project — no secrets (the connection
-// already holds the credential). Owner-only on the connection + admin on the
-// TARGET project. Contrast the create path (POST /:projectId/integrations) which
-// always mints a NEW connection from the request body's secrets.
-const bindExistingSchema = z.object({
-  projectId: z.string().min(1),
-  role: roleSchema,
-  stages: retiredStagesField,
-  // Binding-tier overrides (coolify resourceUuid/branch) so a shared connection
-  // can target a different Coolify resource per project. Connection-tier keys
-  // are validated then dropped — a bind must not shadow the shared baseUrl.
-  config: z.record(z.string(), z.unknown()).optional(),
-  // ISS-1071 — the third door onto `integration_bindings`, so it takes the same field. Sharing an
-  // existing credential into a project is still a connect, and whether agents there may use it is
-  // still a property of the binding it creates rather than of a map somewhere else.
-  agentAccess: z.enum(AGENT_ACCESS_VALUES).optional(),
+integrationConnectionsRoutes.post('/:id/bindings', () => {
+  throw bindingWriteMoved('POST /api/integration-connections/:id/bindings');
 });
-
-integrationConnectionsRoutes.post(
-  '/:id/bindings',
-  zValidator('json', bindExistingSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
-  }),
-  async (c) => {
-    const id = c.req.param('id');
-    const userId = c.get('userId');
-    // user-owned: owner-only; org-owned: org admin (not-found for outsiders).
-    const connection = await loadManageableConnection(id, userId);
-    const body = c.req.valid('json');
-    // Admin on the target project (mirrors the create path's authorization).
-    const role = await assertProjectMember(body.projectId, userId);
-    assertAdmin(role);
-    // An org-owned connection is shareable only within its own org.
-    if (connection.ownerType === 'org') {
-      const [targetProject] = await db
-        .select({ orgId: projects.orgId })
-        .from(projects)
-        .where(eq(projects.id, body.projectId))
-        .limit(1);
-      if (!targetProject || targetProject.orgId !== connection.ownerId) {
-        throw new HTTPException(409, {
-          message: 'org connection can only bind to projects in its own org',
-          cause: { code: 'ORG_MISMATCH' },
-        });
-      }
-    }
-
-    const provider = connection.provider as IntegrationProvider;
-    // The body is validated before the connection is loaded, so the provider-capability half of
-    // `checkBindingShape` could not run there — the provider comes from the connection, not the body.
-    if (body.role === 'deploy' && !providerCanDeploy(provider)) {
-      throw badRequest(cannotDeployMessage(provider));
-    }
-    // One active SERVICE binding per (project, provider); deploy bindings are unconstrained.
-    await assertNoActiveBindingClash(body.projectId, provider, body.role);
-
-    // Optional per-project deploy-target overrides, validated against the
-    // provider's partial schema then reduced to binding-tier keys only.
-    let bindingConfig: Record<string, unknown> = {};
-    if (body.config) {
-      const parsed = configSchemaForProvider(provider).safeParse(body.config);
-      if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-      bindingConfig = splitProviderConfig(provider, parsed.data as Record<string, unknown>).binding;
-    }
-
-    // Same tier rule as the two project-side doors (ISS-1071 rule 5): a `direct-mcp` grant puts the
-    // credential on a runner box, so it takes the org-admin escalation; a `core-mediated` grant does
-    // not; a provider with no agent path is refused by name rather than storing an inert value.
-    const bindingAgentAccess: AgentAccess = body.agentAccess ?? AGENT_ACCESS_CLOSED;
-    if (bindingAgentAccess !== AGENT_ACCESS_CLOSED) {
-      const tier = agentAccessTier(getIntegration(provider));
-      if (tier === 'refused') throw badRequest(noAgentPathMessage(provider));
-      if (tier === 'org-admin') {
-        const access = await effectiveProjectRole(userId, body.projectId);
-        if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
-      }
-    }
-
-    const integrationSecret =
-      getAdapter(provider)?.inboundSecret?.(connection) ??
-      `whsec_${randomBytes(24).toString('hex')}`;
-    let binding: Awaited<ReturnType<typeof createBinding>>;
-    try {
-      binding = await createBinding({
-        connectionId: id,
-        projectId: body.projectId,
-        provider,
-        role: body.role,
-        config: bindingConfig,
-        integrationSecret,
-        agentAccess: bindingAgentAccess,
-      });
-    } catch (err) {
-      // No connection rollback here — we did not create one (contrast the create
-      // path, which soft-deletes its just-minted connection on a binding clash).
-      if (isUniqueViolation(err)) throw alreadyExists();
-      throw err;
-    }
-    // Whatever this provider declares it does on bind, and whatever it says the response should
-    // carry about it. A provider declaring nothing adds nothing — there is no default to guess at.
-    const bindEffects =
-      (await getAdapter(provider)?.onBindingCreated?.({
-        projectId: body.projectId,
-        role: body.role,
-        config: bindingConfig as Record<string, unknown>,
-      })) ?? {};
-    notifyConnectionChanged(provider, id);
-    // Re-probe on bind so the target project starts from current health rather
-    // than whatever the connection last recorded (ISS-429).
-    return c.json(
-      {
-        ...(await buildCreatedBindingResponse({ binding, connection }, integrationSecret)),
-        ...bindEffects,
-      },
-      201,
-    );
-  },
-);
 
 integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   const id = c.req.param('id');

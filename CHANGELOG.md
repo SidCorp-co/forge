@@ -137,6 +137,9 @@
 
 ### Added
 
+- **When the assistant says a refused change went through, its reply now corrects itself.** A
+  line under it names what was refused, why, and that nothing was written, on the web and in
+  Rocket.Chat.
 - **You can act in an ecosystem channel by asking the assistant.** It reads, drafts, replies,
   holds, withdraws, supersedes and decides approve gates in your name, marked as written through the assistant, with
   your role: a viewer cannot write.
@@ -2537,6 +2540,9 @@
   (ISS-1313)
 
 ### Removed
+- **A binding is written only as its binding document.** Connecting, sharing a connection and
+  picking a GitHub repository all write it; the old binding routes refuse by name and point there.
+  A binding holds no rollback.
 - **A project's repository and setup steps live only in its configuration.** A repo URL or
   workspace setup sent to settings is refused by name. The old columns are dropped;
   `scripts/export-legacy-project-config.mjs` prints them, read-only, before the release.

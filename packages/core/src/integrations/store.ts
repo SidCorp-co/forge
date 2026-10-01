@@ -8,7 +8,6 @@ import {
   type ObservedEndpoint,
   organizationMembers,
 } from '../db/schema.js';
-import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
 import { getIntegration } from './registry.js';
 import type { AdapterContext, IntegrationProvider } from './types.js';
 import { decryptJson, encryptJson } from './vault.js';
@@ -300,39 +299,6 @@ export async function updateConnection(
   return row ?? null;
 }
 
-export interface CreateBindingInput {
-  connectionId: string;
-  projectId: string;
-  provider: IntegrationProvider;
-  role: BindingRole;
-  config?: Record<string, unknown>;
-  integrationSecret?: string | null;
-  /** ISS-558 — empty string (default) = unlabeled/default binding;
-   *  non-empty kebab = a named extra epodsystem binding. */
-  label?: string;
-  /** ISS-1071 — whether agents on this project may use the binding. Closed unless asked for. */
-  agentAccess?: AgentAccess;
-}
-
-export async function createBinding(input: CreateBindingInput): Promise<IntegrationBindingRow> {
-  const [row] = await db
-    .insert(integrationBindings)
-    .values({
-      connectionId: input.connectionId,
-      projectId: input.projectId,
-      provider: input.provider,
-      role: input.role,
-      config: input.config ?? {},
-      integrationSecret: input.integrationSecret ?? null,
-      label: input.label ?? '',
-      active: true,
-      agentAccess: input.agentAccess ?? AGENT_ACCESS_CLOSED,
-    })
-    .returning();
-  if (!row) throw new Error('createBinding: insert returned no row');
-  return row;
-}
-
 export async function softDeleteConnection(id: string): Promise<void> {
   await db
     .update(integrationConnections)
@@ -348,12 +314,9 @@ export async function softDeleteBinding(id: string): Promise<void> {
 }
 
 export interface UpdateBindingPatch {
-  config?: Record<string, unknown>;
   integrationSecret?: string | null;
   active?: boolean;
-  label?: string;
   instructions?: string | null;
-  agentAccess?: AgentAccess;
 }
 
 export async function updateBinding(
@@ -361,12 +324,9 @@ export async function updateBinding(
   patch: UpdateBindingPatch,
 ): Promise<IntegrationBindingRow | null> {
   const set: Record<string, unknown> = { updatedAt: new Date() };
-  if (patch.config !== undefined) set.config = patch.config;
   if (patch.integrationSecret !== undefined) set.integrationSecret = patch.integrationSecret;
   if (patch.active !== undefined) set.active = patch.active;
-  if (patch.label !== undefined) set.label = patch.label;
   if (patch.instructions !== undefined) set.instructions = patch.instructions;
-  if (patch.agentAccess !== undefined) set.agentAccess = patch.agentAccess;
   const [row] = await db
     .update(integrationBindings)
     .set(set)

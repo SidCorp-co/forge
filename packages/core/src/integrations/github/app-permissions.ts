@@ -96,7 +96,7 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     permission: null,
     level: null,
     callSites: [
-      'install-resolve.ts:findBindingOwningInstallation',
+      'install-resolve.ts:findConnectionOwningInstallation',
       'installation-permissions.ts:readInstallationGrants',
     ],
     docs: `${REST}/apps/apps#get-an-installation-for-the-authenticated-app`,

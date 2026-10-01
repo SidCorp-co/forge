@@ -99,7 +99,6 @@ vi.mock('../route-helpers.js', () => ({
 }));
 
 const store = vi.hoisted(() => ({
-  createBinding: vi.fn(async () => ({ id: 'binding-new' })),
   createConnection: vi.fn(async () => ({ id: CONNECTION_ID })),
   decryptConnectionSecrets: vi.fn((): { appId?: string; privateKey?: string } => ({
     appId: '42',

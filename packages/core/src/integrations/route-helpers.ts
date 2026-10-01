@@ -10,7 +10,6 @@ import {
   type BindingWithConnection,
   buildContextFromBinding,
   effectiveConfig,
-  findActiveServiceBindingAtLabel,
   findBindingWithConnectionById,
   type IntegrationBindingRow,
   type IntegrationConnectionRow,
@@ -45,27 +44,16 @@ export const alreadyExists = (
  * (project, provider) — 409 ALREADY_EXISTS on a clash. (Epodsystem creates check by label
  * instead — see the create route.)
  */
-export async function assertNoActiveBindingClash(
-  projectId: string,
-  provider: IntegrationProvider,
-  role: BindingRole,
-  label = '',
-): Promise<void> {
-  if (role !== 'service') return;
-  const clash = await findActiveServiceBindingAtLabel(projectId, provider, label);
-  if (clash)
-    throw alreadyExists(
-      label ? `integration already exists for this provider (label "${label}")` : undefined,
-    );
+export const BINDING_DOOR =
+  'PUT /api/projects/:projectId/bindings/:bindingId { baseRevision, document } (a binding-v1 document)';
+
+export function bindingWriteMoved(what: string): HTTPException {
+  return new HTTPException(410, {
+    message: `${what} no longer writes a binding: a binding is written only through ${BINDING_DOOR}. A connection is created with POST /api/integration-connections and named in the document's \`connection\`.`,
+    cause: { code: 'BINDING_WRITE_MOVED' },
+  });
 }
 
-/**
- * Tell a provider its connection changed, where the provider declares that it cares.
- *
- * Rocket.Chat is the only one today — it holds a realtime socket that must be rebuilt against the
- * new credential — but this names no provider: the hook is an adapter method, so the next provider
- * with a live process declares it in its own directory and this helper is not edited at all.
- */
 export function notifyConnectionChanged(provider: string, connectionId: string): void {
   getAdapter(provider)?.onConnectionChanged?.(connectionId);
 }
@@ -210,7 +198,7 @@ const INITIAL_PROBE_TIMEOUT_MS = 5_000;
  *  sweep's per-probe budget. */
 export const TEST_PROBE_TIMEOUT_MS = 10_000;
 
-async function runInitialHealthcheck(
+export async function runInitialHealthcheck(
   pair: BindingWithConnection,
 ): Promise<HealthCheckResult | null> {
   const adapter = getAdapter(pair.binding.provider);
@@ -227,11 +215,6 @@ async function runInitialHealthcheck(
   }
 }
 
-/**
- * Shared tail of the two binding-creating endpoints (create + bind-existing,
- * ISS-429/431): immediate probe, re-read for fresh health/config (the probe
- * mutates the connection), broadcast, and the 201 payload.
- */
 export async function buildCreatedBindingResponse(
   pair: BindingWithConnection,
   integrationSecret: string,

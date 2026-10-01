@@ -6,6 +6,7 @@
  */
 
 import { eq } from 'drizzle-orm';
+import { correctFalseClaims } from '../../assistant/confab.js';
 import { runExternalChatTurn } from '../../assistant/external-chat.js';
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import type { ChatToolset } from '../../assistant/tools/mcp-adapter.js';
@@ -193,7 +194,9 @@ async function synthesizeWith(
       userKey: meta.askedByUsername || null,
     });
 
-  let result = await synthesise(null);
+  const first = await synthesise(null);
+  const calls = [...first.toolCalls];
+  let result = { ...first, reply: correctFalseClaims(first.reply, calls).text };
 
   const outcome = await withRepairs('escalation-synthesis', [result.reply], {
     screen: async (segments): Promise<MessageVerdict> => {
@@ -211,7 +214,9 @@ async function synthesizeWith(
         { sessionId: session.id, rid: meta.rid, problems: problemsOf(verdict) },
         'rocketchat.escalation: synthesis failed the screen; one corrective retry',
       );
-      result = await synthesise(correctiveSynthesis(problemsOf(verdict)));
+      const retried = await synthesise(correctiveSynthesis(problemsOf(verdict)));
+      calls.push(...retried.toolCalls);
+      result = { ...retried, reply: correctFalseClaims(retried.reply, calls).text };
       return [result.reply];
     },
   });

@@ -11,6 +11,7 @@ export const rocketchat: ProviderModule = {
   agentPathKind: "none",
   mcpServerName: null,
   multiBinding: false,
+  bindingKeys: ["rids"],
   target: (config) => urlHost(config.serverUrl),
   section: () => import("./section").then((m) => ({ default: m.RocketchatSection })),
   connectionSection: () =>

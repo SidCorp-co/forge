@@ -28,11 +28,9 @@ import {
   notFound,
 } from '../route-helpers.js';
 import {
-  createBinding,
   createConnection,
   decryptConnectionSecrets,
   type IntegrationConnectionRow,
-  listActiveBindingsForProjectProvider,
   listBindingsForProject,
   listConnectionsForPrincipalUser,
 } from '../store.js';
@@ -44,7 +42,7 @@ import {
   signConnectState,
   verifyConnectState,
 } from './connect.js';
-import { findBindingOwningInstallation } from './install-resolve.js';
+import { findConnectionOwningInstallation } from './install-resolve.js';
 import { listInstallationRepositories } from './repositories.js';
 
 const invalidQuery = (result: { success: boolean; error?: z.core.$ZodError }) => {
@@ -281,15 +279,6 @@ githubCallbackRoutes.get(
       },
     });
 
-    await createBinding({
-      connectionId: connection.id,
-      projectId: state.projectId,
-      provider: 'github',
-      role: 'service',
-      config: {},
-      integrationSecret: app.webhookSecret,
-    });
-
     logger.info(
       { projectId: state.projectId, appId: app.appId, connectionId: connection.id },
       'github: app created from manifest',
@@ -318,18 +307,11 @@ githubCallbackRoutes.get(
     if (rawState && !state) throw badRequest({ state: 'invalid or expired' });
     if (state && state.userId !== userId) throw badRequest({ state: 'issued for another user' });
 
-    const pair = state
-      ? (await listActiveBindingsForProjectProvider(state.projectId, 'github'))[0]
-      : await findBindingOwningInstallation({ userId, installationId });
-    if (!pair) throw notFound('github binding');
-
-    const projectId = state?.projectId ?? pair.binding.projectId;
+    const owner = state ? null : await findConnectionOwningInstallation({ userId, installationId });
+    if (!state && !owner) throw notFound('github app');
+    const projectId = state?.projectId ?? owner?.projectId ?? null;
+    if (!projectId) return c.redirect(`${webBaseUrl()}/integrations`);
     assertAdmin(await assertProjectMember(projectId, userId));
-
-    const { updateBinding } = await import('../store.js');
-    await updateBinding(pair.binding.id, {
-      config: { ...(pair.binding.config as Record<string, unknown>), installationId },
-    });
 
     return c.redirect(`${webBaseUrl()}/projects/${projectId}/settings/integrations`);
   },

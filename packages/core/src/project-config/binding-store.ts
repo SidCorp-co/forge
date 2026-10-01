@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import type { BindingRole } from '../db/release-axes.js';
+import type { AgentAccess, BindingRole } from '../db/release-axes.js';
 import { integrationBindings, integrationConnections, projects } from '../db/schema.js';
 import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
@@ -12,6 +12,8 @@ export interface StoredBinding {
   provider: string;
   role: BindingRole;
   config: unknown;
+  label: string;
+  agentAccess: AgentAccess;
   active: boolean;
   revision: number;
 }
@@ -31,10 +33,12 @@ export interface BindingWrite {
   provider: string;
   role: BindingRole;
   config: Record<string, unknown>;
+  label: string;
+  agentAccess: AgentAccess;
 }
 
 export type BindingCasResult =
-  | { ok: true; stored: StoredBinding; created: boolean }
+  | { ok: true; stored: StoredBinding; created: boolean; changed: boolean }
   | { ok: false; reason: 'stale'; storedRevision: number | null }
   | { ok: false; reason: 'foreign' }
   | { ok: false; reason: 'service-clash' };
@@ -45,7 +49,9 @@ export interface BindingStore {
   readConnection(id: string): Promise<ConnectionFacts | null>;
   projectOrgId(projectId: string): Promise<string | null>;
   isOrgAdmin(orgId: string, userId: string): Promise<boolean>;
-  casBinding(input: BindingWrite & { baseRevision: number | null }): Promise<BindingCasResult>;
+  casBinding(
+    input: BindingWrite & { baseRevision: number | null; integrationSecret: () => Promise<string> },
+  ): Promise<BindingCasResult>;
 }
 
 const bindingColumns = {
@@ -55,6 +61,8 @@ const bindingColumns = {
   provider: integrationBindings.provider,
   role: integrationBindings.role,
   config: integrationBindings.config,
+  label: integrationBindings.label,
+  agentAccess: integrationBindings.agentAccess,
   active: integrationBindings.active,
   revision: integrationBindings.revision,
 };
@@ -105,7 +113,7 @@ export const drizzleBindingStore: BindingStore = {
     return orgRoleAtLeast(await loadOrgRole(orgId, userId), 'admin');
   },
 
-  async casBinding({ baseRevision, ...write }) {
+  async casBinding({ baseRevision, integrationSecret, ...write }) {
     try {
       return await db.transaction(async (tx) => {
         await tx.execute(
@@ -119,7 +127,7 @@ export const drizzleBindingStore: BindingStore = {
         if (current && current.projectId !== write.projectId) {
           return { ok: false as const, reason: 'foreign' as const };
         }
-        const storedRevision = current?.revision ?? null;
+        const storedRevision = current?.active ? current.revision : null;
         if (storedRevision !== baseRevision) {
           return { ok: false as const, reason: 'stale' as const, storedRevision };
         }
@@ -128,6 +136,8 @@ export const drizzleBindingStore: BindingStore = {
           provider: write.provider,
           role: write.role,
           config: write.config,
+          label: write.label,
+          agentAccess: write.agentAccess,
           active: true,
         };
         if (
@@ -135,9 +145,11 @@ export const drizzleBindingStore: BindingStore = {
           current.connectionId === values.connectionId &&
           current.provider === values.provider &&
           current.role === values.role &&
+          current.label === values.label &&
+          current.agentAccess === values.agentAccess &&
           JSON.stringify(current.config) === JSON.stringify(values.config)
         ) {
-          return { ok: true as const, stored: current, created: false };
+          return { ok: true as const, stored: current, created: false, changed: false };
         }
         const [row] = current
           ? await tx
@@ -147,10 +159,15 @@ export const drizzleBindingStore: BindingStore = {
               .returning(bindingColumns)
           : await tx
               .insert(integrationBindings)
-              .values({ id: write.id, projectId: write.projectId, ...values })
+              .values({
+                id: write.id,
+                projectId: write.projectId,
+                integrationSecret: await integrationSecret(),
+                ...values,
+              })
               .returning(bindingColumns);
         if (!row) throw new Error('project-config: binding write returned no row');
-        return { ok: true as const, stored: row, created: true };
+        return { ok: true as const, stored: row, created: !current, changed: true };
       });
     } catch (err) {
       if (isUniqueViolation(err)) return { ok: false, reason: 'service-clash' };

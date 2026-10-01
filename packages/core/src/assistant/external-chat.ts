@@ -127,6 +127,7 @@ export interface ExternalChatTurnResult {
     arguments: string;
     resultIssueRefs?: readonly string[];
     isError?: boolean;
+    refusalCode?: string | null;
   }>;
   /** The progress snapshot injected into THIS turn's system prompt (ISS-671), or `null` on a computation failure; callers screen the reply against it rather than re-querying, so the guard never bounces a reply that matched what the model was shown. */
   progress: ProjectProgress | null;

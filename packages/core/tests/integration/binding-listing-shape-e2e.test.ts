@@ -24,6 +24,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { seedBinding as insertBinding } from '../helpers/seed-binding.js';
 
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 
@@ -31,7 +32,6 @@ type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   createConnection: typeof import('../../src/integrations/store.js').createConnection;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  createBinding: typeof import('../../src/integrations/store.js').createBinding;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
 };
@@ -57,7 +57,6 @@ beforeAll(async () => {
   const store = await import('../../src/integrations/store.js');
   mods = {
     createConnection: store.createConnection,
-    createBinding: store.createBinding,
     signUserToken: (await import('../../src/auth/jwt.js')).signUserToken,
   };
 
@@ -96,7 +95,7 @@ async function seedBinding(): Promise<string> {
     displayName: 'Sentry',
     secrets: { authToken: 'tok' },
   });
-  await mods.createBinding({
+  await insertBinding({
     connectionId: connection.id,
     projectId,
     provider: 'sentry',

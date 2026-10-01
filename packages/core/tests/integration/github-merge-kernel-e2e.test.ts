@@ -10,6 +10,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { seedBinding } from '../helpers/seed-binding.js';
 
 type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
@@ -23,7 +24,6 @@ type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   createConnection: typeof import('../../src/integrations/store.js').createConnection;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  createBinding: typeof import('../../src/integrations/store.js').createBinding;
 };
 
 const OWNER = 'SidCorp-co';
@@ -162,7 +162,6 @@ beforeAll(async () => {
     openPullRequest: agentOps.openPullRequest,
     projectOpenedPullRequest: openedMod.projectOpenedPullRequest,
     createConnection: store.createConnection,
-    createBinding: store.createBinding,
   };
 }, 60_000);
 
@@ -197,7 +196,7 @@ beforeEach(async () => {
     displayName: 'GitHub App test',
     secrets: { appId: randomUUID(), privateKey: APP_PRIVATE_KEY, webhookSecret: 'whs' },
   });
-  const binding = await mods.createBinding({
+  const binding = await seedBinding({
     connectionId: connection.id,
     projectId,
     provider: 'github',

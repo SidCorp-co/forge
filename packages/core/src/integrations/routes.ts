@@ -16,40 +16,28 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { integrationDeliveries } from '../db/schema.js';
 import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import {
-  AGENT_ACCESS_CLOSED,
-  type AgentAccess,
-  agentAccessTier,
-  noAgentPathMessage,
-} from './agent-access.js';
 import { registerCoolifyDeployRoutes } from './coolify/routes.js';
 import { findDeliveryById } from './deliveries.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
 import {
   applySecretsPatch,
   configSchemaForProvider,
-  createSchema,
   splitProviderConfig,
   updateSchema,
 } from './provider-schemas.js';
 import { enqueueOutboundDispatch } from './queue.js';
-import { getAdapter, getIntegration } from './registry.js';
+import { getAdapter } from './registry.js';
 import { withdrawNulls } from './release-channel-schema.js';
 import { rocketChatBindingOfProject } from './rocketchat/binding.js';
 import { fetchBotRooms } from './rocketchat/rest-client.js';
 import {
-  alreadyExists,
   assertAdmin,
-  assertNoActiveBindingClash,
   assertProjectMember,
-  assertVaultConfigured,
   badRequest,
+  bindingWriteMoved,
   broadcastIntegrationChanged,
-  buildCreatedBindingResponse,
-  defaultConnectionDisplayName,
   forbidden,
   notFound,
   notifyConnectionChanged,
@@ -58,12 +46,9 @@ import {
 import { buildIntegrationsStatusCards } from './status-service.js';
 import {
   buildContextFromBinding,
-  createBinding,
-  createConnection,
   findBindingWithConnectionById,
   listBindingsForProject,
   softDeleteBinding,
-  softDeleteConnection,
   updateBinding,
   updateConnection,
 } from './store.js';
@@ -71,28 +56,6 @@ import {
 // Owner-scoped connection CRUD lives in its own module; re-exported so
 // `src/index.ts` keeps importing both routers from `./integrations/routes.js`.
 export { integrationConnectionsRoutes } from './connection-routes.js';
-
-/**
- * Authorize a write to a binding's agent-access grant, and refuse one that means nothing.
- *
- * ISS-1071 rule 5 — the tier is a property of the provider's declared agent path, not of the route:
- * a `direct-mcp` grant hands the project's credential to a runner box, so it takes the same
- * org-admin escalation that already guards `secrets`, `config` and `active` on an org-owned
- * connection; a `core-mediated` grant only widens who may ask core to make a call core was already
- * making, so it stays with the project-admin fields. A provider declaring no agent path is refused
- * by name rather than storing a column value nothing will ever read.
- */
-async function authorizeAgentAccessWrite(
-  userId: string,
-  projectId: string,
-  provider: string,
-): Promise<void> {
-  const tier = agentAccessTier(getIntegration(provider));
-  if (tier === 'refused') throw badRequest(noAgentPathMessage(provider));
-  if (tier !== 'org-admin') return;
-  const access = await effectiveProjectRole(userId, projectId);
-  if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
-}
 
 export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationsRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -110,83 +73,9 @@ integrationsRoutes.get('/:projectId/integrations', async (c) => {
   return c.json({ bindings, items: bindings });
 });
 
-integrationsRoutes.post(
-  '/:projectId/integrations',
-  zValidator('json', createSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
-  }),
-  async (c) => {
-    const projectId = c.req.param('projectId');
-    const userId = c.get('userId');
-    const role = await assertProjectMember(projectId, userId);
-    assertAdmin(role);
-
-    assertVaultConfigured();
-
-    const body = c.req.valid('json');
-
-    const bindingLabel = 'label' in body && body.label ? body.label : '';
-    await assertNoActiveBindingClash(projectId, body.provider, body.role, bindingLabel);
-
-    const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
-
-    if (body.orgId) {
-      const access = await effectiveProjectRole(userId, projectId);
-      if (!access || access.orgId !== body.orgId) {
-        throw new HTTPException(409, {
-          message: 'org connection must belong to the project’s own org',
-          cause: { code: 'ORG_MISMATCH' },
-        });
-      }
-      if (!orgRoleAtLeast(access.orgRole, 'admin')) throw forbidden();
-    }
-    // Connecting an integration and saying whether agents may use it is ONE act on ONE object
-    // (ISS-1071 rule 3). The default is closed, so a caller that does not ask grants nothing.
-    const bindingAgentAccess: AgentAccess = body.agentAccess ?? AGENT_ACCESS_CLOSED;
-    if (bindingAgentAccess !== AGENT_ACCESS_CLOSED) {
-      await authorizeAgentAccessWrite(userId, projectId, body.provider);
-    }
-    const tiers = splitProviderConfig(body.provider, body.config);
-    const connection = await createConnection({
-      ownerType: body.orgId ? 'org' : 'user',
-      ownerId: body.orgId ?? userId,
-      provider: body.provider,
-      displayName: defaultConnectionDisplayName(body.provider, tiers.connection),
-      config: tiers.connection,
-      secrets: body.secrets,
-    });
-    let binding: Awaited<ReturnType<typeof createBinding>>;
-    try {
-      binding = await createBinding({
-        connectionId: connection.id,
-        projectId,
-        provider: body.provider,
-        role: body.role,
-        config: tiers.binding,
-        integrationSecret,
-        label: bindingLabel,
-        agentAccess: bindingAgentAccess,
-      });
-    } catch (err) {
-      // Roll the just-created connection back so a binding-unique collision
-      // doesn't leave a dangling credential.
-      await softDeleteConnection(connection.id).catch(() => {});
-      if (isUniqueViolation(err)) {
-        throw alreadyExists(
-          'an active service binding for this provider and label already exists on this project',
-        );
-      }
-      throw err;
-    }
-    notifyConnectionChanged(body.provider, connection.id);
-    // Probe immediately so the new integration starts with real health (and
-    // epodsystem store identity) instead of an unverified card (ISS-429).
-    return c.json(
-      await buildCreatedBindingResponse({ binding, connection }, integrationSecret),
-      201,
-    );
-  },
-);
+integrationsRoutes.post('/:projectId/integrations', () => {
+  throw bindingWriteMoved('POST /api/projects/:projectId/integrations');
+});
 
 integrationsRoutes.patch(
   '/:projectId/integrations/:id',
@@ -205,46 +94,39 @@ integrationsRoutes.patch(
     const { binding, connection } = existing;
 
     const patch = c.req.valid('json');
+    if (patch.agentAccess !== undefined) {
+      throw bindingWriteMoved('agentAccess on PATCH /api/projects/:projectId/integrations/:id');
+    }
 
-    // Re-validate the loose config against the existing provider so a PATCH can
-    // never strip the wrong provider's fields, then split it into tiers:
-    // coolify resourceUuid/branch are BINDING-scoped (the deploy target follows
-    // the project), the rest merges into the shared connection config.
     let mergedConfig: Record<string, unknown> | undefined;
-    let mergedBindingConfig: Record<string, unknown> | undefined;
     if (patch.config) {
       const parsed = configSchemaForProvider(binding.provider).safeParse(patch.config);
       if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
       const tiers = splitProviderConfig(binding.provider, parsed.data as Record<string, unknown>);
+      const bindingKeys = Object.keys(tiers.binding);
+      if (bindingKeys.length > 0) {
+        throw bindingWriteMoved(
+          `config ${bindingKeys.map((k) => `\`${k}\``).join(', ')} on PATCH /api/projects/:projectId/integrations/:id`,
+        );
+      }
       if (Object.keys(tiers.connection).length > 0) {
         mergedConfig = withdrawNulls({
           ...((connection.config ?? {}) as object),
           ...tiers.connection,
         });
       }
-      if (Object.keys(tiers.binding).length > 0) {
-        mergedBindingConfig = withdrawNulls({
-          ...((binding.config ?? {}) as object),
-          ...tiers.binding,
-        });
-      }
     }
 
     // Connection-tier config and secrets of an ORG-owned credential are managed
     // at the org tier: a project admin alone must not rotate a credential the
-    // org's projects share. Binding-tier fields stay project-admin editable,
-    // `active` among them — the tier split below writes it to the binding, and
-    // DELETE throws that same switch for a project admin alone (ISS-1115).
+    // org's projects share. The binding's `active` switch stays project-admin
+    // editable, as DELETE throws that same switch for a project admin alone (ISS-1115).
     if (
       connection.ownerType === 'org' &&
       (mergedConfig !== undefined || patch.secrets !== undefined)
     ) {
       const access = await effectiveProjectRole(userId, projectId);
       if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
-    }
-
-    if (patch.agentAccess !== undefined) {
-      await authorizeAgentAccessWrite(userId, projectId, binding.provider);
     }
 
     let mergedSecrets: Record<string, unknown> | undefined;
@@ -259,26 +141,16 @@ integrationsRoutes.patch(
       });
     }
 
-    // Connection-tier config + secrets live on the connection; binding-tier
-    // config (deploy target) + `active` live on the binding (disabling
-    // resolution for this project without touching the credential).
     if (mergedConfig !== undefined || mergedSecrets !== undefined) {
       const connPatch: Parameters<typeof updateConnection>[1] = {};
       if (mergedConfig !== undefined) connPatch.config = mergedConfig;
       if (mergedSecrets !== undefined) connPatch.secrets = mergedSecrets;
       await updateConnection(connection.id, connPatch);
     }
-    if (
-      mergedBindingConfig !== undefined ||
-      patch.active !== undefined ||
-      patch.instructions !== undefined ||
-      patch.agentAccess !== undefined
-    ) {
+    if (patch.active !== undefined || patch.instructions !== undefined) {
       const bindingPatch: Parameters<typeof updateBinding>[1] = {};
-      if (mergedBindingConfig !== undefined) bindingPatch.config = mergedBindingConfig;
       if (patch.active !== undefined) bindingPatch.active = patch.active;
       if (patch.instructions !== undefined) bindingPatch.instructions = patch.instructions;
-      if (patch.agentAccess !== undefined) bindingPatch.agentAccess = patch.agentAccess;
       await updateBinding(binding.id, bindingPatch);
     }
 

@@ -57,13 +57,6 @@ export function getAdapter(provider: string): IntegrationAdapterMethods | undefi
   return registry.get(provider as IntegrationProvider)?.adapter;
 }
 
-/** Every provider Forge can push code or content TO, derived rather than listed. */
-export function deployCapableProviders(): IntegrationProvider[] {
-  return listIntegrations()
-    .filter((d) => d.capabilities.canDeploy)
-    .map((d) => d.provider);
-}
-
 export function providerCanDeploy(provider: string): boolean {
   return getIntegration(provider)?.capabilities.canDeploy === true;
 }

@@ -11,6 +11,7 @@ export const google: ProviderModule = {
   agentPathKind: "core-mediated",
   mcpServerName: null,
   multiBinding: false,
+  bindingKeys: ["defaultSpreadsheetId"],
   target: (config) => text(config, "clientEmail"),
   section: () => import("./section").then((m) => ({ default: m.GoogleSection })),
   connectionSection: null,
