@@ -12,7 +12,7 @@ import { DocumentActions, type Role } from "./document-actions";
 import { DocumentBody } from "./document-body";
 import { GatePanel } from "./gate-panel";
 import { Loading, UnreadNotice } from "./notices";
-import { AuthorLine, HoldLine, type Names, useProjectNames } from "./people";
+import { AuthorLine, HoldLine, type Names, PeopleNames, useProjectNames } from "./people";
 import { TYPE_LABEL } from "./register-screen";
 
 const STATUS_TEXT: Record<string, string> = {
@@ -97,6 +97,7 @@ export function DocumentScreen({
   const d = view.document;
   const held = view.hold?.action === "hold" ? view.hold : null;
   return (
+    <PeopleNames projectId={projectId}>
     <article className="min-w-0 space-y-4">
       <header className="space-y-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -189,5 +190,6 @@ export function DocumentScreen({
 
       {view.thread ? <Conversation projectId={projectId} slug={slug} thread={view.thread} names={names} /> : null}
     </article>
+    </PeopleNames>
   );
 }

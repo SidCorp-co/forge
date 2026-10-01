@@ -50,6 +50,8 @@ vi.mock("./api", async () => {
   return { ...actual, ecosystemApi: api };
 });
 vi.mock("@/features/questions/api", () => ({ questionsApi: questions }));
+const members = vi.hoisted(() => vi.fn(async () => [] as unknown[]));
+vi.mock("@/features/issues/api", () => ({ issuesApi: { members } }));
 
 const { RegisterScreen } = await import("./components/register-screen");
 const { DocumentScreen } = await import("./components/document-screen");
@@ -327,6 +329,22 @@ describe("a returned document is edited before it is submitted again", () => {
   it("still offers Submit on a draft", async () => {
     documentScreen(view({ thread: null, document: { ...view().document, state: "draft", publishedAt: undefined } }));
     expect(await screen.findByRole("button", { name: "Submit" })).toBeInTheDocument();
+  });
+});
+
+describe("a co-member is named as the reader's project lists them", () => {
+  const DANA = "66666666-6666-4666-8666-666666666666";
+
+  it("names the author and the holder by display name, or by email where none was typed", async () => {
+    members.mockResolvedValue([
+      { userId: DANA, email: "dana@example.test", displayName: "Dana", kind: "human", role: "member", createdAt: "" },
+      { userId: hold.by.id, email: "hal@example.test", displayName: null, kind: "human", role: "member", createdAt: "" },
+    ]);
+    const by = { kind: "person" as const, id: DANA, via: "web" as const };
+    documentScreen(view({ hold, document: { ...view().document, authoredBy: by } }));
+    expect(await screen.findByText(/Written by Dana on the web/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/Held by hal@example\.test/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/person 66666666/)).not.toBeInTheDocument();
   });
 });
 

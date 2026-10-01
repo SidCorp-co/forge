@@ -8,7 +8,7 @@ import { readingOf } from "@/lib/api/refusals";
 import { ecosystemRoutes, REGISTER_FILTERS, type RegisterFilter } from "../routes";
 import type { RegisterRow } from "../types";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";
-import { AuthorLine, HoldLine, type Names, useProjectNames } from "./people";
+import { AuthorLine, HoldLine, type Names, PeopleNames, useProjectNames } from "./people";
 
 const FILTER_LABEL: Record<RegisterFilter, string> = {
   all: "All",
@@ -146,6 +146,7 @@ export function RegisterScreen({
   const register = readingOf(registerQ);
 
   return (
+    <PeopleNames projectId={projectId}>
     <div className="space-y-4">
       <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="max-w-full overflow-x-auto">
@@ -232,5 +233,6 @@ export function RegisterScreen({
 
       <Drafts projectId={projectId} slug={slug} />
     </div>
+    </PeopleNames>
   );
 }
