@@ -3,8 +3,9 @@
 import { cn } from "@/lib/utils/cn";
 import { useForgeVersion } from "../hooks";
 
-/** The product's own version, for the footer of the shell navigation on screen. */
-export function ForgeVersion({ className }: { className?: string }) {
+/** The product's own version, for the footer of the shell navigation on screen. `short` drops
+ *  the product name for the 88px rail; the tooltip still carries it. */
+export function ForgeVersion({ className, short = false }: { className?: string; short?: boolean }) {
 	const query = useForgeVersion();
 
 	if (query.isPending) return null;
@@ -20,7 +21,7 @@ export function ForgeVersion({ className }: { className?: string }) {
 			className={cn("text-muted", className)}
 			title={commit == null ? label : `${label} · ${commit.slice(0, 7)}`}
 		>
-			{label}
+			{short && version ? `v${version}` : label}
 		</span>
 	);
 }

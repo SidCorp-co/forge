@@ -27,7 +27,7 @@ export function SidebarVersion({ onWhatsNew, onDocs, unseen, activeKey, compact 
           activeKey === "whats-new" && "[&>span]:text-accent-text",
         )}
       >
-        <ForgeVersion className={cn("truncate", compact ? "text-9-5 leading-tight" : "fg-caption")} />
+        <ForgeVersion short={compact} className={cn("truncate", compact ? "text-9-5 leading-tight" : "fg-caption")} />
         <span className="sr-only">, What&apos;s New{unseen ? ", new updates" : ""}</span>
         {unseen && (
           <span
