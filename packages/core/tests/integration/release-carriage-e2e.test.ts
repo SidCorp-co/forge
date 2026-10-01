@@ -493,3 +493,44 @@ describe('a hold names what the issue owes and what clears it', () => {
     expect(String((await fx.holdOf(id))?.reason)).toContain('Integrations page');
   }, 30_000);
 });
+
+describe('a project nothing can read for its deployment, with a declared runner runtime', () => {
+  it('holds a runner-only row on the runner it owes, and only a row owing the deployment as unrouted', async () => {
+    await fx.bindUnreporting();
+    await declareRunner();
+    runnerOnlyLanding();
+    await runnersRun(LACKING);
+    repo.compare.set(`${JUDGED}...${LACKING}`, { status: 'behind', files: [] });
+    repo.compare.set(`${LACKING}...${JUDGED}`, { status: 'ahead', files: [RUNNER_FILE] });
+    const runnerOnly = await fx.judgedRow(JUDGED, '2026-10-01T09:00:00Z');
+    const CORE_LANDING = '2222222222222222222222222222222222222222';
+    repo.parents.set(CORE_LANDING, PARENT);
+    repo.compare.set(`${PARENT}...${CORE_LANDING}`, {
+      status: 'ahead',
+      files: ['packages/core/x.ts'],
+    });
+    const coreOnly = await fx.judgedRow(CORE_LANDING, '2026-10-01T10:00:00Z');
+
+    await sweep();
+
+    const runnerHold = await fx.holdOf(runnerOnly);
+    expect(runnerHold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+    expect(String(runnerHold?.reason)).toContain('the `runner` runtime, under `packages/runner`');
+    expect(String(runnerHold?.reason)).not.toContain('epodsystem');
+    expect((await fx.holdOf(coreOnly))?.code).toBe('RELEASE_RUNTIME_UNROUTED');
+
+    const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
+    (await import('../../src/release-batch/carriage.js')).forgetCarriage();
+    const readiness = await loadReleaseReadiness(projectId);
+    const heldUnder = (code: string) =>
+      (
+        (
+          readiness?.blockers.find((b) => b.code === code)?.details as
+            | { held?: Array<{ issueId: string }> }
+            | undefined
+        )?.held ?? []
+      ).map((h) => h.issueId);
+    expect(heldUnder('RELEASE_CRITERIA_UNEARNED')).toEqual([runnerOnly]);
+    expect(heldUnder('RELEASE_RUNTIME_UNROUTED')).toEqual([coreOnly]);
+  }, 30_000);
+});

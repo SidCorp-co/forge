@@ -248,7 +248,8 @@ async function holdAlike(
 
 /**
  * Each held row's criteria hold, commented on its own row — or, where nothing can read what the
- * project serves, the one project-level reason, said alike (ISS-1346).
+ * project serves, the one project-level reason, said alike (ISS-1346), on the rows that owe the
+ * deployment: a row owing only a declared runtime is held on that runtime (ISS-1368).
  */
 async function holdOnCriteria(
   write: Omit<HoldWrite, 'holdFor'>,
@@ -256,14 +257,18 @@ async function holdOnCriteria(
   heldById: ReadonlyMap<string, IssueCriteriaReport>,
 ): Promise<void> {
   const serving = heldById.values().next().value?.serving;
-  if (serving?.kind !== 'undeclared') {
-    await hold({
-      ...write,
-      holdFor: (id) => criteriaHold(heldById.get(id) as IssueCriteriaReport),
-    });
-    return;
+  const unrouted =
+    serving?.kind === 'undeclared'
+      ? write.issueIds.filter((id) => heldById.get(id)?.owed.deployment !== false)
+      : [];
+  const own = write.issueIds.filter((id) => !unrouted.includes(id));
+  if (own.length > 0) {
+    const holdFor = (id: string) => criteriaHold(heldById.get(id) as IssueCriteriaReport);
+    await hold({ ...write, issueIds: own, holdFor });
   }
-  await holdAlike(write, waiting, runtimeUnroutedHold(serving.missing, serving.route));
+  if (serving?.kind !== 'undeclared' || unrouted.length === 0) return;
+  const reason = runtimeUnroutedHold(serving.missing, serving.route);
+  await holdAlike({ ...write, issueIds: unrouted }, waiting, reason);
 }
 
 /** The gate, or the hold every waiting row gets because there is none to read. */
