@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectMembers, projects, users } from '../db/schema.js';
+import { userLabel } from '../issues/actor-resolution.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { emitNotification } from '../notifications/emit.js';
@@ -50,12 +51,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function nameOf(id: string | undefined): Promise<string> {
   if (!id) return 'someone';
   if (!UUID.test(id)) return id;
-  const [row] = await db
-    .select({ displayName: users.displayName, email: users.email })
-    .from(users)
-    .where(eq(users.id, id))
-    .limit(1);
-  return row?.displayName?.trim() || row?.email || id;
+  return (await userLabel(id)) ?? id;
 }
 
 const NOTE_LINE_MAX = 160;
