@@ -251,7 +251,26 @@ describe("a refused write is shown by the name core gave it", () => {
     fireEvent.change(screen.getByLabelText("Hold the conversation: reason"), { target: { value: "wait" } });
     fireEvent.click(screen.getByRole("button", { name: "Hold" }));
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("HOLD_NOT_AUTHORISED at /by");
+    expect(alert).toHaveTextContent("HOLD_NOT_AUTHORISED · Who holds");
+  });
+
+  it("reads a hold refused for a role to a person, with no ids in it", async () => {
+    const detail =
+      "4251b7f3-f29d-4483-96dc-32b88a60be7b holds no member role or above on project 65800f38-b1ea-448b-853f-f68905411d8a, so cannot hold for that side.";
+    api.hold.mockRejectedValue(
+      new ApiError(422, "Unprocessable Entity", undefined, undefined, {
+        error: { code: "HOLD_NOT_AUTHORISED", message: "refused", refusals: [{ code: "HOLD_NOT_AUTHORISED", path: "/by", detail }] },
+      }),
+    );
+    documentScreen(view());
+    fireEvent.click(await screen.findByRole("button", { name: "Hold the conversation" }));
+    fireEvent.change(screen.getByLabelText("Hold the conversation: reason"), { target: { value: "wait" } });
+    fireEvent.click(screen.getByRole("button", { name: "Hold" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "HOLD_NOT_AUTHORISED · Who holds — Holding or releasing a conversation takes a member role or above on the side it is held for, and you do not hold one there.",
+    );
+    expect(alert).not.toHaveTextContent("4251b7f3");
   });
 
   it("offers a viewer no write, and says why", async () => {

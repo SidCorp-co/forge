@@ -136,6 +136,25 @@ describe("a v1 document editor", () => {
 		expect(screen.getByText("Each other refusal is shown at the field it names.")).toBeInTheDocument();
 	});
 
+	it("reads an unstored secret to a person, pointing at the Secrets form rather than at the API", async () => {
+		refuseWith = [
+			{
+				code: "SECRET_NOT_FOUND",
+				path: "/qa",
+				detail: "secret://p1/ghost is not a secret of this project; PUT /api/projects/p1/secrets/<scope>/<name> first.",
+			},
+		];
+		draw(<PolicyDocumentSection projectId="p1" canEdit />);
+		fireEvent.change(await screen.findByLabelText("/qa"), { target: { value: "secret://p1/ghost" } });
+		fireEvent.click(screen.getByRole("button", { name: "Save policy" }));
+
+		const qa = screen.getByLabelText("/qa");
+		await waitFor(() => expect(qa).toHaveAttribute("aria-invalid", "true"));
+		const said = document.getElementById(qa.getAttribute("aria-describedby") ?? "");
+		expect(said).toHaveTextContent("SECRET_NOT_FOUND: This secret is not stored in this project. Store it under Secrets on the Config tab, then save again.");
+		expect(said).not.toHaveTextContent("PUT /api");
+	});
+
 	it("refuses a stale base, names what moved, and re-applies only when asked", async () => {
 		draw(<PolicyDocumentSection projectId="p1" canEdit />);
 		fireEvent.change(await screen.findByLabelText("/qa"), { target: { value: "independent" } });

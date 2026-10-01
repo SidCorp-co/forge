@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { Banner, Button, CardTitle, ErrorState, Field, Input, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { documentRefusals } from "@/lib/api/refusals";
+import { documentRefusals, readRefusal } from "@/lib/api/refusals";
 import {
 	useBindingDocuments,
 	useDeleteTestingProfile,
@@ -104,7 +104,7 @@ function RefusedBanner({ err }: { err: unknown }) {
 				? formatApiError(err)
 				: refusals.map((r) => (
 						<p key={`${r.code}:${r.path}`}>
-							<code>{r.code}</code> at <code>{r.path || "/"}</code>: {r.detail}
+							<code>{r.code}</code> at <code>{readRefusal(r).where ?? "/"}</code>: {readRefusal(r).sentence}
 						</p>
 					))}
 		</Banner>

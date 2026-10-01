@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button, Field, IconButton, Input, MonoTag, Toggle } from "@/design";
 import { isPlainObject } from "@forge/contracts/document-patch";
-import type { Refusal } from "@/lib/api/refusals";
+import { type Refusal, readRefusal } from "@/lib/api/refusals";
 import { pointerOf, REMOVE } from "../document-edit";
 
 interface Ctx {
@@ -15,7 +15,10 @@ interface Ctx {
 function said(refusals: readonly Refusal[], at: string): string | undefined {
 	if (refusals.length === 0) return undefined;
 	return refusals
-		.map((r) => `${r.code}${r.path === at ? "" : ` at ${r.path}`}: ${r.detail}`)
+		.map((r) => {
+			const read = readRefusal(r);
+			return `${read.code}${r.path === at || !read.where ? "" : ` at ${read.where}`}: ${read.sentence}`;
+		})
 		.join(" · ");
 }
 
@@ -23,12 +26,15 @@ function RefusalLines({ refusals, at }: { refusals: readonly Refusal[]; at: stri
 	if (refusals.length === 0) return null;
 	return (
 		<ul role="alert" className="fg-caption mt-1 space-y-0.5 text-red">
-			{refusals.map((r) => (
-				<li key={`${r.code}:${r.path}`}>
-					<code>{r.code}</code>
-					{r.path === at ? "" : <> at <code>{r.path || "/"}</code></>}: {r.detail}
-				</li>
-			))}
+			{refusals.map((r) => {
+				const read = readRefusal(r);
+				return (
+					<li key={`${r.code}:${r.path}`}>
+						<code>{read.code}</code>
+						{r.path === at ? "" : <> at <code>{read.where ?? "/"}</code></>}: {read.sentence}
+					</li>
+				);
+			})}
 		</ul>
 	);
 }

@@ -5,7 +5,7 @@ import type { UseMutationResult } from "@tanstack/react-query";
 import { Banner, Button, CardTitle, MonoTag, Tabs, Textarea } from "@/design";
 import { canonicalJson } from "@forge/contracts/document-patch";
 import { formatApiError } from "@/lib/api/error";
-import { documentRefusals, type Refusal } from "@/lib/api/refusals";
+import { documentRefusals, type Refusal, readRefusal } from "@/lib/api/refusals";
 import type { V1Document, V1Read, V1Write, V1Written } from "../config-types";
 import {
 	isStaleBase,
@@ -88,7 +88,7 @@ function RefusalList({ refusals }: { refusals: readonly Refusal[] }) {
 		<ul className="list-disc pl-5">
 			{refusals.map((r) => (
 				<li key={`${r.code}:${r.path}`}>
-					<code>{r.code}</code> at <code>{r.path || "/"}</code>: {r.detail}
+					<code>{r.code}</code> at <code>{readRefusal(r).where ?? "/"}</code>: {readRefusal(r).sentence}
 				</li>
 			))}
 		</ul>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "./client";
-import { readingOf, refusalsOf } from "./refusals";
+import { readingOf, readRefusal, refusalsOf } from "./refusals";
 
 describe("refusalsOf names every refusal core sends, in either shape", () => {
   it("reads the document envelope a 422 carries, which has no top-level code", () => {
@@ -45,5 +45,16 @@ describe("readingOf keeps a failed read apart from an empty one", () => {
 
   it("reads an empty list as read", () => {
     expect(readingOf({ data: [], error: null, isError: false })).toEqual({ kind: "read", value: [] });
+  });
+});
+
+describe("readRefusal words a refusal for a person", () => {
+  it("reads one it has no wording for as core wrote it, under its path", () => {
+    const r = { code: "SCHEMA_VIOLATION", path: "/qa", detail: "expected one of self|independent" };
+    expect(readRefusal(r)).toEqual({ code: "SCHEMA_VIOLATION", where: "/qa", sentence: r.detail });
+  });
+
+  it("names no field for a refusal of the whole request", () => {
+    expect(readRefusal({ code: "HTTP_500", path: "", detail: "request failed (500)" }).where).toBeNull();
   });
 });

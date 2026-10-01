@@ -1,6 +1,6 @@
 "use client";
 
-import type { Refusal } from "@/lib/api/refusals";
+import { type Refusal, readRefusal } from "@/lib/api/refusals";
 
 /** A refused write or read, shown with the code core named it by. Never a toast, never nothing. */
 export function RefusalNotice({ refusals, title = "Refused" }: { refusals: Refusal[]; title?: string }) {
@@ -13,13 +13,16 @@ export function RefusalNotice({ refusals, title = "Refused" }: { refusals: Refus
     >
       <p className="font-medium">{title}, nothing written</p>
       <ul className="mt-1 space-y-1">
-        {refusals.map((r) => (
-          <li key={`${r.code}${r.path}${r.detail}`} className="break-words">
-            <code className="font-mono text-12">{r.code}</code>
-            {r.path ? <span className="font-mono text-12"> at {r.path}</span> : null}
-            <span className="text-fg"> — {r.detail}</span>
-          </li>
-        ))}
+        {refusals.map((r) => {
+          const read = readRefusal(r);
+          return (
+            <li key={`${r.code}${r.path}${r.detail}`} className="break-words">
+              <code className="font-mono text-12">{read.code}</code>
+              {read.where ? <span> · {read.where}</span> : null}
+              <span className="text-fg"> — {read.sentence}</span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
