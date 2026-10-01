@@ -91,7 +91,6 @@ export function blockersOf(err: unknown): ReleaseBlocker[] {
   return Array.isArray(carried) ? carried : [];
 }
 
-/** The reasons standing beside the one being thrown, for a refusal body. */
 export function alsoBlocking(err: unknown, thrown: ReleaseBlockerCode): ReleaseBlocker[] {
   // Only the FIRST match goes: two checks can fail to evaluate.
   const rest = [...blockersOf(err)];
@@ -360,7 +359,6 @@ function unreadableSentence(remedy: string, details?: Record<string, unknown>): 
     : remedy;
 }
 
-/** The sweep is cutting a release and leaving these behind, which stops nothing. */
 export function uncorroboratedWarningSentence(held: HeldIssueRef[], why: string): string {
   const issues = `${held.length} issue${held.length === 1 ? '' : 's'}`;
   const each = held

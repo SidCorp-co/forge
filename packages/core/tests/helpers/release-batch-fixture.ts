@@ -126,9 +126,15 @@ export function releaseBatchFixture(
       )
     `);
     const verification = PROBES[probes];
+    const [held] = await harness().db.execute<{ type: string | null }>(sql`
+      SELECT document #>> '{source,type}' AS type FROM project_config_documents
+      WHERE project_id = ${projectId}
+    `);
+    const storefront = held?.type === 'storefront';
     await seedProjectDocument(harness().db, projectId, ownerId, {
+      ...(storefront ? { sourceType: 'storefront' as const } : {}),
       defaultBranch: 'main',
-      promotions: [{ from: 'main', to: 'production', via: 'merge' }],
+      promotions: storefront ? [] : [{ from: 'main', to: 'production', via: 'merge' }],
       environments: {
         live: {
           tier: 'production',

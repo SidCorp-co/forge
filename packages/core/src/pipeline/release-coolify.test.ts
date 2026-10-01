@@ -105,28 +105,31 @@ const RUN_ID = 'run-1';
 const STAGING_INT = 'a1111111-1111-4111-8111-111111111111';
 const PROD_INT = 'b2222222-2222-4222-8222-222222222222';
 
-const stagingPair = {
+const pair = (id: string) => ({
   binding: {
-    id: STAGING_INT,
+    id,
     projectId: PROJECT_ID,
     provider: 'coolify',
     role: 'deploy',
     config: {},
     active: true,
   },
-  connection: { id: STAGING_INT, provider: 'coolify', config: {}, active: true },
-};
-const prodPair = {
-  binding: {
-    id: PROD_INT,
-    projectId: PROJECT_ID,
-    provider: 'coolify',
-    role: 'deploy',
-    config: {},
-    active: true,
-  },
-  connection: { id: PROD_INT, provider: 'coolify', config: {}, active: true },
-};
+  connection: { id, provider: 'coolify', config: {}, active: true },
+});
+const stagingPair = pair(STAGING_INT);
+const prodPair = pair(PROD_INT);
+
+type Job = { bindingId: string; runId: string | null; issueId: string | null; requestId: string };
+function enqueued(n = 0): Job {
+  const call = enqueueSpy.mock.calls[n];
+  if (!call) throw new Error(`enqueueOutboundDispatch was not called ${n + 1} time(s)`);
+  return call[0] as Job;
+}
+
+const release = (extra: { integrationId?: string; allowLive?: boolean } = {}) =>
+  tryDispatchCoolifyRelease({ projectId: PROJECT_ID, issueId: ISSUE_ID, runId: RUN_ID, ...extra });
+const direct = (integrationId: string) =>
+  dispatchCoolifyDeployDirect({ projectId: PROJECT_ID, integrationId });
 
 /** The project document naming `staging` and production `beta`, each through its own binding. */
 function declare(environments?: Record<string, EnvironmentDeclaration>) {
@@ -155,16 +158,12 @@ describe('tryDispatchCoolifyRelease — staging dispatch', () => {
   it('always enqueues a fresh dispatch with a per-attempt requestId (no dedup block)', async () => {
     listBindingsSpy.mockResolvedValue([stagingPair]); // active coolify bindings
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-    });
+    const outcome = await release();
 
     // No idempotency lookup — re-deploys are never silently no-op'd (ISS-290).
     expect(findDeliverySpy).not.toHaveBeenCalled();
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    const job = enqueueSpy.mock.calls[0]?.[0] as { bindingId: string; requestId: string };
+    const job = enqueued();
     expect(job.bindingId).toBe(STAGING_INT);
     expect(job.requestId).toMatch(new RegExp(`^${RUN_ID}:${STAGING_INT}:\\d+-[0-9a-f]{8}$`));
     expect(outcome.dispatched).toBe(true);
@@ -173,13 +172,13 @@ describe('tryDispatchCoolifyRelease — staging dispatch', () => {
 
   it('re-deploying the same run enqueues again with a distinct requestId', async () => {
     listBindingsSpy.mockResolvedValue([stagingPair]);
-    await tryDispatchCoolifyRelease({ projectId: PROJECT_ID, issueId: ISSUE_ID, runId: RUN_ID });
+    await release();
     listBindingsSpy.mockResolvedValue([stagingPair]);
-    await tryDispatchCoolifyRelease({ projectId: PROJECT_ID, issueId: ISSUE_ID, runId: RUN_ID });
+    await release();
 
     expect(enqueueSpy).toHaveBeenCalledTimes(2);
-    const r1 = (enqueueSpy.mock.calls[0]?.[0] as { requestId: string }).requestId;
-    const r2 = (enqueueSpy.mock.calls[1]?.[0] as { requestId: string }).requestId;
+    const r1 = enqueued(0).requestId;
+    const r2 = enqueued(1).requestId;
     expect(r1).not.toBe(r2);
   });
 });
@@ -188,18 +187,10 @@ describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)',
   it('staging: enqueues with runId:null + a synthetic direct: requestId', async () => {
     listBindingsSpy.mockResolvedValue([stagingPair]); // active coolify bindings
 
-    const outcome = await dispatchCoolifyDeployDirect({
-      projectId: PROJECT_ID,
-      integrationId: STAGING_INT,
-    });
+    const outcome = await direct(STAGING_INT);
 
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    const job = enqueueSpy.mock.calls[0]?.[0] as {
-      bindingId: string;
-      runId: string | null;
-      issueId: string | null;
-      requestId: string;
-    };
+    const job = enqueued();
     expect(job.bindingId).toBe(STAGING_INT);
     expect(job.runId).toBeNull();
     expect(job.issueId).toBeNull();
@@ -212,10 +203,7 @@ describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)',
   it('prod: returns pendingHumanConfirm and enqueues nothing', async () => {
     listBindingsSpy.mockResolvedValue([prodPair]);
 
-    const outcome = await dispatchCoolifyDeployDirect({
-      projectId: PROJECT_ID,
-      integrationId: PROD_INT,
-    });
+    const outcome = await direct(PROD_INT);
 
     expect(enqueueSpy).not.toHaveBeenCalled();
     expect(outcome.dispatched).toBe(false);
@@ -227,10 +215,7 @@ describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)',
   it('unknown/inactive integration: returns no-integration without enqueueing', async () => {
     listBindingsSpy.mockResolvedValue([stagingPair]); // active set does not include the requested id
 
-    const outcome = await dispatchCoolifyDeployDirect({
-      projectId: PROJECT_ID,
-      integrationId: PROD_INT,
-    });
+    const outcome = await direct(PROD_INT);
 
     expect(enqueueSpy).not.toHaveBeenCalled();
     expect(outcome.dispatched).toBe(false);
@@ -244,11 +229,7 @@ describe('tryDispatchCoolifyRelease — a run that cannot witness its deploy (IS
     listBindingsSpy.mockResolvedValue([stagingPair]);
     selectQueue.push([{ status: 'completed' }]);
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-    });
+    const outcome = await release();
 
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ runId: RUN_ID, issueId: ISSUE_ID }),
@@ -262,7 +243,7 @@ describe('tryDispatchCoolifyRelease — a run that cannot witness its deploy (IS
     selectQueue.push([{ status: 'running' }]);
     openHoldMock.mockResolvedValueOnce(false);
 
-    await tryDispatchCoolifyRelease({ projectId: PROJECT_ID, issueId: ISSUE_ID, runId: RUN_ID });
+    await release();
 
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ runId: RUN_ID, bindingId: STAGING_INT }),
@@ -275,7 +256,7 @@ describe('tryDispatchCoolifyRelease — a run that cannot witness its deploy (IS
     selectQueue.push([{ status: 'running' }]);
     openHoldMock.mockResolvedValueOnce(true);
 
-    await tryDispatchCoolifyRelease({ projectId: PROJECT_ID, issueId: ISSUE_ID, runId: RUN_ID });
+    await release();
 
     expect(logger.error).not.toHaveBeenCalled();
   });
@@ -287,14 +268,10 @@ describe('tryDispatchCoolifyRelease — prod deploys on land', () => {
     selectQueue.push([{ status: 'running' }]);
     autoProd.mockResolvedValueOnce(true);
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-    });
+    const outcome = await release();
 
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    const job = enqueueSpy.mock.calls[0]?.[0] as { bindingId: string };
+    const job = enqueued();
     expect(job.bindingId).toBe(PROD_INT);
     expect(outcome.dispatched).toBe(true);
     expect(outcome.pendingHumanConfirm).toBe(false);
@@ -305,13 +282,10 @@ describe('tryDispatchCoolifyRelease — prod deploys on land', () => {
     listBindingsSpy.mockResolvedValue([prodPair]);
     autoProd.mockResolvedValueOnce(true);
 
-    const outcome = await dispatchCoolifyDeployDirect({
-      projectId: PROJECT_ID,
-      integrationId: PROD_INT,
-    });
+    const outcome = await direct(PROD_INT);
 
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    const job = enqueueSpy.mock.calls[0]?.[0] as { runId: string | null; requestId: string };
+    const job = enqueued();
     expect(job.runId).toBeNull();
     expect(job.requestId).toMatch(new RegExp(`^direct:${PROD_INT}:\\d+-[0-9a-f]{8}$`));
     expect(outcome.dispatched).toBe(true);
@@ -323,16 +297,10 @@ describe('tryDispatchCoolifyRelease — integrationId hard filter + allowLive', 
   it('integrationId filters to only that binding — prod is never touched', async () => {
     listBindingsSpy.mockResolvedValue([stagingPair, prodPair]);
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-      integrationId: STAGING_INT,
-      allowLive: true,
-    });
+    const outcome = await release({ integrationId: STAGING_INT, allowLive: true });
 
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    const job = enqueueSpy.mock.calls[0]?.[0] as { bindingId: string };
+    const job = enqueued();
     expect(job.bindingId).toBe(STAGING_INT);
     expect(outcome.dispatched).toBe(true);
     expect(outcome.integrationIds).toEqual([STAGING_INT]);
@@ -341,15 +309,10 @@ describe('tryDispatchCoolifyRelease — integrationId hard filter + allowLive', 
   it('allowLive:false excludes prod bindings entirely — no enqueue, no gate', async () => {
     listBindingsSpy.mockResolvedValue([stagingPair, prodPair]);
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-      allowLive: false,
-    });
+    const outcome = await release({ allowLive: false });
 
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    const job = enqueueSpy.mock.calls[0]?.[0] as { bindingId: string };
+    const job = enqueued();
     expect(job.bindingId).toBe(STAGING_INT);
     expect(outcome.dispatched).toBe(true);
     expect(outcome.pendingHumanConfirm).toBe(false);
@@ -361,14 +324,10 @@ describe('tryDispatchCoolifyRelease — integrationId hard filter + allowLive', 
     selectQueue.push([{ status: 'running' }]);
     autoProd.mockResolvedValueOnce(true);
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-    });
+    const outcome = await release();
 
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    const job = enqueueSpy.mock.calls[0]?.[0] as { bindingId: string };
+    const job = enqueued();
     expect(job.bindingId).toBe(PROD_INT);
     expect(outcome.dispatched).toBe(true);
     expect(outcome.integrationIds).toEqual([PROD_INT]);
@@ -399,11 +358,7 @@ describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
     selectQueue.push([]); // getProdGateStateForRun: this run carries no gate
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm: run metadata read
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-    });
+    const outcome = await release();
 
     expect(enqueueSpy).not.toHaveBeenCalled();
     expect(findDeliverySpy).not.toHaveBeenCalled();
@@ -434,11 +389,7 @@ describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
     ]);
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-    });
+    const outcome = await release();
 
     expect(enqueueSpy).not.toHaveBeenCalled();
     expect(outcome.dispatched).toBe(false);
@@ -472,11 +423,7 @@ describe('one application behind two environments is still the production box', 
     selectQueue.push([]); // getProdGateState: unconfirmed, production binding
     selectQueue.push([{ metadata: {} }]);
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-    });
+    const outcome = await release();
 
     expect(enqueueSpy).not.toHaveBeenCalled();
     expect(outcome.pendingHumanConfirm).toBe(true);
@@ -496,11 +443,7 @@ describe('one application behind two environments is still the production box', 
     selectQueue.push([]); // getProdGateState for the production binding
     selectQueue.push([{ metadata: {} }]);
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-    });
+    const outcome = await release();
 
     expect(outcome.integrationIds).toEqual([STAGING_INT]);
   });
@@ -511,11 +454,7 @@ describe('tryDispatchCoolifyRelease — only what an environment names is dispat
     declare({ beta: production({ binding: PROD_INT }) });
     listBindingsSpy.mockResolvedValue([stagingPair]);
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-    });
+    const outcome = await release();
 
     expect(enqueueSpy).not.toHaveBeenCalled();
     expect(outcome).toMatchObject({ dispatched: false, reason: 'no-integration' });
@@ -525,11 +464,7 @@ describe('tryDispatchCoolifyRelease — only what an environment names is dispat
     readDocument.mockResolvedValue(null);
     listBindingsSpy.mockResolvedValue([stagingPair, prodPair]);
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-    });
+    const outcome = await release();
 
     expect(enqueueSpy).not.toHaveBeenCalled();
     expect(outcome.reason).toBe('no-integration');
@@ -543,14 +478,10 @@ describe('tryDispatchCoolifyRelease — only what an environment names is dispat
     listBindingsSpy.mockResolvedValue([stagingPair, prodPair]);
     autoProd.mockResolvedValueOnce(true);
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      runId: RUN_ID,
-    });
+    const outcome = await release();
 
     expect(outcome.integrationIds).toEqual([PROD_INT]);
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    expect((enqueueSpy.mock.calls[0]?.[0] as { bindingId: string }).bindingId).toBe(PROD_INT);
+    expect(enqueued().bindingId).toBe(PROD_INT);
   });
 });

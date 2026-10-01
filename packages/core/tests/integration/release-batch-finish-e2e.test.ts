@@ -46,13 +46,6 @@ describe('release batch finish E2E', () => {
     if (harness) await harness.cleanup();
   });
 
-  beforeEach(async () => {
-    await truncateAll(harness.db);
-    const owner = await createTestUser(harness.db);
-    ownerId = owner.id;
-    projectId = (await createTestProject(harness.db, owner.id)).id;
-  });
-
   const fx = releaseBatchFixture(
     () => harness,
     () => ({ projectId, ownerId }),
@@ -60,14 +53,19 @@ describe('release batch finish E2E', () => {
   const { declareProduction, seedReleaseRunner, insertIssue, stored } = fx;
   const { runStatus, commentCount, claim } = fx;
 
+  const freshProject = async () => {
+    await truncateAll(harness.db);
+    const owner = await createTestUser(harness.db);
+    ownerId = owner.id;
+    projectId = (await createTestProject(harness.db, owner.id)).id;
+    await declareProduction();
+    await seedReleaseRunner();
+  };
+  beforeEach(freshProject);
+
   const actor = () => ({ type: 'user', id: ownerId }) as const;
 
   describe('finish', () => {
-    beforeEach(async () => {
-      await declareProduction();
-      await seedReleaseRunner();
-    });
-
     it('closes every claimed issue out of the gate status, on the claim it already carried', async () => {
       const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
       const a = await insertIssue();
@@ -150,12 +148,7 @@ describe('release batch finish E2E', () => {
     });
 
     it('refuses the whole batch when the probes cannot confirm the deploy, and closes nothing', async () => {
-      await truncateAll(harness.db);
-      const owner = await createTestUser(harness.db);
-      ownerId = owner.id;
-      projectId = (await createTestProject(harness.db, owner.id)).id;
-      await declareProduction();
-      await seedReleaseRunner();
+      await freshProject();
       const { ReleaseNotVerifiedError, finishReleaseBatch } = await import(
         '../../src/release-batch/service.js'
       );
@@ -209,11 +202,6 @@ describe('release batch finish E2E', () => {
   });
 
   describe('abort', () => {
-    beforeEach(async () => {
-      await declareProduction();
-      await seedReleaseRunner();
-    });
-
     it('releases every claim, closes nothing, and comments once on each issue', async () => {
       const { abortReleaseBatch } = await import('../../src/release-batch/service.js');
       const a = await insertIssue();

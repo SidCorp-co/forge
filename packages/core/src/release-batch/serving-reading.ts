@@ -1,8 +1,6 @@
-/** What a project is serving, read when asked and never stored — a commit on a row is wrong the
- *  moment the next deploy lands (ISS-1286). It is the production environment's state
- *  (`project-config/environment-state.ts`): its deployment record, and each runtime probe it
- *  declares. Neither this nor `collectReleaseBlockers`, which promises no outbound request, calls
- *  the other. */
+/** The production environment's state (`project-config/environment-state.ts`), read when asked and
+ *  never stored: a commit on a row is wrong the moment the next deploy lands (ISS-1286). Neither
+ *  this nor `collectReleaseBlockers`, which promises no outbound request, calls the other. */
 
 import { longestSpelling } from '../messaging/verdict-identity.js';
 import { readEnvironmentState } from '../project-config/environment-state-read.js';
@@ -97,9 +95,8 @@ function fromState(
   return { kind: 'serving', served, unread, readAt };
 }
 
-/** What this project's production environment is serving, now. The read is the server's: a
- *  caller's claim about what is deployed is not admissible here, for the reason it is not
- *  admissible in a release. */
+/** The read is the server's: a caller's claim about what is deployed is not admissible here, for
+ *  the reason it is not admissible in a release. */
 export async function readServingNow(
   projectId: string,
   now: () => Date = () => new Date(),

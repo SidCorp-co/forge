@@ -1,10 +1,6 @@
 /**
  * Every refusal `releaseBatchRoutes` makes, in one place.
  *
- * Split out of `routes.ts` when the two declaration refusals pushed that file past its
- * 500-line budget (ISS-1046). The seam is the one the router already had: these are the
- * sentences an operator reads, and none of them is about routing.
- *
  * The messages carry the remedy, because a refusal an operator cannot act on is a 500 with
  * better manners — `middleware/error.ts` `extractCause` copies only `code`, `details` and
  * `wwwAuthenticate`, so anything the caller needs has to be in one of those three.

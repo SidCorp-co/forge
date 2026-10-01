@@ -15,7 +15,6 @@ export const bindingShapeFields = {
   stages: retiredStagesField,
 } as const;
 
-/** The sentence a caller gets for `role: 'deploy'` on a provider Forge cannot deploy to. */
 export function cannotDeployMessage(provider: string): string {
   return `Forge cannot deploy to \`${provider}\` — it has no deploy adapter, so this binding can only be \`role: "service"\`. Deploy-capable providers: ${deployCapableProviders().join(', ')}.`;
 }

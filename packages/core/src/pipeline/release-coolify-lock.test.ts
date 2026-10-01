@@ -148,6 +148,15 @@ const secondPair = pairOf(SECOND_INT);
 const sharedBox = (id: string) =>
   pairOf(id, { targets: [{ label: 'App', resourceUuid: SHARED_APP }] });
 
+const held = (extra: { integrationId?: string } = {}) =>
+  tryDispatchCoolifyRelease({
+    projectId: PROJECT_ID,
+    issueId: null,
+    runId: RUN_ID,
+    takeEnvironmentLock: true,
+    ...extra,
+  });
+
 /** `staging` and `qa` deploy on land through their own bindings; production `beta` on request. */
 function declare(productionTrigger: 'on-land' | 'on-request' = 'on-request') {
   readDocument.mockResolvedValue({
@@ -203,12 +212,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     listBindingsSpy.mockResolvedValue([stagingPair]);
     heldNow = { 'target:del-a': { status: 'pending' } };
 
-    await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: null,
-      runId: RUN_ID,
-      takeEnvironmentLock: true,
-    });
+    await held();
 
     expect(envsAsked()).toEqual(['staging']);
     expect(acquireLocksMock.mock.calls[0]?.[0]).toMatchObject({
@@ -224,13 +228,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     listBindingsSpy.mockResolvedValue([sharedBox(STAGING_INT), sharedBox(PROD_INT)]);
     selectQueue.push([{ status: 'running' }]);
 
-    await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: null,
-      runId: RUN_ID,
-      integrationId: STAGING_INT,
-      takeEnvironmentLock: true,
-    });
+    await held({ integrationId: STAGING_INT });
 
     expect(envsAsked()).toEqual(['beta', 'staging']);
   });
@@ -238,12 +236,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
   it('asks for no hold where there is no binding to dispatch', async () => {
     listBindingsSpy.mockResolvedValue([]);
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: null,
-      runId: RUN_ID,
-      takeEnvironmentLock: true,
-    });
+    const outcome = await held();
 
     expect(outcome.reason).toBe('no-integration');
     expect(acquireLocksMock).not.toHaveBeenCalled();
@@ -256,12 +249,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     selectQueue.push([]); // getProdGateStateForRun: unconfirmed
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: null,
-      runId: RUN_ID,
-      takeEnvironmentLock: true,
-    });
+    const outcome = await held();
 
     expect(outcome.pendingHumanConfirm).toBe(true);
     expect(enqueueSpy).not.toHaveBeenCalled();
@@ -279,12 +267,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
     heldNow = { 'target:del-a': { status: 'pending', locks: STAGING_ONLY } };
 
-    const outcome = await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: null,
-      runId: RUN_ID,
-      takeEnvironmentLock: true,
-    });
+    const outcome = await held();
 
     expect(outcome.pendingHumanConfirm).toBe(true);
     expect(envsAsked()).toEqual(['beta', 'staging']);
@@ -300,12 +283,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     selectQueue.push([]); // getProdGateStateForRun: unconfirmed
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
 
-    await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: null,
-      runId: RUN_ID,
-      takeEnvironmentLock: true,
-    });
+    await held();
 
     const gates = updates
       .map((u) => (u as { metadata?: Record<string, unknown> }).metadata)
@@ -321,12 +299,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     selectQueue.push([]);
     selectQueue.push([{ metadata: {} }]);
 
-    await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: null,
-      runId: RUN_ID,
-      takeEnvironmentLock: true,
-    });
+    await held();
 
     expect((db.update as unknown as { mock: { calls: unknown[][] } }).mock.calls.length).toBe(1);
   });
@@ -341,14 +314,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
       throw new Error('queue is down');
     });
 
-    await expect(
-      tryDispatchCoolifyRelease({
-        projectId: PROJECT_ID,
-        issueId: null,
-        runId: RUN_ID,
-        takeEnvironmentLock: true,
-      }),
-    ).rejects.toThrow('queue is down');
+    await expect(held()).rejects.toThrow('queue is down');
 
     expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, STAGING_ONLY]]);
   });
@@ -367,12 +333,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
     // reaching the environment any more — and a count of successful enqueues cannot say so.
     heldNow = { 'target:del-a': { status: 'succeeded', locks: LOCKS } };
 
-    await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: null,
-      runId: RUN_ID,
-      takeEnvironmentLock: true,
-    }).catch(() => undefined);
+    await held().catch(() => undefined);
 
     expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, LOCKS]]);
   });
@@ -385,12 +346,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
     openHoldSpy.mockResolvedValue(false);
     heldNow = {};
 
-    await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: null,
-      runId: RUN_ID,
-      takeEnvironmentLock: true,
-    });
+    await held();
 
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
     expect(releaseLocksMock).not.toHaveBeenCalled();
@@ -405,12 +361,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
     enqueueSpy.mockImplementation(() => order.push('enqueue'));
     listBindingsSpy.mockResolvedValue([stagingPair, secondPair]);
 
-    await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: null,
-      runId: RUN_ID,
-      takeEnvironmentLock: true,
-    });
+    await held();
 
     expect(order).toEqual(['hold', 'hold', 'enqueue', 'enqueue']);
   });
@@ -421,12 +372,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
   it('lets a binding of a live fan-out be recorded on the authority of its sibling', async () => {
     listBindingsSpy.mockResolvedValue([stagingPair, secondPair]);
 
-    await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: null,
-      runId: RUN_ID,
-      takeEnvironmentLock: true,
-    });
+    await held();
 
     const authorised = openHoldSpy.mock.calls.map(
       (c) => (c[0] as { authorisedBySibling?: boolean }).authorisedBySibling,
@@ -441,12 +387,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
     listBindingsSpy.mockResolvedValue([stagingPair, secondPair]);
     openHoldSpy.mockResolvedValue(false);
 
-    await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: null,
-      runId: RUN_ID,
-      takeEnvironmentLock: true,
-    });
+    await held();
 
     const authorised = openHoldSpy.mock.calls.map(
       (c) => (c[0] as { authorisedBySibling?: boolean }).authorisedBySibling,
@@ -460,14 +401,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
       throw new Error('metadata write failed');
     });
 
-    await expect(
-      tryDispatchCoolifyRelease({
-        projectId: PROJECT_ID,
-        issueId: null,
-        runId: RUN_ID,
-        takeEnvironmentLock: true,
-      }),
-    ).rejects.toThrow('metadata write failed');
+    await expect(held()).rejects.toThrow('metadata write failed');
 
     expect(enqueueSpy).not.toHaveBeenCalled();
     expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, STAGING_ONLY]]);
@@ -482,14 +416,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
         throw new Error('queue is down');
       });
 
-    await expect(
-      tryDispatchCoolifyRelease({
-        projectId: PROJECT_ID,
-        issueId: null,
-        runId: RUN_ID,
-        takeEnvironmentLock: true,
-      }),
-    ).rejects.toThrow('queue is down');
+    await expect(held()).rejects.toThrow('queue is down');
 
     expect(enqueueSpy).toHaveBeenCalledTimes(2);
     expect(releaseLocksMock).not.toHaveBeenCalled();
@@ -505,12 +432,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
         throw new Error('queue is down');
       });
 
-    await tryDispatchCoolifyRelease({
-      projectId: PROJECT_ID,
-      issueId: null,
-      runId: RUN_ID,
-      takeEnvironmentLock: true,
-    }).catch(() => undefined);
+    await held().catch(() => undefined);
 
     expect(abandonHoldSpy.mock.calls.map((c) => c[0])).toEqual([RUN_ID]);
     const kept = openHoldSpy.mock.calls.map((c) => (c[0] as { requestId: string }).requestId);

@@ -643,8 +643,8 @@ describe('PATCH /api/projects/:id', () => {
 
 /**
  * ISS-12 — where a project's work lands, its environments and its promotions are its project
- * document. The keys that used to carry them on the project row are refused by name, and the
- * refusal names the route that owns them now.
+ * document. Those keys on the project row are refused by name, and the refusal names the route
+ * that owns them.
  */
 describe('PATCH /api/projects/:id · the release keys moved to the project document', () => {
   it.each([

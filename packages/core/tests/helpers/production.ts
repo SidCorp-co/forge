@@ -1,6 +1,3 @@
-// A production environment a suite can release onto, declared the way ISS-12 reads it: a deploy
-// binding, and a project document whose production environment names it.
-
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { vi } from 'vitest';

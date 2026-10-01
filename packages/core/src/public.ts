@@ -1,5 +1,3 @@
-// Public type surface for `@forge/contracts` consumers.
-//
 // Only types/schemas meant to leak to clients live here. Runtime values
 // (Drizzle table objects) are re-exported because `$inferSelect` needs them,
 // but downstream consumers MUST use `import type` so no runtime code from

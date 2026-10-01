@@ -26,7 +26,6 @@ export type AgentAccess = (typeof agentAccessValues)[number];
 
 const AGENT_ACCESS_CHK = sql`agent_access IN ('none', 'all')`;
 
-/** Spread into `integrationBindings`' extras in `schema.ts`. */
 export const bindingShapeChecks = {
   roleChk: check('integration_bindings_role_chk', BINDING_ROLE_CHK),
   agentAccessChk: check('integration_bindings_agent_access_chk', AGENT_ACCESS_CHK),

@@ -26,7 +26,6 @@ interface ProjectRow {
   repoUrl: string | null;
 }
 
-/** The production environment as the project document declares it. */
 export interface ReleaseProduction {
   environment: string;
   /** The branch it deploys from where a promotion crosses into it; null where none does. */
@@ -39,12 +38,9 @@ export interface ReleaseReadiness {
   hasReleaseGate: boolean;
   /** Where work lands (`source.git.defaultBranch`); null with no git source or no reading. */
   defaultBranch: string | null;
-  /** Null where the project is not gated. */
   production: ReleaseProduction | null;
-  /** The promotions a landed change crosses to reach production, in order. */
   promotions: Promotion[];
   targetUndeclared: boolean;
-  /** Why nothing says where a release lands, where that is the case. */
   targetUndeclaredReason: string | null;
   /** The production deploy binding's provider; empty when the project is not gated. */
   providers: string[];
