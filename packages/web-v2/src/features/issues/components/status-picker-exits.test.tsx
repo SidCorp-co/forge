@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { ToastProvider } from "@/providers/toast-provider";
 import { BulkActionBar } from "./bulk-action-bar";
-import { IssueMobileCard } from "./issue-row-actions";
+import { IssueTableRow } from "./issue-row-actions";
 import { StatusEdit } from "./inline-edit-cell";
 import { statusLabel } from "../derive";
 import type { IssueRow, IssueStatus } from "../types";
@@ -206,12 +206,17 @@ describe("row overflow menu", () => {
 
   function openRowMenu(status: IssueStatus, agentStatus?: "running" | "queued" | "failed" | null) {
     wrap(
-      <IssueMobileCard
-        row={row({ status, agentStatus })}
-        slug="p1"
-        actions={actions}
-        now={Date.now()}
-      />,
+      <table>
+        <tbody>
+          <IssueTableRow
+            row={row({ status, agentStatus })}
+            slug="p1"
+            actions={actions}
+            assignee={null}
+            now={Date.now()}
+          />
+        </tbody>
+      </table>,
     );
     fireEvent.click(screen.getByLabelText("Row actions"));
   }
@@ -284,12 +289,17 @@ describe("row overflow menu, while an agent is working the row", () => {
 
   function openRowMenu(status: IssueStatus, agentStatus?: "running" | "queued" | "failed" | null) {
     wrap(
-      <IssueMobileCard
-        row={row({ status, agentStatus })}
-        slug="p1"
-        actions={actions}
-        now={Date.now()}
-      />,
+      <table>
+        <tbody>
+          <IssueTableRow
+            row={row({ status, agentStatus })}
+            slug="p1"
+            actions={actions}
+            assignee={null}
+            now={Date.now()}
+          />
+        </tbody>
+      </table>,
     );
     fireEvent.click(screen.getByLabelText("Row actions"));
   }

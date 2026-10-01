@@ -110,16 +110,63 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("the logo row", () => {
-  it("is the logo, the organization picker, search and collapse, with no mode switch", () => {
+  it("is the logo, the organization picker, search and the bell, with no mode switch", () => {
     rail(false);
     at("/projects/forge-dev/issues");
     mount();
     const brand = within(side().getByTestId("brand-row"));
     expect(brand.getByAltText("Forge")).toBeInTheDocument();
     expect(brand.getByTestId("org-switcher-brand")).toBeInTheDocument();
-    expect(brand.getByRole("button", { name: "Collapse sidebar" })).toBeInTheDocument();
+    expect(brand.getByRole("button", { name: "Notifications, 2 open" })).toBeInTheDocument();
+    expect(brand.queryByRole("button", { name: "Collapse sidebar" })).toBeNull();
     expect(side().queryByTestId("org-switcher-expanded")).toBeNull();
     expect(screen.queryByTestId("mode-switch")).toBeNull();
+  });
+
+  it("carries the bell beside the logo on the compact rail too", () => {
+    rail(true);
+    at("/projects/forge-dev/issues");
+    mount();
+    const brand = within(side().getByTestId("brand-row"));
+    expect(brand.getByRole("button", { name: "Notifications, 2 open" })).toBeInTheDocument();
+    expect(brand.queryByRole("button", { name: "Expand sidebar" })).toBeNull();
+  });
+});
+
+describe("the sidebar footer", () => {
+  it.each([
+    ["the expanded rail", false, "Collapse sidebar"],
+    ["the compact rail", true, "Expand sidebar"],
+  ])("puts the collapse handle right after the account menu on %s", (_, collapsed, handle) => {
+    rail(collapsed);
+    at("/projects/forge-dev/issues");
+    mount();
+    const account = side().getByRole("button", { name: "Account menu" });
+    const toggle = side().getByRole("button", { name: handle });
+    expect(account.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it.each([
+    ["the expanded rail", false],
+    ["the compact rail", true],
+  ])("has no Docs or What's New rows on %s: the version opens What's New and the book opens Docs", (_, collapsed) => {
+    rail(collapsed);
+    at("/projects/forge-dev/issues");
+    mount();
+    expect(side().queryByRole("button", { name: /^What's New/ })).toBeNull();
+    fireEvent.click(side().getByRole("button", { name: /What's New/ }));
+    expect(nav.push).toHaveBeenLastCalledWith("/whats-new");
+    fireEvent.click(side().getByRole("button", { name: "Docs" }));
+    expect(nav.push).toHaveBeenLastCalledWith("/docs");
+  });
+});
+
+describe("the top bar", () => {
+  it("prints no breadcrumb on any page", () => {
+    at("/projects/forge-dev/settings");
+    mount();
+    expect(screen.queryByTestId("page-crumbs")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).toBeNull();
   });
 });
 
@@ -166,12 +213,15 @@ describe("the chat dock", () => {
   it.each([
     ["the expanded rail", false],
     ["the compact rail", true],
-  ])("opens from %s over the page, in the selected project, and closes", (_, collapsed) => {
+  ])("opens from the top bar with %s over the page, in the selected project, and closes", (_, collapsed) => {
     rail(collapsed);
     at("/projects/other/issues");
     mount();
     expect(screen.queryByTestId("chat-dock")).toBeNull();
-    fireEvent.click(side().getByRole("button", { name: "Chat" }));
+    expect(side().queryByRole("button", { name: "Chat" })).toBeNull();
+    const bar = within(screen.getByRole("banner"));
+    fireEvent.click(bar.getByRole("button", { name: "Chat" }));
+    expect(bar.getByRole("button", { name: "Chat" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("page")).toBeInTheDocument();
     expect(screen.getByTestId("chat-dock")).toBeInTheDocument();
     expect(screen.getByTestId("dock-chat")).toHaveAttribute("data-project", "p2");
@@ -190,7 +240,7 @@ describe("the chat dock", () => {
   });
 });
 
-describe("every top-bar item has a home in the sidebar", () => {
+describe("the sidebar's controls", () => {
   it.each([
     ["the compact rail", true],
     ["the expanded rail", false],
@@ -198,7 +248,6 @@ describe("every top-bar item has a home in the sidebar", () => {
     rail(collapsed);
     at("/projects/forge-dev/issues");
     mount();
-    expect(screen.queryByRole("banner")).toBeNull();
     expect(side().getByRole("button", { name: "Account menu" })).toBeInTheDocument();
     expect(side().getByRole("button", { name: "Search (⌘K)" })).toBeInTheDocument();
     fireEvent.click(side().getByRole("button", { name: "Notifications, 2 open" }));

@@ -35,21 +35,18 @@ export function WhatsNewScreen() {
     // changelog prose at 1700px is unreadable.
     <PageContainer className="flex flex-col gap-4">
       <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <PageTitle className="fg-h2">What&apos;s New</PageTitle>
-          <p className="fg-body-sm text-muted">
-            Forge release notes — newest first.{" "}
-            <a
-              href={FORGE_RELEASES_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[color:var(--link)] hover:underline"
-            >
-              All releases on GitHub
-            </a>
-          </p>
-        </div>
+      <div className="flex items-center justify-between gap-3">
+        <PageTitle className="fg-h2" hint="Forge release notes — newest first.">
+          What&apos;s New
+        </PageTitle>
+        <a
+          href={FORGE_RELEASES_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="fg-body-sm ml-auto text-[color:var(--link)] hover:underline"
+        >
+          All releases on GitHub
+        </a>
         <HelpButton
           summary="The Forge product changelog, pulled live from GitHub. Each release lists what changed, grouped by Added / Changed / Fixed. The newest entry (including the upcoming [Unreleased] section) is at the top; opening this page clears the 'new' badge in the sidebar."
         />

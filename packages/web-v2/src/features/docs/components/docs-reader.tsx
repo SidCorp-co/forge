@@ -145,22 +145,20 @@ export function DocsSidebar({
   );
 }
 
-/** A page: its breadcrumb, anything the caller puts above the body, and the markdown, with
+/** A page: anything the caller puts above the body, and the markdown, with
  *  heading ids assigned after render so the table of contents can scroll to them. */
 export function DocsArticle({
-  crumbs,
   body,
   docBasePath,
   docRoute,
   children,
 }: {
-  crumbs: string[];
   body: string;
   docBasePath?: string;
   docRoute?: string;
   children?: ReactNode;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLElement>(null);
   // Every render, not only when `body` changes: whatever the caller renders above the body can
   // carry headings too, and the pass is a handful of elements.
   useEffect(() => {
@@ -170,31 +168,13 @@ export function DocsArticle({
       h.id = slugify(h.textContent ?? "");
     }
   });
-  const trail = crumbs.map((crumb, depth) => ({
-    crumb,
-    path: crumbs.slice(0, depth + 1).join(" / "),
-    last: depth === crumbs.length - 1,
-  }));
-
   return (
-    <div ref={ref} style={{ maxWidth: "72ch" }} className="mx-auto">
-      <nav aria-label="Breadcrumb" className="fg-caption mb-5 flex flex-wrap items-center gap-1.5 text-subtle">
-        {trail.map(({ crumb, path, last }) => (
-          <span key={path} className="contents">
-            {path !== crumb ? (
-              <span aria-hidden className="text-line-strong">
-                /
-              </span>
-            ) : null}
-            <span className={last ? "text-muted" : undefined}>{crumb}</span>
-          </span>
-        ))}
-      </nav>
+    <article ref={ref} style={{ maxWidth: "72ch" }} className="mx-auto">
       {children}
       <Markdown variant="prose" docBasePath={docBasePath} docRoute={docRoute}>
         {body}
       </Markdown>
-    </div>
+    </article>
   );
 }
 

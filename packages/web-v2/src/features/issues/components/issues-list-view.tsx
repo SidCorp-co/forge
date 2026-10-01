@@ -15,8 +15,6 @@ import {
   Input,
   Pagination,
   Popover,
-  SectionTitle,
-  SegmentedControl,
   Select,
   SlideOver,
   SortableTH,
@@ -46,8 +44,9 @@ import { usePathname } from "next/navigation";
 // param survive, ISS-364/331). Because derivation is reactive, an external URL
 // change — a pinned-view click on this same route, back/forward — restores the
 // exact view without a remount (the old hydrate-once useState went stale).
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type IssueBuckets, ISSUES_PAGE_SIZE } from "../api";
+import { hasLiveAgentSession } from "../waiting";
 import {
   ANY_AGENT_LABEL,
   filterCount,
@@ -71,7 +70,8 @@ import {
   type IssueSort,
 } from "../types";
 import { BulkActionBar } from "./bulk-action-bar";
-import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
+import { FilterChips } from "./filter-chips";
+import { IssueTableRow, type RowAssignee } from "./issue-row-actions";
 import type { RowActions } from "./issue-table-row";
 import { useGuardedTransition } from "./use-guarded-transition";
 
@@ -127,15 +127,21 @@ const SORT_OPTIONS: SelectOption[] = [
 
 const ISSUE_COLUMNS: ColumnDef<IssueRow, unknown>[] = [
   { id: "createdAt", header: "ID", enableSorting: true, sortDescFirst: true },
-  { id: "title", header: "Issue", enableSorting: false },
-  { id: "module", header: "Module", enableSorting: false },
+  { id: "title", header: "Title", enableSorting: false },
   { id: "status", header: "Status", enableSorting: false },
-  { id: "updatedAt", header: "Updated", enableSorting: true, sortDescFirst: true },
   { id: "priority", header: "Priority", enableSorting: true, sortDescFirst: true },
-  { id: "complexity", header: "Complexity", enableSorting: false },
-  { id: "cost", header: "Cost", enableSorting: false },
-  { id: "creator", header: "Creator", enableSorting: false },
+  { id: "assignee", header: "Assignee", enableSorting: false },
+  { id: "updatedAt", header: "Updated", enableSorting: true, sortDescFirst: true },
 ];
+
+/** The person an issue is assigned to, else the agent working it, named by the device its run is on. */
+function assigneeOf(row: IssueRow, names: Map<string, RowAssignee>): RowAssignee | null {
+  const person = row.assigneeId ? names.get(row.assigneeId) : undefined;
+  if (person) return person;
+  if (!hasLiveAgentSession(row.agentStatus)) return null;
+  const live = row.agentSessions?.find((s) => hasLiveAgentSession(s.status));
+  return { label: live?.deviceName ? `Agent · ${live.deviceName}` : "Agent", agent: true };
+}
 
 function sortToState(sort: IssueSort): SortingState {
   const [id, dir] = sort.split(":");
@@ -308,6 +314,17 @@ export function IssuesListView({
     [membersQ.data],
   );
 
+  const memberNames = useMemo(
+    () =>
+      new Map<string, RowAssignee>(
+        (membersQ.data ?? []).map((m) => [
+          m.userId,
+          { label: m.displayName ?? m.email, agent: m.kind === "agent" },
+        ]),
+      ),
+    [membersQ.data],
+  );
+
   const labelFilterOptions = useMemo<SelectOption[]>(
     () => [
       { value: "", label: "Label: any" },
@@ -434,7 +451,7 @@ export function IssuesListView({
   return (
     <>
       {reasonDialog}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2 px-4 pb-2 sm:px-6">
         <Input
           icon="search"
           placeholder="Search issues…"
@@ -442,15 +459,6 @@ export function IssuesListView({
           onChange={(e) => setRawQ(e.target.value)}
           className="w-full sm:w-64"
         />
-        <div className="overflow-x-auto">
-          <SegmentedControl
-            options={tabs}
-            value={filter}
-            onChange={(v) =>
-              setParams({ filter: v !== "all" ? v : "", page: "" })
-            }
-          />
-        </div>
         <Button
           variant="secondary"
           size="sm"
@@ -608,23 +616,34 @@ export function IssuesListView({
         </div>
       </SlideOver>
 
-      {filter === "done" && (
-        <div className="mb-4 flex items-center gap-2">
-          <span className="fg-caption text-muted">Outcome</span>
-          <SegmentedControl
-            options={finishedCuts}
-            value={finishedCut}
-            onChange={(v) => setParams({ status: v, page: "" })}
-          />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-3 sm:px-6">
+        <FilterChips
+          label="Show"
+          options={tabs}
+          value={filter}
+          onChange={(v) => setParams({ filter: v !== "all" ? v : "", page: "" })}
+        />
+        {filter === "done" && (
+          <div className="flex items-center gap-2">
+            <span className="fg-caption text-muted">Outcome</span>
+            <FilterChips
+              label="Outcome"
+              options={finishedCuts}
+              value={finishedCut}
+              onChange={(v) => setParams({ status: v, page: "" })}
+            />
+          </div>
+        )}
+      </div>
+
+      {bulkEnabled && (
+        <div className="px-4 sm:px-6">
+          <BulkActionBar projectId={projectId} selectedRows={selectedRows} onCleared={clearSelection} />
         </div>
       )}
 
-      {bulkEnabled && (
-        <BulkActionBar projectId={projectId} selectedRows={selectedRows} onCleared={clearSelection} />
-      )}
-
       {issuesQ.isLoading && (
-        <div className="overflow-hidden rounded-lg border border-line bg-surface">
+        <div className="border-t border-line">
           {Array.from({ length: 6 }).map((_, i) => (
             <BoardRowSkeleton key={i} />
           ))}
@@ -632,140 +651,113 @@ export function IssuesListView({
       )}
 
       {issuesQ.isError && (
-        <ErrorState
-          title="Couldn't load issues"
-          message={formatApiError(issuesQ.error)}
-          onRetry={() => issuesQ.refetch()}
-        />
+        <div className="px-4 sm:px-6">
+          <ErrorState
+            title="Couldn't load issues"
+            message={formatApiError(issuesQ.error)}
+            onRetry={() => issuesQ.refetch()}
+          />
+        </div>
       )}
 
       {!issuesQ.isLoading && !issuesQ.isError && rows.length === 0 && (
-        <EmptyState
-          title={
-            moduleId
-              ? "No issues in this module"
-              : isFiltered
-                ? "Nothing here"
-                : projectHasIssues
-                  ? "Nothing is waiting on you"
-                  : "No issues yet"
-          }
-          message={
-            moduleId
-              ? `No issues tagged to ${activeModuleName ?? "this module"}.`
-              : createdBy
-                ? `No issues created by ${
-                    creatorFilterOptions.find((o) => o.value === createdBy)?.label.replace(/^Creator: /, "") ??
-                    "that creator"
-                  }.`
+        <div className="border-t border-line px-4 py-6 sm:px-6">
+          <EmptyState
+            title={
+              moduleId
+                ? "No issues in this module"
                 : isFiltered
-                  ? "No issues match this search or filter."
+                  ? "Nothing here"
                   : projectHasIssues
-                    ? "Work is moving without you — the other tabs say where it is."
-                    : "Issues for this project will appear here as work is filed."
-          }
-          mascot={!isFiltered}
-          action={
-            isFiltered
-              ? {
-                  label: "Clear filters",
-                  onClick: () =>
-                    setParams({
-                      q: "",
-                      filter: "",
-                      priority: "",
-                      createdBy: "",
-                      label: "",
-                      module: "",
-                      page: "",
-                    }),
-                }
-              : onNewIssue
-                ? { label: "New issue", onClick: onNewIssue }
-                : undefined
-          }
-        />
+                    ? "Nothing is waiting on you"
+                    : "No issues yet"
+            }
+            message={
+              moduleId
+                ? `No issues tagged to ${activeModuleName ?? "this module"}.`
+                : createdBy
+                  ? `No issues created by ${
+                      creatorFilterOptions.find((o) => o.value === createdBy)?.label.replace(/^Creator: /, "") ??
+                      "that creator"
+                    }.`
+                  : isFiltered
+                    ? "No issues match this search or filter."
+                    : projectHasIssues
+                      ? "Work is moving without you — the other filters say where it is."
+                      : "Issues for this project will appear here as work is filed."
+            }
+            mascot={!isFiltered}
+            action={
+              isFiltered
+                ? {
+                    label: "Clear filters",
+                    onClick: () =>
+                      setParams({
+                        q: "",
+                        filter: "",
+                        priority: "",
+                        createdBy: "",
+                        label: "",
+                        module: "",
+                        page: "",
+                      }),
+                  }
+                : onNewIssue
+                  ? { label: "New issue", onClick: onNewIssue }
+                  : undefined
+            }
+          />
+        </div>
       )}
 
       {!issuesQ.isLoading && !issuesQ.isError && rows.length > 0 && (
         <>
-          <div className="hidden space-y-6 lg:block">
-            {groups.map((g) => (
-              <section key={g.key}>
-                {groupBy !== "none" && (
-                  <SectionTitle className="fg-overline mb-2 px-1 font-mono">
-                    {g.label} · {g.rows.length}
-                  </SectionTitle>
+          {/* cm:why one table runs edge to edge from the sidebar, scrolling sideways inside itself at phone width; a grouping is a header row in it, not a box per group (ISS-49) */}
+          <Table flush aria-label="Issues" className="min-w-[860px]">
+            <THead>
+              <TR>
+                {bulkEnabled && (
+                  <TH className="w-9 pr-0">
+                    <Checkbox
+                      checked={allOnPageSelected}
+                      indeterminate={someOnPageSelected}
+                      onChange={toggleAllOnPage}
+                      ariaLabel="Select all issues on this page"
+                    />
+                  </TH>
                 )}
-                <Table>
-                  <THead>
-                    <TR>
-                      {bulkEnabled && (
-                        <TH className="w-9 pr-0">
-                          <Checkbox
-                            checked={allOnPageSelected}
-                            indeterminate={someOnPageSelected}
-                            onChange={toggleAllOnPage}
-                            ariaLabel="Select all issues on this page"
-                          />
-                        </TH>
-                      )}
-                      {headers.map((header) => (
-                        <SortableTH
-                          key={header.id}
-                          header={header}
-                          className={
-                            header.id === "cost"
-                              ? "text-right"
-                              : header.id === "createdAt"
-                                ? "w-px whitespace-nowrap"
-                                : undefined
-                          }
-                        />
-                      ))}
-                      <TH className="sr-only">Actions</TH>
+                {headers.map((header) => (
+                  <SortableTH
+                    key={header.id}
+                    header={header}
+                    className={header.id === "createdAt" ? "w-px whitespace-nowrap" : undefined}
+                  />
+                ))}
+                <TH className="sr-only">Actions</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {groups.map((g) => (
+                <Fragment key={g.key}>
+                  {groupBy !== "none" && (
+                    <TR className="bg-sunken hover:bg-sunken">
+                      <TH
+                        scope="colgroup"
+                        colSpan={headers.length + (bulkEnabled ? 2 : 1)}
+                        className="text-left"
+                      >
+                        {g.label} · {g.rows.length}
+                      </TH>
                     </TR>
-                  </THead>
-                  <TBody>
-                    {g.rows.map((row) => (
-                      <IssueTableRow
-                        key={row.id}
-                        row={row}
-                        slug={slug}
-                        actions={actions}
-                        now={now}
-                        selection={
-                          bulkEnabled
-                            ? {
-                                selected: selected.has(row.id),
-                                onToggle: (next) => toggleRow(row.id, next),
-                              }
-                            : undefined
-                        }
-                      />
-                    ))}
-                  </TBody>
-                </Table>
-              </section>
-            ))}
-          </div>
-
-          <div className="space-y-4 lg:hidden">
-            {groups.map((g) => (
-              <section key={g.key}>
-                {groupBy !== "none" && (
-                  <SectionTitle className="fg-overline mb-2 px-1 font-mono">
-                    {g.label} · {g.rows.length}
-                  </SectionTitle>
-                )}
-                <div className="space-y-2.5">
+                  )}
                   {g.rows.map((row) => (
-                    <IssueMobileCard
+                    <IssueTableRow
                       key={row.id}
                       row={row}
                       slug={slug}
                       actions={actions}
                       now={now}
+                      assignee={assigneeOf(row, memberNames)}
                       selection={
                         bulkEnabled
                           ? {
@@ -776,13 +768,13 @@ export function IssuesListView({
                       }
                     />
                   ))}
-                </div>
-              </section>
-            ))}
-          </div>
+                </Fragment>
+              ))}
+            </TBody>
+          </Table>
 
           {pageCount > 1 && (
-            <div className="mt-6 flex justify-end">
+            <div className="flex justify-end px-4 py-4 sm:px-6">
               <Pagination
                 page={page}
                 pageCount={pageCount}

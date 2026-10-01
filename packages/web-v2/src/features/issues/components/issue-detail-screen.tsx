@@ -320,7 +320,7 @@ export function IssueDetailScreen({
 
   return (
     <PageContainer className="min-h-dvh">
-      {/* cm:why the trail is the shell's PageCrumbs line above this page, so this sticky bar carries no breadcrumb of its own: a second one is the doubled header that hid the detail in ISS-360 */}
+      {/* cm:why the way back is the arrow, not a breadcrumb: the shell carries no trail (ISS-49), and a trail in this sticky bar is the doubled header that hid the detail in ISS-360 */}
       <div ref={stickyHeader} className="sticky top-0 z-20 -mx-4 mb-5 flex flex-wrap items-start gap-3 border-b border-line-subtle bg-app/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
         <IconButton
           icon="arrowRight"

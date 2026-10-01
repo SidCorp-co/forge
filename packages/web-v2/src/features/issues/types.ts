@@ -62,13 +62,6 @@ export type LabelKind = "label" | "module";
 
 export type { IssuePark, IssueParkResponse, ParkOwes, ParkResume } from "@forge/contracts";
 
-/** One module attributed to an issue. Primary first in every array core sends. */
-export interface ModuleAttribution {
-  labelId: string;
-  name: string;
-  color: string;
-  isPrimary: boolean;
-}
 
 export interface IssueRow {
   id: string;
@@ -105,13 +98,11 @@ export interface IssueRow {
   waitingOnPersonSince?: string | null;
   agentSessions?: IssueAgentSession[];
   agentStatus?: IssueAgentStatus;
-  estimatedCost?: number;
   failureInfo?: IssueFailureInfo | null;
   /** ISS-764 — set when a batch release has claimed this issue. Non-null means
    *  the issue is locked into a batch and cannot be selected for a new one. */
   releaseBatchRunId?: string | null;
   pipelineHealth?: PipelineHealth;
-  modules?: ModuleAttribution[];
   dependencies?: IssueDependencies;
 }
 

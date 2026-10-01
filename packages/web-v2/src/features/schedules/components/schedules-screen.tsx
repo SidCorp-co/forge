@@ -294,10 +294,12 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
   return (
     <PageContainer className="min-h-dvh">
       <header className="mb-6">
-        <PageTitle className="fg-h2">Schedules</PageTitle>
-        <p className="fg-body-sm mt-1">
-          Recurring runs for this project, the PM sweep among them. Expand a row to see its history or settings.
-        </p>
+        <PageTitle
+          className="fg-h2"
+          hint="Recurring runs for this project, the PM sweep among them. Expand a row to see its history or settings."
+        >
+          Schedules
+        </PageTitle>
       </header>
 
       {schedulesQ.isLoading && (

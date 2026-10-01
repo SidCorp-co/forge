@@ -38,7 +38,6 @@ export function SettingsScreen() {
         header={
           <header className="mb-6">
             <PageTitle className="fg-h2">Settings</PageTitle>
-            <p className="fg-body-sm mt-1">Your account, tokens, and notifications.</p>
           </header>
         }
       />

@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Avatar, Badge, Banner, BoardRowSkeleton, Breadcrumb, Button, Card, CardContent,
-  CardHeader, CardTitle, Checkbox, Collapsible, CommandPalette, Divider, EmptyState,
+  Avatar, Badge, Banner, BoardRowSkeleton, Button, Card, CardContent,
+  CardHeader, CardTitle, Checkbox, Collapsible, CommandPalette, EmptyState,
   ErrorState, Field, Highlight, HealthDot, Icon, IconButton, Input,
   KanbanBoard, KanbanCardSkeleton, KanbanColumn, KanbanColumnSkeleton, Kicker, KanbanCard, LiveDot, Menu,
   MonoTag, NavRail, NotificationsMenu, Pagination, ProgressBar,
@@ -624,7 +624,6 @@ export default function KitPage() {
                   projectClusters={[{ key: "project", kicker: "Project", items: PROJECT_MENU }]}
                   activeKey={navActive}
                   onNavigate={setNavActive}
-                  onDocs={() => setNavActive("docs")}
                   onProjectSwitch={() => {}}
                   project={{ name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)" }}
                   user={{ initials: "SK" }}
@@ -780,7 +779,7 @@ export default function KitPage() {
             <FormControlsDemo />
           </Section>
 
-          <Section id="display" title="Display" hint="Badges, banners, dividers, tooltips, breadcrumbs, icon buttons, pagination.">
+          <Section id="display" title="Display" hint="Badges, banners, dividers, tooltips, icon buttons, pagination.">
             <div className="flex flex-col gap-6">
               <Row>
                 <Badge>12</Badge>
@@ -799,8 +798,6 @@ export default function KitPage() {
                 <Banner tone="success">Release agent opened PR #1284 → main.</Banner>
               </div>
               <Row>
-                <Breadcrumb items={[{ label: "Projects", href: "#" }, { label: "forge-core", href: "#" }, { label: "FRG-241" }]} />
-                <Divider orientation="vertical" className="h-5" />
                 <Tooltip label="⌘K">
                   <IconButton icon="search" aria-label="Search" />
                 </Tooltip>

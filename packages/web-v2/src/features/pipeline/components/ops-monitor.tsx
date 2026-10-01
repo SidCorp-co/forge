@@ -127,13 +127,12 @@ export function OpsMonitor() {
       ))}
 
       <header className="mb-5 flex items-start justify-between gap-3">
-        <div>
-          <PageTitle className="fg-h2">Ops</PageTitle>
-          <p className="fg-body-sm mt-1 text-muted">
-            Cross-project run telemetry, step durations, and spend — live across {projects.length}{" "}
-            project{projects.length === 1 ? "" : "s"}.
-          </p>
-        </div>
+        <PageTitle
+          className="fg-h2"
+          hint={`Cross-project run telemetry, step durations, and spend — live across ${projects.length} project${projects.length === 1 ? "" : "s"}.`}
+        >
+          Ops
+        </PageTitle>
         <HelpButton
           summary="A live cross-project view of pipeline runs: real-time monitor, throughput and stage-duration progress, project health, and a recent-runs list."
           actions={[

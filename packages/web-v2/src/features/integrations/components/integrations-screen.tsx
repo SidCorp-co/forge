@@ -187,13 +187,12 @@ export function IntegrationsScreen() {
   return (
     <PageContainer className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <PageTitle className="fg-h2">Connections</PageTitle>
-          <p className="fg-body-sm text-muted">
-            Credentials in {scopeName}, shared across projects. Configure a project&apos;s
-            integrations in its settings → Integrations.
-          </p>
-        </div>
+        <PageTitle
+          className="fg-h2"
+          hint={`Credentials in ${scopeName}, shared across projects. Configure a project's integrations in its settings → Integrations.`}
+        >
+          Connections
+        </PageTitle>
         <HelpButton
           summary="A connection is a credential owned by you or one of your organizations (Coolify token, Postman key, GitHub App). Projects use a connection through bindings — share one connection with several projects without re-entering the secret. Health here is the connection's real last-known state; disabled connections stay listed so you can re-enable them."
           actions={HELP_ACTIONS}

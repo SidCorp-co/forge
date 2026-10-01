@@ -152,7 +152,7 @@ describe("a page", () => {
 
   it("keeps a link to another help page on /guides", () => {
     reader({ kind: "page", href: helpPageHref("getting-started") });
-    const links = [...document.querySelectorAll("article a, [aria-label='Breadcrumb'] ~ * a")]
+    const links = [...document.querySelectorAll("article a")]
       .map((a) => a.getAttribute("href") ?? "")
       .filter((h) => h.includes("?path="));
     expect(links.length).toBeGreaterThan(0);

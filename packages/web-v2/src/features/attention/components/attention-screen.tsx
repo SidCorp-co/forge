@@ -238,11 +238,12 @@ export function AttentionScreen() {
       ))}
 
       <header className="mb-5">
-        <PageTitle className="fg-h2">Attention</PageTitle>
-        <p className="fg-body-sm mt-1 text-muted">
-          Cross-project items waiting on you — reviews, blocked work, mentions, failures, unseen
-          drafts, and offline runners.
-        </p>
+        <PageTitle
+          className="fg-h2"
+          hint="Cross-project items waiting on you — reviews, blocked work, mentions, failures, unseen drafts, and offline runners."
+        >
+          Attention
+        </PageTitle>
       </header>
 
       {total === 0 ? (

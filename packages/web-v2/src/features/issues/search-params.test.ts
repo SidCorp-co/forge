@@ -48,13 +48,18 @@ describe("issuesApi.search", () => {
     const params = paramsOfLastCall();
     for (const flag of [
       "withAgentSessions",
-      "withCost",
       "withFailureInfo",
       "withPipelineHealth",
-      "withModules",
       "withBuckets",
     ]) {
       expect(params.get(flag)).toBe("1");
     }
+  });
+
+  it("asks for no cost or module hydration, which no cell reads", async () => {
+    await issuesApi.search(PROJECT, {});
+    const params = paramsOfLastCall();
+    expect(params.get("withCost")).toBeNull();
+    expect(params.get("withModules")).toBeNull();
   });
 });

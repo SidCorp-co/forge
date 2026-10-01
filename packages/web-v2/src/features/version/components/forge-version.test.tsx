@@ -95,4 +95,23 @@ describe("ForgeVersion", () => {
 
 		expect(container.textContent).not.toMatch(/\d/);
 	});
+
+	it("drops the product name when short, and keeps the whole label in its tooltip", () => {
+		useForgeVersion.mockReturnValue({
+			isPending: false,
+			data: { version: "0.3.0", sourceCommit: null, uptimeSeconds: 12 },
+		});
+
+		render(<ForgeVersion short />);
+
+		expect(screen.getByText("v0.3.0").getAttribute("title")).toBe("Forge v0.3.0");
+	});
+
+	it("still says unavailable when short, rather than a bare `v`", () => {
+		useForgeVersion.mockReturnValue({ isPending: false, isError: true, data: undefined });
+
+		render(<ForgeVersion short />);
+
+		expect(screen.getByText("Forge version unavailable")).toBeTruthy();
+	});
 });
