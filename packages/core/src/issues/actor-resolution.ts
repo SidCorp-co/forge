@@ -113,3 +113,8 @@ export async function resolveActors(refs: ActorRef[]): Promise<Map<string, Resol
 
   return result;
 }
+
+export async function userLabel(id: string): Promise<string | null> {
+  const actor = (await resolveActors([{ type: 'user', id }])).get(actorKey('user', id));
+  return actor && actor.displayName !== UNKNOWN_LABEL ? actor.displayName : null;
+}
