@@ -13,6 +13,9 @@
 - **An agent session you start from the web acts as you, not as whoever paired the box.** Each
   turn carries a short-lived token for its sender, never wider than the box owner's. Viewers and
   older forge-runners are refused.
+- **A scheduled run acts as its schedule's owner, or as whoever pressed run.** It used to act as
+  whoever paired the box. A run whose person lost their role, or outranks the box owner, is
+  refused and the refusal shows in its run history.
 - **A signed-in browser can no longer broadcast to the whole organisation's live channel.** The
   prompt-relay route that allowed it had no caller and is gone.
 - **A box can only start work on a project it serves.** A box with no runner there, a disabled
