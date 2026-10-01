@@ -1,5 +1,4 @@
 import { apiClient } from "@/lib/api/client";
-import type { BindingDocument, BindingRead } from "./binding-document";
 import type {
   BindingListResponse,
   ConfirmProdDeployResult,
@@ -48,20 +47,6 @@ export const integrationsApi = {
     apiClient<{ ok: boolean }>(`/projects/${projectId}/integrations/${id}`, {
       method: "DELETE",
     }),
-
-
-  bindingDocument: (projectId: string, bindingId: string) =>
-    apiClient<BindingRead>(`/projects/${projectId}/bindings/${bindingId}`),
-
-  putBindingDocument: (
-    projectId: string,
-    bindingId: string,
-    write: { baseRevision: number | null; document: BindingDocument },
-  ) =>
-    apiClient<BindingRead & { created: boolean; effects: Record<string, unknown> }>(
-      `/projects/${projectId}/bindings/${bindingId}`,
-      { method: "PUT", body: JSON.stringify(write) },
-    ),
 
   /** `PATCH .../integrations/:id` — update config/secrets/active. */
   update: (projectId: string, id: string, body: UpdateIntegrationInput) =>

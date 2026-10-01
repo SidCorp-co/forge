@@ -1,10 +1,12 @@
 import type { AgentAccess, BindingRole } from "@forge/contracts";
 import { formatApiError } from "@/lib/api/error";
+import { configApi } from "@/features/project-settings/config-api";
 import { documentRefusals, refusalLine } from "@/lib/api/refusals";
 import { integrationConnectionsApi, integrationsApi } from "./api";
 import {
 	BINDING_SCHEMA,
 	type BindingDocument,
+	type BindingRead,
 	bindingConfigOf,
 	mergeBindingConfig,
 	splitTiers,
@@ -38,6 +40,9 @@ export interface UpdateIntegrationInput {
 	agentAccess?: AgentAccess;
 }
 
+const readBinding = async (projectId: string, id: string) =>
+	(await configApi.getBinding(projectId, id)) as BindingRead;
+
 export async function bindConnection(projectId: string, input: BindConnectionInput) {
 	const label = input.label ?? "";
 	const { items } = await integrationsApi.list(projectId);
@@ -50,7 +55,7 @@ export async function bindConnection(projectId: string, input: BindConnectionInp
 			!b.bindingActive,
 	);
 	const id = freed?.id ?? crypto.randomUUID();
-	const read = freed ? await integrationsApi.bindingDocument(projectId, id) : null;
+	const read = freed ? await readBinding(projectId, id) : null;
 	const document: BindingDocument = {
 		$schema: BINDING_SCHEMA,
 		version: 1,
@@ -61,7 +66,7 @@ export async function bindConnection(projectId: string, input: BindConnectionInp
 		active: true,
 		target: targetOf(input.provider, input.binding, label),
 	};
-	return integrationsApi.putBindingDocument(projectId, id, {
+	return configApi.putBinding(projectId, id, {
 		baseRevision: read?.declared === true ? read.revision : null,
 		document,
 	});
@@ -108,11 +113,11 @@ export async function updateIntegration(projectId: string, id: string, input: Up
 		input.instructions !== undefined;
 
 	if (rebinds) {
-		const read = await integrationsApi.bindingDocument(projectId, id);
+		const read = await readBinding(projectId, id);
 		if (!read.declared) throw new Error(`binding ${id} has no binding document to edit`);
 		const base = read.document;
 		const merged = mergeBindingConfig(bindingConfigOf(base.target), tiers.binding);
-		await integrationsApi.putBindingDocument(projectId, id, {
+		await configApi.putBinding(projectId, id, {
 			baseRevision: read.revision,
 			document: withInstructions(
 				{

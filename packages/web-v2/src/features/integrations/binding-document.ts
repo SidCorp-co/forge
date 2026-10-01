@@ -1,11 +1,12 @@
 import type { AgentAccess, BindingRole } from "@forge/contracts";
+import { schemaUrl } from "@/features/project-settings/document-edit";
 import { providerModule } from "./providers/registry";
 
 const RELEASE_RUNNER_LABEL = "releaseRunnerLabel";
 
-export const BINDING_SCHEMA = "https://forge.sidcorp.co/schemas/binding-v1.json";
+export const BINDING_SCHEMA = schemaUrl("binding");
 
-export interface BindingDocument {
+export type BindingDocument = {
 	$schema: string;
 	version: 1;
 	id: string;
@@ -15,7 +16,7 @@ export interface BindingDocument {
 	active?: boolean;
 	instructions?: string;
 	target: Record<string, unknown> & { provider: string; label?: string };
-}
+};
 
 export type BindingRead =
 	| { declared: false; revision: null; document: null }
