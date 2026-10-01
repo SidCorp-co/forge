@@ -164,7 +164,7 @@ describe('readServingNow', () => {
     });
   });
 
-  it('reads an adapter that failed as unreadable, and an absent record as undeclared', async () => {
+  it('reads an adapter that failed, and a route with nothing on record yet, as unreadable', async () => {
     readState.mockResolvedValue({
       environment: 'beta',
       state: 'unknown',
@@ -183,8 +183,8 @@ describe('readServingNow', () => {
       reason: { cause: 'no-record', message: 'coolify has recorded no deployment' },
     });
     expect(await readServingNow(PROJECT_ID, now)).toMatchObject({
-      kind: 'undeclared',
-      missing: 'coolify has recorded no deployment',
+      kind: 'unreadable',
+      why: 'coolify has recorded no deployment',
     });
   });
 });

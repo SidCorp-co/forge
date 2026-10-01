@@ -1,17 +1,13 @@
 /**
  * ISS-1346 criteria 17 and 19 — which times in a hold's words make it a new reason, proved by the
  * sweep over real rows. The judge could reach neither live: no scratch runner reports a reset, and
- * no Forge deployment's finish time moves without a new deployment. Here each time is moved in the
+ * no deployment's recorded time moves without a new deployment. Here each time is moved in the
  * database with nothing else in the sentence moving, and what the sweep leaves on the row is read.
  */
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import {
-  type CoolifyTarget,
-  fakeCoolify,
-  recordForgeDeployment,
-} from '../helpers/coolify-deployments.js';
+import { type CoolifyTarget, fakeCoolify } from '../helpers/coolify-deployments.js';
 import {
   createTestProject,
   createTestUser,
@@ -53,7 +49,7 @@ const { holdOf, holdComments } = fx;
 
 beforeEach(async () => {
   await truncateAll(harness.db);
-  coolify.deployments.clear();
+  coolify.applications.clear();
   const owner = await createTestUser(harness.db);
   ownerId = owner.id;
   projectId = (await createTestProject(harness.db, owner.id)).id;
@@ -81,7 +77,10 @@ describe('a runner reset drifting inside its minute is one reason (criterion 17)
   ] as const)(
     'comments once while %s moves inside the minute, and again once it leaves it',
     async (column, says) => {
-      await fx.declareProduction();
+      const app = { id: 't-app', label: 'App', resourceUuid: 'app-uuid' };
+      await fx.declareProduction({ baseUrl: coolify.url(), targets: [app] });
+      await seedProductionDeployTrigger(harness.db, projectId, ownerId, 'on-land');
+      coolify.deployed(app.resourceUuid, 'dep-1', SERVED, '2026-09-29T11:00:00Z');
       fx.serve(SERVED);
       const id = await fx.judgedRow(SERVED, MERGED);
       const resetTo = async (at: string) => {
@@ -114,52 +113,40 @@ describe('a runner reset drifting inside its minute is one reason (criterion 17)
 
 describe('any other time moving in a hold is a new reason, said once per hold (criterion 19)', () => {
   const APP: CoolifyTarget = { id: 't-app', label: 'App', resourceUuid: 'app-uuid' };
-  // `recordForgeDeployment` confirms two minutes after it sends, so these are the finish times.
-  const FINISHED = '2026-09-29T11:02:00.000Z';
-  const REFINISHED = '2026-09-29T11:07:00.000Z';
+  const FINISHED = '2026-09-29T11:00:00.000Z';
+  const REFINISHED = '2026-09-29T11:05:00.000Z';
+  const recorded = (at: string) =>
+    `coolify deployment dep-1 of environment \`live\` (succeeded, ${at})`;
 
-  /** Moves only the finish time the reading names: same deployment, same commit. */
-  async function finishAt(at: string) {
-    const rows = (await harness.db.execute(sql`
-      UPDATE integration_deliveries SET created_at = ${at}::timestamptz
-       WHERE direction = 'inbound' AND request_id = 'dep-1'
-      RETURNING id
-    `)) as unknown as Array<{ id: string }>;
-    expect(rows).toHaveLength(1);
+  /** Moves only the time Coolify records: same deployment, same commit. */
+  function finishAt(at: string) {
+    coolify.applications.set(APP.resourceUuid, []);
+    coolify.deployed(APP.resourceUuid, 'dep-1', SERVED, at);
   }
 
-  it('rewrites and comments a moved finish time, and returning to it posts nothing new', async () => {
+  it('rewrites and comments a moved deployment time, and returning to it posts nothing new', async () => {
     await fx.declareProduction({ baseUrl: coolify.url(), targets: [APP] }, 'none');
-    const bindings = (await harness.db.execute(sql`
-      SELECT id FROM integration_bindings WHERE project_id = ${projectId}
-    `)) as unknown as Array<{ id: string }>;
-    coolify.deployments.set('dep-1', SERVED);
-    await recordForgeDeployment(
-      harness,
-      String(bindings[0]?.id),
-      APP,
-      'dep-1',
-      '2026-09-29T11:00:00Z',
-    );
+    await seedProductionDeployTrigger(harness.db, projectId, ownerId, 'on-land');
+    finishAt(FINISHED);
     const id = await fx.judgedRow(OLDER, MERGED);
     const reason = async () => String((await holdOf(id))?.reason);
 
     await sweep();
     expect((await holdOf(id))?.code).toBe('RELEASE_CRITERIA_UNEARNED');
-    expect(await reason()).toContain(`Forge's deployment dep-1 finished ${FINISHED}`);
+    expect(await reason()).toContain(recorded(FINISHED));
     expect(await holdComments(id)).toBe(1);
 
-    // The first arm: only the finish time moved, and it is written and said as a new reason.
-    await finishAt(REFINISHED);
+    // The first arm: only the recorded time moved, and it is written and said as a new reason.
+    finishAt(REFINISHED);
     await sweep();
-    expect(await reason()).toContain(`Forge's deployment dep-1 finished ${REFINISHED}`);
+    expect(await reason()).toContain(recorded(REFINISHED));
     expect(await reason()).not.toContain(FINISHED);
     expect(await holdComments(id)).toBe(2);
 
     // The unless arm: back to words already commented while the row stayed held.
-    await finishAt(FINISHED);
+    finishAt(FINISHED);
     await sweep();
-    expect(await reason()).toContain(`Forge's deployment dep-1 finished ${FINISHED}`);
+    expect(await reason()).toContain(recorded(FINISHED));
     expect(await holdComments(id)).toBe(2);
 
     // Held afresh, the same words are said again.

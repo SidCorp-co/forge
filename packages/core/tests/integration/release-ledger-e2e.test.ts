@@ -16,11 +16,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestProject,
   createTestProjectMember,
@@ -29,15 +27,15 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { PRODUCTION_PROBE, seedProduction, stubProbe } from '../helpers/production.js';
 
 let harness: TestDatabase;
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
 let app: any;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
 
-let probe: Server;
 let served = 'commit-before';
-let probeUrl = '';
+let probeDown = false;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -52,23 +50,28 @@ beforeAll(async () => {
     import('../../src/middleware/error.js'),
   ]);
   signUserToken = jwt.signUserToken;
+  (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
   app = new Hono();
   app.route('/api/projects', batch.releaseBatchRoutes);
   app.onError(err.errorHandler);
 
-  probe = createServer((_req, res) => res.end(served));
-  await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
-  probeUrl = `http://127.0.0.1:${(probe.address() as AddressInfo).port}/version`;
+  stubProbe({
+    [PRODUCTION_PROBE]: () => {
+      if (probeDown) throw new TypeError('fetch failed: connect ECONNREFUSED');
+      return Response.json({ commit: served });
+    },
+  });
 }, 60_000);
 
 afterAll(async () => {
-  if (probe) await new Promise<void>((done) => probe.close(() => done()));
+  vi.unstubAllGlobals();
   if (harness) await harness.cleanup();
 });
 
 beforeEach(async () => {
   await truncateAll(harness.db);
   served = 'commit-before';
+  probeDown = false;
 });
 
 interface World {
@@ -87,22 +90,12 @@ async function seed(opts: { probes?: boolean } = {}): Promise<World> {
     projectId: project.id,
     role: 'admin',
   });
-  const connection = randomUUID();
-  await harness.db.execute(sql`
-    INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
-    VALUES (${connection}, 'user', ${user.id}, 'coolify', true)
-  `);
-  await harness.db.execute(sql`
-    INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-    VALUES (${connection}, ${project.id}, 'coolify', 'deploy', ARRAY['live'], true, ${JSON.stringify(
-      opts.probes === false
-        ? { releaseRunnerLabel: 'box' }
-        : {
-            releaseRunnerLabel: 'box',
-            verify: { probes: [{ url: probeUrl }], timeoutSeconds: 5, stableReads: 1 },
-          },
-    )}::jsonb)
-  `);
+  await seedProduction(harness.db, {
+    projectId: project.id,
+    ownerId: user.id,
+    config: { releaseRunnerLabel: 'box' },
+    probes: opts.probes === false ? 'none' : 'source',
+  });
   const runId = randomUUID();
   // The version is part of the row the real path produces (ISS-1120): `createReleaseBatch` cuts it
   // inside the transaction that inserts the release, and `assertFinishable` refuses a release row
@@ -275,17 +268,13 @@ describe('the account and the verdict are two parties about one act', () => {
   it("reads the application down while the agent's account says it landed", async () => {
     const w = await seed();
     await openAttempt(w, { stage: 'deploy', idempotencyKey: 'deploy-1' });
-    await new Promise<void>((done) => probe.close(() => done()));
+    probeDown = true;
 
     await postAccount(w, 'deploy-1', { account: 'deploy succeeded, everything green' });
 
     const [row] = await rows(w.runId);
     expect(row).toMatchObject({ health: 'down', verdict: 'failed' });
     expect(String(row?.verdict_reason)).toContain('not answering');
-
-    probe = createServer((_req, res) => res.end(served));
-    await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
-    probeUrl = `http://127.0.0.1:${(probe.address() as AddressInfo).port}/version`;
   });
 
   it('marks a machine-cut log tail as cut and as read by nobody', async () => {

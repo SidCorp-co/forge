@@ -7,6 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { fakeCoolify } from '../helpers/coolify-deployments.js';
 import {
   createTestProject,
   createTestUser,
@@ -16,13 +17,16 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
 
 let harness: TestDatabase;
 let projectId: string;
 let ownerId: string;
+const coolify = fakeCoolify();
+const APP = { id: 't-app', label: 'App', resourceUuid: 'app-uuid' };
+let deploys = 0;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -48,13 +52,26 @@ beforeEach(async () => {
   const owner = await createTestUser(harness.db);
   ownerId = owner.id;
   projectId = (await createTestProject(harness.db, owner.id)).id;
-  await seedProductionDeployTrigger(harness.db, projectId, owner.id);
-  await declareProduction();
-  // ISS-1286: a runtime verdict is weighed against what the production probe ANSWERS, so the
-  // fixture's host has to serve the commit these verdicts were judged at or every row is held.
-  fx.serve(SERVING);
+  coolify.applications.clear();
+  await declareProduction({ baseUrl: coolify.url(), targets: [APP] });
+  await seedProductionDeployTrigger(harness.db, projectId, owner.id, 'on-land');
+  // ISS-1286: a runtime verdict is weighed against what production ANSWERS, so its probe and its
+  // deployment record have to serve the commit these verdicts were judged at or every row is held.
+  serve(SERVING);
   await seedReleaseRunner();
 });
+
+/** Production's probe and the latest deployment Coolify records both answer `commit`. */
+function serve(commit: string): void {
+  fx.serve(commit);
+  deploys += 1;
+  coolify.deployed(
+    APP.resourceUuid,
+    `dep-${deploys}`,
+    commit,
+    new Date(Date.UTC(2026, 8, 29, 0, deploys)).toISOString(),
+  );
+}
 
 function verdictBlock(criterion: number, text: string, verdict: string): string {
   return [
@@ -194,7 +211,7 @@ describe('what the host answers decides a runtime verdict, not what the issue st
 
   it('holds the same row once the host answers a commit no verdict was judged at', async () => {
     const id = await heldRow('pass');
-    fx.serve(MOVED_ON);
+    serve(MOVED_ON);
 
     const result = await sweep();
 
@@ -204,7 +221,7 @@ describe('what the host answers decides a runtime verdict, not what the issue st
     expect(reason).toContain('each of criteria 1 and 2');
     expect(reason).toContain(SERVING);
     expect(reason).toContain(MOVED_ON);
-    expect(reason).toContain('http://127.0.0.1:');
+    expect(reason).toContain(PROBE_URL);
     expect(reason).toMatch(/read at \d{4}-\d\d-\d\dT/);
   }, 30_000);
 });
@@ -305,15 +322,14 @@ describe('every exit before the cut is written on the row', () => {
     await harness.db.execute(sql`
       UPDATE integration_bindings SET active = false WHERE project_id = ${projectId}
     `);
-    const chainRows = (await harness.db.execute(sql`
-      SELECT release_chain FROM projects WHERE id = ${projectId}
-    `)) as unknown as Array<{ release_chain: unknown }>;
-    const releaseChain = chainRows[0]?.release_chain;
+    const { resolveReleaseDeclaration } = await import('../../src/release-batch/gate.js');
+    const decl = await resolveReleaseDeclaration(projectId);
+    if (decl?.kind !== 'undeclared-target') throw new Error('the binding is still a target');
     const { releaseBlockerSentence } = await import('../../src/release-batch/blocker-sentences.js');
 
     await sweep();
 
-    const said = releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { releaseChain });
+    const said = releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { reason: decl.reason });
     for (const id of [oldest, middle, newest]) expect((await holdOf(id))?.reason).toBe(said);
     expect(said).not.toContain(projectId);
     const names = (await fx.displayIds([oldest, middle, newest])).map((n) => `\`${n}\``);
@@ -328,18 +344,6 @@ describe('every exit before the cut is written on the row', () => {
     await sweep();
     expect((await holdOf(joined))?.code).toBe('RELEASE_TARGET_UNDECLARED');
     expect(await holdComments(oldest)).toHaveLength(1);
-  }, 30_000);
-
-  it('writes NO_RELEASE_GATE on a row still waiting on a project that declares no release', async () => {
-    const id = await heldRow('pass');
-    await harness.db.execute(sql`
-      UPDATE projects SET release_chain = '[]'::jsonb
-       WHERE id = ${projectId}
-    `);
-
-    await sweep();
-
-    expect((await holdOf(id))?.code).toBe('NO_RELEASE_GATE');
   }, 30_000);
 
   it('writes the refusal code and message when the release cut is refused', async () => {

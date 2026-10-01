@@ -31,6 +31,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { seedProduction } from '../helpers/production.js';
 
 const LABEL = 'prod-credential-box';
 
@@ -92,7 +93,6 @@ async function seed(opts: {
   const runner = randomUUID();
   const run = randomUUID();
   const job = randomUUID();
-  const connection = randomUUID();
   const online = opts.runnerOnline ?? true;
   const ageMinutes = opts.queuedMinutesAgo ?? 0;
 
@@ -107,17 +107,12 @@ async function seed(opts: {
     )
   `);
   if (opts.declaredLabel !== null && opts.declaredLabel !== undefined) {
-    await harness.db.execute(sql`
-      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active, config)
-      VALUES (${connection}, 'user', ${owner.id}, 'coolify', true, '{}'::jsonb)
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-      VALUES (
-        ${connection}, ${project.id}, 'coolify', 'deploy', ARRAY['live'], true,
-        ${JSON.stringify({ releaseRunnerLabel: opts.declaredLabel })}::jsonb
-      )
-    `);
+    await seedProduction(harness.db, {
+      projectId: project.id,
+      ownerId: owner.id,
+      config: { releaseRunnerLabel: opts.declaredLabel },
+      probes: 'none',
+    });
   }
   await harness.db.execute(sql`
     INSERT INTO pipeline_runs (id, project_id, kind, status)
@@ -172,25 +167,6 @@ const wedgeCount = async (): Promise<number> => {
   return Number(rows[0]?.n ?? 0);
 };
 
-/** A second live deploy binding naming a different label, which nobody but a person resolves. */
-async function addDisagreeingBinding(w: World, label: string): Promise<void> {
-  const owner = (await harness.db.execute(sql`
-    SELECT created_by AS id FROM projects WHERE id = ${w.projectId}
-  `)) as unknown as Array<{ id: string }>;
-  const connection = randomUUID();
-  await harness.db.execute(sql`
-    INSERT INTO integration_connections (id, owner_type, owner_id, provider, active, config)
-    VALUES (${connection}, 'user', ${owner[0]?.id}, 'coolify', true, '{}'::jsonb)
-  `);
-  await harness.db.execute(sql`
-    INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-    VALUES (
-      ${connection}, ${w.projectId}, 'coolify', 'deploy', ARRAY['live'], true,
-      ${JSON.stringify({ releaseRunnerLabel: label })}::jsonb
-    )
-  `);
-}
-
 describe('the release label is a gate reason', () => {
   // ISS-1128 — this arm answers a question about the JOB, not about one box:
   // can anything that could claim take it. A box carrying the wrong label beside
@@ -234,27 +210,16 @@ describe('the release label is a gate reason', () => {
     expect(await reasonFor(w)).toBe('runner_too_old');
   });
 
-  it('names the label when two live bindings disagree about it', async () => {
-    const w = await seed({ type: 'release_batch', labels: [LABEL], declaredLabel: LABEL });
-    await addDisagreeingBinding(w, 'a-second-box');
-
-    expect(await reasonFor(w)).toBe('release_label_missing');
-  });
-
   it('says nothing about a release job the box can actually take', async () => {
     const w = await seed({ type: 'release_batch', labels: [LABEL], declaredLabel: LABEL });
 
     expect(await reasonFor(w)).toBeUndefined();
   });
 
-  it('answers assertDispatchable with the same reason', async () => {
+  it('answers assertDispatchable as the gate does: no reason for a box the label admits', async () => {
     const w = await seed({ type: 'release_batch', labels: [], declaredLabel: LABEL });
-    await addDisagreeingBinding(w, 'a-second-box');
 
-    expect(await mods.assertDispatchable(w.jobId)).toEqual({
-      ok: false,
-      reason: 'release_label_missing',
-    });
+    expect(await mods.assertDispatchable(w.jobId)).toMatchObject({ ok: true });
   });
 
   it('still says runner_stale when there is no live box at all', async () => {
@@ -276,21 +241,6 @@ describe('the release label is a gate reason', () => {
 });
 
 describe('the surfaces that report a waiting job', () => {
-  it('raises no wedge for a job the label hides', async () => {
-    const w = await seed({
-      type: 'release_batch',
-      labels: [],
-      declaredLabel: LABEL,
-      queuedMinutesAgo: 120,
-    });
-    await addDisagreeingBinding(w, 'a-second-box');
-
-    await mods.alarmStalledQueuedJobs(new Date());
-
-    expect(await reasonFor(w)).toBe('release_label_missing');
-    expect(await wedgeCount()).toBe(0);
-  });
-
   it('still raises one for a job nothing explains', async () => {
     await seed({
       type: 'release_batch',
@@ -302,21 +252,6 @@ describe('the surfaces that report a waiting job', () => {
     await mods.alarmStalledQueuedJobs(new Date());
 
     expect(await wedgeCount()).toBe(1);
-  });
-
-  it('counts a release job no box may take as starvation', async () => {
-    const w = await seed({
-      type: 'release_batch',
-      labels: [],
-      declaredLabel: LABEL,
-      queuedMinutesAgo: 120,
-    });
-    await addDisagreeingBinding(w, 'a-second-box');
-
-    const alerts = await mods.computeAlerts({ now: new Date() });
-    const a3 = alerts.find((a) => a.id === 'A3');
-
-    expect(a3?.entities.map((e) => e.ref)).toContain(w.projectId);
   });
 
   it('stops counting one an unlabelled box may now take', async () => {

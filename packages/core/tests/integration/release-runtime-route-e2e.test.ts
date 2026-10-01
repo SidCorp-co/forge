@@ -1,18 +1,14 @@
 /**
- * ISS-1346 — on an automatic-release project with no `verify.probes`, what Forge itself deployed
- * through the project's Coolify binding is what a verdict is weighed against; where nothing can
- * report a commit, the project is told once. Real Postgres, and a Coolify that answers deployment
- * records over HTTP, because what is asserted is what a sweep tick leaves on the rows.
+ * ISS-1346, ISS-12 — on an automatic-release project, what production runs is its environment
+ * state: the latest deployment Coolify records for production's application, beside any runtime
+ * probe the project document declares. A verdict is weighed against it; where nothing can report a
+ * commit, the project is told once. Real Postgres, and a Coolify that answers its deployment list
+ * over HTTP, because what is asserted is what a sweep tick leaves on the rows.
  */
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import {
-  fakeCoolify,
-  recordForgeDeployment,
-  type CoolifyTarget as Target,
-} from '../helpers/coolify-deployments.js';
+import { fakeCoolify, type CoolifyTarget as Target } from '../helpers/coolify-deployments.js';
 import {
   createTestProject,
   createTestUser,
@@ -22,6 +18,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { seedProduction } from '../helpers/production.js';
 import { RELEASE_LABEL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 const SERVED = '33637c612ef15be6f924520c0d201a0889d8ed7e';
@@ -31,7 +28,6 @@ let harness: TestDatabase;
 let projectId: string;
 let ownerId: string;
 const coolify = fakeCoolify();
-const deployments = coolify.deployments;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -53,7 +49,7 @@ const fx = releaseBatchFixture(
 
 beforeEach(async () => {
   await truncateAll(harness.db);
-  deployments.clear();
+  coolify.applications.clear();
   const owner = await createTestUser(harness.db);
   ownerId = owner.id;
   projectId = (await createTestProject(harness.db, owner.id)).id;
@@ -62,21 +58,18 @@ beforeEach(async () => {
 });
 
 const APP: Target = { id: 't-app', label: 'App', resourceUuid: 'app-uuid' };
-const API: Target = { id: 't-api', label: 'Api', resourceUuid: 'api-uuid' };
-const WEB: Target = { id: 't-web', label: 'Web', resourceUuid: 'web-uuid' };
 
-/** A live Coolify binding declaring no probe, as anhome's and portal-lighthuman's are. */
-async function bindCoolify(targets: Target[] = [APP]): Promise<string> {
-  await fx.declareProduction({ baseUrl: coolify.url(), targets }, 'none');
-  const rows = (await harness.db.execute(sql`
-    SELECT id FROM integration_bindings WHERE project_id = ${projectId}
-  `)) as unknown as Array<{ id: string }>;
-  return String(rows[0]?.id);
+/** Production deploying on land through a Coolify binding, declaring no probe or one. */
+async function bindCoolify(probes: 'none' | 'source' = 'none'): Promise<void> {
+  await fx.declareProduction({ baseUrl: coolify.url(), targets: [APP] }, probes);
+  await seedProductionDeployTrigger(harness.db, projectId, ownerId, 'on-land');
 }
 
-function deployed(bindingId: string, target: Target, uuid: string, at: string, sent?: string) {
-  return recordForgeDeployment(harness, bindingId, target, uuid, at, sent);
-}
+const deployed = (uuid: string, commit: string, at: string, status?: string) =>
+  coolify.deployed(APP.resourceUuid, uuid, commit, at, status);
+
+const record = (uuid: string, at: string) =>
+  `coolify deployment ${uuid} of environment \`live\` (succeeded, ${at})`;
 
 const { judgedRow: waitingRow, holdOf, holdComments } = fx;
 
@@ -98,88 +91,61 @@ async function commitsServed() {
   return reading.kind === 'serving' ? servedCommits(reading) : reading;
 }
 
-describe('what Forge deployed is the reading where no probe is declared', () => {
-  it('names the commit of the latest finished Forge deployment of the target, not an older one', async () => {
-    const binding = await bindCoolify();
-    deployments.set('dep-old', OLDER);
-    deployments.set('dep-new', SERVED);
-    await deployed(binding, APP, 'dep-old', '2026-09-29T10:00:00Z');
-    await deployed(binding, APP, 'dep-new', '2026-09-29T11:00:00Z');
+describe("what production's deployment record says is the reading where no probe is declared", () => {
+  it('names the commit of the latest finished deployment of the application, not an older one', async () => {
+    await bindCoolify();
+    deployed('dep-old', OLDER, '2026-09-29T10:00:00Z');
+    deployed('dep-new', SERVED, '2026-09-29T11:00:00Z');
 
     const reading = await servingNow();
 
     expect(reading.kind).toBe('serving');
     if (reading.kind !== 'serving') return;
-    expect(reading.served.map((s) => s.commit)).toEqual([SERVED]);
-    const where = reading.served[0]?.where ?? '';
-    expect(where).toContain("Coolify target `App` (live), Forge's deployment dep-new finished");
-    expect(where).not.toContain('dep-old');
+    expect(reading.served).toEqual([
+      { commit: SERVED, where: record('dep-new', '2026-09-29T11:00:00.000Z') },
+    ]);
   });
 
-  it('names a target with no Forge deployment, and one whose record fails, while the answering one decides', async () => {
-    const binding = await bindCoolify([APP, API, WEB]);
-    deployments.set('dep-app', SERVED);
-    deployments.set('dep-api', 503);
-    await deployed(binding, APP, 'dep-app', '2026-09-29T11:00:00Z');
-    await deployed(binding, API, 'dep-api', '2026-09-29T11:00:00Z');
-
-    const reading = await servingNow();
-
-    expect(reading.kind).toBe('serving');
-    if (reading.kind !== 'serving') return;
-    expect(reading.served.map((s) => s.commit)).toEqual([SERVED]);
-    const unread = reading.unread.join('\n');
-    expect(unread).toContain('`Web` (live) has no deployment Forge made and saw finish on record');
-    expect(unread).toMatch(/dep-api to Coolify target `Api` \(live\).*could not be read/);
-  });
-
-  it('counts a rollback Forge made to the target as what it now runs', async () => {
-    const binding = await bindCoolify();
-    deployments.set('dep-deploy', SERVED);
-    deployments.set('dep-rollback', OLDER);
-    await deployed(binding, APP, 'dep-deploy', '2026-09-29T10:00:00Z');
-    await deployed(
-      binding,
-      APP,
-      'dep-rollback',
-      '2026-09-29T11:00:00Z',
-      'deploy.rollback.requested',
-    );
+  it('counts a rollback, which Coolify records as the latest deployment, as what it now runs', async () => {
+    await bindCoolify();
+    deployed('dep-deploy', SERVED, '2026-09-29T10:00:00Z');
+    deployed('dep-rollback', OLDER, '2026-09-29T11:00:00Z');
 
     expect(await commitsServed()).toEqual([OLDER]);
   });
 
-  // Review 1881fe F2: the label is a name; the target is its id and the resource it points at.
-  it('does not carry a deployment of the old resource onto a target repointed under the same label', async () => {
-    const binding = await bindCoolify([{ ...APP, resourceUuid: 'new-app-uuid' }]);
-    deployments.set('dep-old-resource', SERVED);
-    await deployed(binding, APP, 'dep-old-resource', '2026-09-29T11:00:00Z');
+  it('names nothing served while the latest deployment is still running', async () => {
+    await bindCoolify();
+    deployed('dep-done', OLDER, '2026-09-29T10:00:00Z');
+    deployed('dep-running', SERVED, '2026-09-29T11:00:00Z', 'in_progress');
 
     const reading = await servingNow();
 
     expect(reading.kind).toBe('unreadable');
+    if (reading.kind !== 'unreadable') return;
+    expect(reading.why).toContain('dep-running');
+    expect(reading.why).toContain('is not a finished deployment');
   });
 
-  it("keeps a target's deployment when only its label changed", async () => {
-    const binding = await bindCoolify([{ ...APP, label: 'Frontend' }]);
-    deployments.set('dep-renamed', SERVED);
-    await deployed(binding, APP, 'dep-renamed', '2026-09-29T11:00:00Z');
+  it('says unreadable, naming why, where Coolify fails to list the deployments', async () => {
+    await bindCoolify();
+    coolify.applications.set(APP.resourceUuid, 503);
 
-    expect(await commitsServed()).toEqual([SERVED]);
+    expect((await servingNow()).kind).toBe('unreadable');
   });
 
-  it('says unreadable, naming the target, where the route exists and nothing is on record yet', async () => {
+  it('says unreadable, naming the binding, where the route exists and nothing is on record yet', async () => {
     await bindCoolify();
     const reading = await servingNow();
     expect(reading.kind).toBe('unreadable');
     if (reading.kind !== 'unreadable') return;
-    expect(reading.why).toContain('`App` (live) has no deployment Forge made and saw finish');
+    expect(reading.why).toContain('reports no deployment');
   });
 });
 
 describe('a row held before the route existed is carried by the next sweep', () => {
-  it('claims a row whose commit: verdicts name what Forge deployed, over the hold it already carried', async () => {
-    const binding = await bindCoolify();
+  it('claims a row whose commit: verdicts name what production runs, over the hold it already carried', async () => {
+    await bindCoolify();
     const id = await waitingRow(SERVED, '2026-09-29T09:00:00Z');
     const oldHold = {
       at: '2026-09-28T10:00:00.000Z',
@@ -193,8 +159,7 @@ describe('a row held before the route existed is carried by the next sweep', () 
       UPDATE issues SET session_context = jsonb_build_object('releaseHold', ${JSON.stringify(oldHold)}::jsonb)
        WHERE id = ${id}
     `);
-    deployments.set('dep-1', SERVED);
-    await deployed(binding, APP, 'dep-1', '2026-09-29T11:00:00Z');
+    deployed('dep-1', SERVED, '2026-09-29T11:00:00Z');
 
     const result = await sweep();
 
@@ -203,11 +168,10 @@ describe('a row held before the route existed is carried by the next sweep', () 
     expect(await holdOf(id)).toBeNull();
   }, 30_000);
 
-  it('holds a row judged at a commit Forge is no longer serving, naming the deployment it read', async () => {
-    const binding = await bindCoolify();
+  it('holds a row judged at a commit production no longer runs, naming the deployment it read', async () => {
+    await bindCoolify();
     const id = await waitingRow(OLDER, '2026-09-29T09:00:00Z');
-    deployments.set('dep-2', SERVED);
-    await deployed(binding, APP, 'dep-2', '2026-09-29T11:00:00Z');
+    deployed('dep-2', SERVED, '2026-09-29T11:00:00Z');
 
     const result = await sweep();
 
@@ -215,52 +179,39 @@ describe('a row held before the route existed is carried by the next sweep', () 
     const hold = await holdOf(id);
     expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
     expect(String(hold?.reason)).toContain(
-      `\`${SERVED}\` at Coolify target \`App\` (live), Forge's deployment dep-2 finished`,
+      `\`${SERVED}\` at ${record('dep-2', '2026-09-29T11:00:00.000Z')}`,
     );
-    expect(String(hold?.reason)).not.toContain('commitUrl');
   }, 30_000);
 
-  // Judge finding 2: staging and production on two commits is a project between releases.
-  it('pairs each served commit with the target running it, and calls two commits no fault', async () => {
-    const binding = await bindCoolify([APP, WEB]);
+  // Judge finding 2: a probe and a record on two commits is a project between deploys.
+  it('pairs each served commit with what answered it, and calls two commits no fault', async () => {
+    await bindCoolify('source');
     const id = await waitingRow(OLDER, '2026-09-29T09:00:00Z');
     const other = '9f3b2c1d0e4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c';
-    deployments.set('dep-app', SERVED);
-    deployments.set('dep-web', other);
-    await deployed(binding, APP, 'dep-app', '2026-09-29T11:00:00Z');
-    await deployed(binding, WEB, 'dep-web', '2026-09-29T10:00:00Z');
+    fx.serve(other);
+    deployed('dep-app', SERVED, '2026-09-29T11:00:00Z');
 
     await sweep();
 
     const reason = String((await holdOf(id))?.reason);
-    expect(reason).toContain(
-      `\`${SERVED}\` at Coolify target \`App\` (live), Forge's deployment dep-app`,
-    );
-    expect(reason).toContain(
-      `\`${other}\` at Coolify target \`Web\` (live), Forge's deployment dep-web`,
-    );
+    expect(reason).toContain(`\`${SERVED}\` at ${record('dep-app', '2026-09-29T11:00:00.000Z')}`);
+    expect(reason).toContain(`\`${other}\` at https://`);
     expect(reason).not.toContain('more than one commit is running');
   }, 30_000);
 });
 
 describe('a project nothing can read is told once', () => {
-  /** A live binding through a provider whose deployments name no commit. */
+  /** Production deploying through a provider whose adapter reads no deployment history. */
   async function bindUnreporting(): Promise<void> {
-    const connectionId = randomUUID();
-    await harness.db.execute(sql`
-      UPDATE projects SET base_branch = 'main',
-             release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb
-       WHERE id = ${projectId}
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
-      VALUES (${connectionId}, 'user', ${ownerId}, 'epodsystem', true)
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-      VALUES (${connectionId}, ${projectId}, 'epodsystem', 'deploy', ARRAY['live']::text[], true,
-              ${JSON.stringify({ releaseRunnerLabel: RELEASE_LABEL })}::jsonb)
-    `);
+    await seedProduction(harness.db, {
+      projectId,
+      ownerId,
+      provider: 'epodsystem',
+      config: { releaseRunnerLabel: RELEASE_LABEL },
+      probes: 'none',
+      trigger: 'on-land',
+      deploysFrom: 'production',
+    });
   }
 
   it('holds every owing row with the unrouted hold, commenting the oldest alone', async () => {
@@ -331,8 +282,9 @@ describe('a project nothing can read is told once', () => {
 
     const said = readiness?.warnings.find((w) => w.code === 'RELEASE_CRITERIA_HELD_BACK')?.message;
     expect(said).toContain(`\`${(await fx.displayIds([owing]))[0]}\` owes criterion 1, 2`);
-    expect(said).toContain('What is missing: its deploy bindings go through epodsystem');
-    expect(said).toContain('The way to give it one: declare `verify.probes`');
+    expect(said).toContain('What is missing: DEPLOY_HISTORY_UNSUPPORTED');
+    expect(said).toContain('goes through epodsystem');
+    expect(said).toContain('The way to give it one: declare a runtime probe on the production');
     expect(said).toContain('no judging run can earn one until the project can be read');
     expect(said).not.toContain('still owes a judging run');
   }, 30_000);
@@ -349,69 +301,38 @@ describe('a project nothing can read is told once', () => {
     const hold = String((await holdOf(id))?.reason);
     const card = readiness?.blockers.find((b) => b.code === 'RELEASE_RUNTIME_UNROUTED')?.message;
     for (const said of [hold, String(card)]) {
-      expect(said).toContain('declare `verify.probes` on the live deploy binding');
+      expect(said).toContain('declare a runtime probe on the production environment');
       expect(said).not.toMatch(/Coolify/);
     }
   }, 30_000);
 });
 
 describe('a reason every waiting row shares is said once (judge finding 1)', () => {
-  /** A preview-only binding through a provider that reports no commit: still no live target. */
-  async function bindPreviewOnly(): Promise<void> {
-    const connectionId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
-      VALUES (${connectionId}, 'user', ${ownerId}, 'epodsystem', true)
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-      VALUES (${connectionId}, ${projectId}, 'epodsystem', 'deploy', ARRAY['preview']::text[], true, '{}'::jsonb)
-    `);
-  }
+  // Review 32467c F1: with nowhere to land a release the gate refuses first.
+  it('holds every row RELEASE_TARGET_UNDECLARED where production deploys through a binding the project does not hold, commenting the oldest alone', async () => {
+    const newest = await waitingRow(SERVED, '2026-09-29T09:00:00Z');
+    const oldest = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
+    const middle = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
+    const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
 
-  // Review 32467c F1: with no live target the gate refuses first, whatever preview bindings exist.
-  it.each([
-    ['no binding at all', false],
-    ['only a preview binding that reports no commit', true],
-  ])(
-    'holds every row RELEASE_TARGET_UNDECLARED with %s, commenting the oldest alone',
-    async (_, preview) => {
-      await harness.db.execute(sql`
-      UPDATE projects SET base_branch = 'main', release_chain = '[{"branch": "main"}]'::jsonb
-       WHERE id = ${projectId}
-    `);
-      if (preview) await bindPreviewOnly();
-      const newest = await waitingRow(SERVED, '2026-09-29T09:00:00Z');
-      const oldest = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
-      const middle = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
-      const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
+    await sweep();
+    await sweep();
+    const codes = (await loadReleaseReadiness(projectId))?.blockers.map((b) => b.code) ?? [];
 
-      await sweep();
-      await sweep();
-      const codes = (await loadReleaseReadiness(projectId))?.blockers.map((b) => b.code) ?? [];
-
-      for (const id of [oldest, middle, newest]) {
-        const hold = await holdOf(id);
-        expect(hold?.code).toBe('RELEASE_TARGET_UNDECLARED');
-        expect(String(hold?.reason)).toContain(
-          'no active deploy binding carrying the `live` stage',
-        );
-      }
-      expect(await holdComments(oldest)).toBe(1);
-      expect(await holdComments(middle)).toBe(0);
-      expect(await holdComments(newest)).toBe(0);
-      expect(codes.filter((c) => c === 'RELEASE_TARGET_UNDECLARED')).toHaveLength(1);
-      expect(codes).not.toContain('RELEASE_RUNTIME_UNROUTED');
-    },
-    30_000,
-  );
+    for (const id of [oldest, middle, newest]) {
+      const hold = await holdOf(id);
+      expect(hold?.code).toBe('RELEASE_TARGET_UNDECLARED');
+      expect(String(hold?.reason)).toContain('which is not an active binding');
+    }
+    expect(await holdComments(oldest)).toBe(1);
+    expect(await holdComments(middle)).toBe(0);
+    expect(await holdComments(newest)).toBe(0);
+    expect(codes.filter((c) => c === 'RELEASE_TARGET_UNDECLARED')).toHaveLength(1);
+    expect(codes).not.toContain('RELEASE_RUNTIME_UNROUTED');
+  }, 30_000);
 
   // Review 834824 F1: a row commented before this change already carries the per-row wording.
   it('posts no second comment on an oldest row that carries the per-row wording of the same hold', async () => {
-    await harness.db.execute(sql`
-      UPDATE projects SET base_branch = 'main', release_chain = '[{"branch": "main"}]'::jsonb
-       WHERE id = ${projectId}
-    `);
     const oldest = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
     await waitingRow(SERVED, '2026-09-28T09:00:00Z');
     await sweep();
@@ -439,9 +360,8 @@ describe('a reason every waiting row shares is said once (judge finding 1)', () 
   }
 
   it('comments a refused cut on the oldest row it refused, once, while the reset drifts by milliseconds', async () => {
-    const binding = await bindCoolify();
-    deployments.set('dep-1', SERVED);
-    await deployed(binding, APP, 'dep-1', '2026-09-29T11:00:00Z');
+    await bindCoolify();
+    deployed('dep-1', SERVED, '2026-09-29T11:00:00Z');
     const later = await waitingRow(SERVED, '2026-09-29T09:00:00Z');
     const oldest = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
     const reset = new Date(Date.now() + 3_600_000);

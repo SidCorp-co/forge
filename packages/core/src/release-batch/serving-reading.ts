@@ -117,7 +117,7 @@ export async function readServingNow(
   const state = await readEnvironmentState(projectId, document, production);
   const readAt = now().toISOString();
   if (state.state !== 'unknown') return fromState(state, readAt);
-  if (state.reason.cause === 'adapter-error') {
+  if (state.reason.cause === 'adapter-error' || state.reason.cause === 'no-record') {
     return { kind: 'unreadable', why: state.reason.message, hosts: [], readAt };
   }
   return { kind: 'undeclared', missing: state.reason.message, route: NO_ROUTE };
