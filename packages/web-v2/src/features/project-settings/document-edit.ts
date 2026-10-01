@@ -7,8 +7,8 @@ import {
 	readPath,
 	rebaseDocumentDraft,
 } from "@forge/contracts/document-patch";
-import { ApiError } from "@/lib/api/client";
-import type { ConfigRefusal, V1Document } from "./config-types";
+import { documentRefusals, type Refusal } from "@/lib/api/refusals";
+import type { V1Document } from "./config-types";
 
 export const STALE_BASE = "STALE_BASE";
 
@@ -26,19 +26,7 @@ export function segmentsOf(pointer: string): string[] {
 		.map((s) => s.replaceAll("~1", "/").replaceAll("~0", "~"));
 }
 
-function isRefusal(row: unknown): row is ConfigRefusal {
-	if (typeof row !== "object" || row === null) return false;
-	const r = row as Record<string, unknown>;
-	return typeof r.code === "string" && typeof r.path === "string" && typeof r.detail === "string";
-}
-
-export function refusalsOf(err: unknown): ConfigRefusal[] {
-	if (!(err instanceof ApiError) || err.status !== 422) return [];
-	const rows = (err.body as { error?: { refusals?: unknown } } | undefined)?.error?.refusals;
-	return Array.isArray(rows) ? rows.filter(isRefusal) : [];
-}
-
-export const isStaleBase = (err: unknown) => refusalsOf(err).some((r) => r.code === STALE_BASE);
+export const isStaleBase = (err: unknown) => documentRefusals(err).some((r) => r.code === STALE_BASE);
 
 function childAt(value: unknown, segment: string): { found: boolean; value: unknown } {
 	if (Array.isArray(value)) {
@@ -67,9 +55,9 @@ export function nearestHeld(document: unknown, pointer: string): string {
 
 export function placeRefusals(
 	document: unknown,
-	refusals: readonly ConfigRefusal[],
-): Map<string, ConfigRefusal[]> {
-	const placed = new Map<string, ConfigRefusal[]>();
+	refusals: readonly Refusal[],
+): Map<string, Refusal[]> {
+	const placed = new Map<string, Refusal[]>();
 	for (const refusal of refusals) {
 		if (refusal.code === STALE_BASE) continue;
 		const at = nearestHeld(document, refusal.path);

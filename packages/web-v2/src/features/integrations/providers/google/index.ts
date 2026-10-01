@@ -9,8 +9,6 @@ export const google: ProviderModule = {
   secretPlaceholder: "the service-account JSON file, whole",
   drillable: true,
   agentPathKind: "core-mediated",
-  mcpServerName: null,
-  multiBinding: false,
   bindingKeys: ["defaultSpreadsheetId"],
   target: (config) => text(config, "clientEmail"),
   section: () => import("./section").then((m) => ({ default: m.GoogleSection })),

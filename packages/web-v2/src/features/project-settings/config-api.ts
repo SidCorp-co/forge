@@ -45,6 +45,9 @@ export const configApi = {
 
 	listBindings: (id: string) => apiClient<BindingList>(`/projects/${id}/bindings`),
 
+	getBinding: (id: string, bindingId: string) =>
+		apiClient<V1Read>(`/projects/${id}/bindings/${encodeURIComponent(bindingId)}`),
+
 	putBinding: (id: string, bindingId: string, write: V1Write) =>
 		put(`/projects/${id}/bindings/${encodeURIComponent(bindingId)}`, write),
 

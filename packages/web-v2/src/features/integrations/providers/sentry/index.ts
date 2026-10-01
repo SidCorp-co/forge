@@ -9,8 +9,6 @@ export const sentry: ProviderModule = {
   secretPlaceholder: "sntryu_…",
   drillable: true,
   agentPathKind: "direct-mcp",
-  mcpServerName: "sentry",
-  multiBinding: false,
   bindingKeys: [],
   target: (config) => text(config, "host"),
   section: () => import("./section").then((m) => ({ default: m.SentrySection })),

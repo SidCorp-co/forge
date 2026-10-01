@@ -149,8 +149,6 @@ const consumptionSchema = z.strictObject({
   elements: unique(z.array(z.string().min(1).max(200)).max(200)).optional(),
 });
 
-export type Consumption = z.infer<typeof consumptionSchema>;
-
 export const interfaceDocumentSchema = z.strictObject({
   $schema: z.literal(`${SCHEMA_BASE}/interface-v1.json`),
   version: z.literal(1),

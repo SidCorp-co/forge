@@ -41,7 +41,7 @@ import {
   useRailProjectData,
   CurrentProjectProvider,
 } from "@/features/shell";
-import { type ShellMode, chatConversationId, chatSlug, modeOf, routeSlug, switchTarget } from "@/features/shell/mode";
+import { CHAT_ROOT, type ShellMode, chatConversationId, chatSlug, modeOf, routeSlug, switchTarget } from "@/features/shell/mode";
 import { useModeMemory } from "@/features/shell/use-mode-memory";
 import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";
 import { SidebarSearch } from "@/features/shell/components/sidebar-search";
@@ -70,7 +70,7 @@ function useShellProject(pathname: string, mode: ShellMode) {
   const { activeOrgId, lastSlug } = useProjectOrgScopeSync({
     slug: selected,
     activeProject: selectedProject,
-    exitTo: mode === "chat" ? "/chat" : "/projects",
+    exitTo: mode === "chat" ? CHAT_ROOT : "/projects",
   });
   const scopedProjects = useMemo(
     () => (projects ?? []).filter((p) => !activeOrgId || p.orgId === activeOrgId),

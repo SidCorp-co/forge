@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
+import { documentRefusals } from "@/lib/api/refusals";
 import {
 	movedSince,
 	nearestHeld,
 	placeRefusals,
 	pointerOf,
 	reapply,
-	refusalsOf,
 	REMOVE,
 	segmentsOf,
 	setAt,
@@ -40,8 +40,8 @@ describe("refusals", () => {
 				],
 			},
 		};
-		expect(refusalsOf(new ApiError(400, "bad", undefined, undefined, body))).toEqual([]);
-		const refusals = refusalsOf(new ApiError(422, "x", undefined, undefined, body));
+		expect(documentRefusals(new ApiError(400, "bad", undefined, undefined, body))).toEqual([]);
+		const refusals = documentRefusals(new ApiError(422, "x", undefined, undefined, body));
 		expect(refusals).toHaveLength(2);
 		const placed = placeRefusals(doc, refusals);
 		expect([...placed.keys()]).toEqual(["/environments/a~1b"]);

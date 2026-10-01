@@ -21,7 +21,7 @@ import {
   visibleMemberships,
 } from './membership-service.js';
 import { DOCUMENT_TYPES } from './schema.js';
-import { listEcosystemRevisions } from './store.js';
+import { listEcosystemRevisions, type StoredRevision } from './store.js';
 
 export const ecosystemRoutes = new Hono<{ Variables: AuthVars }>();
 export const membershipRoutes = new Hono<{ Variables: AuthVars }>();
@@ -45,6 +45,16 @@ export const serialiseEcosystem = (held: HeldEcosystem) => ({
   document: held.document,
   updatedBy: held.updatedBy,
   updatedAt: held.updatedAt.toISOString(),
+});
+
+export const serialiseRevisions = (revisions: readonly StoredRevision[]) => ({
+  revisions: revisions.map((r) => ({
+    revision: r.revision,
+    document: r.document,
+    writtenBy: r.writtenBy,
+    writtenAt: r.writtenAt.toISOString(),
+  })),
+  returned: revisions.length,
 });
 
 export const serialiseMembership = (row: MembershipRow) => ({
@@ -96,16 +106,7 @@ ecosystemRoutes.put('/:id', idParam, zValidator('json', z.unknown()), async (c) 
 
 ecosystemRoutes.get('/:id/revisions', idParam, async (c) => {
   const { eco } = await readableEcosystem(c.get('userId'), c.req.valid('param').id);
-  const revisions = await listEcosystemRevisions(eco.id);
-  return c.json({
-    revisions: revisions.map((r) => ({
-      revision: r.revision,
-      document: r.document,
-      writtenBy: r.writtenBy,
-      writtenAt: r.writtenAt.toISOString(),
-    })),
-    returned: revisions.length,
-  });
+  return c.json(serialiseRevisions(await listEcosystemRevisions(eco.id)));
 });
 
 ecosystemRoutes.get('/:id/members', idParam, async (c) => {

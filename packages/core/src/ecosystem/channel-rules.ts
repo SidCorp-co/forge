@@ -69,7 +69,9 @@ export function threadRoot(
   return at === doc ? (doc.number ?? null) : (at?.number ?? null);
 }
 
-const addDays = (day: string, n: number) =>
+export const today = () => new Date().toISOString().slice(0, 10);
+
+export const addDays = (day: string, n: number) =>
   new Date(Date.parse(`${day}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
 
 export function olderThan(versioning: 'dated' | 'semver', a: string, b: string): boolean {

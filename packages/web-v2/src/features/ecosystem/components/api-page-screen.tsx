@@ -2,7 +2,7 @@
 
 import { Badge } from "@/design";
 import { useApiPage } from "../hooks";
-import { readingOf } from "../refusal";
+import { readingOf } from "@/lib/api/refusals";
 import { Loading, UnreadNotice } from "./notices";
 
 export function ApiPageScreen({ projectId, slug }: { projectId: string; slug: string }) {

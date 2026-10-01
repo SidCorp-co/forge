@@ -3,6 +3,7 @@ export interface RetiredModelRule {
   re: RegExp;
   why: string;
   exts?: string[];
+  allow?: RegExp[];
 }
 
 export declare const RULES: RetiredModelRule[];

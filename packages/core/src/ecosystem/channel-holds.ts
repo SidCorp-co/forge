@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { db } from '../db/client.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
-import type { Writer } from './channel-author.js';
+import { channelRoleRefusal, type Writer } from './channel-author.js';
 import { holdRefusals, parseHold } from './channel-rules.js';
 import { HOLD_SCHEMA_ID, type HoldAction, type ThreadHold } from './channel-schema.js';
 import { announceHold } from './channel-signals.js';
@@ -55,8 +54,7 @@ export async function holdOrRelease(args: {
     });
     if (!parsed.ok) return { ok: false, refusals: parsed.refusals };
     const hold = parsed.value;
-    const access = await effectiveProjectRole(writer.userId, args.sideProjectId);
-    const mayAct = projectRoleAtLeast(access?.role ?? null, 'member');
+    const mayAct = (await channelRoleRefusal(writer.userId, args.sideProjectId, 'write')) === null;
     const history = (await holdsOn(tx, [args.thread])).map(holdOf);
     const refusals = holdRefusals(hold, {
       documents,

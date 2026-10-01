@@ -9,8 +9,6 @@ export const coolify: ProviderModule = {
   secretPlaceholder: "Coolify API token",
   drillable: true,
   agentPathKind: "core-mediated",
-  mcpServerName: null,
-  multiBinding: false,
   bindingKeys: ["targets"],
   bindingTarget: {
     toTarget: (config) => ({

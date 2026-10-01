@@ -1,6 +1,6 @@
 "use client";
 
-import type { Refusal } from "../refusal";
+import type { Refusal } from "@/lib/api/refusals";
 
 /** A refused write or read, shown with the code core named it by. Never a toast, never nothing. */
 export function RefusalNotice({ refusals, title = "Refused" }: { refusals: Refusal[]; title?: string }) {
@@ -43,6 +43,14 @@ export function UnreadNotice({ what, refusals }: { what: string; refusals: Refus
         ))}
       </ul>
     </div>
+  );
+}
+
+export function ReadOnlyNotice({ role, slug, writes }: { role: string | null; slug: string; writes: string }) {
+  return (
+    <p className="fg-caption">
+      You are {role ? `a ${role}` : "not a member"} on {slug}, so you read its channel and write nothing in it; a member or admin {writes}.
+    </p>
   );
 }
 

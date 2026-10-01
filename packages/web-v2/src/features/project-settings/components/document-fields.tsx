@@ -3,23 +3,23 @@
 import { useState } from "react";
 import { Button, Field, IconButton, Input, MonoTag, Toggle } from "@/design";
 import { isPlainObject } from "@forge/contracts/document-patch";
-import type { ConfigRefusal } from "../config-types";
+import type { Refusal } from "@/lib/api/refusals";
 import { pointerOf, REMOVE } from "../document-edit";
 
 interface Ctx {
-	placed: Map<string, ConfigRefusal[]>;
+	placed: Map<string, Refusal[]>;
 	canEdit: boolean;
 	set: (segments: string[], value: unknown) => void;
 }
 
-function said(refusals: readonly ConfigRefusal[], at: string): string | undefined {
+function said(refusals: readonly Refusal[], at: string): string | undefined {
 	if (refusals.length === 0) return undefined;
 	return refusals
 		.map((r) => `${r.code}${r.path === at ? "" : ` at ${r.path}`}: ${r.detail}`)
 		.join(" · ");
 }
 
-function RefusalLines({ refusals, at }: { refusals: readonly ConfigRefusal[]; at: string }) {
+function RefusalLines({ refusals, at }: { refusals: readonly Refusal[]; at: string }) {
 	if (refusals.length === 0) return null;
 	return (
 		<ul role="alert" className="fg-caption mt-1 space-y-0.5 text-red">
@@ -160,7 +160,7 @@ export function DocumentFields({
 	onSet,
 }: {
 	document: Record<string, unknown>;
-	placed: Map<string, ConfigRefusal[]>;
+	placed: Map<string, Refusal[]>;
 	canEdit: boolean;
 	onSet: (segments: string[], value: unknown) => void;
 }) {

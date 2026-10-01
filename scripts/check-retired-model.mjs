@@ -14,20 +14,15 @@ const EXT = new Set(['.ts', '.tsx', '.mjs', '.js', '.rs']);
 const TS_EXT = new Set(['.ts', '.tsx', '.mjs', '.js']);
 
 const ALLOW = [
-  // Every drizzle migration and its snapshots describe the schema as it was at that point.
-  /^packages\/core\/drizzle\//,
   /^packages\/core\/tests\/integration\/release-axes-migration-ground\.ts$/,
   /^packages\/core\/tests\/integration\/release-axes-migration-e2e\.test\.ts$/,
   /^packages\/core\/tests\/integration\/release-axes-constraints-e2e\.test\.ts$/,
   /^packages\/core\/tests\/integration\/release-axes-window-e2e\.test\.ts$/,
-  /^packages\/core\/src\/prompt\/system\.release-model\.test\.ts$/,
   /^packages\/core\/src\/db\/retired-model-audit\.test\.ts$/,
   /^packages\/core\/src\/projects\/agent-config-schema\.ts$/,
   /^packages\/core\/src\/projects\/agent-config-doors\.test\.ts$/,
   /^packages\/core\/tests\/integration\/agent-config-doors-e2e\.test\.ts$/,
   /^packages\/core\/tests\/integration\/agent-config-shadow-keys\.test\.ts$/,
-  // CHANGELOG records what shipped, including the names that stopped existing.
-  /^CHANGELOG\.md$/,
   // This checker names what it hunts.
   /^scripts\/check-retired-model\.mjs$/,
   /^packages\/core\/tests\/integration\/release-chain-migration-ground\.ts$/,
@@ -45,6 +40,17 @@ const ALLOW = [
   /^packages\/core\/src\/db\/schema\.test\.ts$/,
 ];
 
+const words = (...names) => `\\b(?:${names.join('|')})\\b`;
+const projectsColumn = (...names) => `\\bprojects\\.(?:${names.join('|')})\\b`;
+const anyOf = (...alternatives) => new RegExp(alternatives.join('|'), 'g');
+
+const RELEASE_AXES = ['liveBranch', 'releaseModel', 'releaseStrategy'];
+
+const BINDING_STORE = [
+  /^packages\/core\/src\/project-config\/binding-store\.ts$/,
+  /^packages\/core\/tests\//,
+];
+
 export const RULES = [
   {
     id: 'binding-environment-sql',
@@ -60,7 +66,7 @@ export const RULES = [
   },
   {
     id: 'production-branch-column',
-    re: /\bproduction_branch\b|\bproductionBranch\b/g,
+    re: anyOf(words('production_branch', 'productionBranch')),
     why: "`production_branch` / `productionBranch` names a column that does not exist: the branch production deploys from is the project document's production environment `deploysFrom` (ISS-12).",
   },
   {
@@ -70,62 +76,133 @@ export const RULES = [
   },
   {
     id: 'release-model-columns',
-    // `projects.releaseModel`, `row.releaseStrategy`, `release_model` / `live_branch` /
-    // `release_strategy` in a sql template, and the helper the columns were gated by.
-    re: /\bprojects\.(?:releaseModel|liveBranch|releaseStrategy)\b|\brelease_model\b|\blive_branch\b|\brelease_strategy\b|\breadableLiveBranch\b|\breleaseModelGap\b|\bLIVE_BRANCH_REQUIRED\b/g,
+    // `projects.releaseModel`, `release_model` / `live_branch` / `release_strategy` in a sql
+    // template, and the helpers the columns were gated by.
+    re: anyOf(
+      projectsColumn(...RELEASE_AXES),
+      words(
+        'release_model',
+        'live_branch',
+        'release_strategy',
+        'readableLiveBranch',
+        'releaseModelGap',
+        'LIVE_BRANCH_REQUIRED',
+      ),
+    ),
     why: '`release_model`, `live_branch` and `release_strategy` were retired by ISS-1311, and the chain that replaced them by ISS-12 (ADR 0004). Nothing type-checks a `sql` template, so a read of one of these matches no row rather than failing. Read the project document: `project-config/release-path.ts:readReleasePath`.',
   },
   {
     id: 'release-path-keys',
     // ISS-12 / design D8 — the keys the project document replaced, read or written anywhere.
-    re: /\b(?:releaseChain|release_chain|liveBranch|releaseModel|releaseStrategy|autoProdDeploy|testCredentials|chainLiveBranch|retiredReleaseAxes|DeployStage|deployStages)\b|\bprojects\.environments\b|\bbinding\.stages\b/g,
+    re: anyOf(
+      words(
+        'releaseChain',
+        'release_chain',
+        ...RELEASE_AXES,
+        'autoProdDeploy',
+        'testCredentials',
+        'chainLiveBranch',
+        'retiredReleaseAxes',
+        'DeployStage',
+        'deployStages',
+      ),
+      projectsColumn('environments'),
+      /\bbinding\.stages\b/.source,
+    ),
     why: "ISS-12 deleted this key with every reader and writer, and ISS-16 dropped its columns: where a release goes, what an environment is and how it is tested are the project document (`PUT /api/projects/:id/config`, ADR 0004), and which environment a deploy binding serves is the document's `deployment.binding`. Read `project-config/release-path.ts`.",
   },
   {
     id: 'device-binding-keys',
     // ISS-14 / design D8 — the project checkout and default device the device binding replaced,
     // the project-declared MCP servers the granted bindings replaced, and their helpers.
-    re: /\bprojects\.(?:repoPath|repo_path)\b|\bdefaultDeviceId\b|\bdefault_device_id\b|\bdroppedNames\b|\bdropped_names\b|\bprojectDefaultRepoPath\b|\bresolveRepoPath\b|\bloadRepoPath\b|\bMcpServerSource\b|\bfallback_cwd\b/g,
+    re: anyOf(
+      projectsColumn('repoPath', 'repo_path'),
+      words(
+        'defaultDeviceId',
+        'default_device_id',
+        'droppedNames',
+        'dropped_names',
+        'projectDefaultRepoPath',
+        'resolveRepoPath',
+        'loadRepoPath',
+        'McpServerSource',
+        'fallback_cwd',
+      ),
+    ),
     why: "ISS-14 deleted this with every reader and writer: a checkout is a path on one box, named by that device binding (`runners.repo_path`, `forge-runner bind <slug> --path <dir>`), and no box is a project's default. A job reads its cwd from `jobs/prepare-claimed-job.ts:resolveRunnerForDevice`, a turn from `lib/device-pool.ts:resolveSessionRepoPathForDevice`, and a binding that names none is refused CHECKOUT_UNBOUND. An agent's MCP servers are its project's granted integration bindings alone (`jobs/resolve-job-mcp-servers.ts`), so nothing is declared that could be dropped.",
-    exts: ['.ts', '.tsx', '.mjs', '.js', '.rs'],
+    exts: [...EXT],
   },
   {
     id: 'binding-write-doors',
     // ISS-15 — the doors that wrote a binding beside the binding-v1 document, and their callers.
-    re: /\bcreateBinding\b|\bupdateBinding\b|\bUpdateBindingPatch\b|\bbindExisting\b|\bBindExistingConnection\w*|\bIntegrationBindingCreateInput\b/g,
+    re: anyOf(
+      words(
+        'createBinding',
+        'updateBinding',
+        'UpdateBindingPatch',
+        'bindExisting',
+        'IntegrationBindingCreateInput',
+      ),
+      /\bBindExistingConnection\w*/.source,
+    ),
     why: 'ISS-15 deleted every binding write but one: a binding is a binding-v1 document, written by `PUT /api/projects/:projectId/bindings/:bindingId` through `project-config/bindings.ts:writeBinding`, whose `bind-effects.ts` mints the inbound secret, authorises `agentAccess` and runs `onBindingCreated`. A connection is created with `POST /api/integration-connections` and named in the document. A suite seeds a row with `tests/helpers/seed-binding.ts:seedBinding`.',
-    exts: ['.ts', '.tsx', '.mjs', '.js'],
   },
   {
     id: 'binding-row-inserts',
     // ISS-15 — a binding row is inserted by the document's store alone; a suite may seed one.
     re: /\.insert\(integrationBindings\)|\bINSERT INTO integration_bindings\b/g,
-    allow: [/^packages\/core\/src\/project-config\/binding-store\.ts$/, /^packages\/core\/tests\//],
+    allow: BINDING_STORE,
     why: 'ISS-15: a binding row is inserted only by `project-config/binding-store.ts:casBinding`, under the binding-v1 document that `PUT /api/projects/:projectId/bindings/:bindingId` writes. Write the document; do not add a second door onto `integration_bindings`.',
-    exts: ['.ts', '.tsx', '.mjs', '.js'],
   },
   {
     id: 'binding-row-updates',
     // ISS-15 — DELETE's switch-off and the inbound-secret rotation stay row updates; nothing else does.
     re: /\.update\(integrationBindings\)|\bUPDATE integration_bindings\b/g,
-    allow: [
-      /^packages\/core\/src\/project-config\/binding-store\.ts$/,
-      /^packages\/core\/src\/integrations\/store\.ts$/,
-      /^packages\/core\/tests\//,
-    ],
+    allow: [...BINDING_STORE, /^packages\/core\/src\/integrations\/store\.ts$/],
     why: 'ISS-15: what a binding declares, `active` and `instructions` among it, is changed only by a binding-v1 document (`project-config/binding-store.ts:casBinding`). `integrations/store.ts` keeps `softDeleteBinding`, which DELETE /api/projects/:projectId/integrations/:id throws, and `setBindingInboundSecret`, which rotation writes, and nothing else. Write the document instead of updating the row.',
-    exts: ['.ts', '.tsx', '.mjs', '.js'],
   },
   {
     id: 'legacy-project-columns',
     // ISS-16 / design D8 — the `projects` columns the project document replaced, and the helpers
     // that wrote or checked them.
-    re: /\bprojects\.(?:description|kind|repoUrl|workspaceSetup|baseBranch|webhookSecret|apiKey|webhook_secret|api_key)\b|\bprojects\s+SET\s+(?:description|kind|environments|base_branch|webhook_secret|api_key)\b|\brepo_url\b|\bworkspace_setup\b|\bbase_branch\b|\bprojects_api_key_uq\b|\brequireProjectApiKey\b|\bgenerateApiKey\b|\/api-key\/rotate\b|\bprojects_release_chain_(?:ok|chk)\b|\breleaseProjectChecks\b|\breleaseCrossings\b|\bsyncRepoUrlFromGitHubBinding\b|\bRepoUrlOutcome\b/g,
-    why: "ISS-16 dropped this `projects` column (migrations `the_legacy_project_columns_are_dropped` and `the_branch_and_the_project_secrets_leave_the_row`) with every reader and writer, and moved nothing into another column: a project's repository is its document's `source.git.repository`, the branch work is cut from is `source.git.defaultBranch` and its setup procedure is `workspace.setup` (`project-config/source.ts:readDeclaredSource`), whether its work lands in git is `source.type`, and a project carries no description. The webhook secret is the project secret `secret://project/webhook-secret` (`project-config/service.ts:resolveProjectSecret`), and no project API key exists. `PATCH /api/projects/:id`, `POST /api/projects` and `forge_projects` refuse `repoUrl`, `workspaceSetup`, `baseBranch`, `webhookSecret` and `apiKey` by name. To read what an old database still holds, run `scripts/export-legacy-project-config.mjs` against it.",
+    re: anyOf(
+      projectsColumn(
+        'description',
+        'kind',
+        'repoUrl',
+        'workspaceSetup',
+        'baseBranch',
+        'webhookSecret',
+        'apiKey',
+        'webhook_secret',
+        'api_key',
+      ),
+      /\bprojects\s+SET\s+(?:description|kind|environments|base_branch|webhook_secret|api_key)\b/
+        .source,
+      words(
+        'repo_url',
+        'workspace_setup',
+        'base_branch',
+        'projects_api_key_uq',
+        'requireProjectApiKey',
+        'generateApiKey',
+        'projects_release_chain_(?:ok|chk)',
+        'releaseProjectChecks',
+        'releaseCrossings',
+        'syncRepoUrlFromGitHubBinding',
+        'RepoUrlOutcome',
+      ),
+      /\/api-key\/rotate\b/.source,
+    ),
+    why: "ISS-16 dropped this `projects` column (migrations `the_legacy_project_columns_are_dropped` and `the_branch_and_the_project_secrets_leave_the_row`) with every reader and writer, and moved nothing into another column: a project's repository is its document's `source.git.repository`, the branch work is cut from is `source.git.defaultBranch` and its setup procedure is `workspace.setup` (`project-config/source.ts:readDeclaredSource`), whether its work lands in git is `source.type`, and a project carries no description. A project holds no webhook secret (see `generic-inbound-webhook`) and no API key. `PATCH /api/projects/:id`, `POST /api/projects` and `forge_projects` refuse `repoUrl`, `workspaceSetup`, `baseBranch`, `webhookSecret` and `apiKey` by name. To read what an old database still holds, run `scripts/export-legacy-project-config.mjs` against it.",
   },
   {
     id: 'generic-inbound-webhook',
-    re: /secret:\/\/project\/webhook-secret|\bGENERIC_SIGNATURE_HEADERS\b|\bresolveProjectSecret\b|handler:\s*['"`]generic['"`]|webhook: generic receive/g,
+    re: anyOf(
+      /secret:\/\/project\/webhook-secret/.source,
+      words('GENERIC_SIGNATURE_HEADERS', 'resolveProjectSecret'),
+      /handler:\s*['"`]generic['"`]|webhook: generic receive/.source,
+    ),
     why: "ISS-16 removed the generic inbound webhook: `POST /api/webhooks/in/:slug` with no provider header verified a project secret and then reached nothing, and now answers 410 `WEBHOOK_ROUTE_REMOVED` (`webhooks/inbound-routes.ts:routeRemoved`). A provider's webhook is verified with its integration binding's secret; there is no project webhook secret to read.",
   },
   {

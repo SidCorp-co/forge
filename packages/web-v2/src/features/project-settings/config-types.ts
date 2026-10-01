@@ -1,7 +1,5 @@
 export type V1Document = Record<string, unknown>;
 
-export type V1Kind = "project" | "policy" | "testing-profile" | "binding";
-
 export type V1Read =
 	| { declared: false; revision: null; document: null }
 	| {
@@ -17,12 +15,6 @@ export type V1Written = Extract<V1Read, { declared: true }> & { created: boolean
 export interface V1Write {
 	baseRevision: number | null;
 	document: V1Document;
-}
-
-export interface ConfigRefusal {
-	code: string;
-	path: string;
-	detail: string;
 }
 
 export interface TestingProfileRow extends Extract<V1Read, { declared: true }> {

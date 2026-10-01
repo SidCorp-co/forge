@@ -73,7 +73,7 @@ export const ECOSYSTEM_ITEMS: EcosystemItem[] = [
   { key: "eco-api", label: "Project API", icon: "code", sub: "/ecosystem/api", href: (s) => ecosystemRoutes.apiPage(s) },
 ];
 
-export const ECOSYSTEM_RAIL_KEYS = new Set(["eco-channel", "eco-contracts", "eco-api"]);
+export const ECOSYSTEM_RAIL_KEYS = new Set(ECOSYSTEM_ITEMS.filter((it) => !it.status).map((it) => it.key));
 
 function ecosystemKey(rest: string, search: string): string | null {
   const status = new URLSearchParams(search).get("status");

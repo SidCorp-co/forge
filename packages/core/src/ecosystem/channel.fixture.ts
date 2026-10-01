@@ -9,7 +9,6 @@ import type { EdgeRow } from './store.js';
 
 export const FORGE = 'da368b0a-8e21-4763-9d90-8f7b9d0c7115';
 export const PLUGIN = '8f4c3d6b-ae5a-4b1d-8243-5d6e7f8091a3';
-export const EPOD = '9a5d4e7c-bf6b-4c2e-9354-6e7f8091a2b4';
 export const OWNER = 'bc7f6a9e-d18d-4e40-b576-8091a2b3c4d6';
 
 const VERSIONS: Record<string, string[]> = {

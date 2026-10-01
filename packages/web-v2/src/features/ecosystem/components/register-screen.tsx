@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Badge, NativeSelect, SegmentedControl } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useOutbox, useProjectEcosystems, useRegister } from "../hooks";
-import { readingOf } from "../refusal";
+import { readingOf } from "@/lib/api/refusals";
 import { ecosystemRoutes, REGISTER_FILTERS, type RegisterFilter } from "../routes";
 import type { RegisterRow } from "../types";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";

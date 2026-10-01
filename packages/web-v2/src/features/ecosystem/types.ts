@@ -10,6 +10,12 @@ export const DOCUMENT_TYPES = [
 ] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
+export const REPLY_TYPES: Partial<Record<string, DocumentType[]>> = {
+  "change-notice": ["acknowledgement"],
+  rfi: ["decision"],
+  "change-request": ["decision"],
+};
+
 export type DocumentState = "draft" | "submitted" | "returned" | "published" | "withdrawn" | "superseded";
 
 /** Who wrote it, and through what door. The credential decides it, never the body. */

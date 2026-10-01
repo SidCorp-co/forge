@@ -5,13 +5,13 @@ import type { UseMutationResult } from "@tanstack/react-query";
 import { Banner, Button, CardTitle, MonoTag, Tabs, Textarea } from "@/design";
 import { canonicalJson } from "@forge/contracts/document-patch";
 import { formatApiError } from "@/lib/api/error";
-import type { ConfigRefusal, V1Document, V1Read, V1Write, V1Written } from "../config-types";
+import { documentRefusals, type Refusal } from "@/lib/api/refusals";
+import type { V1Document, V1Read, V1Write, V1Written } from "../config-types";
 import {
 	isStaleBase,
 	movedSince,
 	placeRefusals,
 	reapply,
-	refusalsOf,
 	sameDocument,
 	setAt,
 	STALE_BASE,
@@ -83,7 +83,7 @@ function MovedNotice({
 	);
 }
 
-function RefusalList({ refusals }: { refusals: readonly ConfigRefusal[] }) {
+function RefusalList({ refusals }: { refusals: readonly Refusal[] }) {
 	return (
 		<ul className="list-disc pl-5">
 			{refusals.map((r) => (
@@ -124,7 +124,7 @@ export function DocumentEditor({
 	if (behind && !dirty) setHeld(seed(read, template));
 	const moved = behind && dirty;
 
-	const refusals = write.isError ? refusalsOf(write.error) : [];
+	const refusals = write.isError ? documentRefusals(write.error) : [];
 	const stale = refusals.filter((r) => r.code === STALE_BASE);
 	const placed = placeRefusals(held.draft, refusals);
 

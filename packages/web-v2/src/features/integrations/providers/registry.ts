@@ -27,10 +27,6 @@ export interface ProviderModule {
   /** Does this provider resolve to a connection a person can drill into (Test / Rotate / Remove)? */
   drillable: boolean;
   agentPathKind: AgentPathKind;
-  /** The `mcpServers` key this provider renders under, or null where it renders none. */
-  mcpServerName: string | null;
-  /** True where every binding injects its own suffixed entry rather than one winner taking the slot. */
-  multiBinding: boolean;
   /** The binding-tier config keys besides `releaseRunnerLabel`, each a field of its binding-v1 target. */
   bindingKeys: readonly string[];
   /** Where a target field is not its config key one to one: the target from the binding tier, and back. */
@@ -88,14 +84,4 @@ export function connectionTargetFor(
   config: Record<string, unknown> | null | undefined,
 ): string | null {
   return byName.get(provider)?.target(config ?? {}) ?? null;
-}
-
-/** The provider an `mcpServers` key belongs to, or undefined where the key is nobody's. */
-export function providerForMcpServerName(name: string): ProviderModule | undefined {
-  for (const m of PROVIDER_MODULES) {
-    if (m.mcpServerName === null) continue;
-    if (name === m.mcpServerName) return m;
-    if (m.multiBinding && name.startsWith(`${m.mcpServerName}_`)) return m;
-  }
-  return undefined;
 }

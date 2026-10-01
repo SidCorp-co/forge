@@ -62,6 +62,23 @@ function actionEnum(schema: Record<string, unknown>): readonly string[] | null {
   return Array.isArray(values) ? (values as string[]) : null;
 }
 
+function refuseUnmatchedActions(
+  refuse: (why: string) => never,
+  noun: 'grant' | 'reach',
+  schemaActions: readonly string[] | null,
+  declared: readonly string[],
+): void {
+  if (!schemaActions) {
+    refuse(`it declares a ${noun} per action, and its schema takes no \`action\` enum`);
+  }
+  const actions = schemaActions ?? [];
+  const missing = actions.filter((a) => !declared.includes(a));
+  if (missing.length > 0) refuse(`actions ${missing.join(', ')} declare no ${noun}`);
+  const extra = declared.filter((a) => !actions.includes(a));
+  if (extra.length > 0)
+    refuse(`it declares a ${noun} for ${extra.join(', ')}, which it does not take`);
+}
+
 // cm:guard the per-action table must name exactly the schema's `action` enum, so an action added
 // to a tool cannot reach the transport undeclared.
 export function assertToolDeclaresGrant(tool: GrantedTool): void {
@@ -81,12 +98,7 @@ export function assertToolDeclaresGrant(tool: GrantedTool): void {
       const problem = entryProblem(entry);
       if (problem) refuse(`action '${action}': ${problem}`);
     }
-    if (!actions) refuse('it declares a grant per action, and its schema takes no `action` enum');
-    const missing = (actions ?? []).filter((a) => !declared.includes(a));
-    if (missing.length > 0) refuse(`actions ${missing.join(', ')} declare no grant`);
-    const extra = declared.filter((a) => !(actions ?? []).includes(a));
-    if (extra.length > 0)
-      refuse(`it declares a grant for ${extra.join(', ')}, which it does not take`);
+    refuseUnmatchedActions(refuse, 'grant', actions, declared);
     if (grant.defaultAction !== undefined && !declared.includes(grant.defaultAction)) {
       refuse(`its default action '${grant.defaultAction}' declares no grant`);
     }
@@ -106,23 +118,15 @@ export function toolGrantRefusal(
   if (grant === undefined || grant === null) {
     return `FORBIDDEN: ${tool.name} declares no grant, so no token may call it`;
   }
-  let entry: ToolGrantEntry;
-  let what = tool.name;
-  if (typeof grant === 'object' && 'byAction' in grant) {
-    const action = typeof args.action === 'string' ? args.action : grant.defaultAction;
-    const found =
-      action !== undefined && Object.hasOwn(grant.byAction, action)
-        ? grant.byAction[action]
-        : undefined;
-    if (found === undefined) {
-      const named = action === undefined ? 'a call naming no action' : `action '${action}'`;
-      return `FORBIDDEN: ${tool.name} ${named} declares no grant, so it is refused. Declared actions: ${Object.keys(grant.byAction).join(', ')}`;
-    }
-    entry = found;
-    what = `${tool.name} action '${action}'`;
-  } else {
-    entry = grant;
+  const action = calledAction(tool, args);
+  const entry = pick(grant, action);
+  const byAction = hasByAction<ToolGrantEntry>(grant);
+  if (entry === undefined) {
+    const named = action === undefined ? 'a call naming no action' : `action '${action}'`;
+    const declared = byAction ? Object.keys(grant.byAction).join(', ') : '';
+    return `FORBIDDEN: ${tool.name} ${named} declares no grant, so it is refused. Declared actions: ${declared}`;
   }
+  const what = byAction ? `${tool.name} action '${action}'` : tool.name;
   if (isNone(entry)) return null;
   if (patGrantCovers(granted, entry)) return null;
   return (
@@ -192,13 +196,7 @@ export function assertToolDeclaresReach(tool: GrantedTool): void {
   }
   const actions = actionEnum(tool.inputSchema);
   if (hasByAction<ToolReachEntry>(reach)) {
-    const declared = Object.keys(reach.byAction);
-    if (!actions) refuse('it declares a reach per action, and its schema takes no `action` enum');
-    const missing = (actions ?? []).filter((a) => !declared.includes(a));
-    if (missing.length > 0) refuse(`actions ${missing.join(', ')} declare no reach`);
-    const extra = declared.filter((a) => !(actions ?? []).includes(a));
-    if (extra.length > 0)
-      refuse(`it declares a reach for ${extra.join(', ')}, which it does not take`);
+    refuseUnmatchedActions(refuse, 'reach', actions, Object.keys(reach.byAction));
     for (const [action, entry] of Object.entries(reach.byAction)) {
       const problem = reachProblem(entry, pick(tool.grant, action));
       if (problem) refuse(`action '${action}': ${problem}`);

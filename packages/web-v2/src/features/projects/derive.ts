@@ -1,8 +1,3 @@
-// web-v2 feature module: projects — pure derivation helpers.
-//
-// All functions here are pure (no React, no I/O) so the console's business
-// logic — health derivation, list↔health join, totals, sort, filter — is unit
-// testable in `derive.test.ts` without rendering anything.
 import type { HealthKey } from '@/design';
 import type {
   ProjectConsoleItem,
@@ -127,16 +122,6 @@ export function filterProjects(
 /** `$13.38` — trailing-24h spend, two decimals. */
 export function formatSpend(usd: number): string {
   return `$${usd.toFixed(2)}`;
-}
-
-export function formatCycleTime(days: number | null | undefined): string {
-  if (days == null || !Number.isFinite(days) || days <= 0) return "—";
-  if (days < 1) {
-    const hours = Math.max(1, Math.round(days * 24));
-    return `${hours}h`;
-  }
-  if (days < 10) return `${days.toFixed(1)}d`;
-  return `${Math.round(days)}d`;
 }
 
 /**
