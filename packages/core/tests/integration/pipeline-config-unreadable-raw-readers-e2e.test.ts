@@ -14,7 +14,12 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { expectNamed, REFUSED, refusalOf } from '../helpers/refused-pipeline-config.js';
+import {
+  expectNamed,
+  REFUSED,
+  refusalOf,
+  storeConfig,
+} from '../helpers/refused-pipeline-config.js';
 
 let harness: TestDatabase;
 let refusedId: string;
@@ -82,6 +87,16 @@ describe('a one-key reader refuses a stored pipelineConfig the schema refuses, b
     const { loadResumeBounds } = await import('../../src/jobs/session-resume.js');
     named(await refusalOf(() => loadResumeBounds(refusedId)));
     named(await refusalOf(() => loadResumeBounds(refusedId, { pipelineConfig: REFUSED })));
+  });
+
+  it('refuses a stored null rather than reading it as absent', async () => {
+    const { resolveIntakeGate } = await import('../../src/issues/intake-gate.js');
+    await storeConfig(harness.db, refusedId, null);
+
+    const said = await refusalOf(() => resolveIntakeGate(refusedId));
+
+    expect(said).toContain(refusedId);
+    expect(said).toContain('It is stored as null');
   });
 
   it('knowledge promotion', async () => {
