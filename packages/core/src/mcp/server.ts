@@ -5,11 +5,20 @@ import {
   ListPromptsRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import { HTTPException } from 'hono/http-exception';
 import pkg from '../../package.json' with { type: 'json' };
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
+import { runWithPatScope } from '../auth/pat-scope.js';
+import { assertUnfenced } from '../lib/authz.js';
 import { resolveManagedMetaPrompts } from '../skills/effective.js';
 import { forgeMcpInstructions } from './instructions.js';
-import { assertToolDeclaresGrant, toolGrantRefusal } from './tool-grant.js';
+import {
+  assertToolDeclaresGrant,
+  assertToolDeclaresReach,
+  toolAccountWork,
+  toolEpochRefusal,
+  toolGrantRefusal,
+} from './tool-grant.js';
 import { toToolCallContent } from './tool-result.js';
 import {
   forgeAgentSessionsGetTool,
@@ -96,6 +105,18 @@ function classifyError(err: unknown): { code: AuditResultCode; message: string }
   return { code: 'error', message };
 }
 
+function accountRefusal(work: string | null): string | null {
+  if (work === null) return null;
+  try {
+    assertUnfenced(work);
+    return null;
+  } catch (err) {
+    if (!(err instanceof HTTPException)) throw err;
+    const code = (err.cause as { code?: string } | undefined)?.code;
+    return `FORBIDDEN: ${code}: ${err.message}`;
+  }
+}
+
 function projectIdFromArgs(args: Record<string, unknown>): string | null {
   const top = args.projectId;
   if (typeof top === 'string') return top;
@@ -175,7 +196,10 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     forgeSentryTool(ctx),
     forgeGuideTool(ctx),
   ];
-  for (const tool of tools) assertToolDeclaresGrant(tool);
+  for (const tool of tools) {
+    assertToolDeclaresGrant(tool);
+    assertToolDeclaresReach(tool);
+  }
   return tools;
 }
 
@@ -260,27 +284,33 @@ export function createMcpServer(ctx: McpContext): Server {
       };
     }
 
-    // cm:guard the token's grant is read here, before any handler: a tool's role check alone
-    // would let a token granted `issues:read` call every tool its user's role allows.
-    const refusal = toolGrantRefusal(tool, args, principal.permissions);
-    if (refusal) {
-      writeMcpAudit({ ...auditBase, resultCode: 'forbidden' });
-      return { content: [{ type: 'text', text: `Error: ${refusal}` }], isError: true };
-    }
+    return runWithPatScope({ projectIds: allow, tokenId: principal.tokenId }, async () => {
+      // cm:guard reach, epoch and grant are read here, before any handler, in REST's order: a
+      // tool's role check alone would let a token granted `issues:read` call every tool its
+      // user's role allows, and a token fenced to one project do work belonging to none.
+      const refusal =
+        accountRefusal(toolAccountWork(tool, args)) ??
+        toolEpochRefusal(tool, args, principal.grantEpoch ?? 1) ??
+        toolGrantRefusal(tool, args, principal.permissions);
+      if (refusal) {
+        writeMcpAudit({ ...auditBase, resultCode: 'forbidden' });
+        return { content: [{ type: 'text', text: `Error: ${refusal}` }], isError: true };
+      }
 
-    try {
-      const result = await tool.handler(args);
-      writeMcpAudit({ ...auditBase, resultCode: 'ok' });
-      return toToolCallContent(result);
-    } catch (err) {
-      const { code, message } = classifyError(err);
-      writeMcpAudit({ ...auditBase, resultCode: code });
-      const text = message.replace(/^(?:FORBIDDEN|NOT_FOUND|BAD_REQUEST):\s*/, '');
-      return {
-        content: [{ type: 'text', text: `Error: ${text}` }],
-        isError: true,
-      };
-    }
+      try {
+        const result = await tool.handler(args);
+        writeMcpAudit({ ...auditBase, resultCode: 'ok' });
+        return toToolCallContent(result);
+      } catch (err) {
+        const { code, message } = classifyError(err);
+        writeMcpAudit({ ...auditBase, resultCode: code });
+        const text = message.replace(/^(?:FORBIDDEN|NOT_FOUND|BAD_REQUEST):\s*/, '');
+        return {
+          content: [{ type: 'text', text: `Error: ${text}` }],
+          isError: true,
+        };
+      }
+    });
   });
 
   return server;

@@ -13,6 +13,8 @@
 - **A token's permissions now bound what it can do over MCP too.** A token granted only
   `issues:read` could call every MCP tool its owner's role allowed; a call outside its grant is
   now refused by name. Full-access tokens are unchanged.
+- **Over MCP, a token limited to some projects can no longer create projects or read
+  organisations**, and an older token reaches only what existed when it was made, as on the API.
 
 - **An agent session you start from the web acts as you, not as whoever paired the box.** Each
   turn carries a short-lived token for its sender, never wider than the box owner's. Viewers and

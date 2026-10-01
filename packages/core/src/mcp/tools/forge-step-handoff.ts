@@ -45,6 +45,7 @@ const deleteInputSchema = z.object({
  */
 export const forgeStepHandoffWriteTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_step_handoff.write',
+  reach: 'project',
   grant: 'pipeline:write',
   description:
     "Upsert a step handoff (structured pipeline-state output) for an issue. Stores `payload` under `kind='handoff'` keyed on (issueId, step, attempt). Validates payload via the per-step discriminated schema. Requires project membership.",
@@ -63,6 +64,7 @@ export const forgeStepHandoffWriteTool: ContextScopedMcpToolFactory = ({ princip
  */
 export const forgeStepHandoffGetTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_step_handoff.get',
+  reach: 'project',
   grant: 'pipeline:read',
   description:
     'List step handoffs for an issue. Filter by pipelineRunId and/or `steps` allow-list. Returns rows sorted by createdAt (default desc). Requires project membership.',
@@ -82,6 +84,7 @@ export const forgeStepHandoffGetTool: ContextScopedMcpToolFactory = ({ principal
  */
 export const forgeStepHandoffDeleteTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_step_handoff.delete',
+  reach: 'project',
   grant: 'pipeline:write',
   description:
     'Delete a step handoff by (issueId, step, attempt). Idempotent — returns {deleted: false} when no row matches. Requires project membership.',

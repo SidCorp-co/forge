@@ -16,6 +16,7 @@ const inputSchema = z.object({}).strict();
 
 export const forgeHealthTool: ContextScopedMcpToolFactory = () => ({
   name: 'forge_health',
+  reach: 'public',
   grant: { none: 'the server snapshot GET /api/health serves to anyone, read by no project' },
   description:
     'Server snapshot: version, uptime, db/queue/ws status, last builtin-skills seed result, and active jobs count. No project scope.',
