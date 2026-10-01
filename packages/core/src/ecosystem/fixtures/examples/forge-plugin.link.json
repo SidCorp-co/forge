@@ -1,0 +1,31 @@
+{
+  "$schema": "https://forge.sidcorp.co/schemas/link-v1.json",
+  "version": 1,
+  "id": "c17f6a9e-1d2b-4c3a-8e4f-5a6b7c8d9e01",
+  "ecosystem": "5c1f0a3e-7b2d-4e8a-9f10-2a3b4c5d6e70",
+  "consumer": {
+    "project": "8f4c3d6b-ae5a-4b1d-8243-5d6e7f8091a3",
+    "module": "cli/src"
+  },
+  "contract": {
+    "provider": "da368b0a-8e21-4763-9d90-8f7b9d0c7115",
+    "slug": "forge-api"
+  },
+  "pinnedVersion": "2026-09-20",
+  "state": "current",
+  "callSites": [
+    { "path": "cli/src/commands/issue.ts", "line": 42, "operation": "GET /api/issues/{id}" },
+    { "path": "cli/src/commands/phase.ts", "line": 17, "operation": "POST /api/issues/{id}/phase" }
+  ],
+  "fieldsUsed": ["issue.status", "issue.key", "phase.outcome"],
+  "outsideContract": ["GET /api/issues/{id}/raw"],
+  "notes": ["The CLI reads the raw body route, which the contract does not publish."],
+  "writtenBy": {
+    "runId": "d28a7b0f-2e3c-4d4b-9f50-6b7c8d9e0f12",
+    "sessionId": "e39b8c1a-3f4d-4e5c-8a61-7c8d9e0f1a23",
+    "sha": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+  },
+  "refreshedAtSha": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+  "createdAt": "2026-10-01T09:00:00.000Z",
+  "updatedAt": "2026-10-01T09:00:00.000Z"
+}
