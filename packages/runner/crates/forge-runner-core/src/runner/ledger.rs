@@ -1879,6 +1879,19 @@ impl Ledger {
         Ok(())
     }
 
+    /// Stand a run's declaration at `at_secs`, so a test can put a run past a
+    /// bound measured from it without waiting that long.
+    #[cfg(test)]
+    pub fn backdate_declared(&self, run_id: &str, at_secs: i64) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET created_at = ?2 WHERE run_id = ?1",
+                params![run_id, at_secs],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
     /// Stand a run's terminal-session observation at `at_secs`, so a test can
     /// put a run past a bound measured from it without waiting that long.
     #[cfg(test)]

@@ -14,7 +14,7 @@ use crate::daemon::{subagent_end, transcript_age};
 use crate::error::Result;
 use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
 use crate::runner::ledger::{
-    Ledger, Liveness, Run, HOST_PANE_GONE, HOST_PANE_STARTED, HOST_PROCESS_GONE,
+    Incarnation, Ledger, Liveness, Run, HOST_PANE_GONE, HOST_PANE_STARTED, HOST_PROCESS_GONE,
 };
 use std::path::{Path, PathBuf};
 
@@ -200,6 +200,27 @@ pub async fn reconcile(
                 let _ = watch.beat.beat(id).await;
             }
             continue;
+        }
+        if let Some(age_secs) = unbound_past_the_bound(&run, boot_id, now_ms() / 1000) {
+            let reason = unbound_reason(age_secs);
+            ledger.end_run(&run.run_id, ENDED_BY_BOX, &reason)?;
+            let keys = ledger
+                .issues(&run.run_id)?
+                .into_iter()
+                .map(|m| m.issue_key)
+                .collect::<Vec<_>>()
+                .join(", ");
+            tracing::warn!(
+                "[recovery] run {} ({}: {keys}) under master session {} ended: {reason}",
+                run.run_id,
+                run.project_id.as_deref().unwrap_or("no project"),
+                crate::runner::ledger::short_id(&run.master_session_id)
+            );
+            // Ended as a master's close ends it, so the close loop below takes
+            // it from here in this same sweep.
+            run.incarnation = Incarnation::Exited;
+            run.ended_by = Some(ENDED_BY_BOX.to_string());
+            run.ended_reason = Some(reason);
         }
         let pid_refuted = match run.pid {
             Some(pid) => procs.is_gone(pid).await,
@@ -455,6 +476,43 @@ pub async fn reconcile(
         tracing::warn!("{line}");
     }
     Ok(out)
+}
+
+/// How long a declared run may stand bound to nothing before the box ends it
+/// (ISS-1379).
+///
+/// A declaration is the master saying a subagent is about to start; the
+/// subagent binds it with its first hook. One that is never bound holds its
+/// issues' leases and its master's one unbound slot — the dispatch gate
+/// refuses that master every further declaration while it stands — and before
+/// this rule nothing but that master's own close ever ended it. Measured over
+/// 781 bound runs on the fleet, declaration to first transcript entry took 51s
+/// at the median, 399s at p99 and 3,037s at the longest, so an hour is past
+/// every binding this box has seen.
+pub(crate) const UNBOUND_BEFORE_END_SECS: i64 = 60 * 60;
+
+/// Who a run ended by [`UNBOUND_BEFORE_END_SECS`] says ended it.
+pub(crate) const ENDED_BY_BOX: &str = "box";
+
+/// How old `run` is, where it is a declaration of this boot that nothing has
+/// bound for the whole bound. A run of another boot is not this rule's: its
+/// process could not have bound it here, and the boot rules already own it.
+fn unbound_past_the_bound(run: &Run, boot_id: &str, now_secs: i64) -> Option<i64> {
+    let age = now_secs - run.created_at;
+    (run.agent_id.is_none()
+        && run.pid.is_none()
+        && run.ended_by.is_none()
+        && run.boot_id == boot_id
+        && age >= UNBOUND_BEFORE_END_SECS)
+        .then_some(age)
+}
+
+fn unbound_reason(age_secs: i64) -> String {
+    format!(
+        "declared {}m ago and never bound to a subagent or a process, past the {}m within which a declared run binds, so the box ended it; its session and its leases go back by the close loop, and its issues can be declared again",
+        age_secs / 60,
+        UNBOUND_BEFORE_END_SECS / 60
+    )
 }
 
 /// End the runs no master on this box answers for once their marks close
@@ -4775,5 +4833,146 @@ mod tests {
             Some(HOST_PROCESS_GONE)
         );
         assert!(host_ended(&led), "criterion 70");
+    }
+
+    /// A run declared `age_secs` ago under a master that is alive, and bound
+    /// to nothing unless the test binds it.
+    fn declared_ago(age_secs: i64, boot: &str) -> Ledger {
+        let led = seeded("run-1", "master-live", boot, &["ISS-1379"]);
+        led.backdate_declared("run-1", now_ms() / 1000 - age_secs)
+            .unwrap();
+        led
+    }
+
+    async fn sweep_under_live_master(led: &mut Ledger, leases: &Leases) -> Vec<Recovered> {
+        reconcile(
+            led,
+            "boot-a",
+            &Masters(HashSet::from(["master-live".to_string()])),
+            &nothing_refuted(),
+            Closing {
+                sessions: &Sessions,
+                leases,
+                roots: &Roots,
+            },
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_declaration_nothing_bound_for_an_hour_is_ended_by_the_box_naming_its_age() {
+        let mut led = declared_ago(61 * 60, "boot-a");
+        let leases = Leases(Mutex::new(HashSet::new()));
+        sweep_under_live_master(&mut led, &leases).await;
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(run.ended_by.as_deref(), Some(ENDED_BY_BOX), "criterion 17");
+        let reason = run.ended_reason.unwrap_or_default();
+        assert!(
+            reason.contains("declared 61m ago"),
+            "criterion 17: {reason}"
+        );
+        assert!(
+            reason.contains("never bound to a subagent or a process"),
+            "criterion 17: {reason}"
+        );
+        assert!(
+            led.unbound_run_for_master("master-live", "boot-a")
+                .unwrap()
+                .is_none(),
+            "its master holds no unbound declaration any more, so it may declare again"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_declaration_the_box_ended_is_closed_by_the_close_loop_as_a_masters_close_is() {
+        let mut ended_by_box = declared_ago(61 * 60, "boot-a");
+        let box_leases = Leases(Mutex::new(HashSet::new()));
+        let mut ended_by_master = declared_ago(10 * 60, "boot-a");
+        ended_by_master
+            .end_run("run-1", "master", "its master closed it")
+            .unwrap();
+        let master_leases = Leases(Mutex::new(HashSet::new()));
+        let mut said = Vec::new();
+        for (led, leases) in [
+            (&mut ended_by_box, &box_leases),
+            (&mut ended_by_master, &master_leases),
+        ] {
+            let mut last = None;
+            for _ in 0..2 {
+                last = sweep_under_live_master(led, leases)
+                    .await
+                    .into_iter()
+                    .next()
+                    .map(|r| r.state);
+            }
+            said.push((
+                last.map(|s| (s.session_terminal, s.leases_returned, s.leases_total)),
+                leases.0.lock().unwrap().contains("ISS-1379"),
+            ));
+        }
+        assert!(said[0].1, "criterion 18: its lease went back: {said:?}");
+        assert_eq!(
+            said[0], said[1],
+            "criterion 18: the close loop takes a run the box ended exactly as it takes one its master closed"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_declaration_younger_than_the_bound_is_not_ended() {
+        let mut led = declared_ago(59 * 60, "boot-a");
+        let leases = Leases(Mutex::new(HashSet::new()));
+        sweep_under_live_master(&mut led, &leases).await;
+        let run = led.run("run-1").unwrap().unwrap();
+        assert!(
+            run.ended_by.is_none(),
+            "criterion 19: {:?}",
+            run.ended_reason
+        );
+        assert!(leases.0.lock().unwrap().is_empty(), "and its lease is held");
+    }
+
+    #[tokio::test]
+    async fn a_run_its_subagent_bound_is_not_ended_by_the_bound_however_old() {
+        let mut led = declared_ago(3 * 60 * 60, "boot-a");
+        assert!(led.bind_agent("run-1", "agent-1").unwrap());
+        let leases = Leases(Mutex::new(HashSet::new()));
+        sweep_under_live_master(&mut led, &leases).await;
+        let run = led.run("run-1").unwrap().unwrap();
+        assert!(
+            run.ended_by.is_none(),
+            "criterion 20: {:?}",
+            run.ended_reason
+        );
+    }
+
+    #[test]
+    fn the_bound_is_measured_from_the_declaration_on_this_boot_only() {
+        let led = declared_ago(2 * 60 * 60, "boot-before");
+        let run = led.run("run-1").unwrap().unwrap();
+        let now = now_ms() / 1000;
+        assert_eq!(
+            unbound_past_the_bound(&run, "boot-a", now),
+            None,
+            "a declaration of another boot is the boot rules', not this one's"
+        );
+        assert!(unbound_past_the_bound(&run, "boot-before", now).is_some());
+        let exactly = Run {
+            created_at: now - UNBOUND_BEFORE_END_SECS,
+            ..run.clone()
+        };
+        assert!(
+            unbound_past_the_bound(&exactly, "boot-before", now).is_some(),
+            "the bound is inclusive"
+        );
+        let short = Run {
+            created_at: now - UNBOUND_BEFORE_END_SECS + 1,
+            ..run
+        };
+        assert_eq!(unbound_past_the_bound(&short, "boot-before", now), None);
     }
 }
