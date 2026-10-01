@@ -165,7 +165,8 @@ every client (WebSocket + HTTP) — no manual `systemctl restart` needed.
 
 The daemon checks `{core}/api/install/latest.json` ~30s after start and every 6h.
 When a newer release is published it downloads the matching binary, verifies its
-sha256, swaps the executable, and hands over to it in place.
+sha256, runs the download's `--version` and requires the version and commit the
+release names, swaps the executable, and hands over to it in place.
 
 Auto-update is **ON by default**. Once the new binary stands on disk the daemon
 **hands over** to it: the same process replaces its own image with the installed
@@ -183,11 +184,30 @@ update applied ─▶ wait, admission OPEN ────────────�
                   │                                                              backlog are answered by
                   └─ 2h and still held ─▶ deferred: never closed, nothing          the new build
                                           stopped; next update check / re-login
-exec refused (unix) ─▶ admission reopens, the old build goes on serving, the log names the path tried
-                       (no file there, or one the kernel will not run: it is never run under /bin/sh)
+download refused ─▶ nothing installed: the file the kernel will not run, the one that exits before
+                    saying what it is, the one naming another version or commit, are refused before
+                    the rename, and the path keeps the build every hook and command runs
+exec refused (unix) ─▶ the kept build goes back on the path, admission reopens, the old build goes on
+                       serving, the log names the path tried (it is never run under /bin/sh)
 not unix            ─▶ exit 0 for the service manager to start the new build, as before
 ```
 
+- **Nothing reaches the path that has not run.** The download is written beside
+  the binary and its `--version` run (10s bound) before it is renamed over it:
+  every hook, every master's `forge-runner run declare` and every command a
+  person types runs that path, so a file that cannot run would stop the box
+  declaring anything until somebody reinstalled by hand. A refused download
+  installs nothing and the next check refuses it again.
+- **The served build is kept.** The daemon's first install links the build it
+  serves to `<binary>.served`, and a handover whose exec does not happen puts
+  it back on the path. The file outlives a handover that works, and the next
+  update replaces it. `forge-runner update` from a shell keeps none: it restarts
+  the unit rather than handing over.
+- **The new image serves the masters at once.** Just before the exec the daemon
+  writes the master panes it serves to `masters-handed.json` in its config
+  directory; the image that starts takes it only under its own pid and boot and
+  within two minutes, and removes it either way, so a master's declaration is
+  answered from the first second rather than from its first sweep.
 - **What it waits on is this process's own work**: chat turns running inside
   the daemon, and parked chat sessions, which are checkpointed and closed
   (bounded by their 120s checkpoint budget). Runs in the ledger, bound or not,
@@ -216,9 +236,11 @@ not unix            ─▶ exit 0 for the service manager to start the new build
   carry left a run it could not read, is left running until that clears), its
   turn is affirmatively over (its hooks say so,
   or, unheard since the handover, its transcript's newest entry is a turn's
-  end), and its project has admissible work. Otherwise it is left running and
-  the journal names why and `forge-runner master kill <slug>`, which replaces it
-  now. `forge-runner top` prints `OUTDATED` under that master with both builds
+  end), its project has admissible work, and the conversation its row records
+  has a transcript to resume (a successor without one starts cold). Otherwise
+  it is left running and the journal names every reason that holds and
+  `forge-runner master kill <slug>`, which replaces it now. The pane placed in
+  its stead takes its brief as this sweep's nudge, and is nudged from the next. `forge-runner top` prints `OUTDATED` under that master with both builds
   or plugin sets.
 - **A declaration nothing binds is ended at 60 minutes.** A run declared and
   never bound to a subagent or a process holds its issues' leases and its

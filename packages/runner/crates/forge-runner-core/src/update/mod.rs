@@ -194,11 +194,31 @@ impl Claim {
     }
 }
 
-/// The build a daemon serves, kept beside the path it was started from once an
-/// update has installed another there.
+/// The build a daemon serves, kept beside its install path once an update has
+/// installed another build there, so a handover that cannot start the new one
+/// can put it back (ISS-1379 criterion 12).
+///
+/// Before it, the old inode lived on only as this process's own text: a
+/// handover whose exec failed left the daemon serving while every hook, every
+/// master's `forge-runner run declare` and every command a person typed ran the
+/// file that had just failed, and the box declared and bound nothing until
+/// somebody reinstalled a build by hand.
+///
+/// Kept once per process: the first install links what stands at the path,
+/// which is the build this process serves, and every later install in the same
+/// process leaves that link alone, the path then holding a build it installed
+/// itself. The file outlives a handover that succeeds, and the next update's
+/// install replaces it.
 #[derive(Debug, Default)]
 pub struct ServedBuild {
-    kept: std::sync::Mutex<Option<std::path::PathBuf>>,
+    kept: std::sync::Mutex<Option<Kept>>,
+}
+
+/// Where the served build was kept, and the install path it came from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Kept {
+    pub exe: std::path::PathBuf,
+    pub at: std::path::PathBuf,
 }
 
 impl ServedBuild {
@@ -206,10 +226,55 @@ impl ServedBuild {
         Self::default()
     }
 
-    /// Put the kept build back at `exe`, answering where it was kept, or `None`
-    /// where this process kept none.
-    pub fn restore(&self, _exe: &std::path::Path) -> Result<Option<std::path::PathBuf>> {
-        Ok(None)
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<Kept>> {
+        self.kept.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Keep what stands at `exe` beside it, unless this process already keeps
+    /// the build it serves there. Unix only: elsewhere a handover is an exit
+    /// for the service manager, and no failure branch is left to restore from.
+    #[cfg_attr(not(unix), allow(dead_code))]
+    fn keep(&self, exe: &std::path::Path) -> std::io::Result<()> {
+        let mut kept = self.lock();
+        if kept
+            .as_ref()
+            .is_some_and(|k| k.exe == exe && k.at.is_file())
+        {
+            return Ok(());
+        }
+        let at = kept_path(exe);
+        let mut beside = at.as_os_str().to_os_string();
+        beside.push(".tmp");
+        let beside = std::path::PathBuf::from(beside);
+        let _ = std::fs::remove_file(&beside);
+        if std::fs::hard_link(exe, &beside).is_err() {
+            std::fs::copy(exe, &beside)?;
+        }
+        std::fs::rename(&beside, &at)?;
+        *kept = Some(Kept {
+            exe: exe.to_path_buf(),
+            at,
+        });
+        Ok(())
+    }
+
+    /// Put the kept build back at the path it was kept from, answering where
+    /// that was, or `None` where this process kept none.
+    pub fn restore(&self) -> Result<Option<Kept>> {
+        let mut kept = self.lock();
+        let Some(k) = kept.take() else {
+            return Ok(None);
+        };
+        if let Err(e) = std::fs::rename(&k.at, &k.exe) {
+            let why = format!(
+                "the build this process serves, kept at {}, could not be put back at {}: {e}",
+                k.at.display(),
+                k.exe.display()
+            );
+            *kept = Some(k);
+            return Err(Error::Other(why));
+        }
+        Ok(Some(k))
     }
 }
 
@@ -220,35 +285,145 @@ pub fn kept_path(exe: &std::path::Path) -> std::path::PathBuf {
     std::path::PathBuf::from(name)
 }
 
+/// How long the downloaded build's `--version` may take to answer.
+pub const PREFLIGHT_BOUND: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Install `bytes` at `exe` once they have proved to be the build `claim`
+/// names, keeping what stood there where `keep` is given.
+pub async fn install(
+    exe: &std::path::Path,
+    bytes: &[u8],
+    claim: &Claim,
+    keep: Option<&ServedBuild>,
+) -> Result<()> {
+    install_within(exe, bytes, claim, keep, PREFLIGHT_BOUND).await
+}
+
+/// [`install`], with the pre-flight's bound handed in.
+///
+/// The file is written beside `exe` and run before anything is renamed: on
+/// unix a path can be replaced under a running binary, so the rename is the
+/// moment every later caller of that path is committed to the new file, and a
+/// file the kernel will not run, or one that exits before it can say what it
+/// is, is refused while the build that runs is still the one standing there.
 pub async fn install_within(
     exe: &std::path::Path,
     bytes: &[u8],
     claim: &Claim,
     keep: Option<&ServedBuild>,
-    _bound: std::time::Duration,
+    bound: std::time::Duration,
 ) -> Result<()> {
-    install(exe, bytes, claim, keep).await
-}
-
-/// Write `bytes` beside `exe` and rename them over it.
-pub async fn install(
-    exe: &std::path::Path,
-    bytes: &[u8],
-    _claim: &Claim,
-    _keep: Option<&ServedBuild>,
-) -> Result<()> {
-    // Write next to the current exe, chmod, then rename over it. On Unix you can
-    // replace a running binary's path — the live process keeps the old inode,
-    // and the next start picks up the new file.
     let tmp = exe.with_extension("new");
     std::fs::write(&tmp, bytes)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
+        if let Err(why) = preflight(&tmp, claim, bound).await {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(Error::Other(format!(
+                "refused the downloaded build before installing it: {why}. {} is untouched and is still the build every caller runs; the next update check downloads the release again and refuses it again until it is one this box can run",
+                exe.display()
+            )));
+        }
+        if let Some(served) = keep {
+            if let Err(e) = served.keep(exe) {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(Error::Other(format!(
+                    "refused to install over {}: the build standing there could not be kept at {} ({e}), and without it a handover that cannot start the new build would leave every caller on this box with nothing to run",
+                    exe.display(),
+                    kept_path(exe).display()
+                )));
+            }
+        }
     }
+    #[cfg(not(unix))]
+    let _ = (claim, keep, bound);
     std::fs::rename(&tmp, exe)?;
     Ok(())
+}
+
+/// Run `file --version` and require the version, and the commit where one is
+/// claimed, that the release names.
+#[cfg(unix)]
+async fn preflight(
+    file: &std::path::Path,
+    claim: &Claim,
+    bound: std::time::Duration,
+) -> std::result::Result<(), String> {
+    let shown = format!("`{} --version`", file.display());
+    let run = || {
+        let mut cmd = tokio::process::Command::new(file);
+        cmd.arg("--version")
+            .env_remove(crate::daemon::handover::LISTENER_ENV)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        cmd
+    };
+    // A file just written can be busy for an instant where another thread of
+    // this process forked while it was open, which is not the file's fault.
+    let mut tries = 0;
+    let out = loop {
+        tries += 1;
+        match tokio::time::timeout(bound, run().output()).await {
+            Err(_) => {
+                return Err(format!(
+                    "{shown} did not answer within {}s",
+                    bound.as_secs_f32()
+                ))
+            }
+            Ok(Err(e)) if e.raw_os_error() == Some(nix::libc::ETXTBSY) && tries < 3 => {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            Ok(Err(e)) => return Err(format!("{shown} could not be run: {e}")),
+            Ok(Ok(out)) => break out,
+        }
+    };
+    let said = String::from_utf8_lossy(&out.stdout);
+    let line = said.lines().next().unwrap_or("").trim();
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let words = [line, err.trim()]
+            .iter()
+            .filter(|w| !w.is_empty())
+            .copied()
+            .collect::<Vec<_>>()
+            .join(" / ");
+        return Err(format!(
+            "{shown} exited {} saying \u{ab}{}\u{bb}",
+            out.status,
+            excerpt(&words)
+        ));
+    }
+    let bare = |v: &str| v.trim().trim_start_matches('v').to_string();
+    let version = line.split_whitespace().nth(1).map(bare);
+    if version.as_deref() != Some(bare(&claim.version).as_str()) {
+        return Err(format!(
+            "{shown} answered \u{ab}{}\u{bb}, which is not version {} the release names",
+            excerpt(line),
+            claim.version
+        ));
+    }
+    if let Some(commit) = claim.commit.as_deref() {
+        if !line.contains(commit.trim()) {
+            return Err(format!(
+                "{shown} answered \u{ab}{}\u{bb}, which is not commit {commit} the release names",
+                excerpt(line)
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn excerpt(text: &str) -> String {
+    const MOST: usize = 200;
+    match text.char_indices().nth(MOST) {
+        Some((at, _)) => format!("{}…", &text[..at]),
+        None => text.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -373,7 +548,7 @@ mod tests {
             )
         }
 
-        async fn refused(tag: &str, asset: &str) -> (String, String, PathBuf) {
+        async fn refused(tag: &str, asset: &str) -> (String, String, PathBuf, Scratch) {
             let (dir, exe) = a_box(tag);
             let served = ServedBuild::new();
             let got = install(&exe, asset.as_bytes(), &claim(), Some(&served)).await;
@@ -385,13 +560,12 @@ mod tests {
                 ),
             };
             let left = runs_as(&exe);
-            std::mem::forget(dir);
-            (why, left, exe)
+            (why, left, exe, dir)
         }
 
         #[tokio::test]
         async fn a_file_the_kernel_will_not_run_is_refused_and_the_served_build_stays() {
-            let (why, left, exe) =
+            let (why, left, exe, _dir) =
                 refused("pre-noexec", "this is a text file, not a program\n").await;
             assert!(why.contains("refused"), "criterion 12: {why}");
             assert!(
@@ -410,7 +584,7 @@ mod tests {
 
         #[tokio::test]
         async fn a_build_that_starts_and_exits_at_once_is_refused_and_the_served_build_stays() {
-            let (why, left, _) = refused(
+            let (why, left, _, _dir) = refused(
                 "pre-dies",
                 "#!/bin/sh\necho 'new image: refusing to start' >&2\nexit 1\n",
             )
@@ -424,7 +598,7 @@ mod tests {
 
         #[tokio::test]
         async fn a_build_naming_another_version_is_refused() {
-            let (why, left, _) = refused(
+            let (why, left, _, _dir) = refused(
                 "pre-version",
                 "#!/bin/sh\necho 'forge-runner 0.1.5 (good000)'\n",
             )
@@ -435,7 +609,7 @@ mod tests {
 
         #[tokio::test]
         async fn a_build_naming_another_commit_is_refused() {
-            let (why, left, _) = refused(
+            let (why, left, _, _dir) = refused(
                 "pre-commit",
                 "#!/bin/sh\necho 'forge-runner 0.2.0 (other00)'\n",
             )
@@ -481,15 +655,21 @@ mod tests {
                 "rc=0 forge-runner 0.1.0 (served0)",
                 "kept beside it"
             );
-            let back = served.restore(&exe).expect("restored");
-            assert_eq!(back, Some(kept_path(&exe)));
+            let back = served.restore().expect("restored");
+            assert_eq!(
+                back,
+                Some(Kept {
+                    exe: exe.clone(),
+                    at: kept_path(&exe)
+                })
+            );
             assert_eq!(
                 runs_as(&exe),
                 "rc=0 forge-runner 0.1.0 (served0)",
                 "criterion 12: the failure branch puts the served build back"
             );
             assert!(!kept_path(&exe).exists());
-            assert_eq!(served.restore(&exe).unwrap(), None, "nothing kept twice");
+            assert_eq!(served.restore().unwrap(), None, "nothing kept twice");
             drop(dir);
         }
 
@@ -513,7 +693,7 @@ mod tests {
             )
             .await
             .expect("second");
-            served.restore(&exe).unwrap();
+            served.restore().unwrap();
             assert_eq!(
                 runs_as(&exe),
                 "rc=0 forge-runner 0.1.0 (served0)",
