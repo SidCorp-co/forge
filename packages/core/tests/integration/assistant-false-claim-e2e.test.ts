@@ -339,7 +339,7 @@ describe('the Rocket.Chat escalation reply', () => {
       config: { serverUrl: 'https://chat.example.com' },
       secrets: { authToken: 'tok', userId: 'bot' },
     });
-    await m.rcStore.createBinding({
+    await seedBinding({
       connectionId: connection.id,
       projectId,
       provider: 'rocketchat',
