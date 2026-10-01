@@ -86,7 +86,7 @@ export type EnvironmentState =
 				| "deployment-record";
 			deployment: {
 				id: string;
-				provider: "coolify" | "shopify" | "epodsystem";
+				provider: string;
 				status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
 				at: string;
 			};

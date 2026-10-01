@@ -39,6 +39,6 @@ export function bindingTemplate(id: string): V1Document {
 		id,
 		role: "deploy",
 		connection: "",
-		target: { provider: "coolify", applicationUuid: "" },
+		target: { provider: "" },
 	};
 }
