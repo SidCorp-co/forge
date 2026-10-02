@@ -1,0 +1,78 @@
+{
+  "$schema": "https://forge.sidcorp.co/schemas/workflow-v2.json",
+  "version": 2,
+  "project": "5e1d7c3a-2b4f-4a6e-9c8d-0f1e2a3b4c5d",
+  "flow": "post-discharge",
+  "kind": "flow",
+  "title": "Post-discharge follow-up",
+  "summary": "A discharged patient who needs follow-up becomes one case with an owner and an SLA, and the case closes on a recorded outcome.",
+  "status": "designed",
+  "steps": [
+    {
+      "id": "discharged",
+      "does": "patient.discharged arrives from the HIS with the episode it closes.",
+      "status": "designed",
+      "after": [],
+      "evidence": null,
+      "node": {
+        "type": "EVENT",
+        "purpose": "The fact that starts the journey.",
+        "outputs": ["patient.id", "episode.id"]
+      }
+    },
+    {
+      "id": "context",
+      "does": "The episode's diagnosis, risk flags and care team are read.",
+      "status": "designed",
+      "after": ["discharged"],
+      "evidence": null,
+      "node": {
+        "type": "CONTEXT",
+        "inputs": ["episode.id"],
+        "outputs": ["episode.risk", "care_team"]
+      }
+    },
+    {
+      "id": "followup-rule",
+      "does": "A high-risk discharge requires follow-up within 48 hours.",
+      "status": "designed",
+      "after": ["context"],
+      "evidence": null,
+      "node": { "type": "RULE", "purpose": "Decide whether follow-up is required." }
+    },
+    {
+      "id": "case",
+      "does": "One active follow-up case per discharge episode, owned by the care coordinator.",
+      "status": "designed",
+      "after": ["followup-rule"],
+      "evidence": null,
+      "node": { "type": "CASE", "owner": "care coordinator", "sla": "48h" }
+    },
+    {
+      "id": "outcome",
+      "does": "The case closes on a reached, unreachable or readmitted outcome.",
+      "status": "designed",
+      "after": ["case"],
+      "evidence": null,
+      "node": { "type": "OUTCOME", "outputs": ["case.outcome"] }
+    }
+  ],
+  "edges": [
+    {
+      "from": "followup-rule",
+      "to": "case",
+      "condition": "followup_required == true",
+      "action": "create_or_update_case",
+      "mapping": {
+        "patient_id": "patient.id",
+        "episode_id": "episode.id",
+        "priority": "derived.priority"
+      },
+      "idempotency": "one active case per discharge episode",
+      "onFailure": "create_attention_item"
+    }
+  ],
+  "drift": null,
+  "writtenBy": {},
+  "refreshedAtSha": null
+}

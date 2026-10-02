@@ -43,6 +43,7 @@ import {
 import { ChatDock } from "@/features/conversations/components/chat-dock";
 import { ChatDockProvider, useChatDockState } from "@/features/conversations/dock";
 import { useAwaitingApprovalCount } from "@/features/releases/versions-hooks";
+import { useDesignsAwaitingCount } from "@/features/workflows/hooks";
 import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";
 import { SidebarSearch } from "@/features/shell/components/sidebar-search";
 import { SidebarBell } from "@/features/shell/components/sidebar-bell";
@@ -122,6 +123,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     useShellProject(pathname);
   const dock = useChatDockState(railProject?.id ?? null);
   const awaitingApproval = useAwaitingApprovalCount(railProject?.id);
+  const designsAwaiting = useDesignsAwaitingCount(railProject?.id);
   const slug = activeSlug(pathname);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -227,7 +229,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           attentionCount={attentionCount}
           railSlug={railSlug}
           rail={rail}
-          badges={{ openIssues: rail.railConsole?.openIssues, awaitingApproval }}
+          badges={{ openIssues: rail.railConsole?.openIssues, awaitingApproval, designsAwaiting }}
           onNavigate={navigate}
           onRoute={(href) => router.push(href)}
           onSignOut={logout}
@@ -245,7 +247,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         railProjectName={railProject?.name}
         activeKey={activeKey}
         attentionCount={attentionCount}
-        badges={{ openIssues: rail.railConsole?.openIssues, awaitingApproval }}
+        badges={{ openIssues: rail.railConsole?.openIssues, awaitingApproval, designsAwaiting }}
         scopedProjects={scopedProjects}
         onNavigate={navigate}
         onOpenProject={(s) => router.push(`/projects/${s}`)}

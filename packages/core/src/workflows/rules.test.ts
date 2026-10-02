@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { workflowJsonSchemas } from './json-schema.js';
 import {
   checkWorkflow,
+  evidenceSourceRefusals,
   parseWorkflow,
   workflowIdentityRefusals,
   workflowWriterRefusal,
@@ -256,5 +257,118 @@ describe('a refreshed workflow keeps what it draws', () => {
       'WORKFLOW_IDENTITY_IMMUTABLE /flow',
       'WORKFLOW_IDENTITY_IMMUTABLE /kind',
     ]);
+  });
+});
+
+describe('a workflow-v2 design', () => {
+  const HOP = '5e1d7c3a-2b4f-4a6e-9c8d-0f1e2a3b4c5d';
+  const design = () => example('post-discharge.design.json');
+  const emittedV2 = ajv.compile(workflowJsonSchemas['workflow-v2.json'] as object);
+  const refusalsAt = (raw: Doc) => {
+    const parsed = parseWorkflow(raw, HOP);
+    return (parsed.ok ? checkWorkflow(parsed.value) : parsed.refusals).map(
+      (r) => `${r.code} ${r.path}`,
+    );
+  };
+  const storefront = { kind: 'storefront', provider: 'autoflow' } as const;
+  const sourceRefusals = (raw: Doc, source: Parameters<typeof evidenceSourceRefusals>[1]) => {
+    const parsed = parseWorkflow(raw, HOP);
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.refusals));
+    return evidenceSourceRefusals(parsed.value, source).map((r) => `${r.code} ${r.path}`);
+  };
+
+  it('stands before any code: designed steps, no evidence, no commit; the emitted schema agrees', () => {
+    expect(refusalsAt(design())).toEqual([]);
+    expect(emittedV2(stamped(design()))).toBe(true);
+  });
+
+  it.each([
+    [
+      'an unknown node type',
+      (d: Doc) => (d.steps[0].node.type = 'TRIGGER'),
+      'WORKFLOW_NODE_TYPE_UNKNOWN /steps/0/node/type',
+    ],
+    [
+      'an edge to no step',
+      (d: Doc) => (d.edges[0].to = 'nowhere'),
+      'WORKFLOW_EDGE_DANGLING /edges/0/to',
+    ],
+    [
+      'an edge contract for a line the steps do not draw',
+      (d: Doc) => (d.edges[0].from = 'discharged'),
+      'WORKFLOW_EDGE_UNDRAWN /edges/0',
+    ],
+    [
+      'a cycle',
+      (d: Doc) => (d.steps[0].after = ['outcome']),
+      'WORKFLOW_AFTER_CYCLE /steps/0/after',
+    ],
+    [
+      'an evidence that names no kind',
+      (d: Doc) => (d.steps[0].evidence = { id: 'x', ref: 'node', provider: 'autoflow' }),
+      'WORKFLOW_EVIDENCE_KIND_UNKNOWN /steps/0/evidence/kind',
+    ],
+    [
+      'a designed workflow with a step being built',
+      (d: Doc) => (d.steps[0].status = 'writing'),
+      'WORKFLOW_STATUS_MISMATCH /status',
+    ],
+    [
+      'a built step with no evidence',
+      (d: Doc) => {
+        d.status = 'writing';
+        d.steps[0].status = 'current';
+      },
+      'WORKFLOW_EVIDENCE_MISSING /steps/0/evidence',
+    ],
+  ])('refuses %s by name', (_name, patch, expected) => {
+    const d = design();
+    patch(d);
+    expect(refusalsAt(d)).toEqual([expected]);
+  });
+
+  it('refuses `designed` at version 1, which never had it', () => {
+    const d = release();
+    d.steps[0].status = 'designed';
+    expect(codesAt(d)).toContain('WORKFLOW_STATUS_UNKNOWN /steps/0/status');
+  });
+
+  it("refuses a repo file as a storefront project's evidence, and a storefront artefact in a repo project", () => {
+    const filed = design();
+    filed.status = 'writing';
+    filed.steps[0].status = 'current';
+    filed.steps[0].evidence = {
+      kind: 'repo',
+      file: 'src/discharge.ts',
+      coverage: { reading: 'unmeasured', atSha: null },
+    };
+    expect(refusalsAt(filed)).toEqual([]);
+    expect(sourceRefusals(filed, storefront)).toEqual([
+      'WORKFLOW_EVIDENCE_KIND_MISMATCH /steps/0/evidence',
+    ]);
+    expect(sourceRefusals(filed, { kind: 'repo' })).toEqual([]);
+
+    const built = design();
+    built.steps[0].evidence = {
+      kind: 'storefront',
+      provider: 'autoflow',
+      ref: 'workflow',
+      id: 'wf_1',
+    };
+    expect(sourceRefusals(built, storefront)).toEqual([]);
+    expect(sourceRefusals(built, { kind: 'storefront', provider: 'epodsystem' })).toEqual([
+      'WORKFLOW_EVIDENCE_KIND_MISMATCH /steps/0/evidence',
+    ]);
+    expect(sourceRefusals(built, { kind: 'repo' })).toEqual([
+      'WORKFLOW_EVIDENCE_KIND_MISMATCH /steps/0/evidence',
+    ]);
+  });
+
+  it('refuses a version-1 file evidence in a storefront project too', () => {
+    const parsed = parseWorkflow({ ...release(), project: HOP }, HOP);
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.refusals));
+    expect(evidenceSourceRefusals(parsed.value, storefront)[0]?.code).toBe(
+      'WORKFLOW_EVIDENCE_KIND_MISMATCH',
+    );
   });
 });

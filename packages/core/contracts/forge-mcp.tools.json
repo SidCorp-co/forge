@@ -4901,6 +4901,77 @@
         "type": "object"
       },
       "name": "forge_uploads"
+    },
+    {
+      "description": "Draw this project's workflows and take a design to its approver before anything is built from it. Actions: list | get | design | write | propose | decide | link | unlink. write: { workflowId?, baseRevision, document } — no workflowId and baseRevision null creates; the document is workflow-v1 (a flow the code already has) or workflow-v2 (a design: steps may be `designed` with no evidence, carry `node` { type: EVENT|CONTEXT|RULE|STATE|EXPECTATION|CASE|TASK|ATTENTION|ACTION|OUTCOME|STEP, purpose, inputs, outputs, owner, sla }, and `edges` carry the contract { from, to, condition, action, mapping, idempotency, onFailure } of a line `after` draws). Schemas: GET /api/schemas/workflow-v1.json and workflow-v2.json. A v2 workflow starts as a draft. Evidence matches the project source: a storefront project cites { kind: \"storefront\", provider, ref: workflow|route|node, id }, a repository project { kind: \"repo\", file, coverage } — the other is WORKFLOW_EVIDENCE_KIND_MISMATCH. propose: { workflowId, revision } puts a draft in front of its approver. A write that changes the design (steps, order, nodes, edge contracts) of a proposed, approved or returned workflow proposes that revision again; a write that only refreshes status or evidence does not. design: { workflowId } — the status (draft | proposed | approved | returned), every proposed revision with its decision and reason, the approved revision, and the issues that build it. decide: { workflowId, revision, decision: approve|return, reason } — only the approver the project's `workflows.designApprover` names: `owner` (default) is an org admin person, and an agent is refused WORKFLOW_DESIGN_APPROVER_NOT_PERSON; `master` lets this project's own master decide too. A return carries its reason. link: { workflowId, issue } names the issue that builds the workflow; dispatching that issue is then refused WORKFLOW_DESIGN_NOT_APPROVED until the design is approved, and forge_issues get shows why under `buildsWorkflow`. unlink lifts the gate, so only the approver may. Guide: forge_guide get workflow-design.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "get",
+              "design",
+              "write",
+              "propose",
+              "decide",
+              "link",
+              "unlink"
+            ],
+            "type": "string"
+          },
+          "baseRevision": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decision": {
+            "enum": [
+              "approve",
+              "return"
+            ],
+            "type": "string"
+          },
+          "document": {},
+          "issue": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "workflowId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "forge_workflows"
     }
   ]
 }

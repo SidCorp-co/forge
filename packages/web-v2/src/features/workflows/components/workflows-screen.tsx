@@ -1,16 +1,20 @@
 "use client";
 
+import Link from "next/link";
 import { Badge, EmptyState, ErrorState, PageTitle, ProjectLoader, Tooltip } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { useQueryParam } from "@/lib/utils/use-query-param";
 import { useWorkflows } from "../hooks";
 import { walkedOf } from "../layout";
-import type { WorkflowKind, WorkflowRecord, WorkflowStep } from "../types";
+import type { WorkflowKind, WorkflowRecord } from "../types";
+import { workflowHref } from "../routes";
 import { WorkflowDiagram } from "./workflow-diagram";
+import { DesignPill, StepDetail } from "./workflow-parts";
 
 function ListPill({ record }: { record: WorkflowRecord }) {
   const w = record.document;
+  if (record.design.status) return <DesignPill status={record.design.status} />;
   if (w.status === "writing") {
     return (
       <span className="rounded-pill border border-dashed border-line-strong px-2 text-11 font-semibold text-muted">writing</span>
@@ -26,7 +30,7 @@ function ListPill({ record }: { record: WorkflowRecord }) {
     );
   }
   if (w.kind === "state") return <Badge>state</Badge>;
-  if (w.steps.every((s) => s.evidence?.coverage.reading !== "walked" && s.evidence?.coverage.reading !== "not_walked")) {
+  if (w.steps.every((s) => s.evidence?.coverage?.reading !== "walked" && s.evidence?.coverage?.reading !== "not_walked")) {
     return (
       <Tooltip label="No flow-coverage report reads these steps" side="bottom">
         <span>
@@ -47,49 +51,7 @@ function ListPill({ record }: { record: WorkflowRecord }) {
   );
 }
 
-function coverageText(step: WorkflowStep): { label: string; tone: "green" | "amber" | "neutral" } | null {
-  if (step.status === "writing") return { label: "being written", tone: "neutral" };
-  const reading = step.evidence?.coverage.reading;
-  if (reading === "walked") return { label: "walked by tests", tone: "green" };
-  if (reading === "not_walked") return { label: "not walked · in baseline", tone: "amber" };
-  if (reading === "unmeasured") return { label: "not measured by flow coverage", tone: "neutral" };
-  return null;
-}
-
-function StepDetail({ flow, kind, step }: { flow: string; kind: WorkflowKind; step: WorkflowStep }) {
-  const cov = coverageText(step);
-  return (
-    <div className="grid gap-1.5 rounded-lg border border-line-subtle bg-surface px-4 py-3.5 text-13" data-testid="workflow-step">
-      <div className="flex flex-wrap items-center gap-2.5">
-        <b className="font-mono">{kind === "flow" ? `${flow}/${step.id}` : step.id}</b>
-        {cov ? <Badge tone={cov.tone}>{cov.label}</Badge> : null}
-        {step.status === "rechecking" ? <Badge tone="amber">re-checking</Badge> : null}
-      </div>
-      <p>{step.does}</p>
-      {step.evidence ? (
-        <div className="flex flex-wrap items-center gap-2.5 text-12" data-testid="workflow-evidence">
-          <span className="text-subtle">Evidence</span>
-          <span className="font-mono">{step.evidence.file}</span>
-          {step.evidence.symbol ? <span className="font-mono text-subtle">{step.evidence.symbol}</span> : null}
-          {step.evidence.annotation ? (
-            <span className="text-subtle">cm:flow {step.evidence.annotation}</span>
-          ) : kind === "flow" ? (
-            <span className="text-subtle">no cm:flow annotation yet</span>
-          ) : null}
-          {step.evidence.coverage.atSha ? (
-            <span className="font-mono text-subtle">at {step.evidence.coverage.atSha.slice(0, 7)}</span>
-          ) : null}
-        </div>
-      ) : kind === "flow" ? (
-        <p className="text-12 text-subtle">
-          No evidence yet: the master adds the step&rsquo;s cm:flow {flow}/{step.id} annotation as it writes it.
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-export function WorkflowsScreen({ projectId }: { projectId: string }) {
+export function WorkflowsScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const q = useWorkflows(projectId);
   const [tab, setTab] = useQueryParam("kind");
   const [picked, setPicked] = useQueryParam("flow");
@@ -177,9 +139,17 @@ export function WorkflowsScreen({ projectId }: { projectId: string }) {
           {w && step && current ? (
             <div className="grid content-start gap-3 overflow-auto px-4 pb-6 pt-4 sm:px-7">
               <div className="flex flex-wrap items-center gap-2 text-11 font-semibold uppercase tracking-wide text-subtle">
-                {w.title}
+                <Link href={workflowHref(slug, w.flow)} className="hover:text-fg" title="Open this workflow on its own page" data-testid="workflow-open">
+                  {w.title}
+                </Link>
                 <span className="ml-auto normal-case tracking-normal text-12 font-medium" title="The project's master owns this diagram: it writes it from the code, checks it against the cm:flow annotations and the tests, and re-checks a step when the code under it changes.">
-                  {current.writerName} · refreshed at <span className="font-mono">{w.refreshedAtSha.slice(0, 7)}</span>
+                  {current.writerName}
+                  {w.refreshedAtSha ? (
+                    <>
+                      {" "}
+                      · refreshed at <span className="font-mono">{w.refreshedAtSha.slice(0, 7)}</span>
+                    </>
+                  ) : null}
                 </span>
               </div>
               {w.drift ? (

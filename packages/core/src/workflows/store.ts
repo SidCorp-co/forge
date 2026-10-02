@@ -1,6 +1,12 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
-import { projectWorkflows } from '../db/schema-workflows.js';
+import { issues } from '../db/schema.js';
+import {
+  projectWorkflowDesigns,
+  projectWorkflows,
+  workflowBuilds,
+} from '../db/schema-workflows.js';
+import type { DesignDecision, DesignStatus } from './design.js';
 import type { WorkflowWrite } from './schema.js';
 
 export interface StoredWorkflow {
@@ -11,9 +17,18 @@ export interface StoredWorkflow {
   status: string;
   revision: number;
   document: unknown;
+  designStatus: DesignStatus | null;
+  designFingerprint: string | null;
+  approvedRevision: number | null;
   writtenByUser: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface DesignState {
+  designStatus: DesignStatus | null;
+  designFingerprint: string;
+  approvedRevision: number | null;
 }
 
 const columns = {
@@ -24,6 +39,9 @@ const columns = {
   status: projectWorkflows.status,
   revision: projectWorkflows.revision,
   document: projectWorkflows.document,
+  designStatus: sql<DesignStatus | null>`${projectWorkflows.designStatus}`,
+  designFingerprint: projectWorkflows.designFingerprint,
+  approvedRevision: projectWorkflows.approvedRevision,
   writtenByUser: projectWorkflows.writtenByUser,
   createdAt: projectWorkflows.createdAt,
   updatedAt: projectWorkflows.updatedAt,
@@ -74,10 +92,11 @@ export async function insertWorkflow(
   tx: Tx,
   doc: WorkflowWrite,
   userId: string,
+  design: DesignState,
 ): Promise<StoredWorkflow> {
   const [row] = await tx
     .insert(projectWorkflows)
-    .values({ ...values(doc), revision: 1, writtenByUser: userId })
+    .values({ ...values(doc), ...design, revision: 1, writtenByUser: userId })
     .returning(columns);
   if (!row) throw new Error('workflows: the insert returned no row');
   return row;
@@ -85,12 +104,19 @@ export async function insertWorkflow(
 
 export async function replaceWorkflow(
   tx: Tx,
-  input: { id: string; revision: number; doc: WorkflowWrite; userId: string },
+  input: {
+    id: string;
+    revision: number;
+    doc: WorkflowWrite;
+    userId: string;
+    design: DesignState;
+  },
 ): Promise<StoredWorkflow> {
   const [row] = await tx
     .update(projectWorkflows)
     .set({
       ...values(input.doc),
+      ...input.design,
       revision: input.revision + 1,
       writtenByUser: input.userId,
       updatedAt: sql`now()`,
@@ -99,4 +125,138 @@ export async function replaceWorkflow(
     .returning(columns);
   if (!row) throw new Error(`workflows: workflow ${input.id} moved under its own lock`);
   return row;
+}
+
+export async function setDesignState(
+  tx: Tx,
+  id: string,
+  state: { designStatus: DesignStatus; approvedRevision?: number | null },
+): Promise<void> {
+  await tx
+    .update(projectWorkflows)
+    .set({ ...state, updatedAt: sql`now()` })
+    .where(eq(projectWorkflows.id, id));
+}
+
+export interface StoredDesign {
+  workflowId: string;
+  revision: number;
+  document: unknown;
+  proposedByUser: string;
+  proposedAt: Date;
+  decision: DesignDecision | null;
+  decidedByUser: string | null;
+  decidedAt: Date | null;
+  reason: string | null;
+}
+
+const designColumns = {
+  workflowId: projectWorkflowDesigns.workflowId,
+  revision: projectWorkflowDesigns.revision,
+  document: projectWorkflowDesigns.document,
+  proposedByUser: projectWorkflowDesigns.proposedByUser,
+  proposedAt: projectWorkflowDesigns.proposedAt,
+  decision: sql<DesignDecision | null>`${projectWorkflowDesigns.decision}`,
+  decidedByUser: projectWorkflowDesigns.decidedByUser,
+  decidedAt: projectWorkflowDesigns.decidedAt,
+  reason: projectWorkflowDesigns.reason,
+};
+
+export async function insertDesign(
+  tx: Tx,
+  input: { workflowId: string; revision: number; document: WorkflowWrite; userId: string },
+): Promise<void> {
+  await tx.insert(projectWorkflowDesigns).values({
+    workflowId: input.workflowId,
+    revision: input.revision,
+    document: input.document,
+    proposedByUser: input.userId,
+  });
+}
+
+/** Every revision put in front of the approver, newest first. */
+export async function designsOf(tx: Tx, workflowId: string): Promise<StoredDesign[]> {
+  return tx
+    .select(designColumns)
+    .from(projectWorkflowDesigns)
+    .where(eq(projectWorkflowDesigns.workflowId, workflowId))
+    .orderBy(desc(projectWorkflowDesigns.revision));
+}
+
+export async function decideDesign(
+  tx: Tx,
+  input: {
+    workflowId: string;
+    revision: number;
+    decision: DesignDecision;
+    userId: string;
+    reason: string | null;
+  },
+): Promise<void> {
+  await tx
+    .update(projectWorkflowDesigns)
+    .set({
+      decision: input.decision,
+      decidedByUser: input.userId,
+      decidedAt: sql`now()`,
+      reason: input.reason,
+    })
+    .where(
+      and(
+        eq(projectWorkflowDesigns.workflowId, input.workflowId),
+        eq(projectWorkflowDesigns.revision, input.revision),
+      ),
+    );
+}
+
+export interface StoredBuild {
+  issueId: string;
+  workflowId: string;
+  issSeq: number;
+  title: string;
+  status: string;
+}
+
+export async function buildsOf(tx: Tx, workflowIds: readonly string[]): Promise<StoredBuild[]> {
+  if (workflowIds.length === 0) return [];
+  return tx
+    .select({
+      issueId: workflowBuilds.issueId,
+      workflowId: workflowBuilds.workflowId,
+      issSeq: issues.issSeq,
+      title: issues.title,
+      status: issues.status,
+    })
+    .from(workflowBuilds)
+    .innerJoin(issues, eq(issues.id, workflowBuilds.issueId))
+    .where(inArray(workflowBuilds.workflowId, [...workflowIds]))
+    .orderBy(asc(issues.issSeq));
+}
+
+export async function buildOfIssue(
+  tx: Tx,
+  issueId: string,
+): Promise<{ workflowId: string } | null> {
+  const [row] = await tx
+    .select({ workflowId: workflowBuilds.workflowId })
+    .from(workflowBuilds)
+    .where(eq(workflowBuilds.issueId, issueId))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function linkBuild(
+  tx: Tx,
+  input: { issueId: string; workflowId: string; projectId: string; userId: string },
+): Promise<void> {
+  await tx.insert(workflowBuilds).values({
+    issueId: input.issueId,
+    workflowId: input.workflowId,
+    projectId: input.projectId,
+    linkedByUser: input.userId,
+  });
+}
+
+export async function unlinkBuild(tx: Tx, issueId: string): Promise<void> {
+  await tx.delete(workflowBuilds).where(eq(workflowBuilds.issueId, issueId));
 }
