@@ -47,6 +47,9 @@ export interface MeRunnerAssignment {
   /** The `master-policy` projectFact: the owner's standing instruction for this
    *  project's resident master, spliced into its standing brief (ISS-929). */
   masterPolicy: string | null;
+  /** The project document's `source.git.repository` (`host/owner/name`), or null where none is declared. */
+  repository: string | null;
+  hostCredential: boolean;
 }
 
 export type MeRunnersResponse = MeRunnerAssignment[];

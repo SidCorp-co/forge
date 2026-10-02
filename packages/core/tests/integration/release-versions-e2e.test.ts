@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
@@ -219,5 +220,92 @@ describe('a version waits for an admin before its production acts', () => {
       'RELEASE_VERSION_SHAPE',
     );
     expect(refusedAs(await call('owner', 'GET', '/releases/9.9.9'), 404)).toBe('NOT_FOUND');
+  });
+});
+
+const requireApproval = async () => {
+  await harness.db.execute(sql`
+    UPDATE project_config_documents
+    SET document = document || '{"release":{"approval":{"required":true}}}'::jsonb
+    WHERE project_id = ${projectId}`);
+};
+
+const attempt = (runId: string, key = 'deploy-1') =>
+  call('agent', 'POST', `/release-batches/${runId}/attempts`, {
+    stage: 'deploy',
+    idempotencyKey: key,
+  });
+
+describe('a project whose document requires release approval', () => {
+  it('refuses every production act of a run nobody approved, and shows it awaiting approval', async () => {
+    await requireApproval();
+    const runId = await cutOne();
+    const list = await call('owner', 'GET', '/releases');
+    expect(list.body).toMatchObject({
+      approvalRequired: true,
+      versions: [{ status: 'awaiting_approval', approvalRequired: true, approval: null }],
+      counts: { awaitingApproval: 1 },
+    });
+    expect(refusedAs(await attempt(runId), 409)).toBe('RELEASE_APPROVAL_REQUIRED');
+    expect(
+      refusedAs(
+        await call('agent', 'POST', `/release-batches/${runId}/finish`, { commit: BETA_SHA }),
+        409,
+      ),
+    ).toBe('RELEASE_APPROVAL_REQUIRED');
+    const { runCoolifyDeploy } = await import('../../src/integrations/coolify/commands.js');
+    await call('agent', 'POST', `/release-batches/${runId}/method`, {
+      skill: 'release-flow',
+      loaded: true,
+    });
+    await expect(runCoolifyDeploy({ projectId, pipelineRunId: runId })).rejects.toThrow(
+      /^RELEASE_APPROVAL_REQUIRED: /,
+    );
+  });
+
+  it('refuses a returned run, then opens attempts once a person other than the asker approved', async () => {
+    await requireApproval();
+    const runId = await cutOne();
+    const approvals = `/release-batches/${runId}/approvals`;
+    const asked = await call('agent', 'POST', approvals, evidence());
+    await call('owner', 'POST', `${approvals}/${String(asked.body.id)}/decision`, {
+      decision: 'return',
+      reason: 'Read the beta smoke again.',
+    });
+    expect(refusedAs(await attempt(runId), 409)).toBe('RELEASE_APPROVAL_RETURNED');
+    const again = await call('agent', 'POST', approvals, evidence());
+    const decide = `${approvals}/${String(again.body.id)}/decision`;
+    expect(refusedAs(await call('agent', 'POST', decide, { decision: 'approve' }), 403)).toBe(
+      'RELEASE_APPROVER_IS_AGENT',
+    );
+    expect((await call('owner', 'POST', decide, { decision: 'approve' })).status).toBe(200);
+    expect((await attempt(runId)).status).toBe(201);
+    expect((await statusOf()).status).toBe('in_progress');
+  });
+
+  it('refuses a request decided by the principal that asked for it', async () => {
+    await requireApproval();
+    const runId = await cutOne();
+    const approvals = `/release-batches/${runId}/approvals`;
+    const asked = await call('owner', 'POST', approvals, evidence());
+    const decide = `${approvals}/${String(asked.body.id)}/decision`;
+    expect(refusedAs(await call('owner', 'POST', decide, { decision: 'approve' }), 403)).toBe(
+      'RELEASE_APPROVAL_SELF',
+    );
+    // A self-approved row already standing (written before the refusal existed) does not count.
+    await harness.db.execute(sql`
+      UPDATE release_approvals SET decision = 'approved', decided_by_user = requested_by_user, decided_at = now()
+      WHERE id = ${String(asked.body.id)}`);
+    expect(refusedAs(await attempt(runId), 409)).toBe('RELEASE_APPROVAL_SELF');
+  });
+
+  it('leaves a project that does not require it as it was: an attempt with no request opens', async () => {
+    const runId = await cutOne();
+    const list = await call('owner', 'GET', '/releases');
+    expect(list.body).toMatchObject({
+      approvalRequired: false,
+      versions: [{ status: 'in_progress', approvalRequired: false }],
+    });
+    expect((await attempt(runId)).status).toBe(201);
   });
 });

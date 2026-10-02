@@ -33,6 +33,14 @@ pub struct MeRunner {
     pub workspace_setup: Option<String>,
     #[serde(default)]
     pub master_policy: Option<String>,
+    /// The project document's `source.git.repository` (`host/owner/name`). `None` on an older core
+    /// or a project that declares no git source.
+    #[serde(default)]
+    pub repository: Option<String>,
+    /// Core mints a git credential for that repository, so `bind --path` points the checkout's
+    /// credential helper at its host the way a provision does (ISS-50).
+    #[serde(default)]
+    pub host_credential: bool,
     #[serde(default, deserialize_with = "lenient_seconds")]
     pub rate_limited_for_seconds: Option<u64>,
     /// Why core limited this runner (`usage_limit`, `auth`, …). Reported in the

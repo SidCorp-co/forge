@@ -152,6 +152,7 @@ export function gitlabSourceHostOf(client: GitLabClient): SourceHost {
 }
 
 export const gitlabSourceHost: SourceHostFactory = {
+  label: 'GitLab',
   hostOf: gitlabHostOf,
   build: ({ bindingId, config, secrets }) =>
     gitlabSourceHostOf(

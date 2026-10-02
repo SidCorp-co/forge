@@ -11,6 +11,7 @@
  * Nothing here checks membership.
  */
 
+import { HTTPException } from 'hono/http-exception';
 import { effectiveConfig, listActiveDeployBindingsForProvider } from '../../integrations/store.js';
 import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
 import {
@@ -21,6 +22,7 @@ import {
   tryDispatchCoolifyRelease,
 } from '../../pipeline/release-coolify.js';
 import { readDeployMap } from '../../project-config/release-path.js';
+import { approvalRequired, assertApprovalAllowsAttempt } from '../../release-batch/approvals.js';
 import { readRunMethod } from '../../release-batch/method.js';
 import { isOpenReleaseBatchRun } from '../../release-batch/service.js';
 import { grantHolds, notGrantedMessage } from '../agent-access.js';
@@ -157,6 +159,16 @@ export async function runCoolifyDeploy(input: {
     if ((await readRunMethod(input.pipelineRunId)) === null) {
       throw new CoolifyCommandError(RELEASE_DEPLOY_BEFORE_RECORDING);
     }
+    // A release run's deploy is one of its production acts, held to the same approval its attempts are.
+    try {
+      await assertApprovalAllowsAttempt(input.pipelineRunId, projectId);
+    } catch (err) {
+      if (err instanceof HTTPException) {
+        const code = (err.cause as { code?: string } | undefined)?.code;
+        throw new CoolifyCommandError(`${code}: ${err.message}`);
+      }
+      throw err;
+    }
     // ISS-1279 — the release path, and the only caller that takes the deploy lock: a release
     // reaching an environment another is mid-deploy to is refused rather than queued.
     try {
@@ -188,13 +200,19 @@ export async function runCoolifyDeploy(input: {
         reason: 'no-run',
       };
     }
+    const allowLive = await isIssueAtReleaseStage(input.issueId);
+    if (allowLive && (await approvalRequired(projectId))) {
+      throw new CoolifyCommandError(
+        `RELEASE_APPROVAL_REQUIRED: project ${projectId} requires release approval (project document \`release.approval.required\`), so an issue at its release stage reaches production only through a release batch an admin approved — cut one with POST /api/projects/${projectId}/release-batches and deploy it by its pipelineRunId`,
+      );
+    }
     return shape(
       await tryDispatchCoolifyRelease({
         projectId,
         issueId: input.issueId,
         runId,
         integrationId: input.integrationId ?? null,
-        allowLive: await isIssueAtReleaseStage(input.issueId),
+        allowLive,
       }),
     );
   }

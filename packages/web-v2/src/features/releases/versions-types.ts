@@ -48,6 +48,8 @@ export interface ReleaseVersionRow {
   openedAt: string;
   releasedAt: string | null;
   issueCount: number;
+  /** The project document's `release.approval.required`: no production act before an admin approves. */
+  approvalRequired: boolean;
   approval: ReleaseApproval | null;
   stages: ReleaseStageReading[];
 }
@@ -81,6 +83,7 @@ export interface ReleaseEnvironmentRow {
 export interface ReleaseVersionList {
   versions: ReleaseVersionRow[];
   draft: ReleaseDraft | null;
+  approvalRequired: boolean;
   counts: { all: number; awaitingApproval: number; live: number; rolledBack: number };
   environments: ReleaseEnvironmentRow[];
   environmentsRead: { ok: true } | { ok: false; reason: string };

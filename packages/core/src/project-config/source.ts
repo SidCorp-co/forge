@@ -41,16 +41,19 @@ export async function readDeclaredSource(projectId: string): Promise<DeclaredSou
   };
 }
 
-/** Each row with its project's declared `baseBranch` and `workspaceSetup`, one document read per project. */
+/** Each row with its project's declared `repository`, `baseBranch` and `workspaceSetup`, one document read per project. */
 export async function withDeclaredSource<T extends { projectId: string }>(
   rows: readonly T[],
-): Promise<(T & { baseBranch: string | null; workspaceSetup: string | null })[]> {
+): Promise<
+  (T & { repository: string | null; baseBranch: string | null; workspaceSetup: string | null })[]
+> {
   const sources = new Map<string, DeclaredSource>();
   for (const projectId of new Set(rows.map((r) => r.projectId))) {
     sources.set(projectId, await readDeclaredSource(projectId));
   }
   return rows.map((r) => ({
     ...r,
+    repository: sources.get(r.projectId)?.repository ?? null,
     baseBranch: sources.get(r.projectId)?.defaultBranch ?? null,
     workspaceSetup: sources.get(r.projectId)?.setup ?? null,
   }));

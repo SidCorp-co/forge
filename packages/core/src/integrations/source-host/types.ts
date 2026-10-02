@@ -159,6 +159,8 @@ export interface SourceHost {
 
 /** What a declaration offers to build a host from a binding's own config and credential. */
 export interface SourceHostFactory {
+  /** The host's name as a person reads it — what the repository card on the Integrations page is labelled. */
+  label: string;
   hostOf(config: Record<string, unknown>): string;
   build(args: {
     bindingId: string;

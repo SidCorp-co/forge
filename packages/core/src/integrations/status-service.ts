@@ -5,7 +5,8 @@ import { readDeployMap } from '../project-config/release-path.js';
 import { readDeclaredSource, webUrlOf } from '../project-config/source.js';
 import { getIntegration, listIntegrations } from './registry.js';
 import { notFound, toIso } from './route-helpers.js';
-import { effectiveConfig, listBindingsForProject } from './store.js';
+import { hostOfRepository } from './source-host/resolve.js';
+import { type BindingWithConnection, effectiveConfig, listBindingsForProject } from './store.js';
 import type { IntegrationCapabilities, IntegrationProvider } from './types.js';
 
 type CardStatus =
@@ -124,6 +125,31 @@ export function buildProviderCards(opts: {
   }));
 }
 
+/**
+ * The provider whose binding serves the declared repository's host, oldest active binding first,
+ * or null where no source host binding reaches it.
+ */
+export function repositoryProvider(
+  pairs: readonly BindingWithConnection[],
+  repository: string | null,
+): { provider: string; label: string } | null {
+  const host = hostOfRepository(repository);
+  if (!host) return null;
+  const onHost = pairs
+    .flatMap((pair) => {
+      const factory = getIntegration(pair.binding.provider)?.sourceHost;
+      return factory && factory.hostOf(effectiveConfig(pair)) === host ? [{ pair, factory }] : [];
+    })
+    .sort(
+      (a, b) =>
+        Number(b.pair.binding.active && b.pair.connection.active) -
+          Number(a.pair.binding.active && a.pair.connection.active) ||
+        a.pair.binding.createdAt.getTime() - b.pair.binding.createdAt.getTime(),
+    );
+  const first = onHost[0];
+  return first ? { provider: first.pair.binding.provider, label: first.factory.label } : null;
+}
+
 /** Build the full status-card set for a project (caller has already authz'd). */
 export async function buildIntegrationsStatusCards(projectId: string): Promise<StatusCard[]> {
   const [project] = await db
@@ -169,8 +195,9 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
 
   const cards: StatusCard[] = [];
 
-  // --- GitHub (repo + per-device push-cred) ---
+  // --- The repository (+ per-device push-cred), keyed and labelled by the provider its host is ---
   const { repository } = source;
+  const host = repositoryProvider(pairs, repository);
   const remoteUrl = repository ? webUrlOf(repository) : null;
   const deviceCreds = runnerRows
     .filter((r) => r.deviceId)
@@ -180,13 +207,23 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
       pushCredProvisioned: r.gitCredentialRef !== null,
     }));
   cards.push({
-    key: 'github',
-    label: 'GitHub',
+    key: host ? `${host.provider}:repository` : 'repository',
+    label: host ? `${host.label} repository` : 'Repository',
     status: repository ? 'connected' : 'not_configured',
-    detail: repository ?? 'the project document declares no repository',
+    detail: repository
+      ? host
+        ? repository
+        : `${repository} — no source host binding reaches ${hostOfRepository(repository)}`
+      : 'the project document declares no repository',
     lastSyncAt: null,
     configured: repository !== null,
-    meta: { repository, remoteUrl, baseBranch: source.defaultBranch, deviceCreds },
+    meta: {
+      repository,
+      remoteUrl,
+      baseBranch: source.defaultBranch,
+      provider: host?.provider ?? null,
+      deviceCreds,
+    },
   });
 
   // One card PER BINDING (ISS-429 — a disabled binding must not shadow an active one), for every

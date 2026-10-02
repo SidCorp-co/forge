@@ -117,6 +117,10 @@ const source = {
     rows.map((r) => ({ ...r, baseBranch: 'main', workspaceSetup: null })),
 };
 vi.mock('../project-config/source.js', () => source);
+vi.mock('../git/host-credential.js', async (orig) => ({
+  ...(await orig<typeof import('../git/host-credential.js')>()),
+  projectsWithHostCredential: async () => new Set<string>(),
+}));
 vi.mock('../ws/server.js', () => ({ roomManager: { publish: publishMock } }));
 
 const routes = await import('./routes.js');
