@@ -5,7 +5,6 @@ import {
   type EcosystemWorld,
   formEcosystem,
   openWorld,
-  sender,
   writeInterfaces,
 } from '../helpers/ecosystem-world.js';
 import {
@@ -194,5 +193,55 @@ describe('a push to the default branch reopens the run', () => {
     expect(buildWakes(box.plugin) - before).toBe(1);
     const listed = (await as(master, 'GET', runs())).json.runs;
     expect(listed.map((r: Doc) => r.document.trigger.kind)).toEqual(['push', 'joined']);
+  });
+});
+
+describe("a provisioned checkout's credential is its project's own agent", () => {
+  const checkout = async (deviceId: string, projectId: string, holderUserId: string) => {
+    const { issueCheckoutCredential } = await import('../../src/devices/workspace-credential.js');
+    return issueCheckoutCredential({ deviceId, projectId, holderUserId });
+  };
+  const opened = async () => {
+    const listed = (await as(master, 'GET', runs())).json.runs as Doc[];
+    const open = listed.find((r) => r.document.steps.some((s: Doc) => s.status !== 'succeeded'));
+    if (!open) throw new Error('no open builder run to write');
+    const doc = structuredClone(open.document);
+    for (const k of ['id', 'createdAt', 'updatedAt']) delete doc[k];
+    doc.steps[0].status = 'running';
+    return { id: open.document.id as string, revision: open.revision as number, doc };
+  };
+
+  it("a box paired by a person writes its own project's builder run through the checkout's token", async () => {
+    const own = await checkout(box.plugin, w.project.plugin, w.user.plugin);
+    const run = await opened();
+    const r = await as(own, 'PUT', `${runs()}/${run.id}`, {
+      baseRevision: run.revision,
+      document: run.doc,
+    });
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+  });
+
+  it("another project's checkout token is refused that run by name", async () => {
+    const other = await checkout(box.forge, w.project.forge, w.user.platform);
+    const run = await opened();
+    const r = await as(other, 'PUT', `${runs()}/${run.id}`, {
+      baseRevision: run.revision,
+      document: run.doc,
+    });
+    expect(r.status, JSON.stringify(r.json)).toBe(403);
+    expect(r.json.code).toBe('BUILDER_RUN_WRITER_NOT_PROJECT');
+  });
+
+  it('a person below member is refused the project agent by name, and nothing is minted', async () => {
+    const viewer = (await createTestUser(w.harness.db)).id;
+    await createTestProjectMember(w.harness.db, {
+      userId: viewer,
+      projectId: w.project.plugin,
+      role: 'viewer',
+    });
+    await expect(checkout(box.plugin, w.project.plugin, viewer)).rejects.toMatchObject({
+      code: 'WORKSPACE_HOLDER_REFUSED',
+      message: expect.stringContaining('holds viewer'),
+    });
   });
 });

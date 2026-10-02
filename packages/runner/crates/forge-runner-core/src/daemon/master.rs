@@ -1759,6 +1759,24 @@ fn account_record(
 ///
 /// The reset is said and never waited on: the account can be swapped, topped
 /// up or re-planned before it, and only the turn this nudge starts can tell.
+/// The pane's `forge` CLI borrows the account its checkout was provisioned with,
+/// so it reaches this project as the agent the pane's MCP server is — or, where
+/// the provision left none, nothing is set and it reads its home's own account.
+fn cli_borrow_env(slug: &str) -> Option<(String, String)> {
+    let path = crate::mcp::config::cli_borrow_path(slug).ok()?;
+    if !path.is_file() {
+        tracing::warn!(
+            "[master] {slug}: no checkout credential at {} — this pane's forge CLI reads the box's own account, which may not reach {slug}; re-provision the checkout",
+            path.display()
+        );
+        return None;
+    }
+    Some((
+        crate::mcp::config::CLI_BORROW_VAR.to_string(),
+        path.to_string_lossy().into_owned(),
+    ))
+}
+
 fn limit_reask_line(slug: &str, pane: &str, refusal: &master_limit::Refusal) -> String {
     let reset = match refusal.resets_in_seconds {
         Some(secs) => format!("the account reports its reset in {secs}s"),
@@ -3303,6 +3321,7 @@ async fn ensure_master(
 
     let transcript = transcript_path(&resolved.slug);
     let mut env = terminal::pane_env();
+    env.extend(cli_borrow_env(&resolved.slug));
     let mcp_config = match crate::mcp::config::write_session(&resolved.slug, &declared.mcp_servers)
     {
         Ok(path) => path,

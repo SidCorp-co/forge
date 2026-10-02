@@ -16,7 +16,7 @@ import {
   type ProvisionReport,
   provisionFailuresHeader,
 } from './provision-row.js';
-import { deviceHolderUserId, issueWorkspaceCredential } from './workspace-credential.js';
+import { deviceHolderUserId, issueCheckoutCredential } from './workspace-credential.js';
 
 export const deviceProvisionRoutes = new Hono<{ Variables: DeviceVars }>();
 
@@ -75,7 +75,7 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
           holderUserId,
           hostCredential: isHttpsGitUrl(repoUrl) && credentialed.has(r.projectId),
         },
-        { issueCredential: issueWorkspaceCredential },
+        { issueCredential: issueCheckoutCredential },
       );
     }),
   );
