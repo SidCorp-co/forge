@@ -44,11 +44,22 @@ export async function resolveGrantedMcpEntries(
       // binding never displaces the one already serving agents. The preview calls it `shadowed`.
       if (serverName in entries) continue;
       try {
-        const secrets = decryptConnectionSecrets<Record<string, unknown>>(pair.connection);
-        if (!secrets) continue;
+        const stored = decryptConnectionSecrets<Record<string, unknown>>(pair.connection);
+        if (!stored) continue;
         const path = decl.capabilities.agentPath;
         if (path.kind !== 'direct-mcp') continue;
-        const entry = path.buildEntry(effectiveConfig(pair), secrets);
+        const config = effectiveConfig(pair);
+        const secrets = path.freshSecrets
+          ? await path.freshSecrets({ connectionId: pair.connection.id, config, secrets: stored })
+          : stored;
+        if (!secrets) {
+          logger.warn(
+            { projectId, provider: decl.provider, connectionId: pair.connection.id, serverName },
+            'mcp-resolver: the connection holds no usable credential (its health names why), skipping inject',
+          );
+          continue;
+        }
+        const entry = path.buildEntry(config, secrets);
         if (entry) {
           entries[serverName] = entry;
           produced?.push({ name: serverName, bindingId: pair.binding.id });

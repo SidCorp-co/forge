@@ -165,6 +165,7 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => (
     }
 
     const target = await decl.storefrontTarget({
+      connectionId: pair.connection.id,
       config: effectiveConfig<Record<string, unknown>>(pair),
       readSecrets: () => decryptConnectionSecrets(pair.connection),
     });
