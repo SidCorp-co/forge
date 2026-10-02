@@ -1,12 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
-import {
-  GitHubClientError,
-  GitHubReadError,
-  type GitHubRepoClient,
-  githubRepoClient,
-} from '../integrations/github/client.js';
+import { SourceHostUnavailable } from '../integrations/source-host/errors.js';
+import { resolveSourceHost } from '../integrations/source-host/resolve.js';
+import type { HostCommit, SourceHost } from '../integrations/source-host/types.js';
 import { readLandingBranches } from '../project-config/release-path.js';
 import { declaredIssueSeqs, subjectOf } from '../projects/commit-owners.js';
 import { issueRefPattern } from '../projects/live-reach.js';
@@ -28,19 +25,8 @@ export type CommitLanding =
     };
 
 export interface CommitLandingDeps {
-  client?: (projectId: string) => Promise<GitHubRepoClient>;
+  host?: (projectId: string) => Promise<SourceHost>;
 }
-
-interface CommitRead {
-  sha?: string;
-  commit?: { message?: string; committer?: { date?: string } };
-}
-
-interface CompareRead {
-  status?: string;
-}
-
-const CONTAINED = new Set(['ahead', 'identical']);
 
 function refuse(
   code: CommitLandingRefusalCode,
@@ -89,35 +75,31 @@ export async function readCommitLanding(
   }
   const branches = live && live !== baseBranch ? [baseBranch, live] : [baseBranch];
 
-  let client: GitHubRepoClient;
+  let host: SourceHost;
   try {
-    client = await (deps.client ?? githubRepoClient)(projectId);
+    host = await (deps.host ?? ((id: string) => resolveSourceHost(id, 'kernel')))(projectId);
   } catch (err) {
-    if (err instanceof GitHubClientError) return unreadable(commit, err.message);
+    if (err instanceof SourceHostUnavailable) return unreadable(commit, err.message);
     throw err;
   }
-  const repository = client.fullName;
+  const repository = host.fullName;
 
-  let read: CommitRead;
+  let read: HostCommit | null;
   try {
-    read = await client.get<CommitRead>(
-      `/repos/${repository}/commits/${encodeURIComponent(commit)}`,
-    );
+    read = await host.readCommit(commit);
   } catch (err) {
-    const lookup = err instanceof GitHubReadError && err.phase === 'request' ? err.status : null;
-    if (lookup === 404 || lookup === 422) {
-      return refuse(
-        'COMMIT_NOT_IN_REPOSITORY',
-        `commit ${commit} is not an object in ${repository}: GitHub resolves it to no single commit there (HTTP ${lookup}). Mark with the sha the work landed at`,
-        { commit, repository },
-      );
-    }
     return unreadable(commit, err instanceof Error ? err.message : String(err));
   }
-  const sha = read.sha?.toLowerCase();
-  if (!sha) return unreadable(commit, `${repository} answered no sha for it`);
+  if (!read) {
+    return refuse(
+      'COMMIT_NOT_IN_REPOSITORY',
+      `commit ${commit} is not an object in ${repository}: ${host.provider} resolves it to no single commit there. Mark with the sha the work landed at`,
+      { commit, repository },
+    );
+  }
+  const sha = read.sha.toLowerCase();
 
-  const message = read.commit?.message ?? '';
+  const message = read.message;
   const ref = (await issueRefFormatter(projectId))(issSeq);
   const pattern = issueRefPattern(await heldIssuePrefixes(projectId));
   if (!declaredIssueSeqs(message, pattern, baseBranch).includes(issSeq)) {
@@ -130,16 +112,14 @@ export async function readCommitLanding(
   }
 
   for (const branch of branches) {
-    let cmp: CompareRead;
+    let contained: boolean;
     try {
-      cmp = await client.get<CompareRead>(
-        `/repos/${repository}/compare/${sha}...${encodeURIComponent(branch)}`,
-      );
+      contained = await host.branchContains(branch, sha);
     } catch (err) {
       return unreadable(commit, err instanceof Error ? err.message : String(err));
     }
-    if (cmp.status && CONTAINED.has(cmp.status)) {
-      const at = new Date(read.commit?.committer?.date ?? '');
+    if (contained) {
+      const at = new Date(read.committedAt ?? '');
       if (Number.isNaN(at.getTime())) {
         return unreadable(commit, `${repository} answered no committer date for ${sha}`);
       }

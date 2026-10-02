@@ -106,6 +106,7 @@ export const projectDocumentSchema = z.strictObject({
   validation: z.strictObject({
     gate: z.discriminatedUnion('type', [
       z.strictObject({ type: z.literal('github-check'), name: z.string().min(1).max(100) }),
+      z.strictObject({ type: z.literal('gitlab-pipeline'), name: z.string().min(1).max(100) }),
       z.strictObject({ type: z.literal('none') }),
     ]),
   }),
@@ -279,6 +280,14 @@ const BINDING_TARGETS = [
     installationId: z.number().int().positive(),
     owner: z.string().min(1).max(200),
     repo: z.string().min(1).max(200),
+  }),
+  targetOf('gitlab', {
+    projectPath: z
+      .string()
+      .regex(/^[A-Za-z0-9_.][A-Za-z0-9_.-]*(\/[A-Za-z0-9_.][A-Za-z0-9_.-]*)+$/)
+      .max(500)
+      .optional(),
+    projectId: z.number().int().positive().optional(),
   }),
   targetOf('sentry', {}),
   targetOf('postman', {}),

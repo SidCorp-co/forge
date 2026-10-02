@@ -17,6 +17,7 @@ const FIELDS: Readonly<Record<string, readonly string[]>> = {
   shopify: ['store', 'themeRole'],
   epodsystem: [],
   github: ['installationId', 'owner', 'repo'],
+  gitlab: ['projectPath', 'projectId'],
   sentry: [],
   postman: [],
   rocketchat: ['rids'],

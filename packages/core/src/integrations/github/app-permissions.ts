@@ -204,8 +204,17 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     auth: 'installation',
     permission: 'contents',
     level: 'read',
-    callSites: ['runner-release-repo.ts:readFileAtRef'],
+    callSites: ['runner-release-repo.ts:readFileAtRef', 'source-host.ts:readFileAt'],
     docs: `${REST}/repos/contents#get-repository-content`,
+  },
+  {
+    path: '/repos/:p/:p/git/blobs/:p',
+    method: 'GET',
+    auth: 'installation',
+    permission: 'contents',
+    level: 'read',
+    callSites: ['source-host.ts:readFileAt'],
+    docs: `${REST}/git/blobs#get-a-blob`,
   },
   {
     path: '/repos/:p/:p/git/ref/tags/:p',

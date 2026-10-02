@@ -3,7 +3,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { HTTPException } from 'hono/http-exception';
-import type { LiveDivergence, WaitingCommit } from '../integrations/github/live-divergence.js';
+import type { LiveDivergence, WaitingCommit } from '../integrations/source-host/types.js';
 import type { PinnedSshHost } from './ssh-host-guard.js';
 import { withDeployKey } from './ssh-keys.js';
 

@@ -468,7 +468,7 @@
       "name": "forge_coolify_deploy"
     },
     {
-      "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks). Writes take { baseRevision, document } as their REST route does: interface_write (an admin), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite). The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
+      "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks). Writes take { baseRevision, document } as their REST route does: interface_write (an admin), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite). The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -480,6 +480,7 @@
               "builder_runs",
               "builder_run",
               "bus",
+              "context",
               "interface_write",
               "link_create",
               "link_update",
@@ -507,12 +508,23 @@
             "description": "link, link_update: the link uuid.",
             "type": "string"
           },
+          "paths": {
+            "description": "context: repository-relative paths the run touches.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "projectId": {
             "description": "The project acted for; a token bound to one project, or the X-Forge-Project-Slug header, names it when omitted.",
             "type": "string"
           },
           "run": {
             "description": "builder_run, builder_run_update: the builder run uuid.",
+            "type": "string"
+          },
+          "session": {
+            "description": "context: the agent session uuid to record what was loaded on.",
             "type": "string"
           }
         },
@@ -671,7 +683,7 @@
       "name": "forge_feedback"
     },
     {
-      "description": "Read and write this project's repository as the Forge GitHub App. Actions: list | diff | check-log | comment | open-pull-request | request-review | review. MODEL: the credential is a GitHub App held by Forge, never by you — core resolves the project's binding and makes the GitHub call itself, so there is no token to fetch and none is returned. Do NOT shell out to `gh`: that runs under whoever configured the box, which is unattributable and unrevocable. Cloning, committing and pushing are still git's job and are not here. NOTHING HERE MERGES. Merging a pull request is a kernel transition on the dispatch face, served there as the outbound verb `pull_request.merge`, where the same operation that merges also stamps the issue as landed with the commit it landed at; naming `merge`, `close` or `delete-branch` is refused with that sentence rather than silently doing something near it. list: the project's GitHub bindings — { bindingId, repository, installed, bindingActive, connectionActive, agentGranted, lastHealthStatus, connectionProbeStatus, healthDetail, inboundDoor, inboundReading, expectedWebhookUrl, observedWebhookUrl, inboundDeliveries, lastInboundDeliveryAt, turnedAwayRecords, lastRecordedTurnAwayAt, lastTurnedAwayCode }. `lastHealthStatus` is the binding BOTH ways; `connectionProbeStatus` is what the last probe stored on the connection. `inboundDoor` says where the webhook door stands: `open` (something has come through), `silent` (addressed here and nothing ever has), `elsewhere` (GitHub holds a different address — compare `observedWebhookUrl` with `expectedWebhookUrl`), `unaddressed` (no address, or the hook is switched off on GitHub), `unreadable` (GitHub could not be asked), `unjudged` (a prerequisite of the address check is missing — no public API origin here, or nothing has asked GitHub where it calls in since this binding was last probed — so the address half is unjudged and earlier deliveries say only that the door opened once), `not_expected`. Anything but `open` or `not_expected` demotes `lastHealthStatus`, because a binding that receives nothing, or whose address nothing has checked, is not healthy whatever its outbound calls do. `inboundReading` is the sentence saying what that is and what it is NOT: `turnedAwayRecords` counts RECORDS of calls refused at the door, at most one per code per ten minutes, so it is a FLOOR on the calls rather than the calls; those calls are unauthenticated, so nothing here says GitHub sent them; a `silent` door cannot tell \"GitHub called somewhere else\" from \"GitHub did not call\", and the reading names the App's Recent Deliveries tab as the read that can. It contacts GitHub not at all and answers the same whether or not agents are granted, so it is where you find out WHY another action was refused. An empty array means this project has bound no repository; that is the answer, not an error. diff: { number, repository, bytes, truncated, diff } — the unified diff of one pull request. `bytes` is the size of the WHOLE diff GitHub sent, not of what came back, so `truncated: true` with a large `bytes` means read the files you care about individually rather than reasoning about a fraction. check-log: the log of a failing check run — { checkRunId, name, app, status, conclusion, detailsUrl, summary, log, truncated, refusal }. Pass `checkRunId` (the projection and the GitHub payload both call it that) and optionally `lines` (default 100, 1..1000, REJECTED outside that range rather than clamped). Secret-shaped values are redacted line by line, the App token included. Forge can fetch a log only for a GitHub Actions job: any other check run comes back with `log: null` and a `refusal` naming which app published it and where its own details are, with whatever the check itself published in `summary`. A null log is never an empty one. comment: write on the pull request's conversation — needs `pullRequest` and `body`, returns { commentId, url }. This is the thread, not a line note on the diff. open-pull-request: needs `head`, `base` and `title`, optionally `body` and `draft`; returns { number, url, title, state, draft, headRef, headSha, baseRef, baseSha, updatedAt } AND `projection`, because what Forge opens Forge records: the same writer a `pull_request` webhook delivery goes through stores the row the merge path resolves on, so the request you just opened is one Forge can be asked to merge. `projection.outcome` is recorded | superseded | not-recorded, with `issueId` naming the Forge issue the head branch resolved to and `reason` saying why there is no row. A `not-recorded` is NOT a failed open — the pull request exists on GitHub either way and opening it again would put a second one there. Push the branch with git first: this opens the pull request, it does not create the branch. request-review: needs `pullRequest` and at least one of `reviewers` (GitHub logins) or `teamReviewers` (team slugs); returns what GitHub now has requested. review: submit a verdict — needs `pullRequest`, `verdict` (APPROVE | REQUEST_CHANGES | COMMENT) and `body`. Returns the review AND `issueComment`, because the verdict is ONE record: the same review is written onto the Forge issue the pull request's head branch names, by the same writer that records a human's review arriving by webhook, keyed on GitHub's review id so neither path can write it twice. `issueComment.outcome` is written | already-noted | no-issue | no-author. `no-issue` means the head branch names no issue here and is not an error. Refusals name their cause: no GitHub binding on this project, a binding switched off, a binding no agent may use (its agent access is off — an org owner or admin turns it on under Settings → Integrations), the App not installed, and the connection holding no App credential are five different messages. A call that could not act never returns an empty success. Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). Authorization: project membership; comment, open-pull-request, request-review and review need writer, and every action but list also needs the binding granted to agents.",
+      "description": "The former name of `forge_source`, kept for grants written against it — call `forge_source`; `open-pull-request` here is its `open-change-request`. Read and write this project's change requests on its source host — a GitHub pull request or a GitLab merge request, whichever host the project document declares its repository on. Actions: list | diff | check-log | comment | open-change-request | request-review | review. MODEL: the credential is held by Forge (a GitHub App, or a GitLab access token), never by you — core resolves the project's binding and makes the call itself, so there is no token to fetch and none is returned. Do NOT shell out to `gh` or `glab`: that runs under whoever configured the box, which is unattributable and unrevocable. Cloning, committing and pushing are still git's job. NOTHING HERE MERGES. Merging is a kernel transition on the dispatch face (the outbound verb `pull_request.merge`, or POST /api/issues/:id/merge-pull-request), where the same operation that merges also stamps the issue as landed with the commit it landed at; naming `merge`, `close` or `delete-branch` is refused with that sentence. `pullRequest` is the number the host shows: a pull request number on GitHub, a merge request IID (the `!12`) on GitLab. list: the project's source host bindings, each with `provider` and what Forge knows of its health and inbound webhook door; it contacts no host and answers the same whether or not agents are granted, so it is where you find out WHY another action was refused. An empty array means this project has bound no repository host. diff: { number, repository, bytes, truncated, diff } — the diff of one change request. `bytes` is the size of the WHOLE diff, so `truncated: true` with a large `bytes` means read files individually. check-log: the log of a failing check — { checkRunId, name, app, status, conclusion, detailsUrl, summary, log, truncated, refusal }. `checkRunId` is a GitHub check run id or a GitLab CI job id; `lines` defaults to 100 and is REJECTED outside 1..1000. Secret-shaped values are redacted. A log Forge cannot fetch comes back `log: null` with a `refusal` saying why — never an empty log. comment: needs `pullRequest` and `body`; returns { commentId, url }. open-change-request: needs `head`, `base` and `title`, optionally `body` and `draft`; returns { number, url, title, state, draft, headRef, headSha, baseRef, baseSha, updatedAt } AND `projection` (recorded | superseded | not-recorded) — what Forge opens it records on its projection, so it can be asked to merge it later. A `not-recorded` is NOT a failed open; opening again makes a second one. Push the branch with git first. request-review: needs `pullRequest` and `reviewers` (host usernames) and/or `teamReviewers` (GitHub team slugs; GitLab has no team reviewers and refuses them by name). review: needs `pullRequest`, `verdict` (APPROVE | REQUEST_CHANGES | COMMENT) and `body`. On GitLab APPROVE is an approval plus a note, COMMENT a note, and REQUEST_CHANGES is refused by name (GitLab REST has no such verdict). Returns the review AND `issueComment`: the verdict is written onto the Forge issue the head branch names, once. Refusals name their cause: no source host binding, a binding on another host than the declared repository, a binding switched off, a binding no agent may use, and a missing credential are different messages. Project scope comes from the X-Forge-Project-Slug header (or projectId). Authorization: project membership; comment, open-change-request, request-review and review need writer, and every action but list also needs the binding granted to agents.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -682,9 +694,10 @@
               "diff",
               "check-log",
               "comment",
-              "open-pull-request",
+              "open-change-request",
               "request-review",
-              "review"
+              "review",
+              "open-pull-request"
             ],
             "type": "string"
           },
@@ -3982,6 +3995,101 @@
         "type": "object"
       },
       "name": "forge_skills.update"
+    },
+    {
+      "description": "Read and write this project's change requests on its source host — a GitHub pull request or a GitLab merge request, whichever host the project document declares its repository on. Actions: list | diff | check-log | comment | open-change-request | request-review | review. MODEL: the credential is held by Forge (a GitHub App, or a GitLab access token), never by you — core resolves the project's binding and makes the call itself, so there is no token to fetch and none is returned. Do NOT shell out to `gh` or `glab`: that runs under whoever configured the box, which is unattributable and unrevocable. Cloning, committing and pushing are still git's job. NOTHING HERE MERGES. Merging is a kernel transition on the dispatch face (the outbound verb `pull_request.merge`, or POST /api/issues/:id/merge-pull-request), where the same operation that merges also stamps the issue as landed with the commit it landed at; naming `merge`, `close` or `delete-branch` is refused with that sentence. `pullRequest` is the number the host shows: a pull request number on GitHub, a merge request IID (the `!12`) on GitLab. list: the project's source host bindings, each with `provider` and what Forge knows of its health and inbound webhook door; it contacts no host and answers the same whether or not agents are granted, so it is where you find out WHY another action was refused. An empty array means this project has bound no repository host. diff: { number, repository, bytes, truncated, diff } — the diff of one change request. `bytes` is the size of the WHOLE diff, so `truncated: true` with a large `bytes` means read files individually. check-log: the log of a failing check — { checkRunId, name, app, status, conclusion, detailsUrl, summary, log, truncated, refusal }. `checkRunId` is a GitHub check run id or a GitLab CI job id; `lines` defaults to 100 and is REJECTED outside 1..1000. Secret-shaped values are redacted. A log Forge cannot fetch comes back `log: null` with a `refusal` saying why — never an empty log. comment: needs `pullRequest` and `body`; returns { commentId, url }. open-change-request: needs `head`, `base` and `title`, optionally `body` and `draft`; returns { number, url, title, state, draft, headRef, headSha, baseRef, baseSha, updatedAt } AND `projection` (recorded | superseded | not-recorded) — what Forge opens it records on its projection, so it can be asked to merge it later. A `not-recorded` is NOT a failed open; opening again makes a second one. Push the branch with git first. request-review: needs `pullRequest` and `reviewers` (host usernames) and/or `teamReviewers` (GitHub team slugs; GitLab has no team reviewers and refuses them by name). review: needs `pullRequest`, `verdict` (APPROVE | REQUEST_CHANGES | COMMENT) and `body`. On GitLab APPROVE is an approval plus a note, COMMENT a note, and REQUEST_CHANGES is refused by name (GitLab REST has no such verdict). Returns the review AND `issueComment`: the verdict is written onto the Forge issue the head branch names, once. Refusals name their cause: no source host binding, a binding on another host than the declared repository, a binding switched off, a binding no agent may use, and a missing credential are different messages. Project scope comes from the X-Forge-Project-Slug header (or projectId). Authorization: project membership; comment, open-change-request, request-review and review need writer, and every action but list also needs the binding granted to agents.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "diff",
+              "check-log",
+              "comment",
+              "open-change-request",
+              "request-review",
+              "review"
+            ],
+            "type": "string"
+          },
+          "base": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          },
+          "body": {
+            "maxLength": 60000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "checkRunId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "draft": {
+            "type": "boolean"
+          },
+          "head": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          },
+          "lines": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "pullRequest": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "reviewers": {
+            "items": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 25,
+            "type": "array"
+          },
+          "teamReviewers": {
+            "items": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 25,
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "APPROVE",
+              "REQUEST_CHANGES",
+              "COMMENT"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "forge_source"
     },
     {
       "description": "Delete a step handoff by (issueId, step, attempt). Idempotent — returns {deleted: false} when no row matches. Requires project membership.",

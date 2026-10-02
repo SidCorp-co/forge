@@ -37,8 +37,13 @@ vi.mock('../../db/client.js', () => ({
     }),
   },
 }));
+vi.mock('../../project-config/source.js', () => ({
+  readDeclaredSource: async () => ({ repository: declaredRepository }),
+}));
+let declaredRepository: string | null = null;
 vi.mock('../store.js', () => ({
   listBindingsForProject: (...a: unknown[]) => listBindingsForProjectMock(...(a as [])),
+  findBindingWithConnectionById: async () => null,
   decryptConnectionSecrets: (connection: { secretsPlain?: Record<string, unknown> }) =>
     connection.secretsPlain ?? {},
   effectiveConfig: (pair: {
@@ -66,9 +71,23 @@ vi.mock('./app-auth.js', async () => {
   return { ...real, installationToken: (...a: unknown[]) => installationTokenMock(...(a as [])) };
 });
 
-const { GitHubAgentCallError, GitHubAgentRefusal, githubAgentClient, resolveGrantedGitHubBinding } =
-  await import('./agent-client.js');
+const { GitHubAgentCallError, buildGitHubAgentClient } = await import('./agent-client.js');
 const { GitHubClientError } = await import('./client.js');
+const { SourceHostUnavailable } = await import('../source-host/errors.js');
+const { resolveSourceHost } = await import('../source-host/resolve.js');
+
+/** The agent's door since ISS-50: the source host resolver, asked for an agent verb. */
+const resolveForAgent = (projectId: string) => resolveSourceHost(projectId, 'agent');
+
+/** The request-path client for the project's one listed binding, as the GitHub host builds it. */
+async function githubAgentClient(projectId: string) {
+  const [pair] = await listBindingsForProjectMock(projectId);
+  return buildGitHubAgentClient({
+    bindingId: pair.binding.id,
+    config: { ...pair.connection.config, ...pair.binding.config },
+    secrets: pair.connection.secretsPlain,
+  });
+}
 
 // The grant is asked of the registry, so github's declaration has to be in it. An empty registry
 // would refuse every case in this file for the wrong reason while still going red.
@@ -128,6 +147,7 @@ function row(opts: {
 const HERE = 'https://api.example.test/api/webhooks/in/forge-dev';
 
 beforeEach(() => {
+  declaredRepository = null;
   listBindingsForProjectMock.mockReset();
   installationTokenMock.mockReset();
   installationTokenMock.mockResolvedValue('ghs_installation_token_value');
@@ -144,11 +164,11 @@ afterEach(() => {
 describe('which refusal a caller meets', () => {
   it('names no binding when the project has bound no repository', async () => {
     listBindingsForProjectMock.mockResolvedValue([]);
-    await expect(resolveGrantedGitHubBinding(PROJECT)).rejects.toMatchObject({
-      name: 'GitHubAgentRefusal',
+    await expect(resolveForAgent(PROJECT)).rejects.toMatchObject({
+      name: 'SourceHostUnavailable',
       reason: 'no_binding',
     });
-    await expect(resolveGrantedGitHubBinding(PROJECT)).rejects.toThrow(/Integrations page/);
+    await expect(resolveForAgent(PROJECT)).rejects.toThrow(/Integrations page/);
   });
 
   it('a github binding is found past another provider s, so a coolify row is not mistaken for none', async () => {
@@ -156,17 +176,15 @@ describe('which refusal a caller meets', () => {
       row({ provider: 'coolify', id: 'other' }),
       row({ id: 'bind-gh' }),
     ]);
-    const pair = await resolveGrantedGitHubBinding(PROJECT);
-    expect(pair.binding.id).toBe('bind-gh');
+    const host = await resolveForAgent(PROJECT);
+    expect(host.bindingId).toBe('bind-gh');
   });
 
   it('separates a binding switched off for this project from a credential switched off for every one', async () => {
     listBindingsForProjectMock.mockResolvedValue([row({ bindingActive: false })]);
-    await expect(resolveGrantedGitHubBinding(PROJECT)).rejects.toThrow(
-      /switched off for this project/,
-    );
+    await expect(resolveForAgent(PROJECT)).rejects.toThrow(/switched off for this project/);
     listBindingsForProjectMock.mockResolvedValue([row({ connectionActive: false })]);
-    await expect(resolveGrantedGitHubBinding(PROJECT)).rejects.toThrow(
+    await expect(resolveForAgent(PROJECT)).rejects.toThrow(
       /switched off for every project sharing it/,
     );
   });
@@ -178,9 +196,9 @@ describe('which refusal a caller meets', () => {
     listBindingsForProjectMock.mockResolvedValue([
       row({ id: 'bind-ungranted', agentAccess: 'none' }),
     ]);
-    const caught = await resolveGrantedGitHubBinding(PROJECT).catch((e: unknown) => e);
-    expect(caught).toBeInstanceOf(GitHubAgentRefusal);
-    expect((caught as InstanceType<typeof GitHubAgentRefusal>).reason).toBe('not_granted');
+    const caught = await resolveForAgent(PROJECT).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(SourceHostUnavailable);
+    expect((caught as InstanceType<typeof SourceHostUnavailable>).reason).toBe('not_granted');
     expect((caught as Error).message).toContain('bind-ungranted');
     expect((caught as Error).message).toContain('Settings → Integrations');
     expect((caught as Error).message).not.toMatch(/no GitHub binding/);
@@ -190,17 +208,35 @@ describe('which refusal a caller meets', () => {
   // different, raised by `buildRepoClient` rather than restated here.
   it('tells no repository, no installation and no App credential apart', async () => {
     listBindingsForProjectMock.mockResolvedValue([row({ config: { installationId: 42 } })]);
-    await expect(githubAgentClient(PROJECT)).rejects.toMatchObject({ reason: 'no_repository' });
+    await expect(resolveForAgent(PROJECT)).rejects.toMatchObject({ reason: 'no_repository' });
 
     listBindingsForProjectMock.mockResolvedValue([
       row({ config: { owner: 'SidCorp-co', repo: 'forge-dev' } }),
     ]);
-    await expect(githubAgentClient(PROJECT)).rejects.toMatchObject({ reason: 'no_installation' });
+    await expect(resolveForAgent(PROJECT)).rejects.toMatchObject({ reason: 'no_installation' });
 
     listBindingsForProjectMock.mockResolvedValue([row({ secrets: {} })]);
-    const caught = await githubAgentClient(PROJECT).catch((e: unknown) => e);
+    const caught = await resolveForAgent(PROJECT).catch((e: unknown) => e);
     expect(caught).toBeInstanceOf(GitHubClientError);
     expect((caught as { reason: string }).reason).toBe('no_credential');
+  });
+});
+
+describe('a binding on another host than the declared repository (ISS-50)', () => {
+  it('refuses a GitHub binding on a project whose repository is on gitlab.com, naming both hosts', async () => {
+    declaredRepository = 'gitlab.com/autoflow/core';
+    listBindingsForProjectMock.mockResolvedValue([row({ id: 'bind-gh' })]);
+    const caught = await resolveForAgent(PROJECT).catch((e: unknown) => e);
+    expect(caught).toBeInstanceOf(SourceHostUnavailable);
+    expect((caught as InstanceType<typeof SourceHostUnavailable>).reason).toBe('host_mismatch');
+    expect((caught as Error).message).toContain('gitlab.com');
+    expect((caught as Error).message).toContain('github on github.com');
+  });
+
+  it('takes the binding when the declared repository is on its host', async () => {
+    declaredRepository = 'github.com/SidCorp-co/forge-dev';
+    listBindingsForProjectMock.mockResolvedValue([row({ id: 'bind-gh' })]);
+    expect((await resolveForAgent(PROJECT)).bindingId).toBe('bind-gh');
   });
 });
 

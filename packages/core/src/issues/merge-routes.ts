@@ -26,17 +26,17 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
-import { GitHubClientError } from '../integrations/github/client.js';
-import {
-  MERGE_METHODS,
-  MergeInputError,
-  mergeStoredPullRequest,
-} from '../integrations/github/merge.js';
 import {
   describeEmptyProjection,
   projectionPipeReport,
 } from '../integrations/github/projection-health.js';
 import { openPullRequestsForIssue } from '../integrations/repo-projection.js';
+import { SourceHostUnavailable } from '../integrations/source-host/errors.js';
+import {
+  CHANGE_REQUEST_MERGE_METHODS,
+  MergeInputError,
+  mergeStoredChangeRequest,
+} from '../integrations/source-host/merge.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
@@ -128,12 +128,12 @@ issueMergeRoutes.delete('/:id/merge', ...mergeMarkerValidators, (c) => runMergeM
 
 const kernelMergeBodySchema = z
   .object({
-    /** The pull request NUMBER as GitHub shows it. Absent resolves the issue's one open request. */
+    /** The pull request number or merge request iid as the host shows it. Absent resolves the issue's one open request. */
     pullRequest: z.number().int().positive().optional(),
     /** The head the caller judged. A head that moved since is refused, never re-aimed. */
     headSha: mergedCommitShaSchema.optional(),
     runId: z.uuid().optional(),
-    method: z.enum(MERGE_METHODS).optional(),
+    method: z.enum(CHANGE_REQUEST_MERGE_METHODS).optional(),
   })
   .strict();
 
@@ -223,7 +223,7 @@ issueMergeRoutes.post(
 
     const actor = restActor(c);
     try {
-      const outcome = await mergeStoredPullRequest({
+      const outcome = await mergeStoredChangeRequest({
         pullRequestId: stored.id,
         requestedBy: `${actor.type}:${actor.id}`,
         runId: body.runId ?? null,
@@ -253,7 +253,7 @@ issueMergeRoutes.post(
           cause: { code: 'BAD_REQUEST' },
         });
       }
-      if (err instanceof GitHubClientError) {
+      if (err instanceof SourceHostUnavailable) {
         throw new HTTPException(422, { message: err.message, cause: { code: 'NO_BINDING' } });
       }
       throw err;

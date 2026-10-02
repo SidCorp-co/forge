@@ -217,6 +217,41 @@ describe('the rest of the pure codes', () => {
     ]);
   });
 
+  it('GATE_UNSUPPORTED: a gitlab-pipeline gate on a no-source project', () => {
+    const out = refusals((d) => {
+      d.source = { type: 'none' };
+      d.environments = {};
+      d.workspace = { isolation: 'none' };
+      d.promotions = [];
+      d.validation = { gate: { type: 'gitlab-pipeline', name: 'ci' } };
+    });
+    expect(pick(out)).toEqual([{ code: 'GATE_UNSUPPORTED', path: '/validation/gate' }]);
+  });
+
+  it('GATE_UNSUPPORTED: a gate that reads the other public host (ISS-50)', () => {
+    const onGitLab = refusals((d) => {
+      if (d.source.type === 'git') d.source.git.repository = 'gitlab.com/autoflow/core';
+      d.validation = { gate: { type: 'github-check', name: 'ci-passed' } };
+    });
+    expect(pick(onGitLab)).toEqual([{ code: 'GATE_UNSUPPORTED', path: '/validation/gate' }]);
+    expect(onGitLab[0]?.detail).toContain('"gitlab-pipeline"');
+
+    const onGitHub = refusals((d) => {
+      d.validation = { gate: { type: 'gitlab-pipeline', name: 'ci' } };
+    });
+    expect(pick(onGitHub)).toEqual([{ code: 'GATE_UNSUPPORTED', path: '/validation/gate' }]);
+  });
+
+  it('a gitlab-pipeline gate on a gitlab.com repository, or on a self-hosted one, is accepted', () => {
+    for (const repository of ['gitlab.com/autoflow/core', 'git.example.org/autoflow/core']) {
+      const out = refusals((d) => {
+        if (d.source.type === 'git') d.source.git.repository = repository;
+        d.validation = { gate: { type: 'gitlab-pipeline', name: 'ci' } };
+      });
+      expect(pick(out)).toEqual([]);
+    }
+  });
+
   it('a no-source project with declared absences is accepted', () => {
     const out = refusals((d) => {
       d.source = { type: 'none' };

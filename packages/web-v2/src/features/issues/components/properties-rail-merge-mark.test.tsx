@@ -86,7 +86,7 @@ describe("the merge mark on the issue rail", () => {
 
   it("says why the claim is a claim, rather than only labelling it", () => {
     render(rail("asserted", null));
-    expect(screen.getByTitle(/holds no merged pull request/)).toBeInTheDocument();
+    expect(screen.getByTitle(/holds no merged change request/)).toBeInTheDocument();
   });
 
   it("renders nothing rather than guessing when the server sends no mark", () => {
@@ -110,10 +110,10 @@ describe("a mark naming where the work landed outside git (ISS-1327)", () => {
     expect(screen.queryByText("observed")).toBeNull();
   });
 
-  it("explains a website mark naming no landing by the landing, never by a pull request", () => {
+  it("explains a website mark naming no landing by the landing, never by a change request", () => {
     // Owner ruling on ISS-1327: outside git no commit is the normal record, not a sign of a false mark.
     render(rail("asserted", null, null, "outside_git"));
     expect(screen.getByTitle(/names no landing/)).toBeInTheDocument();
-    expect(screen.queryByTitle(/pull request/)).toBeNull();
+    expect(screen.queryByTitle(/change request/)).toBeNull();
   });
 });

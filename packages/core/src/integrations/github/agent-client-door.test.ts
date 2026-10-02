@@ -1,5 +1,5 @@
 /**
- * ISS-1140 — what `forge_github action=list` says about a binding's inbound door.
+ * ISS-1140 — what `forge_source action=list` says about a binding's inbound door.
  *
  * The report contacts GitHub not at all: where GitHub says it is addressed was read and stored by
  * the health probe, and the comparison against what THIS binding needs happens here, because the

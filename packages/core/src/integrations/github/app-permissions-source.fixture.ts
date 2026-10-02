@@ -35,6 +35,8 @@ const HOLE_VALUES: Record<string, string> = {
   // repository file path the contents endpoint takes, priced as one segment because what sits under
   // it buys no further permission.
   'merge-read.ts:headSha': ':p',
+  'source-host.ts:encodePath(path)': ':p',
+  'source-host.ts:entry.sha': ':p',
   'runner-release-repo.ts:path': ':p',
 };
 

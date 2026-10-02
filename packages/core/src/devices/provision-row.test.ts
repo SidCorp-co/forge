@@ -22,7 +22,7 @@ const row = (over: Partial<ProvisionRow> = {}): ProvisionRow => ({
   ...over,
 });
 
-const ctx = { deviceId: 'dev-1', holderUserId: 'agent-7', githubAppCredential: false };
+const ctx = { deviceId: 'dev-1', holderUserId: 'agent-7', hostCredential: false };
 const violation = (constraint = 'pat_user_name_uniq') =>
   Object.assign(new Error('duplicate key value'), { code: '23505', constraint_name: constraint });
 

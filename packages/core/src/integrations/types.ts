@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import type { BindingRole } from '../db/schema.js';
 import type { TargetedDeployAdapter } from '../project-config/deploy-adapters/types.js';
+import type { SourceHostFactory } from './source-host/types.js';
 
 export type IntegrationProvider =
   | 'coolify'
@@ -9,6 +10,7 @@ export type IntegrationProvider =
   | 'sentry'
   | 'rocketchat'
   | 'github'
+  | 'gitlab'
   | 'google'
   | 'agent';
 
@@ -19,6 +21,7 @@ export const INTEGRATION_PROVIDERS = [
   'sentry',
   'rocketchat',
   'github',
+  'gitlab',
   'google',
   'agent',
 ] as const satisfies readonly IntegrationProvider[];
@@ -184,6 +187,12 @@ export interface IntegrationCapabilities {
   webhookHeader?: string;
   webhookSignatureHeader?: string;
   /**
+   * How the signature header proves a delivery is the provider's. `hmac-sha256` (the default)
+   * signs the body; `shared-token` carries the binding's secret itself, which is GitLab's scheme
+   * (`X-Gitlab-Token`) and is compared in constant time.
+   */
+  webhookVerification?: 'hmac-sha256' | 'shared-token';
+  /**
    * True where this provider's API can express a rollback as a structured action rather than as
    * prose for a human to carry out. Read by `release-batch/channel.ts`, which classified it with
    * `provider === 'coolify'` until ISS-1071.
@@ -289,12 +298,13 @@ export interface IntegrationUsage {
 
 /** A binding target the provider refused, at a path inside `target`. */
 export interface BindingTargetRefusal {
-  code: 'COOLIFY_APPLICATION_UNKNOWN' | 'COOLIFY_UNREACHABLE';
+  code: 'COOLIFY_APPLICATION_UNKNOWN' | 'COOLIFY_UNREACHABLE' | 'SOURCE_HOST_MISMATCH';
   path: string;
   detail: string;
 }
 
 export interface VerifyBindingTargetArgs {
+  projectId: string;
   connection: IntegrationConnectionLike & { config: unknown };
   /** The binding-tier config the document encodes to. */
   config: Record<string, unknown>;
@@ -390,6 +400,24 @@ export interface IntegrationDeclaration<
   readonly presentation: IntegrationPresentation | null;
   /** Absent exactly where nothing is integrated. */
   readonly adapter?: IntegrationAdapterMethods<TConfig, TSecrets>;
+  /** Present where a binding of this provider is the host a project's repository lives on. */
+  readonly sourceHost?: SourceHostFactory;
+  /** Present where this provider can mint a short-lived HTTPS git credential for a runner. */
+  readonly gitCredential?: GitCredentialMint;
+}
+
+/** What `git/host-credential.ts` asks of a provider for one repository git is fetching. */
+export interface GitCredentialMint {
+  /** Whether this binding is complete enough to mint for at all — the provision flag reads it. */
+  serves(config: Record<string, unknown>): boolean;
+  /** Whether this binding reaches the repository git named by `host` and `path`. */
+  reaches(config: Record<string, unknown>, host: string, path: string): boolean;
+  /** The binding's repository as a person reads it, for a refusal or a log line. */
+  repositoryOf(config: Record<string, unknown>): string;
+  mint(args: {
+    config: Record<string, unknown>;
+    secrets: Record<string, unknown>;
+  }): Promise<{ username: string; password: string; expiresAt: string }>;
 }
 
 /** The declaration as an author writes it: `agentPath` is the one field that may be left out. */

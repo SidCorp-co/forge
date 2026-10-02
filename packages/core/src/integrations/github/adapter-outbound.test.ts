@@ -34,15 +34,15 @@ const mergeStoredPullRequest = vi.fn<(...args: unknown[]) => Promise<unknown>>(a
   mergedAt: new Date(),
   stamped: true,
 }));
-vi.mock('./merge.js', async (importOriginal) => {
+vi.mock('../source-host/merge.js', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return {
     ...actual,
-    mergeStoredPullRequest: (...args: unknown[]) => mergeStoredPullRequest(...args),
+    mergeStoredChangeRequest: (...args: unknown[]) => mergeStoredPullRequest(...args),
   };
 });
 
-const { MERGE_EVENT } = await import('./merge.js');
+const { MERGE_EVENT } = await import('../source-host/merge.js');
 const { NonRetryableDispatchError } = await import('../types.js');
 const { githubIntegration } = await import('./adapter.js');
 const { __resetRegistry, dispatchThrough, registerIntegration } = await import('../registry.js');
@@ -102,7 +102,7 @@ describe('what it refuses, and by what name', () => {
   it('sends a caller naming a judgement verb to the face that carries it', async () => {
     await expect(
       dispatch()?.(ctx, { eventName: 'pull_request.review', payload: {} }),
-    ).rejects.toThrow(/forge_github/);
+    ).rejects.toThrow(/forge_source/);
   });
 
   it('refuses a project with no active binding, and writes that refusal to the log', async () => {

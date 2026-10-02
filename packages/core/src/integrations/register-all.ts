@@ -2,6 +2,7 @@ import { agentIntegration } from './agent-declaration.js';
 import { coolifyIntegration } from './coolify/adapter.js';
 import { epodsystemIntegration } from './epodsystem/adapter.js';
 import { githubIntegration } from './github/adapter.js';
+import { gitlabIntegration } from './gitlab/adapter.js';
 import { googleIntegration } from './google/adapter.js';
 import { postmanIntegration } from './postman/adapter.js';
 import { isRegistered, registerIntegration } from './registry.js';
@@ -17,6 +18,7 @@ const ALL: readonly IntegrationDeclaration[] = [
   googleIntegration as IntegrationDeclaration,
   rocketchatIntegration as IntegrationDeclaration,
   githubIntegration as IntegrationDeclaration,
+  gitlabIntegration as IntegrationDeclaration,
   agentIntegration,
 ];
 

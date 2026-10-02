@@ -1,4 +1,4 @@
-import type { WaitingCommit } from '../integrations/github/live-divergence.js';
+import type { WaitingCommit } from '../integrations/source-host/types.js';
 import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
 import {
   type IssueWorkRecord,

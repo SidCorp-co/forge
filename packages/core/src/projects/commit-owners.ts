@@ -1,4 +1,4 @@
-import type { WaitingCommit } from '../integrations/github/live-divergence.js';
+import type { WaitingCommit } from '../integrations/source-host/types.js';
 
 /**
  * `declares_issue` — read by `declaredIssueSeqs`; `merged_in` — given by `carry`; `recorded_head` —

@@ -6,6 +6,7 @@
  */
 
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
+import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { integrationDeliveries, type ObservedEndpoint } from '../db/schema.js';
 
@@ -227,4 +228,15 @@ export function describeInboundDoor(args: {
         `is not something Forge can see from here — ${args.providerDeliveryLog} is the read that answers it.`
       );
   }
+}
+
+/** The one public API origin every inbound address is built from; null is a fact a probe reports. */
+export function resolveApiBaseUrl(): string | null {
+  const base = env.PUBLIC_API_BASE_URL ?? env.OAUTH_REDIRECT_BASE ?? process.env.APP_BASE_URL;
+  return base ? base.replace(/\/+$/, '') : null;
+}
+
+/** ONE spelling of a project's inbound address, for the side that registers it and the probe (ISS-1140). */
+export function inboundWebhookUrl(apiBaseUrl: string, projectSlug: string): string {
+  return `${apiBaseUrl.replace(/\/+$/, '')}/api/webhooks/in/${projectSlug}`;
 }

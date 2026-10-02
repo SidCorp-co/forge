@@ -14,6 +14,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import {
+  type ChangeRequestHost,
   type ProjectedCheckRun,
   type ProjectedReview,
   repoPullRequests,
@@ -25,6 +26,8 @@ import { foldCheckRun, foldReviewDismissed, foldReviewSubmitted } from './projec
 export interface ProjectionContext {
   projectId: string;
   bindingId: string;
+  /** Which host the binding serves; a GitHub delivery leaves it out. */
+  host?: ChangeRequestHost;
 }
 
 export interface PullRequestPayload {
@@ -135,6 +138,7 @@ export async function applyPullRequestEvent(
     .values({
       projectId: ctx.projectId,
       bindingId: ctx.bindingId,
+      host: ctx.host ?? 'github',
       issueId,
       number,
       repoFullName: payload.repository?.full_name ?? '',

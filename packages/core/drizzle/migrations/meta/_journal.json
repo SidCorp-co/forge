@@ -2192,6 +2192,13 @@
       "when": 1812240000000,
       "tag": "0339_a_project_draws_its_workflows_and_a_release_waits_for_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 340,
+      "version": "7",
+      "when": 1812326400000,
+      "tag": "0340_a_change_request_names_its_host",
+      "breakpoints": true
     }
   ]
 }

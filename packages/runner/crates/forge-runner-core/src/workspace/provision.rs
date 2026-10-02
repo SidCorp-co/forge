@@ -101,11 +101,7 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
         None => None,
     };
 
-    let cred_host = if p.github_app_credential {
-        p.repo_url.as_deref().and_then(git_cred::https_host)
-    } else {
-        None
-    };
+    let cred_host = credential_host(p);
     let git_cfg = cred_host
         .as_deref()
         .map(git_cred::credential_helper_git_args)
@@ -353,6 +349,17 @@ fn record_binding(p: &Provision, repo_path: &Path) {
 /// The checkout this box chose for a binding that named none, which the binding must now hold:
 /// a job takes its checkout from the device binding alone, so a path known only to this box's
 /// `config.toml` is a path no job can be given.
+
+/// The host git's credential helper is pointed at for this checkout, or none: only where core says
+/// it mints a credential for the repository (any source host since ISS-50) and the URL is HTTPS.
+fn credential_host(p: &crate::transport::provision::Provision) -> Option<String> {
+    if p.host_credential || p.github_app_credential {
+        p.repo_url.as_deref().and_then(git_cred::https_host)
+    } else {
+        None
+    }
+}
+
 fn binding_to_report(p: &Provision, repo_path: &Path) -> Option<String> {
     let named = p.repo_path.as_deref().is_some_and(|s| !s.trim().is_empty());
     (!named).then(|| repo_path.to_string_lossy().into_owned())
@@ -719,9 +726,45 @@ mod tests {
             ssh_key_source: None,
             ssh_public_key: None,
             ssh_private_key: None,
+            host_credential: false,
             github_app_credential: false,
             mcp_credential: None,
         }
+    }
+
+    #[test]
+    fn a_gitlab_checkout_core_mints_for_points_the_helper_at_gitlab() {
+        let mut p = provision(Some("/srv/checkouts/core"));
+        p.repo_url = Some("https://gitlab.com/autoflow/core.git".into());
+        assert_eq!(
+            credential_host(&p),
+            None,
+            "no credential is minted, so no helper"
+        );
+        p.host_credential = true;
+        assert_eq!(credential_host(&p).as_deref(), Some("gitlab.com"));
+    }
+
+    #[test]
+    fn a_core_released_before_iss_50_still_turns_the_helper_on() {
+        let p: crate::transport::provision::Provision = serde_json::from_value(serde_json::json!({
+            "runnerId": "r-1", "projectId": "p-1", "slug": "forge",
+            "repoUrl": "https://github.com/SidCorp-co/forge.git",
+            "githubAppCredential": true
+        }))
+        .expect("an old core's provision parses");
+        assert_eq!(credential_host(&p).as_deref(), Some("github.com"));
+        let ssh: crate::transport::provision::Provision =
+            serde_json::from_value(serde_json::json!({
+                "runnerId": "r-1", "projectId": "p-1", "slug": "forge",
+                "repoUrl": "git@gitlab.com:autoflow/core.git", "hostCredential": true
+            }))
+            .expect("a provision parses");
+        assert_eq!(
+            credential_host(&ssh),
+            None,
+            "a deploy-key checkout keeps SSH and no helper"
+        );
     }
 
     #[test]

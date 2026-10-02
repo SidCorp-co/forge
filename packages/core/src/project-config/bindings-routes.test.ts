@@ -249,7 +249,7 @@ describe('binding documents', () => {
 });
 
 describe('a target provider the binding document does not define', () => {
-  for (const provider of ['', 'gitlab']) {
+  for (const provider of ['', 'bitbucket']) {
     it(`refuses provider ${JSON.stringify(provider)} naming every provider it does define`, async () => {
       const doc = coolifyDoc({ target: { provider } });
       const res = await call('PUT', `/bindings/${BINDING}`, { baseRevision: null, document: doc });
@@ -258,7 +258,7 @@ describe('a target provider the binding document does not define', () => {
         {
           code: 'SCHEMA_VIOLATION',
           path: '/target/provider',
-          detail: `provider ${JSON.stringify(provider)} is not a binding target; target.provider is one of coolify, shopify, epodsystem, github, sentry, postman, rocketchat, google, agent, each with the fields binding-v1.json names for it.`,
+          detail: `provider ${JSON.stringify(provider)} is not a binding target; target.provider is one of coolify, shopify, epodsystem, github, gitlab, sentry, postman, rocketchat, google, agent, each with the fields binding-v1.json names for it.`,
         },
       ]);
       expect(bindingMem.rows.size).toBe(0);
@@ -348,6 +348,7 @@ describe('a target the provider is asked about', () => {
       }),
     ]);
     expect(effects.targetRefusals).toHaveBeenCalledWith({
+      projectId: expect.any(String),
       connectionId: COOLIFY_CONNECTION,
       provider: 'coolify',
       config: { targets: [expect.objectContaining({ resourceUuid: 'y8w4c4kss8ogo8gc44ow44kc' })] },
