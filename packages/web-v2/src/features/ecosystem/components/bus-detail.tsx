@@ -17,6 +17,7 @@ import {
   STATE_MEANING,
   STATE_TONE,
   shortSha,
+  triggerRef,
   type StepStatus,
   type Tone,
   VERDICT_TONE,
@@ -58,6 +59,7 @@ const STEP_ICON: Record<StepStatus, string> = {
   running: "•",
   failed: "✕",
   pending: "",
+  superseded: "↷",
 };
 
 const STEP_STYLE: Record<StepStatus, { background: string; color: string }> = {
@@ -66,6 +68,7 @@ const STEP_STYLE: Record<StepStatus, { background: string; color: string }> = {
   running: { background: "var(--accent)", color: "var(--fg-on-accent)" },
   failed: { background: "var(--red-50)", color: "var(--red-600)" },
   pending: { background: "var(--bg-sunken)", color: "var(--fg-subtle)" },
+  superseded: { background: "var(--bg-sunken)", color: "var(--fg-subtle)" },
 };
 
 function Steps({ builder }: { builder: BusBuilder }) {
@@ -108,7 +111,8 @@ function BuilderSummary({ builder }: { builder: BusBuilder }) {
       <Steps builder={builder} />
       <Tooltip label={`Started ${new Date(builder.createdAt).toLocaleString()} · updated ${new Date(builder.updatedAt).toLocaleString()}`}>
         <span className="fg-caption">
-          {prog.done}/{prog.total} steps · on {builder.trigger.kind} at <span className="font-mono">{shortSha(builder.trigger.sha)}</span>
+          {prog.done}/{prog.total} steps · on {builder.trigger.kind} at <span className="font-mono">{triggerRef(builder.trigger)}</span>
+          {builder.stepsStale ? " · steps stale for this source: supersede the run" : ""}
         </span>
       </Tooltip>
     </>
@@ -421,7 +425,7 @@ function BuilderDetail({ bus, id }: { bus: Bus; id: string }) {
         <h2 className="text-15 font-semibold">{p.slug} ecosystem builder</h2>
         <Tooltip label={`Run ${p.builder.id}`}>
           <span className="fg-caption">
-            on {p.builder.trigger.kind} at <span className="font-mono">{shortSha(p.builder.trigger.sha)}</span> ·{" "}
+            on {p.builder.trigger.kind} at <span className="font-mono">{triggerRef(p.builder.trigger)}</span> ·{" "}
             {formatRelativeTime(p.builder.updatedAt)}
           </span>
         </Tooltip>

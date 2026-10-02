@@ -80,7 +80,7 @@ export const ecosystemBuilderRuns = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     trigger: text('trigger').notNull(),
-    triggerSha: text('trigger_sha').notNull(),
+    triggerSha: text('trigger_sha'),
     revision: integer('revision').notNull(),
     document: jsonb('document').notNull(),
     writtenByUser: uuid('written_by_user')
@@ -94,9 +94,12 @@ export const ecosystemBuilderRuns = pgTable(
     ecosystemIdx: index('ecosystem_builder_runs_ecosystem_id_idx').on(t.ecosystemId),
     triggerChk: check(
       'ecosystem_builder_runs_trigger_chk',
-      sql`${t.trigger} IN ('joined', 'push')`,
+      sql`${t.trigger} IN ('joined', 'push', 'manual')`,
     ),
-    shaChk: check('ecosystem_builder_runs_sha_chk', sql`${t.triggerSha} ~ '^[0-9a-f]{40}$'`),
+    shaChk: check(
+      'ecosystem_builder_runs_sha_chk',
+      sql`${t.triggerSha} IS NULL OR ${t.triggerSha} ~ '^[0-9a-f]{40}$'`,
+    ),
     revisionChk: check('ecosystem_builder_runs_revision_chk', sql`${t.revision} >= 1`),
   }),
 );

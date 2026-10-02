@@ -23,6 +23,7 @@ import {
   openedRun,
   parseBuilderRun,
   parseLink,
+  stepsStale,
   writerRefusal,
 } from './link-rules.js';
 import {
@@ -155,7 +156,7 @@ async function updateRecord<W>(
 }
 
 /** Where the project's code lives, read from its project document. */
-async function sourceOf(projectId: string): Promise<BuilderSource> {
+export async function sourceOf(projectId: string): Promise<BuilderSource> {
   return builderSourceOf((await readProjectDocument(projectId))?.document);
 }
 
@@ -226,6 +227,7 @@ async function builderRunWorld(
     published,
     links: new Set(links.map((l) => l.id)),
     openRun,
+    creating: selfId === null,
   };
 }
 
@@ -318,9 +320,11 @@ export async function openRunsOf(projectId: string): Promise<
     trigger: BuilderRunWrite['trigger'];
     steps: number;
     done: number;
+    stepsStale: boolean;
   }[]
 > {
   const rows = await builderRunsOf(db, projectId);
+  const source = await sourceOf(projectId);
   return rows
     .map((row) => ({ row, doc: storedBuilderRun(row) }))
     .filter(({ doc }) => isOpenRun(doc))
@@ -331,6 +335,7 @@ export async function openRunsOf(projectId: string): Promise<
       trigger: doc.trigger,
       steps: doc.steps.length,
       done: doc.steps.filter((s) => !['pending', 'running'].includes(s.status)).length,
+      stepsStale: stepsStale(doc, source),
     }));
 }
 

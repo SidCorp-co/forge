@@ -35,6 +35,7 @@ const world = (over: Partial<BuilderRunWorld> = {}): BuilderRunWorld => ({
   published: new Set([`${FORGE}/forge-api`, `${FORGE}/forge-mcp`]),
   links: new Set([LINK]),
   openRun: null,
+  creating: true,
   ...over,
 });
 
@@ -194,7 +195,7 @@ describe('the run a join or a push opens', () => {
   const opened = openedRun({
     ecosystem: FP,
     project: PLUGIN,
-    trigger: { kind: 'joined', sha: '4b825dc642cb6eb9a060e54bf8d69288fbee4904' },
+    trigger: { kind: 'joined', sha: '9c1e5f0a7b3d2e4c6a8b0d1f3e5a7c9b1d3f5e7a' },
     source: { type: 'repository' },
   });
 
@@ -241,7 +242,7 @@ describe('a declared consumption a finished run found no call site for', () => {
 });
 
 describe('the steps a run opens with follow where the project keeps its code', () => {
-  const trigger = { kind: 'joined' as const, sha: '4b825dc642cb6eb9a060e54bf8d69288fbee4904' };
+  const trigger = { kind: 'joined' as const, sha: '9c1e5f0a7b3d2e4c6a8b0d1f3e5a7c9b1d3f5e7a' };
   const storefrontDoc = {
     source: { type: 'storefront', storefront: { provider: 'autoflow', binding: LINK } },
   } as unknown as Parameters<typeof builderSourceOf>[0];

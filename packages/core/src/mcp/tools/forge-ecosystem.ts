@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
+import { supersedeBuilderRun } from '../../ecosystem/builder-supersede.js';
 import {
   loadContractContext,
   recordContractContext,
@@ -44,6 +45,7 @@ const WRITES = [
   'link_update',
   'builder_run_create',
   'builder_run_update',
+  'builder_run_supersede',
 ] as const;
 const ACTIONS = [...READS, ...WRITES] as const;
 type Action = (typeof ACTIONS)[number];
@@ -70,6 +72,7 @@ const BY_ACTION = {
   link_update: z.strictObject({ link: z.uuid(), ...envelope }),
   builder_run_create: z.strictObject(envelope),
   builder_run_update: z.strictObject({ run: z.uuid(), ...envelope }),
+  builder_run_supersede: z.strictObject({ run: z.uuid(), reason: z.unknown().optional() }),
 } satisfies Record<Action, z.ZodType>;
 
 const SHAPES: Record<Action, string> = {
@@ -86,6 +89,7 @@ const SHAPES: Record<Action, string> = {
   link_update: '{ link, baseRevision, document: a link-v1 document }',
   builder_run_create: '{ baseRevision: null, document: a builder-run-v1 document }',
   builder_run_update: '{ run, baseRevision, document: a builder-run-v1 document }',
+  builder_run_supersede: '{ run: the open builder run uuid, reason: why it is replaced }',
 };
 
 type Answer = Record<string, unknown>;
@@ -223,6 +227,16 @@ const HANDLERS: Record<
     recorded(await createBuilderRun({ projectId: side, ...writeOf(ctx, a) })),
   builder_run_update: async (ctx, side, a) =>
     recorded(await updateBuilderRun({ projectId: side, id: String(a.run), ...writeOf(ctx, a) })),
+  builder_run_supersede: async (ctx, side, a) => {
+    const outcome = await supersedeBuilderRun({
+      runId: String(a.run),
+      projectId: side,
+      actor: { userId: ctx.principal.userId, agency: ctx.principal.agency },
+      reason: a.reason,
+    });
+    if (!outcome.ok) return refusedWith(outcome.refusals);
+    return { superseded: recordView(outcome.superseded), opened: recordView(outcome.opened) };
+  },
 };
 
 const writeOf = (ctx: McpContext, a: Args) => ({
@@ -236,6 +250,7 @@ const PATH_OF: Partial<Record<Action, string>> = {
   link_update: '/link',
   builder_run: '/run',
   builder_run_update: '/run',
+  builder_run_supersede: '/run',
   context: '/session',
   bus: '/ecosystem',
 };
@@ -288,7 +303,7 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
 const DESCRIPTION = [
   "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus.",
   'Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks).',
-  "Writes take { baseRevision, document } as their REST route does: interface_write (an admin), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite).",
+  "Writes take { baseRevision, document } as their REST route does: interface_write (an admin), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite), builder_run_supersede ({ run, reason }: closes an open run as superseded and opens a fresh manual run with the steps the project's current source type derives, waking its master; the project's own agent's, or an org admin's of the steward or the project's org).",
   "The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written.",
   'For the channel, use forge_channel.',
 ].join(' ');
@@ -306,7 +321,8 @@ const INPUT_SCHEMA: Record<string, unknown> = {
       'The project acted for; a token bound to one project, or the X-Forge-Project-Slug header, names it when omitted.',
     ),
     link: prop('link, link_update: the link uuid.'),
-    run: prop('builder_run, builder_run_update: the builder run uuid.'),
+    run: prop('builder_run, builder_run_update, builder_run_supersede: the builder run uuid.'),
+    reason: prop('builder_run_supersede: why the open run is replaced, 1 to 1000 characters.'),
     ecosystem: prop('bus: the ecosystem uuid.'),
     paths: prop('context: repository-relative paths the run touches.', {
       type: 'array',

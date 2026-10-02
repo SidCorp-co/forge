@@ -15,8 +15,15 @@ export const BUILDER_RUN_SCHEMA_ID = `${SCHEMA_BASE}/builder-run-v1.json`;
 export const LINK_STATES = ['building', 'current', 'behind', 'breaking', 'unverified'] as const;
 export type LinkState = (typeof LINK_STATES)[number];
 
-export const BUILDER_TRIGGERS = ['joined', 'push'] as const;
-export const STEP_STATUSES = ['pending', 'running', 'succeeded', 'failed', 'skipped'] as const;
+export const BUILDER_TRIGGERS = ['joined', 'push', 'manual'] as const;
+export const STEP_STATUSES = [
+  'pending',
+  'running',
+  'succeeded',
+  'failed',
+  'skipped',
+  'superseded',
+] as const;
 export const FINDING_CLASSIFICATIONS = ['matched', 'outside_ecosystem', 'unknown'] as const;
 
 export const LIMITS = {
@@ -30,6 +37,7 @@ export const LIMITS = {
   outsideContract: 100,
   notes: 20,
   steps: 50,
+  reason: 1000,
   findings: 1000,
   links: 500,
 } as const;
@@ -141,12 +149,25 @@ const stepSchema = z.strictObject({
   detail: z.string().min(1).max(1000).optional(),
 });
 
+// cm:why a repository run names the commit it reads; a storefront has no commit, so its run says where it reads instead of a sha that names nothing (never git's empty tree)
+const triggerSchema = z
+  .strictObject({
+    kind: z.enum(BUILDER_TRIGGERS),
+    sha: sha().nullable(),
+    source: z.literal('storefront').optional(),
+  })
+  .refine((t) => (t.sha === null) === (t.source === 'storefront'), {
+    message:
+      'a trigger names a 40-hex commit sha, or sha null with source "storefront" for a storefront project; never both, never neither',
+    path: ['sha'],
+  });
+
 const builderRunFields = {
   $schema: z.literal(BUILDER_RUN_SCHEMA_ID),
   version: z.literal(1),
   ecosystem: uuid(),
   project: uuid(),
-  trigger: z.strictObject({ kind: z.enum(BUILDER_TRIGGERS), sha: sha() }),
+  trigger: triggerSchema,
   steps: z
     .array(stepSchema)
     .min(1)
@@ -156,15 +177,35 @@ const builderRunFields = {
     }),
   findings: z.array(findingSchema).max(LIMITS.findings),
   links: unique(z.array(uuid()).max(LIMITS.links)),
+  supersededBy: z
+    .strictObject({ run: uuid(), reason: z.string().trim().min(1).max(LIMITS.reason) })
+    .optional(),
 };
 
-export const builderRunWriteSchema = z.strictObject(builderRunFields);
+// cm:why a superseded run says so twice, in the run (who replaced it and why) and in each step it never reached; one without the other is refused, so neither reading can disagree with the other
+const supersededAgrees = (doc: {
+  steps: { status: string }[];
+  supersededBy?: unknown;
+}): boolean => {
+  const marked = doc.steps.some((s) => s.status === 'superseded');
+  const open = doc.steps.some((s) => s.status === 'pending' || s.status === 'running');
+  return doc.supersededBy === undefined ? !marked : marked && !open;
+};
+
+const SUPERSEDED_MESSAGE =
+  'a step is superseded exactly when the run names supersededBy, and a superseded run has no step pending or running';
+
+export const builderRunWriteSchema = z
+  .strictObject(builderRunFields)
+  .refine(supersededAgrees, { message: SUPERSEDED_MESSAGE, path: ['supersededBy'] });
 export type BuilderRunWrite = z.infer<typeof builderRunWriteSchema>;
 
-export const builderRunDocumentSchema = z.strictObject({
-  ...builderRunFields,
-  id: uuid(),
-  createdAt: timestamp(),
-  updatedAt: timestamp(),
-});
+export const builderRunDocumentSchema = z
+  .strictObject({
+    ...builderRunFields,
+    id: uuid(),
+    createdAt: timestamp(),
+    updatedAt: timestamp(),
+  })
+  .refine(supersededAgrees, { message: SUPERSEDED_MESSAGE, path: ['supersededBy'] });
 export type BuilderRunDocument = z.infer<typeof builderRunDocumentSchema>;

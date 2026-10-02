@@ -113,6 +113,11 @@ vi.mock('../../issues/dependency-read.js', () => ({
   loadIssueRelations: async () => ({ blocks: [], blockedBy: [] }),
 }));
 vi.mock('../../issues/attributes/read.js', () => ({ loadIssueAttributes: async () => [] }));
+// The issue read also asks which workflow the issue builds; this issue builds none.
+vi.mock('../../workflows/build-gate.js', async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  buildsWorkflowOf: async () => null,
+}));
 vi.mock('../../pipeline/work-evidence.js', () => ({
   findMissingWorkEvidence: async () => null,
   collectWorkEvidence: async () => ({ handoffCommitSha: null }),

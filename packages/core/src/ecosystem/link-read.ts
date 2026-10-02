@@ -6,7 +6,8 @@ import { type LinkImpact, linkImpact } from './contract/impact.js';
 import { latestVersion, type StoredVersion, versionsOf } from './contract/store.js';
 import { loadGraph } from './graph.js';
 import { heldInterface } from './interface-service.js';
-import { type Held, impactLink, storedBuilderRun, storedLink } from './link-service.js';
+import { stepsStale } from './link-rules.js';
+import { type Held, impactLink, sourceOf, storedBuilderRun, storedLink } from './link-service.js';
 import {
   builderRunsIn,
   builderRunsOf,
@@ -87,21 +88,24 @@ export async function listBuilderRunsAs(userId: string, projectId: string) {
 }
 
 // cm:why the bus carries each project's latest builder run as its step states and counts only: the findings and their call sites stay behind the run's own read, which the project's members hold
-function latestBuilderRuns(rows: StoredRecord[], shown: ReadonlySet<string>) {
-  const latest = new Map<string, ReturnType<typeof builderSummary>>();
+// cm:why stepsStale says a run's stored steps are not the ones its project's source type derives now, so a run opened against another source is seen and superseded rather than worked
+async function latestBuilderRuns(rows: StoredRecord[], shown: ReadonlySet<string>) {
+  const latest = new Map<string, Awaited<ReturnType<typeof builderSummary>>>();
   for (const row of rows) {
     if (!shown.has(row.projectId) || latest.has(row.projectId)) continue;
-    latest.set(row.projectId, builderSummary(row));
+    latest.set(row.projectId, await builderSummary(row));
   }
   return latest;
 }
 
-function builderSummary(row: StoredRecord) {
+async function builderSummary(row: StoredRecord) {
   const run = storedBuilderRun(row);
   return {
     id: row.id,
     trigger: run.trigger,
     steps: run.steps,
+    stepsStale: stepsStale(run, await sourceOf(row.projectId)),
+    supersededBy: run.supersededBy ?? null,
     findings: run.findings.length,
     links: run.links.length,
     createdAt: row.createdAt.toISOString(),
@@ -166,7 +170,7 @@ export async function readBus(userId: string, ecosystemId: string) {
     return i ? heldInterface(i, p).document.commitments.versioning : 'dated';
   });
   const latest = currentVersions(versions);
-  const builders = latestBuilderRuns(runs, new Set(shown));
+  const builders = await latestBuilderRuns(runs, new Set(shown));
   const contracts = [...interfaces].flatMap(([provider, stored]) =>
     Object.entries(heldInterface(stored, provider).document.publishes)
       .filter(([, pub]) => pub.ecosystems.includes(ecosystemId))

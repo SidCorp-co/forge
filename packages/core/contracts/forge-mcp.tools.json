@@ -468,7 +468,7 @@
       "name": "forge_coolify_deploy"
     },
     {
-      "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks). Writes take { baseRevision, document } as their REST route does: interface_write (an admin), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite). The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
+      "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks). Writes take { baseRevision, document } as their REST route does: interface_write (an admin), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite), builder_run_supersede ({ run, reason }: closes an open run as superseded and opens a fresh manual run with the steps the project's current source type derives, waking its master; the project's own agent's, or an org admin's of the steward or the project's org). The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -485,7 +485,8 @@
               "link_create",
               "link_update",
               "builder_run_create",
-              "builder_run_update"
+              "builder_run_update",
+              "builder_run_supersede"
             ],
             "type": "string"
           },
@@ -519,8 +520,12 @@
             "description": "The project acted for; a token bound to one project, or the X-Forge-Project-Slug header, names it when omitted.",
             "type": "string"
           },
+          "reason": {
+            "description": "builder_run_supersede: why the open run is replaced, 1 to 1000 characters.",
+            "type": "string"
+          },
           "run": {
-            "description": "builder_run, builder_run_update: the builder run uuid.",
+            "description": "builder_run, builder_run_update, builder_run_supersede: the builder run uuid.",
             "type": "string"
           },
           "session": {
@@ -4896,6 +4901,77 @@
         "type": "object"
       },
       "name": "forge_uploads"
+    },
+    {
+      "description": "Draw this project's workflows and take a design to its approver before anything is built from it. Actions: list | get | design | write | propose | decide | link | unlink. write: { workflowId?, baseRevision, document } — no workflowId and baseRevision null creates; the document is workflow-v1 (a flow the code already has) or workflow-v2 (a design: steps may be `designed` with no evidence, carry `node` { type: EVENT|CONTEXT|RULE|STATE|EXPECTATION|CASE|TASK|ATTENTION|ACTION|OUTCOME|STEP, purpose, inputs, outputs, owner, sla }, and `edges` carry the contract { from, to, condition, action, mapping, idempotency, onFailure } of a line `after` draws). Schemas: GET /api/schemas/workflow-v1.json and workflow-v2.json. A v2 workflow starts as a draft. Evidence matches the project source: a storefront project cites { kind: \"storefront\", provider, ref: workflow|route|node, id }, a repository project { kind: \"repo\", file, coverage } — the other is WORKFLOW_EVIDENCE_KIND_MISMATCH. propose: { workflowId, revision } puts a draft in front of its approver. A write that changes the design (steps, order, nodes, edge contracts) of a proposed, approved or returned workflow proposes that revision again; a write that only refreshes status or evidence does not. design: { workflowId } — the status (draft | proposed | approved | returned), every proposed revision with its decision and reason, the approved revision, and the issues that build it. decide: { workflowId, revision, decision: approve|return, reason } — only the approver the project's `workflows.designApprover` names: `owner` (default) is an org admin person, and an agent is refused WORKFLOW_DESIGN_APPROVER_NOT_PERSON; `master` lets this project's own master decide too. A return carries its reason. link: { workflowId, issue } names the issue that builds the workflow; dispatching that issue is then refused WORKFLOW_DESIGN_NOT_APPROVED until the design is approved, and forge_issues get shows why under `buildsWorkflow`. unlink lifts the gate, so only the approver may. Guide: forge_guide get workflow-design.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "get",
+              "design",
+              "write",
+              "propose",
+              "decide",
+              "link",
+              "unlink"
+            ],
+            "type": "string"
+          },
+          "baseRevision": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decision": {
+            "enum": [
+              "approve",
+              "return"
+            ],
+            "type": "string"
+          },
+          "document": {},
+          "issue": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "workflowId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "forge_workflows"
     }
   ]
 }

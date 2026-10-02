@@ -1,6 +1,6 @@
 {
-  "id": "3d1d37b0-3865-4424-87a9-6b6279c03792",
-  "prevId": "393ec1a4-0412-4a7f-8e67-6d01f990ee4e",
+  "id": "393ec1a4-0412-4a7f-8e67-6d01f990ee4e",
+  "prevId": "4adf84ea-4496-4994-9f30-635f316d4604",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -15873,135 +15873,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.project_workflow_designs": {
-      "name": "project_workflow_designs",
-      "schema": "",
-      "columns": {
-        "workflow_id": {
-          "name": "workflow_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "document": {
-          "name": "document",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "proposed_by_user": {
-          "name": "proposed_by_user",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "proposed_at": {
-          "name": "proposed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "decision": {
-          "name": "decision",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "decided_by_user": {
-          "name": "decided_by_user",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "decided_at": {
-          "name": "decided_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "project_workflow_designs_workflow_id_project_workflows_id_fk": {
-          "name": "project_workflow_designs_workflow_id_project_workflows_id_fk",
-          "tableFrom": "project_workflow_designs",
-          "tableTo": "project_workflows",
-          "columnsFrom": [
-            "workflow_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "project_workflow_designs_proposed_by_user_users_id_fk": {
-          "name": "project_workflow_designs_proposed_by_user_users_id_fk",
-          "tableFrom": "project_workflow_designs",
-          "tableTo": "users",
-          "columnsFrom": [
-            "proposed_by_user"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "project_workflow_designs_decided_by_user_users_id_fk": {
-          "name": "project_workflow_designs_decided_by_user_users_id_fk",
-          "tableFrom": "project_workflow_designs",
-          "tableTo": "users",
-          "columnsFrom": [
-            "decided_by_user"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "project_workflow_designs_workflow_id_revision_pk": {
-          "name": "project_workflow_designs_workflow_id_revision_pk",
-          "columns": [
-            "workflow_id",
-            "revision"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "project_workflow_designs_decision_chk": {
-          "name": "project_workflow_designs_decision_chk",
-          "value": "\"project_workflow_designs\".\"decision\" IS NULL OR \"project_workflow_designs\".\"decision\" IN ('approve', 'return')"
-        },
-        "project_workflow_designs_decided_chk": {
-          "name": "project_workflow_designs_decided_chk",
-          "value": "(\"project_workflow_designs\".\"decision\" IS NULL) = (\"project_workflow_designs\".\"decided_by_user\" IS NULL) AND (\"project_workflow_designs\".\"decision\" IS NULL) = (\"project_workflow_designs\".\"decided_at\" IS NULL)"
-        },
-        "project_workflow_designs_reason_chk": {
-          "name": "project_workflow_designs_reason_chk",
-          "value": "\"project_workflow_designs\".\"decision\" IS DISTINCT FROM 'return' OR \"project_workflow_designs\".\"reason\" IS NOT NULL"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.project_workflows": {
       "name": "project_workflows",
       "schema": "",
@@ -16041,7 +15912,7 @@
           "name": "refreshed_at_sha",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "revision": {
           "name": "revision",
@@ -16054,24 +15925,6 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
-        },
-        "design_status": {
-          "name": "design_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "design_fingerprint": {
-          "name": "design_fingerprint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "approved_revision": {
-          "name": "approved_revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
         },
         "written_by_user": {
           "name": "written_by_user",
@@ -16176,138 +16029,17 @@
         },
         "project_workflows_status_chk": {
           "name": "project_workflows_status_chk",
-          "value": "\"project_workflows\".\"status\" IN ('writing', 'current', 'rechecking', 'designed')"
+          "value": "\"project_workflows\".\"status\" IN ('writing', 'current', 'rechecking')"
         },
         "project_workflows_sha_chk": {
           "name": "project_workflows_sha_chk",
-          "value": "\"project_workflows\".\"refreshed_at_sha\" IS NULL OR \"project_workflows\".\"refreshed_at_sha\" ~ '^[0-9a-f]{40}$'"
+          "value": "\"project_workflows\".\"refreshed_at_sha\" ~ '^[0-9a-f]{40}$'"
         },
         "project_workflows_revision_chk": {
           "name": "project_workflows_revision_chk",
           "value": "\"project_workflows\".\"revision\" >= 1"
-        },
-        "project_workflows_design_status_chk": {
-          "name": "project_workflows_design_status_chk",
-          "value": "\"project_workflows\".\"design_status\" IS NULL OR \"project_workflows\".\"design_status\" IN ('draft', 'proposed', 'approved', 'returned')"
-        },
-        "project_workflows_design_approved_chk": {
-          "name": "project_workflows_design_approved_chk",
-          "value": "\"project_workflows\".\"design_status\" IS DISTINCT FROM 'approved' OR \"project_workflows\".\"approved_revision\" IS NOT NULL"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.workflow_builds": {
-      "name": "workflow_builds",
-      "schema": "",
-      "columns": {
-        "issue_id": {
-          "name": "issue_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "workflow_id": {
-          "name": "workflow_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "linked_by_user": {
-          "name": "linked_by_user",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "linked_at": {
-          "name": "linked_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "workflow_builds_workflow_idx": {
-          "name": "workflow_builds_workflow_idx",
-          "columns": [
-            {
-              "expression": "workflow_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "workflow_builds_issue_id_issues_id_fk": {
-          "name": "workflow_builds_issue_id_issues_id_fk",
-          "tableFrom": "workflow_builds",
-          "tableTo": "issues",
-          "columnsFrom": [
-            "issue_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "workflow_builds_workflow_id_project_workflows_id_fk": {
-          "name": "workflow_builds_workflow_id_project_workflows_id_fk",
-          "tableFrom": "workflow_builds",
-          "tableTo": "project_workflows",
-          "columnsFrom": [
-            "workflow_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "workflow_builds_project_id_projects_id_fk": {
-          "name": "workflow_builds_project_id_projects_id_fk",
-          "tableFrom": "workflow_builds",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "workflow_builds_linked_by_user_users_id_fk": {
-          "name": "workflow_builds_linked_by_user_users_id_fk",
-          "tableFrom": "workflow_builds",
-          "tableTo": "users",
-          "columnsFrom": [
-            "linked_by_user"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.agent_questions": {

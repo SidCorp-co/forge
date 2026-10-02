@@ -109,6 +109,11 @@ describe('membership needs both sides, across two orgs', () => {
     const id = w.membership.plugin ?? '';
     expect((await move('platform', id, 'accept')).status).toBe(403);
     expect((await move('viewer', id, 'accept')).status).toBe(403);
+    w.head.mockRejectedValueOnce(new Error('this project has no active source host binding'));
+    const blind = await move('plugin', id, 'accept');
+    expect(refusalCodes(blind)).toEqual(['BUILDER_RUN_HEAD_UNREADABLE']);
+    const still = await send('plugin', 'GET', `/api/memberships/${id}`);
+    expect(still.json.document).toMatchObject({ state: 'invited' });
     const res = await move('plugin', id, 'accept');
     expect(res.status).toBe(200);
     expect(res.json.document).toMatchObject({ state: 'active', decidedBy: w.user.plugin });

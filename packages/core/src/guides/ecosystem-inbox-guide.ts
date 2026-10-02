@@ -51,6 +51,9 @@ change notice owes nothing and is not listed; read it in \`inbox\` when the pass
 ### Working a builder run
 Joining an ecosystem opens a builder run for the joining project (trigger \`joined\`), and a push to its
 default branch opens another (trigger \`push\`, at the pushed commit) once the last one is finished.
+A git project's joined run names its default branch's head as its host reports it; where that head
+cannot be read the join is refused \`BUILDER_RUN_HEAD_UNREADABLE\` and nothing opens. A storefront
+project has no commit, so its trigger is \`{ sha: null, source: "storefront" }\`.
 Links go out from the project: the run maps what THIS project's own code uses, never what others use
 of it. Where that code lives is the project document's \`source.type\`, and it decides the run's steps
 when the run opens; a run already open keeps the steps it was opened with.
@@ -63,7 +66,8 @@ The box sees an open run in the same sweep (\`builderRuns\` beside the channel's
    \`read-storefront\`, \`find-provider-usage\`, \`match-contracts\`, \`write-links\`, \`check\`,
    \`publish-role\`. Each starts \`pending\`. Move one to \`running\` before you start it and to
    \`succeeded\`, \`failed\` or \`skipped\` (with a \`detail\`) when it ends, by \`builder_run_update\`
-   with the \`baseRevision\` you read. A status outside those five is refused \`STEP_STATUS_UNKNOWN\`.
+   with the \`baseRevision\` you read. A status outside those five is refused \`STEP_STATUS_UNKNOWN\`;
+   \`superseded\` is the supersede verb's alone, and a write naming it is refused.
 2. Read the code where it lives and find every outbound use: a git project reads its repository at
    HEAD; a storefront project reads what its provider holds (on \`autoflow\`, its workflows, routes and
    nodes). Record each as a finding: \`matched\` (to a contract an active member publishes here, else
@@ -83,6 +87,17 @@ The box sees an open run in the same sweep (\`builderRuns\` beside the channel's
 A project works one run per ecosystem at a time: opening another while one is open is refused
 \`BUILDER_RUN_ALREADY_OPEN\`; update the open one instead. Only this project's own agent writes its
 runs; a person, a viewer or another project's master is refused \`BUILDER_RUN_WRITER_NOT_PROJECT\`.
+
+A run whose steps no longer match its project's source type (the bus shows it \`stepsStale: true\`),
+or one that can never finish truly, is replaced, not worked: \`forge_ecosystem
+action=builder_run_supersede { run, reason }\` (REST \`POST
+/api/ecosystems/:id/builder-runs/:runId/supersede { reason }\`). It closes the open run (its unfinished
+steps \`superseded\`, the run naming \`supersededBy { run, reason }\`) and opens a fresh one, trigger
+\`manual\`, with the steps the current source type derives, and wakes this project's master. It is
+the project's own master's, or an org admin's of the steward or of the project's org; anyone else is
+refused \`BUILDER_RUN_SUPERSEDE_NOT_AUTHORISED\`, a run already finished \`BUILDER_RUN_NOT_OPEN\`, no
+reason \`BUILDER_RUN_SUPERSEDE_WITHOUT_REASON\`. A superseded run is closed: a write to it is refused
+\`BUILDER_RUN_SUPERSEDED\`.
 
 ### Rules
 1. **The author is the token.** An agent token writes \`via: master\`, a personal token \`via: cli\`, a

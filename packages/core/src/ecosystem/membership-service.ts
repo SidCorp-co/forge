@@ -1,11 +1,13 @@
 import { db } from '../db/client.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { pointer } from '../project-config/documents.js';
-import { assertStewardAdmin, forbidden, notFound, readerProjects, stewardRole } from './access.js';
-import { type HeldEcosystem, loadEcosystem, storedAs } from './ecosystem-service.js';
 import { wakeMastersForBuild } from '../ws/master-wake.js';
+import { assertStewardAdmin, forbidden, notFound, readerProjects, stewardRole } from './access.js';
+import { owedTrigger } from './builder-head.js';
+import { type HeldEcosystem, loadEcosystem, storedAs } from './ecosystem-service.js';
 import { loadGraph } from './graph.js';
-import { openOwedRun } from './link-service.js';
+import type { BuilderRunWrite } from './link-schema.js';
+import { openOwedRun, sourceOf } from './link-service.js';
 import { type MembershipRow, type MembershipVerb, TRANSITIONS } from './membership-rules.js';
 import { visibleMembers } from './party.js';
 import type { EcosystemRefusal } from './refusals.js';
@@ -20,9 +22,6 @@ import {
   readInterface,
   readMembership,
 } from './store.js';
-
-// cm:why a join has no commit of its own to read against: the run is built from nothing, so its trigger names git's empty tree, and the master reads the repo at HEAD
-const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 
 export type MembershipOutcome =
   | { ok: true; membership: MembershipRow }
@@ -115,6 +114,17 @@ export async function transition(input: {
     ],
   });
   if (row.state !== rule.from) return notAllowed(row.state);
+  // cm:why the head is read before anything moves: a join whose run cannot name the commit it reads is refused whole, never accepted with a stand-in sha
+  let joined: BuilderRunWrite['trigger'] | null = null;
+  if (verb === 'accept') {
+    const trigger = await owedTrigger({
+      projectId: row.projectId,
+      kind: 'joined',
+      source: await sourceOf(row.projectId),
+    });
+    if (!trigger.ok) return trigger;
+    joined = trigger.value;
+  }
   const outcome = await db.transaction(async (tx): Promise<MembershipOutcome> => {
     await lockKeys(tx, [
       `project:${row.projectId}`,
@@ -142,11 +152,11 @@ export async function transition(input: {
       const now = await readMembership(tx, membershipId);
       return notAllowed(now?.state ?? 'gone');
     }
-    if (verb === 'accept') {
+    if (joined) {
       await openOwedRun(tx, {
         ecosystemId: row.ecosystemId,
         projectId: row.projectId,
-        trigger: { kind: 'joined', sha: EMPTY_TREE },
+        trigger: joined,
         userId,
       });
     }

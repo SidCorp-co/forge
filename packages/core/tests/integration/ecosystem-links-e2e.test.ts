@@ -9,7 +9,7 @@ import {
   refusal,
   speaker,
 } from '../helpers/channel-world.js';
-import { type Doc, example, refusedByDb } from '../helpers/ecosystem-world.js';
+import { type Doc, example, JOIN_HEAD, refusedByDb } from '../helpers/ecosystem-world.js';
 
 let w: ChannelWorld;
 let say: ReturnType<typeof speaker>;
@@ -48,6 +48,7 @@ function runDoc(patch: (d: Doc) => void = () => {}): Doc {
   d.project = w.project.plugin;
   d.findings[0].contract.provider = w.project.forge;
   d.links = [ids.link];
+  d.trigger.sha = JOIN_HEAD;
   patch(d);
   return d;
 }
