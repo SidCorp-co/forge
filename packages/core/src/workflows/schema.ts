@@ -1,3 +1,11 @@
+import {
+  BAND_ID,
+  EDGE_KIND_ID,
+  LEGACY_V2_TEMPLATE,
+  NODE_TYPE_ID,
+  TEMPLATE_LIMITS,
+  templateRefSchema,
+} from '@forge/contracts/workflow-templates';
 import { z } from 'zod';
 import { repoPath } from '../ecosystem/link-schema.js';
 import { SCHEMA_BASE, STOREFRONT_PROVIDERS, slug, uuid } from '../project-config/schema.js';
@@ -16,24 +24,13 @@ export type WorkflowStatus = (typeof WORKFLOW_STATUSES)[number];
 export const WORKFLOW_V2_STATUSES = [...WORKFLOW_STATUSES, 'designed'] as const;
 export type WorkflowV2Status = (typeof WORKFLOW_V2_STATUSES)[number];
 
-// cm:why the journey node types a storefront design is drawn in (HOP's EVENT…OUTCOME), plus STEP for a plain code step
-export const WORKFLOW_NODE_TYPES = [
-  'EVENT',
-  'CONTEXT',
-  'RULE',
-  'STATE',
-  'EXPECTATION',
-  'CASE',
-  'TASK',
-  'ATTENTION',
-  'ACTION',
-  'OUTCOME',
-  'STEP',
-] as const;
+// cm:why a node's type and an edge's kind are no longer one global list: the template a design names
+// declares them (`@forge/contracts/workflow-templates`), so the schema holds only their shape and
+// `template-check.ts` refuses one its template does not declare
+export const NODE_TYPE = NODE_TYPE_ID;
+export const EDGE_KIND = EDGE_KIND_ID;
 
-// cm:why a `flow` edge is a line `after` draws and orders; a `feedback` edge returns from a later step to an earlier one (an OUTCOME re-evaluating a RULE), so it orders nothing and is never part of the cycle check
-export const WORKFLOW_EDGE_KINDS = ['flow', 'feedback'] as const;
-export type WorkflowEdgeKind = (typeof WORKFLOW_EDGE_KINDS)[number];
+export const UI_STATE_VARIANTS = ['empty', 'loading', 'error', 'permission-denied'] as const;
 
 export const STOREFRONT_REF_KINDS = ['workflow', 'route', 'node'] as const;
 
@@ -56,6 +53,10 @@ export const WORKFLOW_LIMITS = {
   contract: 400,
   mapping: 40,
   ref: 200,
+  label: TEMPLATE_LIMITS.label,
+  conditions: 30,
+  tests: 30,
+  lanes: 16,
 } as const;
 
 // cm:why a step id is a status name as often as a verb, so it takes `_` (`in_progress`) where a flow slug does not
@@ -123,14 +124,48 @@ const contractText = () => z.string().min(1).max(WORKFLOW_LIMITS.contract);
 const ioList = () =>
   z.array(z.string().min(1).max(WORKFLOW_LIMITS.ioName)).max(WORKFLOW_LIMITS.io).optional();
 
+const conditionRow = z.strictObject({
+  when: contractText(),
+  result: contractText(),
+});
+
+const textList = (max: number) =>
+  z.array(z.string().min(1).max(WORKFLOW_LIMITS.contract)).max(max).optional();
+
 const nodeSchema = z.strictObject({
-  type: z.enum(WORKFLOW_NODE_TYPES),
+  type: z.string().regex(NODE_TYPE),
+  /** The short business title an approver reads on the card; absent, the step's `title` is shown. */
+  label: z.string().min(1).max(WORKFLOW_LIMITS.label).optional(),
+  /** The band (or the design's lane) the step sits in; absent, its type's home band. */
+  band: z.string().regex(BAND_ID).optional(),
   purpose: z.string().min(1).max(WORKFLOW_LIMITS.purpose).optional(),
   inputs: ioList(),
   outputs: ioList(),
   owner: z.string().min(1).max(WORKFLOW_LIMITS.owner).optional(),
   sla: z.string().min(1).max(WORKFLOW_LIMITS.sla).optional(),
+  /** A rule table: each row is `when` a condition holds, the `result`. */
+  conditions: z.array(conditionRow).max(WORKFLOW_LIMITS.conditions).optional(),
+  /** The cases the rule table is checked against, each an input and the answer it must give. */
+  tests: textList(WORKFLOW_LIMITS.tests),
+  expectedOutcome: contractText().optional(),
+  permissions: textList(WORKFLOW_LIMITS.io),
+  initial: z.boolean().optional(),
+  terminal: z.boolean().optional(),
+  /** ux-flow: the persona (one of the design's `personas`) a screen is for. */
+  persona: z.string().regex(BAND_ID).optional(),
+  /** ux-flow: the wireframe-v1 board drawn for a screen, as the issue attachments holding it. */
+  wireframe: z.strictObject({ attachment: uuid(), svg: uuid().optional() }).optional(),
+  dataShown: textList(WORKFLOW_LIMITS.io),
+  actions: textList(WORKFLOW_LIMITS.io),
+  trigger: contractText().optional(),
+  validation: contractText().optional(),
+  /** ux-flow: the step of another design of this project a system step drives. */
+  invokes: z.strictObject({ workflow: slug(), step: stepId() }).optional(),
+  variant: z.enum(UI_STATE_VARIANTS).optional(),
+  /** ux-flow: why a screen has no error state, said instead of drawing one. */
+  noErrorState: contractText().optional(),
 });
+export type WorkflowNode = z.infer<typeof nodeSchema>;
 
 const repoEvidenceSchema = z.strictObject({
   kind: z.literal('repo'),
@@ -168,9 +203,11 @@ export const workflowStepV2Schema = z.strictObject({
 export type WorkflowStepV2 = z.infer<typeof workflowStepV2Schema>;
 
 const edgeSchema = z.strictObject({
-  kind: z.enum(WORKFLOW_EDGE_KINDS).optional(),
+  kind: z.string().regex(EDGE_KIND).optional(),
   from: stepId(),
   to: stepId(),
+  /** The short business words on the line; absent, its `condition` is shown. */
+  label: z.string().min(1).max(WORKFLOW_LIMITS.label).optional(),
   reevaluates: contractText().optional(),
   condition: contractText().optional(),
   action: contractText().optional(),
@@ -182,12 +219,18 @@ const edgeSchema = z.strictObject({
     .optional(),
   idempotency: contractText().optional(),
   onFailure: contractText().optional(),
+  /** ux-flow `submit`: the fields sent, and the steps the person reaches on success and on failure. */
+  payload: textList(WORKFLOW_LIMITS.io),
+  success: stepId().optional(),
+  failure: stepId().optional(),
 });
 export type WorkflowEdge = z.infer<typeof edgeSchema>;
 
-/** An edge's kind as written; an edge that names none is a `flow` edge, as every edge was before kinds. */
-export const edgeKindOf = (edge: Pick<WorkflowEdge, 'kind'>): WorkflowEdgeKind =>
-  edge.kind ?? 'flow';
+const laneSchema = z.strictObject({
+  id: z.string().regex(BAND_ID),
+  label: z.string().min(1).max(WORKFLOW_LIMITS.label),
+  tooltip: z.string().min(1).max(WORKFLOW_LIMITS.purpose).optional(),
+});
 
 const workflowV2Fields = {
   ...workflowFields,
@@ -195,6 +238,12 @@ const workflowV2Fields = {
   version: z.literal(2),
   status: z.enum(WORKFLOW_V2_STATUSES),
   steps: z.array(workflowStepV2Schema).min(1).max(WORKFLOW_LIMITS.steps),
+  /** The diagram template the design is drawn in; it decides the node types, bands and edge kinds. */
+  template: templateRefSchema,
+  /** The design's own lanes, for a template whose lanes come from the design (actors, systems). */
+  lanes: z.array(laneSchema).min(1).max(WORKFLOW_LIMITS.lanes).optional(),
+  /** The personas a ux-flow's screens are for. */
+  personas: z.array(laneSchema).min(1).max(WORKFLOW_LIMITS.lanes).optional(),
   edges: z.array(edgeSchema).max(WORKFLOW_LIMITS.edges).optional(),
   writtenBy: z.strictObject({
     runId: uuid().optional(),
@@ -221,10 +270,19 @@ export function evidenceKindOf(
   return 'kind' in evidence ? evidence.kind : 'repo';
 }
 
+// cm:hack dev-workflow-templates until:every stored workflow-v2 document and design revision carries `template` — a version 2 design written before templates names none, and it was drawn in HOP's journey vocabulary, which is `journey-bands@1`; it is read as that and never re-guessed, and a write still owes `template`
+export function withLegacyTemplate(raw: unknown): unknown {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const doc = raw as Record<string, unknown>;
+  return doc.version === 2 && !('template' in doc) ? { ...doc, template: LEGACY_V2_TEMPLATE } : raw;
+}
+
 /** The stored document read back by the version it was written at; never a guess at another. */
 export function readStoredWorkflow(raw: unknown): WorkflowWrite | null {
   const version = (raw as { version?: unknown } | null)?.version;
   const parsed =
-    version === 2 ? workflowWriteV2Schema.safeParse(raw) : workflowWriteSchema.safeParse(raw);
+    version === 2
+      ? workflowWriteV2Schema.safeParse(withLegacyTemplate(raw))
+      : workflowWriteSchema.safeParse(raw);
   return parsed.success ? parsed.data : null;
 }

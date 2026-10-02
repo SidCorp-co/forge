@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { BUILTIN_WORKFLOW_TEMPLATES } from '@forge/contracts/workflow-templates';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
@@ -11,6 +12,8 @@ import {
   workflowWriterRefusal,
 } from './rules.js';
 import { WORKFLOW_LIMITS, type WorkflowWrite } from './schema.js';
+
+const CTX = { templates: BUILTIN_WORKFLOW_TEMPLATES, designs: new Map<string, string[]>() };
 
 // biome-ignore lint/suspicious/noExplicitAny: plants mutate fixtures at arbitrary depth
 type Doc = Record<string, any>;
@@ -36,7 +39,7 @@ const stamped = (d: Doc) => ({
 
 function refusalsOf(raw: Doc) {
   const parsed = parseWorkflow(raw, PROJECT);
-  return parsed.ok ? checkWorkflow(parsed.value) : parsed.refusals;
+  return parsed.ok ? checkWorkflow(parsed.value, CTX) : parsed.refusals;
 }
 const codesAt = (raw: Doc) => refusalsOf(raw).map((r) => `${r.code} ${r.path}`);
 const withDoc = (base: () => Doc, patch: (d: Doc) => void) => {
@@ -266,7 +269,7 @@ describe('a workflow-v2 design', () => {
   const emittedV2 = ajv.compile(workflowJsonSchemas['workflow-v2.json'] as object);
   const refusalsAt = (raw: Doc) => {
     const parsed = parseWorkflow(raw, HOP);
-    return (parsed.ok ? checkWorkflow(parsed.value) : parsed.refusals).map(
+    return (parsed.ok ? checkWorkflow(parsed.value, CTX) : parsed.refusals).map(
       (r) => `${r.code} ${r.path}`,
     );
   };
@@ -286,7 +289,7 @@ describe('a workflow-v2 design', () => {
     [
       'an unknown node type',
       (d: Doc) => (d.steps[0].node.type = 'TRIGGER'),
-      'WORKFLOW_NODE_TYPE_UNKNOWN /steps/0/node/type',
+      'WORKFLOW_NODE_TYPE_NOT_IN_TEMPLATE /steps/0/node/type',
     ],
     [
       'an edge to no step',

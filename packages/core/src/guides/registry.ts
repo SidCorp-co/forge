@@ -23,6 +23,7 @@ import { ECOSYSTEM_INBOX_GUIDE } from './ecosystem-inbox-guide.js';
 import { RECORDS_GUIDE } from './records-guide.js';
 import type { ForgeGuide } from './types.js';
 import { WORKFLOW_DESIGN_GUIDE } from './workflow-design-guide.js';
+import { WORKFLOW_TEMPLATES_GUIDE } from './workflow-templates-guide.js';
 
 export type { ForgeGuide };
 
@@ -723,6 +724,7 @@ section, which is why this migration is what turns the feature on.`,
   RECORDS_GUIDE,
   ECOSYSTEM_INBOX_GUIDE,
   WORKFLOW_DESIGN_GUIDE,
+  WORKFLOW_TEMPLATES_GUIDE,
 ] as const;
 
 const GUIDE_BY_SLUG = new Map<string, ForgeGuide>(FORGE_GUIDES.map((g) => [g.slug, g]));

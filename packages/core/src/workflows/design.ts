@@ -1,9 +1,14 @@
 import { createHash } from 'node:crypto';
+import {
+  bandOfNode,
+  LEGACY_V2_TEMPLATE,
+  type WorkflowTemplate,
+} from '@forge/contracts/workflow-templates';
 import type { OrgMemberRole, ProjectMemberRole } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { orgRoleAtLeast, projectRoleAtLeast } from '../lib/authz.js';
 import type { DesignApprover } from '../project-config/schema.js';
-import { edgeKindOf, stepsOf, type WorkflowWrite } from './schema.js';
+import { stepsOf, type WorkflowWrite } from './schema.js';
 
 export const DESIGN_STATUSES = ['draft', 'proposed', 'approved', 'returned'] as const;
 export type DesignStatus = (typeof DESIGN_STATUSES)[number];
@@ -34,27 +39,53 @@ export interface DesignRefusal {
 }
 
 /**
- * The part of a workflow its approver decides: the steps, their order, their node types and the
- * edge contracts, feedback edges included. An edge written `kind: "flow"` fingerprints as one that
- * names no kind, so a design stored before edges had kinds keeps the fingerprint it was approved at.
+ * The part of a workflow its approver decides: the template it is drawn in, the steps, their order,
+ * their nodes (business labels and bands included) and the edge contracts, return edges included.
+ * Written defaults fingerprint as absent — an edge of the template's default kind, a node in its
+ * type's home band, a design in `journey-bands@1` — so a design stored before kinds, bands or
+ * templates keeps the fingerprint it was approved at when its writer spells the default out.
  * Status, evidence, coverage, drift and the commit a reading was taken at are the code's reading
  * of itself, so a refresh after the build moves none of this and needs no new approval.
  */
-export function designFingerprint(doc: WorkflowWrite): string {
+export function designFingerprint(doc: WorkflowWrite, template: WorkflowTemplate | null): string {
+  const nodeShape = (
+    node: NonNullable<Extract<WorkflowWrite, { version: 2 }>['steps'][number]['node']>,
+  ) => {
+    if (!template || node.band === undefined) return node;
+    const home = bandOfNode(template, { type: node.type });
+    if (home !== node.band) return node;
+    const { band, ...rest } = node;
+    void band;
+    return rest;
+  };
   const steps = stepsOf(doc).map((s) => ({
     id: s.id,
     title: s.title ?? null,
     does: s.does,
     after: [...s.after].sort(),
-    node: 'node' in s ? (s.node ?? null) : null,
+    node: 'node' in s && s.node ? nodeShape(s.node) : null,
   }));
   const edges =
     doc.version === 2
       ? [...(doc.edges ?? [])]
-          .map(({ kind, ...e }) => (edgeKindOf({ kind }) === 'flow' ? e : { kind, ...e }))
+          .map(({ kind, ...e }) =>
+            kind === undefined || kind === template?.defaultEdgeKind ? e : { kind, ...e },
+          )
           .sort((a, b) => `${a.from}>${a.to}`.localeCompare(`${b.from}>${b.to}`))
       : [];
-  const shape = { kind: doc.kind, title: doc.title, summary: doc.summary, steps, edges };
+  const legacy =
+    doc.version !== 2 ||
+    (doc.template.id === LEGACY_V2_TEMPLATE.id &&
+      doc.template.version === LEGACY_V2_TEMPLATE.version);
+  const shape = {
+    kind: doc.kind,
+    title: doc.title,
+    summary: doc.summary,
+    steps,
+    edges,
+    ...(legacy || doc.version !== 2 ? {} : { template: doc.template }),
+    ...(doc.version === 2 && doc.lanes ? { lanes: doc.lanes } : {}),
+  };
   return createHash('sha256').update(JSON.stringify(shape)).digest('hex');
 }
 

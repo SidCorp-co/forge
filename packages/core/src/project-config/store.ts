@@ -83,6 +83,8 @@ export interface ConfigStore {
     valueEnc: Buffer;
   }): Promise<SecretName>;
   deviceCheckout(projectId: string, deviceId: string): Promise<DeviceCheckout | null>;
+  /** Each diagram template the project's stored version 2 designs name (`id@version`), with the flows naming it. */
+  workflowTemplatesInUse(projectId: string): Promise<Map<string, string[]>>;
 }
 
 const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
@@ -91,6 +93,20 @@ const lockKey = (kind: string, projectId: string, extra = '') =>
   sql`SELECT pg_advisory_xact_lock(hashtextextended(${`project-config:${kind}:${projectId}:${extra}`}, 0))`;
 
 export const drizzleConfigStore: ConfigStore = {
+  async workflowTemplatesInUse(projectId) {
+    const rows = (await db.execute(sql`
+      SELECT flow, document->'template'->>'id' AS id, document->'template'->>'version' AS version
+      FROM project_workflows
+      WHERE project_id = ${projectId} AND document->>'version' = '2' AND document ? 'template'
+    `)) as unknown as Array<{ flow: string; id: string; version: string }>;
+    const out = new Map<string, string[]>();
+    for (const r of rows) {
+      const key = `${r.id}@${r.version}`;
+      out.set(key, [...(out.get(key) ?? []), r.flow]);
+    }
+    return out;
+  },
+
   async readProject(projectId) {
     const [row] = await db
       .select()

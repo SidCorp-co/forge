@@ -22,10 +22,16 @@ import {
   type WorkflowWriter,
   workflowView,
 } from './service.js';
+import { listProjectTemplatesAs, readProjectTemplateAs } from './template-service.js';
 
 export const workflowRoutes = new Hono<{ Variables: AuthVars }>();
 
-for (const path of ['/:id/workflows', '/:id/workflows/*']) {
+for (const path of [
+  '/:id/workflows',
+  '/:id/workflows/*',
+  '/:id/workflow-templates',
+  '/:id/workflow-templates/*',
+]) {
   workflowRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 
@@ -185,5 +191,23 @@ workflowRoutes.delete('/:id/workflows/:workflow/builds/:issue', async (c) => {
       actor: writerOf(c),
       issue: c.req.param('issue'),
     }),
+  );
+});
+
+workflowRoutes.get('/:id/workflow-templates', idParam, async (c) => {
+  const templates = await listProjectTemplatesAs(c.get('userId'), c.req.valid('param').id);
+  return c.json({ templates, returned: templates.length });
+});
+
+workflowRoutes.get('/:id/workflow-templates/:templateId/:version', async (c) => {
+  const id = z.uuid().safeParse(c.req.param('id'));
+  if (!id.success) throw badRequest('invalid path: the project id is a uuid');
+  return c.json(
+    await readProjectTemplateAs(
+      c.get('userId'),
+      id.data,
+      c.req.param('templateId'),
+      c.req.param('version'),
+    ),
   );
 });

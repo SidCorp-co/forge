@@ -7,6 +7,10 @@
   "title": "Post-discharge follow-up",
   "summary": "A discharged patient who needs follow-up becomes one case with an owner and an SLA, and the case closes on a recorded outcome.",
   "status": "designed",
+  "template": {
+    "id": "journey-bands",
+    "version": 1
+  },
   "steps": [
     {
       "id": "discharged",
@@ -17,44 +21,89 @@
       "node": {
         "type": "EVENT",
         "purpose": "The fact that starts the journey.",
-        "outputs": ["patient.id", "episode.id"]
+        "outputs": [
+          "patient.id",
+          "episode.id"
+        ]
       }
     },
     {
       "id": "context",
       "does": "The episode's diagnosis, risk flags and care team are read.",
       "status": "designed",
-      "after": ["discharged"],
+      "after": [
+        "discharged"
+      ],
       "evidence": null,
       "node": {
         "type": "CONTEXT",
-        "inputs": ["episode.id"],
-        "outputs": ["episode.risk", "care_team"]
+        "inputs": [
+          "episode.id"
+        ],
+        "outputs": [
+          "episode.risk",
+          "care_team"
+        ]
       }
     },
     {
       "id": "followup-rule",
       "does": "A high-risk discharge requires follow-up within 48 hours.",
       "status": "designed",
-      "after": ["context"],
+      "after": [
+        "context"
+      ],
       "evidence": null,
-      "node": { "type": "RULE", "purpose": "Decide whether follow-up is required." }
+      "node": {
+        "type": "RULE",
+        "label": "Decide follow-up",
+        "purpose": "Decide whether follow-up is required.",
+        "inputs": [
+          "episode.risk"
+        ],
+        "conditions": [
+          {
+            "when": "episode.risk == high",
+            "result": "follow-up within 48h"
+          }
+        ],
+        "outputs": [
+          "followup_required"
+        ],
+        "tests": [
+          "high risk → required",
+          "low risk → not required"
+        ]
+      }
     },
     {
       "id": "case",
       "does": "One active follow-up case per discharge episode, owned by the care coordinator.",
       "status": "designed",
-      "after": ["followup-rule"],
+      "after": [
+        "followup-rule"
+      ],
       "evidence": null,
-      "node": { "type": "CASE", "owner": "care coordinator", "sla": "48h" }
+      "node": {
+        "type": "CASE",
+        "owner": "care coordinator",
+        "sla": "48h"
+      }
     },
     {
       "id": "outcome",
       "does": "The case closes on a reached, unreachable or readmitted outcome.",
       "status": "designed",
-      "after": ["case"],
+      "after": [
+        "case"
+      ],
       "evidence": null,
-      "node": { "type": "OUTCOME", "outputs": ["case.outcome"] }
+      "node": {
+        "type": "OUTCOME",
+        "outputs": [
+          "case.outcome"
+        ]
+      }
     }
   ],
   "edges": [

@@ -1,3 +1,4 @@
+import type { WorkflowTemplate } from '@forge/contracts/workflow-templates';
 import type { ProjectMemberRole } from '../db/schema.js';
 import { REPO_PATH_MESSAGE } from '../ecosystem/link-schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
@@ -8,22 +9,20 @@ import {
   parseVersionedDocument,
   pointer,
 } from '../project-config/documents.js';
-import { edgeRefusals } from './edges.js';
 import {
   type AnyWorkflowStep,
   COVERAGE_READINGS,
   EVIDENCE_KINDS,
   evidenceKindOf,
   stepsOf,
-  WORKFLOW_EDGE_KINDS,
   WORKFLOW_KINDS,
-  WORKFLOW_NODE_TYPES,
   WORKFLOW_V2_STATUSES,
   WORKFLOW_VERSIONS,
   type WorkflowWrite,
   workflowWriteSchema,
   workflowWriteV2Schema,
 } from './schema.js';
+import { type ProjectDesigns, templateOf, templateRefusals } from './template-check.js';
 
 export type WorkflowRefusalCode =
   | 'WORKFLOW_WRITER_NOT_PROJECT'
@@ -39,17 +38,22 @@ export type WorkflowRefusalCode =
   | 'WORKFLOW_STATUS_MISMATCH'
   | 'WORKFLOW_DRIFT_MISMATCH'
   | 'WORKFLOW_DRIFT_STEP_UNKNOWN'
-  | 'WORKFLOW_NODE_TYPE_UNKNOWN'
   | 'WORKFLOW_EVIDENCE_KIND_UNKNOWN'
   | 'WORKFLOW_EVIDENCE_KIND_MISMATCH'
   | 'WORKFLOW_EDGE_DANGLING'
   | 'WORKFLOW_EDGE_UNDRAWN'
   | 'WORKFLOW_EDGE_DUPLICATE'
-  | 'WORKFLOW_EDGE_KIND_UNKNOWN'
-  | 'WORKFLOW_FEEDBACK_EDGE_FORWARD'
-  | 'WORKFLOW_FEEDBACK_REEVALUATES_MISSING'
-  | 'WORKFLOW_FEEDBACK_CONTRACT_INCOMPLETE'
-  | 'WORKFLOW_EDGE_REEVALUATES_ON_FLOW'
+  | 'WORKFLOW_EDGE_RETURN_FORWARD'
+  | 'WORKFLOW_EDGE_REEVALUATES_FORWARD'
+  | 'WORKFLOW_EDGE_FIELD_MISSING'
+  | 'WORKFLOW_EDGE_KIND_NOT_IN_TEMPLATE'
+  | 'WORKFLOW_TEMPLATE_MISSING'
+  | 'WORKFLOW_TEMPLATE_UNKNOWN'
+  | 'WORKFLOW_NODE_TYPE_NOT_IN_TEMPLATE'
+  | 'WORKFLOW_NODE_FIELD_MISSING'
+  | 'WORKFLOW_BAND_MISMATCH'
+  | 'WORKFLOW_TEMPLATE_RULE'
+  | 'WORKFLOW_EDGE_ENDPOINT_NOT_IN_KIND'
   | 'WORKFLOW_DUPLICATE'
   | 'WORKFLOW_IDENTITY_IMMUTABLE'
   | 'PATH_OUTSIDE_REPO'
@@ -76,8 +80,8 @@ const ENUM_RENAMES: readonly [RegExp, WorkflowRefusalCode, string][] = [
   ],
   [
     /^\/steps\/\d+\/node\/type$/,
-    'WORKFLOW_NODE_TYPE_UNKNOWN',
-    `a node's type is ${closed(WORKFLOW_NODE_TYPES)}`,
+    'WORKFLOW_NODE_TYPE_NOT_IN_TEMPLATE',
+    "a node's type is an upper-case id (EVENT, STATE, TASK) its template declares",
   ],
   [
     /^\/steps\/\d+\/evidence\/kind$/,
@@ -86,8 +90,13 @@ const ENUM_RENAMES: readonly [RegExp, WorkflowRefusalCode, string][] = [
   ],
   [
     /^\/edges\/\d+\/kind$/,
-    'WORKFLOW_EDGE_KIND_UNKNOWN',
-    `an edge's kind is ${closed(WORKFLOW_EDGE_KINDS)}; an edge that names none is a flow edge`,
+    'WORKFLOW_EDGE_KIND_NOT_IN_TEMPLATE',
+    "an edge's kind is a lower-case id (flow, feedback, transition) its template declares; an edge that names none is the template's default kind",
+  ],
+  [
+    /^\/template$/,
+    'WORKFLOW_TEMPLATE_MISSING',
+    'a version 2 design names the diagram template it is drawn in, `template: { id, version }` — e.g. { id: "journey-bands", version: 1 }; GET /api/workflow-templates lists the built-ins and forge_guide get workflow-templates says how to pick one',
   ],
   [
     /^\/steps\/\d+\/evidence\/coverage\/reading$/,
@@ -231,7 +240,7 @@ function afterCycle(steps: readonly AnyWorkflowStep[]): WorkflowRefusal[] {
     {
       code: 'WORKFLOW_AFTER_CYCLE',
       path: pointer(['steps', at, 'after']),
-      detail: `the \`after\` edges close a loop (${[...cycle].reverse().join(' → ')}); a workflow's steps are ordered, so no step may come after itself. A return to an earlier step — an outcome that re-evaluates a rule — is not an \`after\` line: take it out of \`after\` and declare it in \`edges\` as \`{ kind: "feedback", from: <the later step>, to: <the earlier step>, reevaluates, condition, action, mapping, idempotency, onFailure }\`, which orders nothing and is never part of this check.`,
+      detail: `the \`after\` edges close a loop (${[...cycle].reverse().join(' → ')}); a workflow's steps are ordered, so no step may come after itself. A return to an earlier step — an outcome that re-evaluates a rule, a reopened state — is not an \`after\` line: take it out of \`after\` and declare it in \`edges\` with a return kind of the design's template (journey-bands: \`{ kind: "feedback", from: <the later step>, to: <the earlier step>, reevaluates, condition, action, mapping, idempotency, onFailure }\`; state-machine: \`{ kind: "back", from, to, condition }\`), which orders nothing and is never part of this check.`,
     },
   ];
 }
@@ -385,19 +394,39 @@ function driftRefusals(doc: WorkflowWrite): WorkflowRefusal[] {
   });
 }
 
-export function checkWorkflow(doc: WorkflowWrite): WorkflowRefusal[] {
+/** What a design is checked against beyond itself: the templates it may name, and the project's other designs. */
+export interface WorkflowCheckContext {
+  /** The built-ins and the project's own. */
+  templates: readonly WorkflowTemplate[];
+  designs: ProjectDesigns;
+}
+
+/**
+ * A workflow held to the kernel's order rules and, at version 2, to the template it names.
+ */
+export function checkWorkflow(doc: WorkflowWrite, ctx: WorkflowCheckContext): WorkflowRefusal[] {
   const steps = stepsOf(doc);
   const dup = duplicateSteps(steps);
   if (dup.length > 0) return dup;
   const dangling = danglingAfter(steps);
+  const cycle = afterCycle(steps);
   return [
     ...dangling,
-    ...afterCycle(steps),
-    ...edgeRefusals(doc),
+    ...cycle,
+    ...(doc.version === 2 ? designRefusals(doc, ctx, cycle.length === 0) : []),
     ...evidenceRefusals(doc),
     ...statusRefusals(doc),
     ...driftRefusals(doc),
   ];
+}
+
+function designRefusals(
+  doc: Extract<WorkflowWrite, { version: 2 }>,
+  ctx: WorkflowCheckContext,
+  ordered: boolean,
+): WorkflowRefusal[] {
+  const found = templateOf(doc, ctx.templates);
+  return found.ok ? templateRefusals(doc, found.template, ctx.designs, ordered) : [found.refusal];
 }
 
 export function workflowIdentityRefusals(
