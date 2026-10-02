@@ -14,13 +14,13 @@ import {
   linkDocumentSchema,
 } from './link-schema.js';
 import {
-  ecosystemDocumentSchema,
+  ecosystemWriteSchema,
   interfaceDocumentSchema,
   membershipDocumentSchema,
 } from './schema.js';
 
 export const ecosystemJsonSchemas: Readonly<Record<string, object>> = {
-  'ecosystem-v1.json': emitJsonSchema(ecosystemDocumentSchema, `${SCHEMA_BASE}/ecosystem-v1.json`),
+  'ecosystem-v1.json': emitJsonSchema(ecosystemWriteSchema, `${SCHEMA_BASE}/ecosystem-v1.json`),
   'membership-v1.json': emitJsonSchema(
     membershipDocumentSchema,
     `${SCHEMA_BASE}/membership-v1.json`,

@@ -1,23 +1,26 @@
-import type { ImpactLink } from './contract/impact.js';
 import { db, type Tx } from '../db/client.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { staleBase } from '../project-config/documents.js';
+import { readProjectDocument } from '../project-config/service.js';
 import { notFound, refusedBy } from './access.js';
+import type { ImpactLink } from './contract/impact.js';
 import { storedAs } from './ecosystem-service.js';
 import { heldInterface } from './interface-service.js';
 import {
   type BuilderRunWorld,
+  type BuilderSource,
   builderRunIdentityRefusals,
+  builderSourceOf,
   checkBuilderRun,
   checkLink,
   contractKey,
   type DeclaredWithoutCallSite,
   declaredWithoutCallSite,
   isOpenRun,
-  openedRun,
   type LinkWorld,
   linkIdentityRefusals,
+  openedRun,
   parseBuilderRun,
   parseLink,
   writerRefusal,
@@ -32,9 +35,9 @@ import {
   builderRunsOf,
   insertBuilderRun,
   insertLink,
-  openBuilderRunOf,
   linkHolding,
   linksWhere,
+  openBuilderRunOf,
   readBuilderRun,
   readLink,
   replaceBuilderRun,
@@ -151,19 +154,26 @@ async function updateRecord<W>(
   });
 }
 
+/** Where the project's code lives, read from its project document. */
+async function sourceOf(projectId: string): Promise<BuilderSource> {
+  return builderSourceOf((await readProjectDocument(projectId))?.document);
+}
+
 async function linkWorld(tx: Tx, doc: LinkWrite, selfId: string | null): Promise<LinkWorld> {
   const consumer = doc.consumer.project;
   const provider = doc.contract.provider;
-  const [active, providers, versions, holding] = await Promise.all([
+  const [active, providers, versions, holding, consumerSource] = await Promise.all([
     activeEcosystemIdsOf(tx, [consumer, provider]),
     projectsWhere(tx, { ids: [provider] }),
     recordedVersions(tx, [provider]),
     linkHolding(tx, doc),
+    sourceOf(consumer),
   ]);
   const activeIn = (p: string) =>
     new Set(active.filter((a) => a.projectId === p).map((a) => a.ecosystemId));
   const declared = providers.length > 0 ? await readInterface(tx, provider) : null;
   return {
+    consumerSource,
     consumerActiveIn: activeIn(consumer),
     provider:
       providers.length > 0
@@ -197,11 +207,12 @@ async function builderRunWorld(
   doc: BuilderRunWrite,
   selfId: string | null,
 ): Promise<BuilderRunWorld> {
-  const [active, members, links, openRun] = await Promise.all([
+  const [active, members, links, openRun, source] = await Promise.all([
     activeEcosystemIdsOf(tx, [doc.project]),
     activeMembersOf(tx, doc.ecosystem),
     linksWhere(tx, { consumerId: doc.project, ecosystemIds: [doc.ecosystem] }),
     openBuilderRunOf(tx, { projectId: doc.project, ecosystemId: doc.ecosystem, exceptId: selfId }),
+    sourceOf(doc.project),
   ]);
   const published = new Set<string>();
   for (const [provider, stored] of await readInterfaces(tx, members)) {
@@ -210,6 +221,7 @@ async function builderRunWorld(
     }
   }
   return {
+    source,
     projectActiveIn: new Set(active.map((a) => a.ecosystemId)),
     published,
     links: new Set(links.map((l) => l.id)),
@@ -266,7 +278,8 @@ export async function openOwedRun(
   await lockKeys(tx, [`${BUILDER_RUN.what}:${projectId}`]);
   const open = await openBuilderRunOf(tx, { projectId, ecosystemId, exceptId: null });
   if (open) return { id: open, opened: false };
-  const doc = openedRun({ ecosystem: ecosystemId, project: projectId, trigger });
+  const source = await sourceOf(projectId);
+  const doc = openedRun({ ecosystem: ecosystemId, project: projectId, trigger, source });
   const row = await insertBuilderRun(tx, doc, userId);
   return { id: row.id, opened: true };
 }

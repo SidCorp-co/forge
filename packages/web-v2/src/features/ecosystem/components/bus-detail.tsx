@@ -11,6 +11,7 @@ import {
   type BusLink,
   type BusRow,
   builderProgress,
+  callSiteAt,
   impactLine,
   impactOf,
   STATE_MEANING,
@@ -250,9 +251,9 @@ function Guide({ record }: { record: NonNullable<ReturnType<typeof useLink>["dat
           <Caption>No call site is recorded.</Caption>
         ) : (
           d.callSites.map((s) => (
-            <div key={`${s.path}:${s.line}:${s.operation}`} className="flex min-w-0 justify-between gap-2 font-mono text-11-5">
+            <div key={`${callSiteAt(s)}:${s.operation}`} className="flex min-w-0 justify-between gap-2 font-mono text-11-5">
               <span className="truncate" style={{ color: "var(--cobalt-700)" }}>
-                {s.path}:{s.line}
+                {callSiteAt(s)}
               </span>
               <span className="truncate">{s.operation}</span>
             </div>
@@ -439,8 +440,8 @@ function BuilderDetail({ bus, id }: { bus: Bus; id: string }) {
           ) : (
             reading.value.document.findings.map((f) => (
               <Tooltip
-                key={`${f.site.path}:${f.site.line}:${f.site.operation}`}
-                label={`${f.site.path}:${f.site.line} · ${f.site.operation}`}
+                key={`${callSiteAt(f.site)}:${f.site.operation}`}
+                label={`${callSiteAt(f.site)} · ${f.site.operation}`}
                 multiline
               >
                 <span className="flex min-w-0 justify-between gap-2 font-mono text-11-5">

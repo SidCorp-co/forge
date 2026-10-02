@@ -1,4 +1,4 @@
-import { REPO_PATH } from '../link-schema.js';
+import { callSiteAt, REPO_PATH } from '../link-schema.js';
 import type { ImpactCallSite, ImpactChange } from './impact.js';
 import { compareVersions, type Versioning } from './naming.js';
 
@@ -82,13 +82,17 @@ export function contractContext(input: {
   const paths = [...new Set(input.paths.map(normal).filter((p) => p.length > 0))];
   const out: LoadedContract[] = [];
   for (const link of input.links) {
-    const matched = paths.filter((p) => link.callSites.some((s) => covers(p, s.path)));
+    const matched = paths.filter((p) =>
+      link.callSites.some((s) => s.path !== undefined && covers(p, s.path)),
+    );
     if (matched.length === 0) continue;
     out.push({
       link: link.id,
       contract: { provider: link.provider, slug: link.contractSlug },
       paths: matched,
-      callSites: link.callSites.filter((s) => matched.some((p) => covers(p, s.path))),
+      callSites: link.callSites.filter(
+        (s) => s.path !== undefined && matched.some((p) => covers(p, s.path as string)),
+      ),
       from: link.pinnedVersion,
       guide: [...link.notes],
       ...diffBetween(input.versioningOf(link), link.pinnedVersion, input.versionsOf(link)),
@@ -110,7 +114,7 @@ export function renderContractContext(loaded: readonly LoadedContract[]): string
   if (loaded.length === 0) return null;
   const parts = loaded.map((l) => {
     const head = `### ${l.contract.slug} (link ${l.link}) — ${l.from} → ${l.to ?? 'none recorded'}`;
-    const why = `Loaded because this run touches ${l.paths.map((p) => `\`${p}\``).join(', ')}, which holds call sites ${l.callSites.map((s) => `${s.path}:${s.line} (${s.operation})`).join(', ')}.`;
+    const why = `Loaded because this run touches ${l.paths.map((p) => `\`${p}\``).join(', ')}, which holds call sites ${l.callSites.map((s) => `${callSiteAt(s)} (${s.operation})`).join(', ')}.`;
     const guide = l.guide.length
       ? ['Guide:', ...l.guide.map((n) => `- ${n}`)].join('\n')
       : 'Guide: the link records no notes.';

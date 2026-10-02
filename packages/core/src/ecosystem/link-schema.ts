@@ -1,5 +1,13 @@
 import { z } from 'zod';
-import { SCHEMA_BASE, slug, unique, uuid } from '../project-config/schema.js';
+import {
+  SCHEMA_BASE,
+  type STOREFRONT_PROVIDERS,
+  slug,
+  unique,
+  uuid,
+} from '../project-config/schema.js';
+
+type StorefrontProvider = (typeof STOREFRONT_PROVIDERS)[number];
 
 export const LINK_SCHEMA_ID = `${SCHEMA_BASE}/link-v1.json`;
 export const BUILDER_RUN_SCHEMA_ID = `${SCHEMA_BASE}/builder-run-v1.json`;
@@ -13,6 +21,7 @@ export const FINDING_CLASSIFICATIONS = ['matched', 'outside_ecosystem', 'unknown
 
 export const LIMITS = {
   path: 400,
+  artefactId: 200,
   operation: 200,
   field: 200,
   note: 280,
@@ -40,11 +49,41 @@ export const repoPath = () =>
   z.string().min(1).max(LIMITS.path).regex(REPO_PATH, { message: REPO_PATH_MESSAGE });
 const operation = () => z.string().min(1).max(LIMITS.operation);
 
-export const callSiteSchema = z.strictObject({
-  path: repoPath(),
-  line: z.number().int().min(1).max(10_000_000),
-  operation: operation(),
-});
+/** The artefacts a storefront provider holds, which a gitless consumer's call site names in place of a file. */
+export const ARTEFACT_KINDS: Readonly<Partial<Record<StorefrontProvider, readonly string[]>>> = {
+  autoflow: ['workflow', 'route', 'node'],
+};
+
+const CALL_SITE_SHAPE =
+  'a call site names either a repository path and line (a git consumer) or a storefront artefact (a storefront consumer), exactly one of the two';
+
+// cm:why one site, two readings: a git consumer's code is a file and a line, a storefront consumer's is an artefact the provider holds; which one the consumer may write is its source type's, checked in `link-rules.ts:callSiteRefusals`
+export const callSiteSchema = z
+  .strictObject({
+    path: repoPath().optional(),
+    line: z.number().int().min(1).max(10_000_000).optional(),
+    artefact: z
+      .strictObject({ kind: slug(), id: z.string().min(1).max(LIMITS.artefactId) })
+      .optional(),
+    operation: operation(),
+  })
+  .refine(
+    (s) =>
+      s.artefact === undefined
+        ? s.path !== undefined && s.line !== undefined
+        : s.path === undefined && s.line === undefined,
+    { message: CALL_SITE_SHAPE },
+  )
+  .meta({
+    oneOf: [
+      { required: ['path', 'line'], not: { required: ['artefact'] } },
+      { required: ['artefact'], not: { anyOf: [{ required: ['path'] }, { required: ['line'] }] } },
+    ],
+  });
+export type CallSite = z.infer<typeof callSiteSchema>;
+
+export const callSiteAt = (s: CallSite): string =>
+  s.artefact ? `${s.artefact.kind}:${s.artefact.id}` : `${s.path}:${s.line}`;
 
 const contractRefSchema = z.strictObject({ provider: uuid(), slug: slug() });
 

@@ -1,5 +1,7 @@
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { matchedRoutes } from 'hono/route';
+import { findTargetHandler, isMiddleware } from 'hono/utils/handler';
 import {
   PAT_GRANT_EPOCH,
   PAT_PERMISSION_ALL,
@@ -32,6 +34,13 @@ type PatRequestResolution = {
   scope: PatScope;
 };
 
+// cm:why a gate mounted at a prefix runs for every path under it, served or not, so a token's grant would otherwise answer for a route nobody serves; a `use` entry is method ALL with a (c, next) middleware, anything else is a handler that answers
+export function routeIsServed(c: Context): boolean {
+  return matchedRoutes(c).some(
+    (r) => r.method !== 'ALL' || !isMiddleware(findTargetHandler(r.handler)),
+  );
+}
+
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /** The PAT scope a request needs, from its method alone. */
@@ -61,6 +70,12 @@ export async function beginPatRequest(
     throw new HTTPException(401, {
       message: 'invalid token',
       cause: { code: 'INVALID_TOKEN' },
+    });
+  }
+  if (!routeIsServed(c)) {
+    throw new HTTPException(404, {
+      message: `Not Found: ${c.req.method} ${c.req.path} — no route serves it, whatever the token holds`,
+      cause: { code: 'NOT_FOUND' },
     });
   }
   if (excluded) {

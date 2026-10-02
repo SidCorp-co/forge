@@ -25,6 +25,7 @@ function written(): Doc {
 }
 
 const world = (over: Partial<LinkWorld> = {}): LinkWorld => ({
+  consumerSource: { type: 'repository' },
   consumerActiveIn: new Set([FP]),
   provider: {
     id: FORGE,
@@ -277,5 +278,68 @@ describe('a refreshed link keeps what it joins', () => {
       'LINK_IDENTITY_IMMUTABLE /consumer/module',
       'LINK_IDENTITY_IMMUTABLE /contract',
     ]);
+  });
+});
+
+describe('a call site is read the way the consumer holds its code', () => {
+  const AUTOFLOW = world({ consumerSource: { type: 'storefront', provider: 'autoflow' } });
+  const artefacts = (d: Doc) => {
+    d.callSites = [
+      { artefact: { kind: 'workflow', id: 'wf_checkout' }, operation: 'GET /api/issues/{id}' },
+      {
+        artefact: { kind: 'node', id: 'wf_checkout/n7' },
+        operation: 'POST /api/issues/{id}/phase',
+      },
+    ];
+  };
+
+  it('accepts a storefront consumer naming its provider artefacts, and the emitted schema keeps the record', () => {
+    expect(refusalsOf(withDoc(artefacts), AUTOFLOW)).toEqual([]);
+    const rec = record();
+    artefacts(rec);
+    expect(emittedAccepts(rec)).toBe(true);
+  });
+
+  it('refuses a storefront consumer a repository path by name', () => {
+    expect(codesAt(written(), AUTOFLOW)).toEqual([
+      'CALL_SITE_KIND_MISMATCH /callSites/0/path',
+      'CALL_SITE_KIND_MISMATCH /callSites/1/path',
+    ]);
+  });
+
+  it('refuses a git consumer a storefront artefact by name, and keeps PATH_OUTSIDE_REPO for its paths', () => {
+    expect(codesAt(withDoc(artefacts))).toEqual([
+      'CALL_SITE_KIND_MISMATCH /callSites/0/artefact',
+      'CALL_SITE_KIND_MISMATCH /callSites/1/artefact',
+    ]);
+    expect(codesAt(withDoc((d) => (d.callSites[0].path = '/etc/passwd')))).toEqual([
+      'PATH_OUTSIDE_REPO /callSites/0/path',
+    ]);
+  });
+
+  it('refuses an artefact kind the provider does not hold, and a provider that declares none', () => {
+    const d = withDoc((x) => {
+      artefacts(x);
+      x.callSites[0].artefact.kind = 'theme';
+    });
+    expect(codesAt(d, AUTOFLOW)).toEqual(['ARTEFACT_KIND_UNKNOWN /callSites/0/artefact/kind']);
+    const shopify = world({ consumerSource: { type: 'storefront', provider: 'shopify' } });
+    expect(codesAt(withDoc(artefacts), shopify)).toEqual([
+      'ARTEFACT_KIND_UNKNOWN /callSites/0/artefact/kind',
+      'ARTEFACT_KIND_UNKNOWN /callSites/1/artefact/kind',
+    ]);
+  });
+
+  it('refuses a site naming both a path and an artefact, or neither', () => {
+    const both = withDoc((x) => (x.callSites[0].artefact = { kind: 'workflow', id: 'wf' }));
+    expect(codesAt(both)).toEqual(['SCHEMA_VIOLATION /callSites/0']);
+    const neither = withDoc((x) => {
+      delete x.callSites[0].path;
+      delete x.callSites[0].line;
+    });
+    expect(codesAt(neither)).toEqual(['SCHEMA_VIOLATION /callSites/0']);
+    const rec = record();
+    rec.callSites[0].artefact = { kind: 'workflow', id: 'wf' };
+    expect(emittedAccepts(rec)).toBe(false);
   });
 });

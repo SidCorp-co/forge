@@ -78,11 +78,16 @@ export interface Bus {
   links: BusLink[];
 }
 
+/** A git consumer's call site is a file and line; a storefront consumer's is an artefact its provider holds. */
 export interface CallSite {
-  path: string;
-  line: number;
+  path?: string;
+  line?: number;
+  artefact?: { kind: string; id: string };
   operation: string;
 }
+
+export const callSiteAt = (s: CallSite): string =>
+  s.artefact ? `${s.artefact.kind}:${s.artefact.id}` : `${s.path}:${s.line}`;
 
 export interface LinkDocument {
   id: string;
@@ -200,7 +205,7 @@ export function impactLine(link: BusLink): string {
   return i.breaks
     .map((b) => {
       const what = [...b.fields, ...b.outsideContract.map((o) => `${o} (outside the contract)`)];
-      const at = b.callSites.map((s) => `${s.path}:${s.line}`);
+      const at = b.callSites.map(callSiteAt);
       return `${b.element}${what.length ? ` · ${what.join(", ")}` : ""}${at.length ? ` at ${at.join(", ")}` : ""}`;
     })
     .join("; ");

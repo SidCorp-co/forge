@@ -30,11 +30,11 @@ const replyDays = () => z.number().int().min(1).max(90);
 const gateMode = () => z.enum(['publish', 'approve']);
 const timestamp = () => z.iso.datetime({ offset: true });
 
-export const ecosystemDocumentSchema = z.strictObject({
+const ecosystemFields = <I extends z.ZodType>(id: I) => ({
   $schema: z.literal(`${SCHEMA_BASE}/ecosystem-v1.json`),
   version: z.literal(1),
   ecosystem: z.strictObject({
-    id: uuid(),
+    id,
     slug: slug(),
     name: z.string().min(1).max(120),
     purpose: z.string().min(1).max(1000).optional(),
@@ -57,6 +57,16 @@ export const ecosystemDocumentSchema = z.strictObject({
   }),
   visibility: z.strictObject({ members: z.enum(VISIBILITY_MODES) }),
 });
+
+// cm:why core assigns an ecosystem its id, so the id is core's to write: a create carries none and an update carries the one core assigned (`ecosystem-service.ts:parseEcosystem` refuses either otherwise as ECOSYSTEM_ID_IMMUTABLE). The written shape is what ecosystem-v1.json publishes, so the schema a client authors against never asks for an id a create refuses.
+const ECOSYSTEM_ID_RULE =
+  'assigned by core: leave it out when creating; when updating, it is the id core assigned and never changes';
+
+export const ecosystemWriteSchema = z.strictObject(
+  ecosystemFields(uuid().optional().meta({ description: ECOSYSTEM_ID_RULE })),
+);
+
+export const ecosystemDocumentSchema = z.strictObject(ecosystemFields(uuid()));
 
 export type EcosystemDocument = z.infer<typeof ecosystemDocumentSchema>;
 
