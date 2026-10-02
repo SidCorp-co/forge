@@ -3,6 +3,7 @@ import type { AgentPathKind } from "@forge/contracts";
 import type { ComponentType } from "react";
 import type { IconName } from "@/design";
 import { agent } from "./agent";
+import { autoflow } from "./autoflow";
 import { coolify } from "./coolify";
 import { epodsystem } from "./epodsystem";
 import { github } from "./github";
@@ -54,6 +55,7 @@ export const PROVIDER_MODULES: readonly ProviderModule[] = [
   gitlab,
   google,
   agent,
+  autoflow,
 ];
 
 const byName = new Map(PROVIDER_MODULES.map((m) => [m.provider, m]));

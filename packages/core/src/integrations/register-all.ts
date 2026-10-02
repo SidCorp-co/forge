@@ -1,4 +1,5 @@
 import { agentIntegration } from './agent-declaration.js';
+import { autoflowIntegration } from './autoflow/adapter.js';
 import { coolifyIntegration } from './coolify/adapter.js';
 import { epodsystemIntegration } from './epodsystem/adapter.js';
 import { githubIntegration } from './github/adapter.js';
@@ -20,6 +21,7 @@ const ALL: readonly IntegrationDeclaration[] = [
   githubIntegration as IntegrationDeclaration,
   gitlabIntegration as IntegrationDeclaration,
   agentIntegration,
+  autoflowIntegration as IntegrationDeclaration,
 ];
 
 /** Idempotent, so a test that calls it twice does not throw on the already-declared guard. */

@@ -258,7 +258,7 @@ describe('a target provider the binding document does not define', () => {
         {
           code: 'SCHEMA_VIOLATION',
           path: '/target/provider',
-          detail: `provider ${JSON.stringify(provider)} is not a binding target; target.provider is one of coolify, shopify, epodsystem, github, gitlab, sentry, postman, rocketchat, google, agent, each with the fields binding-v1.json names for it.`,
+          detail: `provider ${JSON.stringify(provider)} is not a binding target; target.provider is one of coolify, shopify, epodsystem, autoflow, github, gitlab, sentry, postman, rocketchat, google, agent, each with the fields binding-v1.json names for it.`,
         },
       ]);
       expect(bindingMem.rows.size).toBe(0);

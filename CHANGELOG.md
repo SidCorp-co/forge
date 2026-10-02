@@ -137,6 +137,11 @@
 
 ### Added
 
+- **A project can run on Autoflow (Sidcorp Auto) with no git repository.** Bind a site by its
+  slug and the OAuth access token minted for it; runs reach the site and its Backend Builder flows
+  through the shop MCP, and `forge_storefront_target` reports the site with its workflows and
+  routes read live. A project document naming a storefront provider its binding is not, or a git
+  project deploying through an Autoflow binding, is refused by name.
 - **Joining an ecosystem gives the joining project's master its first piece of work.** Accepting
   an invitation opens a builder run that maps what the project's code uses, and a push to its
   default branch opens the next. The master is woken for it with an empty backlog, records each

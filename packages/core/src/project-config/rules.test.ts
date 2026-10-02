@@ -35,6 +35,7 @@ const simProfiles = ['testing.beta.json', 'testing.dev.json'].map(
 const CAPABILITIES: Record<string, Pick<BindingFacts, 'canDeploy' | 'readsHistory'>> = {
   coolify: { canDeploy: true, readsHistory: true },
   shopify: { canDeploy: false, readsHistory: false },
+  autoflow: { canDeploy: true, readsHistory: false },
 };
 const factsOf = (b: BindingDocument): [string, BindingFacts] => {
   const known = CAPABILITIES[b.target.provider];
@@ -473,10 +474,56 @@ describe('the declared store example', () => {
   });
 });
 
+describe('an autoflow project (ISS-51)', () => {
+  const hopBindings = ['hop-source.binding.json', 'hop-deploy.binding.json'].map((f) =>
+    bindingDocumentSchema.parse(raw(`examples/${f}`)),
+  );
+  const hopCtx = (): ProjectConfigContext => ({
+    bindings: new Map(hopBindings.map(factsOf)),
+    testingProfileIds: new Set(['flow-draft', 'flow-smoke']),
+  });
+  const hop = () => projectDocumentSchema.parse(raw('examples/hop.project.json'));
+  const run = (doc: ProjectDocument, ctx: ProjectConfigContext) => {
+    const out = checkProjectConfig(doc, ctx);
+    for (const r of out) seen.add(r.code);
+    return out;
+  };
+
+  it('the HOP example has zero refusals against its own autoflow bindings', () => {
+    expect(run(hop(), hopCtx())).toEqual([]);
+  });
+
+  it('BINDING_PROVIDER_MISMATCH when source.storefront names a provider its binding is not', () => {
+    const doc = hop();
+    if (doc.source.type !== 'storefront') throw new Error('hop example is not a storefront');
+    doc.source.storefront.provider = 'epodsystem';
+    const out = run(doc, hopCtx());
+    expect(pick(out)).toEqual([
+      { code: 'BINDING_PROVIDER_MISMATCH', path: '/source/storefront/provider' },
+    ]);
+    expect(out[0]?.detail).toContain('is a autoflow binding');
+  });
+
+  it('GITLESS_BINDING_ON_GIT_SOURCE when a git project deploys through an autoflow binding', () => {
+    const out = refusals((_d, c) => {
+      (c.bindings as Map<string, BindingFacts>).set(DEV, {
+        role: 'deploy',
+        provider: 'autoflow',
+        canDeploy: true,
+        readsHistory: false,
+      });
+    });
+    expect(pick(out)).toEqual([
+      { code: 'GITLESS_BINDING_ON_GIT_SOURCE', path: '/environments/dev/deployment/binding' },
+    ]);
+    expect(out[0]?.detail).toContain('"remote-draft"');
+  });
+});
+
 describe('the code vocabulary', () => {
   it('holds every code of the design table once', () => {
     expect(new Set(CONFIG_REFUSAL_CODES).size).toBe(CONFIG_REFUSAL_CODES.length);
-    expect(CONFIG_REFUSAL_CODES).toHaveLength(25);
+    expect(CONFIG_REFUSAL_CODES).toHaveLength(27);
   });
 
   it('every pure code is emitted by some plant in this file', () => {

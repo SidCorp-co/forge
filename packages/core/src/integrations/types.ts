@@ -12,7 +12,8 @@ export type IntegrationProvider =
   | 'github'
   | 'gitlab'
   | 'google'
-  | 'agent';
+  | 'agent'
+  | 'autoflow';
 
 export const INTEGRATION_PROVIDERS = [
   'coolify',
@@ -24,6 +25,7 @@ export const INTEGRATION_PROVIDERS = [
   'gitlab',
   'google',
   'agent',
+  'autoflow',
 ] as const satisfies readonly IntegrationProvider[];
 
 const _providersExhaustive: IntegrationProvider =
@@ -312,6 +314,14 @@ export interface VerifyBindingTargetArgs {
   held: Record<string, unknown> | null;
 }
 
+/** What `forge_storefront_target` hands a provider's `storefrontTarget`: the one binding it selected. */
+export interface StorefrontTargetArgs {
+  /** The binding's effective config: connection config overlaid with the binding's own. */
+  config: Record<string, unknown>;
+  /** Decrypts the connection's secrets on demand; a provider that reads nothing live never calls it. */
+  readSecrets(): Record<string, unknown>;
+}
+
 /** What an adapter DOES. Absent on a provider that integrates nothing (`agent`). */
 export interface IntegrationAdapterMethods<
   TConfig extends Record<string, unknown> = Record<string, unknown>,
@@ -400,6 +410,12 @@ export interface IntegrationDeclaration<
   readonly presentation: IntegrationPresentation | null;
   /** Absent exactly where nothing is integrated. */
   readonly adapter?: IntegrationAdapterMethods<TConfig, TSecrets>;
+  /**
+   * The provider-specific half of `forge_storefront_target`'s answer for one selected binding.
+   * Present exactly on the providers a project's `source.storefront` may name; the tool serves
+   * every provider declaring it and names the rest when asked for one.
+   */
+  readonly storefrontTarget?: (args: StorefrontTargetArgs) => Promise<Record<string, unknown>>;
   /** Present where a binding of this provider is the host a project's repository lives on. */
   readonly sourceHost?: SourceHostFactory;
   /** Present where this provider can mint a short-lived HTTPS git credential for a runner. */

@@ -63,8 +63,8 @@ export interface BindingSummary {
    *  is the merged connection+binding view; this distinguishes a per-project
    *  value from one inherited off the shared connection. */
   bindingConfig: Record<string, unknown>;
-  /** ISS-558 — binding label. Empty string = default/unlabeled; non-empty = named
-   *  extra storefront (epodsystem only). Always '' for non-epodsystem providers. */
+  /** ISS-558 — binding label. Empty string = default/unlabeled; non-empty = a named
+   *  extra binding of a provider declaring `multiBinding` (a second storefront, say). */
   label: string;
   /** Both tiers must be on for the integration to resolve. Kept as the AND so
    *  every existing reader ("is this live?") is unchanged; the two flags below

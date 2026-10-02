@@ -16,6 +16,7 @@ const FIELDS: Readonly<Record<string, readonly string[]>> = {
   coolify: ['targets'],
   shopify: ['store', 'themeRole'],
   epodsystem: [],
+  autoflow: ['shop'],
   github: ['installationId', 'owner', 'repo'],
   gitlab: ['projectPath', 'projectId'],
   sentry: [],

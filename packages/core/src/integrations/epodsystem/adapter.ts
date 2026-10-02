@@ -13,6 +13,7 @@ import {
   epodsystemConfigBase,
   epodsystemSecretsSchema,
 } from './schemas.js';
+import { epodsystemStorefrontTarget } from './target.js';
 import type {
   ApiKeyContextResponse,
   EpodsystemConfig,
@@ -294,4 +295,5 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
     },
   },
   adapter: epodsystemAdapterMethods,
+  storefrontTarget: epodsystemStorefrontTarget,
 });
