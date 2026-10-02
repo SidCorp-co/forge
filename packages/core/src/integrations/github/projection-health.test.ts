@@ -34,7 +34,7 @@ describe('describeEmptyProjection', () => {
     // F2: the count is of deliveries RECORDED. A call turned away at the signature check never
     // reaches the recorder, so this must not tell an operator GitHub never called.
     expect(said).toContain('turned away before they are recorded');
-    expect(said).toContain('forge_github open-pull-request');
+    expect(said).toContain('forge_source open-change-request');
     expect(said).toContain('/api/webhooks/in/');
   });
 

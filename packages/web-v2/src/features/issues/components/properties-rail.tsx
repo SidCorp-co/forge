@@ -67,7 +67,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
  *
  * `mergedAt` alone reads as "shipped" whichever it is. An `asserted` mark means Forge holds no
  * record of the merge and took somebody's word for it; an `observed` one carries the commit Forge
- * read for itself, off a pull request or the repository. Shown apart from the date because a reader deciding
+ * read for itself, off a change request or the repository. Shown apart from the date because a reader deciding
  * whether the work is really out there is asking this question and not the other one.
  *
  * The kind is core's reading (`merge-record.ts`), never re-derived here. An older server that sends
@@ -109,10 +109,10 @@ function MergeMarkBadge({
     return (
       <span
         title={
-          // Outside git no pull request is the normal record; what the mark lacks is a landing.
+          // Outside git no change request is the normal record; what the mark lacks is a landing.
           landingShape === "outside_git"
             ? "This mark names no landing — it says the work shipped, not where it landed"
-            : "Forge holds no merged pull request for this issue — this mark is a claim it recorded, not a merge it witnessed"
+            : "Forge holds no merged change request for this issue — this mark is a claim it recorded, not a merge it witnessed"
         }
       >
         <Badge tone="amber">claimed</Badge>

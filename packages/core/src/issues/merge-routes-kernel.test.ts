@@ -69,9 +69,9 @@ vi.mock('../integrations/github/projection-health.js', async (importOriginal) =>
 });
 
 const mergeStoredPullRequest = vi.fn();
-vi.mock('../integrations/github/merge.js', async (importOriginal) => {
+vi.mock('../integrations/source-host/merge.js', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
-  return { ...actual, mergeStoredPullRequest: (...a: unknown[]) => mergeStoredPullRequest(...a) };
+  return { ...actual, mergeStoredChangeRequest: (...a: unknown[]) => mergeStoredPullRequest(...a) };
 });
 
 const { issueMergeRoutes } = await import('./merge-routes.js');
@@ -210,7 +210,7 @@ describe('POST /api/issues/:id/merge-pull-request', () => {
   });
 
   it('turns a merge naming no caller into a 400 rather than a 500', async () => {
-    const { MergeInputError } = await import('../integrations/github/merge.js');
+    const { MergeInputError } = await import('../integrations/source-host/merge.js');
     mergeStoredPullRequest.mockRejectedValue(new MergeInputError('a merge needs `requestedBy`'));
     const res = await post({});
     expect(res.status).toBe(400);

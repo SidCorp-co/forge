@@ -3,8 +3,8 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, runners, workspaceSshKeys } from '../db/schema.js';
-import { isHttpsGitUrl, projectsWithGitHubAppCredential } from '../git/github-app-credential.js';
-import { deviceGitCredentialRoutes } from '../git/github-credential-routes.js';
+import { isHttpsGitUrl, projectsWithHostCredential } from '../git/host-credential.js';
+import { deviceGitCredentialRoutes } from '../git/host-credential-routes.js';
 import { logger } from '../logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { readDeclaredSource, remoteOf } from '../project-config/source.js';
@@ -55,7 +55,7 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
   if (device.status === 'revoked') throw unauth();
 
   const rows = await queuedRows(device.id);
-  const appProjects = await projectsWithGitHubAppCredential(rows.map((r) => r.projectId));
+  const credentialed = await projectsWithHostCredential(rows.map((r) => r.projectId));
   // The identity the box acts as, resolved once: a box paired as an agent hands
   // its checkouts that agent's reach and not the approving person's.
   const holderUserId = rows.length > 0 ? await deviceHolderUserId(device.id) : null;
@@ -64,7 +64,7 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
     rows.map(async (r) => {
       const { repository, defaultBranch } = await readDeclaredSource(r.projectId);
       // cm:why the document names a repository, not a transport: an attached deploy key can only
-      // reach it over SSH, and every other credential (GitHub App, public) reaches it over HTTPS.
+      // reach it over SSH, and every other credential (a host's minted one, public) reaches it over HTTPS.
       const repoUrl = repository
         ? remoteOf(repository, r.sshPrivateKeyEnc ? 'ssh' : 'https')
         : null;
@@ -73,7 +73,7 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
         {
           deviceId: device.id,
           holderUserId,
-          githubAppCredential: isHttpsGitUrl(repoUrl) && appProjects.has(r.projectId),
+          hostCredential: isHttpsGitUrl(repoUrl) && credentialed.has(r.projectId),
         },
         { issueCredential: issueWorkspaceCredential },
       );

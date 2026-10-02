@@ -29,11 +29,11 @@ const { renderIntegrations } = await import('../../prompt/facts/resolve.js');
 registerAllIntegrations();
 
 describe('github declares the agent path ISS-1074 gave it', () => {
-  it('is core-mediated and carries forge_github', () => {
+  it('is core-mediated and carries forge_source (ISS-50)', () => {
     const decl = getIntegration('github');
     expect(decl?.capabilities.agentPath).toEqual({
       kind: 'core-mediated',
-      tools: ['forge_github'],
+      tools: ['forge_source'],
     });
   });
 
@@ -51,7 +51,7 @@ describe('github declares the agent path ISS-1074 gave it', () => {
 
   it('says in one line what the tool is for, and that nothing here merges', () => {
     const hint = getIntegration('github')?.usage?.hint ?? '';
-    expect(hint).toContain('forge_github');
+    expect(hint).toContain('forge_source');
     expect(hint).toMatch(/nothing here merges/i);
     // The preamble is paid for by every job on every project with github connected.
     expect(hint.length).toBeLessThan(400);
@@ -94,7 +94,7 @@ describe('what a job is told about a github binding it may not use', () => {
     ]);
     expect(text).toMatch(/agent access is off/i);
     expect(text).toContain('Settings → Integrations');
-    expect(text).not.toContain('forge_github');
+    expect(text).not.toContain('forge_source');
   });
 
   it('renders the usage hint once the binding is granted', () => {
@@ -110,7 +110,7 @@ describe('what a job is told about a github binding it may not use', () => {
         agentGranted: true,
       },
     ]);
-    expect(text).toContain('forge_github');
+    expect(text).toContain('forge_source');
     expect(text).not.toMatch(/agent access is off/i);
   });
 });

@@ -11,8 +11,6 @@ import type { GitHubAgentClient } from './agent-client.js';
 import { GitHubAgentCallError } from './agent-client.js';
 import {
   actionsJobId,
-  isKernelVerb,
-  kernelVerbRefusal,
   openPullRequest,
   readCheckRunLog,
   readPullRequestDiff,
@@ -323,26 +321,6 @@ describe('writing', () => {
 });
 
 describe('nothing on this face merges', () => {
-  // ISS-1074 criterion 16.
-  it('recognises the kernel verbs in order to answer them by name', () => {
-    for (const verb of ['merge', 'close', 'delete-branch', 'squash', 'rebase']) {
-      expect(isKernelVerb(verb)).toBe(true);
-    }
-    expect(isKernelVerb('review')).toBe(false);
-    expect(isKernelVerb('diff')).toBe(false);
-  });
-
-  it('says where the merge lives rather than that the verb is unknown, quoting the name given', () => {
-    const said = kernelVerbRefusal('merge');
-    expect(said).toContain('pull_request.merge');
-    expect(said).not.toContain('ISS-1073');
-    expect(said).toContain('DISPATCH face');
-    expect(said).toContain('merged_at');
-    // ISS-1123: the sentence states the one-writer rule, so it says which writer this face reaches.
-    expect(said).toContain("Forge's projection of the repository");
-    expect(kernelVerbRefusal('merge-pull-request')).toContain('merge-pull-request');
-  });
-
   // ISS-1074 criterion 17. Driven rather than grepped: every verb is run against one recorder and
   // the whole set of requests is judged, so a merge added inside any of them is caught even where
   // the file never writes the word.

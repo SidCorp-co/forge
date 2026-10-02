@@ -589,7 +589,7 @@ pub fn write_persistent(
     Ok(PersistentMcp::Written)
 }
 
-/// The MCP server every `forge_*` tool is served by, including `forge_github`.
+/// The MCP server every `forge_*` tool is served by, including `forge_source`.
 pub const FORGE_SERVER: &str = "forge";
 
 /// One half of a master pane's MCP reach: a config file, and what it declares.
@@ -896,10 +896,10 @@ gets it is the next one this box starts.\n";
 /// still see, and reported pull requests unreachable as established fact for
 /// six passes (ISS-1114).
 const ABSENT_FORGE: &str = "\nThe `forge` MCP server is in NEITHER half, so every `forge_*` tool \
-is ABSENT from this pane — `forge_github`, which is the only route to a pull request, along with \
-`forge_issues`, `forge_comments` and the rest.\n\nAbsent is not refused. A tool you cannot see has \
+is ABSENT from this pane — `forge_source`, which is the only route to a pull or merge request, \
+along with `forge_issues`, `forge_comments` and the rest.\n\nAbsent is not refused. A tool you cannot see has \
 told you nothing about whether its route is open, so do not report a route as shut on the strength \
-of not seeing it, and do not reach for `gh` instead: it runs as whoever configured this box, which \
+of not seeing it, and do not reach for `gh` or `glab` instead: it runs as whoever configured this box, which \
 is neither attributable nor revocable. Say the capability is unreachable FROM THIS PANE, and name \
 the cause below.\n";
 

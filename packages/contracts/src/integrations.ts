@@ -262,6 +262,16 @@ export type GithubSecretsInput = {
   privateKey: string;
   webhookSecret: string;
 };
+/** GitLab (ISS-50): `baseUrl` is connection-tier (absent means https://gitlab.com); the project path or id is binding-tier. */
+export type GitlabConfigInput = {
+  baseUrl?: string;
+  projectPath?: string;
+  projectId?: number;
+};
+/** A project or group access token with the `api` scope, typed by hand and never read back. */
+export type GitlabSecretsInput = {
+  token: string;
+};
 
 /**
  * Google service-account config (ISS-1036). `clientEmail` and `projectId` are

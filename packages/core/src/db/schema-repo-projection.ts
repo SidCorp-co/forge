@@ -18,6 +18,11 @@ export type PullRequestState = (typeof pullRequestStates)[number];
 
 const PR_STATE_CHK = sql`state IN ('open', 'closed', 'merged')`;
 
+export const changeRequestHosts = ['github', 'gitlab'] as const;
+export type ChangeRequestHost = (typeof changeRequestHosts)[number];
+
+const PR_HOST_CHK = sql`host IN ('github', 'gitlab')`;
+
 export interface ProjectedCheckRun {
   /** GitHub's `check_run.id`, as a string. Also the map key. */
   id: string;
@@ -61,6 +66,8 @@ export const repoPullRequests = pgTable(
       .notNull()
       .references(() => integrationBindings.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'set null' }),
+    host: text('host', { enum: changeRequestHosts }).notNull().default('github'),
+    /** The number the host shows: a GitHub pull request number, or a GitLab merge request iid. */
     number: integer('number').notNull(),
     repoFullName: text('repo_full_name').notNull(),
     title: text('title').notNull(),
@@ -92,6 +99,7 @@ export const repoPullRequests = pgTable(
     projectStateIdx: index('repo_pull_requests_project_state_idx').on(t.projectId, t.state),
     baseIdx: index('repo_pull_requests_base_idx').on(t.bindingId, t.baseRef, t.state),
     stateChk: check('repo_pull_requests_state_chk', PR_STATE_CHK),
+    hostChk: check('repo_pull_requests_host_chk', PR_HOST_CHK),
   }),
 );
 

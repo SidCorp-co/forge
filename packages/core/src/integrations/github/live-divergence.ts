@@ -1,30 +1,10 @@
+import type { LiveDivergence, WaitingCommit } from '../source-host/types.js';
 import { GitHubClientError, GitHubReadError, type GitHubRepoClient } from './client.js';
 
 /** Commits per compare page, GitHub's own ceiling. */
 export const COMPARE_PAGE_SIZE = 100;
 /** Pages read per reading. A longer wait than this is reported as cut short, never as complete. */
 export const COMPARE_MAX_PAGES = 3;
-
-export interface WaitingCommit {
-  sha: string;
-  /** The whole message. Only its subject line is read for keys, by `commitOwners`. */
-  message: string;
-  /** First parent first, as git records them: the merge walk in `commitOwners` reads the order. */
-  parents: string[];
-}
-
-export type LiveDivergence =
-  | {
-      ok: true;
-      baseSha: string;
-      liveSha: string;
-      /** GitHub's count of commits on base that live lacks. */
-      aheadBy: number;
-      commits: WaitingCommit[];
-      /** False where `commits` holds fewer than `aheadBy`: an issue it does not name is unplaced. */
-      complete: boolean;
-    }
-  | { ok: false; reason: string };
 
 interface BranchRead {
   commit?: { sha?: string };

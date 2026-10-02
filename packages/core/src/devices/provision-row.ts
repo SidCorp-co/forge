@@ -53,6 +53,8 @@ export interface Provision {
   sshKeySource: string | null;
   sshPublicKey: string | null;
   sshPrivateKey: string | null;
+  hostCredential: boolean;
+  // cm:hack ISS-50 until:every paired runner is at or past the release reading hostCredential — runners released before it read only this name, so it carries the same value
   githubAppCredential: boolean;
   mcpCredential: string | null;
 }
@@ -76,7 +78,7 @@ export interface ProvisionRowContext {
   deviceId: string;
   /** Null when the device has no live credential; no token is minted then. */
   holderUserId: string | null;
-  githubAppCredential: boolean;
+  hostCredential: boolean;
 }
 
 /**
@@ -211,7 +213,8 @@ export async function buildProvisionRow(
       sshKeySource: sshPrivateKey ? row.sshSource : null,
       sshPublicKey: sshPrivateKey ? row.sshPublicKey : null,
       sshPrivateKey,
-      githubAppCredential: ctx.githubAppCredential,
+      hostCredential: ctx.hostCredential,
+      githubAppCredential: ctx.hostCredential,
       mcpCredential,
     },
     reports,

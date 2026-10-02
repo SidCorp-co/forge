@@ -23,9 +23,9 @@ process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwd
 
 type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  mintGitCredentialForDevice: typeof import('../../src/git/github-app-credential.js').mintGitCredentialForDevice;
+  mintGitCredentialForDevice: typeof import('../../src/git/host-credential.js').mintGitCredentialForDevice;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  projectsWithGitHubAppCredential: typeof import('../../src/git/github-app-credential.js').projectsWithGitHubAppCredential;
+  projectsWithHostCredential: typeof import('../../src/git/host-credential.js').projectsWithHostCredential;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   createConnection: typeof import('../../src/integrations/store.js').createConnection;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
@@ -61,11 +61,13 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const credential = await import('../../src/git/github-app-credential.js');
+  // The mint is resolved through each provider's declaration (ISS-50), so the registry is filled.
+  (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
+  const credential = await import('../../src/git/host-credential.js');
   const store = await import('../../src/integrations/store.js');
   mods = {
     mintGitCredentialForDevice: credential.mintGitCredentialForDevice,
-    projectsWithGitHubAppCredential: credential.projectsWithGitHubAppCredential,
+    projectsWithHostCredential: credential.projectsWithHostCredential,
     createConnection: store.createConnection,
   };
 }, 60_000);
@@ -122,22 +124,22 @@ async function seedBinding(
   });
 }
 
-describe('projectsWithGitHubAppCredential', () => {
+describe('projectsWithHostCredential', () => {
   it('says nothing about a project that has no integration at all', async () => {
     await seedRunner();
-    const able = await mods.projectsWithGitHubAppCredential([projectId]);
+    const able = await mods.projectsWithHostCredential([projectId]);
     expect(able.has(projectId)).toBe(false);
   });
 
   it('excludes a binding whose App is not installed', async () => {
     await seedBinding({ owner: OWNER, repo: REPO });
-    const able = await mods.projectsWithGitHubAppCredential([projectId]);
+    const able = await mods.projectsWithHostCredential([projectId]);
     expect(able.has(projectId)).toBe(false);
   });
 
   it('includes a project whose binding names an installation', async () => {
     await seedBinding();
-    const able = await mods.projectsWithGitHubAppCredential([projectId]);
+    const able = await mods.projectsWithHostCredential([projectId]);
     expect(able.has(projectId)).toBe(true);
   });
 });
@@ -152,7 +154,9 @@ describe('mintGitCredentialForDevice refuses', () => {
         host: 'github.com',
         path: `${OWNER}/some-other-repo.git`,
       }),
-    ).rejects.toThrow(/no active GitHub App binding for SidCorp-co\/some-other-repo/);
+    ).rejects.toThrow(
+      /no active source host binding reaching github\.com\/SidCorp-co\/some-other-repo/,
+    );
   });
 
   it('a repository bound to a project this device does NOT run', async () => {

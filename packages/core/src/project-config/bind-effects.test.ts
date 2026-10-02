@@ -126,6 +126,7 @@ describe('asking the provider about a target', () => {
   it("prefixes the provider's refusal with the target, and asks a provider with no check nothing", async () => {
     const ask = (provider: string) =>
       bindEffects.targetRefusals({
+        projectId: 'p',
         connectionId: `${provider}:1`,
         provider,
         config: { targets: [] },

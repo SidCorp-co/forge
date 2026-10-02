@@ -2,7 +2,9 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 
-import { GitHubClientError, type GitHubRepoClient } from '../integrations/github/client.js';
+import { GitHubClientError } from '../integrations/github/client.js';
+import { SourceHostUnavailable } from '../integrations/source-host/errors.js';
+import type { SourceHost } from '../integrations/source-host/types.js';
 import { encryptSecret } from '../integrations/vault.js';
 import {
   type DeployKeyRow,
@@ -11,7 +13,8 @@ import {
   resolveLiveSource,
 } from './live-source.js';
 
-const client = { fullName: 'SidCorp-co/forge' } as GitHubRepoClient;
+const readDivergence = vi.fn();
+const host = { fullName: 'SidCorp-co/forge', readDivergence } as unknown as SourceHost;
 const GITLAB = 'gitlab.com/thanhnguyen21/sid-desk';
 const GITLAB_SSH = 'git@gitlab.com:thanhnguyen21/sid-desk.git';
 let keyEnc: Buffer;
@@ -24,23 +27,23 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-function noBinding(): Promise<GitHubRepoClient> {
-  throw new GitHubClientError('no_binding', 'this project has no active GitHub binding');
+function noBinding(): Promise<SourceHost> {
+  throw new SourceHostUnavailable('no_binding', 'this project has no active source host binding');
 }
 
 function deps(over: Partial<LiveSourceDeps> & { row?: DeployKeyRow }): LiveSourceDeps {
   return {
-    githubClient: over.githubClient ?? (async () => noBinding()),
+    sourceHost: over.sourceHost ?? (async () => noBinding()),
     deployKey:
       over.deployKey ?? (async () => over.row ?? { repository: GITLAB, privateKeyEnc: keyEnc }),
   };
 }
 
 describe('resolveLiveSource', () => {
-  it('reads through the GitHub App where the project has an active binding', async () => {
+  it('reads through the source host where the project has an active binding', async () => {
     const deployKey = vi.fn();
-    const s = await resolveLiveSource('p', deps({ githubClient: async () => client, deployKey }));
-    expect(s).toEqual({ kind: 'binding', client });
+    const s = await resolveLiveSource('p', deps({ sourceHost: async () => host, deployKey }));
+    expect(s).toEqual({ kind: 'binding', host });
     expect(deployKey).not.toHaveBeenCalled();
   });
 
@@ -49,7 +52,7 @@ describe('resolveLiveSource', () => {
     const s = await resolveLiveSource(
       'p',
       deps({
-        githubClient: async () => {
+        sourceHost: async () => {
           throw new GitHubClientError(
             'no_installation',
             'the GitHub App is not installed on SidCorp-co',
@@ -71,7 +74,28 @@ describe('resolveLiveSource', () => {
     });
   });
 
-  it('tells a GitLab-hosted project with no key where to attach one, and never to bind GitHub', async () => {
+  it('refuses a binding on another host than the declared repository in its own words, without the deploy key', async () => {
+    const deployKey = vi.fn();
+    const s = await resolveLiveSource(
+      'p',
+      deps({
+        sourceHost: async () => {
+          throw new SourceHostUnavailable(
+            'host_mismatch',
+            'the project document declares a repository on gitlab.com',
+          );
+        },
+        deployKey,
+      }),
+    );
+    expect(s).toEqual({
+      kind: 'refused',
+      reason: 'the project document declares a repository on gitlab.com',
+    });
+    expect(deployKey).not.toHaveBeenCalled();
+  });
+
+  it('tells a GitLab-hosted project with no key where to attach one, or to bind its own host', async () => {
     const s = await resolveLiveSource(
       'p',
       deps({ row: { repository: GITLAB, privateKeyEnc: null } }),
@@ -79,9 +103,9 @@ describe('resolveLiveSource', () => {
     expect(s.kind).toBe('refused');
     const reason = s.kind === 'refused' ? s.reason : '';
     expect(reason).toBe(
-      "Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com, so it cannot read the branches — attach a deploy key under the project's Settings → Runners → Git access",
+      "Forge holds no source host binding and no deploy key for this project's repository on gitlab.com, so it cannot read the branches — attach a deploy key under the project's Settings → Runners → Git access, or bind the repository's host on its Integrations page",
     );
-    expect(reason).not.toMatch(/GitHub repository|Integrations/);
+    expect(reason).not.toMatch(/GitHub/);
   });
 
   it('offers a GitHub-hosted project with neither the binding as well as the key', async () => {
@@ -90,7 +114,7 @@ describe('resolveLiveSource', () => {
       deps({ row: { repository: 'github.com/SidCorp-co/forge', privateKeyEnc: null } }),
     );
     expect(s.kind === 'refused' && s.reason).toMatch(
-      /on github\.com, .*Git access, or bind the repository on its Integrations page$/,
+      /on github\.com, .*Git access, or bind the repository's host on its Integrations page$/,
     );
   });
 
@@ -133,31 +157,26 @@ describe('readProjectDivergence', () => {
   };
 
   it('reads through the source the project holds', async () => {
-    const github = vi.fn(async () => measured);
+    readDivergence.mockReset();
+    readDivergence.mockResolvedValue(measured);
     const deployKey = vi.fn(async () => ({ ...measured, baseSha: 'from-git' }));
     const key = { kind: 'deploy_key' as const, repoUrl: GITLAB_SSH, privateKey: 'k' };
-    const viaGit = await readProjectDivergence('p', refs, {
-      source: async () => key,
-      github,
-      deployKey,
-    });
+    const viaGit = await readProjectDivergence('p', refs, { source: async () => key, deployKey });
     expect(viaGit).toMatchObject({ ok: true, baseSha: 'from-git' });
     expect(deployKey).toHaveBeenCalledWith(key, refs);
-    expect(github).not.toHaveBeenCalled();
+    expect(readDivergence).not.toHaveBeenCalled();
 
-    const viaApp = await readProjectDivergence('p', refs, {
-      source: async () => ({ kind: 'binding', client }),
-      github,
+    const viaHost = await readProjectDivergence('p', refs, {
+      source: async () => ({ kind: 'binding', host }),
       deployKey,
     });
-    expect(viaApp).toBe(measured);
-    expect(github).toHaveBeenCalledWith(client, refs);
+    expect(viaHost).toBe(measured);
+    expect(readDivergence).toHaveBeenCalledWith(refs);
   });
 
   it('answers a refused source as a refusal carrying its reason', async () => {
     const d = await readProjectDivergence('p', refs, {
       source: async () => ({ kind: 'refused', reason: 'no key' }),
-      github: vi.fn(),
       deployKey: vi.fn(),
     });
     expect(d).toEqual({ ok: false, reason: 'no key' });

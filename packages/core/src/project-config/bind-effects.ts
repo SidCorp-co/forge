@@ -26,6 +26,7 @@ export interface BindEffects {
   }): Promise<ApiRefusal[]>;
   inboundSecret(connectionId: string): Promise<string>;
   targetRefusals(input: {
+    projectId: string;
     connectionId: string;
     provider: string;
     config: Record<string, unknown>;
@@ -80,12 +81,12 @@ export const bindEffects: BindEffects = {
     return own ?? `whsec_${randomBytes(24).toString('hex')}`;
   },
 
-  async targetRefusals({ connectionId, provider, config, held }) {
+  async targetRefusals({ projectId, connectionId, provider, config, held }) {
     const verify = getAdapter(provider)?.verifyBindingTarget;
     if (!verify) return [];
     const connection = await findConnectionById(connectionId);
     if (!connection) return [];
-    const refused = await verify({ connection, config, held });
+    const refused = await verify({ projectId, connection, config, held });
     return refused.map((r) => ({ ...r, path: `/target${r.path}` }));
   },
 

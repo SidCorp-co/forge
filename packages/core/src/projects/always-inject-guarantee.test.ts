@@ -4,13 +4,10 @@
  * sentence that says so on every surface that offers the flag, and hold the one
  * surface that must NOT carry it.
  *
- * The tests that matter are the two source reads: `rules-tab.tsx` is in another
- * package and cannot import the constant, and `resolve.ts` is asserted for an
- * ABSENCE, which no interpolation can guarantee.
- *
- * ISS-1048 moved both surfaces without moving the obligation: the flag is now
- * `knowledge_entries.injection`, the route that serves the sentence is the
- * knowledge list, and the editor is the Knowledge screen's Rules tab.
+ * The test that matters is the source read of `resolve.ts`, asserted for an
+ * ABSENCE, which no interpolation can guarantee. The flag is
+ * `knowledge_entries.injection` and the route that serves the sentence is the
+ * knowledge list; the Knowledge screen that rendered it left web-v2 with ISS-43.
  */
 
 import { readFileSync } from 'node:fs';
@@ -135,18 +132,7 @@ describe('the surfaces that interpolate it', () => {
   });
 });
 
-describe('the two surfaces the constant cannot reach', () => {
-  const TAB = 'packages/web-v2/src/features/knowledge/components/rules-tab.tsx';
-
-  it(`${TAB} renders the served sentence`, () => {
-    expect(read(TAB)).toContain('alwaysInjectGuarantee');
-  });
-
-  it(`${TAB} makes the owner no promise that the rule is followed`, () => {
-    const copy = withoutComments(read(TAB)).replace(/\s+/g, ' ');
-    expect(copy).not.toMatch(/the agent must|must always follow|rules? the agent (must|will)/);
-  });
-
+describe('the surface the constant cannot reach', () => {
   it('the agent prompt keeps its instruction and does NOT carry the guarantee', () => {
     const source = read('packages/core/src/prompt/facts/resolve.ts');
     expect(source).toContain('Follow them exactly.');

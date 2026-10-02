@@ -3,7 +3,8 @@
  * asks here, once per git invocation, for a token that reaches one repository.
  *
  * A helper is the only shape that works: an installation token expires in an
- * hour, jobs do not, and the provision side-channel delivers once. Nothing is
+ * hour, jobs do not, and the provision side-channel delivers once. Any source host that declares a
+ * `gitCredential` is served here (ISS-50). Nothing is
  * stored on the box and nothing is stored here — the grant is computed from the
  * device's runners and the project's binding every time it is asked for.
  */
@@ -14,7 +15,7 @@ import { z } from 'zod';
 import { logger } from '../logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { GitCredentialError, mintGitCredentialForDevice } from './github-app-credential.js';
+import { GitCredentialError, mintGitCredentialForDevice } from './host-credential.js';
 
 export const deviceGitCredentialRoutes = new Hono<{ Variables: DeviceVars }>();
 
@@ -53,7 +54,7 @@ deviceGitCredentialRoutes.post(
           repository: grant.repository,
           expiresAt: grant.expiresAt,
         },
-        'git-credential: minted an installation token',
+        'git-credential: minted a host credential',
       );
       return c.json({
         username: grant.username,

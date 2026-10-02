@@ -30,9 +30,12 @@ describe("MergeMarkerControl", () => {
     render(<MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    // The sheet is modal, so the trigger behind it leaves the accessibility tree: the one
+    // "Mark merged" a reader can reach now is the sheet's own.
     const buttons = screen.getAllByRole("button", { name: "Mark merged" });
-    expect(buttons).toHaveLength(2);
-    fireEvent.click(buttons[1] as HTMLElement);
+    expect(buttons).toHaveLength(1);
+    expect(screen.getByRole("dialog")).toContainElement(buttons[0] as HTMLElement);
+    fireEvent.click(buttons[0] as HTMLElement);
 
     expect(mark).toHaveBeenCalledWith({ target: "ISS-791" }, expect.anything());
     expect(unmark).not.toHaveBeenCalled();
@@ -41,7 +44,7 @@ describe("MergeMarkerControl", () => {
   it("omits an untouched note instead of sending an empty one", () => {
     render(<MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" />);
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
-    fireEvent.change(screen.getByPlaceholderText(/where it landed|branch or PR/i), {
+    fireEvent.change(screen.getByPlaceholderText(/where it landed|branch or change request/i), {
       target: { value: "  feature/by-hand  " },
     });
     const buttons = screen.getAllByRole("button", { name: "Mark merged" });
@@ -154,7 +157,7 @@ describe("MergeMarkerControl on a project that lands in git keeps its form", () 
       <MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" landingShape="git" />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
-    expect(screen.getByPlaceholderText(/branch or PR/)).toHaveValue("ISS-791");
+    expect(screen.getByPlaceholderText(/branch or change request/)).toHaveValue("ISS-791");
     const buttons = screen.getAllByRole("button", { name: "Mark merged" });
     fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
     expect(mark).toHaveBeenCalledWith({ target: "ISS-791" }, expect.anything());
@@ -175,8 +178,8 @@ describe("MergeMarkerControl on a project that lands in git keeps its form", () 
     );
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
     const long = `feature/${"y".repeat(240)}`;
-    fireEvent.change(screen.getByPlaceholderText(/branch or PR/), { target: { value: long } });
-    expect(screen.getByPlaceholderText(/branch or PR/)).toHaveValue(long);
+    fireEvent.change(screen.getByPlaceholderText(/branch or change request/), { target: { value: long } });
+    expect(screen.getByPlaceholderText(/branch or change request/)).toHaveValue(long);
     const buttons = screen.getAllByRole("button", { name: "Mark merged" });
     fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
     expect(mark).toHaveBeenCalledWith({ target: long }, expect.anything());

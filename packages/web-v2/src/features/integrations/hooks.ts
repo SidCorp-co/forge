@@ -149,6 +149,14 @@ export function useTestIntegration(projectId: string | undefined) {
   });
 }
 
+/** Mint a new inbound secret for a binding; the result carries it this once. */
+export function useRotateIntegrationSecret(projectId: string | undefined) {
+  const invalidate = useInvalidateIntegrations(projectId);
+  return useMutation({
+    mutationFn: (id: string) => integrationsApi.rotateSecret(projectId as string, id),
+    onSettled: () => invalidate(),
+  });
+}
 
 /** Create a Coolify/Epodsystem integration. Returns the one-time `integrationSecret`. */
 export function useCreateProviderIntegration(projectId: string | undefined) {

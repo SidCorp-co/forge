@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto';
 import { db } from '../../db/client.js';
-import { type GitHubRepoClient, githubRepoClient } from '../../integrations/github/client.js';
+import { resolveSourceHost } from '../../integrations/source-host/resolve.js';
+import type { SourceHost } from '../../integrations/source-host/types.js';
 import { logger } from '../../logger.js';
 import { readProjectConfig } from '../../project-config/service.js';
 import { boss } from '../../queue/boss.js';
@@ -40,7 +40,7 @@ export async function environmentsDeployingFrom(
     .sort();
 }
 
-// cm:why the push is the land: GitHub signs it, it arrives for every way a branch moves (a Forge merge, a person's merge, a direct push), and its sha is re-read from the repository rather than taken from anyone's claim
+// cm:why the push is the land: the host signs it, it arrives for every way a branch moves (a Forge merge, a person's merge, a direct push), and its sha is re-read from the repository rather than taken from anyone's claim
 export async function observeLand(input: {
   projectId: string;
   bindingId: string;
@@ -82,55 +82,13 @@ export async function observeLand(input: {
   return rows.length;
 }
 
-const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
-
-// cm:why the contents API stops carrying bytes past 1MB, so the blob is read by the sha GitHub names and the bytes are held to that sha before core hashes them for itself
-export async function artifactAt(
-  client: GitHubRepoClient,
-  path: string,
-  commit: string,
-): Promise<string | { missing: string }> {
-  const repo = `/repos/${encodeURIComponent(client.owner)}/${encodeURIComponent(client.repo)}`;
-  let entry: { type?: string; sha?: string; size?: number };
-  try {
-    entry = await client.get(`${repo}/contents/${encodePath(path)}?ref=${commit}`);
-  } catch (err) {
-    if ((err as { status?: number }).status === 404)
-      return { missing: `${path} does not exist at ${commit}` };
-    throw err;
-  }
-  if (entry.type !== 'file' || !entry.sha)
-    return {
-      missing: `${path} at ${commit} is a ${entry.type ?? 'thing'} with no blob, not a file`,
-    };
-  if ((entry.size ?? 0) > MAX_ARTIFACT_BYTES)
-    return {
-      missing: `${path} at ${commit} is ${entry.size} bytes, over the ${MAX_ARTIFACT_BYTES} an artifact may be`,
-    };
-  const blob = await client.get<{ content?: string; encoding?: string }>(
-    `${repo}/git/blobs/${entry.sha}`,
-  );
-  if (blob.encoding !== 'base64' || typeof blob.content !== 'string') {
-    throw new Error(`GitHub served blob ${entry.sha} with encoding ${blob.encoding ?? 'none'}`);
-  }
-  const bytes = Buffer.from(blob.content, 'base64');
-  const git = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
-  if (git !== entry.sha)
-    throw new Error(
-      `blob ${entry.sha} hashed to ${git}; the bytes GitHub served are not the file it named`,
-    );
-  return bytes.toString('utf8');
-}
-
-async function isBehind(client: GitHubRepoClient, base: string, head: string): Promise<boolean> {
+async function isBehind(host: SourceHost, base: string, head: string): Promise<boolean> {
   if (base === head) return false;
-  const repo = `/repos/${encodeURIComponent(client.owner)}/${encodeURIComponent(client.repo)}`;
-  const cmp = await client.get<{ status?: string }>(`${repo}/compare/${base}...${head}`);
-  return cmp.status === 'behind';
+  return (await host.compare(base, head)) === 'behind';
 }
 
 async function measureOne(
-  client: GitHubRepoClient,
+  host: SourceHost,
   row: MeasurementRow,
   providerSlug: string,
 ): Promise<void> {
@@ -143,12 +101,12 @@ async function measureOne(
   }
   const latest = await latestVersion(db, row.providerProjectId, row.contractSlug);
   const at = latest?.document.artifact;
-  if (at && 'sourceCommit' in at && (await isBehind(client, at.sourceCommit, row.commitSha))) {
+  if (at && 'sourceCommit' in at && (await isBehind(host, at.sourceCommit, row.commitSha))) {
     return settleMeasurement(row.id, 'stale', {
       reason: `${row.commitSha} is behind ${at.sourceCommit}, where version ${latest?.version} was measured`,
     });
   }
-  const text = await artifactAt(client, pub.artifact.path, row.commitSha);
+  const text = await host.readFile(pub.artifact.path, row.commitSha, MAX_ARTIFACT_BYTES);
   if (typeof text !== 'string')
     return settleMeasurement(row.id, 'refused', { reason: text.missing });
   const out = await recordVersion({
@@ -170,26 +128,26 @@ async function measureOne(
 
 export async function measureLand(job: LandJob): Promise<void> {
   const [project] = await projectsWhere(db, { ids: [job.projectId] });
-  let client: GitHubRepoClient | null = null;
+  let host: SourceHost | null = null;
   let refusal: string | null = null;
   try {
-    client = await githubRepoClient(job.projectId);
-    if (client.bindingId !== job.bindingId)
-      refusal = `the push came through binding ${job.bindingId}, and the project's GitHub binding is now ${client.bindingId}`;
+    host = await resolveSourceHost(job.projectId, 'kernel');
+    if (host.bindingId !== job.bindingId)
+      refusal = `the push came through binding ${job.bindingId}, and the project's source host binding is now ${host.bindingId}`;
   } catch (err) {
     refusal = err instanceof Error ? err.message : String(err);
   }
   for (const id of job.measurementIds) {
     const row = await readMeasurement(id);
     if (row?.outcome !== 'pending') continue;
-    if (!project || !client || refusal) {
+    if (!project || !host || refusal) {
       await settleMeasurement(id, 'refused', {
         reason: refusal ?? `project ${job.projectId} is gone`,
       });
       continue;
     }
     try {
-      await measureOne(client, row, project.slug);
+      await measureOne(host, row, project.slug);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       logger.error({ measurementId: id, err }, 'contract land: the measurement failed');

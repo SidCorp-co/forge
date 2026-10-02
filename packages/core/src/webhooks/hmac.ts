@@ -18,3 +18,15 @@ export function verifyHmacSignature(
 export function signHmacSha256(secret: string, body: string): string {
   return `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
 }
+
+/**
+ * A shared-token scheme's check — GitLab's `X-Gitlab-Token` carries the binding's secret itself
+ * rather than a signature over the body. Compared over fixed-length digests, so neither the length
+ * nor the content of the stored secret leaks through timing.
+ */
+export function verifySharedToken(secret: string, headerValue: string | null | undefined): boolean {
+  if (!headerValue) return false;
+  const a = createHmac('sha256', 'forge-shared-token').update(secret).digest();
+  const b = createHmac('sha256', 'forge-shared-token').update(headerValue).digest();
+  return timingSafeEqual(a, b);
+}
