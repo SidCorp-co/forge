@@ -3,6 +3,7 @@ export const DIFF_TOOLS = [
   'buf-breaking',
   'json-schema-diff',
   'graphql-inspector',
+  'graphql-sdl-diff',
   'none',
 ] as const;
 export type DiffTool = (typeof DIFF_TOOLS)[number];

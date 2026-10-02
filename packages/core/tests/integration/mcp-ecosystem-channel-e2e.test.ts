@@ -310,21 +310,34 @@ describe('forge_ecosystem writes a link through the ISS-37 services', () => {
     ]);
   });
 
-  it('refuses an interface write by a member who is not an admin', async () => {
+  it("takes an interface write from the project's own agent, and says who set its commitments", async () => {
     const held = done(
       await ecosystem(w.tokens.masterForge, { action: 'interface', projectId: w.project.forge }),
     );
     expect(held.declared).toBe(true);
+    const written = done(
+      await ecosystem(w.tokens.masterForge, {
+        action: 'interface_write',
+        projectId: w.project.forge,
+        baseRevision: held.revision,
+        document: held.document,
+      }),
+    );
+    expect(written).toMatchObject({ declared: true, created: false });
+    expect(written.commitmentsSetBy).toMatchObject({ agency: 'human' });
     expect(
       refusedAs(
         await ecosystem(w.tokens.masterForge, {
           action: 'interface_write',
           projectId: w.project.forge,
-          baseRevision: held.revision,
-          document: held.document,
+          baseRevision: written.revision,
+          document: {
+            ...held.document,
+            commitments: { ...held.document.commitments, deprecationNoticeDays: 1 },
+          },
         }),
       ),
-    ).toEqual(['ECOSYSTEM_NOT_AUTHORISED /projectId']);
+    ).toEqual(['COMMITMENTS_SET_BY_PERSON /commitments']);
   });
 
   it('refuses an action it does not take, and a projectId on the bus', async () => {
@@ -343,5 +356,126 @@ describe('forge_ecosystem writes a link through the ISS-37 services', () => {
         await ecosystem(current, { action: 'bus', ecosystem: w.eco, projectId: w.project.forge }),
       ),
     ).toEqual(['ECOSYSTEM_ARGUMENT_INVALID /projectId']);
+  });
+});
+
+describe("a provider's own agent publishes its GraphQL contract on /mcp", () => {
+  const SDL = `type Query {
+  products(first: Int): [Product!]!
+  order(id: ID!): Order
+}
+type Product { id: ID! title: String! }
+type Order { id: ID! }`;
+  const publish = (token: string, over: Doc = {}) =>
+    ecosystem(token, {
+      action: 'contract_version_publish',
+      projectId: w.project.forge,
+      contract: 'shop-graphql',
+      version: '2026-10-02',
+      kind: 'graphql',
+      source: SDL,
+      sourceRef: 'schema/shop.graphql@1a2b3c4',
+      ...over,
+    });
+
+  beforeAll(async () => {
+    const held = done(
+      await ecosystem(w.tokens.masterForge, { action: 'interface', projectId: w.project.forge }),
+    );
+    done(
+      await ecosystem(w.tokens.masterForge, {
+        action: 'interface_write',
+        projectId: w.project.forge,
+        baseRevision: held.revision,
+        document: {
+          ...held.document,
+          publishes: {
+            ...held.document.publishes,
+            'shop-graphql': {
+              title: 'Shop GraphQL',
+              type: 'graphql',
+              artifact: { upload: true },
+              lifecycle: 'production',
+              ecosystems: [w.eco],
+            },
+          },
+        },
+      }),
+    );
+  });
+
+  it("refuses another project's agent by name, even through a token that reaches the project", async () => {
+    const { mintPat } = await import('../../src/auth/pat.js');
+    const stranger = (await mintPat({ userId: w.agent.plugin, name: 'unfenced' })).plaintext;
+    expect(refusedAs(await publish(stranger))).toEqual(['CONTRACT_WRITER_NOT_PROVIDER ']);
+    const held = done(
+      await ecosystem(w.tokens.masterForge, { action: 'interface', projectId: w.project.forge }),
+    );
+    expect(
+      refusedAs(
+        await ecosystem(stranger, {
+          action: 'interface_write',
+          projectId: w.project.forge,
+          baseRevision: held.revision,
+          document: held.document,
+        }),
+      ),
+    ).toEqual(['INTERFACE_WRITER_NOT_PROJECT ']);
+  });
+
+  it('refuses an unknown kind, a kind the publication is not, and an SDL that does not parse', async () => {
+    expect(refusedAs(await publish(w.tokens.masterForge, { kind: 'soap' }))).toEqual([
+      'CONTRACT_KIND_UNKNOWN /kind',
+    ]);
+    expect(refusedAs(await publish(w.tokens.masterForge, { kind: 'mcp-tools' }))).toEqual([
+      'CONTRACT_KIND_MISMATCH /kind',
+    ]);
+    expect(
+      refusedAs(await publish(w.tokens.masterForge, { source: 'query { products { id } }' })),
+    ).toEqual(['ARTIFACT_UNREADABLE /source']);
+    expect(refusedAs(await publish(w.tokens.masterForge, { sourceRef: 'schema.graphql' }))).toEqual(
+      ['ECOSYSTEM_ARGUMENT_INVALID /sourceRef'],
+    );
+    expect(refusedAs(await publish(w.tokens.masterForge, { contract: 'forge-plugin/x' }))).toEqual([
+      'CONTRACT_NOT_PUBLISHED /contract',
+    ]);
+  });
+
+  it('records the version with its operations indexed, and measures the next one against it', async () => {
+    const first = done(await publish(w.tokens.masterForge));
+    expect(first).toMatchObject({
+      recorded: true,
+      version: {
+        contractVersion: '2026-10-02',
+        artifact: { sourceRef: 'schema/shop.graphql@1a2b3c4' },
+        diff: { classification: 'initial' },
+      },
+    });
+    const read = ok(
+      await say(
+        'platform',
+        'GET',
+        `/api/projects/${w.project.forge}/contracts/shop-graphql/versions/2026-10-02`,
+      ),
+    );
+    expect(read.elements).toEqual(
+      expect.arrayContaining(['Query.products', 'Query.products(first)', 'Product.title']),
+    );
+    expect(
+      refusedAs(
+        await publish(w.tokens.masterForge, {
+          version: '2026-10-01',
+          source: `${SDL}\ntype Extra { a: Int }`,
+        }),
+      ),
+    ).toEqual(['VERSION_BUMP_TOO_SMALL /version']);
+    const next = done(
+      await publish(w.tokens.masterForge, {
+        version: '2026-10-03',
+        source: SDL.replace('  order(id: ID!): Order\n', ''),
+      }),
+    );
+    expect(next.version.diff.classification).toBe('breaking');
+    expect(next.version.diff.changes.map((c: Doc) => c.element)).toContain('Query.order');
   });
 });

@@ -24,6 +24,8 @@ export type EcosystemRefusalCode =
   | 'MEMBERSHIP_TRANSITION_NOT_ALLOWED'
   | 'MEMBERSHIP_REASON_REQUIRED'
   | 'MEMBERSHIP_IN_USE'
+  | 'INTERFACE_WRITER_NOT_PROJECT'
+  | 'COMMITMENTS_SET_BY_PERSON'
   | ChannelRefusalCode
   | EcosystemToolRefusalCode
   | ContractRefusalCode

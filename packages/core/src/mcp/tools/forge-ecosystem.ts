@@ -4,11 +4,18 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
 import { supersedeBuilderRun } from '../../ecosystem/builder-supersede.js';
+import { MAX_ARTIFACT_BYTES } from '../../ecosystem/contract/measure.js';
+import { publishContractVersion } from '../../ecosystem/contract/publish.js';
 import {
   loadContractContext,
   recordContractContext,
 } from '../../ecosystem/contract/run-context-service.js';
-import { loadInterface, writeInterface } from '../../ecosystem/interface-service.js';
+import { SOURCE_REF } from '../../ecosystem/contract/version-schema.js';
+import {
+  commitmentsSetter,
+  loadInterface,
+  writeInterface,
+} from '../../ecosystem/interface-service.js';
 import {
   listBuilderRunsAs,
   listLinksAs,
@@ -26,6 +33,7 @@ import {
   updateLink,
 } from '../../ecosystem/link-service.js';
 import type { EcosystemRefusal } from '../../ecosystem/refusals.js';
+import { projectsWhere } from '../../ecosystem/store.js';
 import { assertProjectAccess } from '../../lib/authz.js';
 import { namedRefusals, type SideCodes, sideOf } from './ecosystem-side.js';
 import type { ContextScopedMcpToolFactory, McpContext } from './lib.js';
@@ -46,6 +54,7 @@ const WRITES = [
   'builder_run_create',
   'builder_run_update',
   'builder_run_supersede',
+  'contract_version_publish',
 ] as const;
 const ACTIONS = [...READS, ...WRITES] as const;
 type Action = (typeof ACTIONS)[number];
@@ -73,6 +82,23 @@ const BY_ACTION = {
   builder_run_create: z.strictObject(envelope),
   builder_run_update: z.strictObject({ run: z.uuid(), ...envelope }),
   builder_run_supersede: z.strictObject({ run: z.uuid(), reason: z.unknown().optional() }),
+  contract_version_publish: z.strictObject({
+    contract: z
+      .string()
+      .regex(
+        /^(?:[a-z][a-z0-9-]{0,62}\/)?[a-z][a-z0-9-]{0,62}$/,
+        'contract is the publication slug, or <this project slug>/<slug>',
+      ),
+    version: z.string().min(1).max(40),
+    kind: z.string().min(1).max(40),
+    source: z.union([z.string().min(1).max(MAX_ARTIFACT_BYTES), z.record(z.string(), z.unknown())]),
+    sourceRef: z
+      .string()
+      .regex(
+        SOURCE_REF,
+        'sourceRef is <repository path>@<commit sha>, e.g. schema.graphql@1a2b3c4',
+      ),
+  }),
 } satisfies Record<Action, z.ZodType>;
 
 const SHAPES: Record<Action, string> = {
@@ -90,6 +116,8 @@ const SHAPES: Record<Action, string> = {
   builder_run_create: '{ baseRevision: null, document: a builder-run-v1 document }',
   builder_run_update: '{ run, baseRevision, document: a builder-run-v1 document }',
   builder_run_supersede: '{ run: the open builder run uuid, reason: why it is replaced }',
+  contract_version_publish:
+    '{ contract: the publication slug, version, kind: graphql | mcp-tools | openapi | json-schema, source: SDL text or the { tools } JSON, sourceRef: <repo path>@<sha> }',
 };
 
 type Answer = Record<string, unknown>;
@@ -175,7 +203,12 @@ const HANDLERS: Record<
     await assertProjectAccess(side, ctx.principal.userId, 'viewer');
     const held = await loadInterface(side);
     return held
-      ? { declared: true, revision: held.revision, document: held.document }
+      ? {
+          declared: true,
+          revision: held.revision,
+          document: held.document,
+          commitmentsSetBy: await commitmentsSetter(side),
+        }
       : { declared: false, revision: null, document: null };
   },
   links: async (ctx, side) => {
@@ -203,10 +236,9 @@ const HANDLERS: Record<
     return { loaded, returned: loaded.length, recorded: Boolean(session && loaded.length) };
   },
   interface_write: async (ctx, side, a) => {
-    await assertProjectAccess(side, ctx.principal.userId, 'admin');
     const outcome = await writeInterface({
       projectId: side,
-      userId: ctx.principal.userId,
+      writer: { userId: ctx.principal.userId, agency: ctx.principal.agency },
       baseRevision: a.baseRevision ?? null,
       raw: a.document,
     });
@@ -217,8 +249,10 @@ const HANDLERS: Record<
       revision: held.revision,
       document: held.document,
       created: outcome.created,
+      commitmentsSetBy: await commitmentsSetter(side),
     };
   },
+  contract_version_publish: async (ctx, side, a) => publish(ctx, side, a),
   link_create: async (ctx, side, a) =>
     recorded(await createLink({ projectId: side, ...writeOf(ctx, a) })),
   link_update: async (ctx, side, a) =>
@@ -239,6 +273,39 @@ const HANDLERS: Record<
   },
 };
 
+async function publish(ctx: McpContext, side: string, a: Args): Promise<Answer> {
+  const own = await loadSlug(side);
+  const raw = String(a.contract);
+  const slash = raw.indexOf('/');
+  if (slash >= 0 && raw.slice(0, slash) !== own) {
+    return one(
+      'CONTRACT_NOT_PUBLISHED',
+      '/contract',
+      `${raw} names project ${raw.slice(0, slash)}; a project publishes versions of its own contracts only, and this call acts for ${own ?? side}`,
+    );
+  }
+  const out = await publishContractVersion({
+    projectId: side,
+    writer: { userId: ctx.principal.userId, agency: ctx.principal.agency },
+    contract: raw.slice(slash + 1),
+    kind: String(a.kind),
+    version: String(a.version),
+    artifact: typeof a.source === 'string' ? a.source : JSON.stringify(a.source),
+    sourceRef: String(a.sourceRef),
+  });
+  if (!out.ok) {
+    return refusedWith(
+      out.refusals.map((r) => (r.path === '/artifact' ? { ...r, path: '/source' } : r)),
+    );
+  }
+  return { recorded: out.recorded, version: out.version };
+}
+
+async function loadSlug(projectId: string): Promise<string | null> {
+  const [row] = await projectsWhere(db, { ids: [projectId] });
+  return row?.slug ?? null;
+}
+
 const writeOf = (ctx: McpContext, a: Args) => ({
   writer: { userId: ctx.principal.userId, agency: ctx.principal.agency },
   baseRevision: a.baseRevision ?? null,
@@ -253,6 +320,7 @@ const PATH_OF: Partial<Record<Action, string>> = {
   builder_run_supersede: '/run',
   context: '/session',
   bus: '/ecosystem',
+  contract_version_publish: '/contract',
 };
 
 async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answer> {
@@ -303,7 +371,8 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
 const DESCRIPTION = [
   "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus.",
   'Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks).',
-  "Writes take { baseRevision, document } as their REST route does: interface_write (an admin), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite), builder_run_supersede ({ run, reason }: closes an open run as superseded and opens a fresh manual run with the steps the project's current source type derives, waking its master; the project's own agent's, or an org admin's of the steward or the project's org).",
+  "Writes take { baseRevision, document } as their REST route does: interface_write (the project's own agent, member or above, or a person holding admin; commitment windows an agent writes read as set by the agent, and once a person has set them an agent's write that moves them is refused COMMITMENTS_SET_BY_PERSON), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite), builder_run_supersede ({ run, reason }: closes an open run as superseded and opens a fresh manual run with the steps the project's current source type derives, waking its master; the project's own agent's, or an org admin's of the steward or the project's org).",
+  "contract_version_publish ({ contract, version, kind, source, sourceRef }, POST /api/projects/:id/contracts/:contract/versions on REST) records a version of a contract this project publishes with artifact { upload: true }: kind is graphql (SDL text), mcp-tools ({ tools: [{ name, inputSchema }] }), openapi or json-schema, and must be the publication's type; core indexes its elements and measures it against the latest version. Refused by name: CONTRACT_KIND_UNKNOWN, CONTRACT_KIND_MISMATCH, ARTIFACT_UNREADABLE, VERSION_BUMP_TOO_SMALL, VERSION_NOT_IN_SCHEME, CONTRACT_NOT_PUBLISHED, CONTRACT_WRITER_NOT_PROVIDER (the writer rule of interface_write).",
   "The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written.",
   'For the channel, use forge_channel.',
 ].join(' ');
@@ -324,6 +393,24 @@ const INPUT_SCHEMA: Record<string, unknown> = {
     run: prop('builder_run, builder_run_update, builder_run_supersede: the builder run uuid.'),
     reason: prop('builder_run_supersede: why the open run is replaced, 1 to 1000 characters.'),
     ecosystem: prop('bus: the ecosystem uuid.'),
+    contract: prop(
+      'contract_version_publish: the publication slug of a contract this project publishes.',
+    ),
+    version: prop(
+      'contract_version_publish: the version name, in the interface versioning scheme, after the latest.',
+    ),
+    kind: prop(
+      'contract_version_publish: graphql, mcp-tools, openapi or json-schema; the publication type.',
+    ),
+    source: prop(
+      'contract_version_publish: the artifact, SDL text for graphql, the { tools } JSON for mcp-tools.',
+      {
+        type: ['string', 'object'],
+      },
+    ),
+    sourceRef: prop(
+      'contract_version_publish: where the artifact was read, <repository path>@<commit sha>.',
+    ),
     paths: prop('context: repository-relative paths the run touches.', {
       type: 'array',
       items: { type: 'string' },

@@ -80,8 +80,62 @@ function shapeOf(c: ImpactChange): { surface: string; fields: string[] } {
 const readsField = (used: readonly string[], field: string) =>
   used.some((u) => u === field || leaf(u) === leaf(field));
 
+const GRAPHQL_PATH =
+  /^((?:Query|Mutation|Subscription)\.[_A-Za-z]\w*)((?:\.[_A-Za-z]\w*)*)(?:\(([_A-Za-z]\w*)\))?$/;
+const ROOT_PREFIX = /^(?:(?:Query|Mutation|Subscription)\.|(?:query|mutation|subscription)\s+)/;
+const opName = (s: string) => s.replace(ROOT_PREFIX, '');
+
+// cm:why a GraphQL change names the operation it reaches and the field path under it (`Query.products.variants.price`); an argument on the operation itself binds every caller of it, one on a nested field only the callers that select that field
+function graphqlShape(c: ImpactChange): { surface: string; fields: string[] } | null {
+  if (!c.check?.startsWith('graphql-')) return null;
+  const m = GRAPHQL_PATH.exec(c.element);
+  if (!m) return null;
+  const [, surface = '', rest = '', arg] = m;
+  const path = rest.slice(1);
+  if (c.kind === 'added' && !arg) return { surface, fields: [] };
+  return { surface, fields: path ? [path] : [] };
+}
+
+// cm:why a consumer names what it reads as `operation.field` (`products.title`, with or without its root type); a path under another operation never matches, and a bare field matches on its last segment like any other contract
+function readsGraphqlField(used: readonly string[], op: string, field: string): boolean {
+  return used.some((raw) => {
+    const u = opName(raw);
+    if (u.startsWith(`${op}.`)) {
+      const rest = u.slice(op.length + 1);
+      return rest === field || leaf(rest) === leaf(field);
+    }
+    return !u.includes('.') && leaf(u) === leaf(field);
+  });
+}
+
+function graphqlBreak(
+  link: ImpactLink,
+  c: ImpactChange,
+  shape: { surface: string; fields: string[] },
+): ImpactBreak | null {
+  const op = opName(shape.surface);
+  const atOp = (s: string) => opName(s) === op || opName(s).startsWith(`${op}.`);
+  const outside = link.outsideContract.filter(atOp);
+  const sites = link.callSites.filter((s) => atOp(s.operation));
+  const usesOp = sites.length > 0 || link.fieldsUsed.some(atOp);
+  const read = shape.fields.filter((f) => readsGraphqlField(link.fieldsUsed, op, f));
+  const contractHit =
+    shape.fields.length === 0 ? usesOp : read.length > 0 && (usesOp || link.callSites.length === 0);
+  if (!contractHit && outside.length === 0) return null;
+  return {
+    element: c.element,
+    check: c.check ?? null,
+    text: c.text,
+    fields: contractHit ? read : [],
+    callSites: sites.length ? sites : contractHit ? [...link.callSites] : [],
+    outsideContract: outside,
+  };
+}
+
 // cm:why outside-contract surface is in every check (Hyrum's law): the consumer declared no fields for it, so any breaking change at that surface breaks it whatever field it names
 function breakOf(link: ImpactLink, c: ImpactChange): ImpactBreak | null {
+  const graphql = graphqlShape(c);
+  if (graphql) return graphqlBreak(link, c, graphql);
   const { surface, fields } = shapeOf(c);
   const whole = WHOLE.has(surface);
   const outside = link.outsideContract.filter((o) => whole || o === surface);

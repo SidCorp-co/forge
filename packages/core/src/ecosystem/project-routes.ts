@@ -3,13 +3,19 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { assertProjectAccess } from '../lib/authz.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { envelopeOf, refused } from '../project-config/respond.js';
 import { readApiPage } from './api-page.js';
 import { heldEcosystem } from './ecosystem-service.js';
-import { type HeldInterface, loadInterface, writeInterface } from './interface-service.js';
+import {
+  commitmentsSetter,
+  type HeldInterface,
+  loadInterface,
+  writeInterface,
+} from './interface-service.js';
 import { membershipDocument } from './membership-rules.js';
+import type { CommitmentsSetter } from './provider-writer-rules.js';
 import { serialiseRevisions } from './routes.js';
 import { listInterfaceRevisions, membershipsWhere, readEcosystems } from './store.js';
 
@@ -28,19 +34,24 @@ const idParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
   }
 });
 
-const serialise = (held: HeldInterface) => ({
+const serialise = (held: HeldInterface, setBy: CommitmentsSetter | null) => ({
   declared: true as const,
   revision: held.revision,
   document: held.document,
   updatedBy: held.updatedBy,
   updatedAt: held.updatedAt.toISOString(),
+  commitmentsSetBy: setBy,
 });
 
 ecosystemProjectRoutes.get('/:id/interface', idParam, async (c) => {
   const { id } = c.req.valid('param');
   await assertProjectAccess(id, c.get('userId'), 'viewer');
   const held = await loadInterface(id);
-  return c.json(held ? serialise(held) : { declared: false, revision: null, document: null });
+  return c.json(
+    held
+      ? serialise(held, await commitmentsSetter(id))
+      : { declared: false, revision: null, document: null },
+  );
 });
 
 ecosystemProjectRoutes.put(
@@ -49,12 +60,17 @@ ecosystemProjectRoutes.put(
   zValidator('json', z.unknown()),
   async (c) => {
     const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-    await assertProjectAccess(id, userId, 'admin');
+    const actor = restActor(c);
     const { baseRevision, document } = envelopeOf(c.req.valid('json'));
-    const outcome = await writeInterface({ projectId: id, userId, baseRevision, raw: document });
+    const outcome = await writeInterface({
+      projectId: id,
+      writer: { userId: actor.id, agency: actor.agency },
+      baseRevision,
+      raw: document,
+    });
     if (!outcome.ok) return refused(c, outcome.refusals);
-    return c.json({ ...serialise(outcome.held), created: outcome.created });
+    const setBy = await commitmentsSetter(id);
+    return c.json({ ...serialise(outcome.held, setBy), created: outcome.created });
   },
 );
 

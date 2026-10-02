@@ -1,9 +1,10 @@
 import Ajv2020 from 'ajv/dist/2020.js';
+import { type SdlSchema, sdlElements } from './graphql-sdl.js';
 import { openApiElements } from './openapi-diff.js';
 import { boundedFormats, linearRegExp, unsafePatterns } from './safe-regex.js';
 import { jsonSchemaElements, toolsOf } from './schema-diff.js';
 
-export const INDEXED_TYPES = ['openapi', 'mcp-tools', 'json-schema'] as const;
+export const INDEXED_TYPES = ['openapi', 'mcp-tools', 'json-schema', 'graphql'] as const;
 export type IndexedType = (typeof INDEXED_TYPES)[number];
 
 export const isIndexed = (type: string): type is IndexedType =>
@@ -27,8 +28,24 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 
 export function elementsOf(type: IndexedType, document: unknown): string[] {
   if (type === 'openapi') return openApiElements(document);
-  if (type === 'mcp-tools') return [...(toolsOf(document)?.keys() ?? [])];
+  if (type === 'mcp-tools') return mcpToolElements(document);
+  if (type === 'graphql') return sdlElements(document as SdlSchema);
   return jsonSchemaElements(document);
+}
+
+const escapePointer = (k: string) => k.replace(/~/g, '~0').replace(/\//g, '~1');
+
+// cm:why a tool's input properties are elements as `<tool>/properties/<name>`, the shape the schema differ names a property change in, so a consumer can declare the inputs it sends and a semantic change can name one
+function mcpToolElements(document: unknown): string[] {
+  return [...(toolsOf(document)?.values() ?? [])].flatMap((t) => {
+    const props = at(t.inputSchema, 'properties');
+    return [
+      t.name,
+      ...(isObject(props) ? Object.keys(props) : []).map(
+        (p) => `${t.name}/properties/${escapePointer(p)}`,
+      ),
+    ];
+  });
 }
 
 export function indexContract(type: IndexedType, document: unknown): ContractIndex {
@@ -58,6 +75,9 @@ function openApiSchema(doc: unknown, ex: ContractExample): unknown | string {
 }
 
 function schemaFor(index: ContractIndex, ex: ContractExample): unknown | string {
+  if (index.type === 'graphql') {
+    return 'a GraphQL contract is SDL, which holds no JSON schema an example payload can be checked against';
+  }
   if (index.type === 'openapi') return openApiSchema(index.document, ex);
   if (index.type === 'mcp-tools') {
     if (ex.direction !== 'tool-input') {

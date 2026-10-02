@@ -116,8 +116,11 @@ async function measureOne(
     versioning: iface.document.commitments.versioning,
     artifact: { text, origin: { sourceCommit: row.commitSha } },
   });
-  if (out.outcome === 'refused')
-    return settleMeasurement(row.id, 'refused', { reason: out.problem.detail });
+  if (out.outcome === 'refused') {
+    const { code, detail } = out.problem;
+    const reason = code === 'ARTIFACT_UNREADABLE' ? `${code}: ${detail}` : detail;
+    return settleMeasurement(row.id, 'refused', { reason });
+  }
   if (out.outcome === 'unchanged') {
     return settleMeasurement(row.id, 'unchanged', {
       reason: `the artifact is the one version ${out.version.contractVersion} was measured from`,

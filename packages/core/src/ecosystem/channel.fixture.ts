@@ -28,7 +28,12 @@ const MEASURED: Record<string, MeasuredVersion> = {
         kind: 'changed',
         text: 'added the new required request property `policyVersion`',
       },
-      { element: 'GET /api/issues/{id}', level: 'info', kind: 'added', text: 'added the optional property `changeScope`' },
+      {
+        element: 'GET /api/issues/{id}',
+        level: 'info',
+        kind: 'added',
+        text: 'added the optional property `changeScope`',
+      },
     ],
   },
 };

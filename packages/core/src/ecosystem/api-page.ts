@@ -3,7 +3,7 @@ import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { forbidden, notFound, readerProjects } from './access.js';
 import { heldEcosystem } from './ecosystem-service.js';
 import { loadGraph } from './graph.js';
-import { loadInterface } from './interface-service.js';
+import { commitmentsSetter, loadInterface } from './interface-service.js';
 import { edgeVisible, liveEdges, type Sight, sightOf } from './party.js';
 import type { InterfaceDocument, Publication } from './schema.js';
 import {
@@ -81,8 +81,9 @@ export async function readApiPage(userId: string, projectId: string, fence?: rea
       visible.has(e.ecosystemId) &&
       (full || edgeVisible(graph, e, reader)),
   );
-  const [held, versionRows, ecos, others] = await Promise.all([
+  const [held, setBy, versionRows, ecos, others] = await Promise.all([
     loadInterface(projectId),
+    commitmentsSetter(projectId),
     recordedVersions(db, [projectId]),
     readEcosystems(db, [...visible]),
     projectsWhere(db, {
@@ -130,6 +131,11 @@ export async function readApiPage(userId: string, projectId: string, fence?: rea
         ecosystem: e.ecosystemId,
         builtAgainst: e.builtAgainst,
       })),
-    commitments: held?.document.commitments ?? null,
+    commitments: held
+      ? {
+          ...held.document.commitments,
+          setBy: setBy ? { agency: setBy.agency, at: setBy.at } : null,
+        }
+      : null,
   };
 }

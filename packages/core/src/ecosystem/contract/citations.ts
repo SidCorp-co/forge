@@ -4,7 +4,13 @@ import type { ContractExample, ContractIndex } from './elements.js';
 
 export interface MeasuredVersion {
   classification: MeasuredClassification;
-  changes: readonly { element: string; level: ChangeLevel; kind: ChangeKind; text: string; check?: string | undefined }[];
+  changes: readonly {
+    element: string;
+    level: ChangeLevel;
+    kind: ChangeKind;
+    text: string;
+    check?: string | undefined;
+  }[];
 }
 
 export interface VersionFacts {
