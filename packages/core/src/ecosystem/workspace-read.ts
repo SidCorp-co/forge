@@ -91,21 +91,24 @@ export async function readWorkspace(userId: string): Promise<WorkspaceRead> {
         ).map((o) => [o.id, o.name]),
   );
   const activeIn = (eco: string) =>
-    memberships.filter((m) => m.ecosystemId === eco && m.state === 'active').map((m) => m.projectId);
+    memberships
+      .filter((m) => m.ecosystemId === eco && m.state === 'active')
+      .map((m) => m.projectId);
 
   const threads: WorkspaceRead['threads'] = [];
   for (const h of held) {
     const stored = await documentsWhere(db, { ecosystem: h.id, published: true });
     for (const row of await registerRowsOver(stored)) {
-      if (mine.has(row.from) || row.to.some((t) => mine.has(t))) threads.push({ ...row, ecosystem: h.id });
+      if (mine.has(row.from) || row.to.some((t) => mine.has(t)))
+        threads.push({ ...row, ecosystem: h.id });
     }
   }
   threads.sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? ''));
 
   const senders = [...new Set(held.flatMap((h) => activeIn(h.id)))];
-  const pending = (
-    await Promise.all(senders.map((p) => documentsWhere(db, { from: p })))
-  ).flatMap((rows) => rows.filter((r) => r.state !== 'published' && r.inReplyTo && ids.has(r.ecosystemId)));
+  const pending = (await Promise.all(senders.map((p) => documentsWhere(db, { from: p })))).flatMap(
+    (rows) => rows.filter((r) => r.state !== 'published' && r.inReplyTo && ids.has(r.ecosystemId)),
+  );
   const drafts = (await serveAll(db, pending)).map(({ id, document: d }) => ({
     id,
     ecosystem: d.ecosystem,
@@ -129,7 +132,11 @@ export async function readWorkspace(userId: string): Promise<WorkspaceRead> {
         name: h.document.ecosystem.name,
         purpose: h.document.ecosystem.purpose ?? null,
         code: h.document.channel.code,
-        steward: { id: h.stewardOrgId, name: stewards.get(h.stewardOrgId) ?? null, mine: orgs.has(h.stewardOrgId) },
+        steward: {
+          id: h.stewardOrgId,
+          name: stewards.get(h.stewardOrgId) ?? null,
+          mine: orgs.has(h.stewardOrgId),
+        },
         visibility: h.document.visibility.members,
         responseDays: h.document.channel.responseDays,
         gate: h.document.gate,

@@ -76,6 +76,13 @@ export function ApiPageScreen({ projectId, slug }: { projectId: string; slug: st
 
       <section aria-label="Commitments" className="space-y-2">
         <h2 className="fg-label text-fg">Commitments</h2>
+        {page.commitments?.setBy ? (
+          <p className="fg-caption" data-testid="commitments-set-by">
+            {page.commitments.setBy.agency === "agent"
+              ? `Set by ${slug}'s agent on ${page.commitments.setBy.at.slice(0, 10)}; a project admin can overwrite these windows.`
+              : `Set by a person on ${page.commitments.setBy.at.slice(0, 10)}.`}
+          </p>
+        ) : null}
         {page.commitments ? (
           <dl className="grid grid-cols-1 gap-1 text-13 sm:grid-cols-2">
             <dt className="fg-caption">Versioning</dt>

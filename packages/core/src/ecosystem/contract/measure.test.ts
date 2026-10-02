@@ -12,14 +12,11 @@ const ISSUE = {
 };
 
 describe('a contract with no differ, or no artifact, measures unknown and never non-breaking', () => {
-  it.each(['opaque', 'asyncapi', 'graphql', 'protobuf'])(
-    '%s → unknown with the reason',
-    async (type) => {
-      const d = await measureChange(type, 'a', 'b');
-      expect(d.classification).toBe('unknown');
-      expect(d.changes[0]?.text).toMatch(/no differ/);
-    },
-  );
+  it.each(['opaque', 'asyncapi', 'protobuf'])('%s → unknown with the reason', async (type) => {
+    const d = await measureChange(type, 'a', 'b');
+    expect(d.classification).toBe('unknown');
+    expect(d.changes[0]?.text).toMatch(/no differ/);
+  });
 
   it('a tools contract is measured by the narrow rules', async () => {
     const d = await measureChange(
@@ -51,7 +48,10 @@ describe('an artifact core cannot read is refused by name, not measured as empty
 
   it('an opaque or unindexed type keeps no element list', () => {
     expect(elementList('opaque', null)).toBeNull();
-    expect(elementList('mcp-tools', JSON.parse(tools(ISSUE)))).toEqual(['forge_issues.get']);
+    expect(elementList('mcp-tools', JSON.parse(tools(ISSUE)))).toEqual([
+      'forge_issues.get',
+      'forge_issues.get/properties/id',
+    ]);
   });
 });
 

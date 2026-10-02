@@ -10,6 +10,7 @@ import {
   type VersionFacts,
 } from './citations.js';
 import { type ContractIndex, exampleProblem, indexContract, isIndexed } from './elements.js';
+import { parseArtifact } from './measure.js';
 import { readArtifact, versionsOf } from './store.js';
 
 function resolved(c: Citation, f: ContractFacts): { version: string; facts: VersionFacts } | null {
@@ -110,7 +111,7 @@ export async function loadContractFacts(
       const t = key ? types.get(key) : undefined;
       if (!key || !t?.sha || !isIndexed(t.type) || indexes.has(key)) continue;
       const text = await readArtifact(tx, t.sha);
-      if (text) indexes.set(key, indexContract(t.type, JSON.parse(text)));
+      if (text) indexes.set(key, indexContract(t.type, parseArtifact(t.type, text)));
     }
   }
   return { measured, versions, latest, indexes };

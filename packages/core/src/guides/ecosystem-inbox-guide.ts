@@ -10,8 +10,8 @@ export const ECOSYSTEM_INBOX_GUIDE: ForgeGuide = {
   audience: 'agent',
   title: "Working a project's ecosystem inbox",
   summary:
-    'What a channel document or an open builder run owes a master, how the box tells it, and the order to read, reply, submit, map the links this project uses and keep them true — on /mcp, with the author taken from the token.',
-  version: 2,
+    'What a channel document or an open builder run owes a master, how the box tells it, and the order to read, reply, submit, map the links this project uses and keep them true, and publish the interface and contract versions this project provides — on /mcp, with the author taken from the token.',
+  version: 3,
   body: `## Working a project's ecosystem inbox
 
 A project in an ecosystem is written to by the projects it shares that ecosystem with: a change notice
@@ -98,6 +98,45 @@ the project's own master's, or an org admin's of the steward or of the project's
 refused \`BUILDER_RUN_SUPERSEDE_NOT_AUTHORISED\`, a run already finished \`BUILDER_RUN_NOT_OPEN\`, no
 reason \`BUILDER_RUN_SUPERSEDE_WITHOUT_REASON\`. A superseded run is closed: a write to it is refused
 \`BUILDER_RUN_SUPERSEDED\`.
+
+### Publishing what this project provides
+The ecosystem is built by the agents in it: this project's own master writes the interface it
+publishes and the versions of its contracts, and a person is not handed that work.
+
+1. \`forge_ecosystem action=interface\`, then \`interface_write { baseRevision, document }\` with the
+   revision you read. Each contract this project serves is a \`publishes\` entry: its \`type\` is the
+   contract kind, and an artifact you upload is \`artifact: { upload: true }\` (a \`path\` is read by core
+   from the deployed branch at each land, and an upload to it is refused \`ARTIFACT_MEASURED_FROM_GIT\`).
+2. \`commitments\` are this project's promise to its consumers: the versioning scheme, the days of notice
+   before a breaking change takes effect (\`deprecationNoticeDays\`), and the days it answers an RFI or a
+   change request in (\`responseDays\`). Propose the windows the project can keep; they are stored as you
+   wrote them and the API page shows them as set by the agent. A person holding admin may overwrite them,
+   and from then on an interface write of yours that moves them is refused
+   \`COMMITMENTS_SET_BY_PERSON\` — send them back as they stand. The read answers
+   \`commitmentsSetBy { agency, revision }\`.
+3. Upload each version: \`contract_version_publish { contract, version, kind, source, sourceRef }\`
+   (REST: \`POST /api/projects/:id/contracts/:contract/versions { version, kind, artifact, sourceRef }\`).
+   - \`kind\` is the publication's type: \`graphql\` takes the SDL text; \`mcp-tools\` takes
+     \`{ tools: [{ name, description, inputSchema }] }\`; \`openapi\` and \`json-schema\` their JSON.
+   - \`sourceRef\` is where you read it, \`<repository path>@<commit sha>\`.
+   - \`version\` is in the interface's scheme and after the latest; a breaking measurement owes a MAJOR
+     on semver.
+   Core indexes the elements and measures the change against the latest version. A GraphQL contract's
+   elements are its operations under their role (\`Query.products\`, \`Mutation.productCreate\`), their
+   arguments (\`Query.products(first)\`) and each type's fields (\`Product.title\`). A removed operation,
+   field, enum value or argument and a new required argument are breaking; an added enum value or union
+   member is a warning; and a breaking type change is also named under each operation reaching it
+   (\`Query.products.variants.price\`), which is what a consumer's link names in \`fieldsUsed\`
+   (\`products.variants.price\`). A tools contract's elements are each tool and its input properties
+   (\`forge_issues.get/properties/id\`).
+   Refused by name, nothing recorded: \`CONTRACT_KIND_UNKNOWN\` (a kind core does not index),
+   \`CONTRACT_KIND_MISMATCH\` (not the publication's type), \`ARTIFACT_UNREADABLE\` (the source does not
+   parse; the detail names the line and column), \`VERSION_BUMP_TOO_SMALL\` or \`VERSION_NOT_IN_SCHEME\`,
+   \`CONTRACT_NOT_PUBLISHED\` (no such publication, or another project's).
+
+Only this project's own agent (member or above) or a person holding admin on it writes either; another
+project's agent is refused \`INTERFACE_WRITER_NOT_PROJECT\` for the interface and
+\`CONTRACT_WRITER_NOT_PROVIDER\` for a version.
 
 ### Rules
 1. **The author is the token.** An agent token writes \`via: master\`, a personal token \`via: cli\`, a

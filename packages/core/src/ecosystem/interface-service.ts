@@ -1,6 +1,8 @@
 import { db, type Tx } from '../db/client.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { isRecord, parseVersionedDocument, staleBase } from '../project-config/documents.js';
-import { notFound } from './access.js';
+import { notFound, refusedBy } from './access.js';
 import { versionsOf } from './contract/store.js';
 import { heldEcosystem, storedAs } from './ecosystem-service.js';
 import {
@@ -10,6 +12,13 @@ import {
   splitContractRef,
   versionKey,
 } from './interface-rules.js';
+import {
+  type CommitmentsSetter,
+  commitmentsRefusal,
+  commitmentsSetterOf,
+  type ProviderWriterCode,
+  providerWriterRefusal,
+} from './provider-writer-rules.js';
 import { type EcosystemRefusal, renameParseRefusals } from './refusals.js';
 import {
   type EcosystemDocument,
@@ -20,6 +29,7 @@ import {
   activeEcosystemIdsOf,
   consumersOf,
   type EdgeRow,
+  interfaceRevisionsBy,
   lockKeys,
   type ProjectRow,
   projectsWhere,
@@ -47,6 +57,27 @@ export function heldInterface(row: StoredDocument, projectId: string): HeldInter
     ...row,
     document: storedAs(interfaceDocumentSchema, row.document, `interface of ${projectId}`),
   };
+}
+
+export interface ProviderWriter {
+  userId: string;
+  agency: ActorAgency;
+}
+
+/** Refuses, by its code, a writer that is neither the project's own agent nor a person holding admin on it. */
+export async function assertProviderWriter(
+  writer: ProviderWriter,
+  projectId: string,
+  code: ProviderWriterCode,
+): Promise<void> {
+  const role = (await effectiveProjectRole(writer.userId, projectId))?.role ?? null;
+  const refusal = providerWriterRefusal({ ...writer, role }, projectId, code);
+  if (refusal) throw refusedBy(refusal);
+}
+
+/** Who set the commitments the interface makes now, so a reader can tell an agent's proposal from a person's decision. */
+export async function commitmentsSetter(projectId: string): Promise<CommitmentsSetter | null> {
+  return commitmentsSetterOf(await interfaceRevisionsBy(db, projectId));
 }
 
 export async function loadInterface(projectId: string): Promise<HeldInterface | null> {
@@ -157,11 +188,13 @@ function parseInterface(raw: unknown, projectId: string): EcosystemRefusal[] | I
 
 export async function writeInterface(input: {
   projectId: string;
-  userId: string;
+  writer: ProviderWriter;
   baseRevision: number | null;
   raw: unknown;
 }): Promise<InterfaceOutcome> {
-  const { projectId, userId, baseRevision, raw } = input;
+  const { projectId, writer, baseRevision, raw } = input;
+  const userId = writer.userId;
+  await assertProviderWriter(writer, projectId, 'INTERFACE_WRITER_NOT_PROJECT');
   const parsed = parseInterface(raw, projectId);
   if (Array.isArray(parsed)) return { ok: false, refusals: parsed };
   const doc = parsed;
@@ -176,7 +209,12 @@ export async function writeInterface(input: {
     if (storedRevision !== baseRevision) {
       return { ok: false, refusals: [staleBase(baseRevision, storedRevision)] };
     }
-    const refusals = checkInterface(doc, await buildWorld(tx, self, providers));
+    const setter = current ? commitmentsSetterOf(await interfaceRevisionsBy(tx, projectId)) : null;
+    const commitments = commitmentsRefusal(writer, setter, current?.document, doc);
+    const refusals = [
+      ...(commitments ? [commitments] : []),
+      ...checkInterface(doc, await buildWorld(tx, self, providers)),
+    ];
     if (refusals.length > 0) return { ok: false, refusals };
     if (current && JSON.stringify(current.document) === JSON.stringify(doc)) {
       return { ok: true, held: heldInterface(current, projectId), created: false };

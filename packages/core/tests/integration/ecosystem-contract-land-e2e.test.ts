@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   type ChannelWorld,
   changeNotice,
+  inDays,
   ok,
   openChannelWorld,
   refusal,
@@ -209,7 +210,12 @@ describe('a land on a branch an environment deploys from records each changed co
       },
       diff: { tool: 'none', classification: 'initial', changes: [] },
     });
-    expect(v.elements).toEqual(['forge_a', 'forge_b']);
+    expect(v.elements).toEqual([
+      'forge_a',
+      'forge_a/properties/id',
+      'forge_b',
+      'forge_b/properties/id',
+    ]);
   });
 
   it('measures a removed tool as breaking and names the next dated version', async () => {
@@ -409,8 +415,10 @@ describe('the channel reads the measured diff of the version a notice cites', ()
   });
 
   it('publishes the notice that states the measured breaking change, naming the removed tool from the version before', async () => {
+    // forge promises 30 days of notice, so a breaking change takes effect no sooner than that after it was recorded
     const d = notice({
       changes: [{ element: 'forge_b', kind: 'removed', text: 'The tool is gone.' }],
+      effectiveOn: inDays(31),
     });
     const made = ok(
       await say('masterForge', 'POST', `/api/projects/${w.project.forge}/channel/drafts`, d),

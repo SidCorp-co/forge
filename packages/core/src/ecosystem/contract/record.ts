@@ -2,7 +2,14 @@ import { db } from '../../db/client.js';
 import type { Publication } from '../schema.js';
 import { lockKeys } from '../store.js';
 import { type MeasuredChange, type MeasuredDiff, measured } from './diff.js';
-import { elementList, INITIAL, measureChange, parseArtifact, sha256 } from './measure.js';
+import {
+  ArtifactUnreadable,
+  elementList,
+  INITIAL,
+  measureChange,
+  parseArtifact,
+  sha256,
+} from './measure.js';
 import { type NamingProblem, namingProblem, proposeVersion, type Versioning } from './naming.js';
 import { insertVersion, latestVersion, readArtifact, type StoredVersion } from './store.js';
 import {
@@ -11,7 +18,7 @@ import {
   contractVersionSchema,
 } from './version-schema.js';
 
-export type ArtifactOrigin = { sourceCommit: string } | { uploadedBy: string };
+export type ArtifactOrigin = { sourceCommit: string } | { uploadedBy: string; sourceRef?: string };
 
 export interface SemanticChange {
   classification: 'breaking' | 'unknown';
@@ -35,7 +42,9 @@ export type RecordOutcome =
   | { outcome: 'unchanged'; version: ContractVersionDocument }
   | {
       outcome: 'refused';
-      problem: NamingProblem | { code: 'SEMANTIC_WITHOUT_VERSION'; detail: string };
+      problem:
+        | NamingProblem
+        | { code: 'SEMANTIC_WITHOUT_VERSION' | 'ARTIFACT_UNREADABLE'; detail: string };
     };
 
 const slugOf = (ref: string) => ref.slice(ref.indexOf('/') + 1);
@@ -123,7 +132,13 @@ function documentOf(
 export async function recordVersion(input: RecordInput): Promise<RecordOutcome> {
   const now = input.now ?? new Date();
   const slug = slugOf(input.contractRef);
-  const doc = input.artifact ? parseArtifact(input.publication.type, input.artifact.text) : null;
+  let doc: unknown = null;
+  try {
+    doc = input.artifact ? parseArtifact(input.publication.type, input.artifact.text) : null;
+  } catch (err) {
+    if (!(err instanceof ArtifactUnreadable)) throw err;
+    return { outcome: 'refused', problem: { code: 'ARTIFACT_UNREADABLE', detail: err.message } };
+  }
   return db.transaction(async (tx) => {
     await lockKeys(tx, [`contract:${input.providerProjectId}/${slug}`]);
     const latest = await latestVersion(tx, input.providerProjectId, slug);

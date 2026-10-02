@@ -3,18 +3,20 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { assertProjectAccess } from '../../lib/authz.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
+import {
+  type AuthVars,
+  assertEmailVerified,
+  requireAuth,
+  restActor,
+} from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { refused } from '../../project-config/respond.js';
 import { slug } from '../../project-config/schema.js';
-import { loadInterface } from '../interface-service.js';
-import type { EcosystemRefusal } from '../refusals.js';
-import { projectsWhere } from '../store.js';
 import { MAX_ARTIFACT_BYTES } from './measure.js';
 import { consumedContract, consumedMeasurements, consumedVersions } from './party-read.js';
-import { recordVersion } from './record.js';
+import { publishContractVersion } from './publish.js';
 import { measurementsOf, versionsOf } from './store.js';
-import { type UploadBody, uploadRefusals } from './upload-rules.js';
+import { SOURCE_REF } from './version-schema.js';
 
 export const contractRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -64,6 +66,8 @@ const consumedParam = zValidator(
 
 const uploadSchema = z.strictObject({
   version: z.string().min(1).max(40).optional(),
+  kind: z.string().min(1).max(40).optional(),
+  sourceRef: z.string().regex(SOURCE_REF).optional(),
   artifact: z.string().min(1).max(MAX_ARTIFACT_BYTES).optional(),
   semantic: z
     .strictObject({
@@ -81,17 +85,11 @@ const uploadBody = zValidator('json', uploadSchema, (r, c) => {
       r.error.issues.map((i) => ({
         code: 'SCHEMA_VIOLATION' as const,
         path: `/${i.path.map(String).join('/')}`,
-        detail: `${i.message}; the body is { version?, artifact?: <the contract text>, semantic?: { classification, reason, elements } }`,
+        detail: `${i.message}; the body is { version?, kind?, artifact?: <the contract text>, sourceRef?: <repo path>@<commit sha>, semantic?: { classification, reason, elements } }`,
       })),
     );
   }
 });
-
-async function providerOf(id: string) {
-  const [project] = await projectsWhere(db, { ids: [id] });
-  if (!project) throw notFound(`project ${id} does not exist`);
-  return project;
-}
 
 contractRoutes.get('/:id/contracts/:contract/versions', contractParam, async (c) => {
   const { id, contract } = c.req.valid('param');
@@ -155,42 +153,13 @@ contractRoutes.get('/:id/consumes/:provider/:contract/measurements', consumedPar
 
 contractRoutes.post('/:id/contracts/:contract/versions', contractParam, uploadBody, async (c) => {
   const { id, contract } = c.req.valid('param');
-  const userId = c.get('userId');
-  await assertProjectAccess(id, userId, 'member');
-  const body: UploadBody = c.req.valid('json');
-  const [project, iface] = await Promise.all([providerOf(id), loadInterface(id)]);
-  const latest = (await versionsOf(db, [id], contract))[0] ?? null;
-  const refusals: EcosystemRefusal[] = uploadRefusals({
-    project,
+  const actor = restActor(c);
+  const out = await publishContractVersion({
+    projectId: id,
     contract,
-    iface: iface?.document ?? null,
-    body,
-    latest,
+    writer: { userId: actor.id, agency: actor.agency },
+    ...c.req.valid('json'),
   });
-  const pub = iface?.document.publishes[contract];
-  if (refusals.length > 0 || !pub || !iface) return refused(c, refusals);
-  const out = await recordVersion({
-    providerProjectId: id,
-    contractRef: `${project.slug}/${contract}`,
-    publication: pub,
-    versioning: iface.document.commitments.versioning,
-    artifact: body.artifact ? { text: body.artifact, origin: { uploadedBy: userId } } : null,
-    ...(body.semantic
-      ? {
-          semantic: {
-            ...body.semantic,
-            classification: body.semantic.classification as 'breaking' | 'unknown',
-          },
-        }
-      : {}),
-    ...(body.version ? { requestedVersion: body.version } : {}),
-  });
-  if (out.outcome === 'refused') {
-    const path = out.problem.code === 'SEMANTIC_WITHOUT_VERSION' ? '/semantic' : '/version';
-    return refused(c, [{ code: out.problem.code, path, detail: out.problem.detail }]);
-  }
-  return c.json(
-    { recorded: out.outcome === 'recorded', version: out.version },
-    out.outcome === 'recorded' ? 201 : 200,
-  );
+  if (!out.ok) return refused(c, out.refusals);
+  return c.json({ recorded: out.recorded, version: out.version }, out.recorded ? 201 : 200);
 });

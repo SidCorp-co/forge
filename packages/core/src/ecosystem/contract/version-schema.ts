@@ -10,6 +10,9 @@ import {
 
 export const CONTRACT_VERSION_SCHEMA_ID = `${SCHEMA_BASE}/contract-version-v1.json`;
 
+/** Where an uploaded artifact was read from: a repository path and the commit it was read at. */
+export const SOURCE_REF = /^(?!\/)(?!.*\.\.)[A-Za-z0-9._/-]{1,400}@[0-9a-f]{7,40}$/;
+
 const sha256 = () => z.string().regex(/^[0-9a-f]{64}$/);
 
 export const contractVersionSchema = z.strictObject({
@@ -20,7 +23,11 @@ export const contractVersionSchema = z.strictObject({
   previous: z.string().max(40).nullable().optional(),
   artifact: z.union([
     z.strictObject({ sha256: sha256(), sourceCommit: z.string().regex(/^[0-9a-f]{40}$/) }),
-    z.strictObject({ sha256: sha256(), uploadedBy: z.string().min(1) }),
+    z.strictObject({
+      sha256: sha256(),
+      uploadedBy: z.string().min(1),
+      sourceRef: z.string().regex(SOURCE_REF).optional(),
+    }),
     z.null(),
   ]),
   observedAt: z.iso.datetime({ offset: true }),

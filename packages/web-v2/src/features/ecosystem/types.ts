@@ -162,6 +162,8 @@ export interface ApiPage {
     versioning: string;
     deprecationNoticeDays: number;
     responseDays: Record<string, number>;
+    /** Who last changed these windows: an agent proposes them, and a person holding admin may overwrite them. */
+    setBy: { agency: "agent" | "human"; at: string } | null;
   } | null;
 }
 

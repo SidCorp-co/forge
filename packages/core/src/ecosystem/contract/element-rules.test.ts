@@ -89,7 +89,9 @@ describe('a channel document names only elements of the version it cites (ELEMEN
     const d = cn();
     d.body.changes[0].element = 'anything at all';
     delete d.body.examples;
-    const versions = new Map([['forge/forge-api@2026-10-01', { elements: null, previous: null, recordedOn: '2026-09-01' }]]);
+    const versions = new Map([
+      ['forge/forge-api@2026-10-01', { elements: null, previous: null, recordedOn: '2026-09-01' }],
+    ]);
     expect(refusalsOf(d, { versions }).filter((r) => r.startsWith('ELEMENT'))).toEqual([]);
   });
 });

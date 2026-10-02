@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { projects } from '../db/schema.js';
+import { projects, users } from '../db/schema.js';
 import {
   channelCounters,
   contractVersions,
@@ -13,6 +13,7 @@ import {
   projectInterfaces,
 } from '../db/schema-ecosystem.js';
 import type { MembershipRow, MembershipVerb } from './membership-rules.js';
+import type { RevisionBy } from './provider-writer-rules.js';
 import type { MembershipState } from './schema.js';
 
 export interface StoredDocument {
@@ -324,6 +325,23 @@ export async function putInterface(
   if (edges.length > 0) await tx.insert(ecosystemConsumptions).values([...edges]);
   if (!row) throw new Error('ecosystem: the interface upsert returned no row');
   return row;
+}
+
+/** Each revision of a project's interface, newest first, with the agency of the account that wrote it. */
+export async function interfaceRevisionsBy(tx: Tx, projectId: string): Promise<RevisionBy[]> {
+  const rows = await tx
+    .select({
+      revision: projectInterfaceRevisions.revision,
+      document: projectInterfaceRevisions.document,
+      writtenBy: projectInterfaceRevisions.writtenBy,
+      writtenAt: projectInterfaceRevisions.writtenAt,
+      kind: users.kind,
+    })
+    .from(projectInterfaceRevisions)
+    .leftJoin(users, eq(users.id, projectInterfaceRevisions.writtenBy))
+    .where(eq(projectInterfaceRevisions.projectId, projectId))
+    .orderBy(desc(projectInterfaceRevisions.revision));
+  return rows.map(({ kind, ...r }) => ({ ...r, agency: kind === 'agent' ? 'agent' : 'human' }));
 }
 
 export async function listInterfaceRevisions(projectId: string): Promise<StoredRevision[]> {

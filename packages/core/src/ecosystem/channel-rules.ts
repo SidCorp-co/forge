@@ -313,9 +313,7 @@ function changeNoticeRefusals(d: ChannelDocument, w: ChannelWorld): EcosystemRef
     )
     .map((e) => e.consumerProjectId);
   const impacts = w.links
-    .filter(
-      (l) => l.provider === d.from && l.contractSlug === contract && w.active.has(l.consumer),
-    )
+    .filter((l) => l.provider === d.from && l.contractSlug === contract && w.active.has(l.consumer))
     .map((l) => linkImpact(versioning, b.contractVersion, m ?? null, l));
   const owed = recipientsOf(declared, impacts);
   const ids = owed.map((r) => r.consumer);

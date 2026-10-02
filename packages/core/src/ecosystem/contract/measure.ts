@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { type MeasuredChange, type MeasuredDiff, measured } from './diff.js';
 import { elementsOf, isIndexed } from './elements.js';
+import { diffGraphql, GRAPHQL_RULES_VERSION } from './graphql-diff.js';
+import { parseSdl, type SdlSchema, SdlUnreadable } from './graphql-sdl.js';
 import { DifferUnavailable } from './oasdiff.js';
 import { diffOpenApi } from './openapi-diff.js';
 import { diffJsonSchema, diffMcpTools, SCHEMA_RULES_VERSION, toolsOf } from './schema-diff.js';
@@ -20,6 +22,15 @@ export function parseArtifact(type: string, text: string): unknown {
     throw new ArtifactUnreadable(`the artifact is over ${MAX_ARTIFACT_BYTES} bytes`);
   }
   if (!isIndexed(type)) return null;
+  if (type === 'graphql') {
+    try {
+      return parseSdl(text);
+    } catch (err) {
+      if (err instanceof SdlUnreadable)
+        throw new ArtifactUnreadable(`a graphql artifact is SDL text, and ${err.message}`);
+      throw err;
+    }
+  }
   let doc: unknown;
   try {
     doc = JSON.parse(text);
@@ -73,6 +84,16 @@ export async function measureChange(
     const [o, n] = [toolsOf(JSON.parse(previous)), toolsOf(JSON.parse(next))];
     if (!o || !n) throw new ArtifactUnreadable('an mcp-tools artifact lost its tools list');
     return measured('json-schema-diff', SCHEMA_RULES_VERSION, diffMcpTools(o, n));
+  }
+  if (type === 'graphql') {
+    return measured(
+      'graphql-sdl-diff',
+      GRAPHQL_RULES_VERSION,
+      diffGraphql(
+        parseArtifact(type, previous) as SdlSchema,
+        parseArtifact(type, next) as SdlSchema,
+      ),
+    );
   }
   if (type === 'json-schema') {
     return measured(
