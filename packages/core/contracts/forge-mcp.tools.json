@@ -468,7 +468,7 @@
       "name": "forge_coolify_deploy"
     },
     {
-      "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks). Writes take { baseRevision, document } as their REST route does: interface_write (an admin), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite), builder_run_supersede ({ run, reason }: closes an open run as superseded and opens a fresh manual run with the steps the project's current source type derives, waking its master; the project's own agent's, or an org admin's of the steward or the project's org). The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
+      "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks). Writes take { baseRevision, document } as their REST route does: interface_write (the project's own agent, member or above, or a person holding admin; commitment windows an agent writes read as set by the agent, and once a person has set them an agent's write that moves them is refused COMMITMENTS_SET_BY_PERSON), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite), builder_run_supersede ({ run, reason }: closes an open run as superseded and opens a fresh manual run with the steps the project's current source type derives, waking its master; the project's own agent's, or an org admin's of the steward or the project's org). contract_version_publish ({ contract, version, kind, source, sourceRef }, POST /api/projects/:id/contracts/:contract/versions on REST) records a version of a contract this project publishes with artifact { upload: true }: kind is graphql (SDL text), mcp-tools ({ tools: [{ name, inputSchema }] }), openapi or json-schema, and must be the publication's type; core indexes its elements and measures it against the latest version. Refused by name: CONTRACT_KIND_UNKNOWN, CONTRACT_KIND_MISMATCH, ARTIFACT_UNREADABLE, VERSION_BUMP_TOO_SMALL, VERSION_NOT_IN_SCHEME, CONTRACT_NOT_PUBLISHED, CONTRACT_WRITER_NOT_PROVIDER (the writer rule of interface_write). The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -486,7 +486,8 @@
               "link_update",
               "builder_run_create",
               "builder_run_update",
-              "builder_run_supersede"
+              "builder_run_supersede",
+              "contract_version_publish"
             ],
             "type": "string"
           },
@@ -497,12 +498,20 @@
               "null"
             ]
           },
+          "contract": {
+            "description": "contract_version_publish: the publication slug of a contract this project publishes.",
+            "type": "string"
+          },
           "document": {
             "description": "A write: the whole document.",
             "type": "object"
           },
           "ecosystem": {
             "description": "bus: the ecosystem uuid.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "contract_version_publish: graphql, mcp-tools, openapi or json-schema; the publication type.",
             "type": "string"
           },
           "link": {
@@ -530,6 +539,21 @@
           },
           "session": {
             "description": "context: the agent session uuid to record what was loaded on.",
+            "type": "string"
+          },
+          "source": {
+            "description": "contract_version_publish: the artifact, SDL text for graphql, the { tools } JSON for mcp-tools.",
+            "type": [
+              "string",
+              "object"
+            ]
+          },
+          "sourceRef": {
+            "description": "contract_version_publish: where the artifact was read, <repository path>@<commit sha>.",
+            "type": "string"
+          },
+          "version": {
+            "description": "contract_version_publish: the version name, in the interface versioning scheme, after the latest.",
             "type": "string"
           }
         },
@@ -4903,7 +4927,7 @@
       "name": "forge_uploads"
     },
     {
-      "description": "Draw this project's workflows and take a design to its approver before anything is built from it. Actions: list | get | design | write | propose | decide | link | unlink. write: { workflowId?, baseRevision, document } — no workflowId and baseRevision null creates; the document is workflow-v1 (a flow the code already has) or workflow-v2 (a design: steps may be `designed` with no evidence, carry `node` { type: EVENT|CONTEXT|RULE|STATE|EXPECTATION|CASE|TASK|ATTENTION|ACTION|OUTCOME|STEP, purpose, inputs, outputs, owner, sla }, and `edges` carry the contract { from, to, condition, action, mapping, idempotency, onFailure } of a line `after` draws; a return from a later step to an earlier one — an OUTCOME re-evaluating a RULE — is never drawn in `after` (WORKFLOW_AFTER_CYCLE) but declared as an edge { kind: \"feedback\", from, to, reevaluates } carrying the whole contract). Schemas: GET /api/schemas/workflow-v1.json and workflow-v2.json. A v2 workflow starts as a draft. Evidence matches the project source: a storefront project cites { kind: \"storefront\", provider, ref: workflow|route|node, id }, a repository project { kind: \"repo\", file, coverage } — the other is WORKFLOW_EVIDENCE_KIND_MISMATCH. propose: { workflowId, revision } puts a draft in front of its approver. A write that changes the design (steps, order, nodes, edge contracts, feedback edges) of a proposed, approved or returned workflow proposes that revision again; a write that only refreshes status or evidence does not. design: { workflowId } — the status (draft | proposed | approved | returned), every proposed revision with its decision and reason, the approved revision, and the issues that build it. decide: { workflowId, revision, decision: approve|return, reason } — only the approver the project's `workflows.designApprover` names: `owner` (default) is an org admin person, and an agent is refused WORKFLOW_DESIGN_APPROVER_NOT_PERSON; `master` lets this project's own master decide too. A return carries its reason. link: { workflowId, issue } names the issue that builds the workflow; dispatching that issue is then refused WORKFLOW_DESIGN_NOT_APPROVED until the design is approved, and forge_issues get shows why under `buildsWorkflow`. unlink lifts the gate, so only the approver may. Guide: forge_guide get workflow-design.",
+      "description": "Draw this project's workflows and take a design to its approver before anything is built from it. Actions: list | get | design | write | propose | decide | link | unlink | templates | template. templates: the diagram templates this project may draw in (the built-ins journey-bands, state-machine, process-swimlanes, integration-sequence, decision-tree, data-lineage, ux-flow, then its own); template: { templateId, templateVersion } — one template with its bands, node types (and the fields each requires), edge kinds and rules, plus a tiny example design that passes. Every workflow-v2 document names its template, `template: { id, version }`, and is checked against it: WORKFLOW_TEMPLATE_UNKNOWN, WORKFLOW_NODE_TYPE_NOT_IN_TEMPLATE, WORKFLOW_BAND_MISMATCH, WORKFLOW_NODE_FIELD_MISSING, WORKFLOW_EDGE_KIND_NOT_IN_TEMPLATE, WORKFLOW_EDGE_FIELD_MISSING, WORKFLOW_EDGE_ENDPOINT_NOT_IN_KIND, WORKFLOW_TEMPLATE_RULE each name the fix. write: { workflowId?, baseRevision, document } — no workflowId and baseRevision null creates; the document is workflow-v1 (a flow the code already has) or workflow-v2 (a design: steps may be `designed` with no evidence and carry `node` { type, label, band, purpose, inputs, outputs, owner, sla, conditions, tests, … } whose type and required fields come from the template; `edges` carry the contract of a line — a forward kind is a line `after` draws, a return kind (journey-bands `feedback`, state-machine `back`) goes back to an earlier step, is never drawn in `after` (WORKFLOW_AFTER_CYCLE) and carries what its kind requires). Schemas: GET /api/schemas/workflow-v1.json, workflow-v2.json and workflow-template-v1.json. A v2 workflow starts as a draft. Evidence matches the project source: a storefront project cites { kind: \"storefront\", provider, ref: workflow|route|node, id }, a repository project { kind: \"repo\", file, coverage } — the other is WORKFLOW_EVIDENCE_KIND_MISMATCH. propose: { workflowId, revision } puts a draft in front of its approver. A write that changes the design (its template, steps, order, nodes, edge contracts, return edges) of a proposed, approved or returned workflow proposes that revision again; a write that only refreshes status or evidence does not. design: { workflowId } — the status (draft | proposed | approved | returned), every proposed revision with its decision and reason, the approved revision, and the issues that build it. decide: { workflowId, revision, decision: approve|return, reason } — only the approver the project's `workflows.designApprover` names: `owner` (default) is an org admin person, and an agent is refused WORKFLOW_DESIGN_APPROVER_NOT_PERSON; `master` lets this project's own master decide too. A return carries its reason. link: { workflowId, issue } names the issue that builds the workflow; dispatching that issue is then refused WORKFLOW_DESIGN_NOT_APPROVED until the design is approved, and forge_issues get shows why under `buildsWorkflow`. unlink lifts the gate, so only the approver may. Guides: forge_guide get workflow-templates (which template to pick) and workflow-design.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -4917,7 +4941,9 @@
               "propose",
               "decide",
               "link",
-              "unlink"
+              "unlink",
+              "templates",
+              "template"
             ],
             "type": "string"
           },
@@ -4956,6 +4982,16 @@
             "type": "string"
           },
           "revision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "templateId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "templateVersion": {
             "maximum": 9007199254740991,
             "minimum": 1,
             "type": "integer"

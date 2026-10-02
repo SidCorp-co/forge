@@ -49,6 +49,10 @@
     "./document-patch": {
       "types": "./dist/document-patch.d.ts",
       "default": "./dist/document-patch.js"
+    },
+    "./workflow-templates": {
+      "types": "./dist/workflow-templates.d.ts",
+      "default": "./dist/workflow-templates.js"
     }
   },
   "types": "./src/index.ts",

@@ -11,7 +11,7 @@ export const WORKFLOW_DESIGN_GUIDE: ForgeGuide = {
   title: 'Design a workflow first, build it once it is approved',
   summary:
     'A flow that does not exist yet is drawn as a workflow-v2 design, proposed, and approved by the project owner (or, once the owner says so, by the master) before any issue that builds it is dispatched.',
-  version: 2,
+  version: 3,
   body: `## Design a workflow first, build it once it is approved
 
 A new flow — a storefront journey, a pipeline, a state machine — is drawn before it is built, and its
@@ -19,10 +19,14 @@ approver reads the drawing before anyone writes code for it. The kernel holds th
 names the workflow it builds is not dispatched while that design is not approved.
 
 ### The order of the work
-1. **Draw.** \`forge_workflows action=write\` with a workflow-v2 document (\`GET /api/schemas/workflow-v2.json\`).
-   Steps nothing has built yet are \`designed\` and owe no evidence. Give each step its \`node\` (type,
-   purpose, inputs, outputs, owner, sla) and each line \`after\` draws its edge contract
-   (\`condition\`, \`action\`, \`mapping\`, \`idempotency\`, \`onFailure\`). A new v2 workflow is a **draft**.
+1. **Pick the template, then draw.** Every design names the diagram template it is drawn in,
+   \`template: { id, version }\` — \`forge_guide get workflow-templates\` says which (journey-bands for an
+   operational journey, state-machine, process-swimlanes, integration-sequence, decision-tree, data-lineage,
+   ux-flow for screens). The template fixes the node types, the bands, the fields each type requires and the
+   edge kinds. \`forge_workflows action=write\` with a workflow-v2 document (\`GET /api/schemas/workflow-v2.json\`).
+   Steps nothing has built yet are \`designed\` and owe no evidence. Give each step its \`node\` (its type,
+   a short business \`label\`, a \`purpose\`, and what its type requires) and each line \`after\` draws the
+   contract its kind owes. A new v2 workflow is a **draft**.
 2. **Propose.** \`action=propose\` with the revision you wrote. The approver now sees it on
    \`/projects/<slug>/workflows/<flow>\` — send them that link.
 3. **Wait.** \`action=design\` reads the status: \`proposed\` waits, \`returned\` carries the approver's
@@ -36,27 +40,27 @@ names the workflow it builds is not dispatched while that design is not approved
    refresh the workflow — steps \`current\`, evidence filled — which is a write that does not change the
    design and keeps it approved.
 
-### A loop is a feedback edge, not a step
+### A loop is a return edge, not a step
 \`after\` orders the steps, so a loop in it is refused \`WORKFLOW_AFTER_CYCLE\`. A design whose later step
-genuinely returns to an earlier one — an OUTCOME that updates the context so a RULE is evaluated again and
-raises a new EXPECTATION — declares that return in \`edges\`, not in \`after\`, and never as a renamed
-copy of the earlier step (that draws two rules where the system has one):
+genuinely returns to an earlier one — an OUTCOME that updates the context so a RULE is evaluated again, a
+reopened state — declares that return in \`edges\` with a **return** kind of its template, not in \`after\`,
+and never as a renamed copy of the earlier step (that draws two rules where the system has one). In
+journey-bands it is \`feedback\`:
 
 \`{ kind: "feedback", from: "outcome", to: "followup-rule", reevaluates: "follow-up rule against the updated context", condition, action, mapping, idempotency, onFailure }\`
 
-- Use it only when the later step's result really re-enters the earlier one. A line forward is a plain
-  edge (\`kind\` omitted or \`flow\`); a feedback edge whose \`to\` is not a step its \`from\` comes
-  after is refused \`WORKFLOW_FEEDBACK_EDGE_FORWARD\`.
-- It orders nothing and is outside the cycle check, so it pays with its whole contract: no
-  \`reevaluates\` is \`WORKFLOW_FEEDBACK_REEVALUATES_MISSING\`, and any of condition, action, mapping,
-  idempotency or onFailure missing is \`WORKFLOW_FEEDBACK_CONTRACT_INCOMPLETE\`. Idempotency and
-  onFailure are what stop a loop running for ever. \`reevaluates\` on a flow edge is
-  \`WORKFLOW_EDGE_REEVALUATES_ON_FLOW\`.
-- The diagram draws it as a dashed arrow curving back, with its contract on hover.
+- Use it only when the later step's result really re-enters the earlier one. A line forward is a forward
+  kind drawn in \`after\`; a return kind whose \`to\` is not a step its \`from\` comes after is refused
+  \`WORKFLOW_EDGE_RETURN_FORWARD\`.
+- It orders nothing and is outside the cycle check, so it pays with what its kind requires — for
+  \`feedback\` the whole contract; anything absent is \`WORKFLOW_EDGE_FIELD_MISSING\`. Idempotency and
+  onFailure are what stop a loop running for ever. \`reevaluates\` on a forward kind is
+  \`WORKFLOW_EDGE_REEVALUATES_FORWARD\`.
+- The canvas draws it as a dashed line curving back, styled by its kind, with its contract on hover.
 
 ### What sends a design back to its approver
-A write that changes the design — a step added, removed, renamed or re-described, its order, its node, an
-edge contract, a feedback edge added or removed — moves an approved design back to \`proposed\`, and its linked issues stop dispatching
+A write that changes the design — its template, a step added, removed, renamed or re-described, its order,
+its node (label and band included), an edge contract, a return edge added or removed — moves an approved design back to \`proposed\`, and its linked issues stop dispatching
 until it is approved again. The approved revision stays readable, so the approver sees what changed.
 Status, evidence and coverage are the code's reading of itself and move nothing.
 

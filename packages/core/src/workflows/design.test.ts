@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { BUILTIN_WORKFLOW_TEMPLATES, findTemplate } from '@forge/contracts/workflow-templates';
 import { describe, expect, it } from 'vitest';
 import {
   decisionRefusals,
@@ -19,6 +20,8 @@ const design = (): Doc =>
   JSON.parse(
     readFileSync(new URL('./fixtures/post-discharge.design.json', import.meta.url), 'utf8'),
   );
+const JOURNEY = findTemplate(BUILTIN_WORKFLOW_TEMPLATES, { id: 'journey-bands', version: 1 });
+const fingerprint = (d: WorkflowWrite) => designFingerprint(d, JOURNEY);
 const parsed = (d: Doc): WorkflowWrite => {
   const r = parseWorkflow(d, PROJECT);
   if (!r.ok) throw new Error(JSON.stringify(r.refusals));
@@ -86,7 +89,7 @@ describe('the design lifecycle', () => {
   });
 
   it('fingerprints the design and not the reading: evidence and status move nothing', () => {
-    const base = designFingerprint(parsed(design()));
+    const base = fingerprint(parsed(design()));
     const built = design();
     built.status = 'writing';
     built.steps[0].status = 'current';
@@ -96,20 +99,20 @@ describe('the design lifecycle', () => {
       ref: 'workflow',
       id: 'post_discharge',
     };
-    expect(designFingerprint(parsed(built))).toBe(base);
+    expect(fingerprint(parsed(built))).toBe(base);
     const moved = design();
     moved.edges[0].onFailure = 'retry_then_attention';
-    expect(designFingerprint(parsed(moved))).not.toBe(base);
+    expect(fingerprint(parsed(moved))).not.toBe(base);
     const retyped = design();
     retyped.steps[3].node.type = 'TASK';
-    expect(designFingerprint(parsed(retyped))).not.toBe(base);
+    expect(fingerprint(parsed(retyped))).not.toBe(base);
   });
 
   it('fingerprints a feedback edge as design, and an explicit flow kind as no change', () => {
-    const base = designFingerprint(parsed(design()));
+    const base = fingerprint(parsed(design()));
     const flowNamed = design();
     flowNamed.edges[0].kind = 'flow';
-    expect(designFingerprint(parsed(flowNamed))).toBe(base);
+    expect(fingerprint(parsed(flowNamed))).toBe(base);
     const looped = design();
     looped.edges.push({
       kind: 'feedback',
@@ -122,10 +125,10 @@ describe('the design lifecycle', () => {
       idempotency: 'one per outcome',
       onFailure: 'create_attention_item',
     });
-    const withLoop = designFingerprint(parsed(looped));
+    const withLoop = fingerprint(parsed(looped));
     expect(withLoop).not.toBe(base);
     looped.edges[1].reevaluates = 'follow-up and escalation rules';
-    expect(designFingerprint(parsed(looped))).not.toBe(withLoop);
+    expect(fingerprint(parsed(looped))).not.toBe(withLoop);
   });
 
   it('proposes only a draft, naming why anything else is refused', () => {

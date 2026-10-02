@@ -1,3 +1,7 @@
+import {
+  resolveProjectTemplates,
+  TEMPLATE_REFUSAL_CODES,
+} from '@forge/contracts/workflow-templates';
 import { REGISTERED_TOOLS } from '../mcp/registered-tools.js';
 import {
   type BindingRole,
@@ -30,6 +34,14 @@ export const PURE_REFUSAL_CODES = [
   'TOOL_PATTERN_INVALID',
 ] as const;
 
+// cm:why a project's own diagram templates (`workflows.templates`) are refused in this vocabulary;
+// the first five are the template resolver's own (`@forge/contracts/workflow-templates`), the last
+// needs the stored designs. Planted in `workflow-templates.test.ts`.
+export const WORKFLOW_TEMPLATE_CONFIG_CODES = [
+  ...TEMPLATE_REFUSAL_CODES,
+  'WORKFLOW_TEMPLATE_IN_USE',
+] as const;
+
 // cm:why these need storage, a registry or the request; S2 implements them. UNKNOWN_KEY is the
 // strict schema's own unrecognized_keys issue, named here so the API maps it to one code.
 export const STORED_REFUSAL_CODES = [
@@ -43,7 +55,11 @@ export const STORED_REFUSAL_CODES = [
   'SECRET_NOT_FOUND',
 ] as const;
 
-export const CONFIG_REFUSAL_CODES = [...PURE_REFUSAL_CODES, ...STORED_REFUSAL_CODES] as const;
+export const CONFIG_REFUSAL_CODES = [
+  ...PURE_REFUSAL_CODES,
+  ...STORED_REFUSAL_CODES,
+  ...WORKFLOW_TEMPLATE_CONFIG_CODES,
+] as const;
 
 export type ConfigRefusalCode = (typeof CONFIG_REFUSAL_CODES)[number];
 
@@ -63,6 +79,8 @@ export interface BindingFacts {
 export interface ProjectConfigContext {
   bindings: ReadonlyMap<string, BindingFacts>;
   testingProfileIds: ReadonlySet<string>;
+  /** The diagram templates stored designs name (`id@version` → flows); absent, none is checked. */
+  workflowTemplatesInUse?: ReadonlyMap<string, readonly string[]>;
   policy?: PolicyDocument;
 }
 
@@ -402,6 +420,28 @@ export function checkProjectConfig(
   out.push(...checkStorefrontProvider(doc, ctx));
   out.push(...checkEnvironments(doc, ctx));
   out.push(...checkGitlessBindings(doc, ctx));
+  out.push(...checkWorkflowTemplates(doc, ctx));
   if (ctx.policy) out.push(...checkPolicy(ctx.policy));
+  return out;
+}
+
+// cm:why a project template is policy over the kernel's built-ins: each is held to the same
+// meta-schema and consistency as a built-in, and one a stored design is drawn in cannot be taken
+// out from under it — that design would be read in a vocabulary nobody declares any more
+export function checkWorkflowTemplates(
+  doc: Pick<ProjectDocument, 'workflows'>,
+  ctx: Pick<ProjectConfigContext, 'workflowTemplatesInUse'>,
+): ConfigRefusal[] {
+  const resolved = resolveProjectTemplates(doc.workflows?.templates ?? []);
+  const out: ConfigRefusal[] = resolved.refusals.map((r) => ({ ...r }));
+  const declared = new Set(resolved.templates.map((t) => `${t.id}@${t.version}`));
+  for (const [key, flows] of ctx.workflowTemplatesInUse ?? []) {
+    if (declared.has(key)) continue;
+    out.push({
+      code: 'WORKFLOW_TEMPLATE_IN_USE',
+      path: pointer('workflows', 'templates'),
+      detail: `template ${key} is no longer declared, and ${listed(flows)} ${flows.length === 1 ? 'is' : 'are'} drawn in it; keep it, or rewrite ${flows.length === 1 ? 'that design' : 'those designs'} in another template first.`,
+    });
+  }
   return out;
 }

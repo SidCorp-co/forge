@@ -1,3 +1,7 @@
+import {
+  projectWorkflowTemplateSchema,
+  TEMPLATE_LIMITS,
+} from '@forge/contracts/workflow-templates';
 import { z } from 'zod';
 import { agentAccessValues } from '../db/release-axes.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -149,10 +153,13 @@ export const projectDocumentSchema = z.strictObject({
     .optional(),
   // cm:why who decides a workflow design before anything is built from it
   // (`workflows/design.ts:designApproverRefusal`): `owner` is an org admin person, `master` adds
-  // the project's own master; absent is `owner`.
+  // the project's own master; absent is `owner`. `templates` are the project's own diagram templates
+  // (policy over the kernel's built-ins, `@forge/contracts/workflow-templates`): complete ones, or
+  // extensions that add to a built-in; absent is none.
   workflows: z
     .strictObject({
-      designApprover: z.enum(DESIGN_APPROVERS),
+      designApprover: z.enum(DESIGN_APPROVERS).optional(),
+      templates: z.array(projectWorkflowTemplateSchema).max(TEMPLATE_LIMITS.templates).optional(),
     })
     .optional(),
   execution: z.strictObject({

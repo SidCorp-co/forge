@@ -1,9 +1,12 @@
 import { readFileSync } from 'node:fs';
+import { BUILTIN_WORKFLOW_TEMPLATES } from '@forge/contracts/workflow-templates';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
 import { workflowJsonSchemas } from './json-schema.js';
 import { checkWorkflow, parseWorkflow } from './rules.js';
+
+const CTX = { templates: BUILTIN_WORKFLOW_TEMPLATES, designs: new Map<string, string[]>() };
 
 // biome-ignore lint/suspicious/noExplicitAny: plants mutate fixtures at arbitrary depth
 type Doc = Record<string, any>;
@@ -24,7 +27,7 @@ const stamped = (d: Doc) => ({
 });
 const refusalsAt = (raw: Doc) => {
   const parsed = parseWorkflow(raw, HOP);
-  return (parsed.ok ? checkWorkflow(parsed.value) : parsed.refusals).map(
+  return (parsed.ok ? checkWorkflow(parsed.value, CTX) : parsed.refusals).map(
     (r) => `${r.code} ${r.path}`,
   );
 };
@@ -62,17 +65,17 @@ describe('a workflow-v2 feedback edge', () => {
         e.from = 'context';
         e.to = 'outcome';
       },
-      ['WORKFLOW_FEEDBACK_EDGE_FORWARD /edges/1/kind'],
+      ['WORKFLOW_EDGE_RETURN_FORWARD /edges/1/kind'],
     ],
     [
       'a feedback edge to itself',
       (e: Doc) => (e.to = 'outcome'),
-      ['WORKFLOW_FEEDBACK_EDGE_FORWARD /edges/1/kind'],
+      ['WORKFLOW_EDGE_RETURN_FORWARD /edges/1/kind'],
     ],
     [
       'a feedback edge that names nothing it re-evaluates',
       (e: Doc) => delete e.reevaluates,
-      ['WORKFLOW_FEEDBACK_REEVALUATES_MISSING /edges/1/reevaluates'],
+      ['WORKFLOW_EDGE_FIELD_MISSING /edges/1'],
     ],
     [
       'a feedback edge without its failure path and idempotency',
@@ -80,12 +83,12 @@ describe('a workflow-v2 feedback edge', () => {
         delete e.onFailure;
         delete e.idempotency;
       },
-      ['WORKFLOW_FEEDBACK_CONTRACT_INCOMPLETE /edges/1'],
+      ['WORKFLOW_EDGE_FIELD_MISSING /edges/1'],
     ],
     [
-      'an edge kind that is neither',
+      'an edge kind its template does not declare',
       (e: Doc) => (e.kind = 'loop'),
-      ['WORKFLOW_EDGE_KIND_UNKNOWN /edges/1/kind'],
+      ['WORKFLOW_EDGE_KIND_NOT_IN_TEMPLATE /edges/1/kind'],
     ],
   ])('refuses %s by name', (_name, patch, expected) => {
     expect(refusalsAt(looped(patch))).toEqual(expected);
@@ -94,7 +97,7 @@ describe('a workflow-v2 feedback edge', () => {
   it('refuses `reevaluates` on a flow edge, which returns to nothing', () => {
     const d = design();
     d.edges[0].reevaluates = 'the case';
-    expect(refusalsAt(d)).toEqual(['WORKFLOW_EDGE_REEVALUATES_ON_FLOW /edges/0/reevaluates']);
+    expect(refusalsAt(d)).toEqual(['WORKFLOW_EDGE_REEVALUATES_FORWARD /edges/0/reevaluates']);
   });
 
   it('refuses the same loop drawn in `after`, and says to declare it as a feedback edge', () => {
@@ -102,7 +105,7 @@ describe('a workflow-v2 feedback edge', () => {
     d.steps[2].after.push('outcome');
     const parsed = parseWorkflow(d, HOP);
     if (!parsed.ok) throw new Error(JSON.stringify(parsed.refusals));
-    const [r, ...rest] = checkWorkflow(parsed.value);
+    const [r, ...rest] = checkWorkflow(parsed.value, CTX);
     expect(rest).toEqual([]);
     expect(`${r?.code} ${r?.path}`).toBe('WORKFLOW_AFTER_CYCLE /steps/2/after');
     expect(r?.detail).toContain('kind: "feedback"');
@@ -112,8 +115,8 @@ describe('a workflow-v2 feedback edge', () => {
     const d = looped((e) => delete e.kind);
     const parsed = parseWorkflow(d, HOP);
     if (!parsed.ok) throw new Error(JSON.stringify(parsed.refusals));
-    const refusals = checkWorkflow(parsed.value);
+    const refusals = checkWorkflow(parsed.value, CTX);
     expect(refusals.map((r) => `${r.code} ${r.path}`)).toEqual(['WORKFLOW_EDGE_UNDRAWN /edges/1']);
-    expect(refusals[0]?.detail).toContain('kind: "feedback"');
+    expect(refusals[0]?.detail).toContain('a return kind (feedback)');
   });
 });

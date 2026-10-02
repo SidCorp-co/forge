@@ -139,10 +139,11 @@ export async function listTestingProfiles(
 }
 
 export async function buildProjectConfigContext(projectId: string): Promise<ProjectConfigContext> {
-  const [bindings, profiles, policy] = await Promise.all([
+  const [bindings, profiles, policy, templatesInUse] = await Promise.all([
     store.listActiveBindings(projectId),
     store.listTestingProfiles(projectId),
     readPolicy(projectId),
+    store.workflowTemplatesInUse(projectId),
   ]);
   return {
     bindings: new Map(
@@ -157,6 +158,7 @@ export async function buildProjectConfigContext(projectId: string): Promise<Proj
       ]),
     ),
     testingProfileIds: new Set(profiles.map((p) => p.profileId)),
+    workflowTemplatesInUse: templatesInUse,
     ...(policy ? { policy: policy.document } : {}),
   };
 }

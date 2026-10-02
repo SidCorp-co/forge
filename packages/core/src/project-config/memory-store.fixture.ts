@@ -73,6 +73,9 @@ export const memoryStore: ConfigStore = {
   async casPolicy(input) {
     return cas(mem.policy, input.projectId, input);
   },
+  async workflowTemplatesInUse() {
+    return new Map();
+  },
   async listTestingProfiles(projectId) {
     const out: StoredProfile[] = [];
     for (const [key, row] of mem.profiles) {

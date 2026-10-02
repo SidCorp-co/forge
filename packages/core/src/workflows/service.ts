@@ -1,6 +1,11 @@
+import {
+  findTemplate,
+  resolveProjectTemplates,
+  type WorkflowTemplate,
+} from '@forge/contracts/workflow-templates';
 import { inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { users } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
@@ -51,13 +56,46 @@ export function storedWorkflow(row: StoredWorkflow): WorkflowWrite {
   return parsed;
 }
 
-/** Where this project's evidence lives, from its declared source; no document reads as a repository. */
-export async function evidenceSourceOf(projectId: string): Promise<EvidenceSource> {
-  const source = (await readProjectDocument(projectId))?.document.source;
-  return source?.type === 'storefront'
-    ? { kind: 'storefront', provider: source.storefront.provider }
-    : { kind: 'repo' };
+/** What a write is checked against, from the project document: where its evidence lives and the templates it may draw in. */
+export async function projectFactsOf(
+  projectId: string,
+): Promise<{ source: EvidenceSource; templates: WorkflowTemplate[] }> {
+  const document = (await readProjectDocument(projectId))?.document;
+  const source = document?.source;
+  return {
+    source:
+      source?.type === 'storefront'
+        ? { kind: 'storefront', provider: source.storefront.provider }
+        : { kind: 'repo' },
+    templates: resolveProjectTemplates(document?.workflows?.templates ?? []).templates,
+  };
 }
+
+/** The templates a project may draw in: the built-ins, then its own. */
+export async function templatesOf(projectId: string): Promise<{
+  templates: WorkflowTemplate[];
+  projectKeys: Set<string>;
+}> {
+  const document = (await readProjectDocument(projectId))?.document;
+  const resolved = resolveProjectTemplates(document?.workflows?.templates ?? []);
+  return { templates: resolved.templates, projectKeys: resolved.projectKeys };
+}
+
+/** The project's designs other than `flow`, each with its step ids: what a ux-flow's `invokes` resolves against. */
+async function designsOf(tx: Tx, projectId: string, flow: string): Promise<Map<string, string[]>> {
+  const rows = await workflowsOf(tx, projectId);
+  return new Map(
+    rows
+      .filter((r) => r.flow !== flow)
+      .map((r) => {
+        const doc = readStoredWorkflow(r.document);
+        return [r.flow, doc ? doc.steps.map((s) => s.id) : []] as const;
+      }),
+  );
+}
+
+const templateFor = (doc: WorkflowWrite, templates: readonly WorkflowTemplate[]) =>
+  doc.version === 2 ? findTemplate(templates, doc.template) : null;
 
 export async function assertWriter(writer: WorkflowWriter, projectId: string): Promise<void> {
   const role = (await effectiveProjectRole(writer.userId, projectId))?.role ?? null;
@@ -93,18 +131,22 @@ export async function createWorkflow(input: {
   const parsed = parseWorkflow(raw, projectId);
   if (!parsed.ok) return parsed;
   const doc = parsed.value;
-  const refusals = [
-    ...checkWorkflow(doc),
-    ...evidenceSourceRefusals(doc, await evidenceSourceOf(projectId)),
-  ];
-  if (refusals.length > 0) return { ok: false, refusals };
+  const facts = await projectFactsOf(projectId);
   return db.transaction(async (tx) => {
     await lockWorkflows(tx, projectId);
+    const refusals = [
+      ...checkWorkflow(doc, {
+        templates: facts.templates,
+        designs: await designsOf(tx, projectId, doc.flow),
+      }),
+      ...evidenceSourceRefusals(doc, facts.source),
+    ];
+    if (refusals.length > 0) return { ok: false, refusals };
     const holding = await workflowHolding(tx, projectId, doc.flow);
     if (holding) return { ok: false, refusals: [duplicateWorkflowRefusal(doc.flow, holding)] };
     const row = await insertWorkflow(tx, doc, writer.userId, {
       designStatus: designStatusAtCreate(doc),
-      designFingerprint: designFingerprint(doc),
+      designFingerprint: designFingerprint(doc, templateFor(doc, facts.templates)),
       approvedRevision: null,
     });
     return { ok: true, row, document: doc, created: true };
@@ -123,7 +165,7 @@ export async function updateWorkflow(input: {
   const parsed = parseWorkflow(raw, projectId);
   if (!parsed.ok) return parsed;
   const doc = parsed.value;
-  const source = await evidenceSourceOf(projectId);
+  const facts = await projectFactsOf(projectId);
   return db.transaction(async (tx) => {
     await lockWorkflows(tx, projectId);
     const row = await readWorkflow(tx, id);
@@ -136,14 +178,17 @@ export async function updateWorkflow(input: {
     const stored = storedWorkflow(row);
     const refusals = [
       ...workflowIdentityRefusals(stored, doc),
-      ...checkWorkflow(doc),
-      ...evidenceSourceRefusals(doc, source),
+      ...checkWorkflow(doc, {
+        templates: facts.templates,
+        designs: await designsOf(tx, projectId, doc.flow),
+      }),
+      ...evidenceSourceRefusals(doc, facts.source),
     ];
     if (refusals.length > 0) return { ok: false, refusals };
     if (JSON.stringify(stored) === JSON.stringify(doc)) {
       return { ok: true, row, document: stored, created: false };
     }
-    const fingerprint = designFingerprint(doc);
+    const fingerprint = designFingerprint(doc, templateFor(doc, facts.templates));
     const design = designStatusAfterWrite(row.designStatus, row.designFingerprint !== fingerprint);
     const next = await replaceWorkflow(tx, {
       id,
