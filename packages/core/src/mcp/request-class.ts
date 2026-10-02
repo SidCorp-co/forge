@@ -24,6 +24,7 @@ const READ_ACTIONS: ReadonlySet<string> = new Set([
   'list',
   'listTasks',
   'get',
+  'design',
   'search',
   'events',
   'runs',
