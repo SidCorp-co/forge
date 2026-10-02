@@ -58,8 +58,12 @@ export interface WorkflowStep {
 }
 
 export interface WorkflowEdgeContract {
+  /** `flow` (the default) is a line `after` draws; `feedback` returns from a later step to an earlier one. */
+  kind?: "flow" | "feedback";
   from: string;
   to: string;
+  /** A feedback edge's re-evaluation: what the return recomputes at the earlier step. */
+  reevaluates?: string;
   condition?: string;
   action?: string;
   mapping?: Record<string, string>;

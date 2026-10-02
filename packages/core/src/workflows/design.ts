@@ -3,7 +3,7 @@ import type { OrgMemberRole, ProjectMemberRole } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { orgRoleAtLeast, projectRoleAtLeast } from '../lib/authz.js';
 import type { DesignApprover } from '../project-config/schema.js';
-import { stepsOf, type WorkflowWrite } from './schema.js';
+import { edgeKindOf, stepsOf, type WorkflowWrite } from './schema.js';
 
 export const DESIGN_STATUSES = ['draft', 'proposed', 'approved', 'returned'] as const;
 export type DesignStatus = (typeof DESIGN_STATUSES)[number];
@@ -35,8 +35,10 @@ export interface DesignRefusal {
 
 /**
  * The part of a workflow its approver decides: the steps, their order, their node types and the
- * edge contracts. Status, evidence, coverage, drift and the commit a reading was taken at are the
- * code's reading of itself, so a refresh after the build moves none of this and needs no new approval.
+ * edge contracts, feedback edges included. An edge written `kind: "flow"` fingerprints as one that
+ * names no kind, so a design stored before edges had kinds keeps the fingerprint it was approved at.
+ * Status, evidence, coverage, drift and the commit a reading was taken at are the code's reading
+ * of itself, so a refresh after the build moves none of this and needs no new approval.
  */
 export function designFingerprint(doc: WorkflowWrite): string {
   const steps = stepsOf(doc).map((s) => ({
@@ -48,9 +50,9 @@ export function designFingerprint(doc: WorkflowWrite): string {
   }));
   const edges =
     doc.version === 2
-      ? [...(doc.edges ?? [])].sort((a, b) =>
-          `${a.from}>${a.to}`.localeCompare(`${b.from}>${b.to}`),
-        )
+      ? [...(doc.edges ?? [])]
+          .map(({ kind, ...e }) => (edgeKindOf({ kind }) === 'flow' ? e : { kind, ...e }))
+          .sort((a, b) => `${a.from}>${a.to}`.localeCompare(`${b.from}>${b.to}`))
       : [];
   const shape = { kind: doc.kind, title: doc.title, summary: doc.summary, steps, edges };
   return createHash('sha256').update(JSON.stringify(shape)).digest('hex');

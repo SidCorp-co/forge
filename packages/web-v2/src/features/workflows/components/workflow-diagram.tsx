@@ -30,10 +30,15 @@ function evidenceLabel(step: WorkflowStep): string | null {
 
 export function WorkflowDiagram({ workflow, selected, onSelect, diff = null }: WorkflowDiagramProps) {
   const marker = useId().replace(/:/g, "");
-  const l = layoutOf(workflow.steps, workflow.kind);
+  const l = layoutOf(workflow.steps, workflow.kind, workflow.edges ?? []);
   const drifted = new Set(workflow.drift?.steps ?? []);
   const state = workflow.kind === "state";
-  const contracts = new Map((workflow.edges ?? []).map((e) => [edgeKey(e.from, e.to), e]));
+  const contracts = new Map(
+    (workflow.edges ?? []).filter((e) => e.kind !== "feedback").map((e) => [edgeKey(e.from, e.to), e]),
+  );
+  const returns = new Map(
+    (workflow.edges ?? []).filter((e) => e.kind === "feedback").map((e) => [edgeKey(e.from, e.to), e]),
+  );
   return (
     <div
       className="flex min-h-[240px] items-center overflow-auto rounded-lg px-2 py-6"
@@ -46,7 +51,32 @@ export function WorkflowDiagram({ workflow, selected, onSelect, diff = null }: W
             <marker id={marker} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
               <path d="M0 0L10 5L0 10z" fill="var(--fg-subtle)" />
             </marker>
+            <marker id={`${marker}-back`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M0 0L10 5L0 10z" fill="var(--accent)" />
+            </marker>
           </defs>
+          {l.feedback.map((e) => {
+            const key = edgeKey(e.from, e.to);
+            const contract = returns.get(key);
+            const mark = diff?.edges.get(key);
+            return (
+              <g key={`back:${key}`} data-testid="workflow-feedback-edge" data-edge={key}>
+                <path
+                  d={e.d}
+                  fill="none"
+                  stroke={mark && mark !== "changed" ? MARK_STROKE[mark] : "var(--accent)"}
+                  strokeWidth={1.8}
+                  strokeDasharray="6 4"
+                  markerEnd={`url(#${marker}-back)`}
+                />
+                {contract ? (
+                  <path d={e.d} fill="none" stroke="transparent" strokeWidth={14} pointerEvents="stroke">
+                    <title>{contractText(contract)}</title>
+                  </path>
+                ) : null}
+              </g>
+            );
+          })}
           {l.edges.map((e) => {
             const key = edgeKey(e.from, e.to);
             const contract = contracts.get(key);

@@ -69,13 +69,16 @@ const DESCRIPTION =
   'the document is workflow-v1 (a flow the code already has) or workflow-v2 (a design: steps may be ' +
   '`designed` with no evidence, carry `node` { type: EVENT|CONTEXT|RULE|STATE|EXPECTATION|CASE|TASK|' +
   'ATTENTION|ACTION|OUTCOME|STEP, purpose, inputs, outputs, owner, sla }, and `edges` carry the ' +
-  'contract { from, to, condition, action, mapping, idempotency, onFailure } of a line `after` draws). ' +
+  'contract { from, to, condition, action, mapping, idempotency, onFailure } of a line `after` draws; ' +
+  'a return from a later step to an earlier one — an OUTCOME re-evaluating a RULE — is never drawn in ' +
+  '`after` (WORKFLOW_AFTER_CYCLE) but declared as an edge { kind: "feedback", from, to, reevaluates } ' +
+  'carrying the whole contract). ' +
   'Schemas: GET /api/schemas/workflow-v1.json and workflow-v2.json. A v2 workflow starts as a draft. ' +
   'Evidence matches the project source: a storefront project cites { kind: "storefront", provider, ' +
   'ref: workflow|route|node, id }, a repository project { kind: "repo", file, coverage } — the other ' +
   'is WORKFLOW_EVIDENCE_KIND_MISMATCH. ' +
   'propose: { workflowId, revision } puts a draft in front of its approver. A write that changes the ' +
-  'design (steps, order, nodes, edge contracts) of a proposed, approved or returned workflow ' +
+  'design (steps, order, nodes, edge contracts, feedback edges) of a proposed, approved or returned workflow ' +
   'proposes that revision again; a write that only refreshes status or evidence does not. ' +
   'design: { workflowId } — the status (draft | proposed | approved | returned), every proposed ' +
   'revision with its decision and reason, the approved revision, and the issues that build it. ' +

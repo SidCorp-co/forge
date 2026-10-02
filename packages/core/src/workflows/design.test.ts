@@ -105,6 +105,29 @@ describe('the design lifecycle', () => {
     expect(designFingerprint(parsed(retyped))).not.toBe(base);
   });
 
+  it('fingerprints a feedback edge as design, and an explicit flow kind as no change', () => {
+    const base = designFingerprint(parsed(design()));
+    const flowNamed = design();
+    flowNamed.edges[0].kind = 'flow';
+    expect(designFingerprint(parsed(flowNamed))).toBe(base);
+    const looped = design();
+    looped.edges.push({
+      kind: 'feedback',
+      from: 'outcome',
+      to: 'followup-rule',
+      reevaluates: 'follow-up rule',
+      condition: 'true',
+      action: 'reevaluate',
+      mapping: {},
+      idempotency: 'one per outcome',
+      onFailure: 'create_attention_item',
+    });
+    const withLoop = designFingerprint(parsed(looped));
+    expect(withLoop).not.toBe(base);
+    looped.edges[1].reevaluates = 'follow-up and escalation rules';
+    expect(designFingerprint(parsed(looped))).not.toBe(withLoop);
+  });
+
   it('proposes only a draft, naming why anything else is refused', () => {
     expect(proposeRefusal('draft', 'w')).toBeNull();
     expect(proposeRefusal('proposed', 'w')?.code).toBe('WORKFLOW_DESIGN_ALREADY_PROPOSED');
