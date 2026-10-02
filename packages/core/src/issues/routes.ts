@@ -24,6 +24,7 @@ import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
+import { buildsWorkflowOf } from '../workflows/build-gate.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';
 import { AttachmentError } from './attachment-service.js';
@@ -291,6 +292,7 @@ issueProjectRoutes.get(
       ...creatorMap.get(issue.id),
       pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
       liveReach: await liveReachForIssue(issue),
+      buildsWorkflow: await buildsWorkflowOf(issue.id),
       labels: labelRows,
       comments: [],
       activity: [],
@@ -437,6 +439,7 @@ issueRoutes.get(
       agentStatus: agentBucket?.agentStatus ?? null,
       pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
       liveReach: await liveReachForIssue(issue),
+      buildsWorkflow: await buildsWorkflowOf(issue.id),
       labels: labelRows,
       comments: [],
       activity: [],

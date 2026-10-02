@@ -36,6 +36,8 @@ import {
   type PolicyRefusalCode,
   PolicyRefusedError,
 } from '../project-config/dispatch-policy.js';
+import { assertDesignApprovedForIssue } from '../workflows/build-gate.js';
+import { WorkflowDesignNotApprovedError } from '../workflows/design.js';
 import { runnerAdmission } from './pool-admission.js';
 import { releaseLabelVerdict } from './release-label.js';
 
@@ -60,7 +62,12 @@ export type PrepareResult =
         | 'release_label_missing'
         | 'no_prompt';
     }
-  | { ok: false; reason: 'policy_refused'; code: PolicyRefusalCode; detail: string }
+  | {
+      ok: false;
+      reason: 'policy_refused';
+      code: PolicyRefusalCode | WorkflowDesignNotApprovedError['code'];
+      detail: string;
+    }
   | { ok: false; reason: 'checkout_unbound'; detail: string };
 
 export type StartResult = { ok: true } | { ok: false; reason: 'hold_lost' | 'runner_too_old' };
@@ -109,6 +116,9 @@ export async function prepareJobForMaster(args: {
 
   const policy = await policyStateFor(args.jobId);
   if (!policy.ok) return policy.refusal;
+
+  const design = await designGateFor(args.jobId);
+  if (design) return design;
 
   const claimed = await db.transaction(async (tx) => {
     const held = await tx
@@ -205,6 +215,27 @@ async function policyStateFor(
       ok: false,
       refusal: { ok: false, reason: 'policy_refused', code: err.code, detail: err.message },
     };
+  }
+}
+
+/**
+ * A job for an issue that builds a workflow whose design is not approved is refused by the
+ * policy-refusal shape the box already reads, and stays queued until the design is approved.
+ */
+async function designGateFor(jobId: string): Promise<Extract<PrepareResult, { ok: false }> | null> {
+  const [job] = await db
+    .select({ projectId: jobs.projectId, issueId: jobs.issueId })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .limit(1);
+  if (!job?.issueId) return null;
+  try {
+    await assertDesignApprovedForIssue(job.projectId, job.issueId);
+    return null;
+  } catch (err) {
+    if (!(err instanceof WorkflowDesignNotApprovedError)) throw err;
+    logger.warn({ jobId, projectId: job.projectId, code: err.code }, err.message);
+    return { ok: false, reason: 'policy_refused', code: err.code, detail: err.message };
   }
 }
 
