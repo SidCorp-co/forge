@@ -191,7 +191,9 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
         set_repo_ssh_command(&repo_path, cmd);
     }
     if let Some(host) = cred_host.as_deref() {
-        git_cred::set_repo_credential_helper(&repo_path, host);
+        if let Err(e) = git_cred::set_repo_credential_helper(&repo_path, host) {
+            tracing::error!("[provision] {e}");
+        }
     }
 
     finish_workspace(client, cfg, p, &repo_path).await;
@@ -346,10 +348,6 @@ fn record_binding(p: &Provision, repo_path: &Path) {
     }
 }
 
-/// The checkout this box chose for a binding that named none, which the binding must now hold:
-/// a job takes its checkout from the device binding alone, so a path known only to this box's
-/// `config.toml` is a path no job can be given.
-
 /// The host git's credential helper is pointed at for this checkout, or none: only where core says
 /// it mints a credential for the repository (any source host since ISS-50) and the URL is HTTPS.
 fn credential_host(p: &crate::transport::provision::Provision) -> Option<String> {
@@ -360,6 +358,9 @@ fn credential_host(p: &crate::transport::provision::Provision) -> Option<String>
     }
 }
 
+/// The checkout this box chose for a binding that named none, which the binding must now hold:
+/// a job takes its checkout from the device binding alone, so a path known only to this box's
+/// `config.toml` is a path no job can be given.
 fn binding_to_report(p: &Provision, repo_path: &Path) -> Option<String> {
     let named = p.repo_path.as_deref().is_some_and(|s| !s.trim().is_empty());
     (!named).then(|| repo_path.to_string_lossy().into_owned())

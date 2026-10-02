@@ -22,6 +22,7 @@ import { StatusPill, scopeLabel } from "./status-pill";
 // database, the agent. They are not providers and have no module; their icons live here.
 const TELEMETRY_CARD_ICON: Record<string, IconName> = {
   runners: "cpu",
+  repository: "branch",
   postgres: "archive",
   mcp: "command",
   claude: "agent",
@@ -148,6 +149,7 @@ function GroupedIntegrationCard({
               const lastSync = formatRelativeTime(card.lastSyncAt);
               const clickable = Boolean(onOpen);
               const open = () => onOpen?.(card);
+              const repoUrl = externalRepoUrl(card);
               return (
                 <div
                   key={card.key}
@@ -178,12 +180,26 @@ function GroupedIntegrationCard({
                     <span className="fg-body-sm text-subtle">
                       {lastSync ? `synced ${lastSync}` : "no sync data"}
                     </span>
-                    {clickable ? (
-                      <span className="inline-flex items-center gap-1 text-13 font-semibold text-accent">
-                        Manage
-                        <Icon name="arrowRight" size={13} />
-                      </span>
-                    ) : null}
+                    <span className="inline-flex items-center gap-3">
+                      {repoUrl ? (
+                        <a
+                          href={repoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-13 font-semibold text-accent hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Open repo
+                          <Icon name="arrowRight" size={13} />
+                        </a>
+                      ) : null}
+                      {clickable ? (
+                        <span className="inline-flex items-center gap-1 text-13 font-semibold text-accent">
+                          Manage
+                          <Icon name="arrowRight" size={13} />
+                        </span>
+                      ) : null}
+                    </span>
                   </div>
                 </div>
               );

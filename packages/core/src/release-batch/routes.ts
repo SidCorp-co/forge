@@ -389,7 +389,7 @@ releaseBatchRoutes.post(
       if (err instanceof ReleaseRunHoldingError) throw holding(err);
       throw err;
     }
-    await assertApprovalAllowsAttempt(runId);
+    await assertApprovalAllowsAttempt(runId, projectId);
     const row = await openAttempt({
       runId,
       stage: body.stage as never,

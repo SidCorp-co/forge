@@ -14,7 +14,7 @@
  * attempt and answers, and the verdict is read with `state`.
  */
 
-import type { HTTPException } from 'hono/http-exception';
+import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { acceptReleaseBatchFinish } from '../../release-batch/finish-job.js';
@@ -130,6 +130,7 @@ function finishRefusal(err: unknown): Error {
     const http = finishHttpRefusal(err);
     if (http) return fromHttp(http);
   }
+  if (err instanceof HTTPException) return fromHttp(err);
   return err instanceof Error ? err : new Error(String(err));
 }
 
