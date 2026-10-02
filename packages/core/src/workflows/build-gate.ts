@@ -17,7 +17,6 @@ import {
   WorkflowDesignNotApprovedError,
 } from './design.js';
 
-/** True while the issue builds a workflow whose design is not approved. */
 export function designUnapprovedSql(issueId: SQL): SQL {
   return sql`EXISTS (
     SELECT 1 FROM workflow_builds wb

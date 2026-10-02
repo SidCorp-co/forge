@@ -13,6 +13,16 @@ export function useWorkflows(projectId: string | undefined) {
   });
 }
 
+/** The diagram templates this project draws in: the built-ins, then its own. They change on a deploy or a project-document write. */
+export function useWorkflowTemplates(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["workflow-templates", projectId ?? ""],
+    queryFn: () => workflowsApi.templates(projectId as string),
+    enabled: Boolean(projectId),
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useWorkflowDesign(projectId: string | undefined, workflowId: string | undefined) {
   return useQuery({
     queryKey: ["workflow-design", projectId ?? "", workflowId ?? ""],
