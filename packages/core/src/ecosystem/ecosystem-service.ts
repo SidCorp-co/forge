@@ -7,6 +7,7 @@ import type { Checked, EcosystemRefusal } from './refusals.js';
 import {
   type EcosystemDocument,
   ecosystemDocumentSchema,
+  ecosystemWriteSchema,
   type InterfaceDocument,
   interfaceDocumentSchema,
 } from './schema.js';
@@ -60,6 +61,7 @@ export async function loadEcosystem(id: string): Promise<HeldEcosystem> {
   return heldEcosystem(row);
 }
 
+// cm:why one rule for the id in both directions: core assigns it, so a create names none and an update names exactly the one core assigned; anything else is ECOSYSTEM_ID_IMMUTABLE
 function parseEcosystem(raw: unknown, id: string, creating: boolean): Checked<EcosystemDocument> {
   const claimed = isRecord(raw) && isRecord(raw.ecosystem) ? raw.ecosystem.id : undefined;
   if (creating && claimed !== undefined) {
@@ -82,17 +84,17 @@ function parseEcosystem(raw: unknown, id: string, creating: boolean): Checked<Ec
         {
           code: 'ECOSYSTEM_ID_IMMUTABLE',
           path: '/ecosystem/id',
-          detail: `ecosystem.id ${JSON.stringify(claimed)} is not this ecosystem; the document at /api/ecosystems/${id} names ${id}, which core assigned and never changes.`,
+          detail:
+            claimed === undefined
+              ? `an update names the id core assigned; send ecosystem.id ${id}, the document at /api/ecosystems/${id}.`
+              : `ecosystem.id ${JSON.stringify(claimed)} is not this ecosystem; the document at /api/ecosystems/${id} names ${id}, which core assigned and never changes.`,
         },
       ],
     };
   }
-  const withId =
-    creating && isRecord(raw) && isRecord(raw.ecosystem)
-      ? { ...raw, ecosystem: { ...raw.ecosystem, id } }
-      : raw;
-  const parsed = parseVersionedDocument(ecosystemDocumentSchema, withId, 'ecosystem');
-  return parsed.ok ? parsed : { ok: false, refusals: parsed.refusals };
+  const parsed = parseVersionedDocument(ecosystemWriteSchema, raw, 'ecosystem');
+  if (!parsed.ok) return { ok: false, refusals: parsed.refusals };
+  return { ok: true, value: { ...parsed.value, ecosystem: { ...parsed.value.ecosystem, id } } };
 }
 
 async function commitments(tx: Tx, ecosystemId: string): Promise<MemberCommitment[]> {
