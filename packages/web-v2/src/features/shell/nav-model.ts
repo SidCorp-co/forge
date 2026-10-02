@@ -65,10 +65,20 @@ export const PROJECT_ITEMS: ProjItem[] = PROJECT_MENU.flatMap((e) => (isProjGrou
 export interface ProjectBadges {
   openIssues?: number | undefined;
   awaitingApproval?: number | undefined;
+  /** Workflow designs awaiting their approver. */
+  designsAwaiting?: number | undefined;
 }
 
-const badgeOf = (key: string, badges: ProjectBadges) =>
-  key === "proj-issues" ? badges.openIssues : key === "proj-releases" ? badges.awaitingApproval : undefined;
+const BADGE_OF: Record<string, keyof ProjectBadges> = {
+  "proj-issues": "openIssues",
+  "proj-releases": "awaitingApproval",
+  "proj-workflows": "designsAwaiting",
+};
+
+const badgeOf = (key: string, badges: ProjectBadges) => {
+  const field = BADGE_OF[key];
+  return field ? badges[field] : undefined;
+};
 
 export function projectMenu(badges: ProjectBadges): ProjEntry[] {
   const withBadge = (it: ProjItem): ProjItem => ({ ...it, badge: badgeOf(it.key, badges) });

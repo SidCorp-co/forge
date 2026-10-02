@@ -33,6 +33,7 @@ import {
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
 import { requirePolicy } from '../project-config/dispatch-policy.js';
+import { assertDesignsApprovedForSeqs } from '../workflows/build-gate.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
 import { projectAdmission, RunnerNotAdmittedError } from './pool-admission.js';
@@ -215,6 +216,9 @@ export async function openRunSession(args: {
     );
   }
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
+  // cm:guard work that builds a flow starts only once its design is approved; refused before any
+  // run, session or lease is written, by the name the job claim uses too
+  await assertDesignsApprovedForSeqs(args.projectId, canonical.seqs);
   const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
   const spec: OneShotRunSpec = {
     projectId: args.projectId,

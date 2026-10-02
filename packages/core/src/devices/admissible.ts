@@ -23,6 +23,7 @@ import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/autonomo
 import { type PolicyRefusalCode, PolicyRefusedError } from '../project-config/dispatch-policy.js';
 import { readEffectivePolicy } from '../project-config/effective.js';
 import type { PolicyDocument } from '../project-config/schema.js';
+import { designUnapprovedSql } from '../workflows/build-gate.js';
 import type { PoolRelation } from './pool.js';
 
 const DEFAULT_ADMISSIBLE_LIMIT = 20;
@@ -163,6 +164,9 @@ export async function readAdmissibleIssues(args: {
             AND (d.valid_until IS NULL OR d.valid_until > now())
             AND b.status NOT IN (${settledList})
         )
+        -- an issue that builds a workflow whose design is not approved waits for its approver; the
+        -- issue read names that workflow and its design status (workflows/build-gate.ts)
+        AND NOT ${designUnapprovedSql(sql`i.id`)}
         -- one predicate for "is this issue being worked", shared with the orphan sweep that
         -- used to carry a verbatim copy of it (ISS-1109). The key is canonicalised and never
         -- the project's own prefix, or a run's issues silently stop being seen (ISS-992).

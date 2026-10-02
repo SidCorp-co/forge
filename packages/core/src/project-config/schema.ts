@@ -57,6 +57,9 @@ const gitSourceSchema = z.strictObject({
   }),
 });
 
+export const DESIGN_APPROVERS = ['owner', 'master'] as const;
+export type DesignApprover = (typeof DESIGN_APPROVERS)[number];
+
 export const STOREFRONT_PROVIDERS = ['epodsystem', 'shopify', 'autoflow'] as const;
 
 // cm:why a deliverable that lives only on the provider: no repository holds it, so a git project
@@ -142,6 +145,14 @@ export const projectDocumentSchema = z.strictObject({
   release: z
     .strictObject({
       approval: z.strictObject({ required: z.boolean() }),
+    })
+    .optional(),
+  // cm:why who decides a workflow design before anything is built from it
+  // (`workflows/design.ts:designApproverRefusal`): `owner` is an org admin person, `master` adds
+  // the project's own master; absent is `owner`.
+  workflows: z
+    .strictObject({
+      designApprover: z.enum(DESIGN_APPROVERS),
     })
     .optional(),
   execution: z.strictObject({
