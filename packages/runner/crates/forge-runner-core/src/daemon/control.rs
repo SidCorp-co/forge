@@ -284,6 +284,15 @@ pub(crate) fn acting_session(masters: &crate::daemon::master::Masters, holder: &
     }
 }
 
+/// Whether `named` is the project a record was minted for, by the id or by the
+/// slug the record carries — `--project` is what an operator types, and both
+/// name one project (a slug compared against an id refused a pane minted for
+/// that very project).
+#[cfg(unix)]
+fn names_minted_project(m: &crate::daemon::session_tokens::Minted, named: &str) -> bool {
+    m.project == named || m.slug.as_deref() == Some(named)
+}
+
 /// Which project a declaring caller is the master for, or why it is none.
 ///
 /// A record bounds it by itself: the project it was minted for, and only while
@@ -301,10 +310,14 @@ fn declaring_project(
 ) -> Result<String, String> {
     match holder {
         Holder::Minted(m) => {
-            if m.project != project_id {
+            if !names_minted_project(m, project_id) {
+                let known = m
+                    .slug
+                    .as_deref()
+                    .map_or_else(|| m.project.clone(), |s| format!("{s} ({})", m.project));
                 return Err(format!(
-                    "this pane's capability was minted for pane {} as the master for {}, and cannot declare a run for {project_id}. Nothing was recorded",
-                    m.pane, m.project
+                    "this pane's capability was minted for pane {} as the master for {known}, and cannot declare a run for {project_id} — `--project` takes this project's id or its slug and no other. Nothing was recorded",
+                    m.pane
                 ));
             }
             match masters.live_for_project(&m.project) {
@@ -489,11 +502,15 @@ fn run_declare_as(
         Ok(serves) => serves,
         Err(why) => return ClaimReply::refused(why),
     };
-    if serves != project_id {
+    // A record was matched by id or slug in `declaring_project`; a capability
+    // minted before the record names an id or nothing.
+    if !matches!(holder, Holder::Minted(_)) && serves != project_id {
         return ClaimReply::refused(format!(
             "this pane is the master for {serves} and cannot declare a run for {project_id}"
         ));
     }
+    // Every row below is keyed by the project's id, never by the slug it was named by.
+    let project_id = serves.as_str();
     if let Some(bad) = issue_keys.iter().find(|k| !is_issue_key(k)) {
         return ClaimReply::refused(format!(
             "`{bad}` is not an issue reference — a declaration takes one per issue the subagent is being given, each a display id such as `ISS-42` or your project's own prefix, or the bare number. Nothing was recorded"
@@ -1701,6 +1718,53 @@ mod tests {
                     .as_deref()
                     .unwrap_or("")
                     .contains("cannot declare a run for proj-2"),
+            "{reply:?}"
+        );
+        assert_eq!(run_count(&ctl), 0, "and nothing was written");
+    }
+
+    /// A master pane names its project as an operator types it: by slug. The
+    /// record carries the slug it was minted with, so the slug of the pane's own
+    /// project declares, and the row is keyed by the project's id.
+    #[cfg(unix)]
+    #[test]
+    fn a_record_declares_for_its_own_project_by_slug_and_by_id() {
+        for named in ["proj-1-slug", "proj-1"] {
+            let (ctl, token, _dir) = a_pane_core_re_minted("record");
+            let reply = served(&ctl, declare_frame(&token, named, "ISS-7"));
+            assert!(
+                reply.ok,
+                "`--project {named}` names this pane's own project: {reply:?}"
+            );
+            let held = ctl.ledger.lock().unwrap();
+            let run = held
+                .as_ref()
+                .unwrap()
+                .run(reply.job_id.as_deref().unwrap())
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                run.project_id.as_deref(),
+                Some("proj-1"),
+                "keyed by id whichever name was typed"
+            );
+        }
+    }
+
+    /// The slug of a project this pane is not the master for is refused by name,
+    /// exactly as its id is.
+    #[cfg(unix)]
+    #[test]
+    fn a_record_declares_nothing_for_another_projects_slug() {
+        let (ctl, token, _dir) = a_pane_core_re_minted("record");
+        ctl.masters
+            .remember_for_test("proj-2", "sess-other", "forge-master-other");
+        let reply = served(&ctl, declare_frame(&token, "proj-2-slug", "ISS-9"));
+        let why = reply.reason.as_deref().unwrap_or("");
+        assert!(
+            !reply.ok
+                && why.contains("cannot declare a run for proj-2-slug")
+                && why.contains("proj-1-slug (proj-1)"),
             "{reply:?}"
         );
         assert_eq!(run_count(&ctl), 0, "and nothing was written");

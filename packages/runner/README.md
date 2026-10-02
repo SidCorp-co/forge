@@ -92,6 +92,28 @@ be used to discover which project ids are real. Routes that resolve no project
 token that could mint another token would have no scope at all. A token minted
 without the `write` scope gets `INSUFFICIENT_SCOPE` on anything but a read.
 
+### A master pane's credential
+
+A master pane acts as its project's own **agent**, through one credential: the
+token core mints for the checkout at provision
+(`packages/core/src/devices/workspace-credential.ts:issueCheckoutCredential`).
+It is held by the box's agent where the box was paired as one, and otherwise by the project's agent account, which a person
+pairing the box hands it only while they hold member or above on the project.
+It is fenced to that one project, so a pane writing another project's records
+is refused by name (`BUILDER_RUN_WRITER_NOT_PROJECT`), never served as a person.
+
+Both halves of the pane read it. Its MCP `forge` server takes it from the
+checkout's `.mcp.json`. Its `forge` CLI borrows it through
+`FORGE_BORROW_FROM`, which the daemon sets to
+`<config>/forge-runner/master/<slug>/forge-cli.json` (`{url, token}`, `0600`,
+written at provision). A checkout core sent no credential for gets no file, and
+that pane's CLI reads its home's own account. A pane started before its
+checkout was provisioned holds neither: re-provision, then end the pane so the
+next sweep places it again.
+
+`forge-runner run declare --project` takes the project's id or its slug, and
+names the pane's own project when it refuses another.
+
 ### Skill delivery
 
 Skills reach a runner without a manual step: `[skills] auto_pull` is **on by
