@@ -51,20 +51,30 @@ change notice owes nothing and is not listed; read it in \`inbox\` when the pass
 ### Working a builder run
 Joining an ecosystem opens a builder run for the joining project (trigger \`joined\`), and a push to its
 default branch opens another (trigger \`push\`, at the pushed commit) once the last one is finished.
-Links go out from the project: the run maps what THIS repository uses, never what others use of it.
+Links go out from the project: the run maps what THIS project's own code uses, never what others use
+of it. Where that code lives is the project document's \`source.type\`, and it decides the run's steps
+when the run opens; a run already open keeps the steps it was opened with.
 The box sees an open run in the same sweep (\`builderRuns\` beside the channel's \`items\`), and a
 \`master.wake\` with \`source: 'ecosystem_build'\` only makes that sweep come sooner.
 
-1. \`forge_ecosystem action=builder_runs\`, then \`builder_run\` the open one. Its steps are
+1. \`forge_ecosystem action=builder_runs\`, then \`builder_run\` the open one. A git project's steps are
    \`read-repo\`, \`find-outbound-calls\`, \`match-contracts\`, \`write-links\`, \`check\`,
-   \`publish-role\`, each \`pending\`. Move one to \`running\` before you start it and to
+   \`publish-role\`; a storefront project's (\`source.type: storefront\`, no repository) are
+   \`read-storefront\`, \`find-provider-usage\`, \`match-contracts\`, \`write-links\`, \`check\`,
+   \`publish-role\`. Each starts \`pending\`. Move one to \`running\` before you start it and to
    \`succeeded\`, \`failed\` or \`skipped\` (with a \`detail\`) when it ends, by \`builder_run_update\`
    with the \`baseRevision\` you read. A status outside those five is refused \`STEP_STATUS_UNKNOWN\`.
-2. Read the repository at HEAD and find every outbound call. Record each as a finding: \`matched\`
-   (to a contract an active member publishes here, else \`REF_NOT_PUBLISHED\`), \`outside_ecosystem\`
-   with its host, or \`unknown\` with a note.
+2. Read the code where it lives and find every outbound use: a git project reads its repository at
+   HEAD; a storefront project reads what its provider holds (on \`autoflow\`, its workflows, routes and
+   nodes). Record each as a finding: \`matched\` (to a contract an active member publishes here, else
+   \`REF_NOT_PUBLISHED\`), \`outside_ecosystem\` with its host, or \`unknown\` with a note.
 3. For each matched use, \`link_create\` (or \`link_update\`) the link from the module that calls it,
-   with its call sites, and name the link's id in the run's \`links\`.
+   with its call sites, and name the link's id in the run's \`links\`. A call site is the shape the
+   project's source holds, and the other shape is refused \`CALL_SITE_KIND_MISMATCH\`:
+   - git: \`{ path, line, operation }\`, the path relative to the checkout (else \`PATH_OUTSIDE_REPO\`);
+   - storefront: \`{ artefact: { kind, id }, operation }\`, the kind one its provider holds (on
+     \`autoflow\`: \`workflow\`, \`route\` or \`node\`; else \`ARTEFACT_KIND_UNKNOWN\`) and the id the
+     provider's own. A finding's \`site\` follows the same rule.
 4. Finish every step. The answer to the write that finishes the run carries
    \`report.declaredWithoutCallSite\`: each consumption the interface declares in this ecosystem that no
    link of yours calls. Either write the link the code uses or take the consumption out of the

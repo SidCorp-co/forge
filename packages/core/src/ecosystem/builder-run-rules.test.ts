@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { type Doc, emittedAccepts, example, FP } from './ecosystem.fixture.js';
 import {
-  BUILDER_STEPS,
   type BuilderRunWorld,
   builderRunIdentityRefusals,
+  builderSourceOf,
   checkBuilderRun,
   declaredWithoutCallSite,
   isOpenRun,
   openedRun,
   parseBuilderRun,
+  REPO_BUILDER_STEPS,
+  STOREFRONT_BUILDER_STEPS,
 } from './link-rules.js';
 import { LIMITS } from './link-schema.js';
 
@@ -28,6 +30,7 @@ function written(patch: (d: Doc) => void = () => {}): Doc {
 }
 
 const world = (over: Partial<BuilderRunWorld> = {}): BuilderRunWorld => ({
+  source: { type: 'repository' },
   projectActiveIn: new Set([FP]),
   published: new Set([`${FORGE}/forge-api`, `${FORGE}/forge-mcp`]),
   links: new Set([LINK]),
@@ -192,12 +195,13 @@ describe('the run a join or a push opens', () => {
     ecosystem: FP,
     project: PLUGIN,
     trigger: { kind: 'joined', sha: '4b825dc642cb6eb9a060e54bf8d69288fbee4904' },
+    source: { type: 'repository' },
   });
 
   it('is a valid builder-run-v1 with every step pending, and open', () => {
     expect(codesAt(opened as unknown as Doc, world({ links: new Set() }))).toEqual([]);
     expect(opened.steps.map((s) => `${s.name}:${s.status}`)).toEqual(
-      BUILDER_STEPS.map((n) => `${n}:pending`),
+      REPO_BUILDER_STEPS.map((n) => `${n}:pending`),
     );
     expect(isOpenRun(opened)).toBe(true);
   });
@@ -233,5 +237,48 @@ describe('a declared consumption a finished run found no call site for', () => {
   it('is nothing when every declared consumption is called', () => {
     const called = new Set(['forge/forge-api', 'forge/forge-mcp']);
     expect(declaredWithoutCallSite({ ecosystem: FP, consumes, called })).toEqual([]);
+  });
+});
+
+describe('the steps a run opens with follow where the project keeps its code', () => {
+  const trigger = { kind: 'joined' as const, sha: '4b825dc642cb6eb9a060e54bf8d69288fbee4904' };
+  const storefrontDoc = {
+    source: { type: 'storefront', storefront: { provider: 'autoflow', binding: LINK } },
+  } as unknown as Parameters<typeof builderSourceOf>[0];
+  const gitDoc = {
+    source: {
+      type: 'git',
+      git: { repository: 'github.com/a/b', defaultBranch: 'main', branches: ['main'] },
+    },
+  } as unknown as Parameters<typeof builderSourceOf>[0];
+
+  it('opens a storefront join reading the storefront, never a repository', () => {
+    const source = builderSourceOf(storefrontDoc);
+    expect(source).toEqual({ type: 'storefront', provider: 'autoflow' });
+    const opened = openedRun({ ecosystem: FP, project: PLUGIN, trigger, source });
+    expect(opened.steps.map((s) => s.name)).toEqual([...STOREFRONT_BUILDER_STEPS]);
+    expect(opened.steps.map((s) => s.name)).not.toContain('read-repo');
+    expect(codesAt(opened as unknown as Doc, world({ source, links: new Set() }))).toEqual([]);
+  });
+
+  it('keeps a git project, and one with no document, on the repository steps', () => {
+    for (const doc of [gitDoc, null]) {
+      const opened = openedRun({
+        ecosystem: FP,
+        project: PLUGIN,
+        trigger,
+        source: builderSourceOf(doc),
+      });
+      expect(opened.steps.map((s) => s.name)).toEqual([...REPO_BUILDER_STEPS]);
+    }
+  });
+
+  it("refuses a storefront run's finding that names a repository path, by name", () => {
+    const source = { type: 'storefront', provider: 'autoflow' } as const;
+    const got = codesAt(written(), world({ source }));
+    expect(got.length).toBeGreaterThan(0);
+    expect(new Set(got.map((c) => c.replace(/\/findings\/\d+/, '/findings/N')))).toEqual(
+      new Set(['CALL_SITE_KIND_MISMATCH /findings/N/site/path']),
+    );
   });
 });

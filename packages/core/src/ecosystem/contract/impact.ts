@@ -1,11 +1,8 @@
+import type { CallSite } from '../link-schema.js';
 import type { ChangeKind, ChangeLevel, MeasuredClassification } from './diff.js';
 import { compareVersions, type Versioning } from './naming.js';
 
-export interface ImpactCallSite {
-  path: string;
-  line: number;
-  operation: string;
-}
+export type ImpactCallSite = CallSite;
 
 export interface ImpactLink {
   id: string;
@@ -62,14 +59,14 @@ export interface Recipient {
 const INPUT = /request|became-required|new-required/;
 const WHOLE = new Set(['document', '#']);
 const OPERATION = /^[A-Z]+ \//;
-const unescape = (s: string) => s.replace(/~1/g, '/').replace(/~0/g, '~');
+const unescapePointer = (s: string) => s.replace(/~1/g, '/').replace(/~0/g, '~');
 const leaf = (f: string) => f.split(/[./]/).filter(Boolean).pop() ?? f;
 
 // cm:why an added or newly required input binds every caller of the surface whatever it reads, so only a removed or changed property a consumer reads narrows the break to that consumer
 // cm:why a change's element is `<operation>/properties/<a>/properties/<b>` from the schema differ, or an operation whose text quotes the property from oasdiff; the part before the first property is the surface, the properties are the fields
 function shapeOf(c: ImpactChange): { surface: string; fields: string[] } {
   const [surface = c.element, ...props] = c.element.split('/properties/');
-  const fromPath = props.length ? [props.map(unescape).join('.')] : [];
+  const fromPath = props.length ? [props.map(unescapePointer).join('.')] : [];
   const quoted = [...c.text.matchAll(/[`'"]([A-Za-z_$][\w$./-]*)[`'"]/g)]
     .map((m) => (m[1] ?? '').replace(/\//g, '.'))
     .filter((f) => f.length > 0 && !OPERATION.test(f));
