@@ -9,14 +9,25 @@
  * than a hand-pasted token: fenced to one project, named after the pair so it
  * is revocable on its own, and revoked with the device
  * (`revokeDeviceCredentials`).
+ *
+ * The pane that reads it is the project's master, which is the project's own
+ * AGENT: what only that agent may write — a builder run, a link — is refused
+ * to a person (`writerRefusal`). So the credential is held by an agent, never
+ * by the person who paired the box: a box paired as an agent keeps its agent,
+ * and a box paired by a person carries the project's own agent account
+ * (`resolveProjectHandle`), handed only by a person holding member or above on
+ * that project. One path for every project bound on the box, and each
+ * checkout's token reaches its own project alone.
  */
 
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { lockPatName, mintPat } from '../auth/pat.js';
 import { deviceTokenNameFor, workspaceTokenNameFor } from '../auth/pat-format.js';
 import { PAT_GRANT_ALL } from '../auth/pat-permissions.js';
+import { resolveProjectHandle } from '../conversations/handles.js';
 import { db } from '../db/client.js';
-import { personalAccessTokens } from '../db/schema.js';
+import { personalAccessTokens, users } from '../db/schema.js';
+import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 
 /**
  * Who the box acts as: the holder of its live device credential, which is the
@@ -97,4 +108,51 @@ export async function issueWorkspaceCredential(args: {
     );
     return plaintext;
   });
+}
+
+/** A checkout whose credential no agent can hold, refused by name rather than minted as the person. */
+export class WorkspaceHolderRefused extends Error {
+  readonly code = 'WORKSPACE_HOLDER_REFUSED';
+}
+
+// cm:why a master pane is its project's agent: a person-held checkout token is refused every agent-only write (BUILDER_RUN_WRITER_NOT_PROJECT), so the checkout carries an agent, and a person hands the project's agent only from member up
+/**
+ * Who a checkout's credential is held by: the device's holder where that is an
+ * agent, and the project's own agent where it is a person entitled to hand it.
+ */
+export async function workspaceHolderFor(args: {
+  deviceHolderUserId: string;
+  projectId: string;
+}): Promise<string> {
+  const [holder] = await db
+    .select({ kind: users.kind })
+    .from(users)
+    .where(eq(users.id, args.deviceHolderUserId))
+    .limit(1);
+  if (!holder) {
+    throw new WorkspaceHolderRefused(
+      `the device's holder ${args.deviceHolderUserId} is not a user, so no credential is minted for project ${args.projectId}'s checkout`,
+    );
+  }
+  if (holder.kind === 'agent') return args.deviceHolderUserId;
+  const role = (await effectiveProjectRole(args.deviceHolderUserId, args.projectId))?.role ?? null;
+  if (!projectRoleAtLeast(role, 'member')) {
+    throw new WorkspaceHolderRefused(
+      `person ${args.deviceHolderUserId} paired this box and holds ${role ?? 'no role'} on project ${args.projectId}; its checkout's credential acts as the project's own agent, which only a member or above hands a box. A project admin raises their role, or the box is paired as an agent of the project`,
+    );
+  }
+  return db.transaction(async (tx) => (await resolveProjectHandle(tx, args.projectId)).userId);
+}
+
+/** The credential a provisioned checkout carries: held by {@link workspaceHolderFor}, minted by {@link issueWorkspaceCredential}. */
+export async function issueCheckoutCredential(args: {
+  deviceId: string;
+  projectId: string;
+  holderUserId: string;
+}): Promise<string> {
+  const holderUserId = await workspaceHolderFor({
+    deviceHolderUserId: args.holderUserId,
+    projectId: args.projectId,
+  });
+  return issueWorkspaceCredential({ ...args, holderUserId });
 }

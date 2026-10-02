@@ -239,6 +239,25 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
             ready_detail = Some(format!(".mcp.json was not written: {e}"));
         }
     }
+    match mcp::config::write_cli_borrow(&p.slug, client.base(), p.mcp_credential.as_deref()) {
+        Ok(mcp::config::CliBorrow::Written(path)) => tracing::info!(
+            "[provision] {}: the master pane's forge CLI borrows this checkout's credential from {}",
+            p.slug,
+            path.display()
+        ),
+        Ok(mcp::config::CliBorrow::Absent) => tracing::warn!(
+            "[provision] {}: core sent no credential for this checkout, so its master pane's forge CLI reads the box's own account",
+            p.slug
+        ),
+        Err(e) => {
+            tracing::warn!("[provision] {}: the pane CLI's credential was not written: {e}", p.slug);
+            let said = format!("the master pane's forge CLI credential was not written: {e}");
+            ready_detail = Some(match ready_detail {
+                Some(d) => format!("{d}; {said}"),
+                None => said,
+            });
+        }
+    }
     if let Err(e) = orientation::write_orientation(repo_path, &p.project_id, &p.slug) {
         tracing::warn!("[provision] write orientation failed: {e}");
     }

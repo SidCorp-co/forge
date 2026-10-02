@@ -63,14 +63,14 @@ vi.mock('../../src/devices/workspace-credential.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../src/devices/workspace-credential.js')>();
   return {
     ...real,
-    issueWorkspaceCredential: async (args: {
+    issueCheckoutCredential: async (args: {
       deviceId: string;
       projectId: string;
       holderUserId: string;
     }) => {
       const fail = failures.get(args.projectId);
       if (fail) return fail();
-      return real.issueWorkspaceCredential(args);
+      return real.issueCheckoutCredential(args);
     },
   };
 });
@@ -95,6 +95,8 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
+  // `projectsWithHostCredential` reads the integration registry, which only `src/index.ts` fills.
+  await (await import('../helpers/register-integrations.js')).registerIntegrationsForTest();
   const { deviceProvisionRoutes } = await import('../../src/devices/me-provisions.js');
   const { errorHandler } = await import('../../src/middleware/error.js');
   const { requestId } = await import('../../src/middleware/request-id.js');
@@ -156,18 +158,19 @@ async function seed(slugs: string[]) {
 const get = (token: string) =>
   app.request('/api/devices/me/provisions', { headers: { authorization: `Bearer ${token}` } });
 
-async function liveWorkspacePatCount(userId: string, name: string): Promise<number> {
+/** Live checkout credentials under `name`, and the kind of whoever holds each. */
+async function liveWorkspacePats(name: string): Promise<string[]> {
   const rows = await harness.db
-    .select({ id: schema.personalAccessTokens.id })
+    .select({ kind: schema.users.kind })
     .from(schema.personalAccessTokens)
+    .innerJoin(schema.users, eq(schema.users.id, schema.personalAccessTokens.userId))
     .where(
       and(
-        eq(schema.personalAccessTokens.userId, userId),
         eq(schema.personalAccessTokens.name, name),
         isNull(schema.personalAccessTokens.revokedAt),
       ),
     );
-  return rows.length;
+  return rows.map((r) => r.kind);
 }
 
 async function runnerRow(runnerId: string) {
@@ -183,7 +186,7 @@ async function runnerRow(runnerId: string) {
 
 describe('a device with one unprovisionable project still provisions the rest (ISS-1184)', () => {
   it('serves every queued project on the read after the first, where the mint meets its own revoked row', async () => {
-    const { user, device, deviceToken, projects } = await seed(['epod-cli', 'epodsystem-core']);
+    const { device, deviceToken, projects } = await seed(['epod-cli', 'epodsystem-core']);
     const { workspaceTokenNameFor } = await import('../../src/auth/pat-format.js');
 
     const first = await get(deviceToken);
@@ -199,9 +202,10 @@ describe('a device with one unprovisionable project still provisions the rest (I
     for (const p of served) expect(p.mcpCredential).toMatch(/^forge_pat_/);
     expect(second.headers.get('x-forge-provision-failures')).toBeNull();
 
-    // One live credential per checkout, however many times it was provisioned.
+    // One live credential per checkout, however many times it was provisioned,
+    // held by the project's agent and never by the person who paired the box.
     for (const p of projects) {
-      expect(await liveWorkspacePatCount(user.id, workspaceTokenNameFor(device.id, p.id))).toBe(1);
+      expect(await liveWorkspacePats(workspaceTokenNameFor(device.id, p.id))).toEqual(['agent']);
     }
   });
 

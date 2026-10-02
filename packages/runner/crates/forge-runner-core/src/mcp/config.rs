@@ -589,6 +589,53 @@ pub fn write_persistent(
     Ok(PersistentMcp::Written)
 }
 
+/// The variable the `forge` CLI reads a borrowed account from: a path to a
+/// config file whose `url` and `token` it takes in place of its own home's.
+pub const CLI_BORROW_VAR: &str = "FORGE_BORROW_FROM";
+
+/// What [`write_cli_borrow`] left for a project's master pane.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CliBorrow {
+    /// The checkout's credential, at this path, for the pane's `forge` CLI.
+    Written(PathBuf),
+    /// Core minted no credential for the checkout, so no file is left and the
+    /// pane's CLI reads its home's own account.
+    Absent,
+}
+
+/// The file a project's master pane hands its `forge` CLI under
+/// [`CLI_BORROW_VAR`], beside the pane's transcript and last exit.
+pub fn cli_borrow_path(slug: &str) -> Result<PathBuf> {
+    Ok(crate::daemon::pane_exit::master_dir(slug)?.join("forge-cli.json"))
+}
+
+// cm:why one credential per checkout: the token core minted for it is what `.mcp.json` carries, so the pane's CLI borrows that same token and never the box's operator PAT, which reaches the projects one person pasted it for
+/// Leave the checkout's credential where its master pane's `forge` CLI borrows
+/// it: `{url, token}` owner-only, or no file at all where core minted none.
+pub fn write_cli_borrow(slug: &str, core_url: &str, credential: Option<&str>) -> Result<CliBorrow> {
+    write_cli_borrow_at(&cli_borrow_path(slug)?, core_url, credential)
+}
+
+fn write_cli_borrow_at(path: &Path, core_url: &str, credential: Option<&str>) -> Result<CliBorrow> {
+    let Some(token) = credential.map(str::trim).filter(|c| !c.is_empty()) else {
+        match std::fs::remove_file(path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(Error::Io(e)),
+        }
+        return Ok(CliBorrow::Absent);
+    };
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let doc = serde_json::json!({ "url": core_url.trim_end_matches('/'), "token": token });
+    let body = serde_json::to_string_pretty(&doc).map_err(|e| Error::Other(e.to_string()))?;
+    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+    write_owner_only(&tmp, &body)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(CliBorrow::Written(path.to_path_buf()))
+}
+
 /// The MCP server every `forge_*` tool is served by, including `forge_source`.
 pub const FORGE_SERVER: &str = "forge";
 
@@ -925,6 +972,35 @@ fn ensure_git_excluded(repo_path: &Path, entry: &str) {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_checkout_credential_is_left_for_the_pane_cli_and_withdrawn_when_core_sends_none() {
+        let dir = crate::test_scratch::Scratch::new("cli-borrow");
+        let path = dir.join("master").join("hop").join("forge-cli.json");
+        let wrote =
+            write_cli_borrow_at(&path, "https://core.example/", Some(" forge_pat_x ")).unwrap();
+        assert_eq!(wrote, CliBorrow::Written(path.clone()));
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            doc,
+            serde_json::json!({"url": "https://core.example", "token": "forge_pat_x"})
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "it carries a credential");
+        }
+        assert_eq!(
+            write_cli_borrow_at(&path, "https://core.example", None).unwrap(),
+            CliBorrow::Absent
+        );
+        assert!(
+            !path.exists(),
+            "a checkout with no credential leaves the pane's CLI on its own home"
+        );
+    }
+
     use super::*;
     use crate::auth::cred_store::ScopedVar;
 
