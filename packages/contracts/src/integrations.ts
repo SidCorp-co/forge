@@ -38,6 +38,8 @@ export interface ConnectionSummary {
   config: Record<string, unknown>;
   active: boolean;
   lastHealthStatus: string | null;
+  /** The sentence behind a non-ok status, where the adapter recorded one (never secret bytes). */
+  lastHealthDetail?: string | null;
   lastHealthAt: string | null;
   breakerOpenedAt: string | null;
   /** True when an encrypted credential is stored — the bytes are never returned. */
@@ -78,6 +80,7 @@ export interface BindingSummary {
    *  the connection route, not a binding PATCH). */
   connectionActive: boolean;
   lastHealthStatus: string | null;
+  lastHealthDetail?: string | null;
   lastHealthAt: string | null;
   breakerOpenedAt: string | null;
   /** True when the connection stores an encrypted credential. */

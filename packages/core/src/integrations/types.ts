@@ -121,6 +121,17 @@ export type AgentPath =
       /** Why this provider offers no core-mediated route. Read by the declaration checker. */
       readonly justification: string;
       readonly previewSecrets: Record<string, unknown>;
+      /**
+       * Runs BEFORE `buildEntry` at injection, for a provider whose stored credential expires: it
+       * answers the secrets to render (refreshed and persisted where due), or null where the
+       * connection can produce no usable credential and the entry is left out. Absent = the stored
+       * secrets are rendered as they are.
+       */
+      freshSecrets?(input: {
+        connectionId: string;
+        config: Record<string, unknown>;
+        secrets: Record<string, unknown>;
+      }): Promise<Record<string, unknown> | null>;
       /** Renders the runner's `mcpServers` entry. Returns null when the credential is unusable. */
       buildEntry(
         config: Record<string, unknown>,
@@ -316,6 +327,8 @@ export interface VerifyBindingTargetArgs {
 
 /** What `forge_storefront_target` hands a provider's `storefrontTarget`: the one binding it selected. */
 export interface StorefrontTargetArgs {
+  /** The connection the secrets belong to: a provider whose token expires refreshes it there. */
+  connectionId: string;
   /** The binding's effective config: connection config overlaid with the binding's own. */
   config: Record<string, unknown>;
   /** Decrypts the connection's secrets on demand; a provider that reads nothing live never calls it. */

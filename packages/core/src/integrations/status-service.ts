@@ -61,6 +61,8 @@ interface ProviderRow {
   config: Record<string, unknown>;
   active: boolean;
   lastHealthStatus: string | null;
+  /** The sentence behind a non-ok status, where the adapter recorded one. */
+  lastHealthDetail?: string | null;
   lastHealthAt: Date | null;
   breakerOpenedAt: Date | null;
 }
@@ -106,7 +108,7 @@ export function buildProviderCards(opts: {
     detail: !row.active
       ? 'integration disabled'
       : row.lastHealthStatus
-        ? `last health: ${row.lastHealthStatus}`
+        ? `last health: ${row.lastHealthStatus}${row.lastHealthDetail ? ` — ${row.lastHealthDetail}` : ''}`
         : opts.neverCheckedDetail,
     lastSyncAt: toIso(row.lastHealthAt),
     configured: true,
@@ -146,6 +148,7 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
     config: effectiveConfig(pair),
     active: pair.binding.active && pair.connection.active,
     lastHealthStatus: pair.connection.lastHealthStatus,
+    lastHealthDetail: pair.connection.lastHealthDetail,
     lastHealthAt: pair.connection.lastHealthAt,
     breakerOpenedAt: pair.connection.breakerOpenedAt,
   }));

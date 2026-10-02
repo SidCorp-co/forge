@@ -11,6 +11,7 @@ import {
   autoflowMcpUrl,
   autoflowSiteUrl,
 } from './endpoints.js';
+import { AUTOFLOW_REFRESH_MARGIN_MS, ensureFreshAutoflowToken } from './refresh.js';
 import type { AutoflowConfig, AutoflowSecrets } from './types.js';
 
 const LIVE_READ_TIMEOUT_MS = 5_000;
@@ -76,20 +77,40 @@ async function readBackend(
   args: StorefrontTargetArgs,
   config: AutoflowConfig,
 ): Promise<LiveBackend> {
-  let token: string | undefined;
+  let stored: Partial<AutoflowSecrets>;
   try {
-    token = (args.readSecrets() as Partial<AutoflowSecrets>).accessToken;
+    stored = args.readSecrets() as Partial<AutoflowSecrets>;
   } catch (err) {
     return { resolvedLive: false, reason: `secrets_unreadable: ${(err as Error).message}` };
   }
-  if (!token) return { resolvedLive: false, reason: 'no_credential' };
+  if (!stored.accessToken) return { resolvedLive: false, reason: 'no_credential' };
   try {
-    const res = await autoflowGql(
-      autoflowGraphqlUrl(config),
-      token,
-      BACKEND_QUERY,
-      LIVE_READ_TIMEOUT_MS,
-    );
+    const fresh = await ensureFreshAutoflowToken({
+      connectionId: args.connectionId,
+      config,
+      minLifetimeMs: AUTOFLOW_REFRESH_MARGIN_MS,
+    });
+    if (fresh.kind === 'needs_reauth') return { resolvedLive: false, reason: fresh.reason };
+    const token = fresh.secrets?.accessToken ?? stored.accessToken;
+    const url = autoflowGraphqlUrl(config);
+    let res = await autoflowGql(url, token, BACKEND_QUERY, LIVE_READ_TIMEOUT_MS);
+    if (res.kind === 'unauthorized') {
+      const retry = await ensureFreshAutoflowToken({
+        connectionId: args.connectionId,
+        config,
+        minLifetimeMs: AUTOFLOW_REFRESH_MARGIN_MS,
+        refusedToken: token,
+      });
+      if (retry.kind === 'needs_reauth') return { resolvedLive: false, reason: retry.reason };
+      if (retry.kind === 'ok' && retry.secrets.accessToken !== token) {
+        res = await autoflowGql(
+          url,
+          retry.secrets.accessToken,
+          BACKEND_QUERY,
+          LIVE_READ_TIMEOUT_MS,
+        );
+      }
+    }
     if (res.kind === 'ok') {
       return {
         resolvedLive: true,

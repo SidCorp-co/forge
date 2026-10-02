@@ -43,6 +43,59 @@ import { autoflow } from "./index";
 const SHOP_REGEX = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const LABEL_REGEX = /^[a-z0-9][a-z0-9-]*$/;
 const TOKEN_PREFIX = "sat_";
+const REFRESH_PREFIX = "srt_";
+const CLIENT_PREFIX = "mcpc_";
+
+/** The refresh pair is optional, but the platform redeems a refresh token only with its client. */
+function refreshPairError(refreshToken: string, clientId: string): string | null {
+  const r = refreshToken.trim();
+  const c = clientId.trim();
+  if (!r && !c) return null;
+  if (!r.startsWith(REFRESH_PREFIX)) return "The refresh token is the srt_… issued beside the access token.";
+  if (!c.startsWith(CLIENT_PREFIX)) return "The client id is the mcpc_… the token pair was issued to.";
+  return null;
+}
+
+function tokenSecrets(token: string, refreshToken: string, clientId: string): Record<string, string> {
+  return {
+    accessToken: token.trim(),
+    ...(refreshToken.trim() ? { refreshToken: refreshToken.trim(), clientId: clientId.trim() } : {}),
+  };
+}
+
+function RefreshPairFields({
+  refreshToken,
+  clientId,
+  onRefreshToken,
+  onClientId,
+}: {
+  refreshToken: string;
+  clientId: string;
+  onRefreshToken: (v: string) => void;
+  onClientId: (v: string) => void;
+}) {
+  const error = refreshPairError(refreshToken, clientId);
+  return (
+    <>
+      <Field
+        label="Refresh token"
+        hint="Optional. With it Forge renews the 12-hour access token itself, before it expires; without it the site needs a new token every day."
+      >
+        <Input
+          type="password"
+          autoComplete="new-password"
+          placeholder="srt_…"
+          value={refreshToken}
+          onChange={(e) => onRefreshToken(e.target.value)}
+        />
+      </Field>
+      <Field label="Client id" hint="The OAuth client the tokens were issued to; required with a refresh token.">
+        <Input placeholder="mcpc_…" value={clientId} onChange={(e) => onClientId(e.target.value)} />
+        {error && <p className="fg-body-sm text-danger">{error}</p>}
+      </Field>
+    </>
+  );
+}
 
 const ROLE_SELECT_OPTIONS: SelectOption[] = [
   { value: "source", label: "Source — the site this project builds" },
@@ -56,7 +109,7 @@ function badgeFor(binding: IntegrationSummary): { label: string; tone: NonNullab
     const name = text(binding.config, "storeName");
     return { label: name ? `Connected to ${name}` : "Connected", tone: "green" };
   }
-  if (binding.lastHealthStatus === "needs_reauth") return { label: "Token refused", tone: "red" };
+  if (binding.lastHealthStatus === "needs_reauth") return { label: "Needs sign-in", tone: "red" };
   if (binding.lastHealthStatus === "error") return { label: "Error", tone: "red" };
   return { label: "Untested", tone: "neutral" };
 }
@@ -89,7 +142,8 @@ export function AutoflowSection({ projectId }: { projectId: string }) {
             <span className="font-mono">&lt;shop&gt;</span> of{" "}
             <span className="font-mono">&lt;shop&gt;.auto.sidcorp.co</span>) and holds the OAuth access
             token (<span className="font-mono">sat_…</span>) minted for that site. An access token lives
-            12 hours.
+            12 hours; stored with its refresh token (<span className="font-mono">srt_…</span>), Forge renews it
+            itself.
           </p>
           {list.isLoading && <p className="fg-body-sm text-muted">Loading…</p>}
           {!list.isLoading && bindings.length === 0 && (
@@ -130,6 +184,8 @@ function AutoflowBindingRow({
   const list = useIntegrationsList(projectId);
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
   const [token, setToken] = useState("");
+  const [refreshToken, setRefreshToken] = useState("");
+  const [clientId, setClientId] = useState("");
   const [rotating, setRotating] = useState(false);
   const [result, setResult] = useState<IntegrationTestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -141,8 +197,13 @@ function AutoflowBindingRow({
   async function saveToken() {
     setError(null);
     try {
-      await update.mutateAsync({ id: binding.id, body: { secrets: { accessToken: token.trim() } } });
+      await update.mutateAsync({
+        id: binding.id,
+        body: { secrets: tokenSecrets(token, refreshToken, clientId) },
+      });
       setToken("");
+      setRefreshToken("");
+      setClientId("");
       setRotating(false);
     } catch (err) {
       setError(formatApiError(err));
@@ -175,6 +236,9 @@ function AutoflowBindingRow({
         <Badge tone={badge.tone}>{badge.label}</Badge>
       </div>
       {error && <Banner tone="danger">{error}</Banner>}
+      {binding.lastHealthStatus === "needs_reauth" && binding.lastHealthDetail && !result && (
+        <Banner tone="danger">{binding.lastHealthDetail}</Banner>
+      )}
       {result && (
         <Banner tone={result.status === "ok" ? "success" : "danger"}>
           {result.message ?? (result.status === "ok" ? "Connection OK" : "Connection failed")}
@@ -203,6 +267,14 @@ function AutoflowBindingRow({
           />
         </Field>
       )}
+      {rotating && (
+        <RefreshPairFields
+          refreshToken={refreshToken}
+          clientId={clientId}
+          onRefreshToken={setRefreshToken}
+          onClientId={setClientId}
+        />
+      )}
       {orgLocked && (
         <p className="fg-body-sm text-muted">Org-shared credential — only an org owner/admin can change it.</p>
       )}
@@ -214,7 +286,9 @@ function AutoflowBindingRow({
                 variant="primary"
                 onClick={saveToken}
                 loading={update.isPending}
-                disabled={!token.trim().startsWith(TOKEN_PREFIX)}
+                disabled={
+                  !token.trim().startsWith(TOKEN_PREFIX) || refreshPairError(refreshToken, clientId) !== null
+                }
               >
                 Save token
               </Button>
@@ -260,6 +334,8 @@ function AddAutoflowForm({
   const [label, setLabel] = useState("");
   const [shop, setShop] = useState("");
   const [token, setToken] = useState("");
+  const [refreshToken, setRefreshToken] = useState("");
+  const [clientId, setClientId] = useState("");
   const [role, setRole] = useState<BindingRole>("source");
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
   const [error, setError] = useState<string | null>(null);
@@ -273,6 +349,7 @@ function AddAutoflowForm({
   const canSubmit =
     SHOP_REGEX.test(shop) &&
     token.trim().startsWith(TOKEN_PREFIX) &&
+    refreshPairError(refreshToken, clientId) === null &&
     (!hasDefault || (label.length > 0 && !labelError)) &&
     !create.isPending;
 
@@ -283,7 +360,7 @@ function AddAutoflowForm({
         provider: "autoflow",
         role,
         config: { shop },
-        secrets: { accessToken: token.trim() },
+        secrets: tokenSecrets(token, refreshToken, clientId),
         ...agentAccessBody(autoflow.agentPathKind, agentAccess),
         ...(label ? { label } : {}),
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
@@ -322,6 +399,12 @@ function AddAutoflowForm({
         />
         {tokenError && <p className="fg-body-sm text-danger">{tokenError}</p>}
       </Field>
+      <RefreshPairFields
+        refreshToken={refreshToken}
+        clientId={clientId}
+        onRefreshToken={setRefreshToken}
+        onClientId={setClientId}
+      />
       <Field label="What is it for" required>
         <Select options={ROLE_SELECT_OPTIONS} value={role} onChange={(v) => setRole(v as BindingRole)} />
       </Field>

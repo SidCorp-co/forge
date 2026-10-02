@@ -11,12 +11,10 @@ interface EndpointConfig {
 const trimmed = (value: unknown): string | null =>
   typeof value === 'string' && value.length > 0 ? value.replace(/\/+$/, '') : null;
 
-/** The platform origin: the connection's `baseUrl`, else the hosted one. */
 export function autoflowBaseUrl(config: EndpointConfig): string {
   return trimmed(config.baseUrl) ?? AUTOFLOW_DEFAULT_BASE_URL;
 }
 
-/** The backend GraphQL door the admin UI calls (`/graphql` on the platform origin). */
 export function autoflowGraphqlUrl(config: EndpointConfig): string {
   const base = autoflowBaseUrl(config);
   return base.endsWith('/graphql') ? base : `${base}/graphql`;
