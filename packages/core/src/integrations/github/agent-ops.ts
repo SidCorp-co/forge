@@ -1,3 +1,12 @@
+import type {
+  ChangeRequestDiff,
+  CheckLog,
+  OpenedChangeRequest,
+  RequestedReview,
+  ReviewEvent,
+  SubmittedReview,
+  WrittenComment,
+} from '../source-host/types.js';
 import type { GitHubAgentClient } from './agent-client.js';
 import { GitHubAgentCallError } from './agent-client.js';
 
@@ -7,52 +16,6 @@ export const DIFF_CAP_BYTES = 256 * 1024;
 /** A job log is read up to this FROM ITS END, then tailed to the lines asked for. */
 const LOG_CAP_BYTES = 2 * 1024 * 1024;
 const DEFAULT_LOG_LINES = 100;
-
-/**
- * The verbs this face refuses BY NAME rather than by schema, and the sentence each one gets.
- *
- * ISS-1074's outcome 4: nothing an agent does through this face can merge. A `z.enum` that simply
- * does not list `merge` refuses it too — with a list of seven strings and no reason, which reads to
- * a caller as a tool that is missing a verb rather than as a boundary it just met. The refusal IS
- * the deliverable here, so the name is recognised in order to be answered.
- */
-const KERNEL_VERBS = new Set([
-  'merge',
-  'merge-pull-request',
-  'squash',
-  'rebase',
-  'close',
-  'close-pull-request',
-  'delete-branch',
-]);
-
-export function isKernelVerb(action: string): boolean {
-  return KERNEL_VERBS.has(action);
-}
-
-export function kernelVerbRefusal(action: string): string {
-  return (
-    `\`${action}\` is not one of this tool's actions and will not become one. Merging a pull request ` +
-    'is a kernel transition on the DISPATCH face, where the same operation that merges also stamps ' +
-    '`merged_at` and the commit it landed at — one writer for one truth — so it happens without an ' +
-    'agent present and is recorded whether or not one was. It is served there as the outbound verb ' +
-    '`pull_request.merge`, not here. What this face carries is the judgement: read the diff, read a ' +
-    "failing check run's log, comment, open a pull request, request a review, submit a verdict. " +
-    'Opening one does reach a writer, and the same one a webhook delivery reaches: the request is ' +
-    "stored on Forge's projection of the repository as it is created, which is what leaves the " +
-    'kernel a pull request it can be asked to merge later.'
-  );
-}
-
-export interface PullRequestDiff {
-  number: number;
-  repository: string;
-  /** The length of the whole redacted answer, not of `diff`. */
-  bytes: number;
-  truncated: boolean;
-  /** The diff, redacted and then capped from the top. */
-  diff: string;
-}
 
 /**
  * One pull request's diff, as the App — redacted, then capped from the top.
@@ -65,7 +28,7 @@ export interface PullRequestDiff {
 export async function readPullRequestDiff(
   client: GitHubAgentClient,
   args: { number: number; maxBytes?: number },
-): Promise<PullRequestDiff> {
+): Promise<ChangeRequestDiff> {
   const got = await client.text({
     path: `/repos/${client.owner}/${client.repo}/pulls/${args.number}`,
     accept: 'application/vnd.github.v3.diff',
@@ -89,22 +52,6 @@ interface CheckRunBody {
   details_url?: string | null;
   app?: { slug?: string } | null;
   output?: { title?: string | null; summary?: string | null } | null;
-}
-
-export interface CheckRunLog {
-  checkRunId: number;
-  name: string;
-  app: string;
-  status: string;
-  conclusion: string | null;
-  detailsUrl: string | null;
-  /** What the check itself published, which is all Forge has when the log cannot be fetched. */
-  summary: string | null;
-  /** The tail, scrubbed — or null, with `refusal` saying why. */
-  log: string | null;
-  truncated: boolean;
-  /** Why there is no log. Null where there is one. An absence with a reason beside it. */
-  refusal: string | null;
 }
 
 /**
@@ -131,7 +78,7 @@ export function tailLines(text: string, lines: number): { text: string; truncate
 export async function readCheckRunLog(
   client: GitHubAgentClient,
   args: { checkRunId: number; lines?: number },
-): Promise<CheckRunLog> {
+): Promise<CheckLog> {
   const run = await client.json<CheckRunBody>({
     method: 'GET',
     path: `/repos/${client.owner}/${client.repo}/check-runs/${args.checkRunId}`,
@@ -192,11 +139,6 @@ export async function readCheckRunLog(
   };
 }
 
-export interface WrittenComment {
-  commentId: number;
-  url: string | null;
-}
-
 /** A comment on the pull request's conversation, written as the App. */
 export async function writePullRequestComment(
   client: GitHubAgentClient,
@@ -212,32 +154,11 @@ export async function writePullRequestComment(
   return { commentId: written.id ?? 0, url: written.html_url ?? null };
 }
 
-export interface OpenedPullRequest {
-  number: number;
-  url: string | null;
-  title: string;
-  state: string;
-  draft: boolean;
-  headRef: string;
-  /** The commit the branch stood at when GitHub opened the request. */
-  headSha: string | null;
-  baseRef: string;
-  baseSha: string | null;
-  /**
-   * GitHub's own `updated_at` for the request it just created.
-   *
-   * Carried because the projection's upsert orders deliveries on it and treats an ABSENT one as
-   * always-wins: a creation write reaching the row after a later `pull_request` delivery would
-   * overwrite that delivery's state, head and merge evidence without it.
-   */
-  updatedAt: string | null;
-}
-
 /** Open a pull request as the App. Opening is not merging, and nothing here lands anything. */
 export async function openPullRequest(
   client: GitHubAgentClient,
   args: { head: string; base: string; title: string; body?: string; draft?: boolean },
-): Promise<OpenedPullRequest> {
+): Promise<OpenedChangeRequest> {
   const made = await client.json<{
     number?: number;
     html_url?: string;
@@ -272,12 +193,6 @@ export async function openPullRequest(
   };
 }
 
-export interface RequestedReview {
-  number: number;
-  requestedReviewers: string[];
-  requestedTeams: string[];
-}
-
 /** Ask named people or teams to review. */
 export async function requestReview(
   client: GitHubAgentClient,
@@ -303,21 +218,6 @@ export async function requestReview(
       .map((t) => t.slug)
       .filter((s): s is string => typeof s === 'string'),
   };
-}
-
-/** The three verdicts a review carries. `APPROVE` is a verdict; it lands nothing. */
-export type ReviewEvent = 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
-
-export interface SubmittedReview {
-  reviewId: number;
-  state: string;
-  url: string | null;
-  submittedAt: string | null;
-  reviewer: string;
-  /** The head branch of the pull request reviewed — what resolves the issue this belongs to. */
-  headRef: string;
-  number: number;
-  repository: string;
 }
 
 /**

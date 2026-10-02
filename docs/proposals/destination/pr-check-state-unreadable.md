@@ -9,14 +9,15 @@ went green on the pull request.
 Nothing sanctioned reads a pull request's check runs:
 
 - `forge` has no `github` verb at all, so no check state is reachable from a terminal.
-- `forge_github` serves `list | diff | check-log | comment | open-pull-request | request-review |
-  review`. `check-log` needs a `checkRunId`, and **no action returns one** — its own description
-  says to take it from "the projection", which no read surface exposes.
+- `forge_source` (named `forge_github` until ISS-50, which keeps that name as a priced alias)
+  serves `list | diff | check-log | comment | open-change-request | request-review | review`.
+  `check-log` needs a `checkRunId`, and **no action returns one** — its own description says
+  to take it from "the projection", which no read surface exposes.
 - `readPullRequestsForIssues` in `integrations/repo-projection.ts` does compute a `checks` rollup
   off `repo_pull_requests.checks`, and it reaches exactly one caller: `devices/admissible.ts`,
   behind a device token, listing issues no run has opened yet. An issue being worked is by
   construction not in that list.
-- Shelling out to `gh` is refused by `forge_github`'s own contract: it runs under whoever
+- Shelling out to `gh` is refused by `forge_source`'s own contract: it runs under whoever
   configured the box, which is unattributable and unrevocable.
 
 The data is there. The binding reports 402 inbound deliveries with the last one landing a minute
@@ -40,10 +41,10 @@ is an inference, not the check.
 
 ## The answers, in the order they cost
 
-1. **Return the ids that already exist.** `open-pull-request` and any pull-request read hand back
+1. **Return the ids that already exist.** `open-change-request` and any pull-request read hand back
    the projected check runs, so `check-log` has an id to be given. Smallest, and it closes the
    sentence `check-log` already prints about where its id comes from.
-2. **A `checks` action on `forge_github`**, answering the rollup `rollupOf` already computes for a
+2. **A `checks` action on `forge_source`**, answering the rollup `rollupOf` already computes for a
    pull request by number: name, status, conclusion, and the head sha each was published against.
 3. **A `forge github` verb**, so the terminal reaches the same face the MCP client does. This is
    the one ISS-1114 gestured at and is the largest; it is a surface, not a fix.

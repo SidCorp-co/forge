@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LiveDivergence } from '../integrations/github/live-divergence.js';
+import type { LiveDivergence } from '../integrations/source-host/types.js';
 import {
   forgetAllLiveReadings,
   forgetLiveReading,

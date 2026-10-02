@@ -14,7 +14,7 @@ import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { rawBody } from '../middleware/zod-validator.js';
-import { verifyHmacSignature } from './hmac.js';
+import { verifyHmacSignature, verifySharedToken } from './hmac.js';
 
 const unauthorized = (code: string) =>
   new HTTPException(401, { message: 'invalid signature', cause: { code } });
@@ -77,6 +77,7 @@ interface ProviderRoute {
   header: string;
   /** Absent only where a provider declares an inbound surface and forgets how it is signed. */
   signatureHeader: string | undefined;
+  verification: 'hmac-sha256' | 'shared-token';
   provider: IntegrationProvider;
 }
 
@@ -86,6 +87,7 @@ function providerHeaderMap(): ProviderRoute[] {
     .map((d) => ({
       header: d.capabilities.webhookHeader as string,
       signatureHeader: d.capabilities.webhookSignatureHeader,
+      verification: d.capabilities.webhookVerification ?? 'hmac-sha256',
       provider: d.provider,
     }));
 }
@@ -127,20 +129,25 @@ webhookInboundRoutes.post(
       if (!map.signatureHeader) {
         throw badRequest({ provider: map.provider }, 'PROVIDER_DECLARES_NO_SIGNATURE_HEADER');
       }
+      const shared = map.verification === 'shared-token';
       const signatureHeader = c.req.header(map.signatureHeader);
       if (!signatureHeader) {
-        await noteTurnedAway(candidatePairs, 'MISSING_SIGNATURE', { slug, provider: map.provider });
-        throw unauthorized('MISSING_SIGNATURE');
+        const code = shared ? 'MISSING_WEBHOOK_TOKEN' : 'MISSING_SIGNATURE';
+        await noteTurnedAway(candidatePairs, code, { slug, provider: map.provider });
+        throw unauthorized(code);
       }
 
       const pair = candidatePairs.find(
         (p) =>
           p.binding.integrationSecret !== null &&
-          verifyHmacSignature(p.binding.integrationSecret, rawBody, signatureHeader),
+          (shared
+            ? verifySharedToken(p.binding.integrationSecret, signatureHeader)
+            : verifyHmacSignature(p.binding.integrationSecret, rawBody, signatureHeader)),
       );
       if (!pair) {
-        await noteTurnedAway(candidatePairs, 'INVALID_SIGNATURE', { slug, provider: map.provider });
-        throw unauthorized('INVALID_SIGNATURE');
+        const code = shared ? 'WEBHOOK_TOKEN_MISMATCH' : 'INVALID_SIGNATURE';
+        await noteTurnedAway(candidatePairs, code, { slug, provider: map.provider });
+        throw unauthorized(code);
       }
 
       let parsed: unknown;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { WaitingCommit } from '../integrations/github/live-divergence.js';
+import type { WaitingCommit } from '../integrations/source-host/types.js';
 import {
   commitOwners,
   declaredIssueSeqs,

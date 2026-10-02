@@ -97,7 +97,7 @@ blocked. Read the surface, then decide.
 ## What is yours and nowhere else
 
 **A write you can undo is taken, not asked about.** Editing in a run's worktree, committing, pushing
-a run's own branch, opening a pull request, commenting, moving a status — all reversible, so none is
+a run's own branch, opening a pull or merge request, commenting, moving a status — all reversible, so none is
 a question. These are not: pushing to a shared branch, force-pushing, merging somebody else's pull
 request, deploying, touching a live database, writing project config, and pushing a skill.
 

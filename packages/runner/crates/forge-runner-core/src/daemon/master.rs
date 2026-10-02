@@ -5408,7 +5408,7 @@ mod tests {
             "a pane whose union holds no `forge` is told nothing about it: {brief}"
         );
         assert!(
-            brief.contains("forge_github"),
+            brief.contains("forge_source"),
             "the pane is not told which capability went with it: {brief}"
         );
         assert!(

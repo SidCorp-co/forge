@@ -58,6 +58,14 @@ export const integrationsApi = {
       { method: "PATCH", body: JSON.stringify(body) },
     ),
 
+  /** `POST .../integrations/:id/rotate-secret` — mint a new inbound secret, returned this once and
+   *  never readable again; the one it replaces stops being accepted. */
+  rotateSecret: (projectId: string, id: string) =>
+    apiClient<{ integration: IntegrationSummary; integrationSecret: string }>(
+      `/projects/${projectId}/integrations/${id}/rotate-secret`,
+      { method: "POST" },
+    ),
+
 
   /** `POST .../confirm-prod-deploy` — release the prod deploy gate. */
   confirmProdDeploy: (projectId: string, id: string) =>

@@ -14,11 +14,18 @@ import { seedBinding } from '../helpers/seed-binding.js';
 
 type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  mergeStoredPullRequest: typeof import('../../src/integrations/github/merge.js').mergeStoredPullRequest;
-  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  githubAgentClient: typeof import('../../src/integrations/github/agent-client.js').githubAgentClient;
-  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  openPullRequest: typeof import('../../src/integrations/github/agent-ops.js').openPullRequest;
+  mergeStoredPullRequest: typeof import('../../src/integrations/source-host/merge.js').mergeStoredChangeRequest;
+  githubAgentClient: (
+    projectId: string,
+  ) => Promise<import('../../src/integrations/source-host/types.js').SourceHost>;
+  openPullRequest: (
+    host: import('../../src/integrations/source-host/types.js').SourceHost,
+    args: Parameters<
+      import('../../src/integrations/source-host/types.js').SourceHost['openChangeRequest']
+    >[0],
+  ) => ReturnType<
+    import('../../src/integrations/source-host/types.js').SourceHost['openChangeRequest']
+  >;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   projectOpenedPullRequest: typeof import('../../src/integrations/github/opened-pull-request.js').projectOpenedPullRequest;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
@@ -146,20 +153,20 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const [mergeMod, store, agentClient, agentOps, openedMod] = await Promise.all([
-    import('../../src/integrations/github/merge.js'),
+  const [mergeMod, store, resolveMod, openedMod] = await Promise.all([
+    import('../../src/integrations/source-host/merge.js'),
     import('../../src/integrations/store.js'),
-    import('../../src/integrations/github/agent-client.js'),
-    import('../../src/integrations/github/agent-ops.js'),
+    import('../../src/integrations/source-host/resolve.js'),
     import('../../src/integrations/github/opened-pull-request.js'),
   ]);
   // The agent client resolves the binding through the integration registry, which only `src/index.ts`
   // registers in production: a test reaching that path registers it in its own setup.
   (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
   mods = {
-    mergeStoredPullRequest: mergeMod.mergeStoredPullRequest,
-    githubAgentClient: agentClient.githubAgentClient,
-    openPullRequest: agentOps.openPullRequest,
+    mergeStoredPullRequest: mergeMod.mergeStoredChangeRequest,
+    // The agent's door since ISS-50: the project's source host, resolved for an agent verb.
+    githubAgentClient: (projectId) => resolveMod.resolveSourceHost(projectId, 'agent'),
+    openPullRequest: (host, args) => host.openChangeRequest(args),
     projectOpenedPullRequest: openedMod.projectOpenedPullRequest,
     createConnection: store.createConnection,
   };

@@ -17,6 +17,7 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { integrationBindings } from '../../db/schema.js';
+import { SourceHostCallError, SourceHostUnavailable } from '../source-host/errors.js';
 import { decryptConnectionSecrets, findConnectionById } from '../store.js';
 import { GitHubAuthError, installationToken } from './app-auth.js';
 import {
@@ -50,12 +51,11 @@ export type GitHubClientRefusal =
   | 'no_connection'
   | 'no_credential';
 
-export class GitHubClientError extends Error {
-  readonly reason: GitHubClientRefusal;
+export class GitHubClientError extends SourceHostUnavailable {
+  declare readonly reason: GitHubClientRefusal;
   constructor(reason: GitHubClientRefusal, message: string) {
-    super(message);
+    super(reason, message);
     this.name = 'GitHubClientError';
-    this.reason = reason;
   }
 }
 
@@ -63,14 +63,10 @@ export class GitHubClientError extends Error {
  * A failed GitHub read, carrying the status so a caller can tell 404 from 403, and the phase so a
  * 404 minting the installation token is not read as a 404 on the path asked for.
  */
-export class GitHubReadError extends Error {
-  readonly status: number;
-  readonly phase: 'mint' | 'request';
+export class GitHubReadError extends SourceHostCallError {
   constructor(status: number, message: string, phase: 'mint' | 'request' = 'request') {
-    super(message);
+    super(status, message, null, phase);
     this.name = 'GitHubReadError';
-    this.status = status;
-    this.phase = phase;
   }
 }
 

@@ -4,10 +4,10 @@ vi.mock('../../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
 
+import { inboundWebhookUrl } from '../inbound-door.js';
 import {
   buildAppManifest,
   convertManifestCode,
-  inboundWebhookUrl,
   manifestPostUrl,
   signConnectState,
   verifyConnectState,

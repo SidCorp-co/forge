@@ -72,6 +72,22 @@ vi.mock('../../src/integrations/github/client.js', async (orig) => {
   return { ...real, githubRepoClient: async () => fake };
 });
 
+// The lifecycle reads ask the project's source host (ISS-50); this test's host is the faked GitHub
+// client above, wrapped as the GitHub host is in production.
+vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) => {
+  const real =
+    await importOriginal<typeof import('../../src/integrations/source-host/resolve.js')>();
+  const { githubRepoClient } = await import('../../src/integrations/github/client.js');
+  const { githubSourceHostOf } = await import('../../src/integrations/github/source-host.js');
+  return {
+    ...real,
+    resolveSourceHost: async (projectId: string) =>
+      githubSourceHostOf(await githubRepoClient(projectId), () => {
+        throw new Error('no agent verb in this test');
+      }),
+  };
+});
+
 const tools = (names: string[]) =>
   JSON.stringify({
     tools: names.map((name) => ({

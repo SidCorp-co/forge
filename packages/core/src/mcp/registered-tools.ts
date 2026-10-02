@@ -66,6 +66,7 @@ export const REGISTERED_TOOLS = [
   'forge_skills.register',
   'forge_skills.sync_status',
   'forge_skills.update',
+  'forge_source',
   'forge_step_handoff.delete',
   'forge_step_handoff.get',
   'forge_step_handoff.write',

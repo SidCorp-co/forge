@@ -5,7 +5,7 @@
  * project with no pull requests is an ordinary state; a project whose projection nothing has ever
  * written to is a broken pipe, and answering a merge there with "this issue has no pull request
  * #534" sends an operator to check the number rather than the pipe. This is the reading that tells
- * them apart, and it is the same reading the binding report serves to `forge_github list`.
+ * them apart, and it is the same reading the binding report serves to `forge_source list`.
  */
 
 import { and, desc, eq, sql } from 'drizzle-orm';
@@ -99,8 +99,8 @@ export function describeEmptyProjection(report: ProjectionPipeReport): string | 
   return (
     "Forge's projection of this repository holds no pull request at all for this project, so there is " +
     'nothing here to merge. That is a projection nothing has written to, not a repository with no pull ' +
-    `requests: ${bound}. A row is written when Forge opens a pull request through \`forge_github ` +
-    'open-pull-request`, and when a `pull_request` delivery reaches `POST /api/webhooks/in/<project ' +
+    `requests: ${bound}. A row is written when Forge opens a pull request through \`forge_source ` +
+    'open-change-request`, and when a `pull_request` delivery reaches `POST /api/webhooks/in/<project ' +
     'slug>`. A pull request opened before either of those wrote anything leaves no row, and Forge will ' +
     'not merge what it has no record of.'
   );

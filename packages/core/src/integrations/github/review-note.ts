@@ -90,7 +90,7 @@ async function projectCreator(projectId: string): Promise<string | null> {
 /**
  * Write this review onto the issue its pull request's head branch names, once.
  *
- * Called from the `pull_request_review` projection arm and from `forge_github review`. Both of them
+ * Called from the `pull_request_review` projection arm and from `forge_source review`. Both of them
  * reach this and nothing else: "no second record" is a property of there being one function, not of
  * two call sites agreeing.
  */

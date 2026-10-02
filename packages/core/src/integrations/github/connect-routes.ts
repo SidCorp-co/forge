@@ -21,6 +21,7 @@ import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { badRequest } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
+import { resolveApiBaseUrl } from '../inbound-door.js';
 import {
   assertAdmin,
   assertProjectMember,
@@ -38,7 +39,6 @@ import {
   buildAppManifest,
   convertManifestCode,
   manifestPostUrl,
-  resolveApiBaseUrl,
   signConnectState,
   verifyConnectState,
 } from './connect.js';

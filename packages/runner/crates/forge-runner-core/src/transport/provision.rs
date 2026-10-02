@@ -34,6 +34,11 @@ pub struct Provision {
     pub ssh_key_source: Option<String>,
     pub ssh_public_key: Option<String>,
     pub ssh_private_key: Option<String>,
+    /// Point git's credential helper at the repository's host: core mints a credential per ask,
+    /// whichever source host it is (ISS-50).
+    #[serde(default)]
+    pub host_credential: bool,
+    // cm:hack ISS-50 until:every core this runner pairs with sends hostCredential — a core released before ISS-50 sends only this name, with the same meaning
     #[serde(default)]
     pub github_app_credential: bool,
     /// The token to write into this checkout's `.mcp.json`, minted by core for
@@ -56,6 +61,7 @@ impl std::fmt::Debug for Provision {
             .field("ssh_key_source", &self.ssh_key_source)
             .field("ssh_public_key", &self.ssh_public_key)
             .field("ssh_private_key", &held(&self.ssh_private_key))
+            .field("host_credential", &self.host_credential)
             .field("github_app_credential", &self.github_app_credential)
             .field("mcp_credential", &held(&self.mcp_credential))
             .finish()

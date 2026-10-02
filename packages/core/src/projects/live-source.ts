@@ -2,18 +2,15 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectGitCredentials, workspaceSshKeys } from '../db/schema.js';
 import { type BranchRefs, GIT_ACCESS, readRemoteDivergence } from '../git/remote-divergence.js';
-import {
-  GitHubClientError,
-  type GitHubRepoClient,
-  githubRepoClient,
-} from '../integrations/github/client.js';
-import { type LiveDivergence, readLiveDivergence } from '../integrations/github/live-divergence.js';
+import { SourceHostUnavailable } from '../integrations/source-host/errors.js';
+import { resolveSourceHost } from '../integrations/source-host/resolve.js';
+import type { LiveDivergence, SourceHost } from '../integrations/source-host/types.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import { readDeclaredSource, remoteOf } from '../project-config/source.js';
 
 /** Where a project's branches are read from, or why they cannot be. */
 export type LiveSource =
-  | { kind: 'binding'; client: GitHubRepoClient }
+  | { kind: 'binding'; host: SourceHost }
   | { kind: 'deploy_key'; repoUrl: string; privateKey: string }
   | { kind: 'refused'; reason: string };
 
@@ -23,7 +20,7 @@ export interface DeployKeyRow {
 }
 
 export interface LiveSourceDeps {
-  githubClient: (projectId: string) => Promise<GitHubRepoClient>;
+  sourceHost: (projectId: string) => Promise<SourceHost>;
   deployKey: (projectId: string) => Promise<DeployKeyRow>;
 }
 
@@ -39,21 +36,20 @@ async function deployKeyRow(projectId: string): Promise<DeployKeyRow> {
 }
 
 const defaultDeps: LiveSourceDeps = {
-  githubClient: githubRepoClient,
+  sourceHost: (projectId) => resolveSourceHost(projectId, 'kernel'),
   deployKey: deployKeyRow,
 };
 
 function noCredential(repository: string | null): string {
   if (!repository) {
-    return `this project has no GitHub binding and its document declares no repository, so there are no branches to read — set \`source.git.repository\` with PUT /api/projects/:id/config and attach a deploy key under ${GIT_ACCESS}`;
+    return `this project has no source host binding and its document declares no repository, so there are no branches to read — set \`source.git.repository\` with PUT /api/projects/:id/config and attach a deploy key under ${GIT_ACCESS}`;
   }
   const host = repository.slice(0, repository.indexOf('/'));
-  const github = host === 'github.com' ? ', or bind the repository on its Integrations page' : '';
-  return `Forge holds no GitHub binding and no deploy key for this project's repository on ${host}, so it cannot read the branches — attach a deploy key under ${GIT_ACCESS}${github}`;
+  return `Forge holds no source host binding and no deploy key for this project's repository on ${host}, so it cannot read the branches — attach a deploy key under ${GIT_ACCESS}, or bind the repository's host on its Integrations page`;
 }
 
 /**
- * Where to read a project's branches: its active GitHub binding, else — only where it has no
+ * Where to read a project's branches: its active source host binding, else — only where it has no
  * binding at all — the deploy key attached to it. A binding that exists and cannot be used is a
  * refusal in its own words, never answered from the key instead.
  */
@@ -62,9 +58,9 @@ export async function resolveLiveSource(
   deps: LiveSourceDeps = defaultDeps,
 ): Promise<LiveSource> {
   try {
-    return { kind: 'binding', client: await deps.githubClient(projectId) };
+    return { kind: 'binding', host: await deps.sourceHost(projectId) };
   } catch (err) {
-    if (!(err instanceof GitHubClientError)) throw err;
+    if (!(err instanceof SourceHostUnavailable)) throw err;
     if (err.reason !== 'no_binding') return { kind: 'refused', reason: err.message };
   }
   const row = await deps.deployKey(projectId);
@@ -92,13 +88,11 @@ export async function resolveLiveSource(
 
 export interface ProjectDivergenceDeps {
   source: (projectId: string) => Promise<LiveSource>;
-  github: typeof readLiveDivergence;
   deployKey: typeof readRemoteDivergence;
 }
 
 const divergenceDeps: ProjectDivergenceDeps = {
-  source: (projectId) => resolveLiveSource(projectId),
-  github: readLiveDivergence,
+  source: resolveLiveSource,
   deployKey: readRemoteDivergence,
 };
 
@@ -110,6 +104,6 @@ export async function readProjectDivergence(
 ): Promise<LiveDivergence> {
   const source = await deps.source(projectId);
   if (source.kind === 'refused') return { ok: false, reason: source.reason };
-  if (source.kind === 'binding') return deps.github(source.client, refs);
+  if (source.kind === 'binding') return source.host.readDivergence(refs);
   return deps.deployKey(source, refs);
 }

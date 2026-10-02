@@ -211,6 +211,7 @@ export async function writeBinding(input: {
   }
   if (refusals.length > 0) return { ok: false, refusals };
   const unverified = await bindEffects.targetRefusals({
+    projectId,
     connectionId: doc.connection,
     provider: encoded.provider,
     config: encoded.config,

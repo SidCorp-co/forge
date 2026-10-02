@@ -1,5 +1,5 @@
 import type { BranchRefs } from '../git/remote-divergence.js';
-import type { LiveDivergence } from '../integrations/github/live-divergence.js';
+import type { LiveDivergence } from '../integrations/source-host/types.js';
 import { logger } from '../logger.js';
 import {
   crossesByCherryPick,

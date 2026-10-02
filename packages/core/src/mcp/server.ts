@@ -31,7 +31,6 @@ import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
 import { forgeEcosystemTool } from './tools/forge-ecosystem.js';
 import { forgeFeedbackTool } from './tools/forge-feedback.js';
-import { forgeGithubTool } from './tools/forge-github.js';
 import { forgeGoogleSheetsTool } from './tools/forge-google-sheets.js';
 import { forgeGuideTool } from './tools/forge-guide.js';
 import { forgeHealthTool } from './tools/forge-health.js';
@@ -89,6 +88,7 @@ import {
   forgeSkillsSyncStatusTool,
   forgeSkillsUpdateTool,
 } from './tools/forge-skills.js';
+import { forgeGithubAliasTool, forgeSourceTool } from './tools/forge-source.js';
 import {
   forgeStepHandoffDeleteTool,
   forgeStepHandoffGetTool,
@@ -192,8 +192,10 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     forgeReconcileTool(ctx),
     forgeJobsResumeTool(ctx),
     forgeMetricsSessionFailuresTool(ctx),
-    // ISS-1074 wave — `forge_github` is the agent face of the GitHub integration (ISS-1062 layer 5).
-    forgeGithubTool(ctx),
+    // ISS-50 — `forge_source` is the agent face of the project's source host (GitHub or GitLab);
+    // `forge_github` is its priced former name.
+    forgeSourceTool(ctx),
+    forgeGithubAliasTool(ctx),
     // ISS-1247 — `forge_sentry` is the read side of the Sentry integration, on demand.
     forgeSentryTool(ctx),
     forgeGuideTool(ctx),

@@ -7,6 +7,7 @@ import { autoflow } from "./autoflow";
 import { coolify } from "./coolify";
 import { epodsystem } from "./epodsystem";
 import { github } from "./github";
+import { gitlab } from "./gitlab";
 import { google } from "./google";
 import { postman } from "./postman";
 import { rocketchat } from "./rocketchat";
@@ -51,6 +52,7 @@ export const PROVIDER_MODULES: readonly ProviderModule[] = [
   sentry,
   rocketchat,
   github,
+  gitlab,
   google,
   agent,
   autoflow,

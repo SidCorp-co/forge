@@ -93,11 +93,15 @@ vi.mock('../deliveries.js', () => ({
   updateDelivery: (...a: unknown[]) => updateDelivery(...(a as [])),
 }));
 
-vi.mock('./binding-credential.js', () => ({
-  githubBindingCredential: async () => ({
-    config: { owner: 'SidCorp-co', repo: 'forge', installationId: '9' },
-    secrets: { appId: '7', privateKey: 'k' },
-  }),
+// The stored row's binding resolves to the GitHub host over the recording client below (ISS-50).
+vi.mock('../source-host/resolve.js', () => ({
+  sourceHostForBinding: async () => {
+    const { buildRepoClient } = await import('./client.js');
+    const { githubSourceHostOf } = await import('./source-host.js');
+    return githubSourceHostOf(buildRepoClient({} as never), () => {
+      throw new Error('a merge makes no agent call');
+    });
+  },
 }));
 
 /** One request the stub received: the method, the path, the body and the credential it carried. */
@@ -156,14 +160,14 @@ vi.mock('./client.js', async (importOriginal) => {
   };
 });
 
-const { MergeInputError, mergeStoredPullRequest } = await import('./merge.js');
+const { MergeInputError, mergeStoredChangeRequest } = await import('../source-host/merge.js');
 
 const ask = (over: Record<string, unknown> = {}) =>
-  mergeStoredPullRequest({
+  mergeStoredChangeRequest({
     pullRequestId: PR_ID,
     requestedBy: 'user:alice',
     ...over,
-  } as Parameters<typeof mergeStoredPullRequest>[0]);
+  } as Parameters<typeof mergeStoredChangeRequest>[0]);
 
 const puts = () => sent.filter((s) => s.method === 'PUT');
 
@@ -445,7 +449,7 @@ describe('a pull request this project does not hold', () => {
 
   it('refuses a row belonging to a binding the caller was not authorised for', async () => {
     await expect(
-      mergeStoredPullRequest(
+      mergeStoredChangeRequest(
         { pullRequestId: PR_ID, requestedBy: 'user:alice' },
         'another-binding',
       ),

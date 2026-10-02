@@ -102,7 +102,7 @@ export function MergeMarkerControl({
                 placeholder={
                   outsideGit
                     ? "e.g. https://shop.example.com/products/linen-tee, or the CMS entry it is"
-                    : "e.g. ISS-791, or the branch or PR it merged through"
+                    : "e.g. ISS-791, or the branch or change request it merged through"
                 }
                 onChange={(e) => {
                   setTarget(e.target.value);

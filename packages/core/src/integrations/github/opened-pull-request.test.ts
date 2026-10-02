@@ -9,7 +9,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { OpenedPullRequest } from './agent-ops.js';
+import type { OpenedChangeRequest } from '../source-host/types.js';
 
 const applied: Array<{ ctx: unknown; payload: Record<string, unknown> }> = [];
 let written = 1;
@@ -47,7 +47,7 @@ const { OpenedPullRequestIncomplete, projectOpenedPullRequest } = await import(
   './opened-pull-request.js'
 );
 
-const OPENED: OpenedPullRequest = {
+const OPENED: OpenedChangeRequest = {
   number: 534,
   url: 'https://github.com/SidCorp-co/forge/pull/534',
   title: 'the projection has a second writer',
@@ -60,7 +60,7 @@ const OPENED: OpenedPullRequest = {
   updatedAt: '2026-09-20T15:04:05Z',
 };
 
-const project = (over: Partial<OpenedPullRequest> = {}) =>
+const project = (over: Partial<OpenedChangeRequest> = {}) =>
   projectOpenedPullRequest({
     projectId: 'project-1',
     bindingId: 'binding-1',
@@ -132,10 +132,10 @@ describe('what it will not write', () => {
     // it is the one that overwrites a merged row's evidence with `open`. Refused with the rest.
     ['updated at', { updatedAt: null }],
   ])('refuses by naming the missing %s rather than writing a partial row', async (name, over) => {
-    await expect(project(over as Partial<OpenedPullRequest>)).rejects.toThrow(
+    await expect(project(over as Partial<OpenedChangeRequest>)).rejects.toThrow(
       OpenedPullRequestIncomplete,
     );
-    await expect(project(over as Partial<OpenedPullRequest>)).rejects.toThrow(name);
+    await expect(project(over as Partial<OpenedChangeRequest>)).rejects.toThrow(name);
     expect(applied).toHaveLength(0);
   });
 

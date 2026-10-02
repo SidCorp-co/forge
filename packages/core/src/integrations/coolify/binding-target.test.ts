@@ -33,7 +33,12 @@ beforeEach(() => {
 describe('verifying the Coolify applications a binding names', () => {
   it('passes an application Coolify lists, asking with the connection credential', async () => {
     expect(
-      await verifyCoolifyBindingTarget({ connection, config: targets(KNOWN), held: null }),
+      await verifyCoolifyBindingTarget({
+        projectId: 'p',
+        connection,
+        config: targets(KNOWN),
+        held: null,
+      }),
     ).toEqual([]);
     expect(h.apps).toHaveBeenCalledWith({
       baseUrl: 'https://coolify.example',
@@ -43,7 +48,12 @@ describe('verifying the Coolify applications a binding names', () => {
 
   it('refuses an application Coolify does not list, at its own index', async () => {
     expect(
-      await verifyCoolifyBindingTarget({ connection, config: targets(KNOWN, TYPO), held: null }),
+      await verifyCoolifyBindingTarget({
+        projectId: 'p',
+        connection,
+        config: targets(KNOWN, TYPO),
+        held: null,
+      }),
     ).toEqual([
       expect.objectContaining({
         code: 'COOLIFY_APPLICATION_UNKNOWN',
@@ -55,7 +65,12 @@ describe('verifying the Coolify applications a binding names', () => {
 
   it('asks nothing about applications the row already holds', async () => {
     expect(
-      await verifyCoolifyBindingTarget({ connection, config: targets(TYPO), held: targets(TYPO) }),
+      await verifyCoolifyBindingTarget({
+        projectId: 'p',
+        connection,
+        config: targets(TYPO),
+        held: targets(TYPO),
+      }),
     ).toEqual([]);
     expect(h.apps).not.toHaveBeenCalled();
   });
@@ -63,7 +78,12 @@ describe('verifying the Coolify applications a binding names', () => {
   it('refuses as unreachable when Coolify cannot be asked, rather than storing an unverified id', async () => {
     h.apps.mockRejectedValueOnce(new Error('fetch failed'));
     expect(
-      await verifyCoolifyBindingTarget({ connection, config: targets(KNOWN), held: null }),
+      await verifyCoolifyBindingTarget({
+        projectId: 'p',
+        connection,
+        config: targets(KNOWN),
+        held: null,
+      }),
     ).toEqual([
       expect.objectContaining({
         code: 'COOLIFY_UNREACHABLE',
@@ -78,6 +98,7 @@ describe('verifying the Coolify applications a binding names', () => {
       new CoolifyApiError(403, '', 'forbidden', 'GET /api/v1/applications'),
     );
     const [refusal] = await verifyCoolifyBindingTarget({
+      projectId: 'p',
       connection,
       config: targets(KNOWN),
       held: null,
@@ -91,7 +112,12 @@ describe('verifying the Coolify applications a binding names', () => {
   it('refuses as unreachable when the connection holds no token to ask with', async () => {
     h.secrets = {};
     expect(
-      await verifyCoolifyBindingTarget({ connection, config: targets(KNOWN), held: null }),
+      await verifyCoolifyBindingTarget({
+        projectId: 'p',
+        connection,
+        config: targets(KNOWN),
+        held: null,
+      }),
     ).toEqual([expect.objectContaining({ code: 'COOLIFY_UNREACHABLE' })]);
     expect(h.apps).not.toHaveBeenCalled();
   });

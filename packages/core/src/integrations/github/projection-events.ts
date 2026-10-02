@@ -1,9 +1,8 @@
 import { db } from '../../db/client.js';
-import { openPushedRuns } from '../../ecosystem/builder-trigger.js';
-import { observeLand } from '../../ecosystem/contract/land.js';
 import { recordIssueMerge } from '../../issues/merge-record.js';
 import { logger } from '../../logger.js';
 import { forgetLiveReading } from '../../projects/live-reading.js';
+import { applyPushedBranch } from '../source-host/push.js';
 import { buildRepoClient, GitHubClientError, type GitHubRepoClient } from './client.js';
 import { resolveIssueForHeadRef } from './issue-link.js';
 import {
@@ -124,15 +123,17 @@ async function onPullRequest(ctx: DeliveryContext, payload: PullRequestPayload):
 }
 
 async function onPush(ctx: DeliveryContext, payload: PushPayload): Promise<number> {
-  forgetLiveReading(ctx.projectId);
   const branch = branchOfPush(payload);
-  if (!branch) return 0;
-  const lands = await observeLand({ ...ctx, branch, commit: payload.after });
-  await openPushedRuns({
+  if (!branch) {
+    forgetLiveReading(ctx.projectId);
+    return 0;
+  }
+  const lands = await applyPushedBranch({
     projectId: ctx.projectId,
+    bindingId: ctx.bindingId,
     branch,
-    defaultBranch: payload.repository?.default_branch ?? null,
     commit: payload.after,
+    defaultBranch: payload.repository?.default_branch ?? null,
   });
   const rows = await openPullRequestsOnBase(ctx, branch);
   if (rows.length === 0) return lands;

@@ -14,8 +14,8 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { repoPullRequests } from '../../db/schema-repo-projection.js';
-import type { OpenedPullRequest } from './agent-ops.js';
+import { type ChangeRequestHost, repoPullRequests } from '../../db/schema-repo-projection.js';
+import type { OpenedChangeRequest } from '../source-host/types.js';
 import { applyPullRequestEvent, type PullRequestPayload } from './projection.js';
 
 export type OpenedProjectionOutcome =
@@ -84,7 +84,7 @@ interface RowIdentity {
   updatedAt: string;
 }
 
-function identityOf(opened: OpenedPullRequest): RowIdentity | { missing: string[] } {
+function identityOf(opened: OpenedChangeRequest): RowIdentity | { missing: string[] } {
   const missing: string[] = [];
   if (!opened.number) missing.push('number');
   if (!opened.headRef) missing.push('head ref');
@@ -113,7 +113,7 @@ function identityOf(opened: OpenedPullRequest): RowIdentity | { missing: string[
  */
 function payloadFor(args: {
   repository: string;
-  opened: OpenedPullRequest;
+  opened: OpenedChangeRequest;
   identity: RowIdentity;
 }): PullRequestPayload {
   const { opened, identity } = args;
@@ -159,9 +159,11 @@ async function storedRow(
 export async function projectOpenedPullRequest(args: {
   projectId: string;
   bindingId: string;
-  /** `owner/repo`, as the binding spells it. */
+  /** The host the change request was opened on; GitHub where left out. */
+  host?: ChangeRequestHost;
+  /** The repository's path on its host, as the binding spells it. */
   repository: string;
-  opened: OpenedPullRequest;
+  opened: OpenedChangeRequest;
 }): Promise<OpenedProjectionResult> {
   const identity = identityOf(args.opened);
   if ('missing' in identity) {
@@ -169,7 +171,11 @@ export async function projectOpenedPullRequest(args: {
   }
 
   const written = await applyPullRequestEvent(
-    { projectId: args.projectId, bindingId: args.bindingId },
+    {
+      projectId: args.projectId,
+      bindingId: args.bindingId,
+      ...(args.host ? { host: args.host } : {}),
+    },
     payloadFor({ repository: args.repository, opened: args.opened, identity }),
     'creation',
   );

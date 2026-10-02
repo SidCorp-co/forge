@@ -1,0 +1,2 @@
+ALTER TABLE "repo_pull_requests" ADD COLUMN "host" text DEFAULT 'github' NOT NULL;--> statement-breakpoint
+ALTER TABLE "repo_pull_requests" ADD CONSTRAINT "repo_pull_requests_host_chk" CHECK (host IN ('github', 'gitlab'));

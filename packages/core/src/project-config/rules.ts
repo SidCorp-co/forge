@@ -75,6 +75,17 @@ function listed(values: Iterable<string>): string {
   return all.length === 0 ? '(none)' : all.join(', ');
 }
 
+/**
+ * A gate names one host's checks. Only the two public hosts are told apart here, because a
+ * self-hosted instance's name says nothing about which product serves it.
+ */
+const GATE_ON_THE_OTHER_HOST: Readonly<
+  Record<string, { host: string; gate: string; reads: string }>
+> = {
+  'github-check': { host: 'gitlab.com', gate: 'gitlab-pipeline', reads: 'a GitHub check run' },
+  'gitlab-pipeline': { host: 'github.com', gate: 'github-check', reads: 'a GitLab pipeline' },
+};
+
 function checkSourceShape(doc: ProjectDocument): ConfigRefusal[] {
   const out: ConfigRefusal[] = [];
   const type = doc.source.type;
@@ -92,12 +103,26 @@ function checkSourceShape(doc: ProjectDocument): ConfigRefusal[] {
       detail: `isolation "${isolation}" needs source.type "${needs}", and this project's source.type is "${type}".`,
     });
   }
-  if (doc.validation.gate.type === 'github-check' && type !== 'git') {
+  const gate = doc.validation.gate.type;
+  if (gate !== 'none' && type !== 'git') {
     out.push({
       code: 'GATE_UNSUPPORTED',
       path: pointer('validation', 'gate'),
-      detail: `gate "github-check" needs source.type "git", and this project's source.type is "${type}"; declare { "type": "none" } instead.`,
+      detail: `gate "${gate}" needs source.type "git", and this project's source.type is "${type}"; declare { "type": "none" } instead.`,
     });
+  }
+  if (gate !== 'none' && doc.source.type === 'git') {
+    const host = doc.source.git.repository
+      .slice(0, doc.source.git.repository.indexOf('/'))
+      .toLowerCase();
+    const other = GATE_ON_THE_OTHER_HOST[gate];
+    if (other && host === other.host) {
+      out.push({
+        code: 'GATE_UNSUPPORTED',
+        path: pointer('validation', 'gate'),
+        detail: `gate "${gate}" reads ${other.reads}, and this project's repository is on ${host}, whose gate is "${other.gate}"; declare that instead.`,
+      });
+    }
   }
   if (doc.promotions.length > 0 && type !== 'git') {
     out.push({

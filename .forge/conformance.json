@@ -157,6 +157,7 @@
         "sentry",
         "rocketchat",
         "github",
+        "gitlab",
         "google",
         "autoflow"
       ],
@@ -202,6 +203,10 @@
         {
           "glob": "packages/core/src/integrations/github/**",
           "why": "The provider's own directory \u2014 the one place ISS-1071 puts a provider's name. Everything here is ABOUT github and no generic path reads it."
+        },
+        {
+          "glob": "packages/core/src/integrations/gitlab/**",
+          "why": "The provider's own directory \u2014 the one place ISS-1071 puts a provider's name. Everything here is ABOUT gitlab and no generic path reads it (ISS-50)."
         },
         {
           "glob": "packages/core/src/integrations/google/**",
