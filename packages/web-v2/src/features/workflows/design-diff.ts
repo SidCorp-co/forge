@@ -1,3 +1,4 @@
+import { lineKindOf, type WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import type { WorkflowBody, WorkflowEdgeContract, WorkflowStep } from "./types";
 
 export type StepMark = "added" | "changed" | "removed";
@@ -13,17 +14,25 @@ export const edgeKey = (from: string, to: string) => `${from}>${to}`;
 const designOf = (s: WorkflowStep) =>
   JSON.stringify({ title: s.title ?? null, does: s.does, after: [...s.after].sort(), node: s.node ?? null });
 
-const contractOf = (e: WorkflowEdgeContract | undefined, defaultKind: string) => {
+/** The kind a line naming none takes in this design: the one its endpoint types imply. */
+function impliedKind(w: WorkflowBody, e: WorkflowEdgeContract, template: WorkflowTemplate | null): string | null {
+  if (!template) return null;
+  const typeOf = (id: string) => w.steps.find((s) => s.id === id)?.node?.type ?? template.defaultNodeType ?? null;
+  const k = lineKindOf(template, typeOf(e.from), typeOf(e.to));
+  return "kind" in k ? k.kind : null;
+}
+
+const contractOf = (w: WorkflowBody, e: WorkflowEdgeContract | undefined, template: WorkflowTemplate | null) => {
   if (!e) return "null";
   const { kind, ...rest } = e;
-  return JSON.stringify(kind === undefined || kind === defaultKind ? rest : e);
+  return JSON.stringify(kind === undefined || kind === impliedKind(w, e, template) ? rest : e);
 };
 
 /**
  * What the proposed revision changes against the approved one, in the terms its approver decides on;
- * an edge of the template's default kind compares equal whether or not it spells the kind out.
+ * an edge of the kind its endpoints imply compares equal whether or not it spells the kind out.
  */
-export function designDiff(approved: WorkflowBody, proposed: WorkflowBody, defaultKind = "flow"): DesignDiff {
+export function designDiff(approved: WorkflowBody, proposed: WorkflowBody, template: WorkflowTemplate | null = null): DesignDiff {
   const before = new Map(approved.steps.map((s) => [s.id, s]));
   const after = new Map(proposed.steps.map((s) => [s.id, s]));
   const steps = new Map<string, StepMark>();
@@ -43,7 +52,7 @@ export function designDiff(approved: WorkflowBody, proposed: WorkflowBody, defau
     const now = newEdges.get(key);
     if (!was) edges.set(key, "added");
     else if (!now) edges.set(key, "removed");
-    else if (contractOf(was, defaultKind) !== contractOf(now, defaultKind)) edges.set(key, "changed");
+    else if (contractOf(approved, was, template) !== contractOf(proposed, now, template)) edges.set(key, "changed");
   }
   return { steps, edges, removed };
 }

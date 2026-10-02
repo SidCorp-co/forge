@@ -20,8 +20,11 @@ const design = (): Doc =>
   JSON.parse(
     readFileSync(new URL('./fixtures/post-discharge.design.json', import.meta.url), 'utf8'),
   );
-const JOURNEY = findTemplate(BUILTIN_WORKFLOW_TEMPLATES, { id: 'journey-bands', version: 1 });
-const fingerprint = (d: WorkflowWrite) => designFingerprint(d, JOURNEY);
+const OPERATIONAL = findTemplate(BUILTIN_WORKFLOW_TEMPLATES, {
+  id: 'operational-flow',
+  version: 1,
+});
+const fingerprint = (d: WorkflowWrite) => designFingerprint(d, OPERATIONAL);
 const parsed = (d: Doc): WorkflowWrite => {
   const r = parseWorkflow(d, PROJECT);
   if (!r.ok) throw new Error(JSON.stringify(r.refusals));
@@ -108,27 +111,17 @@ describe('the design lifecycle', () => {
     expect(fingerprint(parsed(retyped))).not.toBe(base);
   });
 
-  it('fingerprints a feedback edge as design, and an explicit flow kind as no change', () => {
+  it('fingerprints a return edge as design, and a spelled-out implied kind as no change', () => {
     const base = fingerprint(parsed(design()));
-    const flowNamed = design();
-    flowNamed.edges[0].kind = 'flow';
-    expect(fingerprint(parsed(flowNamed))).toBe(base);
+    const kindNamed = design();
+    kindNamed.edges[0].kind = 'emits';
+    expect(fingerprint(parsed(kindNamed))).toBe(base);
+    const unlooped = design();
+    unlooped.edges.pop();
+    expect(fingerprint(parsed(unlooped))).not.toBe(base);
     const looped = design();
-    looped.edges.push({
-      kind: 'feedback',
-      from: 'outcome',
-      to: 'followup-rule',
-      reevaluates: 'follow-up rule',
-      condition: 'true',
-      action: 'reevaluate',
-      mapping: {},
-      idempotency: 'one per outcome',
-      onFailure: 'create_attention_item',
-    });
-    const withLoop = fingerprint(parsed(looped));
-    expect(withLoop).not.toBe(base);
-    looped.edges[1].reevaluates = 'follow-up and escalation rules';
-    expect(fingerprint(parsed(looped))).not.toBe(withLoop);
+    looped.edges[7].reevaluates = 'the context and the follow-up rule';
+    expect(fingerprint(parsed(looped))).not.toBe(base);
   });
 
   it('proposes only a draft, naming why anything else is refused', () => {

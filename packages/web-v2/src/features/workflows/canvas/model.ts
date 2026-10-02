@@ -1,7 +1,9 @@
-import type {
-  TemplateEdgeKind,
-  TemplateNodeType,
-  WorkflowTemplate,
+import {
+  LEGACY_V2_TEMPLATE,
+  lineKindOf,
+  type TemplateEdgeKind,
+  type TemplateNodeType,
+  type WorkflowTemplate,
 } from "@forge/contracts/workflow-templates";
 import type { WorkflowBody, WorkflowEdgeContract, WorkflowStep } from "../types";
 
@@ -54,13 +56,13 @@ const genericType = (id: string): TemplateNodeType => ({
   required: [],
 });
 
-/** The template a stored design is read in: the one it names, or journey-bands@1 for one written before templates. */
+/** The template a stored design is read in: the one it names, or operational-flow@1 for one written before templates. */
 export function templateFor(
   doc: Pick<WorkflowBody, "version" | "template">,
   templates: readonly WorkflowTemplate[],
 ): WorkflowTemplate | null {
   if (doc.version !== 2) return null;
-  const ref = doc.template ?? { id: "journey-bands", version: 1 };
+  const ref = doc.template ?? LEGACY_V2_TEMPLATE;
   return templates.find((t) => t.id === ref.id && t.version === ref.version) ?? null;
 }
 
@@ -72,11 +74,10 @@ export function readCanvas(doc: Canvas["doc"], template: WorkflowTemplate | null
     return types.get(type) ?? genericType(type);
   };
   const kinds = new Map((template?.edgeKinds ?? []).map((k) => [k.id, k]));
-  const defaultKind = template?.defaultEdgeKind ?? "flow";
-  const kindOf = (id: string | undefined) => {
-    const k = kinds.get(id ?? defaultKind);
-    if (k) return k;
-    return id === "feedback" ? { ...GENERIC_KIND, id, direction: "return" as const, line: "dashed" as const } : GENERIC_KIND;
+  const kindOf = (named: string | undefined, from: string, to: string) => {
+    const implied = template && !named ? lineKindOf(template, typeOf(from).id, typeOf(to).id) : null;
+    const id = named ?? (implied && "kind" in implied ? implied.kind : undefined);
+    return (id && kinds.get(id)) || GENERIC_KIND;
   };
   const contracts = new Map((doc.edges ?? []).map((e) => [`${e.from}>${e.to}`, e]));
   const edges: CanvasEdge[] = [];
@@ -84,11 +85,11 @@ export function readCanvas(doc: Canvas["doc"], template: WorkflowTemplate | null
     for (const a of s.after) {
       if (!steps.has(a)) continue;
       const contract = contracts.get(`${a}>${s.id}`) ?? null;
-      edges.push({ id: `${a}>${s.id}`, from: a, to: s.id, kind: kindOf(contract?.kind), contract });
+      edges.push({ id: `${a}>${s.id}`, from: a, to: s.id, kind: kindOf(contract?.kind, a, s.id), contract });
     }
   }
   for (const e of doc.edges ?? []) {
-    const kind = kindOf(e.kind);
+    const kind = kindOf(e.kind, e.from, e.to);
     if (kind.direction !== "return" || !steps.has(e.from) || !steps.has(e.to)) continue;
     edges.push({ id: `${e.from}>${e.to}`, from: e.from, to: e.to, kind, contract: e });
   }

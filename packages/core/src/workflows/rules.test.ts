@@ -13,7 +13,7 @@ import {
 } from './rules.js';
 import { WORKFLOW_LIMITS, type WorkflowWrite } from './schema.js';
 
-const CTX = { templates: BUILTIN_WORKFLOW_TEMPLATES, designs: new Map<string, string[]>() };
+const CTX = { templates: BUILTIN_WORKFLOW_TEMPLATES, designs: new Map() };
 
 // biome-ignore lint/suspicious/noExplicitAny: plants mutate fixtures at arbitrary depth
 type Doc = Record<string, any>;
@@ -293,13 +293,13 @@ describe('a workflow-v2 design', () => {
     ],
     [
       'an edge to no step',
-      (d: Doc) => (d.edges[0].to = 'nowhere'),
-      'WORKFLOW_EDGE_DANGLING /edges/0/to',
+      (d: Doc) => d.edges.push({ ...d.edges[3], to: 'nowhere' }),
+      'WORKFLOW_EDGE_DANGLING /edges/8/to',
     ],
     [
       'an edge contract for a line the steps do not draw',
-      (d: Doc) => (d.edges[0].from = 'discharged'),
-      'WORKFLOW_EDGE_UNDRAWN /edges/0',
+      (d: Doc) => d.edges.push({ ...d.edges[3], from: 'discharged' }),
+      'WORKFLOW_EDGE_UNDRAWN /edges/8',
     ],
     [
       'a cycle',

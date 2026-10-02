@@ -150,7 +150,21 @@ function StepPanel({ c, step, onEdge }: { c: Canvas; step: WorkflowStep; onEdge:
           ["Trigger", n?.trigger],
           ["Validation", n?.validation],
           ["State", n?.variant],
-          ["Drives", n?.invokes ? <span key="drives" className="font-mono">{`${n.invokes.workflow}/${n.invokes.step}`}</span> : null],
+          ["Event", n?.event ? <span key="event" className="font-mono">{n.event}</span> : null],
+          ["Route", n?.route ? <span key="route" className="font-mono">{n.route}</span> : null],
+          ["Channel", n?.channel],
+          ["Carries", n?.payload?.join(", ")],
+          ["Values", n?.values?.join(" · ")],
+          ["Maps to", n?.mapsTo],
+          ["Done once", n?.idempotency],
+          [
+            "Links to",
+            n?.refs?.length ? (
+              <span key="refs" className="font-mono">
+                {n.refs.map((r) => `${r.flow}/${r.step}`).join(", ")}
+              </span>
+            ) : null,
+          ],
           ["Design id", <span key="id" className="font-mono">{step.id}</span>],
           ["Status", step.status],
         ]}
@@ -225,8 +239,8 @@ function EdgePanel({ c, edge, onStep }: { c: Canvas; edge: CanvasEdge; onStep: (
           ["Condition", k?.condition],
           ["Action", k?.action ? <span key="action" className="font-mono">{k.action}</span> : null],
           ["Sends", k?.payload?.join(", ")],
-          ["On success", k?.success ? name(k.success) : null],
-          ["On failure", k?.failure ? name(k.failure) : k?.onFailure],
+          ["Over", k?.protocol],
+          ["On failure", k?.onFailure],
           ["Idempotency", k?.idempotency],
         ]}
       />

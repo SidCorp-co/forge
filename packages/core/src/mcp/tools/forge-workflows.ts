@@ -82,20 +82,23 @@ const GRANTS = {
 const DESCRIPTION =
   "Draw this project's workflows and take a design to its approver before anything is built from " +
   'it. Actions: list | get | design | write | propose | decide | link | unlink | templates | template. ' +
-  'templates: the diagram templates this project may draw in (the built-ins journey-bands, ' +
-  'state-machine, process-swimlanes, integration-sequence, decision-tree, data-lineage, ux-flow, then its own); ' +
+  'templates: the diagram templates this project may draw in (the built-ins operational-flow, ' +
+  'service-blueprint, ux-flow, state-machine, integration-sequence, decision-model, data-flow, ' +
+  'system-context and their presets, then its own); ' +
   'template: { templateId, templateVersion } — one template with its bands, node types (and the ' +
   'fields each requires), edge kinds and rules, plus a tiny example design that passes. ' +
   'Every workflow-v2 document names its template, `template: { id, version }`, and is checked ' +
   'against it: WORKFLOW_TEMPLATE_UNKNOWN, WORKFLOW_NODE_TYPE_NOT_IN_TEMPLATE, WORKFLOW_BAND_MISMATCH, ' +
   'WORKFLOW_NODE_FIELD_MISSING, WORKFLOW_EDGE_KIND_NOT_IN_TEMPLATE, WORKFLOW_EDGE_FIELD_MISSING, ' +
-  'WORKFLOW_EDGE_ENDPOINT_NOT_IN_KIND, WORKFLOW_TEMPLATE_RULE each name the fix. ' +
+  'WORKFLOW_EDGE_ENDPOINT_NOT_IN_KIND, WORKFLOW_EDGE_KIND_NONE, WORKFLOW_NODE_LINES, WORKFLOW_REF_DANGLING, ' +
+  'WORKFLOW_TEMPLATE_RULE and the rest each name the fix. ' +
   'write: { workflowId?, baseRevision, document } — no workflowId and baseRevision null creates; ' +
   'the document is workflow-v1 (a flow the code already has) or workflow-v2 (a design: steps may be ' +
   '`designed` with no evidence and carry `node` { type, label, band, purpose, inputs, outputs, owner, ' +
-  'sla, conditions, tests, … } whose type and required fields come from the template; `edges` carry ' +
-  'the contract of a line — a forward kind is a line `after` draws, a return kind (journey-bands ' +
-  '`feedback`, state-machine `back`) goes back to an earlier step, is never drawn in `after` ' +
+  'sla, conditions, refs, … } whose type and required fields come from the template, and whose ' +
+  "`refs` [{ template, flow, step }] link steps of the project's other designs; `edges` carry " +
+  'the contract of a line — a forward kind is a line `after` draws (its kind read from its endpoint ' +
+  'types unless named), a return kind (operational-flow `feeds-back`, state-machine `back`) goes back to an earlier step, is never drawn in `after` ' +
   '(WORKFLOW_AFTER_CYCLE) and carries what its kind requires). ' +
   'Schemas: GET /api/schemas/workflow-v1.json, workflow-v2.json and workflow-template-v1.json. A v2 workflow starts as a draft. ' +
   'Evidence matches the project source: a storefront project cites { kind: "storefront", provider, ' +

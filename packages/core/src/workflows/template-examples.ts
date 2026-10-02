@@ -1,393 +1,311 @@
 /**
- * One tiny design per built-in template, served beside it (`GET /api/workflow-templates/:id/:version`)
- * so an agent builder copies a shape that is accepted rather than guessing one. Each is held to its
- * template by `templates.test.ts`, so an example that stops passing fails there by name.
+ * One small design per built-in template, served beside it (`GET /api/workflow-templates/:id/:version`)
+ * so an agent builder copies a shape that is accepted rather than guessing one. They are one
+ * project's designs and link to each other, so a ref shows resolving. `templates.test.ts` holds
+ * each one to its template with the others as its project, so an example that stops passing
+ * fails there by name.
  */
 
-import { WORKFLOW_V2_SCHEMA_ID, type WorkflowWriteV2 } from './schema.js';
+import type { WorkflowWriteV2 } from './schema.js';
+import { EXAMPLE_BOARD, head, lane, ref, step } from './template-example-kit.js';
+import {
+  caseLifecycle,
+  dischargeData,
+  dischargeFeed,
+  encounterLifecycle,
+  followupDecision,
+  hopContext,
+  taskLifecycle,
+} from './template-examples-systems.js';
 
-const EXAMPLE_PROJECT = '00000000-0000-4000-8000-000000000000';
-
-const head = (
-  flow: string,
-  kind: 'flow' | 'state',
-  title: string,
-  summary: string,
-  id: string,
+const contract = (
+  from: string,
+  to: string,
+  label: string,
+  payload: string[],
+  onFailure: string,
 ) => ({
-  $schema: WORKFLOW_V2_SCHEMA_ID as WorkflowWriteV2['$schema'],
-  version: 2 as const,
-  project: EXAMPLE_PROJECT,
-  flow,
-  kind,
-  title,
-  summary,
-  status: 'designed' as const,
-  template: { id, version: 1 },
-  drift: null,
-  writtenBy: {},
-  refreshedAtSha: null,
+  from,
+  to,
+  label,
+  payload,
+  onFailure,
 });
 
-const step = (
-  id: string,
-  does: string,
-  after: string[],
-  node: WorkflowWriteV2['steps'][number]['node'],
-) => ({
-  id,
-  does,
-  status: 'designed' as const,
-  after,
-  evidence: null,
-  ...(node ? { node } : {}),
-});
-
-const journey: WorkflowWriteV2 = {
+const operational: WorkflowWriteV2 = {
   ...head(
     'post-discharge',
     'flow',
     'Post-discharge follow-up',
-    'A high-risk discharge becomes one case with an owner, and the result re-checks the rule.',
-    'journey-bands',
+    'A high-risk discharge becomes one case with an owner, and the outcome re-checks the context.',
+    'operational-flow',
   ),
   steps: [
-    step('discharged', 'patient.discharged arrives from the HIS.', [], {
+    step('his', 'The hospital HIS records the discharge.', [], {
+      type: 'SOURCE',
+      label: 'Hospital HIS',
+      owner: 'hospital IT',
+    }),
+    step('discharged', 'patient.discharged arrives from the HIS.', ['his'], {
       type: 'EVENT',
       label: 'Patient discharged',
-      outputs: ['patient.id', 'episode.id'],
+      event: 'patient.discharged',
+      payload: ['patient.id', 'episode.id'],
+      refs: [ref('integration-sequence', 'his-discharge-feed', 'adt')],
     }),
-    step('context', 'The episode risk and care team are read.', ['discharged'], {
+    step('context', 'The episode risk and care team are read.', [], {
       type: 'CONTEXT',
       label: 'Know the patient',
       inputs: ['episode.id'],
-      outputs: ['episode.risk'],
+      outputs: ['episode.risk', 'care_team'],
+      refs: [ref('data-flow', 'discharge-data', 'episodes')],
     }),
-    step('followup-rule', 'A high-risk discharge needs follow-up within 48 hours.', ['context'], {
-      type: 'RULE',
-      label: 'Decide follow-up',
-      inputs: ['episode.risk'],
-      conditions: [{ when: 'episode.risk == high', result: 'follow-up required' }],
-      outputs: ['followup_required'],
-      tests: ['high risk → required', 'low risk → not required'],
+    step(
+      'followup-rule',
+      'A high-risk discharge needs follow-up within 48 hours.',
+      ['discharged', 'context'],
+      {
+        type: 'RULE',
+        label: 'Decide follow-up',
+        inputs: ['episode.risk'],
+        conditions: [{ when: 'episode.risk == high', result: 'follow-up required' }],
+        outputs: ['followup_required'],
+        refs: [ref('decision-model', 'followup-decision', 'followup')],
+      },
+    ),
+    step('case', 'One follow-up case is opened for the episode.', ['followup-rule'], {
+      type: 'CASE',
+      label: 'Open follow-up case',
+      owner: 'care coordinator',
     }),
-    step('call', 'The coordinator calls the patient.', ['followup-rule'], {
+    step('call-task', 'The coordinator is asked to call within 48 hours.', ['case'], {
       type: 'TASK',
       label: 'Call the patient',
       owner: 'care coordinator',
       sla: '48h',
-      expectedOutcome: 'patient reached and follow-up agreed',
-      permissions: ['read episode', 'book appointment'],
+      idempotency: 'one call task per case',
     }),
-    step('late', 'An overdue call is raised to the lead.', ['call'], {
-      type: 'ATTENTION',
-      label: 'Flag what is late',
-      conditions: [{ when: 'call overdue', result: 'raise to lead' }],
-      owner: 'care lead',
+    step('call', 'The coordinator calls the patient.', ['call-task'], {
+      type: 'ACTION',
+      label: 'Call made',
+      owner: 'care coordinator',
     }),
-    step('outcome', 'The call is recorded as reached or unreachable.', ['call'], {
+    step('outcome', 'The call is recorded as reached, unreachable or declined.', ['call'], {
       type: 'OUTCOME',
       label: 'Record the result',
-      outputs: ['call.outcome'],
-    }),
-    step('recheck', 'The rule is run again on the updated journey.', ['outcome'], {
-      type: 'RULE',
-      band: 'feedback',
-      label: 'Re-check the rules',
-      inputs: ['call.outcome'],
-      conditions: [{ when: 'call.outcome == reached', result: 'case can close' }],
-      outputs: ['case.closable'],
-      tests: ['reached → closable'],
+      values: ['reached', 'unreachable', 'declined'],
     }),
   ],
   edges: [
-    { kind: 'escalation', from: 'call', to: 'late', condition: 'call not made within 48h' },
+    contract(
+      'his',
+      'discharged',
+      'ADT discharge',
+      ['patient.id', 'episode.id'],
+      'retry the feed, then raise to IT',
+    ),
+    contract(
+      'discharged',
+      'followup-rule',
+      'Is follow-up needed?',
+      ['episode.id'],
+      'hold the event for re-run',
+    ),
+    contract(
+      'context',
+      'followup-rule',
+      'Risk and care team',
+      ['episode.risk'],
+      'decide without risk: follow up',
+    ),
     {
-      kind: 'feedback',
-      from: 'recheck',
-      to: 'followup-rule',
-      reevaluates: 'follow-up rule against the updated journey',
-      condition: 'a rule input changed',
-      action: 're-run follow-up rule',
-      mapping: { episode_id: 'episode.id' },
+      ...contract(
+        'followup-rule',
+        'case',
+        'Follow-up required',
+        ['patient.id', 'episode.id'],
+        'create_attention_item',
+      ),
+      condition: 'followup_required == true',
+      action: 'create_or_update_case',
+      mapping: { patient_id: 'patient.id', episode_id: 'episode.id' },
+      idempotency: 'one active case per discharge episode',
+    },
+    contract(
+      'case',
+      'call-task',
+      'Assign the call',
+      ['case.id'],
+      'leave the case unassigned and flag it',
+    ),
+    contract(
+      'call-task',
+      'call',
+      'Coordinator calls',
+      ['case.id', 'patient.phone'],
+      'retry next working day',
+    ),
+    contract('call', 'outcome', 'Call result', ['call.result'], 'record unreachable'),
+    {
+      kind: 'feeds-back',
+      from: 'outcome',
+      to: 'context',
+      reevaluates: 'the patient context the rule reads',
+      payload: ['call.outcome'],
       idempotency: 'one re-evaluation per outcome',
       onFailure: 'create_attention_item',
     },
   ],
 };
 
-const lifecycle: WorkflowWriteV2 = {
-  ...head(
-    'order-status',
-    'state',
-    'Order status',
-    'An order is placed, paid, shipped and delivered; a failed payment returns it to placed.',
-    'state-machine',
-  ),
-  steps: [
-    step('placed', 'The order exists and awaits payment.', [], {
-      type: 'STATE',
-      purpose: 'Awaiting payment.',
-      initial: true,
-    }),
-    step('paid', 'Payment is captured.', ['placed'], {
-      type: 'STATE',
-      purpose: 'Paid, awaiting shipment.',
-    }),
-    step('shipped', 'The parcel left the warehouse.', ['paid'], {
-      type: 'STATE',
-      purpose: 'In transit.',
-    }),
-    step('delivered', 'The customer has it.', ['shipped'], {
-      type: 'STATE',
-      purpose: 'Done.',
-      terminal: true,
-    }),
-  ],
-  edges: [
-    { from: 'placed', to: 'paid', condition: 'payment captured' },
-    { from: 'paid', to: 'shipped', condition: 'label printed' },
-    { from: 'shipped', to: 'delivered', condition: 'carrier confirms delivery' },
-    { kind: 'back', from: 'shipped', to: 'placed', condition: 'payment charged back' },
-  ],
-};
-
-const swimlanes: WorkflowWriteV2 = {
-  ...head(
-    'leave-request',
-    'flow',
-    'Leave request',
-    'An employee asks for leave, the manager decides, HR records it.',
-    'process-swimlanes',
-  ),
-  lanes: [
-    { id: 'employee', label: 'Employee' },
-    { id: 'manager', label: 'Manager' },
-    { id: 'hr', label: 'HR' },
-  ],
-  steps: [
-    step('ask', 'The employee submits dates.', [], {
-      type: 'START',
-      band: 'employee',
-      label: 'Ask for leave',
-    }),
-    step('decide', 'The manager approves or declines.', ['ask'], {
-      type: 'GATEWAY',
-      band: 'manager',
-      label: 'Approve?',
-      conditions: [
-        { when: 'team covered', result: 'approve' },
-        { when: 'otherwise', result: 'decline' },
-      ],
-    }),
-    step('record', 'HR records the approved leave.', ['decide'], {
-      type: 'TASK',
-      band: 'hr',
-      label: 'Record leave',
-      expectedOutcome: 'leave in the HR system',
-    }),
-    step('done', 'The employee is told.', ['record'], {
-      type: 'END',
-      band: 'employee',
-      label: 'Told',
-    }),
-  ],
-  edges: [{ kind: 'message', from: 'ask', to: 'decide', action: 'notify manager' }],
-};
-
-const sequence: WorkflowWriteV2 = {
-  ...head(
-    'his-discharge-intake',
-    'flow',
-    'HIS discharge intake',
-    'HIS sends a discharge; HOP checks, stores and acknowledges it.',
-    'integration-sequence',
-  ),
-  lanes: [
-    { id: 'his', label: 'HIS' },
-    { id: 'hop', label: 'HOP' },
-  ],
-  steps: [
-    step('send', 'HIS posts patient.discharged.', [], {
-      type: 'SEND',
-      band: 'his',
-      outputs: ['event_id', 'encounter_id'],
-    }),
-    step('receive', 'HOP checks the signature and the event id.', ['send'], {
-      type: 'RECEIVE',
-      band: 'hop',
-      inputs: ['event_id', 'encounter_id'],
-    }),
-    step('store', 'HOP stores the message once per event id.', ['receive'], {
-      type: 'STORE',
-      band: 'hop',
-      outputs: ['hop_discharge_events row'],
-    }),
-    step('ack', 'HOP answers 202.', ['store'], {
-      type: 'RESPOND',
-      band: 'hop',
-      outputs: ['202 accepted'],
-    }),
-  ],
-  edges: [
-    {
-      kind: 'message',
-      from: 'send',
-      to: 'receive',
-      label: 'discharge sent',
-      mapping: { event_id: 'event_id', encounter_id: 'encounter_id' },
-      idempotency: 'one row per HIS event_id',
-      onFailure: 'HIS retries with backoff',
-    },
-  ],
-};
-
-const tree: WorkflowWriteV2 = {
-  ...head(
-    'follow-up-eligibility',
-    'flow',
-    'Follow-up eligibility',
-    'Whether a discharged patient is called, and how urgently.',
-    'decision-tree',
-  ),
-  steps: [
-    step('surgery', 'Did the patient have surgery?', [], {
-      type: 'QUESTION',
-      inputs: ['episode.procedures'],
-      conditions: [
-        { when: 'surgery', result: 'urgency' },
-        { when: 'no surgery', result: 'no call' },
-      ],
-    }),
-    step('urgency', 'How urgent is the call?', ['surgery'], {
-      type: 'TABLE',
-      inputs: ['patient.vip', 'episode.risk'],
-      conditions: [
-        { when: 'vip or high risk', result: 'call within 4h' },
-        { when: 'otherwise', result: 'call within 24h' },
-      ],
-      outputs: ['call.sla'],
-      tests: ['vip → 4h', 'low risk → 24h'],
-    }),
-    step('no-call', 'No follow-up call.', ['surgery'], {
-      type: 'DECISION',
-      outputs: ['followup = none'],
-    }),
-  ],
-  edges: [
-    { from: 'surgery', to: 'urgency', condition: 'had surgery' },
-    { from: 'surgery', to: 'no-call', condition: 'no surgery' },
-  ],
-};
-
-const lineage: WorkflowWriteV2 = {
-  ...head(
-    'discharge-metrics',
-    'flow',
-    'Discharge metrics',
-    'Discharge events become the daily follow-up rate on the ops dashboard.',
-    'data-lineage',
-  ),
-  steps: [
-    step('events', 'HIS discharge events.', [], {
-      type: 'SOURCE',
-      outputs: ['event_id', 'discharged_at'],
-      owner: 'HIS team',
-    }),
-    step('daily', 'Events rolled up per day.', ['events'], {
-      type: 'TRANSFORM',
-      inputs: ['discharged_at'],
-      outputs: ['day', 'discharges'],
-    }),
-    step('mart', 'The ops mart table.', ['daily'], {
-      type: 'STORE',
-      inputs: ['day', 'discharges'],
-      owner: 'data team',
-    }),
-    step('dashboard', 'The ops dashboard reads it.', ['mart'], {
-      type: 'CONSUMER',
-      inputs: ['discharges'],
-    }),
-  ],
-  edges: [
-    { from: 'events', to: 'daily', mapping: { day: 'date(discharged_at)' } },
-    { from: 'daily', to: 'mart', mapping: { day: 'day', discharges: 'count' } },
-    { from: 'mart', to: 'dashboard', mapping: { discharges: 'discharges' } },
-  ],
-};
+const screen = (label: string, route: string, actions: string[], dataShown?: string[]) => ({
+  type: 'SCREEN',
+  label,
+  persona: 'patient',
+  route,
+  wireframe: { attachment: EXAMPLE_BOARD },
+  actions,
+  ...(dataShown ? { dataShown } : {}),
+});
 
 const ux: WorkflowWriteV2 = {
   ...head(
-    'book-follow-up-ui',
+    'book-followup',
     'flow',
     'Book a follow-up',
-    'A coordinator opens the patient, books a follow-up slot, and sees it confirmed.',
+    'From the reminder link the patient picks a slot and books it.',
     'ux-flow',
   ),
-  personas: [{ id: 'coordinator', label: 'Care coordinator' }],
+  personas: [lane('patient', 'Patient')],
   steps: [
-    step('patient', 'The coordinator opens the patient card.', [], {
-      type: 'SCREEN',
-      band: 'arrive',
-      label: 'Patient card',
-      purpose: 'See who to call and why.',
-      persona: 'coordinator',
-      dataShown: ['name', 'risk', 'discharged at'],
-      actions: ['book follow-up'],
+    step('link', 'The patient opens the reminder link.', [], {
+      type: 'ENTRY',
+      label: 'Reminder link',
     }),
-    step('load-failed', 'The card could not load.', ['patient'], {
+    step(
+      'slots',
+      'The open slots for the clinic are listed.',
+      ['link'],
+      screen('Pick a time', '/book', ['pick a slot'], ['open slots']),
+    ),
+    step('slots-loading', 'The slots are still loading.', ['slots'], {
+      type: 'UI_STATE',
+      variant: 'loading',
+    }),
+    step('slots-empty', 'No slot is open this week.', ['slots'], {
+      type: 'UI_STATE',
+      variant: 'empty',
+    }),
+    step('slots-error', 'The slots could not be read.', ['slots'], {
       type: 'UI_STATE',
       variant: 'error',
-      label: 'Could not load',
     }),
-    step('pick-slot', 'The coordinator picks a slot and confirms.', ['patient'], {
+    step('pick', 'The patient picks a slot and confirms.', ['slots'], {
       type: 'USER_ACTION',
-      label: 'Pick a slot',
-      trigger: 'press Book',
-      validation: 'a slot is chosen and in the future',
+      label: 'Book this slot',
+      refs: [
+        ref('operational-flow', 'post-discharge', 'call'),
+        ref('service-blueprint', 'followup-blueprint', 'confirm'),
+      ],
     }),
-    step('book', 'The booking is written.', ['pick-slot'], {
-      type: 'SYSTEM_STEP',
-      label: 'Book the appointment',
-      invokes: { workflow: 'post-discharge', step: 'call' },
+    step('book', 'The booking is saved against the case.', ['pick'], {
+      type: 'SYSTEM',
+      label: 'Save booking',
+      purpose: 'Holds the slot and records it on the follow-up case.',
     }),
-    step('booked', 'The confirmation is shown.', ['book'], {
-      type: 'SCREEN',
-      band: 'result',
-      label: 'Booked',
-      purpose: 'Confirm the booking.',
-      persona: 'coordinator',
-      dataShown: ['slot', 'clinic'],
-      actions: ['done'],
-      noErrorState: 'a static confirmation with nothing to load',
-    }),
-    step('slot-taken', 'The slot was taken meanwhile.', ['book'], {
-      type: 'UI_STATE',
-      band: 'result',
-      variant: 'error',
-      label: 'Slot taken',
-    }),
-  ],
-  edges: [
-    { kind: 'error', from: 'patient', to: 'load-failed', condition: 'the patient read fails' },
-    {
-      kind: 'submit',
-      from: 'pick-slot',
-      to: 'book',
-      payload: ['patient_id', 'slot_id'],
-      success: 'booked',
-      failure: 'slot-taken',
-    },
-    { kind: 'error', from: 'book', to: 'slot-taken', condition: 'the slot is no longer free' },
+    step(
+      'booked',
+      'The patient sees the booking.',
+      ['book'],
+      screen('Booked', '/book/done', ['close']),
+    ),
+    step('done', 'The patient closes the page.', ['booked'], { type: 'EXIT', label: 'Done' }),
   ],
 };
 
+const blueprint: WorkflowWriteV2 = {
+  ...head(
+    'followup-blueprint',
+    'flow',
+    'Follow-up booking',
+    'The reminder the patient gets, what they do, and the work behind it.',
+    'service-blueprint',
+  ),
+  personas: [lane('patient', 'Patient')],
+  steps: [
+    step('reminder', 'A Zalo reminder is sent.', [], {
+      type: 'FRONTSTAGE',
+      label: 'Zalo reminder',
+      owner: 'HOP',
+      channel: 'Zalo',
+    }),
+    step('message', 'The patient reads the reminder.', ['reminder'], {
+      type: 'EVIDENCE',
+      label: 'Reminder message',
+    }),
+    step('books', 'The patient books a slot.', ['message'], {
+      type: 'CUSTOMER_ACTION',
+      label: 'Books a slot',
+      persona: 'patient',
+    }),
+    step('confirm', 'The booking is confirmed on screen.', ['books'], {
+      type: 'FRONTSTAGE',
+      label: 'Booking confirmed',
+      owner: 'HOP',
+      channel: 'web',
+      refs: [ref('ux-flow', 'book-followup', 'booked')],
+    }),
+    step('schedule', 'The coordinator schedules the call.', ['confirm'], {
+      type: 'BACKSTAGE',
+      label: 'Schedule the call',
+      owner: 'care coordinator',
+      refs: [ref('operational-flow', 'post-discharge', 'call-task')],
+    }),
+    step('his-sync', 'The booking is written to the HIS.', ['schedule'], {
+      type: 'SUPPORT',
+      label: 'HIS appointment',
+      refs: [ref('system-context', 'hop-context', 'his')],
+    }),
+  ],
+};
+
+const crossFunctional: WorkflowWriteV2 = {
+  ...head(
+    'referral-handoff',
+    'flow',
+    'Referral handoff',
+    'The coordinator takes a referral and hands the review to a nurse.',
+    'service-blueprint-cross-functional',
+  ),
+  lanes: [lane('coordinator', 'Coordinator'), lane('nurse', 'Nurse')],
+  steps: [
+    step('take', 'The coordinator takes the referral.', [], {
+      type: 'FRONTSTAGE',
+      band: 'coordinator',
+      label: 'Take referral',
+      owner: 'coordinator',
+      channel: 'phone',
+    }),
+    step('review', 'A nurse reviews it.', ['take'], {
+      type: 'BACKSTAGE',
+      band: 'nurse',
+      label: 'Review referral',
+      owner: 'nurse',
+    }),
+  ],
+  edges: [{ kind: 'handoff', from: 'take', to: 'review', label: 'to the nurse on shift' }],
+};
+
 export const TEMPLATE_EXAMPLES: Readonly<Record<string, WorkflowWriteV2>> = {
-  'journey-bands@1': journey,
-  'state-machine@1': lifecycle,
-  'process-swimlanes@1': swimlanes,
-  'integration-sequence@1': sequence,
-  'decision-tree@1': tree,
-  'data-lineage@1': lineage,
+  'operational-flow@1': operational,
+  'service-blueprint@1': blueprint,
+  'service-blueprint-cross-functional@1': crossFunctional,
   'ux-flow@1': ux,
+  'state-machine@1': caseLifecycle,
+  'state-machine-fhir-task@1': taskLifecycle,
+  'state-machine-fhir-encounter@1': encounterLifecycle,
+  'integration-sequence@1': dischargeFeed,
+  'decision-model@1': followupDecision,
+  'data-flow@1': dischargeData,
+  'system-context@1': hopContext,
 };

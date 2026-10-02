@@ -92,7 +92,7 @@ export function WorkflowDesignScreen({ projectId, flow }: { projectId: string; s
   const template = templateFor(shown, (templates.data?.templates ?? []).map((t) => t.template));
   const approved = d.revisions.find((r) => r.revision === d.approvedRevision)?.document ?? null;
   const canDiff = approved !== null && pending && latest !== null && latest.revision !== d.approvedRevision;
-  const diff = canDiff && changes && approved ? designDiff(approved, shown, template?.defaultEdgeKind) : null;
+  const diff = canDiff && changes && approved ? designDiff(approved, shown, template) : null;
   const steps = stepsWithRemoved(shown, diff);
   const shownRevision = pending && latest ? latest.revision : record.revision;
   const proposer = latest ? (latest.proposedByName ?? latest.proposedBy) : record.writerName;

@@ -8,6 +8,7 @@ import type { OrgMemberRole, ProjectMemberRole } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { orgRoleAtLeast, projectRoleAtLeast } from '../lib/authz.js';
 import type { DesignApprover } from '../project-config/schema.js';
+import { impliedKind } from './edges.js';
 import { stepsOf, type WorkflowWrite } from './schema.js';
 
 export const DESIGN_STATUSES = ['draft', 'proposed', 'approved', 'returned'] as const;
@@ -41,8 +42,8 @@ export interface DesignRefusal {
 /**
  * The part of a workflow its approver decides: the template it is drawn in, the steps, their order,
  * their nodes (business labels and bands included) and the edge contracts, return edges included.
- * Written defaults fingerprint as absent — an edge of the template's default kind, a node in its
- * type's home band, a design in `journey-bands@1` — so a design stored before kinds, bands or
+ * Written defaults fingerprint as absent — an edge of the kind its endpoint types imply, a node in its
+ * type's home band, a design in `operational-flow@1` — so a design stored before kinds, bands or
  * templates keeps the fingerprint it was approved at when its writer spells the default out.
  * Status, evidence, coverage, drift and the commit a reading was taken at are the code's reading
  * of itself, so a refresh after the build moves none of this and needs no new approval.
@@ -65,12 +66,15 @@ export function designFingerprint(doc: WorkflowWrite, template: WorkflowTemplate
     after: [...s.after].sort(),
     node: 'node' in s && s.node ? nodeShape(s.node) : null,
   }));
+  const implied = (e: { from: string; to: string }) => {
+    if (doc.version !== 2 || !template) return null;
+    const k = impliedKind(doc, template, e.from, e.to);
+    return 'kind' in k ? k.kind : null;
+  };
   const edges =
     doc.version === 2
       ? [...(doc.edges ?? [])]
-          .map(({ kind, ...e }) =>
-            kind === undefined || kind === template?.defaultEdgeKind ? e : { kind, ...e },
-          )
+          .map(({ kind, ...e }) => (kind === undefined || kind === implied(e) ? e : { kind, ...e }))
           .sort((a, b) => `${a.from}>${a.to}`.localeCompare(`${b.from}>${b.to}`))
       : [];
   const legacy =

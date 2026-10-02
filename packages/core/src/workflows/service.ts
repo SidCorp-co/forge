@@ -33,6 +33,7 @@ import {
   workflowHolding,
   workflowsOf,
 } from './store.js';
+import { type ProjectDesign, type ProjectDesigns, projectDesignOf } from './template-check.js';
 
 export interface WorkflowWriter {
   userId: string;
@@ -81,17 +82,22 @@ export async function templatesOf(projectId: string): Promise<{
   return { templates: resolved.templates, projectKeys: resolved.projectKeys };
 }
 
-/** The project's designs other than `flow`, each with its step ids: what a ux-flow's `invokes` resolves against. */
-async function designsOf(tx: Tx, projectId: string, flow: string): Promise<Map<string, string[]>> {
+/** The project's version 2 designs other than `flow`: what this one's refs resolve against, and what links to it. */
+async function designsOf(
+  tx: Tx,
+  projectId: string,
+  flow: string,
+  templates: readonly WorkflowTemplate[],
+): Promise<ProjectDesigns> {
   const rows = await workflowsOf(tx, projectId);
-  return new Map(
-    rows
-      .filter((r) => r.flow !== flow)
-      .map((r) => {
-        const doc = readStoredWorkflow(r.document);
-        return [r.flow, doc ? doc.steps.map((s) => s.id) : []] as const;
-      }),
-  );
+  const out = new Map<string, ProjectDesign>();
+  for (const r of rows) {
+    if (r.flow === flow) continue;
+    const doc = readStoredWorkflow(r.document);
+    const design = doc ? projectDesignOf(doc, templates) : null;
+    if (design) out.set(r.flow, design);
+  }
+  return out;
 }
 
 const templateFor = (doc: WorkflowWrite, templates: readonly WorkflowTemplate[]) =>
@@ -137,7 +143,7 @@ export async function createWorkflow(input: {
     const refusals = [
       ...checkWorkflow(doc, {
         templates: facts.templates,
-        designs: await designsOf(tx, projectId, doc.flow),
+        designs: await designsOf(tx, projectId, doc.flow, facts.templates),
       }),
       ...evidenceSourceRefusals(doc, facts.source),
     ];
@@ -180,7 +186,7 @@ export async function updateWorkflow(input: {
       ...workflowIdentityRefusals(stored, doc),
       ...checkWorkflow(doc, {
         templates: facts.templates,
-        designs: await designsOf(tx, projectId, doc.flow),
+        designs: await designsOf(tx, projectId, doc.flow, facts.templates),
       }),
       ...evidenceSourceRefusals(doc, facts.source),
     ];

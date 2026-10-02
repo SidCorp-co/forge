@@ -11,7 +11,7 @@ export const WORKFLOW_DESIGN_GUIDE: ForgeGuide = {
   title: 'Design a workflow first, build it once it is approved',
   summary:
     'A flow that does not exist yet is drawn as a workflow-v2 design, proposed, and approved by the project owner (or, once the owner says so, by the master) before any issue that builds it is dispatched.',
-  version: 3,
+  version: 4,
   body: `## Design a workflow first, build it once it is approved
 
 A new flow — a storefront journey, a pipeline, a state machine — is drawn before it is built, and its
@@ -20,10 +20,10 @@ names the workflow it builds is not dispatched while that design is not approved
 
 ### The order of the work
 1. **Pick the template, then draw.** Every design names the diagram template it is drawn in,
-   \`template: { id, version }\` — \`forge_guide get workflow-templates\` says which (journey-bands for an
-   operational journey, state-machine, process-swimlanes, integration-sequence, decision-tree, data-lineage,
-   ux-flow for screens). The template fixes the node types, the bands, the fields each type requires and the
-   edge kinds. \`forge_workflows action=write\` with a workflow-v2 document (\`GET /api/schemas/workflow-v2.json\`).
+   \`template: { id, version }\` — \`forge_guide get workflow-templates\` says which (operational-flow for
+   what the business does, service-blueprint, ux-flow for screens, state-machine, integration-sequence,
+   decision-model, data-flow, system-context). The template fixes the node types, the bands, the fields each
+   type requires, the edge kinds and the cross-links to the project's other designs. \`forge_workflows action=write\` with a workflow-v2 document (\`GET /api/schemas/workflow-v2.json\`).
    Steps nothing has built yet are \`designed\` and owe no evidence. Give each step its \`node\` (its type,
    a short business \`label\`, a \`purpose\`, and what its type requires) and each line \`after\` draws the
    contract its kind owes. A new v2 workflow is a **draft**.
@@ -45,15 +45,15 @@ names the workflow it builds is not dispatched while that design is not approved
 genuinely returns to an earlier one — an OUTCOME that updates the context so a RULE is evaluated again, a
 reopened state — declares that return in \`edges\` with a **return** kind of its template, not in \`after\`,
 and never as a renamed copy of the earlier step (that draws two rules where the system has one). In
-journey-bands it is \`feedback\`:
+operational-flow it is \`feeds-back\`:
 
-\`{ kind: "feedback", from: "outcome", to: "followup-rule", reevaluates: "follow-up rule against the updated context", condition, action, mapping, idempotency, onFailure }\`
+\`{ kind: "feeds-back", from: "outcome", to: "context", reevaluates: "the patient context the rule reads", payload, idempotency, onFailure }\`
 
 - Use it only when the later step's result really re-enters the earlier one. A line forward is a forward
   kind drawn in \`after\`; a return kind whose \`to\` is not a step its \`from\` comes after is refused
   \`WORKFLOW_EDGE_RETURN_FORWARD\`.
 - It orders nothing and is outside the cycle check, so it pays with what its kind requires — for
-  \`feedback\` the whole contract; anything absent is \`WORKFLOW_EDGE_FIELD_MISSING\`. Idempotency and
+  \`feeds-back\` the whole contract; anything absent is \`WORKFLOW_EDGE_FIELD_MISSING\`. Idempotency and
   onFailure are what stop a loop running for ever. \`reevaluates\` on a forward kind is
   \`WORKFLOW_EDGE_REEVALUATES_FORWARD\`.
 - The canvas draws it as a dashed line curving back, styled by its kind, with its contract on hover.
