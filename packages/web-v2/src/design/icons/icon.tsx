@@ -1,7 +1,7 @@
 import {
   Activity, Archive, ArrowDown, ArrowRight, ArrowUp, Bell, BookOpen, Calendar, Check, ChevronDown,
   ChevronLeft, ChevronRight, ChevronsUpDown, Circle, CircleHelp, Clock, Command,
-  Cpu, DollarSign, Filter, Folder, GitBranch, GitFork, Inbox, Keyboard,
+  Cpu, DollarSign, Filter, Folder, GitBranch, GitFork, Inbox, Info, Keyboard,
   LayoutGrid, Link as LinkIcon, List, Lock, LogOut, type LucideIcon, Mail,
   Menu as MenuIcon, MessageSquare, Network, Monitor, MoreHorizontal, PanelLeftClose, Pause, Pin, Play,
   History, Pencil, PenLine, Plus, Rocket, RotateCw, Rows3, Search, Server, Settings, Shield, Sparkles, Square,
@@ -77,6 +77,7 @@ const ICONS = {
   chevronLeft: ChevronLeft,
   keyboard: Keyboard,
   help: CircleHelp,
+  info: Info,
   command: Command,
   menu: MenuIcon,
   logOut: LogOut,

@@ -77,6 +77,17 @@ export interface ReleaseEnvironmentRow {
   tier: "production" | "staging" | "preview" | "dev";
   url: string | null;
   version: string | null;
+  /** The branch it deploys from; the list comes back in promotion order along these. */
+  deploysFrom: string | null;
+  trigger: "on-land" | "on-request" | "provider" | "external";
+}
+
+/** The project's always-injected `release-procedure` knowledge entry. */
+export interface ReleaseProcedure {
+  slug: string;
+  title: string;
+  body: string;
+  updatedAt: string;
 }
 
 /** `GET /api/projects/:projectId/releases`. */
@@ -84,9 +95,11 @@ export interface ReleaseVersionList {
   versions: ReleaseVersionRow[];
   draft: ReleaseDraft | null;
   approvalRequired: boolean;
+  procedure: ReleaseProcedure | null;
   counts: { all: number; awaitingApproval: number; live: number; rolledBack: number };
   environments: ReleaseEnvironmentRow[];
   environmentsRead: { ok: true } | { ok: false; reason: string };
+  landingBranch: string | null;
 }
 
 export interface ReleaseChangelogEntry {

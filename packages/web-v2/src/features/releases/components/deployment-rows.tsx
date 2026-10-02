@@ -61,12 +61,14 @@ export interface DeploymentRowsProps {
   environment: string | null;
   open: string | null;
   onToggle: (id: string) => void;
+  /** Drawn inside a timeline step that already names it. */
+  bare?: boolean;
 }
 
-export function DeploymentRows({ attempts, bounds, environment, open, onToggle }: DeploymentRowsProps) {
+export function DeploymentRows({ attempts, bounds, environment, open, onToggle, bare = false }: DeploymentRowsProps) {
   return (
     <section className="grid gap-1" data-testid="deployments">
-      <Kicker>Deployments</Kicker>
+      {bare ? null : <Kicker>Deployments</Kicker>}
       {attempts.length === 0 ? (
         <p className="text-13 text-subtle">No promote, deploy, verify or repair has been recorded on this release yet.</p>
       ) : (
