@@ -22,16 +22,12 @@ export interface WorkflowCanvasProps {
   diff?: DesignDiff | null;
   /** The approver's Approve / Return, shown in the panel and at the end of a walk-through. */
   decision?: ReactNode;
-  /** The list's thumbnail: no panel and no floating tools but zoom, and a click selects for the caller. */
-  compact?: boolean;
-  selected?: string | null;
-  onSelect?: (id: string | null) => void;
 }
 
 const wide = () => typeof window === "undefined" || window.innerWidth > 700;
 
 function Canvas(props: WorkflowCanvasProps) {
-  const { doc, template, diff = null, compact = false } = props;
+  const { doc, template, diff = null } = props;
   const rf = useReactFlow();
   const c = useMemo(() => readCanvas(doc, template), [doc, template]);
   const banded = c.bands.length > 0;
@@ -55,7 +51,7 @@ function Canvas(props: WorkflowCanvasProps) {
     [language, view],
   );
   const hits = useMemo(() => new Set(searchSteps(c, query)), [c, query]);
-  const selectedStep = props.compact ? (props.selected ?? null) : selection && "step" in selection ? selection.step : null;
+  const selectedStep = selection && "step" in selection ? selection.step : null;
   const selectedEdge = selection && "edge" in selection ? selection.edge : null;
   const focus = useMemo(() => {
     if (selectedStep) return pathOf(c, selectedStep);
@@ -89,8 +85,8 @@ function Canvas(props: WorkflowCanvasProps) {
       const el = wrap.current;
       if (!el) return;
       const fitK = Math.min((el.clientWidth - 40) / size.width, (el.clientHeight - 40) / size.height, 1);
-      const k = compact ? Math.max(fitK, 0.2) : Math.min(1, Math.max(fitK, 0.85));
-      void rf.setViewport({ x: (el.clientWidth - size.width * k) / 2, y: compact ? (el.clientHeight - size.height * k) / 2 : 64, zoom: k });
+      const k = Math.min(1, Math.max(fitK, 0.85));
+      void rf.setViewport({ x: (el.clientWidth - size.width * k) / 2, y: 64, zoom: k });
       setZoom(k);
     },
   });
@@ -168,10 +164,6 @@ function Canvas(props: WorkflowCanvasProps) {
   };
 
   const clickStep = (id: string) => {
-    if (compact) {
-      props.onSelect?.(id);
-      return;
-    }
     if (selectedStep === id && lod < 2 && open.has(id)) {
       layout.keep(layout.anchorFor([id]));
       setOpen((prev) => new Set([...prev].filter((x) => x !== id)));
@@ -200,7 +192,7 @@ function Canvas(props: WorkflowCanvasProps) {
       openBands(bands, e.src.map((s) => s.from));
       return;
     }
-    if (!compact) setSelection({ edge: e.src[0]?.id ?? key });
+    setSelection({ edge: e.src[0]?.id ?? key });
   };
 
   const onMove = (_: unknown, vp: Viewport) => {
@@ -239,7 +231,6 @@ function Canvas(props: WorkflowCanvasProps) {
   };
 
   useEffect(() => {
-    if (compact) return;
     const onKey = (ev: KeyboardEvent) => {
       const typing = ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement;
       if (typing) return;
@@ -272,10 +263,10 @@ function Canvas(props: WorkflowCanvasProps) {
   // Side by side, the row takes the screen's height rather than the panel's: `contain: size` keeps the
   // panel's 16 steps from stretching it, so the panel scrolls and the canvas fills the screen.
   return (
-    <div className={`flex min-h-0 flex-1 max-lg:flex-col ${compact ? "" : "lg:[contain:size]"}`} data-testid="workflow-canvas">
+    <div className="flex min-h-0 flex-1 max-lg:flex-col lg:[contain:size]" data-testid="workflow-canvas">
       <div
         ref={wrap}
-        className={compact ? "wfc h-[360px] min-h-0 rounded-lg border border-line-subtle" : "wfc min-w-0 flex-1 max-lg:h-[72vh] max-lg:flex-none"}
+        className="wfc min-w-0 flex-1 max-lg:h-[72vh] max-lg:flex-none"
         data-ready={layout.ready}
         data-dim={Boolean(focus)}
         onClickCapture={(ev) => {
@@ -291,7 +282,7 @@ function Canvas(props: WorkflowCanvasProps) {
           edgeTypes={EDGE_TYPES}
           onNodeClick={onNodeClick}
           onEdgeClick={(_, e) => pickEdge(e.id)}
-          onPaneClick={() => (compact ? props.onSelect?.(null) : setSelection(null))}
+          onPaneClick={() => setSelection(null)}
           onMove={onMove}
           nodesDraggable={false}
           nodesConnectable={false}
@@ -302,18 +293,14 @@ function Canvas(props: WorkflowCanvasProps) {
           zoomOnDoubleClick={false}
           minZoom={0.2}
           maxZoom={2}
-          attributionPosition="bottom-center"
+          proOptions={{ hideAttribution: true }}
         >
-          {!compact && minimap ? (
-            <MiniMap pannable zoomable position="bottom-right" nodeColor={nodeColor} nodeStrokeColor={nodeStroke} nodeStrokeWidth={6} nodeBorderRadius={14} maskColor="color-mix(in srgb, var(--accent) 6%, transparent)" />
+          {minimap ? (
+            <MiniMap pannable zoomable position="bottom-right" style={{ width: 180, height: 120 }} nodeColor={nodeColor} nodeStrokeColor={nodeStroke} nodeStrokeWidth={6} nodeBorderRadius={14} maskColor="color-mix(in srgb, var(--accent) 6%, transparent)" />
           ) : null}
         </ReactFlow>
-        {compact ? null : (
-          <>
-            <ViewBar language={language} lod={lod} banded={banded} allOpen={allOpen} onLanguage={setLanguage} onLod={setLevel} onToggleAll={toggleAll} onWalk={() => walkTo(0)} />
-            <SearchBox c={c} hits={[...hits]} query={query} onQuery={setQuery} onPick={reveal} />
-          </>
-        )}
+        <ViewBar language={language} lod={lod} banded={banded} allOpen={allOpen} onLanguage={setLanguage} onLod={setLevel} onToggleAll={toggleAll} onWalk={() => walkTo(0)} />
+        <SearchBox c={c} hits={[...hits]} query={query} onQuery={setQuery} onPick={reveal} />
         <ZoomBar
           zoom={zoom}
           minimap={minimap}
@@ -325,11 +312,10 @@ function Canvas(props: WorkflowCanvasProps) {
           onLegend={() => setLegend(!legend)}
         />
         {legend ? <Legend template={template} /> : null}
-        {!compact && walk !== null && walk < order.length ? <WalkBar at={walk} total={order.length} onWalk={walkTo} onStop={walkStop} /> : null}
+        {walk !== null && walk < order.length ? <WalkBar at={walk} total={order.length} onWalk={walkTo} onStop={walkStop} /> : null}
       </div>
-      {compact ? null : (
-        <DetailPanel
-          canvas={c}
+      <DetailPanel
+        canvas={c}
           selection={selection}
           walk={walk === null ? null : { order, at: walk }}
           decision={props.decision}
@@ -338,7 +324,6 @@ function Canvas(props: WorkflowCanvasProps) {
           onStep={reveal}
           onEdge={(id) => setSelection({ edge: id })}
         />
-      )}
     </div>
   );
 }

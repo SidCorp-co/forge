@@ -1,7 +1,7 @@
 import { BUILTIN_WORKFLOW_TEMPLATES } from "@forge/contracts/workflow-templates";
 import { describe, expect, it } from "vitest";
 import type { WorkflowEdgeContract, WorkflowStep } from "../types";
-import { type Canvas, edgeText, pathOf, readCanvas, searchSteps, templateFor, walkOrder } from "./model";
+import { type Canvas, edgeText, lineLabel, pathOf, readCanvas, searchSteps, templateFor, walkOrder } from "./model";
 import { bandKey, buildView, lodOf, mergedLabel } from "./view";
 
 const operational = BUILTIN_WORKFLOW_TEMPLATES.find((t) => t.id === "operational-flow");
@@ -135,10 +135,20 @@ describe("folding and semantic zoom", () => {
     expect(at1.edges.find((e) => e.key === "due>late")?.merged).toBe(false);
   });
 
-  it("names up to two merged labels, then how many more", () => {
+  it("names a merged line by how many lines it stands for, never by their conditions", () => {
     const e = { key: "k", from: "a", to: "b", merged: true, src: c.edges.slice(0, 3) };
-    const text = (x: Canvas["edges"][number]) => x.id;
-    expect(mergedLabel(e, text)).toBe(`${c.edges[0]?.id} +2 more`);
-    expect(mergedLabel({ ...e, src: c.edges.slice(0, 2) }, text)).toBe(`${c.edges[0]?.id} · ${c.edges[1]?.id}`);
+    expect(mergedLabel(e)).toBe("3 links");
+    expect(mergedLabel({ ...e, src: c.edges.slice(0, 1) })).toBe("1 link");
+  });
+
+  it("shows a line's label, else its condition cut short with the whole of it kept for the tooltip", () => {
+    const base = c.edges[0] as Canvas["edges"][number];
+    const long = "case_closable AND case open AND every task resolved AND the follow-up booked";
+    expect(lineLabel({ ...base, contract: { from: "a", to: "b", label: "booked", condition: long } })).toEqual({ text: "booked", full: long });
+    const cut = lineLabel({ ...base, contract: { from: "a", to: "b", condition: long } });
+    expect(cut.text.length).toBeLessThanOrEqual(48);
+    expect(cut.text.endsWith("…")).toBe(true);
+    expect(cut.full).toBe(long);
+    expect(lineLabel({ ...base, contract: { from: "a", to: "b", condition: "short" } })).toEqual({ text: "short", full: null });
   });
 });

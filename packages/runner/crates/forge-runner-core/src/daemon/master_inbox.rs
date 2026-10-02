@@ -20,6 +20,9 @@ pub enum WakeSource {
     Channel,
     /// A builder run was opened for the project, by a join or a push (ISS-39).
     EcosystemBuild,
+    /// The approver decided a workflow design the project proposed: an approve unblocks its builds,
+    /// a return hands the drawing back to the issue it was drawn under.
+    WorkflowDesign,
     /// A frame naming no source.
     ///
     /// Priced amnesty: a core that predates ISS-38 stamps none on its issue and
@@ -39,8 +42,9 @@ impl WakeSource {
                 "answer" => Ok(WakeSource::Answer),
                 "channel" => Ok(WakeSource::Channel),
                 "ecosystem_build" => Ok(WakeSource::EcosystemBuild),
+                "workflow_design" => Ok(WakeSource::WorkflowDesign),
                 other => Err(format!(
-                    "source {other:?} is not one this runner reads (issue, answer, channel, ecosystem_build)"
+                    "source {other:?} is not one this runner reads (issue, answer, channel, ecosystem_build, workflow_design)"
                 )),
             },
             Some(other) => Err(format!("source {other} is not a string")),
@@ -53,6 +57,7 @@ impl WakeSource {
             WakeSource::Answer => "answer",
             WakeSource::Channel => "channel",
             WakeSource::EcosystemBuild => "ecosystem_build",
+            WakeSource::WorkflowDesign => "workflow_design",
             WakeSource::Unstated => "source unstated",
         }
     }
@@ -125,6 +130,7 @@ mod tests {
             ("answer", WakeSource::Answer),
             ("channel", WakeSource::Channel),
             ("ecosystem_build", WakeSource::EcosystemBuild),
+            ("workflow_design", WakeSource::WorkflowDesign),
         ] {
             let got =
                 WakeSource::of_frame(&serde_json::json!({ "projectId": "p", "source": name }));

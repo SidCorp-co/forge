@@ -39,6 +39,24 @@ describe("the HOP discharge design on the canvas", () => {
     expect(view.edges.length).toBeGreaterThan(0);
   });
 
+  it("centres the folded band cards on one axis, the first band included", async () => {
+    const view = buildView(c, { lod: 0, expanded: new Set(), open: new Set() });
+    const rows = new Map(c.bands.map((b, i) => [b.id, i]));
+    const bandOfKey = (key: string) => {
+      const v = view.nodes.find((n) => n.key === key);
+      return v?.kind === "band" ? v.band : "";
+    };
+    const placed = await layoutView({
+      view,
+      sizes: new Map(view.nodes.map((n) => [n.key, { width: 340, height: 96 }])),
+      labels: new Map(view.edges.map((e) => [e.key, `${e.src.length} links`])),
+      partition: (key) => rows.get(bandOfKey(key)) ?? 0,
+      direction: "down",
+    });
+    const centres = [...placed.nodes.values()].map((p) => p.x + p.width / 2);
+    expect(Math.max(...centres) - Math.min(...centres)).toBeLessThan(60);
+  });
+
   it("folds into one card per band when no band is open", () => {
     const view = buildView(c, { lod: 0, expanded: new Set(), open: new Set() });
     expect(view.nodes.map((n) => n.kind)).toEqual(c.bands.map(() => "band"));

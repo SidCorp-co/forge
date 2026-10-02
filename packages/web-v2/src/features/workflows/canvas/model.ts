@@ -133,6 +133,17 @@ export const titleOf = (s: WorkflowStep) => s.node?.label ?? s.title ?? s.id;
 export const purposeOf = (s: WorkflowStep) => s.node?.purpose ?? s.does;
 export const edgeText = (e: CanvasEdge) => e.contract?.label ?? e.contract?.condition ?? "";
 
+const LINE_WORDS = 48;
+
+/** A line's words on the canvas: its business label, else its condition cut short; `full` is the untrimmed text for the tooltip. */
+export function lineLabel(e: CanvasEdge): { text: string; full: string | null } {
+  const label = e.contract?.label;
+  if (label) return { text: label, full: e.contract?.condition ?? null };
+  const cond = e.contract?.condition ?? "";
+  if (cond.length <= LINE_WORDS) return { text: cond, full: null };
+  return { text: `${cond.slice(0, LINE_WORDS - 1).trimEnd()}…`, full: cond };
+}
+
 /** The order a walk-through tells the story in: every step after the ones it comes after, ties in the design's order. */
 export function walkOrder(c: Canvas): string[] {
   const order = c.doc.steps.map((s) => s.id);

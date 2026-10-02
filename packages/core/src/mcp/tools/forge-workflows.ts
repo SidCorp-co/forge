@@ -54,7 +54,7 @@ const inputSchema = z
     revision: z.number().int().min(1).optional(),
     decision: z.enum(DESIGN_DECISIONS).optional(),
     reason: z.string().max(DESIGN_REASON_MAX).optional(),
-    /** link / unlink: the issue that builds the workflow, by key (ISS-12) or uuid. */
+    /** link / unlink: the issue that builds the workflow; propose: the issue the design is drawn under. By key (ISS-12) or uuid. */
     issue: z.string().trim().min(1).max(200).optional(),
     /** template: the diagram template to read, by id and version. */
     templateId: z.string().trim().min(1).max(64).optional(),
@@ -104,7 +104,9 @@ const DESCRIPTION =
   'Evidence matches the project source: a storefront project cites { kind: "storefront", provider, ' +
   'ref: workflow|route|node, id }, a repository project { kind: "repo", file, coverage } — the other ' +
   'is WORKFLOW_EVIDENCE_KIND_MISMATCH. ' +
-  'propose: { workflowId, revision } puts a draft in front of its approver. A write that changes the ' +
+  'propose: { workflowId, revision, issue } puts a draft in front of its approver; `issue` names the issue ' +
+  "the design is drawn under (later revisions inherit it), and a decision wakes this project's master — a " +
+  'return reopens that issue with the reason on it, shown by forge_issues get under `proposesWorkflow`. A write that changes the ' +
   'design (its template, steps, order, nodes, edge contracts, return edges) of a proposed, approved or returned workflow ' +
   'proposes that revision again; a write that only refreshes status or evidence does not. ' +
   'design: { workflowId } — the status (draft | proposed | approved | returned), every proposed ' +
@@ -167,6 +169,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         id: need(input, 'workflowId'),
         writer: actor,
         revision: need(input, 'revision'),
+        issue: input.issue,
       });
       return outcome.ok ? outcome.design : refusedBy(outcome.refusals);
     }

@@ -81,6 +81,9 @@ export const projectWorkflowDesigns = pgTable(
     decidedByUser: uuid('decided_by_user').references(() => users.id, { onDelete: 'restrict' }),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     reason: text('reason'),
+    // cm:why the issue the design is drawn under, named by its proposer: a return reopens it so its
+    // master revises the design, and it is never a build link, which would make it wait on itself
+    designIssueId: uuid('design_issue_id').references(() => issues.id, { onDelete: 'set null' }),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.workflowId, t.revision] }),

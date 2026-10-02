@@ -11,12 +11,14 @@ vi.mock('./server.js', () => ({
 vi.mock('../db/client.js', () => ({ db: { selectDistinct: () => selectDistinct() } }));
 
 const {
+  MASTER_WAKE_SOURCES,
   MASTER_WAKE_STATUSES,
   isMasterWakeStatus,
   registerMasterWakeSubscribers,
   wakeMastersForProject,
   wakeMastersForAnswer,
   wakeMastersForChannel,
+  wakeMastersForDesign,
 } = await import('./master-wake.js');
 
 /** `db.selectDistinct().from().where()` resolving to these rows. */
@@ -67,9 +69,16 @@ beforeEach(() => {
 });
 
 describe('master.wake — which statuses wake a box', () => {
-  it('wakes on the three arrival statuses and on nothing else', () => {
-    expect([...MASTER_WAKE_STATUSES].sort()).toEqual(['awaiting_release', 'draft', 'open']);
-    for (const s of ['open', 'draft', 'awaiting_release'] as const) {
+  it('wakes on every takeable status and the two a master reads to decide, and on nothing else', () => {
+    expect([...MASTER_WAKE_STATUSES].sort()).toEqual([
+      'approved',
+      'awaiting_release',
+      'confirmed',
+      'draft',
+      'open',
+      'reopen',
+    ]);
+    for (const s of ['open', 'reopen', 'draft', 'awaiting_release'] as const) {
       expect(isMasterWakeStatus(s)).toBe(true);
     }
     for (const s of ['in_progress', 'needs_info', 'closed', 'dropped'] as const) {
@@ -171,6 +180,16 @@ describe('master.wake — what triggers it', () => {
     expect(publishedData(0).status).toBe('open');
   });
 
+  it('wakes on a reopen, which the admissible list hands a master as work', async () => {
+    servedBy(['dev-a']);
+    const { bus, fire } = fakeBus();
+    registerMasterWakeSubscribers(bus as never);
+
+    await fire('transition', { projectId: 'p1', issueId: 'i1', from: 'developed', to: 'reopen' });
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publishedData(0)).toMatchObject({ source: 'issue', status: 'reopen' });
+  });
+
   it('stays silent on a transition into a status no master acts on', async () => {
     servedBy(['dev-a']);
     const { bus, fire } = fakeBus();
@@ -227,6 +246,28 @@ describe('an answer as a wake trigger', () => {
       boxes: 0,
       delivered: 0,
     });
+  });
+});
+
+describe('a design decision as a wake trigger', () => {
+  it('names the source the runner reads, the workflow, the decision and the design issue', async () => {
+    servedBy(['dev-a']);
+
+    await wakeMastersForDesign({
+      projectId: 'p1',
+      workflowId: 'w1',
+      decision: 'return',
+      issueId: 'i1',
+    });
+    expect(publishedEvent(0)).toBe('master.wake');
+    expect(publishedData(0)).toEqual({
+      projectId: 'p1',
+      source: 'workflow_design',
+      workflowId: 'w1',
+      decision: 'return',
+      issueId: 'i1',
+    });
+    expect(MASTER_WAKE_SOURCES).toContain('workflow_design');
   });
 });
 

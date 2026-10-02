@@ -6,7 +6,7 @@ import type { DesignDiff } from "../design-diff";
 import { edgeKey } from "../design-diff";
 import type { WfEdgeData } from "./edges";
 import { layoutView, type Placed, returnPath, rounded } from "./layout";
-import { type Canvas, bandSummary, edgeText } from "./model";
+import { type Canvas, bandSummary, lineLabel } from "./model";
 import type { BandNodeData, BandRowData, StepNodeData } from "./nodes";
 import { edgeHue } from "./style";
 import { mergedLabel, type View } from "./view";
@@ -139,7 +139,7 @@ export function useCanvasLayout(input: {
       rf.getNodes().filter((n) => n.type !== "bandRow").map((n) => [n.id, { width: n.measured?.width ?? 250, height: n.measured?.height ?? 60 }]),
     );
     const labels = new Map(
-      view.edges.map((e) => [e.key, e.merged ? mergedLabel(e, edgeText) : e.src[0] ? edgeText(e.src[0]) : ""]),
+      view.edges.map((e) => [e.key, e.merged ? mergedLabel(e) : e.src[0] ? lineLabel(e.src[0]).text : ""]),
     );
     const order = new Map(c.bands.map((b, i) => [b.id, i]));
     const bandOfKey = (key: string) => {
@@ -259,7 +259,8 @@ export function useCanvasLayout(input: {
       const data: WfEdgeData = {
         d: path,
         kind: first.kind,
-        label: e.merged ? mergedLabel(e, edgeText) : edgeText(first),
+        label: e.merged ? mergedLabel(e) : lineLabel(first).text,
+        full: e.merged ? null : lineLabel(first).full,
         detail: d.contract && !e.merged && k ? [k.action, k.idempotency ? `idem: ${k.idempotency}` : null].filter(Boolean).join(" · ") || null : null,
         labelAt,
         merged: e.merged,

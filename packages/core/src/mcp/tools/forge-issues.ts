@@ -52,6 +52,7 @@ import {
   updateTask as updateTaskRow,
 } from '../../tasks/task-service.js';
 import { buildsWorkflowOf } from '../../workflows/build-gate.js';
+import { proposesWorkflowOf } from '../../workflows/design-issue.js';
 import { refuseStrayArchiveFields, runArchiveAction } from './forge-issues-archive.js';
 import { forgeIssuesDescription } from './forge-issues-description.js';
 import { toMcpIssueError } from './forge-issues-errors.js';
@@ -593,13 +594,14 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
           return projected;
         }
-        const [full, relations, attributes, buildsWorkflow] = await Promise.all([
+        const [full, relations, attributes, buildsWorkflow, proposesWorkflow] = await Promise.all([
           serializeWithAttachments(issue),
           loadIssueRelations(issue.id, issue.projectId),
           loadIssueAttributes(issue.id),
           buildsWorkflowOf(issue.id),
+          proposesWorkflowOf(issue.id),
         ]);
-        return { ...full, relations, attributes, buildsWorkflow };
+        return { ...full, relations, attributes, buildsWorkflow, proposesWorkflow };
       }
 
       case 'setAttributes': {

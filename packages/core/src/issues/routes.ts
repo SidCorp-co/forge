@@ -25,6 +25,7 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { buildsWorkflowOf } from '../workflows/build-gate.js';
+import { proposesWorkflowOf } from '../workflows/design-issue.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';
 import { AttachmentError } from './attachment-service.js';
@@ -293,6 +294,7 @@ issueProjectRoutes.get(
       pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
       liveReach: await liveReachForIssue(issue),
       buildsWorkflow: await buildsWorkflowOf(issue.id),
+      proposesWorkflow: await proposesWorkflowOf(issue.id),
       labels: labelRows,
       comments: [],
       activity: [],
@@ -440,6 +442,7 @@ issueRoutes.get(
       pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
       liveReach: await liveReachForIssue(issue),
       buildsWorkflow: await buildsWorkflowOf(issue.id),
+      proposesWorkflow: await proposesWorkflowOf(issue.id),
       labels: labelRows,
       comments: [],
       activity: [],

@@ -124,7 +124,8 @@ export interface WorkflowRecord {
   revision: number;
   writer: string;
   writerName: string;
-  design: { status: DesignStatus | null; approvedRevision: number | null };
+  /** `returnReason` is the approver's word on a returned design; the list only carries it then. */
+  design: { status: DesignStatus | null; approvedRevision: number | null; returnReason?: string | null };
   document: WorkflowDocument;
 }
 

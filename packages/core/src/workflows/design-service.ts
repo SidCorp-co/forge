@@ -13,6 +13,7 @@ import {
   designApproverRefusal,
   proposeRefusal,
 } from './design.js';
+import { type DesignIssueOutcome, settleDesignIssue } from './design-issue.js';
 import { assertWriter, storedWorkflow, userNames, type WorkflowWriter } from './service.js';
 import {
   buildOfIssue,
@@ -29,7 +30,10 @@ import {
 } from './store.js';
 
 export type DesignOutcome =
-  | { ok: true; design: Awaited<ReturnType<typeof designView>> }
+  | {
+      ok: true;
+      design: Awaited<ReturnType<typeof designView>> & { designIssue?: DesignIssueOutcome };
+    }
   | { ok: false; refusals: DesignRefusal[] };
 
 const notFound = (message: string) =>
@@ -97,6 +101,7 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
       : false,
     revisions: designs.map((d) => ({
       revision: d.revision,
+      designIssueId: d.designIssueId,
       document: d.document,
       proposedBy: d.proposedByUser,
       proposedByName: name(d.proposedByUser),
@@ -126,9 +131,14 @@ export async function proposeDesign(input: {
   id: string;
   writer: WorkflowWriter;
   revision: number;
+  /** The issue the design is drawn under, by key or uuid; absent, the revision before names it. */
+  issue?: string | undefined;
 }): Promise<DesignOutcome> {
   const { projectId, id, writer, revision } = input;
   await assertWriter(writer, projectId);
+  const designIssueId = input.issue
+    ? await designIssueIn(projectId, input.issue, writer.userId)
+    : undefined;
   const outcome = await db.transaction(async (tx): Promise<DesignRefusal[] | null> => {
     await lockWorkflows(tx, projectId);
     const row = await readWorkflow(tx, id);
@@ -146,11 +156,21 @@ export async function proposeDesign(input: {
     }
     const refusal = proposeRefusal(row.designStatus, id);
     if (refusal) return [refusal];
+    if (designIssueId && (await buildOfIssue(tx, designIssueId))?.workflowId === id) {
+      return [
+        {
+          code: 'WORKFLOW_DESIGN_ISSUE_IS_BUILD',
+          path: '/issue',
+          detail: `${input.issue} builds workflow ${id}, so it waits on this approval and cannot be the issue the design is drawn under; name the issue that draws it.`,
+        },
+      ];
+    }
     await insertDesign(tx, {
       workflowId: id,
       revision: row.revision,
       document: storedWorkflow(row),
       userId: writer.userId,
+      designIssueId,
     });
     await setDesignState(tx, id, { designStatus: 'proposed' });
     return null;
@@ -172,7 +192,8 @@ export async function decideDesignAs(input: {
   await rowIn(projectId, id);
   const refusal = await approverRefusalFor(decider, projectId, await designApproverOf(projectId));
   if (refusal) throw forbidden(refusal);
-  const outcome = await db.transaction(async (tx): Promise<DesignRefusal[] | null> => {
+  type Decided = { refusals: DesignRefusal[] } | { flow: string; designIssueId: string | null };
+  const outcome = await db.transaction(async (tx): Promise<Decided> => {
     await lockWorkflows(tx, projectId);
     const row = await readWorkflow(tx, id);
     if (!row) throw notFound(`project ${projectId} holds no workflow ${id}`);
@@ -184,7 +205,7 @@ export async function decideDesignAs(input: {
       decision,
       reason,
     });
-    if (refusals.length > 0) return refusals;
+    if (refusals.length > 0) return { refusals };
     await decideDesign(tx, { workflowId: id, revision, decision, userId: decider.userId, reason });
     await setDesignState(
       tx,
@@ -193,10 +214,31 @@ export async function decideDesignAs(input: {
         ? { designStatus: 'approved', approvedRevision: revision }
         : { designStatus: 'returned' },
     );
-    return null;
+    return { flow: row.flow, designIssueId: latest?.designIssueId ?? null };
   });
-  if (outcome) return { ok: false, refusals: outcome };
-  return { ok: true, design: await designView(await rowIn(projectId, id), decider) };
+  if ('refusals' in outcome) return { ok: false, refusals: outcome.refusals };
+  const designIssue = await settleDesignIssue({
+    projectId,
+    workflowId: id,
+    flow: outcome.flow,
+    revision,
+    decision,
+    reason,
+    designIssueId: outcome.designIssueId,
+    decider,
+  });
+  return {
+    ok: true,
+    design: { ...(await designView(await rowIn(projectId, id), decider)), designIssue },
+  };
+}
+
+async function designIssueIn(projectId: string, ref: string, userId: string): Promise<string> {
+  const issue = await resolveIssueRouteRef(ref, projectId, userId);
+  if (issue.projectId !== projectId) {
+    throw notFound(`issue ${ref} is not an issue of project ${projectId}`);
+  }
+  return issue.id;
 }
 
 /** An issue names the workflow it builds; any project member may say so, the gate is what it buys. */
@@ -220,6 +262,13 @@ export async function linkBuildAs(input: {
     }
     const held = await buildOfIssue(tx, issue.id);
     if (held?.workflowId === id) return null;
+    if ((await designsOf(tx, id))[0]?.designIssueId === issue.id) {
+      return {
+        code: 'WORKFLOW_DESIGN_ISSUE_IS_BUILD',
+        path: '/issue',
+        detail: `${input.issue} is the issue workflow ${id}'s design is drawn under; linking it as a build would make it wait on its own approval.`,
+      };
+    }
     if (held) {
       return {
         code: 'WORKFLOW_BUILD_ALREADY_LINKED',

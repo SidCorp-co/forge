@@ -50,7 +50,9 @@ export async function layoutView(input: {
       "elk.spacing.edgeEdge": "14",
       "elk.spacing.edgeLabel": "6",
       "elk.layered.spacing.edgeNodeBetweenLayers": "12",
-      "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+      // SIMPLE centres each layer on one axis. NETWORK_SIMPLEX shortened the long Trigger lines by pushing
+      // that band ~450px right of the rest, so the first card opened clipped (hop-layout.test.ts).
+      "elk.layered.nodePlacement.strategy": "SIMPLE",
       "elk.layered.mergeEdges": "false",
     },
     children: view.nodes.map((n) => ({

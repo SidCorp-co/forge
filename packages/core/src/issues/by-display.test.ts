@@ -8,6 +8,11 @@ vi.mock('./landing-evidence.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./landing-evidence.js')>()),
   readLandingShape: async () => 'git',
 }));
+vi.mock('../workflows/build-gate.js', async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  buildsWorkflowOf: async () => null,
+}));
+vi.mock('../workflows/design-issue.js', () => ({ proposesWorkflowOf: async () => null }));
 vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));

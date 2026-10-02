@@ -2,20 +2,28 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { runners } from '../db/schema.js';
+import { TAKEABLE_STATUSES } from '../issues/status-sets.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { masterCharterPath } from '../projects/master-charter.js';
 import { deviceRoom } from './rooms.js';
 import { roomManager } from './server.js';
 
+/** Every status a master can take work from, plus the two it reads to decide (promote, release). */
 export const MASTER_WAKE_STATUSES: readonly IssueStatus[] = [
-  'open',
+  ...TAKEABLE_STATUSES,
   'draft',
   'awaiting_release',
-] as const;
+];
 
 // cm:why a wake names what fired it, and the runner (`daemon/master.rs:WakeSource`) refuses one it does not know by name, so a source added here without its reader is a loud line on the box, never a dropped signal
-export const MASTER_WAKE_SOURCES = ['issue', 'answer', 'channel', 'ecosystem_build'] as const;
+export const MASTER_WAKE_SOURCES = [
+  'issue',
+  'answer',
+  'channel',
+  'ecosystem_build',
+  'workflow_design',
+] as const;
 export type MasterWakeSource = (typeof MASTER_WAKE_SOURCES)[number];
 
 export function isMasterWakeStatus(status: IssueStatus): boolean {
@@ -79,6 +87,22 @@ export async function wakeMastersForBuild(
   projectId: string,
 ): Promise<{ boxes: number; delivered: number }> {
   return publishWake(projectId, { projectId, source: 'ecosystem_build' });
+}
+
+/** The approver decided a design this project proposed: an approve unblocks its builds, a return owes a revision. */
+export async function wakeMastersForDesign(args: {
+  projectId: string;
+  workflowId: string;
+  decision: 'approve' | 'return';
+  issueId: string | null;
+}): Promise<{ boxes: number; delivered: number }> {
+  return publishWake(args.projectId, {
+    projectId: args.projectId,
+    source: 'workflow_design',
+    workflowId: args.workflowId,
+    decision: args.decision,
+    issueId: args.issueId,
+  });
 }
 
 async function publishWake(

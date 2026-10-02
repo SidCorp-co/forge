@@ -19,16 +19,12 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../../middlewar
 import { rateLimit } from '../../middleware/rate-limit.js';
 import { idParamSchema } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
+import { TAKEABLE_STATUSES } from '../status-sets.js';
 import { alikeSource } from './alike-source.js';
 import { Cancellation } from './cancellation.js';
 import { emitBacklogStream } from './emitter.js';
 import { orderingSource } from './ordering-source.js';
 import { countMatching } from './page-read.js';
-
-/** What `forge next` calls takeable: the statuses a run may claim work from. */
-export const TAKEABLE_STATUSES: IssueStatus[] = ['open', 'confirmed', 'approved', 'reopen'].filter(
-  (s): s is IssueStatus => (issueStatuses as readonly string[]).includes(s),
-);
 
 /** What `forge alike` calls open: everything the tracker has not settled. */
 export const UNSETTLED_STATUSES: IssueStatus[] = issueStatuses.filter(
@@ -126,7 +122,7 @@ backlogStreamRoutes.get(
     const q = c.req.valid('query');
     await assertProjectAccess(id, c.get('userId'), 'viewer');
 
-    const statuses = q.status ?? TAKEABLE_STATUSES;
+    const statuses = q.status ?? [...TAKEABLE_STATUSES];
     const total = await countMatching(id, statuses);
     const cancellation = new Cancellation();
     streamHeaders(c);

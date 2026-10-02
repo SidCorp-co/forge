@@ -1,64 +1,61 @@
 "use client";
 
+import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
-import { Badge, EmptyState, ErrorState, PageTitle, ProjectLoader, Tooltip } from "@/design";
+import { EmptyState, ErrorState, PageTitle, ProjectLoader } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
+import { formatRelativeTime } from "@/lib/utils/format";
 import { useQueryParam } from "@/lib/utils/use-query-param";
 import { templateFor } from "../canvas/model";
-import { WorkflowCanvas } from "../canvas/workflow-canvas";
-import { walkedOf } from "../coverage";
+import { WorkflowThumbnail } from "../canvas/thumbnail";
 import { useWorkflowTemplates, useWorkflows } from "../hooks";
-import type { WorkflowKind, WorkflowRecord } from "../types";
 import { workflowHref } from "../routes";
-import { DesignPill, StepDetail } from "./workflow-parts";
+import type { WorkflowRecord } from "../types";
+import { DesignPill } from "./workflow-parts";
 
-function ListPill({ record }: { record: WorkflowRecord }) {
-  const w = record.document;
-  if (record.design.status) return <DesignPill status={record.design.status} />;
-  if (w.status === "writing") {
-    return (
-      <span className="rounded-pill border border-dashed border-line-strong px-2 text-11 font-semibold text-muted">writing</span>
-    );
-  }
-  if (w.status === "rechecking") {
-    return (
-      <Tooltip label={w.drift?.reason ?? "re-checking"} side="bottom">
-        <span>
-          <Badge tone="amber">re-checking</Badge>
-        </span>
-      </Tooltip>
-    );
-  }
-  if (w.kind === "state") return <Badge>state</Badge>;
-  if (w.steps.every((s) => s.evidence?.coverage?.reading !== "walked" && s.evidence?.coverage?.reading !== "not_walked")) {
-    return (
-      <Tooltip label="No flow-coverage report reads these steps" side="bottom">
-        <span>
-          <Badge>unmeasured</Badge>
-        </span>
-      </Tooltip>
-    );
-  }
-  const { walked, total } = walkedOf(w.steps);
+/** The chip a design is filtered by: the template it is drawn in, or its kind for one drawn before templates. */
+function templateChip(r: WorkflowRecord, templates: readonly WorkflowTemplate[]): string {
+  return templateFor(r.document, templates)?.id ?? r.document.kind;
+}
+
+function WorkflowCard({ r, slug, templates }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[] }) {
+  const w = r.document;
+  const count = w.steps.length;
   return (
-    <Tooltip label="Steps the integration suite walks" side="bottom">
-      <span>
-        <Badge tone={walked === total ? "green" : "amber"}>
-          {walked}/{total}
-        </Badge>
-      </span>
-    </Tooltip>
+    <Link
+      href={workflowHref(slug, w.flow)}
+      className="group grid overflow-hidden rounded-lg border border-line-subtle bg-surface shadow-sm transition-colors hover:border-line-strong"
+      data-testid="workflow-card"
+      data-flow={w.flow}
+    >
+      <WorkflowThumbnail doc={w} template={templateFor(w, templates)} />
+      <div className="grid gap-2 border-t border-line-subtle px-3.5 py-3">
+        <div className="flex items-start gap-2">
+          <b className="min-w-0 flex-1 text-14 leading-snug group-hover:text-fg">{w.title}</b>
+          {r.design.status ? <DesignPill status={r.design.status} reason={r.design.returnReason ?? null} /> : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-12 text-muted">
+          <span className="rounded-sm bg-sunken px-1.5 py-0.5 font-mono text-11" data-testid="workflow-template">
+            {templateChip(r, templates)}
+          </span>
+          <span>
+            {count} {w.kind === "state" ? (count === 1 ? "state" : "states") : count === 1 ? "step" : "steps"}
+          </span>
+          <span className="ml-auto truncate" title={`Drawn by ${r.writerName}`}>
+            {r.writerName}
+          </span>
+          <span title={new Date(w.updatedAt).toLocaleString()}>{formatRelativeTime(w.updatedAt)}</span>
+        </div>
+      </div>
+    </Link>
   );
 }
 
 export function WorkflowsScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const q = useWorkflows(projectId);
-  const templates = useWorkflowTemplates(projectId);
-  const [tab, setTab] = useQueryParam("kind");
-  const [picked, setPicked] = useQueryParam("flow");
-  const [stepParam, setStep] = useQueryParam("step");
-  const kind: WorkflowKind = tab === "state" ? "state" : "flow";
+  const templatesQ = useWorkflowTemplates(projectId);
+  const [picked, setPicked] = useQueryParam("template");
 
   if (q.isLoading) {
     return (
@@ -74,103 +71,43 @@ export function WorkflowsScreen({ projectId, slug }: { projectId: string; slug: 
       </div>
     );
   }
-  const shown = q.data.workflows.filter((r) => r.document.kind === kind);
-  const current = shown.find((r) => r.document.flow === picked) ?? shown[0] ?? null;
-  const w = current?.document ?? null;
-  const step = w ? (w.steps.find((s) => s.id === stepParam) ?? w.steps[0]) : null;
+  const templates = (templatesQ.data?.templates ?? []).map((t) => t.template);
+  const all = q.data.workflows;
+  const chips = [...new Set(all.map((r) => templateChip(r, templates)))].sort();
+  const filter = picked && chips.includes(picked) ? picked : null;
+  const shown = filter ? all.filter((r) => templateChip(r, templates) === filter) : all;
 
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="workflows-screen">
-      <header className="flex flex-wrap items-center gap-3 px-4 pb-3 pt-4 sm:px-7">
+    <div className="grid content-start gap-4 px-4 pb-8 pt-4 sm:px-7" data-testid="workflows-screen">
+      <header className="flex flex-wrap items-center gap-3">
         <PageTitle>Workflows</PageTitle>
-        <span className="ml-auto inline-flex overflow-hidden rounded-lg border border-line" role="tablist">
-          {(["flow", "state"] as const).map((k) => (
-            <button
-              key={k}
-              type="button"
-              role="tab"
-              aria-selected={kind === k}
-              onClick={() => {
-                setTab(k === "flow" ? null : k);
-                setPicked(null);
-                setStep(null);
-              }}
-              className={cn("px-3 py-1 text-12 font-semibold", kind === k ? "bg-fg text-surface" : "text-muted")}
-            >
-              {k === "flow" ? "Flows" : "States"}
-            </button>
-          ))}
-        </span>
-      </header>
-      {shown.length === 0 ? (
-        <div className="border-t border-line-subtle p-8">
-          <EmptyState
-            title={kind === "flow" ? "No flow has been drawn" : "No state machine has been drawn"}
-            message="The project's master draws each workflow from the code and keeps it current; nothing here is generated. None has been written for this project yet."
-          />
-        </div>
-      ) : (
-        <div className="grid min-h-0 flex-1 border-t border-line-subtle md:grid-cols-[260px_minmax(0,1fr)]">
-          <div className="overflow-auto border-line-subtle md:border-r" data-testid="workflow-list">
-            {shown.map((r) => (
+        {chips.length > 1 ? (
+          <span className="ml-auto flex flex-wrap gap-1.5" role="tablist" aria-label="Template">
+            {[null, ...chips].map((t) => (
               <button
-                key={r.document.id}
+                key={t ?? "all"}
                 type="button"
-                onClick={() => {
-                  setPicked(r.document.flow);
-                  setStep(null);
-                }}
-                title={r.document.summary}
+                role="tab"
+                aria-selected={filter === t}
+                onClick={() => setPicked(t)}
                 className={cn(
-                  "grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2.5 border-b border-line-subtle px-4 py-3 text-left text-13 hover:bg-hover sm:px-7",
-                  current?.document.id === r.document.id && "bg-accent-tint",
+                  "rounded-pill border px-2.5 py-0.5 text-12 font-semibold",
+                  filter === t ? "border-fg bg-fg text-surface" : "border-line text-muted hover:text-fg",
                 )}
-                data-testid="workflow-row"
               >
-                <span>
-                  <b>{r.document.title}</b>
-                  <br />
-                  <span className="text-12 text-subtle">
-                    {r.document.steps.length} {r.document.kind === "state" ? "states" : "steps"}
-                  </span>
-                </span>
-                <ListPill record={r} />
+                {t ?? "All"}
               </button>
             ))}
-          </div>
-          {w && step && current ? (
-            <div className="grid content-start gap-3 overflow-auto px-4 pb-6 pt-4 sm:px-7">
-              <div className="flex flex-wrap items-center gap-2 text-11 font-semibold uppercase tracking-wide text-subtle">
-                <Link href={workflowHref(slug, w.flow)} className="hover:text-fg" title="Open this workflow on its own page" data-testid="workflow-open">
-                  {w.title}
-                </Link>
-                <span className="ml-auto normal-case tracking-normal text-12 font-medium" title="The project's master owns this diagram: it writes it from the code, checks it against the cm:flow annotations and the tests, and re-checks a step when the code under it changes.">
-                  {current.writerName}
-                  {w.refreshedAtSha ? (
-                    <>
-                      {" "}
-                      · refreshed at <span className="font-mono">{w.refreshedAtSha.slice(0, 7)}</span>
-                    </>
-                  ) : null}
-                </span>
-              </div>
-              {w.drift ? (
-                <p className="flex items-center gap-2 text-12 text-amber" data-testid="workflow-drift">
-                  <span className="size-2 rounded-full bg-amber" />
-                  {w.drift.reason} · re-checking {w.drift.steps.join(", ")}
-                </p>
-              ) : null}
-              <p className="text-13 text-muted">{w.summary}</p>
-              <WorkflowCanvas
-                compact
-                doc={w}
-                template={templateFor(w, (templates.data?.templates ?? []).map((t) => t.template))}
-                selected={step.id}
-                onSelect={(id) => setStep(id)}
-              />
-              <StepDetail flow={w.flow} kind={w.kind} step={step} />
-            </div>
-          ) : null}
+          </span>
+        ) : null}
+      </header>
+      {all.length === 0 ? (
+        <EmptyState title="No workflow has been drawn" message="The project's master draws each workflow; none has been written for this project yet." />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" data-testid="workflow-list">
+          {shown.map((r) => (
+            <WorkflowCard key={r.document.id} r={r} slug={slug} templates={templates} />
+          ))}
         </div>
       )}
     </div>

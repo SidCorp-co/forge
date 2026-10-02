@@ -5,9 +5,11 @@
  * says "what job may I claim"; this says "what is sitting here that no run and
  * no job has been opened for". A master reads both and decides.
  *
- * A project admits its entry status when its policy's intake is `auto`, and only
- * the issues a human released at the entry when it is `manual`. A project with no
- * policy admits nothing and is named in `refused`, never left out in silence.
+ * A project admits every takeable status (`issues/status-sets.ts:TAKEABLE_STATUSES`, the set
+ * `forge next` ranks), so a reopened issue is admissible exactly where `forge next` lists it. Its
+ * entry status is admitted when the policy's intake is `auto`, and only the issues a human released
+ * there when it is `manual`; a `reopen` is already a person's word and waits on no release. A project
+ * with no policy admits nothing and is named in `refused`, never left out in silence.
  */
 
 import { sql } from 'drizzle-orm';
@@ -18,6 +20,7 @@ import {
 } from '../integrations/repo-projection.js';
 import { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } from '../issues/dependency-effects.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
+import { TAKEABLE_STATUSES } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/autonomous-mode.js';
 import { type PolicyRefusalCode, PolicyRefusedError } from '../project-config/dispatch-policy.js';
@@ -136,6 +139,10 @@ export async function readAdmissibleIssues(args: {
       BLOCKER_SETTLED_STATUSES.map((s) => sql`${s}`),
       sql`, `,
     );
+    const takeableList = sql.join(
+      TAKEABLE_STATUSES.map((s) => sql`${s}`),
+      sql`, `,
+    );
     const rows = (await db.execute(sql`
       SELECT i.id, i.iss_seq, i.project_id, i.title, i.description, i.priority,
              i.category, i.status, i.merged_at,
@@ -146,8 +153,8 @@ export async function readAdmissibleIssues(args: {
       FROM issues i
       JOIN projects ip ON ip.id = i.project_id
       WHERE i.project_id = ${a.projectId}
-        AND i.status = ${AUTONOMOUS_ENTRY_STATUS}
-        ${a.entryOnRelease ? sql`AND i.session_context ? 'runRelease'` : sql``}
+        AND i.status IN (${takeableList})
+        ${a.entryOnRelease ? sql`AND (i.status <> ${AUTONOMOUS_ENTRY_STATUS} OR i.session_context ? 'runRelease')` : sql``}
         -- a live blocks edge whose blocker has not reached one of BLOCKER_SETTLED_STATUSES holds
         -- this row out of the set. It is correlated on the ADMITTING project and not on
         -- d.to_issue_id alone, because issue_dependencies carries only the composite indexes

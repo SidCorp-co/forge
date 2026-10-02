@@ -29,6 +29,7 @@ import {
   lockWorkflows,
   readWorkflow,
   replaceWorkflow,
+  returnReasonsOf,
   type StoredWorkflow,
   workflowHolding,
   workflowsOf,
@@ -219,12 +220,21 @@ export async function updateWorkflow(input: {
   });
 }
 
-export function workflowView(row: StoredWorkflow, document: WorkflowWrite, writerName?: string) {
+export function workflowView(
+  row: StoredWorkflow,
+  document: WorkflowWrite,
+  writerName?: string,
+  returnReason?: string | null,
+) {
   return {
     revision: row.revision,
     writer: row.writtenByUser,
     writerName: writerName ?? row.writtenByUser,
-    design: { status: row.designStatus, approvedRevision: row.approvedRevision },
+    design: {
+      status: row.designStatus,
+      approvedRevision: row.approvedRevision,
+      ...(row.designStatus === 'returned' ? { returnReason: returnReason ?? null } : {}),
+    },
     document: {
       ...document,
       id: row.id,
@@ -237,8 +247,16 @@ export function workflowView(row: StoredWorkflow, document: WorkflowWrite, write
 export async function listWorkflowsAs(userId: string, projectId: string) {
   await assertProjectAccess(projectId, userId, 'viewer');
   const rows = await workflowsOf(db, projectId);
-  const names = await writerNames(rows);
-  return rows.map((row) => workflowView(row, storedWorkflow(row), names.get(row.writtenByUser)));
+  const [names, reasons] = await Promise.all([
+    writerNames(rows),
+    returnReasonsOf(
+      db,
+      rows.filter((r) => r.designStatus === 'returned').map((r) => r.id),
+    ),
+  ]);
+  return rows.map((row) =>
+    workflowView(row, storedWorkflow(row), names.get(row.writtenByUser), reasons.get(row.id)),
+  );
 }
 
 export async function readWorkflowAs(userId: string, projectId: string, id: string) {

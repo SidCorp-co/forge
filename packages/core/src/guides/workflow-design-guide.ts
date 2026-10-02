@@ -11,7 +11,7 @@ export const WORKFLOW_DESIGN_GUIDE: ForgeGuide = {
   title: 'Design a workflow first, build it once it is approved',
   summary:
     'A flow that does not exist yet is drawn as a workflow-v2 design, proposed, and approved by the project owner (or, once the owner says so, by the master) before any issue that builds it is dispatched.',
-  version: 4,
+  version: 5,
   body: `## Design a workflow first, build it once it is approved
 
 A new flow — a storefront journey, a pipeline, a state machine — is drawn before it is built, and its
@@ -27,15 +27,19 @@ names the workflow it builds is not dispatched while that design is not approved
    Steps nothing has built yet are \`designed\` and owe no evidence. Give each step its \`node\` (its type,
    a short business \`label\`, a \`purpose\`, and what its type requires) and each line \`after\` draws the
    contract its kind owes. A new v2 workflow is a **draft**.
-2. **Propose.** \`action=propose\` with the revision you wrote. The approver now sees it on
+2. **Propose.** \`action=propose\` with the revision you wrote and \`issue\`, the issue the design is
+   drawn under (a revision a later write proposes inherits it). The approver now sees it on
    \`/projects/<slug>/workflows/<flow>\` — send them that link.
-3. **Wait.** \`action=design\` reads the status: \`proposed\` waits, \`returned\` carries the approver's
-   reason, \`approved\` names the revision. A returned design is revised by writing it again, which
-   proposes the revision; there is nothing to re-send.
+3. **Wait.** The decision wakes this project's master. \`action=design\` reads the status: \`proposed\`
+   waits, \`returned\` carries the approver's reason, \`approved\` names the revision. A return reopens
+   the design's issue with the reason posted on it, and \`forge_issues get\` shows it under
+   \`proposesWorkflow\`, so the issue is admissible work again. A returned design is revised by writing
+   it again, which proposes the revision; there is nothing to re-send.
 4. **Link the build.** File the issues that build it, then \`action=link\` each one. Until the design is
    approved those issues are out of the admissible list, and a run or job claimed for one is refused
-   \`WORKFLOW_DESIGN_NOT_APPROVED\`; \`forge_issues get\` shows why under \`buildsWorkflow\`. Do not link
-   the issue the design itself is drawn under, or it waits on itself.
+   \`WORKFLOW_DESIGN_NOT_APPROVED\`; \`forge_issues get\` shows why under \`buildsWorkflow\`. Linking
+   the issue the design itself is drawn under is refused \`WORKFLOW_DESIGN_ISSUE_IS_BUILD\`: it would wait
+   on itself.
 5. **Build the approved revision only.** Build what the approved revision draws. When the code exists,
    refresh the workflow — steps \`current\`, evidence filled — which is a write that does not change the
    design and keeps it approved.
