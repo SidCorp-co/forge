@@ -44,4 +44,13 @@ describe("what a proposed design changes against the approved one", () => {
     expect(d.edges.get(edgeKey("a", "b"))).toBe("changed");
     expect(stepsWithRemoved(next, d).map((s) => s.id)).toEqual(["a", "c", "b"]);
   });
+
+  it("marks an added and a removed feedback edge, and reads an explicit flow kind as no change", () => {
+    const back = { kind: "feedback" as const, from: "b", to: "a", reevaluates: "a" };
+    const looped = body({ edges: [{ from: "a", to: "b", condition: "x" }, back] });
+    expect(Object.fromEntries(designDiff(body(), looped).edges)).toEqual({ [edgeKey("b", "a")]: "added" });
+    expect(Object.fromEntries(designDiff(looped, body()).edges)).toEqual({ [edgeKey("b", "a")]: "removed" });
+    const named = body({ edges: [{ kind: "flow", from: "a", to: "b", condition: "x" }] });
+    expect([...designDiff(body(), named).edges]).toEqual([]);
+  });
 });

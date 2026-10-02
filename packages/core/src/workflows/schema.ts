@@ -31,6 +31,10 @@ export const WORKFLOW_NODE_TYPES = [
   'STEP',
 ] as const;
 
+// cm:why a `flow` edge is a line `after` draws and orders; a `feedback` edge returns from a later step to an earlier one (an OUTCOME re-evaluating a RULE), so it orders nothing and is never part of the cycle check
+export const WORKFLOW_EDGE_KINDS = ['flow', 'feedback'] as const;
+export type WorkflowEdgeKind = (typeof WORKFLOW_EDGE_KINDS)[number];
+
 export const STOREFRONT_REF_KINDS = ['workflow', 'route', 'node'] as const;
 
 export const COVERAGE_READINGS = ['walked', 'not_walked', 'unmeasured'] as const;
@@ -164,8 +168,10 @@ export const workflowStepV2Schema = z.strictObject({
 export type WorkflowStepV2 = z.infer<typeof workflowStepV2Schema>;
 
 const edgeSchema = z.strictObject({
+  kind: z.enum(WORKFLOW_EDGE_KINDS).optional(),
   from: stepId(),
   to: stepId(),
+  reevaluates: contractText().optional(),
   condition: contractText().optional(),
   action: contractText().optional(),
   mapping: z
@@ -178,6 +184,10 @@ const edgeSchema = z.strictObject({
   onFailure: contractText().optional(),
 });
 export type WorkflowEdge = z.infer<typeof edgeSchema>;
+
+/** An edge's kind as written; an edge that names none is a `flow` edge, as every edge was before kinds. */
+export const edgeKindOf = (edge: Pick<WorkflowEdge, 'kind'>): WorkflowEdgeKind =>
+  edge.kind ?? 'flow';
 
 const workflowV2Fields = {
   ...workflowFields,

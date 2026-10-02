@@ -1,4 +1,4 @@
-import type { WorkflowKind, WorkflowStep } from "./types";
+import type { WorkflowEdgeContract, WorkflowKind, WorkflowStep } from "./types";
 
 export interface PlacedStep {
   step: WorkflowStep;
@@ -19,7 +19,11 @@ export interface Layout {
   nodeH: number;
   steps: PlacedStep[];
   edges: Edge[];
+  /** Feedback edges: a return from a later step to an earlier one, drawn as a curve back outside the columns. */
+  feedback: Edge[];
 }
+
+const LOOP_ROOM = 48;
 
 function depths(steps: readonly WorkflowStep[]): Map<string, number> {
   const byId = new Map(steps.map((s) => [s.id, s]));
@@ -38,7 +42,11 @@ function depths(steps: readonly WorkflowStep[]): Map<string, number> {
   return memo;
 }
 
-export function layoutOf(steps: readonly WorkflowStep[], kind: WorkflowKind): Layout {
+export function layoutOf(
+  steps: readonly WorkflowStep[],
+  kind: WorkflowKind,
+  contracts: readonly WorkflowEdgeContract[] = [],
+): Layout {
   const vertical = kind === "state";
   const nodeW = vertical ? 132 : 140;
   const nodeH = vertical ? 38 : 58;
@@ -90,9 +98,32 @@ export function layoutOf(steps: readonly WorkflowStep[], kind: WorkflowKind): La
       return [{ from: a, to: s.id, d: `M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}` }];
     }),
   );
+  const returns = contracts.filter((c) => c.kind === "feedback");
+  const feedback: Edge[] = returns.flatMap((c, i) => {
+    const p = pos.get(c.from);
+    const q = pos.get(c.to);
+    if (!p || !q) return [];
+    const reach = LOOP_ROOM * (0.6 + (0.4 * (i + 1)) / returns.length);
+    if (vertical) {
+      const x1 = p.x + nodeW;
+      const y1 = p.y + nodeH / 2;
+      const x2 = q.x + nodeW + 2;
+      const y2 = q.y + nodeH / 2;
+      const out = Math.max(x1, x2) + reach;
+      return [{ from: c.from, to: c.to, d: `M${x1} ${y1} C${out} ${y1} ${out} ${y2} ${x2} ${y2}` }];
+    }
+    const x1 = p.x + nodeW / 2;
+    const y1 = p.y + nodeH;
+    const x2 = q.x + nodeW / 2;
+    const y2 = q.y + nodeH + 2;
+    const low = Math.max(y1, y2) + reach;
+    return [{ from: c.from, to: c.to, d: `M${x1} ${y1} C${x1} ${low} ${x2} ${low} ${x2} ${y2}` }];
+  });
+  const room = feedback.length > 0 ? LOOP_ROOM : 0;
   return {
-    width,
-    height,
+    width: vertical ? width + room : width,
+    height: vertical ? height : height + room,
+    feedback,
     nodeW,
     nodeH,
     steps: steps.map((s) => ({ step: s, ...(pos.get(s.id) ?? { x: 0, y: 0 }) })),

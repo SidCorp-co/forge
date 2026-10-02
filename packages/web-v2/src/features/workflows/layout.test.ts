@@ -38,6 +38,23 @@ describe("a stored workflow drawn as a diagram", () => {
     expect((b?.y ?? 0) > (a?.y ?? 0)).toBe(true);
   });
 
+  it("draws a feedback edge back under the columns, never as an ordering line", () => {
+    const flat = layoutOf(release, "flow");
+    const l = layoutOf(release, "flow", [
+      { kind: "feedback", from: "reap", to: "stamp", reevaluates: "the stamp" },
+      { from: "stamp", to: "close", condition: "x" },
+    ]);
+    expect(l.edges).toEqual(flat.edges);
+    expect(l.feedback.map((e) => `${e.from}>${e.to}`)).toEqual(["reap>stamp"]);
+    expect(l.height).toBeGreaterThan(flat.height);
+    const ys = (l.feedback[0]?.d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+    expect(Math.max(...ys)).toBeGreaterThan(flat.height);
+  });
+
+  it("draws no feedback edge to a step it cannot find", () => {
+    expect(layoutOf(release, "flow", [{ kind: "feedback", from: "gone", to: "stamp" }]).feedback).toEqual([]);
+  });
+
   it("counts only the steps the integration suite walked", () => {
     expect(walkedOf(release)).toEqual({ walked: 3, total: 4 });
   });

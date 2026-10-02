@@ -13,7 +13,11 @@ export const edgeKey = (from: string, to: string) => `${from}>${to}`;
 const designOf = (s: WorkflowStep) =>
   JSON.stringify({ title: s.title ?? null, does: s.does, after: [...s.after].sort(), node: s.node ?? null });
 
-const contractOf = (e: WorkflowEdgeContract | undefined) => JSON.stringify(e ?? null);
+const contractOf = (e: WorkflowEdgeContract | undefined) => {
+  if (!e) return "null";
+  const { kind, ...rest } = e;
+  return JSON.stringify(kind === "feedback" ? e : rest);
+};
 
 /** What the proposed revision changes against the approved one, in the terms its approver decides on. */
 export function designDiff(approved: WorkflowBody, proposed: WorkflowBody): DesignDiff {
@@ -60,5 +64,7 @@ export function contractText(e: WorkflowEdgeContract): string {
     e.idempotency ? `once: ${e.idempotency}` : null,
     e.onFailure ? `on failure: ${e.onFailure}` : null,
   ];
-  return [`${e.from} → ${e.to}`, ...lines.filter((l): l is string => l !== null)].join("\n");
+  const head = e.kind === "feedback" ? `${e.from} ↩ ${e.to} (feedback)` : `${e.from} → ${e.to}`;
+  const back = e.kind === "feedback" && e.reevaluates ? [`re-evaluates ${e.reevaluates}`] : [];
+  return [head, ...back, ...lines.filter((l): l is string => l !== null)].join("\n");
 }

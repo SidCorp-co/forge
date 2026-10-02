@@ -11,7 +11,7 @@ export const WORKFLOW_DESIGN_GUIDE: ForgeGuide = {
   title: 'Design a workflow first, build it once it is approved',
   summary:
     'A flow that does not exist yet is drawn as a workflow-v2 design, proposed, and approved by the project owner (or, once the owner says so, by the master) before any issue that builds it is dispatched.',
-  version: 1,
+  version: 2,
   body: `## Design a workflow first, build it once it is approved
 
 A new flow — a storefront journey, a pipeline, a state machine — is drawn before it is built, and its
@@ -36,9 +36,27 @@ names the workflow it builds is not dispatched while that design is not approved
    refresh the workflow — steps \`current\`, evidence filled — which is a write that does not change the
    design and keeps it approved.
 
+### A loop is a feedback edge, not a step
+\`after\` orders the steps, so a loop in it is refused \`WORKFLOW_AFTER_CYCLE\`. A design whose later step
+genuinely returns to an earlier one — an OUTCOME that updates the context so a RULE is evaluated again and
+raises a new EXPECTATION — declares that return in \`edges\`, not in \`after\`, and never as a renamed
+copy of the earlier step (that draws two rules where the system has one):
+
+\`{ kind: "feedback", from: "outcome", to: "followup-rule", reevaluates: "follow-up rule against the updated context", condition, action, mapping, idempotency, onFailure }\`
+
+- Use it only when the later step's result really re-enters the earlier one. A line forward is a plain
+  edge (\`kind\` omitted or \`flow\`); a feedback edge whose \`to\` is not a step its \`from\` comes
+  after is refused \`WORKFLOW_FEEDBACK_EDGE_FORWARD\`.
+- It orders nothing and is outside the cycle check, so it pays with its whole contract: no
+  \`reevaluates\` is \`WORKFLOW_FEEDBACK_REEVALUATES_MISSING\`, and any of condition, action, mapping,
+  idempotency or onFailure missing is \`WORKFLOW_FEEDBACK_CONTRACT_INCOMPLETE\`. Idempotency and
+  onFailure are what stop a loop running for ever. \`reevaluates\` on a flow edge is
+  \`WORKFLOW_EDGE_REEVALUATES_ON_FLOW\`.
+- The diagram draws it as a dashed arrow curving back, with its contract on hover.
+
 ### What sends a design back to its approver
 A write that changes the design — a step added, removed, renamed or re-described, its order, its node, an
-edge contract — moves an approved design back to \`proposed\`, and its linked issues stop dispatching
+edge contract, a feedback edge added or removed — moves an approved design back to \`proposed\`, and its linked issues stop dispatching
 until it is approved again. The approved revision stays readable, so the approver sees what changed.
 Status, evidence and coverage are the code's reading of itself and move nothing.
 

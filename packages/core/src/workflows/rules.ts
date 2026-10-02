@@ -8,12 +8,14 @@ import {
   parseVersionedDocument,
   pointer,
 } from '../project-config/documents.js';
+import { edgeRefusals } from './edges.js';
 import {
   type AnyWorkflowStep,
   COVERAGE_READINGS,
   EVIDENCE_KINDS,
   evidenceKindOf,
   stepsOf,
+  WORKFLOW_EDGE_KINDS,
   WORKFLOW_KINDS,
   WORKFLOW_NODE_TYPES,
   WORKFLOW_V2_STATUSES,
@@ -43,6 +45,11 @@ export type WorkflowRefusalCode =
   | 'WORKFLOW_EDGE_DANGLING'
   | 'WORKFLOW_EDGE_UNDRAWN'
   | 'WORKFLOW_EDGE_DUPLICATE'
+  | 'WORKFLOW_EDGE_KIND_UNKNOWN'
+  | 'WORKFLOW_FEEDBACK_EDGE_FORWARD'
+  | 'WORKFLOW_FEEDBACK_REEVALUATES_MISSING'
+  | 'WORKFLOW_FEEDBACK_CONTRACT_INCOMPLETE'
+  | 'WORKFLOW_EDGE_REEVALUATES_ON_FLOW'
   | 'WORKFLOW_DUPLICATE'
   | 'WORKFLOW_IDENTITY_IMMUTABLE'
   | 'PATH_OUTSIDE_REPO'
@@ -76,6 +83,11 @@ const ENUM_RENAMES: readonly [RegExp, WorkflowRefusalCode, string][] = [
     /^\/steps\/\d+\/evidence\/kind$/,
     'WORKFLOW_EVIDENCE_KIND_UNKNOWN',
     `a version 2 evidence names its kind, ${closed(EVIDENCE_KINDS)}`,
+  ],
+  [
+    /^\/edges\/\d+\/kind$/,
+    'WORKFLOW_EDGE_KIND_UNKNOWN',
+    `an edge's kind is ${closed(WORKFLOW_EDGE_KINDS)}; an edge that names none is a flow edge`,
   ],
   [
     /^\/steps\/\d+\/evidence\/coverage\/reading$/,
@@ -219,7 +231,7 @@ function afterCycle(steps: readonly AnyWorkflowStep[]): WorkflowRefusal[] {
     {
       code: 'WORKFLOW_AFTER_CYCLE',
       path: pointer(['steps', at, 'after']),
-      detail: `the \`after\` edges close a loop (${[...cycle].reverse().join(' → ')}); a workflow's steps are ordered, so no step may come after itself. A state machine that returns to a state draws that return as a step of its own name.`,
+      detail: `the \`after\` edges close a loop (${[...cycle].reverse().join(' → ')}); a workflow's steps are ordered, so no step may come after itself. A return to an earlier step — an outcome that re-evaluates a rule — is not an \`after\` line: take it out of \`after\` and declare it in \`edges\` as \`{ kind: "feedback", from: <the later step>, to: <the earlier step>, reevaluates, condition, action, mapping, idempotency, onFailure }\`, which orders nothing and is never part of this check.`,
     },
   ];
 }
@@ -301,43 +313,6 @@ export function evidenceSourceRefusals(
         detail: `step "${s.id}" names ${held} as evidence; this project's source is ${source.kind === 'storefront' ? `a ${source.provider} storefront` : 'a repository'}, so its evidence is ${wanted}.`,
       },
     ];
-  });
-}
-
-function edgeRefusals(doc: WorkflowWrite): WorkflowRefusal[] {
-  if (doc.version !== 2 || !doc.edges) return [];
-  const byId = new Map(doc.steps.map((s) => [s.id, s]));
-  const seen = new Set<string>();
-  return doc.edges.flatMap((e, j): WorkflowRefusal[] => {
-    const at = (key: string) => pointer(['edges', j, key]);
-    const missing = (['from', 'to'] as const).filter((k) => !byId.has(e[k]));
-    if (missing.length > 0) {
-      return missing.map((k) => ({
-        code: 'WORKFLOW_EDGE_DANGLING' as const,
-        path: at(k),
-        detail: `edge ${e.from} → ${e.to} names "${e[k]}", which is no step of this workflow.`,
-      }));
-    }
-    const key = `${e.from}\u0000${e.to}`;
-    if (seen.has(key)) {
-      return [
-        {
-          code: 'WORKFLOW_EDGE_DUPLICATE',
-          path: pointer(['edges', j]),
-          detail: `edge ${e.from} → ${e.to} carries its contract twice; one edge has one contract.`,
-        },
-      ];
-    }
-    seen.add(key);
-    return byId.get(e.to)?.after.includes(e.from)
-      ? []
-      : [
-          {
-            code: 'WORKFLOW_EDGE_UNDRAWN',
-            path: pointer(['edges', j]),
-            detail: `edge ${e.from} → ${e.to} carries a contract for a line the steps do not draw; step "${e.to}" lists "${e.from}" in its \`after\` first.`,
-          },
-        ];
   });
 }
 
