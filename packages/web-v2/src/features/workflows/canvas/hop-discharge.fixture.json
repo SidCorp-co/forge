@@ -1,0 +1,687 @@
+{
+ "$schema": "https://forge.sidcorp.co/schemas/workflow-v2.json",
+ "version": 2,
+ "project": "d180bdca-a927-4b11-b370-fa2ec923dba4",
+ "flow": "discharge-post-care",
+ "kind": "flow",
+ "title": "Discharge → Post-care",
+ "summary": "From HIS's patient.discharged to a booked follow-up: facts, context, post-discharge rules, state, expectation, case, three tasks with owners and SLAs, actions, outcome, and the feedback that re-runs the rules (hop-architecture §7, §10).",
+ "status": "designed",
+ "steps": [
+  {
+   "id": "discharge-event",
+   "title": "N-101 Discharge Event",
+   "does": "Source of truth: HIS owns the discharge fact; HOP stores the message and never edits it.\nIdempotency: one row per HIS event_id; a correction (same encounter, higher version) supersedes; an equal or lower version is a no-op.\nExceptions: deceased or transfer-out -> post_discharge.not_applicable, no outreach. Bad signature -> 401 from the signed route before any node runs; no row.\nAudit: raw payload, signature result and received_at kept with the row.\nAutoflow (planned): route POST /hop/his/discharge (auth signed) -> workflow hop-discharge-intake, node http_in.",
+   "status": "designed",
+   "after": [],
+   "evidence": null,
+   "node": {
+    "type": "EVENT",
+    "purpose": "patient.discharged has happened: HIS reports an inpatient discharge, which starts the post-care journey.",
+    "inputs": [
+     "HIS discharge message: event_id, version, encounter_id, patient_id, discharged_at, disposition"
+    ],
+    "outputs": [
+     "hop_discharge_events row: event_id, episode_id, version, raw payload"
+    ],
+    "owner": "HOP integration owner (platform ops)",
+    "sla": "acknowledged to HIS within 5s"
+   }
+  },
+  {
+   "id": "collect-facts",
+   "title": "N-102 Collect Facts",
+   "does": "Source of truth: HIS/EMR (procedures, diagnosis) and Scheduling (appointments); the snapshot is a cached reading, re-read on re-evaluation.\nIdempotency: snapshot keyed by (episode_id, event version); a re-read replaces it.\nOn failure: a source silent after 3 tries sets facts_complete=false and raises attention 'source facts unavailable'.\nAudit: each fact kept with its source system, source record id and read time.\nAutoflow (planned): workflow hop-discharge-intake, nodes http_request his_episode and scheduling_appointments (secrets his_api_key, scheduling_api_key).",
+   "status": "designed",
+   "after": [
+    "discharge-event"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "STEP",
+    "purpose": "SOURCE read (§3 type SOURCE, which the design schema lacks): fetch the episode's facts from the systems that own them, without taking over their truth.",
+    "inputs": [
+     "episode_id, patient_id (N-101)",
+     "HIS/EMR episode: procedures, diagnosis, discharge flags",
+     "Scheduling: future appointments for patient_id"
+    ],
+    "outputs": [
+     "hop_episode_facts snapshot: had_surgery, appointment_within_14d, facts_complete"
+    ],
+    "owner": "HOP integration owner (platform ops)",
+    "sla": "within 2 min of N-101"
+   }
+  },
+  {
+   "id": "patient-context",
+   "title": "N-103 Patient Context",
+   "does": "Source of truth: HOP owns relationship, consent and service context; identity is matched on the HIS patient_id.\nPermissions: contact_consent decides whether anyone may contact the patient; caregiver_info_consent whether the caregiver may hear about the episode.\nIdempotency: read-only; the snapshot used is stored with the evaluation that read it.\nExceptions: no HOP patient, or more than one, matches -> attention 'identity unresolved'.\nAutoflow (planned): workflow hop-discharge-intake, nodes db_query patient_context, care_circle, consent.",
+   "status": "designed",
+   "after": [
+    "collect-facts"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "CONTEXT",
+    "purpose": "Know who was discharged and in what circumstances: VIP/service class, caregiver and care circle, consent, preferred channel.",
+    "inputs": [
+     "patient_id",
+     "hop_patient_context",
+     "hop_care_circle",
+     "hop_consent"
+    ],
+    "outputs": [
+     "context snapshot: vip, service_class, caregiver, contact_consent, caregiver_info_consent, preferred_channel"
+    ],
+    "owner": "Patient relations team (HOP)"
+   }
+  },
+  {
+   "id": "post-discharge-rules",
+   "title": "N-104 Post-discharge Rules",
+   "does": "Context: had_surgery, appt_in_14d, vip, contact_consent, journey flags.\nConditions: rule set post_discharge. R1 surgery AND no appt in 14d AND NOT (booked|declined|unreachable_closed|consent_refused) -> required. R2 required AND vip -> high + coordinator. R3 required AND NOT contact_consent -> consent_missing.\nTests: VIP surgery, no appt -> required/high/coord; surgery+appt -> no; no surgery -> no; no consent -> consent_missing.\nIdempotency: same inputs + rule_version -> same outputs.\nAudit: inputs + rule_version kept.\nAutoflow (planned): workflow hop-post-discharge-evaluate, node code rules.",
+   "status": "designed",
+   "after": [
+    "patient-context"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "RULE",
+    "purpose": "Turn facts and context into decisions: whether follow-up is required, its priority, and whether a coordinator is required.",
+    "inputs": [
+     "facts snapshot (N-102)",
+     "context snapshot (N-103)",
+     "journey flags on re-evaluation: booked, declined, unreachable_closed, consent_refused"
+    ],
+    "outputs": [
+     "follow_up_required",
+     "priority: high | normal",
+     "coordinator_required",
+     "consent_missing",
+     "rule_version"
+    ],
+    "owner": "Clinical operations lead (owns the rule set)"
+   }
+  },
+  {
+   "id": "operational-state",
+   "title": "N-105 Operational State",
+   "does": "Source of truth: HOP owns derived state; it is never written back to HIS.\nIdempotency: one current state per episode_id; re-evaluation writes a new version and keeps the history.\nAudit: each version cites the facts snapshot, context snapshot and rule_version it came from (provenance, §4).\nAutoflow (planned): workflow hop-post-discharge-evaluate, node db_update episode_state.",
+   "status": "designed",
+   "after": [
+    "post-discharge-rules"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "STATE",
+    "purpose": "Record the operational reality the rules derived for this episode.",
+    "inputs": [
+     "N-104 outputs",
+     "episode_id"
+    ],
+    "outputs": [
+     "hop_episode_state: post_discharge.required | .high_priority | .consent_missing | .not_required | .not_applicable"
+    ],
+    "owner": "HOP platform (derived; no person edits it)"
+   }
+  },
+  {
+   "id": "expected-next-state",
+   "title": "N-106 Expected Next State",
+   "does": "Escalation: due_at passing with the expectation unmet raises attention 'expectation overdue'.\nIdempotency: one open expectation per (episode_id, expected state); re-evaluation moves due_at, never adds a second.\nExceptions: state not_required withdraws an open expectation with its reason.\nAutoflow (planned): workflow hop-post-discharge-evaluate, node db_insert expectations.",
+   "status": "designed",
+   "after": [
+    "operational-state"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "EXPECTATION",
+    "purpose": "Say what must happen next and by when: followup.booked by its due time.",
+    "inputs": [
+     "state (N-105)",
+     "priority"
+    ],
+    "outputs": [
+     "hop_expectations row: expected followup.booked, due_at"
+    ],
+    "owner": "Care Coordination lead",
+    "sla": "booked <=24h (high) / <=72h (normal)"
+   }
+  },
+  {
+   "id": "post-discharge-case",
+   "title": "N-107 Post-discharge Case",
+   "does": "Source of truth: HOP owns the case; HIS is not told of it.\nEscalation: no case owner within 1h, or open past 7 days -> attention; chain case owner -> Care Coordination lead -> Operations manager.\nIdempotency: one active case per discharge episode.\nMetrics: cases opened per day, % closed with followup.booked, median time to close.\nAutoflow (planned): workflow hop-post-discharge-evaluate, nodes db_query + db_insert/db_update cases.",
+   "status": "designed",
+   "after": [
+    "expected-next-state"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "CASE",
+    "purpose": "One container tracking the post-discharge process across its tasks until the expectation is met or the case is closed out.",
+    "inputs": [
+     "expectation (N-106)",
+     "patient_id, episode_id, priority"
+    ],
+    "outputs": [
+     "hop_cases row: case_id, status open, priority, case owner"
+    ],
+    "owner": "Care Coordination lead (case owner by default)",
+    "sla": "closed within 7 days of discharge"
+   }
+  },
+  {
+   "id": "assign-coordinator",
+   "title": "N-108a Assign Coordinator",
+   "does": "Expected outcome: a named coordinator on the case.\nPermissions: the VIP desk lead assigns; the coordinator gains the case and only the context the patient consented to share.\nEscalation: overdue -> Operations manager.\nIdempotency: one open assign task per case.\nAutoflow (planned): workflow hop-post-discharge-evaluate, node db_insert tasks (type assign_coordinator).",
+   "status": "designed",
+   "after": [
+    "post-discharge-case"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "TASK",
+    "purpose": "Give a VIP patient's case a named coordinator before outreach.",
+    "inputs": [
+     "case (N-107)",
+     "coordinator_required",
+     "coordinator roster"
+    ],
+    "outputs": [
+     "case.coordinator_id set"
+    ],
+    "owner": "VIP service desk lead",
+    "sla": "within 2h of case creation"
+   }
+  },
+  {
+   "id": "contact-patient",
+   "title": "N-108b Contact Patient",
+   "does": "Expected outcome: patient or caregiver reached; follow-up agreed or declined.\nPermissions: only with contact_consent; caregiver only with caregiver_info_consent; none -> attention, no contact.\nEscalation: overdue -> Care Coordination lead; 3 unreachable attempts -> attention 'patient unreachable'.\nIdempotency: one open contact task per case; each attempt is an action, not a task.\nMetrics: time to first contact, reach rate, attempts per reach.\nAutoflow (planned): workflow hop-post-discharge-evaluate, node db_insert tasks (type contact_patient).",
+   "status": "designed",
+   "after": [
+    "post-discharge-case",
+    "assign-coordinator"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "TASK",
+    "purpose": "Reach the patient, or the consented caregiver, to check recovery and agree a follow-up.",
+    "inputs": [
+     "case",
+     "preferred_channel",
+     "contact_consent, caregiver_info_consent",
+     "coordinator when assigned"
+    ],
+    "outputs": [
+     "contact result: reached-agreed | reached-declined | unreachable"
+    ],
+    "owner": "Assigned coordinator, else care call-centre agent",
+    "sla": "<=4h (high) / <=24h (normal) from case"
+   }
+  },
+  {
+   "id": "book-follow-up",
+   "title": "N-108c Book Follow-up",
+   "does": "Source of truth: Scheduling owns the appointment; HOP holds only its id.\nExpected outcome: appointment booked and confirmed by its Scheduling id.\nPermissions: staff with Scheduling booking rights; the patient's agreement is recorded on the action.\nEscalation: overdue -> Care Coordination lead.\nIdempotency: one open booking task per case.\nMetrics: % booked by due_at, time contact -> booking.\nAutoflow (planned): workflow hop-record-action, node db_insert tasks (type book_follow_up).",
+   "status": "designed",
+   "after": [
+    "contact-patient"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "TASK",
+    "purpose": "Book the follow-up appointment in Scheduling once the patient agrees.",
+    "inputs": [
+     "contact result reached-agreed",
+     "case",
+     "Scheduling availability"
+    ],
+    "outputs": [
+     "Scheduling appointment_id on the case"
+    ],
+    "owner": "Assigned coordinator, else care call-centre agent",
+    "sla": "by the expectation's due_at"
+   }
+  },
+  {
+   "id": "operational-actions",
+   "title": "N-109 Operational Actions",
+   "does": "Permissions: staff act only on tasks of theirs or their team; Zalo/SMS only under contact consent.\nIdempotency: key minted when staff press save; a retry replays and never re-sends a Zalo or re-books.\nOn failure: a Scheduling/Zalo error saves the action as failed with its reason, leaves the task open, raises attention.\nAudit: who, when, what, channel, external reference.\nAutoflow (planned): route POST /hop/actions (auth end_user) -> workflow hop-record-action, nodes http_in, http_request scheduling_book / zalo_send, db_insert actions.",
+   "status": "designed",
+   "after": [
+    "assign-coordinator",
+    "contact-patient",
+    "book-follow-up",
+    "sla-attention"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "ACTION",
+    "purpose": "Record what staff actually did on a task: call, Zalo, book, assign, escalate.",
+    "inputs": [
+     "task_id",
+     "action type, channel, notes",
+     "staff user (signed in)",
+     "Idempotency-Key minted at save"
+    ],
+    "outputs": [
+     "hop_actions row",
+     "Scheduling booking or Zalo message where the action is one"
+    ],
+    "owner": "The staff member who acts"
+   }
+  },
+  {
+   "id": "outcome",
+   "title": "N-110 Outcome",
+   "does": "Source of truth: 'booked' needs a Scheduling appointment_id; HOP never asserts a booking Scheduling has not confirmed.\nIdempotency: one outcome per action_id.\nAudit: the outcome cites its action and external reference.\nMetrics: outcome mix per day, % booked, % unreachable.\nAutoflow (planned): workflow hop-record-action, node db_insert outcomes.",
+   "status": "designed",
+   "after": [
+    "operational-actions"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "OUTCOME",
+    "purpose": "Structure the result of an action: booked, completed, declined, unreachable, escalated, resolved, consent_granted, consent_refused.",
+    "inputs": [
+     "action (N-109)",
+     "Scheduling appointment_id for booked"
+    ],
+    "outputs": [
+     "hop_outcomes row: code, action_id, task_id, case_id"
+    ],
+    "owner": "HOP platform (derived from the action)"
+   }
+  },
+  {
+   "id": "sla-attention",
+   "title": "SLA & Attention Sweep",
+   "does": "Escalation: task owner -> Care Coordination lead -> Operations manager, each after its SLA lapses; consent_missing goes to Patient relations, who record consent_granted or consent_refused.\nIdempotency: one open item per (subject_id, reason); a sweep re-finding it does not duplicate.\nMetrics: open items, SLA breach rate, time to acknowledge.\nAutoflow (planned): workflow hop-attention-sweep, nodes schedule_trigger '*/5 * * * *', db_query (all_owners), for_each, db_insert attention.",
+   "status": "designed",
+   "after": [
+    "expected-next-state",
+    "post-discharge-case",
+    "assign-coordinator",
+    "contact-patient",
+    "book-follow-up"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "ATTENTION",
+    "purpose": "Surface what needs a person now: overdue task or expectation, no owner, unreachable, consent missing, source facts unavailable, identity unresolved.",
+    "inputs": [
+     "hop_tasks, hop_expectations, hop_cases: due_at, owner",
+     "items raised by any edge's onFailure"
+    ],
+    "outputs": [
+     "hop_attention items: reason, severity, assignee",
+     "escalation to the next owner in the chain"
+    ],
+    "owner": "Care Coordination lead (attention queue owner)",
+    "sla": "sweep every 5 min; acknowledged <=1h"
+   }
+  },
+  {
+   "id": "journey-update",
+   "title": "Journey / Context Updated",
+   "does": "Idempotency: applied once per outcome_id; re-evaluation keyed by (episode_id, outcome_id).\nAudit: journey history records the outcome that moved it.\nAutoflow (planned): workflow hop-record-action, nodes db_update journeys, db_update patient_context, http_request POST /hop/post-discharge/evaluate.",
+   "status": "designed",
+   "after": [
+    "outcome"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "CONTEXT",
+    "purpose": "Feedback (§6): apply the outcome to journey, context and state so the rules see what happened.",
+    "inputs": [
+     "outcome (N-110)"
+    ],
+    "outputs": [
+     "hop_journeys stage",
+     "context flags: booked, declined, unreachable_count, unreachable_closed, consent_refused",
+     "hop_consent updated on consent_granted / consent_refused",
+     "re-evaluation request"
+    ],
+    "owner": "HOP platform"
+   }
+  },
+  {
+   "id": "rule-reevaluation",
+   "title": "Rule Reevaluation (N-104 re-run)",
+   "does": "Context: had_surgery, appointment_within_14d (re-read), vip, journey flags.\nConditions: runs rule set post_discharge (N-104) at its current rule_version; defines no rule of its own. Still required -> updates in place. Not required -> case_closable.\nTests: booked, declined, unreachable_closed or consent_refused -> closable; consent granted -> still required, contact task opens.\nIdempotency: one per (episode_id, outcome_id).\nAudit: inputs + rule_version kept.\nAutoflow (planned): workflow hop-post-discharge-evaluate, node code rules, called by http_request from N-109's workflow.",
+   "status": "designed",
+   "after": [
+    "journey-update"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "RULE",
+    "purpose": "Feedback (§6): re-run the N-104 rule set on the updated journey, so the case moves to completion or its expectation is reset. Drawn as its own step because the design schema orders steps and refuses a line back to N-104.",
+    "inputs": [
+     "journey flags: booked, declined, unreachable_closed, consent_refused",
+     "facts re-read from HIS and Scheduling",
+     "context snapshot"
+    ],
+    "outputs": [
+     "state version on N-105's key (episode_id)",
+     "expectation updated or withdrawn on N-106's key (episode_id, followup.booked)",
+     "case updated on N-107's key (episode_id): priority, case_closable"
+    ],
+    "owner": "Clinical operations lead (owns the rule set)"
+   }
+  },
+  {
+   "id": "case-closed",
+   "title": "Case Closed",
+   "does": "Conditions: case_closable AND no open task on the case.\nIdempotency: closing a closed case is a no-op.\nMetrics: % closed booked within SLA, time to close, reopen rate.\nAutoflow (planned): workflow hop-post-discharge-evaluate, nodes branch + db_update cases.",
+   "status": "designed",
+   "after": [
+    "rule-reevaluation"
+   ],
+   "evidence": null,
+   "node": {
+    "type": "OUTCOME",
+    "purpose": "Close the case on an explicit condition and record its final outcome.",
+    "inputs": [
+     "case",
+     "case_closable (Rule Reevaluation)",
+     "open tasks"
+    ],
+    "outputs": [
+     "case status closed, close_reason: booked | declined | unreachable | consent_refused | not_applicable"
+    ],
+    "owner": "Case owner"
+   }
+  }
+ ],
+ "drift": null,
+ "writtenBy": {
+  "sessionId": "588752fb-4413-4a8d-aaa8-5c86b773b170"
+ },
+ "refreshedAtSha": null,
+ "edges": [
+  {
+   "from": "discharge-event",
+   "to": "collect-facts",
+   "condition": "signature valid AND event new or a newer version AND disposition not deceased/transfer-out",
+   "action": "load_source_facts",
+   "mapping": {
+    "episode_id": "event.encounter_id",
+    "patient_id": "event.patient_id",
+    "discharged_at": "event.discharged_at"
+   },
+   "idempotency": "one facts read per (episode_id, event version)",
+   "onFailure": "bad signature: 401 from the signed route, non-retryable, no row, kept in the run log; a run failing after a valid signature answers 5xx so HIS redelivers (the failed run releases the key); after 3 deliveries raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "collect-facts",
+   "to": "patient-context",
+   "condition": "HIS episode read succeeded",
+   "action": "enrich_context",
+   "mapping": {
+    "episode_id": "facts.episode_id",
+    "patient_id": "facts.patient_id"
+   },
+   "idempotency": "read-only; one context snapshot per evaluation",
+   "onFailure": "facts_complete=false -> raise attention item (sla-attention) with the reason and subject id ('source facts unavailable')"
+  },
+  {
+   "from": "patient-context",
+   "to": "post-discharge-rules",
+   "condition": "exactly one HOP patient matched",
+   "action": "evaluate_rules",
+   "mapping": {
+    "facts": "facts snapshot",
+    "context": "context snapshot"
+   },
+   "idempotency": "one evaluation per (episode_id, event version) at intake",
+   "onFailure": "identity unresolved -> raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "journey-update",
+   "to": "rule-reevaluation",
+   "condition": "the outcome changed a rule input (booked, declined, unreachable_closed, consent_granted, consent_refused)",
+   "action": "re_evaluate_rules",
+   "mapping": {
+    "episode_id": "journey.episode_id",
+    "journey_flags": "journey.flags"
+   },
+   "idempotency": "one re-evaluation per (episode_id, outcome_id)",
+   "onFailure": "retry 3 times, then raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "post-discharge-rules",
+   "to": "operational-state",
+   "condition": "always",
+   "action": "write_derived_state",
+   "mapping": {
+    "state": "derived.state",
+    "priority": "derived.priority",
+    "episode_id": "episode.id",
+    "rule_version": "rules.version"
+   },
+   "idempotency": "one current state per episode; new version on change",
+   "onFailure": "keep previous state, raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "operational-state",
+   "to": "expected-next-state",
+   "condition": "follow_up_required == true",
+   "action": "create_or_update_expectation",
+   "mapping": {
+    "due_at": "discharged_at + 24h (high) / 72h (normal)",
+    "episode_id": "episode.id"
+   },
+   "idempotency": "one open expectation per (episode_id, followup.booked)",
+   "onFailure": "raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "expected-next-state",
+   "to": "post-discharge-case",
+   "condition": "expectation open",
+   "action": "create_or_update_case",
+   "mapping": {
+    "priority": "derived.priority",
+    "episode_id": "episode.id",
+    "patient_id": "patient.id"
+   },
+   "idempotency": "one active case per discharge episode",
+   "onFailure": "create_attention_item"
+  },
+  {
+   "from": "post-discharge-case",
+   "to": "assign-coordinator",
+   "condition": "coordinator_required == true AND case has no coordinator",
+   "action": "create_task assign_coordinator",
+   "mapping": {
+    "due_at": "case.created_at + 2h",
+    "case_id": "case.id"
+   },
+   "idempotency": "one open assign task per case",
+   "onFailure": "raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "post-discharge-case",
+   "to": "contact-patient",
+   "condition": "case open AND contact_consent granted AND (coordinator not required OR assigned)",
+   "action": "create_task contact_patient",
+   "mapping": {
+    "due_at": "case.created_at + 4h (high) / 24h (normal)",
+    "case_id": "case.id",
+    "channel": "context.preferred_channel"
+   },
+   "idempotency": "one open contact task per case",
+   "onFailure": "no consent or no owner -> raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "assign-coordinator",
+   "to": "contact-patient",
+   "condition": "coordinator assigned",
+   "action": "set contact task owner to the coordinator",
+   "mapping": {
+    "task.owner_id": "case.coordinator_id"
+   },
+   "idempotency": "owner set once per assignment; reassignment replaces it",
+   "onFailure": "raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "contact-patient",
+   "to": "book-follow-up",
+   "condition": "contact result reached-agreed",
+   "action": "create_task book_follow_up",
+   "mapping": {
+    "due_at": "expectation.due_at",
+    "case_id": "case.id"
+   },
+   "idempotency": "one open booking task per case",
+   "onFailure": "raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "assign-coordinator",
+   "to": "operational-actions",
+   "condition": "staff saves an action on the task",
+   "action": "record_action assign",
+   "mapping": {
+    "task_id": "task.id",
+    "coordinator_id": "action.coordinator_id"
+   },
+   "idempotency": "Idempotency-Key minted at save",
+   "onFailure": "action saved failed, task stays open, raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "contact-patient",
+   "to": "operational-actions",
+   "condition": "staff saves an action on the task",
+   "action": "record_action call | zalo | sms",
+   "mapping": {
+    "result": "action.result",
+    "channel": "action.channel",
+    "task_id": "task.id"
+   },
+   "idempotency": "Idempotency-Key minted at save",
+   "onFailure": "action saved failed, task stays open, raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "book-follow-up",
+   "to": "operational-actions",
+   "condition": "staff saves a booking",
+   "action": "record_action book via Scheduling",
+   "mapping": {
+    "slot": "action.slot",
+    "task_id": "task.id"
+   },
+   "idempotency": "Idempotency-Key minted at save; Scheduling call carries Idempotency-Key = task_id",
+   "onFailure": "Scheduling error -> action failed, task open, raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "sla-attention",
+   "to": "operational-actions",
+   "condition": "an attention item is escalated or resolved",
+   "action": "record_action escalate | resolve",
+   "mapping": {
+    "to_owner": "next owner in chain",
+    "attention_id": "item.id"
+   },
+   "idempotency": "one escalation per (item, chain level)",
+   "onFailure": "retry next sweep"
+  },
+  {
+   "from": "operational-actions",
+   "to": "outcome",
+   "condition": "action saved",
+   "action": "record_outcome",
+   "mapping": {
+    "code": "action.result",
+    "action_id": "action.id",
+    "appointment_id": "scheduling.appointment_id"
+   },
+   "idempotency": "one outcome per action_id",
+   "onFailure": "outcome missing -> raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "outcome",
+   "to": "journey-update",
+   "condition": "outcome recorded",
+   "action": "apply_feedback",
+   "mapping": {
+    "flags": "outcome.code -> journey flags",
+    "episode_id": "case.episode_id"
+   },
+   "idempotency": "applied once per outcome_id",
+   "onFailure": "retry 3 times, then raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "rule-reevaluation",
+   "to": "case-closed",
+   "condition": "case_closable AND case open AND no open task",
+   "action": "close_case",
+   "mapping": {
+    "case_id": "case.id",
+    "close_reason": "journey flag that ended it"
+   },
+   "idempotency": "closing a closed case is a no-op",
+   "onFailure": "case stays open, raise attention item (sla-attention) with the reason and subject id"
+  },
+  {
+   "from": "expected-next-state",
+   "to": "sla-attention",
+   "condition": "now > due_at AND expectation unmet",
+   "action": "raise attention expectation_overdue",
+   "mapping": {
+    "subject_id": "expectation.id"
+   },
+   "idempotency": "one open item per (subject_id, reason)",
+   "onFailure": "retry next sweep"
+  },
+  {
+   "from": "post-discharge-case",
+   "to": "sla-attention",
+   "condition": "no owner after 1h OR open past 7 days OR no contact consent",
+   "action": "raise attention",
+   "mapping": {
+    "reason": "no_owner | case_overdue | consent_missing",
+    "subject_id": "case.id"
+   },
+   "idempotency": "one open item per (subject_id, reason)",
+   "onFailure": "retry next sweep"
+  },
+  {
+   "from": "assign-coordinator",
+   "to": "sla-attention",
+   "condition": "now > task.due_at AND task open",
+   "action": "raise attention task_overdue",
+   "mapping": {
+    "subject_id": "task.id"
+   },
+   "idempotency": "one open item per (subject_id, reason)",
+   "onFailure": "retry next sweep"
+  },
+  {
+   "from": "contact-patient",
+   "to": "sla-attention",
+   "condition": "now > task.due_at AND task open, OR 3 unreachable attempts",
+   "action": "raise attention task_overdue | patient_unreachable",
+   "mapping": {
+    "subject_id": "task.id"
+   },
+   "idempotency": "one open item per (subject_id, reason)",
+   "onFailure": "retry next sweep"
+  },
+  {
+   "from": "book-follow-up",
+   "to": "sla-attention",
+   "condition": "now > task.due_at AND task open",
+   "action": "raise attention task_overdue",
+   "mapping": {
+    "subject_id": "task.id"
+   },
+   "idempotency": "one open item per (subject_id, reason)",
+   "onFailure": "retry next sweep"
+  }
+ ],
+ "id": "b2eb2792-a043-4d5f-80a3-50a32c29e6e9",
+ "createdAt": "2026-10-02T08:58:42.044Z",
+ "updatedAt": "2026-10-02T09:17:13.177Z"
+}
