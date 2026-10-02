@@ -269,8 +269,10 @@ function Canvas(props: WorkflowCanvasProps) {
     return d.on ? "var(--accent)" : d.hit ? "var(--wf-hit)" : "transparent";
   };
 
+  // Side by side, the row takes the screen's height rather than the panel's: `contain: size` keeps the
+  // panel's 16 steps from stretching it, so the panel scrolls and the canvas fills the screen.
   return (
-    <div className="flex min-h-0 flex-1 max-lg:flex-col" data-testid="workflow-canvas">
+    <div className={`flex min-h-0 flex-1 max-lg:flex-col ${compact ? "" : "lg:[contain:size]"}`} data-testid="workflow-canvas">
       <div
         ref={wrap}
         className={compact ? "wfc h-[360px] min-h-0 rounded-lg border border-line-subtle" : "wfc min-w-0 flex-1 max-lg:h-[72vh] max-lg:flex-none"}

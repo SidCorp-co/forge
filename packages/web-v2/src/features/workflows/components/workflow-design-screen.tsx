@@ -100,7 +100,7 @@ export function WorkflowDesignScreen({ projectId, flow }: { projectId: string; s
   const decision = <DecisionBar projectId={projectId} design={d} />;
 
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="workflow-design-screen">
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="workflow-design-screen">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2.5 border-b border-line-subtle bg-surface px-4 py-2.5">
         <div className="flex min-w-0 flex-[1_1_360px] flex-wrap items-center gap-x-2.5 gap-y-2">
           <PageTitle hint={shown.summary}>{shown.title}</PageTitle>

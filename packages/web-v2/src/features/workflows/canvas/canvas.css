@@ -1,7 +1,9 @@
 /* The workflow canvas (features/workflows/canvas). Every colour is a token: a node type's or edge
    kind's hue arrives as --tc from its template, the rest is the semantic layer. */
 
-.wfc { position: relative; height: 100%; min-height: 420px; background: var(--bg-app); }
+.wfc { position: relative; min-height: 420px; background: var(--bg-app); }
+/* React Flow sizes itself to 100% of a height no ancestor makes definite, which reads as 0: pin it to the frame instead. Its own inline style says relative, so this one must win. */
+.wfc > .react-flow { position: absolute !important; inset: 0; }
 .wfc .react-flow__pane { cursor: grab; }
 .wfc .react-flow__pane.dragging { cursor: grabbing; }
 .wfc .react-flow__node { cursor: pointer; }
