@@ -468,7 +468,7 @@
       "name": "forge_coolify_deploy"
     },
     {
-      "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks). Writes take { baseRevision, document } as their REST route does: interface_write (an admin), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite). The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
+      "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks). Writes take { baseRevision, document } as their REST route does: interface_write (an admin), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite). The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -480,6 +480,7 @@
               "builder_runs",
               "builder_run",
               "bus",
+              "context",
               "interface_write",
               "link_create",
               "link_update",
@@ -507,12 +508,23 @@
             "description": "link, link_update: the link uuid.",
             "type": "string"
           },
+          "paths": {
+            "description": "context: repository-relative paths the run touches.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "projectId": {
             "description": "The project acted for; a token bound to one project, or the X-Forge-Project-Slug header, names it when omitted.",
             "type": "string"
           },
           "run": {
             "description": "builder_run, builder_run_update: the builder run uuid.",
+            "type": "string"
+          },
+          "session": {
+            "description": "context: the agent session uuid to record what was loaded on.",
             "type": "string"
           }
         },
@@ -4709,7 +4721,7 @@
       "name": "forge_step_start"
     },
     {
-      "description": "Return the project's Epodsystem storefront target so a shop skill knows WHICH store and theme to build against. ISS-558: a project may have multiple storefronts — the optional `label` param selects a named one; omitting it returns the default (oldest) binding. The response includes a `stores[]` discovery array listing all active bindings. Returns { configured, orgId, scopes, storeId, storeSlug, storeName, themeId, themeName, draftThemeId, themes[], versions[], themesResolvedLive, commerceEnabled, domain, endpoint, label, stores[] }. THEMES ARE RESOLVED LIVE on every call (not cached): `themeId` is the current live/`main` theme, `draftThemeId` is the reusable unpublished draft clone of that main (null = no draft exists yet, so `customize_theme` has not run), `themes[]` lists every theme with its role + parentThemeId, and `versions[]` lists recent snapshots of the main theme newest-first — those ids are what `restore_theme_version` rolls back to. CHECK `themesResolvedLive` FIRST: when it is false the live query failed, so draftThemeId / themes[] / versions[] are UNKNOWN rather than absent — do not read a null draftThemeId as \"no draft\" and do not fall back to the live theme; stop and report instead. ALWAYS pass an explicit theme_id to create_theme_preview — omitting it silently issues a token for the LIVE theme, which renders pre-change code and reads as a genuine failure. `domain` is the real primary published domain — use it for the live URL (https://<domain>/) and, with a preview token, for the DRAFT preview URL (https://<domain>/?preview_token=<token>). Returns { configured: false } when no active epodsystem integration exists. `configured: true` is NOT a promise that you have `mcp__epodsystem__*` tools — it only means an active binding with a usable credential exists. `mcpInjection` is the real gate: { willInject, reason, serverName }, where reason is ok | not_configured | disabled | no_credential | shadowed | not_granted | preview_unreadable: <why>. `not_granted` means nobody has turned on agent access for that binding: the integration is healthy and the switch is off, so do NOT read absent tools as an auth/reauth problem and do NOT retry. Report the reason and say where the switch is — beside the integration under Settings → Integrations, on the binding itself. NEVER returns the API key — the crmk_ key is injected into the runner only via the mcpServers.epodsystem entry. Build on the DRAFT theme; publishing promotes draft → main. Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). Authorization: project membership.",
+      "description": "Return the project's storefront target so a shop skill knows WHICH store to build against. Serves every storefront provider (epodsystem, autoflow); the answer carries `provider`, and a project binding storefronts of more than one provider must pass `provider` (STOREFRONT_PROVIDER_AMBIGUOUS otherwise; an unknown one is STOREFRONT_PROVIDER_UNKNOWN). ISS-558: a project may have multiple storefronts — the optional `label` param selects a named one; omitting it returns the default (oldest) binding. The response includes a `stores[]` discovery array listing all active bindings. EPODSYSTEM returns { configured, provider, orgId, scopes, storeId, storeSlug, storeName, themeId, themeName, draftThemeId, themes[], versions[], themesResolvedLive, commerceEnabled, domain, endpoint, label, stores[] }. THEMES ARE RESOLVED LIVE on every call (not cached): `themeId` is the current live/`main` theme, `draftThemeId` is the reusable unpublished draft clone of that main (null = no draft exists yet, so `customize_theme` has not run), `themes[]` lists every theme with its role + parentThemeId, and `versions[]` lists recent snapshots of the main theme newest-first — those ids are what `restore_theme_version` rolls back to. CHECK `themesResolvedLive` FIRST: when it is false the live query failed, so draftThemeId / themes[] / versions[] are UNKNOWN rather than absent — do not read a null draftThemeId as \"no draft\" and do not fall back to the live theme; stop and report instead. ALWAYS pass an explicit theme_id to create_theme_preview — omitting it silently issues a token for the LIVE theme, which renders pre-change code and reads as a genuine failure. `domain` is the real primary published domain — use it for the live URL (https://<domain>/) and, with a preview token, for the DRAFT preview URL (https://<domain>/?preview_token=<token>). AUTOFLOW returns { configured, provider, label, stores[], shop, orgId, storeId, storeSlug, storeName, themeId, commerceEnabled, siteUrl, endpoint, mcpUrl, backendResolvedLive, workflows[], routes[], shopTools }: `workflows[]` (code, name, version, publishedAt — null = never published) and `routes[]` are the Backend Builder graph read live; when `backendResolvedLive` is false they are UNKNOWN, `backendUnresolvedBecause` says why, and the answer is the binding facts only. Writes land on a draft; `publish_backend_workflow` goes live and `revert_backend_workflow` rolls back. Returns { configured: false } when no active storefront integration exists. `configured: true` is NOT a promise that you have the provider MCP tools — it only means an active binding with a usable credential exists. `mcpInjection` is the real gate: { willInject, reason, serverName }, where reason is ok | not_configured | disabled | no_credential | shadowed | not_granted | preview_unreadable: <why>. `not_granted` means nobody has turned on agent access for that binding: the integration is healthy and the switch is off, so do NOT read absent tools as an auth/reauth problem and do NOT retry. Report the reason and say where the switch is — beside the integration under Settings → Integrations, on the binding itself. NEVER returns a credential — the crmk_ key / sat_ token is injected into the runner only via its mcpServers entry. Build on the DRAFT; publishing promotes it. Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). Authorization: project membership.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -4720,6 +4732,9 @@
           "projectId": {
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "provider": {
             "type": "string"
           }
         },

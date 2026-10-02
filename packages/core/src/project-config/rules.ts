@@ -1,5 +1,11 @@
 import { REGISTERED_TOOLS } from '../mcp/registered-tools.js';
-import type { BindingRole, DeploymentTrigger, PolicyDocument, ProjectDocument } from './schema.js';
+import {
+  type BindingRole,
+  type DeploymentTrigger,
+  GITLESS_PROVIDERS,
+  type PolicyDocument,
+  type ProjectDocument,
+} from './schema.js';
 
 // cm:why enumerating is the point: this list IS the refusal vocabulary callers switch on.
 export const PURE_REFUSAL_CODES = [
@@ -16,6 +22,8 @@ export const PURE_REFUSAL_CODES = [
   'BINDING_NOT_FOUND',
   'BINDING_ROLE_MISMATCH',
   'BINDING_IN_USE',
+  'BINDING_PROVIDER_MISMATCH',
+  'GITLESS_BINDING_ON_GIT_SOURCE',
   'TRIGGER_UNSUPPORTED',
   'TESTING_PROFILE_NOT_FOUND',
   'PERMISSION_PROFILE_UNDEFINED',
@@ -185,6 +193,38 @@ function checkBinding(
   return [];
 }
 
+/** A storefront source names its provider twice — in the document and on the binding — and both must agree. */
+function checkStorefrontProvider(doc: ProjectDocument, ctx: ProjectConfigContext): ConfigRefusal[] {
+  if (doc.source.type !== 'storefront') return [];
+  const { provider, binding } = doc.source.storefront;
+  const facts = ctx.bindings.get(binding);
+  if (!facts || facts.provider === provider) return [];
+  return [
+    {
+      code: 'BINDING_PROVIDER_MISMATCH',
+      path: pointer('source', 'storefront', 'provider'),
+      detail: `source.storefront.provider is "${provider}", and binding ${binding} is a ${facts.provider} binding; name "${facts.provider}" or bind a ${provider} storefront.`,
+    },
+  ];
+}
+
+/** A provider whose deliverable lives only on the provider has nothing a git branch could send it. */
+function checkGitlessBindings(doc: ProjectDocument, ctx: ProjectConfigContext): ConfigRefusal[] {
+  if (doc.source.type !== 'git') return [];
+  const out: ConfigRefusal[] = [];
+  for (const [name, env] of Object.entries(doc.environments)) {
+    if (!('binding' in env.deployment)) continue;
+    const facts = ctx.bindings.get(env.deployment.binding);
+    if (!facts || !GITLESS_PROVIDERS.includes(facts.provider)) continue;
+    out.push({
+      code: 'GITLESS_BINDING_ON_GIT_SOURCE',
+      path: pointer('environments', name, 'deployment', 'binding'),
+      detail: `binding ${env.deployment.binding} is a ${facts.provider} binding, whose work lives on ${facts.provider} and in no repository, and this project's source.type is "git"; declare source {"type": "storefront", "storefront": {"provider": "${facts.provider}", ...}} with workspace.isolation "remote-draft".`,
+    });
+  }
+  return out;
+}
+
 function checkTrigger(
   environment: string,
   trigger: DeploymentTrigger,
@@ -334,7 +374,9 @@ export function checkProjectConfig(
       ),
     );
   }
+  out.push(...checkStorefrontProvider(doc, ctx));
   out.push(...checkEnvironments(doc, ctx));
+  out.push(...checkGitlessBindings(doc, ctx));
   if (ctx.policy) out.push(...checkPolicy(ctx.policy));
   return out;
 }

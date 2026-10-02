@@ -57,10 +57,16 @@ const gitSourceSchema = z.strictObject({
   }),
 });
 
+export const STOREFRONT_PROVIDERS = ['epodsystem', 'shopify', 'autoflow'] as const;
+
+// cm:why a deliverable that lives only on the provider: no repository holds it, so a git project
+// has nothing to send there — `rules.ts:checkGitlessBindings` refuses the pairing by name.
+export const GITLESS_PROVIDERS: readonly string[] = ['autoflow'];
+
 const storefrontSourceSchema = z.strictObject({
   type: z.literal('storefront'),
   storefront: z.strictObject({
-    provider: z.enum(['epodsystem', 'shopify']),
+    provider: z.enum(STOREFRONT_PROVIDERS),
     binding: uuid(),
   }),
 });
@@ -275,6 +281,9 @@ const BINDING_TARGETS = [
     themeRole: z.enum(['main', 'unpublished']).optional(),
   }),
   targetOf('epodsystem', {}),
+  targetOf('autoflow', {
+    shop: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
+  }),
   targetOf('github', {
     installationId: z.number().int().positive(),
     owner: z.string().min(1).max(200),
@@ -368,7 +377,7 @@ const recordedEnvironmentStateSchema = z.strictObject({
   ]),
   deployment: z.strictObject({
     id: z.string().min(1).max(100),
-    provider: z.enum(['coolify', 'shopify', 'epodsystem']),
+    provider: z.enum(['coolify', 'shopify', 'epodsystem', 'autoflow']),
     status: z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled']),
     at: z.iso.datetime({ offset: true }),
   }),

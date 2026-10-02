@@ -10,6 +10,7 @@ interface SecretRule {
 export const SECRET_RULES: SecretRule[] = [
   { rule: 'secret.anthropic-key', pattern: /sk-ant-[A-Za-z0-9_-]{20,}/g, prefixLen: 7 },
   { rule: 'secret.epodsystem-key', pattern: /crmk_[A-Za-z0-9]{20,}/g, prefixLen: 5 },
+  { rule: 'secret.autoflow-token', pattern: /\b(?:sat|srt)_[A-Za-z0-9_-]{40,}/g, prefixLen: 4 },
   { rule: 'secret.sentry-key', pattern: /sntryu_[A-Za-z0-9]{20,}/g, prefixLen: 7 },
   { rule: 'secret.github-pat', pattern: /ghp_[A-Za-z0-9]{36}/g, prefixLen: 4 },
   { rule: 'secret.aws-access-key', pattern: /AKIA[0-9A-Z]{16}/g, prefixLen: 4 },

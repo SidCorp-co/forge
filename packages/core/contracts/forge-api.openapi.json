@@ -5001,6 +5001,567 @@
                       "agent"
                     ],
                     "type": "string"
+                  },
+                  "uiSnapshot": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "board": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "shapes": {
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "h": {
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 4000,
+                                      "type": "number"
+                                    },
+                                    "id": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "maxLength": 200,
+                                      "type": "string"
+                                    },
+                                    "type": {
+                                      "const": "frame",
+                                      "type": "string"
+                                    },
+                                    "w": {
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 4000,
+                                      "type": "number"
+                                    },
+                                    "x": {
+                                      "maximum": 4000,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    },
+                                    "y": {
+                                      "maximum": 4000,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "id",
+                                    "x",
+                                    "y",
+                                    "w",
+                                    "h"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "h": {
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 4000,
+                                      "type": "number"
+                                    },
+                                    "id": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "text": {
+                                      "maxLength": 2000,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "type": {
+                                      "const": "text",
+                                      "type": "string"
+                                    },
+                                    "w": {
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 4000,
+                                      "type": "number"
+                                    },
+                                    "x": {
+                                      "maximum": 4000,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    },
+                                    "y": {
+                                      "maximum": 4000,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "id",
+                                    "x",
+                                    "y",
+                                    "w",
+                                    "h",
+                                    "text"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "h": {
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 4000,
+                                      "type": "number"
+                                    },
+                                    "id": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "maxLength": 200,
+                                      "type": "string"
+                                    },
+                                    "type": {
+                                      "const": "button",
+                                      "type": "string"
+                                    },
+                                    "w": {
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 4000,
+                                      "type": "number"
+                                    },
+                                    "x": {
+                                      "maximum": 4000,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    },
+                                    "y": {
+                                      "maximum": 4000,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "id",
+                                    "x",
+                                    "y",
+                                    "w",
+                                    "h",
+                                    "label"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "h": {
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 4000,
+                                      "type": "number"
+                                    },
+                                    "id": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "maxLength": 200,
+                                      "type": "string"
+                                    },
+                                    "placeholder": {
+                                      "maxLength": 200,
+                                      "type": "string"
+                                    },
+                                    "type": {
+                                      "const": "input",
+                                      "type": "string"
+                                    },
+                                    "w": {
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 4000,
+                                      "type": "number"
+                                    },
+                                    "x": {
+                                      "maximum": 4000,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    },
+                                    "y": {
+                                      "maximum": 4000,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "id",
+                                    "x",
+                                    "y",
+                                    "w",
+                                    "h"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "h": {
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 4000,
+                                      "type": "number"
+                                    },
+                                    "id": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "items": {
+                                      "items": {
+                                        "maxLength": 200,
+                                        "type": "string"
+                                      },
+                                      "maxItems": 50,
+                                      "type": "array"
+                                    },
+                                    "label": {
+                                      "maxLength": 200,
+                                      "type": "string"
+                                    },
+                                    "type": {
+                                      "const": "list",
+                                      "type": "string"
+                                    },
+                                    "w": {
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 4000,
+                                      "type": "number"
+                                    },
+                                    "x": {
+                                      "maximum": 4000,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    },
+                                    "y": {
+                                      "maximum": 4000,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "id",
+                                    "x",
+                                    "y",
+                                    "w",
+                                    "h",
+                                    "items"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "h": {
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 4000,
+                                      "type": "number"
+                                    },
+                                    "id": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "maxLength": 200,
+                                      "type": "string"
+                                    },
+                                    "type": {
+                                      "const": "image",
+                                      "type": "string"
+                                    },
+                                    "w": {
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 4000,
+                                      "type": "number"
+                                    },
+                                    "x": {
+                                      "maximum": 4000,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    },
+                                    "y": {
+                                      "maximum": 4000,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "id",
+                                    "x",
+                                    "y",
+                                    "w",
+                                    "h"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "from": {
+                                      "anyOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "id": {
+                                              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "id"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "x": {
+                                              "maximum": 4000,
+                                              "minimum": 0,
+                                              "type": "number"
+                                            },
+                                            "y": {
+                                              "maximum": 4000,
+                                              "minimum": 0,
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "x",
+                                            "y"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    },
+                                    "id": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "maxLength": 200,
+                                      "type": "string"
+                                    },
+                                    "to": {
+                                      "anyOf": [
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "id": {
+                                              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "id"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "x": {
+                                              "maximum": 4000,
+                                              "minimum": 0,
+                                              "type": "number"
+                                            },
+                                            "y": {
+                                              "maximum": 4000,
+                                              "minimum": 0,
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "x",
+                                            "y"
+                                          ],
+                                          "type": "object"
+                                        }
+                                      ]
+                                    },
+                                    "type": {
+                                      "const": "arrow",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "id",
+                                    "from",
+                                    "to"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "id": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "points": {
+                                      "items": {
+                                        "items": false,
+                                        "maxItems": 2,
+                                        "minItems": 2,
+                                        "prefixItems": [
+                                          {
+                                            "maximum": 4000,
+                                            "minimum": 0,
+                                            "type": "number"
+                                          },
+                                          {
+                                            "maximum": 4000,
+                                            "minimum": 0,
+                                            "type": "number"
+                                          }
+                                        ],
+                                        "type": "array"
+                                      },
+                                      "maxItems": 2000,
+                                      "minItems": 2,
+                                      "type": "array"
+                                    },
+                                    "type": {
+                                      "const": "pen",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "id",
+                                    "points"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "maxItems": 500,
+                            "type": "array"
+                          },
+                          "title": {
+                            "maxLength": 200,
+                            "type": "string"
+                          },
+                          "v": {
+                            "const": "wireframe-v1",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "v",
+                          "shapes"
+                        ],
+                        "type": "object"
+                      },
+                      "filter": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "assignee": {
+                            "const": "me",
+                            "type": "string"
+                          },
+                          "createdBy": {
+                            "const": "me",
+                            "type": "string"
+                          },
+                          "priority": {
+                            "enum": [
+                              "critical",
+                              "high",
+                              "medium",
+                              "low",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          "status": {
+                            "items": {
+                              "enum": [
+                                "open",
+                                "confirmed",
+                                "clarified",
+                                "waiting",
+                                "approved",
+                                "in_progress",
+                                "developed",
+                                "testing",
+                                "tested",
+                                "awaiting_release",
+                                "releasing",
+                                "closed",
+                                "reopen",
+                                "on_hold",
+                                "needs_info",
+                                "draft",
+                                "dropped"
+                              ],
+                              "type": "string"
+                            },
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "text": {
+                            "maxLength": 200,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "issueKey": {
+                        "pattern": "^[A-Z][A-Z0-9]*-\\d+$",
+                        "type": "string"
+                      },
+                      "path": {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      "route": {
+                        "enum": [
+                          "overview",
+                          "issues",
+                          "pipeline",
+                          "releases",
+                          "agents",
+                          "workflows",
+                          "ecosystem",
+                          "schedules",
+                          "improvements",
+                          "settings",
+                          "issue",
+                          "other"
+                        ],
+                        "type": "string"
+                      },
+                      "selection": {
+                        "items": {
+                          "pattern": "^[A-Z][A-Z0-9]*-\\d+$",
+                          "type": "string"
+                        },
+                        "maxItems": 100,
+                        "type": "array"
+                      },
+                      "v": {
+                        "const": 1,
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "v",
+                      "route",
+                      "path"
+                    ],
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -7371,6 +7932,21 @@
         "x-forge-validated": [
           "json"
         ]
+      }
+    },
+    "/api/ecosystems/mine": {
+      "get": {
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-input": "none",
+        "x-forge-validated": []
       }
     },
     "/api/ecosystems/{id}": {
