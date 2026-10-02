@@ -4,35 +4,19 @@ import { Badge } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { dayOf } from "../format";
 import { statusLabel } from "../version-status";
+import type { ReleaseFlow } from "../flow";
 import type { ReleaseDraft, ReleaseVersionRow } from "../versions-types";
-
-const STAGE_TONE: Record<string, string> = {
-  ok: "var(--green-600, #23794a)",
-  failed: "var(--red-600, #b3402b)",
-  unverified: "var(--amber-500, #c48a00)",
-};
-
-function Stages({ v }: { v: ReleaseVersionRow }) {
-  const all = ["promote", "deploy", "verify"] as const;
-  return (
-    <span className="flex gap-1" title="promote · deploy · verify">
-      {all.map((stage) => {
-        const s = v.stages.find((x) => x.stage === stage);
-        const bg = !s ? "var(--bg-sunken)" : !s.settled ? "var(--amber-500, #c48a00)" : (STAGE_TONE[s.verdict ?? ""] ?? "var(--border-strong)");
-        return <i key={stage} title={`${stage}: ${s ? (s.settled ? (s.verdict ?? "settled") : "running") : "not opened"}`} className="h-1.5 w-5 rounded-sm" style={{ background: bg }} />;
-      })}
-    </span>
-  );
-}
+import { StageTracker } from "./flow-strip";
 
 export interface VersionListProps {
   versions: ReleaseVersionRow[];
   draft: ReleaseDraft | null;
+  flow: ReleaseFlow;
   selected: string | null;
   onSelect: (version: string) => void;
 }
 
-export function VersionList({ versions, draft, selected, onSelect }: VersionListProps) {
+export function VersionList({ versions, draft, flow, selected, onSelect }: VersionListProps) {
   return (
     <div className="overflow-auto border-line-subtle md:border-r" data-testid="version-list">
       {draft ? (
@@ -68,7 +52,7 @@ export function VersionList({ versions, draft, selected, onSelect }: VersionList
             <span className="text-12 text-subtle">
               {dayOf(v.releasedAt ?? v.openedAt)} · {v.issueCount} issues
             </span>
-            <Stages v={v} />
+            <StageTracker v={v} flow={flow} />
             <span className="col-start-2 justify-self-start">
               <Badge tone={s.tone}>{s.label}</Badge>
             </span>
