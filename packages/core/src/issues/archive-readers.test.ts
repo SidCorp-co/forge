@@ -153,6 +153,9 @@ const NOT_DISCOVERY: Record<string, string> = {
   'tasks/routes.ts': 'by issue id',
   'uploads/attachment-bytes.ts': 'by attachment id',
   'uploads/attachment-lookup.ts': 'by issue, comment or attachment id',
+  'workflows/build-gate.ts': 'the issues a build link names, by issue id or seq',
+  'workflows/design-issue.ts': 'the one issue a design names, skipped when archived',
+  'workflows/store.ts': 'the issues a build link names, by issue id',
 };
 
 function listSourceFiles(dir: string): string[] {

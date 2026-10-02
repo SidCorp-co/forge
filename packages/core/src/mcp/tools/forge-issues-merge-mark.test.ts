@@ -118,6 +118,7 @@ vi.mock('../../workflows/build-gate.js', async (importOriginal) => ({
   ...((await importOriginal()) as Record<string, unknown>),
   buildsWorkflowOf: async () => null,
 }));
+vi.mock('../../workflows/design-issue.js', () => ({ proposesWorkflowOf: async () => null }));
 vi.mock('../../pipeline/work-evidence.js', () => ({
   findMissingWorkEvidence: async () => null,
   collectWorkEvidence: async () => ({ handoffCommitSha: null }),

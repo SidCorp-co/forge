@@ -148,6 +148,7 @@ export interface StoredDesign {
   decidedByUser: string | null;
   decidedAt: Date | null;
   reason: string | null;
+  designIssueId: string | null;
 }
 
 const designColumns = {
@@ -160,17 +161,30 @@ const designColumns = {
   decidedByUser: projectWorkflowDesigns.decidedByUser,
   decidedAt: projectWorkflowDesigns.decidedAt,
   reason: projectWorkflowDesigns.reason,
+  designIssueId: projectWorkflowDesigns.designIssueId,
 };
 
 export async function insertDesign(
   tx: Tx,
-  input: { workflowId: string; revision: number; document: WorkflowWrite; userId: string },
+  input: {
+    workflowId: string;
+    revision: number;
+    document: WorkflowWrite;
+    userId: string;
+    /** The issue the design is drawn under; absent, the revision it supersedes names it. */
+    designIssueId?: string | null | undefined;
+  },
 ): Promise<void> {
+  const designIssueId =
+    input.designIssueId !== undefined
+      ? input.designIssueId
+      : ((await designsOf(tx, input.workflowId))[0]?.designIssueId ?? null);
   await tx.insert(projectWorkflowDesigns).values({
     workflowId: input.workflowId,
     revision: input.revision,
     document: input.document,
     proposedByUser: input.userId,
+    designIssueId,
   });
 }
 
@@ -181,6 +195,33 @@ export async function designsOf(tx: Tx, workflowId: string): Promise<StoredDesig
     .from(projectWorkflowDesigns)
     .where(eq(projectWorkflowDesigns.workflowId, workflowId))
     .orderBy(desc(projectWorkflowDesigns.revision));
+}
+
+/** The reason on each workflow's latest decided revision, for those whose latest decision is a return. */
+export async function returnReasonsOf(
+  tx: Tx,
+  workflowIds: readonly string[],
+): Promise<Map<string, string>> {
+  if (workflowIds.length === 0) return new Map();
+  const rows = await tx
+    .selectDistinctOn([projectWorkflowDesigns.workflowId], {
+      workflowId: projectWorkflowDesigns.workflowId,
+      decision: projectWorkflowDesigns.decision,
+      reason: projectWorkflowDesigns.reason,
+    })
+    .from(projectWorkflowDesigns)
+    .where(
+      and(
+        inArray(projectWorkflowDesigns.workflowId, [...workflowIds]),
+        sql`${projectWorkflowDesigns.decision} IS NOT NULL`,
+      ),
+    )
+    .orderBy(projectWorkflowDesigns.workflowId, desc(projectWorkflowDesigns.revision));
+  return new Map(
+    rows
+      .filter((r) => r.decision === 'return' && r.reason)
+      .map((r) => [r.workflowId, r.reason as string]),
+  );
 }
 
 export async function decideDesign(

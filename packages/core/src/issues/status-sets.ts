@@ -8,6 +8,18 @@ import type { IssueStatus } from '../db/schema.js';
 /** The issue is over. Nothing further will be done on it, whichever exit it took. */
 export const ISSUE_TERMINAL_STATUSES: readonly IssueStatus[] = ['closed', 'dropped'];
 
+/**
+ * The statuses a master may start work from: what `forge next` ranks (forge-plugin
+ * `rank/weights.mjs:TAKEABLE`), what the backlog stream orders, and what the admissible list hands a
+ * box. One answer, so a reopened issue is never eligible on one read and absent on the other.
+ */
+export const TAKEABLE_STATUSES: readonly IssueStatus[] = [
+  'open',
+  'confirmed',
+  'approved',
+  'reopen',
+];
+
 /** The issue is stopped until a person acts: what Needs you and the park view both count (ISS-1310). */
 export const AWAITING_INPUT_STATUSES: readonly IssueStatus[] = ['waiting', 'needs_info'];
 

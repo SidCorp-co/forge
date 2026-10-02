@@ -39,7 +39,8 @@ vi.mock('./tree.js', () => ({
   buildCommentTree: () => [],
   attachAuthors: () => undefined,
 }));
-vi.mock('../messaging/record-screen.js', () => ({
+vi.mock('../messaging/record-screen.js', async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
   projectLens: async () => ({}),
 }));
 vi.mock('../issues/actor-resolution.js', () => ({

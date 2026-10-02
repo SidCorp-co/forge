@@ -2213,6 +2213,13 @@
       "when": 1812499200000,
       "tag": "0342_a_workflow_design_is_approved_before_it_is_built",
       "breakpoints": true
+    },
+    {
+      "idx": 343,
+      "version": "7",
+      "when": 1812585600000,
+      "tag": "0343_a_design_names_the_issue_it_is_drawn_under",
+      "breakpoints": true
     }
   ]
 }

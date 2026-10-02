@@ -1,0 +1,2 @@
+ALTER TABLE "project_workflow_designs" ADD COLUMN "design_issue_id" uuid;--> statement-breakpoint
+ALTER TABLE "project_workflow_designs" ADD CONSTRAINT "project_workflow_designs_design_issue_id_issues_id_fk" FOREIGN KEY ("design_issue_id") REFERENCES "public"."issues"("id") ON DELETE set null ON UPDATE no action;

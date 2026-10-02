@@ -115,15 +115,18 @@ workflowRoutes.post(
   '/:id/workflows/:workflow/design/propose',
   workflowParam,
   strictBody(
-    z.strictObject({ revision: z.number().int().min(1) }),
-    '{ revision } names the workflow revision being proposed',
+    z.strictObject({
+      revision: z.number().int().min(1),
+      issue: z.string().trim().min(1).max(200).optional(),
+    }),
+    '{ revision, issue? } names the workflow revision being proposed and the issue it is drawn under',
   ),
   async (c) => {
     const { id, workflow } = c.req.valid('param');
-    const { revision } = c.req.valid('json');
+    const { revision, issue } = c.req.valid('json');
     return answerDesign(
       c,
-      await proposeDesign({ projectId: id, id: workflow, writer: writerOf(c), revision }),
+      await proposeDesign({ projectId: id, id: workflow, writer: writerOf(c), revision, issue }),
     );
   },
 );
