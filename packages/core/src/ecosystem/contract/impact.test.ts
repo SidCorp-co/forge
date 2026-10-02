@@ -30,14 +30,21 @@ const removed = (element: string, field?: string): ImpactChange => ({
   check: field ? 'response-property-removed' : 'api-path-removed-without-deprecation',
 });
 
-const measuredWith = (changes: ImpactChange[]) => ({ classification: 'breaking' as const, changes });
+const measuredWith = (changes: ImpactChange[]) => ({
+  classification: 'breaking' as const,
+  changes,
+});
 const impactOf = (changes: ImpactChange[]) =>
   linkImpact('dated', '2026-10-01', measuredWith(changes), link);
 
 describe('a version is checked against the fields and surface each link uses', () => {
   it('passes a consumer that never reads the removed field', () => {
     const i = impactOf([removed('GET /api/issues/{id}', 'data/priority')]);
-    expect(i).toMatchObject({ verdict: 'passes', reason: 'no-breaking-change-touches', breaks: [] });
+    expect(i).toMatchObject({
+      verdict: 'passes',
+      reason: 'no-breaking-change-touches',
+      breaks: [],
+    });
     expect(recipientsOf([PLUGIN], [i])).toEqual([]);
   });
 
@@ -48,7 +55,9 @@ describe('a version is checked against the fields and surface each link uses', (
       expect.objectContaining({
         element: 'GET /api/issues/{id}',
         fields: ['data.status'],
-        callSites: [{ path: 'cli/src/commands/issue.ts', line: 42, operation: 'GET /api/issues/{id}' }],
+        callSites: [
+          { path: 'cli/src/commands/issue.ts', line: 42, operation: 'GET /api/issues/{id}' },
+        ],
         outsideContract: [],
       }),
     ]);
@@ -60,7 +69,10 @@ describe('a version is checked against the fields and surface each link uses', (
   it('breaks a consumer whose outside-contract use is removed, whatever field it names', () => {
     const i = impactOf([removed('GET /api/issues/{id}/raw', 'body')]);
     expect(i.verdict).toBe('breaks');
-    expect(i.breaks[0]).toMatchObject({ outsideContract: ['GET /api/issues/{id}/raw'], fields: [] });
+    expect(i.breaks[0]).toMatchObject({
+      outsideContract: ['GET /api/issues/{id}/raw'],
+      fields: [],
+    });
   });
 
   it('breaks every caller of an operation that gains a required input, read or not', () => {

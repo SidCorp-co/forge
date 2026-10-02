@@ -8,11 +8,14 @@ import {
   parseVersionedDocument,
   pointer,
 } from '../project-config/documents.js';
+import type { ProjectDocument, STOREFRONT_PROVIDERS } from '../project-config/schema.js';
 import {
+  ARTEFACT_KINDS,
   BUILDER_RUN_SCHEMA_ID,
   BUILDER_TRIGGERS,
   type BuilderRunWrite,
   builderRunWriteSchema,
+  type CallSite,
   FINDING_CLASSIFICATIONS,
   LINK_STATES,
   type LinkWrite,
@@ -126,7 +129,65 @@ export interface ProviderSide {
   interface: InterfaceDocument | null;
 }
 
+/** Where a project's own code lives, which decides what its builder run reads and what its call sites name. */
+export type BuilderSource =
+  | { type: 'repository' }
+  | { type: 'storefront'; provider: (typeof STOREFRONT_PROVIDERS)[number] };
+
+// cm:why a project with no document, or `source.type: none`, keeps the repository reading every run had before storefront sources were read; only a declared storefront changes it
+export function builderSourceOf(doc: ProjectDocument | null | undefined): BuilderSource {
+  return doc?.source.type === 'storefront'
+    ? { type: 'storefront', provider: doc.source.storefront.provider }
+    : { type: 'repository' };
+}
+
+const describeSource = (source: BuilderSource) =>
+  source.type === 'storefront'
+    ? `a storefront on ${source.provider} (source.type storefront)`
+    : 'a repository (source.type git)';
+
+// cm:why a call site is read the way the consumer's own code is held: a repository consumer names a file and line, a storefront consumer an artefact its provider declares; the wrong kind is refused by name, never stored beside the right one
+export function callSiteRefusals(
+  sites: readonly { site: CallSite; at: string }[],
+  source: BuilderSource,
+  project: string,
+): EcosystemRefusal[] {
+  const out: EcosystemRefusal[] = [];
+  const held = `project ${project}'s code is ${describeSource(source)}`;
+  for (const { site, at } of sites) {
+    if (source.type === 'repository') {
+      if (site.artefact === undefined) continue;
+      out.push({
+        code: 'CALL_SITE_KIND_MISMATCH',
+        path: `${at}/artefact`,
+        detail: `${held}, so a call site names a repository path and line, not a storefront artefact.`,
+      });
+      continue;
+    }
+    if (site.artefact === undefined) {
+      out.push({
+        code: 'CALL_SITE_KIND_MISMATCH',
+        path: `${at}/path`,
+        detail: `${held}, so a call site names a storefront artefact ({ kind, id }), not a repository path; no checkout holds it.`,
+      });
+      continue;
+    }
+    const kinds = ARTEFACT_KINDS[source.provider] ?? [];
+    if (kinds.includes(site.artefact.kind)) continue;
+    out.push({
+      code: 'ARTEFACT_KIND_UNKNOWN',
+      path: `${at}/artefact/kind`,
+      detail:
+        kinds.length > 0
+          ? `"${site.artefact.kind}" is not an artefact ${source.provider} holds; a ${source.provider} call site names ${kinds.join(' | ')}.`
+          : `no artefact kinds are declared for provider ${source.provider}, so a call site cannot name one of its artefacts yet.`,
+    });
+  }
+  return out;
+}
+
 export interface LinkWorld {
+  consumerSource: BuilderSource;
   consumerActiveIn: ReadonlySet<string>;
   provider: ProviderSide | null;
   versions: ReadonlySet<string>;
@@ -208,7 +269,12 @@ function referenceRefusals(doc: LinkWrite, world: LinkWorld): EcosystemRefusal[]
 }
 
 export function checkLink(doc: LinkWrite, world: LinkWorld): EcosystemRefusal[] {
-  const out = [...guideRefusals(doc), ...referenceRefusals(doc, world)];
+  const sites = doc.callSites.map((site, i) => ({ site, at: pointer(['callSites', i]) }));
+  const out = [
+    ...callSiteRefusals(sites, world.consumerSource, doc.consumer.project),
+    ...guideRefusals(doc),
+    ...referenceRefusals(doc, world),
+  ];
   if (world.duplicateOf !== null) {
     out.push({
       code: 'LINK_DUPLICATE',
@@ -257,6 +323,7 @@ export const builderRunIdentityRefusals = (stored: BuilderRunWrite, next: Builde
   );
 
 export interface BuilderRunWorld {
+  source: BuilderSource;
   projectActiveIn: ReadonlySet<string>;
   published: ReadonlySet<string>;
   links: ReadonlySet<string>;
@@ -264,8 +331,8 @@ export interface BuilderRunWorld {
   openRun: string | null;
 }
 
-/** The steps a joined or pushed run is opened with, in the order a master works them. */
-export const BUILDER_STEPS = [
+/** The steps a joined or pushed run of a repository project is opened with, in the order a master works them. */
+export const REPO_BUILDER_STEPS = [
   'read-repo',
   'find-outbound-calls',
   'match-contracts',
@@ -273,6 +340,20 @@ export const BUILDER_STEPS = [
   'check',
   'publish-role',
 ] as const;
+
+/** The same run for a storefront project: its code is what the provider holds, so it reads that, not a checkout. */
+export const STOREFRONT_BUILDER_STEPS = [
+  'read-storefront',
+  'find-provider-usage',
+  'match-contracts',
+  'write-links',
+  'check',
+  'publish-role',
+] as const;
+
+// cm:why the steps are derived when a run opens and then stored as data: a run already open keeps the steps it was opened with
+export const builderStepsFor = (source: BuilderSource): readonly string[] =>
+  source.type === 'storefront' ? STOREFRONT_BUILDER_STEPS : REPO_BUILDER_STEPS;
 
 const OPEN_STEP: ReadonlySet<string> = new Set(['pending', 'running']);
 
@@ -284,6 +365,7 @@ export function openedRun(input: {
   ecosystem: string;
   project: string;
   trigger: BuilderRunWrite['trigger'];
+  source: BuilderSource;
 }): BuilderRunWrite {
   return {
     $schema: BUILDER_RUN_SCHEMA_ID,
@@ -291,7 +373,7 @@ export function openedRun(input: {
     ecosystem: input.ecosystem,
     project: input.project,
     trigger: input.trigger,
-    steps: BUILDER_STEPS.map((name) => ({ name, status: 'pending' as const })),
+    steps: builderStepsFor(input.source).map((name) => ({ name, status: 'pending' as const })),
     findings: [],
     links: [],
   };
@@ -336,7 +418,11 @@ export function checkBuilderRun(doc: BuilderRunWrite, world: BuilderRunWorld): E
       },
     ];
   }
-  const out: EcosystemRefusal[] = [];
+  const sites = doc.findings.map((f, i) => ({
+    site: f.site,
+    at: pointer(['findings', i, 'site']),
+  }));
+  const out: EcosystemRefusal[] = callSiteRefusals(sites, world.source, doc.project);
   if (world.openRun !== null && isOpenRun(doc)) {
     out.push({
       code: 'BUILDER_RUN_ALREADY_OPEN',

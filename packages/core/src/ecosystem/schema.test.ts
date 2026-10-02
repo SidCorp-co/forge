@@ -9,6 +9,7 @@ import {
   exampleFiles,
   interfaceRefusals,
 } from './ecosystem.fixture.js';
+import { ecosystemJsonSchemas } from './json-schema.js';
 import { builderRunDocumentSchema, linkDocumentSchema } from './link-schema.js';
 import { membershipDocumentSchema } from './schema.js';
 
@@ -179,5 +180,26 @@ describe('every planted shape is refused by the emitted schema and by name on th
               return parsed.ok ? [] : parsed.refusals;
             })();
     expect(refusals).toContainEqual(expect.objectContaining({ code, path }));
+  });
+});
+
+describe("ecosystem.id is core's on the write and always present on the record", () => {
+  const unnamed = () => {
+    const d = eco();
+    delete d.ecosystem.id;
+    return d;
+  };
+
+  it('is accepted absent by the published schema, as a create sends it', () => {
+    expect(emittedAccepts(unnamed())).toBe(true);
+    expect(ecosystemJsonSchemas['ecosystem-v1.json']).toMatchObject({
+      properties: { ecosystem: { properties: { id: { description: expect.any(String) } } } },
+    });
+  });
+
+  it('is required on a stored record', () => {
+    expect(ecosystemRefusals(unnamed()).map((r) => `${r.code} ${r.path}`)).toEqual([
+      'SCHEMA_VIOLATION /ecosystem/id',
+    ]);
   });
 });

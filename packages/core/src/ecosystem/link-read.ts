@@ -161,14 +161,10 @@ export async function readBus(userId: string, ecosystemId: string) {
     builderRunsIn(db, ecosystemId),
     versionsOf(db, [...new Set(links.map((l) => l.providerProjectId))]),
   ]);
-  const impacts = impactsAgainstLatest(
-    links,
-    linked,
-    (p) => {
-      const i = interfaces.get(p);
-      return i ? heldInterface(i, p).document.commitments.versioning : 'dated';
-    },
-  );
+  const impacts = impactsAgainstLatest(links, linked, (p) => {
+    const i = interfaces.get(p);
+    return i ? heldInterface(i, p).document.commitments.versioning : 'dated';
+  });
   const latest = currentVersions(versions);
   const builders = latestBuilderRuns(runs, new Set(shown));
   const contracts = [...interfaces].flatMap(([provider, stored]) =>

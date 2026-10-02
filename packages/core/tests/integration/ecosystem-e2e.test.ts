@@ -154,6 +154,9 @@ describe('an ecosystem edit keeps what members and documents rely on', () => {
     expect(refusalCodes(await put(now.revision + 1, now.document))).toEqual(['STALE_BASE']);
     const moved = { ...now.document, ecosystem: { ...now.document.ecosystem, id: w.otherEco } };
     expect(refusalCodes(await put(now.revision, moved))).toEqual(['ECOSYSTEM_ID_IMMUTABLE']);
+    const { id: _id, ...unnamed } = now.document.ecosystem;
+    const dropped = { ...now.document, ecosystem: unnamed };
+    expect(refusalCodes(await put(now.revision, dropped))).toEqual(['ECOSYSTEM_ID_IMMUTABLE']);
   });
 
   it('refuses an edit from outside the steward org', async () => {
@@ -233,6 +236,17 @@ describe('a membership ends by its own transitions', () => {
     });
     expect(again.json.document.state).toBe('invited');
     expect(again.json.id).not.toBe(w.membership.store);
+  });
+});
+
+describe('the published ecosystem schema says what create and update take', () => {
+  it('does not require ecosystem.id, which a create leaves out and core assigns', async () => {
+    const res = await w.app.request('/api/schemas/ecosystem-v1.json');
+    const schema = (await res.json()) as {
+      properties: { ecosystem: { required: string[]; properties: { id: object } } };
+    };
+    expect(schema.properties.ecosystem.required).not.toContain('id');
+    expect(schema.properties.ecosystem.properties.id).toBeDefined();
   });
 });
 
