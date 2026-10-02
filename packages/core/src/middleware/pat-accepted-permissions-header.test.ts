@@ -275,3 +275,44 @@ describe('one resolution per request, handed to every consumer', () => {
     expect(wantedOf(res.body)).toBe('schedules:read');
   });
 });
+
+describe('a route nobody serves is not found, whatever the token holds', () => {
+  // The shape that answered 403 PAT_NOT_PERMITTED: a router mounted at `/api` gates every path
+  // under it, so its gate ran for a path no handler of any router serves.
+  function prefixApp() {
+    const app = new Hono();
+    const r = new Hono();
+    r.use('*', requireAuth());
+    r.post('/memberships/:id/accept', (c) => c.json({ ok: true }));
+    app.route('/api', r);
+    app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
+    return app;
+  }
+  const call = (path: string, method = 'POST') =>
+    prefixApp().request(path, { method, headers: { Authorization: `Bearer ${PAT}` } });
+
+  it('answers 404 naming the route for an unserved path, even to a token holding everything', async () => {
+    verifiesAs(principal(['*']));
+    const res = await call('/api/ecosystem-memberships/abc/accept');
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('NOT_FOUND');
+    expect(body.message).toContain('POST /api/ecosystem-memberships/abc/accept');
+  });
+
+  it('answers 404 for a served path called with a method nobody serves', async () => {
+    verifiesAs(principal(['*']));
+    expect((await call('/api/memberships/abc/accept', 'DELETE')).status).toBe(404);
+  });
+
+  it('still refuses an invalid token before saying anything about the route', async () => {
+    doesNotVerify();
+    expect((await call('/api/ecosystem-memberships/abc/accept')).status).toBe(401);
+  });
+
+  it('still reaches the grant check on the route that is served', async () => {
+    verifiesAs(principal(['*']));
+    const res = await call('/api/memberships/abc/accept');
+    expect(res.status).not.toBe(404);
+  });
+});

@@ -21,6 +21,11 @@ vi.mock('../mcp/tools/project-scope.js', () => ({
   patEffectiveProjectIds: () => effectiveProjectIds(),
 }));
 
+// cm:why these cases build a bare context, not a request Hono dispatched; the served-route check is planted against a real app in pat-accepted-permissions-header.test.ts
+vi.mock('hono/route', () => ({
+  matchedRoutes: () => [{ method: 'GET', path: '/*', basePath: '/', handler: () => undefined }],
+}));
+
 const authenticatePat = vi.fn();
 vi.mock('./require-pat.js', () => ({
   authenticatePat: async (c: unknown, t: unknown, l: unknown, onVerified?: () => void) => {
