@@ -137,6 +137,11 @@
 
 ### Added
 
+- **A project can require release approval.** Set `release.approval.required: true` in the
+  project document and every deploy, promote, verify and finish of a release batch is refused
+  (`RELEASE_APPROVAL_REQUIRED`) until an admin other than the one who asked approves it; an
+  approval given by its own asker is refused (`RELEASE_APPROVAL_SELF`). The Releases screen shows
+  such a batch as awaiting approval from the moment it is cut.
 - **A project can run on Autoflow (Sidcorp Auto) with no git repository.** Bind a site by its
   slug and the OAuth access token minted for it; runs reach the site and its Backend Builder flows
   through the shop MCP, and `forge_storefront_target` reports the site with its workflows and
@@ -3224,6 +3229,12 @@
   set is now 59.
 
 ### Fixed
+
+- **`forge-runner bind --path` installs the git credential helper**, as `--clone` always did, so
+  an existing checkout authenticates over HTTPS with the credential Forge mints for its host. A
+  checkout whose `origin` is on another host than the project declares is refused by name.
+- **The Integrations page names a GitLab repository GitLab.** The repository card was keyed and
+  labelled GitHub whatever host the repository lived on.
 
 - **The CI jobs that run after the merge can run on a branch before it lands**:
   `gh workflow run CI --ref <branch> -f base=<target>`. The nightly run no longer fails its checks

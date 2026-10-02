@@ -145,6 +145,7 @@ export function githubSourceHostOf(
 }
 
 export const githubSourceHost: SourceHostFactory = {
+  label: 'GitHub',
   hostOf: githubHostOf,
   listBindings: async (projectId) =>
     (await githubAgentBindings(projectId)).map((r) => ({ provider: 'github', ...r })),

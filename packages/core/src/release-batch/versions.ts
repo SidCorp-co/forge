@@ -10,7 +10,13 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { releaseNotesSections } from '../issues/release-notes.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { environmentsOf, readReleasePath } from '../project-config/release-path.js';
-import { type ApprovalView, approvalRefusal, approvalsOfRuns, approvalViews } from './approvals.js';
+import {
+  type ApprovalView,
+  approvalRefusal,
+  approvalRequired,
+  approvalsOfRuns,
+  approvalViews,
+} from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
 import { type BoundsReading, readBounds } from './bounds.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
@@ -79,14 +85,17 @@ const issueIdsOf = (meta: Record<string, unknown>): string[] =>
     : [];
 
 // cm:why a version's status is read from what the run recorded, in this order: a ship stamp is final, an open run is waiting on its approval or still at work, and a concluded run that repaired was rolled back
+// cm:why on a project that requires approval, an open run nobody has asked for approval yet waits on it too: no production act is taken before one
 export function versionStatus(
   run: Pick<RunRow, 'status' | 'releasedAt' | 'metadata'>,
   attempts: readonly Pick<ReleaseAttemptRow, 'stage' | 'settledAt'>[],
   latest: Pick<ApprovalView, 'decision'> | null,
+  required = false,
 ): VersionStatus {
   if (run.releasedAt) return 'shipped';
   if (run.status === 'running' || run.status === 'paused') {
     if (latest && latest.decision === null) return 'awaiting_approval';
+    if (!latest && required) return 'awaiting_approval';
     if (latest?.decision === 'returned') return 'returned';
     return 'in_progress';
   }
@@ -107,13 +116,15 @@ function rowOf(
   attempts: readonly ReleaseAttemptRow[],
   approvals: readonly ApprovalView[],
   current: string | null,
+  required: boolean,
 ) {
   const latest = approvals[0] ?? null;
   return {
     version: run.version,
     runId: run.id,
     runStatus: run.status,
-    status: versionStatus(run, attempts, latest),
+    status: versionStatus(run, attempts, latest, required),
+    approvalRequired: required,
     current: current === run.version,
     openedAt: run.startedAt.toISOString(),
     releasedAt: run.releasedAt ? run.releasedAt.toISOString() : null,
@@ -176,11 +187,12 @@ async function environmentsWith(projectId: string, current: string | null) {
 export async function listReleaseVersions(projectId: string) {
   const runs = await versionRuns(projectId);
   const ids = runs.map((r) => r.id);
-  const [attempts, approvalRows, current, draft] = await Promise.all([
+  const [attempts, approvalRows, current, draft, required] = await Promise.all([
     attemptsOf(ids),
     approvalsOfRuns(ids),
     currentReleaseVersion(projectId),
     draftOf(projectId),
+    approvalRequired(projectId),
   ]);
   const approvals = await approvalViews(approvalRows);
   const versions = runs.map((run) =>
@@ -189,12 +201,14 @@ export async function listReleaseVersions(projectId: string) {
       attempts.filter((a) => a.runId === run.id),
       approvals.filter((a) => a.runId === run.id),
       current,
+      required,
     ),
   );
   const count = (pred: (v: (typeof versions)[number]) => boolean) => versions.filter(pred).length;
   return {
     versions,
     draft,
+    approvalRequired: required,
     counts: {
       all: versions.length,
       awaitingApproval: count((v) => v.status === 'awaiting_approval'),
@@ -253,16 +267,17 @@ export async function readReleaseVersion(projectId: string, version: string) {
   const [run] = await versionRuns(projectId, version);
   if (!run)
     throw approvalRefusal(404, 'NOT_FOUND', `project ${projectId} has cut no version ${version}`);
-  const [attempts, approvalRows, current, read] = await Promise.all([
+  const [attempts, approvalRows, current, read, required] = await Promise.all([
     attemptsOf([run.id]),
     approvalsOfRuns([run.id]),
     currentReleaseVersion(projectId),
     readReleasePath(projectId),
+    approvalRequired(projectId),
   ]);
   const approvals = await approvalViews(approvalRows);
   const bounds: BoundsReading = readBounds(attempts);
   return {
-    ...rowOf(run, attempts, approvals, current),
+    ...rowOf(run, attempts, approvals, current, required),
     ...(await changelogOf(projectId, issueIdsOf(run.metadata))),
     attempts,
     bounds,

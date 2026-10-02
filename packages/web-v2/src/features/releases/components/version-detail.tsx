@@ -111,6 +111,12 @@ export function VersionDetail({ projectId, version, canDecide }: { projectId: st
       {latest && (v.status === "awaiting_approval" || v.status === "returned") ? (
         <ApprovalBlock projectId={projectId} approval={latest} canDecide={canDecide} issueCount={v.issueCount} />
       ) : null}
+      {!latest && v.status === "awaiting_approval" ? (
+        <p className="text-12 text-muted" data-testid="approval-required">
+          This project requires release approval. Nothing is deployed until the release run asks for approval and an
+          admin approves it.
+        </p>
+      ) : null}
       <Changelog sections={v.changelog} without={v.withoutNotes} />
       <DeploymentRows
         attempts={v.attempts}

@@ -19,6 +19,7 @@ import type { TransitionActor } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { abortedError, batchAborted, rewordStoredAbort } from './abort-stamp.js';
+import { assertApprovalAllowsAttempt } from './approvals.js';
 import {
   ReleaseFinishedForOtherCommitError,
   ReleaseFinishFenceLostError,
@@ -122,6 +123,8 @@ export async function acceptReleaseBatchFinish(
       .from(issues)
       .where(eq(issues.releaseBatchRunId, runId));
     if (!(run.status === 'completed' && (left?.n ?? 0) === 0)) {
+      // Closing the roster is the batch's last production act: the approval that let it deploy lets it close.
+      await assertApprovalAllowsAttempt(runId, run.projectId);
       const verification = await assertFinishable(runId, run);
       const before = (run.metadata as { commitBefore?: unknown } | null)?.commitBefore;
       if (verification.kind === 'probed' && commit === null && typeof before !== 'string') {

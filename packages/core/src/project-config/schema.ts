@@ -136,6 +136,14 @@ export const projectDocumentSchema = z.strictObject({
       'none',
     ]),
   }),
+  // cm:why approval held as a project rule rather than a master's habit: `required` makes the
+  // kernel refuse every production act of a release batch until a person approved it
+  // (`release-batch/approvals.ts:assertApprovalAllowsAttempt`); absent is not required.
+  release: z
+    .strictObject({
+      approval: z.strictObject({ required: z.boolean() }),
+    })
+    .optional(),
   execution: z.strictObject({
     plugin: z.strictObject({
       source: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),

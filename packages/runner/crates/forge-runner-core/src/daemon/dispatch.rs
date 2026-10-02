@@ -121,6 +121,8 @@ mod tests {
             branch: None,
             status: "online".into(),
             workspace_setup: None,
+            repository: None,
+            host_credential: false,
             master_policy: None,
             rate_limited_for_seconds: None,
             limit_reason: None,

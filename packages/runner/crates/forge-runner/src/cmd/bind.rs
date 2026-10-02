@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Args as ClapArgs;
-use forge_runner_core::auth::cred_store;
+use forge_runner_core::auth::{cred_store, git_cred};
 use forge_runner_core::config::{Binding, Config};
 use forge_runner_core::transport::runners::MeRunner;
 use forge_runner_core::transport::{runners, CoreClient};
@@ -34,6 +34,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     let cfg = Config::load()?;
     let client = client_for(&ctx, &cfg)?;
     let assignment = assignment_for(&client, &args.slug).await?;
+    let given = args.path.is_some();
     let path = match args.path {
         Some(p) => p.canonicalize().unwrap_or(p),
         None if args.clone => provision_checkout(&client, &assignment).await?,
@@ -57,13 +58,108 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         );
     }
 
+    // Before anything is saved: a checkout of another host's repository is refused, not bound.
+    let helper_host = if given {
+        checkout_credential_host(&args.slug, &path, &assignment, origin_url(&path).as_deref())?
+    } else {
+        None
+    };
+
     let bound = write_binding(&client, &assignment, &args.slug, &path, args.branch).await?;
     println!(
         "bound {} -> {} (synced to server)",
         args.slug,
         bound.display()
     );
+    if let Some(host) = helper_host {
+        git_cred::set_repo_credential_helper(&bound, &host).map_err(|e| {
+            anyhow::anyhow!(
+                "bound, but the git credential helper for {host} was not installed in {}: {e}",
+                bound.display()
+            )
+        })?;
+        println!(
+            "git credential helper: https://{host} -> forge-runner git-credential (repo-local)"
+        );
+    }
     Ok(())
+}
+
+/// `origin`'s URL in the checkout, or `None` where it has no such remote.
+fn origin_url(path: &std::path::Path) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .ok()?;
+    let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (out.status.success() && !url.is_empty()).then_some(url)
+}
+
+/// The host of a git remote in any of its forms — `https://host/…`, `ssh://user@host:port/…`,
+/// `user@host:path` — lower-cased and without a port.
+fn remote_host(url: &str) -> Option<String> {
+    let url = url.trim();
+    let authority = match url.split_once("://") {
+        Some((_, rest)) => rest.split('/').next()?,
+        None => url.split_once(':')?.0,
+    };
+    let host = authority.rsplit('@').next()?;
+    let host = host.split(':').next()?;
+    (!host.is_empty()).then(|| host.to_ascii_lowercase())
+}
+
+// cm:why `--clone` gets its helper from the provision; a checkout bound by `--path` gets the same
+// one here, for the host the project document declares — and only once its origin is that host
+/// The host to point this checkout's credential helper at, `None` where core mints no credential
+/// for the project, or a refusal naming both hosts when the checkout's origin is another host's.
+fn checkout_credential_host(
+    slug: &str,
+    path: &std::path::Path,
+    assignment: &MeRunner,
+    origin: Option<&str>,
+) -> anyhow::Result<Option<String>> {
+    let Some(repository) = assignment.repository.as_deref() else {
+        eprintln!(
+            "note: core names no source repository for {slug} (no git source declared, or a core older than this runner), so no git credential helper is installed"
+        );
+        return Ok(None);
+    };
+    let declared = repository
+        .split('/')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match origin {
+        Some(url) => {
+            let found = remote_host(url);
+            if found.as_deref() != Some(declared.as_str()) {
+                anyhow::bail!(
+                    "BIND_SOURCE_HOST_MISMATCH: {} has origin {url} (host {}), and project {slug} declares its source at {repository} (host {declared}) — bind a checkout of {repository}, or fix `origin` with `git -C {} remote set-url origin https://{repository}.git`",
+                    path.display(),
+                    found.as_deref().unwrap_or("unreadable"),
+                    path.display()
+                );
+            }
+            if !url.trim_start().starts_with("https://") && assignment.host_credential {
+                eprintln!(
+                    "note: origin {url} is not HTTPS, so git will not ask the credential helper for it until origin is https://{repository}.git"
+                );
+            }
+        }
+        None => eprintln!(
+            "warning: {} has no `origin` remote, so its host could not be checked against {repository}",
+            path.display()
+        ),
+    }
+    if !assignment.host_credential {
+        eprintln!(
+            "note: core mints no git credential for {repository}, so no credential helper is installed — attach a source host binding that can mint one, then bind again"
+        );
+        return Ok(None);
+    }
+    Ok(Some(declared))
 }
 
 fn config_dir() -> Option<PathBuf> {
@@ -199,6 +295,126 @@ pub async fn provision_checkout(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assigned(repository: Option<&str>, host_credential: bool) -> MeRunner {
+        MeRunner {
+            project_id: "p".into(),
+            runner_id: "r".into(),
+            slug: "autoflow".into(),
+            base_branch: None,
+            repo_path: None,
+            branch: None,
+            status: "online".into(),
+            workspace_setup: None,
+            master_policy: None,
+            repository: repository.map(str::to_string),
+            host_credential,
+            rate_limited_for_seconds: None,
+            limit_reason: None,
+        }
+    }
+
+    #[test]
+    fn a_remote_names_its_host_in_every_form() {
+        assert_eq!(
+            remote_host("https://gitlab.com/acme/app.git").as_deref(),
+            Some("gitlab.com")
+        );
+        assert_eq!(
+            remote_host("https://tok@GitLab.com/acme/app").as_deref(),
+            Some("gitlab.com")
+        );
+        assert_eq!(
+            remote_host("git@gitlab.com:acme/app.git").as_deref(),
+            Some("gitlab.com")
+        );
+        assert_eq!(
+            remote_host("ssh://git@git.example.co:2222/acme/app.git").as_deref(),
+            Some("git.example.co")
+        );
+        assert_eq!(remote_host("/srv/repos/app.git"), None);
+    }
+
+    #[test]
+    fn a_checkout_of_the_declared_host_gets_its_helper() {
+        let a = assigned(Some("gitlab.com/acme/app"), true);
+        let host = checkout_credential_host(
+            "autoflow",
+            std::path::Path::new("/w"),
+            &a,
+            Some("https://gitlab.com/acme/app.git"),
+        )
+        .unwrap();
+        assert_eq!(host.as_deref(), Some("gitlab.com"));
+    }
+
+    #[test]
+    fn a_checkout_of_another_host_is_refused_by_name() {
+        let a = assigned(Some("gitlab.com/acme/app"), true);
+        let err = checkout_credential_host(
+            "autoflow",
+            std::path::Path::new("/w"),
+            &a,
+            Some("git@github.com:acme/app.git"),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.starts_with("BIND_SOURCE_HOST_MISMATCH: "), "{err}");
+        assert!(
+            err.contains("github.com") && err.contains("gitlab.com/acme/app"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn no_helper_where_core_mints_nothing_or_declares_no_repository() {
+        let p = std::path::Path::new("/w");
+        let origin = Some("https://gitlab.com/acme/app.git");
+        let none = checkout_credential_host(
+            "a",
+            p,
+            &assigned(Some("gitlab.com/acme/app"), false),
+            origin,
+        );
+        assert_eq!(none.unwrap(), None);
+        assert_eq!(
+            checkout_credential_host("a", p, &assigned(None, true), origin).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn bind_path_installs_the_helper_into_the_checkout() {
+        let scratch = Scratch::new("bind-helper");
+        let repo = scratch.path().join("app");
+        git_checkout(&repo, true);
+        let ok = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["remote", "add", "origin", "https://gitlab.com/acme/app.git"])
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok);
+        let a = assigned(Some("gitlab.com/acme/app"), true);
+        let host = checkout_credential_host("autoflow", &repo, &a, origin_url(&repo).as_deref())
+            .unwrap()
+            .unwrap();
+        git_cred::set_repo_credential_helper(&repo, &host).unwrap();
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args([
+                "config",
+                "--local",
+                "--get-all",
+                "credential.https://gitlab.com.helper",
+            ])
+            .output()
+            .unwrap();
+        let helpers = String::from_utf8_lossy(&out.stdout);
+        assert!(helpers.contains("git-credential"), "{helpers}");
+    }
     use forge_runner_core::daemon::master_skill::{self, path_in, Outcome, Read, ASSET};
     use forge_runner_core::test_scratch::Scratch;
 

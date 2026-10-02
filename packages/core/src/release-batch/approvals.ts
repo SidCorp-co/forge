@@ -7,6 +7,7 @@ import { type ReleaseApprovalRow, releaseApprovals } from '../db/schema-release-
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { environmentsOf, readReleasePath } from '../project-config/release-path.js';
+import { readProjectDocument } from '../project-config/service.js';
 
 const SHA = /^[0-9a-f]{40}$/;
 const ENV_NAME = /^[a-z][a-z0-9-]{0,62}$/;
@@ -36,6 +37,8 @@ export type ApprovalRefusalCode =
   | 'RELEASE_RETURN_WITHOUT_REASON'
   | 'RELEASE_AWAITING_APPROVAL'
   | 'RELEASE_APPROVAL_RETURNED'
+  | 'RELEASE_APPROVAL_REQUIRED'
+  | 'RELEASE_APPROVAL_SELF'
   | 'RELEASE_VERSION_SHAPE';
 
 export function approvalRefusal(
@@ -251,6 +254,24 @@ export async function decideApproval(input: {
       `approving or returning a release takes admin on project ${projectId}; you hold ${access?.role ?? 'no role'}`,
     );
   }
+  const [asked] = await db
+    .select({ requestedByUser: releaseApprovals.requestedByUser })
+    .from(releaseApprovals)
+    .where(
+      and(
+        eq(releaseApprovals.id, approvalId),
+        eq(releaseApprovals.runId, runId),
+        eq(releaseApprovals.projectId, projectId),
+      ),
+    )
+    .limit(1);
+  if (asked && asked.requestedByUser === userId) {
+    throw approvalRefusal(
+      403,
+      'RELEASE_APPROVAL_SELF',
+      `approval request ${approvalId} was asked by you; a release is approved by a person other than the one who asked for it`,
+    );
+  }
   const [row] = await db
     .update(releaseApprovals)
     .set({
@@ -292,15 +313,48 @@ export async function decideApproval(input: {
   return view as ApprovalView;
 }
 
+/** `release.approval.required` of the project document; a project with no document requires none. */
+export async function approvalRequired(projectId: string): Promise<boolean> {
+  const held = await readProjectDocument(projectId);
+  return held?.document.release?.approval.required === true;
+}
+
 // cm:guard an attempt on a run whose latest request is pending or returned is refused: the attempts of a release run are its production acts, and approval is what lets the master make them
-export async function assertApprovalAllowsAttempt(runId: string): Promise<void> {
+// cm:guard on a project whose document sets `release.approval.required`, a run with no approval a person other than its asker gave is refused too, so the rule holds whether or not the master asked
+export async function assertApprovalAllowsAttempt(runId: string, projectId: string): Promise<void> {
   const [latest] = await db
-    .select({ decision: releaseApprovals.decision, reason: releaseApprovals.reason })
+    .select({
+      decision: releaseApprovals.decision,
+      reason: releaseApprovals.reason,
+      requestedByUser: releaseApprovals.requestedByUser,
+      decidedByUser: releaseApprovals.decidedByUser,
+      deciderKind: users.kind,
+    })
     .from(releaseApprovals)
+    .leftJoin(users, eq(users.id, releaseApprovals.decidedByUser))
     .where(eq(releaseApprovals.runId, runId))
     .orderBy(desc(releaseApprovals.requestedAt), desc(releaseApprovals.id))
     .limit(1);
-  if (!latest || latest.decision === 'approved') return;
+  const required = await approvalRequired(projectId);
+  if (!latest) {
+    if (!required) return;
+    throw approvalRefusal(
+      409,
+      'RELEASE_APPROVAL_REQUIRED',
+      `project ${projectId} requires release approval (project document \`release.approval.required\`), and release run ${runId} has none: ask with POST /api/projects/${projectId}/release-batches/${runId}/approvals and wait for an admin to approve it`,
+      { runId, required: true },
+    );
+  }
+  if (latest.decision === 'approved') {
+    if (!required) return;
+    if (latest.decidedByUser !== latest.requestedByUser && latest.deciderKind === 'human') return;
+    throw approvalRefusal(
+      409,
+      'RELEASE_APPROVAL_SELF',
+      `release run ${runId} was approved by ${latest.decidedByUser === latest.requestedByUser ? 'the same principal that asked for it' : 'an agent'}; project ${projectId} requires a person other than the asker to approve — ask again`,
+      { runId, required: true },
+    );
+  }
   if (latest.decision === null) {
     throw approvalRefusal(
       409,

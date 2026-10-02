@@ -212,19 +212,22 @@ pub fn credential_helper_git_args(host: &str) -> Vec<String> {
 }
 
 /// Persist the same entries repo-locally, so every later fetch and push in this
-/// checkout resolves its credential the same way the clone did.
-pub fn set_repo_credential_helper(repo_path: &std::path::Path, host: &str) {
+/// checkout resolves its credential the same way the clone did. `Err` names the
+/// step that did not land, so a caller that cannot carry on without the helper says so.
+pub fn set_repo_credential_helper(
+    repo_path: &std::path::Path,
+    host: &str,
+) -> std::result::Result<(), String> {
     let key = format!("credential.https://{host}.helper");
     let args = credential_helper_git_args(host);
     let Some(helper_value) = args
         .get(3)
         .and_then(|v| v.split_once('=').map(|(_, v)| v.to_string()))
     else {
-        tracing::error!(
-            "[provision] no program could be named for {host}'s credential helper, so {}'s git config is left as it is — an empty helper would refuse every fetch and push in it",
+        return Err(format!(
+            "no program could be named for {host}'s credential helper, so {}'s git config is left as it is — an empty helper would refuse every fetch and push in it",
             repo_path.display()
-        );
-        return;
+        ));
     };
 
     let steps: Vec<Vec<String>> = vec![
@@ -249,14 +252,17 @@ pub fn set_repo_credential_helper(repo_path: &std::path::Path, host: &str) {
             .output();
         match out {
             Ok(o) if o.status.success() => {}
-            Ok(o) => tracing::warn!(
-                "[provision] git {} failed: {}",
-                step.join(" "),
-                String::from_utf8_lossy(&o.stderr).trim()
-            ),
-            Err(e) => tracing::warn!("[provision] spawn git {}: {e}", step.join(" ")),
+            Ok(o) => {
+                return Err(format!(
+                    "git {} failed: {}",
+                    step.join(" "),
+                    String::from_utf8_lossy(&o.stderr).trim()
+                ))
+            }
+            Err(e) => return Err(format!("spawn git {}: {e}", step.join(" "))),
         }
     }
+    Ok(())
 }
 
 fn shell_quote(s: &str) -> String {
@@ -387,7 +393,7 @@ mod tests {
     #[test]
     fn the_checkout_config_holds_the_reset_and_ours_in_that_order() {
         let repo = tmp_repo("shape");
-        set_repo_credential_helper(&repo, "github.com");
+        set_repo_credential_helper(&repo, "github.com").unwrap();
 
         let helpers = local_config(
             &repo,
@@ -406,7 +412,7 @@ mod tests {
     #[test]
     fn an_ambient_global_helper_is_not_asked_once_the_checkout_resets_the_list() {
         let repo = tmp_repo("order");
-        set_repo_credential_helper(&repo, "github.com");
+        set_repo_credential_helper(&repo, "github.com").unwrap();
 
         let cfg = repo.join(".git").join("config");
         let body = std::fs::read_to_string(&cfg).unwrap();

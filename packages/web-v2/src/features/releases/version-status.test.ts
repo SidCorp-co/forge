@@ -11,6 +11,7 @@ const row = (over: Partial<ReleaseVersionRow>): ReleaseVersionRow => ({
   openedAt: "2026-10-01T10:00:00.000Z",
   releasedAt: null,
   issueCount: 1,
+  approvalRequired: false,
   approval: null,
   stages: [],
   ...over,
