@@ -4,7 +4,7 @@
   "id": "f4ac9d2b-4a5e-4f6d-9b72-8d9e0f1a2b34",
   "ecosystem": "5c1f0a3e-7b2d-4e8a-9f10-2a3b4c5d6e70",
   "project": "8f4c3d6b-ae5a-4b1d-8243-5d6e7f8091a3",
-  "trigger": { "kind": "joined", "sha": "4b825dc642cb6eb9a060e54bf8d69288fbee4904" },
+  "trigger": { "kind": "joined", "sha": "9c1e5f0a7b3d2e4c6a8b0d1f3e5a7c9b1d3f5e7a" },
   "steps": [
     { "name": "scan", "status": "succeeded" },
     { "name": "classify", "status": "succeeded" },

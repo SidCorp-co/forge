@@ -312,15 +312,30 @@ export const linkIdentityRefusals = (stored: LinkWrite, next: LinkWrite) =>
     'a link is one module joined to one contract in one ecosystem',
   );
 
-export const builderRunIdentityRefusals = (stored: BuilderRunWrite, next: BuilderRunWrite) =>
-  immutable(
+// cm:why a superseded run is closed for good: another run carries its work, so no write reopens or rewrites it, and only the supersede verb ever names supersededBy
+export function builderRunIdentityRefusals(
+  stored: BuilderRunWrite,
+  next: BuilderRunWrite,
+): EcosystemRefusal[] {
+  if (stored.supersededBy) {
+    return [
+      {
+        code: 'BUILDER_RUN_SUPERSEDED',
+        path: '/supersededBy',
+        detail: `this run was superseded by run ${stored.supersededBy.run} (${stored.supersededBy.reason}); it is closed, so work the run that replaced it.`,
+      },
+    ];
+  }
+  return immutable(
     [
       ['/ecosystem', stored.ecosystem, next.ecosystem],
       ['/trigger', stored.trigger, next.trigger],
+      ['/supersededBy', stored.supersededBy ?? null, next.supersededBy ?? null],
     ],
     'BUILDER_RUN_IMMUTABLE',
-    'a builder run is one trigger in one ecosystem',
+    'a builder run is one trigger in one ecosystem, and only the supersede verb closes one as superseded',
   );
+}
 
 export interface BuilderRunWorld {
   source: BuilderSource;
@@ -329,6 +344,8 @@ export interface BuilderRunWorld {
   links: ReadonlySet<string>;
   /** Another run of this project in this ecosystem that is still open, or null. */
   openRun: string | null;
+  /** Whether this write creates the run; an update's identity is held by `builderRunIdentityRefusals`. */
+  creating: boolean;
 }
 
 /** The steps a joined or pushed run of a repository project is opened with, in the order a master works them. */
@@ -354,6 +371,10 @@ export const STOREFRONT_BUILDER_STEPS = [
 // cm:why the steps are derived when a run opens and then stored as data: a run already open keeps the steps it was opened with
 export const builderStepsFor = (source: BuilderSource): readonly string[] =>
   source.type === 'storefront' ? STOREFRONT_BUILDER_STEPS : REPO_BUILDER_STEPS;
+
+/** Whether a run's stored steps are not the ones its project's source type derives now: it was opened against another source. */
+export const stepsStale = (doc: Pick<BuilderRunWrite, 'steps'>, source: BuilderSource): boolean =>
+  doc.steps.map((s) => s.name).join('\n') !== builderStepsFor(source).join('\n');
 
 const OPEN_STEP: ReadonlySet<string> = new Set(['pending', 'running']);
 
@@ -423,6 +444,13 @@ export function checkBuilderRun(doc: BuilderRunWrite, world: BuilderRunWorld): E
     at: pointer(['findings', i, 'site']),
   }));
   const out: EcosystemRefusal[] = callSiteRefusals(sites, world.source, doc.project);
+  if (world.creating && doc.supersededBy) {
+    out.push({
+      code: 'BUILDER_RUN_IMMUTABLE',
+      path: '/supersededBy',
+      detail: `a run is closed as superseded only by the supersede verb (POST /api/ecosystems/${doc.ecosystem}/builder-runs/:runId/supersede), which opens the run that replaces it; a written document never names supersededBy.`,
+    });
+  }
   if (world.openRun !== null && isOpenRun(doc)) {
     out.push({
       code: 'BUILDER_RUN_ALREADY_OPEN',

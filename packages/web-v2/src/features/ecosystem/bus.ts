@@ -3,7 +3,17 @@
 export const LINK_STATES = ["building", "current", "behind", "breaking", "unverified"] as const;
 export type LinkState = (typeof LINK_STATES)[number];
 
-export type StepStatus = "pending" | "running" | "succeeded" | "failed" | "skipped";
+export type StepStatus = "pending" | "running" | "succeeded" | "failed" | "skipped" | "superseded";
+
+/** A repository run names the commit it reads; a storefront run has none, and says where it reads instead. */
+export type BuilderTrigger =
+  | { kind: "joined" | "push" | "manual"; sha: string }
+  | { kind: "joined" | "push" | "manual"; sha: null; source: "storefront" };
+
+export interface SupersededBy {
+  run: string;
+  reason: string;
+}
 
 export interface BuilderStep {
   name: string;
@@ -13,8 +23,11 @@ export interface BuilderStep {
 
 export interface BusBuilder {
   id: string;
-  trigger: { kind: "joined" | "push"; sha: string };
+  trigger: BuilderTrigger;
   steps: BuilderStep[];
+  /** The stored steps are not the ones the project's current source type derives: supersede it. */
+  stepsStale: boolean;
+  supersededBy: SupersededBy | null;
   findings: number;
   links: number;
   createdAt: string;
@@ -123,9 +136,10 @@ export interface BuilderRunRecord {
   writer: string;
   document: {
     id: string;
-    trigger: { kind: "joined" | "push"; sha: string };
+    trigger: BuilderTrigger;
     steps: BuilderStep[];
     findings: Finding[];
+    supersededBy?: SupersededBy;
     links: string[];
     createdAt: string;
     updatedAt: string;
@@ -239,3 +253,6 @@ export const initials = (slug: string) => {
 };
 
 export const shortSha = (sha: string) => sha.slice(0, 7);
+
+/** What a run reads: its commit, short, or the storefront where there is no commit. */
+export const triggerRef = (t: BuilderTrigger) => (t.sha === null ? "the storefront" : shortSha(t.sha));

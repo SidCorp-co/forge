@@ -4,8 +4,8 @@ import {
   type Doc,
   type EcosystemWorld,
   formEcosystem,
+  JOIN_HEAD,
   openWorld,
-  sender,
   writeInterfaces,
 } from '../helpers/ecosystem-world.js';
 import {
@@ -18,7 +18,10 @@ import {
 let w: EcosystemWorld;
 let publish: MockInstance;
 let master = '';
+// The same master unfenced: /api/ecosystems is an account route a project-fenced token does not reach, so a fenced master supersedes through forge_ecosystem.
+let masterAccount = '';
 let otherMaster = '';
+let otherMasterAccount = '';
 let deviceToken = '';
 // Counted where the joins happen: the suite clears mock calls before each test.
 let joinWakes = 0;
@@ -52,7 +55,13 @@ async function agentOn(projectId: string, orgId: string, handle: string) {
     VALUES (${orgId}, ${agent}, 'member', ${handle})
   `);
   await createTestProjectMember(w.harness.db, { userId: agent, projectId, role: 'member' });
-  return (await mintPat({ userId: agent, name: 'master', projectIds: [projectId] })).plaintext;
+  const fenced = (await mintPat({ userId: agent, name: 'master', projectIds: [projectId] }))
+    .plaintext;
+  const { PAT_GRANT_EPOCH } = await import('../../src/auth/pat-permissions.js');
+  const account = (
+    await mintPat({ userId: agent, name: 'master-account', grantEpoch: PAT_GRANT_EPOCH })
+  ).plaintext;
+  return { fenced, account };
 }
 
 beforeAll(async () => {
@@ -74,8 +83,16 @@ beforeAll(async () => {
   await formEcosystem(w);
   joinWakes = buildWakes(box.plugin);
   await writeInterfaces(w);
-  master = await agentOn(w.project.plugin, w.org.plugin, 'forge-plugin-master');
-  otherMaster = await agentOn(w.project.forge, w.org.platform, 'forge-master');
+  ({ fenced: master, account: masterAccount } = await agentOn(
+    w.project.plugin,
+    w.org.plugin,
+    'forge-plugin-master',
+  ));
+  ({ fenced: otherMaster, account: otherMasterAccount } = await agentOn(
+    w.project.forge,
+    w.org.platform,
+    'forge-master',
+  ));
 }, 120_000);
 
 afterAll(async () => {
@@ -89,7 +106,11 @@ describe('joining an ecosystem gives the joining project its builder run', () =>
     expect(listed.status, JSON.stringify(listed.json)).toBe(200);
     expect(listed.json.runs).toHaveLength(1);
     const run = listed.json.runs[0].document;
-    expect(run).toMatchObject({ trigger: { kind: 'joined' }, findings: [], links: [] });
+    expect(run).toMatchObject({
+      trigger: { kind: 'joined', sha: JOIN_HEAD },
+      findings: [],
+      links: [],
+    });
     expect(run.steps.map((s: Doc) => `${s.name}:${s.status}`)).toEqual([
       'read-repo:pending',
       'find-outbound-calls:pending',
@@ -194,5 +215,81 @@ describe('a push to the default branch reopens the run', () => {
     expect(buildWakes(box.plugin) - before).toBe(1);
     const listed = (await as(master, 'GET', runs())).json.runs;
     expect(listed.map((r: Doc) => r.document.trigger.kind)).toEqual(['push', 'joined']);
+  });
+});
+
+describe('a run that cannot finish truly is superseded, and a fresh one opens', () => {
+  const supersede = (token: string, runId: string, body: unknown) =>
+    as(token, 'POST', `/api/ecosystems/${w.eco}/builder-runs/${runId}/supersede`, body);
+  const openRun = async () =>
+    (await as(master, 'GET', runs())).json.runs.find((r: Doc) =>
+      r.document.steps.some((s: Doc) => s.status === 'pending' || s.status === 'running'),
+    );
+
+  it('refuses a missing reason, another project’s master and a person who is no org admin, by name', async () => {
+    const held = await openRun();
+    const bare = await supersede(masterAccount, held.document.id, {});
+    expect(bare.status, JSON.stringify(bare.json)).toBe(422);
+    expect(bare.json.error.refusals.map((x: Doc) => `${x.code} ${x.path}`)).toEqual([
+      'BUILDER_RUN_SUPERSEDE_WITHOUT_REASON /reason',
+    ]);
+    for (const token of [otherMasterAccount, w.token.viewer]) {
+      const r = await supersede(token, held.document.id, { reason: 'not mine to close' });
+      expect(r.status, JSON.stringify(r.json)).toBe(403);
+      expect(r.json.code).toBe('BUILDER_RUN_SUPERSEDE_NOT_AUTHORISED');
+    }
+    expect((await openRun()).document.id).toBe(held.document.id);
+  });
+
+  it("closes the open run as superseded, opens a manual run at the head, and wakes the project's master", async () => {
+    const held = await openRun();
+    const before = buildWakes(box.plugin);
+    const r = await supersede(masterAccount, held.document.id, {
+      reason: 'opened on the old steps',
+    });
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    const { superseded, opened } = r.json;
+    expect(superseded.document.supersededBy).toEqual({
+      run: opened.document.id,
+      reason: 'opened on the old steps',
+    });
+    expect(superseded.document.steps.every((s: Doc) => s.status === 'superseded')).toBe(true);
+    expect(opened.document.trigger).toEqual({ kind: 'manual', sha: JOIN_HEAD });
+    expect(opened.document.steps.every((s: Doc) => s.status === 'pending')).toBe(true);
+    expect(buildWakes(box.plugin) - before).toBe(1);
+    expect((await openRun()).document.id).toBe(opened.document.id);
+    const bus = await as(w.token.platform, 'GET', `/api/ecosystems/${w.eco}/bus`);
+    const mine = bus.json.projects.find((p: Doc) => p.id === w.project.plugin);
+    expect(mine.builder).toMatchObject({ id: opened.document.id, stepsStale: false });
+  });
+
+  it('refuses superseding a run no longer open, and any write to a superseded run, by name', async () => {
+    const listed = (await as(master, 'GET', runs())).json.runs;
+    const gone = listed.find((r: Doc) => r.document.supersededBy);
+    const again = await supersede(masterAccount, gone.document.id, { reason: 'twice' });
+    expect(again.status, JSON.stringify(again.json)).toBe(422);
+    expect(again.json.error.refusals.map((x: Doc) => x.code)).toEqual(['BUILDER_RUN_NOT_OPEN']);
+    const doc = structuredClone(gone.document);
+    for (const k of ['id', 'createdAt', 'updatedAt']) delete doc[k];
+    const put = await as(master, 'PUT', `${runs()}/${gone.document.id}`, {
+      baseRevision: gone.revision,
+      document: doc,
+    });
+    expect(put.status, JSON.stringify(put.json)).toBe(422);
+    expect(put.json.error.refusals.map((x: Doc) => x.code)).toEqual(['BUILDER_RUN_SUPERSEDED']);
+  });
+
+  it('lets an admin of the steward org supersede it, and refuses a head it cannot read without opening anything', async () => {
+    const held = await openRun();
+    w.head.mockRejectedValueOnce(new Error('this project has no active source host binding'));
+    const blind = await supersede(w.token.platform, held.document.id, { reason: 'steward reset' });
+    expect(blind.status, JSON.stringify(blind.json)).toBe(422);
+    expect(blind.json.error.refusals.map((x: Doc) => `${x.code} ${x.path}`)).toEqual([
+      'BUILDER_RUN_HEAD_UNREADABLE /trigger/sha',
+    ]);
+    expect((await openRun()).document.id).toBe(held.document.id);
+    const r = await supersede(w.token.platform, held.document.id, { reason: 'steward reset' });
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    expect(r.json.opened.document.trigger.kind).toBe('manual');
   });
 });

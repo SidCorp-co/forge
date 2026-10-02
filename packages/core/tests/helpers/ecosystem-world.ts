@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { Hono } from 'hono';
-import { expect } from 'vitest';
+import { expect, type MockInstance, vi } from 'vitest';
 import { seedContractVersion } from './contract-versions.js';
 import { setupTestDatabase, type TestDatabase } from './db.js';
 import {
@@ -17,7 +17,12 @@ export type Doc = Record<string, any>;
 export type Who = 'platform' | 'plugin' | 'store' | 'viewer';
 export type ProjectKey = 'forge' | 'internal' | 'plugin' | 'store';
 
+/** The default-branch head every project's host reports in this world: no test box reaches a real host. */
+export const JOIN_HEAD = '5d3a8f1c0e7b9a2d4c6e8f0a1b3c5d7e9f2a4b6c';
+
 export interface EcosystemWorld {
+  /** The stand-in for each project's host head read (`builder-head.ts:projectHead`); a test may make it refuse once. */
+  head: MockInstance;
   harness: TestDatabase;
   app: Hono<AppVars>;
   token: Record<Who, string>;
@@ -73,7 +78,20 @@ export async function openWorld(): Promise<EcosystemWorld> {
 
   const { app } = await import('../../src/index.js');
   (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
-  return { harness, app, token, user: people, org, project, eco: '', otherEco: '', membership: {} };
+  const { projectHead } = await import('../../src/ecosystem/builder-head.js');
+  const head = vi.spyOn(projectHead, 'read').mockResolvedValue(JOIN_HEAD);
+  return {
+    head,
+    harness,
+    app,
+    token,
+    user: people,
+    org,
+    project,
+    eco: '',
+    otherEco: '',
+    membership: {},
+  };
 }
 
 export function sender(w: EcosystemWorld) {

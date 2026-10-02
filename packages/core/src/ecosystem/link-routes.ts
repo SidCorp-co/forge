@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { envelopeOf, refused } from '../project-config/respond.js';
+import { supersedeBuilderRun } from './builder-supersede.js';
 import {
   listBuilderRunsAs,
   listLinksAs,
@@ -28,6 +29,7 @@ for (const path of ['/:id/links', '/:id/links/*', '/:id/builder-runs', '/:id/bui
   linkProjectRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 busRoutes.use('/:id/bus', requireAuth(), assertEmailVerified());
+busRoutes.use('/:id/builder-runs/*', requireAuth(), assertEmailVerified());
 
 const badRequest = (message: string) =>
   new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
@@ -123,3 +125,22 @@ linkProjectRoutes.put('/:id/builder-runs/:run', runParam, envelope, async (c) =>
 busRoutes.get('/:id/bus', idParam, async (c) =>
   c.json(await readBus(c.get('userId'), c.req.valid('param').id)),
 );
+
+const supersedeParam = zValidator('param', z.object({ id: z.uuid(), run: z.uuid() }), (r) => {
+  if (!r.success) throw badRequest('invalid path: the ecosystem and the builder run are uuids');
+});
+
+const supersedeBody = zValidator('json', z.unknown());
+
+busRoutes.post('/:id/builder-runs/:run/supersede', supersedeParam, supersedeBody, async (c) => {
+  const { id, run } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const outcome = await supersedeBuilderRun({
+    runId: run,
+    ecosystemId: id,
+    actor: writerOf(c),
+    reason: body && typeof body === 'object' ? (body as { reason?: unknown }).reason : undefined,
+  });
+  if (!outcome.ok) return refused(c, outcome.refusals);
+  return c.json({ superseded: recordView(outcome.superseded), opened: recordView(outcome.opened) });
+});

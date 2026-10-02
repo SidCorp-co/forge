@@ -14,6 +14,7 @@ import {
   initials,
   STATE_MEANING,
   STATE_TONE,
+  triggerRef,
   type Tone,
   VERDICT_TONE,
   type Verdict,
@@ -82,7 +83,7 @@ function headerLine(p: BusProject) {
 
 function headerTip(p: BusProject, reader: boolean, linksOut: number, provides: number) {
   const mapped = linksOut === 0 ? "no link mapped" : `${linksOut} link${linksOut === 1 ? "" : "s"} out`;
-  const built = p.builder ? ` · last built on ${p.builder.trigger.kind} ${p.builder.trigger.sha.slice(0, 7)}` : "";
+  const built = p.builder ? ` · last built on ${p.builder.trigger.kind} ${triggerRef(p.builder.trigger)}${p.builder.stepsStale ? " (steps stale)" : ""}` : "";
   return `${p.name}${reader ? " · one of your projects" : ""} · ${mapped}${provides ? ` · provides ${provides}` : ""}${built}`;
 }
 
