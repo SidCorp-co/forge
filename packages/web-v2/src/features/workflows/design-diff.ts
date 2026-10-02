@@ -13,14 +13,17 @@ export const edgeKey = (from: string, to: string) => `${from}>${to}`;
 const designOf = (s: WorkflowStep) =>
   JSON.stringify({ title: s.title ?? null, does: s.does, after: [...s.after].sort(), node: s.node ?? null });
 
-const contractOf = (e: WorkflowEdgeContract | undefined) => {
+const contractOf = (e: WorkflowEdgeContract | undefined, defaultKind: string) => {
   if (!e) return "null";
   const { kind, ...rest } = e;
-  return JSON.stringify(kind === "feedback" ? e : rest);
+  return JSON.stringify(kind === undefined || kind === defaultKind ? rest : e);
 };
 
-/** What the proposed revision changes against the approved one, in the terms its approver decides on. */
-export function designDiff(approved: WorkflowBody, proposed: WorkflowBody): DesignDiff {
+/**
+ * What the proposed revision changes against the approved one, in the terms its approver decides on;
+ * an edge of the template's default kind compares equal whether or not it spells the kind out.
+ */
+export function designDiff(approved: WorkflowBody, proposed: WorkflowBody, defaultKind = "flow"): DesignDiff {
   const before = new Map(approved.steps.map((s) => [s.id, s]));
   const after = new Map(proposed.steps.map((s) => [s.id, s]));
   const steps = new Map<string, StepMark>();
@@ -40,7 +43,7 @@ export function designDiff(approved: WorkflowBody, proposed: WorkflowBody): Desi
     const now = newEdges.get(key);
     if (!was) edges.set(key, "added");
     else if (!now) edges.set(key, "removed");
-    else if (contractOf(was) !== contractOf(now)) edges.set(key, "changed");
+    else if (contractOf(was, defaultKind) !== contractOf(now, defaultKind)) edges.set(key, "changed");
   }
   return { steps, edges, removed };
 }
@@ -64,7 +67,7 @@ export function contractText(e: WorkflowEdgeContract): string {
     e.idempotency ? `once: ${e.idempotency}` : null,
     e.onFailure ? `on failure: ${e.onFailure}` : null,
   ];
-  const head = e.kind === "feedback" ? `${e.from} ↩ ${e.to} (feedback)` : `${e.from} → ${e.to}`;
-  const back = e.kind === "feedback" && e.reevaluates ? [`re-evaluates ${e.reevaluates}`] : [];
+  const head = e.kind ? `${e.from} → ${e.to} (${e.kind})` : `${e.from} → ${e.to}`;
+  const back = e.reevaluates ? [`re-evaluates ${e.reevaluates}`] : [];
   return [head, ...back, ...lines.filter((l): l is string => l !== null)].join("\n");
 }

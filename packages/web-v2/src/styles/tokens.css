@@ -140,6 +140,36 @@
      buttons and the "In progress" distribution bar. */
   --pipeline-active: var(--cobalt-500);
 
+  /* ===== WORKFLOW TEMPLATE HUES — the colour tokens a diagram template's node types and edge
+     kinds name (`@forge/contracts/workflow-templates` TEMPLATE_COLOURS). Raw, then semantic. ===== */
+  --hue-orange-700: #C2410C;  --hue-orange-300: #FB923C;
+  --hue-slate-600:  #4B5B73;  --hue-slate-300:  #A3B1C6;
+  --hue-teal-700:   #0F766E;  --hue-teal-300:   #5EEAD4;
+  --hue-violet-700: #6D28D9;  --hue-violet-300: #C4B5FD;
+  --hue-blue-700:   #1D4ED8;  --hue-blue-300:   #93C5FD;
+  --hue-amber-700:  #A16207;  --hue-amber-300:  #FCD34D;
+  --hue-pink-700:   #A21C5B;  --hue-pink-300:   #F9A8D4;
+  --hue-green-700:  #15803D;  --hue-green-300:  #86EFAC;
+  --hue-red-700:    #B91C1C;  --hue-red-300:    #FCA5A5;
+  --hue-cyan-700:   #0E7490;  --hue-cyan-300:   #67E8F9;
+  --hue-emerald-700:#047857;  --hue-emerald-300:#6EE7B7;
+  --hue-indigo-700: #4338CA;  --hue-indigo-300: #A5B4FC;
+  --wf-orange: var(--hue-orange-700);
+  --wf-slate: var(--hue-slate-600);
+  --wf-teal: var(--hue-teal-700);
+  --wf-violet: var(--hue-violet-700);
+  --wf-blue: var(--hue-blue-700);
+  --wf-amber: var(--hue-amber-700);
+  --wf-pink: var(--hue-pink-700);
+  --wf-green: var(--hue-green-700);
+  --wf-red: var(--hue-red-700);
+  --wf-cyan: var(--hue-cyan-700);
+  --wf-emerald: var(--hue-emerald-700);
+  --wf-indigo: var(--hue-indigo-700);
+  --wf-neutral: var(--ink-500);
+  --wf-edge: var(--ink-400);
+  --wf-hit: var(--amber-500);
+
   /* ===== RADII ===== */
   --r-xs: 4px;
   --r-sm: 6px;
@@ -179,6 +209,25 @@
   --fg-default: #ECEDEF; --fg-muted: #A6ABB5; ...
 }
 */
+
+/* The workflow canvas's hues, ready for the dark theme the semantic block above reserves: the
+   canvas reads only --wf-*, so when dark ships its node and edge colours follow without a change. */
+[data-theme="dark"] {
+  --wf-orange: var(--hue-orange-300);
+  --wf-slate: var(--hue-slate-300);
+  --wf-teal: var(--hue-teal-300);
+  --wf-violet: var(--hue-violet-300);
+  --wf-blue: var(--hue-blue-300);
+  --wf-amber: var(--hue-amber-300);
+  --wf-pink: var(--hue-pink-300);
+  --wf-green: var(--hue-green-300);
+  --wf-red: var(--hue-red-300);
+  --wf-cyan: var(--hue-cyan-300);
+  --wf-emerald: var(--hue-emerald-300);
+  --wf-indigo: var(--hue-indigo-300);
+  --wf-neutral: var(--ink-400);
+  --wf-edge: var(--ink-500);
+}
 
 /* ============================================================
    BASE TYPE STYLES

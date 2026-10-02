@@ -5,11 +5,12 @@ import { Badge, EmptyState, ErrorState, PageTitle, ProjectLoader, Tooltip } from
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { useQueryParam } from "@/lib/utils/use-query-param";
-import { useWorkflows } from "../hooks";
-import { walkedOf } from "../layout";
+import { templateFor } from "../canvas/model";
+import { WorkflowCanvas } from "../canvas/workflow-canvas";
+import { walkedOf } from "../coverage";
+import { useWorkflowTemplates, useWorkflows } from "../hooks";
 import type { WorkflowKind, WorkflowRecord } from "../types";
 import { workflowHref } from "../routes";
-import { WorkflowDiagram } from "./workflow-diagram";
 import { DesignPill, StepDetail } from "./workflow-parts";
 
 function ListPill({ record }: { record: WorkflowRecord }) {
@@ -53,6 +54,7 @@ function ListPill({ record }: { record: WorkflowRecord }) {
 
 export function WorkflowsScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const q = useWorkflows(projectId);
+  const templates = useWorkflowTemplates(projectId);
   const [tab, setTab] = useQueryParam("kind");
   const [picked, setPicked] = useQueryParam("flow");
   const [stepParam, setStep] = useQueryParam("step");
@@ -159,7 +161,13 @@ export function WorkflowsScreen({ projectId, slug }: { projectId: string; slug: 
                 </p>
               ) : null}
               <p className="text-13 text-muted">{w.summary}</p>
-              <WorkflowDiagram workflow={w} selected={step.id} onSelect={(id) => setStep(id)} />
+              <WorkflowCanvas
+                compact
+                doc={w}
+                template={templateFor(w, (templates.data?.templates ?? []).map((t) => t.template))}
+                selected={step.id}
+                onSelect={(id) => setStep(id)}
+              />
               <StepDetail flow={w.flow} kind={w.kind} step={step} />
             </div>
           ) : null}

@@ -25,26 +25,35 @@ export interface StorefrontEvidence {
 
 export type WorkflowEvidence = RepoEvidence | StorefrontEvidence;
 
-export type NodeType =
-  | "EVENT"
-  | "CONTEXT"
-  | "RULE"
-  | "STATE"
-  | "EXPECTATION"
-  | "CASE"
-  | "TASK"
-  | "ATTENTION"
-  | "ACTION"
-  | "OUTCOME"
-  | "STEP";
+/** A node type is whatever the design's template declares (EVENT, STATE, SCREEN …). */
+export type NodeType = string;
 
 export interface WorkflowNode {
   type: NodeType;
+  /** The short business title on the card; absent, the step's title. */
+  label?: string;
+  /** The band (or the design's lane) the step sits in; absent, its type's home band. */
+  band?: string;
   purpose?: string;
   inputs?: string[];
   outputs?: string[];
   owner?: string;
   sla?: string;
+  conditions?: { when: string; result: string }[];
+  tests?: string[];
+  expectedOutcome?: string;
+  permissions?: string[];
+  initial?: boolean;
+  terminal?: boolean;
+  persona?: string;
+  wireframe?: { attachment: string; svg?: string };
+  dataShown?: string[];
+  actions?: string[];
+  trigger?: string;
+  validation?: string;
+  invokes?: { workflow: string; step: string };
+  variant?: "empty" | "loading" | "error" | "permission-denied";
+  noErrorState?: string;
 }
 
 export interface WorkflowStep {
@@ -58,10 +67,12 @@ export interface WorkflowStep {
 }
 
 export interface WorkflowEdgeContract {
-  /** `flow` (the default) is a line `after` draws; `feedback` returns from a later step to an earlier one. */
-  kind?: "flow" | "feedback";
+  /** One of the template's edge kinds; absent, its default kind. */
+  kind?: string;
   from: string;
   to: string;
+  /** The short business words on the line; absent, its condition. */
+  label?: string;
   /** A feedback edge's re-evaluation: what the return recomputes at the earlier step. */
   reevaluates?: string;
   condition?: string;
@@ -69,6 +80,15 @@ export interface WorkflowEdgeContract {
   mapping?: Record<string, string>;
   idempotency?: string;
   onFailure?: string;
+  payload?: string[];
+  success?: string;
+  failure?: string;
+}
+
+export interface WorkflowLane {
+  id: string;
+  label: string;
+  tooltip?: string;
 }
 
 export interface WorkflowBody {
@@ -80,6 +100,10 @@ export interface WorkflowBody {
   summary: string;
   status: WorkflowStatus;
   steps: WorkflowStep[];
+  /** Version 2: the diagram template the design is drawn in; a design stored before templates names none. */
+  template?: { id: string; version: number };
+  lanes?: WorkflowLane[];
+  personas?: WorkflowLane[];
   edges?: WorkflowEdgeContract[];
   drift: { sha: string; steps: string[]; reason: string } | null;
   writtenBy: { runId?: string; sessionId?: string; sha?: string };
@@ -136,3 +160,9 @@ export interface WorkflowDesign {
 export type DesignDecisionBody =
   | { revision: number; decision: "approve" }
   | { revision: number; decision: "return"; reason: string };
+
+/** `GET /api/projects/:id/workflow-templates`. */
+export interface WorkflowTemplateList {
+  templates: { origin: "builtin" | "project"; template: import("@forge/contracts/workflow-templates").WorkflowTemplate }[];
+  returned: number;
+}
