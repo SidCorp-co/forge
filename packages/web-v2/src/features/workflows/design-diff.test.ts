@@ -1,3 +1,4 @@
+import { BUILTIN_WORKFLOW_TEMPLATES } from "@forge/contracts/workflow-templates";
 import { describe, expect, it } from "vitest";
 import { designDiff, edgeKey, stepsWithRemoved } from "./design-diff";
 import type { WorkflowBody } from "./types";
@@ -45,12 +46,14 @@ describe("what a proposed design changes against the approved one", () => {
     expect(stepsWithRemoved(next, d).map((s) => s.id)).toEqual(["a", "c", "b"]);
   });
 
-  it("marks an added and a removed feedback edge, and reads an explicit flow kind as no change", () => {
-    const back = { kind: "feedback" as const, from: "b", to: "a", reevaluates: "a" };
+  it("marks an added and a removed return edge, and reads a spelled-out implied kind as no change", () => {
+    const operational = BUILTIN_WORKFLOW_TEMPLATES.find((t) => t.id === "operational-flow") ?? null;
+    const back = { kind: "feeds-back" as const, from: "b", to: "a", reevaluates: "a" };
     const looped = body({ edges: [{ from: "a", to: "b", condition: "x" }, back] });
     expect(Object.fromEntries(designDiff(body(), looped).edges)).toEqual({ [edgeKey("b", "a")]: "added" });
     expect(Object.fromEntries(designDiff(looped, body()).edges)).toEqual({ [edgeKey("b", "a")]: "removed" });
-    const named = body({ edges: [{ kind: "flow", from: "a", to: "b", condition: "x" }] });
-    expect([...designDiff(body(), named).edges]).toEqual([]);
+    const named = body({ edges: [{ kind: "opens", from: "a", to: "b", condition: "x" }] });
+    expect([...designDiff(body(), named, operational).edges]).toEqual([]);
+    expect([...designDiff(body(), named).edges]).toEqual([[edgeKey("a", "b"), "changed"]]);
   });
 });

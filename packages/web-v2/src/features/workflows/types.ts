@@ -43,17 +43,22 @@ export interface WorkflowNode {
   tests?: string[];
   expectedOutcome?: string;
   permissions?: string[];
-  initial?: boolean;
-  terminal?: boolean;
   persona?: string;
   wireframe?: { attachment: string; svg?: string };
   dataShown?: string[];
   actions?: string[];
   trigger?: string;
   validation?: string;
-  invokes?: { workflow: string; step: string };
-  variant?: "empty" | "loading" | "error" | "permission-denied";
-  noErrorState?: string;
+  variant?: "empty" | "loading" | "error" | "success" | "partial";
+  event?: string;
+  route?: string;
+  payload?: string[];
+  idempotency?: string;
+  values?: string[];
+  mapsTo?: string;
+  channel?: string;
+  /** Steps of the project's other designs this one is. */
+  refs?: { template: string; flow: string; step: string }[];
 }
 
 export interface WorkflowStep {
@@ -67,13 +72,13 @@ export interface WorkflowStep {
 }
 
 export interface WorkflowEdgeContract {
-  /** One of the template's edge kinds; absent, its default kind. */
+  /** One of the template's edge kinds; absent, the one its endpoint types imply. */
   kind?: string;
   from: string;
   to: string;
   /** The short business words on the line; absent, its condition. */
   label?: string;
-  /** A feedback edge's re-evaluation: what the return recomputes at the earlier step. */
+  /** A return edge's re-evaluation: what it recomputes at the earlier step. */
   reevaluates?: string;
   condition?: string;
   action?: string;
@@ -81,8 +86,7 @@ export interface WorkflowEdgeContract {
   idempotency?: string;
   onFailure?: string;
   payload?: string[];
-  success?: string;
-  failure?: string;
+  protocol?: string;
 }
 
 export interface WorkflowLane {

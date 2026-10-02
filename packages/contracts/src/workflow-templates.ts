@@ -3,12 +3,13 @@
 
 import { BUILTIN_WORKFLOW_TEMPLATES } from './workflow-template-builtins.js';
 import {
-  type ProjectWorkflowTemplate,
   type ResolvedTemplates,
   resolveProjectTemplates as resolveOver,
-} from './workflow-template-schema.js';
+} from './workflow-template-checks.js';
+import type { ProjectWorkflowTemplate } from './workflow-template-schema.js';
 
 export * from './workflow-template-builtins.js';
+export * from './workflow-template-checks.js';
 export * from './workflow-template-schema.js';
 
 export function resolveProjectTemplates(

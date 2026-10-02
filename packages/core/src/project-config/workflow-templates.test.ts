@@ -29,7 +29,7 @@ describe('a project diagram template (workflows.templates)', () => {
     version: 1,
     title: 'Care journey with referrals',
     purpose: 'Use when a care journey also refers patients out.',
-    extends: { id: 'journey-bands', version: 1 },
+    extends: { id: 'operational-flow', version: 1 },
     nodeTypes: [
       {
         id: 'REFERRAL',
@@ -64,7 +64,7 @@ describe('a project diagram template (workflows.templates)', () => {
   });
 
   it('WORKFLOW_TEMPLATE_ID_TAKEN when a project template takes a built-in id', () => {
-    expect(pick(withTemplates({ ...referral(), id: 'journey-bands' }))).toEqual([
+    expect(pick(withTemplates({ ...referral(), id: 'operational-flow' }))).toEqual([
       { code: 'WORKFLOW_TEMPLATE_ID_TAKEN', path: '/workflows/templates/0/id' },
     ]);
   });
@@ -77,7 +77,7 @@ describe('a project diagram template (workflows.templates)', () => {
 
   it('WORKFLOW_TEMPLATE_UNKNOWN when an extension extends nothing declared', () => {
     expect(
-      pick(withTemplates({ ...referral(), extends: { id: 'journey-bands', version: 9 } })),
+      pick(withTemplates({ ...referral(), extends: { id: 'operational-flow', version: 9 } })),
     ).toEqual([{ code: 'WORKFLOW_TEMPLATE_UNKNOWN', path: '/workflows/templates/0/extends' }]);
   });
 
@@ -86,7 +86,7 @@ describe('a project diagram template (workflows.templates)', () => {
     delete (t as Partial<typeof t>).bandTypes;
     const out = withTemplates(t);
     expect(pick(out)).toEqual([
-      { code: 'WORKFLOW_TEMPLATE_INVALID', path: '/workflows/templates/0/nodeTypes/11/band' },
+      { code: 'WORKFLOW_TEMPLATE_INVALID', path: '/workflows/templates/0/nodeTypes/12/band' },
     ]);
     expect(out[0]?.detail).toContain('does not admit REFERRAL');
   });
@@ -97,7 +97,7 @@ describe('a project diagram template (workflows.templates)', () => {
       {
         workflowTemplatesInUse: new Map([
           ['care-journey@1', ['referral-flow']],
-          ['journey-bands@1', ['post-discharge']],
+          ['operational-flow@1', ['post-discharge']],
         ]),
       },
     );

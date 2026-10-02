@@ -3,6 +3,7 @@ import {
   EDGE_KIND_ID,
   LEGACY_V2_TEMPLATE,
   NODE_TYPE_ID,
+  TEMPLATE_ID,
   TEMPLATE_LIMITS,
   templateRefSchema,
 } from '@forge/contracts/workflow-templates';
@@ -30,7 +31,10 @@ export type WorkflowV2Status = (typeof WORKFLOW_V2_STATUSES)[number];
 export const NODE_TYPE = NODE_TYPE_ID;
 export const EDGE_KIND = EDGE_KIND_ID;
 
-export const UI_STATE_VARIANTS = ['empty', 'loading', 'error', 'permission-denied'] as const;
+export const UI_STATE_VARIANTS = ['empty', 'loading', 'error', 'success', 'partial'] as const;
+
+/** operational-flow: an event is named `domain.verb_past` (`patient.discharged`). */
+export const EVENT_NAME = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 
 export const STOREFRONT_REF_KINDS = ['workflow', 'route', 'node'] as const;
 
@@ -57,6 +61,11 @@ export const WORKFLOW_LIMITS = {
   conditions: 30,
   tests: 30,
   lanes: 16,
+  refs: 8,
+  route: 200,
+  values: 20,
+  code: 40,
+  protocol: 60,
 } as const;
 
 // cm:why a step id is a status name as often as a verb, so it takes `_` (`in_progress`) where a flow slug does not
@@ -149,8 +158,6 @@ const nodeSchema = z.strictObject({
   tests: textList(WORKFLOW_LIMITS.tests),
   expectedOutcome: contractText().optional(),
   permissions: textList(WORKFLOW_LIMITS.io),
-  initial: z.boolean().optional(),
-  terminal: z.boolean().optional(),
   /** ux-flow: the persona (one of the design's `personas`) a screen is for. */
   persona: z.string().regex(BAND_ID).optional(),
   /** ux-flow: the wireframe-v1 board drawn for a screen, as the issue attachments holding it. */
@@ -159,11 +166,29 @@ const nodeSchema = z.strictObject({
   actions: textList(WORKFLOW_LIMITS.io),
   trigger: contractText().optional(),
   validation: contractText().optional(),
-  /** ux-flow: the step of another design of this project a system step drives. */
-  invokes: z.strictObject({ workflow: slug(), step: stepId() }).optional(),
   variant: z.enum(UI_STATE_VARIANTS).optional(),
-  /** ux-flow: why a screen has no error state, said instead of drawing one. */
-  noErrorState: contractText().optional(),
+  event: z.string().regex(EVENT_NAME).max(WORKFLOW_LIMITS.ioName).optional(),
+  /** ux-flow: the path a screen is served at. */
+  route: z.string().regex(/^\//).max(WORKFLOW_LIMITS.route).optional(),
+  payload: ioList(),
+  idempotency: contractText().optional(),
+  /** The closed set an outcome takes. */
+  values: z
+    .array(z.string().min(1).max(WORKFLOW_LIMITS.code))
+    .min(1)
+    .max(WORKFLOW_LIMITS.values)
+    .optional(),
+  /** The code of an outside vocabulary a state is (a FHIR status); a preset closes the set. */
+  mapsTo: z.string().min(1).max(WORKFLOW_LIMITS.code).optional(),
+  channel: z.string().min(1).max(WORKFLOW_LIMITS.label).optional(),
+  /** Cross-links: steps of the project's other designs this one is, each held to its type's `links`. */
+  refs: z
+    .array(
+      z.strictObject({ template: z.string().regex(TEMPLATE_ID), flow: slug(), step: stepId() }),
+    )
+    .min(1)
+    .max(WORKFLOW_LIMITS.refs)
+    .optional(),
 });
 export type WorkflowNode = z.infer<typeof nodeSchema>;
 
@@ -219,10 +244,10 @@ const edgeSchema = z.strictObject({
     .optional(),
   idempotency: contractText().optional(),
   onFailure: contractText().optional(),
-  /** ux-flow `submit`: the fields sent, and the steps the person reaches on success and on failure. */
+  /** The data the line carries. */
   payload: textList(WORKFLOW_LIMITS.io),
-  success: stepId().optional(),
-  failure: stepId().optional(),
+  /** system-context: what the relationship runs over (HL7v2, FHIR REST, webhook). */
+  protocol: z.string().min(1).max(WORKFLOW_LIMITS.protocol).optional(),
 });
 export type WorkflowEdge = z.infer<typeof edgeSchema>;
 
@@ -270,7 +295,7 @@ export function evidenceKindOf(
   return 'kind' in evidence ? evidence.kind : 'repo';
 }
 
-// cm:hack dev-workflow-templates until:every stored workflow-v2 document and design revision carries `template` — a version 2 design written before templates names none, and it was drawn in HOP's journey vocabulary, which is `journey-bands@1`; it is read as that and never re-guessed, and a write still owes `template`
+// cm:hack dev-workflow-templates until:every stored workflow-v2 document and design revision carries `template` — a version 2 design written before templates names none, and it was drawn in HOP's journey vocabulary, which is `operational-flow@1`; it is read as that and never re-guessed, and a write still owes `template`
 export function withLegacyTemplate(raw: unknown): unknown {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return raw;
   const doc = raw as Record<string, unknown>;

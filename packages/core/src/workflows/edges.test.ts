@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { workflowJsonSchemas } from './json-schema.js';
 import { checkWorkflow, parseWorkflow } from './rules.js';
 
-const CTX = { templates: BUILTIN_WORKFLOW_TEMPLATES, designs: new Map<string, string[]>() };
+const CTX = { templates: BUILTIN_WORKFLOW_TEMPLATES, designs: new Map() };
 
 // biome-ignore lint/suspicious/noExplicitAny: plants mutate fixtures at arbitrary depth
 type Doc = Record<string, any>;
@@ -32,75 +32,64 @@ const refusalsAt = (raw: Doc) => {
   );
 };
 
-describe('a workflow-v2 feedback edge', () => {
-  // cm:why HOP's loop (hop-architecture §5–§6): an OUTCOME updates the context and the rule is evaluated again
-  const feedback = (): Doc => ({
-    kind: 'feedback',
-    from: 'outcome',
-    to: 'followup-rule',
-    reevaluates: 'follow-up rule against the context the outcome updated',
-    condition: 'outcome.status in (completed, escalated)',
-    action: 'reevaluate_followup_rule',
-    mapping: { episode_id: 'episode.id', last_outcome: 'outcome.status' },
-    idempotency: 'one re-evaluation per outcome id',
-    onFailure: 'create_attention_item',
-  });
+describe('a workflow-v2 return edge', () => {
+  // cm:why HOP's loop (hop-architecture §5–§6): an OUTCOME updates the context so the rule is evaluated again
+  const RETURN = 7;
   const looped = (patch: (e: Doc) => void = () => {}) => {
     const d = design();
-    const e = feedback();
-    patch(e);
-    d.edges.push(e);
+    patch(d.edges[RETURN]);
     return d;
   };
 
-  it('is accepted from an OUTCOME back to the RULE it re-evaluates, and the emitted schema agrees', () => {
+  it('is accepted from an OUTCOME back to the CONTEXT it re-evaluates, and the emitted schema agrees', () => {
+    expect(design().edges[RETURN].kind).toBe('feeds-back');
     expect(refusalsAt(looped())).toEqual([]);
     expect(emittedV2(stamped(looped()))).toBe(true);
   });
 
   it.each([
     [
-      'a feedback edge that points forward',
+      'a return edge that points forward',
       (e: Doc) => {
         e.from = 'context';
         e.to = 'outcome';
       },
-      ['WORKFLOW_EDGE_RETURN_FORWARD /edges/1/kind'],
+      ['WORKFLOW_EDGE_RETURN_FORWARD /edges/7/kind'],
     ],
     [
-      'a feedback edge to itself',
+      'a return edge to itself',
       (e: Doc) => (e.to = 'outcome'),
-      ['WORKFLOW_EDGE_RETURN_FORWARD /edges/1/kind'],
+      ['WORKFLOW_EDGE_RETURN_FORWARD /edges/7/kind'],
     ],
     [
-      'a feedback edge that names nothing it re-evaluates',
+      'a return edge that names nothing it re-evaluates',
       (e: Doc) => delete e.reevaluates,
-      ['WORKFLOW_EDGE_FIELD_MISSING /edges/1'],
+      ['WORKFLOW_EDGE_FIELD_MISSING /edges/7'],
     ],
     [
-      'a feedback edge without its failure path and idempotency',
+      'a return edge without its failure path and idempotency',
       (e: Doc) => {
         delete e.onFailure;
         delete e.idempotency;
       },
-      ['WORKFLOW_EDGE_FIELD_MISSING /edges/1'],
+      ['WORKFLOW_EDGE_FIELD_MISSING /edges/7'],
     ],
     [
       'an edge kind its template does not declare',
       (e: Doc) => (e.kind = 'loop'),
-      ['WORKFLOW_EDGE_KIND_NOT_IN_TEMPLATE /edges/1/kind'],
+      ['WORKFLOW_EDGE_KIND_NOT_IN_TEMPLATE /edges/7/kind'],
     ],
   ])('refuses %s by name', (_name, patch, expected) => {
     expect(refusalsAt(looped(patch))).toEqual(expected);
   });
 
-  it('refuses `reevaluates` on a flow edge, which returns to nothing', () => {
+  it('refuses `reevaluates` on a forward edge, which returns to nothing', () => {
     const d = design();
     d.edges[0].reevaluates = 'the case';
     expect(refusalsAt(d)).toEqual(['WORKFLOW_EDGE_REEVALUATES_FORWARD /edges/0/reevaluates']);
   });
 
-  it('refuses the same loop drawn in `after`, and says to declare it as a feedback edge', () => {
+  it('refuses the same loop drawn in `after`, and says to declare it as a return edge', () => {
     const d = design();
     d.steps[2].after.push('outcome');
     const parsed = parseWorkflow(d, HOP);
@@ -108,15 +97,15 @@ describe('a workflow-v2 feedback edge', () => {
     const [r, ...rest] = checkWorkflow(parsed.value, CTX);
     expect(rest).toEqual([]);
     expect(`${r?.code} ${r?.path}`).toBe('WORKFLOW_AFTER_CYCLE /steps/2/after');
-    expect(r?.detail).toContain('kind: "feedback"');
+    expect(r?.detail).toContain('kind: "feeds-back"');
   });
 
-  it('refuses a backward flow edge as undrawn, pointing at the feedback kind', () => {
+  it('refuses a return edge that names no kind as undrawn, pointing at the return kind', () => {
     const d = looped((e) => delete e.kind);
     const parsed = parseWorkflow(d, HOP);
     if (!parsed.ok) throw new Error(JSON.stringify(parsed.refusals));
     const refusals = checkWorkflow(parsed.value, CTX);
-    expect(refusals.map((r) => `${r.code} ${r.path}`)).toEqual(['WORKFLOW_EDGE_UNDRAWN /edges/1']);
-    expect(refusals[0]?.detail).toContain('a return kind (feedback)');
+    expect(refusals.map((r) => `${r.code} ${r.path}`)).toEqual(['WORKFLOW_EDGE_UNDRAWN /edges/7']);
+    expect(refusals[0]?.detail).toContain('a return kind (feeds-back)');
   });
 });

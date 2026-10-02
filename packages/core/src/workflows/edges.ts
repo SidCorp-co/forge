@@ -1,4 +1,9 @@
-import type { TemplateEdgeKind, WorkflowTemplate } from '@forge/contracts/workflow-templates';
+import {
+  type LineKind,
+  lineKindOf,
+  type TemplateEdgeKind,
+  type WorkflowTemplate,
+} from '@forge/contracts/workflow-templates';
 import { pointer } from '../project-config/documents.js';
 import type { WorkflowRefusal } from './rules.js';
 import type { WorkflowEdge, WorkflowNode, WorkflowStepV2, WorkflowWriteV2 } from './schema.js';
@@ -22,6 +27,13 @@ export function nodeOf(step: WorkflowStepV2, template: WorkflowTemplate): Workfl
   return template.defaultNodeType ? { type: template.defaultNodeType } : null;
 }
 
+/** A step's type, when its template declares it; an undeclared one is refused at the node, not again at its lines. */
+const typeIn = (doc: WorkflowWriteV2, template: WorkflowTemplate, id: string) => {
+  const s = doc.steps.find((x) => x.id === id);
+  const type = s ? (nodeOf(s, template)?.type ?? null) : null;
+  return type && template.nodeTypes.some((n) => n.id === type) ? type : null;
+};
+
 /** A line of `kind` between these steps, refused when either end is a type the kind does not join. */
 function endpointRefusals(
   doc: WorkflowWriteV2,
@@ -31,10 +43,6 @@ function endpointRefusals(
   template: WorkflowTemplate,
   path: string,
 ): WorkflowRefusal[] {
-  const typeOf = (id: string) => {
-    const s = doc.steps.find((x) => x.id === id);
-    return s ? (nodeOf(s, template)?.type ?? null) : null;
-  };
   return (
     [
       ['fromTypes', from, 'leave'],
@@ -42,7 +50,7 @@ function endpointRefusals(
     ] as const
   ).flatMap(([side, id, verb]) => {
     const allowed = kind[side];
-    const type = typeOf(id);
+    const type = typeIn(doc, template, id);
     if (!allowed || type === null || allowed.includes(type)) return [];
     const fits = template.edgeKinds
       .filter((k) => (k[side] ?? [type]).includes(type) && k.direction === kind.direction)
@@ -57,15 +65,100 @@ function endpointRefusals(
   });
 }
 
-/** An edge's kind as written; one that names none is its template's default kind. */
-export const edgeKindOf = (edge: Pick<WorkflowEdge, 'kind'>, template: WorkflowTemplate): string =>
-  edge.kind ?? template.defaultEdgeKind;
+/** The kind of the line `from` → `to` as its endpoint types read it (`lineKindOf`). */
+export const impliedKind = (
+  doc: WorkflowWriteV2,
+  template: WorkflowTemplate,
+  from: string,
+  to: string,
+): LineKind => lineKindOf(template, typeIn(doc, template, from), typeIn(doc, template, to));
+
+/** An edge's kind: the one it names, else the one its endpoints imply; null when they imply none. */
+export function edgeKindOf(
+  doc: WorkflowWriteV2,
+  edge: Pick<WorkflowEdge, 'kind' | 'from' | 'to'>,
+  template: WorkflowTemplate,
+): string | null {
+  if (edge.kind !== undefined) return edge.kind;
+  const implied = impliedKind(doc, template, edge.from, edge.to);
+  return 'kind' in implied ? implied.kind : null;
+}
+
+/** Every line the design draws with its kind: each `after` line, and each return edge. */
+export function designLines(
+  doc: WorkflowWriteV2,
+  template: WorkflowTemplate,
+): { from: string; to: string; kind: string | null }[] {
+  const entries = new Map((doc.edges ?? []).map((e) => [`${e.from}\u0000${e.to}`, e]));
+  const returns = new Set(
+    template.edgeKinds.filter((k) => k.direction === 'return').map((k) => k.id),
+  );
+  const drawn = doc.steps.flatMap((s) =>
+    s.after.map((a) => {
+      const entry = entries.get(`${a}\u0000${s.id}`);
+      return {
+        from: a,
+        to: s.id,
+        kind: edgeKindOf(doc, entry ?? { from: a, to: s.id }, template),
+      };
+    }),
+  );
+  const back = (doc.edges ?? [])
+    .filter((e) => e.kind !== undefined && returns.has(e.kind))
+    .map((e) => ({ from: e.from, to: e.to, kind: e.kind ?? null }));
+  return [...drawn, ...back];
+}
+
+/** A line naming no kind whose endpoint types fit none of the template's kinds, or several. */
+function unreadKind(
+  doc: WorkflowWriteV2,
+  template: WorkflowTemplate,
+  from: string,
+  to: string,
+  path: string,
+): WorkflowRefusal | null {
+  const [a, b] = [typeIn(doc, template, from), typeIn(doc, template, to)];
+  if (a === null || b === null) return null;
+  const implied = impliedKind(doc, template, from, to);
+  if ('kind' in implied) return null;
+  const name = `template ${template.id}@${template.version}`;
+  if ('ambiguous' in implied)
+    return {
+      code: 'WORKFLOW_EDGE_KIND_AMBIGUOUS',
+      path,
+      detail: `the line ${from} → ${to} (${a} → ${b}) could be ${implied.ambiguous.join(' or ')} in ${name}; name its kind in \`edges\`: { from: "${from}", to: "${to}", kind }.`,
+    };
+  const leave = template.edgeKinds.filter((k) => !k.fromTypes || (a && k.fromTypes.includes(a)));
+  const reach = template.edgeKinds.filter((k) => !k.toTypes || (b && k.toTypes.includes(b)));
+  return {
+    code: 'WORKFLOW_EDGE_KIND_NONE',
+    path,
+    detail: `no line of ${name} joins a ${a} to a ${b} (${from} → ${to}); a ${a} may leave by ${leave.map((k) => k.id).join(', ') || 'no kind'}, and a ${b} may be reached by ${reach.map((k) => k.id).join(', ') || 'no kind'}.`,
+  };
+}
 
 const listKinds = (kinds: readonly TemplateEdgeKind[]) =>
   kinds.map((k) => `${k.id} (${k.direction})`).join(', ');
 
 const missingFields = (e: WorkflowEdge, kind: TemplateEdgeKind) =>
   kind.required.filter((f) => e[f] === undefined || (typeof e[f] === 'string' && !e[f]));
+
+const isDrawn = (doc: WorkflowWriteV2, e: Pick<WorkflowEdge, 'from' | 'to'>) =>
+  doc.steps.find((s) => s.id === e.to)?.after.includes(e.from) ?? false;
+
+function undrawn(
+  e: WorkflowEdge,
+  j: number,
+  kind: string,
+  template: WorkflowTemplate,
+): WorkflowRefusal {
+  const returns = template.edgeKinds.filter((k) => k.direction === 'return');
+  return {
+    code: 'WORKFLOW_EDGE_UNDRAWN',
+    path: pointer(['edges', j]),
+    detail: `${kind} edge ${e.from} → ${e.to} carries a contract for a line the steps do not draw; step "${e.to}" lists "${e.from}" in its \`after\` first. A line back to an earlier step is not drawn in \`after\`: it is a return kind${returns.length ? ` (${returns.map((k) => k.id).join(', ')})` : `, and template ${template.id}@${template.version} declares none`}, named in the edge's \`kind\`.`,
+  };
+}
 
 // cm:why a return edge is the one line allowed to run backwards, so it pays for that with what its template requires of it; one that runs forwards is an ordinary edge wearing the wrong kind
 function directionRefusals(
@@ -75,17 +168,10 @@ function directionRefusals(
   kind: TemplateEdgeKind,
   template: WorkflowTemplate,
 ): WorkflowRefusal[] {
-  const returns = template.edgeKinds.filter((k) => k.direction === 'return');
   if (kind.direction === 'forward') {
-    const drawn = doc.steps.find((s) => s.id === e.to)?.after.includes(e.from) ?? false;
+    const drawn = isDrawn(doc, e);
     const out: WorkflowRefusal[] = [];
-    if (!drawn) {
-      out.push({
-        code: 'WORKFLOW_EDGE_UNDRAWN',
-        path: pointer(['edges', j]),
-        detail: `${kind.id} edge ${e.from} → ${e.to} carries a contract for a line the steps do not draw; step "${e.to}" lists "${e.from}" in its \`after\` first. A line back to an earlier step is not drawn in \`after\`: it is a return kind${returns.length ? ` (${returns.map((k) => k.id).join(', ')})` : `, and template ${template.id}@${template.version} declares none`}.`,
-      });
-    }
+    if (!drawn) out.push(undrawn(e, j, kind.id, template));
     if (drawn && e.reevaluates !== undefined) {
       out.push({
         code: 'WORKFLOW_EDGE_REEVALUATES_FORWARD',
@@ -134,13 +220,19 @@ export function edgeRefusals(doc: WorkflowWriteV2, template: WorkflowTemplate): 
     }
     seen.add(key);
     carried.add(key);
-    const kind = kinds.get(edgeKindOf(e, template));
+    if (e.kind === undefined) {
+      if (!isDrawn(doc, e)) return [undrawn(e, j, 'the', template)];
+      const unread = unreadKind(doc, template, e.from, e.to, pointer(['edges', j]));
+      if (unread) return [unread];
+      if (edgeKindOf(doc, e, template) === null) return [];
+    }
+    const kind = kinds.get(edgeKindOf(doc, e, template) ?? '');
     if (!kind) {
       return [
         {
           code: 'WORKFLOW_EDGE_KIND_NOT_IN_TEMPLATE',
           path: at('kind'),
-          detail: `edge ${e.from} → ${e.to} is kind "${e.kind}", which template ${template.id}@${template.version} does not declare; its kinds are ${listKinds(template.edgeKinds)}, and an edge that names none is ${template.defaultEdgeKind}.`,
+          detail: `edge ${e.from} → ${e.to} is kind "${e.kind}", which template ${template.id}@${template.version} does not declare; its kinds are ${listKinds(template.edgeKinds)}, and an edge that names none takes the kind its endpoint types imply.`,
         },
       ];
     }
@@ -159,27 +251,20 @@ export function edgeRefusals(doc: WorkflowWriteV2, template: WorkflowTemplate): 
           },
         ];
   });
-  const implicit = kinds.get(template.defaultEdgeKind);
-  if (!implicit) return out;
   doc.steps.forEach((s, i) => {
     s.after.forEach((a, j) => {
       if (!byId.has(a) || carried.has(`${a}\u0000${s.id}`)) return;
-      const ends = endpointRefusals(
-        doc,
-        a,
-        s.id,
-        implicit,
-        template,
-        pointer(['steps', i, 'after', j]),
-      );
-      if (ends.length > 0) {
-        out.push(...ends);
+      const path = pointer(['steps', i, 'after', j]);
+      const unread = unreadKind(doc, template, a, s.id, path);
+      if (unread) {
+        out.push(unread);
         return;
       }
-      if (implicit.required.length === 0) return;
+      const implicit = kinds.get(edgeKindOf(doc, { from: a, to: s.id }, template) ?? '');
+      if (!implicit || implicit.required.length === 0) return;
       out.push({
         code: 'WORKFLOW_EDGE_FIELD_MISSING',
-        path: pointer(['steps', i, 'after', j]),
+        path,
         detail: `the line ${a} → ${s.id} is a ${implicit.id} edge with no entry in \`edges\`; template ${template.id}@${template.version} requires a ${implicit.id} edge to carry ${implicit.required.join(', ')}, so declare { from: "${a}", to: "${s.id}", ${implicit.required.map((f) => `${f}`).join(', ')} } in \`edges\`.`,
       });
     });

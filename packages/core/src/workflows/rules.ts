@@ -54,6 +54,17 @@ export type WorkflowRefusalCode =
   | 'WORKFLOW_BAND_MISMATCH'
   | 'WORKFLOW_TEMPLATE_RULE'
   | 'WORKFLOW_EDGE_ENDPOINT_NOT_IN_KIND'
+  | 'WORKFLOW_EDGE_KIND_NONE'
+  | 'WORKFLOW_EDGE_KIND_AMBIGUOUS'
+  | 'WORKFLOW_NODE_NOT_ENTRY'
+  | 'WORKFLOW_NODE_TYPE_COUNT'
+  | 'WORKFLOW_NODE_LINES'
+  | 'WORKFLOW_NODE_FIELD_NOT_UNIQUE'
+  | 'WORKFLOW_NODE_VALUE_NOT_IN_VOCABULARY'
+  | 'WORKFLOW_REF_NOT_ALLOWED'
+  | 'WORKFLOW_REF_DANGLING'
+  | 'WORKFLOW_REF_TARGET_MISMATCH'
+  | 'WORKFLOW_REF_MISSING'
   | 'WORKFLOW_DUPLICATE'
   | 'WORKFLOW_IDENTITY_IMMUTABLE'
   | 'PATH_OUTSIDE_REPO'
@@ -96,7 +107,7 @@ const ENUM_RENAMES: readonly [RegExp, WorkflowRefusalCode, string][] = [
   [
     /^\/template$/,
     'WORKFLOW_TEMPLATE_MISSING',
-    'a version 2 design names the diagram template it is drawn in, `template: { id, version }` — e.g. { id: "journey-bands", version: 1 }; GET /api/workflow-templates lists the built-ins and forge_guide get workflow-templates says how to pick one',
+    'a version 2 design names the diagram template it is drawn in, `template: { id, version }` — e.g. { id: "operational-flow", version: 1 }; GET /api/workflow-templates lists the built-ins and forge_guide get workflow-templates says how to pick one',
   ],
   [
     /^\/steps\/\d+\/evidence\/coverage\/reading$/,
@@ -240,7 +251,7 @@ function afterCycle(steps: readonly AnyWorkflowStep[]): WorkflowRefusal[] {
     {
       code: 'WORKFLOW_AFTER_CYCLE',
       path: pointer(['steps', at, 'after']),
-      detail: `the \`after\` edges close a loop (${[...cycle].reverse().join(' → ')}); a workflow's steps are ordered, so no step may come after itself. A return to an earlier step — an outcome that re-evaluates a rule, a reopened state — is not an \`after\` line: take it out of \`after\` and declare it in \`edges\` with a return kind of the design's template (journey-bands: \`{ kind: "feedback", from: <the later step>, to: <the earlier step>, reevaluates, condition, action, mapping, idempotency, onFailure }\`; state-machine: \`{ kind: "back", from, to, condition }\`), which orders nothing and is never part of this check.`,
+      detail: `the \`after\` edges close a loop (${[...cycle].reverse().join(' → ')}); a workflow's steps are ordered, so no step may come after itself. A return to an earlier step — an outcome that re-evaluates a rule, a reopened state — is not an \`after\` line: take it out of \`after\` and declare it in \`edges\` with a return kind of the design's template (operational-flow: \`{ kind: "feeds-back", from: <the outcome>, to: <the earlier context or state>, reevaluates, payload, idempotency, onFailure }\`; state-machine: \`{ kind: "back", from, to, label }\`), which orders nothing and is never part of this check.`,
     },
   ];
 }
@@ -426,7 +437,7 @@ function designRefusals(
   ordered: boolean,
 ): WorkflowRefusal[] {
   const found = templateOf(doc, ctx.templates);
-  return found.ok ? templateRefusals(doc, found.template, ctx.designs, ordered) : [found.refusal];
+  return found.ok ? templateRefusals(doc, found.template, ctx, ordered) : [found.refusal];
 }
 
 export function workflowIdentityRefusals(
