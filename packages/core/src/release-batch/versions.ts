@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, pipelineRuns } from '../db/schema.js';
+import { issues, knowledgeEntries, pipelineRuns } from '../db/schema.js';
 import {
   RELEASE_ATTEMPT_STAGES,
   type ReleaseAttemptRow,
@@ -169,30 +169,84 @@ async function draftOf(projectId: string) {
   };
 }
 
+const TIER_RANK = { dev: 0, preview: 1, staging: 2, production: 3 } as const;
+
+// cm:why environments come back in promotion order: by where each deploys from along the branch a change lands on and the crossings to production, the tier breaking a tie, so the Releases flow strip draws the path this project's document declares rather than a hard-coded one
 async function environmentsWith(projectId: string, current: string | null) {
   const read = await readReleasePath(projectId);
   if (!read.ok)
-    return { environments: [], environmentsRead: { ok: false as const, reason: read.reason } };
-  return {
-    environments: environmentsOf(read.path.document).map((e) => ({
-      name: e.name,
-      tier: e.declaration.tier,
-      url: e.declaration.url ?? null,
-      version: e.declaration.tier === 'production' ? current : null,
-    })),
-    environmentsRead: { ok: true as const },
+    return {
+      environments: [],
+      environmentsRead: { ok: false as const, reason: read.reason },
+      landingBranch: null,
+    };
+  const { document, defaultBranch, crossings } = read.path;
+  const branches = [defaultBranch, ...crossings.map((c) => c.to)];
+  const at = (from: string | undefined) => {
+    const i = branches.indexOf(from ?? defaultBranch);
+    return i === -1 ? branches.length : i;
   };
+  const named = environmentsOf(document).sort(
+    (a, b) =>
+      at(a.declaration.deploysFrom) - at(b.declaration.deploysFrom) ||
+      TIER_RANK[a.declaration.tier] - TIER_RANK[b.declaration.tier],
+  );
+  return {
+    environments: named.map((e) => {
+      const d = e.declaration.deployment;
+      return {
+        name: e.name,
+        tier: e.declaration.tier,
+        url: e.declaration.url ?? null,
+        version: e.declaration.tier === 'production' ? current : null,
+        deploysFrom: e.declaration.deploysFrom ?? defaultBranch,
+        trigger: 'binding' in d ? d.trigger : ('external' as const),
+      };
+    }),
+    environmentsRead: { ok: true as const },
+    landingBranch: defaultBranch,
+  };
+}
+
+export const RELEASE_PROCEDURE_SLUG = 'release-procedure';
+
+// cm:why the procedure is shown only where it reaches every prompt (`injection: always`): that is the text a release run actually works by, so the screen shows the same words and nothing a run never reads
+async function releaseProcedureOf(projectId: string) {
+  const [row] = await db
+    .select({
+      title: knowledgeEntries.title,
+      body: knowledgeEntries.body,
+      updatedAt: knowledgeEntries.updatedAt,
+    })
+    .from(knowledgeEntries)
+    .where(
+      and(
+        eq(knowledgeEntries.projectId, projectId),
+        eq(knowledgeEntries.slug, RELEASE_PROCEDURE_SLUG),
+        eq(knowledgeEntries.injection, 'always'),
+      ),
+    )
+    .limit(1);
+  return row
+    ? {
+        slug: RELEASE_PROCEDURE_SLUG,
+        title: row.title,
+        body: row.body,
+        updatedAt: row.updatedAt.toISOString(),
+      }
+    : null;
 }
 
 export async function listReleaseVersions(projectId: string) {
   const runs = await versionRuns(projectId);
   const ids = runs.map((r) => r.id);
-  const [attempts, approvalRows, current, draft, required] = await Promise.all([
+  const [attempts, approvalRows, current, draft, required, procedure] = await Promise.all([
     attemptsOf(ids),
     approvalsOfRuns(ids),
     currentReleaseVersion(projectId),
     draftOf(projectId),
     approvalRequired(projectId),
+    releaseProcedureOf(projectId),
   ]);
   const approvals = await approvalViews(approvalRows);
   const versions = runs.map((run) =>
@@ -209,6 +263,7 @@ export async function listReleaseVersions(projectId: string) {
     versions,
     draft,
     approvalRequired: required,
+    procedure,
     counts: {
       all: versions.length,
       awaitingApproval: count((v) => v.status === 'awaiting_approval'),

@@ -16,6 +16,7 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { badRequest, conflict } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { PolicyRefusedError } from '../project-config/dispatch-policy.js';
+import { WorkflowDesignNotApprovedError } from '../workflows/design.js';
 import { gateConditionSchema } from './gate-report.js';
 import { RunnerNotAdmittedError } from './pool-admission.js';
 import { forbidden, notFound, sessionParamsSchema } from './route-errors.js';
@@ -69,6 +70,9 @@ deviceRunSessionRoutes.post(
       }
       if (err instanceof PolicyRefusedError) {
         throw conflict(err.code, err.message, { projectId: err.projectId });
+      }
+      if (err instanceof WorkflowDesignNotApprovedError) {
+        throw conflict(err.code, err.message, { blocked: err.blocked });
       }
       if (err instanceof RunnerNotAdmittedError) {
         throw forbidden(err.code, err.message, {

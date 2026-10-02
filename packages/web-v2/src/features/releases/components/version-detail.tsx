@@ -6,8 +6,8 @@ import { formatApiError } from "@/lib/api/error";
 import { statusLabel } from "../version-status";
 import { useCutRelease, useReleaseVersion } from "../versions-hooks";
 import type { ReleaseChangelogSection, ReleaseDraft } from "../versions-types";
-import { ApprovalBlock } from "./approval-block";
-import { DeploymentRows } from "./deployment-rows";
+import type { ReleaseFlow } from "../flow";
+import { ReleaseTimeline } from "./release-timeline";
 
 function Changelog({ sections, without }: { sections: ReleaseChangelogSection[]; without: Array<{ key: string; title: string }> }) {
   return (
@@ -92,7 +92,12 @@ export function DraftDetail({ projectId, draft, canCut }: { projectId: string; d
   );
 }
 
-export function VersionDetail({ projectId, version, canDecide }: { projectId: string; version: string; canDecide: boolean }) {
+export function VersionDetail({
+  projectId,
+  version,
+  canDecide,
+  flow,
+}: { projectId: string; version: string; canDecide: boolean; flow: ReleaseFlow }) {
   const q = useReleaseVersion(projectId, version);
   const [open, setOpen] = useState<string | null>(null);
   if (q.isLoading) return <div className="p-7"><Skeleton className="h-40 w-full" /></div>;
@@ -101,30 +106,21 @@ export function VersionDetail({ projectId, version, canDecide }: { projectId: st
   }
   const v = q.data;
   const s = statusLabel(v);
-  const latest = v.approvals[0] ?? null;
   return (
     <div className="grid content-start gap-4 overflow-auto px-4 pb-6 pt-4 sm:px-7" data-testid="version-detail">
       <h4 className="flex items-center gap-2.5 text-lg font-semibold">
         <span className="font-mono">{v.version}</span>
         <Badge tone={s.tone}>{s.label}</Badge>
       </h4>
-      {latest && (v.status === "awaiting_approval" || v.status === "returned") ? (
-        <ApprovalBlock projectId={projectId} approval={latest} canDecide={canDecide} issueCount={v.issueCount} />
-      ) : null}
-      {!latest && v.status === "awaiting_approval" ? (
-        <p className="text-12 text-muted" data-testid="approval-required">
-          This project requires release approval. Nothing is deployed until the release run asks for approval and an
-          admin approves it.
-        </p>
-      ) : null}
-      <Changelog sections={v.changelog} without={v.withoutNotes} />
-      <DeploymentRows
-        attempts={v.attempts}
-        bounds={v.bounds}
-        environment={v.environment}
+      <ReleaseTimeline
+        v={v}
+        flow={flow}
+        projectId={projectId}
+        canDecide={canDecide}
         open={open}
         onToggle={(id) => setOpen((o) => (o === id ? null : id))}
       />
+      <Changelog sections={v.changelog} without={v.withoutNotes} />
     </div>
   );
 }

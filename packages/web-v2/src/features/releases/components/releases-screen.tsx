@@ -7,7 +7,8 @@ import { useQueryParam } from "@/lib/utils/use-query-param";
 import { FILTER_LABEL, filterCount, matchesFilter } from "../version-status";
 import { useCutRelease, useReleaseVersions } from "../versions-hooks";
 import { VERSION_FILTERS, type ReleaseVersionFilter } from "../versions-types";
-import { EnvironmentStrip } from "./environment-strip";
+import { flowOf, placeOf } from "../flow";
+import { FlowStrip } from "./flow-strip";
 import { DraftDetail, VersionDetail } from "./version-detail";
 import { VersionList } from "./version-list";
 import { TopBarActions } from "@/design/primitives/top-bar-slot";
@@ -22,6 +23,7 @@ export function ReleasesScreen({ projectId, isAdmin }: ReleasesScreenProps) {
   const cut = useCutRelease(projectId);
   const [rawFilter, setFilter] = useQueryParam("f");
   const [picked, setPicked] = useQueryParam("v");
+  const [stage, setStage] = useQueryParam("s");
   const filter: ReleaseVersionFilter = (VERSION_FILTERS as readonly string[]).includes(rawFilter ?? "")
     ? (rawFilter as ReleaseVersionFilter)
     : "all";
@@ -41,8 +43,16 @@ export function ReleasesScreen({ projectId, isAdmin }: ReleasesScreenProps) {
     );
   }
   const list = q.data;
-  const shown = list.versions.filter((v) => matchesFilter(v, filter));
-  const draft = filter === "all" ? list.draft : null;
+  const flow = flowOf(list);
+  const atStage = stage && flow.stages.some((s) => s.key === stage) ? stage : null;
+  const shown = list.versions.filter((v) =>
+    atStage ? placeOf(v, flow).at === atStage : matchesFilter(v, filter),
+  );
+  const draft = atStage ? (atStage === "draft" ? list.draft : null) : filter === "all" ? list.draft : null;
+  const pickStage = (key: string | null) => {
+    setFilter(null);
+    setStage(key);
+  };
   const fallback = draft?.version ?? shown[0]?.version ?? null;
   const selected =
     picked && (picked === draft?.version || shown.some((v) => v.version === picked)) ? picked : fallback;
@@ -63,17 +73,25 @@ export function ReleasesScreen({ projectId, isAdmin }: ReleasesScreenProps) {
             </Button>
           </TopBarActions>
         ) : null}
-      <EnvironmentStrip list={list} />
+      <FlowStrip list={list} flow={flow} active={atStage} onPick={pickStage} />
+      {!list.environmentsRead.ok ? (
+        <p className="px-4 pb-3 text-12 text-amber sm:px-7" data-testid="env-unread">
+          Environments cannot be read from the project document: {list.environmentsRead.reason}
+        </p>
+      ) : null}
       <fieldset className="flex flex-wrap gap-1.5 border-0 px-4 pb-3 sm:px-7" aria-label="Filter versions" data-testid="version-filters">
         {VERSION_FILTERS.map((f) => (
           <button
             key={f}
             type="button"
-            aria-pressed={filter === f}
-            onClick={() => setFilter(f === "all" ? null : f)}
+            aria-pressed={!atStage && filter === f}
+            onClick={() => {
+              setStage(null);
+              setFilter(f === "all" ? null : f);
+            }}
             className={cn(
               "rounded-pill border px-3 py-0.5 text-12 font-semibold",
-              filter === f ? "border-fg bg-fg text-surface" : "border-line bg-surface text-muted hover:text-fg",
+              !atStage && filter === f ? "border-fg bg-fg text-surface" : "border-line bg-surface text-muted hover:text-fg",
             )}
           >
             {FILTER_LABEL[f]} {filterCount(list.counts, f)}
@@ -83,9 +101,11 @@ export function ReleasesScreen({ projectId, isAdmin }: ReleasesScreenProps) {
       {shown.length === 0 && !draft ? (
         <div className="border-t border-line-subtle p-8">
           <EmptyState
-            title={filter === "all" ? "No version has been cut" : `No version is ${FILTER_LABEL[filter].toLowerCase()}`}
+            title={atStage ? `No version is at ${flow.stages.find((s) => s.key === atStage)?.label ?? atStage}` : filter === "all" ? "No version has been cut" : `No version is ${FILTER_LABEL[filter].toLowerCase()}`}
             message={
-              filter === "all"
+              atStage
+                ? "Pick another stage to see the versions standing in it."
+                : filter === "all"
                 ? "A version is cut when merged issues waiting at the release gate are released together. None is waiting, and none has been cut on this project."
                 : "Pick another filter to see the other versions."
             }
@@ -93,11 +113,11 @@ export function ReleasesScreen({ projectId, isAdmin }: ReleasesScreenProps) {
         </div>
       ) : (
         <div className="grid min-h-0 flex-1 border-t border-line-subtle md:grid-cols-[400px_minmax(0,1fr)]">
-          <VersionList versions={shown} draft={draft} selected={selected} onSelect={(v) => setPicked(v)} />
+          <VersionList versions={shown} draft={draft} flow={flow} selected={selected} onSelect={(v) => setPicked(v)} />
           {selected && draft && selected === draft.version ? (
             <DraftDetail projectId={projectId} draft={draft} canCut={isAdmin} />
           ) : selected ? (
-            <VersionDetail projectId={projectId} version={selected} canDecide={isAdmin} />
+            <VersionDetail projectId={projectId} version={selected} canDecide={isAdmin} flow={flow} />
           ) : null}
         </div>
       )}

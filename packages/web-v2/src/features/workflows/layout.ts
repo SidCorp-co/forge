@@ -102,7 +102,7 @@ export function layoutOf(steps: readonly WorkflowStep[], kind: WorkflowKind): La
 
 export function walkedOf(steps: readonly WorkflowStep[]): { walked: number; total: number } {
   return {
-    walked: steps.filter((s) => s.evidence?.coverage.reading === "walked").length,
+    walked: steps.filter((s) => s.evidence?.coverage?.reading === "walked").length,
     total: steps.length,
   };
 }

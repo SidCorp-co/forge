@@ -9,12 +9,18 @@ import {
   pointer,
 } from '../project-config/documents.js';
 import {
+  type AnyWorkflowStep,
   COVERAGE_READINGS,
+  EVIDENCE_KINDS,
+  evidenceKindOf,
+  stepsOf,
   WORKFLOW_KINDS,
-  WORKFLOW_STATUSES,
-  type WorkflowStep,
+  WORKFLOW_NODE_TYPES,
+  WORKFLOW_V2_STATUSES,
+  WORKFLOW_VERSIONS,
   type WorkflowWrite,
   workflowWriteSchema,
+  workflowWriteV2Schema,
 } from './schema.js';
 
 export type WorkflowRefusalCode =
@@ -31,6 +37,12 @@ export type WorkflowRefusalCode =
   | 'WORKFLOW_STATUS_MISMATCH'
   | 'WORKFLOW_DRIFT_MISMATCH'
   | 'WORKFLOW_DRIFT_STEP_UNKNOWN'
+  | 'WORKFLOW_NODE_TYPE_UNKNOWN'
+  | 'WORKFLOW_EVIDENCE_KIND_UNKNOWN'
+  | 'WORKFLOW_EVIDENCE_KIND_MISMATCH'
+  | 'WORKFLOW_EDGE_DANGLING'
+  | 'WORKFLOW_EDGE_UNDRAWN'
+  | 'WORKFLOW_EDGE_DUPLICATE'
   | 'WORKFLOW_DUPLICATE'
   | 'WORKFLOW_IDENTITY_IMMUTABLE'
   | 'PATH_OUTSIDE_REPO'
@@ -53,7 +65,17 @@ const ENUM_RENAMES: readonly [RegExp, WorkflowRefusalCode, string][] = [
   [
     /^(\/steps\/\d+)?\/status$/,
     'WORKFLOW_STATUS_UNKNOWN',
-    `a workflow's and a step's status is ${closed(WORKFLOW_STATUSES)}`,
+    `a workflow's and a step's status is ${closed(WORKFLOW_V2_STATUSES)}, \`designed\` at version 2 only`,
+  ],
+  [
+    /^\/steps\/\d+\/node\/type$/,
+    'WORKFLOW_NODE_TYPE_UNKNOWN',
+    `a node's type is ${closed(WORKFLOW_NODE_TYPES)}`,
+  ],
+  [
+    /^\/steps\/\d+\/evidence\/kind$/,
+    'WORKFLOW_EVIDENCE_KIND_UNKNOWN',
+    `a version 2 evidence names its kind, ${closed(EVIDENCE_KINDS)}`,
   ],
   [
     /^\/steps\/\d+\/evidence\/coverage\/reading$/,
@@ -89,7 +111,20 @@ export function parseWorkflow(raw: unknown, projectId: string): CheckedWorkflow 
             detail: `project ${JSON.stringify(claimed)} is not this project; a workflow written at /api/projects/${projectId} names ${projectId}.`,
           },
         ];
-  const parsed = parseVersionedDocument(workflowWriteSchema, raw, 'workflow');
+  const v2 = isRecord(raw) && raw.version === 2;
+  const parsed = v2
+    ? parseVersionedDocument<WorkflowWrite>(
+        workflowWriteV2Schema,
+        raw,
+        'workflow',
+        WORKFLOW_VERSIONS,
+      )
+    : parseVersionedDocument<WorkflowWrite>(
+        workflowWriteSchema,
+        raw,
+        'workflow',
+        WORKFLOW_VERSIONS,
+      );
   if (!parsed.ok)
     return { ok: false, refusals: [...owner, ...renameParseRefusals(parsed.refusals)] };
   return owner.length > 0 ? { ok: false, refusals: owner } : parsed;
@@ -118,7 +153,7 @@ export function workflowWriterRefusal(
   };
 }
 
-function duplicateSteps(steps: readonly WorkflowStep[]): WorkflowRefusal[] {
+function duplicateSteps(steps: readonly AnyWorkflowStep[]): WorkflowRefusal[] {
   const seen = new Set<string>();
   const out: WorkflowRefusal[] = [];
   steps.forEach((s, i) => {
@@ -134,7 +169,7 @@ function duplicateSteps(steps: readonly WorkflowStep[]): WorkflowRefusal[] {
   return out;
 }
 
-function danglingAfter(steps: readonly WorkflowStep[]): WorkflowRefusal[] {
+function danglingAfter(steps: readonly AnyWorkflowStep[]): WorkflowRefusal[] {
   const ids = new Set(steps.map((s) => s.id));
   return steps.flatMap((s, i) =>
     s.after.flatMap((a, j) =>
@@ -151,7 +186,7 @@ function danglingAfter(steps: readonly WorkflowStep[]): WorkflowRefusal[] {
   );
 }
 
-function cycleThrough(steps: readonly WorkflowStep[]): string[] | null {
+function cycleThrough(steps: readonly AnyWorkflowStep[]): string[] | null {
   const byId = new Map(steps.map((s) => [s.id, s]));
   const state = new Map<string, 'open' | 'done'>();
   const trail: string[] = [];
@@ -176,7 +211,7 @@ function cycleThrough(steps: readonly WorkflowStep[]): string[] | null {
   return null;
 }
 
-function afterCycle(steps: readonly WorkflowStep[]): WorkflowRefusal[] {
+function afterCycle(steps: readonly AnyWorkflowStep[]): WorkflowRefusal[] {
   const cycle = cycleThrough(steps);
   if (!cycle) return [];
   const at = steps.findIndex((s) => s.id === cycle[0]);
@@ -190,20 +225,25 @@ function afterCycle(steps: readonly WorkflowStep[]): WorkflowRefusal[] {
 }
 
 function evidenceRefusals(doc: WorkflowWrite): WorkflowRefusal[] {
-  return doc.steps.flatMap((s, i): WorkflowRefusal[] => {
+  return stepsOf(doc).flatMap((s, i): WorkflowRefusal[] => {
     const at = (...rest: (string | number)[]) => pointer(['steps', i, ...rest]);
     if (!s.evidence) {
-      return doc.kind === 'flow' && s.status !== 'writing'
+      return doc.kind === 'flow' && s.status !== 'writing' && s.status !== 'designed'
         ? [
             {
               code: 'WORKFLOW_EVIDENCE_MISSING',
               path: at('evidence'),
-              detail: `flow step "${s.id}" is ${s.status} and names no evidence; only a step still being written may stand without a file and a coverage reading.`,
+              detail: `flow step "${s.id}" is ${s.status} and names no evidence; only a step still being written, or one designed and not yet built, may stand without evidence.`,
             },
           ]
         : [];
     }
     const out: WorkflowRefusal[] = [];
+    if (!('file' in s.evidence)) {
+      const { coverage } = s.evidence;
+      if (coverage) out.push(...coverageRefusals(coverage, at));
+      return out;
+    }
     const expected = `${doc.flow}/${s.id}`;
     if (s.evidence.annotation !== undefined && s.evidence.annotation !== expected) {
       out.push({
@@ -212,35 +252,119 @@ function evidenceRefusals(doc: WorkflowWrite): WorkflowRefusal[] {
         detail: `step "${s.id}" of flow "${doc.flow}" cites \`cm:flow ${s.evidence.annotation}\`; its annotation is \`cm:flow ${expected}\`, the id the flow-coverage checker reads.`,
       });
     }
-    const { reading, atSha } = s.evidence.coverage;
-    if ((reading === 'unmeasured') !== (atSha === null)) {
-      out.push({
-        code: 'WORKFLOW_COVERAGE_UNPINNED',
-        path: at('evidence', 'coverage', 'atSha'),
-        detail:
-          reading === 'unmeasured'
-            ? `an unmeasured step names no commit; atSha is null until a flow-coverage report has read it.`
-            : `a ${reading} reading says which commit's integration report it came from; atSha is that sha.`,
-      });
-    }
+    out.push(...coverageRefusals(s.evidence.coverage, at));
     return out;
   });
 }
 
+function coverageRefusals(
+  { reading, atSha }: { reading: string; atSha: string | null },
+  at: (...rest: (string | number)[]) => string,
+): WorkflowRefusal[] {
+  if ((reading === 'unmeasured') === (atSha === null)) return [];
+  return [
+    {
+      code: 'WORKFLOW_COVERAGE_UNPINNED',
+      path: at('evidence', 'coverage', 'atSha'),
+      detail:
+        reading === 'unmeasured'
+          ? `an unmeasured step names no commit; atSha is null until a flow-coverage report has read it.`
+          : `a ${reading} reading says which commit's integration report it came from; atSha is that sha.`,
+    },
+  ];
+}
+
+/** Where a project's evidence lives: its checkout, or the storefront provider it builds on. */
+export type EvidenceSource = { kind: 'repo' } | { kind: 'storefront'; provider: string };
+
+// cm:why a storefront project has no repository, so a file path there names nothing; a repo project has no provider artefact. Either crossed is refused by name rather than stored as a reference nobody can follow
+export function evidenceSourceRefusals(
+  doc: WorkflowWrite,
+  source: EvidenceSource,
+): WorkflowRefusal[] {
+  return stepsOf(doc).flatMap((s, i): WorkflowRefusal[] => {
+    if (!s.evidence) return [];
+    const kind = evidenceKindOf(s.evidence);
+    const provider = 'provider' in s.evidence ? s.evidence.provider : null;
+    const fits =
+      kind === source.kind && (source.kind !== 'storefront' || provider === source.provider);
+    if (fits) return [];
+    const wanted =
+      source.kind === 'storefront'
+        ? `a ${source.provider} artefact ({ kind: "storefront", provider: "${source.provider}", ref: workflow | route | node, id })`
+        : 'a file in its checkout ({ kind: "repo", file, coverage })';
+    const held = kind === 'repo' ? 'a repository file' : `a ${provider} storefront artefact`;
+    return [
+      {
+        code: 'WORKFLOW_EVIDENCE_KIND_MISMATCH',
+        path: pointer(['steps', i, 'evidence']),
+        detail: `step "${s.id}" names ${held} as evidence; this project's source is ${source.kind === 'storefront' ? `a ${source.provider} storefront` : 'a repository'}, so its evidence is ${wanted}.`,
+      },
+    ];
+  });
+}
+
+function edgeRefusals(doc: WorkflowWrite): WorkflowRefusal[] {
+  if (doc.version !== 2 || !doc.edges) return [];
+  const byId = new Map(doc.steps.map((s) => [s.id, s]));
+  const seen = new Set<string>();
+  return doc.edges.flatMap((e, j): WorkflowRefusal[] => {
+    const at = (key: string) => pointer(['edges', j, key]);
+    const missing = (['from', 'to'] as const).filter((k) => !byId.has(e[k]));
+    if (missing.length > 0) {
+      return missing.map((k) => ({
+        code: 'WORKFLOW_EDGE_DANGLING' as const,
+        path: at(k),
+        detail: `edge ${e.from} → ${e.to} names "${e[k]}", which is no step of this workflow.`,
+      }));
+    }
+    const key = `${e.from}\u0000${e.to}`;
+    if (seen.has(key)) {
+      return [
+        {
+          code: 'WORKFLOW_EDGE_DUPLICATE',
+          path: pointer(['edges', j]),
+          detail: `edge ${e.from} → ${e.to} carries its contract twice; one edge has one contract.`,
+        },
+      ];
+    }
+    seen.add(key);
+    return byId.get(e.to)?.after.includes(e.from)
+      ? []
+      : [
+          {
+            code: 'WORKFLOW_EDGE_UNDRAWN',
+            path: pointer(['edges', j]),
+            detail: `edge ${e.from} → ${e.to} carries a contract for a line the steps do not draw; step "${e.to}" lists "${e.from}" in its \`after\` first.`,
+          },
+        ];
+  });
+}
+
 function statusRefusals(doc: WorkflowWrite): WorkflowRefusal[] {
-  const by = (st: string) => doc.steps.filter((s) => s.status === st).map((s) => s.id);
+  const by = (st: string) =>
+    stepsOf(doc)
+      .filter((s) => s.status === st)
+      .map((s) => s.id);
+  const designed = by('designed');
   const writing = by('writing');
   const rechecking = by('rechecking');
   const wrong = (detail: string): WorkflowRefusal[] => [
     { code: 'WORKFLOW_STATUS_MISMATCH', path: '/status', detail },
   ];
-  if (doc.status === 'current' && writing.length + rechecking.length > 0) {
+  const unbuilt = [...designed, ...writing, ...rechecking];
+  if (doc.status === 'current' && unbuilt.length > 0) {
     return wrong(
-      `a current workflow has every step current; ${[...writing, ...rechecking].join(', ')} ${writing.length + rechecking.length === 1 ? 'is' : 'are'} not.`,
+      `a current workflow has every step current; ${unbuilt.join(', ')} ${unbuilt.length === 1 ? 'is' : 'are'} not.`,
     );
   }
-  if (doc.status === 'writing' && writing.length === 0) {
-    return wrong('a workflow being written has at least one step being written.');
+  if (doc.status === 'designed' && designed.length !== doc.steps.length) {
+    return wrong(
+      'a designed workflow has every step designed; once one is built the workflow is being written.',
+    );
+  }
+  if (doc.status === 'writing' && writing.length + designed.length === 0) {
+    return wrong('a workflow being written has at least one step being written or still designed.');
   }
   if (doc.status === 'rechecking' && rechecking.length === 0) {
     return wrong('a workflow being re-checked has at least one step being re-checked.');
@@ -262,7 +386,7 @@ function driftRefusals(doc: WorkflowWrite): WorkflowRefusal[] {
     ];
   }
   if (!doc.drift) return [];
-  const byId = new Map(doc.steps.map((s) => [s.id, s]));
+  const byId = new Map(stepsOf(doc).map((s) => [s.id, s]));
   return doc.drift.steps.flatMap((id, j): WorkflowRefusal[] => {
     const step = byId.get(id);
     if (!step) {
@@ -287,12 +411,14 @@ function driftRefusals(doc: WorkflowWrite): WorkflowRefusal[] {
 }
 
 export function checkWorkflow(doc: WorkflowWrite): WorkflowRefusal[] {
-  const dup = duplicateSteps(doc.steps);
+  const steps = stepsOf(doc);
+  const dup = duplicateSteps(steps);
   if (dup.length > 0) return dup;
-  const dangling = danglingAfter(doc.steps);
+  const dangling = danglingAfter(steps);
   return [
     ...dangling,
-    ...afterCycle(doc.steps),
+    ...afterCycle(steps),
+    ...edgeRefusals(doc),
     ...evidenceRefusals(doc),
     ...statusRefusals(doc),
     ...driftRefusals(doc),

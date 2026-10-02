@@ -67,6 +67,7 @@ export function parseVersionedDocument<T>(
   schema: z.ZodType<T>,
   raw: unknown,
   what: string,
+  versions: readonly number[] = [1],
 ): Parsed<T> {
   if (!isRecord(raw)) {
     return {
@@ -80,14 +81,14 @@ export function parseVersionedDocument<T>(
       ],
     };
   }
-  if ('version' in raw && raw.version !== 1) {
+  if ('version' in raw && !versions.includes(raw.version as number)) {
     return {
       ok: false,
       refusals: [
         {
           code: 'VERSION_UNSUPPORTED',
           path: '/version',
-          detail: `version ${JSON.stringify(raw.version)} is not supported; core reads ${what} documents at version 1 only, and moving versions is a migration.`,
+          detail: `version ${JSON.stringify(raw.version)} is not supported; core reads ${what} documents at version ${versions.join(' or ')} only, and moving versions is a migration.`,
         },
       ],
     };

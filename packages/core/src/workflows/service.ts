@@ -5,16 +5,21 @@ import { users } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { staleBase } from '../project-config/documents.js';
+import { readProjectDocument } from '../project-config/service.js';
+import { designFingerprint, designStatusAfterWrite, designStatusAtCreate } from './design.js';
 import {
   checkWorkflow,
   duplicateWorkflowRefusal,
+  type EvidenceSource,
+  evidenceSourceRefusals,
   parseWorkflow,
   type WorkflowRefusal,
   workflowIdentityRefusals,
   workflowWriterRefusal,
 } from './rules.js';
-import { type WorkflowWrite, workflowWriteSchema } from './schema.js';
+import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
 import {
+  insertDesign,
   insertWorkflow,
   lockWorkflows,
   readWorkflow,
@@ -36,17 +41,25 @@ export type WorkflowOutcome =
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-function storedWorkflow(row: StoredWorkflow): WorkflowWrite {
-  const parsed = workflowWriteSchema.safeParse(row.document);
-  if (!parsed.success) {
+export function storedWorkflow(row: StoredWorkflow): WorkflowWrite {
+  const parsed = readStoredWorkflow(row.document);
+  if (!parsed) {
     throw new Error(
-      `workflows: stored workflow ${row.id} no longer parses as workflow-v1; the store holds a shape this core cannot read and it is not guessed at.`,
+      `workflows: stored workflow ${row.id} no longer parses at the version it names; the store holds a shape this core cannot read and it is not guessed at.`,
     );
   }
-  return parsed.data;
+  return parsed;
 }
 
-async function assertWriter(writer: WorkflowWriter, projectId: string): Promise<void> {
+/** Where this project's evidence lives, from its declared source; no document reads as a repository. */
+export async function evidenceSourceOf(projectId: string): Promise<EvidenceSource> {
+  const source = (await readProjectDocument(projectId))?.document.source;
+  return source?.type === 'storefront'
+    ? { kind: 'storefront', provider: source.storefront.provider }
+    : { kind: 'repo' };
+}
+
+export async function assertWriter(writer: WorkflowWriter, projectId: string): Promise<void> {
   const role = (await effectiveProjectRole(writer.userId, projectId))?.role ?? null;
   const refusal = workflowWriterRefusal({ ...writer, role }, projectId);
   if (refusal) {
@@ -80,13 +93,20 @@ export async function createWorkflow(input: {
   const parsed = parseWorkflow(raw, projectId);
   if (!parsed.ok) return parsed;
   const doc = parsed.value;
-  const refusals = checkWorkflow(doc);
+  const refusals = [
+    ...checkWorkflow(doc),
+    ...evidenceSourceRefusals(doc, await evidenceSourceOf(projectId)),
+  ];
   if (refusals.length > 0) return { ok: false, refusals };
   return db.transaction(async (tx) => {
     await lockWorkflows(tx, projectId);
     const holding = await workflowHolding(tx, projectId, doc.flow);
     if (holding) return { ok: false, refusals: [duplicateWorkflowRefusal(doc.flow, holding)] };
-    const row = await insertWorkflow(tx, doc, writer.userId);
+    const row = await insertWorkflow(tx, doc, writer.userId, {
+      designStatus: designStatusAtCreate(doc),
+      designFingerprint: designFingerprint(doc),
+      approvedRevision: null,
+    });
     return { ok: true, row, document: doc, created: true };
   });
 }
@@ -103,6 +123,7 @@ export async function updateWorkflow(input: {
   const parsed = parseWorkflow(raw, projectId);
   if (!parsed.ok) return parsed;
   const doc = parsed.value;
+  const source = await evidenceSourceOf(projectId);
   return db.transaction(async (tx) => {
     await lockWorkflows(tx, projectId);
     const row = await readWorkflow(tx, id);
@@ -113,17 +134,36 @@ export async function updateWorkflow(input: {
       return { ok: false, refusals: [staleBase(baseRevision, row.revision)] };
     }
     const stored = storedWorkflow(row);
-    const refusals = [...workflowIdentityRefusals(stored, doc), ...checkWorkflow(doc)];
+    const refusals = [
+      ...workflowIdentityRefusals(stored, doc),
+      ...checkWorkflow(doc),
+      ...evidenceSourceRefusals(doc, source),
+    ];
     if (refusals.length > 0) return { ok: false, refusals };
     if (JSON.stringify(stored) === JSON.stringify(doc)) {
       return { ok: true, row, document: stored, created: false };
     }
+    const fingerprint = designFingerprint(doc);
+    const design = designStatusAfterWrite(row.designStatus, row.designFingerprint !== fingerprint);
     const next = await replaceWorkflow(tx, {
       id,
       revision: row.revision,
       doc,
       userId: writer.userId,
+      design: {
+        designStatus: design.status,
+        designFingerprint: fingerprint,
+        approvedRevision: row.approvedRevision,
+      },
     });
+    if (design.proposes) {
+      await insertDesign(tx, {
+        workflowId: id,
+        revision: next.revision,
+        document: doc,
+        userId: writer.userId,
+      });
+    }
     return { ok: true, row: next, document: doc, created: false };
   });
 }
@@ -133,6 +173,7 @@ export function workflowView(row: StoredWorkflow, document: WorkflowWrite, write
     revision: row.revision,
     writer: row.writtenByUser,
     writerName: writerName ?? row.writtenByUser,
+    design: { status: row.designStatus, approvedRevision: row.approvedRevision },
     document: {
       ...document,
       id: row.id,
@@ -160,7 +201,11 @@ export async function readWorkflowAs(userId: string, projectId: string, id: stri
 }
 
 async function writerNames(rows: readonly StoredWorkflow[]): Promise<Map<string, string>> {
-  const ids = [...new Set(rows.map((r) => r.writtenByUser))];
+  return userNames(rows.map((r) => r.writtenByUser));
+}
+
+export async function userNames(userIds: readonly (string | null)[]): Promise<Map<string, string>> {
+  const ids = [...new Set(userIds.filter((u): u is string => u !== null))];
   if (ids.length === 0) return new Map();
   const found = await db
     .select({ id: users.id, displayName: users.displayName, email: users.email })
