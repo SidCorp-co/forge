@@ -76,8 +76,7 @@ export function buildView(c: Canvas, s: ViewState): View {
   return { nodes, edges, keyOf };
 }
 
-/** A merged line's words: up to two of its lines' labels, then how many more. */
-export function mergedLabel(e: ViewEdge, text: (e: CanvasEdge) => string): string {
-  const labels = [...new Set(e.src.map(text).filter(Boolean))];
-  return labels.length <= 2 ? labels.join(" · ") : `${labels[0]} +${labels.length - 1} more`;
+/** A merged line's words: how many design lines it stands for; each one's own words show once its bands open. */
+export function mergedLabel(e: ViewEdge): string {
+  return e.src.length === 1 ? "1 link" : `${e.src.length} links`;
 }
