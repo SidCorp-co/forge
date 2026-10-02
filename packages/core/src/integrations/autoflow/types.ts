@@ -1,13 +1,10 @@
 /** What an Autoflow connection and binding hold once validated and health-checked. */
 
 export interface AutoflowConfig extends Record<string, unknown> {
-  /** Platform origin; absent = `AUTOFLOW_DEFAULT_BASE_URL`. */
   baseUrl?: string;
-  /** Shop MCP URL; absent = `AUTOFLOW_DEFAULT_MCP_URL`. */
   mcpUrl?: string;
-  /** BINDING tier: the site (store slug) this binding builds — the `<shop>` of `<shop>.auto.sidcorp.co`. */
+  /** BINDING tier: the `<shop>` of `<shop>.auto.sidcorp.co`. The keys below it are resolved by healthcheck. */
   shop?: string;
-  /** Resolved by healthcheck from `apiKeyContext`, never typed by a caller. */
   orgId?: string;
   storeId?: string;
   storeSlug?: string;
@@ -16,14 +13,16 @@ export interface AutoflowConfig extends Record<string, unknown> {
   commerceEnabled?: boolean;
 }
 
+/** `sat_` (12h, the only credential the shop MCP admits) renewed from `srt_` (90d, rotating): `refresh.ts`. */
 export interface AutoflowSecrets extends Record<string, unknown> {
-  /**
-   * The platform's OAuth 2.1 access token (`sat_…`), minted for ONE workspace + site. It is the only
-   * credential the shop MCP's `/mcp` door admits, and the backend GraphQL accepts it too.
-   */
   accessToken: string;
+  accessTokenExpiresAt?: string;
+  refreshToken?: string;
+  /** The `mcpc_` client the pair was issued to; the platform refuses a refresh without it. */
+  clientId?: string;
+  refreshRefusedAt?: string;
+  refreshRefusedReason?: string;
   previousAccessToken?: string;
-  /** ISO-8601; once past, `previousAccessToken` is ignored. */
   previousTokenExpiresAt?: string;
 }
 

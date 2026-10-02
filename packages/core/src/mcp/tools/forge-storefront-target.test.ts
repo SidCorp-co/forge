@@ -18,6 +18,13 @@ vi.mock('../../integrations/store.js', () => ({
   updateConnection: async () => undefined,
 }));
 
+// The token refresh runs against Postgres (tests/integration/autoflow-token-refresh-e2e.test.ts);
+// here the stored token is used as it is.
+vi.mock('../../integrations/autoflow/refresh.js', async (original) => ({
+  ...(await original<typeof import('../../integrations/autoflow/refresh.js')>()),
+  ensureFreshAutoflowToken: async () => ({ kind: 'unavailable', reason: 'test', secrets: null }),
+}));
+
 vi.mock('../../integrations/mcp-preview-service.js', () => ({
   buildMcpPreview: async () => ({ servers: [] }),
 }));

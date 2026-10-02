@@ -9,6 +9,13 @@ vi.mock('../store.js', () => ({
   },
 }));
 
+// The refresh itself runs under a row lock against Postgres; it is proven in
+// tests/integration/autoflow-token-refresh-e2e.test.ts. Here it answers "nothing to refresh".
+vi.mock('./refresh.js', async (original) => ({
+  ...(await original<typeof import('./refresh.js')>()),
+  ensureFreshAutoflowToken: async () => ({ kind: 'unavailable', reason: 'test', secrets: null }),
+}));
+
 const { autoflowIntegration } = await import('./adapter.js');
 const adapter = autoflowIntegration.adapter;
 if (!adapter) throw new Error('autoflow declares no adapter');
@@ -124,6 +131,45 @@ describe('autoflow declaration', () => {
     const parsed = autoflowIntegration.schemas.secrets.safeParse({ accessToken: 'wmk_abc' });
     expect(parsed.success).toBe(false);
     expect(JSON.stringify(parsed.error?.issues)).toContain('sat_');
+  });
+
+  it('stores a refresh token only beside the client it was issued to', () => {
+    const { secrets, patchSecrets, independentSecretFields } = autoflowIntegration.schemas;
+    const pair = { refreshToken: 'srt_r', clientId: 'mcpc_c' };
+    expect(
+      secrets.safeParse({
+        accessToken: 'sat_x',
+        accessTokenExpiresAt: '2026-10-02T12:00:00Z',
+        ...pair,
+      }).success,
+    ).toBe(true);
+    const half = secrets.safeParse({ accessToken: 'sat_x', refreshToken: 'srt_r' });
+    expect(half.success).toBe(false);
+    expect(JSON.stringify(half.error?.issues)).toContain(
+      'refreshToken and clientId travel together',
+    );
+    const wrong = secrets.safeParse({
+      accessToken: 'sat_x',
+      refreshToken: 'sat_r',
+      clientId: 'mcpc_c',
+    });
+    expect(JSON.stringify(wrong.error?.issues)).toContain('srt_');
+    expect(patchSecrets.safeParse(pair).success).toBe(true);
+    expect(patchSecrets.safeParse({ clientId: 'mcpc_c' }).success).toBe(false);
+    // A rotation keeps only declared fields: the refresh pair must survive an access-token PATCH.
+    expect([...independentSecretFields].sort()).toEqual([
+      'accessTokenExpiresAt',
+      'clientId',
+      'refreshToken',
+    ]);
+  });
+
+  it('names the platform token endpoint on the connection origin', async () => {
+    const { autoflowTokenUrl } = await import('./refresh.js');
+    expect(autoflowTokenUrl({})).toBe('https://auto.sidcorp.co/oauth/token');
+    expect(autoflowTokenUrl({ baseUrl: 'https://auto.example.test/' })).toBe(
+      'https://auto.example.test/oauth/token',
+    );
   });
 
   it('refuses a binding with no shop, naming the field', () => {
