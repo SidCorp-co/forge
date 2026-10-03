@@ -150,8 +150,8 @@ describe("only the project's own master works its run", () => {
         baseRevision: held.revision,
         document: next,
       });
-      expect(r.status, JSON.stringify(r.json)).toBe(403);
-      expect(r.json.code).toBe('BUILDER_RUN_WRITER_NOT_PROJECT');
+      expect(r.status, JSON.stringify(r.json)).toBe(422);
+      expect(r.json.error.code).toBe('BUILDER_RUN_WRITER_NOT_PROJECT');
     }
     const r = await as(master, 'PUT', `${runs()}/${held.document.id}`, {
       baseRevision: held.revision,
@@ -235,8 +235,8 @@ describe('a run that cannot finish truly is superseded, and a fresh one opens', 
     ]);
     for (const token of [otherMasterAccount, w.token.viewer]) {
       const r = await supersede(token, held.document.id, { reason: 'not mine to close' });
-      expect(r.status, JSON.stringify(r.json)).toBe(403);
-      expect(r.json.code).toBe('BUILDER_RUN_SUPERSEDE_NOT_AUTHORISED');
+      expect(r.status, JSON.stringify(r.json)).toBe(422);
+      expect(r.json.error.code).toBe('BUILDER_RUN_SUPERSEDE_NOT_AUTHORISED');
     }
     expect((await openRun()).document.id).toBe(held.document.id);
   });
@@ -326,8 +326,8 @@ describe("a provisioned checkout's credential is its project's own agent", () =>
       baseRevision: run.revision,
       document: run.doc,
     });
-    expect(r.status, JSON.stringify(r.json)).toBe(403);
-    expect(r.json.code).toBe('BUILDER_RUN_WRITER_NOT_PROJECT');
+    expect(r.status, JSON.stringify(r.json)).toBe(422);
+    expect(r.json.error.code).toBe('BUILDER_RUN_WRITER_NOT_PROJECT');
   });
 
   it('a person below member is refused the project agent by name, and nothing is minted', async () => {

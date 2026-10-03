@@ -4,17 +4,10 @@
  */
 
 import type { StorefrontTargetArgs } from '../types.js';
-import { autoflowGql } from './client.js';
-import {
-  autoflowBaseUrl,
-  autoflowGraphqlUrl,
-  autoflowMcpUrl,
-  autoflowSiteUrl,
-} from './endpoints.js';
-import { AUTOFLOW_REFRESH_MARGIN_MS, ensureFreshAutoflowToken } from './refresh.js';
-import type { AutoflowConfig, AutoflowSecrets } from './types.js';
-
-const LIVE_READ_TIMEOUT_MS = 5_000;
+import { autoflowDraftVersion } from './draft.js';
+import { autoflowBaseUrl, autoflowMcpUrl, autoflowSiteUrl } from './endpoints.js';
+import { autoflowLiveRead } from './live-read.js';
+import type { AutoflowConfig } from './types.js';
 
 /**
  * The shop MCP tools a HOP-shaped build reaches for, grouped as the server registers them
@@ -53,9 +46,11 @@ export const AUTOFLOW_SHOP_TOOLS = {
 } as const;
 
 const BACKEND_QUERY =
-  'query ForgeAutoflowBackend { backendWorkflows { code name version published_at } backendRoutes { method path workflow_code is_published } }';
+  'query ForgeAutoflowBackend { backendWorkflows { id code name version published_at draft } backendRoutes { method path workflow_code is_published } }';
 
 interface BackendWorkflowRow {
+  id?: string;
+  draft?: unknown;
   code?: string;
   name?: string;
   version?: number | null;
@@ -77,54 +72,13 @@ async function readBackend(
   args: StorefrontTargetArgs,
   config: AutoflowConfig,
 ): Promise<LiveBackend> {
-  let stored: Partial<AutoflowSecrets>;
-  try {
-    stored = args.readSecrets() as Partial<AutoflowSecrets>;
-  } catch (err) {
-    return { resolvedLive: false, reason: `secrets_unreadable: ${(err as Error).message}` };
-  }
-  if (!stored.accessToken) return { resolvedLive: false, reason: 'no_credential' };
-  try {
-    const fresh = await ensureFreshAutoflowToken({
-      connectionId: args.connectionId,
-      config,
-      minLifetimeMs: AUTOFLOW_REFRESH_MARGIN_MS,
-    });
-    if (fresh.kind === 'needs_reauth') return { resolvedLive: false, reason: fresh.reason };
-    const token = fresh.secrets?.accessToken ?? stored.accessToken;
-    const url = autoflowGraphqlUrl(config);
-    let res = await autoflowGql(url, token, BACKEND_QUERY, LIVE_READ_TIMEOUT_MS);
-    if (res.kind === 'unauthorized') {
-      const retry = await ensureFreshAutoflowToken({
-        connectionId: args.connectionId,
-        config,
-        minLifetimeMs: AUTOFLOW_REFRESH_MARGIN_MS,
-        refusedToken: token,
-      });
-      if (retry.kind === 'needs_reauth') return { resolvedLive: false, reason: retry.reason };
-      if (retry.kind === 'ok' && retry.secrets.accessToken !== token) {
-        res = await autoflowGql(
-          url,
-          retry.secrets.accessToken,
-          BACKEND_QUERY,
-          LIVE_READ_TIMEOUT_MS,
-        );
-      }
-    }
-    if (res.kind === 'ok') {
-      return {
-        resolvedLive: true,
-        workflows: (res.data.backendWorkflows as BackendWorkflowRow[] | null) ?? [],
-        routes: (res.data.backendRoutes as BackendRouteRow[] | null) ?? [],
-      };
-    }
-    if (res.kind === 'unauthorized')
-      return { resolvedLive: false, reason: `unauthorized: ${res.message}` };
-    if (res.kind === 'http-error') return { resolvedLive: false, reason: `http_${res.status}` };
-    return { resolvedLive: false, reason: `graphql_error: ${res.message}` };
-  } catch (err) {
-    return { resolvedLive: false, reason: `unreachable: ${(err as Error).message}` };
-  }
+  const read = await autoflowLiveRead(args, config, BACKEND_QUERY);
+  if (!read.ok) return { resolvedLive: false, reason: read.reason };
+  return {
+    resolvedLive: true,
+    workflows: (read.data.backendWorkflows as BackendWorkflowRow[] | null) ?? [],
+    routes: (read.data.backendRoutes as BackendRouteRow[] | null) ?? [],
+  };
 }
 
 export async function autoflowStorefrontTarget(
@@ -148,6 +102,8 @@ export async function autoflowStorefrontTarget(
     ...(live.resolvedLive
       ? {
           workflows: live.workflows.map((w) => ({
+            id: w.id ?? null,
+            draftVersion: autoflowDraftVersion(w.draft),
             code: w.code ?? null,
             name: w.name ?? null,
             version: w.version ?? null,

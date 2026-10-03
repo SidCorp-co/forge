@@ -9,7 +9,7 @@
  *   approved           plan and criteria written; a person made the move where   PLAN_REQUIRED
  *                      the project document sets `plan.approval.required`
  *   awaiting_release   every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
- *                      identity, recorded after the latest reopen                VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN
+ *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_UNCORROBORATED
  *   closed             shipped; from in_progress after a reopen, as above        CLOSE_REQUIRES_SHIPPED + the three above
  *
  *   needs_info         a question (the reason) and its kind                      TRANSITION_REASON_REQUIRED,
@@ -29,7 +29,7 @@ import {
 } from '../pipeline/state-machine.js';
 import { readProjectDocument } from '../project-config/service.js';
 import type { ActorAgency } from './actor-agency.js';
-import { unpassedCriteria } from './release-evidence.js';
+import { type CriteriaEvidence, type SourceType, unpassedCriteria } from './release-evidence.js';
 import { isBlankPlan } from './transition-evidence.js';
 import { issueHolder } from './work-state.js';
 
@@ -40,6 +40,8 @@ export type GuardCode =
   | 'NO_WORK_EVIDENCE'
   | 'VERDICT_IDENTITY_REQUIRED'
   | 'VERDICT_PREDATES_REOPEN'
+  | 'VERDICT_IDENTITY_NOT_ADMISSIBLE'
+  | 'VERDICT_UNCORROBORATED'
   | 'TRANSITION_REASON_REQUIRED'
   | 'WAITING_KIND_REQUIRED'
   | 'VOID_REASON_REQUIRED';
@@ -199,7 +201,8 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
  * rule a reopen could close again on the evidence it rejected.
  */
 async function verdictGuard(ctx: GuardContext, onlyIfReopened = false): Promise<GuardFault | null> {
-  const found = await unpassedCriteria(ctx.executor, ctx.issue.id);
+  const source = (await readProjectDocument(ctx.issue.projectId))?.document.source.type ?? null;
+  const found = await unpassedCriteria(ctx.executor, ctx.issue.id, source);
   if (onlyIfReopened && found.reopenedAt === null) return null;
   const into = quote(ctx.to);
   if (found.kind === 'no-criteria') {
@@ -237,6 +240,30 @@ async function verdictGuard(ctx: GuardContext, onlyIfReopened = false): Promise<
       code: 'VERDICT_IDENTITY_REQUIRED',
       detail: `a passing verdict says what it held in — a whole commit sha, a runtime, a design revision (\`<flow> rev <n>\`) or a contract version (\`<ref>@<version>\`) — and the latest verdict on criteria ${found.unidentified.join(', ')} names none the gate accepts (a backfilled \`commit_unresolved\` abbreviation is not one). Record each again with its identity, then move it.`,
       details: { from: ctx.from, to: ctx.to, unidentified: found.unidentified },
+    };
+  }
+  return storefrontDraftFault(ctx, found, source);
+}
+
+export function storefrontDraftFault(
+  ctx: GuardContext,
+  found: Extract<CriteriaEvidence, { kind: 'criteria' }>,
+  source: SourceType,
+): GuardFault | null {
+  if (found.inadmissible.length > 0) {
+    const held = source === null ? 'declares no project document' : `has source \`${source}\``;
+    return {
+      code: 'VERDICT_IDENTITY_NOT_ADMISSIBLE',
+      detail: `the latest verdict on criteria ${found.inadmissible.join(', ')} names a storefront draft, and this project ${held}: a draft stands in for a landed commit only where the work lives on a storefront (\`source.type: "storefront"\`). Record each against the commit or runtime it was judged at, then move it.`,
+      details: { from: ctx.from, to: ctx.to, source, inadmissible: found.inadmissible },
+    };
+  }
+  if (found.uncorroborated.length > 0) {
+    const named = found.uncorroborated.map((u) => `${u.criterion} (${u.note})`).join('; ');
+    return {
+      code: 'VERDICT_UNCORROBORATED',
+      detail: `a storefront draft counts once the storefront source reads it back as the draft it holds, and the latest verdict on criteria ${named} was not. Record each again naming the draft version \`forge_storefront_target\` reports now, then move it.`,
+      details: { from: ctx.from, to: ctx.to, uncorroborated: found.uncorroborated },
     };
   }
   return null;

@@ -32,6 +32,12 @@ export function criteriaOfText(
         designRevision: identity?.kind === 'design' ? identity.revision : null,
         contractRef: identity?.kind === 'contract' ? identity.ref : null,
         contractVersion: identity?.kind === 'contract' ? identity.version : null,
+        storefrontWorkflowId: identity?.kind === 'storefront_draft' ? identity.workflowId : null,
+        storefrontDraftVersion:
+          identity?.kind === 'storefront_draft' ? identity.draftVersion : null,
+        storefrontEnvironment: identity?.kind === 'storefront_draft' ? identity.environment : null,
+        corroboration: null,
+        corroborationNote: null,
         evidence: block.cited,
         authorAgency: 'agent',
         backfilled: false,

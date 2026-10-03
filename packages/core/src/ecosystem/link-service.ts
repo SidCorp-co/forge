@@ -3,7 +3,7 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { staleBase } from '../project-config/documents.js';
 import { readProjectDocument } from '../project-config/service.js';
-import { notFound, refusedBy } from './access.js';
+import { notFound } from './access.js';
 import type { ImpactLink } from './contract/impact.js';
 import { storedAs } from './ecosystem-service.js';
 import { heldInterface } from './interface-service.js';
@@ -86,10 +86,10 @@ interface RecordKind<W> {
   ): Promise<StoredRecord>;
 }
 
-async function assertWriter(kind: RecordKind<unknown>, writer: RecordWriter, projectId: string) {
+async function writerMiss(kind: RecordKind<unknown>, writer: RecordWriter, projectId: string) {
   const role = (await effectiveProjectRole(writer.userId, projectId))?.role ?? null;
   const refusal = writerRefusal({ ...writer, role }, projectId, kind.writerCode);
-  if (refusal) throw refusedBy(refusal);
+  return refusal ? { ok: false as const, refusals: [refusal] } : null;
 }
 
 interface WriteInput {
@@ -101,7 +101,8 @@ interface WriteInput {
 
 async function createRecord<W>(kind: RecordKind<W>, input: WriteInput): Promise<RecordOutcome<W>> {
   const { projectId, writer, baseRevision, raw } = input;
-  await assertWriter(kind as RecordKind<unknown>, writer, projectId);
+  const denied = await writerMiss(kind as RecordKind<unknown>, writer, projectId);
+  if (denied) return denied;
   if (baseRevision !== null) {
     return {
       ok: false,
@@ -131,7 +132,8 @@ async function updateRecord<W>(
   input: WriteInput & { id: string },
 ): Promise<RecordOutcome<W>> {
   const { projectId, writer, baseRevision, raw, id } = input;
-  await assertWriter(kind as RecordKind<unknown>, writer, projectId);
+  const denied = await writerMiss(kind as RecordKind<unknown>, writer, projectId);
+  if (denied) return denied;
   const parsed = kind.parse(raw, projectId);
   if (!parsed.ok) return parsed;
   const doc = parsed.value;

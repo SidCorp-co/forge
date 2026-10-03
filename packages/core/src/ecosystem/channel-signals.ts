@@ -94,7 +94,7 @@ const holdKey = (h: ThreadHold, side: string) => `channel-hold:${h.ecosystem}:${
 export const gateKey = (documentId: string) => `channel-gate:${documentId}`;
 
 // cm:why each side reads the notice under its own project, and a person on both sides is told once
-async function tellEachSide(
+export async function tellEachSide(
   sides: readonly string[],
   except: string | null,
   emit: (side: string, recipients: string[]) => Promise<unknown>,

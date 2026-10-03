@@ -2292,6 +2292,13 @@
       "breakpoints": true
     },
     {
+      "idx": 354,
+      "version": "7",
+      "when": 1813536000000,
+      "tag": "0354_an_issue_waits_on_a_contract_version",
+      "breakpoints": true
+    },
+    {
       "idx": 355,
       "version": "7",
       "when": 1813622400000,
@@ -2299,10 +2306,24 @@
       "breakpoints": true
     },
     {
-      "idx": 358,
+      "idx": 360,
       "version": "7",
-      "when": 1813881600000,
-      "tag": "0358_a_requirement_is_deferred_repinned_and_accepted_with_its_reason",
+      "when": 1814054400000,
+      "tag": "0360_a_storefront_draft_is_a_verdict_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 361,
+      "version": "7",
+      "when": 1814140800000,
+      "tag": "0361_a_comment_sits_on_exactly_one_target",
+      "breakpoints": true
+    },
+    {
+      "idx": 362,
+      "version": "7",
+      "when": 1814227200000,
+      "tag": "0362_a_requirement_is_deferred_repinned_and_accepted_with_its_reason",
       "breakpoints": true
     }
   ]

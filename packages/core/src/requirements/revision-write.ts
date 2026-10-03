@@ -97,6 +97,7 @@ export async function createRequirementIn(
     actor: RequirementActor;
     title: string;
     write: RevisionWrite;
+    ownerId?: string | null;
     /** Who wrote revision 1's content when not the actor: an accepted suggestion's producer. */
     authorId?: string | undefined;
   },
@@ -108,7 +109,12 @@ export async function createRequirementIn(
     .where(eq(requirements.projectId, projectId));
   const [row] = await tx
     .insert(requirements)
-    .values({ projectId, reqSeq: next, title: input.title.trim(), ownerId: actor.userId })
+    .values({
+      projectId,
+      reqSeq: next,
+      title: input.title.trim(),
+      ownerId: input.ownerId === undefined ? actor.userId : input.ownerId,
+    })
     .returning({ id: requirements.id });
   if (!row) throw new Error('requirements: the insert returned no row');
   await tx.insert(requirementRevisions).values({

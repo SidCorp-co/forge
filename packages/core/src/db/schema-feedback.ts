@@ -10,6 +10,7 @@ import {
   type AnyPgColumn,
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   pgTable,
@@ -19,6 +20,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { issues, pipelineRuns, projects, users } from './schema.js';
+import { contractVersions } from './schema-ecosystem.js';
 import { requirements } from './schema-requirements.js';
 import { suggestions } from './schema-suggestions.js';
 import { projectWorkflows } from './schema-workflows.js';
@@ -62,6 +64,14 @@ export const feedback = pgTable(
     workflowId: uuid('workflow_id').references((): AnyPgColumn => projectWorkflows.id, {
       onDelete: 'no action',
     }),
+    // cm:why the fifth arc member is a provider's contract version, filed by core alone (E3); its
+    // deadline is that version's approval plus the provider's commitment window
+    contractProviderProjectId: uuid('contract_provider_project_id').references(() => projects.id, {
+      onDelete: 'cascade',
+    }),
+    contractSlug: text('contract_slug'),
+    contractVersion: text('contract_version'),
+    dueAt: timestamp('due_at', { withTimezone: true }),
     status: text('status', { enum: FEEDBACK_STATUSES }).notNull().default('new'),
     route: text('route', { enum: FEEDBACK_ROUTES }),
     routedIssueId: uuid('routed_issue_id').references((): AnyPgColumn => issues.id, {
@@ -87,8 +97,8 @@ export const feedback = pgTable(
     redactions: integer('redactions').notNull().default(0),
     redactedAt: timestamp('redacted_at', { withTimezone: true }),
     redactedBy: uuid('redacted_by').references(() => users.id, { onDelete: 'restrict' }),
-    // cm:why the seam E3 fills (ISS-61): one item per consumer per breaking contract version, held by
-    // a unique key the filer names, so a retried notice cannot file a twin
+    // cm:why one item per consumer per breaking contract version (E3), held by a unique key the filer
+    // names, so a retried approval cannot file a twin
     dedupKey: text('dedup_key'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -96,8 +106,22 @@ export const feedback = pgTable(
   (t) => ({
     arcChk: check(
       'feedback_arc_chk',
-      sql`num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}) = 1 OR (num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}) = 0 AND ${t.whereSeen} IS NOT NULL)`,
+      sql`num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}, ${t.contractVersion}) = 1 OR (num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}, ${t.contractVersion}) = 0 AND ${t.whereSeen} IS NOT NULL)`,
     ),
+    contractTargetChk: check(
+      'feedback_contract_target_chk',
+      sql`num_nonnulls(${t.contractProviderProjectId}, ${t.contractSlug}, ${t.contractVersion}) IN (0, 3)`,
+    ),
+    dueChk: check('feedback_due_chk', sql`${t.dueAt} IS NULL OR ${t.contractVersion} IS NOT NULL`),
+    contractFk: foreignKey({
+      name: 'feedback_contract_version_fk',
+      columns: [t.contractProviderProjectId, t.contractSlug, t.contractVersion],
+      foreignColumns: [
+        contractVersions.providerProjectId,
+        contractVersions.contractSlug,
+        contractVersions.version,
+      ],
+    }),
     kindChk: check('feedback_kind_chk', sql`${t.kind} IN (${inList(FEEDBACK_KINDS)})`),
     severityChk: check(
       'feedback_severity_chk',

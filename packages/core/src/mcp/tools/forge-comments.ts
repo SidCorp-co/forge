@@ -31,8 +31,19 @@ import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import {
+  createEntity,
+  entityDataFields,
+  entityDeleteRefusal,
+  entityTargetFields,
+  listDecisions,
+  listEntity,
+  pickTarget,
+  updateEntity,
+} from './forge-comments-entity.js';
+import {
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
+  type McpContext,
   principalAuthorDeviceId,
   principalHookActor,
   zodToMcpSchema,
@@ -61,7 +72,12 @@ const MCP_DECLARES_RECORD_ROUTE = false;
  */
 
 const filtersSchema = z
-  .object({ issue: z.uuid(), intent: z.string().max(64).optional() })
+  .object({
+    issue: z.uuid().optional(),
+    ...entityTargetFields,
+    intent: z.string().max(64).optional(),
+    scope: z.string().max(64).optional(),
+  })
   .strict()
   .optional();
 
@@ -82,13 +98,15 @@ export const commentCreateDataSchema = z
     /** question | decision | note — checked by name in `comments/service.ts:resolveIntent`. */
     intent: z.string().max(64).optional(),
     attachments: z.array(attachmentInputSchema).max(10).optional(),
+    ...entityDataFields,
   })
   .strict()
   .optional();
 
 const inputSchema = z
   .object({
-    action: z.enum(['list', 'create', 'update', 'delete']),
+    action: z.enum(['list', 'create', 'update', 'delete', 'decisions']),
+    projectId: z.uuid().optional(),
     documentId: z.uuid().optional(),
     filters: filtersSchema,
     data: commentCreateDataSchema,
@@ -137,13 +155,15 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
   grant: {
     byAction: {
       list: 'issues:read',
+      decisions: 'issues:read',
       create: 'issues:write',
       update: 'issues:write',
       delete: 'issues:write',
     },
   },
   description:
-    'List, create, update or delete issue comments. List requires filters.issue (issue UUID). ' +
+    'List, create, update or delete comments. A comment sits on exactly one target: an issue (filters.issue / data.issue, a UUID), or a requirement (REQ-n), a workflow design (flow name or UUID) or a feedback item (FB-n) through filters.requirement | workflow | feedback and data.requirement | workflow | feedback, with projectId or the bound project; naming none or two is refused COMMENT_SCOPE_INVALID. ' +
+    "On a requirement, workflow or feedback item: data.intent is required (question | decision | note), and a decision carries data.decision { decision, reason, options?, authority?, reversedWhen? } (COMMENT_DECISION_REQUIRED when missing), with data.body optional; such a comment is edited with update and never deleted (COMMENT_RECORD_KEPT). A decision there by an agent is a record, not an approval. Action decisions lists the project's decisions across every target, newest first (filters.scope, limit). On a no_egress project a feedback item's comments come back as metadata only. " +
     'EVERY list response carries `returned`, `limit`, `hasMore` and `nextCursor` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
     'To read a whole thread: call list, then pass the `nextCursor` you got back as `cursor`, and repeat until `nextCursor` is null. Each page carries the next top-level comments with their replies, so no comment is returned twice and none is skipped. The cursor is the SAME token the REST route `GET /api/issues/:id/comments` mints and accepts. ' +
     "Create requires data.issue + data.body, and takes data.intent: question (owed a reply), decision (pinned) or note; omitted, a person's comment is stored as question and an agent's as note, with a COMMENT_INTENT_DEFAULTED warning. List takes filters.intent. A structured record goes to forge_issue_events, not into a comment. Update requires documentId + data.body (use it to " +
@@ -164,7 +184,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
     const { principal } = ctx;
 
     try {
-      return await run(principal, input);
+      return await run(ctx, principal, input);
     } catch (err) {
       const refusal =
         err instanceof BodyInvalidError || err instanceof CommentIntentRefused
@@ -178,7 +198,39 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
   },
 });
 
-async function run(principal: Principal, input: ToolInput): Promise<unknown> {
+async function run(ctx: McpContext, principal: Principal, input: ToolInput): Promise<unknown> {
+  if (input.action === 'decisions') {
+    return listDecisions(ctx, principal, {
+      projectId: input.projectId,
+      scope: input.filters?.scope,
+      limit: input.limit,
+    });
+  }
+  if (input.action === 'list' || input.action === 'create') {
+    const named = input.action === 'list' ? input.filters : input.data;
+    const pick = pickTarget(named, input.action === 'list' ? '/filters' : '/data');
+    if (pick.kind === 'refused') return pick.answer;
+    if (pick.kind === 'entity' && input.action === 'list') {
+      return listEntity(ctx, principal, pick, {
+        projectId: input.projectId,
+        intent: input.filters?.intent,
+      });
+    }
+    if (pick.kind === 'entity') {
+      return createEntity(ctx, principal, pick, {
+        projectId: input.projectId,
+        data: input.data ?? {},
+      });
+    }
+  }
+  if (input.action === 'update' && input.documentId) {
+    const entity = await updateEntity(ctx, principal, input.documentId, input.data ?? {});
+    if (entity) return entity;
+  }
+  if (input.action === 'delete' && input.documentId) {
+    const kept = await entityDeleteRefusal(input.documentId);
+    if (kept) return kept;
+  }
   switch (input.action) {
     case 'list':
       return listAction(principal, input);

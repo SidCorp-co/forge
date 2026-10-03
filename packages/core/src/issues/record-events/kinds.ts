@@ -5,10 +5,6 @@
 export const COMMENT_INTENTS = ['question', 'decision', 'note'] as const;
 export type CommentIntent = (typeof COMMENT_INTENTS)[number];
 
-/** What a comment is about: the one arc target it belongs to. Only issues exist today. */
-export const COMMENT_SCOPES = ['issue'] as const;
-export type CommentScope = (typeof COMMENT_SCOPES)[number];
-
 /**
  * Kernel evidence: kept for as long as the issue is. Retention never collapses one of these, and
  * `NarrationRecordKind` below is typed so that it cannot name one.

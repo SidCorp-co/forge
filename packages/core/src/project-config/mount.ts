@@ -1,5 +1,6 @@
 import type { Hono } from 'hono';
 import { baDoorRoutes } from '../assistant/ba-door-routes.js';
+import { entityCommentRoutes } from '../comments/entity-routes.js';
 import { contentLanguageRoutes } from '../content-language/routes.js';
 import { feedbackRoutes } from '../feedback/routes.js';
 import type { RequestIdVars } from '../middleware/request-id.js';
@@ -26,4 +27,5 @@ export function mountProjectConfig(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/projects', onboardingRoutes);
   app.route('/api/projects', questionnaireRoutes);
   app.route('/api/projects', contentLanguageRoutes);
+  app.route('/api/projects', entityCommentRoutes);
 }

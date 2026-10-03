@@ -253,7 +253,7 @@ export const requirementReturns = pgTable(
 );
 
 // cm:why a defer and an undefer are decisions a requirement can take more than once, so each is
-// its own insert-only row (`requirement_deferral_guard()`, migration 0358); the head's status says
+// its own insert-only row (`requirement_deferral_guard()`, migration 0362); the head's status says
 // `deferred`, and the latest defer row says from where, why and until when (ISS-85)
 export const requirementDeferrals = pgTable(
   'requirement_deferrals',

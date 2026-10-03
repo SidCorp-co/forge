@@ -120,12 +120,13 @@ describe('who may supersede a run', () => {
     expect(allowed(facts({ stewardRole: 'owner' }))).toBe(true);
   });
 
-  it("refuses another project's agent, a project member who is no org admin, and a steward member, by name", () => {
+  it("refuses another project's agent, even one in the steward's org, a project member who is no org admin, and a steward member, by name", () => {
     for (const f of [
       facts({ agency: 'agent', projectRole: null, projectOrgRole: 'member' }),
       facts({ agency: 'agent', projectRole: 'viewer' }),
       facts({ projectRole: 'admin', projectOrgRole: 'member' }),
       facts({ stewardRole: 'member' }),
+      facts({ agency: 'agent', projectRole: null, stewardRole: 'owner' }),
     ]) {
       expect(supersederRefusal(f, PLUGIN)?.code).toBe('BUILDER_RUN_SUPERSEDE_NOT_AUTHORISED');
     }
