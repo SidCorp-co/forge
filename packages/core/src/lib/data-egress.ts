@@ -122,8 +122,9 @@ function classOf(surface: string): EgressClass | null {
 }
 
 // cm:guard the one rule, at a level already read: an undeclared surface is refused by name at every
-// level; operational content never leaves at no_egress, so the caller answers metadata only; what
-// leaves at redact, and product content at no_egress, leaves scrubbed; at off it leaves as written
+// level; operational content never leaves at no_egress and leaves scrubbed at redact; product content
+// leaves exactly as stored at every level and is scrubbed once on write (`storedText`) — a read-side
+// scrub breaks every expect-precondition write and rewrites lease places (HOP, 2026-10-04)
 export function egressAt<T>(
   level: SensitiveDataLevel,
   surface: EgressSurface,
@@ -151,7 +152,7 @@ export function egressAt<T>(
       },
     };
   }
-  if (level === 'off') return { ok: true, value };
+  if (level === 'off' || cls === 'product') return { ok: true, value };
   return { ok: true, value: scrubDeep(value, { n: 0 }) as T };
 }
 
@@ -203,7 +204,7 @@ export function egressText(
 ): { ok: true; text: string; redactions: number } | { ok: false; refusal: EgressRefusal } {
   const gate = egressAt(level, surface, '', what);
   if (!gate.ok) return gate;
-  if (level === 'off') return { ok: true, text, redactions: 0 };
+  if (level === 'off' || classOf(surface) === 'product') return { ok: true, text, redactions: 0 };
   const counted = { n: 0 };
   return { ok: true, text: scrubDeep(text, counted) as string, redactions: counted.n };
 }

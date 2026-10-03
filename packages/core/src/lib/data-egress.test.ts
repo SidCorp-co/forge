@@ -52,7 +52,7 @@ describe('the surface table is the one place a class is declared', () => {
   });
 });
 
-describe('product surfaces: readable at every level, scrubbed at redact and no_egress', () => {
+describe('product surfaces: read exactly as stored at every level', () => {
   const id = '123e4567-e89b-42d3-a456-426614174000';
   const value = { id, at: '2026-10-03T01:02:03.000Z', body: patient };
 
@@ -60,18 +60,23 @@ describe('product surfaces: readable at every level, scrubbed at redact and no_e
     expect(egressAt('off', 'requirement', value)).toEqual({ ok: true, value });
   });
 
-  it.each(['redact', 'no_egress'] as const)('%s: leaves scrubbed, ids and times whole', (level) => {
-    for (const surface of surfacesOf('product')) {
-      const out = egressAt(level, surface, value);
-      expect(out.ok, surface).toBe(true);
-      if (!out.ok) continue;
-      expect(out.value.id).toBe(id);
-      expect(out.value.at).toBe(value.at);
-      expect(out.value.body).not.toContain('0912');
-      expect(out.value.body).not.toContain('gmail');
-      expect(out.value.body).toContain('2026-10-03');
-      expect(withheldAt(level, surface)).toBe(false);
-    }
+  it.each(['redact', 'no_egress'] as const)(
+    '%s: leaves as stored, never rescrubbed on read',
+    (level) => {
+      for (const surface of surfacesOf('product')) {
+        expect(egressAt(level, surface, value), surface).toEqual({ ok: true, value });
+        expect(withheldAt(level, surface)).toBe(false);
+      }
+    },
+  );
+
+  it('a lease place and a design name round-trip unchanged at no_egress', () => {
+    const lease = {
+      sessionContext: { place: 'pid:2481937', holder: 'iss-5-3b076c1b' },
+      text: 'Nam Sai Gon VIP',
+    };
+    expect(egressAt('no_egress', 'issue', lease)).toEqual({ ok: true, value: lease });
+    expect(egressAt('no_egress', 'design', lease)).toEqual({ ok: true, value: lease });
   });
 });
 
@@ -105,7 +110,7 @@ describe('operational surfaces: scrubbed at redact, withheld at no_egress', () =
     expect(redacted.ok && redacted.text).not.toContain('0912');
     expect(redacted.ok && redacted.redactions).toBeGreaterThan(0);
     const spec = egressText('no_egress', 'requirement', patient, 'REQ-1');
-    expect(spec.ok && spec.text).not.toContain('gmail');
+    expect(spec.ok && spec.text).toBe(patient);
   });
 });
 
@@ -116,12 +121,10 @@ describe('a questionnaire takes its class from its own arc, never from the calle
     items: [{ id: 'hospital', prompt: 'Which hospital?', answer: { text: patient } }],
   });
 
-  it('an onboarding round is product: readable at no_egress, scrubbed', () => {
+  it('an onboarding round is product: readable at no_egress as stored (scrubbed once on write)', () => {
     const b = batch('o-1', null);
     expect(questionnaireSurface(b)).toBe('onboarding.answers');
-    const out = egressAt('no_egress', questionnaireSurface(b), b);
-    expect(out.ok).toBe(true);
-    expect(out.ok && out.value.items[0]?.answer.text).not.toContain('0912');
+    expect(egressAt('no_egress', questionnaireSurface(b), b)).toEqual({ ok: true, value: b });
   });
 
   it('a BA clarification on a requirement is operational: withheld at no_egress, alone or among others', () => {
