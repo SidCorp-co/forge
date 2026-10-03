@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { type FeedbackTriageEffect, feedbackTriageSchema } from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import { ANSWER_VIEWS, pickFields } from "./projection.js";
 
 /** The six kinds rev 2 names, and feedback_triage (workflow feedback-triage, ISS-59); cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
 export const SUGGESTION_KINDS = [
@@ -257,6 +258,7 @@ export const listSuggestionsQuerySchema = z.strictObject({
 		.optional()
 		.transform((s) => (s ? s.split(",") : undefined))
 		.pipe(z.array(z.enum(SUGGESTION_STATUSES)).optional()),
+	view: z.enum(ANSWER_VIEWS).optional(),
 });
 
 /** One suggestion as every reader sees it. */
@@ -340,3 +342,26 @@ export interface SuggestionListResponse {
 	suggestions: SuggestionView[];
 	open: number;
 }
+
+export const SUGGESTION_SUMMARY_FIELDS = [
+	"id",
+	"kind",
+	"status",
+	"target",
+	"baseRevision",
+	"producerKind",
+	"producerId",
+	"model",
+	"decidedBy",
+	"decidedAt",
+	"createdAt",
+	"payloadPurgedAt",
+] as const;
+
+export type SuggestionSummaryView = Pick<
+	SuggestionView,
+	(typeof SUGGESTION_SUMMARY_FIELDS)[number]
+>;
+
+export const suggestionSummaryOf = (view: SuggestionView): SuggestionSummaryView =>
+	pickFields(view, SUGGESTION_SUMMARY_FIELDS);

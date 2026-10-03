@@ -86,8 +86,9 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
     'to a third-party service that must fetch the file itself (e.g. re-hosting an owner-supplied ' +
     'image into a store media library). Use it instead of `url`, which requires a Forge session ' +
     'the runner does not have. Treat it as a secret: do not log it or paste it into a comment. ' +
-    '(png/jpeg/gif/webp) return as a viewable image block (you SEE the screenshot); text/markdown ' +
-    'return inline as text. PDFs/video and oversized files (> inline cap) return metadata + the ' +
+    '(png/jpeg/gif/webp) return as a viewable image block (you SEE the screenshot), and the structured ' +
+    'answer names it as `image: { contentIndex, mimeType }`; text/markdown return inline as text, in ' +
+    "the content and as the structured answer's `text`, framed as data. PDFs/video and oversized files (> inline cap) return metadata + the " +
     'download url only (not inlined). Use this whenever an issue/comment references an attached ' +
     'image or file — the prompt does NOT inline attachment bytes.',
   inputSchema: zodToMcpSchema(inputSchema),
@@ -156,6 +157,7 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
           ],
           ...meta,
           inlined: true,
+          image: { contentIndex: 1, mimeType: att.mime },
         };
       }
 
@@ -164,18 +166,19 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
       // untrusted filename + mime are NOT echoed in a raw external label (that
       // would be an unframed injection vector); they ride INSIDE the frame via
       // the sanitized `source=` attribute. Only a constant label sits outside.
+      const text = markUntrusted(bytes.toString('utf8'), {
+        source: `attachment name="${att.name}" mime="${att.mime}"`,
+      });
       return {
         _mcpContent: [
           {
             type: 'text',
-            text: `Attachment text follows (name + type carried as data in the frame):\n\n${markUntrusted(
-              bytes.toString('utf8'),
-              { source: `attachment name="${att.name}" mime="${att.mime}"` },
-            )}`,
+            text: `Attachment text follows (name + type carried as data in the frame):\n\n${text}`,
           },
         ],
         ...meta,
         inlined: true,
+        text,
       };
     }
 

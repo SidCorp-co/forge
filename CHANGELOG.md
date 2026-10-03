@@ -3271,6 +3271,8 @@
 
 ### Fixed
 
+- **A `forge_uploads` fetch carries the text it inlines in its structured answer.** A client reading
+  the structured result no longer sees `inlined: true` with the body missing.
 - **forge-runner no longer retires a resident master mid-turn.** It retires one only after an
   hour in which its pane reported no turn and no input, nothing was claimable and no child run
   was open; the log line names each.
@@ -6325,6 +6327,10 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **MCP lists and writes answer a summary, not the whole document.** Requirements, workflows and
+  suggestions list summaries and answer a write with what it changed; `view: 'full'` returns the
+  body, and `view: 'steps'` reads a design's steps by range.
 - **A refusal reads the same everywhere.** A refused requirement sign-off or design decision now
   answers 422 with `error.code` and its refusals, like every other refusal; MCP returns that same
   body, and the web shows its reason. Ecosystem writes refused for who is acting (a link, an

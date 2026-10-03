@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { WORKFLOW_SUMMARY_FIELDS } from '@forge/contracts/workflows';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -110,6 +111,40 @@ const runOver = () =>
     issueKeys: ['ISS-41'],
     name: `build-${randomUUID().slice(0, 6)}`,
   });
+
+async function designProjections() {
+  const whole = await call('owner', 'GET', at(`/workflows/${workflowId}/design`));
+  const stepCount = whole.body.revisions[0].document.steps.length;
+  const summary = await call('owner', 'GET', at(`/workflows/${workflowId}/design?view=summary`));
+  expect(summary.status, JSON.stringify(summary.body)).toBe(200);
+  expect(
+    summary.body.revisions.map((r: Doc) => ['document' in r, r.revision, r.stepCount]),
+  ).toEqual([
+    [false, 3, stepCount],
+    [false, 1, stepCount],
+  ]);
+  const steps = await call(
+    'owner',
+    'GET',
+    at(`/workflows/${workflowId}/design?view=steps&revision=1&stepFrom=2&stepTo=3`),
+  );
+  expect(steps.status, JSON.stringify(steps.body)).toBe(200);
+  expect(steps.body.document).toMatchObject({ revision: 1, stepCount, from: 2, to: 3 });
+  expect(steps.body.document.steps).toEqual(whole.body.revisions[1].document.steps.slice(1, 3));
+  const stray = await call('owner', 'GET', at(`/workflows/${workflowId}/design?stepFrom=2`));
+  expect(stray.status).toBe(400);
+  const unheld = await call(
+    'owner',
+    'GET',
+    at(`/workflows/${workflowId}/design?view=steps&revision=2`),
+  );
+  expect(unheld.status).toBe(400);
+  expect(JSON.stringify(unheld.body)).toContain('its revisions are 3, 1');
+  const list = await call('owner', 'GET', at('/workflows?view=summary'));
+  expect(Object.keys(list.body.workflows[0])).toEqual([...WORKFLOW_SUMMARY_FIELDS]);
+  const junk = await call('owner', 'GET', at('/workflows?view=tiny'));
+  expect(junk.status).toBe(400);
+}
 
 describe('a workflow design is approved before anything builds it', () => {
   it('starts a v2 design as a draft the master proposes', async () => {
@@ -244,6 +279,11 @@ describe('a workflow design is approved before anything builds it', () => {
     expect(design.body.canDecide).toBe(true);
     await expect(runOver()).rejects.toMatchObject({ code: 'WORKFLOW_DESIGN_NOT_APPROVED' });
   });
+
+  it(
+    'answers the design read in the projection asked for, and whole by default',
+    designProjections,
+  );
 
   it('lets the owner return it, and only with a reason', async () => {
     const bare = await call('owner', 'POST', at(`/workflows/${workflowId}/design/decision`), {
