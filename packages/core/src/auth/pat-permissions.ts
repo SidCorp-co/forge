@@ -70,11 +70,13 @@ export const PAT_PERMISSION_RESOURCES = {
     reach: 'project',
     prefixes: { '/api/agents': 2, '/api/conversations': 2, '/api/chat-logs': 2 },
   },
-  // The key and its `feedback:read`/`feedback:write` grants stay as they are: issued tokens store
-  // them, so renaming them would silently strip every token holding one. A priced residual for
-  // ISS-59, which owns the word for product feedback: it ends when those grants are migrated.
-  // `/api/agent-reports` is `/api/feedback-reports` renamed — the same rows — so it takes that
-  // prefix's epoch rather than the next: no token reaches anything it could not reach before.
+  // `feedback:read`/`feedback:write` keep meaning agent reports (ISS-59 decided): product feedback
+  // FB-n mounts under `/api/projects/:id/feedback`, so `projects:*` grants it as it grants
+  // requirements and suggestions. Repointing these grants at FB-n would hand every issued token a
+  // reach its owner never chose, and renaming them would strip it in silence. cm:hack ISS-59
+  // until:a migration rewrites the stored `feedback:*` grants to `agent-reports:*` — the grant word
+  // `feedback` names agent reports, not FB-n, which a token-settings reader can misread. `/api/agent-reports` is `/api/feedback-reports` renamed — the same rows — so it
+  // takes that prefix's epoch rather than the next.
   feedback: {
     reach: 'project',
     prefixes: {

@@ -7,6 +7,7 @@
  * in one transaction and answers an outcome, refusals named and nothing written.
  */
 
+import type { FeedbackTriageEffect } from '@forge/contracts/feedback';
 import {
   SUGGESTION_PAYLOADS,
   type SuggestionEffect,
@@ -18,6 +19,9 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { requirementRevisions } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
+import { rowIn as feedbackRowIn } from '../feedback/read.js';
+import { lockFeedback } from '../feedback/service.js';
+import { announceTriage, type TriageWritten, triageIn } from '../feedback/triage.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { personActRefusalFor } from '../lib/person-act.js';
@@ -54,8 +58,10 @@ import {
   withdrawRefusal,
 } from './rules.js';
 
+type Effect = SuggestionEffect | FeedbackTriageEffect;
+
 export type SuggestionOutcome =
-  | { ok: true; suggestion: SuggestionView; effect?: SuggestionEffect; created?: boolean }
+  | { ok: true; suggestion: SuggestionView; effect?: Effect; created?: boolean }
   | { ok: false; refusals: NamedRefusal[] };
 
 class Refused extends Error {
@@ -80,15 +86,16 @@ async function inTx(
   }
 }
 
-/** Serialises every write on one target: a requirement's under its project's requirement lock. */
+/** Serialises every write on one target: a requirement's under its project's requirement lock, a feedback item's under its feedback lock. */
 async function lockTarget(tx: Tx, projectId: string, t: SuggestionTarget) {
   if (t.type === 'requirement') return lockRequirements(tx, projectId);
+  if (t.type === 'feedback') return lockFeedback(tx, projectId);
   await tx.execute(
     sql`SELECT pg_advisory_xact_lock(hashtextextended(${`suggestions:${t.id}`}, 0))`,
   );
 }
 
-async function answer(id: string, extra: { effect?: SuggestionEffect; created?: boolean } = {}) {
+async function answer(id: string, extra: { effect?: Effect; created?: boolean } = {}) {
   const [row] = await db.select().from(suggestions).where(eq(suggestions.id, id));
   if (!row) throw new Error(`suggestions: ${id} vanished after its write`);
   return { ok: true as const, suggestion: viewOf(row), ...extra };
@@ -184,8 +191,24 @@ async function writeEffect(
   row: Row,
   head: number | null,
   actor: SuggestionActor,
-): Promise<{ refusals: NamedRefusal[] | null; effect?: SuggestionEffect }> {
+): Promise<{ refusals: NamedRefusal[] | null; effect?: Effect; triage?: TriageWritten }> {
   const target = targetOfRow(row);
+  if (row.kind === 'feedback_triage' && target.type === 'feedback') {
+    const written = await triageIn(tx, {
+      projectId,
+      row: await feedbackRowIn(tx, projectId, target.id, true),
+      triage: SUGGESTION_PAYLOADS.feedback_triage.schema.parse(row.payload),
+      actor,
+      channel: 'web',
+      fromSuggestionId: row.id,
+    });
+    if (written.refusals?.length) return { refusals: written.refusals };
+    return {
+      refusals: null,
+      ...(written.effect ? { effect: written.effect } : {}),
+      triage: written,
+    };
+  }
   if (row.kind === 'revision_diff' && target.type === 'requirement') {
     const write = SUGGESTION_PAYLOADS.revision_diff.schema.parse(row.payload) as RevisionWrite;
     const refusals = await newDraftRevisionIn(tx, {
@@ -264,7 +287,8 @@ export async function acceptSuggestion(input: {
     )) ?? producerRefusal(actor.userId, first.producerId);
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const target = targetOfRow(first);
-  let effect: SuggestionEffect | undefined;
+  let effect: Effect | undefined;
+  let triage: TriageWritten | undefined;
   const stale: { reason: string | null } = { reason: null };
   const refusals = await inTx(async (tx) => {
     await lockTarget(tx, projectId, target);
@@ -281,6 +305,7 @@ export async function acceptSuggestion(input: {
     const written = await writeEffect(tx, projectId, row, head, actor);
     if (written.refusals) return written.refusals;
     effect = written.effect;
+    triage = written.triage;
     await tx
       .update(suggestions)
       .set({ status: 'accepted', decidedBy: actor.userId, decidedAt: new Date() })
@@ -295,6 +320,7 @@ export async function acceptSuggestion(input: {
       .where(and(eq(suggestions.id, first.id), eq(suggestions.status, 'proposed')));
   }
   if (refusals) return { ok: false, refusals };
+  if (triage) await announceTriage(triage, actor);
   return answer(first.id, effect ? { effect } : {});
 }
 

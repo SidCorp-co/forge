@@ -1,90 +1,16 @@
 "use client";
 
-// The peek (`#/requirements?peek=REQ-12`): the same summary the full page's "Where it stands"
-// draws — state, coverage, whom it waits on, the deciding facts, the primary act — beside the list.
+// The peek (`#/requirements?peek=REQ-12`) beside the list: the full page's header — key, state,
+// title, the one primary act — over the same facts its sticky rail shows.
 
-import Link from "next/link";
-import type { ReactNode } from "react";
 import { Button, ErrorState, IconButton, Kbd, ProjectLoader } from "@/design";
-import { workflowHref } from "@/features/workflows/routes";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useRequirement } from "../hooks";
 import { rememberListOrigin } from "../routes";
 import type { RequirementDetail } from "../types";
-import { DesignStatusBadge } from "./badges";
 import { PrimaryActions } from "./requirement-actions";
-import { CoverageMarks, StateBadge, WaitBanner, WhoMark, revisionText, stamp } from "./standing-bits";
-
-function Fact({ label, children, source }: { label: string; children: ReactNode; source?: ReactNode }) {
-  return (
-    <div className="grid grid-cols-[104px_minmax(0,1fr)] items-start gap-x-2.5 gap-y-0.5 border-b border-line-subtle py-2 text-13">
-      <span className="pt-px text-12 text-subtle">{label}</span>
-      <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">{children}</span>
-      {source ? <span className="col-start-2 min-w-0">{source}</span> : null}
-    </div>
-  );
-}
-
-/** Who a fact is read from, in the source-mark style: icon, name, a few words; the record on hover. */
-export function Source({ kind, who, rel, tip }: { kind: string; who: string; rel?: string; tip?: string }) {
-  return (
-    <span className="inline-flex max-w-full items-center gap-[5px] whitespace-nowrap text-11-5 text-subtle" title={tip}>
-      <WhoMark kind={kind} who={who} />
-      <span className="truncate">
-        {who}
-        {rel ? ` · ${rel}` : ""}
-      </span>
-    </span>
-  );
-}
-
-/** The facts that decide where it stands; the peek lists them, the full page lays them in columns. */
-export function decidingFacts(d: RequirementDetail, slug: string): { label: string; value: ReactNode; source?: ReactNode }[] {
-  const f = d.standing.facts;
-  const current = d.revisions.find((r) => r.state === "current");
-  const design = d.workflows[0];
-  const out: { label: string; value: ReactNode; source?: ReactNode }[] = [
-    {
-      label: "Revision",
-      value: revisionText(d.currentRevision, d.standing),
-      source: current?.decidedAt ? (
-        <Source kind="person" who={current.decidedByName ?? "A signer"} rel="signed" tip={`Accepted ${stamp(current.decidedAt)}`} />
-      ) : undefined,
-    },
-    {
-      label: "Issues",
-      value:
-        f.issuesTotal === 0
-          ? "None yet"
-          : `Done ${f.issuesDone} of ${f.issuesTotal}${f.issuesRunning ? ` · Running ${f.issuesRunning}` : ""}`,
-      source: <Source kind="system" who="Forge" rel="live" tip="Issues linked to this requirement" />,
-    },
-  ];
-  if (design) {
-    out.push({
-      label: "Design",
-      value: (
-        <>
-          <Link href={workflowHref(slug, design.flow)} className="text-link hover:underline">
-            {design.title}
-          </Link>
-          {design.designStatus ? <DesignStatusBadge status={design.designStatus} /> : null}
-          {d.workflows.length > 1 ? <span className="text-12 text-subtle">+{d.workflows.length - 1}</span> : null}
-        </>
-      ),
-      source:
-        design.approvedRevision !== null ? (
-          <Source kind="system" who="Forge" rel={`rev ${design.approvedRevision} approved`} tip="The design's newest approved revision" />
-        ) : undefined,
-    });
-  }
-  out.push({
-    label: "Owner",
-    value: d.standing.owner?.name ?? "None",
-    source: d.standing.owner ? <Source kind="person" who={d.standing.owner.name ?? "Unknown"} /> : undefined,
-  });
-  return out;
-}
+import { RequirementFacts } from "./requirement-facts";
+import { StateBadge, WaitBanner } from "./standing-bits";
 
 export function RequirementPeek({
   projectId,
@@ -144,43 +70,27 @@ export function RequirementPeek({
 
 function PeekBody({ d, projectId, slug }: { d: RequirementDetail; projectId: string; slug: string }) {
   const s = d.standing;
+  const banner = s.waitingOn.kind === "you" || (s.attentionGroup === "stuck" && s.waitingOn.kind === "none");
   return (
     <>
-      <div className="px-[18px] pb-2.5 pt-3.5">
+      <div className="px-[18px] pb-3 pt-3.5">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-11-5 font-semibold text-subtle">Requirement</span>
-          <span className="font-mono text-11-5 font-semibold text-link" title={d.id}>
+          <span className="font-mono text-12 font-semibold text-muted" title={d.id}>
             {d.key}
           </span>
           <StateBadge state={s.state} />
         </div>
-        <h2 className="mt-1.5 text-[17px] font-semibold leading-snug">{d.title}</h2>
-      </div>
-      <div className="flex flex-wrap items-center gap-2 px-[18px] pb-2.5 text-12 text-muted">
-        <span className="text-11-5 text-subtle">Coverage</span>
-        <CoverageMarks coverage={s.coverage} />
-        {s.coverage.length ? (
-          <span>
-            {s.facts.passing} of {s.facts.criteria} pass
-          </span>
-        ) : null}
-      </div>
-      <div className="px-[18px]">
-        <WaitBanner standing={s} />
-        <div className="mt-1.5">
-          {decidingFacts(d, slug).map((f) => (
-            <Fact key={f.label} label={f.label} source={f.source}>
-              {f.value}
-            </Fact>
-          ))}
+        <h2 className="mt-1.5 text-[17px] font-semibold leading-snug text-fg">{d.title}</h2>
+        <div className="mt-2.5 empty:hidden">
+          <PrimaryActions projectId={projectId} slug={slug} d={d} inPeek onReview={rememberListOrigin} />
         </div>
       </div>
-      <div className="px-[18px] pb-4 pt-3">
-        <PrimaryActions projectId={projectId} slug={slug} d={d} inPeek onReview={rememberListOrigin} />
+      {banner ? <WaitBanner standing={s} className="px-[18px]" /> : null}
+      <div className="px-[18px] pb-4 pt-4">
+        <RequirementFacts d={d} slug={slug} />
       </div>
-      <div className="mt-auto border-t border-line-subtle px-[18px] pb-4 pt-2.5 text-11-5 text-subtle max-lg:hidden">
-        <Kbd>j</Kbd> <Kbd>k</Kbd> move · <Kbd>Enter</Kbd> full page · <Kbd>Esc</Kbd> close. Each fact names its source; hover it for the
-        record it is read from.
+      <div className="mt-auto border-t border-line-subtle px-[18px] pb-4 pt-2.5 text-12 text-subtle max-lg:hidden">
+        <Kbd>j</Kbd> <Kbd>k</Kbd> move · <Kbd>Enter</Kbd> full page · <Kbd>Esc</Kbd> close
       </div>
     </>
   );

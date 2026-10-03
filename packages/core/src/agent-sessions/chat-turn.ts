@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import {
+  CONTENT_LANGUAGE_KEY,
+  contentLanguageBlock,
+  contentLanguageRecord,
+} from '../content-language/block.js';
+import { readContentLanguage } from '../content-language/read.js';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import {
@@ -340,6 +346,11 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     throw new Error(`dispatchChatTurn: invalid skillName '${args.skillName}'`);
   }
 
+  // cm:why a cold start is where core writes the prompt, so it is where the session is told its
+  // project's content language and records it; a resumed or pre-built turn keeps what it was told
+  const language =
+    !resumable && !isLocal && !args.preBuilt ? await readContentLanguage(project.id) : null;
+
   const updates: AgentSessionPatch = {
     messages,
     status: 'running',
@@ -356,6 +367,9 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   if (deviceId) nextMeta.deviceId = deviceId;
   if (args.model !== undefined) nextMeta.model = args.model ?? 'default';
   if (args.pageContext) nextMeta.pageContext = args.pageContext;
+  if (language) {
+    nextMeta[CONTENT_LANGUAGE_KEY] = contentLanguageRecord(language, 'chat', language.revision);
+  }
   if (!resumable && !isLocal && args.skillName) {
     nextMeta.pendingSkillName = args.skillName;
     nextMeta.pendingSkillBaselineCount = messages.length;
@@ -419,13 +433,17 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     // state (the unlock: history lives in the DB, not only on the old box).
     let prompt = decoratedMessage;
     if (!args.preBuilt) {
+      const languageSection = language
+        ? `${contentLanguageBlock(language, 'chat')}\n\n---\n\n`
+        : '';
+      prompt = languageSection + decoratedMessage;
       try {
         const forceLenses = args.forceLenses ?? readLensOverride(session.metadata);
         const preamble = await buildChatPreamble(project.id, session.userId, forceLenses);
         const history = buildRehydrationBlock(prevMessages);
-        prompt = preamble + history + decoratedMessage;
+        prompt = preamble + languageSection + history + decoratedMessage;
       } catch {
-        // non-fatal — proceed with the raw prompt
+        // non-fatal — proceed with the raw prompt and its language block
       }
     }
     // ISS-733 — job-parity skill invocation: line 1 = the slash-command, same

@@ -7,5 +7,5 @@
     "rootDir": "./src",
     "moduleResolution": "Bundler"
   },
-  "include": ["src/document-patch.ts", "src/field-changes.ts", "src/suggestions.ts", "src/requirements.ts", "src/attachments.ts", "src/ui-actions.ts", "src/wireframe.ts", "src/pipeline-registry.ts", "src/workflow-templates.ts", "src/workflow-template-schema.ts", "src/workflow-template-builtins.ts", "src/workflow-template-checks.ts", "src/workflow-template-operational.ts", "src/workflow-template-blueprint.ts", "src/workflow-template-behaviour.ts", "src/workflow-template-systems.ts"]
+  "include": ["src/document-patch.ts", "src/field-changes.ts", "src/suggestions.ts", "src/content-language.ts", "src/requirements.ts", "src/feedback.ts", "src/data-policy.ts", "src/attachments.ts", "src/ui-actions.ts", "src/wireframe.ts", "src/pipeline-registry.ts", "src/workflow-templates.ts", "src/workflow-template-schema.ts", "src/workflow-template-builtins.ts", "src/workflow-template-checks.ts", "src/workflow-template-operational.ts", "src/workflow-template-blueprint.ts", "src/workflow-template-behaviour.ts", "src/workflow-template-systems.ts"]
 }

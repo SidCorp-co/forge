@@ -25,7 +25,6 @@ import type { ReactNode } from "react";
 import { AGENT_TINT, Icon, STATUS_META, StatusChip, Tooltip } from "@/design";
 import { TONE_CHIP } from "@/features/issues/derive";
 import { cn } from "@/lib/utils/cn";
-import type { RequirementBaseline, RequirementRevision } from "../types";
 
 const hintOf = (h: string) => h.replace(/^[a-z_]+: /, "");
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -146,13 +145,7 @@ export function OwnerAge({ owner, at }: { owner: RequirementStanding["owner"]; a
     <span className="inline-flex min-w-0 items-center justify-end gap-2 whitespace-nowrap">
       {owner ? (
         <span className="inline-flex min-w-0 items-center gap-[5px] text-12 text-muted">
-          <span
-            aria-hidden
-            className="inline-grid size-5 flex-none place-items-center rounded-full bg-[var(--ink-600)] text-[9px] font-bold text-surface"
-          >
-            {(owner.name ?? "?").charAt(0).toUpperCase()}
-          </span>
-          <span className="truncate">{owner.name ?? "Unknown"}</span>
+          <PersonChip name={owner.name ?? "Unknown"} kind={owner.kind} size={20} />
         </span>
       ) : (
         <span className="text-12 text-subtle">No owner</span>
@@ -192,80 +185,72 @@ export function CoverageMarks({ coverage, large, labelled }: { coverage: Require
   );
 }
 
-/** Draft → Agreed → In delivery → Delivered → Accepted, with the requirement's place on it. */
-export function Stepper({ state }: { state: RequirementState }) {
-  const at = REQUIREMENT_LIFECYCLE.indexOf(state as (typeof REQUIREMENT_LIFECYCLE)[number]);
+/** A person's or an agent's mark and name: the one way a page names who did or owns something. */
+export function PersonChip({ name, kind, size = 18 }: { name: string; kind: "human" | "agent"; size?: number }) {
   return (
-    <ol className="flex flex-wrap items-center gap-y-2 py-1.5 text-11-5" aria-label="Lifecycle" data-testid="lifecycle">
-      {REQUIREMENT_LIFECYCLE.map((s, i) => {
-        const done = at >= 0 && (i < at || (i === at && s === "accepted"));
-        const now = i === at && s !== "accepted";
-        const tone = now ? (s === "delivered" ? toneOf("you") : toneOf("run")) : null;
-        return (
-          <li key={s} className="inline-flex items-center" style={{ color: tone?.fg ?? (done ? "var(--fg-muted)" : "var(--fg-subtle)") }}>
-            <span
-              aria-hidden
-              className="mr-1.5 inline-block size-[9px] rounded-full border-2"
-              style={{
-                borderColor: tone?.dot ?? (done ? "var(--ink-600)" : "var(--paper-400)"),
-                background: tone?.dot ?? (done ? "var(--ink-600)" : "var(--bg-surface)"),
-              }}
-            />
-            <span className={now ? "font-semibold" : undefined}>{REQUIREMENT_STATE_LABELS[s]}</span>
-            {i < REQUIREMENT_LIFECYCLE.length - 1 ? (
-              <span aria-hidden className="mx-1.5 inline-block h-0.5 w-[18px]" style={{ background: done ? "var(--ink-600)" : "var(--paper-300)" }} />
-            ) : null}
-          </li>
-        );
-      })}
-      {state === "dropped" ? (
-        <li className="ml-2">
-          <StateBadge state="dropped" />
-        </li>
-      ) : null}
-    </ol>
+    <span className="inline-flex min-w-0 items-center gap-1.5" title={kind === "agent" ? `${name} · agent` : name}>
+      <WhoMark kind={kind === "agent" ? "agent" : "person"} who={name} size={size} />
+      <span className="truncate">{name}</span>
+    </span>
   );
 }
 
-/** The revisions on a time axis: accepted ones solid, the open one as a ring, agrees marked signed. */
-export function RevisionTimeline({ revisions, baselines }: { revisions: RequirementRevision[]; baselines: RequirementBaseline[] }) {
-  if (revisions.length === 0) return <div className="text-12-5 text-subtle">No revision yet.</div>;
-  const points = [...revisions]
-    .reverse()
-    .map((r) => ({ r, at: new Date(r.decidedAt ?? r.proposedAt ?? r.createdAt).getTime() }));
-  const now = Date.now();
-  const first = Math.min(...points.map((p) => p.at));
-  const span = Math.max(now - first, 86_400_000);
-  const pad = span * 0.06;
-  const pct = (t: number) => `${(((t - first + pad) / (span + pad * 2)) * 100).toFixed(2)}%`;
-  const agreed = new Set(baselines.map((b) => b.revision));
+/** Draft → Agreed → In delivery → Delivered → Accepted as one segmented bar; each step names itself on hover. */
+export function Stepper({ state }: { state: RequirementState }) {
+  const at = REQUIREMENT_LIFECYCLE.indexOf(state as (typeof REQUIREMENT_LIFECYCLE)[number]);
+  if (at < 0) return null;
+  const next = REQUIREMENT_LIFECYCLE[at + 1];
   return (
-    <div>
-      <div className="relative mx-2 mb-1 mt-1.5 h-[52px]" role="img" aria-label="Revisions">
-        <div className="absolute inset-x-0 top-[14px] h-0.5 bg-[var(--paper-300)]" />
-        <div className="absolute top-0.5 h-[26px] w-0 border-l border-dashed border-[var(--ink-500)]" style={{ left: pct(now) }} title={`Today, ${new Date(now).toLocaleDateString()}`} />
-        {points.map(({ r, at }) => {
-          const open = r.state === "draft" || r.state === "proposed";
-          const label = `r${r.revision}${agreed.has(r.revision) ? " signed" : ""}`;
+    <div data-testid="lifecycle">
+      <ol className="flex gap-[3px]" aria-label="Lifecycle">
+        {REQUIREMENT_LIFECYCLE.map((s, i) => {
+          const done = i < at || (i === at && s === "accepted");
+          const now = i === at && s !== "accepted";
+          const where = done ? "done" : now ? "current step" : "not yet";
           return (
-            <div key={r.revision} className="absolute top-2 flex -translate-x-1/2 flex-col items-center gap-[3px]" style={{ left: pct(at) }}>
-              <Tooltip label={`r${r.revision} · ${cap(r.state)} · ${stamp(new Date(at).toISOString())}${r.authorName ? ` · ${r.authorName}` : ""}`} multiline>
-                <span
-                  className="block size-3 rounded-full border-2"
-                  style={
-                    open
-                      ? { background: "var(--bg-surface)", borderColor: toneOf("you").dot, borderStyle: "dashed" }
-                      : { background: r.state === "current" ? "var(--ink-600)" : "var(--ink-400)", borderColor: "var(--bg-surface)" }
-                  }
-                />
-              </Tooltip>
-              <span className="whitespace-nowrap text-[10.5px] font-semibold text-muted">{label}</span>
-              <span className="whitespace-nowrap font-mono text-[9.5px] text-subtle">{new Date(at).toISOString().slice(5, 10)}</span>
-            </div>
+            <li key={s} className="flex-1" aria-current={now ? "step" : undefined} title={`${REQUIREMENT_STATE_LABELS[s]} · ${where}`}>
+              <span
+                aria-hidden
+                className="block h-1.5 rounded-pill"
+                style={{ background: now ? toneOf(s === "delivered" ? "you" : "run").dot : done ? "var(--ink-600)" : "var(--paper-300)" }}
+              />
+              <span className="sr-only">
+                {REQUIREMENT_STATE_LABELS[s]}, {where}
+              </span>
+            </li>
           );
         })}
+      </ol>
+      <div className="mt-1 text-12 text-subtle">
+        Step {at + 1} of {REQUIREMENT_LIFECYCLE.length}
+        {next ? ` · next ${REQUIREMENT_STATE_LABELS[next]}` : ""}
       </div>
-      <div className="text-12 text-subtle">Dashed line: today.</div>
+    </div>
+  );
+}
+
+const VERDICT_ORDER: BcVerdict[] = ["passing", "failing", "stale", "not_judged", "gap"];
+
+/** Passing n of m, a stacked bar of every verdict, and a legend naming each one present. */
+export function CoverageSummary({ coverage }: { coverage: RequirementCoverage[] }) {
+  if (coverage.length === 0) return <p className="text-12-5 text-subtle">No criteria yet.</p>;
+  const count = (v: BcVerdict) => coverage.filter((c) => c.verdict === v).length;
+  const present = VERDICT_ORDER.filter((v) => count(v) > 0);
+  return (
+    <div data-testid="coverage-summary">
+      <div className="flex h-2 overflow-hidden rounded-pill bg-[var(--paper-200)]" role="img" aria-label={present.map((v) => `${BC_VERDICT_LABELS[v]} ${count(v)}`).join(", ")}>
+        {present.map((v) => (
+          <span key={v} className="h-full" style={{ width: `${(count(v) / coverage.length) * 100}%`, background: VERDICT_MARK[v] }} />
+        ))}
+      </div>
+      <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-12">
+        {present.map((v) => (
+          <li key={v} className="inline-flex items-center gap-1.5 text-muted" title={cap(hintOf(BC_VERDICT_HINTS[v]))}>
+            <span aria-hidden className="size-2 rounded-[2px]" style={{ background: VERDICT_MARK[v] }} />
+            {BC_VERDICT_LABELS[v]} <b className="font-semibold text-fg">{count(v)}</b>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -279,7 +264,7 @@ const BANNER_TONE: Record<RequirementWaitingOn["kind"], StandingTone | "calm" | 
 };
 
 /** A single tinted line: whom it waits on and for what, the rule behind it on hover. */
-export function WaitBanner({ standing, children }: { standing: RequirementStanding; children?: ReactNode }) {
+export function WaitBanner({ standing, children, className }: { standing: RequirementStanding; children?: ReactNode; className?: string }) {
   const w = standing.waitingOn;
   const toneKey = standing.attentionGroup === "stuck" && w.kind === "none" ? "you" : BANNER_TONE[w.kind];
   const c = toneKey === "calm" ? { bg: "var(--bg-sunken)", dot: "var(--ink-400)" } : toneKey === "agent" ? AGENT_TINT : toneOf(toneKey);
@@ -298,7 +283,7 @@ export function WaitBanner({ standing, children }: { standing: RequirementStandi
         ? "no owner; someone has to take it."
         : w.act;
   return (
-    <div className="mb-1 flex items-start gap-2.5 px-3 py-[9px] text-13" style={{ background: c.bg }} data-testid="wait-banner" title={w.rule}>
+    <div className={cn("flex items-start gap-2.5 px-3 py-[9px] text-13", className)} style={{ background: c.bg }} data-testid="wait-banner" title={w.rule}>
       <span aria-hidden className="mt-1.5 size-2 flex-none rounded-full" style={{ background: c.dot }} />
       <div className="min-w-0 flex-1">
         <span className="font-bold">{head}</span> {body}
@@ -308,10 +293,10 @@ export function WaitBanner({ standing, children }: { standing: RequirementStandi
   );
 }
 
-/** "Rev 4 · rev 5 proposed": the revision fact the row and the facts list share. */
+/** "Rev 4 · r5 awaiting sign-off": the revision fact a list row carries, in words rather than raw state names. */
 export function revisionText(current: number | null, s: RequirementStanding): string {
   const open = s.facts.proposedRevision ?? s.facts.draftRevision;
   const head = current !== null ? `Rev ${current}` : "No accepted revision";
   if (open === null) return head;
-  return `${head}${current !== null ? ", " : " · "}rev ${open} ${s.facts.proposedRevision !== null ? "proposed" : "in draft"}`;
+  return `${head} · r${open} ${s.facts.proposedRevision !== null ? "awaiting sign-off" : "being drafted"}`;
 }

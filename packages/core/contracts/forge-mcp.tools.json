@@ -485,7 +485,7 @@
       "name": "forge_comments"
     },
     {
-      "description": "Read or write project configuration. Action `get` returns `config` with `baseBranch`, the project document's `source.git.defaultBranch`. A checkout path is not here: each device binding names its own. `baseBranch` is where an ISS-* branch is cut from and is NOT a release fact; it may be `null` when not configured and callers MUST NOT silently default it to 'main'. Where a landed change goes is `config.projectDocument` — the project-v1 document with its `revision`, or `declared: false`: its `source.git.defaultBranch` is where work lands, its `environments` each name a `tier`, the branch they deploy from (`deploysFrom`), their deployment (a binding and a `trigger` of `on-land`, `on-request` or `provider`, or `mode: external`) and their runtime probes, the one `tier: production` environment is where a release lands, and its `promotions` are the branch crossings (`merge` or `cherry-pick`) a change takes to reach it. No production environment means this project ships nothing — `closed` means closed. The document is read-only here; write it with `PUT /api/projects/:id/config` ({ baseRevision, document }), and read what an environment runs now with `GET /api/projects/:id/environments/state`. Also `plugins` from `agent_config` JSON, and `policy` — the project's policy-v1 document (`qa`, `intake`, `permissions`, `states`) with its `revision`, or `declared: false` where the project has none, in which case nothing dispatches there. The policy is read-only here; write it with `PUT /api/projects/:id/policy` ({ baseRevision, document }). When `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project defaults. This tool NO LONGER carries project prose: `projectFacts` and `projectFactsConfig` were removed in ISS-1048 and a request naming either is refused by name. A project's guides, rules and overviews are `knowledge_entries` rows — read and write them with `forge_knowledge`, whose `injection` field (`always`, `on_demand`, `none`) is what the always-inject flag became. Action `update` (admin-gated) takes a `plugins` list designating the Claude Code plugins this project's runners must install (`[{marketplace, name, pinnedRef?}]`; marketplace is an `owner/repo`, name is kebab-case, pinnedRef is a commit SHA the device holds the plugin at, and a plugin with none follows its marketplace's tip). UNLIKE a patch, `plugins` REPLACES the whole list — GET first, send the complete list, `null` clears it. Designation is per-project but install is per-DEVICE: a device resolves the union of every project it is bound to via `GET /api/devices/me/plugins`, so a plugin designated by one project is installed for all of them; per-project opt-out belongs in that repo's own `.claude/settings.json` `enabledPlugins`. Errors surface as `BAD_REQUEST: <code>: <message>`. An always-inject knowledge entry is injected verbatim into every agent system prompt for this project, under a char budget that warns on overflow rather than truncating. Flagging a fact always-inject guarantees it is READ, never that it was DONE: the body reaches every agent prompt, and nothing checks whether the agent followed it. No gate refuses a step that ignored an always-inject rule, no step is asked whether it complied, and no surface counts how often one was obeyed; what was injected is visible afterwards on the job, whether it was followed is recorded nowhere. No obligation on this deployment has a readback today: the one that did was the UX contract, whose rules carried ids for agents to cite back, and ISS-1068 retired it because in sixteen days of always injecting it on twelve projects it was cited back zero times. So the price is known and nobody is paying it: write the rule so that an agent following it leaves evidence a human can look at, and expect no gate to ask for that evidence.",
+      "description": "Read or write project configuration. Action `get` returns `config` with `baseBranch`, the project document's `source.git.defaultBranch`. A checkout path is not here: each device binding names its own. `baseBranch` is where an ISS-* branch is cut from and is NOT a release fact; it may be `null` when not configured and callers MUST NOT silently default it to 'main'. Where a landed change goes is `config.projectDocument` — the project-v1 document with its `revision`, or `declared: false`: its `source.git.defaultBranch` is where work lands, its `environments` each name a `tier`, the branch they deploy from (`deploysFrom`), their deployment (a binding and a `trigger` of `on-land`, `on-request` or `provider`, or `mode: external`) and their runtime probes, the one `tier: production` environment is where a release lands, and its `promotions` are the branch crossings (`merge` or `cherry-pick`) a change takes to reach it. No production environment means this project ships nothing — `closed` means closed. The document is read-only here; write it with `PUT /api/projects/:id/config` ({ baseRevision, document }), and read what an environment runs now with `GET /api/projects/:id/environments/state`. Also `plugins` from `agent_config` JSON, and `policy` — the project's policy-v1 document (`qa`, `intake`, `permissions`, `states`) with its `revision`, or `declared: false` where the project has none, in which case nothing dispatches there. The policy is read-only here; write it with `PUT /api/projects/:id/policy` ({ baseRevision, document }). When `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project defaults. This tool NO LONGER carries project prose: `projectFacts` and `projectFactsConfig` were removed in ISS-1048 and a request naming either is refused by name. A project's guides, rules and overviews are `knowledge_entries` rows — read and write them with `forge_knowledge`, whose `injection` field (`always`, `on_demand`, `none`) is what the always-inject flag became. Action `update` (admin-gated) takes a `plugins` list designating the Claude Code plugins this project's runners must install (`[{marketplace, name, pinnedRef?}]`; marketplace is an `owner/repo`, name is kebab-case, pinnedRef is a commit SHA the device holds the plugin at, and a plugin with none follows its marketplace's tip). UNLIKE a patch, `plugins` REPLACES the whole list — GET first, send the complete list, `null` clears it. Designation is per-project but install is per-DEVICE: a device resolves the union of every project it is bound to via `GET /api/devices/me/plugins`, so a plugin designated by one project is installed for all of them; per-project opt-out belongs in that repo's own `.claude/settings.json` `enabledPlugins`. `config.contentLanguage` is the language agents write this project's prose in (`contentLanguage`, a BCP-47 tag, default `en`; `keepTermsInEnglish`; `source` says whether the project document declared it; `revision` is the document revision read). It covers prose stored in or shown by Forge — requirements and criteria, workflow design text, comments, notes, questionnaires, onboarding, feedback triage, suggestions, plan and summary prose, release notes, assistant replies — never code, identifiers, commits, branch names, PR titles, machine-read fields or Forge UI chrome. Action `update` takes `contentLanguage: { baseRevision, contentLanguage, keepTermsInEnglish? }` (the project document revision you read; `null` terms clears them) and is refused by name: `CONTENT_LANGUAGE_INVALID` for a tag that is not canonical BCP-47, `STALE_BASE` for a moved document. Errors surface as `BAD_REQUEST: <code>: <message>`. An always-inject knowledge entry is injected verbatim into every agent system prompt for this project, under a char budget that warns on overflow rather than truncating. Flagging a fact always-inject guarantees it is READ, never that it was DONE: the body reaches every agent prompt, and nothing checks whether the agent followed it. No gate refuses a step that ignored an always-inject rule, no step is asked whether it complied, and no surface counts how often one was obeyed; what was injected is visible afterwards on the job, whether it was followed is recorded nowhere. No obligation on this deployment has a readback today: the one that did was the UX contract, whose rules carried ids for agents to cite back, and ISS-1068 retired it because in sixteen days of always injecting it on twelve projects it was cited back zero times. So the price is known and nobody is paying it: write the rule so that an agent following it leaves evidence a human can look at, and expect no gate to ask for that evidence.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -497,6 +497,42 @@
               "update"
             ],
             "type": "string"
+          },
+          "contentLanguage": {
+            "additionalProperties": false,
+            "properties": {
+              "baseRevision": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "contentLanguage": {
+                "maxLength": 35,
+                "minLength": 1,
+                "type": "string"
+              },
+              "keepTermsInEnglish": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "maxLength": 60,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "baseRevision",
+              "contentLanguage"
+            ],
+            "type": "object"
           },
           "issueId": {
             "format": "uuid",
@@ -1066,6 +1102,218 @@
         "type": "object"
       },
       "name": "forge_feedback"
+    },
+    {
+      "description": "Product feedback FB-n (workflows feedback-lifecycle, feedback-triage). Not forge_feedback, which is the deprecated name of forge_agent_report. Actions: list | get | similar | create | propose_triage | triage | decline | duplicate | verify | reopen | clarify | delete_reporter_data. create: { kind: bug | change_request | question | idea | contract_change, title, body?, severity?, whereSeen?, exactly one of requirement | issue | release | workflow | screen }; a target outside the project is FEEDBACK_TARGET_UNKNOWN / FEEDBACK_TARGET_NOT_IN_PROJECT, two targets FEEDBACK_TARGET_NOT_ONE. On a sensitive project the text is scrubbed on write; on a no_egress one every answer here carries metadata only. propose_triage: { feedback, triage: { route: issue | revision | new_requirement | answer | duplicate, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? } } writes a feedback_triage suggestion a person accepts (forge_suggestions accept); an agent proposes, never routes. triage / decline { reason } / duplicate { of } / verify { note? } / reopen { reason } are a person’s acts (FEEDBACK_DECIDE_FORBIDDEN, FEEDBACK_VERIFY_FORBIDDEN for an agent). verify only follows resolved (FEEDBACK_NOT_RESOLVED): feedback is never verified automatically. duplicate refuses FEEDBACK_DUPLICATE_CHAIN when the root is itself a duplicate. clarify { prompt, needed }: one open question to the reporter per item (FEEDBACK_CLARIFICATION_ALREADY_OPEN); its answer becomes a suggestion, never an edit. delete_reporter_data: a project admin person deletes text, attachments and embedding, keeping the row. list: { phase?, q? } answers the derived phase and who each item waits on; similar: { feedback } compares stored vectors.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "get",
+              "similar",
+              "create",
+              "propose_triage",
+              "triage",
+              "decline",
+              "duplicate",
+              "verify",
+              "reopen",
+              "clarify",
+              "delete_reporter_data"
+            ],
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "feedback": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "issue": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "bug",
+              "change_request",
+              "question",
+              "idea",
+              "contract_change"
+            ],
+            "type": "string"
+          },
+          "model": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "needed": {
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 4000,
+            "type": "string"
+          },
+          "of": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "phase": {
+            "items": {
+              "enum": [
+                "new",
+                "triaged",
+                "planned",
+                "resolved",
+                "reopened",
+                "verified",
+                "declined"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "q": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 4000,
+            "type": "string"
+          },
+          "release": {
+            "type": "string"
+          },
+          "requirement": {
+            "type": "string"
+          },
+          "screen": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "triage": {
+            "additionalProperties": false,
+            "properties": {
+              "answer": {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              "createIssue": {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "maxLength": 20000,
+                    "type": "string"
+                  },
+                  "title": {
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "duplicateOf": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "issue": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "bug",
+                  "change_request",
+                  "question",
+                  "idea",
+                  "contract_change"
+                ],
+                "type": "string"
+              },
+              "note": {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              "requirement": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "route": {
+                "enum": [
+                  "issue",
+                  "revision",
+                  "new_requirement",
+                  "answer",
+                  "duplicate"
+                ],
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "critical"
+                ],
+                "type": "string"
+              },
+              "suggestion": {
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "type": "string"
+              },
+              "title": {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "route"
+            ],
+            "type": "object"
+          },
+          "whereSeen": {
+            "type": "string"
+          },
+          "workflow": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "forge_feedback_items"
     },
     {
       "description": "The former name of `forge_source`, kept for grants written against it — call `forge_source`; `open-pull-request` here is its `open-change-request`. Read and write this project's change requests on its source host — a GitHub pull request or a GitLab merge request, whichever host the project document declares its repository on. Actions: list | diff | check-log | comment | open-change-request | request-review | review. MODEL: the credential is held by Forge (a GitHub App, or a GitLab access token), never by you — core resolves the project's binding and makes the call itself, so there is no token to fetch and none is returned. Do NOT shell out to `gh` or `glab`: that runs under whoever configured the box, which is unattributable and unrevocable. Cloning, committing and pushing are still git's job. NOTHING HERE MERGES. Merging is a kernel transition on the dispatch face (the outbound verb `pull_request.merge`, or POST /api/issues/:id/merge-pull-request), where the same operation that merges also stamps the issue as landed with the commit it landed at; naming `merge`, `close` or `delete-branch` is refused with that sentence. `pullRequest` is the number the host shows: a pull request number on GitHub, a merge request IID (the `!12`) on GitLab. list: the project's source host bindings, each with `provider` and what Forge knows of its health and inbound webhook door; it contacts no host and answers the same whether or not agents are granted, so it is where you find out WHY another action was refused. An empty array means this project has bound no repository host. diff: { number, repository, bytes, truncated, diff } — the diff of one change request. `bytes` is the size of the WHOLE diff, so `truncated: true` with a large `bytes` means read files individually. check-log: the log of a failing check — { checkRunId, name, app, status, conclusion, detailsUrl, summary, log, truncated, refusal }. `checkRunId` is a GitHub check run id or a GitLab CI job id; `lines` defaults to 100 and is REJECTED outside 1..1000. Secret-shaped values are redacted. A log Forge cannot fetch comes back `log: null` with a `refusal` saying why — never an empty log. comment: needs `pullRequest` and `body`; returns { commentId, url }. open-change-request: needs `head`, `base` and `title`, optionally `body` and `draft`; returns { number, url, title, state, draft, headRef, headSha, baseRef, baseSha, updatedAt } AND `projection` (recorded | superseded | not-recorded) — what Forge opens it records on its projection, so it can be asked to merge it later. A `not-recorded` is NOT a failed open; opening again makes a second one. Push the branch with git first. request-review: needs `pullRequest` and `reviewers` (host usernames) and/or `teamReviewers` (GitHub team slugs; GitLab has no team reviewers and refuses them by name). review: needs `pullRequest`, `verdict` (APPROVE | REQUEST_CHANGES | COMMENT) and `body`. On GitLab APPROVE is an approval plus a note, COMMENT a note, and REQUEST_CHANGES is refused by name (GitLab REST has no such verdict). Returns the review AND `issueComment`: the verdict is written onto the Forge issue the head branch names, once. Refusals name their cause: no source host binding, a binding on another host than the declared repository, a binding switched off, a binding no agent may use, and a missing credential are different messages. Project scope comes from the X-Forge-Project-Slug header (or projectId). Authorization: project membership; comment, open-change-request, request-review and review need writer, and every action but list also needs the binding granted to agents.",
@@ -5438,7 +5686,7 @@
       "name": "forge_storefront_target"
     },
     {
-      "description": "Suggestions (workflow suggestion-lifecycle): a proposed change that waits on a person instead of changing anything. Actions: list | create | accept | reject | withdraw. create: { kind: requirement_draft | revision_diff | readiness | breakdown | triage | duplicate, requirement | issue, baseRevision, payload } — baseRevision is the requirement head you read (null for an issue, or a requirement with no current revision); a moved head is SUGGESTION_BASE_STALE, an open twin SUGGESTION_DUPLICATE, a 6th open on one target SUGGESTION_QUEUE_FULL, a payload that does not parse for its kind SUGGESTION_PAYLOAD_INVALID. revision_diff takes { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } on a requirement; requirement_draft takes { title, reason, … } on an issue; readiness { checks: [{ check, passed, detail? }] }; breakdown { issues: [{ title, description?, criteria?: [{ body, tracesTo? }] }], uncovered? }; triage { note, priority?, category?, route? } on an issue; duplicate { duplicateOf, similarity?, note? }. accept / reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); accepting a revision_diff writes a new DRAFT revision, never a current one. withdraw: the producer retracts its own. list: { requirement | issue, status? }.",
+      "description": "Suggestions (workflow suggestion-lifecycle): a proposed change that waits on a person instead of changing anything. Actions: list | create | accept | reject | withdraw. create: { kind: requirement_draft | revision_diff | readiness | breakdown | triage | duplicate | feedback_triage, requirement | issue, baseRevision, payload } — baseRevision is the requirement head you read (null for an issue, or a requirement with no current revision); a moved head is SUGGESTION_BASE_STALE, an open twin SUGGESTION_DUPLICATE, a 6th open on one target SUGGESTION_QUEUE_FULL, a payload that does not parse for its kind SUGGESTION_PAYLOAD_INVALID. revision_diff takes { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } on a requirement; requirement_draft takes { title, reason, … } on an issue; readiness { checks: [{ check, passed, detail? }] }; breakdown { issues: [{ title, description?, criteria?: [{ body, tracesTo? }] }], uncovered? }; triage { note, priority?, category?, route? } on an issue; duplicate { duplicateOf, similarity?, note? }; feedback_triage on `feedback` (FB-n), baseRevision null: { route: issue | revision | new_requirement | answer | duplicate, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }; accepting it writes the route (forge_feedback_items). accept / reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); accepting a revision_diff writes a new DRAFT revision, never a current one. withdraw: the producer retracts its own. list: { requirement | issue, status? }.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -5465,6 +5713,11 @@
               }
             ]
           },
+          "feedback": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
           "issue": {
             "maxLength": 200,
             "minLength": 1,
@@ -5477,7 +5730,8 @@
               "readiness",
               "breakdown",
               "triage",
-              "duplicate"
+              "duplicate",
+              "feedback_triage"
             ],
             "type": "string"
           },

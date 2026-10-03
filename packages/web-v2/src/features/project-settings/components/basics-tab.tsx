@@ -8,11 +8,13 @@ import {
   Button,
   Card,
   CardContent,
+  Divider,
   Field,
   Input,
   MonoTag,
   SectionTitle,
 } from "@/design";
+import { ContentLanguageField } from "@/features/content-language/components/content-language-field";
 import type { ProjectDetail } from "@/features/projects/types";
 import { formatApiError } from "@/lib/api/error";
 import { useProjectDocument, useWriteProjectDocument } from "../config-hooks";
@@ -83,6 +85,8 @@ export function BasicsTab({ project, canEdit }: { project: ProjectDetail; canEdi
             </div>
           )}
         </div>
+        <Divider className="my-6" />
+        <ContentLanguageField projectId={project.id} canEdit={canEdit} />
       </CardContent>
     </Card>
   );

@@ -55,6 +55,15 @@ vi.mock('../lib/device-pool.js', () => ({
 }));
 
 const buildChatPreamble = vi.fn(async (..._args: unknown[]) => '## Project Config\n\n---\n\n');
+vi.mock('../content-language/read.js', () => ({
+  readContentLanguage: vi.fn(async () => ({
+    contentLanguage: 'vi',
+    keepTermsInEnglish: [],
+    source: 'document',
+    revision: 4,
+  })),
+}));
+
 vi.mock('../lib/chat-preamble.js', () => ({
   buildChatPreamble: (id: string) => buildChatPreamble(id),
   TOOL_REFERENCE: '## Tool Reference (test)',

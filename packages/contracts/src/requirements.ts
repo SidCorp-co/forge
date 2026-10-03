@@ -202,7 +202,7 @@ export interface RequirementStanding {
 	/** The revision the coverage is read against: the current one, else the newest. */
 	shownRevision: number | null;
 	coverage: RequirementCoverage[];
-	owner: { id: string; name: string | null } | null;
+	owner: { id: string; name: string | null; kind: "human" | "agent" } | null;
 	/** The newest write to the requirement, its revisions or its issues. */
 	touchedAt: string;
 }

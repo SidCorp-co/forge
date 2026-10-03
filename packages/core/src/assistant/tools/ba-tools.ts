@@ -14,6 +14,7 @@ import { conversationMessages } from '../../db/schema-conversations.js';
 import { itemEmbeddings } from '../../db/schema-item-embeddings.js';
 import { agentQuestions } from '../../db/schema-questions.js';
 import { resolveIssueRouteRef } from '../../issues/issue-route-ref.js';
+import { dataPolicyOf, egressDeep } from '../../lib/data-egress.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -81,7 +82,7 @@ const readRequirement =
           .from(itemEmbeddings)
           .where(eq(itemEmbeddings.requirementId, room.requirementId)),
       ]);
-      return {
+      const answer = {
         requirement: detail,
         suggestions: waiting.suggestions.map((s) => ({
           id: s.id,
@@ -93,6 +94,27 @@ const readRequirement =
         openSuggestions: waiting.open,
         clarification,
         embedding: embedding[0] ?? { status: 'none', version: null },
+      };
+      const out = egressDeep(await dataPolicyOf(room.projectId), answer, detail.key);
+      if (out.ok) return out.value;
+      return {
+        withheld: out.refusal,
+        requirement: {
+          key: detail.key,
+          status: detail.status,
+          currentRevision: detail.currentRevision,
+          revisions: detail.revisions.map((r) => ({
+            revision: r.revision,
+            state: r.state,
+            criteria: r.criteria.map((c) => c.code),
+          })),
+        },
+        suggestions: answer.suggestions.map((s) => ({ id: s.id, kind: s.kind, status: s.status })),
+        openSuggestions: answer.openSuggestions,
+        clarification: clarification
+          ? { id: clarification.id, status: clarification.status }
+          : null,
+        embedding: answer.embedding,
       };
     },
   });
@@ -110,7 +132,7 @@ const readIssue =
       const row = await resolveIssueRouteRef(issue, room.projectId, ctx.principal.userId);
       if (row.projectId !== room.projectId)
         throw new Error(`${issue} is not an issue of this project`);
-      return {
+      const answer = {
         id: row.id,
         title: row.title,
         status: row.status,
@@ -118,6 +140,16 @@ const readIssue =
         category: row.category,
         description: (row.description ?? '').slice(0, 8_000),
         acceptanceCriteria: (row.acceptanceCriteria ?? '').slice(0, 8_000),
+        requirementId: row.requirementId,
+      };
+      const out = egressDeep(await dataPolicyOf(room.projectId), answer, issue);
+      if (out.ok) return out.value;
+      return {
+        withheld: out.refusal,
+        id: row.id,
+        status: row.status,
+        priority: row.priority,
+        category: row.category,
         requirementId: row.requirementId,
       };
     },
@@ -129,7 +161,7 @@ const findSimilar =
     name: 'ba_find_similar',
     grant: 'projects:read',
     description:
-      "Find this project's requirements most similar to a text (dedup). Answers status provider_not_configured when no embedding provider is set — then say so; it does not mean none are similar.",
+      "Find this project's requirements most similar to a text (dedup). Answers status provider_not_configured when no embedding provider is set, or withheld_by_policy on a no_egress project — then say so; it does not mean none are similar.",
     inputSchema: schema(z.strictObject({ text: z.string().trim().min(3).max(8_000) })),
     handler: async (args) => {
       const { text } = z.strictObject({ text: z.string().trim().min(3).max(8_000) }).parse(args);

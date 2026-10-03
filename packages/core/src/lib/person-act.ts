@@ -9,7 +9,7 @@ import { effectiveProjectRole, orgRoleAtLeast, projectRoleAtLeast } from './auth
 
 /** An agent that may act still holds member or above, which keeps another project's agent out. */
 export interface ActRule {
-  person: 'never' | 'member' | 'org-admin';
+  person: 'never' | 'member' | 'project-admin' | 'org-admin';
   agent: 'never' | 'member';
 }
 
@@ -18,6 +18,9 @@ export const PERSON_ACT: ActRule = { person: 'member', agent: 'never' };
 
 /** A write only the project's own agent makes: never a person, never another project's agent. */
 export const PROJECT_AGENT_WRITE: ActRule = { person: 'never', agent: 'member' };
+
+/** An act on reporter data only a project admin person takes (UC15): never an agent. */
+export const PERSON_ADMIN_ACT: ActRule = { person: 'project-admin', agent: 'never' };
 
 /** An approval the project's policy assigns: an org admin person always; the project's own agent only when `agentMay`. */
 export const approverRule = (agentMay: boolean): ActRule => ({
@@ -36,6 +39,7 @@ export type ActMiss =
   | { kind: 'person-not-allowed' }
   | { kind: 'agent-not-allowed' }
   | { kind: 'person-below-member' }
+  | { kind: 'person-below-project-admin' }
   | { kind: 'person-below-org-admin' }
   | { kind: 'agent-below-member' };
 
@@ -46,6 +50,9 @@ export function actMiss(facts: ActorFacts, rule: ActRule): ActMiss | null {
     return projectRoleAtLeast(facts.role, 'member') ? null : { kind: 'agent-below-member' };
   }
   if (rule.person === 'never') return { kind: 'person-not-allowed' };
+  if (rule.person === 'project-admin') {
+    return projectRoleAtLeast(facts.role, 'admin') ? null : { kind: 'person-below-project-admin' };
+  }
   if (rule.person === 'org-admin') {
     return orgRoleAtLeast(facts.orgRole ?? null, 'admin')
       ? null

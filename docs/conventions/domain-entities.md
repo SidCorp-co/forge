@@ -93,6 +93,7 @@ refusal under its own code. It never compares `agency` itself.
 | `PERSON_ACT` | member or above | never | `packages/core/src/lib/person-act.ts:personActRefusal`, which requirement sign-off and suggestion decide both call |
 | `approverRule(agentMay)` | org owner or admin | member or above, only when the project's policy says `master` | `packages/core/src/workflows/design.ts:designApproverRefusal`, `packages/core/src/ecosystem/contract/approval.ts:approverRefusal` |
 | `PROJECT_AGENT_WRITE` | never | member or above | `packages/core/src/workflows/rules.ts:workflowWriterRefusal`, `packages/core/src/ecosystem/link-rules.ts:writerRefusal` |
+| `PERSON_ADMIN_ACT` | project owner or admin | never | `packages/core/src/feedback/rules.ts:redactActRefusal` (deleting a reporter's data) |
 
 - **Before this page:** seven separate implementations across the slices: requirement sign-off,
   suggestion decide, design approver, contract approver, workflow writer, link writer and builder
@@ -164,6 +165,21 @@ no writer gets a fourth state.
 - **ISS-n** keeps its counter row and trigger (`packages/core/src/db/schema.ts:projectIssCounters`). There is
   no shared `project_counters` table, and FB-n (ISS-59) does not need one.
 
+## Language of stored text
+
+- **Prose follows the project.** A column an agent writes for people to read (a title, body,
+  reason, summary, criterion, label, release note) is written in the project's content language,
+  the project document's `contentLanguage` (`packages/contracts/src/content-language.ts:contentLanguageOf`,
+  absent is `en`). Technical terms stay English inside it.
+- **Machine-read text never does.** Enum values, refusal codes, keys, field names, status names,
+  step types, `file:symbol` citations and the `detail` Forge itself writes are English, and so are
+  code, commits, branch names and PR titles. A client switches on them; Forge's UI chrome is English.
+- **Told, not checked.** Nothing refuses a write for its language (`VISION: kernel-hard-policy-soft`).
+  Every prompt that writes prose appends `packages/core/src/content-language/block.ts:contentLanguageBlock`,
+  and the session records what it was told under `metadata.contentLanguage` beside `artifactContext`
+  (`packages/core/src/content-language/read.ts:recordContentLanguage`). Only a tag that is not
+  canonical BCP-47 is refused, `CONTENT_LANGUAGE_INVALID`.
+
 ## Records and audit
 
 - **Issue-scoped facts.** A fact about an issue that a gate or reader relies on is a typed event,
@@ -171,9 +187,31 @@ no writer gets a fourth state.
   and its kinds come from `packages/contracts/src/record-events.ts:RECORD_EVENT_KINDS`.
 - **Revisioned entities.** Their audit is their own rows: `<act>_by` / `<act>_at` / `reason` on the
   revision or decision row. A slice writes no untyped `activity_log` row of its own.
-- **Repeated acts.** A decision that can happen more than once on one revision, such as a return
-  that is re-proposed, needs a row per decision (**target**, ISS-59 for feedback triage). Overwriting
-  the last one loses history (requirements walkthrough D6).
+- **Repeated acts.** A decision that can happen more than once on one item, such as a return
+  that is re-proposed, needs a row per decision. Overwriting the last one loses history
+  (requirements walkthrough D6). Feedback is the reference: every triage, decline, verify, reopen and
+  redaction inserts a `packages/core/src/db/schema-feedback.ts:feedbackDecisions` row, insert-only by
+  `feedback_decision_guard()` in `packages/core/drizzle/migrations/0352_product_feedback_is_an_item.sql`.
+  Requirement returns are still a **target** (item 10).
+
+## Data policy (sensitive projects)
+
+A project's document carries `sensitiveData`, one of
+`packages/contracts/src/data-policy.ts:SENSITIVE_DATA_LEVELS` (`off`, `redact`, `no_egress`; absent
+means `off`).
+
+- **One guard.** Every path that sends item text to a provider (an embedding, an LLM tool, a prompt)
+  passes it through `packages/core/src/lib/data-egress.ts:egressOf` (or `egressFor` /
+  `egressDeep`). At `redact` only scrubbed text leaves; at `no_egress` nothing does and the guard
+  refuses `CONTENT_EGRESS_FORBIDDEN` naming the item. A slice never checks the level itself.
+- **On write.** At `redact` and `no_egress`, free text an entity stores is scrubbed first
+  (`packages/core/src/lib/data-egress.ts:storedText`, over the observability scrubber). Feedback
+  scrubs its title, body, where-seen, answer and every decision reason; what it does not reach yet
+  is item 25.
+- **Embeddings.** `packages/core/src/embeddings/item-writer.ts:writeItemEmbedding` is the one writer;
+  a withheld item is recorded as `withheld_by_policy`, never left missing.
+- **Readers.** `ba_read_requirement` and `ba_read_issue` answer metadata only, plus `withheld`, at
+  `no_egress` (`packages/core/src/assistant/tools/ba-tools.ts`).
 
 ## MCP
 
@@ -220,13 +258,17 @@ contracts/src/feedback.ts         FEEDBACK_STATUSES, FEEDBACK_REFUSAL_CODES (as 
 core/src/db/schema-feedback.ts    feedback (uuid, project_id cascade, fb_seq unique per project,
                                   status text + CHECK from FEEDBACK_STATUSES, created_at, <act>_by/_at)
   + core/drizzle.config.ts; migration number from `node scripts/check-migration-order.mjs`
-core/src/feedback/rules.ts        triageRefusal(...) → FeedbackRefusal | null; who-may-act via actMiss
+core/src/feedback/rules.ts        routeShapeRefusal(...) → FeedbackRefusal | null; who-may-act via actMiss
 core/src/feedback/read.ts         rowIn (uuid | FB-n | n), feedbackKey, listFeedbackAs, detail view
-core/src/feedback/service.ts      lockFeedback(tx, projectId); createFeedback / triageFeedback → Outcome
+  + refs.ts                       resolving the item a feedback is about, by key
+core/src/feedback/service.ts      lockFeedback(tx, projectId); createFeedback / declineFeedback → Outcome
+  + triage.ts, attachments.ts,    further writes, split by responsibility to stay under the file budget
+    embeddings.ts
 core/src/feedback/routes.ts       strictBody(createFeedbackRequestSchema, CREATE_FEEDBACK_SHAPE);
                                   answer(outcome) → refused(c, refusals) | c.json(view, 201/200)
   + core/src/project-config/mount.ts, core/src/auth/pat-permissions.ts
-core/src/mcp/tools/forge-feedback.ts  action: list | get | create | triage | …; refusedAnswer
+core/src/mcp/tools/forge-feedback-items.ts  forge_feedback_items, action: list | get | create | triage | …;
+                                  refusedAnswer (the name differs, see item 21)
   + core/src/mcp/registered-tools.ts
 core/src/feedback/rules.test.ts   every refusal code, planted
 web-v2/src/features/feedback/     api.ts, hooks.ts, types.ts (re-export), routes.ts, components/
@@ -271,7 +313,7 @@ slice to touch that code. Nothing below is migrated in this change.
 | 7 | Workflow design state is one head status, not per-revision `REVISION_STATES`; `decided_by_user` / `proposed_by_user` naming | review (migration) |
 | 8 | `contract_versions.decided_as` says `person` (and carries `before-approval`); `actor_agency` and `author_agency` have no CHECK | review (migration) |
 | 9 | Criteria and verdict rows are insert-only by comment, with no trigger | review (migration) |
-| 10 | A requirement return overwrites `proposed_at` / `return_reason`, with no row per decision (walkthrough D6); feedback triage is built with decision rows from the start | review; ISS-59 for its own |
+| 10 | A requirement return overwrites `proposed_at` / `return_reason`, with no row per decision (walkthrough D6) | review |
 | 11 | Refusals name another requirement by uuid (`REQUIREMENT_ISSUE_LINKED_ELSEWHERE`, walkthrough D10) | review |
 | 12 | Who-may-act codes predating the suffix: `WORKFLOW_DESIGN_APPROVER_NOT_*`, `CONTRACT_APPROVER_NOT_*`, `CONTRACT_BREAKING_NEEDS_PERSON`, `WORKFLOW_WRITER_NOT_PROJECT`, `LINK_WRITER_NOT_CONSUMER` | review (a rename touches guides and MCP descriptions) |
 | 13 | `packages/core/src/ecosystem/builder-supersede-rules.ts:supersederRefusal` decides agency on its own (an org admin of either side may act, whatever the agency) | ISS-61 |
@@ -282,6 +324,11 @@ slice to touch that code. Nothing below is migrated in this change.
 | 18 | Web colour maps outside contracts: `EnumBadge` with its own `HUE`, `DESIGN_PILL` (draft is coloured twice, differently), criteria `BADGE`, and the unused `packages/web-v2/src/features/agent-reports/types.ts:kindToBadgeTone` | review |
 | 19 | The issue transition audits as the untyped `issue.statusChanged`, not `record.transition` | review |
 | 20 | The onboarding slice has no code yet; it starts from the template above | onboarding |
+| 21 | FB-n's MCP tool is `forge_feedback_items`, because `forge_feedback` is still the agent-reports alias; the `feedback:*` token grant also still means agent reports, so FB-n routes ride `projects:*` (`cm:hack ISS-59` in `packages/core/src/auth/pat-permissions.ts`) | review (a migration rewrites stored `feedback:*` grants, then the names move) |
+| 22 | Feedback's target arc holds requirement, issue, release and workflow; a screen is `where_seen` text with no key, as the approved design has it, not the arc member REQ-7 BC-1 lists. A release is a `pipeline_runs` row | review |
+| 23 | Feedback's stored statuses are new, triaged, reopened, verified, declined; `planned` and `resolved` are derived on read from what the route carries (`packages/core/src/feedback/rules.ts:phaseOf`) | review |
+| 24 | The `answer` route stores its text on `feedback.answer`, not a decision comment, because comments have no feedback arc | review |
+| 25 | Feedback gaps the POC left: an agent's clarification answer is not turned into a triage suggestion; a high or critical item does not wake the master; deleting a reporter's data does not reach text already copied into a filed draft issue; a person on the MCP door is treated as provider-bound; the scrubber recognises a name only when it is labelled or marked as a patient; a clarification answer (written by the questions module) and a triage suggestion's note are stored unscrubbed | review |
 
 ## Honest costs
 
@@ -291,4 +338,4 @@ slice to touch that code. Nothing below is migrated in this change.
 | One declaration in contracts, compiled | Core's start depends on `@forge/contracts` being built first; a contracts edit rebuilds before core typechecks |
 | Agency in one module | A slice that needs a new standing (for example a steward org admin) extends `ActRule` for everyone, rather than writing its own `if` |
 | `max+1` keys under the entity lock | A keyed row can never be hard-deleted, or its number is reissued |
-| Twenty listed divergences left in place | Until the review pass, two patterns are live for each of them, and a new slice must copy the reference, not the nearest file |
+| Twenty-five listed divergences left in place | Until the review pass, two patterns are live for each of them, and a new slice must copy the reference, not the nearest file |
