@@ -231,11 +231,16 @@ means `off`).
 - **Refusals** render through `packages/web-v2/src/lib/api/refusals.ts` (`refusalsOf`, `namedRefusals`).
   The client already reads the envelope (`packages/web-v2/src/lib/api/client.ts:refusalOf`), so
   even `formatApiError` shows the refusal's detail rather than the status text.
-- **Badges.** An enum's tone map is declared in contracts beside the enum
-  (`packages/contracts/src/issue-vocabulary.ts:ISSUE_STATUS_TONES`) and drawn with
-  `packages/web-v2/src/design/primitives/badge.tsx:Badge` over `packages/web-v2/src/design/status.ts:TONE_META`, as
-  `packages/web-v2/src/features/issues/derive.ts:TONE_CHIP` does. A feature declares no colour map and no
-  second badge primitive.
+- **Badges.** An enum's labels, tones, glyphs and hints are declared in contracts beside the enum
+  (`packages/contracts/src/issue-vocabulary.ts:ISSUE_STATUS_TONES`), or, for an enum core declares,
+  in `packages/contracts/src/ui-vocabulary.ts:STATE_READINGS` and `:ENUM_LABELS`.
+  `packages/web-v2/src/design/vocabulary.ts:LEGEND` names the colours each tone draws. A state value
+  is drawn with `packages/web-v2/src/design/primitives/enum-badge.tsx:StatusBadge` and any other enum
+  with `:EnumBadge`; plain text goes through `packages/web-v2/src/design/vocabulary.ts:enumLabel`. A
+  value no map names reads sentence-cased and neutral, never as the raw token. A status whose tone
+  depends on the project is toned by
+  `packages/contracts/src/issue-vocabulary.ts:issueStatusToneOn`. A feature declares no colour map
+  and no second badge primitive.
 
 ## Compat amnesties
 
@@ -295,7 +300,7 @@ Read at `origin/dev` `0b3a1069a`.
 | Keys | ISS-n by counter row and trigger; REQ-n by `max+1` under a lock; no shared counter | `packages/core/src/db/schema.ts:projectIssCounters` |
 | Audit | Typed events only for issue records; requirements, suggestions, designs and contracts audit in their own columns; a transition writes the untyped `issue.statusChanged` | `packages/core/src/issues/record-events/store.ts:writeRecordEvent` |
 | Amnesties | Every ISS-54/55/56 hack writes its exit as prose ("Exit:", "Ends when"), not `ISS-n until:` | `packages/core/src/issues/apply-transition.ts:LegacyMove`, `packages/core/src/issues/criteria/store.ts:syncCriteriaFromText` |
-| Web badges | Four colour maps and a second badge primitive | `packages/web-v2/src/features/requirements/components/badges.tsx:EnumBadge`, `packages/web-v2/src/features/workflows/components/workflow-parts.tsx:DESIGN_PILL`, `packages/web-v2/src/features/issues/criteria.ts:BADGE` |
+| Web badges | Four colour maps and a second badge primitive (a requirements `EnumBadge`, the criteria `BADGE`, `DESIGN_PILL`) | now `packages/web-v2/src/design/primitives/enum-badge.tsx:StatusBadge` and `:EnumBadge` everywhere but the Workflows page's `packages/web-v2/src/features/workflows/components/workflow-parts.tsx:DESIGN_PILL` |
 
 ## Non-conforming today
 
@@ -308,7 +313,7 @@ slice to touch that code. Nothing below is migrated in this change.
 | 2 | `packages/core/src/workflows/service.ts:assertWriter` throws a 403 instead of returning `WORKFLOW_WRITER_NOT_PROJECT` | review |
 | 3 | Record events refuse with a thrown 422 and criteria and verdicts with a thrown 400 or 409, each in the error handler's shape, not the envelope (`packages/core/src/issues/record-events/routes.ts:refusalHttp`, `packages/core/src/issues/criteria/store.ts:CriteriaRefused`, `:VerdictRefused`); `forge_criteria` takes a non-strict input, and `forge_issue_events` throws text | review |
 | 4 | Requirement codes, statuses and views are declared in core (`packages/core/src/requirements/rules.ts:RequirementRefusalCode`, `packages/core/src/db/schema-requirements.ts:REVISION_STATES`) and redeclared in `packages/web-v2/src/features/requirements/types.ts`; the requirement spec and criterion schemas live in `packages/contracts/src/suggestions.ts` instead of a requirements module of its own in contracts; route bodies are built inline (`packages/core/src/requirements/routes.ts:revisionFields`) | review |
-| 5 | Criteria verdict values, agent-report kinds and design statuses are declared in core and redeclared in web (`packages/core/src/db/schema-issue-criteria.ts:verdictValues`, `packages/core/src/db/schema.ts:agentReportKinds`, `packages/core/src/workflows/design.ts:DESIGN_STATUSES`) | review |
+| 5 | Criteria verdict values and agent-report kinds are declared in core and redeclared in web (`packages/core/src/db/schema-issue-criteria.ts:verdictValues`, `packages/core/src/db/schema.ts:agentReportKinds`). Design statuses moved to `packages/contracts/src/design-status.ts:DESIGN_STATUSES`, which core re-exports | review |
 | 6 | Record-event kinds are declared twice, held by `packages/core/src/issues/record-events/kinds.test.ts` | review |
 | 7 | Workflow design state is one head status, not per-revision `REVISION_STATES`; `decided_by_user` / `proposed_by_user` naming | review (migration) |
 | 8 | `contract_versions.decided_as` says `person` (and carries `before-approval`); `actor_agency` and `author_agency` have no CHECK | review (migration) |
@@ -321,7 +326,7 @@ slice to touch that code. Nothing below is migrated in this change.
 | 15 | Body validation outside `strictBody`: criteria, record events and agent reports use `zValidator` + `flattenError` with no shape hint | review |
 | 16 | `packages/core/src/agent-reports/routes.ts` writes with inline drizzle rather than `packages/core/src/agent-reports/service.ts`; `forge_agent_report` is a singular name | review |
 | 17 | The ISS-54/55/56 `cm:hack` annotations carry no `ISS-n until:` (`packages/core/src/issues/legacy-status.ts`, `packages/core/src/issues/criteria/event-verdicts.ts`, `packages/core/src/issues/record-events/mirror.ts`, `packages/core/src/issues/record-events/history.ts:legacyCommentRecords`, `packages/core/src/comments/tree.ts:recordOf`, `packages/core/src/agent-reports/routes.ts:feedbackReportsAliasRoutes`, `packages/core/src/mcp/tools/forge-agent-report.ts:forgeFeedbackAliasTool`) | review |
-| 18 | Web colour maps outside contracts: `EnumBadge` with its own `HUE`, `DESIGN_PILL` (draft is coloured twice, differently), criteria `BADGE`, and the unused `packages/web-v2/src/features/agent-reports/types.ts:kindToBadgeTone` | review |
+| 18 | One web colour map outside contracts remains, on the Workflows page: `packages/web-v2/src/features/workflows/components/workflow-parts.tsx:DESIGN_PILL` (draft is coloured twice, differently). The requirements `EnumBadge` and its `HUE`, the criteria `BADGE` and the agent-report tone maps are gone | Workflows run |
 | 19 | The issue transition audits as the untyped `issue.statusChanged`, not `record.transition` | review |
 | 20 | The onboarding slice has no code yet; it starts from the template above | onboarding |
 | 21 | FB-n's MCP tool is `forge_feedback_items`, because `forge_feedback` is still the agent-reports alias; the `feedback:*` token grant also still means agent reports, so FB-n routes ride `projects:*` (`cm:hack ISS-59` in `packages/core/src/auth/pat-permissions.ts`) | review (a migration rewrites stored `feedback:*` grants, then the names move) |
