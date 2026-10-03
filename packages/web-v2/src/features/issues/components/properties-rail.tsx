@@ -13,7 +13,7 @@ import { IssueRefBadge } from "./issue-ref-badge";
 import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
-import { creatorLabelOf, initials, runStatusChip } from "../derive";
+import { creatorLabelOf, initials, liveDependencies, runStatusChip } from "../derive";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import type {
   IssueComplexity,
@@ -132,18 +132,22 @@ function DepList({
   self,
   slug,
   label,
+  expired = false,
 }: {
   edges: IssueDependencyEdge[];
   self: string;
   slug: string;
   label: string;
+  /** Retracted edges: greyed, each naming its kind and "expired", so none reads as in force. */
+  expired?: boolean;
 }) {
   if (edges.length === 0) return null;
   return (
-    <div className="py-2">
+    <div className={expired ? "py-2 opacity-60" : "py-2"} data-expired={expired || undefined}>
       <p className="fg-caption mb-1">{label}</p>
       <div className="flex flex-col items-end gap-1.5">
         {edges.map((e) => {
+          if (expired) return <ExpiredEdge key={e.id} edge={e} self={self} />;
           const isFromSelf = e.fromIssueId === self;
           const other = isFromSelf ? e.toIssueId : e.fromIssueId;
           const otherDisplayId = isFromSelf ? e.toDisplayId : e.fromDisplayId;
@@ -167,6 +171,17 @@ function DepList({
         })}
       </div>
     </div>
+  );
+}
+
+function ExpiredEdge({ edge, self }: { edge: IssueDependencyEdge; self: string }) {
+  const isFromSelf = edge.fromIssueId === self;
+  const other = isFromSelf ? edge.toIssueId : edge.fromIssueId;
+  const otherDisplayId = (isFromSelf ? edge.toDisplayId : edge.fromDisplayId) ?? other.slice(0, 8);
+  return (
+    <span className="fg-caption text-muted line-through decoration-1">
+      {edge.kind} {otherDisplayId} · expired
+    </span>
   );
 }
 
@@ -203,8 +218,8 @@ export function PropertiesRail({
   const plainLabels = (issue.labels ?? []).filter((l) => l.kind !== "module");
   const primaryModule = modules.find((m) => m.isPrimary);
   const secondaryModules = modules.filter((m) => !m.isPrimary);
-  const incoming = deps?.incoming ?? [];
-  const outgoing = deps?.outgoing ?? [];
+  const { incoming, outgoing } = liveDependencies(deps);
+  const expired = [...(deps?.incoming ?? []), ...(deps?.outgoing ?? [])].filter((e) => e.expired);
   const isDecompose = (e: IssueDependencyEdge) => e.kind === "decomposes" || e.kind === "parent";
   const blockedBy = incoming.filter((e) => e.kind === "blocks");
   const blocks = outgoing.filter((e) => e.kind === "blocks");
@@ -369,6 +384,7 @@ export function PropertiesRail({
       <DepList edges={subtasks} self={issue.id} slug={slug} label="Subtasks" />
       <DepList edges={duplicates} self={issue.id} slug={slug} label="Duplicates" />
       <DepList edges={related} self={issue.id} slug={slug} label="Related" />
+      <DepList edges={expired} self={issue.id} slug={slug} label="Expired" expired />
     </div>
   );
 }

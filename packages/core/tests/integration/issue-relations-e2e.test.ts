@@ -81,15 +81,15 @@ describe('ISS-868 issue relations read', () => {
     `);
   }
 
-  it('puts the blocker in blockedBy and the dependent in blocks, from each side', async () => {
+  it('puts the blocker in blocks.incoming and the dependent in blocks.outgoing, from each side', async () => {
     const blocker = await insertIssue(101, 'developed');
     const dependent = await insertIssue(102);
     await insertEdge(blocker, dependent, 'blocks');
 
     const onDependent = await loadIssueRelations(dependent, projectId);
-    expect(onDependent.blocks).toEqual([]);
-    expect(onDependent.blockedBy).toHaveLength(1);
-    expect(onDependent.blockedBy[0]).toMatchObject({
+    expect(onDependent.blocks.outgoing).toEqual([]);
+    expect(onDependent.blocks.incoming).toHaveLength(1);
+    expect(onDependent.blocks.incoming[0]).toMatchObject({
       fromIssueId: blocker,
       toIssueId: dependent,
       otherIssueId: blocker,
@@ -97,12 +97,13 @@ describe('ISS-868 issue relations read', () => {
       otherStatus: 'developed',
       kind: 'blocks',
       expired: false,
+      blocking: true,
     });
 
     const onBlocker = await loadIssueRelations(blocker, projectId);
-    expect(onBlocker.blockedBy).toEqual([]);
-    expect(onBlocker.blocks).toHaveLength(1);
-    expect(onBlocker.blocks[0]).toMatchObject({
+    expect(onBlocker.blocks.incoming).toEqual([]);
+    expect(onBlocker.blocks.outgoing).toHaveLength(1);
+    expect(onBlocker.blocks.outgoing[0]).toMatchObject({
       otherIssueId: dependent,
       otherDisplayId: 'ISS-102',
     });
@@ -113,8 +114,9 @@ describe('ISS-868 issue relations read', () => {
     const dependent = await insertIssue(202);
     await insertEdge(blocker, dependent, 'blocks', '2020-01-01T00:00:00.000Z');
 
-    const [edge] = (await loadIssueRelations(dependent, projectId)).blockedBy;
+    const [edge] = (await loadIssueRelations(dependent, projectId)).blocks.incoming;
     expect(edge?.expired).toBe(true);
+    expect(edge?.blocking).toBe(false);
     expect(edge?.validUntil).toBeInstanceOf(Date);
   });
 
@@ -123,7 +125,7 @@ describe('ISS-868 issue relations read', () => {
     const dependent = await insertIssue(212);
     await insertEdge(blocker, dependent, 'blocks', '2099-01-01T00:00:00.000Z');
 
-    const [edge] = (await loadIssueRelations(dependent, projectId)).blockedBy;
+    const [edge] = (await loadIssueRelations(dependent, projectId)).blocks.incoming;
     expect(edge?.expired).toBe(false);
   });
 
@@ -132,9 +134,12 @@ describe('ISS-868 issue relations read', () => {
     const child = await insertIssue(302);
     await insertEdge(parent, child, 'decomposes');
 
-    const [edge] = (await loadIssueRelations(child, projectId)).blockedBy;
+    const relations = await loadIssueRelations(child, projectId);
+    expect(relations.blocks.incoming).toEqual([]);
+    const [edge] = relations.decomposes.incoming;
     expect(edge?.kind).toBe('decomposes');
     expect(edge?.expired).toBe(false);
+    expect(edge?.blocking).toBe(false);
   });
 
   it('stops gating once the blocker has merged, the way L2 does', async () => {
@@ -143,7 +148,7 @@ describe('ISS-868 issue relations read', () => {
     await insertEdge(blocker, dependent, 'blocks');
     await harness.db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${blocker}`);
 
-    const [edge] = (await loadIssueRelations(dependent, projectId)).blockedBy;
+    const [edge] = (await loadIssueRelations(dependent, projectId)).blocks.incoming;
     expect(edge?.expired).toBe(false);
     expect(edge?.otherMergedAt).toBeInstanceOf(Date);
   });
@@ -154,7 +159,7 @@ describe('ISS-868 issue relations read', () => {
     await insertEdge(blocker, dependent, 'blocks');
     await harness.db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${blocker}`);
 
-    const [edge] = (await loadIssueRelations(dependent, projectId)).blockedBy;
+    const [edge] = (await loadIssueRelations(dependent, projectId)).blocks.incoming;
     expect(edge?.otherStatus).toBe('reopen');
     expect(edge?.otherMergedAt).not.toBeNull();
   });
@@ -167,7 +172,7 @@ describe('ISS-868 issue relations read', () => {
     const dependent = await insertIssue(622);
     await insertEdge(blocker, dependent, 'blocks');
 
-    const [edge] = (await loadIssueRelations(dependent, projectId)).blockedBy;
+    const [edge] = (await loadIssueRelations(dependent, projectId)).blocks.incoming;
     expect(edge?.otherMergedAt).toBeNull();
   });
 
@@ -176,7 +181,7 @@ describe('ISS-868 issue relations read', () => {
     const dependent = await insertIssue(402);
     await insertEdge(blocker, dependent, 'blocks');
 
-    const [edge] = (await loadIssueRelations(dependent, projectId)).blockedBy;
+    const [edge] = (await loadIssueRelations(dependent, projectId)).blocks.incoming;
     expect(edge).toBeDefined();
     expect(JSON.stringify(edge)).not.toContain('Issue 401');
     expect(Object.keys(edge ?? {})).not.toContain('reason');
@@ -184,6 +189,13 @@ describe('ISS-868 issue relations read', () => {
 
   it('returns an empty graph for an issue with no edges', async () => {
     const lonely = await insertIssue(501);
-    expect(await loadIssueRelations(lonely, projectId)).toEqual({ blocks: [], blockedBy: [] });
+    const none = { outgoing: [], incoming: [] };
+    expect(await loadIssueRelations(lonely, projectId)).toEqual({
+      blocks: none,
+      relates: none,
+      duplicates: none,
+      parent: none,
+      decomposes: none,
+    });
   });
 });

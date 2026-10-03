@@ -115,10 +115,17 @@ block names what that criterion was judged against before the next \`criterion\`
 - \`commit: <at least seven hexadecimal characters>\` — a source that was read. It says which code
   was judged and never that the code was running, so a verdict carrying one and no runtime reads as
   unwitnessed, which is not earned either.
+- \`design: <workflow flow or id> rev <n>\` — a workflow design revision this issue's project holds,
+  for work that lands as a design rather than as commits, such as an issue whose project has no
+  repository. It is weighed against that workflow's current revision and no serving reading: it
+  stands while the workflow is still at that revision, is superseded once a later revision is
+  written, and reads as unanchored where the project no longer holds the workflow.
 
-A block carrying a verdict and naming neither is refused at the write door under
+A block carrying a verdict and naming none of the three is refused at the write door under
 \`verdict-identity\`, as is an identity not written as one and a \`runtime\` written as an
-abbreviation. A verdict already stored naming neither reads as unanchored: nothing says where it
+abbreviation. A \`design\` naming a workflow this issue's project does not hold, a revision that
+workflow never held, or a workflow of another project is refused under \`verdict-design\`, which
+names the flows or revisions that do exist. A verdict already stored naming neither reads as unanchored: nothing says where it
 held, so nothing can say it still holds.
 
 ### What a verdict block cites, and whether it is still there

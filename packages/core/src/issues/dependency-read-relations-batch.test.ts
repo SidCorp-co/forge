@@ -28,7 +28,12 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const { loadIssueRelations, loadIssueRelationsForIssues } = await import('./dependency-read.js');
+const {
+  emptyIssueRelations,
+  loadIssueDependencyEdges,
+  loadIssueRelations,
+  loadIssueRelationsForIssues,
+} = await import('./dependency-read.js');
 
 const PROJECT = '11111111-1111-4111-8111-111111111111';
 const FUTURE = new Date(Date.now() + 86_400_000);
@@ -71,7 +76,14 @@ describe('loadIssueRelationsForIssues', () => {
   it('gives every requested id an entry, an issue with no edge included', async () => {
     const out = await loadIssueRelationsForIssues(['A', 'B', 'Z'], PROJECT);
     expect([...out.keys()].sort()).toEqual(['A', 'B', 'Z']);
-    expect(out.get('Z')).toEqual({ blocks: [], blockedBy: [] });
+    expect(out.get('Z')).toEqual(emptyIssueRelations());
+    expect(Object.keys(out.get('Z') ?? {}).sort()).toEqual([
+      'blocks',
+      'decomposes',
+      'duplicates',
+      'parent',
+      'relates',
+    ]);
   });
 
   it('returns, for each seed, what the single-issue read returns for that seed', async () => {
@@ -91,13 +103,15 @@ describe('loadIssueRelationsForIssues', () => {
   it('carries no issue title, no issue description and no edge reason', async () => {
     edgeRows = [edgeRow()];
     const out = await loadIssueRelationsForIssues(['A'], PROJECT);
-    const digest = out.get('A')?.blocks[0];
+    const digest = out.get('A')?.blocks.outgoing[0];
     expect(digest).toBeDefined();
     const keys = Object.keys(digest as object).sort();
     expect(keys).toEqual([
+      'blocking',
       'edgeId',
       'expired',
       'fromIssueId',
+      'gatesDispatch',
       'kind',
       'otherDisplayId',
       'otherIssueId',
@@ -115,8 +129,42 @@ describe('loadIssueRelationsForIssues', () => {
       edgeRow({ id: 'gone', validUntil: PAST }),
       edgeRow({ id: 'live', toIssueId: 'C', validUntil: FUTURE }),
     ];
-    const blocks = (await loadIssueRelationsForIssues(['A'], PROJECT)).get('A')?.blocks ?? [];
-    expect(blocks.map((b) => [b.edgeId, b.expired])).toEqual([
+    const blocks =
+      (await loadIssueRelationsForIssues(['A'], PROJECT)).get('A')?.blocks.outgoing ?? [];
+    expect(blocks.map((b) => [b.edgeId, b.expired, b.blocking])).toEqual([
+      ['gone', true, false],
+      ['live', false, true],
+    ]);
+  });
+
+  it('files every kind under its own key, so only a blocks edge is ever read as blocking', async () => {
+    edgeRows = [
+      edgeRow({ id: 'b', fromIssueId: 'X', toIssueId: 'A', kind: 'blocks' }),
+      edgeRow({ id: 'r', fromIssueId: 'X', toIssueId: 'A', kind: 'relates' }),
+      edgeRow({ id: 'd', fromIssueId: 'X', toIssueId: 'A', kind: 'duplicates' }),
+      edgeRow({ id: 'p', fromIssueId: 'X', toIssueId: 'A', kind: 'parent' }),
+      edgeRow({ id: 'c', fromIssueId: 'A', toIssueId: 'Y', kind: 'decomposes' }),
+    ];
+    const a = (await loadIssueRelationsForIssues(['A'], PROJECT)).get('A');
+    expect(a?.blocks.incoming.map((e) => e.edgeId)).toEqual(['b']);
+    expect(a?.relates.incoming.map((e) => e.edgeId)).toEqual(['r']);
+    expect(a?.duplicates.incoming.map((e) => e.edgeId)).toEqual(['d']);
+    expect(a?.parent.incoming.map((e) => e.edgeId)).toEqual(['p']);
+    expect(a?.decomposes.outgoing.map((e) => e.edgeId)).toEqual(['c']);
+    const blocking = Object.values(a ?? {})
+      .flatMap((d) => [...d.outgoing, ...d.incoming])
+      .filter((e) => e.blocking)
+      .map((e) => e.edgeId);
+    expect(blocking).toEqual(['b']);
+  });
+
+  it('flags a retracted edge expired on the edge list the list and detail render from', async () => {
+    edgeRows = [
+      edgeRow({ id: 'gone', fromIssueId: 'X', toIssueId: 'A', validUntil: PAST }),
+      edgeRow({ id: 'live', fromIssueId: 'Y', toIssueId: 'A', validUntil: null }),
+    ];
+    const { incoming } = await loadIssueDependencyEdges('A', PROJECT);
+    expect(incoming.map((e) => [e.id, e.expired])).toEqual([
       ['gone', true],
       ['live', false],
     ]);

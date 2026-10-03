@@ -8,7 +8,9 @@ import { db } from '../db/client.js';
 import { memories } from '../db/schema.js';
 import { memoryOfLiveIssue } from '../issues/archive.js';
 import {
-  type IssueRelationDigest,
+  allRelationDigests,
+  emptyIssueRelations,
+  type IssueRelations,
   loadIssueRelationsForIssues,
 } from '../issues/dependency-read.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
@@ -29,11 +31,8 @@ function isExpandable(kind: string): kind is MemoryVia['relation'] {
   return (EXPAND_RELATION_KINDS as ReadonlyArray<string>).includes(kind);
 }
 
-function neighboursOf(
-  relations: { blocks: IssueRelationDigest[]; blockedBy: IssueRelationDigest[] },
-  from: string,
-): Neighbour[] {
-  return [...relations.blocks, ...relations.blockedBy]
+function neighboursOf(relations: IssueRelations, from: string): Neighbour[] {
+  return allRelationDigests(relations)
     .filter((edge) => !edge.expired && isExpandable(edge.kind))
     .map((edge) => ({
       issueId: edge.otherIssueId,
@@ -65,7 +64,7 @@ export async function expandIssueRelations(input: ExpandRelationsInput): Promise
   ]);
   const perSeed = seeds.map((seed) =>
     neighboursOf(
-      relations.get(seed.sourceRef) ?? { blocks: [], blockedBy: [] },
+      relations.get(seed.sourceRef) ?? emptyIssueRelations(),
       labels.get(seed.sourceRef) ?? seed.sourceRef,
     ),
   );

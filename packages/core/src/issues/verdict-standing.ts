@@ -8,18 +8,21 @@
  * may be written in: `messaging/verdict-identity.ts`. Its report says the reading, once (ISS-1346).
  */
 
-import { sameIdentity } from '../messaging/verdict-identity.js';
+import { parseDesignIdentity, sameIdentity } from '../messaging/verdict-identity.js';
 import { type ServingReading, servedCommits } from '../release-batch/serving-reading.js';
 
-/** `source` is a commit that was read, which cannot say the code was ever running. */
+/** `source` is a commit that was read, which cannot say the code was ever running. `design` is a
+ *  stored workflow design revision: for work that lands as a design, the thing itself. */
 export interface VerdictIdentity {
-  readonly kind: 'runtime' | 'source';
+  readonly kind: 'runtime' | 'source' | 'design';
   readonly value: string;
 }
 
 export interface IssueIdentities {
   /** The source the issue stands at. */
   readonly source: string | null;
+  /** The current revision of each workflow of the issue's project, keyed by its flow AND its id. */
+  readonly designs?: ReadonlyMap<string, number>;
 }
 
 /** How a verdict's identity resolves; `stands` and `uncorroborated` are the two a criterion is
@@ -75,12 +78,23 @@ function servedSource(value: string, serving: ServingReading): VerdictStanding |
   return served ? 'stands' : 'superseded';
 }
 
+/** A design verdict stands on the revision the workflow is at now, and a later revision supersedes
+ *  it as a later commit supersedes a source; a workflow the project no longer holds anchors none.
+ *  What a host serves says nothing about a design, so no serving reading enters. */
+function designStanding(value: string, identities: IssueIdentities): VerdictStanding {
+  const named = parseDesignIdentity(value);
+  const current = named ? identities.designs?.get(named.workflow) : undefined;
+  if (!named || current === undefined) return 'unanchored';
+  return current === named.revision ? 'stands' : 'superseded';
+}
+
 export function verdictStanding(
   at: VerdictIdentity | null,
   serving: ServingReading,
   identities: IssueIdentities,
 ): VerdictStanding {
   if (!at) return 'unanchored';
+  if (at.kind === 'design') return designStanding(at.value, identities);
   if (at.kind === 'runtime') return runtimeStanding(at.value, serving);
   const observed = servedSource(at.value, serving);
   if (observed) return observed;
@@ -128,12 +142,23 @@ function supersededSentence(
   return `judged at ${judged}, which is not a commit this project is serving`;
 }
 
+function designSentence(standing: VerdictStanding, value: string, identities: IssueIdentities) {
+  const named = parseDesignIdentity(value);
+  const current = named ? identities.designs?.get(named.workflow) : undefined;
+  if (standing === 'stands') return `judged against design ${value}, the revision it is at now`;
+  if (standing === 'superseded') {
+    return `judged against design ${value}, and that workflow is now at revision ${current}`;
+  }
+  return `judged against design ${value}, which this issue's project no longer holds`;
+}
+
 export function standingSentence(
   standing: VerdictStanding,
   at: VerdictIdentity | null,
   serving: ServingReading,
   identities: IssueIdentities,
 ): string {
+  if (at?.kind === 'design') return designSentence(standing, at.value, identities);
   if (standing === 'stands') {
     return `judged at ${named(at?.value ?? null)}, which this project is serving`;
   }

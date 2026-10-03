@@ -269,14 +269,25 @@ export interface DepCounts {
 	hasParent: boolean;
 }
 
+/** The edges still in force. A retracted (expired) edge is shown greyed where relations are
+ *  listed, and is never counted, badged or called blocking. */
+export function liveDependencies(deps: IssueDependencies | undefined): IssueDependencies {
+	if (!deps) return { incoming: [], outgoing: [] };
+	return {
+		incoming: deps.incoming.filter((e) => !e.expired),
+		outgoing: deps.outgoing.filter((e) => !e.expired),
+	};
+}
+
 export function depCounts(deps: IssueDependencies | undefined): DepCounts {
 	if (!deps) return { blockedBy: 0, blocks: 0, subtasks: 0, hasParent: false };
-	const blockedBy = deps.incoming.filter((e) => e.kind === "blocks").length;
-	const blocks = deps.outgoing.filter((e) => e.kind === "blocks").length;
+	const live = liveDependencies(deps);
+	const blockedBy = live.incoming.filter((e) => e.kind === "blocks").length;
+	const blocks = live.outgoing.filter((e) => e.kind === "blocks").length;
 	const isParentEdge = (k: IssueDependencyEdge["kind"]) =>
 		k === "decomposes" || k === "parent";
-	const subtasks = deps.outgoing.filter((e) => isParentEdge(e.kind)).length;
-	const hasParent = deps.incoming.some((e) => isParentEdge(e.kind));
+	const subtasks = live.outgoing.filter((e) => isParentEdge(e.kind)).length;
+	const hasParent = live.incoming.some((e) => isParentEdge(e.kind));
 	return { blockedBy, blocks, subtasks, hasParent };
 }
 
@@ -671,8 +682,8 @@ export function openBlockingRefs(
 	deps: IssueDependencies | undefined,
 ): BlockingRef[] {
 	if (!deps) return [];
-	return deps.incoming
-		.filter(
+	return liveDependencies(deps)
+		.incoming.filter(
 			(e) =>
 				e.kind === "blocks" &&
 				!(e.fromStatus && SETTLED_BLOCKERS.has(e.fromStatus)),

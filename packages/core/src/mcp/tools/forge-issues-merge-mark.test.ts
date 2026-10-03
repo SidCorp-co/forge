@@ -110,7 +110,13 @@ vi.mock('../../issues/label-service.js', () => ({
   resolveLabelIdsForWrite: async () => [],
 }));
 vi.mock('../../issues/dependency-read.js', () => ({
-  loadIssueRelations: async () => ({ blocks: [], blockedBy: [] }),
+  loadIssueRelations: async () => ({
+    blocks: { outgoing: [], incoming: [] },
+    relates: { outgoing: [], incoming: [] },
+    duplicates: { outgoing: [], incoming: [] },
+    parent: { outgoing: [], incoming: [] },
+    decomposes: { outgoing: [], incoming: [] },
+  }),
 }));
 vi.mock('../../issues/attributes/read.js', () => ({ loadIssueAttributes: async () => [] }));
 // The issue read also asks which workflow the issue builds; this issue builds none.

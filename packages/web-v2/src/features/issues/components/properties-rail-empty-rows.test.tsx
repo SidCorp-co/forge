@@ -7,7 +7,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { IssueCostSummary, IssueDetail } from "../types";
+import type { IssueCostSummary, IssueDependencies, IssueDetail } from "../types";
 import { PropertiesRail } from "./properties-rail";
 
 expect.extend(matchers);
@@ -53,14 +53,14 @@ const COST: IssueCostSummary = {
 
 function renderRail(
   over: Partial<IssueDetail> = {},
-  opts: { writer?: boolean; cost?: IssueCostSummary } = {},
+  opts: { writer?: boolean; cost?: IssueCostSummary; deps?: IssueDependencies } = {},
 ) {
   render(
     <PropertiesRail
       issue={{ ...EMPTY_ISSUE, ...over } as IssueDetail}
       slug="p1"
       cost={opts.cost}
-      deps={undefined}
+      deps={opts.deps}
       pending={false}
       onPatch={vi.fn()}
       onTransition={vi.fn()}
@@ -149,5 +149,38 @@ describe("the rail's two statuses", () => {
   it("shows no Run row when the pipeline has nothing queued and no session exists", () => {
     renderRail({ agentStatus: null, pipelineHealth: { stage: "open" } });
     expect(rowLabel("Run")).toBeNull();
+  });
+});
+
+describe("the rail's relations", () => {
+  const edge = (id: string, fromDisplayId: string, expired: boolean) => ({
+    id,
+    fromIssueId: `f-${id}`,
+    toIssueId: "i1",
+    kind: "blocks" as const,
+    reason: null,
+    createdAt: "2026-09-01T00:00:00.000Z",
+    fromDisplayId,
+    fromTitle: "a blocker",
+    fromStatus: "in_progress" as const,
+    expired,
+  });
+
+  it("lists a retracted edge greyed under Expired, and never under Blocked by", () => {
+    renderRail({}, { deps: { incoming: [edge("gone", "ISS-8", true)], outgoing: [] } });
+    expect(screen.queryByText("Blocked by")).toBeNull();
+    const expired = screen.getByText("Expired").parentElement as HTMLElement;
+    expect(expired).toHaveAttribute("data-expired", "true");
+    expect(within(expired).getByText("blocks ISS-8 · expired")).toBeInTheDocument();
+  });
+
+  it("keeps a live edge under Blocked by beside a retracted one", () => {
+    renderRail(
+      {},
+      { deps: { incoming: [edge("gone", "ISS-8", true), edge("live", "ISS-9", false)], outgoing: [] } },
+    );
+    const blocked = screen.getByText("Blocked by").parentElement as HTMLElement;
+    expect(within(blocked).queryByText(/ISS-8/)).toBeNull();
+    expect(within(blocked).getByText(/ISS-9/)).toBeInTheDocument();
   });
 });

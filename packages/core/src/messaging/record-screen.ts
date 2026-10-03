@@ -15,6 +15,7 @@ import {
   type ForgeRecordField,
 } from './forge-record.js';
 import { screenMessage } from './screen.js';
+import { type DesignLookup, dbDesignLookup, verdictDesignRefusals } from './verdict-design.js';
 import { verdictIdentityRefusals } from './verdict-identity.js';
 
 /** The rules this module owns, for the document that has to name them all. */
@@ -23,6 +24,7 @@ export const RECORD_RULE_IDS: readonly string[] = [
   'record-in-comment',
   'record-fence-shape',
   'verdict-identity',
+  'verdict-design',
   'verdict-evidence',
 ];
 
@@ -182,18 +184,20 @@ export function screenLead(lead: string, audience: Audience): MessageVerdict {
 }
 
 /**
- * Everything the record itself is refused for: the budget, the identities a verdict names, then
- * the lead.
+ * Everything the record itself is refused for: the budget, the identities a verdict names and the
+ * designs among them that this project does not hold, then the lead.
  */
 export async function recordRefusals(
   projectId: string,
   record: ForgeRecord | null,
   executor?: Tx,
+  designs: DesignLookup = dbDesignLookup(executor),
 ): Promise<MessageRefusal[]> {
   if (!record) return [];
   const refusals = [
     ...budgetRefusals(record),
     ...verdictIdentityRefusals(record),
+    ...(await verdictDesignRefusals(projectId, record, designs)),
     ...verdictEvidenceRefusals(record),
   ];
   if (record.lead === null) return refusals;

@@ -17,6 +17,7 @@ vi.mock('../../db/client.js', () => ({ db: { select: (...a: unknown[]) => select
 const loadRelations = vi.fn();
 vi.mock('../dependency-read.js', () => ({
   loadIssueRelationsForIssues: (...a: unknown[]) => loadRelations(...a),
+  emptyIssueRelations: () => ({}),
 }));
 
 const refFormatter = vi.fn();
