@@ -1,7 +1,7 @@
 "use client";
 
-// The Requirements list (`forge-prototype.html` #/requirements): a toolbar with the grouping and a
-// search, the BA assistant's open suggestions, then one flush grid grouped by whose turn it is. Each
+// The Requirements list (`forge-prototype.html` #/requirements): the grouping in the top header, a
+// search, the BA assistant's open suggestions, then the shared GroupedList by whose turn it is. Each
 // row reads core's standing (`requirements/standing.ts`); nothing here derives whose turn it is.
 // The URL carries the view (`?group=…&q=…&peek=REQ-n`), so back from the full page restores it.
 
@@ -11,35 +11,48 @@ import {
   REQUIREMENT_STATE_LABELS,
   REQUIREMENT_STATE_TONES,
   REQUIREMENT_STATES,
-  type StandingTone,
 } from "@forge/contracts/requirements";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
 import {
+  ActorChip,
   AGENT_TINT,
   Button,
   EmptyState,
   ErrorState,
   Field,
+  GroupedList,
   Icon,
   Input,
+  type ListGroup,
+  type ListRowView,
   PageTitle,
   ProjectLoader,
-  SegmentedControl,
+  rememberListOrigin,
+  StatusBadge,
   Textarea,
   TopBarActions,
+  useGroupFold,
+  usePeek,
+  usePeekKeys,
+  useUrlParams,
+  useViewMode,
+  ViewModeSwitcher,
+  visibleRows,
+  WaitingOn,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { formatAge, formatStamp } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import { PendingBadge, summaryOf } from "@/features/suggestions/components/suggestion-list";
 import { useProjectWaitingSuggestions, useSuggestionDecision } from "@/features/suggestions/hooks";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
 import { useCreateRequirement, useRequirements } from "../hooks";
-import { rememberListOrigin, requirementHref, requirementsHref } from "../routes";
+import { REQUIREMENTS_LIST, requirementHref } from "../routes";
 import type { RequirementSummary } from "../types";
 import { RequirementPeek } from "./requirement-peek";
 import { RefusalLine } from "./refusal";
-import { OwnerAge, StateBadge, WaitingOn, revisionText, toneOf } from "./standing-bits";
+import { revisionText, waitingView } from "./standing-bits";
 
 function CreateForm({ projectId, onDone }: { projectId: string; onDone: (key: string) => void }) {
   const create = useCreateRequirement(projectId);
@@ -84,23 +97,17 @@ function CreateForm({ projectId, onDone }: { projectId: string; onDone: (key: st
   );
 }
 
-type GroupMode = "attention" | "status";
+const GROUP_MODES = [
+  { value: "attention" as const, label: "Attention", title: "Grouped by whose turn it is" },
+  { value: "status" as const, label: "Status", title: "Grouped by lifecycle state" },
+];
+type GroupMode = (typeof GROUP_MODES)[number]["value"];
 
-interface Group {
-  id: string;
-  label: string;
-  hint: string | null;
-  tone: StandingTone;
-  collapsed: boolean;
-  rows: RequirementSummary[];
-}
-
-function groupsOf(rows: RequirementSummary[], mode: GroupMode): Group[] {
+function groupsOf(rows: RequirementSummary[], mode: GroupMode): ListGroup<RequirementSummary>[] {
   if (mode === "status") {
     return REQUIREMENT_STATES.map((s) => ({
-      id: s,
+      id: `status:${s}`,
       label: REQUIREMENT_STATE_LABELS[s],
-      hint: null,
       tone: REQUIREMENT_STATE_TONES[s],
       collapsed: s === "accepted" || s === "dropped",
       rows: rows.filter((r) => r.standing.state === s),
@@ -123,72 +130,23 @@ function factsLine(r: RequirementSummary): string[] {
   return parts;
 }
 
-// cm:why one grid template for the header and every row, so the columns line up without a table
-const COLS = "grid grid-cols-[104px_minmax(0,1fr)_148px_210px_120px] gap-x-3.5 px-5 max-lg:grid-cols-[96px_minmax(0,1fr)_132px_180px]";
-
-function Row({ r, selected, onOpen }: { r: RequirementSummary; selected: boolean; onOpen: () => void }) {
-  const dim = r.standing.attentionGroup === "done";
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-pressed={selected}
-      data-testid="requirement-row"
-      data-key={r.key}
-      className={cn(
-        COLS,
-        "relative min-h-[54px] w-full cursor-pointer items-center border-b border-line-subtle py-[7px] text-left hover:bg-hover",
-        "max-md:grid-cols-[auto_minmax(0,1fr)_auto] max-md:gap-y-1 max-md:px-3 max-md:py-2.5",
-        selected && "bg-[var(--cobalt-50)] before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-link hover:bg-[var(--cobalt-50)]",
-      )}
-    >
-      <span className={cn("truncate font-mono text-11-5 font-semibold text-link", dim && "opacity-65", "max-md:order-1")}>{r.key}</span>
-      <span className="flex min-w-0 flex-col max-md:order-3 max-md:col-span-3">
-        <span className={cn("truncate text-13-5 font-medium max-md:whitespace-normal", dim && "opacity-65")}>{r.title}</span>
-        <span className="truncate text-12 text-subtle">
-          {factsLine(r).map((p, i) => (
-            <span key={p}>
-              {i > 0 ? <span className="mx-1.5 text-[var(--paper-400)]">·</span> : null}
-              {p}
-            </span>
-          ))}
-        </span>
-      </span>
-      <span className="flex min-w-0 max-md:order-2 max-md:col-span-2 max-md:justify-end">
-        <StateBadge state={r.standing.state} />
-      </span>
-      <span className="flex min-w-0 max-md:order-4 max-md:col-span-2">
-        <WaitingOn w={r.standing.waitingOn} />
-      </span>
-      <span className="flex min-w-0 justify-end max-lg:hidden max-md:order-5 max-md:flex">
-        <OwnerAge owner={r.standing.owner} at={r.standing.touchedAt} />
-      </span>
-    </button>
-  );
-}
-
-function GroupHeader({ g, open, onToggle }: { g: Group; open: boolean; onToggle: () => void }) {
-  const c = g.tone === "neutral" || g.tone === "done" ? "var(--fg-muted)" : toneOf(g.tone).fg;
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      data-testid="requirement-group"
-      data-group={g.id}
-      className="sticky top-8 z-[5] flex min-h-[34px] w-full flex-wrap items-center gap-2 bg-sunken px-5 py-[5px] text-left text-13 max-md:top-0 max-md:px-3"
-    >
-      <Icon name="chevronDown" size={12} className={cn("text-subtle transition-transform duration-150", !open && "-rotate-90")} />
-      <span className="font-bold" style={{ color: c }}>
-        {g.label}
-      </span>
-      <span className="font-mono text-12 font-bold" style={{ color: c }}>
-        {g.rows.length}
-      </span>
-      {g.hint ? <span className="text-12 font-medium text-subtle">{g.hint}</span> : null}
-    </button>
-  );
-}
+const rowOf =
+  (slug: string) =>
+  (r: RequirementSummary): ListRowView => ({
+    key: r.key,
+    href: requirementHref(slug, r.key),
+    title: r.title,
+    facts: factsLine(r),
+    state: <StatusBadge family="requirement" value={r.standing.state} />,
+    waitingOn: <WaitingOn w={waitingView(r.standing.waitingOn)} />,
+    owner: r.standing.owner ? (
+      <ActorChip name={r.standing.owner.name ?? "Unknown"} kind={r.standing.owner.kind} size={20} />
+    ) : (
+      <span className="text-subtle">No owner</span>
+    ),
+    age: { text: formatAge(r.standing.touchedAt), title: `Last touched ${formatStamp(r.standing.touchedAt)}` },
+    dim: r.standing.attentionGroup === "done",
+  });
 
 function AssistantStrip({
   projectId,
@@ -229,7 +187,7 @@ function StripRow({ s, r, projectId, onPeek }: { s: Suggestion; r: RequirementSu
   return (
     <div className="flex flex-wrap items-center gap-2 py-[3px]" data-testid="assistant-strip-row">
       <span className="font-mono text-11-5 font-semibold text-link">{r.key}</span>
-      <StateBadge state={r.standing.state} />
+      <StatusBadge family="requirement" value={r.standing.state} />
       <span className="min-w-0 truncate">{summaryOf(s)}</span>
       <span className="flex-1" />
       <PendingBadge />
@@ -248,79 +206,38 @@ function StripRow({ s, r, projectId, onPeek }: { s: Suggestion; r: RequirementSu
   );
 }
 
-const GROUP_OPTIONS = [
-  { value: "attention" as const, label: "Attention" },
-  { value: "status" as const, label: "Status" },
-];
-
 export function RequirementsScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const q = useRequirements(projectId);
   const router = useRouter();
-  // cm:why Next syncs useSearchParams with window.history.replaceState, so a view change writes the
-  // URL without a navigation and still re-renders; back from the full page lands on that URL
-  const sp = useSearchParams();
-  const mode: GroupMode = sp.get("group") === "status" ? "status" : "attention";
-  const text = sp.get("q") ?? "";
-  const peek = sp.get("peek");
+  const [params, setParams] = useUrlParams();
+  const [mode, setMode] = useViewMode(GROUP_MODES);
+  const text = params.get("q") ?? "";
   const [creating, setCreating] = useState(false);
-  const [folded, setFolded] = useState<Record<string, boolean>>({});
-
-  const setParams = useCallback(
-    (patch: Record<string, string | null>) => {
-      const next = new URLSearchParams(window.location.search);
-      for (const [k, v] of Object.entries(patch)) {
-        if (v) next.set(k, v);
-        else next.delete(k);
-      }
-      const qs = next.toString();
-      window.history.replaceState(null, "", `${requirementsHref(slug)}${qs ? `?${qs}` : ""}`);
-    },
-    [slug],
-  );
+  const fold = useGroupFold("web-v2:requirements-fold");
 
   const all = q.data?.requirements ?? [];
   const rows = useMemo(() => {
     const t = text.trim().toLowerCase();
     return t ? all.filter((r) => `${r.key} ${r.title}`.toLowerCase().includes(t)) : all;
   }, [all, text]);
-  const groups = useMemo(() => groupsOf(rows, mode).filter((g) => g.rows.length > 0), [rows, mode]);
-  const isOpen = useCallback((g: Group) => !(folded[`${mode}:${g.id}`] ?? g.collapsed), [folded, mode]);
-  const visible = useMemo(() => groups.flatMap((g) => (isOpen(g) ? g.rows : [])), [groups, isOpen]);
-  const open = peek && all.some((r) => r.key === peek) ? peek : null;
+  const groups = useMemo(() => groupsOf(rows, mode), [rows, mode]);
+  const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.key), [groups, fold]);
+  const allKeys = useMemo(() => all.map((r) => r.key), [all]);
+  const peek = usePeek(visible, allKeys);
+  const row = useMemo(() => rowOf(slug), [slug]);
 
   const openFull = useCallback(
     (key: string) => {
-      rememberListOrigin();
+      rememberListOrigin(REQUIREMENTS_LIST);
       router.push(requirementHref(slug, key));
     },
     [router, slug],
   );
-  const move = useCallback(
-    (by: number) => {
-      const i = visible.findIndex((r) => r.key === open);
-      const next = visible[i + by];
-      if (next) setParams({ peek: next.key });
-    },
-    [visible, open, setParams],
-  );
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
-      if (e.key === "Escape") setParams({ peek: null });
-      else if (e.key === "j") move(1);
-      else if (e.key === "k") move(-1);
-      else if (e.key === "Enter" && e.target === document.body) openFull(open);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, move, openFull, setParams]);
+  usePeekKeys(peek, openFull);
 
   const title = (
     <>
-      <PageTitle>Requirements</PageTitle>
+      <PageTitle after={<ViewModeSwitcher modes={GROUP_MODES} value={mode} onChange={setMode} placement="header" />}>Requirements</PageTitle>
       <TopBarActions>
         <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
           Requirement
@@ -345,7 +262,6 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
       </div>
     );
   }
-  const index = open ? visible.findIndex((r) => r.key === open) : -1;
 
   return (
     <div className="grid min-h-full content-start bg-surface" data-testid="requirements-screen">
@@ -355,15 +271,14 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
           projectId={projectId}
           onDone={(key) => {
             setCreating(false);
-            if (key) setParams({ peek: key });
+            if (key) peek.set(key);
           }}
         />
       ) : null}
-      <div className={cn("grid min-h-[60vh] items-start", open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
+      <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
-            <span className="text-12 font-semibold text-subtle">Group</span>
-            <SegmentedControl options={GROUP_OPTIONS} value={mode} onChange={(v) => setParams({ group: v === "attention" ? null : v })} />
+            <ViewModeSwitcher modes={GROUP_MODES} value={mode} onChange={setMode} placement="toolbar" />
             <label className="flex h-[30px] min-w-[150px] max-w-[260px] flex-1 items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 text-12-5 text-subtle max-md:h-10 max-md:max-w-none max-md:basis-full">
               <Icon name="search" size={14} />
               <input
@@ -376,51 +291,25 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
               />
             </label>
           </div>
-          <AssistantStrip projectId={projectId} rows={all} onPeek={(k) => setParams({ peek: k })} />
+          <AssistantStrip projectId={projectId} rows={all} onPeek={(k) => peek.set(k)} />
           {all.length === 0 ? (
             <div className="px-5 py-10">
               <EmptyState title="No requirement has been written" message="A requirement says what is wanted and how anyone can tell it is done." />
             </div>
           ) : (
-            <section aria-label="Requirements">
-              <div
-                aria-hidden
-                className={cn(COLS, "sticky top-0 z-[6] h-8 items-center border-b border-line-subtle bg-app text-11-5 font-semibold text-subtle max-md:hidden")}
-              >
-                <span>Key</span>
-                <span>Title</span>
-                <span>State</span>
-                <span>Waiting on</span>
-                <span className="text-right max-lg:hidden">Owner · age</span>
-              </div>
-              {groups.length === 0 ? <p className="px-5 py-8 text-13 text-subtle">Nothing matches this search.</p> : null}
-              {groups.map((g) => {
-                const shown = isOpen(g);
-                return (
-                  <div key={`${mode}:${g.id}`}>
-                    <GroupHeader g={g} open={shown} onToggle={() => setFolded((f) => ({ ...f, [`${mode}:${g.id}`]: shown }))} />
-                    {shown
-                      ? g.rows.map((r) => (
-                          <Row key={r.id} r={r} selected={r.key === open} onOpen={() => setParams({ peek: r.key === open ? null : r.key })} />
-                        ))
-                      : null}
-                  </div>
-                );
-              })}
-            </section>
+            <GroupedList
+              ariaLabel="Requirements"
+              groups={groups}
+              fold={fold}
+              row={row}
+              selected={peek.open}
+              onPeek={(k) => peek.set(k === peek.open ? null : k)}
+              empty="Nothing matches this search."
+            />
           )}
         </div>
-        {open ? (
-          <RequirementPeek
-            key={open}
-            projectId={projectId}
-            slug={slug}
-            reqKey={open}
-            position={index >= 0 ? { at: index + 1, of: visible.length } : null}
-            onMove={move}
-            onClose={() => setParams({ peek: null })}
-            onOpenFull={() => openFull(open)}
-          />
+        {peek.open ? (
+          <RequirementPeek key={peek.open} projectId={projectId} slug={slug} reqKey={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} />
         ) : null}
       </div>
     </div>

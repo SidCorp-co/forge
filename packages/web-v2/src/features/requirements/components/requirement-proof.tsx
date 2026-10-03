@@ -7,13 +7,12 @@ import { ISSUE_STATUS_LABELS, type KernelIssueStatus } from "@forge/contracts/is
 import type { CoverageIssue, HistorySource, RequirementHistoryEntry } from "@forge/contracts/requirements";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
-import { AGENT_TINT, SegmentedControl } from "@/design";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { ActorChip, AGENT_TINT, LEGEND, SegmentedControl, StatusBadge, WhoMark } from "@/design";
+import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
-import { RevisionStateBadge } from "./badges";
-import { IssueChip, issueHref } from "./requirement-facts";
-import { PersonChip, VerdictBadge, WhoMark, stamp, toneOf } from "./standing-bits";
+import { issueHref } from "@/features/issues/routes";
+import { diffColours } from "./standing-bits";
 
 const issueWord = (s: string) => ISSUE_STATUS_LABELS[s as KernelIssueStatus] ?? s;
 
@@ -35,12 +34,12 @@ export function FieldLabel({ children }: { children: ReactNode }) {
 }
 
 const Ins = ({ children }: { children: ReactNode }) => (
-  <ins className="rounded-[3px] px-[3px] no-underline" style={{ background: toneOf("ready").bg, color: toneOf("ready").fg }}>
+  <ins className="rounded-[3px] px-[3px] no-underline" style={{ background: diffColours.ins.bg, color: diffColours.ins.fg }}>
     {children}
   </ins>
 );
 const Del = ({ children }: { children: ReactNode }) => (
-  <del className="rounded-[3px] px-[3px]" style={{ background: toneOf("err").bg, color: toneOf("err").fg }}>
+  <del className="rounded-[3px] px-[3px]" style={{ background: diffColours.del.bg, color: diffColours.del.fg }}>
     {children}
   </del>
 );
@@ -175,7 +174,7 @@ export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string 
                       <span className="max-w-[36ch] truncate text-muted" title={i.title}>
                         {i.title}
                       </span>
-                      <IssueChip status={i.status} />
+                      <StatusBadge family="issue" value={i.status} />
                       {stale ? <span className="text-subtle">Earlier wording</span> : null}
                     </span>
                   ))
@@ -199,7 +198,7 @@ export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string 
               ) : null}
             </div>
             <div className="pt-0.5">
-              <VerdictBadge verdict={c.verdict} />
+              <StatusBadge family="bcVerdict" value={c.verdict} />
             </div>
           </li>
         );
@@ -228,7 +227,7 @@ export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
             key={`${String(c.check)}-${String(c.detail)}`}
             title={`${String(c.check ?? "")}${typeof c.detail === "string" ? ` — ${c.detail}` : ""}`}
             className="block h-2.5 w-4 rounded-[2px]"
-            style={{ background: c.passed === true ? toneOf("ready").dot : toneOf("you").dot }}
+            style={{ background: c.passed === true ? LEGEND.ready.dot : LEGEND.you.dot }}
           />
         ))}
       </span>
@@ -251,14 +250,14 @@ export function RevisionList({ d }: { d: RequirementDetail }) {
             <span className="pt-0.5 font-mono text-12 font-semibold text-fg">r{r.revision}</span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <RevisionStateBadge state={r.state} />
+                <StatusBadge family="revision" value={r.state} />
                 {signed ? (
                   <span className="text-12 text-muted" title={`Agreed ${stamp(signed.agreedAt)}${signed.agreedByName ? ` by ${signed.agreedByName}` : ""}`}>
                     Agreed
                   </span>
                 ) : null}
                 <span className="text-12 text-muted">
-                  <PersonChip name={r.authorName ?? "Its author"} kind={r.authorKind} size={16} />
+                  <ActorChip name={r.authorName ?? "Its author"} kind={r.authorKind} size={16} />
                 </span>
               </div>
               <p className="mt-1 text-13-5">{r.changeSummary ?? r.reason}</p>

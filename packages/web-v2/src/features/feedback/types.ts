@@ -18,9 +18,6 @@ export type {
   SimilarFeedbackResponse,
 } from "@forge/contracts/feedback";
 
-/** How the list groups its rows: by who acts next, or by what each item is about. */
-export type FeedbackGrouping = "attention" | "subject";
-
 /** One act a person takes on an item from its page; each answers the item as it reads next. */
 export type FeedbackAction =
   | { kind: "triage"; triage: FeedbackTriage }

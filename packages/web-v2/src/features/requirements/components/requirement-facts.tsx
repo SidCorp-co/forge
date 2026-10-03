@@ -1,55 +1,58 @@
 "use client";
 
 // The at-a-glance facts of one requirement: status and whose turn, lifecycle, owner, revision,
-// coverage, issues, designs, needs and dates. The full page's sticky rail and the peek draw this one
-// component, so the main column never repeats a fact and both surfaces read the same.
+// coverage, issues, open feedback, designs, needs and dates. The full page's sticky rail and the peek
+// draw this one component through the shared FactsGroup/Fact rows, so the main column never repeats a
+// fact and both surfaces read the same.
 
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { StatusChip, Tooltip } from "@/design";
-import { issueStatusChip } from "@/features/issues/derive";
-import type { IssueStatus } from "@/features/issues/types";
+import { ActorChip, Fact, FactsEmpty, FactsGroup, LEGEND, StatusBadge, Tooltip, WaitingOn } from "@/design";
+import { useFeedbackList } from "@/features/feedback/hooks";
+import { feedbackHref } from "@/features/feedback/routes";
+import { issueHref } from "@/features/issues/routes";
 import { workflowHref } from "@/features/workflows/routes";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
 import type { RequirementDetail } from "../types";
-import { DesignStatusBadge } from "./badges";
-import { CoverageSummary, PersonChip, StateBadge, Stepper, WaitingOn, stamp, toneOf } from "./standing-bits";
+import { CoverageSummary, Stepper, waitingView } from "./standing-bits";
 
-export const issueHref = (slug: string, key: string) => `/projects/${encodeURIComponent(slug)}/issues/${encodeURIComponent(key)}`;
-
-export function IssueChip({ status }: { status: string }) {
-  const c = issueStatusChip(status as IssueStatus);
-  return <StatusChip status={c.status} label={c.label} glyph={c.glyph} title={c.title} size="sm" />;
-}
-
-/** A rail group's heading: primary colour, one step above its labels; a label-first counter on the right. */
-function Group({ title, count, children, testId }: { title: string; count?: ReactNode; children: ReactNode; testId?: string }) {
+/** Feedback about this requirement that is not yet verified or declined (ISS-59's target arc). */
+function OpenFeedback({ projectId, slug, reqKey }: { projectId: string; slug: string; reqKey: string }) {
+  const q = useFeedbackList(projectId);
+  const open = (q.data?.feedback ?? []).filter((f) => f.target.type === "requirement" && f.target.key === reqKey && f.attention !== "done");
+  if (q.isLoading) return null;
   return (
-    <section className="border-t border-line-subtle py-3.5 first:border-t-0 first:pt-0" data-testid={testId}>
-      <h3 className="mb-2 flex items-baseline gap-2 text-13 font-semibold text-fg">
-        {title}
-        {count ? <span className="ml-auto text-12 font-medium text-muted">{count}</span> : null}
-      </h3>
-      {children}
-    </section>
-  );
-}
-
-function Row({ k, children }: { k: string; children: ReactNode }) {
-  return (
-    <div className="grid grid-cols-[84px_minmax(0,1fr)] items-center gap-2 py-[5px] text-13">
-      <span className="text-12-5 font-medium text-muted">{k}</span>
-      <span className="flex min-w-0 flex-wrap items-center gap-1.5">{children}</span>
-    </div>
+    <FactsGroup title="Open feedback" count={open.length ? `Open ${open.length}` : undefined} testId="facts-feedback">
+      {q.isError ? (
+        <FactsEmpty>Feedback could not be read.</FactsEmpty>
+      ) : open.length === 0 ? (
+        <FactsEmpty>No open feedback about it.</FactsEmpty>
+      ) : (
+        <ul className="grid gap-1">
+          {open.map((f) => (
+            <li key={f.id} className="flex min-w-0 items-center gap-1.5 text-13" data-testid="rail-feedback">
+              <Link href={feedbackHref(slug, f.key)} className="flex-none font-mono text-12 font-semibold text-link hover:underline">
+                {f.key}
+              </Link>
+              <span className="min-w-0 flex-1 truncate" title={f.title}>
+                {f.title}
+              </span>
+              <StatusBadge family="feedbackPhase" value={f.phase} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </FactsGroup>
   );
 }
 
 export function RequirementFacts({
   d,
+  projectId,
   slug,
   onOpenRevisions,
 }: {
   d: RequirementDetail;
+  projectId: string;
   slug: string;
   /** Opens the revisions view; the peek, which has none, leaves it out and the revision reads as text. */
   onOpenRevisions?: () => void;
@@ -61,27 +64,23 @@ export function RequirementFacts({
   const open = f.proposedRevision ?? f.draftRevision;
   return (
     <div data-testid="requirement-facts">
-      <Group title="Status">
-        <Row k="State">
-          <StateBadge state={s.state} />
-        </Row>
+      <FactsGroup title="Status">
+        <Fact label="State">
+          <StatusBadge family="requirement" value={s.state} />
+        </Fact>
         {s.attentionGroup !== "done" ? (
-          <Row k="Waiting on">
-            <WaitingOn w={s.waitingOn} />
-          </Row>
+          <Fact label="Waiting on">
+            <WaitingOn w={waitingView(s.waitingOn)} />
+          </Fact>
         ) : null}
-        <Row k="Owner">
-          {s.owner ? (
-            <PersonChip name={s.owner.name ?? "Unknown"} kind={s.owner.kind} />
-          ) : (
-            <span className="text-subtle">No owner</span>
-          )}
-        </Row>
-        <Row k="Current">
+        <Fact label="Owner">
+          {s.owner ? <ActorChip name={s.owner.name ?? "Unknown"} kind={s.owner.kind} /> : <span className="text-subtle">No owner</span>}
+        </Fact>
+        <Fact label="Current">
           <span>{d.currentRevision !== null ? `r${d.currentRevision}` : "None accepted yet"}</span>
-        </Row>
+        </Fact>
         {open !== null ? (
-          <Row k={f.proposedRevision !== null ? "Proposed" : "In draft"}>
+          <Fact label={f.proposedRevision !== null ? "Proposed" : "In draft"}>
             {onOpenRevisions ? (
               <button type="button" onClick={onOpenRevisions} className="text-link hover:underline" data-testid="facts-open-revision">
                 r{open}
@@ -89,20 +88,20 @@ export function RequirementFacts({
             ) : (
               <span>r{open}</span>
             )}
-          </Row>
+          </Fact>
         ) : null}
         <div className="pt-2.5">
           <Stepper state={s.state} />
         </div>
-      </Group>
+      </FactsGroup>
 
-      <Group title="Coverage" count={s.coverage.length ? `Passing ${f.passing} of ${f.criteria}` : undefined} testId="facts-coverage">
+      <FactsGroup title="Coverage" count={s.coverage.length ? `Passing ${f.passing} of ${f.criteria}` : undefined} testId="facts-coverage">
         <CoverageSummary coverage={s.coverage} />
-      </Group>
+      </FactsGroup>
 
-      <Group title="Issues" count={f.issuesTotal ? `Done ${f.issuesDone} of ${f.issuesTotal}` : undefined} testId="facts-issues">
+      <FactsGroup title="Issues" count={f.issuesTotal ? `Done ${f.issuesDone} of ${f.issuesTotal}` : undefined} testId="facts-issues">
         {d.issues.length === 0 ? (
-          <p className="text-12-5 text-subtle">Not broken down into issues yet.</p>
+          <FactsEmpty>Not broken down into issues yet.</FactsEmpty>
         ) : (
           <ul className="grid gap-1">
             {d.issues.map((i) => (
@@ -114,18 +113,20 @@ export function RequirementFacts({
                   {i.title}
                 </span>
                 {i.changedSincePlan ? (
-                  <span role="img" aria-label="Changed since plan" title="Changed since plan" className="size-1.5 flex-none rounded-full" style={{ background: toneOf("you").dot }} />
+                  <span role="img" aria-label="Changed since plan" title="Changed since plan" className="size-1.5 flex-none rounded-full" style={{ background: LEGEND.you.dot }} />
                 ) : null}
-                <IssueChip status={i.status} />
+                <StatusBadge family="issue" value={i.status} />
               </li>
             ))}
           </ul>
         )}
-      </Group>
+      </FactsGroup>
 
-      <Group title="Design" testId="facts-design">
+      <OpenFeedback projectId={projectId} slug={slug} reqKey={d.key} />
+
+      <FactsGroup title="Design" testId="facts-design">
         {d.workflows.length === 0 ? (
-          <p className="text-12-5 text-subtle">No design linked.</p>
+          <FactsEmpty>No design linked.</FactsEmpty>
         ) : (
           <ul className="grid gap-1">
             {d.workflows.map((w) => (
@@ -136,7 +137,7 @@ export function RequirementFacts({
                 {w.designStatus ? (
                   <Tooltip label={w.approvedRevision !== null ? `Newest approved revision: ${w.approvedRevision}` : "No approved revision yet"}>
                     <span className="inline-flex">
-                      <DesignStatusBadge status={w.designStatus} />
+                      <StatusBadge family="design" value={w.designStatus} />
                     </span>
                   </Tooltip>
                 ) : null}
@@ -144,10 +145,10 @@ export function RequirementFacts({
             ))}
           </ul>
         )}
-      </Group>
+      </FactsGroup>
 
       {needs.length > 0 ? (
-        <Group title="Needs from other projects">
+        <FactsGroup title="Needs from other projects">
           <ul className="grid gap-1">
             {needs.map((p) => (
               <li key={`${p.contractSlug}@${p.contractVersion}`} className="font-mono text-12" title="Pinned when it was agreed">
@@ -155,7 +156,7 @@ export function RequirementFacts({
               </li>
             ))}
           </ul>
-        </Group>
+        </FactsGroup>
       ) : null}
 
       <div className="border-t border-line-subtle pt-3 text-12 text-subtle" data-testid="facts-dates">
