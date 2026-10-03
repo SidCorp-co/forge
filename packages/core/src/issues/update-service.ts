@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { issueLabels, issues } from '../db/schema.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
 import { plannedRevisionFor } from '../requirements/issue-links.js';
+import { syncCriteriaFromText } from './criteria/store.js';
 import type { ResolvedLabelAttach } from './label-service.js';
 import { ISSUE_READ_COLUMNS, type IssueRow } from './read-service.js';
 import type { SessionContextExpect } from './session-context.js';
@@ -79,6 +80,13 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       .where(eq(issues.id, issueId))
       .returning({ id: issues.id });
     if (!row) throw new IssueUpdateNotFound(issueId);
+    if (updates.acceptanceCriteria !== undefined) {
+      await syncCriteriaFromText(
+        tx,
+        issueId,
+        (updates.acceptanceCriteria as string | null) ?? null,
+      );
+    }
 
     if (labelIds !== undefined) {
       const existing = await tx

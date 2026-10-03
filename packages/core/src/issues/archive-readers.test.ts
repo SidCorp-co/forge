@@ -68,6 +68,11 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/drop-cascade.ts': 'dependents over live edges of the dropped issue, a write path',
   'issues/drop-unblock.ts': 'by issue id',
   'issues/extras-routes.ts': 'by id; pipeline timing is an aggregate with no identity',
+  'issues/criteria/backfill.ts':
+    'every issue once at boot, archived included: their criteria are evidence too',
+  'issues/criteria/event-verdicts.ts': 'the one issue a verdict record event names, by id',
+  'issues/criteria/routes.ts': 'the one issue its path names, by id',
+  'issues/criteria/store.ts': 'the one issue a criteria or verdict write names, by id',
   'issues/held-hydrator.ts': 'the ids passed in',
   'issues/list-projection.ts':
     'runs the where its callers build; the list and search routes compose the predicate into it',
@@ -78,7 +83,6 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/park-view.ts': 'the park of the one issue asked for by id',
   'issues/pipeline-health.ts': 'the ids passed in',
   'issues/read-service.ts': 'retrieval by id or key, which answers an archived issue by design',
-  'issues/release-evidence.ts': 'the criteria of the one issue a release-gate move names, by id',
   'issues/release-record-required.ts': 'the ids passed in',
   'issues/steer-routes.ts': 'by issue id',
   'issues/transition.ts': 'dependents over edges of the issues being moved',
@@ -102,6 +106,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'memory/chunk-writer.ts': 'the issue a memory row names',
   'memory/extraction.ts': 'by issue id',
   'messaging/gather.ts': 'the ids and seqs a message cites',
+  'mcp/tools/forge-criteria.ts': 'the one issue a criteria call names, by id',
   'metrics/queries.ts': 'throughput and cycle-time aggregates, no issue identity',
   'notifications/notify-mentions.ts': 'by issue id',
   'notifications/notify-transitions.ts': 'by issue id',

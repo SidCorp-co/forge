@@ -57,7 +57,9 @@ import {
   threadQuestionOf,
   workStepOf,
 } from "../derive";
+import { useCriteria } from "../criteria";
 import { deriveQueuedStep } from "../waiting";
+import { CriteriaList } from "./criteria-list";
 import {
   useActivity,
   useAttachments,
@@ -188,6 +190,8 @@ export function IssueDetailScreen({
       return { ...item, key: `${item.text}-${count}` };
     });
   }, [issue?.acceptanceCriteria]);
+  const criteriaQ = useCriteria(issue?.id);
+  const hasCriteriaRows = (criteriaQ.data?.criteria.length ?? 0) > 0;
   const issueDisplayId = issue?.displayId;
   const issueTitle = issue?.title;
 
@@ -506,7 +510,9 @@ export function IssueDetailScreen({
             </Card>
           )}
 
-          {checklist.length > 0 && (
+          {hasCriteriaRows ? (
+            <CriteriaList issueId={issue.id} />
+          ) : checklist.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle>Acceptance criteria</CardTitle>

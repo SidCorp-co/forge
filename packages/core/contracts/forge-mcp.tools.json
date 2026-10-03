@@ -623,6 +623,198 @@
       "name": "forge_coolify_deploy"
     },
     {
+      "description": "An issue's acceptance criteria as rows, and the verdicts on them — what the `awaiting_release` gate reads. list: { issueId } → live criteria in order, each with its latest verdict. put (the plan step): { issueId, criteria: [{ n?, statement, requirementCriterionId? }] } replaces the set; an unchanged criterion keeps its id, a reworded or removed one is retired with its verdicts; refused CRITERIA_LOCKED at awaiting_release, closed or dropped. verdict: { issueId, criterion, verdict: pass|short|fail|skipped, reason?, identity?, evidence? } — skipped needs a reason and never passes; pass, short and fail need an identity: { kind: commit, sha: <whole 40-hex> } | { kind: runtime, ref } | { kind: design, workflow, revision } | { kind: contract, ref, version }. Each fault is refused by name (VERDICT_COMMIT_NOT_FULL, VERDICT_IDENTITY_REQUIRED, VERDICT_SKIP_REASON_REQUIRED, VERDICT_CRITERION_UNKNOWN, …).",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "put",
+              "verdict"
+            ],
+            "type": "string"
+          },
+          "criteria": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "n": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "requirementCriterionId": {
+                  "anyOf": [
+                    {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "statement": {
+                  "maxLength": 10000,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "statement"
+              ],
+              "type": "object"
+            },
+            "maxItems": 200,
+            "type": "array"
+          },
+          "criterion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "evidence": {
+            "items": {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "identity": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "commit",
+                        "type": "string"
+                      },
+                      "sha": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "sha"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "runtime",
+                        "type": "string"
+                      },
+                      "ref": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "ref"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "design",
+                        "type": "string"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "workflow": {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "workflow",
+                      "revision"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "contract",
+                        "type": "string"
+                      },
+                      "ref": {
+                        "maxLength": 300,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "version": {
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "ref",
+                      "version"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "issueId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verdict": {
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "issueId"
+        ],
+        "type": "object"
+      },
+      "name": "forge_criteria"
+    },
+    {
       "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks). Writes take { baseRevision, document } as their REST route does: interface_write (the project's own agent, member or above, or a person holding admin; commitment windows an agent writes read as set by the agent, and once a person has set them an agent's write that moves them is refused COMMITMENTS_SET_BY_PERSON), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite), builder_run_supersede ({ run, reason }: closes an open run as superseded and opens a fresh manual run with the steps the project's current source type derives, waking its master; the project's own agent's, or an org admin's of the steward or the project's org). contract_version_publish ({ contract, version, kind, source, sourceRef }, POST /api/projects/:id/contracts/:contract/versions on REST) records a version of a contract this project publishes with artifact { upload: true }: kind is graphql (SDL text), mcp-tools ({ tools: [{ name, inputSchema }] }), openapi or json-schema, and must be the publication's type; core indexes its elements and measures it against the latest version. Refused by name: CONTRACT_KIND_UNKNOWN, CONTRACT_KIND_MISMATCH, ARTIFACT_UNREADABLE, VERSION_BUMP_TOO_SMALL, VERSION_NOT_IN_SCHEME, CONTRACT_NOT_PUBLISHED, CONTRACT_WRITER_NOT_PROVIDER (the writer rule of interface_write). contract_version_decide ({ contract, version, decision: approve | return, reason? }, POST /api/projects/:id/contracts/:contract/versions/:version/decision on REST) decides a proposed version: a recorded version is proposed, and current only once approved. An org owner or admin person decides any version; with contracts.approver \"master\" the project's own agent may approve a non-breaking or initial one. Refused by name: CONTRACT_BREAKING_NEEDS_PERSON (a breaking or unmeasured version, whatever the policy), CONTRACT_APPROVER_NOT_PERSON, CONTRACT_APPROVER_NOT_ADMIN, CONTRACT_APPROVER_NOT_PROJECT, CONTRACT_VERSION_NOT_PROPOSED, CONTRACT_DECISION_REASON_MISSING. The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
       "inputSchema": {
         "additionalProperties": false,
@@ -3425,7 +3617,7 @@
       "name": "forge_release_batch"
     },
     {
-      "description": "This project's requirements (REQ-n): the business intent issues deliver, in immutable revisions with stable business criteria (BC-n). Workflow requirement-lifecycle. Actions: list | get | create | revise | edit | propose | accept | return | agree | link_issue | unlink_issue | link_workflow | unlink_workflow. create: { title, reason, spec?, tldr?, criteria: [{ body, form? }] } writes REQ-n at revision 1 (draft). revise: { requirement, baseRevision, reason, criteria: [{ code?, body, form? }], … } writes a new draft revision on the head you read (REQUIREMENT_REVISION_STALE otherwise); a criterion naming a live code keeps it, one naming none takes the next code, one left out is retired. edit: { requirement, revision, … } rewrites a draft. propose: { requirement, revision } puts the draft in front of the BA or owner. Statement form is the default; form \"scenario\" must read Given / When / Then (CRITERION_SCENARIO_UNPARSEABLE). accept: { requirement, revision } makes a proposed revision current (the head) and supersedes the previous one; return: { requirement, revision, reason } sends it back to draft; agree: { requirement, revision } signs the head off and writes a baseline pinning every linked design, refused REQUIREMENT_DESIGN_UNAPPROVED naming each unapproved design and REQUIREMENT_REVISION_NOT_CURRENT unless the head is current. accept, return and agree are a person’s acts: an agent is refused REQUIREMENT_SIGNOFF_FORBIDDEN. link_issue: { requirement, issue } once the requirement is agreed (REQUIREMENT_NOT_AGREED); the issue’s plan then records the revision it was written against, and forge_issues get shows `requirement.changedSincePlan`. link_workflow: { requirement, workflowId } names a design the next agree pins. get: revisions with their criteria, baselines with pins, linked designs and issues, and the delivery phase (agreed | in_delivery | delivered), computed on read.",
+      "description": "This project's requirements (REQ-n): the business intent issues deliver, in immutable revisions with stable business criteria (BC-n). Workflow requirement-lifecycle. Actions: list | get | create | revise | edit | propose | accept | return | agree | link_issue | unlink_issue | link_workflow | unlink_workflow. create: { title, reason, spec?, tldr?, criteria: [{ body, form? }] } writes REQ-n at revision 1 (draft). revise: { requirement, baseRevision, reason, criteria: [{ code?, body, form? }], … } writes a new draft revision on the head you read (REQUIREMENT_REVISION_STALE otherwise); a criterion naming a live code keeps it, one naming none takes the next code, one left out is retired. edit: { requirement, revision, … } rewrites a draft. propose: { requirement, revision } puts the draft in front of the BA or owner. Statement form is the default; form \"scenario\" must read Given / When / Then (CRITERION_SCENARIO_UNPARSEABLE). accept: { requirement, revision } makes a proposed revision current (the head) and supersedes the previous one; return: { requirement, revision, reason } sends it back to draft; agree: { requirement, revision } signs the head off and writes a baseline pinning every linked design, refused REQUIREMENT_DESIGN_UNAPPROVED naming each unapproved design and REQUIREMENT_REVISION_NOT_CURRENT unless the head is current. accept, return and agree are a person’s acts: an agent is refused REQUIREMENT_SIGNOFF_FORBIDDEN. link_issue: { requirement, issue } once the requirement is agreed (REQUIREMENT_NOT_AGREED); the issue’s plan then records the revision it was written against, and forge_issues get shows `requirement.changedSincePlan`. A plan written before the link reads changed-since-plan unless a person passes adoptPlan: true, attesting it already satisfies the current revision (REQUIREMENT_NO_PLAN_TO_ADOPT when the issue has no plan). link_workflow: { requirement, workflowId } names a design the next agree pins. get: revisions with their criteria, baselines with pins, linked designs and issues, and the delivery phase (agreed | in_delivery | delivered), computed on read.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -3447,6 +3639,9 @@
               "unlink_workflow"
             ],
             "type": "string"
+          },
+          "adoptPlan": {
+            "type": "boolean"
           },
           "baseRevision": {
             "anyOf": [

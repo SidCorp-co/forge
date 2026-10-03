@@ -15,6 +15,7 @@ export const REGISTERED_TOOLS = [
   'forge_comments',
   'forge_config',
   'forge_coolify_deploy',
+  'forge_criteria',
   'forge_ecosystem',
   'forge_feedback',
   'forge_github',

@@ -10,6 +10,7 @@ import * as agentSessionEventsSchema from './schema-agent-session-events.js';
 import * as backfillMarkersSchema from './schema-backfill-markers.js';
 import * as conversationsSchema from './schema-conversations.js';
 import * as deployLocksSchema from './schema-deploy-locks.js';
+import * as issueCriteriaSchema from './schema-issue-criteria.js';
 import * as issueLeasesSchema from './schema-issue-leases.js';
 import * as issueWorkStateSchema from './schema-issue-work-state.js';
 import * as journalSchema from './schema-journal.js';
@@ -47,6 +48,7 @@ const schema = {
   ...deployLocksSchema,
   ...issueLeasesSchema,
   ...issueWorkStateSchema,
+  ...issueCriteriaSchema,
   ...runLedgerSchema,
   ...speakerLinksSchema,
   ...unauditedTransitionsSchema,

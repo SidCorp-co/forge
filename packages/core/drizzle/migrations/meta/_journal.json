@@ -2262,6 +2262,13 @@
       "when": 1813104000000,
       "tag": "0349_a_requirement_has_a_home",
       "breakpoints": true
+    },
+    {
+      "idx": 350,
+      "version": "7",
+      "when": 1813190400000,
+      "tag": "0350_issue_criteria_and_verdicts_are_rows",
+      "breakpoints": true
     }
   ]
 }
