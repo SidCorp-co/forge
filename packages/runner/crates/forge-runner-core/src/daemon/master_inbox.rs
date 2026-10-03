@@ -8,6 +8,7 @@
 //! lost on a reconnect.
 
 use crate::transport::channel_inbox::{UnansweredDocument, BUILDER_RUN_TYPE};
+use crate::transport::comment_inbox::ISSUE_COMMENT_TYPE;
 
 /// What fired a `master.wake`, as core's `ws/master-wake.ts:MASTER_WAKE_SOURCES` names it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +24,8 @@ pub enum WakeSource {
     /// The approver decided a workflow design the project proposed: an approve unblocks its builds,
     /// a return hands the drawing back to the issue it was drawn under.
     WorkflowDesign,
+    /// A person commented on one of the project's issues, at whatever status it stands.
+    Comment,
     /// A frame naming no source.
     ///
     /// Priced amnesty: a core that predates ISS-38 stamps none on its issue and
@@ -43,8 +46,9 @@ impl WakeSource {
                 "channel" => Ok(WakeSource::Channel),
                 "ecosystem_build" => Ok(WakeSource::EcosystemBuild),
                 "workflow_design" => Ok(WakeSource::WorkflowDesign),
+                "comment" => Ok(WakeSource::Comment),
                 other => Err(format!(
-                    "source {other:?} is not one this runner reads (issue, answer, channel, ecosystem_build, workflow_design)"
+                    "source {other:?} is not one this runner reads (issue, answer, channel, ecosystem_build, workflow_design, comment)"
                 )),
             },
             Some(other) => Err(format!("source {other} is not a string")),
@@ -58,6 +62,7 @@ impl WakeSource {
             WakeSource::Channel => "channel",
             WakeSource::EcosystemBuild => "ecosystem_build",
             WakeSource::WorkflowDesign => "workflow_design",
+            WakeSource::Comment => "comment",
             WakeSource::Unstated => "source unstated",
         }
     }
@@ -79,12 +84,27 @@ pub fn inbox_digest(inbox: &[UnansweredDocument]) -> u64 {
     h.finish()
 }
 
-/// The sentence a nudge carries when the channel or a builder run owes something, empty when nothing is owed.
+/// The sentence a nudge carries when the channel, a builder run or an issue thread owes something, empty when nothing is owed.
 pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
-    let (runs, docs): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
+    let (comments, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
         .iter()
+        .partition(|d| d.r#type.as_deref() == Some(ISSUE_COMMENT_TYPE));
+    let (runs, docs): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
+        .into_iter()
         .partition(|d| d.r#type.as_deref() == Some(BUILDER_RUN_TYPE));
     let mut line = String::new();
+    if !comments.is_empty() {
+        let keys: Vec<&str> = comments
+            .iter()
+            .map(|d| d.number.as_deref().unwrap_or(d.id.as_str()))
+            .collect();
+        line.push_str(&format!(
+            " A person is owed a reply on {} issue{} ({}): read each thread (`forge_comments action=list`), answer it on the issue, and move the issue when the comment asks for it; your reply is what clears it.",
+            comments.len(),
+            if comments.len() == 1 { "" } else { "s" },
+            keys.join(", ")
+        ));
+    }
     if !docs.is_empty() {
         let numbers: Vec<&str> = docs
             .iter()
@@ -131,6 +151,7 @@ mod tests {
             ("channel", WakeSource::Channel),
             ("ecosystem_build", WakeSource::EcosystemBuild),
             ("workflow_design", WakeSource::WorkflowDesign),
+            ("comment", WakeSource::Comment),
         ] {
             let got =
                 WakeSource::of_frame(&serde_json::json!({ "projectId": "p", "source": name }));
@@ -201,5 +222,53 @@ mod tests {
         let alone = inbox_line(&[run]);
         assert!(!alone.contains("channel owes"), "{alone}");
         assert!(alone.contains("builder_runs"), "{alone}");
+    }
+}
+
+#[cfg(test)]
+mod comment_tests {
+    use super::*;
+
+    fn owed_comment(id: &str, key: &str) -> UnansweredDocument {
+        UnansweredDocument {
+            id: id.into(),
+            number: Some(key.into()),
+            r#type: Some(ISSUE_COMMENT_TYPE.into()),
+            from: Some("developed".into()),
+            overdue: false,
+        }
+    }
+
+    #[test]
+    fn a_comment_wake_is_read_and_a_misspelt_one_is_still_refused() {
+        assert_eq!(
+            WakeSource::of_frame(&serde_json::json!({ "projectId": "p", "source": "comment" })),
+            Ok(WakeSource::Comment)
+        );
+        let why =
+            WakeSource::of_frame(&serde_json::json!({ "projectId": "p", "source": "comments" }))
+                .unwrap_err();
+        assert!(why.contains("\"comments\""), "{why}");
+        assert!(
+            why.contains("comment)"),
+            "the refusal lists what it reads: {why}"
+        );
+    }
+
+    #[test]
+    fn owed_comments_are_named_by_issue_apart_from_the_channel() {
+        let line = inbox_line(&[owed_comment("c1", "ISS-7"), owed_comment("c2", "ISS-9")]);
+        assert!(
+            line.contains("owed a reply on 2 issues (ISS-7, ISS-9)"),
+            "{line}"
+        );
+        assert!(line.contains("answer it on the issue"), "{line}");
+        assert!(!line.contains("channel owes"), "{line}");
+        assert!(inbox_line(&[owed_comment("c1", "ISS-7")]).contains("on 1 issue (ISS-7)"));
+    }
+
+    #[test]
+    fn an_owed_comment_moves_the_digest_so_the_master_is_nudged_for_it() {
+        assert_ne!(inbox_digest(&[owed_comment("c1", "ISS-7")]), 0);
     }
 }

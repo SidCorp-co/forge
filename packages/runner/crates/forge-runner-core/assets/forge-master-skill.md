@@ -111,6 +111,12 @@ which you record on the issue as above, and a row that genuinely needs a person 
 `needs_info` with the question written on it. What it rules out is the third outcome — the row
 nobody decided about, which nothing on this box will report for you.
 
+**A person's comment is answered on the issue.** When the nudge says a person is owed a reply on
+an issue, that is work at whatever status the issue stands, `developed` and `awaiting_release`
+included, which no admissible read lists. Read the thread, reply on the issue, and move it when the
+comment asks for that. Your reply is what takes it off the list, so a comment read and not answered
+is still owed on the next pass.
+
 ## Declare a run before you dispatch it
 
 `forge-runner run declare` writes the row naming which issues a subagent is being given and which

@@ -283,3 +283,41 @@ describe('a channel document as a wake trigger', () => {
     ).toEqual({ projectId: 'p1', source: 'channel' });
   });
 });
+
+describe("a person's comment as a wake trigger", () => {
+  const comment = (authored: 'human' | 'agent') => ({
+    issueId: 'i1',
+    projectId: 'p1',
+    actor: { type: 'user', id: 'u1', agency: authored },
+    authored,
+    commentId: 'c1',
+    body: 'please ship this',
+    parentId: null,
+  });
+
+  it('wakes every box serving the project, naming the issue and the comment, at any status', async () => {
+    servedBy(['dev-a', 'dev-b']);
+    const { bus, fire } = fakeBus();
+    registerMasterWakeSubscribers(bus as never);
+
+    await fire('commentCreated', comment('human'));
+    expect(publish).toHaveBeenCalledTimes(2);
+    expect(publishedEvent(0)).toBe('master.wake');
+    expect(publishedData(0)).toEqual({
+      projectId: 'p1',
+      source: 'comment',
+      issueId: 'i1',
+      commentId: 'c1',
+    });
+    expect(MASTER_WAKE_SOURCES).toContain('comment');
+  });
+
+  it("never wakes on an agent's comment, so a master's reply cannot wake the master that wrote it", async () => {
+    servedBy(['dev-a']);
+    const { bus, fire } = fakeBus();
+    registerMasterWakeSubscribers(bus as never);
+
+    await fire('commentCreated', comment('agent'));
+    expect(publish).not.toHaveBeenCalled();
+  });
+});

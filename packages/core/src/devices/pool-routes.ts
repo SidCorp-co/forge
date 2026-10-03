@@ -82,6 +82,7 @@ import {
   releaseJobFromMaster,
   startJobForMaster,
 } from './claim.js';
+import { deviceCommentInboxRoutes } from './comment-inbox-routes.js';
 import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
 import { closeMasterSession, ensureMasterSession } from './master-session.js';
@@ -95,6 +96,7 @@ export const devicePoolRoutes = new Hono<{ Variables: DeviceVars }>();
 // serves are unchanged and no caller can tell the two apart.
 devicePoolRoutes.route('/', deviceRunSessionRoutes);
 devicePoolRoutes.route('/', deviceChannelInboxRoutes);
+devicePoolRoutes.route('/', deviceCommentInboxRoutes);
 
 const poolQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
