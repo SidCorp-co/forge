@@ -167,6 +167,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'release-batch/releasing-recovery.ts': 'rows of one release run',
   'release-batch/service.ts': 'the ids passed in, or rows of one release run',
   'release-batch/versions.ts': 'reads only the gate status, not yet in a release run',
+  'requirements/deferral.ts':
+    'reads only issues in work (not draft, closed or dropped), which an archived issue never is',
   'requirements/issue-links.ts':
     'by issue id: the requirement an issue names, and the issue a link or a plan write names',
   'requirements/read.ts':

@@ -1,7 +1,12 @@
 import type { IssueStatusTone } from "@forge/contracts/issue-vocabulary";
-import type { RequirementHistoryEntry, RequirementStanding } from '@forge/contracts/requirements';
+import type {
+  RequirementDeferral,
+  RequirementHistoryEntry,
+  RequirementStanding,
+  RequirementStatus,
+} from '@forge/contracts/requirements';
 
-export type RequirementStatus = 'draft' | 'agreed' | 'accepted' | 'dropped';
+export type { RequirementStatus };
 export type RevisionState = 'draft' | 'proposed' | 'current' | 'superseded';
 export type DeliveryPhase = 'agreed' | 'in_delivery' | 'delivered';
 export interface RequirementSpec { goal?: string; personas?: string[]; scopeIn?: string[]; scopeOut?: string[] }
@@ -21,11 +26,12 @@ export interface RequirementRevision {
   spec: RequirementSpec; tldr: string | null; changeSummary: string | null; reason: string;
   authorId: string; authorName: string | null; authorKind: 'human' | 'agent'; createdAt: string;
   proposedAt: string | null; decidedBy: string | null; decidedByName: string | null; decidedAt: string | null; returnReason: string | null;
+  acceptReason: string | null;
   fromSuggestionId: string | null;
   criteria: RequirementCriterion[];
 }
 export interface RequirementPin { kind: 'workflow-design' | 'contract-version'; workflowId: string | null; flow: string | null; designRevision: number | null; providerProjectId: string | null; contractSlug: string | null; contractVersion: string | null }
-export interface RequirementBaseline { revision: number; agreedBy: string; agreedByName: string | null; agreedAt: string; reason: string | null; pins: RequirementPin[] }
+export interface RequirementBaseline { revision: number; seq: number; act: 'agree' | 'repin'; agreedBy: string; agreedByName: string | null; agreedAt: string; reason: string | null; pins: RequirementPin[] }
 export interface RequirementWorkflowLink { workflowId: string; flow: string; title: string; designStatus: 'draft'|'proposed'|'approved'|'returned'|null; approvedRevision: number | null }
 export interface RequirementIssueLink {
   issueId: string;
@@ -46,6 +52,7 @@ export interface RequirementDetail extends RequirementSummary {
   canSignOff: boolean;                // the viewer is a person allowed to accept / return / agree
   history: RequirementHistoryEntry[];  // newest first
   readiness: { revision: number; ready: boolean; failed: string[]; suggestionId: string; decidedAt: string | null } | null;
+  deferral: RequirementDeferral | null; // the defer it stands on, while deferred
 }
 
 export interface RequirementList { requirements: RequirementSummary[]; returned: number }
@@ -63,4 +70,6 @@ export type RequirementAction =
   | { kind: 'propose'; revision: number }
   | { kind: 'accept'; revision: number }
   | { kind: 'return'; revision: number; reason: string }
-  | { kind: 'agree'; revision: number };
+  | { kind: 'agree'; revision: number }
+  | { kind: 'repin'; revision: number }
+  | { kind: 'undefer' };

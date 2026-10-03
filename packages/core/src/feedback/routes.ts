@@ -290,11 +290,13 @@ feedbackRoutes.post(
 
 feedbackRoutes.get('/:id/feedback/:fb/attachments/:aid', attachmentParam, async (c) => {
   const { id, fb, aid } = c.req.valid('param');
+  const actor = actorOf(c);
   const file = await attachmentBytes({
     projectId: id,
     ref: fb,
     attachmentId: aid,
-    userId: c.get('userId'),
+    userId: actor.userId,
+    agency: actor.agency,
   });
   if (!file) {
     throw new HTTPException(404, {
@@ -302,6 +304,7 @@ feedbackRoutes.get('/:id/feedback/:fb/attachments/:aid', attachmentParam, async 
       cause: { code: 'NOT_FOUND' },
     });
   }
+  if (!file.ok) return refused(c, [file.refusal]);
   return c.body(new Uint8Array(file.bytes), 200, {
     'Content-Type': file.mime,
     'Content-Disposition': `attachment; filename="${encodeURIComponent(file.name)}"`,

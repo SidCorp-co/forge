@@ -117,7 +117,11 @@ export function waitingOf(
       if (route === 'revision')
         return { kind: 'person', who: 'The revision proposal', act: 'be accepted and delivered' };
       if (route === 'new_requirement')
-        return { kind: 'issue', who: carrier ?? 'The new requirement', act: 'be agreed and delivered' };
+        return {
+          kind: 'issue',
+          who: carrier ?? 'The new requirement',
+          act: 'be agreed and delivered',
+        };
       if (route === 'duplicate')
         return { kind: 'issue', who: `Its root ${carrier ?? ''}`.trim(), act: 'be resolved' };
       return { kind: 'issue', who: 'The linked work', act: '' };

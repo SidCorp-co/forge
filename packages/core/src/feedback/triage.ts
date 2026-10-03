@@ -16,7 +16,7 @@ import { announceIssueCreated, insertIssueRow } from '../issues/create-service.j
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
 import { assertProjectAccess } from '../lib/authz.js';
-import { dataPolicyOf, storedText } from '../lib/data-egress.js';
+import { dataPolicyOf, egressAt, storedText } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { requirementKey } from '../requirements/read.js';
@@ -56,15 +56,21 @@ async function fileDraftIssue(
   t: FeedbackTriage,
   actor: FeedbackActor,
   channel: FeedbackChannel,
+  fromSuggestionId: string | null,
 ): Promise<string> {
-  const level = await dataPolicyOf(row.projectId);
   const key = feedbackKey(row.fbSeq);
-  // cm:why on a no_egress project the issue an agent will build carries the reference only, so the
-  // reporter's text never leaves through the issue body
-  const carried =
-    level === 'no_egress'
-      ? `Carries ${key}. Its content stays in Forge under this project's no_egress policy; read it on the Feedback page.`
-      : [`Carries ${key}: ${row.title}`, row.body ?? ''].filter(Boolean).join('\n\n');
+  // cm:guard an issue is product content every agent reads, so the reporter's operational text is
+  // copied into it only as the one egress rule lets feedback leave (surface `feedback`): at
+  // no_egress the issue carries the reference only, in its title and its body alike
+  const copied = egressAt(
+    await dataPolicyOf(row.projectId),
+    'feedback',
+    { title: row.title, body: row.body ?? '' },
+    key,
+  );
+  const carried = copied.ok
+    ? [`Carries ${key}: ${copied.value.title}`, copied.value.body].filter(Boolean).join('\n\n')
+    : `Carries ${key}. Its content stays in Forge under this project's no_egress policy; read it on the Feedback page.`;
   let requirementId: string | null = null;
   if (row.requirementId) {
     const [req] = await tx
@@ -75,7 +81,7 @@ async function fileDraftIssue(
   }
   const issue = await insertIssueRow(tx, {
     projectId: row.projectId,
-    title: t.createIssue?.title ?? row.title,
+    title: t.createIssue?.title ?? (copied.ok ? copied.value.title : `Feedback ${key}`),
     description: t.createIssue?.description ?? carried,
     descriptionFormat: 'markdown',
     status: 'draft',
@@ -85,6 +91,7 @@ async function fileDraftIssue(
     createdByDeviceId: null,
     createdVia: channel,
     requirementId,
+    fromSuggestionId,
   });
   return issue.id;
 }
@@ -191,7 +198,14 @@ export async function triageIn(
   });
   if (fit) return { refusals: [fit] };
   if (t.route === 'issue' && t.createIssue) {
-    createdIssueId = await fileDraftIssue(tx, row, t, actor, input.channel);
+    createdIssueId = await fileDraftIssue(
+      tx,
+      row,
+      t,
+      actor,
+      input.channel,
+      input.fromSuggestionId ?? null,
+    );
     set.routedIssueId = createdIssueId;
     const [n] = await tx
       .select({ seq: issues.issSeq })

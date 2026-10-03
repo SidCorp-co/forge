@@ -229,10 +229,14 @@ export const STATE_READINGS = {
 		observed: ["Observed", "ready", "✓"],
 		asserted: ["Claimed", "you", "!"],
 	},
-	/** A release approval's decision (web `releases/types.ts`). */
+	/** A release approval: waiting on a decision, or what it decided (web `releases/types.ts`). */
 	release: {
+		pending: ["Awaiting approval", "you", "●"],
 		approved: ["Approved", "ready", "✓"],
 		returned: ["Returned", "err", "↺"],
+	},
+	contractWait: {
+		unsettled: ["Waiting for a version", "blocked", "○"],
 	},
 } as const satisfies Record<string, Record<string, Reading>>;
 

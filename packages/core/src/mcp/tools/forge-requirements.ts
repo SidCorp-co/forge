@@ -7,7 +7,9 @@
 
 import type { RequirementAct } from '@forge/contracts/requirements';
 import { z } from 'zod';
+import { egressShown } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
+import { deferRequirement, undeferRequirement } from '../../requirements/deferral.js';
 import {
   linkIssue,
   linkWorkflow,
@@ -20,6 +22,7 @@ import {
   type RequirementActor,
   readRequirementAs,
 } from '../../requirements/read.js';
+import { repinRequirement } from '../../requirements/repin.js';
 import { criterionSchema, specSchema } from '../../requirements/schemas.js';
 import {
   acceptRevision,
@@ -50,6 +53,9 @@ const ACTIONS = [
   'accept',
   'return',
   'agree',
+  'repin',
+  'defer',
+  'undefer',
   'link_issue',
   'unlink_issue',
   'link_workflow',
@@ -75,6 +81,7 @@ const inputSchema = z
     issue: z.string().trim().min(1).max(200).optional(),
     adoptPlan: z.boolean().optional(),
     workflowId: z.uuid().optional(),
+    targetPhase: z.string().trim().min(1).max(200).optional(),
     view: viewInput,
   })
   .strict();
@@ -93,6 +100,9 @@ const GRANTS = {
     accept: write,
     return: write,
     agree: write,
+    repin: write,
+    defer: write,
+    undefer: write,
     link_issue: write,
     unlink_issue: write,
     link_workflow: write,
@@ -115,6 +125,14 @@ const DESCRIPTION =
   'signs the head off and writes a baseline pinning every linked design, refused REQUIREMENT_DESIGN_UNAPPROVED ' +
   'naming each unapproved design and REQUIREMENT_REVISION_NOT_CURRENT unless the head is current. accept, return ' +
   'and agree are a person’s acts: an agent is refused REQUIREMENT_SIGNOFF_FORBIDDEN. ' +
+  'repin: { requirement, revision, reason? } writes a new baseline of the head pinning each linked design’s approved ' +
+  'revision, with no text revision, once a design is approved past what the agreed baseline pins (the standing waits on ' +
+  '"re-pin"); REQUIREMENT_PINS_CURRENT when nothing moved, and the agree’s own guards otherwise. Issues planned before it ' +
+  'read changedSincePlan. A person’s act. ' +
+  'defer: { requirement, reason, targetPhase? } takes a draft or agreed requirement out of the current release ' +
+  '(REQUIREMENT_DEFER_REASON_REQUIRED, REQUIREMENT_NOT_DEFERRABLE, REQUIREMENT_HAS_LIVE_ISSUES naming each linked issue past draft); ' +
+  'a deferred requirement waits on nobody and is not broken down, and accept, agree and link_issue on it are REQUIREMENT_DEFERRED. ' +
+  'undefer: { requirement, reason? } puts back the status it was deferred from (REQUIREMENT_NOT_DEFERRED otherwise). Both are a person’s acts. ' +
   'link_issue: { requirement, issue } once the requirement is agreed (REQUIREMENT_NOT_AGREED); the issue’s plan ' +
   'then records the revision it was written against, and forge_issues get shows `requirement.changedSincePlan`. ' +
   'A plan written before the link reads changed-since-plan unless a person passes adoptPlan: true, attesting it ' +
@@ -126,7 +144,8 @@ const DESCRIPTION =
   'waitingOn, updatedAt }, no bodies. A write answers { act, requirement: { id, key, title, status, ' +
   'currentRevision, latestRevision, updatedAt } } and what it changed: create / revise / edit the written ' +
   'revision with its criteria codes, propose / accept / return / agree the decided revision (agree also the ' +
-  'baseline), link_issue / unlink_issue the linked issues, link_workflow / unlink_workflow the linked designs. ' +
+  'baseline), repin the latest baseline, link_issue / unlink_issue the linked issues, link_workflow / ' +
+  'unlink_workflow the linked designs; defer and undefer answer the requirement alone. ' +
   VIEW_RULE;
 
 function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]> {
@@ -140,9 +159,20 @@ function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]
 const refusedBy = (refusals: readonly NamedRefusal[]) =>
   refusedAnswer(refusals, 'REQUIREMENT_REFUSED');
 
-function settle(input: Input, outcome: RequirementOutcome, revision?: number) {
+async function settle(
+  projectId: string,
+  input: Input,
+  outcome: RequirementOutcome,
+  revision?: number,
+) {
   if (!outcome.ok) return refusedBy(outcome.refusals);
-  return projectOne(input.view, outcome.requirement, (detail) =>
+  const shown = await egressShown(
+    projectId,
+    'requirement',
+    outcome.requirement,
+    outcome.requirement.key,
+  );
+  return projectOne(input.view, shown, (detail) =>
     requirementActAnswerOf(detail, input.action as RequirementAct, revision),
   );
 }
@@ -168,7 +198,12 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       return {
         requirements: projectMany(
           input.view,
-          await listRequirementsAs(actor, projectId),
+          await egressShown(
+            projectId,
+            'requirement',
+            await listRequirementsAs(actor, projectId),
+            'the requirement list',
+          ),
           requirementSummaryOf,
         ),
         ...summaryNotice(
@@ -177,11 +212,17 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         ),
       };
     case 'get': {
-      const detail = await readRequirementAs(actor, projectId, need(input, 'requirement'));
+      const detail = await egressShown(
+        projectId,
+        'requirement',
+        await readRequirementAs(actor, projectId, need(input, 'requirement')),
+        need(input, 'requirement'),
+      );
       return input.view === 'summary' ? requirementSummaryOf(detail) : detail;
     }
     case 'create':
       return settle(
+        projectId,
         input,
         await createRequirement({
           projectId,
@@ -192,6 +233,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'revise':
       return settle(
+        projectId,
         input,
         await writeRevision({
           ...on(),
@@ -201,6 +243,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'edit':
       return settle(
+        projectId,
         input,
         await writeRevision({
           ...on(),
@@ -211,12 +254,14 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'propose':
       return settle(
+        projectId,
         input,
         await proposeRevision({ ...on(), revision: need(input, 'revision') }),
         input.revision,
       );
     case 'accept':
       return settle(
+        projectId,
         input,
         await acceptRevision({
           ...on(),
@@ -227,6 +272,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'return':
       return settle(
+        projectId,
         input,
         await returnRevision({
           ...on(),
@@ -237,6 +283,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'agree':
       return settle(
+        projectId,
         input,
         await agreeRequirement({
           ...on(),
@@ -245,8 +292,31 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         }),
         input.revision,
       );
+    case 'repin':
+      return settle(
+        projectId,
+        input,
+        await repinRequirement({
+          ...on(),
+          revision: need(input, 'revision'),
+          reason: input.reason,
+        }),
+      );
+    case 'defer':
+      return settle(
+        projectId,
+        input,
+        await deferRequirement({
+          ...on(),
+          reason: need(input, 'reason'),
+          targetPhase: input.targetPhase,
+        }),
+      );
+    case 'undefer':
+      return settle(projectId, input, await undeferRequirement({ ...on(), reason: input.reason }));
     case 'link_issue':
       return settle(
+        projectId,
         input,
         await linkIssue({
           ...on(),
@@ -255,11 +325,16 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         }),
       );
     case 'unlink_issue':
-      return settle(input, await unlinkIssue({ ...on(), issue: need(input, 'issue') }));
+      return settle(projectId, input, await unlinkIssue({ ...on(), issue: need(input, 'issue') }));
     case 'link_workflow':
-      return settle(input, await linkWorkflow({ ...on(), workflowId: need(input, 'workflowId') }));
+      return settle(
+        projectId,
+        input,
+        await linkWorkflow({ ...on(), workflowId: need(input, 'workflowId') }),
+      );
     case 'unlink_workflow':
       return settle(
+        projectId,
         input,
         await unlinkWorkflow({ ...on(), workflowId: need(input, 'workflowId') }),
       );

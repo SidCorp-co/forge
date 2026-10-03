@@ -208,6 +208,7 @@ describe('requirementContext (ISS-57)', () => {
     ],
     baseline: {
       revision: 4,
+      seq: 1,
       agreedAt: '2026-10-03T00:00:00.000Z',
       pins: [
         {
@@ -221,6 +222,7 @@ describe('requirementContext (ISS-57)', () => {
       ],
     },
     plannedRevision: 4,
+    plannedBaselineSeq: 1,
     plan: 'the plan',
     ...over,
   });
@@ -260,7 +262,7 @@ describe('requirementContext (ISS-57)', () => {
   it('refuses a latest baseline that pins another revision than the current one', () => {
     expect(() =>
       requirementContext(
-        row({ baseline: { revision: 3, agreedAt: '2026-10-01T00:00:00.000Z', pins: [] } }),
+        row({ baseline: { revision: 3, seq: 1, agreedAt: '2026-10-01T00:00:00.000Z', pins: [] } }),
       ),
     ).toThrow(
       /REQUIREMENT_REVISION_NOT_CURRENT: requirement REQ-12: its latest baseline pins revision 3/,
@@ -269,6 +271,20 @@ describe('requirementContext (ISS-57)', () => {
 
   it('refuses a requirement with no baseline (REQUIREMENT_NOT_AGREED)', () => {
     expect(() => requirementContext(row({ baseline: null }))).toThrow(/REQUIREMENT_NOT_AGREED/);
+  });
+
+  it('tells the run when its revision was re-pinned onto newly approved designs after its plan (ISS-86)', () => {
+    const base = row();
+    const repinned = row({
+      baseline: { ...(base.baseline as NonNullable<typeof base.baseline>), seq: 2 },
+    });
+    const loaded = requirementContext(repinned);
+    expect(loaded?.changedSincePlan).toBe(true);
+    expect(loaded?.text).toContain('re-pinned onto newly approved designs');
+    expect(
+      requirementContext(row({ plannedBaselineSeq: 2, baseline: repinned.baseline }))
+        ?.changedSincePlan,
+    ).toBe(false);
   });
 
   it('tells the run when the requirement changed since its plan', () => {

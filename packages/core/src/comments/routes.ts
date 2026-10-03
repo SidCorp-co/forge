@@ -14,6 +14,7 @@ import {
 import { isCommentIntent } from '../issues/record-events/kinds.js';
 import { mirroredEventsFor } from '../issues/record-events/store.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { egressForRequest } from '../lib/data-egress.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { projectLens } from '../messaging/record-screen.js';
@@ -111,6 +112,13 @@ async function loadComment(commentId: string) {
     `comment ${commentId} sits on a ${place.scope}, not an issue: read and edit it at /api/projects/${place.projectId}/${segment}/${place.targetId}/comments`,
   );
 }
+
+const commentsShown = <T>(
+  c: Parameters<typeof restActor>[0],
+  projectId: string,
+  rows: T,
+  what: string,
+) => egressForRequest(restActor(c).agency, projectId, 'issue.comments', rows, what);
 
 export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.post(
@@ -255,7 +263,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
             : eq(comments.issueId, issueId),
         );
       const page = await listIssueCommentPage(issueId, { after, limit, intent });
-      const rows = page.rows;
+      const rows = await commentsShown(c, issue.projectId, page.rows, `the comments on ${rawId}`);
 
       // Join each comment's attachments in a single grouped query, keyed by
       // commentId. Guard the empty-ids case so `inArray` never receives an
@@ -334,13 +342,18 @@ commentRoutes.get(
       .from(comments)
       .where(eq(comments.parentId, id));
 
-    const rows = await db
-      .select(commentThreadColumns)
-      .from(comments)
-      .where(eq(comments.parentId, id))
-      .orderBy(asc(comments.createdAt))
-      .limit(limit)
-      .offset(offset);
+    const rows = await commentsShown(
+      c,
+      parent.projectId,
+      await db
+        .select(commentThreadColumns)
+        .from(comments)
+        .where(eq(comments.parentId, id))
+        .orderBy(asc(comments.createdAt))
+        .limit(limit)
+        .offset(offset),
+      `the replies to comment ${id}`,
+    );
 
     return c.json(listResponse(c, rows, Number(n), { limit, offset }));
   },

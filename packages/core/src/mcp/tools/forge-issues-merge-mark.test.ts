@@ -59,6 +59,10 @@ let stampedRows: unknown[] = [{ mergedAt: AT, mergedCommitSha: null }];
 /** Every column set the mark's UPDATE carried, which is what the description claims about. */
 const setPayloads: Record<string, unknown>[] = [];
 
+vi.mock('../../project-config/service.js', () => ({
+  readProjectDocument: async () => null,
+}));
+
 vi.mock('../../db/client.js', () => ({
   db: {
     select: () => ({

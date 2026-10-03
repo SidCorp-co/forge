@@ -30,7 +30,13 @@ import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { approvalRequired } from '../release-batch/approvals.js';
-import { changedSincePlan, type LinkedDesign, signoffRefusal } from './rules.js';
+import { deferralOf } from './deferral-read.js';
+import {
+  changedSincePlan,
+  type LinkedDesign,
+  type ReadinessAtHead,
+  signoffRefusal,
+} from './rules.js';
 import { provenPhase } from './standing.js';
 import { historyOf, standingsOf } from './standing-read.js';
 
@@ -210,6 +216,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
     standing,
     history,
     readiness,
+    deferral,
     releaseApproval,
   ] = await Promise.all([
     db
@@ -234,10 +241,11 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
       .select()
       .from(requirementBaselines)
       .where(eq(requirementBaselines.requirementId, row.id))
-      .orderBy(desc(requirementBaselines.revision)),
+      .orderBy(desc(requirementBaselines.revision), desc(requirementBaselines.seq)),
     db
       .select({
         revision: requirementBaselinePins.revision,
+        baselineSeq: requirementBaselinePins.baselineSeq,
         workflowId: requirementBaselinePins.workflowId,
         flow: projectWorkflows.flow,
         designRevision: requirementBaselinePins.designRevision,
@@ -256,6 +264,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
         status: issues.status,
         plan: issues.plan,
         plannedRevision: issues.plannedRevision,
+        plannedBaselineSeq: issues.plannedBaselineSeq,
       })
       .from(issues)
       .where(eq(issues.requirementId, row.id))
@@ -267,6 +276,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
       .then((m) => m.get(row.id) as RequirementStanding),
     historyOf(row.id, row.projectId),
     readinessOf(row),
+    deferralOf(row.id, row.status),
     approvalRequired(row.projectId),
   ]);
   const people = await peopleOf([
@@ -289,12 +299,15 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
     workflows: designs.map((d) => ({ ...d, title: d.title ?? d.flow })),
     baselines: baselines.map((b) => ({
       revision: b.revision,
+      seq: b.seq,
+      act: b.act,
       agreedBy: b.agreedBy,
       agreedByName: name(b.agreedBy),
       agreedAt: b.agreedAt.toISOString(),
       reason: b.reason,
+      readiness: b.readiness,
       pins: pins
-        .filter((p) => p.revision === b.revision)
+        .filter((p) => p.revision === b.revision && p.baselineSeq === b.seq)
         .map((p) => ({
           kind: p.workflowId ? ('workflow-design' as const) : ('contract-version' as const),
           workflowId: p.workflowId,
@@ -314,9 +327,9 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
       tone: issueStatusToneOn(i.status as KernelIssueStatus, releaseApproval),
       plannedRevision: i.plannedRevision,
       changedSincePlan: changedSincePlan({
-        plan: i.plan,
-        plannedRevision: i.plannedRevision,
+        ...i,
         currentRevision: row.currentRevision,
+        latestBaselineSeq: baselines.find((b) => b.revision === row.currentRevision)?.seq ?? null,
       }),
     })),
     canSignOff: viewer
@@ -325,6 +338,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
     standing,
     history,
     readiness,
+    deferral,
   };
 }
 
@@ -351,6 +365,7 @@ function revisionView(
     decidedByName: name(r.decidedBy),
     decidedAt: r.decidedAt?.toISOString() ?? null,
     returnReason: r.returnReason,
+    acceptReason: r.acceptReason,
     fromSuggestionId: r.fromSuggestionId,
     criteria: rowsOfRevision(criteria, r.revision).map(criterionView),
   };
@@ -359,10 +374,13 @@ function revisionView(
 type ReadinessPayload = { checks?: { check: string; passed: boolean }[] } | null;
 
 // cm:why workflow requirement-to-delivery step `ready`: readiness is a suggestion kind with no
-// table, so the readiness result at the head is the newest accepted readiness suggestion on it
-async function readinessOf(row: Row) {
-  if (row.currentRevision === null) return null;
-  const [s] = await db
+// table, so the readiness result at a revision is the newest accepted readiness suggestion on it
+export async function readinessAt(
+  tx: Tx,
+  requirementId: string,
+  revision: number,
+): Promise<(ReadinessAtHead & { decidedAt: Date | null }) | null> {
+  const [s] = await tx
     .select({
       id: suggestions.id,
       payload: suggestions.payload,
@@ -371,10 +389,10 @@ async function readinessOf(row: Row) {
     .from(suggestions)
     .where(
       and(
-        eq(suggestions.requirementId, row.id),
+        eq(suggestions.requirementId, requirementId),
         eq(suggestions.kind, 'readiness'),
         eq(suggestions.status, 'accepted'),
-        eq(suggestions.baseRevision, row.currentRevision),
+        eq(suggestions.baseRevision, revision),
       ),
     )
     .orderBy(desc(suggestions.decidedAt))
@@ -383,11 +401,18 @@ async function readinessOf(row: Row) {
   const failed = ((s.payload as ReadinessPayload)?.checks ?? [])
     .filter((c) => !c.passed)
     .map((c) => c.check);
+  return { suggestionId: s.id, failed, decidedAt: s.decidedAt };
+}
+
+async function readinessOf(row: Row) {
+  if (row.currentRevision === null) return null;
+  const s = await readinessAt(db, row.id, row.currentRevision);
+  if (!s) return null;
   return {
     revision: row.currentRevision,
-    ready: failed.length === 0,
-    failed,
-    suggestionId: s.id,
+    ready: s.failed.length === 0,
+    failed: s.failed,
+    suggestionId: s.suggestionId,
     decidedAt: s.decidedAt?.toISOString() ?? null,
   };
 }

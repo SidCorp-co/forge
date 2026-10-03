@@ -87,6 +87,18 @@ async function propose(body: Doc) {
 
 const accept = (id: string) => call(person, 'POST', `/suggestions/${id}/accept`, {});
 
+/** A breakdown row written past the propose-time guard, as one written before it existed would be. */
+async function plantBreakdown(req: string, payload: Doc): Promise<string> {
+  const rows = (await harness.db.execute(sql`
+    INSERT INTO suggestions (project_id, kind, requirement_id, base_revision, payload, fingerprint, producer_kind)
+    SELECT ${projectId}, 'breakdown', id, current_revision, ${JSON.stringify(payload)}::jsonb, md5(random()::text), 'agent'
+      FROM requirements WHERE project_id = ${projectId} AND req_seq = ${Number(req.slice(4))}
+    RETURNING id`)) as unknown as { id: string }[];
+  const id = [...rows][0]?.id;
+  if (!id) throw new Error(`no requirement ${req} to plant a breakdown on`);
+  return id;
+}
+
 async function plantIssue(title: string): Promise<{ id: string; key: string }> {
   const r = await call(person, 'POST', '/issues', { title, status: 'open' });
   expect(r.status, JSON.stringify(r.body)).toBe(201);
@@ -146,7 +158,7 @@ describe('breakdown: accepting files the issues at draft, in one transaction', (
     const filed = accepted.body.effect.issues as { issueId: string; key: string }[];
     expect(filed).toHaveLength(2);
     const rows = (await harness.db.execute(sql`
-      SELECT i.id, i.status, i.planned_revision, r.req_seq,
+      SELECT i.id, i.status, i.planned_revision, r.req_seq, i.from_suggestion_id,
              (SELECT rc.code FROM issue_criteria c JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
                WHERE c.issue_id = i.id AND c.retired_at IS NULL LIMIT 1) AS traced,
              (SELECT count(*)::int FROM issue_criteria c WHERE c.issue_id = i.id AND c.retired_at IS NULL) AS criteria
@@ -158,6 +170,7 @@ describe('breakdown: accepting files the issues at draft, in one transaction', (
         planned_revision: 1,
         traced: 'BC-1',
         criteria: 1,
+        from_suggestion_id: sid,
       }),
       expect.objectContaining({ status: 'draft', planned_revision: 1, traced: null, criteria: 1 }),
     ]);
@@ -172,18 +185,30 @@ describe('breakdown: accepting files the issues at draft, in one transaction', (
     expect(detail.body.standing.waitingOn.act).toBe('promote 2 draft issues');
   });
 
-  it('a criterion tracing to a BC the revision does not hold refuses the accept by name and files nothing', async () => {
-    const req = await agreedRequirement('Exports');
-    const sid = await propose({
+  it('a criterion tracing to a BC the revision does not hold is refused at propose, by name', async () => {
+    const req = await agreedRequirement('Exports at propose');
+    const refused = await call(agent, 'POST', '/suggestions', {
       kind: 'breakdown',
       requirement: req,
       baseRevision: 1,
-      payload: {
-        issues: [
-          { title: 'Export A' },
-          { title: 'Export B', criteria: [{ body: 'x', tracesTo: 'BC-9' }] },
-        ],
-      },
+      payload: { issues: [{ title: 'Export', criteria: [{ body: 'x', tracesTo: 'BC-9' }] }] },
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
+    expect(refused.body.error.refusals).toEqual([
+      expect.objectContaining({
+        code: 'SUGGESTION_PAYLOAD_INVALID',
+        path: '/payload/issues/0/criteria/0/tracesTo',
+      }),
+    ]);
+  });
+
+  it('a criterion tracing to a BC the revision does not hold refuses the accept by name and files nothing', async () => {
+    const req = await agreedRequirement('Exports');
+    const sid = await plantBreakdown(req, {
+      issues: [
+        { title: 'Export A' },
+        { title: 'Export B', criteria: [{ body: 'x', tracesTo: 'BC-9' }] },
+      ],
     });
     const refused = await accept(sid);
     expect(refused.status).toBe(422);
@@ -202,17 +227,23 @@ describe('breakdown: accepting files the issues at draft, in one transaction', (
 describe('breakdown: blocks edges that form a cycle', () => {
   it('are refused by name at the entry that closes the cycle, and nothing is filed', async () => {
     const req = await agreedRequirement('Cycle');
-    const sid = await propose({
+    const payload = {
+      issues: [
+        { title: 'First', blockedBy: [1] },
+        { title: 'Second', blockedBy: [0] },
+      ],
+    };
+    const atPropose = await call(agent, 'POST', '/suggestions', {
       kind: 'breakdown',
       requirement: req,
       baseRevision: 1,
-      payload: {
-        issues: [
-          { title: 'First', blockedBy: [1] },
-          { title: 'Second', blockedBy: [0] },
-        ],
-      },
+      payload,
     });
+    expect(atPropose.status, JSON.stringify(atPropose.body)).toBe(422);
+    expect(atPropose.body.error.refusals[0]).toMatchObject({
+      path: '/payload/issues/1/blockedBy/0',
+    });
+    const sid = await plantBreakdown(req, payload);
     const refused = await accept(sid);
     expect(refused.status, JSON.stringify(refused.body)).toBe(422);
     expect(refused.body.error.refusals).toEqual([
@@ -221,6 +252,73 @@ describe('breakdown: blocks edges that form a cycle', () => {
         path: '/payload/issues/1/blockedBy/0',
       }),
     ]);
+    expect((await call(person, 'GET', `/requirements/${req}`)).body.issues).toEqual([]);
+    expect(await statusOf(sid)).toBe('proposed');
+  });
+});
+
+describe('breakdown: a blocker can be an existing issue of another requirement (ISS-89)', () => {
+  it('accepting writes the blocks edge from the named issue, in the same transaction', async () => {
+    const earlier = await plantIssue('Audit layer, from another requirement');
+    const req = await agreedRequirement('Builds on the audit layer');
+    const sid = await propose({
+      kind: 'breakdown',
+      requirement: req,
+      baseRevision: 1,
+      payload: {
+        issues: [
+          { title: 'Build', blockedBy: [earlier.key] },
+          { title: 'Report', blockedBy: [0, earlier.id] },
+        ],
+      },
+    });
+    const accepted = await accept(sid);
+    expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
+    const [build, report] = accepted.body.effect.issues as { issueId: string }[];
+    const edges = (await harness.db.execute(sql`
+      SELECT from_issue_id, to_issue_id FROM issue_dependencies
+       WHERE kind = 'blocks' AND from_issue_id = ${earlier.id} ORDER BY to_issue_id`)) as unknown as Doc[];
+    expect([...edges].map((e) => e.to_issue_id).sort()).toEqual(
+      [build?.issueId, report?.issueId].sort(),
+    );
+  });
+
+  it('an unknown or terminal issue is refused by name at propose', async () => {
+    const req = await agreedRequirement('Unknown blocker');
+    const gone = await plantIssue('Archived before the breakdown');
+    await harness.db.execute(sql`UPDATE issues SET archived_at = now() WHERE id = ${gone.id}`);
+    const refused = await call(agent, 'POST', '/suggestions', {
+      kind: 'breakdown',
+      requirement: req,
+      baseRevision: 1,
+      payload: { issues: [{ title: 'A', blockedBy: ['ISS-99999', gone.key] }] },
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
+    expect(refused.body.error.refusals).toEqual([
+      expect.objectContaining({
+        code: 'SUGGESTION_BLOCKER_UNKNOWN',
+        path: '/payload/issues/0/blockedBy/0',
+      }),
+      expect.objectContaining({
+        code: 'SUGGESTION_BLOCKER_TERMINAL',
+        path: '/payload/issues/0/blockedBy/1',
+      }),
+    ]);
+  });
+
+  it('a blocker that went terminal after the proposal refuses the accept and files nothing', async () => {
+    const req = await agreedRequirement('Blocker archived later');
+    const blocker = await plantIssue('Archived after the breakdown');
+    const sid = await propose({
+      kind: 'breakdown',
+      requirement: req,
+      baseRevision: 1,
+      payload: { issues: [{ title: 'A', blockedBy: [blocker.key] }] },
+    });
+    await harness.db.execute(sql`UPDATE issues SET archived_at = now() WHERE id = ${blocker.id}`);
+    const refused = await accept(sid);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
+    expect(refused.body.error.refusals[0]).toMatchObject({ code: 'SUGGESTION_BLOCKER_TERMINAL' });
     expect((await call(person, 'GET', `/requirements/${req}`)).body.issues).toEqual([]);
     expect(await statusOf(sid)).toBe('proposed');
   });
@@ -252,32 +350,42 @@ describe('readiness, triage and duplicate: each kind writes its own effect', () 
     expect(detail.body.readiness).toMatchObject({ revision: 1, ready: false, suggestionId: sid });
   });
 
-  it('triage on an issue sets its priority and category; a route the lifecycle does not define is refused', async () => {
+  it('triage on an issue sets its priority, category and complexity; its route becomes a note comment', async () => {
     const issue = await plantIssue('Triage me');
     const sid = await propose({
       kind: 'triage',
       issue: issue.id,
       baseRevision: null,
-      payload: { priority: 'high', category: 'bug', note: 'crashes on save' },
+      payload: { priority: 'high', category: 'bug', complexity: 's', note: 'crashes on save' },
     });
     const accepted = await accept(sid);
     expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
     const [row] = [
       ...((await harness.db.execute(
-        sql`SELECT priority, category FROM issues WHERE id = ${issue.id}`,
+        sql`SELECT priority, category, complexity FROM issues WHERE id = ${issue.id}`,
       )) as unknown as Doc[]),
     ];
-    expect(row).toEqual({ priority: 'high', category: 'bug' });
+    expect(row).toEqual({ priority: 'high', category: 'bug', complexity: 's' });
+    expect(accepted.body.effect).toMatchObject({ complexity: 's', routeCommentId: null });
     const routed = await propose({
       kind: 'triage',
       issue: issue.id,
       baseRevision: null,
       payload: { route: 'master', note: 'route it' },
     });
-    const refused = await accept(routed);
-    expect(refused.status).toBe(422);
-    expect(refused.body.error.code).toBe('SUGGESTION_EFFECT_UNDECIDED');
-    expect(await statusOf(routed)).toBe('proposed');
+    const noted = await accept(routed);
+    expect(noted.status, JSON.stringify(noted.body)).toBe(200);
+    expect(await statusOf(routed)).toBe('accepted');
+    const comments = (await harness.db.execute(
+      sql`SELECT id, intent, body FROM comments WHERE issue_id = ${issue.id}`,
+    )) as unknown as Doc[];
+    expect([...comments]).toEqual([
+      {
+        id: noted.body.effect.routeCommentId,
+        intent: 'note',
+        body: `Triage route (suggestion ${routed}): master\n\nroute it`,
+      },
+    ]);
   });
 
   it('duplicate on an issue drops it naming the root, with a relates edge; on a requirement it is refused', async () => {

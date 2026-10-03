@@ -18,7 +18,7 @@ import {
   EMBEDDING_PROVIDER_NOT_CONFIGURED,
   writeItemEmbedding,
 } from '../embeddings/item-writer.js';
-import { egressFor } from '../lib/data-egress.js';
+import { dataPolicyOf, type EgressSurface, egressAt, egressText } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
 import { requirementKey } from './read.js';
 
@@ -118,9 +118,11 @@ export type SimilarRequirements =
 export async function similarRequirements(
   projectId: string,
   text: string,
+  querySurface: EgressSurface,
   limit = 5,
 ): Promise<SimilarRequirements> {
-  const egress = await egressFor(projectId, text, 'the text to compare');
+  const level = await dataPolicyOf(projectId);
+  const egress = egressText(level, querySurface, text, 'the text to compare');
   if (!egress.ok) return { status: 'withheld_by_policy', message: egress.refusal.detail };
   if (!embeddingsConfigured()) {
     return { status: 'provider_not_configured', message: EMBEDDING_PROVIDER_NOT_CONFIGURED };
@@ -156,15 +158,18 @@ export async function similarRequirements(
       ),
     )
     .groupBy(itemEmbeddings.status);
+  const hits = rows.map((r) => ({
+    key: requirementKey(r.seq),
+    title: r.title,
+    similarity: Math.round((1 - Number(r.distance)) * 1000) / 1000,
+    revision: r.revision,
+  }));
+  const shown = egressAt(level, 'requirement', hits, 'the similar requirements');
+  if (!shown.ok) return { status: 'withheld_by_policy', message: shown.refusal.detail };
   return {
     status: 'ok',
     model,
-    hits: rows.map((r) => ({
-      key: requirementKey(r.seq),
-      title: r.title,
-      similarity: Math.round((1 - Number(r.distance)) * 1000) / 1000,
-      revision: r.revision,
-    })),
+    hits: shown.value,
     notEmbedded: Object.fromEntries(missing.map((m) => [m.status, m.n])),
   };
 }

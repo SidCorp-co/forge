@@ -56,6 +56,7 @@ export const PROJECT_MENU: ProjEntry[] = [
     label: "Development",
     icon: "code",
     items: [
+      { key: "proj-dev-overview", label: "Overview", icon: "activity", sub: "/overview" },
       { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
       { key: "proj-modules", label: "Modules", icon: "rows", sub: "/modules" },
       { key: "proj-agents", label: "Agents", icon: "agent", sub: "/agents" },

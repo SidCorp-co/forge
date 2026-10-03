@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type ProjectMemberRole } from '../db/schema.js';
+import { questionnaireBatches } from '../db/schema-onboarding.js';
 import {
   type AnswerShape,
   agentQuestions,
@@ -20,6 +21,8 @@ import {
 } from '../db/schema-questions.js';
 import type { PersonVia } from '../ecosystem/channel-schema.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import type { EgressSurface } from '../lib/data-egress.js';
+import { questionnaireSurface } from '../questionnaires/read.js';
 import {
   type AskAnswer,
   type AskInput,
@@ -222,6 +225,28 @@ export async function projectQuestionsFor(
     hasMore,
     nextCursor: hasMore && last ? encodeCursor(last.cursor) : null,
   };
+}
+
+// cm:why a question's surface is read off its own arc: a feedback clarification is `feedback`, a BA
+// clarification about a requirement is `requirement.clarification`, a questionnaire item takes its
+// batch's surface, and an agent's question on an issue is `issue.questions`
+export async function questionSurface(q: {
+  feedbackId: string | null;
+  requirementId: string | null;
+  batchId: string | null;
+}): Promise<EgressSurface> {
+  if (q.feedbackId !== null) return 'feedback';
+  if (q.requirementId !== null) return 'requirement.clarification';
+  if (q.batchId === null) return 'issue.questions';
+  const [batch] = await db
+    .select({
+      onboardingId: questionnaireBatches.onboardingId,
+      requirementId: questionnaireBatches.requirementId,
+    })
+    .from(questionnaireBatches)
+    .where(eq(questionnaireBatches.id, q.batchId));
+  if (!batch) throw new Error(`questions: questionnaire ${q.batchId} vanished under its item`);
+  return questionnaireSurface(batch);
 }
 
 export async function readQuestionFor(questionId: string, userId: string) {

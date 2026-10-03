@@ -13,8 +13,16 @@ import { feedback } from '../db/schema-feedback.js';
 import { itemEmbeddings } from '../db/schema-item-embeddings.js';
 import { writeItemEmbedding } from '../embeddings/item-writer.js';
 import { assertProjectAccess } from '../lib/authz.js';
+import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
-import { type FeedbackActor, feedbackKey, phaseOfRow, rowIn } from './read.js';
+import {
+  type FeedbackActor,
+  feedbackEgress,
+  feedbackKey,
+  phaseOfRow,
+  type ReadDoor,
+  rowIn,
+} from './read.js';
 
 /** Embeds the item's text, replacing whatever row it held; a redacted item holds none. */
 export async function embedFeedback(feedbackId: string) {
@@ -49,9 +57,11 @@ export async function similarFeedbackAs(
   viewer: FeedbackActor,
   projectId: string,
   ref: string,
+  door: ReadDoor = {},
   limit = 5,
 ): Promise<SimilarFeedbackResponse> {
   await assertProjectAccess(projectId, viewer.userId, 'viewer');
+  const { withhold, shown } = feedbackEgress(await dataPolicyOf(projectId), viewer.agency, door);
   const row = await rowIn(db, projectId, ref);
   const [own] = await db.select().from(itemEmbeddings).where(eq(itemEmbeddings.feedbackId, row.id));
   if (own?.status !== 'embedded' || !own.embedding || !own.model) {
@@ -81,16 +91,13 @@ export async function similarFeedbackAs(
     )
     .orderBy(distance)
     .limit(limit);
-  return {
-    status: 'ok',
-    model: own.model,
-    hits: await Promise.all(
-      rows.map(async (r) => ({
-        key: feedbackKey(r.row.fbSeq),
-        title: r.row.title,
-        phase: await phaseOfRow(projectId, r.row),
-        similarity: Math.round((1 - Number(r.distance)) * 1000) / 1000,
-      })),
-    ),
-  };
+  const hits = await Promise.all(
+    rows.map(async (r) => ({
+      key: feedbackKey(r.row.fbSeq),
+      title: withhold ? feedbackKey(r.row.fbSeq) : r.row.title,
+      phase: await phaseOfRow(projectId, r.row),
+      similarity: Math.round((1 - Number(r.distance)) * 1000) / 1000,
+    })),
+  );
+  return { status: 'ok', model: own.model, hits: shown(hits, 'the similar feedback') };
 }

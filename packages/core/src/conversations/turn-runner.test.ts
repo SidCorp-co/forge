@@ -32,6 +32,11 @@ vi.mock('./transcript.js', () => ({
   recordDeliveredReply: vi.fn(async () => ({ messageId: 'm1' })),
 }));
 
+let sensitiveData: 'off' | 'redact' | 'no_egress' = 'off';
+vi.mock('../project-config/service.js', () => ({
+  readProjectDocument: async () => ({ revision: 1, document: { sensitiveData } }),
+}));
+
 const { runConversationTurn } = await import('./turn-runner.js');
 
 const VENUE = {
@@ -62,6 +67,7 @@ function request(over: Record<string, unknown> = {}) {
 
 describe('a turn a person stopped', () => {
   beforeEach(() => {
+    sensitiveData = 'off';
     runExternalChatTurn.mockReset();
     deliver.mockReset();
     recordSilence.mockReset();
@@ -118,5 +124,35 @@ describe('a turn a person stopped', () => {
     await runConversationTurn(request({ externalStop: stop.signal, dispose }) as never);
 
     expect(dispose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a conversation with a person is operational content (the one egress rule)', () => {
+  beforeEach(() => {
+    runExternalChatTurn.mockReset();
+    deliver.mockReset();
+    recordSilence.mockReset();
+  });
+
+  it('no_egress: no turn is handed to a model, and the room is told by name', async () => {
+    sensitiveData = 'no_egress';
+    await runConversationTurn(request() as never);
+
+    expect(runExternalChatTurn).not.toHaveBeenCalled();
+    expect(JSON.stringify(deliver.mock.calls)).toContain('CONTENT_EGRESS_FORBIDDEN');
+  });
+
+  it.each(['off', 'redact'] as const)('%s: the turn is composed', async (level) => {
+    sensitiveData = level;
+    runExternalChatTurn.mockResolvedValue({
+      terminal: 'done',
+      reply: 'ok',
+      error: null,
+      toolCalls: [],
+      iterations: 1,
+    });
+    await runConversationTurn(request() as never);
+
+    expect(runExternalChatTurn).toHaveBeenCalledTimes(1);
   });
 });

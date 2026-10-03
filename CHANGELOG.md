@@ -137,6 +137,31 @@
 
 ### Added
 
+- **Development has a Modules list and a page for each module.** The list groups modules by what
+  needs you, what is moving and what is stuck, or as a tree, and a click opens a peek. A module's
+  page shows what is open in it, what landed, the paths and couplings its knowledge entry records
+  and the issues, requirements and feedback that touch it, from `GET /api/projects/:id/modules/rollup`
+  and `GET /api/projects/:id/modules/:module/detail`. Owner and contracts say "Not available": a
+  module records neither.
+
+- **Development has an Overview page.** It shows what is running, what is stuck and what waits on
+  you, from one read, `GET /api/projects/:id/development/overview`. CI and post-merge say "Not
+  available": core stores no branch-head check.
+
+- **A person re-pins a requirement when only a design moved.** Once a linked design is approved past
+  what the agreed baseline pins, a re-pin writes a new baseline with no new text revision. Plans
+  written before it read changed-since-plan.
+
+- **A person defers a requirement out of the current release, and undefers it.** A deferred
+  requirement waits on nobody and is not broken down; a defer needs a reason and no issue in work.
+
+- **An accept carries the signer's reason.** It is kept on the revision or suggestion and on the
+  baseline it writes, never the author's.
+
+- **A breakdown is checked when proposed, as when accepted, and its issues point back at it.** Its
+  `blockedBy` can name an existing issue of another requirement; an unknown or finished one is
+  refused by name.
+
 - **A storefront project's work can be judged on an unpublished draft.** A verdict names an Autoflow
   workflow, its draft version and a preview environment; Forge reads the draft back, and only a
   confirmed draft counts toward `awaiting_release`, never on a git project.
@@ -3273,6 +3298,17 @@
 
 - **A `forge_uploads` fetch carries the text it inlines in its structured answer.** A client reading
   the structured result no longer sees `inlined: true` with the body missing.
+- **One rule decides what an agent may read on a sensitive project.** Requirements, designs, issues,
+  criteria, comments and onboarding answers reach agents at every level, scrubbed on a redact or
+  no-egress project; feedback, its attachments and comments, and assistant conversations with people
+  are withheld on a no-egress project, whichever door the agent reads through. A read that no rule
+  names is refused rather than let through.
+- **A requirement can be held to its readiness result.** `requirements.readinessGate` in the project
+  config is `off`, `warn` or `block`: `warn` records the result on the baseline, `block` refuses an
+  agree without a ready result. Off by default.
+- **An accepted triage on an issue sets its priority, category and complexity**, and its route is
+  kept as a note comment on the issue instead of being refused.
+
 - **forge-runner no longer retires a resident master mid-turn.** It retires one only after an
   hour in which its pane reported no turn and no input, nothing was claimable and no child run
   was open; the log line names each.
