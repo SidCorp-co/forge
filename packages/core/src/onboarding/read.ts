@@ -12,7 +12,7 @@ import {
   QUESTIONNAIRE_DUE_DAYS,
   QUESTIONNAIRE_MAX_ROUNDS,
 } from '@forge/contracts/onboarding';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { onboardings, questionnaireBatches } from '../db/schema-onboarding.js';
@@ -187,10 +187,29 @@ export async function onboardingView(tx: Executor, row: OnboardingRow): Promise<
 const LIVE = new Set<string>(LIVE_JOB_STATUSES);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+/** The project's system-context design, by its template: none, drafted but not approved, or approved. */
+export type SystemContextState = 'none' | 'unapproved' | 'approved';
+
 // cm:why the hint is derived, never stored: it says what the onboarding's own rows say now, and it
-// leaves the dashboard once every onboarding design is approved (state `onboarded`)
-export function hintOf(view: OnboardingView | null, now: Date = new Date()): OnboardingHint | null {
+// leaves the dashboard once every onboarding design is approved (state `onboarded`). With no
+// onboarding it reads the project's system-context design, so a project that has one approved is
+// never told it has no system context (e2e D9)
+export function hintOf(
+  view: OnboardingView | null,
+  now: Date = new Date(),
+  systemContext: SystemContextState = 'none',
+): OnboardingHint | null {
   if (!view) {
+    if (systemContext === 'approved') return null;
+    if (systemContext === 'unapproved') {
+      return {
+        tone: 'you',
+        lead: 'System context not approved yet.',
+        text: 'A system-context design is drafted; approve it in Workflows, or let the agent draft the rest.',
+        action: 'start',
+        actionLabel: 'Start onboarding',
+      };
+    }
     return {
       tone: 'you',
       lead: 'No system context yet.',
@@ -272,7 +291,25 @@ export async function readOnboardingState(
   await assertProjectAccess(projectId, userId, 'viewer');
   const row = await onboardingOf(db, projectId);
   const view = row ? await onboardingView(db, row) : null;
-  return { onboarding: view, hint: hintOf(view) };
+  return {
+    onboarding: view,
+    hint: hintOf(view, new Date(), view ? 'none' : await systemContextOf(projectId)),
+  };
+}
+
+/** Whether `projectId` holds a design drawn on the `system-context` template, and whether one is approved. */
+export async function systemContextOf(projectId: string): Promise<SystemContextState> {
+  const rows = await db
+    .select({ designStatus: projectWorkflows.designStatus })
+    .from(projectWorkflows)
+    .where(
+      and(
+        eq(projectWorkflows.projectId, projectId),
+        sql`${projectWorkflows.document}->'template'->>'id' = 'system-context'`,
+      ),
+    );
+  if (rows.some((r) => r.designStatus === 'approved')) return 'approved';
+  return rows.length ? 'unapproved' : 'none';
 }
 
 /** Whether a workflow was drafted by this project's onboarding: such a design takes only a person's approval. */

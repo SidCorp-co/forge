@@ -93,8 +93,14 @@ const design = (status: string) => ({
 });
 
 describe('the dashboard hint (non-blocking, derived)', () => {
-  it('no onboarding: "No system context yet." with Start onboarding', () => {
+  it('no onboarding: the hint reads the system-context design, never claiming none when one exists', () => {
     expect(hintOf(null)).toMatchObject({ lead: 'No system context yet.', action: 'start' });
+    expect(hintOf(null, new Date(), 'none')).toMatchObject({ lead: 'No system context yet.' });
+    expect(hintOf(null, new Date(), 'unapproved')).toMatchObject({
+      lead: 'System context not approved yet.',
+      action: 'start',
+    });
+    expect(hintOf(null, new Date(), 'approved')).toBeNull();
   });
 
   it('a queued job waits on a runner checkout; a running one says so', () => {

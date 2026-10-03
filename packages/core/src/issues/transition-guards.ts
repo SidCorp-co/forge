@@ -9,8 +9,8 @@
  *   approved           plan and criteria written; a person made the move where   PLAN_REQUIRED
  *                      the project document sets `plan.approval.required`
  *   awaiting_release   every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
- *                      identity                                                  VERDICT_IDENTITY_REQUIRED
- *   closed             shipped (`merged-at.ts`, inside the write)                CLOSE_REQUIRES_SHIPPED
+ *                      identity, recorded after the latest reopen                VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN
+ *   closed             shipped; from in_progress after a reopen, as above        CLOSE_REQUIRES_SHIPPED + the three above
  *
  *   needs_info         a question (the reason) and its kind                      TRANSITION_REASON_REQUIRED,
  *                                                                                WAITING_KIND_REQUIRED
@@ -39,6 +39,7 @@ export type GuardCode =
   | 'PLAN_REQUIRED'
   | 'NO_WORK_EVIDENCE'
   | 'VERDICT_IDENTITY_REQUIRED'
+  | 'VERDICT_PREDATES_REOPEN'
   | 'TRANSITION_REASON_REQUIRED'
   | 'WAITING_KIND_REQUIRED'
   | 'VOID_REASON_REQUIRED';
@@ -191,14 +192,20 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
   return null;
 }
 
-/** awaiting_release: every criterion's latest verdict passes, and says what it held in. */
-async function verdictGuard(ctx: GuardContext): Promise<GuardFault | null> {
+/**
+ * awaiting_release: every criterion's latest verdict passes, says what it held in, and was recorded
+ * after the issue's latest reopen. `onlyIfReopened` is the in_progress → closed move, which asks
+ * this rule only of a reopened issue: there an earlier `merged_at` still stands, and without the
+ * rule a reopen could close again on the evidence it rejected.
+ */
+async function verdictGuard(ctx: GuardContext, onlyIfReopened = false): Promise<GuardFault | null> {
   const found = await unpassedCriteria(ctx.executor, ctx.issue.id);
+  if (onlyIfReopened && found.reopenedAt === null) return null;
+  const into = quote(ctx.to);
   if (found.kind === 'no-criteria') {
     return {
       code: 'NO_WORK_EVIDENCE',
-      detail:
-        '`awaiting_release` says every criterion holds a passing verdict, and this issue has no criteria for a verdict to hold on. Write them (`PUT /api/issues/:id/criteria`, or numbered `acceptanceCriteria`) and record a verdict on each (`POST /api/issues/:id/verdicts`), then move it.',
+      detail: `${into} says every criterion holds a passing verdict, and this issue has no criteria for a verdict to hold on. Write them (\`PUT /api/issues/:id/criteria\`, or numbered \`acceptanceCriteria\`) and record a verdict on each (\`POST /api/issues/:id/verdicts\`), then move it.`,
       details: { from: ctx.from, to: ctx.to, criteria: [] },
     };
   }
@@ -208,8 +215,21 @@ async function verdictGuard(ctx: GuardContext): Promise<GuardFault | null> {
       .join(', ');
     return {
       code: 'NO_WORK_EVIDENCE',
-      detail: `\`awaiting_release\` says every criterion holds a passing verdict, and criteria ${named} do not. A \`skipped\` or \`fail\` verdict never passes. Record a passing verdict on each, then move it.`,
+      detail: `${into} says every criterion holds a passing verdict, and criteria ${named} do not. A \`skipped\` or \`fail\` verdict never passes. Record a passing verdict on each, then move it.`,
       details: { from: ctx.from, to: ctx.to, unpassed: found.unpassed },
+    };
+  }
+  if (found.predateReopen.length > 0) {
+    const at = found.reopenedAt?.toISOString() ?? 'its reopen';
+    return {
+      code: 'VERDICT_PREDATES_REOPEN',
+      detail: `this issue was reopened at ${at}, and the passing verdicts on criteria ${found.predateReopen.join(', ')} were recorded before that: a reopen says the work was not right, so evidence from before it is not current. Record a new verdict on each against the work done since the reopen, then move it.`,
+      details: {
+        from: ctx.from,
+        to: ctx.to,
+        reopenedAt: found.reopenedAt?.toISOString() ?? null,
+        predateReopen: found.predateReopen,
+      },
     };
   }
   if (found.unidentified.length > 0) {
@@ -241,6 +261,8 @@ export async function guardFault(ctx: GuardContext): Promise<GuardFault | null> 
       return planGuard(ctx);
     case 'awaiting_release':
       return verdictGuard(ctx);
+    case 'closed':
+      return ctx.from === 'in_progress' ? verdictGuard(ctx, true) : null;
     default:
       return null;
   }

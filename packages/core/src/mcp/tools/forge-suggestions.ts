@@ -138,7 +138,14 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     }
     case 'accept':
-      return settle(await acceptSuggestion({ projectId, id: need(input, 'suggestionId'), actor }));
+      return settle(
+        await acceptSuggestion({
+          projectId,
+          id: need(input, 'suggestionId'),
+          actor,
+          channel: 'mcp',
+        }),
+      );
     case 'reject':
       return settle(
         await rejectSuggestion({

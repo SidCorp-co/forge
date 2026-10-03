@@ -113,9 +113,10 @@ nobody decided about, which nothing on this box will report for you.
 
 **A person's comment is answered on the issue.** When the nudge says a person is owed a reply on
 an issue, that is work at whatever status the issue stands, `in_progress` and `awaiting_release`
-included, which no admissible read lists. Read the thread, reply on the issue, and move it when the
-comment asks for that. Your reply is what takes it off the list, so a comment read and not answered
-is still owed on the next pass.
+included, which no admissible read lists. Read the thread, reply to that comment in its thread
+(`parentId` set to the comment id the nudge names), and move the issue when the comment asks for
+that. Only a threaded reply takes it off the list: a top-level comment on the issue, a note or a
+run's narration answers nothing, so a comment read and not replied to is still owed on the next pass.
 
 ## Declare a run before you dispatch it
 

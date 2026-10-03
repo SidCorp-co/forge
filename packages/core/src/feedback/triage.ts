@@ -8,16 +8,16 @@
 import type { FeedbackTriage, FeedbackTriageEffect } from '@forge/contracts/feedback';
 import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { type IssueStatus, issues } from '../db/schema.js';
+import { issues } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
+import { announceIssueCreated, insertIssueRow } from '../issues/create-service.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { hooks } from '../pipeline/hooks.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { requirementKey } from '../requirements/read.js';
 import { linkIssueRefusal } from '../requirements/rules.js';
@@ -73,23 +73,19 @@ async function fileDraftIssue(
       .where(eq(requirements.id, row.requirementId));
     if (req && !linkIssueRefusal(req.status)) requirementId = row.requirementId;
   }
-  const [issue] = await tx
-    .insert(issues)
-    .values({
-      projectId: row.projectId,
-      title: t.createIssue?.title ?? row.title,
-      description: t.createIssue?.description ?? carried,
-      descriptionFormat: 'markdown',
-      status: 'draft',
-      priority: t.severity ?? row.severity,
-      category: (t.kind ?? row.kind) === 'bug' ? 'bug' : 'feature',
-      createdById: actor.userId,
-      createdByDeviceId: null,
-      createdVia: channel,
-      requirementId,
-    })
-    .returning({ id: issues.id });
-  if (!issue) throw new Error('feedback: the draft issue insert returned no row');
+  const issue = await insertIssueRow(tx, {
+    projectId: row.projectId,
+    title: t.createIssue?.title ?? row.title,
+    description: t.createIssue?.description ?? carried,
+    descriptionFormat: 'markdown',
+    status: 'draft',
+    priority: t.severity ?? row.severity,
+    category: (t.kind ?? row.kind) === 'bug' ? 'bug' : 'feature',
+    createdById: actor.userId,
+    createdByDeviceId: null,
+    createdVia: channel,
+    requirementId,
+  });
   return issue.id;
 }
 
@@ -265,22 +261,7 @@ export async function announceTriage(written: TriageWritten, actor: FeedbackActo
   if (!written.createdIssueId) return;
   const [issue] = await db.select().from(issues).where(eq(issues.id, written.createdIssueId));
   if (!issue) return;
-  await hooks.emit('issueCreated', {
-    issueId: issue.id,
-    projectId: issue.projectId,
-    actor: { type: 'user', id: actor.userId, agency: actor.agency },
-    status: issue.status as IssueStatus,
-    snapshot: {
-      title: issue.title,
-      description: issue.description,
-      descriptionFormat: issue.descriptionFormat,
-      priority: issue.priority,
-      category: issue.category,
-      reportedBy: issue.reportedBy,
-      assigneeId: issue.assigneeId,
-      labels: [],
-    },
-  });
+  await announceIssueCreated(issue, { type: 'user', id: actor.userId, agency: actor.agency });
 }
 
 /** A person picks the route; an agent is FEEDBACK_DECIDE_FORBIDDEN and proposes it instead. */

@@ -55,8 +55,9 @@ export async function similarFeedbackAs(
   const row = await rowIn(db, projectId, ref);
   const [own] = await db.select().from(itemEmbeddings).where(eq(itemEmbeddings.feedbackId, row.id));
   if (own?.status !== 'embedded' || !own.embedding || !own.model) {
-    const status =
-      own?.status === 'provider_not_configured' ? 'provider_not_configured' : 'not_embedded';
+    // cm:guard the item's own row status is answered as it is: withheld_by_policy (a no_egress
+    // project), provider_not_configured or failed each say why, and only a missing row reads not_embedded
+    const status = own && own.status !== 'embedded' ? own.status : 'not_embedded';
     return {
       status,
       message:

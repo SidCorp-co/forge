@@ -21,6 +21,7 @@ import {
   requirements,
   requirementWorkflows,
 } from '../db/schema-requirements.js';
+import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
@@ -28,6 +29,7 @@ import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { changedSincePlan, type LinkedDesign, signoffRefusal } from './rules.js';
+import { provenPhase } from './standing.js';
 import { historyOf, standingsOf } from './standing-read.js';
 
 export interface RequirementActor {
@@ -110,18 +112,23 @@ export async function linkedDesigns(tx: Tx, requirementId: string): Promise<Link
   return rows;
 }
 
+// cm:why the phase and the BC coverage are the standing's (`standing.ts:provenPhase`): the view
+// counts issue statuses, the standing adds whether every current BC holds a passing verdict
 const deliveryOf = (
   d:
     | { phase: string | null; liveIssues: number; startedIssues: number; closedIssues: number }
     | undefined,
+  standing: RequirementStanding,
 ) => ({
-  phase: (d?.phase ?? null) as DeliveryPhase | null,
+  phase: provenPhase((d?.phase ?? null) as DeliveryPhase | null, standing.coverage),
   liveIssues: d?.liveIssues ?? 0,
   startedIssues: d?.startedIssues ?? 0,
   closedIssues: d?.closedIssues ?? 0,
-  // cm:why BC coverage needs issue criteria and verdicts (ISS-55); until they exist the phase reads
-  // issue statuses only, and says so rather than implying every BC was proven
-  criteriaCoverage: 'unmeasured' as const,
+  criteriaCoverage: {
+    criteria: standing.facts.criteria,
+    passing: standing.facts.passing,
+    judged: standing.facts.judged,
+  },
 });
 
 function summaryOf(
@@ -176,13 +183,14 @@ export async function listRequirementsAs(viewer: RequirementActor, projectId: st
   const deliveryBy = new Map(delivery.map((d) => [d.requirementId, d]));
   return rows.map((r) => {
     const l = latestBy.get(r.id);
+    const standing = standings.get(r.id) as RequirementStanding;
     return {
       ...summaryOf(
         r,
         l ? { revision: l.revision, state: l.state as RevisionState } : null,
-        deliveryOf(deliveryBy.get(r.id)),
+        deliveryOf(deliveryBy.get(r.id), standing),
       ),
-      standing: standings.get(r.id) as RequirementStanding,
+      standing,
     };
   });
 }
@@ -199,6 +207,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
     prefix,
     standing,
     history,
+    readiness,
   ] = await Promise.all([
     db
       .select()
@@ -254,6 +263,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
       .then((v) => standingsOf(row.projectId, [row], v))
       .then((m) => m.get(row.id) as RequirementStanding),
     historyOf(row.id, row.projectId),
+    readinessOf(row),
   ]);
   const people = await peopleOf([
     ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
@@ -265,7 +275,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
     ...summaryOf(
       row,
       latest ? { revision: latest.revision, state: latest.state as RevisionState } : null,
-      deliveryOf(delivery[0]),
+      deliveryOf(delivery[0], standing),
     ),
     revisions: revisions.map((r) => revisionView(r, criteria, people)),
     criteria:
@@ -308,6 +318,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
       : false,
     standing,
     history,
+    readiness,
   };
 }
 
@@ -334,7 +345,44 @@ function revisionView(
     decidedByName: name(r.decidedBy),
     decidedAt: r.decidedAt?.toISOString() ?? null,
     returnReason: r.returnReason,
+    fromSuggestionId: r.fromSuggestionId,
     criteria: rowsOfRevision(criteria, r.revision).map(criterionView),
+  };
+}
+
+type ReadinessPayload = { checks?: { check: string; passed: boolean }[] } | null;
+
+// cm:why workflow requirement-to-delivery step `ready`: readiness is a suggestion kind with no
+// table, so the readiness result at the head is the newest accepted readiness suggestion on it
+async function readinessOf(row: Row) {
+  if (row.currentRevision === null) return null;
+  const [s] = await db
+    .select({
+      id: suggestions.id,
+      payload: suggestions.payload,
+      decidedAt: suggestions.decidedAt,
+    })
+    .from(suggestions)
+    .where(
+      and(
+        eq(suggestions.requirementId, row.id),
+        eq(suggestions.kind, 'readiness'),
+        eq(suggestions.status, 'accepted'),
+        eq(suggestions.baseRevision, row.currentRevision),
+      ),
+    )
+    .orderBy(desc(suggestions.decidedAt))
+    .limit(1);
+  if (!s) return null;
+  const failed = ((s.payload as ReadinessPayload)?.checks ?? [])
+    .filter((c) => !c.passed)
+    .map((c) => c.check);
+  return {
+    revision: row.currentRevision,
+    ready: failed.length === 0,
+    failed,
+    suggestionId: s.id,
+    decidedAt: s.decidedAt?.toISOString() ?? null,
   };
 }
 

@@ -71,6 +71,7 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
     case 'VERDICT_IDENTITY_REQUIRED':
       return new HTTPException(422, { message: err.detail, cause });
     case 'NO_WORK_EVIDENCE':
+    case 'VERDICT_PREDATES_REOPEN':
     case 'NO_HOLDER':
     case 'ILLEGAL_TRANSITION':
       return new HTTPException(409, { message: err.detail, cause });

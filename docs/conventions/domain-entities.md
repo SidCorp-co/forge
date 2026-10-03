@@ -192,7 +192,10 @@ no writer gets a fourth state.
   (requirements walkthrough D6). Feedback is the reference: every triage, decline, verify, reopen and
   redaction inserts a `packages/core/src/db/schema-feedback.ts:feedbackDecisions` row, insert-only by
   `feedback_decision_guard()` in `packages/core/drizzle/migrations/0352_product_feedback_is_an_item.sql`.
-  Requirement returns are still a **target** (item 10).
+  A requirement return is a row each (`packages/core/src/db/schema-requirements.ts:requirementReturns`,
+  insert-only by `requirement_return_guard()` in
+  `packages/core/drizzle/migrations/0355_a_requirement_return_is_a_row.sql`); a re-proposal is still a
+  **target** (item 10).
 
 ## Data policy (sensitive projects)
 
@@ -320,7 +323,7 @@ slice to touch that code. Nothing below is migrated in this change.
 | 7 | Workflow design state is one head status, not per-revision `REVISION_STATES`; `decided_by_user` / `proposed_by_user` naming | review (migration) |
 | 8 | `contract_versions.decided_as` says `person` (and carries `before-approval`); `actor_agency` and `author_agency` have no CHECK | review (migration) |
 | 9 | Criteria and verdict rows are insert-only by comment, with no trigger | review (migration) |
-| 10 | A requirement return overwrites `proposed_at` / `return_reason`, with no row per decision (walkthrough D6) | review |
+| 10 | A re-proposal of a returned requirement revision overwrites `proposed_at` / `proposed_by`, with no row per proposal; returns have their own rows (walkthrough D6) | review |
 | 11 | Refusals name another requirement by uuid (`REQUIREMENT_ISSUE_LINKED_ELSEWHERE`, walkthrough D10) | review |
 | 12 | Who-may-act codes predating the suffix: `WORKFLOW_DESIGN_APPROVER_NOT_*`, `CONTRACT_APPROVER_NOT_*`, `CONTRACT_BREAKING_NEEDS_PERSON`, `WORKFLOW_WRITER_NOT_PROJECT`, `LINK_WRITER_NOT_CONSUMER` | review (a rename touches guides and MCP descriptions) |
 | 13 | `packages/core/src/ecosystem/builder-supersede-rules.ts:supersederRefusal` decides agency on its own (an org admin of either side may act, whatever the agency) | ISS-61 |
@@ -335,7 +338,7 @@ slice to touch that code. Nothing below is migrated in this change.
 | 22 | Feedback's target arc holds requirement, issue, release and workflow; a screen is `where_seen` text with no key, as the approved design has it, not the arc member REQ-7 BC-1 lists. A release is a `pipeline_runs` row | review |
 | 23 | Feedback's stored statuses are new, triaged, reopened, verified, declined; `planned` and `resolved` are derived on read from what the route carries (`packages/core/src/feedback/rules.ts:phaseOf`) | review |
 | 24 | The `answer` route stores its text on `feedback.answer`, not a decision comment, because comments have no feedback arc | review |
-| 25 | Feedback gaps the POC left: an agent's clarification answer is not turned into a triage suggestion; a high or critical item does not wake the master; deleting a reporter's data does not reach text already copied into a filed draft issue; a person on the MCP door is treated as provider-bound; the scrubber recognises a name only when it is labelled or marked as a patient; a clarification answer (written by the questions module) and a triage suggestion's note are stored unscrubbed | review |
+| 25 | Feedback gaps the POC left: an agent's clarification answer is not turned into a triage suggestion; a high or critical item does not wake the master; deleting a reporter's data does not reach text already copied into a filed draft issue; a person on the MCP door is treated as provider-bound; the scrubber recognises an unlabelled name only when it opens with a common Vietnamese surname (`packages/observability/src/personal-data.ts:scrubPersonalData` names the trade-off), so a name with a rarer surname still passes; a clarification answer (written by the questions module) and a triage suggestion's note are stored unscrubbed | review |
 | 26 | The conversation detail carries the room's questionnaire batches, and the list each room's `kind` and `threadStatus` (`packages/core/src/assistant/conversation-routes.ts`): a conversation route reading the onboarding and questionnaire rows instead of the client reading `/questionnaires/:bid` | review |
 | 27 | `onboardings.status` is set by each writer (start, post, submit, done), not derived on read from the batches and the job; the dashboard hint is derived (`packages/core/src/onboarding/read.ts:hintOf`) | review |
 | 28 | `POST /api/projects/:id/onboarding/join` adds the caller to the onboarding room, which can turn a direct room into a group; no rule decides who may join beyond project access | review |

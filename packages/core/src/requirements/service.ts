@@ -13,6 +13,7 @@ import {
   type RevisionState,
   requirementBaselinePins,
   requirementBaselines,
+  requirementReturns,
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
@@ -275,6 +276,12 @@ export async function returnRevision(input: {
       .update(requirementRevisions)
       .set({ state: 'draft', returnReason: input.reason.trim() })
       .where(revisionWhere(row.id, target.revision));
+    await tx.insert(requirementReturns).values({
+      requirementId: row.id,
+      revision: target.revision,
+      returnedBy: actor.userId,
+      reason: input.reason.trim(),
+    });
     return null;
   });
   return answer(projectId, row.id, actor, refusals);
@@ -309,6 +316,8 @@ export async function acceptRevision(input: {
   ref: string;
   actor: RequirementActor;
   revision: number;
+  /** The signer's own words; on an agreed requirement it is the re-baseline's reason. */
+  reason?: string | null | undefined;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
@@ -354,7 +363,16 @@ export async function acceptRevision(input: {
       })
       .where(eq(requirements.id, row.id));
     if (rebaseline) {
-      await writeBaseline(tx, row.id, target.revision, designs, actor, target.reason);
+      // cm:why the baseline records who re-agreed and in their own words; the revision's reason is
+      // its author's, already on the revision row
+      await writeBaseline(
+        tx,
+        row.id,
+        target.revision,
+        designs,
+        actor,
+        input.reason?.trim() || null,
+      );
     }
     await staleOnTargetRevised(tx, row.id, target.revision);
     return null;

@@ -5,8 +5,9 @@
  * below is the planted input its guard exists to refuse; `issues/transition-guards.ts` is the rule.
  *
  * Real Postgres, because the guards read the row inside the transition's own transaction — the
- * holder on `issue_work_state`, the plan columns, the verdict comments — and the left status is
- * written there in the same write.
+ * holder on `issue_work_state`, the plan columns, the criteria and their verdicts — and the left
+ * status is written there in the same write. Criteria and verdicts go through their own REST
+ * writers (ISS-55), never planted comments: the gate reads `criterion_verdicts`.
  */
 
 import { sql } from 'drizzle-orm';
@@ -35,9 +36,10 @@ beforeAll(async () => {
   process.env.PAT_PEPPER ??= 'test-pat-pepper-at-least-32-chars-long-aaaa';
   process.env.NODE_ENV ??= 'test';
 
-  const [transitionMod, routesMod, patMod, errMod] = await Promise.all([
+  const [transitionMod, routesMod, criteriaMod, patMod, errMod] = await Promise.all([
     import('../../src/issues/transition.js'),
     import('../../src/issues/routes.js'),
+    import('../../src/issues/criteria/routes.js'),
     import('../../src/auth/pat.js'),
     import('../../src/middleware/error.js'),
   ]);
@@ -45,6 +47,7 @@ beforeAll(async () => {
   app = new Hono();
   app.route('/api/issues', routesMod.issueRoutes);
   app.route('/api/issues', transitionMod.transitionRoutes);
+  app.route('/api/issues', criteriaMod.issueCriteriaRoutes);
   app.onError(errMod.errorHandler);
 }, 60_000);
 
@@ -81,14 +84,23 @@ async function insertIssue(
   extra: { plan?: string; criteria?: string; mergedAt?: boolean; waitingKind?: string } = {},
 ): Promise<string> {
   const rows = await harness.db.execute<{ id: string }>(sql`
-    INSERT INTO issues (project_id, title, created_by_id, status, plan, acceptance_criteria,
+    INSERT INTO issues (project_id, title, created_by_id, status, plan,
                         merged_at, waiting_kind)
     VALUES (${w.projectId}::uuid, 'an issue', ${w.humanId}::uuid, ${status},
-            ${extra.plan ?? null}, ${extra.criteria ?? null},
+            ${extra.plan ?? null},
             ${extra.mergedAt ? sql`now()` : sql`NULL`}, ${extra.waitingKind ?? null})
     RETURNING id
   `);
-  return (rows[0] as { id: string }).id;
+  const id = (rows[0] as { id: string }).id;
+  if (extra.criteria) {
+    const criteria = extra.criteria.split('\n').map((line) => {
+      const [, n, statement] = /^(\d+)\. (.+)$/.exec(line) ?? [];
+      return { n: Number(n), statement: statement as string };
+    });
+    const res = await call('PUT', `/api/issues/${id}/criteria`, w.human, { criteria });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+  }
+  return id;
 }
 
 /** A live lease on the issue's work state: what a claim leaves behind. */
@@ -100,40 +112,14 @@ async function holdLease(issueId: string): Promise<void> {
   `);
 }
 
-async function postVerdicts(
-  w: World,
-  issueId: string,
-  verdicts: Array<{ criterion: number; verdict: string; identity?: boolean }>,
-): Promise<void> {
-  const blocks = verdicts.flatMap((v) => [
-    `criterion: ${v.criterion} — exercised`,
-    `verdict: ${v.verdict}`,
-    ...(v.identity === false ? [] : [`runtime: ${PASSING_SHA}`]),
-    'why: exercised directly',
-    '',
-  ]);
-  const body = [
-    '## Judged',
-    '',
-    '```forge-record',
-    ...blocks,
-    '```',
-    '',
-    '`forge-record: verdict · contract 1`',
-  ].join('\n');
-  await harness.db.execute(sql`
-    INSERT INTO comments (id, issue_id, author_id, body)
-    VALUES (gen_random_uuid(), ${issueId}, ${w.humanId}, ${body})
-  `);
-}
-
-async function move(
-  issueId: string,
+async function call(
+  method: string,
+  path: string,
   token: string,
   body: Record<string, unknown>,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
-  const res = await app.request(`/api/issues/${issueId}/transition`, {
-    method: 'POST',
+  const res = await app.request(path, {
+    method,
     headers: {
       Authorization: `Bearer ${token}`,
       'content-type': 'application/json',
@@ -143,6 +129,36 @@ async function move(
   });
   return { status: res.status, body: (await res.json()) as Record<string, unknown> };
 }
+
+// One verdict per entry through the REST writer; `identity: false` plants the only identity-less
+// pass the gate can meet, a backfilled `commit_unresolved` abbreviation no writer can name.
+async function postVerdicts(
+  w: World,
+  issueId: string,
+  verdicts: Array<{ criterion: number; verdict: string; identity?: boolean }>,
+): Promise<void> {
+  for (const v of verdicts) {
+    if (v.identity === false) {
+      await harness.db.execute(sql`
+        INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, identity_kind, commit_sha,
+                                        author_agency, backfilled)
+        SELECT id, issue_id, ${v.verdict}, 'commit_unresolved', '1810f84', 'agent', true
+          FROM issue_criteria
+         WHERE issue_id = ${issueId} AND n = ${v.criterion} AND retired_at IS NULL
+      `);
+      continue;
+    }
+    const res = await call('POST', `/api/issues/${issueId}/verdicts`, w.agent, {
+      criterion: v.criterion,
+      verdict: v.verdict,
+      identity: { kind: 'commit', sha: PASSING_SHA },
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+  }
+}
+
+const move = (issueId: string, token: string, body: Record<string, unknown>) =>
+  call('POST', `/api/issues/${issueId}/transition`, token, body);
 
 async function statusOf(issueId: string): Promise<{ status: string; waitingKind: string | null }> {
   const rows = (await harness.db.execute(sql`
@@ -327,6 +343,59 @@ describe('awaiting_release needs a passing verdict on every criterion', () => {
       { criterion: 2, verdict: 'short' },
     ]);
     const res = await move(id, w.agent, { toStatus: 'awaiting_release' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+  });
+});
+
+// D6 of the 2026-10-04 e2e run: a reopen re-entered awaiting_release on the verdicts it rejected.
+describe('VERDICT_PREDATES_REOPEN: a reopen voids the verdicts recorded before it', () => {
+  async function reopened(w: World, extra: { mergedAt?: boolean } = {}): Promise<string> {
+    const id = await insertIssue(w, 'in_progress', { criteria: '1. one\n2. two', ...extra });
+    await postVerdicts(w, id, [
+      { criterion: 1, verdict: 'pass' },
+      { criterion: 2, verdict: 'pass' },
+    ]);
+    const into = await move(id, w.agent, { toStatus: 'awaiting_release' });
+    expect(into.status, JSON.stringify(into.body)).toBe(200);
+    const back = await move(id, w.human, { toStatus: 'reopen', reason: 'the export drops rows' });
+    expect(back.status, JSON.stringify(back.body)).toBe(200);
+    await holdLease(id);
+    const claimed = await move(id, w.agent, { toStatus: 'in_progress' });
+    expect(claimed.status, JSON.stringify(claimed.body)).toBe(200);
+    return id;
+  }
+
+  it('refuses awaiting_release on the passing verdicts from before the reopen, naming each', async () => {
+    const w = await world();
+    const id = await reopened(w);
+    const res = await move(id, w.agent, { toStatus: 'awaiting_release' });
+    expectRefused(res, 409, 'VERDICT_PREDATES_REOPEN');
+    expect((res.body.details as { predateReopen: number[] }).predateReopen).toEqual([1, 2]);
+    expect((await statusOf(id)).status).toBe('in_progress');
+  });
+
+  it('a verdict recorded after the reopen is current; one criterion still old is still refused', async () => {
+    const w = await world();
+    const id = await reopened(w);
+    await postVerdicts(w, id, [{ criterion: 1, verdict: 'pass' }]);
+    const partial = await move(id, w.agent, { toStatus: 'awaiting_release' });
+    expectRefused(partial, 409, 'VERDICT_PREDATES_REOPEN');
+    expect((partial.body.details as { predateReopen: number[] }).predateReopen).toEqual([2]);
+    await postVerdicts(w, id, [{ criterion: 2, verdict: 'pass' }]);
+    const res = await move(id, w.agent, { toStatus: 'awaiting_release' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+  });
+
+  it('a reopened issue cannot close from in_progress on its old merged_at and old verdicts', async () => {
+    const w = await world();
+    await seedProjectDocument(harness.db, w.projectId, w.humanId, { environments: {} });
+    const id = await reopened(w, { mergedAt: true });
+    expectRefused(await move(id, w.human, { toStatus: 'closed' }), 409, 'VERDICT_PREDATES_REOPEN');
+    await postVerdicts(w, id, [
+      { criterion: 1, verdict: 'pass' },
+      { criterion: 2, verdict: 'pass' },
+    ]);
+    const res = await move(id, w.human, { toStatus: 'closed' });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 });
