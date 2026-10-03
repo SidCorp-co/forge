@@ -26,7 +26,7 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { userNames } from '../workflows/service.js';
+import { type Person, peopleOf } from '../lib/people.js';
 import { changedSincePlan, type LinkedDesign, signoffRefusal } from './rules.js';
 import { historyOf, standingsOf } from './standing-read.js';
 
@@ -255,11 +255,11 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
       .then((m) => m.get(row.id) as RequirementStanding),
     historyOf(row.id, row.projectId),
   ]);
-  const names = await userNames([
+  const people = await peopleOf([
     ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
     ...baselines.map((b) => b.agreedBy),
   ]);
-  const name = (id: string | null) => (id === null ? null : (names.get(id) ?? null));
+  const name = (id: string | null) => (id === null ? null : (people.get(id)?.name ?? null));
   const latest = revisions[0];
   return {
     ...summaryOf(
@@ -267,7 +267,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
       latest ? { revision: latest.revision, state: latest.state as RevisionState } : null,
       deliveryOf(delivery[0]),
     ),
-    revisions: revisions.map((r) => revisionView(r, criteria, name)),
+    revisions: revisions.map((r) => revisionView(r, criteria, people)),
     criteria:
       row.currentRevision === null
         ? []
@@ -314,8 +314,9 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
 function revisionView(
   r: RevisionRow,
   criteria: readonly CriterionRow[],
-  name: (id: string | null) => string | null,
+  people: ReadonlyMap<string, Person>,
 ) {
+  const name = (id: string | null) => (id === null ? null : (people.get(id)?.name ?? null));
   return {
     revision: r.revision,
     state: r.state as RevisionState,
@@ -326,6 +327,7 @@ function revisionView(
     reason: r.reason,
     authorId: r.authorId,
     authorName: name(r.authorId),
+    authorKind: people.get(r.authorId)?.kind ?? ('human' as const),
     createdAt: r.createdAt.toISOString(),
     proposedAt: r.proposedAt?.toISOString() ?? null,
     decidedBy: r.decidedBy,

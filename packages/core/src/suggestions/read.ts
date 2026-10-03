@@ -13,6 +13,7 @@ import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
+import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
 import { assertProjectAccess } from '../lib/authz.js';
@@ -23,7 +24,10 @@ export interface SuggestionActor {
   agency: ActorAgency;
 }
 
-export type SuggestionTargetRef = { requirement: string } | { issue: string };
+export type SuggestionTargetRef =
+  | { requirement: string }
+  | { issue: string }
+  | { feedback: string };
 export interface SuggestionTarget {
   type: SuggestionTargetType;
   id: string;
@@ -37,7 +41,9 @@ export const notFound = (message: string) =>
 export const targetOfRow = (r: Row): SuggestionTarget =>
   r.requirementId
     ? { type: 'requirement', id: r.requirementId }
-    : { type: 'issue', id: r.issueId as string };
+    : r.feedbackId
+      ? { type: 'feedback', id: r.feedbackId }
+      : { type: 'issue', id: r.issueId as string };
 
 export const viewOf = (r: Row): SuggestionView => ({
   id: r.id,
@@ -59,7 +65,7 @@ export const viewOf = (r: Row): SuggestionView => ({
   payloadPurgedAt: r.payloadPurgedAt?.toISOString() ?? null,
 });
 
-/** A target of `projectId` by requirement uuid or key, or issue uuid or key; 404 otherwise. */
+/** A target of `projectId` by requirement, issue or feedback uuid or key; 404 otherwise. */
 export async function resolveTarget(
   projectId: string,
   target: SuggestionTargetRef,
@@ -67,6 +73,9 @@ export async function resolveTarget(
 ): Promise<SuggestionTarget> {
   if ('requirement' in target) {
     return { type: 'requirement', id: (await rowIn(db, projectId, target.requirement)).id };
+  }
+  if ('feedback' in target) {
+    return { type: 'feedback', id: (await feedbackRowIn(db, projectId, target.feedback)).id };
   }
   const issue = await resolveIssueRouteRef(target.issue, projectId, userId);
   if (issue.projectId !== projectId) {
@@ -76,9 +85,13 @@ export async function resolveTarget(
 }
 
 export const onTarget = (t: SuggestionTarget) =>
-  t.type === 'requirement' ? eq(suggestions.requirementId, t.id) : eq(suggestions.issueId, t.id);
+  t.type === 'requirement'
+    ? eq(suggestions.requirementId, t.id)
+    : t.type === 'feedback'
+      ? eq(suggestions.feedbackId, t.id)
+      : eq(suggestions.issueId, t.id);
 
-/** The target's head revision: a requirement's current revision, none for an issue. */
+/** The target's head revision: a requirement's current revision, none for an issue or feedback. */
 export async function headOf(tx: Tx, projectId: string, t: SuggestionTarget) {
   return t.type === 'requirement' ? (await rowIn(tx, projectId, t.id)).currentRevision : null;
 }

@@ -1,0 +1,69 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { feedbackApi } from "./api";
+import type { CreateFeedbackRequest, FeedbackAction, FeedbackResponse } from "./types";
+
+export function useFeedbackList(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["feedback", projectId ?? ""],
+    queryFn: () => feedbackApi.list(projectId as string),
+    enabled: Boolean(projectId),
+    staleTime: 15_000,
+  });
+}
+
+export function useFeedbackItem(projectId: string | undefined, key: string | undefined) {
+  return useQuery({
+    queryKey: ["feedback-item", projectId ?? "", key ?? ""],
+    queryFn: () => feedbackApi.get(projectId as string, key as string),
+    enabled: Boolean(projectId && key),
+    staleTime: 15_000,
+  });
+}
+
+export function useFeedbackProposals(projectId: string, feedbackId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ["feedback-proposals", projectId, feedbackId ?? ""],
+    queryFn: () => feedbackApi.proposals(projectId, feedbackId as string),
+    enabled: Boolean(feedbackId) && enabled,
+    staleTime: 15_000,
+  });
+}
+
+function useInvalidate(projectId: string) {
+  const qc = useQueryClient();
+  return () => {
+    qc.invalidateQueries({ queryKey: ["feedback", projectId] });
+    qc.invalidateQueries({ queryKey: ["feedback-item", projectId] });
+    qc.invalidateQueries({ queryKey: ["feedback-proposals", projectId] });
+  };
+}
+
+export function useCreateFeedback(projectId: string) {
+  const invalidate = useInvalidate(projectId);
+  return useMutation({
+    mutationFn: (body: CreateFeedbackRequest) => feedbackApi.create(projectId, body),
+    onSettled: invalidate,
+  });
+}
+
+/** Triage, decline, verify, reopen or delete reporter data; the answer is the item as it reads next. */
+export function useFeedbackAction(projectId: string, key: string) {
+  const qc = useQueryClient();
+  const invalidate = useInvalidate(projectId);
+  return useMutation({
+    mutationFn: (a: FeedbackAction) => feedbackApi.act(projectId, key, a),
+    onSuccess: (r: FeedbackResponse) => qc.setQueryData(["feedback-item", projectId, key], r),
+    onSettled: invalidate,
+  });
+}
+
+export function useDecideProposal(projectId: string) {
+  const invalidate = useInvalidate(projectId);
+  return useMutation({
+    mutationFn: (d: { id: string; decision: "accept" | "reject"; reason?: string }) =>
+      feedbackApi.decide(projectId, d.id, d.decision, d.reason),
+    onSettled: invalidate,
+  });
+}

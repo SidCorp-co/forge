@@ -14,6 +14,7 @@ export const KIND_LABEL: Record<SuggestionKind, string> = {
   breakdown: "Breakdown",
   triage: "Triage",
   duplicate: "Duplicate",
+  feedback_triage: "Feedback triage",
 };
 
 const PRODUCER_LABEL: Record<SuggestionProducer, string> = {
@@ -44,6 +45,8 @@ export function summaryOf(s: Suggestion): string {
       return `Duplicate of ${str(p.duplicateOf) ?? "?"}`;
     case "triage":
       return str(p.note) ?? "Triage";
+    case "feedback_triage":
+      return str(p.note) ?? `Route as ${str(p.route) ?? "?"}`;
   }
 }
 

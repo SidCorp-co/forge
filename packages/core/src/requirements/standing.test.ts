@@ -71,7 +71,7 @@ const BC3 = {
 const base = (over: Partial<StandingInput> = {}): StandingInput => ({
   status: 'agreed',
   phase: 'in_delivery',
-  owner: { id: 'lan', name: 'Lan' },
+  owner: { id: 'lan', name: 'Lan', kind: 'human' },
   viewer: LAN,
   revisions: [rev(2, 'current', { decidedAt: daysAgo(3) }), rev(1, 'superseded')],
   currentRevision: 2,

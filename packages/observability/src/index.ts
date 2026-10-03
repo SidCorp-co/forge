@@ -266,3 +266,11 @@ export function parseSourceCommit(raw: string | undefined): string | null {
 	const value = raw?.trim();
 	return value && SOURCE_COMMIT_PATTERN.test(value) ? value : null;
 }
+
+export {
+	PERSONAL_DATA_PLACEHOLDER,
+	type PersonalDataKind,
+	type PersonalDataScrub,
+	redactionCount,
+	scrubPersonalData,
+} from "./personal-data.js";

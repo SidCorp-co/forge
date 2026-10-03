@@ -2,7 +2,8 @@
 
 // The acts a requirement offers where it stands — review a proposal, propose a draft, agree the
 // head, accept a delivery — and the BA assistant door (ISS-58) that "Propose change" and the top
-// bar's Ask Agent open. The peek and the full page draw the same buttons from the same rules.
+// bar's Ask Agent open. The peek and the full page's header draw the same one primary act from the
+// same rules; "Propose change" sits with the revisions, Accept / Reject beside the diff.
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
@@ -63,7 +64,7 @@ export function PrimaryActions({
   slug: string;
   d: RequirementDetail;
   inPeek?: boolean;
-  /** On the full page, "Review proposal" scrolls to it; in the peek it opens the full page there. */
+  /** On the full page, "Review proposal" opens the revisions view; in the peek it opens the full page there. */
   onReview?: () => void;
 }) {
   const act = useRequirementAction(projectId, d.key);
@@ -76,7 +77,7 @@ export function PrimaryActions({
   if (proposed) {
     primary = inPeek ? (
       <Link
-        href={`${requirementHref(slug, d.key)}#proposal`}
+        href={`${requirementHref(slug, d.key)}?tab=revisions`}
         onClick={onReview}
         className="inline-flex h-8 items-center rounded-md bg-accent px-3 text-13 font-semibold text-on-accent hover:bg-accent-hover"
       >
@@ -108,12 +109,10 @@ export function PrimaryActions({
       </Tooltip>
     );
   }
+  if (!primary) return null;
   return (
-    <div className="grid gap-2">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {primary}
-        {s.attentionGroup !== "done" ? <ProposeChange projectId={projectId} reqKey={d.key} /> : null}
-      </div>
+    <div className="flex items-center gap-2">
+      {primary}
       <RefusalLine error={act.error} />
     </div>
   );

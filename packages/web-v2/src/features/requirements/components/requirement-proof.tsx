@@ -1,38 +1,37 @@
 "use client";
 
-// The full page's evidence: the revision diff a proposal carries, the proof chain (business
-// criterion → issues → verdict) and readiness, the relations rail, and the history by source.
+// The full page's views below the facts: the criteria with their verdicts and evidence, the
+// revisions and the diff a proposal carries, and the history by source.
 
-import { ISSUE_STATUS_LABELS, ISSUE_STATUS_TONES, type KernelIssueStatus } from "@forge/contracts/issue-vocabulary";
+import { ISSUE_STATUS_LABELS, type KernelIssueStatus } from "@forge/contracts/issue-vocabulary";
 import type { CoverageIssue, HistorySource, RequirementHistoryEntry } from "@forge/contracts/requirements";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
-import { AGENT_TINT, SegmentedControl, StatusChip } from "@/design";
-import { issueStatusChip } from "@/features/issues/derive";
-import type { IssueStatus } from "@/features/issues/types";
-import { workflowHref } from "@/features/workflows/routes";
+import { AGENT_TINT, SegmentedControl } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
-import { DesignStatusBadge } from "./badges";
-import { VerdictBadge, WhoMark, stamp, toneOf } from "./standing-bits";
+import { RevisionStateBadge } from "./badges";
+import { IssueChip, issueHref } from "./requirement-facts";
+import { PersonChip, VerdictBadge, WhoMark, stamp, toneOf } from "./standing-bits";
 
-const issueHref = (slug: string, key: string) => `/projects/${encodeURIComponent(slug)}/issues/${encodeURIComponent(key)}`;
 const issueWord = (s: string) => ISSUE_STATUS_LABELS[s as KernelIssueStatus] ?? s;
-const issueDot = (s: string) => toneOf(ISSUE_STATUS_TONES[s as KernelIssueStatus] ?? "neutral").dot;
 
-export function IssueChip({ status }: { status: string }) {
-  const c = issueStatusChip(status as IssueStatus);
-  return <StatusChip status={c.status} label={c.label} glyph={c.glyph} title={c.title} size="sm" />;
-}
-
-export function SubHead({ children, right }: { children: ReactNode; right?: ReactNode }) {
+/** A heading inside a view: primary colour, 15/600, so it can never be mistaken for a label. */
+export function ViewHeading({ children, right, id }: { children: ReactNode; right?: ReactNode; id?: string }) {
   return (
-    <div className="mb-1.5 mt-4 flex flex-wrap items-center gap-2 text-13 font-bold first:mt-1">
-      {children}
-      {right ? <span className="ml-auto text-12 font-medium text-subtle">{right}</span> : null}
+    <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+      <h2 id={id} className="text-15 font-semibold leading-snug text-fg">
+        {children}
+      </h2>
+      {right ? <div className="ml-auto flex items-center gap-2">{right}</div> : null}
     </div>
   );
+}
+
+/** A label above a group of values: secondary, but readable (WCAG AA on every ground it sits on). */
+export function FieldLabel({ children }: { children: ReactNode }) {
+  return <h3 className="mb-1.5 text-12-5 font-medium text-muted">{children}</h3>;
 }
 
 const Ins = ({ children }: { children: ReactNode }) => (
@@ -53,8 +52,8 @@ function listDiff(label: string, before: string[] = [], after: string[] = []) {
   if (added.length === 0 && removed.length === 0) return null;
   return (
     <div key={label}>
-      <h5 className="mb-1 mt-3 text-12-5 font-bold text-muted">{label}</h5>
-      <ul className="grid list-disc gap-0.5 pl-[18px] text-13-5">
+      <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">{label}</h4>
+      <ul className="grid list-disc gap-0.5 pl-[18px] text-14">
         {kept.map((x) => (
           <li key={`k-${x}`}>{x}</li>
         ))}
@@ -83,7 +82,7 @@ function criteriaDiff(before: RequirementCriterion[], after: RequirementCriterio
     const now = after.find((c) => c.code === code);
     if (was && now && was.body === now.body) continue;
     rows.push(
-      <div key={code} className="grid grid-cols-[44px_minmax(0,1fr)] gap-2.5 border-b border-line-subtle py-2 text-13 last:border-0">
+      <div key={code} className="grid grid-cols-[48px_minmax(0,1fr)] gap-2.5 border-b border-line-subtle py-2 text-14 last:border-0">
         <span className="font-mono text-11-5 font-semibold text-muted">{code}</span>
         <span className="grid gap-1">
           {was ? <Del>{was.body}</Del> : null}
@@ -95,7 +94,7 @@ function criteriaDiff(before: RequirementCriterion[], after: RequirementCriterio
   if (rows.length === 0) return null;
   return (
     <div key="criteria">
-      <h5 className="mb-1 mt-3 text-12-5 font-bold text-muted">Business criteria</h5>
+      <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">Business criteria</h4>
       {rows}
     </div>
   );
@@ -108,8 +107,8 @@ export function RevisionDiff({ base, next }: { base: RequirementRevision | undef
   const parts = [
     a.goal !== b.goal ? (
       <div key="goal">
-        <h5 className="mb-1 mt-3 text-12-5 font-bold text-muted">Goal and problem</h5>
-        <p className="grid gap-1 text-13-5">
+        <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">Goal and problem</h4>
+        <p className="grid gap-1 text-14">
           {a.goal ? <Del>{a.goal}</Del> : null}
           {b.goal ? <Ins>{b.goal}</Ins> : null}
         </p>
@@ -124,76 +123,104 @@ export function RevisionDiff({ base, next }: { base: RequirementRevision | undef
   return <div data-testid="revision-diff">{parts}</div>;
 }
 
-/** One line per issue, however many of its criteria trace here; each criterion's verdict on hover. */
+const VERDICT_WORD: Record<NonNullable<CoverageIssue["verdict"]>, string> = {
+  pass: "Pass",
+  short: "Short",
+  fail: "Fail",
+  skipped: "Skipped",
+};
+
+/** One line per issue, however many of its criteria trace here, with each criterion's evidence. */
 function byIssue(links: CoverageIssue[]) {
   const seen = new Map<string, CoverageIssue[]>();
   for (const l of links) seen.set(l.issueId, [...(seen.get(l.issueId) ?? []), l]);
-  return [...seen.values()].map((ls) => ({
-    i: ls[0] as CoverageIssue,
-    stale: ls.every((l) => l.stale),
-    tip: ls
-      .map((l) => `Criterion ${l.criterion} · ${l.verdict ? `latest verdict ${l.verdict}` : "no verdict yet"}${l.stale ? " · traces to an earlier wording" : ""}`)
-      .join("\n"),
-  }));
+  return [...seen.values()].map((ls) => ({ i: ls[0] as CoverageIssue, links: ls, stale: ls.every((l) => l.stale) }));
 }
 
-/** Business criterion → the issues whose criteria trace to it → its verdict. */
-export function ProofChain({ d, slug }: { d: RequirementDetail; slug: string }) {
+/** Each business criterion once: its wording, its verdict, the issues tracing to it inline, and the
+ *  per-criterion evidence behind an expander. */
+export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string }) {
   const cov = d.standing.coverage;
-  if (cov.length === 0) return <p className="py-1.5 text-12-5 text-subtle">No criteria to trace yet.</p>;
+  if (cov.length === 0) return <p className="py-1.5 text-13 text-subtle">No criteria yet. Readiness needs at least one testable criterion.</p>;
+  const shown = d.standing.shownRevision;
+  const wording = new Map(d.criteria.map((c) => [c.code, c]));
   return (
-    <div className="grid grid-cols-[52px_minmax(0,1fr)_auto] gap-x-3 text-13" data-testid="proof-chain">
-      {cov.map((c) => (
-        <div key={c.code} className="contents">
-          <div className="flex items-center border-b border-line-subtle py-2 font-mono text-11-5 font-bold text-muted">{c.code}</div>
-          <div className="flex min-w-0 flex-col gap-[5px] border-b border-line-subtle py-2">
-            <span>{c.body}</span>
-            <span className="flex flex-col items-start gap-0.5">
-              {c.issues.length === 0 ? (
-                <span className="text-12 text-muted before:mr-1 before:text-[var(--paper-400)] before:content-['↳']">
-                  {d.standing.facts.issuesTotal === 0 ? "Not broken down" : "No issue traces here yet"}
-                </span>
-              ) : (
-                byIssue(c.issues).map(({ i, tip, stale }) => (
-                  <span
-                    key={i.issueId}
-                    className="inline-flex min-w-0 items-center gap-[5px] text-12 text-muted before:text-[var(--paper-400)] before:content-['↳']"
-                    title={tip}
-                  >
-                    <span aria-hidden className="size-2 flex-none rounded-full" style={{ background: issueDot(i.status) }} />
-                    <Link href={issueHref(slug, i.displayId)} className="font-mono text-11-5 font-semibold text-link hover:underline">
-                      {i.displayId}
-                    </Link>
-                    <span className="max-w-[44ch] truncate">{i.title}</span>
-                    <span>· {issueWord(i.status)}</span>
-                    {stale ? <span className="text-subtle">· earlier wording</span> : null}
-                  </span>
-                ))
-              )}
+    <ul className="border-t border-line-subtle" data-testid="criteria-table">
+      {cov.map((c) => {
+        const crit = wording.get(c.code);
+        const issues = byIssue(c.issues);
+        return (
+          <li key={c.code} className="grid grid-cols-[52px_minmax(0,1fr)_auto] gap-x-3 border-b border-line-subtle py-3" data-testid="criterion-row">
+            <span className="pt-0.5 font-mono text-12 font-semibold text-muted" title={crit ? `Since r${crit.sinceRevision}` : undefined}>
+              {c.code}
             </span>
-          </div>
-          <div className="flex items-center justify-end border-b border-line-subtle py-2">
-            <VerdictBadge verdict={c.verdict} />
-          </div>
-        </div>
-      ))}
-    </div>
+            <div className="min-w-0">
+              {crit?.form === "scenario" ? (
+                <pre className="whitespace-pre-wrap font-mono text-12-5 leading-relaxed">{c.body}</pre>
+              ) : (
+                <p className="text-14 leading-relaxed">{c.body}</p>
+              )}
+              {crit && shown !== null && crit.sinceRevision === shown && shown > 1 ? (
+                <span className="mt-1 inline-block text-12 text-muted">Changed in r{shown}</span>
+              ) : null}
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-12-5">
+                {issues.length === 0 ? (
+                  <span className="text-subtle">{d.standing.facts.issuesTotal === 0 ? "Not broken down into issues yet" : "No issue traces here yet"}</span>
+                ) : (
+                  issues.map(({ i, stale }) => (
+                    <span key={i.issueId} className="inline-flex min-w-0 items-center gap-1.5">
+                      <Link href={issueHref(slug, i.displayId)} className="font-mono text-12 font-semibold text-link hover:underline">
+                        {i.displayId}
+                      </Link>
+                      <span className="max-w-[36ch] truncate text-muted" title={i.title}>
+                        {i.title}
+                      </span>
+                      <IssueChip status={i.status} />
+                      {stale ? <span className="text-subtle">Earlier wording</span> : null}
+                    </span>
+                  ))
+                )}
+              </div>
+              {c.issues.length > 0 ? (
+                <details className="mt-1.5 text-12-5" data-testid="criterion-evidence">
+                  <summary className="cursor-pointer select-none font-medium text-muted hover:text-fg">Evidence · {c.issues.length}</summary>
+                  <ul className="mt-1 grid gap-0.5 pl-3">
+                    {issues.flatMap(({ i, links }) =>
+                      links.map((l) => (
+                        <li key={`${i.issueId}-${l.criterion}`} className="text-muted">
+                          <span className="font-mono text-12">{i.displayId}</span> criterion {l.criterion} ·{" "}
+                          {l.verdict ? `latest verdict ${VERDICT_WORD[l.verdict]}` : "no verdict yet"}
+                          {l.stale ? " · traces to an earlier wording" : ""}
+                        </li>
+                      )),
+                    )}
+                  </ul>
+                </details>
+              ) : null}
+            </div>
+            <div className="pt-0.5">
+              <VerdictBadge verdict={c.verdict} />
+            </div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
 type Check = { check?: unknown; passed?: unknown; detail?: unknown };
 
-/** The newest readiness check the BA assistant proposed, as met-of-total and one mark per check. */
+/** The newest readiness check the BA assistant proposed, as one line: met of total, one mark per check. */
 export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
   const r = suggestions.find((s) => s.kind === "readiness");
   const raw = (r?.payload as { checks?: unknown } | null | undefined)?.checks;
   const checks = (Array.isArray(raw) ? raw : []) as Check[];
-  if (!r || checks.length === 0) return <p className="py-1.5 text-12-5 text-subtle">No readiness check yet.</p>;
+  if (!r || checks.length === 0) return <span className="text-muted">Readiness not checked yet</span>;
   const met = checks.filter((c) => c.passed === true).length;
   return (
-    <div className="flex flex-wrap items-center gap-2 py-1.5 text-12-5" data-testid="readiness">
+    <span className="inline-flex flex-wrap items-center gap-2" data-testid="readiness">
       <span title={checks.map((c) => `${c.passed === true ? "Met" : "Not met"} · ${String(c.check ?? "")}`).join("\n")}>
-        Met <b>{met} of {checks.length}</b>
+        Readiness <b className="font-semibold text-fg">{met} of {checks.length}</b> met
       </span>
       <span className="inline-flex gap-0.5">
         {checks.map((c) => (
@@ -205,94 +232,45 @@ export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
           />
         ))}
       </span>
-      {r.baseRevision !== null ? <span className="text-12 text-subtle">on r{r.baseRevision}</span> : null}
-    </div>
+      {r.baseRevision !== null ? <span className="text-subtle">on r{r.baseRevision}</span> : null}
+    </span>
   );
 }
 
-function H6({ children }: { children: ReactNode }) {
-  return <h6 className="mb-1 mt-3.5 flex items-center gap-1.5 text-12 font-semibold text-subtle">{children}</h6>;
-}
-
-function Prop({ k, children }: { k: string; children: ReactNode }) {
+/** Every revision newest first, as rows: number, state, author, what it changed, when. */
+export function RevisionList({ d }: { d: RequirementDetail }) {
+  if (d.revisions.length === 0) return <p className="text-13 text-subtle">No revision yet.</p>;
+  const agreed = new Map(d.baselines.map((b) => [b.revision, b]));
   return (
-    <div className="grid grid-cols-[86px_minmax(0,1fr)] items-center gap-2 py-[5px] text-12-5">
-      <span className="text-12 text-subtle">{k}</span>
-      <span className="min-w-0">{children}</span>
-    </div>
-  );
-}
-
-/** The rail: issues, designs, needs from other projects, then the requirement's properties. */
-export function RelationsRail({ d, slug }: { d: RequirementDetail; slug: string }) {
-  const f = d.standing.facts;
-  const baseline = d.baselines[0];
-  const needs = baseline?.pins.filter((p) => p.kind === "contract-version") ?? [];
-  return (
-    <>
-      <H6>
-        Issues {f.issuesDone} of {f.issuesTotal} done
-      </H6>
-      {d.issues.length === 0 ? (
-        <p className="py-1.5 text-12-5 text-subtle">No issues yet.</p>
-      ) : (
-        d.issues.map((i) => (
-          <div key={i.issueId} className="flex min-w-0 items-center gap-1.5 py-1 text-12-5" data-testid="rail-issue">
-            <Link href={issueHref(slug, i.displayId)} className="font-mono text-11-5 font-semibold text-link hover:underline">
-              {i.displayId}
-            </Link>
-            <span className="min-w-0 flex-1 truncate" title={i.changedSincePlan ? `${i.title} · planned on r${i.plannedRevision}; the requirement moved since` : i.title}>
-              {i.title}
+    <ul className="border-t border-line-subtle" data-testid="revision-list">
+      {d.revisions.map((r) => {
+        const signed = agreed.get(r.revision);
+        const at = r.decidedAt ?? r.proposedAt ?? r.createdAt;
+        return (
+          <li key={r.revision} className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-start gap-x-3 border-b border-line-subtle py-2.5 text-13">
+            <span className="pt-0.5 font-mono text-12 font-semibold text-fg">r{r.revision}</span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <RevisionStateBadge state={r.state} />
+                {signed ? (
+                  <span className="text-12 text-muted" title={`Agreed ${stamp(signed.agreedAt)}${signed.agreedByName ? ` by ${signed.agreedByName}` : ""}`}>
+                    Agreed
+                  </span>
+                ) : null}
+                <span className="text-12 text-muted">
+                  <PersonChip name={r.authorName ?? "Its author"} kind={r.authorKind} size={16} />
+                </span>
+              </div>
+              <p className="mt-1 text-13-5">{r.changeSummary ?? r.reason}</p>
+              {r.returnReason ? <p className="mt-0.5 text-12-5 text-muted">Returned: {r.returnReason}</p> : null}
+            </div>
+            <span className="whitespace-nowrap pt-0.5 text-12 text-subtle" title={stamp(at)}>
+              {formatRelativeTime(at)}
             </span>
-            {i.changedSincePlan ? (
-              <span role="img" aria-label="Changed since plan" title="Changed since plan" className="size-1.5 flex-none rounded-full" style={{ background: toneOf("you").dot }} />
-            ) : null}
-            <IssueChip status={i.status} />
-          </div>
-        ))
-      )}
-      {d.workflows.length > 0 ? (
-        <>
-          <H6>Design</H6>
-          {d.workflows.map((w) => (
-            <div key={w.workflowId} className="flex min-w-0 items-center gap-1.5 py-1 text-12-5">
-              <Link href={workflowHref(slug, w.flow)} className="min-w-0 flex-1 truncate text-link hover:underline">
-                {w.title}
-              </Link>
-              {w.designStatus ? <DesignStatusBadge status={w.designStatus} /> : null}
-            </div>
-          ))}
-        </>
-      ) : null}
-      {needs.length > 0 ? (
-        <>
-          <H6>Needs from other projects</H6>
-          {needs.map((p) => (
-            <div key={`${p.contractSlug}@${p.contractVersion}`} className="py-1 font-mono text-12" title="Pinned at the agree">
-              {p.contractSlug} ≥ {p.contractVersion}
-            </div>
-          ))}
-        </>
-      ) : null}
-      <H6>Properties</H6>
-      <Prop k="Owner">{d.standing.owner?.name ?? <span className="text-subtle">None</span>}</Prop>
-      <Prop k="Revision">
-        {d.currentRevision !== null ? `Rev ${d.currentRevision}` : "None accepted"}
-        {f.proposedRevision !== null ? ` · rev ${f.proposedRevision} proposed` : ""}
-      </Prop>
-      <Prop k="Agreed">
-        {baseline ? (
-          <span title={stamp(baseline.agreedAt)}>
-            r{baseline.revision} · {baseline.agreedByName ?? "a signer"}
-          </span>
-        ) : (
-          <span className="text-subtle">Not yet</span>
-        )}
-      </Prop>
-      <Prop k="Created">
-        <span title={stamp(d.createdAt)}>{formatRelativeTime(d.createdAt)}</span>
-      </Prop>
-    </>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -326,10 +304,10 @@ export function History({ entries }: { entries: RequirementHistoryEntry[] }) {
   const count = (s: "all" | HistorySource) => (s === "all" ? entries.length : entries.filter((e) => e.source === s).length);
   const options = SOURCES.filter((o) => count(o.value) > 0).map((o) => ({ ...o, count: count(o.value) }));
   const shown = entries.filter((e) => source === "all" || e.source === source);
-  if (entries.length === 0) return <p className="py-1.5 text-12-5 text-subtle">Nothing recorded yet.</p>;
+  if (entries.length === 0) return <p className="py-1.5 text-13 text-subtle">Nothing recorded yet.</p>;
   return (
     <div data-testid="requirement-history">
-      <div className="mb-2">
+      <div className="mb-3">
         <SegmentedControl options={options} value={source} onChange={setSource} />
       </div>
       <ul>
@@ -338,7 +316,7 @@ export function History({ entries }: { entries: RequirementHistoryEntry[] }) {
           return (
             <li
               key={e.id}
-              className="grid grid-cols-[20px_minmax(0,1fr)] gap-2 border-b border-line-subtle py-2 text-13 last:border-0"
+              className="grid grid-cols-[20px_minmax(0,1fr)] gap-2.5 border-b border-line-subtle py-2.5 text-14 last:border-0"
               style={question ? { background: AGENT_TINT.bg, borderLeft: `3px solid ${AGENT_TINT.dot}`, paddingLeft: 6 } : undefined}
             >
               <span className="pt-px">
@@ -346,8 +324,8 @@ export function History({ entries }: { entries: RequirementHistoryEntry[] }) {
               </span>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5 text-12 text-subtle">
-                  <b className="text-12-5 font-semibold text-fg">{e.who}</b>
-                  <span className="rounded-[4px] bg-sunken px-1.5 text-11-5 font-medium text-muted">{e.kind}</span>
+                  <b className="text-13 font-semibold text-fg">{e.who}</b>
+                  <span className="text-12 font-medium text-muted">{e.kind}</span>
                   <span title={stamp(e.at)}>{formatRelativeTime(e.at)}</span>
                 </div>
                 <div className="mt-0.5 break-words">{entryText(e)}</div>

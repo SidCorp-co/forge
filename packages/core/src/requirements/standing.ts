@@ -57,7 +57,7 @@ export interface StandingIssueCriterion {
 export interface StandingInput {
   status: RequirementStatus;
   phase: DeliveryPhase | null;
-  owner: { id: string; name: string | null } | null;
+  owner: RequirementStanding['owner'];
   /** Null for a reader with no person behind it; nothing then reads as theirs. */
   viewer: { userId: string; canSignOff: boolean } | null;
   revisions: readonly StandingRevision[];
