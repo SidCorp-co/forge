@@ -94,6 +94,7 @@ export function WorkflowsScreen({ projectId, slug, projectName }: { projectId: s
           <SystemOverviewRegion
             records={all}
             templates={templates}
+            projectId={projectId}
             slug={slug}
             projectName={projectName}
             sensitivity={sensitivityOf(projectDocument.data?.document)}

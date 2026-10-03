@@ -201,6 +201,7 @@ export default function ProjectOverviewPage() {
         {workflowsQ.data && workflowsQ.data.workflows.length > 0 ? (
           <SystemOverviewRegion
             records={workflowsQ.data.workflows}
+            projectId={project.id}
             templates={(templatesQ.data?.templates ?? []).map((t) => t.template)}
             slug={project.slug}
             projectName={project.name}

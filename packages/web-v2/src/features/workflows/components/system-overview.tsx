@@ -5,6 +5,10 @@ import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Icon, Tooltip } from "@/design";
+import { useOpenOnboarding } from "@/features/onboarding/components/onboarding-hint";
+import { useOnboardingState } from "@/features/onboarding/hooks";
+import { formatApiError } from "@/lib/api/error";
+import { refusalsOf } from "@/lib/api/refusals";
 import { cn } from "@/lib/utils/cn";
 import { layoutContext } from "../c4/context-layout";
 import { C4Diagram } from "../c4/diagram";
@@ -105,9 +109,49 @@ function Summary({ text, lines }: { text: string; lines: 2 | 3 }) {
   );
 }
 
+/**
+ * One quiet line when the project has no system-context design yet. On Workflows it offers onboarding
+ * (ISS-63), which drafts that design first; the dashboard carries onboarding's own line, so it does not.
+ */
+function NoContext({ projectId, quiet }: { projectId: string; quiet: boolean }) {
+  const state = useOnboardingState(quiet ? undefined : projectId);
+  const { open, pending, error } = useOpenOnboarding(projectId);
+  const action = state.data?.hint?.action ?? "start";
+  const refusal = error ? (refusalsOf(error)[0]?.detail ?? formatApiError(error)) : null;
+  return (
+    <section className="border-b border-line-subtle bg-surface px-7 py-4 max-md:px-4" aria-label="System overview" data-testid="system-overview" data-empty>
+      <p className="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-13-5">
+        <b className="font-semibold">No system context yet.</b>
+        {quiet ? (
+          <span className="text-muted">Workflows shows what the system is once its system-context design is drawn.</span>
+        ) : (
+          <>
+            <span className="text-muted">Onboarding drafts it first, from the code and a few questions.</span>
+            <button
+              type="button"
+              className="font-semibold text-link hover:underline disabled:opacity-60"
+              disabled={pending}
+              onClick={() => void open(action).catch(() => undefined)}
+              data-testid="start-onboarding"
+            >
+              {action === "start" ? "Start onboarding" : "Open onboarding"}
+            </button>
+          </>
+        )}
+      </p>
+      {refusal ? (
+        <p role="alert" className="mt-1 text-12 text-red">
+          {refusal}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 export interface SystemOverviewRegionProps {
   records: readonly WorkflowRecord[];
   templates: readonly WorkflowTemplate[];
+  projectId: string;
   slug: string;
   projectName: string;
   /** The project document's data policy, when it restricts anything. */
@@ -120,24 +164,13 @@ export interface SystemOverviewRegionProps {
  * What the system is, read from its system-context design: the summary, the facts it states and the
  * C4 level 1 diagram, fitted whole into the region.
  */
-export function SystemOverviewRegion({ records, templates, slug, projectName, sensitivity = null, variant = "page" }: SystemOverviewRegionProps) {
+export function SystemOverviewRegion({ records, templates, projectId, slug, projectName, sensitivity = null, variant = "page" }: SystemOverviewRegionProps) {
   const o = useMemo(() => systemOverview(records, templates), [records, templates]);
   const diagram = useMemo(() => (o ? layoutContext(o.model) : null), [o]);
   const compact = variant === "compact";
   const workflows = `/projects/${encodeURIComponent(slug)}/workflows`;
 
-  if (!o) {
-    return (
-      <section className="border-b border-line-subtle bg-surface px-7 py-4 max-md:px-4" aria-label="System overview" data-testid="system-overview" data-empty>
-        <p className="m-0 flex flex-wrap items-center gap-x-2 text-13-5">
-          <b className="font-semibold">No system context yet.</b>
-          <span className="text-muted">
-            Ask the project&apos;s master to draw one in the system-context template: it is the design the others name.
-          </span>
-        </p>
-      </section>
-    );
-  }
+  if (!o) return <NoContext projectId={projectId} quiet={compact} />;
   const design = o.record;
   const status = design.design.status;
   return (
