@@ -4,7 +4,7 @@
 // not know.
 
 import { z } from "zod";
-import type { DataEgressRefusalCode } from "./data-policy.js";
+import type { DataEgressRefusalCode, SensitiveDataLevel } from "./data-policy.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 
 /** The onboarding thread's status, as the conversation list and the dashboard hint show it. */
@@ -266,6 +266,8 @@ export interface QuestionnaireView {
 	supersededBy: string | null;
 	messageId: string | null;
 	answersMessageId: string | null;
+	/** The project's data policy: above `off` the card warns that answers are product information only. */
+	sensitiveData: SensitiveDataLevel;
 }
 
 export interface QuestionnaireResponse {
