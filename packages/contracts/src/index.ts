@@ -18,6 +18,7 @@ export * from "./pipeline-registry.js";
 export * from "./reconcile.js";
 export * from "./record-events.js";
 export * from "./requests.js";
+export * from "./requirement-standing.js";
 export * from "./responses.js";
 export * from "./rows.js";
 export * from "./skill-activity.js";

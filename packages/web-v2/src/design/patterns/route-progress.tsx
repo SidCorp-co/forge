@@ -57,8 +57,8 @@ export function RouteProgress() {
 
     const origPush = history.pushState;
     const origReplace = history.replaceState;
-    history.pushState = function (...a: Parameters<typeof origPush>) { if (!isSamePath(a[2])) start(); return origPush.apply(this, a); };
-    history.replaceState = function (...a: Parameters<typeof origReplace>) { if (!isSamePath(a[2])) start(); return origReplace.apply(this, a); };
+    history.pushState = function (...a: Parameters<typeof origPush>) { if (!isSamePath(a[2])) queueMicrotask(start); return origPush.apply(this, a); };
+    history.replaceState = function (...a: Parameters<typeof origReplace>) { if (!isSamePath(a[2])) queueMicrotask(start); return origReplace.apply(this, a); };
     const onPop = () => start();
     const onClick = (e: MouseEvent) => {
       const a = (e.target as HTMLElement)?.closest?.("a");

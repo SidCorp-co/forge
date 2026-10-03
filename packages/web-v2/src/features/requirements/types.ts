@@ -1,3 +1,5 @@
+import type { RequirementHistoryEntry, RequirementStanding } from '@forge/contracts/requirement-standing';
+
 export type RequirementStatus = 'draft' | 'agreed' | 'accepted' | 'dropped';
 export type RevisionState = 'draft' | 'proposed' | 'current' | 'superseded';
 export type DeliveryPhase = 'agreed' | 'in_delivery' | 'delivered';
@@ -9,6 +11,8 @@ export interface RequirementSummary {
   latestRevision: { revision: number; state: RevisionState } | null;
   delivery: RequirementDelivery;
   createdAt: string; updatedAt: string;
+  /** Where it stands, derived in core (`requirements/standing.ts`): group, waiting on, facts, coverage. */
+  standing: RequirementStanding;
 }
 export interface RequirementCriterion { id: string; code: string; body: string; form: 'statement' | 'scenario'; sinceRevision: number; retiredRevision: number | null }
 export interface RequirementRevision {
@@ -29,6 +33,7 @@ export interface RequirementDetail extends RequirementSummary {
   baselines: RequirementBaseline[];   // newest first
   issues: RequirementIssueLink[];
   canSignOff: boolean;                // the viewer is a person allowed to accept / return / agree
+  history: RequirementHistoryEntry[];  // newest first
 }
 
 export interface RequirementList { requirements: RequirementSummary[]; returned: number }

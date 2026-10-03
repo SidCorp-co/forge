@@ -1,230 +1,244 @@
 "use client";
 
-import Link from "next/link";
-import { useState, type ReactNode } from "react";
-import { Button, ErrorState, Input, ProjectLoader } from "@/design";
+// A requirement's full page (`forge-prototype.html` #/requirements/REQ-12): a main column of four
+// zones — 1 Where it stands, 2 What it is, 3 Proof, 5 History — and the relations rail (4), each a
+// region by background tone rather than a box. Everything derived (whose turn, coverage, history)
+// comes from core's read model; this file only lays it out.
+
+import type { ReactNode } from "react";
+import { ErrorState, ProjectLoader } from "@/design";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
+import { cn } from "@/lib/utils/cn";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { workflowHref } from "@/features/workflows/routes";
-import { useRequirement, useRequirementAction } from "../hooks";
-import type {
-  RequirementBaseline,
-  RequirementCriterion,
-  RequirementDetail,
-  RequirementPin,
-  RequirementRevision,
-} from "../types";
-import {
-  DesignStatusBadge,
-  IssueStatusBadge,
-  PhaseBadge,
-  RequirementStatusBadge,
-  RevisionStateBadge,
-} from "./badges";
-import { RefusalLine } from "./refusal";
-import { RequirementSuggestions } from "./suggestions";
+import { useRequirement, useRequirementSuggestions } from "../hooks";
+import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
+import { PrimaryActions, ProposalDecision } from "./requirement-actions";
+import { Source, decidingFacts } from "./requirement-peek";
+import { History, ProofChain, Readiness, RelationsRail, RevisionDiff, SubHead } from "./requirement-proof";
+import { CoverageMarks, RevisionTimeline, StateBadge, Stepper, WaitBanner, stamp } from "./standing-bits";
+import { PendingBadge, RequirementSuggestions } from "./suggestions";
+import { AI_TINT } from "./tone";
 
-const stamp = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : null);
-
-function Section({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+function ZoneHead({ n, title, q, rail }: { n: number; title: string; q: string; rail?: boolean }) {
   return (
-    <section className="grid gap-2">
-      <h3 className="text-12 font-semibold text-muted">
-        {title}
-        {count !== undefined ? <span className="ml-1.5 font-normal text-subtle">{count}</span> : null}
-      </h3>
+    <h2
+      id={`zone-${n}`}
+      className={cn(
+        "mb-3 flex items-baseline gap-2 bg-sunken py-[7px] text-13 font-bold",
+        rail ? "-mx-4 px-4 max-md:-mx-3 max-md:px-3" : "-ml-5 -mr-6 px-5 max-md:-mx-3 max-md:px-3",
+      )}
+    >
+      <span className="font-mono text-11 font-semibold text-subtle">{n}</span>
+      {title}
+      <span className="text-12 font-medium text-subtle">{q}</span>
+    </h2>
+  );
+}
+
+function Zone({ n, title, q, children, className }: { n: number; title: string; q: string; children: ReactNode; className?: string }) {
+  return (
+    <section aria-labelledby={`zone-${n}`} className={cn("min-w-0 pb-5 pl-5 pr-6 max-md:px-3", className)} data-testid={`zone-${n}`}>
+      <ZoneHead n={n} title={title} q={q} />
       {children}
     </section>
   );
 }
 
-const Quiet = ({ children }: { children: ReactNode }) => <p className="text-13 text-subtle">{children}</p>;
-
-function Bullets({ items }: { items: string[] }) {
+function Label({ children, note }: { children: ReactNode; note?: string }) {
   return (
-    <ul className="grid list-disc gap-1 pl-5 text-14">
-      {items.map((s) => (
-        <li key={s}>{s}</li>
-      ))}
-    </ul>
-  );
-}
-
-function Criteria({ criteria }: { criteria: RequirementCriterion[] }) {
-  if (criteria.length === 0) return <Quiet>No criteria.</Quiet>;
-  return (
-    <ul className="grid gap-2.5" data-testid="requirement-criteria">
-      {criteria.map((c) => (
-        <li key={c.id} className="grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-3 text-14">
-          <span className="pt-px font-mono text-12 text-muted" title={`Since r${c.sinceRevision}`}>
-            {c.code}
-          </span>
-          <div className="grid gap-1">
-            {c.form === "scenario" ? (
-              <>
-                <span className="text-11 font-semibold text-subtle" title="form: scenario">
-                  Scenario
-                </span>
-                <pre className="whitespace-pre-wrap font-mono text-12 leading-relaxed">{c.body}</pre>
-              </>
-            ) : (
-              <span>{c.body}</span>
-            )}
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function revisionTip(r: RequirementRevision): string {
-  return [
-    `Written ${stamp(r.createdAt)}`,
-    r.proposedAt ? `Proposed ${stamp(r.proposedAt)}` : null,
-    r.decidedAt ? `Decided ${stamp(r.decidedAt)} by ${r.decidedByName ?? r.decidedBy}` : null,
-    r.returnReason ? `Returned: ${r.returnReason}` : null,
-    r.baseRevision !== null ? `Based on r${r.baseRevision}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-function RevisionHistory({ revisions }: { revisions: RequirementRevision[] }) {
-  return (
-    <ul className="grid" data-testid="requirement-revisions">
-      {revisions.map((r) => (
-        <li
-          key={r.revision}
-          className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line-subtle py-2 text-13 last:border-0"
-          title={revisionTip(r)}
-        >
-          <span className="w-8 font-mono text-12 text-muted">r{r.revision}</span>
-          <RevisionStateBadge state={r.state} />
-          <span className="text-muted">{r.authorName ?? "Unknown author"}</span>
-          <span className="min-w-0 flex-1">{r.changeSummary ?? r.reason}</span>
-          <span className="text-12 text-subtle">{formatRelativeTime(r.decidedAt ?? r.proposedAt ?? r.createdAt)}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function pinLabel(p: RequirementPin): string {
-  if (p.kind === "workflow-design") return `Design ${p.flow ?? p.workflowId ?? "?"} r${p.designRevision ?? "?"}`;
-  return `Contract ${p.contractSlug ?? "?"}@${p.contractVersion ?? "?"}`;
-}
-
-function Baselines({ baselines }: { baselines: RequirementBaseline[] }) {
-  return (
-    <ul className="grid" data-testid="requirement-baselines">
-      {baselines.map((b) => (
-        <li key={`${b.revision}-${b.agreedAt}`} className="grid gap-1 border-b border-line-subtle py-2 text-13 last:border-0">
-          <div className="flex flex-wrap items-baseline gap-x-3" title={`Agreed ${stamp(b.agreedAt)}${b.reason ? `\n${b.reason}` : ""}`}>
-            <span className="w-8 font-mono text-12 text-muted">r{b.revision}</span>
-            <span>Agreed by {b.agreedByName ?? b.agreedBy}</span>
-            <span className="text-12 text-subtle">{formatRelativeTime(b.agreedAt)}</span>
-          </div>
-          {b.pins.length > 0 ? (
-            <details className="pl-11 text-12 text-muted">
-              <summary className="cursor-pointer select-none">
-                {b.pins.length} {b.pins.length === 1 ? "pin" : "pins"}
-              </summary>
-              <ul className="mt-1 grid gap-0.5 font-mono">
-                {b.pins.map((p) => (
-                  <li key={pinLabel(p)} title={p.kind}>
-                    {pinLabel(p)}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : (
-            <span className="pl-11 text-12 text-subtle">No pins</span>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function Actions({ projectId, d }: { projectId: string; d: RequirementDetail }) {
-  const act = useRequirementAction(projectId, d.key);
-  const [returning, setReturning] = useState(false);
-  const [reason, setReason] = useState("");
-  const draft = d.revisions.find((r) => r.state === "draft");
-  const proposed = d.revisions.find((r) => r.state === "proposed");
-  const head = d.revisions[0];
-  const canAgree = d.canSignOff && d.status === "draft" && head?.state === "current";
-  const busy = act.isPending;
-  if (!draft && !(proposed && d.canSignOff) && !canAgree) return null;
-
-  return (
-    <div className="grid gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        {draft ? (
-          <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "propose", revision: draft.revision })}>
-            Propose r{draft.revision}
-          </Button>
-        ) : null}
-        {proposed && d.canSignOff ? (
-          <>
-            <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "accept", revision: proposed.revision })}>
-              Accept r{proposed.revision}
-            </Button>
-            <Button type="button" size="sm" disabled={busy} onClick={() => setReturning((v) => !v)} aria-expanded={returning}>
-              Return
-            </Button>
-          </>
-        ) : null}
-        {canAgree && head ? (
-          <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "agree", revision: head.revision })}>
-            Agree r{head.revision}
-          </Button>
-        ) : null}
-      </div>
-      {returning && proposed ? (
-        <form
-          className="flex flex-wrap items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            act.mutate(
-              { kind: "return", revision: proposed.revision, reason: reason.trim() },
-              { onSuccess: () => { setReturning(false); setReason(""); } },
-            );
-          }}
-        >
-          <Input
-            aria-label="Why it goes back"
-            placeholder="Why it goes back"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            className="min-w-[16rem] flex-1"
-            autoFocus
-          />
-          <Button type="submit" size="sm" disabled={!reason.trim()} loading={busy}>
-            Return r{proposed.revision}
-          </Button>
-        </form>
-      ) : null}
-      <RefusalLine error={act.error} />
+    <div className="mb-1.5 mt-3.5 flex flex-wrap items-baseline gap-2 text-12 font-semibold text-subtle">
+      {children}
+      {note ? <span className="font-medium">{note}</span> : null}
     </div>
   );
 }
 
-export function RequirementDetailView({
-  projectId,
-  slug,
-  reqKey,
-  full,
-  head,
-}: {
-  projectId: string;
-  slug: string;
-  reqKey: string;
-  /** The full page shows the history, designs, baselines and issues; the peek shows the summary. */
-  full: boolean;
-  /** Drawn on the key line's far end: the peek's "Open full page" and close controls. */
-  head?: ReactNode;
-}) {
+function WhereItStands({ d, projectId, slug }: { d: RequirementDetail; projectId: string; slug: string }) {
+  const s = d.standing;
+  const facts = decidingFacts(d, slug).filter((f) => f.label !== "Revision");
+  return (
+    <Zone n={1} title="Where it stands" q="State, who acts next, the facts that decide it">
+      <div className="mb-1 mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-2">
+        <span className="font-mono text-11-5 font-semibold text-link" title={d.id}>
+          {d.key}
+        </span>
+        <StateBadge state={s.state} />
+        <div className="ml-auto">
+          <PrimaryActions
+            projectId={projectId}
+            slug={slug}
+            d={d}
+            onReview={() => document.getElementById("proposal")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          />
+        </div>
+      </div>
+      <WaitBanner standing={s} />
+      <Stepper state={s.state} />
+      <div className="grid gap-x-7 lg:grid-cols-[auto_minmax(0,1fr)]">
+        <div>
+          <Label note="By business criterion">Coverage</Label>
+          <CoverageMarks coverage={s.coverage} large labelled />
+        </div>
+        <div className="min-w-0">
+          <Label>Revisions</Label>
+          <RevisionTimeline revisions={d.revisions} baselines={d.baselines} />
+        </div>
+      </div>
+      <div className="mt-1.5 grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-x-7">
+        {facts.map((f) => (
+          <div key={f.label} className="grid gap-0.5 border-b border-line-subtle py-2 text-13">
+            <span className="text-12 text-subtle">{f.label}</span>
+            <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">{f.value}</span>
+            {f.source ? <span className="min-w-0">{f.source}</span> : null}
+          </div>
+        ))}
+      </div>
+    </Zone>
+  );
+}
+
+function Bullets({ items }: { items: string[] }) {
+  return (
+    <ul className="my-1 grid list-disc gap-0.5 pl-[18px] text-13-5">
+      {items.map((x) => (
+        <li key={x}>{x}</li>
+      ))}
+    </ul>
+  );
+}
+
+const H5 = ({ children }: { children: ReactNode }) => (
+  <h5 className="mb-1 mt-4 flex flex-wrap items-center gap-2 text-12-5 font-bold text-muted">{children}</h5>
+);
+
+function Criteria({ criteria, shown }: { criteria: RequirementCriterion[]; shown: number }) {
+  if (criteria.length === 0) return <p className="py-1.5 text-12-5 text-subtle">No criteria yet. Readiness needs at least one testable criterion.</p>;
+  return (
+    <div data-testid="requirement-criteria">
+      {criteria.map((c) => (
+        <div key={c.id} className="grid grid-cols-[44px_minmax(0,1fr)] gap-2.5 border-b border-line-subtle py-2 text-13 last:border-0">
+          <span className="font-mono text-11-5 font-semibold text-muted" title={`Since r${c.sinceRevision}`}>
+            {c.code}
+          </span>
+          <span>
+            {c.form === "scenario" ? <pre className="whitespace-pre-wrap font-mono text-12 leading-relaxed">{c.body}</pre> : c.body}
+            {c.sinceRevision === shown && shown > 1 ? <span className="ml-1 text-12 text-subtle">(changed in r{shown})</span> : null}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId: string; open: RequirementRevision }) {
+  const base = d.revisions.find((r) => r.revision === (open.baseRevision ?? d.currentRevision ?? -1)) ?? d.revisions.find((r) => r.state === "current");
+  const proposed = open.state === "proposed";
+  return (
+    <div
+      id="proposal"
+      className="my-2.5 scroll-mt-4 border-l-[3px] px-3 py-[9px] text-12-5"
+      style={{ background: AI_TINT.bg, borderColor: AI_TINT.bar }}
+      data-testid="open-revision"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold" style={{ color: AI_TINT.fg }}>
+          {proposed ? "Proposal" : "Draft"} r{open.revision}
+        </span>
+        {proposed ? <PendingBadge /> : <span className="text-12 text-subtle">In draft</span>}
+        <Source
+          kind="person"
+          who={open.authorName ?? "Its author"}
+          rel={formatRelativeTime(open.proposedAt ?? open.createdAt)}
+          tip={`${proposed ? "Proposed" : "Written"} ${stamp(open.proposedAt ?? open.createdAt)}`}
+        />
+      </div>
+      <p className="my-1.5 text-13-5">{open.changeSummary ?? open.reason}</p>
+      <details className="text-12-5">
+        <summary className="cursor-pointer select-none font-semibold" style={{ color: AI_TINT.fg }}>
+          Show full {proposed ? "proposal" : "draft"}
+        </summary>
+        <div className="mt-1.5 border-t border-line-subtle pt-1">
+          {open.changeSummary && open.reason !== open.changeSummary ? <p className="mt-1 text-12-5 text-muted">Why: {open.reason}</p> : null}
+          <RevisionDiff base={base} next={open} />
+        </div>
+      </details>
+      {proposed ? (
+        <div className="pt-2">
+          <ProposalDecision projectId={projectId} d={d} revision={open.revision} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function WhatItIs({ d, projectId }: { d: RequirementDetail; projectId: string }) {
+  const shown = d.revisions.find((r) => r.state === "current") ?? d.revisions[0];
+  const open = d.revisions.find((r) => r.state === "proposed" || r.state === "draft");
+  const spec = shown?.spec ?? {};
+  const criteria = d.criteria.length > 0 ? d.criteria : (shown?.criteria ?? []);
+  return (
+    <Zone n={2} title="What it is" q="Goal, scope, business criteria">
+      {shown?.tldr ? (
+        <div className="mb-2.5 border-l-[3px] border-[var(--paper-400)] bg-app px-3 py-2">
+          <span className="text-12 font-semibold text-subtle">TL;DR · r{shown.revision}</span>
+          <p className="mt-1 text-13-5">{shown.tldr}</p>
+        </div>
+      ) : null}
+      {open && open !== shown ? <OpenRevision d={d} projectId={projectId} open={open} /> : null}
+      <div>
+        {spec.goal ? (
+          <>
+            <H5>
+              Goal and problem
+              {shown ? <Source kind="person" who={shown.authorName ?? "Its author"} rel={`r${shown.revision}`} /> : null}
+            </H5>
+            <p className="text-13-5 leading-relaxed">{spec.goal}</p>
+          </>
+        ) : null}
+        {spec.personas?.length ? (
+          <>
+            <H5>Persona</H5>
+            <Bullets items={spec.personas} />
+          </>
+        ) : null}
+        {spec.scopeIn?.length ? (
+          <>
+            <H5>In scope</H5>
+            <Bullets items={spec.scopeIn} />
+          </>
+        ) : null}
+        {spec.scopeOut?.length ? (
+          <>
+            <H5>Out of scope</H5>
+            <Bullets items={spec.scopeOut} />
+          </>
+        ) : null}
+        <H5>Business criteria</H5>
+        <Criteria criteria={criteria} shown={shown?.revision ?? 0} />
+      </div>
+      {d.canSignOff ? (
+        <div className="mt-3">
+          <RequirementSuggestions projectId={projectId} reqKey={d.key} />
+        </div>
+      ) : null}
+    </Zone>
+  );
+}
+
+function Proof({ d, projectId, slug }: { d: RequirementDetail; projectId: string; slug: string }) {
+  const sug = useRequirementSuggestions(projectId, d.key);
+  const judged = d.standing.facts;
+  return (
+    <Zone n={3} title="Proof" q="Traceability and readiness">
+      <SubHead right={`Passing ${judged.passing} of ${judged.criteria}`}>Business criterion → issues → verdict</SubHead>
+      <ProofChain d={d} slug={slug} />
+      <SubHead>Readiness</SubHead>
+      <Readiness suggestions={sug.data?.suggestions ?? []} />
+    </Zone>
+  );
+}
+
+export function RequirementPage({ projectId, slug, reqKey }: { projectId: string; slug: string; reqKey: string }) {
   const q = useRequirement(projectId, reqKey);
   if (q.isLoading) {
     return (
@@ -236,128 +250,35 @@ export function RequirementDetailView({
   if (q.isError || !q.data) {
     return (
       <div className="grid min-h-[40vh] place-items-center">
-        <ErrorState
-          message={formatApiError(q.error)}
-          onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined}
-        />
+        <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />
       </div>
     );
   }
   const d = q.data;
-  const shown = d.revisions.find((r) => r.state === "current") ?? d.revisions[0];
-  const criteria = d.criteria.length > 0 ? d.criteria : (shown?.criteria ?? []);
-  const spec = shown?.spec ?? {};
-  const phase = (d.status === "agreed" || d.status === "accepted") && d.delivery.phase ? d.delivery.phase : null;
-
   return (
-    <article className="grid content-start gap-6" data-testid="requirement-detail" data-key={d.key}>
-      <header className="grid gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-12 text-muted" title={d.id}>
-            {d.key}
-          </span>
-          <RequirementStatusBadge status={d.status} />
-          {phase ? <PhaseBadge phase={phase} /> : null}
-          {shown ? (
-            <span className="text-12 text-subtle" title={`Revision ${shown.revision} is ${shown.state}`}>
-              r{shown.revision}
-            </span>
-          ) : null}
-          {head ? <span className="ml-auto flex items-center gap-2">{head}</span> : null}
-        </div>
-        <h2 className={full ? "fg-h2" : "fg-h3"}>{d.title}</h2>
-      </header>
-
-      <Actions projectId={projectId} d={d} />
-      {d.canSignOff ? <RequirementSuggestions projectId={projectId} reqKey={d.key} /> : null}
-
-      {shown?.tldr ? <p className="text-14 leading-relaxed">{shown.tldr}</p> : null}
-      {spec.goal ? (
-        <Section title="Goal">
-          <p className="text-14 leading-relaxed">{spec.goal}</p>
-        </Section>
-      ) : null}
-      {full && spec.personas?.length ? (
-        <Section title="Personas">
-          <Bullets items={spec.personas} />
-        </Section>
-      ) : null}
-      {spec.scopeIn?.length ? (
-        <Section title="In scope">
-          <Bullets items={spec.scopeIn} />
-        </Section>
-      ) : null}
-      {spec.scopeOut?.length ? (
-        <Section title="Out of scope">
-          <Bullets items={spec.scopeOut} />
-        </Section>
-      ) : null}
-
-      <Section title="Criteria" count={criteria.length}>
-        <Criteria criteria={criteria} />
-      </Section>
-
-      <Section title="Issues" count={d.issues.length}>
-        {d.issues.length === 0 ? (
-          <Quiet>No issue is linked.</Quiet>
-        ) : (
-          <ul className="grid" data-testid="requirement-issues">
-            {d.issues.map((i) => (
-              <li key={i.issueId} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line-subtle py-2 text-13 last:border-0">
-                <Link href={`/projects/${encodeURIComponent(slug)}/issues/${encodeURIComponent(i.displayId)}`} className="font-mono text-12 text-muted hover:text-fg">
-                  {i.displayId}
-                </Link>
-                <span className="min-w-0 flex-1">{i.title}</span>
-                {i.changedSincePlan ? (
-                  <span
-                    className="text-12 font-semibold"
-                    style={{ color: "var(--amberw-600)" }}
-                    title={`Planned against r${i.plannedRevision ?? "?"}; the requirement has moved since`}
-                    data-testid="changed-since-plan"
-                  >
-                    Changed since plan
-                  </span>
-                ) : null}
-                <IssueStatusBadge status={i.status} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
-
-      {full ? (
-        <>
-          <Section title="Designs" count={d.workflows.length}>
-            {d.workflows.length === 0 ? (
-              <Quiet>No design is linked.</Quiet>
-            ) : (
-              <ul className="grid">
-                {d.workflows.map((w) => (
-                  <li key={w.workflowId} className="flex flex-wrap items-baseline gap-x-3 border-b border-line-subtle py-2 text-13 last:border-0">
-                    <Link href={workflowHref(slug, w.flow)} className="font-mono text-12 text-muted hover:text-fg">
-                      {w.flow}
-                    </Link>
-                    <span className="min-w-0 flex-1">{w.title}</span>
-                    {w.designStatus ? <DesignStatusBadge status={w.designStatus} /> : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Section>
-          <Section title="Revisions" count={d.revisions.length}>
-            <RevisionHistory revisions={d.revisions} />
-          </Section>
-          <Section title="Baselines" count={d.baselines.length}>
-            {d.baselines.length === 0 ? <Quiet>Not agreed yet.</Quiet> : <Baselines baselines={d.baselines} />}
-          </Section>
-        </>
-      ) : (
-        <p className="text-12 text-subtle">
-          {d.revisions.length} {d.revisions.length === 1 ? "revision" : "revisions"} · {d.workflows.length}{" "}
-          {d.workflows.length === 1 ? "design" : "designs"} · {d.baselines.length}{" "}
-          {d.baselines.length === 1 ? "baseline" : "baselines"}
-        </p>
-      )}
+    <article
+      className="grid min-h-full items-start bg-surface lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-[auto_auto_auto_1fr]"
+      data-testid="requirement-detail"
+      data-key={d.key}
+    >
+      <WhereItStands d={d} projectId={projectId} slug={slug} />
+      <WhatItIs d={d} projectId={projectId} />
+      <Proof d={d} projectId={projectId} slug={slug} />
+      <aside
+        aria-labelledby="zone-4"
+        className="min-w-0 self-stretch border-line-subtle bg-app px-4 pb-6 max-lg:border-t max-md:px-3 lg:col-start-2 lg:row-span-4 lg:row-start-1 lg:border-l"
+        data-testid="relations-rail"
+      >
+        <h2 id="zone-4" className="-mx-4 mb-2.5 flex items-baseline gap-2 bg-sunken px-4 py-[7px] text-13 font-bold max-md:-mx-3 max-md:px-3">
+          <span className="font-mono text-11 font-semibold text-subtle">4</span>
+          Relations
+          <span className="text-12 font-medium text-subtle">And properties</span>
+        </h2>
+        <RelationsRail d={d} slug={slug} />
+      </aside>
+      <Zone n={5} title="History" q="Who did what, filtered by source" className="lg:col-start-1">
+        <History entries={d.history} />
+      </Zone>
     </article>
   );
 }

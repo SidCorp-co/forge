@@ -53,6 +53,16 @@ export function useRequirementSuggestions(projectId: string | undefined, req: st
   });
 }
 
+/** The project's open suggestions, for the list's BA assistant strip. */
+export function useProjectSuggestions(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["project-suggestions", projectId ?? ""],
+    queryFn: () => requirementsApi.projectSuggestions(projectId as string),
+    enabled: Boolean(projectId),
+    staleTime: 10_000,
+  });
+}
+
 /** Accept or reject one; an accepted revision suggestion adds a draft revision, so the detail is re-read too. */
 export function useSuggestionDecision(projectId: string, req: string) {
   const qc = useQueryClient();
@@ -60,7 +70,9 @@ export function useSuggestionDecision(projectId: string, req: string) {
     mutationFn: (d: SuggestionDecision) => requirementsApi.decide(projectId, d),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["requirement-suggestions", projectId, req] });
+      qc.invalidateQueries({ queryKey: ["project-suggestions", projectId] });
       qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
+      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
     },
   });
 }
