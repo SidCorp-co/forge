@@ -370,7 +370,7 @@
       "name": "forge_collaborators"
     },
     {
-      "description": "List, create, update or delete issue comments. List requires filters.issue (issue UUID). EVERY list response carries `returned`, `limit`, `hasMore` and `nextCursor` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. To read a whole thread: call list, then pass the `nextCursor` you got back as `cursor`, and repeat until `nextCursor` is null. Each page carries the next top-level comments with their replies, so no comment is returned twice and none is skipped. The cursor is the SAME token the REST route `GET /api/issues/:id/comments` mints and accepts. Create requires data.issue + data.body, and takes data.intent: question (owed a reply), decision (pinned) or note; omitted, a person's comment is stored as question and an agent's as note, with a COMMENT_INTENT_DEFAULTED warning. List takes filters.intent. A structured record goes to forge_issue_events, not into a comment. Update requires documentId + data.body (use it to place a <forge-artifact id=\"…\"> once the attachment exists, or to correct a refused body). Delete requires documentId. All actions enforce project membership via the calling principal. Body shape — see guide writing-an-issue: outcome first, trace underneath; mermaid fences render, and an attached .html renders inline. Attachments: for anything bigger than a tiny snippet use the forge_uploads tool (presigned-URL pattern) instead of base64 — base64 in data.attachments[] is slow and burns context tokens. Workflow: (1) create the comment to get its id; (2) call forge_uploads {action:\"request\", data:{target:\"comment\", targetId:<id>, name:\"<file>\"}} → get an uploadUrl; (3) `curl -X PUT -T <localPath> \"<uploadUrl>\"` (no auth header). The PUT returns {id,name,mime,size,url}. data.attachments[] (base64-inline; up to 10, total ≤ UPLOADS_MAX_BYTES) still works for tiny inline files and on partial-failure returns `attachments` (succeeded) + `attachmentErrors` (failed entries with code/message).",
+      "description": "List, create, update or delete comments. A comment sits on exactly one target: an issue (filters.issue / data.issue, a UUID), or a requirement (REQ-n), a workflow design (flow name or UUID) or a feedback item (FB-n) through filters.requirement | workflow | feedback and data.requirement | workflow | feedback, with projectId or the bound project; naming none or two is refused COMMENT_SCOPE_INVALID. On a requirement, workflow or feedback item: data.intent is required (question | decision | note), and a decision carries data.decision { decision, reason, options?, authority?, reversedWhen? } (COMMENT_DECISION_REQUIRED when missing), with data.body optional; such a comment is edited with update and never deleted (COMMENT_RECORD_KEPT). A decision there by an agent is a record, not an approval. Action decisions lists the project's decisions across every target, newest first (filters.scope, limit). On a no_egress project a feedback item's comments come back as metadata only. EVERY list response carries `returned`, `limit`, `hasMore` and `nextCursor` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. To read a whole thread: call list, then pass the `nextCursor` you got back as `cursor`, and repeat until `nextCursor` is null. Each page carries the next top-level comments with their replies, so no comment is returned twice and none is skipped. The cursor is the SAME token the REST route `GET /api/issues/:id/comments` mints and accepts. Create requires data.issue + data.body, and takes data.intent: question (owed a reply), decision (pinned) or note; omitted, a person's comment is stored as question and an agent's as note, with a COMMENT_INTENT_DEFAULTED warning. List takes filters.intent. A structured record goes to forge_issue_events, not into a comment. Update requires documentId + data.body (use it to place a <forge-artifact id=\"…\"> once the attachment exists, or to correct a refused body). Delete requires documentId. All actions enforce project membership via the calling principal. Body shape — see guide writing-an-issue: outcome first, trace underneath; mermaid fences render, and an attached .html renders inline. Attachments: for anything bigger than a tiny snippet use the forge_uploads tool (presigned-URL pattern) instead of base64 — base64 in data.attachments[] is slow and burns context tokens. Workflow: (1) create the comment to get its id; (2) call forge_uploads {action:\"request\", data:{target:\"comment\", targetId:<id>, name:\"<file>\"}} → get an uploadUrl; (3) `curl -X PUT -T <localPath> \"<uploadUrl>\"` (no auth header). The PUT returns {id,name,mime,size,url}. data.attachments[] (base64-inline; up to 10, total ≤ UPLOADS_MAX_BYTES) still works for tiny inline files and on partial-failure returns `attachments` (succeeded) + `attachmentErrors` (failed entries with code/message).",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -380,7 +380,8 @@
               "list",
               "create",
               "update",
-              "delete"
+              "delete",
+              "decisions"
             ],
             "type": "string"
           },
@@ -424,6 +425,50 @@
                 "maxLength": 64000,
                 "type": "string"
               },
+              "decision": {
+                "additionalProperties": false,
+                "properties": {
+                  "authority": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "decision": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "options": {
+                    "items": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 20,
+                    "type": "array"
+                  },
+                  "reason": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reversedWhen": {
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "decision",
+                  "reason"
+                ],
+                "type": "object"
+              },
+              "feedback": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
               "format": {
                 "enum": [
                   "markdown",
@@ -444,6 +489,16 @@
                 "format": "uuid",
                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                 "type": "string"
+              },
+              "requirement": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "workflow": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
               }
             },
             "type": "object"
@@ -456,6 +511,11 @@
           "filters": {
             "additionalProperties": false,
             "properties": {
+              "feedback": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
               "intent": {
                 "maxLength": 64,
                 "type": "string"
@@ -464,17 +524,33 @@
                 "format": "uuid",
                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                 "type": "string"
+              },
+              "requirement": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "scope": {
+                "maxLength": 64,
+                "type": "string"
+              },
+              "workflow": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
               }
             },
-            "required": [
-              "issue"
-            ],
             "type": "object"
           },
           "limit": {
             "maximum": 200,
             "minimum": 1,
             "type": "integer"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
           }
         },
         "required": [

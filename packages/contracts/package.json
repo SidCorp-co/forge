@@ -86,6 +86,10 @@
       "types": "./dist/data-policy.d.ts",
       "default": "./dist/data-policy.js"
     },
+    "./comments": {
+      "types": "./dist/comments.d.ts",
+      "default": "./dist/comments.js"
+    },
     "./feedback": {
       "types": "./dist/feedback.d.ts",
       "default": "./dist/feedback.js"

@@ -54,12 +54,15 @@ import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './s
 
 export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
+import type { DecisionFields } from '@forge/contracts/comments';
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import { COMMENT_INTENTS } from '../issues/record-events/kinds.js';
 import type { ReleaseNotes } from '../issues/release-notes.js';
 import { activityLog, actorAgencies } from './schema-activity.js';
+import { feedback } from './schema-feedback.js';
 import { requirementRevisions, requirements } from './schema-requirements.js';
+import { projectWorkflows } from './schema-workflows.js';
 
 export {
   type ActorType,
@@ -1129,13 +1132,22 @@ export const projectWebhooksRelations = relations(projectWebhooks, ({ one }) => 
   project: one(projects, { fields: [projectWebhooks.projectId], references: [projects.id] }),
 }));
 
+// cm:guard a comment sits on exactly one target (ISS-83): an exclusive arc of real foreign keys,
+// each cascading with its target, held by comments_scope_chk so no door can write an orphan or a twin
 export const comments = pgTable(
   'comments',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    issueId: uuid('issue_id')
-      .notNull()
-      .references(() => issues.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'cascade' }),
+    requirementId: uuid('requirement_id').references((): AnyPgColumn => requirements.id, {
+      onDelete: 'cascade',
+    }),
+    workflowId: uuid('workflow_id').references((): AnyPgColumn => projectWorkflows.id, {
+      onDelete: 'cascade',
+    }),
+    feedbackId: uuid('feedback_id').references((): AnyPgColumn => feedback.id, {
+      onDelete: 'cascade',
+    }),
     authorId: uuid('author_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -1152,14 +1164,41 @@ export const comments = pgTable(
      * write that declares nothing means.
      */
     intent: text('intent', { enum: COMMENT_INTENTS }).notNull().default('note'),
+    decision: jsonb('decision').$type<DecisionFields>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     formatChk: check('comments_format_chk', sql`${t.format} IN ('markdown', 'html')`),
     intentChk: check('comments_intent_chk', sql`${t.intent} IN ('question', 'decision', 'note')`),
+    scopeChk: check(
+      'comments_scope_chk',
+      sql`num_nonnulls(${t.issueId}, ${t.requirementId}, ${t.workflowId}, ${t.feedbackId}) = 1`,
+    ),
+    decisionIntentChk: check(
+      'comments_decision_intent_chk',
+      sql`${t.decision} IS NULL OR ${t.intent} = 'decision'`,
+    ),
+    // cm:hack ISS-83 until:forge-plugin sends decision fields on an issue decision — issue decisions
+    // stay prose, so the structured body is required on every other scope only
+    decisionFieldsChk: check(
+      'comments_decision_fields_chk',
+      sql`${t.intent} <> 'decision' OR ${t.issueId} IS NOT NULL OR COALESCE(jsonb_typeof(${t.decision} -> 'decision') = 'string' AND jsonb_typeof(${t.decision} -> 'reason') = 'string' AND (${t.decision} ->> 'decision') ~ '[^[:space:]]' AND (${t.decision} ->> 'reason') ~ '[^[:space:]]', false)`,
+    ),
     issueIdx: index('comments_issue_id_idx').on(t.issueId),
     issueCreatedIdx: index('comments_issue_created_idx').on(t.issueId, t.createdAt, t.id),
+    requirementCreatedIdx: index('comments_requirement_created_idx')
+      .on(t.requirementId, t.createdAt, t.id)
+      .where(sql`requirement_id IS NOT NULL`),
+    workflowCreatedIdx: index('comments_workflow_created_idx')
+      .on(t.workflowId, t.createdAt, t.id)
+      .where(sql`workflow_id IS NOT NULL`),
+    feedbackCreatedIdx: index('comments_feedback_created_idx')
+      .on(t.feedbackId, t.createdAt, t.id)
+      .where(sql`feedback_id IS NOT NULL`),
+    decisionCreatedIdx: index('comments_decision_created_idx')
+      .on(t.createdAt, t.id)
+      .where(sql`intent = 'decision'`),
     parentIdx: index('comments_parent_id_idx').on(t.parentId),
     parentFk: foreignKey({
       columns: [t.parentId],
