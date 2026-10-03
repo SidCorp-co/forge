@@ -76,8 +76,9 @@ describe("the chat dock", () => {
     fireEvent.click(screen.getByText("toggle"));
     const handle = screen.getByTestId("chat-dock-resize");
     fireEvent.keyDown(handle, { key: "ArrowLeft", shiftKey: true });
-    expect(screen.getByTestId("chat-dock")).toHaveStyle({ width: "504px" });
-    expect(window.localStorage.getItem(DOCK_WIDTH_KEY)).toBe("504");
+    // jsdom's window is 1024 wide, under 1300, so the panel opens at 380 (ISS-63)
+    expect(screen.getByTestId("chat-dock")).toHaveStyle({ width: "444px" });
+    expect(window.localStorage.getItem(DOCK_WIDTH_KEY)).toBe("444");
     for (let i = 0; i < 20; i++) fireEvent.keyDown(handle, { key: "ArrowLeft", shiftKey: true });
     expect(screen.getByTestId("chat-dock")).toHaveStyle({ width: "900px" });
     view.unmount();

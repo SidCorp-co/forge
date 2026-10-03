@@ -34,6 +34,7 @@ import {
   upcomingSchedules,
 } from "@/features/project-dashboard/derive";
 import { useAttention } from "@/features/attention/hooks";
+import { OnboardingHint } from "@/features/onboarding/components/onboarding-hint";
 import { useProjectRuns, useStepDurations } from "@/features/pipeline/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
@@ -133,6 +134,9 @@ export default function ProjectOverviewPage() {
   const schedules = upcomingSchedules(schedulesQ.data);
 
   return (
+    <>
+    {/* cm:why onboarding is offered, never required: one line above the dashboard, gone once its designs are approved */}
+    <OnboardingHint projectId={project.id} projectName={project.name} />
     <PageContainer className="min-h-dvh">
       <header className="mb-6 flex items-center gap-4">
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(project.name)} size={48} />
@@ -197,5 +201,6 @@ export default function ProjectOverviewPage() {
         </div>
       </div>
     </PageContainer>
+    </>
   );
 }

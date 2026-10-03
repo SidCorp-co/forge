@@ -15,6 +15,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/design";
+import { isStructured, StructuredMessage } from "@/features/onboarding/components/thread-blocks";
 import { Conversation } from "@/features/session/components/conversation";
 import { DisclosureScope } from "@/features/session/disclosure";
 import { USER_BUBBLE } from "@/features/session/layout";
@@ -189,11 +190,18 @@ function Said({
   message,
   withdrawn,
   newestAgentId,
+  firstDesigns,
 }: {
   message: ConversationMessage;
   withdrawn?: string;
   newestAgentId?: string;
+  firstDesigns?: boolean;
 }) {
+  // cm:why a questionnaire, its answers and a designs list are structured messages a service wrote;
+  // they draw from the thread's live data, never through the model-turn renderer
+  if (isStructured(message.blocks)) {
+    return <StructuredMessage message={message} firstDesigns={firstDesigns === true} />;
+  }
   if (message.silenceReason) {
     return (
       <div className="flex items-start gap-2 text-muted">
@@ -313,6 +321,7 @@ export function ConversationThread({
   afterEntry?: (entryId: string) => React.ReactNode;
 }) {
   const entries = threadEntries(messages, windows, outbox, agentTurns, progress);
+  const firstDesignsId = messages.find((m) => m.blocks?.some((b) => b.type === "designs"))?.id;
   const newestAgentId = entries.reduce<string | undefined>((id, entry) => {
     if (entry.kind === "progress") return entry.progress.entry.id ?? id;
     if (entry.kind === "said" && entry.message.role === "assistant") return entry.message.id;
@@ -329,6 +338,7 @@ export function ConversationThread({
                 message={entry.message}
                 {...(withdrawn[entry.message.id] ? { withdrawn: withdrawn[entry.message.id] } : {})}
                 {...(newestAgentId ? { newestAgentId } : {})}
+                firstDesigns={entry.message.id === firstDesignsId}
               />
               {afterEntry?.(entry.message.id)}
             </div>

@@ -15,9 +15,10 @@ import {
   EmptyState,
   ErrorState,
   IconButton,
-  SectionTitle,
   ProjectLoader,
 } from "@/design";
+import { ThreadDataProvider } from "@/features/onboarding/components/thread-blocks";
+import { ThreadSub } from "@/features/onboarding/components/thread-sub";
 import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
 import { CONVERSATION_ATTACHMENTS } from "@/features/chat/attachments";
@@ -226,12 +227,13 @@ export function ConversationChat({
   ]);
 
   const header = (
-    <header className="@container flex-none border-b border-line bg-app/95 px-4 py-3">
+    <header className="@container flex-none border-b border-line bg-app/95 px-3 py-2 @2xl:px-4 @2xl:py-3">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <SectionTitle className="fg-h2 truncate">
+          <h2 className="truncate text-[13.5px] font-bold leading-snug text-fg @2xl:text-[22px] @2xl:leading-tight">
             {roomQ.data ? conversationTitle(roomQ.data, messages[0]?.content) : "New conversation"}
-          </SectionTitle>
+          </h2>
+          <ThreadSub kind={roomQ.data?.kind} status={roomQ.data?.threadStatus} />
         </div>
         {roomQ.data && (
           <IconButton
@@ -278,8 +280,8 @@ export function ConversationChat({
 
       {roomQ.data && <ScopeNotice room={roomQ.data} />}
 
-      <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 xl:max-w-4xl">
+      <div ref={scrollRef} onScroll={onScroll} className="@container min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl px-3 py-3 @2xl:px-8 @2xl:py-8 xl:max-w-4xl">
           {messages.length === 0 && outbox.length === 0 ? (
             <div className="flex min-h-[40dvh] flex-col">
               <div className="grid flex-1 place-items-center">
@@ -291,6 +293,14 @@ export function ConversationChat({
               </div>
             </div>
           ) : (
+            <ThreadDataProvider
+              value={{
+                projectId,
+                conversationId: resolvedId ?? "",
+                kind: roomQ.data?.kind ?? null,
+                questionnaires: roomQ.data?.questionnaires ?? [],
+              }}
+            >
             <ConversationThread
               atBottom={atBottom}
               messages={messages}
@@ -302,6 +312,7 @@ export function ConversationChat({
               onRetry={retry}
               afterEntry={ui.cardsFor}
             />
+            </ThreadDataProvider>
           )}
           {stage && (
             <div className="mt-4">

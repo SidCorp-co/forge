@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { Button, ErrorState, Input, ProjectLoader } from "@/design";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
+import { AskBaAssistant } from "@/features/onboarding/components/ask-ba-assistant";
 import { RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
 import { workflowHref } from "@/features/workflows/routes";
 import { useRequirement, useRequirementAction } from "../hooks";
@@ -269,6 +270,9 @@ export function RequirementDetailView({
       </header>
 
       <Actions projectId={projectId} d={d} />
+      <div>
+        <AskBaAssistant projectId={projectId} reqKey={d.key} />
+      </div>
       {d.canSignOff ? <RequirementSuggestions projectId={projectId} reqKey={d.key} /> : null}
 
       {shown?.tldr ? <p className="text-14 leading-relaxed">{shown.tldr}</p> : null}

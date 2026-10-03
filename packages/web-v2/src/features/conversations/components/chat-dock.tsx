@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import { Icon, IconButton, Popover, SlideOver, useMediaQuery } from "@/design";
 import { useProjectEcosystems } from "@/features/ecosystem/hooks";
@@ -44,7 +45,16 @@ function RoomScopeChip({ project, ecosystemId }: { project: { id: string; name: 
   return <ScopeChip ecosystem name={`${label} · from ${project.name}`} />;
 }
 
-export function ChatDockBody({ dock }: { dock: ChatDockApi }) {
+/** What the full-screen panel's way back is called: the page underneath it. */
+export function pageLabel(pathname: string | null): string {
+  const parts = (pathname ?? "").split("/").filter(Boolean);
+  if (parts[0] === "projects" && parts.length <= 2) return "Dashboard";
+  const last = parts.at(-1) ?? "";
+  return last ? decodeURIComponent(last).replace(/[-_]/g, " ").replace(/^./, (c) => c.toUpperCase()) : "Back";
+}
+
+export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScreen?: boolean }) {
+  const pathname = usePathname();
   const [history, setHistory] = useState(false);
   const historyAnchor = useRef<HTMLSpanElement>(null);
   const board = useBoard();
@@ -105,6 +115,19 @@ export function ChatDockBody({ dock }: { dock: ChatDockApi }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="chat-dock-body">
+      {fullScreen && (
+        <div className="flex flex-none items-center border-b border-line px-3 py-2">
+          <button
+            type="button"
+            onClick={dock.close}
+            aria-label={`Back to ${pageLabel(pathname)}`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-sunken px-2.5 text-[13px] font-semibold text-fg hover:bg-hover"
+          >
+            <span aria-hidden>←</span>
+            {pageLabel(pathname)}
+          </button>
+        </div>
+      )}
       <header className="flex flex-none items-center gap-2 border-b border-line px-3 py-2">
         <h2 className="fg-body-sm min-w-0 flex-1 truncate font-semibold text-fg">{DOCK_TITLE}</h2>
         <span ref={historyAnchor} className="inline-flex">
@@ -205,7 +228,7 @@ export function ChatDock({ dock }: { dock: ChatDockApi }) {
   if (!docked) {
     return (
       <SlideOver open onClose={dock.close} hideHeader fitBody width="min(100vw, 560px)">
-        <ChatDockBody dock={dock} />
+        <ChatDockBody dock={dock} fullScreen />
       </SlideOver>
     );
   }

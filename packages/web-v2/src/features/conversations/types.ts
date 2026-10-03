@@ -1,4 +1,5 @@
 
+import type { OnboardingStatus, QuestionnaireView } from "@forge/contracts/onboarding";
 import type { CanonicalBlock, MessageEntry } from "@/features/session/types";
 
 export type ConversationAdapter = "web" | "widget" | "rocketchat" | "telegram";
@@ -49,6 +50,11 @@ export interface ConversationRow {
   archivedAt: string | null;
   ecosystemId: string | null;
   pinned?: boolean;
+  /** The requirement a BA-door room is about (ISS-58). */
+  requirementId?: string | null;
+  /** What kind of thread this is, and its badge: an onboarding's status, or waiting while a batch waits (ISS-63). */
+  kind?: "onboarding" | "requirement" | null;
+  threadStatus?: OnboardingStatus | null;
 }
 
 export interface ConversationImage {
@@ -158,6 +164,8 @@ export interface ConversationDetail extends ConversationRow, ConversationMembers
   windows: ConversationWindow[];
   agentMode: AgentModeOffer;
   agentTurns: AgentTurn[];
+  /** The questionnaire batches posted in this room, which its structured messages name (ISS-63). */
+  questionnaires?: QuestionnaireView[];
 }
 
 /**

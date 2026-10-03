@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { type AboutKind, aboutDraft } from "./ask-about";
-import { type ChatTarget, DOCK_DEFAULT_WIDTH, clampDockWidth, targetInScope } from "./dock-target";
+import { type ChatTarget, clampDockWidth, defaultDockWidth, targetInScope } from "./dock-target";
 
 export const DOCK_OPEN_KEY = "web-v2:chat-dock-open";
 export const DOCK_WIDTH_KEY = "web-v2:chat-dock-width";
@@ -27,7 +27,7 @@ const ChatDockContext = createContext<ChatDockApi | null>(null);
 
 export function useChatDockState(projectId: string | null): ChatDockApi {
   const [open, setOpen] = usePersistedState(DOCK_OPEN_KEY, false, { syncTabs: false });
-  const [storedWidth, setStoredWidth] = usePersistedState(DOCK_WIDTH_KEY, DOCK_DEFAULT_WIDTH, { syncTabs: false });
+  const [storedWidth, setStoredWidth] = usePersistedState(DOCK_WIDTH_KEY, defaultDockWidth(), { syncTabs: false });
   const [picked, setPicked] = useState<ChatTarget | null>(null);
   const [generation, setGeneration] = useState(0);
   const target = targetInScope(picked, projectId);
