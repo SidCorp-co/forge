@@ -84,6 +84,17 @@ export const FEEDBACK_PHASE_TONES: Record<FeedbackPhase, IssueStatusTone> = {
 	declined: "done",
 };
 
+/** The mark each phase badge draws in its dot's place, so a phase is not told by colour alone. */
+export const FEEDBACK_PHASE_GLYPHS: Record<FeedbackPhase, string> = {
+	new: "●",
+	triaged: "◐",
+	planned: "→",
+	resolved: "✓",
+	reopened: "↺",
+	verified: "✓",
+	declined: "×",
+};
+
 export const FEEDBACK_PHASE_HINTS: Record<FeedbackPhase, string> = {
 	new: "new: not triaged; a person picks a route",
 	triaged: "triaged: routed, but the route carries nothing yet; a person routes it again",

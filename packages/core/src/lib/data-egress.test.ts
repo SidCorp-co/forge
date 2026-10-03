@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { egressDeep, egressOf, storedText } from './data-egress.js';
 
-const patient = 'Bệnh nhân Nguyễn Văn An, SĐT 0912 345 678, an.nguyen@gmail.com, tái khám 2026-10-03'; // i18n-allow: Vietnamese patient text is what the scrubber is for
+const patient =
+  'Bệnh nhân Nguyễn Văn An, SĐT 0912 345 678, an.nguyen@gmail.com, tái khám 2026-10-03'; // i18n-allow: Vietnamese patient text is what the scrubber is for
 
 describe('the one egress guard (Q8)', () => {
   it('off: content leaves as written and is stored as written', () => {
@@ -35,7 +36,11 @@ describe('the one egress guard (Q8)', () => {
 
   it('a structured answer keeps its ids and times whole while its prose is scrubbed', () => {
     const id = '123e4567-e89b-42d3-a456-426614174000';
-    const out = egressDeep('redact', { id, at: '2026-10-03T01:02:03.000Z', body: patient }, 'REQ-1');
+    const out = egressDeep(
+      'redact',
+      { id, at: '2026-10-03T01:02:03.000Z', body: patient },
+      'REQ-1',
+    );
     expect(out.ok && out.value.id).toBe(id);
     expect(out.ok && out.value.at).toBe('2026-10-03T01:02:03.000Z');
     expect(out.ok && out.value.body).not.toContain('0912');

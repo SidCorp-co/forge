@@ -43,8 +43,12 @@ describe('feedback-lifecycle: the phase is read, never stored (Q1)', () => {
   it('reads a revision resolved only when accepted, live and delivered', () => {
     const s = { status: 'accepted' as const, revisionLive: true, delivered: false };
     expect(phaseOf(triaged({ route: 'revision', suggestion: s }))).toBe('planned');
-    expect(phaseOf(triaged({ route: 'revision', suggestion: { ...s, delivered: true } }))).toBe('resolved');
-    expect(phaseOf(triaged({ route: 'revision', suggestion: { ...s, status: 'rejected' } }))).toBe('triaged');
+    expect(phaseOf(triaged({ route: 'revision', suggestion: { ...s, delivered: true } }))).toBe(
+      'resolved',
+    );
+    expect(phaseOf(triaged({ route: 'revision', suggestion: { ...s, status: 'rejected' } }))).toBe(
+      'triaged',
+    );
   });
 
   it('reads a duplicate by its root, and an answer as resolved', () => {
@@ -87,7 +91,9 @@ describe('feedback-lifecycle guards', () => {
     expect(routeShapeRefusal(t({ issue: 'ISS-3' }))).toBeNull();
     expect(routeShapeRefusal(t({ createIssue: {} }))).toBeNull();
     expect(routeShapeRefusal(t({}))?.code).toBe('FEEDBACK_ROUTE_INCOMPLETE');
-    expect(routeShapeRefusal(t({ route: 'answer', answer: ' ' }))?.code).toBe('FEEDBACK_ANSWER_MISSING');
+    expect(routeShapeRefusal(t({ route: 'answer', answer: ' ' }))?.code).toBe(
+      'FEEDBACK_ANSWER_MISSING',
+    );
   });
 
   it('new -> triaged: a route that does not fit is FEEDBACK_ROUTE_TARGET_MISMATCH', () => {
@@ -100,7 +106,8 @@ describe('feedback-lifecycle guards', () => {
     };
     expect(routeFitRefusal({ route: 'issue', issue: 'ISS-1' }, facts)).toBeNull();
     expect(
-      routeFitRefusal({ route: 'answer', answer: 'a' }, { ...facts, kind: 'contract_change' })?.code,
+      routeFitRefusal({ route: 'answer', answer: 'a' }, { ...facts, kind: 'contract_change' })
+        ?.code,
     ).toBe('FEEDBACK_ROUTE_TARGET_MISMATCH');
     expect(
       routeFitRefusal(
