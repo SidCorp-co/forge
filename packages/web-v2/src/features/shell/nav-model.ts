@@ -2,7 +2,7 @@ import type { BottomTabItem, NavItem } from "@/design";
 import { joinedEcosystems, needsMe } from "@/features/ecosystem/inbox";
 import { ecosystemRoutes } from "@/features/ecosystem/routes";
 import type { WorkspaceRead } from "@/features/ecosystem/types";
-import type { RailItem } from "./nav-rail-compact";
+import type { RailEntry, RailItem } from "./nav-rail-compact";
 
 export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   // Overview = the all-projects home; the Attention queue is folded in here
@@ -205,13 +205,10 @@ export function compactWorkspaceRailItems(attentionCount: number): RailItem[] {
   }));
 }
 
-export function projectRailItems(badges: ProjectBadges): RailItem[] {
-  return PROJECT_ITEMS.map((it) => ({
-    key: it.key,
-    label: it.label,
-    icon: it.icon,
-    badge: badgeOf(it.key, badges),
-  }));
+/** The compact rail's project tier: the same menu, Development folded under its head. */
+export function projectRailItems(badges: ProjectBadges): RailEntry[] {
+  const row = (it: ProjItem): RailItem => ({ key: it.key, label: it.label, icon: it.icon, badge: badgeOf(it.key, badges) });
+  return PROJECT_MENU.map((e) => (isProjGroup(e) ? { key: e.key, label: e.label, icon: e.icon, items: e.items.map(row) } : row(e)));
 }
 
 export function bottomTabItems(attentionCount: number): BottomTabItem[] {

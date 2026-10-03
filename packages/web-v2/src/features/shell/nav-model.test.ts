@@ -12,6 +12,7 @@ import {
   projectMenu,
   projectRailItems,
 } from "./nav-model";
+import { isRailGroup } from "./nav-rail-compact";
 
 const PROJECT_ROUTES = join(__dirname, "../../app/(workspace)/projects/[slug]");
 
@@ -106,7 +107,16 @@ describe("the project menu", () => {
       "proj-releases": 1,
       "proj-automation": undefined,
     });
-    expect(projectRailItems(badges).find((i) => i.key === "proj-releases")?.badge).toBe(1);
+    const rail = projectRailItems(badges).flatMap((e) => (isRailGroup(e) ? e.items : [e]));
+    expect(rail.find((i) => i.key === "proj-releases")?.badge).toBe(1);
+    expect(rail.find((i) => i.key === "proj-issues")?.badge).toBe(12);
+  });
+
+  it("folds the compact rail's build machinery under Development, in the menu's order", () => {
+    const rail = projectRailItems({});
+    expect(rail.map((e) => e.label)).toEqual(["Dashboard", "Requirements", "Workflows", "Releases", "Feedback", "Development"]);
+    const dev = rail.find(isRailGroup);
+    expect(dev?.items.map((i) => i.label)).toEqual(["Issues", "Agents", "Contracts", "Automation"]);
   });
 });
 
