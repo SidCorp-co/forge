@@ -32,6 +32,12 @@ import { logger } from '../logger.js';
 import type { DispatchState, PolicyStateSource } from '../project-config/dispatch-policy.js';
 import { injectAfterInvocation, injectTurnLevelRules } from '../prompt/user.js';
 import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from '../runners/device-cap.js';
+import {
+  ArtifactContextError,
+  type LoadedArtifact,
+  renderArtifactContext,
+} from '../workflows/run-context.js';
+import { loadArtifactContext, recordArtifactContext } from '../workflows/run-context-service.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
 import { SKILL_MAINTENANCE_LABEL, withSkillMaintenanceCarveout } from './job-policy.js';
 import { loadPriorAttempts, renderPriorAttemptsBlock } from './prior-attempts.js';
@@ -181,22 +187,32 @@ async function contractsNamedBy(
   }
 }
 
-function withContractContext(
-  preamble: { content: string; blocks: PreambleBlock[] },
-  contracts: readonly LoadedContract[],
+// cm:why a build job is given the design revision its approver approved, so it builds the journey it was held for rather than one it guesses at; an issue that builds no workflow is given nothing
+async function designsBuiltBy(job: typeof jobs.$inferSelect): Promise<LoadedArtifact[]> {
+  if (!job.issueId) return [];
+  try {
+    return await loadArtifactContext(job.issueId);
+  } catch (err) {
+    // cm:guard an unreadable approved revision stops the job as `ARTIFACT_CONTEXT_UNLOADABLE`: an agent given no design would build the journey blind
+    const code = err instanceof ArtifactContextError ? err.code : 'ARTIFACT_CONTEXT_UNLOADABLE';
+    throw new Error(
+      `${code}: prepare refused job ${job.id}: the approved design its issue builds could not be given (${err instanceof Error ? err.message : String(err)})`,
+      { cause: err },
+    );
+  }
+}
+
+function withContextBlock(
+  prior: { systemPrompt: string; blocks: PreambleBlock[] },
+  id: PreambleBlock['id'],
+  body: string | null,
 ): { systemPrompt: string; blocks: PreambleBlock[] } {
-  const body = renderContractContext(contracts);
-  if (!body) return { systemPrompt: preamble.content, blocks: preamble.blocks };
+  if (!body) return prior;
   return {
-    systemPrompt: `${preamble.content}\n\n${body}`,
+    systemPrompt: `${prior.systemPrompt}\n\n${body}`,
     blocks: [
-      ...preamble.blocks,
-      {
-        id: 'contract-context',
-        kind: 'system',
-        chars: body.length,
-        estTokens: estimateTokens(body),
-      },
+      ...prior.blocks,
+      { id, kind: 'system', chars: body.length, estTokens: estimateTokens(body) },
     ],
   };
 }
@@ -241,8 +257,17 @@ export async function prepareClaimedJob(args: {
       : Promise.resolve([]),
     activeIssuePrefix(job.projectId),
   ]);
+  const designs = await designsBuiltBy(job);
   const contracts = await contractsNamedBy(job, issueRow[0]);
-  const { systemPrompt, blocks } = withContractContext(preamble, contracts);
+  const { systemPrompt, blocks } = withContextBlock(
+    withContextBlock(
+      { systemPrompt: preamble.content, blocks: preamble.blocks },
+      'artifact-context',
+      renderArtifactContext(designs),
+    ),
+    'contract-context',
+    renderContractContext(contracts),
+  );
 
   const payloadIn = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
   const basePromptString =
@@ -280,6 +305,7 @@ export async function prepareClaimedJob(args: {
   if (!agentSessionId) {
     throw new Error(`prepare: no agent session could be created for job ${job.id}`);
   }
+  if (designs.length) await recordArtifactContext(agentSessionId, designs, 'workflow-builds');
   if (contracts.length) await recordContractContext(agentSessionId, contracts, 'issue-paths');
 
   return {

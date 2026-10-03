@@ -137,6 +137,9 @@
 
 ### Added
 
+- **A job that builds a workflow is given the design its approver approved**, and records which
+  revision it saw. An unreadable design refuses the job (`ARTIFACT_CONTEXT_UNLOADABLE`); a large
+  one is trimmed, saying what was cut.
 - **A project can require release approval.** Set `release.approval.required: true` in the
   project document and every deploy, promote, verify and finish of a release batch is refused
   (`RELEASE_APPROVAL_REQUIRED`) until an admin other than the one who asked approves it; an

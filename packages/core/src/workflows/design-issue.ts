@@ -103,7 +103,7 @@ async function handBack(input: {
   return { issueId: String(row.id), action: 'commented', status };
 }
 
-/** The issue read's answer: the design this issue is drawn under, and the approver's latest word on it. */
+/** What `GET /issues/:id` shows of a proposing issue: its workflow and its latest proposed revision, with that revision's decision. */
 export async function proposesWorkflowOf(issueId: string) {
   const rows = (await db.execute(sql`
     SELECT w.id, w.flow, w.design_status, w.approved_revision,

@@ -30,7 +30,9 @@ export function buildUiActionToolset(): ChatToolset {
       try {
         args = argsJson.trim() ? JSON.parse(argsJson) : {};
       } catch {
-        return toolError(`UI_ACTION_INVALID: ${name} arguments were not valid JSON. Nothing was changed.`);
+        return toolError(
+          `UI_ACTION_INVALID: ${name} arguments were not valid JSON. Nothing was changed.`,
+        );
       }
       const parsed = parseUiAction(name, args);
       if (!parsed.ok) return toolError(parsed.message);
@@ -41,7 +43,7 @@ export function buildUiActionToolset(): ChatToolset {
             text: JSON.stringify({
               deferred: UI_ACTION_DEFERRED,
               action: parsed.action,
-              note: 'Handed to the person\'s browser, which applies it and shows it as a card with Undo; the next message carries the page it produced.',
+              note: "Handed to the person's browser, which applies it and shows it as a card with Undo; the next message carries the page it produced.",
             }),
           },
         ],

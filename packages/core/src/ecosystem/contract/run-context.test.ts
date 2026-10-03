@@ -92,7 +92,7 @@ describe('a run is given the contracts its paths call, and nothing else', () => 
       diff: [],
       guide: onLatest.notes,
     });
-    expect(renderContractContext([one!])).toMatch(
+    expect(renderContractContext(one ? [one] : [])).toMatch(
       /Diff: none — the consumer is already on the latest version/,
     );
   });

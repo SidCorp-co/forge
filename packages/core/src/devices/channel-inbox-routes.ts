@@ -3,8 +3,8 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { unanswered } from '../ecosystem/channel-read.js';
-import { openRunsOf } from '../ecosystem/link-service.js';
 import { unansweredView } from '../ecosystem/channel-view.js';
+import { openRunsOf } from '../ecosystem/link-service.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';

@@ -49,8 +49,8 @@ import { makeConversationImageResolver } from './conversation-images.js';
 import { type ConversationProgress, startConversationProgress } from './conversation-progress.js';
 import { registerTurnStop } from './conversation-stops.js';
 import { webAgentConversationPersona, webConversationPersona } from './door-persona.js';
-import { buildChatToolContext } from './tools/principal.js';
 import { mergeToolsets } from './tools/mcp-adapter.js';
+import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset } from './tools/registry.js';
 import { buildUiActionToolset } from './tools/ui-actions-tool.js';
 import { uiSnapshotPageContext } from './ui-snapshot.js';
@@ -166,16 +166,16 @@ export function webConversationTurn(args: {
       pageContext: uiSnapshotPageContext(conversationId),
       tools: mergeToolsets(
         buildProjectToolset(
-        buildChatToolContext({
-          credential: await credential(),
-          projectSlug: args.project.slug,
-          turn: {
-            conversationId,
-            speakerUserId,
-            handleUserId,
-            ecosystemId: (await getConversation(conversationId))?.ecosystemId ?? null,
-          },
-        }),
+          buildChatToolContext({
+            credential: await credential(),
+            projectSlug: args.project.slug,
+            turn: {
+              conversationId,
+              speakerUserId,
+              handleUserId,
+              ecosystemId: (await getConversation(conversationId))?.ecosystemId ?? null,
+            },
+          }),
         ),
         buildUiActionToolset(),
       ),
