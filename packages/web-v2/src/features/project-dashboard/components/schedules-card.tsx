@@ -11,10 +11,10 @@ import {
   CardTitle,
   Icon,
   MonoTag,
-  StatusChip,
+  StatusBadge,
 } from "@/design";
 import { formatRelativeTime } from "@/features/projects/derive";
-import { lastStatusToChip, type ScheduleRow } from "@/features/schedules/types";
+import type { ScheduleRow } from "@/features/schedules/types";
 
 const MAX_ROWS = 5;
 
@@ -53,7 +53,6 @@ export function SchedulesCard({ rows, now, slug }: { rows: ScheduleRow[]; now: n
         ) : (
           <ul className="flex flex-col gap-2">
             {shown.map((s) => {
-              const chip = lastStatusToChip(s.lastStatus);
               return (
                 <li key={s.id} className="flex items-center gap-2.5 rounded-md border border-line bg-surface px-2.5 py-2">
                   <div className="min-w-0 flex-1">
@@ -63,10 +62,10 @@ export function SchedulesCard({ rows, now, slug }: { rows: ScheduleRow[]; now: n
                       <span className="fg-caption text-subtle">{nextRunLabel(s, now)}</span>
                     </div>
                   </div>
-                  {chip ? (
-                    <StatusChip status={chip} size="sm" domain="session" />
+                  {s.lastStatus ? (
+                    <StatusBadge family="scheduleRun" value={s.lastStatus} />
                   ) : (
-                    <span className="fg-caption flex-none text-subtle">never run</span>
+                    <span className="fg-caption flex-none text-subtle">Never run</span>
                   )}
                 </li>
               );

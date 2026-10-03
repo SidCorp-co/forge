@@ -1,5 +1,6 @@
 
 import { DONE_ISSUE_STATUSES } from "@forge/contracts/issue-vocabulary";
+import { enumLabel } from "@/design/vocabulary";
 import { formatCountdown, formatElapsed } from "@/lib/utils/format";
 import type {
 	IssueStatus,
@@ -227,7 +228,7 @@ export function pausedRunView(
 	if (!pausedRun) return null;
 	const copy = PAUSED_RUN_COPY[pausedRun.resumer] ?? PAUSED_RUN_COPY.sweeper;
 	const named = pausedRun.kind
-		? `${copy.reason} It is held by ${pausedRun.kind}${pausedRun.detail ? ` at ${pausedRun.detail}` : ""}.`
+		? `${copy.reason} It is held by ${enumLabel("pauseKind", pausedRun.kind)}${pausedRun.detail ? ` at ${pausedRun.detail}` : ""}.`
 		: `${copy.reason} An operator paused it.`;
 	return {
 		runId: pausedRun.runId,

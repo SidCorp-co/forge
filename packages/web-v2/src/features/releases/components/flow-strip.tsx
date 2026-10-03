@@ -1,8 +1,7 @@
 "use client";
 
 import { Fragment, useRef, useState } from "react";
-import { Button, Icon, IconButton, Popover, Tooltip } from "@/design";
-import { TONE_META } from "@/design/status";
+import { Button, Icon, IconButton, LEGEND, Popover, statusReading, Tooltip } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { stampOf } from "../format";
 import {
@@ -11,20 +10,14 @@ import {
   stageCounts,
   stepStates,
   stepTip,
+  triggerLabel,
 } from "../flow";
 import type { ReleaseProcedure, ReleaseVersionList, ReleaseVersionRow } from "../versions-types";
 
-export const STEP_COLOR: Record<StepState, string> = {
-  passed: TONE_META.success.dot,
-  done: TONE_META.success.dot,
-  current: TONE_META.active.dot,
-  waiting: TONE_META.attention.dot,
-  failed: TONE_META.failure.dot,
-  aborted: TONE_META.neutral.dot,
-  pending: "var(--bg-sunken)",
-  untracked: "transparent",
-  skipped: "transparent",
-};
+const QUIET: Partial<Record<StepState, string>> = { pending: "var(--bg-sunken)", untracked: "transparent", skipped: "transparent" };
+
+/** A stage dot's fill: the legend tone of its `releaseStep` reading; a stage not reached is hollow. */
+export const stepColor = (st: StepState): string => QUIET[st] ?? LEGEND[statusReading("releaseStep", st).tone].dot;
 
 function ProcedureButton({ procedure }: { procedure: ReleaseProcedure }) {
   const [open, setOpen] = useState(false);
@@ -99,7 +92,7 @@ export function FlowStrip({ list, flow, active, onPick }: FlowStripProps) {
               >
                 {s.locked ? <Icon name="lock" size={12} aria-label="required" /> : null}
                 <span>{s.label}</span>
-                {s.env ? <span className="font-mono text-11 font-normal opacity-75">{s.env.trigger}</span> : null}
+                {s.env ? <span className="text-11 font-normal opacity-75">{triggerLabel(s.env.trigger)}</span> : null}
                 {s.tracked ? (
                   <span
                     className={cn("font-mono text-11", n > 0 && active !== s.key && s.kind === "approval" && "text-amber")}
@@ -143,7 +136,7 @@ export function StageTracker({ v, flow }: { v: ReleaseVersionRow; flow: ReleaseF
                 st === "untracked" && "border-dashed",
                 (st === "current" || st === "waiting" || st === "failed") && "ring-2 ring-offset-1 ring-offset-surface",
               )}
-              style={{ background: STEP_COLOR[st], ["--tw-ring-color" as string]: STEP_COLOR[st] }}
+              style={{ background: stepColor(st), ["--tw-ring-color" as string]: stepColor(st) }}
               data-state={st}
               aria-hidden
             />

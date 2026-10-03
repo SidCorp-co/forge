@@ -9,7 +9,7 @@
 // the default view (AC8); legacy rows lacking metadata render without a badge
 // rather than erroring.
 import { useState } from "react";
-import { Badge, Card, CardContent, CardHeader, CardTitle, Icon, MonoTag } from "@/design";
+import { Badge, Card, CardContent, CardHeader, CardTitle, enumLabel, Icon, MonoTag, StatusBadge } from "@/design";
 import {
   deriveSessionTimeline,
   FRESH_REASON_COPY,
@@ -99,9 +99,11 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
           )}
           {entry.groupLabel && <Badge tone="cobalt">{entry.groupLabel}</Badge>}
           {entry.jobType && (
-            <span className="font-mono text-12-5 font-bold text-fg">{entry.jobType}</span>
+            <span className="text-12-5 font-bold text-fg" title={`step: ${entry.jobType}`}>
+              {enumLabel("jobType", entry.jobType)}
+            </span>
           )}
-          <span className="fg-body-sm capitalize text-muted">{entry.status}</span>
+          <StatusBadge family="session" value={entry.status} />
           {/* ISS-411 — surface WHERE this step ran by runner NAME (not a raw
               deviceId UUID). Falls back to the short id on a pre-411 server. */}
           {(entry.deviceName ?? entry.deviceShort) && (

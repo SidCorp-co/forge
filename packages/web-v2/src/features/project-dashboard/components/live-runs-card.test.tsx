@@ -37,6 +37,6 @@ describe("the live runs card", () => {
 
   it("labels a running run with its step", () => {
     render(<LiveRunsCard runs={[run("running")]} slug="forge-dev" />);
-    expect(screen.getByText("running · drive")).toBeInTheDocument();
+    expect(screen.getByText("Running · Drive")).toBeInTheDocument();
   });
 });

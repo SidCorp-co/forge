@@ -527,10 +527,14 @@ function agentTaskLabel(tc: ToolCallData): string {
  */
 export function deriveAgentTasks(items: ConversationItem[]): AgentTaskInvocation[] {
   const out: AgentTaskInvocation[] = [];
+  const seen = new Set<string>();
   for (const item of items) {
     if (item.kind !== "agent") continue;
     for (const block of item.blocks) {
       if (block.type !== "tool" || toolKind(block.tool.name) !== "task") continue;
+      // one tool call is one invocation, however many times a transcript replays its block
+      if (seen.has(block.tool.id)) continue;
+      seen.add(block.tool.id);
       out.push({
         id: block.tool.id,
         tool: block.tool.name === "Skill" ? "Skill" : "Task",

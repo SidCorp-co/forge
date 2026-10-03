@@ -21,6 +21,7 @@ import {
   Stat,
   StatusChip,
   useElapsed,
+  enumLabel,
 } from "@/design";
 import {
   deriveSessionDisplayStatus,
@@ -262,8 +263,8 @@ export function ContextRail({
       {agentTasks.length > 0 && (
         <Section title={`Agents & tasks · ${agentTasks.length}`}>
           <ul className="flex flex-col gap-1.5">
-            {agentTasks.map((t, i) => (
-              <li key={`${t.id}-${i}`} className="flex items-center gap-2 overflow-hidden">
+            {agentTasks.map((t) => (
+              <li key={t.id} className="flex items-center gap-2 overflow-hidden">
                 <Icon
                   name={t.tool === "Skill" ? "command" : "agent"}
                   size={13}
@@ -370,8 +371,8 @@ function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
   const inner = (
     <>
       <Icon name="pipeline" size={13} className="flex-none text-subtle" />
-      <span className="flex-1 truncate fg-body-sm capitalize" title={label}>
-        {label}
+      <span className="flex-1 truncate fg-body-sm" title={label}>
+        {row.title && label === row.title ? label : enumLabel("jobType", label)}
       </span>
       <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
     </>

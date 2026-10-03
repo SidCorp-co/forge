@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Badge } from "@/design";
+import { EnumBadge, enumLabel, StatusBadge } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useApiPage, useContract } from "../hooks";
 import { readingOf } from "@/lib/api/refusals";
@@ -10,13 +10,6 @@ import type { ApiPage } from "../types";
 import { Loading, UnreadNotice } from "./notices";
 
 const contractSlugOf = (ref: string) => ref.slice(ref.indexOf("/") + 1);
-
-const CLASS_TONE: Record<string, "red" | "green" | "amber" | "neutral"> = {
-  breaking: "red",
-  "non-breaking": "green",
-  unknown: "amber",
-  initial: "neutral",
-};
 
 function Publishes({ page, slug }: { page: ApiPage; slug: string }) {
   if (!page.declared) return <p className="fg-caption">{slug} has declared no interface, so it publishes no contract.</p>;
@@ -29,8 +22,8 @@ function Publishes({ page, slug }: { page: ApiPage; slug: string }) {
             <Link href={ecosystemRoutes.contract(slug, p.slug)} className="font-mono text-13 font-semibold hover:underline">
               {p.contract}
             </Link>
-            <Badge>{p.type}</Badge>
-            <Badge tone={p.lifecycle === "deprecated" ? "amber" : "neutral"}>{p.lifecycle}</Badge>
+            <EnumBadge family="interfaceType" value={p.type} />
+            <EnumBadge family="lifecycle" value={p.lifecycle} />
           </div>
           <p className="mt-1 break-words text-13-5">{p.title}</p>
           <p className="fg-caption mt-1 break-words">
@@ -119,7 +112,7 @@ export function ContractScreen({
               <li key={v.contractVersion} className="min-w-0 rounded-md border border-line px-3 py-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-13 font-semibold">{v.contractVersion}</span>
-                  <Badge tone={CLASS_TONE[v.diff.classification] ?? "neutral"}>{v.diff.classification}</Badge>
+                  <StatusBadge family="classification" value={v.diff.classification} />
                   {v.previous ? <span className="fg-caption">after {v.previous}</span> : null}
                   <span className="fg-caption" title={v.observedAt}>
                     observed {formatRelativeTime(v.observedAt)}
@@ -129,7 +122,8 @@ export function ContractScreen({
                   <ul className="mt-1 space-y-1">
                     {v.diff.changes.map((c) => (
                       <li key={`${c.element}${c.kind}${c.text}`} className="break-words text-13">
-                        <span className="font-mono">{c.element}</span> · {c.kind} · {c.level}: {c.text}
+                        <span className="font-mono">{c.element}</span> · {enumLabel("changeKind", c.kind)} ·{" "}
+                        <StatusBadge family="changeLevel" value={c.level} /> {c.text}
                       </li>
                     ))}
                   </ul>
@@ -147,7 +141,7 @@ export function ContractScreen({
           <ul className="space-y-1">
             {measurements.map((m) => (
               <li key={`${m.observedAt}${m.commit ?? ""}`} className="flex min-w-0 flex-wrap items-center gap-2 text-13">
-                <Badge tone={m.outcome === "refused" ? "red" : m.outcome === "pending" ? "amber" : "neutral"}>{m.outcome}</Badge>
+                <StatusBadge family="measurement" value={m.outcome} />
                 {m.version ? <span className="font-mono">{m.version}</span> : null}
                 <span>{m.environments.join(", ") || "no environment"}</span>
                 {own && m.branch ? <span className="fg-caption break-all">{m.branch} @ {m.commit?.slice(0, 8)}</span> : null}

@@ -2,7 +2,7 @@
 
 import { type RefObject, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ConfirmDialog, NotificationsMenu, Popover } from "@/design";
+import { ConfirmDialog, enumLabel, NotificationsMenu, Popover } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
@@ -52,7 +52,7 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
         { kind: inv.kind, token: inv.token },
         {
           onSuccess: () =>
-            toast({ title: `You joined ${inv.name} as ${inv.role}`, tone: "success" }),
+            toast({ title: `You joined ${inv.name} as ${enumLabel("role", inv.role)}`, tone: "success" }),
           onError: (err) =>
             toast({ title: "Failed to accept invitation", description: formatApiError(err), tone: "error" }),
         },

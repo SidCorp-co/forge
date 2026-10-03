@@ -6,9 +6,11 @@ import {
   Collapsible,
   EmptyState,
   ErrorState,
+  enumLabel,
   Icon,
   type IconName,
   Skeleton,
+  StatusBadge,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
@@ -23,15 +25,8 @@ import type { IntegrationDelivery } from "../types";
  *  affordance on failed OUTBOUND rows (mirrors the server gate
  *  `direction==='outbound' && status==='failed'`). */
 
-const STATUS_META: Record<IntegrationDelivery["status"], { icon: IconName; fg: string; label: string }> = {
-  ok: { icon: "check", fg: "var(--green-600)", label: "ok" },
-  failed: { icon: "alert", fg: "var(--red-600)", label: "failed" },
-  pending: { icon: "clock", fg: "var(--amberw-600)", label: "pending" },
-  // ISS-1140: a call turned away AT the door — bad or missing signature — which never became a
-  // delivery at all. Its own row rather than the `?? pending` fallback, which would have rendered
-  // a refusal as work still in flight.
-  refused: { icon: "x", fg: "var(--red-600)", label: "refused" },
-};
+// ISS-1140: a call turned away AT the door — bad or missing signature — which never became a
+// delivery reads `refused` (contracts `ui-vocabulary.ts` `delivery`), never as work still in flight.
 
 function DeliveryRow({
   row,
@@ -43,7 +38,6 @@ function DeliveryRow({
   bindingId: string;
 }) {
   const retry = useRetryDelivery(projectId, bindingId);
-  const s = STATUS_META[row.status] ?? STATUS_META.pending;
   const dirIcon: IconName = row.direction === "inbound" ? "inbox" : "arrowRight";
   const duration = typeof row.durationMs === "number" ? `${row.durationMs}ms` : "—";
   const canRetry = row.direction === "outbound" && row.status === "failed";
@@ -54,13 +48,10 @@ function DeliveryRow({
         <span className="flex w-full flex-wrap items-center gap-x-3 gap-y-1">
           <span className="inline-flex items-center gap-1.5 text-muted">
             <Icon name={dirIcon} size={13} />
-            <span className="fg-body-sm">{row.direction}</span>
+            <span className="fg-body-sm">{enumLabel("direction", row.direction)}</span>
           </span>
           <span className="font-mono text-12 text-fg">{row.eventName}</span>
-          <span className="inline-flex items-center gap-1 font-semibold" style={{ color: s.fg }}>
-            <Icon name={s.icon} size={13} />
-            {s.label}
-          </span>
+          <StatusBadge family="delivery" value={row.status} />
           <span className="ml-auto inline-flex items-center gap-3 text-subtle">
             <span className="fg-body-sm">{duration}</span>
             <span className="fg-body-sm">{formatRelativeTime(row.createdAt, { emptyLabel: "—" })}</span>

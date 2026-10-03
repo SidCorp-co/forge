@@ -8,7 +8,6 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -20,7 +19,6 @@ import {
   PageTitle,
   Skeleton,
   Spinner,
-  StatusChip,
   Table,
   TBody,
   TD,
@@ -29,29 +27,19 @@ import {
   Toggle,
   Tooltip,
   TR,
+  EnumBadge,
+  StatusBadge,
 } from "@/design";
 import { usePmConfig, usePmDecisions, useRunPm, useUpdatePmConfig } from "@/features/automation/hooks";
 import { PmSettings, pmCadenceLabel } from "@/features/automation/components/pm-settings";
 import { formatApiError } from "@/lib/api/error";
 import { useRunSchedule, useScheduleRuns, useSchedules, useSetScheduleEnabled } from "../hooks";
-import {
-  lastStatusToChip,
-  sessionStatusToChip,
-  type ScheduleKind,
-  type ScheduleLastStatus,
-  type ScheduleRow,
-  type ScheduleRun,
-  type StewardRunReportAction,
-} from "../types";
+import type { ScheduleKind, ScheduleRow, ScheduleRun } from "../types";
+
+const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5"];
 
 function ScheduleKindBadge({ kind }: { kind: ScheduleKind | "pm" | "improve" }) {
-  if (kind === "pm") return <Badge tone="cobalt">PM</Badge>;
-  if (kind === "improve") return <Badge tone="amber">Improve</Badge>;
-  return (
-    <Badge tone={kind === "script" ? "green" : "neutral"}>
-      {kind === "script" ? "Script" : "Prompt"}
-    </Badge>
-  );
+  return <EnumBadge family="scheduleKind" value={kind} />;
 }
 
 interface SchedulesScreenProps {
@@ -98,13 +86,12 @@ function LastResult({
   sessionId: string | null;
   slug: string | undefined;
 }) {
-  const chip = lastStatusToChip(status);
-  if (!chip) {
+  if (!status) {
     return <span className="fg-caption text-subtle">Never run</span>;
   }
   const inner = (
     <span className="inline-flex items-center gap-2">
-      <StatusChip status={chip} size="sm" domain="session" />
+      <StatusBadge family="scheduleRun" value={status} />
       {at && <span className="fg-caption text-subtle">{fmtTime(at)}</span>}
     </span>
   );
@@ -121,14 +108,6 @@ function LastResult({
   return inner;
 }
 
-const ACTION_TONE: Record<StewardRunReportAction["kind"], "green" | "cobalt" | "amber" | "neutral"> =
-  {
-    applied: "green",
-    proposed: "cobalt",
-    feedback: "amber",
-    skipped: "neutral",
-  };
-
 /** One past run inside the expanded history panel. Prompt-kind links to its
  *  session; script-kind has no session — it shows captured output/error inline. */
 function ScheduleRunItem({
@@ -140,15 +119,11 @@ function ScheduleRunItem({
   slug: string | undefined;
   kind: ScheduleKind;
 }) {
-  const chip =
-    kind === "script"
-      ? lastStatusToChip(run.status as ScheduleLastStatus)
-      : sessionStatusToChip(run.status);
 
   const header = (
     <div className="flex flex-wrap items-center gap-2 py-1.5">
-      <Badge tone={run.trigger === "manual" ? "accent" : "neutral"}>{run.trigger}</Badge>
-      {chip && <StatusChip status={chip} size="sm" domain="session" />}
+      <EnumBadge family="trigger" value={run.trigger} />
+      <StatusBadge family={kind === "script" ? "scheduleRun" : "session"} value={run.status} />
       <span className="fg-caption text-subtle">{fmtTime(run.startedAt)}</span>
       <span className="fg-caption font-mono text-subtle">{fmtDuration(run.durationSeconds)}</span>
       {kind === "prompt" && run.failureReason && (
@@ -171,9 +146,10 @@ function ScheduleRunItem({
       )}
       <div className="flex flex-wrap gap-1.5">
         {run.stewardReport.actions.map((a, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a report's actions are positional; none carries an id
           <Tooltip key={i} label={a.summary}>
             <span className="inline-flex items-center gap-1">
-              <Badge tone={ACTION_TONE[a.kind]}>{a.kind}</Badge>
+              <StatusBadge family="stewardAction" value={a.kind} />
               <span className="fg-caption text-muted max-w-[160px] truncate">{a.skill}</span>
             </span>
           </Tooltip>
@@ -303,8 +279,8 @@ export function SchedulesScreen({ scope, header }: SchedulesScreenProps) {
 
       {schedulesQ.isLoading && (
         <div className="space-y-2.5">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full rounded-lg" />
+          {SKELETON_ROWS.map((k) => (
+            <Skeleton key={k} className="h-16 w-full rounded-lg" />
           ))}
         </div>
       )}
@@ -545,7 +521,7 @@ function PmLastRun({ last }: { last: { cause: string; createdAt: string } | null
   if (!last) return <span className="fg-caption text-subtle">No decision yet</span>;
   return (
     <span className="inline-flex items-center gap-2">
-      <MonoTag>{last.cause}</MonoTag>
+      <EnumBadge family="pmCause" value={last.cause} />
       <span className="fg-caption text-subtle">{fmtTime(last.createdAt)}</span>
     </span>
   );

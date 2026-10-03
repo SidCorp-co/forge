@@ -1390,7 +1390,8 @@ describe("deriveBlockerState — ISS-853, the paused run the screen used to hide
 			}),
 			undefined,
 		);
-		expect(b?.reason).toContain("stage_stalled");
+		expect(b?.reason).toContain("held by a stalled stage");
+		expect(b?.reason).not.toContain("stage_stalled");
 		expect(b?.reason).toContain("code");
 	});
 
@@ -1434,7 +1435,8 @@ describe("deriveBlockerState — ISS-853, the paused run the screen used to hide
 			},
 			undefined,
 		);
-		expect(b?.reason).toContain("stage_stalled");
+		expect(b?.reason).toContain("held by a stalled stage");
+		expect(b?.reason).not.toContain("stage_stalled");
 		expect(b?.cta.kind).toBe("resume-run");
 	});
 

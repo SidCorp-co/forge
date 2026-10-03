@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Banner, Button, Skeleton } from "@/design";
+import { Banner, Button, EnumBadge, Skeleton } from "@/design";
 import { AuthShell } from "@/features/auth/components/auth-shell";
 import { ApiError, apiClient } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
@@ -116,7 +116,7 @@ function AcceptInvite() {
               <strong>{info.inviterEmail}</strong> invited{" "}
               <strong>{info.email}</strong> to join{" "}
               <strong>{targetName}</strong> as{" "}
-              <Badge tone="accent">{info.role}</Badge>
+              <EnumBadge family="role" value={info.role} />
             </p>
             <p className="fg-body-sm text-muted">
               Valid until {new Date(info.expiresAt).toLocaleDateString()}.

@@ -349,6 +349,15 @@ describe("deriveAgentTasks", () => {
     ]);
     expect(deriveAgentTasks(items)).toEqual([]);
   });
+
+  it("lists one invocation once when a transcript replays its tool block", () => {
+    const call = { type: "tool" as const, toolCall: { id: "a", name: "Task", input: { description: "Explore repo" } } };
+    const items = parseMessages([
+      { type: "assistant", blocks: [call] },
+      { type: "assistant", blocks: [call] },
+    ]);
+    expect(deriveAgentTasks(items).map((t) => t.id)).toEqual(["a"]);
+  });
 });
 
 describe("splitHunk", () => {

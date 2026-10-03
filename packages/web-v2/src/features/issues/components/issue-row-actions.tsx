@@ -6,6 +6,8 @@ import {
   Avatar,
   Badge,
   Checkbox,
+  EnumBadge,
+  enumLabel,
   Icon,
   IconButton,
   Menu,
@@ -138,7 +140,7 @@ function QueuedChip({ step }: { step: QueuedStepView }) {
   );
   if (!step.gate) return chip;
   return (
-    <Tooltip label={`${step.jobType} · ${step.gate.detail}`} multiline>
+    <Tooltip label={`${enumLabel("jobType", step.jobType)} · ${step.gate.detail}`} multiline>
       {chip}
     </Tooltip>
   );
@@ -342,7 +344,7 @@ export function IssueTableRow({
             </span>
           </button>
           <span className="flex flex-none items-center gap-1.5">
-            {row.category && <MonoTag>{row.category}</MonoTag>}
+            {row.category && <EnumBadge family="category" value={row.category} />}
             <WaitingOnPersonChip since={row.waitingOnPersonSince} now={now} />
             <DepBadges deps={row.dependencies} slug={slug} />
           </span>

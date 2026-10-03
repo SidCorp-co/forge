@@ -1,11 +1,12 @@
 import { STATUS_META, type StatusKey } from "@/design/status";
 import { Icon } from "@/design/icons/icon";
+import { enumLabel } from "@/design/vocabulary";
 
 export type StatusDomain = "issue" | "session";
 
 export interface StatusChipProps {
   status: StatusKey;
-  /** When running, append the active pipeline stage, e.g. `running · code`. */
+  /** When running, append the active pipeline stage, read as words: `Running · Code`. */
   stage?: string;
   size?: "sm" | "md";
   /** Status vocabulary this chip belongs to. Defaults to `issue`. */
@@ -42,8 +43,9 @@ export function StatusChip({
   const isRunning = status === "running";
   const isSession = domain === "session";
   const baseLabel = isSession ? (label ?? SESSION_LABELS[status] ?? m.label) : (label ?? m.label);
-  const text = stage && isRunning ? `running · ${stage}` : baseLabel;
-  const mono = isSession || (stage && isRunning);
+  // ISS-67: the stage is a stored job type, so it reads through the jobType labels, never raw.
+  const text = stage && isRunning ? `${baseLabel} · ${enumLabel("jobType", stage)}` : baseLabel;
+  const mono = isSession;
   return (
     <span
       className={`inline-flex items-center gap-1.5 whitespace-nowrap font-semibold ${

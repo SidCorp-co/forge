@@ -14,7 +14,7 @@ import {
   HelpButton,
   Icon,
   Input,
-  MonoTag,
+  EnumBadge,
   PageContainer,
   PageTitle,
   Skeleton,
@@ -348,7 +348,7 @@ export function RunnersScreen() {
                         )}
                       </TD>
                       <TD>
-                        <MonoTag>{d.platform}</MonoTag>
+                        <EnumBadge family="platform" value={d.platform} />
                       </TD>
                       <TD>
                         {d.gitCredentialRef ? (

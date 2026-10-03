@@ -2,6 +2,7 @@
 // typed snapshot, and how one parsed action is applied to it. Every action changes the URL or the list
 // selection, never data, and a call that cannot be applied whole is refused by name before anything moves.
 
+import { enumLabel, statusReading } from "@/design/vocabulary";
 import {
   parseUiAction,
   UI_ACTION_VERSION,
@@ -108,8 +109,8 @@ const refuse = (code: string, message: string): UiActionOutcome => ({ ok: false,
 function chipLabel(field: UiIssueFilterField, f: UiIssueFilter): string {
   if (field === "createdBy") return "Created by me";
   if (field === "assignee") return "Assigned to me";
-  if (field === "priority") return `Priority: ${f.priority}`;
-  if (field === "status") return `Status: ${f.status?.join(", ")}`;
+  if (field === "priority") return `Priority: ${enumLabel("priority", f.priority ?? "")}`;
+  if (field === "status") return `Status: ${(f.status ?? []).map((s) => statusReading("issue", s).label).join(", ")}`;
   return `Search: "${f.text}"`;
 }
 

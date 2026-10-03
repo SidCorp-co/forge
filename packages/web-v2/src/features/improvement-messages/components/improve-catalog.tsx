@@ -17,10 +17,11 @@ import {
   Select,
   Skeleton,
   Spinner,
-  StatusChip,
+  StatusBadge,
   Toggle,
   Tooltip,
   Input,
+  EnumBadge,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import {
@@ -37,7 +38,6 @@ import {
   type ImprovementMessageEntry,
   type ScheduleRun,
 } from "../types";
-import { sessionStatusToChip } from "@/features/schedules/types";
 
 interface ImproveScreenProps {
   scope: { projectId: string; canManage: boolean };
@@ -67,8 +67,8 @@ function fmtDuration(seconds: number | null): string {
 function RunItem({ run, slug }: { run: ScheduleRun; slug: string | undefined }) {
   const body = (
     <div className="flex flex-wrap items-center gap-2 py-1.5">
-      <Badge tone={run.trigger === "manual" ? "accent" : "neutral"}>{run.trigger}</Badge>
-      <StatusChip status={sessionStatusToChip(run.status)} size="sm" domain="session" />
+      <EnumBadge family="trigger" value={run.trigger} />
+      <StatusBadge family="session" value={run.status} />
       <span className="fg-caption text-subtle">{fmtTime(run.startedAt)}</span>
       <span className="fg-caption font-mono text-subtle">{fmtDuration(run.durationSeconds)}</span>
       {run.failureReason && (
@@ -317,7 +317,7 @@ function MessageCard({
         {enablement && !showEnableForm && (
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <MonoTag>{enablement.cron}</MonoTag>
-            <Badge tone="neutral">{enablement.mode}</Badge>
+            <EnumBadge family="mode" value={enablement.mode} />
             {canManage && (
               <>
                 <Button

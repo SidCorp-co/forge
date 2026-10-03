@@ -104,7 +104,7 @@ describe("the board drawer's run chips", () => {
     render(
       <RunDetail open onClose={vi.fn()} issue={issueRow({ agentStatus: "running", pipelineHealth: { stage: "open" } })} runId="r1" slug="forge-dev" />,
     );
-    expect(within(header()).getByText("running · drive")).toBeInTheDocument();
+    expect(within(header()).getByText("Running · Drive")).toBeInTheDocument();
     expect(within(quick()).getByText("Running")).toBeInTheDocument();
   });
 
@@ -127,7 +127,7 @@ describe("the board drawer's run chips", () => {
   it("reads the run's own status with no issue row", () => {
     run = summary("running");
     render(<RunDetail open onClose={vi.fn()} issue={null} runId="r1" slug="forge-dev" />);
-    expect(within(screen.getByText("run r1").parentElement as HTMLElement).getByText("running · drive")).toBeInTheDocument();
+    expect(within(screen.getByText("run r1").parentElement as HTMLElement).getByText("Running · Drive")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Change status/ })).toBeNull();
   });
 });
@@ -179,7 +179,7 @@ describe("the board drawer with no pipeline run", () => {
       <RunDetail open onClose={vi.fn()} issue={issueRow({ agentStatus: "running", pipelineHealth: { stage: "open" } })} runId="r1" slug="forge-dev" canWrite={false} />,
     );
     expect(within(header()).getByText("Open")).toBeInTheDocument();
-    expect(within(header()).getByText("running · drive")).toBeInTheDocument();
+    expect(within(header()).getByText("Running · Drive")).toBeInTheDocument();
   });
 
   it("draws no chip in the Ops drawer while its run has not loaded", () => {

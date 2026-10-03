@@ -1,20 +1,6 @@
 "use client";
 
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardTitle,
-  ErrorState,
-  Field,
-  IconButton,
-  Input,
-  SectionTitle,
-  Select,
-  Skeleton,
-  type SelectOption,
-} from "@/design";
+import { Badge, Button, Card, CardContent, CardTitle, ErrorState, Field, IconButton, Input, SectionTitle, Select, Skeleton, type SelectOption, EnumBadge } from "@/design";
 import { useOrgMembers } from "@/features/orgs/hooks";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
@@ -127,9 +113,7 @@ export function MembersTab({
                       disabled={updateRole.isPending}
                     />
                   ) : (
-                    <Badge tone={m.role === "admin" ? "accent" : "neutral"}>
-                      {m.role}
-                    </Badge>
+                    <EnumBadge family="role" value={m.role} />
                   )}
                   {canEdit && (
                     <IconButton
@@ -169,7 +153,7 @@ export function MembersTab({
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
                       {inv.expired && <Badge tone="amber">Expired</Badge>}
-                      <Badge tone="neutral">{inv.role}</Badge>
+                      <EnumBadge family="role" value={inv.role} />
                       <IconButton
                         icon="trash"
                         aria-label={`Cancel invitation for ${inv.email}`}

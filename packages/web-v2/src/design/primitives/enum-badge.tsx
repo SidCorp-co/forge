@@ -96,6 +96,9 @@ function Bars({ n }: { n: number }) {
   );
 }
 
+/** A family with no field named reads as words in the tooltip: `failureCause` → "failure cause". */
+const fieldWords = (family: string) => family.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+
 /** The stored field each family reads, named in the tooltip beside the raw value. */
 const FIELD: Partial<Record<EnumFamily, string>> = {
   feedbackKind: "kind",
@@ -124,7 +127,7 @@ export function EnumBadge({ family, value, label }: EnumBadgeProps) {
   return (
     <span
       className="inline-flex max-w-full cursor-default items-center gap-1.5 whitespace-nowrap rounded-pill bg-[var(--paper-100)] px-2 py-[2px] text-11-5 font-semibold text-muted"
-      title={`${FIELD[family] ?? family}: ${value}`}
+      title={`${FIELD[family] ?? fieldWords(family)}: ${value}`}
       data-value={value}
       data-testid="enum-badge"
     >

@@ -69,14 +69,14 @@ function rail(
 describe("the merge mark on the issue rail", () => {
   it("says a mark Forge did not observe is a claim", () => {
     render(rail("asserted", null));
-    expect(screen.getByText("claimed")).toBeInTheDocument();
-    expect(screen.queryByText("observed")).toBeNull();
+    expect(screen.getByText("Claimed")).toBeInTheDocument();
+    expect(screen.queryByText("Observed")).toBeNull();
   });
 
   it("says a merge Forge observed is observed", () => {
     render(rail("observed", SHA));
-    expect(screen.getByText("observed")).toBeInTheDocument();
-    expect(screen.queryByText("claimed")).toBeNull();
+    expect(screen.getByText("Observed")).toBeInTheDocument();
+    expect(screen.queryByText("Claimed")).toBeNull();
   });
 
   it("names the commit a reader would check the observed merge against", () => {
@@ -93,8 +93,8 @@ describe("the merge mark on the issue rail", () => {
     // An older API answer carries `mergedAt` and no `mergeMark`. Rendering "observed" there would
     // be the browser inventing a reading core did not make.
     render(rail(undefined, null));
-    expect(screen.queryByText("claimed")).toBeNull();
-    expect(screen.queryByText("observed")).toBeNull();
+    expect(screen.queryByText("Claimed")).toBeNull();
+    expect(screen.queryByText("Observed")).toBeNull();
   });
 });
 
@@ -103,11 +103,11 @@ describe("a mark naming where the work landed outside git (ISS-1327)", () => {
 
   it("says landed, and shows the landing as text in the same row", () => {
     render(rail("landed", null, LANDING));
-    expect(screen.getByText("landed")).toBeInTheDocument();
+    expect(screen.getByText("Landed")).toBeInTheDocument();
     // Visible text, not a hover: keyboard, touch and screen-reader users read it too.
     expect(screen.getByTestId("merged-landing")).toHaveTextContent(LANDING);
-    expect(screen.queryByText("claimed")).toBeNull();
-    expect(screen.queryByText("observed")).toBeNull();
+    expect(screen.queryByText("Claimed")).toBeNull();
+    expect(screen.queryByText("Observed")).toBeNull();
   });
 
   it("explains a website mark naming no landing by the landing, never by a change request", () => {

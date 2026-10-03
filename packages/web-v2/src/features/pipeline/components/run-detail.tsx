@@ -23,9 +23,11 @@ import {
   SlideOver,
   Spinner,
   Stat,
+  StatusBadge,
   StatusChip,
   Tabs,
   Tooltip,
+  enumLabel,
   type MenuItem,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -409,9 +411,9 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
                             : "var(--fg-subtle)",
                   }}
                 >
-                  {step.jobType}
+                  {enumLabel("jobType", step.jobType)}
                 </span>
-                <span className="fg-body-sm capitalize text-muted">{step.status}</span>
+                <StatusBadge family="runStep" value={step.status} />
                 {step.durationMs != null && (
                   <span className="ml-auto">
                     <Stat icon="clock">{formatDurationMs(step.durationMs)}</Stat>
@@ -508,7 +510,9 @@ function CostTab({ run, loading }: { run: PipelineRunSummary | undefined; loadin
           <p className="fg-overline">Step durations</p>
           {steps.map((s) => (
             <div key={s.jobType} className="flex items-center gap-2.5">
-              <span className="w-14 flex-none font-mono text-12 text-muted">{s.jobType}</span>
+              <span className="w-14 flex-none text-12 text-muted" title={`step: ${s.jobType}`}>
+                {enumLabel("jobType", s.jobType)}
+              </span>
               <ProgressBar
                 className="flex-1"
                 value={((s.durationMs ?? 0) / maxDur) * 100}
