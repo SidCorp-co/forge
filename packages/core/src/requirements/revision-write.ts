@@ -89,6 +89,7 @@ export async function resetDraftCriteria(tx: Tx, requirementId: string, revision
     );
 }
 
+/** REQ-n at revision 1 (draft), numbered max+1 under that lock. */
 export async function createRequirementIn(
   tx: Tx,
   input: {
@@ -97,6 +98,8 @@ export async function createRequirementIn(
     title: string;
     write: RevisionWrite;
     ownerId?: string | null;
+    /** Who wrote revision 1's content when not the actor: an accepted suggestion's producer. */
+    authorId?: string | undefined;
   },
 ): Promise<{ id: string; refusals: RequirementRefusal[] | null }> {
   const { projectId, actor, write } = input;
@@ -121,13 +124,13 @@ export async function createRequirementIn(
     tldr: write.tldr ?? null,
     changeSummary: write.changeSummary ?? null,
     reason: write.reason.trim(),
-    authorId: actor.userId,
+    authorId: input.authorId ?? actor.userId,
     fromSuggestionId: write.fromSuggestionId ?? null,
   });
   return { id: row.id, refusals: await writeCriteria(tx, row.id, 1, write.criteria) };
 }
 
-// cm:guard refused while another revision is open, or when `baseRevision` is no longer the head
+/** A new draft revision on the head: refused while another is open, or when `baseRevision` moved. */
 export async function newDraftRevisionIn(
   tx: Tx,
   input: {

@@ -7,33 +7,36 @@
  * in one transaction and answers an outcome, refusals named and nothing written.
  */
 
-import type { FeedbackTriageEffect } from '@forge/contracts/feedback';
 import {
   SUGGESTION_PAYLOADS,
-  type SuggestionEffect,
   type SuggestionKind,
   type SuggestionProducer,
   type SuggestionView,
 } from '@forge/contracts/suggestions';
 import { and, eq, sql } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
-import { requirementRevisions } from '../db/schema-requirements.js';
+import { type IssueStatus, issues } from '../db/schema.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import { lockFeedback } from '../feedback/service.js';
-import { announceTriage, type TriageWritten, triageIn } from '../feedback/triage.js';
+import { announceTriage } from '../feedback/triage.js';
+import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
+import { announceIssueCreated } from '../issues/create-service.js';
+import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
+import {
+  flushIssueRelationEffects,
+  type PendingIssueRelation,
+  writeIssueRelations,
+} from '../issues/relations-service.js';
+import { emitIssueFieldUpdate } from '../issues/update-hook.js';
 import { assertProjectAccess } from '../lib/authz.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { personActRefusalFor } from '../lib/person-act.js';
 import type { NamedRefusal } from '../project-config/respond.js';
-import { requirementKey, rowIn } from '../requirements/read.js';
-import {
-  createRequirementIn,
-  lockRequirements,
-  newDraftRevisionIn,
-  openRevisionOf,
-  type RevisionWrite,
-} from '../requirements/service.js';
+import { lockRequirements } from '../requirements/service.js';
+import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
 import {
   headOf,
   onTarget,
@@ -57,8 +60,6 @@ import {
   rejectReasonRefusal,
   withdrawRefusal,
 } from './rules.js';
-
-type Effect = SuggestionEffect | FeedbackTriageEffect;
 
 export type SuggestionOutcome =
   | { ok: true; suggestion: SuggestionView; effect?: Effect; created?: boolean }
@@ -167,6 +168,7 @@ export async function createSuggestion(input: {
         kind,
         requirementId: target.type === 'requirement' ? target.id : null,
         issueId: target.type === 'issue' ? target.id : null,
+        feedbackId: target.type === 'feedback' ? target.id : null,
         baseRevision: input.baseRevision,
         payload,
         fingerprint,
@@ -184,97 +186,143 @@ export async function createSuggestion(input: {
   return answer(id, { created: true });
 }
 
-/** The effect of accepting `row`, written in the accept's transaction; refusals roll it back. */
-async function writeEffect(
-  tx: Tx,
+/** After the accept committed: the hooks every issue create and field write emit, and the edges' effects. */
+async function announceEffect(written: EffectWritten, projectId: string, actor: SuggestionActor) {
+  const who = { type: 'user' as const, id: actor.userId, agency: actor.agency };
+  if (written.triage) await announceTriage(written.triage, actor);
+  for (const id of written.createdIssueIds ?? []) {
+    const [issue] = await db.select().from(issues).where(eq(issues.id, id));
+    if (issue) await announceIssueCreated(issue, who);
+  }
+  if (written.relations?.length) {
+    await flushIssueRelationEffects(
+      { actor: who, createdById: actor.userId },
+      projectId,
+      written.relations,
+    );
+  }
+  if (written.updatedIssue?.written.length) {
+    const { before } = written.updatedIssue;
+    const [after] = await db.select().from(issues).where(eq(issues.id, before.id));
+    if (after) {
+      await emitIssueFieldUpdate({
+        before: { ...before, workState: null },
+        after: { ...after, workState: null },
+        written: written.updatedIssue.written,
+        actor: who,
+      });
+    }
+  }
+}
+
+/** A suggestion's base names a revision the head has moved past: the refusal names both. */
+function movedBase(row: Row, target: SuggestionTarget, head: number | null) {
+  return target.type === 'requirement' ? baseStaleRefusal(row.baseRevision, head) : null;
+}
+
+// cm:why workflow issue-lifecycle step `dropped` ("not work: … a duplicate"): accepting a duplicate
+// on an issue drops it with the root named and a relates edge to it, through the one transition
+// writer; the accept is written inside that transition's transaction, so neither lands alone
+async function acceptDuplicateOfIssue(
   projectId: string,
-  row: Row,
-  head: number | null,
+  first: Row,
   actor: SuggestionActor,
-): Promise<{ refusals: NamedRefusal[] | null; effect?: Effect; triage?: TriageWritten }> {
-  const target = targetOfRow(row);
-  if (row.kind === 'feedback_triage' && target.type === 'feedback') {
-    const written = await triageIn(tx, {
-      projectId,
-      row: await feedbackRowIn(tx, projectId, target.id, true),
-      triage: SUGGESTION_PAYLOADS.feedback_triage.schema.parse(row.payload),
-      actor,
-      channel: 'web',
-      fromSuggestionId: row.id,
-    });
-    if (written.refusals?.length) return { refusals: written.refusals };
+): Promise<SuggestionOutcome> {
+  const target = targetOfRow(first);
+  const p = SUGGESTION_PAYLOADS.duplicate.schema.parse(first.payload);
+  const prefix = await activeIssuePrefix(projectId);
+  const [issue] = await db
+    .select({
+      id: issues.id,
+      projectId: issues.projectId,
+      status: issues.status,
+      reopenCount: issues.reopenCount,
+      seq: issues.issSeq,
+    })
+    .from(issues)
+    .where(eq(issues.id, target.id));
+  if (!issue) throw new Error(`suggestions: issue ${target.id} vanished under its suggestion`);
+  const key = formatIssueRef(prefix, issue.seq);
+  const root = await resolveIssueRouteRef(p.duplicateOf, projectId, actor.userId).catch((err) => {
+    if (err instanceof HTTPException) return null;
+    throw err;
+  });
+  if (!root || root.projectId !== projectId || root.id === issue.id) {
     return {
-      refusals: null,
-      ...(written.effect ? { effect: written.effect } : {}),
-      triage: written,
+      ok: false,
+      refusals: [
+        {
+          code: 'SUGGESTION_PAYLOAD_INVALID',
+          path: '/payload/duplicateOf',
+          detail:
+            !root || root.projectId !== projectId
+              ? `${p.duplicateOf} is not an issue of this project, so ${key} cannot be marked its duplicate.`
+              : `${key} cannot be a duplicate of itself.`,
+        },
+      ],
     };
   }
-  if (row.kind === 'revision_diff' && target.type === 'requirement') {
-    const write = SUGGESTION_PAYLOADS.revision_diff.schema.parse(row.payload) as RevisionWrite;
-    const refusals = await newDraftRevisionIn(tx, {
-      requirementId: target.id,
-      head,
-      open: await openRevisionOf(tx, target.id),
-      baseRevision: row.baseRevision,
-      actor,
-      write: { ...write, fromSuggestionId: row.id },
-    });
-    if (refusals?.length) return { refusals };
-    const [written] = await tx
-      .select({ revision: requirementRevisions.revision })
-      .from(requirementRevisions)
-      .where(eq(requirementRevisions.fromSuggestionId, row.id));
-    const req = await rowIn(tx, projectId, target.id);
-    await tx
-      .update(suggestions)
-      .set({
-        status: 'stale',
-        decidedAt: new Date(),
-        reason: `suggestion ${row.id} was accepted as a new draft revision of this requirement`,
-      })
-      .where(
-        and(
-          eq(suggestions.requirementId, target.id),
-          eq(suggestions.status, 'proposed'),
-          sql`${suggestions.id} <> ${row.id}`,
-        ),
-      );
-    return {
-      refusals: null,
-      effect: {
-        requirementId: target.id,
-        requirement: requirementKey(req.reqSeq),
-        revision: written?.revision ?? 0,
+  const rootKey = formatIssueRef(prefix, root.issSeq);
+  let relations: PendingIssueRelation[] = [];
+  try {
+    await transitionIssueStatus(
+      {
+        id: issue.id,
+        projectId,
+        status: issue.status as IssueStatus,
+        reopenCount: issue.reopenCount,
       },
-    };
+      'dropped',
+      { type: 'user', id: actor.userId, agency: actor.agency },
+      {
+        transitionReason: `Duplicate of ${rootKey}${p.note ? `: ${p.note}` : ''} (suggestion ${first.id}).`,
+        beforeStatusWrite: async (tx) => {
+          await lockTarget(tx, projectId, target);
+          const row = await rowOf(tx, projectId, first.id, true);
+          const decided = decidedRefusal(row.status);
+          if (decided) throw new Refused([decided]);
+          relations = await writeIssueRelations(
+            {
+              actor: { type: 'user', id: actor.userId, agency: actor.agency },
+              createdById: actor.userId,
+            },
+            projectId,
+            issue.id,
+            [{ kind: 'relates', dependsOnId: root.id, reason: `duplicate of ${rootKey}` }],
+            tx,
+          );
+          await tx
+            .update(suggestions)
+            .set({ status: 'accepted', decidedBy: actor.userId, decidedAt: new Date() })
+            .where(eq(suggestions.id, row.id));
+          await recordDecision(tx, row, actor, 'accepted');
+        },
+      },
+    );
+  } catch (err) {
+    if (err instanceof Refused) return { ok: false, refusals: err.refusals };
+    if (err instanceof TransitionError) {
+      return { ok: false, refusals: [{ code: err.code, path: '', detail: err.detail }] };
+    }
+    throw err;
   }
-  if (row.kind === 'requirement_draft') {
-    const { title, ...write } = SUGGESTION_PAYLOADS.requirement_draft.schema.parse(row.payload);
-    const created = await createRequirementIn(tx, {
-      projectId,
-      actor,
-      title,
-      write: { ...(write as RevisionWrite), fromSuggestionId: row.id },
-    });
-    if (created.refusals?.length) return { refusals: created.refusals };
-    const req = await rowIn(tx, projectId, created.id);
-    return {
-      refusals: null,
-      effect: { requirementId: created.id, requirement: requirementKey(req.reqSeq), revision: 1 },
-    };
-  }
-  return { refusals: null };
+  await announceEffect({ refusals: null, relations }, projectId, actor);
+  return answer(first.id, {
+    effect: { issueId: issue.id, issue: key, duplicateOf: rootKey, status: 'dropped' },
+  });
 }
 
 /**
  * A person accepts: the effect is written in the same transaction, compare-and-set on the head. A
  * moved head refuses SUGGESTION_BASE_STALE naming both revisions and marks the row stale, which is
- * the truth about it whatever the caller does next.
+ * the truth about it whatever the caller does next; a row the move already marked stale answers
+ * the same refusal, not a bare SUGGESTION_DECIDED.
  */
 export async function acceptSuggestion(input: {
   projectId: string;
   id: string;
   actor: SuggestionActor;
+  channel?: AcceptChannel | undefined;
 }): Promise<SuggestionOutcome> {
   const { projectId, actor } = input;
   const first = await rowOf(db, projectId, input.id);
@@ -287,25 +335,26 @@ export async function acceptSuggestion(input: {
     )) ?? producerRefusal(actor.userId, first.producerId);
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const target = targetOfRow(first);
-  let effect: Effect | undefined;
-  let triage: TriageWritten | undefined;
+  if (first.kind === 'duplicate' && target.type === 'issue' && first.status === 'proposed') {
+    return acceptDuplicateOfIssue(projectId, first, actor);
+  }
+  let written: EffectWritten = { refusals: null };
   const stale: { reason: string | null } = { reason: null };
   const refusals = await inTx(async (tx) => {
     await lockTarget(tx, projectId, target);
     if (first.kind === 'requirement_draft') await lockRequirements(tx, projectId);
     const row = await rowOf(tx, projectId, input.id, true);
+    const head = await headOf(tx, projectId, target);
+    const moved = movedBase(row, target, head);
+    if (row.status === 'stale' && moved) return [moved];
     const decided = decidedRefusal(row.status);
     if (decided) return [decided];
-    const head = await headOf(tx, projectId, target);
-    const moved = target.type === 'requirement' ? baseStaleRefusal(row.baseRevision, head) : null;
     if (moved) {
       stale.reason = moved.detail;
       return [moved];
     }
-    const written = await writeEffect(tx, projectId, row, head, actor);
+    written = await writeEffect(tx, projectId, row, head, actor, input.channel ?? 'web');
     if (written.refusals) return written.refusals;
-    effect = written.effect;
-    triage = written.triage;
     await tx
       .update(suggestions)
       .set({ status: 'accepted', decidedBy: actor.userId, decidedAt: new Date() })
@@ -320,7 +369,8 @@ export async function acceptSuggestion(input: {
       .where(and(eq(suggestions.id, first.id), eq(suggestions.status, 'proposed')));
   }
   if (refusals) return { ok: false, refusals };
-  if (triage) await announceTriage(triage, actor);
+  await announceEffect(written, projectId, actor);
+  const effect: Effect | undefined = written.effect;
   return answer(first.id, effect ? { effect } : {});
 }
 

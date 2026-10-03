@@ -45,6 +45,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'devices/run-evidence.ts': 'the seqs a run names',
   'devices/run-issue-return.ts': 'the seqs a run names',
   'devices/run-session.ts': 'the seqs a run names',
+  'feedback/read.ts': 'the issues a feedback item targets or is routed to, by id',
+  'feedback/triage.ts': 'by issue id: the issue a route links, or the draft it filed',
   'issues/record-events/collapse.ts': 'retention: an archived issue collapses its narration too',
   'issues/record-events/routes.ts': 'the one issue a route names',
   'integrations/github/issue-link.ts': 'the seq a pull request names',
@@ -114,8 +116,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'metrics/queries.ts': 'throughput and cycle-time aggregates, no issue identity',
   'notifications/notify-mentions.ts': 'by issue id',
   'notifications/notify-transitions.ts': 'by issue id',
-  'feedback/read.ts': 'the issues the listed feedback names as target or carrier, by id',
-  'feedback/triage.ts': 'the issue a triage just filed or names, by id',
+  'jobs/job-system-prompt.ts': 'the issue of the job being prepared or previewed',
   'jobs/loop-monitor-axis.ts':
     'one count of the claims the job axis cannot reach; an archived issue a live claim holds is still outside that axis, so hiding it would understate the blind spot',
   'project-config/testing-secrets.ts': 'the landed target of the one issue a job works, by id',
@@ -166,10 +167,14 @@ const NOT_DISCOVERY: Record<string, string> = {
   'release-batch/versions.ts': 'reads only the gate status, not yet in a release run',
   'requirements/issue-links.ts':
     'by issue id: the requirement an issue names, and the issue a link or a plan write names',
-  'requirements/standing-read.ts':
-    'the issues a requirement links; an archived one still delivered it, so its status is counted',
   'requirements/read.ts':
     'the issues a requirement links; an archived one still delivered it, so its status is counted',
+  'requirements/standing-read.ts':
+    'the issues a requirement links; an archived one still delivered it, so its status is counted',
+  'suggestions/effects.ts':
+    'by issue id: the issue a triage targets, and the drafts a breakdown just filed',
+  'suggestions/service.ts':
+    'by issue id: the issue a duplicate names, and the drafts an accept filed',
   'runners/routes.ts': 'issues of dispatched or running jobs',
   'tasks/routes.ts': 'by issue id',
   'uploads/attachment-bytes.ts': 'by attachment id',

@@ -22,11 +22,7 @@ import { db, type Tx } from '../db/client.js';
 import { issues, pipelineRuns, projects } from '../db/schema.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
-import {
-  requirementDelivery,
-  requirementRevisions,
-  requirements,
-} from '../db/schema-requirements.js';
+import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
@@ -37,9 +33,17 @@ import { dataPolicyOf, egressOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { actMiss, PERSON_ACT, PERSON_ADMIN_ACT } from '../lib/person-act.js';
 import { requirementKey } from '../requirements/read.js';
+import { deliveredAmong } from '../requirements/standing-read.js';
 import { userNames } from '../workflows/service.js';
 import { targetTypeOf } from './refs.js';
-import { attentionOf, type PhaseFacts, phaseOf, waitingOnOf } from './rules.js';
+import {
+  attentionOf,
+  type FeedbackRefusal,
+  type PhaseFacts,
+  phaseOf,
+  searchWithheldRefusal,
+  waitingOnOf,
+} from './rules.js';
 
 export interface FeedbackActor {
   userId: string;
@@ -76,7 +80,7 @@ export async function rowIn(tx: Tx, projectId: string, ref: string, lock = false
 interface Linked {
   prefix: string | null;
   issues: Map<string, { key: string; title: string; status: string }>;
-  requirements: Map<string, { key: string; title: string; status: string }>;
+  requirements: Map<string, { key: string; title: string; status: string; delivered: boolean }>;
   releases: Map<string, string>;
   workflows: Map<string, { flow: string; title: string | null }>;
   providers: Map<string, string>;
@@ -142,16 +146,12 @@ async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
               id: suggestions.id,
               status: suggestions.status,
               revisionState: requirementRevisions.state,
-              phase: requirementDelivery.phase,
+              requirementId: requirementRevisions.requirementId,
             })
             .from(suggestions)
             .leftJoin(
               requirementRevisions,
               eq(requirementRevisions.fromSuggestionId, suggestions.id),
-            )
-            .leftJoin(
-              requirementDelivery,
-              eq(requirementDelivery.requirementId, requirementRevisions.requirementId),
             )
             .where(inArray(suggestions.id, suggestionIds))
         : [],
@@ -165,6 +165,10 @@ async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
         .from(projects)
         .where(inArray(projects.id, providerIds))
     : [];
+  const delivered = await deliveredAmong(
+    projectId,
+    ids([...reqRows.map((r) => r.id), ...suggestionRows.map((s) => s.requirementId)]),
+  );
   return {
     prefix,
     providers: new Map(providerRows.map((p) => [p.id, p.slug])),
@@ -175,7 +179,15 @@ async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
       ]),
     ),
     requirements: new Map(
-      reqRows.map((r) => [r.id, { key: requirementKey(r.seq), title: r.title, status: r.status }]),
+      reqRows.map((r) => [
+        r.id,
+        {
+          key: requirementKey(r.seq),
+          title: r.title,
+          status: r.status,
+          delivered: delivered.has(r.id),
+        },
+      ]),
     ),
     releases: new Map(releaseRows.map((r) => [r.id, r.version ?? r.id])),
     workflows: new Map(
@@ -193,7 +205,7 @@ async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
         {
           status: s.status,
           revisionLive: s.revisionState === 'current' || s.revisionState === 'superseded',
-          delivered: s.phase === 'delivered',
+          delivered: s.requirementId !== null && delivered.has(s.requirementId),
         },
       ]),
     ),
@@ -218,6 +230,9 @@ function phaseFacts(r: Row, l: Linked, rootPhase: FeedbackPhase | null): PhaseFa
     routedRequirementStatus: r.routedRequirementId
       ? (l.requirements.get(r.routedRequirementId)?.status ?? null)
       : null,
+    routedRequirementDelivered: r.routedRequirementId
+      ? (l.requirements.get(r.routedRequirementId)?.delivered ?? false)
+      : false,
     rootPhase,
   };
 }
@@ -329,17 +344,19 @@ export async function listFeedbackAs(
   projectId: string,
   query: { phases?: readonly FeedbackPhase[] | undefined; q?: string | undefined } = {},
   door: ReadDoor = {},
-): Promise<FeedbackListResponse> {
+): Promise<{ ok: true; list: FeedbackListResponse } | { ok: false; refusals: FeedbackRefusal[] }> {
   await assertProjectAccess(projectId, viewer.userId, 'viewer');
   const level = await dataPolicyOf(projectId);
   const withhold = withholdsFrom(level, viewer.agency, door);
+  const searchRefused = searchWithheldRefusal(query.q, withhold);
+  if (searchRefused) return { ok: false, refusals: [searchRefused] };
   const rows = await db
     .select()
     .from(feedback)
     .where(
       and(
         eq(feedback.projectId, projectId),
-        query.q && !withhold ? ilike(feedback.title, `%${query.q}%`) : undefined,
+        query.q ? ilike(feedback.title, `%${query.q}%`) : undefined,
       ),
     )
     .orderBy(desc(feedback.createdAt))
@@ -349,7 +366,7 @@ export async function listFeedbackAs(
   const shown = query.phases?.length ? all.filter((s) => query.phases?.includes(s.phase)) : all;
   const counts = { you: 0, moving: 0, others: 0, done: 0 } as Record<FeedbackAttention, number>;
   for (const s of all) counts[s.attention] += 1;
-  return { feedback: shown, counts, sensitive: level !== 'off' };
+  return { ok: true, list: { feedback: shown, counts, sensitive: level !== 'off' } };
 }
 
 /** The phase of one item as a write reads it, under the write's own transaction where given. */

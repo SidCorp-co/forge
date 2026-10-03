@@ -215,18 +215,22 @@ describe('the plugin ladder, driven in its own words', () => {
     expect(ten.body.status).toBe('in_progress');
     expect((ten.body.workState as { step: string }).step).toBe('test');
 
-    await harness.db.execute(sql`
-      INSERT INTO comments (id, issue_id, author_id, body) VALUES (gen_random_uuid(), ${id}, ${w.humanId}, ${[
+    // The plugin posts its verdict as a comment fence; the comment door mirrors it into
+    // `criterion_verdicts` (ISS-55's dual path), which is what the gate reads.
+    const verdict = await call(w, 'POST', `/api/issues/${id}/comments`, {
+      body: [
         '```forge-record',
         'criterion: 1 — it works',
         'verdict: pass',
         `runtime: ${HEAD}`,
+        'evidence: https://ci.example.test/runs/1/judge-log.txt',
         'why: exercised',
         '```',
         '',
         '`forge-record: verdict · contract 1`',
-      ].join('\n')})
-    `);
+      ].join('\n'),
+    });
+    expect(verdict.status, JSON.stringify(verdict.body)).toBe(201);
     const gate = await transition(w, id, 'awaiting_release');
     expect(gate.status, JSON.stringify(gate.body)).toBe(200);
     expect(gate.body.status).toBe('awaiting_release');

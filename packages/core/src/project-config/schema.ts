@@ -20,6 +20,9 @@ const SLUG = /^[a-z][a-z0-9-]{0,62}$/;
 const SHORT_NAME = /^[a-z][a-z0-9-]{0,31}$/;
 const GIT_REF = /^(?!\/)(?!.*\/\/)(?!.*\.\.)(?!.*@\{)[A-Za-z0-9._/-]+(?<!\/)(?<!\.lock)$/;
 
+/** A project's one-line description: what the system is, as the Workflows overview leads with it. */
+export const PROJECT_DESCRIPTION_MAX = 280;
+
 export const uuid = () => z.string().regex(UUID);
 export const slug = () => z.string().regex(SLUG);
 const gitRef = () => z.string().min(1).max(200).regex(GIT_REF);
@@ -115,6 +118,15 @@ export const projectDocumentSchema = z.strictObject({
     id: uuid(),
     slug: slug(),
     name: z.string().min(1).max(120),
+    // cm:why what the system is, in one line a person reads first (owner, 2026-10-04): the Workflows
+    // overview leads with it instead of a design's summary, which records how the design was drawn.
+    // Absent is undescribed; nothing else is read in its place.
+    description: z
+      .string()
+      .min(1)
+      .max(PROJECT_DESCRIPTION_MAX)
+      .regex(/^\S(?:[^\r\n]*\S)?$/, 'one line, with no leading or trailing space')
+      .optional(),
   }),
   source: z.discriminatedUnion('type', [gitSourceSchema, storefrontSourceSchema, noSourceSchema]),
   workspace: z.strictObject({

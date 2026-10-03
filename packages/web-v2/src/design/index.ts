@@ -86,6 +86,7 @@ export { StreamingText, type StreamingTextProps } from "./patterns/streaming-tex
 export { Highlight, type HighlightProps } from "./patterns/highlight";
 export { SlideOver, type SlideOverProps } from "./patterns/slide-over";
 export { Menu, type MenuProps, type MenuItem } from "./patterns/menu";
+export { HoverCard, type HoverCardProps, useHoverCard } from "./patterns/hover-card";
 export { RouteProgress } from "./patterns/route-progress";
 export { Markdown, type MarkdownProps } from "./patterns/markdown";
 export { BodyView, type BodyViewProps } from "./patterns/body-view";

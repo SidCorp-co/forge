@@ -145,9 +145,16 @@
   in the provider as a draft requirement (`/api/projects/:id/contract-requests`). Approving a
   breaking version files one contract-change feedback item per consumer, due by the provider's notice
   window; any other version only notifies them.
-- **Workflows opens on what the system is.** A System overview shows the system-context summary,
-  key facts and a C4 context diagram that fits the screen; designs are grouped by purpose; a
-  system-context design toggles Context | Containers. The dashboard shows it too.
+- **Workflows opens on what the system is.** On the left, a one-line description, key facts with
+  detail on hover, and the system-context design on a pannable canvas; on the right, every design
+  grouped by purpose. The dashboard shows it too.
+- **A project has a one-line description.** Set it in project settings → Basics, from the Workflows
+  overview, or as `project.description` in the project document. The overview leads with it.
+- **Large system-context designs stay readable.** The context diagram groups outside systems by
+  boundary, with a count, until no text is under 12px. Hover a group for its systems and whether
+  each is confirmed; zoom in to show them all.
+- **A system-context design is drawn on the same canvas as every other design**, with the same
+  minimap, zoom, search, side panel and walk-through, for both its Context and Containers views.
 - **A new project can be onboarded in a chat thread.** The agent reads the code, drafts the key
   designs for your approval and asks what it cannot tell in one questionnaire card,
   at most three rounds. The BA assistant asks through the same card.
@@ -3259,6 +3266,23 @@
   set is now 59.
 
 ### Fixed
+
+- **Accepting a suggestion now writes what it proposes.** A breakdown files its issues at draft,
+  linked to the requirement and traced to its criteria; readiness, issue triage and duplicate take
+  effect too. An agent's feedback triage proposal no longer fails.
+- **The prompt preview shows the prompt a job actually gets**, with the requirement criteria,
+  design pins and contracts a claimed job carries.
+- **Uppercase and unlabelled Vietnamese names are scrubbed on sensitive projects.** "NGUYỄN VĂN A"
+  is hidden whole, and a name in a title is caught without a label before it.
+- **A reopened issue needs new passing verdicts** before it can reach awaiting release again.
+- **Feedback routed to a new requirement stays planned until that requirement is delivered**, not
+  merely agreed.
+- **An agent's note no longer clears a person's question from the master's inbox**; only a reply
+  threaded under the question does.
+- **The onboarding hint no longer says "No system context yet"** on a project whose system-context
+  design is approved.
+- **A requirement reads delivered only once every criterion is proven**, names issues planned
+  against an older revision and drafts nobody promoted, and keeps each return's own time and signer.
 
 - **A write made with a paired box's token is recorded as an agent's, with the person who paired
   it kept behind it.** It used to read as that person on the issue's creator, its activity, its

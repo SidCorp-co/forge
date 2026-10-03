@@ -26,6 +26,7 @@ const triaged = (over: Partial<PhaseFacts>): PhaseFacts => ({
   routedIssueStatus: 'in_progress',
   suggestion: null,
   routedRequirementStatus: null,
+  routedRequirementDelivered: false,
   rootPhase: null,
   ...over,
 });
@@ -49,6 +50,20 @@ describe('feedback-lifecycle: the phase is read, never stored (Q1)', () => {
     expect(phaseOf(triaged({ route: 'revision', suggestion: { ...s, status: 'rejected' } }))).toBe(
       'triaged',
     );
+  });
+
+  it('reads a new requirement planned while it is only agreed, resolved once it is delivered (feedback-lifecycle planned → resolved)', () => {
+    const routed = (over: Partial<PhaseFacts>) =>
+      triaged({ route: 'new_requirement', routedIssueStatus: null, ...over });
+    expect(phaseOf(routed({ routedRequirementStatus: 'draft' }))).toBe('planned');
+    expect(phaseOf(routed({ routedRequirementStatus: 'agreed' }))).toBe('planned');
+    expect(
+      phaseOf(routed({ routedRequirementStatus: 'agreed', routedRequirementDelivered: true })),
+    ).toBe('resolved');
+    expect(
+      phaseOf(routed({ routedRequirementStatus: 'accepted', routedRequirementDelivered: true })),
+    ).toBe('resolved');
+    expect(phaseOf(routed({ routedRequirementStatus: 'dropped' }))).toBe('triaged');
   });
 
   it('reads a duplicate by its root, and an answer as resolved', () => {

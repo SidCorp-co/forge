@@ -145,6 +145,7 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_DECIDE_FORBIDDEN",
 	"FEEDBACK_VERIFY_FORBIDDEN",
 	"FEEDBACK_REDACT_FORBIDDEN",
+	"FEEDBACK_SEARCH_WITHHELD",
 ] as const;
 export type FeedbackRefusalCode = (typeof FEEDBACK_REFUSAL_CODES)[number];
 
@@ -344,7 +345,13 @@ export interface FeedbackListResponse {
 }
 
 export interface SimilarFeedbackResponse {
-	status: "ok" | "not_embedded" | "provider_not_configured";
+	/** `ok`, no vector row yet (`not_embedded`), or the item's own embedding status, never collapsed. */
+	status:
+		| "ok"
+		| "not_embedded"
+		| "provider_not_configured"
+		| "failed"
+		| "withheld_by_policy";
 	message?: string;
 	model?: string;
 	hits: { key: string; title: string; phase: FeedbackPhase; similarity: number }[];

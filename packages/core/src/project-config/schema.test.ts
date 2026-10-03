@@ -10,7 +10,7 @@ import {
   nameOf,
   read,
 } from './schema.fixture.js';
-import { POLICY_STATE_STATUSES } from './schema.js';
+import { POLICY_STATE_STATUSES, PROJECT_DESCRIPTION_MAX } from './schema.js';
 
 describe('fixtures (happy)', () => {
   const files = allFixtures();
@@ -156,4 +156,30 @@ describe('a deny entry is a tool pattern, to zod and to the emitted JSON Schema 
       expectRefused('policy', withDeny(entry), { path: '/permissions/development/deny/0' });
     },
   );
+});
+
+describe("a project's description is one line of at most PROJECT_DESCRIPTION_MAX characters", () => {
+  const described = (description: string): Doc => {
+    const d = clone(read('sim-forge-dev/project.json'));
+    d.project.description = description;
+    return d;
+  };
+
+  it.each([
+    'HOP (Hospital Operations Platform) là nền tảng vận hành bệnh viện — dữ liệu chỉ ở Việt Nam.', // i18n-allow: a description is the project's own prose, in its own language
+    'x',
+    'y'.repeat(PROJECT_DESCRIPTION_MAX),
+  ])('accepts %s', (text) => {
+    expectAccepted('project', described(text));
+  });
+
+  it.each([
+    ['empty', ''],
+    ['two lines', 'What it is.\nWhat it does.'],
+    ['a leading space', ' What it is.'],
+    ['a trailing space', 'What it is. '],
+    ['one character too long', 'y'.repeat(PROJECT_DESCRIPTION_MAX + 1)],
+  ])('refuses %s at /project/description', (_name, text) => {
+    expectRefused('project', described(text), { path: '/project/description' });
+  });
 });
