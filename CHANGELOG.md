@@ -137,6 +137,18 @@
 
 ### Added
 
+- **A storefront project's work can be judged on an unpublished draft.** A verdict names an Autoflow
+  workflow, its draft version and a preview environment; Forge reads the draft back, and only a
+  confirmed draft counts toward `awaiting_release`, never on a git project.
+
+- **An issue can wait on another project's contract version.** `POST /api/issues/:id/contract-waits`
+  or `forge_ecosystem contract_wait_add` with `<provider>/<contract> >= version`: the issue is not
+  dispatched until the provider approves that version or a later one, and a production release that
+  carries it is refused `CONTRACT_PROVIDER_NOT_LIVE` until the provider's production serves it (an
+  ecosystem can turn that off with `releases.providerLive: "off"`). A published change request lands
+  in the provider as a draft requirement (`/api/projects/:id/contract-requests`). Approving a
+  breaking version files one contract-change feedback item per consumer, due by the provider's notice
+  window; any other version only notifies them.
 - **Workflows opens on what the system is.** On the left, a one-line description, key facts with
   detail on hover, and the system-context design on a pannable canvas; on the right, every design
   grouped by purpose. The dashboard shows it too.
@@ -3259,6 +3271,26 @@
 
 ### Fixed
 
+- **forge-runner no longer retires a resident master mid-turn.** It retires one only after an
+  hour in which its pane reported no turn and no input, nothing was claimable and no child run
+  was open; the log line names each.
+- **Accepting a suggestion now writes what it proposes.** A breakdown files its issues at draft,
+  linked to the requirement and traced to its criteria; readiness, issue triage and duplicate take
+  effect too. An agent's feedback triage proposal no longer fails.
+- **The prompt preview shows the prompt a job actually gets**, with the requirement criteria,
+  design pins and contracts a claimed job carries.
+- **Uppercase and unlabelled Vietnamese names are scrubbed on sensitive projects.** "NGUYỄN VĂN A"
+  is hidden whole, and a name in a title is caught without a label before it.
+- **A reopened issue needs new passing verdicts** before it can reach awaiting release again.
+- **Feedback routed to a new requirement stays planned until that requirement is delivered**, not
+  merely agreed.
+- **An agent's note no longer clears a person's question from the master's inbox**; only a reply
+  threaded under the question does.
+- **The onboarding hint no longer says "No system context yet"** on a project whose system-context
+  design is approved.
+- **A requirement reads delivered only once every criterion is proven**, names issues planned
+  against an older revision and drafts nobody promoted, and keeps each return's own time and signer.
+
 - **A write made with a paired box's token is recorded as an agent's, with the person who paired
   it kept behind it.** It used to read as that person on the issue's creator, its activity, its
   status history and its comments, so a person's box looked like the person typing and its comments
@@ -6295,7 +6327,10 @@
 ### Changed
 - **A refusal reads the same everywhere.** A refused requirement sign-off or design decision now
   answers 422 with `error.code` and its refusals, like every other refusal; MCP returns that same
-  body, and the web shows its reason.
+  body, and the web shows its reason. Ecosystem writes refused for who is acting (a link, an
+  interface, a contract publish or decision, a channel write, a builder supersede) moved from 403 to
+  that 422 too; a read you are fenced from stays 403. A builder supersede by an agent now needs
+  member on the project.
 - **An issue has ten statuses, each saying who it waits on.** Confirmed, clarified, developed,
   testing, tested, releasing and waiting are gone; how far a run got is its step. Every move is
   checked and refused by name.

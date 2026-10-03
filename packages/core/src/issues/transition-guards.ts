@@ -9,8 +9,8 @@
  *   approved           plan and criteria written; a person made the move where   PLAN_REQUIRED
  *                      the project document sets `plan.approval.required`
  *   awaiting_release   every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
- *                      identity                                                  VERDICT_IDENTITY_REQUIRED
- *   closed             shipped (`merged-at.ts`, inside the write)                CLOSE_REQUIRES_SHIPPED
+ *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_UNCORROBORATED
+ *   closed             shipped; from in_progress after a reopen, as above        CLOSE_REQUIRES_SHIPPED + the three above
  *
  *   needs_info         a question (the reason) and its kind                      TRANSITION_REASON_REQUIRED,
  *                                                                                WAITING_KIND_REQUIRED
@@ -29,7 +29,7 @@ import {
 } from '../pipeline/state-machine.js';
 import { readProjectDocument } from '../project-config/service.js';
 import type { ActorAgency } from './actor-agency.js';
-import { unpassedCriteria } from './release-evidence.js';
+import { type CriteriaEvidence, type SourceType, unpassedCriteria } from './release-evidence.js';
 import { isBlankPlan } from './transition-evidence.js';
 import { issueHolder } from './work-state.js';
 
@@ -39,6 +39,9 @@ export type GuardCode =
   | 'PLAN_REQUIRED'
   | 'NO_WORK_EVIDENCE'
   | 'VERDICT_IDENTITY_REQUIRED'
+  | 'VERDICT_PREDATES_REOPEN'
+  | 'VERDICT_IDENTITY_NOT_ADMISSIBLE'
+  | 'VERDICT_UNCORROBORATED'
   | 'TRANSITION_REASON_REQUIRED'
   | 'WAITING_KIND_REQUIRED'
   | 'VOID_REASON_REQUIRED';
@@ -191,14 +194,21 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
   return null;
 }
 
-/** awaiting_release: every criterion's latest verdict passes, and says what it held in. */
-async function verdictGuard(ctx: GuardContext): Promise<GuardFault | null> {
-  const found = await unpassedCriteria(ctx.executor, ctx.issue.id);
+/**
+ * awaiting_release: every criterion's latest verdict passes, says what it held in, and was recorded
+ * after the issue's latest reopen. `onlyIfReopened` is the in_progress → closed move, which asks
+ * this rule only of a reopened issue: there an earlier `merged_at` still stands, and without the
+ * rule a reopen could close again on the evidence it rejected.
+ */
+async function verdictGuard(ctx: GuardContext, onlyIfReopened = false): Promise<GuardFault | null> {
+  const source = (await readProjectDocument(ctx.issue.projectId))?.document.source.type ?? null;
+  const found = await unpassedCriteria(ctx.executor, ctx.issue.id, source);
+  if (onlyIfReopened && found.reopenedAt === null) return null;
+  const into = quote(ctx.to);
   if (found.kind === 'no-criteria') {
     return {
       code: 'NO_WORK_EVIDENCE',
-      detail:
-        '`awaiting_release` says every criterion holds a passing verdict, and this issue has no criteria for a verdict to hold on. Write them (`PUT /api/issues/:id/criteria`, or numbered `acceptanceCriteria`) and record a verdict on each (`POST /api/issues/:id/verdicts`), then move it.',
+      detail: `${into} says every criterion holds a passing verdict, and this issue has no criteria for a verdict to hold on. Write them (\`PUT /api/issues/:id/criteria\`, or numbered \`acceptanceCriteria\`) and record a verdict on each (\`POST /api/issues/:id/verdicts\`), then move it.`,
       details: { from: ctx.from, to: ctx.to, criteria: [] },
     };
   }
@@ -208,8 +218,21 @@ async function verdictGuard(ctx: GuardContext): Promise<GuardFault | null> {
       .join(', ');
     return {
       code: 'NO_WORK_EVIDENCE',
-      detail: `\`awaiting_release\` says every criterion holds a passing verdict, and criteria ${named} do not. A \`skipped\` or \`fail\` verdict never passes. Record a passing verdict on each, then move it.`,
+      detail: `${into} says every criterion holds a passing verdict, and criteria ${named} do not. A \`skipped\` or \`fail\` verdict never passes. Record a passing verdict on each, then move it.`,
       details: { from: ctx.from, to: ctx.to, unpassed: found.unpassed },
+    };
+  }
+  if (found.predateReopen.length > 0) {
+    const at = found.reopenedAt?.toISOString() ?? 'its reopen';
+    return {
+      code: 'VERDICT_PREDATES_REOPEN',
+      detail: `this issue was reopened at ${at}, and the passing verdicts on criteria ${found.predateReopen.join(', ')} were recorded before that: a reopen says the work was not right, so evidence from before it is not current. Record a new verdict on each against the work done since the reopen, then move it.`,
+      details: {
+        from: ctx.from,
+        to: ctx.to,
+        reopenedAt: found.reopenedAt?.toISOString() ?? null,
+        predateReopen: found.predateReopen,
+      },
     };
   }
   if (found.unidentified.length > 0) {
@@ -217,6 +240,30 @@ async function verdictGuard(ctx: GuardContext): Promise<GuardFault | null> {
       code: 'VERDICT_IDENTITY_REQUIRED',
       detail: `a passing verdict says what it held in — a whole commit sha, a runtime, a design revision (\`<flow> rev <n>\`) or a contract version (\`<ref>@<version>\`) — and the latest verdict on criteria ${found.unidentified.join(', ')} names none the gate accepts (a backfilled \`commit_unresolved\` abbreviation is not one). Record each again with its identity, then move it.`,
       details: { from: ctx.from, to: ctx.to, unidentified: found.unidentified },
+    };
+  }
+  return storefrontDraftFault(ctx, found, source);
+}
+
+export function storefrontDraftFault(
+  ctx: GuardContext,
+  found: Extract<CriteriaEvidence, { kind: 'criteria' }>,
+  source: SourceType,
+): GuardFault | null {
+  if (found.inadmissible.length > 0) {
+    const held = source === null ? 'declares no project document' : `has source \`${source}\``;
+    return {
+      code: 'VERDICT_IDENTITY_NOT_ADMISSIBLE',
+      detail: `the latest verdict on criteria ${found.inadmissible.join(', ')} names a storefront draft, and this project ${held}: a draft stands in for a landed commit only where the work lives on a storefront (\`source.type: "storefront"\`). Record each against the commit or runtime it was judged at, then move it.`,
+      details: { from: ctx.from, to: ctx.to, source, inadmissible: found.inadmissible },
+    };
+  }
+  if (found.uncorroborated.length > 0) {
+    const named = found.uncorroborated.map((u) => `${u.criterion} (${u.note})`).join('; ');
+    return {
+      code: 'VERDICT_UNCORROBORATED',
+      detail: `a storefront draft counts once the storefront source reads it back as the draft it holds, and the latest verdict on criteria ${named} was not. Record each again naming the draft version \`forge_storefront_target\` reports now, then move it.`,
+      details: { from: ctx.from, to: ctx.to, uncorroborated: found.uncorroborated },
     };
   }
   return null;
@@ -241,6 +288,8 @@ export async function guardFault(ctx: GuardContext): Promise<GuardFault | null> 
       return planGuard(ctx);
     case 'awaiting_release':
       return verdictGuard(ctx);
+    case 'closed':
+      return ctx.from === 'in_progress' ? verdictGuard(ctx, true) : null;
     default:
       return null;
   }

@@ -19,6 +19,8 @@ export const DESIGN_FIELD = 'design';
 /** `contract: <project slug>/<contract slug>@<version>`, a version the issue's project recorded. */
 export const CONTRACT_FIELD = 'contract';
 
+export const ENVIRONMENT_FIELD = 'environment';
+
 /** The field a criterion block cites what its verdict was taken from in. */
 export const EVIDENCE_FIELD = 'evidence';
 
@@ -31,7 +33,22 @@ const HEXADECIMAL = /^[0-9a-f]+$/iu;
 const RULE = 'verdict-identity';
 
 const SHAPE =
-  "a criterion block of a `verdict` record names what it was judged against: `runtime: <a whole object id>` for an identity something was observed serving, `commit: <at least seven hex characters>` for a source that was read, `design: <workflow flow or id> rev <n>` for a workflow design revision this issue's project holds, or `contract: <project>/<contract>@<version>` for a contract version this issue's project recorded";
+  "a criterion block of a `verdict` record names what it was judged against: `runtime: <a whole object id>` for an identity something was observed serving, `runtime: <workflow id>@draft:<draft version>` with `environment: <key>` for a storefront draft judged on that environment, `commit: <at least seven hex characters>` for a source that was read, `design: <workflow flow or id> rev <n>` for a workflow design revision this issue's project holds, or `contract: <project>/<contract>@<version>` for a contract version this issue's project recorded";
+
+const STOREFRONT_DRAFT_RUNTIME = /^(\S+)@draft:(\S+)$/u;
+
+export interface StorefrontDraftRuntime {
+  readonly workflowId: string;
+  readonly draftVersion: string;
+}
+
+export function parseStorefrontDraftRuntime(
+  value: string | null | undefined,
+): StorefrontDraftRuntime | null {
+  const match = STOREFRONT_DRAFT_RUNTIME.exec(String(value ?? '').trim());
+  if (!match) return null;
+  return { workflowId: match[1] as string, draftVersion: match[2] as string };
+}
 
 /** `<workflow flow or id> rev <n>`: the flow slug or the workflow's id, then its revision. */
 const DESIGN_SHAPE = /^(\S+)\s+rev\s+(\d+)$/u;
@@ -142,6 +159,7 @@ export interface CriterionBlock {
   /** The block's `why` line: the reason a `skipped` verdict must carry (ISS-55). */
   readonly why: string | null;
   readonly contract: string | null;
+  readonly environment: string | null;
   /** Everything this block cites, in the order written. An empty value cites nothing. */
   readonly cited: readonly string[];
 }
@@ -154,6 +172,7 @@ interface OpenBlock {
   design: string | null;
   why: string | null;
   contract: string | null;
+  environment: string | null;
   cited: string[];
 }
 
@@ -185,6 +204,7 @@ export function criterionBlocksIn(record: ForgeRecord | null): CriterionBlock[] 
           design: null,
           why: null,
           contract: null,
+          environment: null,
           cited: [],
         };
       }
@@ -197,6 +217,8 @@ export function criterionBlocksIn(record: ForgeRecord | null): CriterionBlock[] 
     else if (field.key === DESIGN_FIELD && block.design === null) block.design = value;
     else if (field.key === 'why' && block.why === null && value !== '') block.why = value;
     else if (field.key === CONTRACT_FIELD && block.contract === null) block.contract = value;
+    else if (field.key === ENVIRONMENT_FIELD && block.environment === null)
+      block.environment = value;
     else if (field.key === EVIDENCE_FIELD && value !== '') block.cited.push(value);
   }
   close();
@@ -239,11 +261,20 @@ function refusalsForBlock(block: CriterionBlock): MessageRefusal[] {
       ),
     );
   }
+  if (parseStorefrontDraftRuntime(block.runtime) !== null && block.environment === null) {
+    out.push(
+      refusal(
+        `criterion ${block.criterion}'s \`${RUNTIME_FIELD}\` names the storefront draft \`${block.runtime}\` and no \`${ENVIRONMENT_FIELD}\` line: a draft is judged on an environment the project document declares, so the block names it (\`${ENVIRONMENT_FIELD}: preview\`)`,
+        `${RUNTIME_FIELD}: ${block.runtime}`,
+      ),
+    );
+  }
   for (const [key, value] of [
     [RUNTIME_FIELD, block.runtime],
     [SOURCE_FIELD, block.source],
   ] as const) {
     if (value === null) continue;
+    if (key === RUNTIME_FIELD && parseStorefrontDraftRuntime(value) !== null) continue;
     if (!recognisableIdentity(value)) {
       out.push(
         refusal(

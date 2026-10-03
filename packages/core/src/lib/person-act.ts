@@ -19,6 +19,8 @@ export const PERSON_ACT: ActRule = { person: 'member', agent: 'never' };
 /** A write only the project's own agent makes: never a person, never another project's agent. */
 export const PROJECT_AGENT_WRITE: ActRule = { person: 'never', agent: 'member' };
 
+export const PROJECT_MEMBER_WRITE: ActRule = { person: 'member', agent: 'member' };
+
 /** An act on reporter data only a project admin person takes (UC15): never an agent. */
 export const PERSON_ADMIN_ACT: ActRule = { person: 'project-admin', agent: 'never' };
 

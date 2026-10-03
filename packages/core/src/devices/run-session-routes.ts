@@ -10,13 +10,13 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { isDispatchGateError } from '../issues/dispatch-gates.js';
 import { IssueLeaseHeldError } from '../issues/issue-lease.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { badRequest, conflict } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { PolicyRefusedError } from '../project-config/dispatch-policy.js';
-import { WorkflowDesignNotApprovedError } from '../workflows/design.js';
 import { gateConditionSchema } from './gate-report.js';
 import { RunnerNotAdmittedError } from './pool-admission.js';
 import { forbidden, notFound, sessionParamsSchema } from './route-errors.js';
@@ -71,7 +71,7 @@ deviceRunSessionRoutes.post(
       if (err instanceof PolicyRefusedError) {
         throw conflict(err.code, err.message, { projectId: err.projectId });
       }
-      if (err instanceof WorkflowDesignNotApprovedError) {
+      if (isDispatchGateError(err)) {
         throw conflict(err.code, err.message, { blocked: err.blocked });
       }
       if (err instanceof RunnerNotAdmittedError) {

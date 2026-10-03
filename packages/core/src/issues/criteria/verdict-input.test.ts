@@ -75,6 +75,7 @@ describe('draftFromBlock (the comment fence dual path)', () => {
     source: null,
     design: null,
     contract: null,
+    environment: null,
     why: 'not reachable from this box',
     cited: ['log.txt'],
   };
@@ -104,5 +105,53 @@ describe('draftFromBlock (the comment fence dual path)', () => {
   it('keeps a malformed design so its refusal names it', () => {
     const d = draftFromBlock({ ...block, verdict: 'pass', design: 'issue-lifecycle two' });
     expect(verdictDraftFault(d)?.code).toBe('VERDICT_DESIGN_SHAPE');
+  });
+});
+
+describe('a storefront draft identity (ISS-91)', () => {
+  const sf = {
+    kind: 'storefront_draft' as const,
+    workflowId: 'b2eb2792-a043-4d5f-80a3-50a32c29e6e9',
+    draftVersion: 'a'.repeat(64),
+    environment: 'preview',
+  };
+
+  it('accepts a workflow id, a draft version and an environment key', () => {
+    expect(code({ identity: sf })).toBeNull();
+  });
+
+  it('refuses a malformed draft by name, saying which field and what shape is valid', () => {
+    const fault = verdictDraftFault(
+      draft({ identity: { ...sf, workflowId: 'has space', environment: 'Preview' } }),
+    );
+    expect(fault?.code).toBe('VERDICT_STOREFRONT_DRAFT_SHAPE');
+    expect(fault?.detail).toContain('workflowId `has space`');
+    expect(fault?.detail).toContain('environment `Preview`');
+    expect(fault?.detail).toContain('kind: "storefront_draft"');
+  });
+
+  it('leaves the commit and runtime forms exactly as strict', () => {
+    expect(
+      code({ identity: { kind: 'runtime', ref: `${sf.workflowId}@draft:${sf.draftVersion}` } }),
+    ).toBe('VERDICT_RUNTIME_NOT_FULL');
+    expect(code({ identity: { kind: 'commit', sha: SHA.slice(0, 39) } })).toBe(
+      'VERDICT_COMMIT_NOT_FULL',
+    );
+  });
+
+  it('reads a comment block naming `<id>@draft:<version>` as a storefront draft on its environment', () => {
+    const d = draftFromBlock({
+      criterion: 1,
+      verdict: 'pass',
+      runtime: `${sf.workflowId}@draft:${sf.draftVersion}`,
+      source: null,
+      design: null,
+      contract: null,
+      environment: 'preview',
+      why: null,
+      cited: [],
+    });
+    expect(d.identity).toEqual(sf);
+    expect(verdictDraftFault(d)).toBeNull();
   });
 });

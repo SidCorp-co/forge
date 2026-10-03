@@ -1,6 +1,6 @@
 import { db } from '../../db/client.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
-import { refusedBy } from '../access.js';
+import { fencedBy } from '../access.js';
 import { loadGraph } from '../graph.js';
 import { loadInterface } from '../interface-service.js';
 import { liveEdges } from '../party.js';
@@ -17,7 +17,7 @@ export async function consumedContract(args: {
   const { userId, consumerId, providerId, contract } = args;
   const access = await effectiveProjectRole(userId, consumerId);
   if (!projectRoleAtLeast(access?.role ?? null, 'viewer')) {
-    throw refusedBy({
+    throw fencedBy({
       code: 'CHANNEL_NO_ROLE',
       path: '/project',
       detail: `person ${userId} holds no role on project ${consumerId}, so nothing is read as that project; a project admin can add them.`,
@@ -37,7 +37,7 @@ export async function consumedContract(args: {
     )
     .map((e) => e.ecosystemId);
   if (!provider || ecosystems.length === 0) {
-    throw refusedBy({
+    throw fencedBy({
       code: 'CONTRACT_NOT_A_PARTY',
       path: '/contract',
       detail: `project ${consumerId} does not consume ${contract} of project ${providerId} in an ecosystem both are active in and the provider publishes it to; a contract's versions are read by its provider's members and by the projects that consume it.`,

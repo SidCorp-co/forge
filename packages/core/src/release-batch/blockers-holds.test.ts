@@ -23,6 +23,8 @@ const execRows = vi.fn(async () => [] as unknown[]);
 /** The joined read behind `issueDisplayIds`, which names a held issue as a screen does. */
 const joinRows = vi.fn(async () => [] as unknown[]);
 
+vi.mock('../ecosystem/waits/live.js', () => ({ contractProviderShortfalls: async () => [] }));
+
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => ({

@@ -14,6 +14,11 @@ const verdict = (over: Partial<LatestVerdict>): LatestVerdict => ({
   designRevision: null,
   contractRef: null,
   contractVersion: null,
+  storefrontWorkflowId: null,
+  storefrontDraftVersion: null,
+  storefrontEnvironment: null,
+  corroboration: null,
+  corroborationNote: null,
   evidence: [],
   authorAgency: 'agent',
   backfilled: false,
@@ -41,6 +46,9 @@ describe('evaluateCriteria (ISS-55: the awaiting_release gate off criterion_verd
       kind: 'criteria',
       unpassed: [],
       unidentified: [],
+      predateReopen: [],
+      inadmissible: [],
+      uncorroborated: [],
     });
   });
 
@@ -61,6 +69,9 @@ describe('evaluateCriteria (ISS-55: the awaiting_release gate off criterion_verd
         { criterion: 3, verdict: null },
       ],
       unidentified: [],
+      predateReopen: [],
+      inadmissible: [],
+      uncorroborated: [],
     });
   });
 
@@ -71,6 +82,106 @@ describe('evaluateCriteria (ISS-55: the awaiting_release gate off criterion_verd
         verdict({ identityKind: 'commit_unresolved', commitSha: '1810f84', backfilled: true }),
       ),
     ]);
-    expect(found).toEqual({ kind: 'criteria', unpassed: [], unidentified: [1] });
+    expect(found).toEqual({
+      kind: 'criteria',
+      unpassed: [],
+      unidentified: [1],
+      predateReopen: [],
+      inadmissible: [],
+      uncorroborated: [],
+    });
+  });
+
+  it('a passing verdict at or before the latest reopen is not current; one after it is', () => {
+    const reopenedAt = new Date('2026-10-03T12:00:00.000Z');
+    const found = evaluateCriteria(
+      [
+        criterion(1, verdict({ createdAt: '2026-10-03T11:59:59.999Z' })),
+        criterion(2, verdict({ createdAt: '2026-10-03T12:00:00.000Z' })),
+        criterion(3, verdict({ createdAt: '2026-10-03T12:00:00.001Z' })),
+        criterion(4, verdict({ verdict: 'fail', createdAt: '2026-10-03T11:00:00.000Z' })),
+      ],
+      reopenedAt,
+    );
+    expect(found).toEqual({
+      kind: 'criteria',
+      unpassed: [{ criterion: 4, verdict: 'fail' }],
+      unidentified: [],
+      predateReopen: [1, 2],
+      inadmissible: [],
+      uncorroborated: [],
+    });
+  });
+
+  it('an issue never reopened reads every verdict as current', () => {
+    const found = evaluateCriteria([criterion(1, verdict({ createdAt: '2020-01-01T00:00:00Z' }))]);
+    expect(found).toEqual({
+      kind: 'criteria',
+      unpassed: [],
+      unidentified: [],
+      predateReopen: [],
+      inadmissible: [],
+      uncorroborated: [],
+    });
+  });
+});
+
+describe('evaluateCriteria: a storefront draft (ISS-91)', () => {
+  const draft = (over: Partial<LatestVerdict>) =>
+    verdict({
+      identityKind: 'storefront_draft',
+      commitSha: null,
+      storefrontWorkflowId: 'b2eb2792-a043-4d5f-80a3-50a32c29e6e9',
+      storefrontDraftVersion: 'a'.repeat(64),
+      storefrontEnvironment: 'preview',
+      corroboration: 'corroborated',
+      ...over,
+    });
+  const clean = { kind: 'criteria', unpassed: [], unidentified: [], predateReopen: [] };
+
+  it('counts a corroborated draft as a landed commit in a storefront project, with no commit at all', () => {
+    expect(evaluateCriteria([criterion(1, draft({}))], null, 'storefront')).toEqual({
+      ...clean,
+      inadmissible: [],
+      uncorroborated: [],
+    });
+  });
+
+  it('planted red: a git project with only a draft verdict stays refused, naming the criterion', () => {
+    expect(
+      evaluateCriteria([criterion(1, draft({})), criterion(2, verdict({}))], null, 'git'),
+    ).toEqual({
+      ...clean,
+      inadmissible: [1],
+      uncorroborated: [],
+    });
+  });
+
+  it('refuses a draft where no project document says the source is a storefront', () => {
+    expect(evaluateCriteria([criterion(1, draft({}))])).toMatchObject({ inadmissible: [1] });
+  });
+
+  it('refuses an uncorroborated draft in a storefront project, carrying why the read failed', () => {
+    const found = evaluateCriteria(
+      [criterion(3, draft({ corroboration: 'uncorroborated', corroborationNote: 'http_502' }))],
+      null,
+      'storefront',
+    );
+    expect(found).toMatchObject({
+      inadmissible: [],
+      uncorroborated: [{ criterion: 3, note: 'http_502' }],
+    });
+  });
+
+  it('still counts design and commit identities on a git project exactly as before', () => {
+    const found = evaluateCriteria(
+      [
+        criterion(1, verdict({})),
+        criterion(2, verdict({ identityKind: 'design', commitSha: null, designRevision: 6 })),
+      ],
+      null,
+      'git',
+    );
+    expect(found).toEqual({ ...clean, inadmissible: [], uncorroborated: [] });
   });
 });

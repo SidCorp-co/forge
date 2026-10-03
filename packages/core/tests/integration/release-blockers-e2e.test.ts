@@ -173,11 +173,22 @@ async function seedNearGate(w: World, step: 'build' | 'test'): Promise<string> {
   return id;
 }
 
-/** Numbered criteria and no verdict for any of them, which is what holds it. */
+/**
+ * Numbered criteria and no verdict for any of them, which is what holds it. The gate reads the
+ * criterion rows (ISS-55), planted beside the text because the issue already stands where its
+ * criteria are locked and no writer would change them.
+ */
 async function owesCriteria(issueId: string, text: string): Promise<void> {
   await harness.db.execute(sql`
     UPDATE issues SET acceptance_criteria = ${text} WHERE id = ${issueId}
   `);
+  for (const [position, line] of text.split('\n').entries()) {
+    const [, n, statement] = /^(\d+)\. (.+)$/.exec(line) ?? [];
+    await harness.db.execute(sql`
+      INSERT INTO issue_criteria (issue_id, n, statement, position)
+      VALUES (${issueId}, ${Number(n)}, ${statement ?? line}, ${position})
+    `);
+  }
 }
 
 async function readiness(w: World) {

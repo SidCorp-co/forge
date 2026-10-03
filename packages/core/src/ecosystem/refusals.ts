@@ -1,3 +1,4 @@
+import type { ContractWaitRefusalCode } from '@forge/contracts/contract-waits';
 import type { ApiRefusal } from '../project-config/documents.js';
 import type { ApprovalRefusalCode } from './contract/approval.js';
 import type { ContractRefusalCode } from './contract/refusal-codes.js';
@@ -32,6 +33,7 @@ export type EcosystemRefusalCode =
   | EcosystemToolRefusalCode
   | ContractRefusalCode
   | ApprovalRefusalCode
+  | ContractWaitRefusalCode
   | LinkRefusalCode;
 
 export type LinkRefusalCode =

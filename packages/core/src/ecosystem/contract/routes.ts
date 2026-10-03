@@ -189,7 +189,12 @@ contractRoutes.post(
       actor: { userId: actor.id, agency: actor.agency },
     });
     if (!out.ok) return refused(c, out.refusals);
-    return c.json({ version: out.version.document, approval: approvalView(out.version) });
+    return c.json({
+      version: out.version.document,
+      approval: approvalView(out.version),
+      settledWaits: out.settled.length,
+      filedFeedback: out.filed.length,
+    });
   },
 );
 

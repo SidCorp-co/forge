@@ -69,8 +69,11 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
     case 'VOID_REASON_REQUIRED':
     case 'PLAN_REQUIRED':
     case 'VERDICT_IDENTITY_REQUIRED':
+    case 'VERDICT_IDENTITY_NOT_ADMISSIBLE':
       return new HTTPException(422, { message: err.detail, cause });
     case 'NO_WORK_EVIDENCE':
+    case 'VERDICT_PREDATES_REOPEN':
+    case 'VERDICT_UNCORROBORATED':
     case 'NO_HOLDER':
     case 'ILLEGAL_TRANSITION':
       return new HTTPException(409, { message: err.detail, cause });

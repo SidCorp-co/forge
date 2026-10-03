@@ -94,12 +94,17 @@ pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
         .partition(|d| d.r#type.as_deref() == Some(BUILDER_RUN_TYPE));
     let mut line = String::new();
     if !comments.is_empty() {
-        let keys: Vec<&str> = comments
+        // Core clears an owed question only on a reply threaded under it (`devices/comment-inbox.ts`),
+        // so each is named with the comment id the reply's `parentId` takes.
+        let keys: Vec<String> = comments
             .iter()
-            .map(|d| d.number.as_deref().unwrap_or(d.id.as_str()))
+            .map(|d| match d.number.as_deref() {
+                Some(key) => format!("{key} comment {}", d.id),
+                None => d.id.clone(),
+            })
             .collect();
         line.push_str(&format!(
-            " A person is owed a reply on {} issue{} ({}): read each thread (`forge_comments action=list`), answer it on the issue, and move the issue when the comment asks for it; your reply is what clears it.",
+            " A person is owed a reply on {} issue{} ({}): read each thread (`forge_comments action=list`), reply to that comment in its thread (`forge_comments action=create` with `data.parentId` set to the comment id), and move the issue when the comment asks for it; only a threaded reply clears it, a top-level comment does not.",
             comments.len(),
             if comments.len() == 1 { "" } else { "s" },
             keys.join(", ")
@@ -259,12 +264,17 @@ mod comment_tests {
     fn owed_comments_are_named_by_issue_apart_from_the_channel() {
         let line = inbox_line(&[owed_comment("c1", "ISS-7"), owed_comment("c2", "ISS-9")]);
         assert!(
-            line.contains("owed a reply on 2 issues (ISS-7, ISS-9)"),
+            line.contains("owed a reply on 2 issues (ISS-7 comment c1, ISS-9 comment c2)"),
             "{line}"
         );
-        assert!(line.contains("answer it on the issue"), "{line}");
+        assert!(
+            line.contains("`data.parentId` set to the comment id"),
+            "{line}"
+        );
         assert!(!line.contains("channel owes"), "{line}");
-        assert!(inbox_line(&[owed_comment("c1", "ISS-7")]).contains("on 1 issue (ISS-7)"));
+        assert!(
+            inbox_line(&[owed_comment("c1", "ISS-7")]).contains("on 1 issue (ISS-7 comment c1)")
+        );
     }
 
     #[test]

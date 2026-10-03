@@ -170,6 +170,16 @@ export class ReleaseRecordMissingError extends Error {
   }
 }
 
+export class ContractProviderNotLiveError extends Error {
+  readonly code = 'CONTRACT_PROVIDER_NOT_LIVE' as const;
+  constructor(public readonly issueIds: string[]) {
+    super(
+      `CONTRACT_PROVIDER_NOT_LIVE: ${issueIds.length} issue(s) wait on a provider version not live`,
+    );
+    this.name = 'ContractProviderNotLiveError';
+  }
+}
+
 export class BatchInFlightError extends Error {
   constructor(public readonly existingJobId: string | null) {
     super('BATCH_IN_FLIGHT');

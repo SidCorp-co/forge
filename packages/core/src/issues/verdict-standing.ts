@@ -15,8 +15,9 @@ import { type ServingReading, servedCommits } from '../release-batch/serving-rea
 /** `source` is a commit that was read, which cannot say the code was ever running. `design` is a
  *  stored workflow design revision: for work that lands as a design, the thing itself. */
 export interface VerdictIdentity {
-  readonly kind: 'runtime' | 'source' | 'design' | 'contract';
+  readonly kind: 'runtime' | 'source' | 'design' | 'contract' | 'storefront_draft';
   readonly value: string;
+  readonly corroborationNote?: string | null;
 }
 
 export interface IssueIdentities {
@@ -24,7 +25,7 @@ export interface IssueIdentities {
   readonly source: string | null;
   /** The current revision of each workflow of the issue's project, keyed by its flow AND its id. */
   readonly designs?: ReadonlyMap<string, number>;
-  /** The current (newest approved) version of each contract of the issue's project, keyed `<project>/<contract>`. */
+  /** Each contract's newest approved version, keyed `<project>/<contract>`. */
   readonly contracts?: ReadonlyMap<string, string>;
 }
 
@@ -108,6 +109,9 @@ export function verdictStanding(
   identities: IssueIdentities,
 ): VerdictStanding {
   if (!at) return 'unanchored';
+  if (at.kind === 'storefront_draft') {
+    return at.corroborationNote == null ? 'stands' : 'uncorroborated';
+  }
   if (at.kind === 'design') return designStanding(at.value, identities);
   if (at.kind === 'contract') return contractStanding(at.value, identities);
   if (at.kind === 'runtime') return runtimeStanding(at.value, serving);
@@ -187,6 +191,11 @@ export function standingSentence(
 ): string {
   if (at?.kind === 'design') return designSentence(standing, at.value, identities);
   if (at?.kind === 'contract') return contractSentence(standing, at.value, identities);
+  if (at?.kind === 'storefront_draft') {
+    return standing === 'stands'
+      ? `judged on storefront draft ${at.value}, which the storefront source held when the verdict was recorded`
+      : `judged on storefront draft ${at.value}, which the storefront source could not be read back as holding: ${at.corroborationNote}`;
+  }
   if (standing === 'stands') {
     return `judged at ${named(at?.value ?? null)}, which this project is serving`;
   }

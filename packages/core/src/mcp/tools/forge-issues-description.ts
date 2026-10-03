@@ -57,7 +57,10 @@ export function forgeIssuesDescription(refClause: string): string {
     "awaiting_release, closed, dropped); a run's progress is data.workState.step, never a status. " +
     'Each move is guarded and refused by name: in_progress needs a holder (NO_HOLDER), approved a ' +
     'plan and criteria (PLAN_REQUIRED), awaiting_release a passing verdict on every criterion ' +
-    '(NO_WORK_EVIDENCE, VERDICT_IDENTITY_REQUIRED); needs_info needs reason + waitingKind ' +
+    '(NO_WORK_EVIDENCE, VERDICT_IDENTITY_REQUIRED), recorded after the latest reopen ' +
+    '(VERDICT_PREDATES_REOPEN); a storefront_draft verdict counts only on a storefront-source project ' +
+    '(VERDICT_IDENTITY_NOT_ADMISSIBLE) and once its source read the draft back (VERDICT_UNCORROBORATED); ' +
+    'needs_info needs reason + waitingKind ' +
     '(needs_answer, needs_decision, needs_resource), on_hold and reopen a reason, dropped a reason ' +
     '(VOID_REASON_REQUIRED); a park returns only to the status it left. A retired name (confirmed, ' +
     'developed, testing, waiting, ...) is refused STATUS_RETIRED. on_hold is a deliberate pause, and ' +
