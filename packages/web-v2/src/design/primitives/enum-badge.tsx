@@ -35,9 +35,11 @@ export function ToneBadge({ tone, label, glyph, title, value, size = "sm", pulse
     <span
       className={cn(
         "inline-flex max-w-full cursor-default items-center gap-1.5 whitespace-nowrap rounded-pill font-semibold",
-        size === "sm" ? "px-2 py-[2px] text-11-5" : "px-2.5 py-[3px] text-12-5",
+        size === "sm" ? "py-[2px] text-11-5" : "py-[3px] text-12-5",
+        // neutral is not moving: its words and dot, no ground, so a toned pill stands out beside it
+        tone === "neutral" ? "pl-0.5 pr-1" : size === "sm" ? "px-2" : "px-2.5",
       )}
-      style={{ color: c.fg, background: c.bg }}
+      style={{ color: c.fg, background: tone === "neutral" ? "transparent" : c.bg }}
       title={title}
       data-value={value}
       data-tone={tone}
@@ -126,7 +128,7 @@ export function EnumBadge({ family, value, label }: EnumBadgeProps) {
   const text = label ?? enumLabel(family, value);
   return (
     <span
-      className="inline-flex max-w-full cursor-default items-center gap-1.5 whitespace-nowrap rounded-pill bg-[var(--paper-100)] px-2 py-[2px] text-11-5 font-semibold text-muted"
+      className="inline-flex max-w-full cursor-default items-center gap-1.5 whitespace-nowrap rounded-[4px] bg-sunken px-1.5 py-[2px] text-11-5 font-medium text-muted"
       title={`${FIELD[family] ?? fieldWords(family)}: ${value}`}
       data-value={value}
       data-testid="enum-badge"

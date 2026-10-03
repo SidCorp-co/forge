@@ -17,7 +17,7 @@ export function RequirementScreen({ projectId, slug, reqKey }: { projectId: stri
   useChatDockDoor(useAssistantDoor(projectId, reqKey));
   const d = q.data;
   return (
-    <div className="min-h-full bg-surface" data-testid="requirement-screen">
+    <div className="min-h-full bg-app" data-testid="requirement-screen">
       <DetailHeader
         back={{ href: back, label: "Requirements" }}
         itemKey={d?.key ?? reqKey}

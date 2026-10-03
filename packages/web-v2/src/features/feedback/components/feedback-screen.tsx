@@ -53,7 +53,7 @@ function Funnel({ rows }: { rows: FeedbackSummary[] }) {
   const n = (p: string) => rows.filter((r) => r.phase === p).length;
   const total = Math.max(1, ...FUNNEL.map((p) => n(p)));
   return (
-    <div className="grid gap-2 border-b border-line-subtle bg-surface px-5 py-3 max-md:px-3" data-testid="feedback-funnel">
+    <div className="grid gap-2 border-b border-line-subtle bg-app px-5 py-3 max-md:px-3" data-testid="feedback-funnel">
       <p className="text-12 text-muted">
         <span className="font-semibold text-fg">Triage funnel</span> Every item, counted once
       </p>
@@ -248,7 +248,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
     );
   }
   return (
-    <div className="grid min-h-full content-start bg-surface" data-testid="feedback-screen">
+    <div className="grid min-h-full content-start bg-app" data-testid="feedback-screen">
       {title}
       {creating ? (
         <CreateForm

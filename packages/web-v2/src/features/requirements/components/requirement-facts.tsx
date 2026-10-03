@@ -115,7 +115,7 @@ export function RequirementFacts({
                 {i.changedSincePlan ? (
                   <span role="img" aria-label="Changed since plan" title="Changed since plan" className="size-1.5 flex-none rounded-full" style={{ background: LEGEND.you.dot }} />
                 ) : null}
-                <StatusBadge family="issue" value={i.status} />
+                <StatusBadge family="issue" value={i.status} tone={i.tone} />
               </li>
             ))}
           </ul>

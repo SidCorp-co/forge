@@ -16,22 +16,6 @@ import { diffColours } from "./standing-bits";
 
 const issueWord = (s: string) => ISSUE_STATUS_LABELS[s as KernelIssueStatus] ?? s;
 
-/** A heading inside a view: primary colour, 15/600, so it can never be mistaken for a label. */
-export function ViewHeading({ children, right, id }: { children: ReactNode; right?: ReactNode; id?: string }) {
-  return (
-    <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-      <h2 id={id} className="text-15 font-semibold leading-snug text-fg">
-        {children}
-      </h2>
-      {right ? <div className="ml-auto flex items-center gap-2">{right}</div> : null}
-    </div>
-  );
-}
-
-/** A label above a group of values: secondary, but readable (WCAG AA on every ground it sits on). */
-export function FieldLabel({ children }: { children: ReactNode }) {
-  return <h3 className="mb-1.5 text-12-5 font-medium text-muted">{children}</h3>;
-}
 
 const Ins = ({ children }: { children: ReactNode }) => (
   <ins className="rounded-[3px] px-[3px] no-underline" style={{ background: diffColours.ins.bg, color: diffColours.ins.fg }}>
@@ -174,7 +158,7 @@ export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string 
                       <span className="max-w-[36ch] truncate text-muted" title={i.title}>
                         {i.title}
                       </span>
-                      <StatusBadge family="issue" value={i.status} />
+                      <StatusBadge family="issue" value={i.status} tone={i.tone} />
                       {stale ? <span className="text-subtle">Earlier wording</span> : null}
                     </span>
                   ))

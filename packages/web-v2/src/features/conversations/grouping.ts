@@ -25,7 +25,7 @@ export function bucketFor(iso: string, now: number): BucketKey {
   if (Number.isNaN(then)) return "older";
   const ageMs = now - then;
   const dayMs = 24 * 60 * 60 * 1000;
-  const todayStart = new Date();
+  const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
   if (then >= todayStart.getTime()) return "today";
   if (then >= todayStart.getTime() - dayMs) return "yesterday";

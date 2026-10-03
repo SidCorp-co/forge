@@ -33,6 +33,7 @@ import {
   useListOrigin,
   useUrlTab,
   type MenuItem,
+  ViewHeading,
 } from "@/design";
 import { useResumeRun } from "@/features/pipeline/hooks";
 import { usePolicyDocument } from "@/features/project-settings/config-hooks";
@@ -82,7 +83,8 @@ import {
   useStatusExits,
 } from "../hooks";
 import { ISSUES_LIST, issuesHref } from "../routes";
-import { IssueStandingFacts } from "./issue-standing-bits";
+import { ReleaseApprovalProvider } from "../release-approval";
+import { IssueBanner, IssueStandingFacts } from "./issue-standing-bits";
 import { useIssuePark } from "../park";
 import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
 import { ActivityFeed } from "./activity-feed";
@@ -91,7 +93,7 @@ import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
-import { DescriptionCard } from "./description-card";
+import { IssueDescription } from "./issue-description";
 import { ReleaseNoteCard } from "./release-note-card";
 import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
 import { ModulePicker } from "./module-picker";
@@ -373,7 +375,8 @@ export function IssueDetailScreen({
   );
 
   return (
-    <div className="min-h-full bg-surface" ref={stickyHeader} data-testid="issue-detail">
+    <ReleaseApprovalProvider value={standingQ.data?.releaseApproval}>
+    <div className="min-h-full bg-app" ref={stickyHeader} data-testid="issue-detail">
       <DetailHeader
         back={{ href: back, label: "Issues" }}
         itemKey={issue.displayId}
@@ -383,8 +386,10 @@ export function IssueDetailScreen({
         action={
           <span className="flex items-center gap-1.5" data-testid="issue-actions">
             {primary}
-            <AskAboutThis kind="issue" refId={issue.displayId} />
-            <HelpButton
+            {/* below 768px the bar holds the back control, the one primary act and the menu; asking and help wait for the room */}
+            <span className="contents max-md:hidden">
+              <AskAboutThis kind="issue" refId={issue.displayId} />
+              <HelpButton
               summary="The full record for one issue: whose turn it is, then Overview, Criteria, Runs and Activity as tabs beside its facts."
               actions={[
                 "Edit properties (status, priority, complexity) in the rail",
@@ -392,7 +397,8 @@ export function IssueDetailScreen({
                 "Jump to related sessions, pipeline, and runs from the actions menu",
               ]}
               shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
-            />
+              />
+            </span>
             <Menu align="right" items={moreItems} trigger={<IconButton icon="more" aria-label="Issue actions" />} />
           </span>
         }
@@ -402,7 +408,7 @@ export function IssueDetailScreen({
         dataKey={issue.displayId}
         rail={
           <FactsRail>
-            {standingQ.data ? <IssueStandingFacts row={standingQ.data} slug={slug} rail /> : null}
+            {standingQ.data ? <IssueStandingFacts row={standingQ.data} slug={slug} /> : null}
             <FactsGroup title="Properties" testId="facts-properties">
               {properties}
             </FactsGroup>
@@ -411,6 +417,7 @@ export function IssueDetailScreen({
       >
         <DetailMobileTitle itemKey={issue.displayId} title={<span className="break-words">{issue.title}</span>} badge={badge} />
         <div className="grid gap-3 px-8 pt-4 empty:hidden max-md:px-4">
+          {!blocker && standingQ.data ? <IssueBanner standing={standingQ.data.standing} className="rounded-md" /> : null}
           {blocker && (
             <BlockerBanner
               blocker={blocker}
@@ -436,7 +443,7 @@ export function IssueDetailScreen({
           {tab === "overview" ? (
             <div className="grid gap-8" data-testid="view-overview">
               <ReleaseNoteCard issue={issue} />
-              <DescriptionCard
+              <IssueDescription
                 issue={issue}
                 attachments={attachmentsQ.data ?? []}
                 attachmentsLoading={attachmentsQ.isLoading}
@@ -564,15 +571,11 @@ export function IssueDetailScreen({
         labels={issue.labels ?? []}
       />
     </div>
+    </ReleaseApprovalProvider>
   );
 }
 
 const ISSUE_TABS = ["overview", "criteria", "runs", "activity"] as const;
-
-/** A heading inside a tab: primary colour, 15/600, so it is never mistaken for a label. */
-function ViewHeading({ children }: { children: ReactNode }) {
-  return <h2 className="mb-3 text-15 font-semibold leading-snug text-fg">{children}</h2>;
-}
 
 /** Skeleton placeholder for the detail tab bodies (comments / activity / tasks)
  *  while their queries load — replaces the bare "Loading …" text (ISS-308 F1). */

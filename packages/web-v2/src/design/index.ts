@@ -119,7 +119,7 @@ export {
   FactsRail, FactsGroup, Fact, FactsEmpty, CoverageBar, MarkStrip, StepBar,
   type CoverageSegment, type MarkView, type StepView,
 } from "./patterns/facts-rail";
-export { DetailTabs, DetailLayout, DetailPane, useUrlTab, type DetailTabItem } from "./patterns/detail-tabs";
+export { DetailTabs, DetailLayout, DetailPane, FieldLabel, useUrlTab, ViewHeading, type DetailTabItem } from "./patterns/detail-tabs";
 export { ViewModeSwitcher, useViewMode, type ViewMode } from "./patterns/view-mode-switcher";
 export { useUrlParams, useUrlChoice, writeUrlParams, type UrlPatch } from "./hooks/use-url-params";
 

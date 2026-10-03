@@ -82,7 +82,7 @@ export function PeekPanel({ peek, listLabel, noun, onOpenFull, children, testId 
       data-testid={testId ?? "peek-panel"}
       data-peek-root="1"
     >
-      <div className="sticky top-0 z-[3] flex items-center gap-1.5 border-b border-line-subtle bg-app px-3 py-2">
+      <div className="sticky top-0 z-[3] flex items-center gap-1.5 border-b border-line-subtle bg-surface px-3 py-2">
         <Button type="button" size="sm" className="lg:hidden" onClick={() => peek.set(null)} data-testid="peek-back">
           ← {listLabel}
         </Button>

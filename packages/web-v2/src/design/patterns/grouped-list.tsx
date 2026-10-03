@@ -135,10 +135,11 @@ function Row({ v, selected, onPeek }: { v: ListRowView; selected: boolean; onPee
       <span className="flex min-w-0 flex-col max-md:order-3 max-md:col-span-3">
         <span className={cn("truncate text-13-5 font-medium max-md:whitespace-normal", v.dim && "opacity-65")}>{v.title}</span>
         {v.facts.length ? (
-          <span className="flex min-w-0 items-center truncate text-12 text-subtle" data-testid="row-facts">
+          // one line that ends in an ellipsis: inline parts never shrink into each other
+          <span className="block min-w-0 truncate text-12 text-subtle" data-testid="row-facts">
             {v.facts.map((p, i) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: the facts line is positional
-              <span key={i} className="inline-flex min-w-0 items-center">
+              <span key={i} className="whitespace-nowrap">
                 {i > 0 ? <span className="mx-1.5 text-[var(--paper-400)]">·</span> : null}
                 {p}
               </span>
@@ -177,7 +178,7 @@ export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek,
     <section aria-label={ariaLabel} data-testid="grouped-list">
       <div
         aria-hidden
-        className={cn(COLS, "sticky top-0 z-[6] h-8 items-center border-b border-line-subtle bg-app text-11-5 font-semibold text-subtle max-md:hidden")}
+        className={cn(COLS, "sticky top-0 z-[6] h-8 items-center border-b border-line-subtle bg-sunken text-11-5 font-semibold text-subtle max-md:hidden")}
       >
         <span>Key</span>
         <span>Title</span>

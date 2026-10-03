@@ -17,6 +17,8 @@ import {
   ProjectLoader,
   StatusBadge,
   useUrlTab,
+  FieldLabel,
+  ViewHeading,
 } from "@/design";
 import { PendingBadge, RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
 import { useWaitingSuggestions } from "@/features/suggestions/hooks";
@@ -26,7 +28,7 @@ import { useRequirement } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";
 import { ProposalDecision, ProposeChange } from "./requirement-actions";
 import { RequirementFacts } from "./requirement-facts";
-import { CriteriaTable, FieldLabel, History, Readiness, RevisionDiff, RevisionList, ViewHeading } from "./requirement-proof";
+import { CriteriaTable, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
 import { RequirementBanner } from "./standing-bits";
 
 export const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "activity"] as const;

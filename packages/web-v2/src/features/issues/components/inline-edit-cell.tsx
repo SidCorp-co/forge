@@ -10,6 +10,7 @@ import { Menu, NativeSelect, Select, StatusChip, type MenuItem, type SelectOptio
 import { groupedTransitions, issueStatusChip, statusLabel, transitionLabels } from "../derive";
 import { AGENT_HOLDS_MOVE, heldByAgent } from "../edit-lock";
 import { useStatusExits } from "../hooks";
+import { useStatusTone } from "../release-approval";
 import type { ParkReading } from "../derive";
 import { type ParkMenuActions, parkMenuItems } from "../park";
 import type { IssueAgentStatus, IssueStatus } from "../types";
@@ -52,6 +53,7 @@ export function InlineSelect({
   }
   return (
     <Select
+      quiet
       aria-label={ariaLabel}
       value={value}
       disabled={disabled}
@@ -118,6 +120,7 @@ export function StatusEdit({
   park,
 }: StatusEditProps) {
   const { exits, isPending, isError } = useStatusExits();
+  const tone = useStatusTone(status);
   const grouped = groupedTransitions(exits, status, leftStatus);
   const held = heldByAgent(status, agentStatus);
   let items: MenuItem[];
@@ -138,7 +141,7 @@ export function StatusEdit({
       : null;
     if (parkItems) items = parkItems;
   }
-  const chip = <StatusChip {...issueStatusChip(status, step)} size={size} />;
+  const chip = <StatusChip {...issueStatusChip(status, step, tone)} size={size} />;
   if (disabled) return chip;
   return (
     <Menu

@@ -8,6 +8,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useProjectModules } from "../hooks";
 import { IssuesBoard } from "./issues-board";
 import { IssuesListView } from "./issues-list-view";
+import { useIssueStanding } from "../hooks";
+import { ReleaseApprovalProvider } from "../release-approval";
 import { NewIssueDialog } from "./new-issue-dialog";
 
 interface IssuesScreenProps {
@@ -66,6 +68,10 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
     window.history.replaceState(null, "", `${pathname}${qs ? `?${qs}` : ""}`);
   }, [pathname]);
 
+  // the Table draws its rows from the issue list, which carries no project rule; the standing read
+  // (shared with the grouped views' cache) says whether a release needs a person's approval
+  const releaseApproval = useIssueStanding(scope.projectId, "open").data?.releaseApproval;
+
   const header = (
     <>
       <PageTitle
@@ -91,10 +97,10 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
       <div className="flex min-h-full flex-col pb-6">
         {header}
         {mode === "table" ? (
-          <>
+          <ReleaseApprovalProvider value={releaseApproval}>
             <div className="px-3 pt-2.5 md:hidden">{narrowSwitch}</div>
             <IssuesListView scope={scope} canWrite={canWrite} onNewIssue={canWrite ? () => setNewOpen(true) : undefined} />
-          </>
+          </ReleaseApprovalProvider>
         ) : (
           <IssuesBoard scope={scope} mode={mode} toolbarLead={narrowSwitch} />
         )}

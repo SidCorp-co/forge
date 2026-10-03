@@ -264,7 +264,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
   }
 
   return (
-    <div className="grid min-h-full content-start bg-surface" data-testid="requirements-screen">
+    <div className="grid min-h-full content-start bg-app" data-testid="requirements-screen">
       {title}
       {creating ? (
         <CreateForm

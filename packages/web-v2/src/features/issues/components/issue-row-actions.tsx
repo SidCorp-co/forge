@@ -29,6 +29,7 @@ import {
   priorityLabel,
   workStepOf,
 } from "../derive";
+import { useStatusTone } from "../release-approval";
 import {
   deriveQueuedStep,
   hasLiveAgentSession,
@@ -117,9 +118,10 @@ export function StatusCell({ row }: { row: IssueRow }) {
     row.pipelineHealth,
     hasLiveAgentSession(row.agentStatus),
   );
+  const tone = useStatusTone(row.status);
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <StatusChip {...issueStatusChip(row.status, workStepOf(row))} size="sm" />
+      <StatusChip {...issueStatusChip(row.status, workStepOf(row), tone)} size="sm" />
       <AgentChip agentStatus={row.agentStatus} failureInfo={row.failureInfo} />
       {queuedStep && <QueuedChip step={queuedStep} />}
     </div>

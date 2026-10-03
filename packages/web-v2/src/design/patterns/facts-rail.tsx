@@ -10,11 +10,12 @@ import { cn } from "@/lib/utils/cn";
 import { Tooltip } from "../primitives/tooltip";
 import { LEGEND, type LegendTone } from "../vocabulary";
 
-/** The rail itself: tinted apart from the main column by background, sticky under the top bar,
+/** The rail itself: a raised white working surface beside the page-toned main column, one hairline
+ *  between them; sticky under the top bar,
  *  scrolling on its own when it is taller than the screen; below 1024px it follows the content. */
 export function FactsRail({ children, label = "Facts", testId }: { children: ReactNode; label?: string; testId?: string }) {
   return (
-    <aside className="min-w-0 border-line-subtle bg-app max-lg:border-t lg:border-l" aria-label={label} data-testid={testId ?? "facts-rail"}>
+    <aside className="min-w-0 border-line-subtle bg-surface max-lg:border-t lg:border-l" aria-label={label} data-testid={testId ?? "facts-rail"}>
       <div className="px-5 py-5 max-md:px-4 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-48px)] lg:overflow-y-auto" data-testid="facts-rail-body">
         {children}
       </div>
@@ -36,7 +37,7 @@ export function FactsGroup({ title, count, children, testId }: { title: string; 
 
 export function Fact({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) {
   return (
-    <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-2 py-[5px] text-13" data-testid={testId}>
+    <div className="grid grid-cols-[88px_minmax(0,1fr)] items-baseline gap-2 py-[5px] text-13" data-testid={testId}>
       <span className="text-12-5 font-medium text-muted">{label}</span>
       <span className="flex min-w-0 flex-wrap items-center gap-1.5">{children}</span>
     </div>

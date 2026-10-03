@@ -16,7 +16,7 @@ import {
   type IssueStandingScope,
 } from "@forge/contracts/issue-standing";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useCallback, useMemo } from "react";
+import { type ReactNode, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   EmptyState,
   ErrorState,
@@ -113,12 +113,62 @@ const WAVE_NOTE = [
   "Waits on two layers",
 ];
 
-/** One column per wave; a card's left edge is its attention tone. Wave 0 splits the chain roots from the issues that block nothing. */
+/** The blocks edges between the visible wave cards, blocker first. */
+export function waveEdges(rows: readonly IssueStandingRow[]): { from: string; to: string }[] {
+  const shown = new Set(rows.filter((r) => r.standing.wave !== null).map((r) => r.key));
+  return rows.flatMap((r) => (shown.has(r.key) ? r.standing.blockedBy.filter((b) => shown.has(b.key)).map((b) => ({ from: b.key, to: r.key })) : []));
+}
+
+interface EdgePath {
+  id: string;
+  d: string;
+}
+
+/** Each edge as a curve from the blocker card's right edge to the dependent's left, in the
+ *  container's own coordinates; re-measured whenever the container or a card changes size. */
+function useEdgePaths(edges: readonly { from: string; to: string }[]) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [paths, setPaths] = useState<EdgePath[]>([]);
+  useLayoutEffect(() => {
+    const box = ref.current;
+    if (!box) return;
+    const measure = () => {
+      const origin = box.getBoundingClientRect();
+      const at = (key: string) => box.querySelector<HTMLElement>(`[data-testid="wave-card"][data-key="${CSS.escape(key)}"]`)?.getBoundingClientRect();
+      const next: EdgePath[] = [];
+      for (const e of edges) {
+        const a = at(e.from);
+        const b = at(e.to);
+        if (!a || !b) continue;
+        const x1 = a.right - origin.left;
+        const y1 = a.top + a.height / 2 - origin.top;
+        const x2 = b.left - origin.left;
+        const y2 = b.top + b.height / 2 - origin.top;
+        const dx = Math.max(16, (x2 - x1) / 2);
+        next.push({ id: `${e.from}>${e.to}`, d: `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}` });
+      }
+      setPaths(next);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    for (const el of box.querySelectorAll('[data-testid="wave-card"]')) ro.observe(el);
+    return () => ro.disconnect();
+  }, [edges]);
+  return { ref, paths };
+}
+
+/** One column per wave, as wide as the screen allows; a card's left edge is its attention tone and
+ *  a line runs from each blocker to what it holds back. Wave 0 splits the chain roots from the
+ *  issues that block nothing. */
 function Waves({ rows, onPeek, selected }: { rows: IssueStandingRow[]; onPeek: (k: string) => void; selected: string | null }) {
   const inWave = rows.filter((r) => r.standing.wave !== null);
   const outside = rows.length - inWave.length;
   const max = Math.max(-1, ...inWave.map((r) => r.standing.wave as number));
   const rank = (r: IssueStandingRow) => ISSUE_ATTENTION_GROUPS.indexOf(r.standing.attentionGroup);
+  const edges = useMemo(() => waveEdges(rows), [rows]);
+  const { ref, paths } = useEdgePaths(edges);
   const card = (r: IssueStandingRow, compact?: boolean) => {
     const tone = ISSUE_ATTENTION_LABELS[r.standing.attentionGroup].tone;
     return (
@@ -130,61 +180,72 @@ function Waves({ rows, onPeek, selected }: { rows: IssueStandingRow[]; onPeek: (
         data-testid="wave-card"
         data-key={r.key}
         className={cn(
-          "grid w-full gap-1 border-b border-line-subtle bg-surface py-2 pl-3 pr-2.5 text-left hover:bg-hover",
+          "relative z-[1] grid w-full gap-1 border-b border-line-subtle bg-app py-2.5 pl-3 pr-2.5 text-left hover:bg-hover",
           selected === r.key && "bg-[var(--cobalt-50)] hover:bg-[var(--cobalt-50)]",
         )}
         style={{ borderLeft: `3px solid ${LEGEND[tone].dot}` }}
       >
         <span className="flex min-w-0 items-center gap-2">
-          <span className="font-mono text-11-5 font-semibold text-link">{r.key}</span>
+          <span className="font-mono text-12 font-semibold text-link">{r.key}</span>
           {issueBadge(r)}
         </span>
-        <span className={cn("text-13 font-medium", compact ? "truncate" : "line-clamp-2")}>{r.title}</span>
+        <span className={cn("text-13 font-medium text-fg", compact ? "truncate" : "line-clamp-2")}>{r.title}</span>
         {compact ? null : (
-          <span className="flex flex-wrap gap-x-2 gap-y-0.5 text-11-5 text-subtle">
-            {r.standing.module ? <span className="font-mono">{r.standing.module.path}</span> : null}
-            {r.standing.attentionGroup === "needs_you" ? <span style={{ color: LEGEND.you.fg }}>Waiting on you</span> : null}
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-11-5 text-subtle">
+            {r.standing.module ? <span className="font-mono underline decoration-dotted underline-offset-2">{r.standing.module.path}</span> : null}
+            {r.standing.attentionGroup === "needs_you" ? (
+              <span className="rounded-sm px-1.5" style={{ color: LEGEND.you.fg, background: LEGEND.you.bg }}>
+                Waiting on you
+              </span>
+            ) : null}
             {r.standing.blocks.length > 1 ? <span>Blocks {r.standing.blocks.length}</span> : null}
-            {r.standing.blockedBy.map((b) => (
-              <span key={b.key}>Waits on {b.key}</span>
-            ))}
           </span>
         )}
+        {r.standing.blockedBy.length > 0 ? <span className="sr-only">Waits on {r.standing.blockedBy.map((b) => b.key).join(", ")}</span> : null}
       </button>
     );
   };
   if (inWave.length === 0) return <p className="px-5 py-8 text-13 text-subtle">No open issue sits in a wave.</p>;
   return (
     <section aria-label="Waves" data-testid="waves">
-      <div className="flex gap-0 overflow-x-auto">
-        {Array.from({ length: max + 1 }, (_, l) => {
-          const col = inWave.filter((r) => r.standing.wave === l).sort((a, b) => rank(a) - rank(b));
-          const roots = col.filter((r) => r.standing.blocks.length > 0);
-          const solo = col.filter((r) => r.standing.blocks.length === 0);
-          return (
-            // biome-ignore lint/suspicious/noArrayIndexKey: a wave is its index
-            <div key={l} className="min-w-[260px] max-w-[320px] flex-1 border-r border-line-subtle" data-testid="wave" data-wave={l}>
-              <div className="sticky top-0 z-[2] border-b border-line-subtle bg-sunken px-3 py-2">
+      <div className="overflow-x-auto">
+        <div
+          ref={ref}
+          className="relative grid gap-x-12 px-5 pb-6 pt-5 max-md:gap-x-8 max-md:px-3"
+          style={{ gridTemplateColumns: `repeat(${max + 1}, minmax(260px, 1fr))` }}
+        >
+          <svg aria-hidden className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" data-testid="wave-edges">
+            {paths.map((p) => (
+              <path key={p.id} d={p.d} fill="none" stroke="var(--fg-subtle)" strokeWidth={1.25} opacity={0.7} data-edge={p.id} />
+            ))}
+          </svg>
+          {Array.from({ length: max + 1 }, (_, l) => {
+            const col = inWave.filter((r) => r.standing.wave === l).sort((a, b) => rank(a) - rank(b));
+            const roots = col.filter((r) => r.standing.blocks.length > 0);
+            const solo = col.filter((r) => r.standing.blocks.length === 0);
+            return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a wave is its index
+              <div key={l} className="min-w-0" data-testid="wave" data-wave={l}>
                 <h3 className="text-13 font-bold text-fg">
-                  Wave {l} <span className="font-mono text-12 text-muted">{col.length}</span>
+                  Wave {l} <span className="font-normal text-muted">· {col.length}</span>
                 </h3>
-                <p className="text-11-5 text-subtle">{WAVE_NOTE[l] ?? `Waits on ${l} layers`}</p>
+                <p className="mb-3 mt-0.5 text-12 text-subtle">{WAVE_NOTE[l] ?? `Waits on ${l} layers of blockers`}</p>
+                {l === 0 ? (
+                  <>
+                    {roots.length > 0 ? <p className="mb-1.5 text-12 font-semibold text-muted">Chain roots {roots.length}</p> : null}
+                    <div className="border-t border-line-subtle">{roots.map((r) => card(r))}</div>
+                    {solo.length > 0 ? <p className="mb-1.5 mt-4 text-12 font-semibold text-muted">Independent, blocks nothing {solo.length}</p> : null}
+                    <div className="border-t border-line-subtle">{solo.map((r) => card(r, true))}</div>
+                  </>
+                ) : (
+                  <div className="border-t border-line-subtle">{col.map((r) => card(r))}</div>
+                )}
               </div>
-              {l === 0 ? (
-                <>
-                  <p className="bg-app px-3 py-1 text-11-5 font-semibold text-muted">Chain roots {roots.length}</p>
-                  {roots.map((r) => card(r))}
-                  <p className="bg-app px-3 py-1 text-11-5 font-semibold text-muted">Independent, blocks nothing {solo.length}</p>
-                  {solo.map((r) => card(r, true))}
-                </>
-              ) : (
-                col.map((r) => card(r))
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line-subtle px-5 py-2 text-12 text-muted" data-testid="waves-legend">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line-subtle px-5 py-2.5 text-12 text-muted" data-testid="waves-legend">
         {(
           [
             ["you", "Waiting on you"],
@@ -195,10 +256,14 @@ function Waves({ rows, onPeek, selected }: { rows: IssueStandingRow[]; onPeek: (
           ] as [LegendTone, string][]
         ).map(([t, l]) => (
           <span key={t} className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="size-2 rounded-[2px]" style={{ background: LEGEND[t].dot }} />
+            <span aria-hidden className="h-[3px] w-3 rounded-pill" style={{ background: LEGEND[t].dot }} />
             {l}
           </span>
         ))}
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden className="h-px w-4" style={{ background: "var(--fg-subtle)" }} />
+          Blocks
+        </span>
         {outside > 0 ? <span>Not in a wave {outside}: done, or in a blocking cycle</span> : null}
       </div>
     </section>
@@ -318,7 +383,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
   const truncated = q.data && q.data.returned >= q.data.limit && q.data.counts[scope] > q.data.returned;
 
   return (
-    <div className="grid min-h-full content-start bg-surface" data-testid="issues-board" data-mode={mode}>
+    <div className="grid min-h-full content-start bg-app" data-testid="issues-board" data-mode={mode}>
       <div className={cn("grid min-h-[60vh] items-start", openRow && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
         <div className="min-w-0">
           <Toolbar data={q.data} scope={scope} n={n}>

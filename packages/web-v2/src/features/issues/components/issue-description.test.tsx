@@ -8,7 +8,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IssueDetail } from "../types";
-import { DescriptionCard } from "./description-card";
+import { IssueDescription } from "./issue-description";
 
 expect.extend(matchers);
 
@@ -56,14 +56,14 @@ const issue = (
     ...over,
   }) as IssueDetail;
 
-describe("DescriptionCard", () => {
+describe("IssueDescription", () => {
   it("offers no edit affordance to someone who may not write", () => {
-    render(<DescriptionCard issue={issue("hello")} attachments={[]} canWrite={false} />);
+    render(<IssueDescription issue={issue("hello")} attachments={[]} canWrite={false} />);
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 
   it("sends the edited body on the field the server accepts", () => {
-    render(<DescriptionCard issue={issue("before")} attachments={[]} canWrite />);
+    render(<IssueDescription issue={issue("before")} attachments={[]} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("Issue description"), {
       target: { value: "after" },
@@ -77,7 +77,7 @@ describe("DescriptionCard", () => {
   });
 
   it("discards the draft on Cancel and shows the stored body again", () => {
-    render(<DescriptionCard issue={issue("before")} attachments={[]} canWrite />);
+    render(<IssueDescription issue={issue("before")} attachments={[]} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("Issue description"), {
       target: { value: "throwaway" },
@@ -89,14 +89,14 @@ describe("DescriptionCard", () => {
   });
 
   it("starts the editor from the stored body, so an edit is a correction not a rewrite", () => {
-    render(<DescriptionCard issue={issue("stored text")} attachments={[]} canWrite />);
+    render(<IssueDescription issue={issue("stored text")} attachments={[]} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(screen.getByLabelText("Issue description")).toHaveValue("stored text");
   });
 
   it("shows the write in flight rather than an idle-looking button", () => {
     pending = true;
-    render(<DescriptionCard issue={issue("before")} attachments={[]} canWrite />);
+    render(<IssueDescription issue={issue("before")} attachments={[]} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const save = [...screen.getAllByRole("button")].find((b) => b.textContent?.includes("Save"));
     expect(save).toBeDisabled();
@@ -104,7 +104,7 @@ describe("DescriptionCard", () => {
   });
 
   it("invites the first description rather than reporting an absence", () => {
-    render(<DescriptionCard issue={issue(null)} attachments={[]} canWrite />);
+    render(<IssueDescription issue={issue(null)} attachments={[]} canWrite />);
     expect(screen.getByText(/No description yet/)).toBeInTheDocument();
   });
 });
@@ -112,12 +112,12 @@ describe("DescriptionCard", () => {
 // ISS-1010 — a drive job rewrites a description wholesale (ISS-1010's own thread
 // carries four such rewrites of its body), so the Edit affordance is a way to
 // lose work while one is running.
-describe("DescriptionCard, while an agent is working the issue", () => {
+describe("IssueDescription, while an agent is working the issue", () => {
   const held = "An agent is working this — your edit would be overwritten";
 
   it("offers no Edit control", () => {
     render(
-      <DescriptionCard
+      <IssueDescription
         issue={issue("body", { agentStatus: "running" })}
         attachments={[]}
         canWrite
@@ -128,7 +128,7 @@ describe("DescriptionCard, while an agent is working the issue", () => {
 
   it("names the reason where the Edit control was", () => {
     render(
-      <DescriptionCard
+      <IssueDescription
         issue={issue("body", { agentStatus: "running" })}
         attachments={[]}
         canWrite
@@ -139,7 +139,7 @@ describe("DescriptionCard, while an agent is working the issue", () => {
 
   it("still offers Edit on a needs_info issue", () => {
     render(
-      <DescriptionCard
+      <IssueDescription
         issue={issue("body", { status: "needs_info", agentStatus: "running" })}
         attachments={[]}
         canWrite
@@ -151,11 +151,11 @@ describe("DescriptionCard, while an agent is working the issue", () => {
 
   it("keeps Save on a draft that was already open when the job started", () => {
     const { rerender } = render(
-      <DescriptionCard issue={issue("before")} attachments={[]} canWrite />,
+      <IssueDescription issue={issue("before")} attachments={[]} canWrite />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     rerender(
-      <DescriptionCard
+      <IssueDescription
         issue={issue("before", { agentStatus: "running" })}
         attachments={[]}
         canWrite
@@ -173,7 +173,7 @@ describe("DescriptionCard, while an agent is working the issue", () => {
 
   it("locks nothing while the job is only queued", () => {
     render(
-      <DescriptionCard
+      <IssueDescription
         issue={issue("body", { agentStatus: "queued" })}
         attachments={[]}
         canWrite
@@ -184,7 +184,7 @@ describe("DescriptionCard, while an agent is working the issue", () => {
 });
 
 // ISS-1150 — the attachments sit with the text that refers to them.
-describe("DescriptionCard's attachments", () => {
+describe("IssueDescription's attachments", () => {
   const FILE = {
     id: "a1",
     issueId: "i1",
@@ -200,21 +200,21 @@ describe("DescriptionCard's attachments", () => {
     (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
   it("lists the attachments above the description text", () => {
-    render(<DescriptionCard issue={issue("the body")} attachments={[FILE]} canWrite={false} />);
+    render(<IssueDescription issue={issue("the body")} attachments={[FILE]} canWrite={false} />);
     const region = screen.getByRole("region", { name: "Attachments" });
     expect(region).toHaveTextContent("notes.txt");
     expect(precedes(region, at("the body"))).toBe(true);
   });
 
   it("renders nothing for attachments when there are none", () => {
-    render(<DescriptionCard issue={issue("the body")} attachments={[]} canWrite={false} />);
+    render(<IssueDescription issue={issue("the body")} attachments={[]} canWrite={false} />);
     expect(screen.queryByRole("region", { name: "Attachments" })).toBeNull();
     expect(screen.queryByText(/No attachments/)).toBeNull();
   });
 
   it("says a failed read failed instead of showing none", () => {
     render(
-      <DescriptionCard
+      <IssueDescription
         issue={issue("the body")}
         attachments={[]}
         attachmentsError={new Error("network down")}
@@ -226,7 +226,7 @@ describe("DescriptionCard's attachments", () => {
 
   it("holds a placeholder while the attachments load", () => {
     const { container } = render(
-      <DescriptionCard issue={issue("the body")} attachments={[]} attachmentsLoading canWrite={false} />,
+      <IssueDescription issue={issue("the body")} attachments={[]} attachmentsLoading canWrite={false} />,
     );
     expect(container.querySelector("[aria-busy]")).not.toBeNull();
     expect(screen.queryByRole("region", { name: "Attachments" })).toBeNull();

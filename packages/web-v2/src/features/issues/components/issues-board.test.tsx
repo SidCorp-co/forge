@@ -8,7 +8,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IssueStandingList, IssueStandingRow } from "@forge/contracts/issue-standing";
-import { IssuesBoard } from "./issues-board";
+import { IssuesBoard, waveEdges } from "./issues-board";
 
 expect.extend(matchers);
 afterEach(cleanup);
@@ -106,6 +106,14 @@ describe("IssuesBoard", () => {
     expect(waves.map((w) => w.dataset.wave)).toEqual(["0", "1"]);
     expect(within(waves[0] as HTMLElement).getByText("Chain roots 1")).toBeInTheDocument();
     expect(within(waves[1] as HTMLElement).getByText("Waits on ISS-3")).toBeInTheDocument();
+    expect(screen.getByTestId("wave-edges")).toBeInTheDocument();
+  });
+
+  it("draws an edge from each blocker to what it holds back, and none to a card not shown", () => {
+    const hidden = row("ISS-9", { wave: null, blocks: [{ key: "ISS-1", title: "t", status: "open", group: "queued" }] });
+    const held = row("ISS-1", { wave: 1, blockedBy: [{ key: "ISS-9", title: "t", status: "closed", group: "done" }] });
+    expect(waveEdges(ROWS)).toEqual([{ from: "ISS-3", to: "ISS-2" }]);
+    expect(waveEdges([hidden, held])).toEqual([]);
   });
 
   it("opens a peek from a row and names its place among the visible rows", () => {

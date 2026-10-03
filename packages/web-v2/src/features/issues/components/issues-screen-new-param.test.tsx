@@ -92,7 +92,10 @@ vi.mock("@/features/projects/hooks", () => ({
 }));
 vi.mock("./issues-list-view", () => ({ IssuesListView: () => <div data-testid="table-view" /> }));
 vi.mock("./issues-board", () => ({ IssuesBoard: ({ mode }: { mode: string }) => <div data-testid="board" data-mode={mode} /> }));
-vi.mock("../hooks", () => ({ useProjectModules: () => ({ data: [{ id: "m1" }], modules: [{ id: "m1" }] }) }));
+vi.mock("../hooks", () => ({
+  useProjectModules: () => ({ data: [{ id: "m1" }], modules: [{ id: "m1" }] }),
+  useIssueStanding: () => ({ data: undefined }),
+}));
 // The dialog's own behaviour has its own tests; this stub keeps the two exits it hands back to
 // the screen — a plain close, and the close that the real dialog makes before it routes to the
 // issue it created.

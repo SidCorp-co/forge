@@ -17,7 +17,7 @@ export function FeedbackItemScreen({ projectId, slug, fbKey }: { projectId: stri
     requestAnimationFrame(() => document.getElementById("feedback-act")?.scrollIntoView({ block: "start", behavior: "smooth" }));
   };
   return (
-    <div className="min-h-full bg-surface" data-testid="feedback-item-screen">
+    <div className="min-h-full bg-app" data-testid="feedback-item-screen">
       <DetailHeader
         back={{ href: back, label: "Feedback" }}
         itemKey={f?.key ?? fbKey}
