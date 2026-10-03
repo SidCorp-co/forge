@@ -1,10 +1,9 @@
 /**
  * `item_embeddings` for requirements (Q7): one vector per requirement, of its head revision only,
- * written when the head moves and read by the BA assistant's dedup. A write never skips in silence:
- * without a provider the row says `provider_not_configured`, a provider error says `failed`.
+ * written when the head moves and read by the BA assistant's dedup, through the shared writer
+ * (`embeddings/item-writer.ts`), which applies the project's data policy.
  */
 
-import { createHash } from 'node:crypto';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
@@ -15,11 +14,15 @@ import {
   requirements,
 } from '../db/schema-requirements.js';
 import { embeddingsConfigured, embedWithModel } from '../embeddings/index.js';
+import {
+  EMBEDDING_PROVIDER_NOT_CONFIGURED,
+  writeItemEmbedding,
+} from '../embeddings/item-writer.js';
+import { egressFor } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
 import { requirementKey } from './read.js';
 
-export const EMBEDDING_PROVIDER_NOT_CONFIGURED =
-  'embedding provider not configured: EMBEDDINGS_BASE_URL and EMBEDDINGS_API_KEY are unset, so no vector was written and dedup cannot compare this item';
+export { EMBEDDING_PROVIDER_NOT_CONFIGURED };
 
 interface HeadText {
   projectId: string;
@@ -69,55 +72,23 @@ async function headText(requirementId: string): Promise<HeadText | null> {
   return { projectId: row.projectId, revision: row.revision, text };
 }
 
-async function upsert(
-  requirementId: string,
-  head: HeadText,
-  hash: string,
-  written: { status: ItemEmbeddingStatus; vector?: number[]; model?: string; error?: string },
-) {
-  const values = {
-    projectId: head.projectId,
-    requirementId,
-    version: head.revision,
-    contentHash: hash,
-    status: written.status,
-    model: written.model ?? null,
-    embedding: written.vector ?? null,
-    error: written.error ?? null,
-    updatedAt: new Date(),
-  };
-  await db
-    .insert(itemEmbeddings)
-    .values(values)
-    .onConflictDoUpdate({
-      target: [itemEmbeddings.itemType, itemEmbeddings.itemId],
-      set: values,
-    });
-}
-
 /** Embeds the requirement's head revision, replacing whatever vector it held; returns the row status. */
 export async function embedRequirementHead(
   requirementId: string,
 ): Promise<ItemEmbeddingStatus | null> {
   const head = await headText(requirementId);
   if (!head) return null;
-  const hash = createHash('sha256').update(head.text).digest('hex');
-  if (!embeddingsConfigured()) {
-    await upsert(requirementId, head, hash, {
-      status: 'provider_not_configured',
-      error: EMBEDDING_PROVIDER_NOT_CONFIGURED,
-    });
-    return 'provider_not_configured';
-  }
-  try {
-    const { vector, model } = await embedWithModel(head.text);
-    await upsert(requirementId, head, hash, { status: 'embedded', vector, model });
-    return 'embedded';
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    await upsert(requirementId, head, hash, { status: 'failed', error });
-    return 'failed';
-  }
+  const [req] = await db
+    .select({ seq: requirements.reqSeq })
+    .from(requirements)
+    .where(eq(requirements.id, requirementId));
+  return writeItemEmbedding({
+    projectId: head.projectId,
+    arc: { requirementId },
+    version: head.revision,
+    text: head.text,
+    what: req ? requirementKey(req.seq) : `requirement ${requirementId}`,
+  });
 }
 
 /** After the head moved: embed outside the transaction that moved it, logging what did not land. */
@@ -141,7 +112,7 @@ export type SimilarRequirements =
       /** Requirements of this project with no usable vector, by row status, so a miss is not read as "none similar". */
       notEmbedded: Record<string, number>;
     }
-  | { status: 'provider_not_configured'; message: string };
+  | { status: 'provider_not_configured' | 'withheld_by_policy'; message: string };
 
 /** The requirements of `projectId` nearest to `text`, comparing only vectors of the same model. */
 export async function similarRequirements(
@@ -149,10 +120,12 @@ export async function similarRequirements(
   text: string,
   limit = 5,
 ): Promise<SimilarRequirements> {
+  const egress = await egressFor(projectId, text, 'the text to compare');
+  if (!egress.ok) return { status: 'withheld_by_policy', message: egress.refusal.detail };
   if (!embeddingsConfigured()) {
     return { status: 'provider_not_configured', message: EMBEDDING_PROVIDER_NOT_CONFIGURED };
   }
-  const { vector, model } = await embedWithModel(text);
+  const { vector, model } = await embedWithModel(egress.text);
   const distance = cosineDistance(itemEmbeddings.embedding, vector);
   const rows = await db
     .select({
@@ -178,6 +151,7 @@ export async function similarRequirements(
     .where(
       and(
         eq(itemEmbeddings.projectId, projectId),
+        eq(itemEmbeddings.itemType, 'requirement'),
         sql`(${itemEmbeddings.status} <> 'embedded' OR ${itemEmbeddings.model} <> ${model})`,
       ),
     )

@@ -18,6 +18,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { issues, projects, users } from './schema.js';
 import { conversationMessages } from './schema-conversations.js';
+import { feedback } from './schema-feedback.js';
 import { requirements } from './schema-requirements.js';
 
 export {
@@ -39,12 +40,14 @@ export const suggestions = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     kind: text('kind', { enum: SUGGESTION_KINDS }).notNull(),
-    // cm:why an exclusive arc of real foreign keys, never a target_type/target_id pair; feedback_id
-    // joins the arc with the feedback table (S6)
+    // cm:why an exclusive arc of real foreign keys, never a target_type/target_id pair
     requirementId: uuid('requirement_id').references((): AnyPgColumn => requirements.id, {
       onDelete: 'cascade',
     }),
     issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'cascade' }),
+    feedbackId: uuid('feedback_id').references((): AnyPgColumn => feedback.id, {
+      onDelete: 'cascade',
+    }),
     baseRevision: integer('base_revision'),
     payload: jsonb('payload'),
     payloadVersion: integer('payload_version').notNull().default(1),
@@ -64,10 +67,13 @@ export const suggestions = pgTable(
     payloadPurgedAt: timestamp('payload_purged_at', { withTimezone: true }),
   },
   (t) => ({
-    arcChk: check('suggestions_arc_chk', sql`num_nonnulls(${t.requirementId}, ${t.issueId}) = 1`),
+    arcChk: check(
+      'suggestions_arc_chk',
+      sql`num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.feedbackId}) = 1`,
+    ),
     kindChk: check(
       'suggestions_kind_chk',
-      sql`${t.kind} IN ('requirement_draft', 'revision_diff', 'readiness', 'breakdown', 'triage', 'duplicate')`,
+      sql`${t.kind} IN (${sql.raw(SUGGESTION_KINDS.map((k) => `'${k}'`).join(', '))})`,
     ),
     statusChk: check(
       'suggestions_status_chk',
@@ -92,7 +98,7 @@ export const suggestions = pgTable(
     // cm:why one open row per target, kind and fingerprint (SUGGESTION_DUPLICATE), so a retry or a
     // second turn saying the same thing does not queue a twin
     openTwinUq: uniqueIndex('suggestions_open_twin_uq')
-      .on(t.kind, sql`coalesce(${t.requirementId}, ${t.issueId})`, t.fingerprint)
+      .on(t.kind, sql`coalesce(${t.requirementId}, ${t.issueId}, ${t.feedbackId})`, t.fingerprint)
       .where(sql`status = 'proposed'`),
     requirementIdx: index('suggestions_requirement_idx')
       .on(t.requirementId, t.status)
@@ -100,6 +106,9 @@ export const suggestions = pgTable(
     issueIdx: index('suggestions_issue_idx')
       .on(t.issueId, t.status)
       .where(sql`issue_id IS NOT NULL`),
+    feedbackIdx: index('suggestions_feedback_idx')
+      .on(t.feedbackId, t.status)
+      .where(sql`feedback_id IS NOT NULL`),
     sweepIdx: index('suggestions_status_created_idx').on(t.status, t.createdAt),
   }),
 );
