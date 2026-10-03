@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { Actor } from '../pipeline/activity.js';
@@ -110,6 +110,44 @@ export type CreateIssueResult =
       bodyWarnings: string[];
     };
 
+/**
+ * The one insert into `issues`, inside the caller's transaction. A write that files issues as the
+ * effect of another act (a feedback route, an accepted breakdown) calls it in that act's own
+ * transaction, then `announceIssueCreated` once it committed, as `createIssue` does.
+ */
+export async function insertIssueRow(
+  tx: Tx,
+  values: typeof issues.$inferInsert,
+): Promise<IssueCreateRow> {
+  const [inserted] = await tx.insert(issues).values(values).returning();
+  if (!inserted) throw new Error('issues: insert returned no row');
+  return inserted;
+}
+
+/** After the create committed: the hook every issue create emits (activity, WS, memory, dispatch). */
+export async function announceIssueCreated(
+  created: IssueCreateRow,
+  actor: Actor,
+  labelIds: readonly string[] = [],
+): Promise<void> {
+  await hooks.emit('issueCreated', {
+    issueId: created.id,
+    projectId: created.projectId,
+    actor,
+    status: created.status as IssueStatus,
+    snapshot: {
+      title: created.title,
+      description: created.description,
+      descriptionFormat: created.descriptionFormat,
+      priority: created.priority,
+      category: created.category,
+      reportedBy: created.reportedBy,
+      assigneeId: created.assigneeId,
+      labels: [...labelIds],
+    },
+  });
+}
+
 export async function createIssue(
   input: CreateIssueInput,
   writer: IssueCreateWriter,
@@ -161,30 +199,26 @@ export async function createIssue(
   const split =
     input.sessionContext === undefined ? null : splitSessionContext(input.sessionContext);
   const { created, pendingRelations } = await db.transaction(async (tx) => {
-    const [inserted] = await tx
-      .insert(issues)
-      .values({
-        projectId: input.projectId,
-        title: input.title,
-        description: prepared ? prepared.body : (input.description ?? null),
-        descriptionFormat: prepared?.format ?? 'markdown',
-        status: requestedStatus as IssueStatus,
-        priority: (input.priority ?? 'medium') as IssueCreateRow['priority'],
-        category: input.category ?? null,
-        complexity: (input.complexity ?? null) as IssueCreateRow['complexity'],
-        reportedBy: input.reportedBy ?? null,
-        assigneeId: input.assigneeId ?? null,
-        createdById: writer.createdById,
-        createdByDeviceId: writer.createdByDeviceId,
-        createdVia: writer.createdVia,
-        detectorKey,
-        plan: input.plan ?? null,
-        acceptanceCriteria: input.acceptanceCriteria ?? null,
-        sessionContext: (split?.rest ?? null) as IssueCreateRow['sessionContext'],
-        releaseNotes: (input.releaseNotes ?? null) as IssueCreateRow['releaseNotes'],
-      })
-      .returning();
-    if (!inserted) throw new Error('issues: insert returned no row');
+    const inserted = await insertIssueRow(tx, {
+      projectId: input.projectId,
+      title: input.title,
+      description: prepared ? prepared.body : (input.description ?? null),
+      descriptionFormat: prepared?.format ?? 'markdown',
+      status: requestedStatus as IssueStatus,
+      priority: (input.priority ?? 'medium') as IssueCreateRow['priority'],
+      category: input.category ?? null,
+      complexity: (input.complexity ?? null) as IssueCreateRow['complexity'],
+      reportedBy: input.reportedBy ?? null,
+      assigneeId: input.assigneeId ?? null,
+      createdById: writer.createdById,
+      createdByDeviceId: writer.createdByDeviceId,
+      createdVia: writer.createdVia,
+      detectorKey,
+      plan: input.plan ?? null,
+      acceptanceCriteria: input.acceptanceCriteria ?? null,
+      sessionContext: (split?.rest ?? null) as IssueCreateRow['sessionContext'],
+      releaseNotes: (input.releaseNotes ?? null) as IssueCreateRow['releaseNotes'],
+    });
     if (inserted.acceptanceCriteria) {
       await syncCriteriaFromText(tx, inserted.id, inserted.acceptanceCriteria);
     }
@@ -234,22 +268,11 @@ export async function createIssue(
   );
   const relations = pendingRelations.map((p: PendingIssueRelation) => p.applied);
 
-  await hooks.emit('issueCreated', {
-    issueId: created.id,
-    projectId: created.projectId,
-    actor: writer.actor,
-    status: created.status as IssueStatus,
-    snapshot: {
-      title: created.title,
-      description: created.description,
-      descriptionFormat: created.descriptionFormat,
-      priority: created.priority,
-      category: created.category,
-      reportedBy: created.reportedBy,
-      assigneeId: created.assigneeId,
-      labels: labelIds.map((l) => l.labelId),
-    },
-  });
+  await announceIssueCreated(
+    created,
+    writer.actor,
+    labelIds.map((l) => l.labelId),
+  );
 
   return {
     deduped: false,

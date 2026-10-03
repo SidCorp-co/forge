@@ -5,7 +5,7 @@
  */
 
 import type { RequirementHistoryEntry, RequirementStanding } from '@forge/contracts/requirements';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
 import {
@@ -24,7 +24,8 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { changedSincePlan } from './rules.js';
-import { deriveStanding, type StandingIssueCriterion } from './standing.js';
+import { deriveStanding } from './standing.js';
+import { issueCriteriaOf, latestPinsOf } from './standing-facts.js';
 
 export interface StandingRow {
   id: string;
@@ -38,67 +39,6 @@ export interface StandingRow {
 export interface StandingViewer {
   userId: string;
   canSignOff: boolean;
-}
-
-type CriterionVerdictRow = {
-  issue_id: string;
-  n: number;
-  requirement_criterion_id: string;
-  verdict: StandingIssueCriterion['verdict'];
-};
-
-async function issueCriteriaOf(issueIds: readonly string[]): Promise<StandingIssueCriterion[]> {
-  if (issueIds.length === 0) return [];
-  const rows = (await db.execute(sql`
-    SELECT c.issue_id, c.n, c.requirement_criterion_id, v.verdict
-      FROM issue_criteria c
-      LEFT JOIN LATERAL (
-        SELECT cv.verdict FROM criterion_verdicts cv
-         WHERE cv.criterion_id = c.id
-         ORDER BY cv.created_at DESC, cv.id DESC
-         LIMIT 1
-      ) v ON true
-     WHERE c.issue_id IN (${sql.join(
-       issueIds.map((id) => sql`${id}`),
-       sql`, `,
-     )})
-       AND c.retired_at IS NULL
-       AND c.requirement_criterion_id IS NOT NULL
-     ORDER BY c.issue_id, c.position, c.n`)) as unknown as CriterionVerdictRow[];
-  return [...rows].map((r) => ({
-    issueId: r.issue_id,
-    n: r.n,
-    requirementCriterionId: r.requirement_criterion_id,
-    verdict: r.verdict,
-  }));
-}
-
-type PinRow = {
-  requirement_id: string;
-  flow: string;
-  pinned: number | null;
-  approved: number | null;
-};
-
-/** Each requirement's latest baseline design pins, beside the revision each design is approved at now. */
-async function latestPinsOf(ids: readonly string[]) {
-  if (ids.length === 0) return [];
-  const rows = (await db.execute(sql`
-    SELECT p.requirement_id, w.flow, p.design_revision AS pinned, w.approved_revision AS approved
-      FROM requirement_baseline_pins p
-      JOIN project_workflows w ON w.id = p.workflow_id
-     WHERE p.requirement_id IN (${sql.join(
-       ids.map((id) => sql`${id}`),
-       sql`, `,
-     )})
-       AND p.revision = (SELECT max(b.revision) FROM requirement_baselines b
-                          WHERE b.requirement_id = p.requirement_id)`)) as unknown as PinRow[];
-  return [...rows].map((r) => ({
-    requirementId: r.requirement_id,
-    flow: r.flow,
-    pinned: r.pinned,
-    approved: r.approved,
-  }));
 }
 
 /** The standing of each requirement in `rows`, keyed by id; all rows belong to `projectId`. */

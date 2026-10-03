@@ -21,6 +21,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { lockFeedback } from '../feedback/service.js';
 import { announceTriage } from '../feedback/triage.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
+import { announceIssueCreated } from '../issues/create-service.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
@@ -33,7 +34,6 @@ import { emitIssueFieldUpdate } from '../issues/update-hook.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { personActRefusalFor } from '../lib/person-act.js';
-import { hooks } from '../pipeline/hooks.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { lockRequirements } from '../requirements/service.js';
 import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
@@ -192,23 +192,7 @@ async function announceEffect(written: EffectWritten, projectId: string, actor: 
   if (written.triage) await announceTriage(written.triage, actor);
   for (const id of written.createdIssueIds ?? []) {
     const [issue] = await db.select().from(issues).where(eq(issues.id, id));
-    if (!issue) continue;
-    await hooks.emit('issueCreated', {
-      issueId: issue.id,
-      projectId: issue.projectId,
-      actor: who,
-      status: issue.status as IssueStatus,
-      snapshot: {
-        title: issue.title,
-        description: issue.description,
-        descriptionFormat: issue.descriptionFormat,
-        priority: issue.priority,
-        category: issue.category,
-        reportedBy: issue.reportedBy,
-        assigneeId: issue.assigneeId,
-        labels: [],
-      },
-    });
+    if (issue) await announceIssueCreated(issue, who);
   }
   if (written.relations?.length) {
     await flushIssueRelationEffects(

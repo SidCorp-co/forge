@@ -15,6 +15,7 @@ import { requirementCriteria, requirementRevisions } from '../db/schema-requirem
 import { suggestions } from '../db/schema-suggestions.js';
 import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import { type TriageWritten, triageIn } from '../feedback/triage.js';
+import { insertIssueRow } from '../issues/create-service.js';
 import { putCriteria } from '../issues/criteria/store.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { type PendingIssueRelation, writeIssueRelations } from '../issues/relations-service.js';
@@ -159,22 +160,18 @@ async function breakdownEffect(
   if (faults.length) return { refusals: faults };
   const ids: string[] = [];
   for (const item of p.issues) {
-    const [issue] = await tx
-      .insert(issues)
-      .values({
-        projectId,
-        title: item.title,
-        description: item.description ?? null,
-        descriptionFormat: 'markdown',
-        status: 'draft',
-        createdById: actor.userId,
-        createdByDeviceId: null,
-        createdVia: channel,
-        requirementId: req.id,
-        plannedRevision: head,
-      })
-      .returning({ id: issues.id });
-    if (!issue) throw new Error('suggestions: a breakdown issue insert returned no row');
+    const issue = await insertIssueRow(tx, {
+      projectId,
+      title: item.title,
+      description: item.description ?? null,
+      descriptionFormat: 'markdown',
+      status: 'draft',
+      createdById: actor.userId,
+      createdByDeviceId: null,
+      createdVia: channel,
+      requirementId: req.id,
+      plannedRevision: head,
+    });
     ids.push(issue.id);
     const criteria = (item.criteria ?? []).map((c, j) => ({
       n: j + 1,
@@ -280,7 +277,6 @@ async function issueTriageEffect(tx: Tx, projectId: string, row: Row): Promise<E
   };
 }
 
-/** The effect of accepting `row`, written in the accept's transaction; refusals roll it back. */
 export async function writeEffect(
   tx: Tx,
   projectId: string,
