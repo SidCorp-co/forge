@@ -205,7 +205,7 @@ no writer gets a fourth state.
   issue to carry an activity row, so its post and each edit insert a
   `packages/core/src/db/schema-comments.ts:commentEvents` row holding the content as it stood,
   insert-only by `comment_event_guard()` in
-  `packages/core/drizzle/migrations/0359_a_comment_sits_on_exactly_one_target.sql`. A decision there
+  `packages/core/drizzle/migrations/0361_a_comment_sits_on_exactly_one_target.sql`. A decision there
   carries `decision: { decision, reason, options?, authority?, reversedWhen? }`
   (`packages/contracts/src/comments.ts:decisionFieldsSchema`).
 
