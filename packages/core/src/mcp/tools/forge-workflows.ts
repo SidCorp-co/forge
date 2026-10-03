@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod';
+import { egressDeep, egressOr } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
 import { DESIGN_DECISIONS, DESIGN_REASON_MAX } from '../../workflows/design.js';
 import {
@@ -139,13 +140,16 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
     userId: ctx.principal.userId,
     agency: principalAgency(ctx.principal),
   };
+  const what = input.workflowId ? `workflow ${input.workflowId}` : 'the workflows';
+  const shown = async <T>(value: T) =>
+    egressOr(await egressDeep(projectId, 'design', value, what), { workflowId: input.workflowId });
   switch (input.action) {
     case 'list':
-      return { workflows: await listWorkflowsAs(actor.userId, projectId) };
+      return shown({ workflows: await listWorkflowsAs(actor.userId, projectId) });
     case 'get':
-      return readWorkflowAs(actor.userId, projectId, need(input, 'workflowId'));
+      return shown(await readWorkflowAs(actor.userId, projectId, need(input, 'workflowId')));
     case 'design':
-      return readDesignAs(actor, projectId, need(input, 'workflowId'));
+      return shown(await readDesignAs(actor, projectId, need(input, 'workflowId')));
     case 'write': {
       const baseRevision = input.baseRevision ?? null;
       const outcome = input.workflowId
@@ -158,7 +162,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
           })
         : await createWorkflow({ projectId, writer: actor, baseRevision, raw: input.document });
       if (!outcome.ok) return refusedBy(outcome.refusals);
-      return { ...workflowView(outcome.row, outcome.document), created: outcome.created };
+      return shown({ ...workflowView(outcome.row, outcome.document), created: outcome.created });
     }
     case 'propose': {
       const outcome = await proposeDesign({
@@ -168,7 +172,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         revision: need(input, 'revision'),
         issue: input.issue,
       });
-      return outcome.ok ? outcome.design : refusedBy(outcome.refusals);
+      return outcome.ok ? shown(outcome.design) : refusedBy(outcome.refusals);
     }
     case 'decide': {
       const outcome = await decideDesignAs({
@@ -179,7 +183,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         decision: need(input, 'decision'),
         reason: input.reason ?? null,
       });
-      return outcome.ok ? outcome.design : refusedBy(outcome.refusals);
+      return outcome.ok ? shown(outcome.design) : refusedBy(outcome.refusals);
     }
     case 'templates':
       return { templates: await listProjectTemplatesAs(actor.userId, projectId) };
@@ -199,7 +203,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         actor,
         issue: need(input, 'issue'),
       });
-      return outcome.ok ? outcome.design : refusedBy(outcome.refusals);
+      return outcome.ok ? shown(outcome.design) : refusedBy(outcome.refusals);
     }
   }
 }

@@ -1,16 +1,59 @@
-/**
- * The one egress guard (decision Q8, owner ruling 2026-10-03): what of a project's content may
- * leave for an embedding or LLM provider. The embedding writer, the BA door's tools and every
- * provider-bound read call it; none of them reads the project's level on its own.
- */
-
 import {
   type DataEgressRefusalCode,
+  type EgressClass,
   SENSITIVE_DATA_DEFAULT,
   type SensitiveDataLevel,
 } from '@forge/contracts/data-policy';
 import { redactionCount, scrubPersonalData } from '@forge/observability';
+import { HTTPException } from 'hono/http-exception';
+import type { ActorAgency } from '../issues/actor-agency.js';
 import { readProjectDocument } from '../project-config/service.js';
+
+// cm:why the one egress rule (decision on ISS-59, 2026-10-04): every read that hands content to an
+// agent or a provider passes `egressDeep(project, surface)`, and each surface declares its class
+// here, the one table. Product is written to build the product and an agent cannot build without
+// it; operational is what people send in, where patient text arrives. A name missing here is
+// refused, so a new surface cannot leak; the write side (`storedText`) scrubs on write
+export const EGRESS_SURFACES = {
+  requirement: {
+    class: 'product',
+    holds: 'requirements: revisions, spec, business criteria, baselines, history',
+  },
+  design: { class: 'product', holds: 'workflow designs and their revisions' },
+  issue: {
+    class: 'product',
+    holds: 'issues: title, description, plan, acceptance criteria, handoffs',
+  },
+  'issue.criteria': { class: 'product', holds: 'issue criteria and their verdicts' },
+  'issue.comments': { class: 'product', holds: 'comments on an issue' },
+  'issue.questions': {
+    class: 'product',
+    holds: "an agent's questions on an issue and the answers",
+  },
+  'onboarding.answers': {
+    class: 'product',
+    holds: 'onboarding questionnaires and their answers',
+  },
+  suggestion: { class: 'product', holds: 'suggestions on a requirement or an issue' },
+  feedback: {
+    class: 'operational',
+    holds:
+      'feedback items: title, body, where seen, answer, decision reasons, clarification, triage suggestions',
+  },
+  'feedback.attachments': { class: 'operational', holds: 'files attached to a feedback item' },
+  'feedback.comments': { class: 'operational', holds: 'comments on a feedback item' },
+  conversation: {
+    class: 'operational',
+    holds:
+      'assistant conversations with people: messages, room and page context, transcript passages',
+  },
+  'requirement.clarification': {
+    class: 'operational',
+    holds: "the BA assistant's questions to a person about a requirement, and the answers",
+  },
+} as const satisfies Record<string, { class: EgressClass; holds: string }>;
+
+export type EgressSurface = keyof typeof EGRESS_SURFACES;
 
 export interface EgressRefusal {
   code: DataEgressRefusalCode;
@@ -18,24 +61,30 @@ export interface EgressRefusal {
   detail: string;
 }
 
-export type Egress =
-  | { ok: true; text: string; redactions: number }
-  | { ok: false; refusal: EgressRefusal };
+export type EgressDeep<T> = { ok: true; value: T } | { ok: false; refusal: EgressRefusal };
 
-/** The project's level; a project with no document, or a document that names none, is `off`. */
+export interface EgressReader {
+  agency: ActorAgency;
+  providerBound?: boolean | undefined;
+}
+
+export const MCP_DOOR = { providerBound: true } as const;
+
+export function isProviderBound(reader: EgressReader): boolean {
+  return reader.providerBound === true || reader.agency === 'agent';
+}
+
 export async function dataPolicyOf(projectId: string): Promise<SensitiveDataLevel> {
   const doc = await readProjectDocument(projectId);
   return doc?.document.sensitiveData ?? SENSITIVE_DATA_DEFAULT;
 }
 
-/** Text as it may be stored: scrubbed on write at `redact` and at `no_egress`. */
 export function storedText(level: SensitiveDataLevel, text: string) {
   if (level === 'off') return { text, redactions: 0, scrubbed: false };
   const scrub = scrubPersonalData(text);
   return { text: scrub.text, redactions: redactionCount(scrub.redactions), scrubbed: true };
 }
 
-/** Questionnaire answers as they may be stored: typed text scrubbed as `storedText`, choice ids kept. */
 export function storedAnswers<A extends { text?: string | undefined }>(
   level: SensitiveDataLevel,
   answers: readonly A[],
@@ -45,87 +94,142 @@ export function storedAnswers<A extends { text?: string | undefined }>(
   );
 }
 
-// cm:guard content leaves for a provider only as the project's level allows: as written at off,
-// scrubbed at redact, never at no_egress, which is refused by name so the caller sends metadata only
-export function egressOf(level: SensitiveDataLevel, text: string, what: string): Egress {
-  if (level === 'no_egress') {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
+const URL_ONLY = /^(?:data:|https?:\/\/)\S*$/;
+
+function scrubDeep(v: unknown, counted: { n: number }): unknown {
+  if (typeof v === 'string') {
+    if (UUID.test(v) || ISO_TIME.test(v) || URL_ONLY.test(v)) return v;
+    const scrub = scrubPersonalData(v);
+    counted.n += redactionCount(scrub.redactions);
+    return scrub.text;
+  }
+  if (Array.isArray(v)) return v.map((x) => scrubDeep(x, counted));
+  if (v instanceof Date) return v;
+  if (v && typeof v === 'object') {
+    return Object.fromEntries(
+      Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, scrubDeep(x, counted)]),
+    );
+  }
+  return v;
+}
+
+function classOf(surface: string): EgressClass | null {
+  return Object.hasOwn(EGRESS_SURFACES, surface)
+    ? EGRESS_SURFACES[surface as EgressSurface].class
+    : null;
+}
+
+// cm:guard the one rule, at a level already read: an undeclared surface is refused by name at every
+// level; operational content never leaves at no_egress, so the caller answers metadata only; what
+// leaves at redact, and product content at no_egress, leaves scrubbed; at off it leaves as written
+export function egressAt<T>(
+  level: SensitiveDataLevel,
+  surface: EgressSurface,
+  value: T,
+  what: string = surface,
+): EgressDeep<T> {
+  const cls = classOf(surface);
+  if (cls === null) {
+    return {
+      ok: false,
+      refusal: {
+        code: 'EGRESS_SURFACE_UNDECLARED',
+        path: '',
+        detail: `${what} was read through surface "${surface}", which declares no class in lib/data-egress.ts:EGRESS_SURFACES; declare it product or operational before any agent reads it. Declared: ${Object.keys(EGRESS_SURFACES).join(', ')}.`,
+      },
+    };
+  }
+  if (cls === 'operational' && level === 'no_egress') {
     return {
       ok: false,
       refusal: {
         code: 'CONTENT_EGRESS_FORBIDDEN',
         path: '',
-        detail: `${what} belongs to a project whose sensitiveData is no_egress: its content never reaches an embedding or LLM provider, redacted or not. Only its metadata (key, kind, severity, status, links) may be read here.`,
+        detail: `${what} is ${surface} content (operational: ${EGRESS_SURFACES[surface].holds}) of a project whose sensitiveData is no_egress: it never reaches an agent or a provider, redacted or not. Only its metadata (key, kind, severity, status, links) may be read here.`,
       },
     };
   }
-  if (level === 'redact') {
-    const scrub = scrubPersonalData(text);
-    return { ok: true, text: scrub.text, redactions: redactionCount(scrub.redactions) };
-  }
-  return { ok: true, text, redactions: 0 };
-}
-
-/** `egressOf` at the project's own level. */
-export async function egressFor(projectId: string, text: string, what: string): Promise<Egress> {
-  return egressOf(await dataPolicyOf(projectId), text, what);
-}
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ISO_TIME = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
-
-/** `onboarding_answers` is product information, not patient data (owner, 2026-10-04): scrubbed at no_egress. */
-export type EgressDataClass = 'content' | 'onboarding_answers';
-
-// cm:guard only questionnaire answers in an onboarding conversation qualify for the no_egress
-// exemption, so a BA clarification batch, which can quote feedback, never does and is refused by name
-function onboardingAnswersRefusal(value: unknown, what: string): EgressRefusal | null {
-  const batches = Array.isArray(value) ? value : [value];
-  const at = batches.findIndex((b) => {
-    const batch = b as { onboardingId?: unknown; requirementId?: unknown } | null;
-    return (
-      typeof batch !== 'object' ||
-      batch === null ||
-      typeof batch.onboardingId !== 'string' ||
-      batch.onboardingId === '' ||
-      batch.requirementId !== null
-    );
-  });
-  if (at === -1) return null;
-  const id = (batches[at] as { id?: unknown } | null | undefined)?.id;
-  return {
-    code: 'CONTENT_EGRESS_FORBIDDEN',
-    path: '',
-    detail: `${what} was read as onboarding answers, but ${typeof id === 'string' ? `questionnaire ${id}` : 'an entry'} is not a batch of an onboarding conversation (it names no onboarding, or names a requirement). Only onboarding questionnaire answers are exempt from no_egress; a requirement clarification is content.`,
-  };
-}
-
-/** `egressOf` over a structured answer: every string scrubbed at redact, ids and times kept whole. */
-export function egressDeep<T>(
-  level: SensitiveDataLevel,
-  value: T,
-  what: string,
-  dataClass: EgressDataClass = 'content',
-): { ok: true; value: T } | { ok: false; refusal: EgressRefusal } {
-  if (dataClass === 'onboarding_answers') {
-    const stray = onboardingAnswersRefusal(value, what);
-    if (stray) return { ok: false, refusal: stray };
-  }
-  const exempt = dataClass === 'onboarding_answers' && level === 'no_egress';
-  const gate = exempt ? { ok: true as const } : egressOf(level, '', what);
-  if (!gate.ok) return gate;
   if (level === 'off') return { ok: true, value };
-  const walk = (v: unknown): unknown => {
-    if (typeof v === 'string') {
-      if (UUID.test(v) || ISO_TIME.test(v)) return v;
-      return scrubPersonalData(v).text;
-    }
-    if (Array.isArray(v)) return v.map(walk);
-    if (v && typeof v === 'object') {
-      return Object.fromEntries(
-        Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, walk(x)]),
-      );
-    }
-    return v;
-  };
-  return { ok: true, value: walk(value) as T };
+  return { ok: true, value: scrubDeep(value, { n: 0 }) as T };
+}
+
+export function withheldAt(level: SensitiveDataLevel, surface: EgressSurface): boolean {
+  return !egressAt(level, surface, '').ok;
+}
+
+export async function egressDeep<T>(
+  projectId: string,
+  surface: EgressSurface,
+  value: T,
+  what?: string,
+): Promise<EgressDeep<T>> {
+  return egressAt(await dataPolicyOf(projectId), surface, value, what);
+}
+
+export async function egressAs<T>(
+  reader: EgressReader,
+  projectId: string,
+  surface: EgressSurface,
+  value: T,
+  what?: string,
+): Promise<EgressDeep<T>> {
+  if (!isProviderBound(reader)) return { ok: true, value };
+  return egressDeep(projectId, surface, value, what);
+}
+
+export function egressText(
+  level: SensitiveDataLevel,
+  surface: EgressSurface,
+  text: string,
+  what?: string,
+): { ok: true; text: string; redactions: number } | { ok: false; refusal: EgressRefusal } {
+  const gate = egressAt(level, surface, '', what);
+  if (!gate.ok) return gate;
+  if (level === 'off') return { ok: true, text, redactions: 0 };
+  const counted = { n: 0 };
+  return { ok: true, text: scrubDeep(text, counted) as string, redactions: counted.n };
+}
+
+export function egressOr<T, M extends object>(
+  out: EgressDeep<T>,
+  metadata: M,
+): T | (M & { withheld: EgressRefusal }) {
+  return out.ok ? out.value : { ...metadata, withheld: out.refusal };
+}
+
+export class EgressRefused extends Error {
+  constructor(readonly refusal: EgressRefusal) {
+    super(`${refusal.code}: ${refusal.detail}`);
+    this.name = 'EgressRefused';
+  }
+}
+
+export async function egressShown<T>(
+  projectId: string,
+  surface: EgressSurface,
+  value: T,
+  what?: string,
+): Promise<T> {
+  const out = await egressDeep(projectId, surface, value, what);
+  if (!out.ok) throw new EgressRefused(out.refusal);
+  return out.value;
+}
+
+export async function egressForRequest<T>(
+  agency: ActorAgency | undefined,
+  projectId: string,
+  surface: EgressSurface,
+  value: T,
+  what?: string,
+): Promise<T> {
+  if (!agency)
+    throw new Error(`data-egress: a ${surface} read reached its handler without an auth gate`);
+  const out = await egressAs({ agency }, projectId, surface, value, what);
+  if (out.ok) return out.value;
+  throw new HTTPException(422, {
+    message: `${out.refusal.code}: ${out.refusal.detail}`,
+    cause: { code: out.refusal.code },
+  });
 }

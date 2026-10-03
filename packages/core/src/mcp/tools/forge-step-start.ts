@@ -4,6 +4,7 @@ import { listCommentAttachmentsForIssue } from '../../comments/attachment-servic
 import { listIssueComments } from '../../comments/service.js';
 import type { JobType } from '../../db/schema.js';
 import { jobTypes } from '../../db/schema.js';
+import { egressShown } from '../../lib/data-egress.js';
 import { getIssueContexts } from '../../pipeline/issue-context-store.js';
 import { readProjectBranches } from '../../projects/service.js';
 import {
@@ -57,10 +58,11 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
     const input = inputSchema.parse(args);
     await assertPrincipalIsWriter(ctx.principal, input.projectId);
 
-    const issue: IssueRow = await loadIssue(input.issueId);
-    if (issue.projectId !== input.projectId) {
+    const loaded: IssueRow = await loadIssue(input.issueId);
+    if (loaded.projectId !== input.projectId) {
       throw new Error('NOT_FOUND: issue not found in project');
     }
+    const issue = await egressShown(input.projectId, 'issue', loaded, input.issueId);
 
     const stage = resolveStage(input);
 
@@ -68,7 +70,9 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
     const statusNote = `no status flip: the staged lane was removed (ISS-895), so no step has an in-flight status — the driver writes its own status. Issue is at '${issue.status}'.`;
 
     const [commentRows, commentAttachmentsByCommentId, handoffs, projectRow] = await Promise.all([
-      listIssueComments(input.issueId),
+      listIssueComments(input.issueId).then((rows) =>
+        egressShown(input.projectId, 'issue.comments', rows, `the comments on ${input.issueId}`),
+      ),
       listCommentAttachmentsForIssue(input.issueId),
       getIssueContexts({
         projectId: input.projectId,
@@ -76,7 +80,9 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
         kind: 'handoff',
         limit: 5,
         orderDir: 'desc',
-      }),
+      }).then((rows) =>
+        egressShown(input.projectId, 'issue', rows, `the handoffs of ${input.issueId}`),
+      ),
       readProjectBranches(input.projectId),
     ]);
 

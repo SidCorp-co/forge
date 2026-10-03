@@ -6,6 +6,7 @@
 
 import { SUGGESTION_KINDS, SUGGESTION_STATUSES } from '@forge/contracts/suggestions';
 import { z } from 'zod';
+import { dataPolicyOf, egressAt, egressOr } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
 import {
   listSuggestions,
@@ -112,13 +113,29 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
     agency: principalAgency(ctx.principal),
   };
   switch (input.action) {
-    case 'list':
-      return listSuggestions({
+    case 'list': {
+      const listed = await listSuggestions({
         projectId,
         userId: actor.userId,
         target: targetOf(input),
         statuses: input.status,
       });
+      const level = await dataPolicyOf(projectId);
+      return {
+        ...listed,
+        suggestions: listed.suggestions.map((v) =>
+          egressOr(
+            egressAt(
+              level,
+              v.target.type === 'feedback' ? 'feedback' : 'suggestion',
+              v,
+              `suggestion ${v.id}`,
+            ),
+            { id: v.id, kind: v.kind, status: v.status, target: v.target },
+          ),
+        ),
+      };
+    }
     case 'create': {
       const target = targetOf(input);
       if (!target)

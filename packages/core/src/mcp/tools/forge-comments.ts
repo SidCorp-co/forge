@@ -28,6 +28,7 @@ import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
 import { isCommentIntent } from '../../issues/record-events/kinds.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
+import { egressShown } from '../../lib/data-egress.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import {
@@ -301,7 +302,8 @@ type Principal = Parameters<typeof assertPrincipalIsWriter>[0];
 async function listAction(principal: Principal, input: ToolInput): Promise<unknown> {
   const issueId = input.filters?.issue;
   if (!issueId) throw new Error('BAD_REQUEST: filters.issue is required for list');
-  await assertPrincipalIsWriter(principal, await loadIssueProjectId(issueId));
+  const projectId = await loadIssueProjectId(issueId);
+  await assertPrincipalIsWriter(principal, projectId);
 
   let after: ReturnType<typeof decodeCommentCursor> | undefined;
   if (input.cursor !== undefined) {
@@ -318,7 +320,16 @@ async function listAction(principal: Principal, input: ToolInput): Promise<unkno
   const intent = input.filters?.intent;
   if (intent !== undefined && !isCommentIntent(intent)) throw new CommentIntentRefused(intent);
   const commentsLimit = input.limit ?? 50;
-  const page = await listIssueCommentPage(issueId, { after, limit: commentsLimit, intent });
+  const read = await listIssueCommentPage(issueId, { after, limit: commentsLimit, intent });
+  const page = {
+    ...read,
+    ...(await egressShown(
+      projectId,
+      'issue.comments',
+      { rows: read.rows, roots: read.roots },
+      `the comments on ${issueId}`,
+    )),
+  };
   const attachmentsByCommentId = await listCommentAttachmentsForIssue(issueId);
 
   const subtrees = groupBySubtree(page.rows, page.roots).map((rows) => ({

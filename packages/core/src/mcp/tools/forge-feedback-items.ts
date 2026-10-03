@@ -27,6 +27,7 @@ import {
   verifyFeedback,
 } from '../../feedback/service.js';
 import { triageFeedback } from '../../feedback/triage.js';
+import { MCP_DOOR } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
 import { createSuggestion } from '../../suggestions/service.js';
 import {
@@ -130,7 +131,7 @@ const refusedBy = (refusals: readonly NamedRefusal[]) =>
 async function settle(outcome: FeedbackOutcome, actor: FeedbackActor, projectId: string) {
   if (!outcome.ok) return refusedBy(outcome.refusals);
   return {
-    feedback: await detailAs(actor, projectId, outcome.feedback.id, { providerBound: true }),
+    feedback: await detailAs(actor, projectId, outcome.feedback.id, MCP_DOOR),
     ...(outcome.effect ? { effect: outcome.effect } : {}),
   };
 }
@@ -142,7 +143,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
     userId: ctx.principal.userId,
     agency: principalAgency(ctx.principal),
   };
-  const door = { providerBound: true };
+  const door = MCP_DOOR;
   const item = () => need(input, 'feedback');
   switch (input.action) {
     case 'list': {
@@ -152,7 +153,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
     case 'get':
       return { feedback: await detailAs(actor, projectId, item(), door) };
     case 'similar':
-      return similarFeedbackAs(actor, projectId, item());
+      return similarFeedbackAs(actor, projectId, item(), door);
     case 'create': {
       const request = createFeedbackRequestSchema.parse({
         kind: input.kind,

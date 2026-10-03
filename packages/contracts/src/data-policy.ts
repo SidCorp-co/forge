@@ -20,14 +20,23 @@ export const SENSITIVE_DATA_BADGES: Record<
 	no_egress: {
 		label: "No egress",
 		tone: "failure",
-		tip: "Content is scrubbed on write and none of it reaches a provider, which runs outside the data's residency; onboarding answers, product information only, leave scrubbed",
+		tip: "Content is scrubbed on write; product content (requirements, designs, issues, onboarding answers) reaches agents scrubbed, and operational content (feedback, attachments, conversations with people) never reaches a provider, which runs outside the data's residency",
 	},
 };
 
 export const SENSITIVE_DATA_DEFAULT: SensitiveDataLevel = "off";
 
-/** What a provider-bound read of withheld content is refused with; the caller gets metadata only. */
-export const DATA_EGRESS_REFUSAL_CODES = ["CONTENT_EGRESS_FORBIDDEN"] as const;
+// cm:why the two classes a surface declares in core's one table (`lib/data-egress.ts:EGRESS_SURFACES`):
+// product is readable by agents at every level, operational is withheld at no_egress. A withheld
+// read is refused CONTENT_EGRESS_FORBIDDEN and answers metadata; a surface no table row declares is
+// refused EGRESS_SURFACE_UNDECLARED.
+export const EGRESS_CLASSES = ["product", "operational"] as const;
+export type EgressClass = (typeof EGRESS_CLASSES)[number];
+
+export const DATA_EGRESS_REFUSAL_CODES = [
+	"CONTENT_EGRESS_FORBIDDEN",
+	"EGRESS_SURFACE_UNDECLARED",
+] as const;
 export type DataEgressRefusalCode = (typeof DATA_EGRESS_REFUSAL_CODES)[number];
 
 export const scrubsOnWrite = (level: SensitiveDataLevel) => level !== "off";

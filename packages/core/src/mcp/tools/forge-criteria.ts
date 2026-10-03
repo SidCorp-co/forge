@@ -11,6 +11,7 @@ import {
   verdictIdentitySchema,
 } from '../../issues/criteria/input-schemas.js';
 import { listCriteria, putCriteria, recordVerdict } from '../../issues/criteria/store.js';
+import { egressShown } from '../../lib/data-egress.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
@@ -44,6 +45,15 @@ async function issueOf(issueId: string) {
   return issue;
 }
 
+async function criteriaShown(issue: { id: string; projectId: string }) {
+  return egressShown(
+    issue.projectId,
+    'issue.criteria',
+    await listCriteria(db, issue.id),
+    `the criteria of ${issue.id}`,
+  );
+}
+
 export const forgeCriteriaTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_criteria',
   reach: 'project',
@@ -59,7 +69,7 @@ export const forgeCriteriaTool: ContextScopedMcpToolFactory = ({ principal }) =>
     const issue = await issueOf(input.issueId);
     if (input.action === 'list') {
       await assertPrincipalIsMember(principal, issue.projectId);
-      return { criteria: await listCriteria(db, issue.id) };
+      return { criteria: await criteriaShown(issue) };
     }
     await assertPrincipalIsWriter(principal, issue.projectId);
     if (input.action === 'put') {
@@ -67,7 +77,7 @@ export const forgeCriteriaTool: ContextScopedMcpToolFactory = ({ principal }) =>
         throw new Error('BAD_REQUEST: action=put takes `criteria`, the whole set in order');
       const { criteria } = criteriaPutSchema.parse({ criteria: input.criteria });
       await db.transaction((tx) => putCriteria(tx, issue.id, criteria));
-      return { criteria: await listCriteria(db, issue.id) };
+      return { criteria: await criteriaShown(issue) };
     }
     if (input.criterion === undefined || input.verdict === undefined) {
       throw new Error('BAD_REQUEST: action=verdict takes `criterion` (its number) and `verdict`');
@@ -90,7 +100,7 @@ export const forgeCriteriaTool: ContextScopedMcpToolFactory = ({ principal }) =>
         },
       }),
     );
-    const row = (await listCriteria(db, issue.id)).find((c) => c.n === criterion);
+    const row = (await criteriaShown(issue)).find((c) => c.n === criterion);
     return { verdictId: written.id, criterion: row };
   },
 });

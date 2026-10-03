@@ -6,7 +6,13 @@ import {
   optionExecutors,
   questionBlockerKinds,
 } from '../../db/schema-questions.js';
-import { askAs, readQuestionFor, readQuestionsForIssue } from '../../questions/read.js';
+import { egressDeep, egressOr } from '../../lib/data-egress.js';
+import {
+  askAs,
+  questionSurface,
+  readQuestionFor,
+  readQuestionsForIssue,
+} from '../../questions/read.js';
 import { QuestionRefused } from '../../questions/write.js';
 import {
   assertPrincipalIsMember,
@@ -81,6 +87,23 @@ function refused(err: unknown): unknown {
   return err;
 }
 
+async function questionShown<
+  Q extends {
+    id: string;
+    status: string;
+    issueId: string | null;
+    feedbackId: string | null;
+    requirementId: string | null;
+    batchId: string | null;
+  },
+>(projectId: string, q: Q) {
+  return egressOr(await egressDeep(projectId, await questionSurface(q), q, `question ${q.id}`), {
+    id: q.id,
+    status: q.status,
+    issueId: q.issueId,
+  });
+}
+
 export const forgeQuestionsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_questions',
   reach: 'project',
@@ -127,16 +150,18 @@ export const forgeQuestionsTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'get': {
         if (!input.id) throw new Error('BAD_REQUEST: id is required for get');
         const seen = await readQuestionFor(input.id, principal.userId);
-        if (!seen) throw new Error('NOT_FOUND: question not found');
+        if (!seen?.projectId) throw new Error('NOT_FOUND: question not found');
         await assertPrincipalIsMember(principal, seen.projectId);
-        return seen;
+        return questionShown(seen.projectId, seen);
       }
       case 'list': {
         if (!input.issueId) throw new Error('BAD_REQUEST: issueId is required for list');
         const projectId = await loadIssueProjectId(input.issueId);
         await assertPrincipalIsMember(principal, projectId);
         const rows = await readQuestionsForIssue(input.issueId, principal.userId);
-        return { questions: rows ?? [] };
+        return {
+          questions: await Promise.all((rows ?? []).map((r) => questionShown(projectId, r))),
+        };
       }
     }
   },

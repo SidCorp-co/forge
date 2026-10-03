@@ -23,6 +23,7 @@ import type { ConversationImage } from '../conversations/store.js';
 import { db } from '../db/client.js';
 import { agentSessions, type MemberLens } from '../db/schema.js';
 import { buildProgressFactsBlock, computeProjectProgress } from '../issues/progress.js';
+import { egressShown } from '../lib/data-egress.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import type { ProgressFacts } from '../messaging/facts.js';
@@ -352,6 +353,12 @@ export async function startConversationAgentTurn(
     return { started: false, reason: 'deduped' };
   }
 
+  const spoken = await egressShown(
+    args.venue.projectId,
+    'conversation',
+    { question: args.question, conversationContext: args.conversationContext },
+    `conversation ${args.conversationId}`,
+  );
   const deviceId = await pickTurnCredentialDevice(args.venue.projectId);
   if (!deviceId) {
     return { started: false, reason: await noTurnCredentialDeviceReason(args.venue.projectId) };
@@ -397,7 +404,7 @@ export async function startConversationAgentTurn(
   const session = await createChatSessionRow({
     projectId: args.venue.projectId,
     userId: asker.userId,
-    title: `Chat: ${args.question.slice(0, TITLE_MAX)}`,
+    title: `Chat: ${spoken.question.slice(0, TITLE_MAX)}`,
     runKind: 'system',
     runMetadata: { source: 'conversation.agentTurn', conversationId: args.conversationId },
     metadata: {
@@ -429,8 +436,8 @@ export async function startConversationAgentTurn(
       ...(carried.ids.length ? { attachmentIds: carried.ids } : {}),
       message: buildConversationAgentPrompt({
         persona: args.persona,
-        conversationContext: args.conversationContext,
-        question: args.question,
+        conversationContext: spoken.conversationContext,
+        question: spoken.question,
         askedByLabel: args.askedByLabel,
         progressFacts: progress ? buildProgressFactsBlock(progress) : null,
       }),

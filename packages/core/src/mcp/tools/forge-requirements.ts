@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { egressDeep, egressOr } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
 import {
   linkIssue,
@@ -109,7 +110,9 @@ const DESCRIPTION =
   'accept: { requirement, revision, reason? } makes a proposed revision current (the head) and supersedes the previous ' +
   'one (reason is the re-baseline sign-off on an agreed requirement); return: { requirement, revision, reason } sends it back to draft; agree: { requirement, revision } ' +
   'signs the head off and writes a baseline pinning every linked design, refused REQUIREMENT_DESIGN_UNAPPROVED ' +
-  'naming each unapproved design and REQUIREMENT_REVISION_NOT_CURRENT unless the head is current. accept, return ' +
+  'naming each unapproved design and REQUIREMENT_REVISION_NOT_CURRENT unless the head is current; where the project ' +
+  'document sets requirements.readinessGate, warn records the accepted readiness result at the head on the baseline ' +
+  'and block refuses REQUIREMENT_NOT_READY unless that result passed every check. accept, return ' +
   'and agree are a person’s acts: an agent is refused REQUIREMENT_SIGNOFF_FORBIDDEN. ' +
   'link_issue: { requirement, issue } once the requirement is agreed (REQUIREMENT_NOT_AGREED); the issue’s plan ' +
   'then records the revision it was written against, and forge_issues get shows `requirement.changedSincePlan`. ' +
@@ -130,8 +133,13 @@ function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]
 const refusedBy = (refusals: readonly NamedRefusal[]) =>
   refusedAnswer(refusals, 'REQUIREMENT_REFUSED');
 
-const settle = (outcome: RequirementOutcome) =>
-  outcome.ok ? outcome.requirement : refusedBy(outcome.refusals);
+const shown = async <T>(projectId: string, value: T, what: string) =>
+  egressOr(await egressDeep(projectId, 'requirement', value, what), { requirement: what });
+
+const settle = async (projectId: string, outcome: RequirementOutcome) =>
+  outcome.ok
+    ? shown(projectId, outcome.requirement, outcome.requirement.key)
+    : refusedBy(outcome.refusals);
 
 const revisionWrite = (input: Input) => ({
   reason: need(input, 'reason'),
@@ -151,11 +159,20 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
   const on = () => ({ projectId, ref: need(input, 'requirement'), actor });
   switch (input.action) {
     case 'list':
-      return { requirements: await listRequirementsAs(actor, projectId) };
+      return shown(
+        projectId,
+        { requirements: await listRequirementsAs(actor, projectId) },
+        'the requirement list',
+      );
     case 'get':
-      return readRequirementAs(actor, projectId, need(input, 'requirement'));
+      return shown(
+        projectId,
+        await readRequirementAs(actor, projectId, need(input, 'requirement')),
+        need(input, 'requirement'),
+      );
     case 'create':
       return settle(
+        projectId,
         await createRequirement({
           projectId,
           actor,
@@ -165,6 +182,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'revise':
       return settle(
+        projectId,
         await writeRevision({
           ...on(),
           baseRevision: input.baseRevision ?? null,
@@ -173,6 +191,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'edit':
       return settle(
+        projectId,
         await writeRevision({
           ...on(),
           revision: need(input, 'revision'),
@@ -180,9 +199,13 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         }),
       );
     case 'propose':
-      return settle(await proposeRevision({ ...on(), revision: need(input, 'revision') }));
+      return settle(
+        projectId,
+        await proposeRevision({ ...on(), revision: need(input, 'revision') }),
+      );
     case 'accept':
       return settle(
+        projectId,
         await acceptRevision({
           ...on(),
           revision: need(input, 'revision'),
@@ -191,6 +214,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'return':
       return settle(
+        projectId,
         await returnRevision({
           ...on(),
           revision: need(input, 'revision'),
@@ -199,6 +223,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'agree':
       return settle(
+        projectId,
         await agreeRequirement({
           ...on(),
           revision: need(input, 'revision'),
@@ -207,6 +232,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'link_issue':
       return settle(
+        projectId,
         await linkIssue({
           ...on(),
           issue: need(input, 'issue'),
@@ -214,11 +240,17 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         }),
       );
     case 'unlink_issue':
-      return settle(await unlinkIssue({ ...on(), issue: need(input, 'issue') }));
+      return settle(projectId, await unlinkIssue({ ...on(), issue: need(input, 'issue') }));
     case 'link_workflow':
-      return settle(await linkWorkflow({ ...on(), workflowId: need(input, 'workflowId') }));
+      return settle(
+        projectId,
+        await linkWorkflow({ ...on(), workflowId: need(input, 'workflowId') }),
+      );
     case 'unlink_workflow':
-      return settle(await unlinkWorkflow({ ...on(), workflowId: need(input, 'workflowId') }));
+      return settle(
+        projectId,
+        await unlinkWorkflow({ ...on(), workflowId: need(input, 'workflowId') }),
+      );
   }
 }
 

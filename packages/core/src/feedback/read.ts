@@ -29,7 +29,13 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { isUuid } from '../issues/issue-route-ref.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
-import { dataPolicyOf, egressOf } from '../lib/data-egress.js';
+import {
+  dataPolicyOf,
+  type EgressReader,
+  egressAt,
+  isProviderBound,
+  withheldAt,
+} from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { actMiss, PERSON_ACT, PERSON_ADMIN_ACT } from '../lib/person-act.js';
 import { requirementKey } from '../requirements/read.js';
@@ -289,16 +295,25 @@ function routeView(r: Row, l: Linked): FeedbackRouteView | null {
 
 const WITHHELD = 'content withheld: this project keeps its data out of every provider (no_egress)';
 
-/** How a read leaves core: `provider` is a door whose every answer reaches a model (MCP, the BA door). */
-export interface ReadDoor {
-  providerBound?: boolean | undefined;
-}
+export type ReadDoor = Pick<EgressReader, 'providerBound'>;
 
-// cm:guard on a no_egress project an agent, or any provider-bound door, reads metadata only: the
-// content is withheld by `lib/data-egress.ts:egressOf`, the one guard
-export function withholdsFrom(level: SensitiveDataLevel, agency: ActorAgency, door: ReadDoor = {}) {
-  const providerBound = door.providerBound || agency === 'agent';
-  return providerBound && !egressOf(level, '', 'this item').ok;
+// cm:guard a provider-bound reader (an agent, or any reader on the MCP door) reads feedback through
+// the one egress rule (`lib/data-egress.ts:egressAt`, surface `feedback`, operational): withheld to
+// metadata at no_egress, scrubbed at redact; a person off every such door reads it as stored
+export function feedbackEgress(
+  level: SensitiveDataLevel,
+  agency: ActorAgency,
+  door: ReadDoor = {},
+) {
+  const bound = isProviderBound({ agency, providerBound: door.providerBound });
+  const withhold = bound && withheldAt(level, 'feedback');
+  const shown = <T>(view: T, what: string): T => {
+    if (!bound || withhold) return view;
+    const out = egressAt(level, 'feedback', view, what);
+    if (!out.ok) throw new Error(`feedback: ${what} was withheld after the guard let it through`);
+    return out.value;
+  };
+  return { withhold, shown };
 }
 
 function summaryOf(r: Row, l: Linked, viewer: FeedbackActor, withhold: boolean): FeedbackSummary {
@@ -333,7 +348,7 @@ export async function listFeedbackAs(
 ): Promise<{ ok: true; list: FeedbackListResponse } | { ok: false; refusals: FeedbackRefusal[] }> {
   await assertProjectAccess(projectId, viewer.userId, 'viewer');
   const level = await dataPolicyOf(projectId);
-  const withhold = withholdsFrom(level, viewer.agency, door);
+  const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
   const searchRefused = searchWithheldRefusal(query.q, withhold);
   if (searchRefused) return { ok: false, refusals: [searchRefused] };
   const rows = await db
@@ -348,11 +363,14 @@ export async function listFeedbackAs(
     .orderBy(desc(feedback.createdAt))
     .limit(500);
   const linked = await linkedOf(projectId, rows);
-  const all = rows.map((r) => summaryOf(r, linked, viewer, withhold));
-  const shown = query.phases?.length ? all.filter((s) => query.phases?.includes(s.phase)) : all;
+  const all = shown(
+    rows.map((r) => summaryOf(r, linked, viewer, withhold)),
+    'the feedback list',
+  );
+  const listed = query.phases?.length ? all.filter((s) => query.phases?.includes(s.phase)) : all;
   const counts = { you: 0, moving: 0, others: 0, done: 0 } as Record<FeedbackAttention, number>;
   for (const s of all) counts[s.attention] += 1;
-  return { ok: true, list: { feedback: shown, counts, sensitive: level !== 'off' } };
+  return { ok: true, list: { feedback: listed, counts, sensitive: level !== 'off' } };
 }
 
 /** The phase of one item as a write reads it, under the write's own transaction where given. */
@@ -403,54 +421,62 @@ export async function detailAs(
         .from(suggestions)
         .where(and(eq(suggestions.feedbackId, row.id), eq(suggestions.status, 'proposed'))),
     ]);
-  const withhold = withholdsFrom(level, viewer.agency, door);
+  const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
   const summary = summaryOf(row, linked, viewer, withhold);
   const deciders = await userNames(decisions.map((d) => d.decidedBy));
   const facts = { userId: viewer.userId, agency: viewer.agency, role: access?.role ?? null };
   const q = questions[0];
   const step = q?.steps.at(-1);
   const root = row.duplicateOf ? linked.roots.get(row.duplicateOf) : undefined;
-  return {
-    ...summary,
-    body: withhold ? null : row.body,
-    whereSeen: withhold ? null : row.whereSeen,
-    duplicateOf: root ? feedbackKey(root.fbSeq) : null,
-    duplicates: pointing.map((p) => feedbackKey(p.seq)),
-    decisions: decisions.map(
-      (d): FeedbackDecisionView => ({
-        decision: d.decision,
-        route: d.route,
-        carrier: d.carrier,
-        reason: withhold ? null : d.reason,
-        decidedBy: d.decidedBy,
-        decidedByName: deciders.get(d.decidedBy) ?? null,
-        decidedAgency: d.decidedAgency,
-        decidedAt: d.decidedAt.toISOString(),
-        fromSuggestionId: d.fromSuggestionId,
-      }),
-    ),
-    attachments: attachments.map((a) => ({
-      id: a.id,
-      name: withhold ? 'withheld' : a.name,
-      mime: a.mime,
-      size: a.size,
-      flagged: a.flagged,
-      createdAt: a.createdAt.toISOString(),
-    })),
-    clarification: q
-      ? {
-          id: q.id,
-          status: q.status,
-          prompt: step?.prompt ?? null,
-          answer: withhold ? null : step && 'answerText' in step ? (step.answerText ?? null) : null,
-        }
-      : null,
-    openSuggestions: open?.n ?? 0,
-    can: {
-      triage: !actMiss(facts, PERSON_ACT) && ['new', 'triaged', 'reopened'].includes(summary.phase),
-      verify: !actMiss(facts, PERSON_ACT) && summary.phase === 'resolved',
-      redact: !actMiss(facts, PERSON_ADMIN_ACT) && row.redactedAt === null,
+  return shown<FeedbackView>(
+    {
+      ...summary,
+      body: withhold ? null : row.body,
+      whereSeen: withhold ? null : row.whereSeen,
+      duplicateOf: root ? feedbackKey(root.fbSeq) : null,
+      duplicates: pointing.map((p) => feedbackKey(p.seq)),
+      decisions: decisions.map(
+        (d): FeedbackDecisionView => ({
+          decision: d.decision,
+          route: d.route,
+          carrier: d.carrier,
+          reason: withhold ? null : d.reason,
+          decidedBy: d.decidedBy,
+          decidedByName: deciders.get(d.decidedBy) ?? null,
+          decidedAgency: d.decidedAgency,
+          decidedAt: d.decidedAt.toISOString(),
+          fromSuggestionId: d.fromSuggestionId,
+        }),
+      ),
+      attachments: attachments.map((a) => ({
+        id: a.id,
+        name: withhold ? 'withheld' : a.name,
+        mime: a.mime,
+        size: a.size,
+        flagged: a.flagged,
+        createdAt: a.createdAt.toISOString(),
+      })),
+      clarification: q
+        ? {
+            id: q.id,
+            status: q.status,
+            prompt: withhold ? null : (step?.prompt ?? null),
+            answer: withhold
+              ? null
+              : step && 'answerText' in step
+                ? (step.answerText ?? null)
+                : null,
+          }
+        : null,
+      openSuggestions: open?.n ?? 0,
+      can: {
+        triage:
+          !actMiss(facts, PERSON_ACT) && ['new', 'triaged', 'reopened'].includes(summary.phase),
+        verify: !actMiss(facts, PERSON_ACT) && summary.phase === 'resolved',
+        redact: !actMiss(facts, PERSON_ADMIN_ACT) && row.redactedAt === null,
+      },
+      sensitive: level !== 'off',
     },
-    sensitive: level !== 'off',
-  };
+    feedbackKey(row.fbSeq),
+  );
 }
