@@ -1,8 +1,9 @@
 import { SENSITIVE_DATA_LEVELS, type SensitiveDataLevel } from "@forge/contracts/data-policy";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { LEGACY_V2_TEMPLATE } from "@forge/contracts/workflow-templates";
-import { templateFor, titleOf } from "./canvas/model";
-import { readC4, SYSTEM_CONTEXT_TEMPLATE, shortLabel, type C4Model } from "./c4/model";
+import { projectDescriptionOf } from "@/features/project-settings/project-document";
+import { templateFor } from "./canvas/model";
+import { integrationOf, readC4, SYSTEM_CONTEXT_TEMPLATE, type C4Model } from "./c4/model";
 import type { WorkflowRecord } from "./types";
 
 export type Purpose = "system" | "journeys" | "lifecycles" | "integrations" | "data" | "decisions" | "service" | "other";
@@ -78,10 +79,19 @@ export function mainJourneyOf(records: readonly WorkflowRecord[]): WorkflowRecor
   return [...journeys].sort((a, b) => rank(b) - rank(a))[0] ?? null;
 }
 
+/** One row of a fact's detail: a role, or a boundary with how many systems it holds. */
+export interface FactRow {
+  name: string;
+  count?: number;
+  /** How many of those systems the design marks unconfirmed. */
+  unconfirmed?: number;
+}
+
 export interface OverviewFact {
   label: string;
   value: string;
-  tip: string;
+  /** What the value counts, shown on hover or focus. */
+  rows: FactRow[];
 }
 
 export interface SystemOverview {
@@ -97,24 +107,59 @@ export function systemOverview(records: readonly WorkflowRecord[], templates: re
   if (!record) return null;
   const doc = record.document;
   const model = readC4(doc, templateFor(doc, templates));
-  const lanes = new Set(model.externals.map((x) => x.lane).filter(Boolean));
-  const name = (id: string) => {
-    const s = model.canvas.steps.get(id);
-    return s ? shortLabel(titleOf(s), 40) : id;
-  };
+  const lanes = new Map(model.lanes.map((l) => [l.id, l.label]));
+  const byLane = new Map<string | null, C4Model["externals"]>();
+  for (const x of model.externals) byLane.set(x.lane, [...(byLane.get(x.lane) ?? []), x]);
+  // In the design's lane order, as the diagram stacks them; systems in no boundary last.
+  const laneIndex = (l: string | null) => (l === null ? Number.MAX_SAFE_INTEGER : model.lanes.findIndex((x) => x.id === l));
+  const boundaries: FactRow[] = [...byLane.entries()].sort((p, q) => laneIndex(p[0]) - laneIndex(q[0])).map(([lane, xs]) => ({
+    name: lane === null ? "No boundary" : (lanes.get(lane) ?? lane),
+    count: xs.length,
+    unconfirmed: xs.filter((x) => integrationOf(x.title).state === "unconfirmed").length,
+  }));
+  const named = [...byLane.keys()].filter((l) => l !== null).length;
   const facts: OverviewFact[] = [
     {
       label: "Users",
       value: `${model.people.length} ${model.people.length === 1 ? "role" : "roles"}`,
-      tip: model.people.map((p) => name(p.id)).join("\n"),
+      rows: model.people.map((p) => ({ name: p.title })),
     },
     {
       label: "External systems",
-      value: `${model.externals.length}${lanes.size > 1 ? ` in ${lanes.size} boundaries` : ""}`,
-      tip: model.externals.map((x) => `${name(x.id)}${x.owner ? ` · ${x.owner}` : ""}`).join("\n"),
+      value: `${model.externals.length}${named > 1 ? ` in ${named} boundaries` : ""}`,
+      rows: boundaries,
     },
   ];
   return { record, model, facts, journey: mainJourneyOf(records) };
+}
+
+/** Where the overview's one line about the system came from. */
+export type DescriptionSource = "project" | "purpose" | "summary";
+
+export interface SystemDescription {
+  text: string;
+  source: DescriptionSource;
+}
+
+/** A text's first sentence: up to its first full stop, question or exclamation mark followed by a space. */
+export function firstSentence(text: string): string {
+  const t = text.trim();
+  const m = /^([\s\S]+?[.!?…])(?:\s|$)/u.exec(t);
+  return (m?.[1] ?? t).trim();
+}
+
+/**
+ * What the system is, in one line: the project's description; else the in-scope system's stated
+ * purpose in its system-context design; else the first sentence of that design's summary, which records
+ * how the design was drawn and so is only shown to a viewer who cannot write a description instead.
+ */
+export function describeSystem(projectDocument: unknown, o: SystemOverview): SystemDescription | null {
+  const project = projectDescriptionOf(projectDocument);
+  if (project) return { text: project, source: "project" };
+  const purpose = o.model.focal?.purpose;
+  if (purpose) return { text: purpose, source: "purpose" };
+  const first = firstSentence(o.record.document.summary);
+  return first ? { text: first, source: "summary" } : null;
 }
 
 /** The data policy a project document declares, when it restricts anything; absent or `off` is nothing to show. */

@@ -106,8 +106,8 @@ const DESCRIPTION =
   'it, one naming none takes the next code, one left out is retired. edit: { requirement, revision, … } ' +
   'rewrites a draft. propose: { requirement, revision } puts the draft in front of the BA or owner. ' +
   'Statement form is the default; form "scenario" must read Given / When / Then (CRITERION_SCENARIO_UNPARSEABLE). ' +
-  'accept: { requirement, revision } makes a proposed revision current (the head) and supersedes the previous ' +
-  'one; return: { requirement, revision, reason } sends it back to draft; agree: { requirement, revision } ' +
+  'accept: { requirement, revision, reason? } makes a proposed revision current (the head) and supersedes the previous ' +
+  'one (reason is the re-baseline sign-off on an agreed requirement); return: { requirement, revision, reason } sends it back to draft; agree: { requirement, revision } ' +
   'signs the head off and writes a baseline pinning every linked design, refused REQUIREMENT_DESIGN_UNAPPROVED ' +
   'naming each unapproved design and REQUIREMENT_REVISION_NOT_CURRENT unless the head is current. accept, return ' +
   'and agree are a person’s acts: an agent is refused REQUIREMENT_SIGNOFF_FORBIDDEN. ' +
@@ -182,7 +182,13 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
     case 'propose':
       return settle(await proposeRevision({ ...on(), revision: need(input, 'revision') }));
     case 'accept':
-      return settle(await acceptRevision({ ...on(), revision: need(input, 'revision') }));
+      return settle(
+        await acceptRevision({
+          ...on(),
+          revision: need(input, 'revision'),
+          reason: input.reason,
+        }),
+      );
     case 'return':
       return settle(
         await returnRevision({

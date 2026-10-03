@@ -1,6 +1,6 @@
 {
-  "id": "087e5cdc-32a9-4f64-a5ad-02b631349cc4",
-  "prevId": "409c93c5-27d8-409f-9999-e5093179ac5d",
+  "id": "ea441139-1264-4d06-923c-fcef3e5e73b8",
+  "prevId": "38ffb1c4-4ffd-40c6-b2a9-6d630b78a49a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -17087,6 +17087,113 @@
         "requirement_criteria_retired_chk": {
           "name": "requirement_criteria_retired_chk",
           "value": "\"requirement_criteria\".\"retired_revision\" IS NULL OR \"requirement_criteria\".\"retired_revision\" > \"requirement_criteria\".\"since_revision\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.requirement_returns": {
+      "name": "requirement_returns",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "requirement_id": {
+          "name": "requirement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "returned_by": {
+          "name": "returned_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "returned_at": {
+          "name": "returned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "requirement_returns_requirement_idx": {
+          "name": "requirement_returns_requirement_idx",
+          "columns": [
+            {
+              "expression": "requirement_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "revision",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "requirement_returns_returned_by_users_id_fk": {
+          "name": "requirement_returns_returned_by_users_id_fk",
+          "tableFrom": "requirement_returns",
+          "tableTo": "users",
+          "columnsFrom": [
+            "returned_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "requirement_returns_revision_fk": {
+          "name": "requirement_returns_revision_fk",
+          "tableFrom": "requirement_returns",
+          "tableTo": "requirement_revisions",
+          "columnsFrom": [
+            "requirement_id",
+            "revision"
+          ],
+          "columnsTo": [
+            "requirement_id",
+            "revision"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "requirement_returns_reason_chk": {
+          "name": "requirement_returns_reason_chk",
+          "value": "\"requirement_returns\".\"reason\" ~ '[^[:space:]]'"
         }
       },
       "isRLSEnabled": false

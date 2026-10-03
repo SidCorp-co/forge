@@ -66,6 +66,7 @@ export const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_REJECT_REASON_REQUIRED",
 	"SUGGESTION_DECIDED",
 	"SUGGESTION_WITHDRAW_FORBIDDEN",
+	"SUGGESTION_EFFECT_UNDECIDED",
 	"CLARIFICATION_ALREADY_OPEN",
 ] as const;
 export type SuggestionRefusalCode = (typeof SUGGESTION_REFUSAL_CODES)[number];
@@ -247,12 +248,53 @@ export interface SuggestionView {
 	payloadPurgedAt: string | null;
 }
 
-/** What an accept wrote, read back for the caller; never stored on the row. */
-export interface SuggestionEffect {
+/** A revision_diff or requirement_draft accept: the draft revision it wrote. */
+export interface SuggestionRevisionEffect {
 	requirementId: string;
 	requirement: string;
 	revision: number;
 }
+
+/** A breakdown accept: the draft issues it filed against the requirement at `revision`. */
+export interface SuggestionBreakdownEffect {
+	requirementId: string;
+	requirement: string;
+	revision: number;
+	issues: { issueId: string; key: string }[];
+}
+
+/** A readiness accept: the accepted row is the readiness result at `revision` (no readiness table). */
+export interface SuggestionReadinessEffect {
+	requirementId: string;
+	requirement: string;
+	revision: number | null;
+	ready: boolean;
+	failed: string[];
+}
+
+/** A triage accept on an issue: the priority and category it set. */
+export interface SuggestionIssueTriageEffect {
+	issueId: string;
+	issue: string;
+	priority: string | null;
+	category: string | null;
+}
+
+/** A duplicate accept on an issue: dropped as a duplicate of its root, with a relates edge to it. */
+export interface SuggestionDuplicateEffect {
+	issueId: string;
+	issue: string;
+	duplicateOf: string;
+	status: "dropped";
+}
+
+/** What an accept wrote, read back for the caller; never stored on the row. */
+export type SuggestionEffect =
+	| SuggestionRevisionEffect
+	| SuggestionBreakdownEffect
+	| SuggestionReadinessEffect
+	| SuggestionIssueTriageEffect
+	| SuggestionDuplicateEffect;
 
 /** The answer to create, accept, reject and withdraw. */
 export interface SuggestionResponse {

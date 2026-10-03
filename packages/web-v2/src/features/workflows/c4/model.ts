@@ -1,6 +1,8 @@
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { type Canvas, type CanvasEdge, purposeOf, readCanvas, titleOf } from "../canvas/model";
 import type { WorkflowBody, WorkflowLane } from "../types";
+import type { IntegrationState } from "./geometry";
+import type { C4Group } from "./summary";
 
 export const SYSTEM_CONTEXT_TEMPLATE = "system-context";
 
@@ -21,6 +23,8 @@ export interface C4Element {
 export interface C4Focal {
   title: string;
   tip: string;
+  /** What the system is, in the design's own words: the in-scope system's `purpose`; empty when it states none. */
+  purpose: string;
   lane: string | null;
   /** The containers (and any system the design draws inside the same boundary) that make it up. */
   parts: C4Element[];
@@ -44,6 +48,8 @@ export interface C4Model {
   lanes: readonly WorkflowLane[];
   /** Context's relations; an end inside the system reads as `FOCAL`. */
   relations: C4Relation[];
+  /** The boundaries folded into one element each (`summarise`), by the element id that stands for them. */
+  groups?: ReadonlyMap<string, C4Group>;
 }
 
 export const FOCAL = "__system";
@@ -73,6 +79,7 @@ function focalOf(elements: C4Element[], lanes: readonly WorkflowLane[], c: Canva
     return {
       title: named?.label ?? system?.title ?? "This system",
       tip: named?.tooltip ?? system?.purpose ?? "",
+      purpose: "",
       lane,
       parts,
     };
@@ -81,7 +88,7 @@ function focalOf(elements: C4Element[], lanes: readonly WorkflowLane[], c: Canva
   if (systems.length === 0) return null;
   const degree = (id: string) => c.edges.filter((e) => e.from === id || e.to === id).length;
   const top = [...systems].sort((a, b) => degree(b.id) - degree(a.id))[0] as C4Element;
-  return { title: top.title, tip: top.purpose, lane: top.lane, parts: [top] };
+  return { title: top.title, tip: top.purpose, purpose: "", lane: top.lane, parts: [top] };
 }
 
 export function readC4(doc: Doc, template: WorkflowTemplate | null): C4Model {
@@ -96,6 +103,11 @@ export function readC4(doc: Doc, template: WorkflowTemplate | null): C4Model {
     lane: s.node?.band ?? null,
   }));
   const focal = focalOf(elements, lanes, canvas);
+  if (focal) {
+    // Only a stated `purpose` says what the system is; `purposeOf` falls back to what the step does.
+    const system = focal.parts.find((p) => p.kind === "system");
+    focal.purpose = doc.steps.find((s) => s.id === system?.id)?.node?.purpose?.trim() ?? "";
+  }
   const inside = new Set(focal?.parts.map((p) => p.id) ?? []);
   const end = (id: string) => (inside.has(id) ? FOCAL : id);
   const relations: C4Relation[] = [];
@@ -148,3 +160,15 @@ export function relationTip(r: C4Relation, name: (id: string) => string): string
 }
 
 export const relationWords = (r: C4Relation) => r.src[0]?.contract?.label ?? r.src[0]?.contract?.condition ?? "";
+
+// cm:why the schema has no field for whether an outside system's integration is settled, so designs
+// say it in a closing aside on the label, in the project's own language (HOP's are Vietnamese). Only
+// an aside naming it unconfirmed or proposed counts; the badge's tooltip quotes the words.
+const OPEN_MARK = /\s*\(([^()]*?(?:chưa xác nhận|đề xuất|unconfirmed|not confirmed|proposed|to be confirmed)[^()]*)\)\s*$/iu; // i18n-allow: the words HOP's designs mark an open integration with
+
+/** An outside system's name without its unconfirmed aside, and the state that aside states. */
+export function integrationOf(title: string): { name: string; state: IntegrationState; mark: string | null } {
+  const m = OPEN_MARK.exec(title);
+  if (!m) return { name: title.trim(), state: "confirmed", mark: null };
+  return { name: title.slice(0, m.index).trim() || title.trim(), state: "unconfirmed", mark: m[1]?.trim() ?? null };
+}

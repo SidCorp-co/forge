@@ -98,9 +98,11 @@ feedbackRoutes.get(
   }),
   async (c) => {
     const q = c.req.valid('query');
-    return c.json(
-      await listFeedbackAs(actorOf(c), c.req.valid('param').id, { phases: q.phase, q: q.q }),
-    );
+    const out = await listFeedbackAs(actorOf(c), c.req.valid('param').id, {
+      phases: q.phase,
+      q: q.q,
+    });
+    return out.ok ? c.json(out.list) : refused(c, out.refusals);
   },
 );
 

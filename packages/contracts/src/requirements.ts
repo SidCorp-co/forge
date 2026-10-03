@@ -173,6 +173,8 @@ export interface RequirementFacts {
 	proposedRevision: number | null;
 	/** The open revision still being written, else null. */
 	draftRevision: number | null;
+	/** Designs the latest baseline pins at an older revision than the one now approved. */
+	stalePins: { flow: string; pinned: number; approved: number }[];
 }
 
 export interface CoverageIssue {

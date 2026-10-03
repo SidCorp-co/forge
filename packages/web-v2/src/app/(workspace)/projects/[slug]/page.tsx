@@ -40,7 +40,6 @@ import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
 import { useProjectDocument } from "@/features/project-settings/config-hooks";
-import { sensitivityOf } from "@/features/workflows/catalogue";
 import { SystemOverviewRegion } from "@/features/workflows/components/system-overview";
 import { useWorkflowTemplates, useWorkflows } from "@/features/workflows/hooks";
 import { useSchedules } from "@/features/schedules/hooks";
@@ -205,7 +204,8 @@ export default function ProjectOverviewPage() {
             templates={(templatesQ.data?.templates ?? []).map((t) => t.template)}
             slug={project.slug}
             projectName={project.name}
-            sensitivity={sensitivityOf(projectDocumentQ.data?.document)}
+            projectDocument={projectDocumentQ.data}
+            canEdit={project.role === "admin"}
             variant="compact"
           />
         ) : null}

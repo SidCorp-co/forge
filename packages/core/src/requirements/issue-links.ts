@@ -156,7 +156,6 @@ export async function unlinkWorkflow(input: {
   return answer(projectId, row.id, actor, null);
 }
 
-/** The issue read's answer: which requirement it delivers, and whether it changed since the plan. */
 export async function requirementOfIssue(issueId: string) {
   const [r] = await db
     .select({

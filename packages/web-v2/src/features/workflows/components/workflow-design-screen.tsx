@@ -7,11 +7,9 @@ import { useEntityDecisions } from "@/features/comments/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { templateFor } from "../canvas/model";
 import { WorkflowCanvas } from "../canvas/workflow-canvas";
-import { SYSTEM_CONTEXT_TEMPLATE } from "../c4/model";
 import { designDiff, stepsWithRemoved } from "../design-diff";
 import { useDesignDecision, useWorkflowDesign, useWorkflowTemplates, useWorkflows } from "../hooks";
 import type { WorkflowDesign } from "../types";
-import { SystemContextView } from "./system-context-view";
 import { DesignPill } from "./workflow-parts";
 
 /** Approve, or Return with the reason the master revises against; only for the approver, only while it is proposed. */
@@ -134,11 +132,7 @@ export function WorkflowDesignScreen({ projectId, flow }: { projectId: string; s
       </header>
       <div className="flex min-h-0 flex-1">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {template?.id === SYSTEM_CONTEXT_TEMPLATE ? (
-            <SystemContextView doc={{ ...shown, steps }} template={template} diff={diff} decision={decision} />
-          ) : (
-            <WorkflowCanvas doc={{ ...shown, steps }} template={template} diff={diff} decision={decision} />
-          )}
+          <WorkflowCanvas doc={{ ...shown, steps }} template={template} diff={diff} decision={decision} />
         </div>
         {showDecisions ? (
           <aside className="w-[380px] shrink-0 overflow-y-auto border-l border-line-subtle bg-surface px-5 py-4 max-md:w-full" aria-label="Decisions" data-testid="design-decisions">

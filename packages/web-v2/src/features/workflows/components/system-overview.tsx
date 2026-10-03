@@ -1,88 +1,170 @@
 "use client";
 
-import type { SensitiveDataLevel } from "@forge/contracts/data-policy";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
+import { Pencil } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { Icon, Tooltip } from "@/design";
+import { type FormEvent, useMemo, useState } from "react";
+import { Button, HoverCard, Icon, Input } from "@/design";
 import { useOpenOnboarding } from "@/features/onboarding/components/onboarding-hint";
 import { useOnboardingState } from "@/features/onboarding/hooks";
+import { useWriteProjectDocument } from "@/features/project-settings/config-hooks";
+import type { V1Read } from "@/features/project-settings/config-types";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
 import { cn } from "@/lib/utils/cn";
-import { layoutContext } from "../c4/context-layout";
-import { C4Diagram } from "../c4/diagram";
-import { type C4Model, FOCAL, relationWords, shortLabel } from "../c4/model";
-import { type SystemOverview, systemOverview } from "../catalogue";
+import { templateFor } from "../canvas/model";
+import { WorkflowCanvas } from "../canvas/workflow-canvas";
+import { describeSystem, type OverviewFact, type SystemDescription, type SystemOverview, sensitivityOf, systemOverview } from "../catalogue";
 import { workflowHref } from "../routes";
 import type { WorkflowRecord } from "../types";
 import { DesignPill, SensitivityBadge } from "./workflow-parts";
 
-/** Context as a list, for a phone: who uses the system, the system, what it talks to, each with its one line. */
-function ContextStack({ m }: { m: C4Model }) {
-  const words = (id: string) => {
-    const r = m.relations.find((x) => (x.from === id && x.to === FOCAL) || (x.to === id && x.from === FOCAL));
-    return r ? shortLabel(relationWords(r), 34) : null;
+const SOURCE: Record<SystemDescription["source"], string> = {
+  project: "The project's description",
+  purpose: "The system's purpose, from its system-context design",
+  summary: "The first sentence of the system-context design's summary",
+};
+
+/** The project document with only `project.description` changed. */
+export function describedDocument(document: Record<string, unknown>, description: string) {
+  const project = (document.project ?? {}) as Record<string, unknown>;
+  return { ...document, project: { ...project, description } };
+}
+
+/** One line, written into the project document at the revision read. */
+function DescriptionEditor({ projectId, held, initial, onDone }: { projectId: string; held: Extract<V1Read, { declared: true }>; initial: string; onDone: () => void }) {
+  const write = useWriteProjectDocument(projectId);
+  const [text, setText] = useState(initial);
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const value = text.trim();
+    if (!value) return;
+    write.mutate({ baseRevision: held.revision, document: describedDocument(held.document, value) }, { onSuccess: onDone });
   };
-  const row = (id: string, title: string, owner: string | null) => (
-    <li key={id} className="grid gap-0.5 border-b border-line-subtle py-2 last:border-b-0">
-      <span className="text-13-5 font-semibold">{shortLabel(title, 48)}</span>
-      {words(id) ? <span className="text-12-5 text-muted">{words(id)}</span> : null}
-      {owner ? <span className="text-12 text-subtle">{owner}</span> : null}
-    </li>
-  );
+  const refusal = write.error ? (refusalsOf(write.error)[0]?.detail ?? formatApiError(write.error)) : null;
   return (
-    <div className="grid gap-3" data-testid="context-stack">
-      {m.people.length ? (
-        <div>
-          <h3 className="text-13 font-bold">People</h3>
-          <ul className="m-0 list-none p-0">{m.people.map((p) => row(p.id, p.title, null))}</ul>
-        </div>
+    <form className="grid max-w-[86ch] gap-1.5" onSubmit={submit} data-testid="description-editor">
+      <span className="flex items-center gap-2">
+        <Input
+          aria-label="What the system is, in one line"
+          placeholder="What the system is and who it is for, in one line"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          className="min-w-0 flex-1"
+          autoFocus
+        />
+        <Button type="submit" size="sm" variant="primary" disabled={!text.trim()} loading={write.isPending}>
+          Save
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
+      </span>
+      {refusal ? (
+        <p role="alert" className="m-0 text-12 text-red">
+          {refusal}
+        </p>
       ) : null}
-      {m.focal ? (
-        <div className="border-l-[3px] py-1 pl-3" style={{ borderColor: "var(--wf-blue)" }}>
-          <h3 className="text-13 font-bold">Software system</h3>
-          <p className="m-0 text-14 font-semibold">{m.focal.title}</p>
-          <p className="m-0 text-12-5 text-muted">
-            {m.focal.parts.length} {m.focal.parts.length === 1 ? "container" : "containers"}
-          </p>
-        </div>
-      ) : null}
-      {m.externals.length ? (
-        <div>
-          <h3 className="text-13 font-bold">External systems</h3>
-          <ul className="m-0 list-none p-0">{m.externals.map((x) => row(x.id, x.title, x.owner))}</ul>
-        </div>
-      ) : null}
-    </div>
+    </form>
   );
 }
 
-function Facts({ o, slug, sensitivity }: { o: SystemOverview; slug: string; sensitivity: SensitiveDataLevel | null }) {
+/**
+ * What the system is, in one line, the rest behind hover or focus. A design's summary records how the
+ * design was drawn, so it is never the headline for someone who can write the line instead.
+ */
+function Description({ o, projectId, projectDocument, canEdit }: { o: SystemOverview; projectId: string; projectDocument: V1Read | undefined; canEdit: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const described = describeSystem(projectDocument?.document, o);
+  const held = projectDocument?.declared ? projectDocument : null;
+  const writable = canEdit && held !== null;
+  if (editing && held) return <DescriptionEditor projectId={projectId} held={held} initial={described?.source === "project" ? described.text : ""} onDone={() => setEditing(false)} />;
+  if (!described || (described.source === "summary" && writable)) {
+    if (!writable) return null;
+    return (
+      <Button type="button" variant="ghost" size="sm" className="-ml-2 h-7 w-fit gap-1.5 px-2 text-13 font-normal text-muted" onClick={() => setEditing(true)} data-testid="add-description">
+        <Pencil size={13} aria-hidden />
+        Add a one-line description
+      </Button>
+    );
+  }
+  const summary = o.record.document.summary.trim();
   return (
-    <dl className="m-0 flex flex-wrap gap-x-9 gap-y-2" data-testid="overview-facts">
+    <span className="flex min-w-0 max-w-[96ch] items-center gap-2">
+      <HoverCard
+        label="About this system"
+        className="block min-w-0 truncate text-14"
+        data-testid="system-description"
+        data-source={described.source}
+        content={
+          <div className="grid gap-2.5">
+            <p className="m-0 text-14 leading-relaxed-1-6">{described.text}</p>
+            {summary && summary !== described.text ? (
+              <div className="grid gap-0.5 border-t border-line-subtle pt-2">
+                <span className="text-12 font-semibold text-muted">How the system-context design was drawn</span>
+                <p className="m-0 text-13 leading-relaxed-1-6 text-muted">{summary}</p>
+              </div>
+            ) : null}
+            <span className="text-12 text-subtle">{SOURCE[described.source]}</span>
+          </div>
+        }
+      >
+        {described.text}
+      </HoverCard>
+      {writable ? (
+        <Button type="button" variant="ghost" size="sm" className="h-6 w-6 flex-none p-0 text-subtle" aria-label="Edit the description" title="Edit the description" onClick={() => setEditing(true)}>
+          <Pencil size={13} aria-hidden />
+        </Button>
+      ) : null}
+    </span>
+  );
+}
+
+function FactDetail({ f }: { f: OverviewFact }) {
+  return (
+    <ul className="m-0 grid min-w-[240px] list-none p-0" data-testid="fact-detail">
+      {f.rows.map((r) => (
+        <li key={r.name} className="flex items-baseline gap-3 border-t border-line-subtle py-1.5 first:border-t-0 first:pt-0 last:pb-0">
+          <span className="min-w-0 flex-1 text-13">{r.name}</span>
+          {r.count !== undefined ? (
+            <span className="flex-none text-12-5 tabular-nums text-muted">
+              {r.count}
+              {r.unconfirmed ? <span className="text-subtle"> · {r.unconfirmed} unconfirmed</span> : null}
+            </span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The facts as label and value pairs on one line; what each counts opens on hover or focus. */
+function Facts({ o, slug, projectDocument }: { o: SystemOverview; slug: string; projectDocument: V1Read | undefined }) {
+  const sensitivity = sensitivityOf(projectDocument?.document);
+  return (
+    <dl className="m-0 flex flex-wrap items-center gap-x-7 gap-y-1.5" data-testid="overview-facts">
       {o.facts.map((f) => (
-        <div key={f.label} className="grid gap-0.5">
-          <dt className="text-12 font-semibold text-muted">{f.label}</dt>
-          <dd className="m-0 text-14 font-semibold">
-            <Tooltip label={f.tip} side="bottom" multiline>
-              <span className="cursor-help">{f.value}</span>
-            </Tooltip>
+        <div key={f.label} className="flex items-baseline gap-2">
+          <dt className="text-12-5 text-muted">{f.label}</dt>
+          <dd className="m-0 text-13-5 font-semibold">
+            <HoverCard label={f.label} content={<FactDetail f={f} />} className="underline decoration-line decoration-dotted underline-offset-4" data-testid="overview-fact">
+              {f.value}
+            </HoverCard>
           </dd>
         </div>
       ))}
       {sensitivity ? (
-        <div className="grid gap-0.5">
-          <dt className="text-12 font-semibold text-muted">Data sensitivity</dt>
-          <dd className="m-0 pt-0.5">
+        <div className="flex items-center gap-2">
+          <dt className="text-12-5 text-muted">Data</dt>
+          <dd className="m-0">
             <SensitivityBadge level={sensitivity} />
           </dd>
         </div>
       ) : null}
       {o.journey ? (
-        <div className="grid min-w-0 gap-0.5">
-          <dt className="text-12 font-semibold text-muted">Main journey</dt>
-          <dd className="m-0 min-w-0 text-14 font-semibold">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <dt className="text-12-5 text-muted">Main journey</dt>
+          <dd className="m-0 min-w-0 truncate text-13-5 font-semibold">
             <Link href={workflowHref(slug, o.journey.document.flow)} className="text-link hover:underline">
               {o.journey.document.title}
             </Link>
@@ -90,22 +172,6 @@ function Facts({ o, slug, sensitivity }: { o: SystemOverview; slug: string; sens
         </div>
       ) : null}
     </dl>
-  );
-}
-
-/** The design's summary, three lines at most until asked for the rest. */
-function Summary({ text, lines }: { text: string; lines: 2 | 3 }) {
-  const [open, setOpen] = useState(false);
-  if (!text.trim()) return null;
-  return (
-    <div className="max-w-[86ch]">
-      <p className={cn("m-0 text-14 leading-relaxed-1-6", !open && (lines === 2 ? "line-clamp-2" : "line-clamp-3"))}>{text}</p>
-      {text.length > 220 ? (
-        <button type="button" onClick={() => setOpen(!open)} className="mt-0.5 text-12-5 font-semibold text-link hover:underline">
-          {open ? "Show less" : "Show more"}
-        </button>
-      ) : null}
-    </div>
   );
 }
 
@@ -127,15 +193,17 @@ function NoContext({ projectId, quiet }: { projectId: string; quiet: boolean }) 
         ) : (
           <>
             <span className="text-muted">Onboarding drafts it first, from the code and a few questions.</span>
-            <button
+            <Button
               type="button"
-              className="font-semibold text-link hover:underline disabled:opacity-60"
-              disabled={pending}
+              variant="ghost"
+              size="sm"
+              className="h-auto p-0 text-13-5 font-semibold text-link hover:bg-transparent hover:underline"
+              loading={pending}
               onClick={() => void open(action).catch(() => undefined)}
               data-testid="start-onboarding"
             >
               {action === "start" ? "Start onboarding" : "Open onboarding"}
-            </button>
+            </Button>
           </>
         )}
       </p>
@@ -154,76 +222,67 @@ export interface SystemOverviewRegionProps {
   projectId: string;
   slug: string;
   projectName: string;
-  /** The project document's data policy, when it restricts anything. */
-  sensitivity?: SensitiveDataLevel | null;
-  /** `page` heads Workflows; `compact` sits on the project dashboard and points to Workflows. */
+  /** The project document as read: its description, and its data policy when it restricts anything. */
+  projectDocument?: V1Read;
+  /** The viewer may write the project document, so may add the description. */
+  canEdit?: boolean;
+  /** `page` is Workflows' left pane; `compact` sits on the project dashboard and points to Workflows. */
   variant?: "page" | "compact";
+  className?: string;
 }
 
 /**
- * What the system is, read from its system-context design: the summary, the facts it states and the
- * C4 level 1 diagram, fitted whole into the region.
+ * What the system is: one line about it, the facts its system-context design states, and that design on
+ * the shared canvas in its compact mode, folded by boundary until it reads at 12px.
  */
-export function SystemOverviewRegion({ records, templates, projectId, slug, projectName, sensitivity = null, variant = "page" }: SystemOverviewRegionProps) {
+export function SystemOverviewRegion({ records, templates, projectId, slug, projectName, projectDocument, canEdit = false, variant = "page", className }: SystemOverviewRegionProps) {
   const o = useMemo(() => systemOverview(records, templates), [records, templates]);
-  const diagram = useMemo(() => (o ? layoutContext(o.model) : null), [o]);
   const compact = variant === "compact";
   const workflows = `/projects/${encodeURIComponent(slug)}/workflows`;
 
   if (!o) return <NoContext projectId={projectId} quiet={compact} />;
   const design = o.record;
   const status = design.design.status;
+  const template = templateFor(design.document, templates);
   return (
     <section
-      className={cn("grid gap-3.5 border-b border-line-subtle bg-surface px-7 pb-5 pt-4 max-md:px-4", compact && "px-5")}
+      className={cn("flex min-h-0 min-w-0 flex-col bg-app", compact && "border-b border-line-subtle", className)}
       aria-labelledby="system-overview-title"
       data-testid="system-overview"
     >
-      <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
-        {compact ? (
-          // The dashboard's own header already names the project.
-          <h2 id="system-overview-title" className="fg-h3 m-0 min-w-0 flex-1">
-            System overview
-          </h2>
-        ) : (
-          <div className="grid min-w-0 flex-1 gap-0.5">
-            <span className="text-12 font-semibold text-muted">System overview</span>
-            <h2 id="system-overview-title" className="fg-h2 m-0">
-              {projectName}
+      <div className={cn("grid gap-2 border-b border-line-subtle bg-surface px-6 pb-3 pt-3.5 max-md:px-4", compact && "px-5")}>
+        <div className="flex flex-wrap items-start gap-x-4 gap-y-1.5">
+          {compact ? (
+            // The dashboard's own header already names the project.
+            <h2 id="system-overview-title" className="fg-h3 m-0 min-w-0 flex-1">
+              System overview
             </h2>
-          </div>
-        )}
-        <span className="flex flex-wrap items-center gap-2.5 pt-1 max-md:order-last max-md:w-full max-md:pt-0">
-          {status ? <DesignPill status={status} reason={design.design.returnReason ?? null} /> : null}
-          <Link
-            href={compact ? workflows : workflowHref(slug, design.document.flow)}
-            className="inline-flex items-center gap-1 text-13 font-semibold text-link hover:underline"
-            data-testid="open-system-context"
-          >
-            {compact ? "Open workflows" : "Open system context"}
-            <Icon name="arrowRight" size={14} />
-          </Link>
-        </span>
-      </div>
-      <Summary text={design.document.summary} lines={compact ? 2 : 3} />
-      <Facts o={o} slug={slug} sensitivity={sensitivity} />
-      {diagram ? (
-        <>
-          <figure className="m-0 max-md:hidden" data-testid="overview-diagram">
-            <C4Diagram
-              diagram={diagram}
-              title={`System context of ${o.model.focal?.title ?? projectName}`}
-              className={cn("mx-auto block h-auto w-full", compact ? "max-h-[440px]" : "max-h-[660px]")}
-              halo="var(--bg-surface)"
-            />
-          </figure>
-          {compact ? null : (
-            <div className="md:hidden">
-              <ContextStack m={o.model} />
+          ) : (
+            <div className="grid min-w-0 flex-1 gap-0.5">
+              <span className="text-12 font-semibold text-muted">System overview</span>
+              <h2 id="system-overview-title" className="fg-h2 m-0">
+                {projectName}
+              </h2>
             </div>
           )}
-        </>
-      ) : null}
+          <span className="flex flex-wrap items-center gap-2.5 pt-1">
+            {status ? <DesignPill status={status} reason={design.design.returnReason ?? null} /> : null}
+            <Link
+              href={compact ? workflows : workflowHref(slug, design.document.flow)}
+              className="inline-flex items-center gap-1 text-13 font-semibold text-link hover:underline"
+              data-testid="open-system-context"
+            >
+              {compact ? "Open workflows" : "Open system context"}
+              <Icon name="arrowRight" size={14} />
+            </Link>
+          </span>
+        </div>
+        <Description o={o} projectId={projectId} projectDocument={projectDocument} canEdit={canEdit} />
+        <Facts o={o} slug={slug} projectDocument={projectDocument} />
+      </div>
+      <div className={cn("flex min-h-0 flex-1", compact ? "h-[620px] flex-none max-md:h-[64vh]" : "min-h-[420px] max-lg:h-[64vh] max-lg:flex-none")} data-testid="overview-diagram">
+        <WorkflowCanvas doc={design.document} template={template} compact />
+      </div>
     </section>
   );
 }
