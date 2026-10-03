@@ -94,6 +94,7 @@ refusal under its own code. It never compares `agency` itself.
 | `approverRule(agentMay)` | org owner or admin | member or above, only when the project's policy says `master` | `packages/core/src/workflows/design.ts:designApproverRefusal`, `packages/core/src/ecosystem/contract/approval.ts:approverRefusal` |
 | `PROJECT_AGENT_WRITE` | never | member or above | `packages/core/src/workflows/rules.ts:workflowWriterRefusal`, `packages/core/src/ecosystem/link-rules.ts:writerRefusal` |
 | `PERSON_ADMIN_ACT` | project owner or admin | never | `packages/core/src/feedback/rules.ts:redactActRefusal` (deleting a reporter's data) |
+| `COMMENT_POST` | member or above | member or above | `packages/core/src/comments/entity-rules.ts:posterRefusal` (a comment on a requirement, design or feedback item; its author edits it, else a project admin person, `:editorRefusal`) |
 
 - **Before this page:** seven separate implementations across the slices: requirement sign-off,
   suggestion decide, design approver, contract approver, workflow writer, link writer and builder
@@ -193,6 +194,14 @@ no writer gets a fourth state.
   redaction inserts a `packages/core/src/db/schema-feedback.ts:feedbackDecisions` row, insert-only by
   `feedback_decision_guard()` in `packages/core/drizzle/migrations/0352_product_feedback_is_an_item.sql`.
   Requirement returns are still a **target** (item 10).
+- **Comments on other entities.** A comment sits on exactly one of issue | requirement | workflow |
+  feedback (`comments_scope_chk`, ISS-83). One on a requirement, design or feedback item has no
+  issue to carry an activity row, so its post and each edit insert a
+  `packages/core/src/db/schema-comments.ts:commentEvents` row holding the content as it stood,
+  insert-only by `comment_event_guard()` in
+  `packages/core/drizzle/migrations/0359_a_comment_sits_on_exactly_one_target.sql`. A decision there
+  carries `decision: { decision, reason, options?, authority?, reversedWhen? }`
+  (`packages/contracts/src/comments.ts:decisionFieldsSchema`).
 
 ## Data policy (sensitive projects)
 
@@ -334,7 +343,7 @@ slice to touch that code. Nothing below is migrated in this change.
 | 21 | FB-n's MCP tool is `forge_feedback_items`, because `forge_feedback` is still the agent-reports alias; the `feedback:*` token grant also still means agent reports, so FB-n routes ride `projects:*` (`cm:hack ISS-59` in `packages/core/src/auth/pat-permissions.ts`) | review (a migration rewrites stored `feedback:*` grants, then the names move) |
 | 22 | Feedback's target arc holds requirement, issue, release and workflow; a screen is `where_seen` text with no key, as the approved design has it, not the arc member REQ-7 BC-1 lists. A release is a `pipeline_runs` row | review |
 | 23 | Feedback's stored statuses are new, triaged, reopened, verified, declined; `planned` and `resolved` are derived on read from what the route carries (`packages/core/src/feedback/rules.ts:phaseOf`) | review |
-| 24 | The `answer` route stores its text on `feedback.answer`, not a decision comment, because comments have no feedback arc | review |
+| 24 | The `answer` route stores its text on `feedback.answer`, not a decision comment; comments gained the feedback arc in ISS-83, and nothing moved the answer onto one | review |
 | 25 | Feedback gaps the POC left: an agent's clarification answer is not turned into a triage suggestion; a high or critical item does not wake the master; deleting a reporter's data does not reach text already copied into a filed draft issue; a person on the MCP door is treated as provider-bound; the scrubber recognises a name only when it is labelled or marked as a patient; a clarification answer (written by the questions module) and a triage suggestion's note are stored unscrubbed | review |
 | 26 | The conversation detail carries the room's questionnaire batches, and the list each room's `kind` and `threadStatus` (`packages/core/src/assistant/conversation-routes.ts`): a conversation route reading the onboarding and questionnaire rows instead of the client reading `/questionnaires/:bid` | review |
 | 27 | `onboardings.status` is set by each writer (start, post, submit, done), not derived on read from the batches and the job; the dashboard hint is derived (`packages/core/src/onboarding/read.ts:hintOf`) | review |
@@ -342,6 +351,7 @@ slice to touch that code. Nothing below is migrated in this change.
 | 29 | The web maps onboarding tones onto `StatusChip` keys (`packages/web-v2/src/features/onboarding/components/marks.tsx:TONE_CHIP`), one more colour map outside contracts beside item 18 | review |
 | 30 | Answering a questionnaire row through the questions route is refused `QUESTION_IN_QUESTIONNAIRE` as a thrown 409 in the questions slice's own shape (`packages/core/src/questions/write.ts:answerQuestion`), not the envelope | review |
 | 31 | The data-flow guard reads the level itself (`packages/core/src/onboarding/read.ts:projectHoldsSensitiveData`) to decide whether a data-flow design is owed, which is not an egress decision | review |
+| 32 | Comments (ISS-83): an issue decision stays prose, held only off issues by `comments_decision_fields_chk` (`cm:hack ISS-83` in `packages/core/src/db/schema.ts:comments`); the issue door keeps its untyped `comment.created` activity rows and writes no `comment_events`; `comments` has no `project_id` and no `author_agency` (the agency is read from the device or `users.kind`, as ISS-1137 decided); a comment on another entity is not screened by `packages/core/src/comments/screen.ts:screenAgentComment` and takes no mentions or attachments | review |
 
 ## Honest costs
 
@@ -351,4 +361,4 @@ slice to touch that code. Nothing below is migrated in this change.
 | One declaration in contracts, compiled | Core's start depends on `@forge/contracts` being built first; a contracts edit rebuilds before core typechecks |
 | Agency in one module | A slice that needs a new standing (for example a steward org admin) extends `ActRule` for everyone, rather than writing its own `if` |
 | `max+1` keys under the entity lock | A keyed row can never be hard-deleted, or its number is reissued |
-| Thirty-one listed divergences left in place | Until the review pass, two patterns are live for each of them, and a new slice must copy the reference, not the nearest file |
+| Thirty-two listed divergences left in place | Until the review pass, two patterns are live for each of them, and a new slice must copy the reference, not the nearest file |

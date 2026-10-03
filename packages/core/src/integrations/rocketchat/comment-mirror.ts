@@ -115,7 +115,7 @@ export async function owedComments(
   const rows = await db
     .select({
       commentId: comments.id,
-      issueId: comments.issueId,
+      issueId: issues.id,
       projectId: issues.projectId,
       body: comments.body,
       attempts: rocketchatCommentMirrors.attempts,
