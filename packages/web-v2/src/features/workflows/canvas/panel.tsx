@@ -255,24 +255,17 @@ function EdgePanel({ c, edge, onStep }: { c: Canvas; edge: CanvasEdge; onStep: (
   );
 }
 
-function Overview({ c, walkLength, onWalk, decision }: { c: Canvas; walkLength: number; onWalk: (at: number) => void; decision: ReactNode }) {
+function Overview({ c, walkLength, onWalk }: { c: Canvas; walkLength: number; onWalk: (at: number) => void }) {
   const owned = c.doc.steps.filter((s) => s.node?.owner);
+  const deadlines = c.doc.steps.filter((s) => s.node?.sla).length;
   return (
     <>
       <SectionTitle className="fg-h3 mb-1.5 mt-1">{c.doc.title}</SectionTitle>
-      <p className="mb-3 text-13-5 text-muted">{c.doc.summary}</p>
-      <div className="grid grid-cols-3 gap-2">
-        {[
-          [c.doc.steps.length, "steps"],
-          [owned.length, "with an owner"],
-          [c.doc.steps.filter((s) => s.node?.sla).length, "deadlines"],
-        ].map(([n, label]) => (
-          <div key={label} className="rounded-md bg-sunken px-2.5 py-2">
-            <b className="block text-16">{n}</b>
-            <span className="text-12 text-subtle">{label}</span>
-          </div>
-        ))}
-      </div>
+      <p className="mb-2.5 text-13-5 text-muted">{c.doc.summary}</p>
+      <p className="m-0 text-13 text-muted" data-testid="design-counts">
+        <b className="text-fg">{c.doc.steps.length}</b> steps · <b className="text-fg">{owned.length}</b> with an owner · <b className="text-fg">{deadlines}</b>{" "}
+        {deadlines === 1 ? "deadline" : "deadlines"}
+      </p>
       <Button type="button" variant="secondary" onClick={() => onWalk(0)} className="mt-3.5 h-auto w-full justify-start gap-2.5 whitespace-normal rounded-lg border-accent bg-accent-tint px-3 py-2.5 text-left font-normal" data-testid="walk-start">
         <Play size={20} className="flex-none text-accent" aria-hidden />
         <span className="text-13">
@@ -281,7 +274,6 @@ function Overview({ c, walkLength, onWalk, decision }: { c: Canvas; walkLength: 
           {walkLength} steps, one at a time
         </span>
       </Button>
-      {decision ? <div className="mt-3.5">{decision}</div> : null}
       {owned.length ? (
         <Sec title="Who owns what">
           <Facts rows={owned.map((s) => [titleOf(s), <>{s.node?.owner}{s.node?.sla ? <span className="block text-cobalt">{s.node.sla}</span> : null}</>])} />
@@ -378,7 +370,8 @@ export function DetailPanel(p: PanelProps) {
       </>
     ) : null;
   } else {
-    body = <Overview c={c} walkLength={walk?.order.length ?? c.doc.steps.length} onWalk={p.onWalk} decision={p.decision} />;
+    // Approve / Return stays in the page header, once; the panel offers it again only where a walk-through ends.
+    body = <Overview c={c} walkLength={walk?.order.length ?? c.doc.steps.length} onWalk={p.onWalk} />;
   }
   return (
     <aside className="w-[370px] flex-none overflow-y-auto border-l border-line-subtle bg-surface px-4.5 pb-7 pt-4 max-lg:w-full max-lg:border-l-0 max-lg:border-t" aria-live="polite" data-testid="workflow-panel">

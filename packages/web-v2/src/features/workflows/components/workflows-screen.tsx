@@ -2,57 +2,60 @@
 
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
-import { EmptyState, ErrorState, PageTitle, ProjectLoader } from "@/design";
+import { EmptyState, ErrorState, PageTitle, ProjectLoader, Tooltip } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useQueryParam } from "@/lib/utils/use-query-param";
-import { templateFor } from "../canvas/model";
-import { WorkflowThumbnail } from "../canvas/thumbnail";
+import { catalogue, templateIdOf, templateTitle } from "../catalogue";
 import { useWorkflowTemplates, useWorkflows } from "../hooks";
 import { workflowHref } from "../routes";
 import type { WorkflowRecord } from "../types";
-import { DesignPill } from "./workflow-parts";
+import { SystemOverviewRegion } from "./system-overview";
+import { DesignPill, ProposedMarker } from "./workflow-parts";
 
-/** The chip a design is filtered by: the template it is drawn in, or its kind for one drawn before templates. */
-function templateChip(r: WorkflowRecord, templates: readonly WorkflowTemplate[]): string {
-  return templateFor(r.document, templates)?.id ?? r.document.kind;
+// cm:why one grid template for the header and every row, so the columns line up without a table
+const COLS = "grid grid-cols-[minmax(0,1fr)_170px_84px_230px_92px] gap-x-3.5 px-7 max-lg:grid-cols-[minmax(0,1fr)_150px_76px_210px]";
+
+function size(r: WorkflowRecord): string {
+  const n = r.document.steps.length;
+  return r.document.kind === "state" ? `${n} ${n === 1 ? "state" : "states"}` : `${n} ${n === 1 ? "step" : "steps"}`;
 }
 
-function WorkflowCard({ r, slug, templates }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[] }) {
+function Row({ r, slug, templates }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[] }) {
   const w = r.document;
-  const count = w.steps.length;
+  // An approved design with a newer revision waiting reads as approved; the marker says what waits.
+  const status = r.design.status === "proposed" && r.design.approvedRevision !== null ? "approved" : r.design.status;
   return (
     <Link
       href={workflowHref(slug, w.flow)}
-      className="group grid overflow-hidden rounded-lg border border-line-subtle bg-surface shadow-sm transition-colors hover:border-line-strong"
-      data-testid="workflow-card"
+      className={cn(
+        COLS,
+        "min-h-[50px] items-center border-b border-line-subtle py-2 text-left hover:bg-hover",
+        "max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-y-1 max-md:px-4 max-md:py-2.5",
+      )}
+      data-testid="workflow-row"
       data-flow={w.flow}
     >
-      <WorkflowThumbnail doc={w} template={templateFor(w, templates)} />
-      <div className="grid gap-2 border-t border-line-subtle px-3.5 py-3">
-        <div className="flex items-start gap-2">
-          <b className="min-w-0 flex-1 text-14 leading-snug group-hover:text-fg">{w.title}</b>
-          {r.design.status ? <DesignPill status={r.design.status} reason={r.design.returnReason ?? null} /> : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-12 text-muted">
-          <span className="rounded-sm bg-sunken px-1.5 py-0.5 font-mono text-11" data-testid="workflow-template">
-            {templateChip(r, templates)}
-          </span>
-          <span>
-            {count} {w.kind === "state" ? (count === 1 ? "state" : "states") : count === 1 ? "step" : "steps"}
-          </span>
-          <span className="ml-auto truncate" title={`Drawn by ${r.writerName}`}>
-            {r.writerName}
-          </span>
-          <span title={new Date(w.updatedAt).toLocaleString()}>{formatRelativeTime(w.updatedAt)}</span>
-        </div>
-      </div>
+      <span className="min-w-0 truncate text-13-5 font-semibold max-md:col-span-2 max-md:whitespace-normal" title={w.summary}>
+        {w.title}
+      </span>
+      <span className="truncate text-12-5 text-muted max-md:order-3" data-testid="workflow-template">
+        {templateTitle(templateIdOf(r), templates)}
+      </span>
+      <span className="text-12-5 tabular-nums text-muted max-md:hidden">{size(r)}</span>
+      <span className="flex min-w-0 flex-wrap items-center gap-2 max-md:order-2 max-md:justify-end">
+        {status ? <DesignPill status={status} reason={r.design.returnReason ?? null} /> : null}
+        <ProposedMarker r={r} />
+      </span>
+      <span className="text-right text-12-5 text-subtle max-lg:hidden" title={`${new Date(w.updatedAt).toLocaleString()} · ${r.writerName}`}>
+        {formatRelativeTime(w.updatedAt)}
+      </span>
     </Link>
   );
 }
 
-export function WorkflowsScreen({ projectId, slug }: { projectId: string; slug: string }) {
+export function WorkflowsScreen({ projectId, slug, projectName }: { projectId: string; slug: string; projectName: string }) {
   const q = useWorkflows(projectId);
   const templatesQ = useWorkflowTemplates(projectId);
   const [picked, setPicked] = useQueryParam("template");
@@ -73,42 +76,73 @@ export function WorkflowsScreen({ projectId, slug }: { projectId: string; slug: 
   }
   const templates = (templatesQ.data?.templates ?? []).map((t) => t.template);
   const all = q.data.workflows;
-  const chips = [...new Set(all.map((r) => templateChip(r, templates)))].sort();
+  const chips = [...new Set(all.map(templateIdOf))].sort((a, b) => templateTitle(a, templates).localeCompare(templateTitle(b, templates)));
   const filter = picked && chips.includes(picked) ? picked : null;
-  const shown = filter ? all.filter((r) => templateChip(r, templates) === filter) : all;
+  const groups = catalogue(filter ? all.filter((r) => templateIdOf(r) === filter) : all);
 
   return (
-    <div className="grid content-start gap-4 px-4 pb-8 pt-4 sm:px-7" data-testid="workflows-screen">
-      <header className="flex flex-wrap items-center gap-3">
-        <PageTitle>Workflows</PageTitle>
-        {chips.length > 1 ? (
-          <span className="ml-auto flex flex-wrap gap-1.5" role="tablist" aria-label="Template">
-            {[null, ...chips].map((t) => (
-              <button
-                key={t ?? "all"}
-                type="button"
-                role="tab"
-                aria-selected={filter === t}
-                onClick={() => setPicked(t)}
-                className={cn(
-                  "rounded-pill border px-2.5 py-0.5 text-12 font-semibold",
-                  filter === t ? "border-fg bg-fg text-surface" : "border-line text-muted hover:text-fg",
-                )}
-              >
-                {t ?? "All"}
-              </button>
-            ))}
-          </span>
-        ) : null}
-      </header>
+    <div className="grid min-h-full content-start bg-app" data-testid="workflows-screen">
+      <PageTitle hint="What the system is, then every design the project draws, grouped by what it is for">Workflows</PageTitle>
       {all.length === 0 ? (
-        <EmptyState title="No workflow has been drawn" message="The project's master draws each workflow; none has been written for this project yet." />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" data-testid="workflow-list">
-          {shown.map((r) => (
-            <WorkflowCard key={r.document.id} r={r} slug={slug} templates={templates} />
-          ))}
+        <div className="px-7 py-10 max-md:px-4">
+          <EmptyState title="No workflow has been drawn" message="The project's master draws each workflow; none has been written for this project yet." />
         </div>
+      ) : (
+        <>
+          <SystemOverviewRegion records={all} templates={templates} slug={slug} projectName={projectName} />
+          <section aria-labelledby="designs-title" className="pt-5">
+            <header className="flex flex-wrap items-center gap-x-4 gap-y-2.5 px-7 pb-3 max-md:px-4">
+              <h2 id="designs-title" className="fg-h3 m-0">
+                Designs <span className="font-mono text-13 font-semibold text-muted">{all.length}</span>
+              </h2>
+              {chips.length > 1 ? (
+                <span className="flex flex-wrap gap-1.5" role="tablist" aria-label="Diagram type">
+                  {[null, ...chips].map((t) => (
+                    <button
+                      key={t ?? "all"}
+                      type="button"
+                      role="tab"
+                      aria-selected={filter === t}
+                      onClick={() => setPicked(t)}
+                      className={cn(
+                        "rounded-pill border px-2.5 py-0.5 text-12 font-semibold",
+                        filter === t ? "border-fg bg-fg text-surface" : "border-line bg-surface text-muted hover:text-fg",
+                      )}
+                      data-testid="template-chip"
+                    >
+                      {t ? templateTitle(t, templates) : "All"}
+                    </button>
+                  ))}
+                </span>
+              ) : null}
+            </header>
+            <div
+              aria-hidden
+              className={cn(COLS, "h-8 items-center border-y border-line-subtle text-11-5 font-semibold text-subtle max-md:hidden")}
+            >
+              <span>Design</span>
+              <span>Diagram</span>
+              <span>Size</span>
+              <span>State</span>
+              <span className="text-right max-lg:hidden">Updated</span>
+            </div>
+            <div className="bg-surface" data-testid="workflow-list">
+              {groups.map((g) => (
+                <div key={g.id} data-testid="workflow-group" data-group={g.id}>
+                  <div className="flex min-h-[34px] items-center gap-2 bg-sunken px-7 py-[5px] text-13 max-md:px-4">
+                    <Tooltip label={g.hint} side="bottom">
+                      <span className="cursor-help font-bold">{g.label}</span>
+                    </Tooltip>
+                    <span className="font-mono text-12 font-bold text-muted">{g.rows.length}</span>
+                  </div>
+                  {g.rows.map((r) => (
+                    <Row key={r.document.id} r={r} slug={slug} templates={templates} />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
       )}
     </div>
   );

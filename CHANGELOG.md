@@ -137,6 +137,9 @@
 
 ### Added
 
+- **Workflows opens on what the system is.** A System overview shows the system-context summary,
+  key facts and a C4 context diagram that fits the screen; designs are grouped by purpose; a
+  system-context design toggles Context | Containers. The dashboard shows it too.
 - **Assistant output waits for a person as a suggestion.** `/api/projects/:id/suggestions` and
   `forge_suggestions` hold six kinds of proposed change against a base revision; a person accepts or
   rejects it, a moved base makes it stale (`SUGGESTION_BASE_STALE`), at most 5 wait per target, and
