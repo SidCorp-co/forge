@@ -207,10 +207,17 @@ means `off`).
   passes it through `packages/core/src/lib/data-egress.ts:egressOf` (or `egressFor` /
   `egressDeep`). At `redact` only scrubbed text leaves; at `no_egress` nothing does and the guard
   refuses `CONTENT_EGRESS_FORBIDDEN` naming the item. A slice never checks the level itself.
+- **One exemption.** Onboarding questionnaire answers are product information, not patient data
+  (owner, 2026-10-04): read through `egressDeep` as the `onboarding_answers` class
+  (`packages/core/src/lib/data-egress.ts:EgressDataClass`), they leave scrubbed at `no_egress` as at
+  `redact`. Only batches of an onboarding conversation qualify; a BA requirement clarification batch
+  can quote feedback and is refused like any other content. The questionnaire card warns on a
+  `redact` or `no_egress` project that answers must not include patient data.
 - **On write.** At `redact` and `no_egress`, free text an entity stores is scrubbed first
   (`packages/core/src/lib/data-egress.ts:storedText`, over the observability scrubber). Feedback
-  scrubs its title, body, where-seen, answer and every decision reason; what it does not reach yet
-  is item 25.
+  scrubs its title, body, where-seen, answer and every decision reason, and a questionnaire scrubs
+  every typed answer (`packages/core/src/lib/data-egress.ts:storedAnswers`); what it does not reach
+  yet is item 25.
 - **Embeddings.** `packages/core/src/embeddings/item-writer.ts:writeItemEmbedding` is the one writer;
   a withheld item is recorded as `withheld_by_policy`, never left missing.
 - **Readers.** `ba_read_requirement` and `ba_read_issue` answer metadata only, plus `withheld`, at
@@ -337,7 +344,7 @@ slice to touch that code. Nothing below is migrated in this change.
 | 28 | `POST /api/projects/:id/onboarding/join` adds the caller to the onboarding room, which can turn a direct room into a group; no rule decides who may join beyond project access | review |
 | 29 | The web maps onboarding tones onto `StatusChip` keys (`packages/web-v2/src/features/onboarding/components/marks.tsx:TONE_CHIP`), one more colour map outside contracts beside item 18 | review |
 | 30 | Answering a questionnaire row through the questions route is refused `QUESTION_IN_QUESTIONNAIRE` as a thrown 409 in the questions slice's own shape (`packages/core/src/questions/write.ts:answerQuestion`), not the envelope | review |
-| 31 | Questionnaire answers are stored unscrubbed at `redact`; an agent reads them through `egressDeep` (`packages/core/src/onboarding/service.ts:readAnswers`). The data-flow guard reads the level itself (`packages/core/src/onboarding/read.ts:projectHoldsSensitiveData`) to decide whether a data-flow design is owed, which is not an egress decision | review |
+| 31 | The data-flow guard reads the level itself (`packages/core/src/onboarding/read.ts:projectHoldsSensitiveData`) to decide whether a data-flow design is owed, which is not an egress decision | review |
 
 ## Honest costs
 

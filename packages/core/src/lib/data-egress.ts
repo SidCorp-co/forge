@@ -35,6 +35,16 @@ export function storedText(level: SensitiveDataLevel, text: string) {
   return { text: scrub.text, redactions: redactionCount(scrub.redactions), scrubbed: true };
 }
 
+/** Questionnaire answers as they may be stored: typed text scrubbed as `storedText`, choice ids kept. */
+export function storedAnswers<A extends { text?: string | undefined }>(
+  level: SensitiveDataLevel,
+  answers: readonly A[],
+): A[] {
+  return answers.map((a) =>
+    a.text === undefined ? a : { ...a, text: storedText(level, a.text).text },
+  );
+}
+
 // cm:guard content leaves for a provider only as the project's level allows: as written at off,
 // scrubbed at redact, never at no_egress, which is refused by name so the caller sends metadata only
 export function egressOf(level: SensitiveDataLevel, text: string, what: string): Egress {
@@ -63,13 +73,45 @@ export async function egressFor(projectId: string, text: string, what: string): 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_TIME = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
 
+/** `onboarding_answers` is product information, not patient data (owner, 2026-10-04): scrubbed at no_egress. */
+export type EgressDataClass = 'content' | 'onboarding_answers';
+
+// cm:guard only questionnaire answers in an onboarding conversation qualify for the no_egress
+// exemption, so a BA clarification batch, which can quote feedback, never does and is refused by name
+function onboardingAnswersRefusal(value: unknown, what: string): EgressRefusal | null {
+  const batches = Array.isArray(value) ? value : [value];
+  const at = batches.findIndex((b) => {
+    const batch = b as { onboardingId?: unknown; requirementId?: unknown } | null;
+    return (
+      typeof batch !== 'object' ||
+      batch === null ||
+      typeof batch.onboardingId !== 'string' ||
+      batch.onboardingId === '' ||
+      batch.requirementId !== null
+    );
+  });
+  if (at === -1) return null;
+  const id = (batches[at] as { id?: unknown } | null | undefined)?.id;
+  return {
+    code: 'CONTENT_EGRESS_FORBIDDEN',
+    path: '',
+    detail: `${what} was read as onboarding answers, but ${typeof id === 'string' ? `questionnaire ${id}` : 'an entry'} is not a batch of an onboarding conversation (it names no onboarding, or names a requirement). Only onboarding questionnaire answers are exempt from no_egress; a requirement clarification is content.`,
+  };
+}
+
 /** `egressOf` over a structured answer: every string scrubbed at redact, ids and times kept whole. */
 export function egressDeep<T>(
   level: SensitiveDataLevel,
   value: T,
   what: string,
+  dataClass: EgressDataClass = 'content',
 ): { ok: true; value: T } | { ok: false; refusal: EgressRefusal } {
-  const gate = egressOf(level, '', what);
+  if (dataClass === 'onboarding_answers') {
+    const stray = onboardingAnswersRefusal(value, what);
+    if (stray) return { ok: false, refusal: stray };
+  }
+  const exempt = dataClass === 'onboarding_answers' && level === 'no_egress';
+  const gate = exempt ? { ok: true as const } : egressOf(level, '', what);
   if (!gate.ok) return gate;
   if (level === 'off') return { ok: true, value };
   const walk = (v: unknown): unknown => {

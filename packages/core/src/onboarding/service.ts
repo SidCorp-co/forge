@@ -468,10 +468,16 @@ export async function readAnswers(projectId: string, actor: OnboardingActor) {
   if (!row) return { ok: false as const, refusals: [notStarted()] };
   const questionnaires = await batchesOfConversation(row.conversationId);
   // cm:guard a person's answers reach a model only as the project's data policy allows: an agent
-  // reader is provider-bound, so it reads them scrubbed at redact and is refused at no_egress
+  // reader is provider-bound, so it reads them scrubbed at redact and at no_egress, where onboarding
+  // answers are the guard's one named exemption (`lib/data-egress.ts:egressDeep`, onboarding_answers)
   const out =
     actor.agency === 'agent'
-      ? egressDeep(await dataPolicyOf(projectId), questionnaires, 'the onboarding answers')
+      ? egressDeep(
+          await dataPolicyOf(projectId),
+          questionnaires,
+          'the onboarding answers',
+          'onboarding_answers',
+        )
       : { ok: true as const, value: questionnaires };
   if (!out.ok) return { ok: false as const, refusals: [out.refusal] };
   return {
