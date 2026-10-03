@@ -71,7 +71,7 @@ function answer(c: Context, outcome: RequirementOutcome) {
 }
 
 requirementRoutes.get('/:id/requirements', projectParam, async (c) => {
-  const requirements = await listRequirementsAs(c.get('userId'), c.req.valid('param').id);
+  const requirements = await listRequirementsAs(actorOf(c), c.req.valid('param').id);
   return c.json({ requirements, returned: requirements.length });
 });
 

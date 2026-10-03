@@ -5,7 +5,7 @@ export { Icon, type IconName, type IconProps } from "./icons/icon";
 export { TemplateIcon, type TemplateIconKey } from "./icons/template-icon";
 export { STAGES, stageColor, type StageKey } from "./stages";
 export {
-  STATUS_META, HEALTH_META, AVATAR_HUE,
+  STATUS_META, HEALTH_META, AVATAR_HUE, AGENT_TINT,
   type StatusKey, type HealthKey, type AvatarHue, type ColorMeta,
 } from "./status";
 

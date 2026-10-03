@@ -28,7 +28,7 @@ import {
 } from "@/design";
 import { decodeFilter, decodeNumber, usePinnedViews } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
-import { useLocationSearch } from "@/lib/utils/use-location-search";
+import { notifyLocationChange, useLocationSearch } from "@/lib/utils/use-location-search";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { usePathname } from "next/navigation";
@@ -189,6 +189,7 @@ export function IssuesListView({
         "",
         `${pathname}${qs ? `?${qs}` : ""}`,
       );
+      notifyLocationChange();
     },
     [pathname],
   );

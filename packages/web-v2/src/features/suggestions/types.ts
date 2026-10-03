@@ -1,4 +1,3 @@
-// The suggestion vocabulary and response shapes are core's own, declared once in @forge/contracts (ISS-58).
 export type {
   SuggestionKind,
   SuggestionListResponse,

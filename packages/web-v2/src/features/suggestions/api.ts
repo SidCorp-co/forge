@@ -8,6 +8,7 @@ export const suggestionsApi = {
   /** The suggestions still waiting on one requirement. */
   waitingOn: (projectId: string, requirement: string) =>
     apiClient<SuggestionListResponse>(`${base(projectId)}?requirement=${encodeURIComponent(requirement)}&status=proposed`),
+  waitingInProject: (projectId: string) => apiClient<SuggestionListResponse>(`${base(projectId)}?status=proposed`),
   decide: (projectId: string, d: SuggestionDecision) =>
     apiClient<SuggestionResponse>(`${base(projectId)}/${d.id}/${d.kind}`, post(d.kind === "reject" ? { reason: d.reason } : {})),
 };

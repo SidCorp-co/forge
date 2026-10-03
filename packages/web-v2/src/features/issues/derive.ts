@@ -88,7 +88,7 @@ export const workStepOf = (row: {
 }): WorkStep | null => row.workState?.step ?? null;
 
 /** Which design-kit chip draws each of contracts' `ISSUE_STATUS_TONES`. */
-const TONE_CHIP: Record<IssueStatusTone, StatusKey> = {
+export const TONE_CHIP: Record<IssueStatusTone, StatusKey> = {
 	neutral: "queued",
 	ready: "passed",
 	run: "running",

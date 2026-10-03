@@ -14,14 +14,25 @@ export function useWaitingSuggestions(projectId: string | undefined, requirement
   });
 }
 
+/** Every suggestion waiting in the project, for the requirements list's assistant strip. */
+export function useProjectWaitingSuggestions(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["suggestions", projectId ?? "", "*"],
+    queryFn: () => suggestionsApi.waitingInProject(projectId as string),
+    enabled: Boolean(projectId),
+    staleTime: 10_000,
+  });
+}
+
 /** Accept or reject one; an accepted revision suggestion adds a draft revision, so the requirement is re-read too. */
 export function useSuggestionDecision(projectId: string, requirement: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (d: SuggestionDecision) => suggestionsApi.decide(projectId, d),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["suggestions", projectId, requirement] });
+      qc.invalidateQueries({ queryKey: ["suggestions", projectId] });
       qc.invalidateQueries({ queryKey: ["requirement", projectId, requirement] });
+      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
     },
   });
 }
