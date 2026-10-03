@@ -15,6 +15,7 @@ import {
   type SuggestionStatus,
   type SuggestionTargetType,
 } from '@forge/contracts/suggestions';
+import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 
 export type { SuggestionRefusal, SuggestionRefusalCode } from '@forge/contracts/suggestions';
 
@@ -214,8 +215,6 @@ export interface BlockerFound {
   archived: boolean;
 }
 
-const TERMINAL_BLOCKER = new Set(['closed', 'dropped']);
-
 // cm:guard a blocker named by key or uuid is a live issue of this project: one that does not
 // resolve here is SUGGESTION_BLOCKER_UNKNOWN (another project's included), a closed, dropped or
 // archived one SUGGESTION_BLOCKER_TERMINAL, since a blocks edge on it holds nothing back (ISS-89)
@@ -237,7 +236,7 @@ export function blockerRefusal(
           : `blockedBy entry "${ref}" names no issue of this project; a string names an existing issue by key (ISS-12) or uuid, a number another issue of this breakdown.`,
     };
   }
-  if (found.archived || TERMINAL_BLOCKER.has(found.status)) {
+  if (found.archived || (ISSUE_TERMINAL_STATUSES as readonly string[]).includes(found.status)) {
     return {
       code: 'SUGGESTION_BLOCKER_TERMINAL',
       path,

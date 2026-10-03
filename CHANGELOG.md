@@ -137,6 +137,20 @@
 
 ### Added
 
+- **A person re-pins a requirement when only a design moved.** Once a linked design is approved past
+  what the agreed baseline pins, a re-pin writes a new baseline with no new text revision. Plans
+  written before it read changed-since-plan.
+
+- **A person defers a requirement out of the current release, and undefers it.** A deferred
+  requirement waits on nobody and is not broken down; a defer needs a reason and no issue in work.
+
+- **An accept carries the signer's reason.** It is kept on the revision or suggestion and on the
+  baseline it writes, never the author's.
+
+- **A breakdown is checked when proposed, as when accepted, and its issues point back at it.** Its
+  `blockedBy` can name an existing issue of another requirement; an unknown or finished one is
+  refused by name.
+
 - **A storefront project's work can be judged on an unpublished draft.** A verdict names an Autoflow
   workflow, its draft version and a preview environment; Forge reads the draft back, and only a
   confirmed draft counts toward `awaiting_release`, never on a git project.

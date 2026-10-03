@@ -153,15 +153,14 @@ interface Turn {
   waitingOn: RequirementWaitingOn;
 }
 
-// cm:why whose turn it is, first rule that holds wins: 1. accepted or dropped → done, deferred →
-// deferred, waiting on nobody, so no queue and no master pass offers it (ISS-85); 2. a proposed
-// revision → a signer; 3. a draft revision → its author; 4. a draft requirement, head current → a
-// signer agrees it; 5. a linked design approved past the baseline's pin → its owner re-pins it
-// (ISS-86); 6. every issue closed and every BC proven → a signer accepts the delivery, a BC
-// unproven → the master proves it; 7. an open breakdown → a signer; 8. an issue planned against an
-// earlier revision or baseline → the master re-plans it; 9. no issue → the master breaks it down;
-// 10. only drafts → a person promotes them; 11. otherwise moving. Then, unless it needs you: no
-// owner, or untouched for STUCK_AFTER_DAYS → stuck.
+// cm:why whose turn it is, first rule wins: 1. accepted, dropped or deferred → done or waiting on
+// nobody (ISS-85); 2. a proposed revision → a signer; 3. a draft revision → its author; 4. a draft
+// requirement, head current → a signer agrees it; 5. a design approved past the baseline's pin → a
+// signer re-pins it (ISS-86); 6. every issue closed → a signer accepts the delivery, a BC unproven →
+// the master proves it; 7. an open breakdown → a signer; 8. an issue planned against an earlier
+// revision or baseline → the master re-plans it; 9. no issue → the master breaks it down; 10. only
+// drafts → a person promotes them; 11. else moving. Unless it needs you: no owner, or untouched
+// for STUCK_AFTER_DAYS → stuck.
 function turnOf(
   input: StandingInput,
   live: readonly StandingIssue[],

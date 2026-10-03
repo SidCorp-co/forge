@@ -6,8 +6,6 @@
 import { z } from "zod";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 
-/** The stored status, set only by a person's act (workflow requirement-lifecycle). `deferred` is out
- *  of the current release, by a person's defer, until an undefer puts back the status it left. */
 export const REQUIREMENT_STATUSES = [
 	"draft",
 	"agreed",
@@ -17,15 +15,11 @@ export const REQUIREMENT_STATUSES = [
 ] as const;
 export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
 
-/** The statuses a defer may leave; an undefer returns to the one the defer left. */
 export const DEFERRABLE_STATUSES = ["draft", "agreed"] as const;
 
-/** One row per defer or undefer, insert-only, so a requirement deferred twice keeps both. */
 export const REQUIREMENT_DEFERRAL_ACTS = ["defer", "undefer"] as const;
 export type RequirementDeferralAct = (typeof REQUIREMENT_DEFERRAL_ACTS)[number];
 
-/** What wrote a baseline: an agree (or the re-baseline a revision accept writes), or a re-pin of
- *  the same revision onto newly approved designs, with no text revision. */
 export const BASELINE_ACTS = ["agree", "repin"] as const;
 export type BaselineAct = (typeof BASELINE_ACTS)[number];
 
@@ -264,15 +258,12 @@ export interface RequirementHistoryEntry {
 	move: { from: string | null; to: string } | null;
 }
 
-/** `POST …/requirements/:req/revisions/:n/accept`: the signer's own words, stored on the revision
- *  and, on an agreed requirement, on the baseline the accept writes. */
 export const acceptRevisionRequestSchema = z.strictObject({
 	reason: z.string().max(4_000).nullable().optional(),
 });
 export const ACCEPT_REVISION_SHAPE =
 	"{ reason? } — the signer's reason, kept on the revision and on the re-baseline it writes";
 
-/** `POST …/requirements/:req/defer`: out of the current release, with why and, optionally, when. */
 export const deferRequirementRequestSchema = z.strictObject({
 	reason: z.string().max(4_000),
 	targetPhase: z.string().trim().min(1).max(200).nullable().optional(),
@@ -280,14 +271,12 @@ export const deferRequirementRequestSchema = z.strictObject({
 export const DEFER_REQUIREMENT_SHAPE =
 	"{ reason, targetPhase? } — why it leaves the current release, and the phase or release it is meant for";
 
-/** `POST …/requirements/:req/undefer`: back to the status the defer left. */
 export const undeferRequirementRequestSchema = z.strictObject({
 	reason: z.string().max(4_000).nullable().optional(),
 });
 export const UNDEFER_REQUIREMENT_SHAPE =
 	"{ reason? } — puts it back at the status it was deferred from";
 
-/** `POST …/requirements/:req/repin`: a new baseline of the head onto the designs approved now. */
 export const repinRequirementRequestSchema = z.strictObject({
 	revision: z.number().int().min(1),
 	reason: z.string().max(4_000).nullable().optional(),
@@ -295,7 +284,6 @@ export const repinRequirementRequestSchema = z.strictObject({
 export const REPIN_REQUIREMENT_SHAPE =
 	"{ revision, reason? } — names the head revision; writes a baseline pinning each linked design's approved revision";
 
-/** A deferred requirement's latest defer, as the detail reads it. */
 export interface RequirementDeferral {
 	from: (typeof DEFERRABLE_STATUSES)[number];
 	reason: string;
