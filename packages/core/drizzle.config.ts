@@ -14,6 +14,7 @@ export default defineConfig({
     './src/db/schema-workflows.ts',
     './src/db/schema-requirements.ts',
     './src/db/schema-suggestions.ts',
+    './src/db/schema-item-embeddings.ts',
     './src/db/schema-questions.ts',
     './src/db/schema-rocketchat.ts',
     './src/db/schema-agent-session-events.ts',

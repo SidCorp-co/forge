@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { requirementsApi } from "./api";
-import type { CreateRequirementBody, RequirementAction, RequirementDetail, SuggestionDecision } from "./types";
+import type { CreateRequirementBody, RequirementAction, RequirementDetail } from "./types";
 
 export function useRequirements(projectId: string | undefined) {
   return useQuery({
@@ -38,28 +38,6 @@ export function useRequirementAction(projectId: string, req: string) {
     onSuccess: (detail: RequirementDetail) => qc.setQueryData(["requirement", projectId, req], detail),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["requirements", projectId] });
-      qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
-    },
-  });
-}
-
-/** The suggestions waiting on a requirement for a person to accept or reject (ISS-58). */
-export function useRequirementSuggestions(projectId: string | undefined, req: string | undefined) {
-  return useQuery({
-    queryKey: ["requirement-suggestions", projectId ?? "", req ?? ""],
-    queryFn: () => requirementsApi.suggestions(projectId as string, req as string),
-    enabled: Boolean(projectId && req),
-    staleTime: 10_000,
-  });
-}
-
-/** Accept or reject one; an accepted revision suggestion adds a draft revision, so the detail is re-read too. */
-export function useSuggestionDecision(projectId: string, req: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (d: SuggestionDecision) => requirementsApi.decide(projectId, d),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["requirement-suggestions", projectId, req] });
       qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
     },
   });

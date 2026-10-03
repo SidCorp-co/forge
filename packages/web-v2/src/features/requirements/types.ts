@@ -47,18 +47,3 @@ export type RequirementAction =
   | { kind: 'accept'; revision: number }
   | { kind: 'return'; revision: number; reason: string }
   | { kind: 'agree'; revision: number };
-
-export type SuggestionKind = 'requirement_draft' | 'revision_diff' | 'readiness' | 'breakdown' | 'triage' | 'duplicate';
-export type SuggestionStatus = 'proposed' | 'accepted' | 'rejected' | 'stale' | 'withdrawn';
-export interface Suggestion {
-  id: string; kind: SuggestionKind; status: SuggestionStatus;
-  target: { type: 'requirement' | 'issue'; id: string };
-  baseRevision: number | null;
-  payload: Record<string, unknown> | null;
-  producerKind: 'ba_assistant' | 'agent' | 'person';
-  model: string | null;
-  reason: string | null;
-  createdAt: string; decidedAt: string | null;
-}
-export interface SuggestionList { suggestions: Suggestion[]; open: number }
-export type SuggestionDecision = { kind: 'accept'; id: string } | { kind: 'reject'; id: string; reason: string };

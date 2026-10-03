@@ -4,17 +4,19 @@
  * the REST routes in `suggestions/routes.ts` are the same services.
  */
 
+import { SUGGESTION_KINDS, SUGGESTION_STATUSES } from '@forge/contracts/suggestions';
 import { z } from 'zod';
-import { SUGGESTION_KINDS, SUGGESTION_STATUSES } from '../../db/schema-suggestions.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
+import {
+  listSuggestions,
+  type SuggestionActor,
+  type SuggestionTargetRef,
+} from '../../suggestions/read.js';
 import {
   acceptSuggestion,
   createSuggestion,
-  listSuggestions,
   rejectSuggestion,
-  type SuggestionActor,
   type SuggestionOutcome,
-  type SuggestionTargetRef,
   withdrawSuggestion,
 } from '../../suggestions/service.js';
 import {
