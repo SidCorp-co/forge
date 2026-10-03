@@ -2,6 +2,7 @@
 // word is a free string here on purpose: an unknown one is refused by name by
 // `verdict-input.ts:verdictDraftFault` (VERDICT_VALUE_UNKNOWN), not by a schema's generic 400.
 
+import { storefrontDraftIdentitySchema } from '@forge/contracts/verdict-identity';
 import { z } from 'zod';
 import type { CriterionInput } from './store.js';
 
@@ -47,6 +48,7 @@ export const verdictIdentitySchema = z.discriminatedUnion('kind', [
       version: z.string().trim().min(1).max(100),
     })
     .strict(),
+  storefrontDraftIdentitySchema,
 ]);
 
 export const verdictPostSchema = z

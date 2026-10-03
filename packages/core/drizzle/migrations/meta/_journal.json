@@ -2304,6 +2304,13 @@
       "when": 1813622400000,
       "tag": "0355_a_requirement_return_is_a_row",
       "breakpoints": true
+    },
+    {
+      "idx": 360,
+      "version": "7",
+      "when": 1814054400000,
+      "tag": "0360_a_storefront_draft_is_a_verdict_identity",
+      "breakpoints": true
     }
   ]
 }

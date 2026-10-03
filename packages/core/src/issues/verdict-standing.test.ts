@@ -360,3 +360,25 @@ describe('a design verdict', () => {
     );
   });
 });
+
+describe('verdictStanding — a storefront draft (ISS-91)', () => {
+  const draft = (note: string | null): VerdictIdentity => ({
+    kind: 'storefront_draft',
+    value: 'wf-1@draft:abc on `preview`',
+    corroborationNote: note,
+  });
+
+  it('stands on the reading taken when it was recorded, whatever the production reading says', () => {
+    expect(verdictStanding(draft(null), serving(OTHER), has(null))).toBe('stands');
+    expect(standingSentence('stands', draft(null), undeclared, has(null))).toContain(
+      'which the storefront source held',
+    );
+  });
+
+  it('is uncorroborated where the source was not read back, and the sentence says why', () => {
+    expect(verdictStanding(draft('http_502'), undeclared, has(null))).toBe('uncorroborated');
+    expect(standingSentence('uncorroborated', draft('http_502'), undeclared, has(null))).toContain(
+      'http_502',
+    );
+  });
+});

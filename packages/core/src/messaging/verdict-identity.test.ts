@@ -134,6 +134,7 @@ describe('criterionBlocksIn', () => {
         design: null,
         why: null,
         contract: null,
+        environment: null,
         cited: [],
       },
       {
@@ -144,6 +145,7 @@ describe('criterionBlocksIn', () => {
         design: null,
         why: null,
         contract: null,
+        environment: null,
         cited: [],
       },
     ]);
@@ -244,5 +246,30 @@ describe('a design identity', () => {
       parseForgeRecord(record('verdict', ['criterion: 1', 'verdict: pass', 'design: f rev 2'])),
     );
     expect(block?.design).toBe('f rev 2');
+  });
+});
+
+describe('a storefront draft runtime (ISS-91)', () => {
+  const DRAFT = `runtime: b2eb2792-a043-4d5f-80a3-50a32c29e6e9@draft:${'a'.repeat(64)}`;
+
+  it('admits `runtime: <workflow id>@draft:<version>` with an environment line', () => {
+    expect(
+      refusalsFor('verdict', ['criterion: 1', 'verdict: pass', DRAFT, 'environment: preview']),
+    ).toEqual([]);
+  });
+
+  it('refuses a draft runtime that names no environment, naming the field to add', () => {
+    const [refusal, ...rest] = refusalsFor('verdict', ['criterion: 1', 'verdict: pass', DRAFT]);
+    expect(rest).toEqual([]);
+    expect(refusal?.why).toContain('no `environment` line');
+  });
+
+  it('keeps a plain runtime exactly as strict: a uuid is still not an identity', () => {
+    const [refusal] = refusalsFor('verdict', [
+      'criterion: 1',
+      'verdict: pass',
+      'runtime: b2eb2792-a043-4d5f-80a3-50a32c29e6e9',
+    ]);
+    expect(refusal?.why).toContain('not written as an identity');
   });
 });
