@@ -3,8 +3,8 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { SUGGESTION_KINDS, SUGGESTION_STATUSES } from '../db/schema-suggestions.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
-import type { NamedRefusal } from '../project-config/respond.js';
+import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { answerRefusal } from '../lib/refusal.js';
 import {
   acceptSuggestion,
   createSuggestion,
@@ -33,39 +33,15 @@ const suggestionParam = zValidator('param', z.object({ id: z.uuid(), sid: z.uuid
   if (!r.success) throw badRequest('invalid path: a project uuid and a suggestion uuid');
 });
 
-const strictBody = <T extends z.ZodType>(schema: T, what: string) =>
-  zValidator('json', schema, (r) => {
-    if (!r.success) throw badRequest(`invalid body: ${what}`);
-  });
-
 function actorOf(c: Context<{ Variables: AuthVars }>): SuggestionActor {
   const agency = c.get('agency');
   if (!agency) throw new Error('suggestions: a request reached its handler without an auth gate');
   return { userId: c.get('userId'), agency };
 }
 
-/** A refusal's HTTP status: forbidden for who acts, conflict for a row or head that moved. */
-function statusOf(refusals: readonly NamedRefusal[]): 403 | 409 | 422 {
-  const code = refusals[0]?.code ?? '';
-  if (code.endsWith('_FORBIDDEN')) return 403;
-  if (code === 'SUGGESTION_BASE_STALE' || code === 'SUGGESTION_DECIDED') return 409;
-  return 422;
-}
-
 export function answerSuggestion(c: Context, outcome: SuggestionOutcome) {
-  if (!outcome.ok) {
-    const codes = [...new Set(outcome.refusals.map((r) => r.code))];
-    return c.json(
-      {
-        error: {
-          code: codes.length === 1 ? codes[0] : 'SUGGESTION_REFUSED',
-          message: `refused: ${outcome.refusals.map((r) => `${r.code} at ${r.path || '/'}: ${r.detail}`).join('; ')}`,
-          refusals: outcome.refusals,
-        },
-      },
-      statusOf(outcome.refusals),
-    );
-  }
+  if (!outcome.ok)
+    return answerRefusal(c, outcome.refusals, { fallbackCode: 'SUGGESTION_REFUSED' });
   return c.json(
     { suggestion: outcome.suggestion, ...(outcome.effect ? { effect: outcome.effect } : {}) },
     outcome.created ? 201 : 200,

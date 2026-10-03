@@ -10,7 +10,7 @@ import { z } from 'zod';
 import type { ProjectMemberRole } from '../db/schema.js';
 import type { SuggestionKind, SuggestionStatus } from '../db/schema-suggestions.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { projectRoleAtLeast } from '../lib/authz.js';
+import { agencyMiss, PERSON_SIGNOFF } from '../lib/agency-gate.js';
 import { criterionSchema, specSchema } from '../requirements/schemas.js';
 
 export type SuggestionRefusalCode =
@@ -224,18 +224,15 @@ export function deciderRefusal(
   facts: DeciderFacts,
   act: 'accept' | 'reject',
 ): SuggestionRefusal | null {
-  if (facts.agency !== 'human') {
+  const miss = agencyMiss(facts, PERSON_SIGNOFF);
+  if (miss) {
     return {
       code: 'SUGGESTION_ACCEPT_FORBIDDEN',
       path: '',
-      detail: `${facts.userId} acts as an agent; to ${act} a suggestion is a person's act. An agent or the assistant proposes and leaves the decision to them.`,
-    };
-  }
-  if (!projectRoleAtLeast(facts.role, 'member')) {
-    return {
-      code: 'SUGGESTION_ACCEPT_FORBIDDEN',
-      path: '',
-      detail: `${facts.userId} holds ${facts.role ?? 'no role'} on this project; a member or above decides a suggestion.`,
+      detail:
+        miss.kind === 'agent-not-allowed'
+          ? `${facts.userId} acts as an agent; to ${act} a suggestion is a person's act. An agent or the assistant proposes and leaves the decision to them.`
+          : `${facts.userId} holds ${facts.role ?? 'no role'} on this project; a member or above decides a suggestion.`,
     };
   }
   if (act === 'accept' && facts.producerId === facts.userId) {

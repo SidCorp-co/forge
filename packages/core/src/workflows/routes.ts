@@ -2,7 +2,8 @@ import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { answerRefusal } from '../lib/refusal.js';
 import { envelopeOf, refused } from '../project-config/respond.js';
 import { DESIGN_DECISIONS, DESIGN_REASON_MAX } from './design.js';
 import {
@@ -97,14 +98,9 @@ workflowRoutes.put('/:id/workflows/:workflow', workflowParam, envelope, async (c
 });
 
 function answerDesign(c: Context, outcome: DesignOutcome) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return answerRefusal(c, outcome.refusals, { fallbackCode: 'WORKFLOW_DESIGN_REFUSED' });
   return c.json(outcome.design);
 }
-
-const strictBody = <T extends z.ZodType>(schema: T, what: string) =>
-  zValidator('json', schema, (r) => {
-    if (!r.success) throw badRequest(`invalid body: ${what}`);
-  });
 
 workflowRoutes.get('/:id/workflows/:workflow/design', workflowParam, async (c) => {
   const { id, workflow } = c.req.valid('param');

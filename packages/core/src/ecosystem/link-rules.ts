@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import type { ProjectMemberRole } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { projectRoleAtLeast } from '../lib/authz.js';
+import { agencyMiss, PROJECT_AGENT_WRITE } from '../lib/agency-gate.js';
 import {
   type ApiRefusal,
   isRecord,
@@ -112,9 +112,10 @@ export function writerRefusal(
   projectId: string,
   code: 'LINK_WRITER_NOT_CONSUMER' | 'BUILDER_RUN_WRITER_NOT_PROJECT',
 ): EcosystemRefusal | null {
-  if (facts.agency === 'agent' && projectRoleAtLeast(facts.role, 'member')) return null;
+  const miss = agencyMiss(facts, PROJECT_AGENT_WRITE);
+  if (!miss) return null;
   const held =
-    facts.agency !== 'agent'
+    miss.kind === 'person-not-allowed'
       ? `${facts.userId} acts as a person`
       : `agent ${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}`;
   return {

@@ -29,7 +29,6 @@ import { userNames } from '../workflows/service.js';
 import {
   changedSincePlan,
   type LinkedDesign,
-  type RequirementRefusal,
   signoffRefusal,
 } from './rules.js';
 
@@ -51,12 +50,6 @@ export type CriterionRow = typeof requirementCriteria.$inferSelect;
 
 export const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-export const forbidden = (refusal: RequirementRefusal) =>
-  new HTTPException(403, {
-    message: refusal.detail,
-    cause: { code: refusal.code, details: { refusals: [refusal] } },
-  });
 
 export const requirementKey = (seq: number) => `REQ-${seq}`;
 

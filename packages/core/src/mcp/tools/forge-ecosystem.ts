@@ -43,7 +43,7 @@ import type { EcosystemRefusal } from '../../ecosystem/refusals.js';
 import { projectsWhere } from '../../ecosystem/store.js';
 import { assertProjectAccess } from '../../lib/authz.js';
 import { namedRefusals, type SideCodes, sideOf } from './ecosystem-side.js';
-import type { ContextScopedMcpToolFactory, McpContext } from './lib.js';
+import { type ContextScopedMcpToolFactory, type McpContext, refusedAnswer } from './lib.js';
 
 const READS = [
   'interface',
@@ -138,14 +138,8 @@ const SHAPES: Record<Action, string> = {
 
 type Answer = Record<string, unknown>;
 
-const refusedWith = (refusals: readonly EcosystemRefusal[]): Answer => ({
-  _mcpIsError: true,
-  error: {
-    code: refusals.length === 1 ? refusals[0]?.code : 'ECOSYSTEM_REFUSED',
-    message: `refused, nothing written: ${refusals.map((r) => `${r.code} at ${r.path || '/'}`).join('; ')}`,
-    refusals,
-  },
-});
+const refusedWith = (refusals: readonly EcosystemRefusal[]): Answer =>
+  refusedAnswer(refusals, 'ECOSYSTEM_REFUSED');
 
 const one = (code: EcosystemRefusal['code'], path: string, detail: string) =>
   refusedWith([{ code, path, detail }]);

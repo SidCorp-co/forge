@@ -8,7 +8,7 @@
 import type { ProjectMemberRole } from '../db/schema.js';
 import type { CriterionForm, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { projectRoleAtLeast } from '../lib/authz.js';
+import { agencyMiss, PERSON_SIGNOFF } from '../lib/agency-gate.js';
 
 export type RequirementRefusalCode =
   | 'REQUIREMENT_SIGNOFF_FORBIDDEN'
@@ -46,21 +46,16 @@ export function signoffRefusal(
   projectId: string,
   act: string,
 ): RequirementRefusal | null {
-  if (facts.agency !== 'human') {
-    return {
-      code: 'REQUIREMENT_SIGNOFF_FORBIDDEN',
-      path: '',
-      detail: `${facts.userId} acts as an agent; ${act} is signed by a person, this project's BA or owner. An agent drafts and proposes a revision and leaves the sign-off to them.`,
-    };
-  }
-  if (!projectRoleAtLeast(facts.role, 'member')) {
-    return {
-      code: 'REQUIREMENT_SIGNOFF_FORBIDDEN',
-      path: '',
-      detail: `${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}; ${act} is signed by a person of this project (member or above).`,
-    };
-  }
-  return null;
+  const miss = agencyMiss(facts, PERSON_SIGNOFF);
+  if (!miss) return null;
+  return {
+    code: 'REQUIREMENT_SIGNOFF_FORBIDDEN',
+    path: '',
+    detail:
+      miss.kind === 'agent-not-allowed'
+        ? `${facts.userId} acts as an agent; ${act} is signed by a person, this project's BA or owner. An agent drafts and proposes a revision and leaves the sign-off to them.`
+        : `${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}; ${act} is signed by a person of this project (member or above).`,
+  };
 }
 
 export function reasonRefusal(reason: string | null | undefined): RequirementRefusal | null {

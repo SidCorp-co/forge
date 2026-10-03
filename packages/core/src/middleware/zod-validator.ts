@@ -1,6 +1,8 @@
 import { zValidator as honoZodValidator } from '@hono/zod-validator';
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import type { z } from 'zod';
+import { flatten } from './route-errors.js';
 
 type Args = Parameters<typeof honoZodValidator>;
 
@@ -54,4 +56,20 @@ export function rawBody(
   };
   declaredRaw.set(middleware, { contentType, description, required });
   return middleware;
+}
+
+/**
+ * A domain write's JSON body: 400 `BAD_REQUEST` whose message carries the valid shape (`hint`) and
+ * whose `details` name each field that was wrong (`route-errors.ts:flatten`), so neither the shape
+ * nor the field is left for the caller to guess.
+ */
+export function strictBody<T extends z.ZodType>(schema: T, hint: string) {
+  return zValidator('json', schema, (r) => {
+    if (!r.success) {
+      throw new HTTPException(400, {
+        message: `invalid body: ${hint}`,
+        cause: { code: 'BAD_REQUEST', details: flatten(r.error) },
+      });
+    }
+  });
 }

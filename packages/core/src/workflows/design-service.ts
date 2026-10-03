@@ -1,4 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
+import { RefusalException } from '../lib/refusal.js';
 import { db } from '../db/client.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
@@ -38,12 +39,6 @@ export type DesignOutcome =
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const forbidden = (refusal: DesignRefusal) =>
-  new HTTPException(403, {
-    message: refusal.detail,
-    cause: { code: refusal.code, details: { refusals: [refusal] } },
-  });
 
 export async function designApproverOf(projectId: string): Promise<DesignApprover> {
   return (await readProjectDocument(projectId))?.document.workflows?.designApprover ?? 'owner';
@@ -191,7 +186,8 @@ export async function decideDesignAs(input: {
   const reason = input.reason?.trim() || null;
   await rowIn(projectId, id);
   const refusal = await approverRefusalFor(decider, projectId, await designApproverOf(projectId));
-  if (refusal) throw forbidden(refusal);
+  // cm:why an approver code predates the `_FORBIDDEN` suffix, so its 403 is named here rather than read off the code
+  if (refusal) throw new RefusalException(403, [refusal], 'WORKFLOW_DESIGN_REFUSED');
   type Decided = { refusals: DesignRefusal[] } | { flow: string; designIssueId: string | null };
   const outcome = await db.transaction(async (tx): Promise<Decided> => {
     await lockWorkflows(tx, projectId);
@@ -293,7 +289,8 @@ export async function unlinkBuildAs(input: {
   const { projectId, id, actor } = input;
   await rowIn(projectId, id);
   const refusal = await approverRefusalFor(actor, projectId, await designApproverOf(projectId));
-  if (refusal) throw forbidden(refusal);
+  // cm:why an approver code predates the `_FORBIDDEN` suffix, so its 403 is named here rather than read off the code
+  if (refusal) throw new RefusalException(403, [refusal], 'WORKFLOW_DESIGN_REFUSED');
   const issue = await resolveIssueRouteRef(input.issue, projectId, actor.userId);
   const missing = await db.transaction(async (tx): Promise<DesignRefusal | null> => {
     await lockWorkflows(tx, projectId);

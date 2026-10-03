@@ -2,8 +2,8 @@ import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
-import { refused } from '../project-config/respond.js';
+import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { answerRefusal } from '../lib/refusal.js';
 import { linkIssue, linkWorkflow, unlinkIssue, unlinkWorkflow } from './issue-links.js';
 import { listRequirementsAs, type RequirementActor, readRequirementAs } from './read.js';
 import { criterionSchema, specSchema } from './schemas.js';
@@ -51,11 +51,6 @@ const revisionParam = zValidator(
   },
 );
 
-const strictBody = <T extends z.ZodType>(schema: T, what: string) =>
-  zValidator('json', schema, (r) => {
-    if (!r.success) throw badRequest(`invalid body: ${what}`);
-  });
-
 const revisionFields = {
   reason: z.string().max(4_000),
   spec: specSchema.optional(),
@@ -71,7 +66,8 @@ function actorOf(c: Context<{ Variables: AuthVars }>): RequirementActor {
 }
 
 function answer(c: Context, outcome: RequirementOutcome) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok)
+    return answerRefusal(c, outcome.refusals, { fallbackCode: 'REQUIREMENT_REFUSED' });
   return c.json(outcome.requirement, outcome.created ? 201 : 200);
 }
 
