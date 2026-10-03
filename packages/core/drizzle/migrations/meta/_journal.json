@@ -2248,6 +2248,13 @@
       "when": 1812931200000,
       "tag": "0347_an_issue_record_is_an_event",
       "breakpoints": true
+    },
+    {
+      "idx": 348,
+      "version": "7",
+      "when": 1813017600000,
+      "tag": "0348_a_project_consumes_its_own_contract_and_a_version_is_approved_before_it_is_current",
+      "breakpoints": true
     }
   ]
 }

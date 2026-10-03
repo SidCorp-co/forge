@@ -1,4 +1,5 @@
 import type { ApiRefusal } from '../project-config/documents.js';
+import type { ApprovalRefusalCode } from './contract/approval.js';
 import type { ContractRefusalCode } from './contract/refusal-codes.js';
 
 export type EcosystemRefusalCode =
@@ -17,6 +18,7 @@ export type EcosystemRefusalCode =
   | 'ECOSYSTEM_NOT_SHARED'
   | 'ECOSYSTEM_NOT_MEMBER'
   | 'SELF_CONSUMPTION'
+  | 'CONSUMPTION_ECOSYSTEM_MISSING'
   | 'VERSION_UNKNOWN'
   | 'CONSUMPTION_DUPLICATE'
   | 'CONTRACT_IN_USE'
@@ -29,6 +31,7 @@ export type EcosystemRefusalCode =
   | ChannelRefusalCode
   | EcosystemToolRefusalCode
   | ContractRefusalCode
+  | ApprovalRefusalCode
   | LinkRefusalCode;
 
 export type LinkRefusalCode =
@@ -38,6 +41,7 @@ export type LinkRefusalCode =
   | 'LINK_DUPLICATE'
   | 'LINK_CONSUMER_NOT_MEMBER'
   | 'LINK_PROVIDER_NOT_MEMBER'
+  | 'LINK_ECOSYSTEM_MISSING'
   | 'LINK_IDENTITY_IMMUTABLE'
   | 'PATH_OUTSIDE_REPO'
   | 'CALL_SITE_KIND_MISMATCH'

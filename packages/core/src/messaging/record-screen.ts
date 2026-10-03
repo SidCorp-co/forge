@@ -16,6 +16,11 @@ import {
   type ForgeRecordField,
 } from './forge-record.js';
 import { screenMessage } from './screen.js';
+import {
+  type ContractLookup,
+  dbContractLookup,
+  verdictContractRefusals,
+} from './verdict-contract.js';
 import { type DesignLookup, dbDesignLookup, verdictDesignRefusals } from './verdict-design.js';
 import { verdictIdentityRefusals } from './verdict-identity.js';
 
@@ -26,6 +31,7 @@ export const RECORD_RULE_IDS: readonly string[] = [
   'record-fence-shape',
   'verdict-identity',
   'verdict-design',
+  'verdict-contract',
   'verdict-evidence',
 ];
 
@@ -192,12 +198,14 @@ export async function recordRefusals(
   record: ForgeRecord | null,
   executor?: Tx,
   designs: DesignLookup = dbDesignLookup(executor),
+  contracts: ContractLookup = dbContractLookup(executor),
 ): Promise<MessageRefusal[]> {
   if (!record) return [];
   const refusals = [
     ...budgetRefusals(record),
     ...verdictIdentityRefusals(record),
     ...(await verdictDesignRefusals(projectId, record, designs)),
+    ...(await verdictContractRefusals(projectId, record, contracts)),
     ...verdictEvidenceRefusals(record),
   ];
   if (record.lead === null) return refusals;

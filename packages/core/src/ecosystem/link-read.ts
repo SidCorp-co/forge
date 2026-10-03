@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { assertProjectAccess, effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { forbidden, notFound, readerProjects } from './access.js';
 import { type LinkImpact, linkImpact } from './contract/impact.js';
-import { latestVersion, type StoredVersion, versionsOf } from './contract/store.js';
+import { currentVersion, type StoredVersion, versionsOf } from './contract/store.js';
 import { loadGraph } from './graph.js';
 import { heldInterface } from './interface-service.js';
 import { stepsStale } from './link-rules.js';
@@ -33,21 +33,24 @@ export function recordView<W extends object>(held: Held<W>) {
   return { revision: held.row.revision, writer: held.row.writtenByUser, document: stamped(held) };
 }
 
-const asEdge = (l: StoredLink): EdgeRow => ({
+const asEdge = (l: StoredLink, ecosystemId: string): EdgeRow => ({
   consumerProjectId: l.projectId,
   providerProjectId: l.providerProjectId,
   contractSlug: l.contractSlug,
-  ecosystemId: l.ecosystemId,
+  ecosystemId,
   builtAgainst: l.pinnedVersion,
 });
 
-// cm:why a link is the consumer's record, read in full by the consumer's members and by the provider it points at; anyone else reads it only where the ecosystem shows every member everything
+// cm:why a link is the consumer's record, read in full by the consumer's members and by the provider it points at; anyone else reads it only where the ecosystem shows every member everything, and an in-project link is in no ecosystem, so only the project's own members read it
 async function assertLinkReadable(userId: string, link: StoredLink): Promise<void> {
   const role = (await effectiveProjectRole(userId, link.projectId))?.role ?? null;
   if (projectRoleAtLeast(role, 'viewer')) return;
-  const graph = await loadGraph([link.ecosystemId]);
-  const reader = await readerProjects(userId, fencedProjectIds() ?? undefined);
-  if (edgeVisible(graph, asEdge(link), reader)) return;
+  const ecosystemId = link.ecosystemId;
+  if (ecosystemId !== null) {
+    const graph = await loadGraph([ecosystemId]);
+    const reader = await readerProjects(userId, fencedProjectIds() ?? undefined);
+    if (edgeVisible(graph, asEdge(link, ecosystemId), reader)) return;
+  }
   throw forbidden(
     `link ${link.id} is readable by project ${link.projectId}'s members, by its provider, and by members of an ecosystem whose members see everything`,
   );
@@ -59,7 +62,7 @@ export async function readLinkAs(userId: string, projectId: string, linkId: stri
     throw notFound(`project ${projectId} holds no link ${linkId}`);
   }
   await assertLinkReadable(userId, row);
-  const current = await latestVersion(db, row.providerProjectId, row.contractSlug);
+  const current = await currentVersion(db, row.providerProjectId, row.contractSlug);
   return {
     ...recordView({ row, document: storedLink(row) }),
     currentVersion: current?.version ?? null,
@@ -153,7 +156,7 @@ export async function readBus(userId: string, ecosystemId: string) {
     (l) =>
       members.has(l.projectId) &&
       members.has(l.providerProjectId) &&
-      (steward || edgeVisible(graph, asEdge(l), mine)),
+      (steward || edgeVisible(graph, asEdge(l, ecosystemId), mine)),
   );
   const shown = [
     ...new Set([...seen, ...links.flatMap((l) => [l.projectId, l.providerProjectId])]),

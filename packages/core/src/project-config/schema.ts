@@ -170,6 +170,15 @@ export const projectDocumentSchema = z.strictObject({
       templates: z.array(projectWorkflowTemplateSchema).max(TEMPLATE_LIMITS.templates).optional(),
     })
     .optional(),
+  // cm:why who approves a recorded contract version before it is current
+  // (`ecosystem/contract/approval.ts:approverRefusal`): `owner` is an org admin person, `master` lets
+  // the project's own agent approve a non-breaking version; a breaking or unmeasured one always
+  // needs a person. Absent is `owner`.
+  contracts: z
+    .strictObject({
+      approver: z.enum(DESIGN_APPROVERS).optional(),
+    })
+    .optional(),
   execution: z.strictObject({
     plugin: z.strictObject({
       source: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),

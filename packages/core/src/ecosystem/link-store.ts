@@ -5,13 +5,19 @@ import type { BuilderRunWrite, LinkWrite } from './link-schema.js';
 
 export interface StoredRecord {
   id: string;
-  ecosystemId: string;
+  /** Null only on an in-project link; a builder run always names its ecosystem. */
+  ecosystemId: string | null;
   projectId: string;
   revision: number;
   document: unknown;
   writtenByUser: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** A builder run, which is always read against one ecosystem (`ecosystem_builder_runs.ecosystem_id` is NOT NULL). */
+export interface StoredRun extends StoredRecord {
+  ecosystemId: string;
 }
 
 export interface StoredLink extends StoredRecord {
@@ -39,7 +45,7 @@ const linkColumns = {
 };
 
 const linkValues = (doc: LinkWrite) => ({
-  ecosystemId: doc.ecosystem,
+  ecosystemId: doc.ecosystem ?? null,
   consumerProjectId: doc.consumer.project,
   modulePath: doc.consumer.module,
   providerProjectId: doc.contract.provider,
@@ -133,7 +139,7 @@ const runValues = (doc: BuilderRunWrite) => ({
   document: doc,
 });
 
-export async function readBuilderRun(tx: Tx, id: string): Promise<StoredRecord | null> {
+export async function readBuilderRun(tx: Tx, id: string): Promise<StoredRun | null> {
   const [row] = await tx
     .select(runColumns)
     .from(ecosystemBuilderRuns)
@@ -141,7 +147,7 @@ export async function readBuilderRun(tx: Tx, id: string): Promise<StoredRecord |
   return row ?? null;
 }
 
-export async function builderRunsOf(tx: Tx, projectId: string): Promise<StoredRecord[]> {
+export async function builderRunsOf(tx: Tx, projectId: string): Promise<StoredRun[]> {
   return tx
     .select(runColumns)
     .from(ecosystemBuilderRuns)
@@ -149,7 +155,7 @@ export async function builderRunsOf(tx: Tx, projectId: string): Promise<StoredRe
     .orderBy(desc(ecosystemBuilderRuns.createdAt), ecosystemBuilderRuns.id);
 }
 
-export async function builderRunsIn(tx: Tx, ecosystemId: string): Promise<StoredRecord[]> {
+export async function builderRunsIn(tx: Tx, ecosystemId: string): Promise<StoredRun[]> {
   return tx
     .select(runColumns)
     .from(ecosystemBuilderRuns)
@@ -161,7 +167,7 @@ export async function insertBuilderRun(
   tx: Tx,
   doc: BuilderRunWrite,
   userId: string,
-): Promise<StoredRecord> {
+): Promise<StoredRun> {
   const [row] = await tx
     .insert(ecosystemBuilderRuns)
     .values({ ...runValues(doc), revision: 1, writtenByUser: userId })
@@ -173,7 +179,7 @@ export async function insertBuilderRun(
 export async function replaceBuilderRun(
   tx: Tx,
   input: { id: string; revision: number; doc: BuilderRunWrite; userId: string },
-): Promise<StoredRecord> {
+): Promise<StoredRun> {
   const [row] = await tx
     .update(ecosystemBuilderRuns)
     .set({

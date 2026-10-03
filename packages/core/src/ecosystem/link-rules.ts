@@ -9,6 +9,7 @@ import {
   pointer,
 } from '../project-config/documents.js';
 import type { ProjectDocument, STOREFRONT_PROVIDERS } from '../project-config/schema.js';
+import { ownLinkRefusals, versionRefusals } from './link-own-rules.js';
 import {
   ARTEFACT_KINDS,
   BUILDER_RUN_SCHEMA_ID,
@@ -205,20 +206,20 @@ function guideRefusals(doc: LinkWrite): EcosystemRefusal[] {
   ];
 }
 
-function memberRefusals(doc: LinkWrite, world: LinkWorld): EcosystemRefusal[] {
+function memberRefusals(doc: LinkWrite, ecosystem: string, world: LinkWorld): EcosystemRefusal[] {
   const out: EcosystemRefusal[] = [];
-  if (!world.consumerActiveIn.has(doc.ecosystem)) {
+  if (!world.consumerActiveIn.has(ecosystem)) {
     out.push({
       code: 'LINK_CONSUMER_NOT_MEMBER',
       path: '/ecosystem',
-      detail: `project ${doc.consumer.project} is not an active member of ecosystem ${doc.ecosystem}; a project links only inside an ecosystem it has joined.`,
+      detail: `project ${doc.consumer.project} is not an active member of ecosystem ${ecosystem}; a project links only inside an ecosystem it has joined.`,
     });
   }
-  if (world.provider && !world.provider.activeIn.has(doc.ecosystem)) {
+  if (world.provider && !world.provider.activeIn.has(ecosystem)) {
     out.push({
       code: 'LINK_PROVIDER_NOT_MEMBER',
       path: '/contract/provider',
-      detail: `provider ${doc.contract.provider} is not an active member of ecosystem ${doc.ecosystem}; a link reaches only a contract published inside an ecosystem both sides belong to.`,
+      detail: `provider ${doc.contract.provider} is not an active member of ecosystem ${ecosystem}; a link reaches only a contract published inside an ecosystem both sides belong to.`,
     });
   }
   return out;
@@ -226,16 +227,17 @@ function memberRefusals(doc: LinkWrite, world: LinkWorld): EcosystemRefusal[] {
 
 function referenceRefusals(doc: LinkWrite, world: LinkWorld): EcosystemRefusal[] {
   const ref = `${doc.contract.provider}/${doc.contract.slug}`;
-  if (doc.contract.provider === doc.consumer.project) {
+  if (doc.contract.provider === doc.consumer.project) return ownLinkRefusals(doc, world, ref);
+  if (doc.ecosystem === undefined) {
     return [
       {
-        code: 'SELF_CONSUMPTION',
-        path: '/contract/provider',
-        detail: `${ref} is this project's own contract; a project never links to itself.`,
+        code: 'LINK_ECOSYSTEM_MISSING',
+        path: '/ecosystem',
+        detail: `${ref} is another project's contract; only a link to the project's own contract names no ecosystem. Name the ecosystem both projects are active members of.`,
       },
     ];
   }
-  const members = memberRefusals(doc, world);
+  const members = memberRefusals(doc, doc.ecosystem, world);
   if (!world.provider) {
     return [
       ...members,
@@ -257,15 +259,7 @@ function referenceRefusals(doc: LinkWrite, world: LinkWorld): EcosystemRefusal[]
       },
     ];
   }
-  if (world.versions.has(doc.pinnedVersion)) return [];
-  const known = world.versions.size > 0 ? [...world.versions].sort().join(', ') : 'none yet';
-  return [
-    {
-      code: 'VERSION_UNKNOWN',
-      path: '/pinnedVersion',
-      detail: `${ref} has no recorded version "${doc.pinnedVersion}" (recorded: ${known}); pinnedVersion names a version core has recorded for that contract.`,
-    },
-  ];
+  return versionRefusals(doc, world, ref);
 }
 
 export function checkLink(doc: LinkWrite, world: LinkWorld): EcosystemRefusal[] {

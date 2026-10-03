@@ -97,15 +97,9 @@ async function buildWorld(
       tx,
       providers.map((p) => p.id),
     ),
-    recordedVersions(
-      tx,
-      providers.map((p) => p.id),
-    ),
+    recordedVersions(tx, ids),
     consumersOf(tx, self.id),
-    versionsOf(
-      tx,
-      providers.map((p) => p.id),
-    ),
+    versionsOf(tx, ids),
   ]);
   const activeIn = (projectId: string) =>
     new Set(active.filter((a) => a.projectId === projectId).map((a) => a.ecosystemId));
@@ -155,17 +149,22 @@ function edgesOf(
   self: string,
   providers: readonly ProjectRow[],
 ): EdgeRow[] {
-  return doc.consumes.map((c) => {
+  // cm:why an in-project consumption is no ecosystem edge: `ecosystem_consumptions` holds what one project consumes of another, and the project's own modules reach its contract through the interface and its in-project links
+  return doc.consumes.flatMap((c) => {
+    const ecosystemId = c.ecosystem;
+    if (ecosystemId === undefined) return [];
     const { provider, contract } = splitContractRef(c.contract);
     const row = providers.find((p) => p.slug === provider);
     if (!row) throw new Error(`ecosystem: ${c.contract} passed the rules with no provider row`);
-    return {
-      consumerProjectId: self,
-      providerProjectId: row.id,
-      contractSlug: contract,
-      ecosystemId: c.ecosystem,
-      builtAgainst: c.builtAgainst,
-    };
+    return [
+      {
+        consumerProjectId: self,
+        providerProjectId: row.id,
+        contractSlug: contract,
+        ecosystemId,
+        builtAgainst: c.builtAgainst,
+      },
+    ];
   });
 }
 

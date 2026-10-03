@@ -26,6 +26,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
+import { LANDED_CONTRACT } from '../ecosystem/contract/drift.js';
 import {
   describeEmptyProjection,
   projectionPipeReport,
@@ -55,6 +56,12 @@ const mergeMarkerBodySchema = z
     commit: mergedCommitShaSchema.optional(),
     landing: mergedLandingSchema.optional(),
     mergedAt: z.iso.datetime().optional(),
+    contracts: z
+      .array(
+        z.string().regex(LANDED_CONTRACT, 'a contract version is <project>/<contract>@<version>'),
+      )
+      .max(20)
+      .optional(),
   })
   .strict();
 
@@ -86,6 +93,7 @@ async function runMergeMarker(
       ...(body.commit ? { commit: body.commit } : {}),
       ...(body.landing ? { landing: body.landing } : {}),
       ...(body.mergedAt ? { mergedAt: new Date(body.mergedAt) } : {}),
+      ...(body.contracts ? { contracts: body.contracts } : {}),
       actor: {
         agency: actor.agency,
         commentAuthorId: userId,
