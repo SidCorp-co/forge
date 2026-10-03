@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { type ActorAgency, actorAgency, type TransitionActor } from '../../issues/actor-agency.js';
 import { loadVisibleProjectIds } from '../../lib/authz.js';
+import { type Refusal, type RefusalEnvelope, refusalEnvelope } from '../../lib/refusal.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import type { Actor } from '../../pipeline/activity.js';
 import {
@@ -205,4 +206,12 @@ export async function resolveEffectiveProjectId(
   throw new Error(
     'BAD_REQUEST: project context missing — set X-Forge-Project-Slug header or pass projectId',
   );
+}
+
+/** The REST refusal body, flagged `isError`, so both doors answer one shape. */
+export function refusedAnswer(
+  refusals: readonly Refusal[],
+  fallbackCode: string,
+): RefusalEnvelope & { _mcpIsError: true } {
+  return { _mcpIsError: true, ...refusalEnvelope(refusals, fallbackCode) };
 }

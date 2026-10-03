@@ -64,7 +64,7 @@ both blankets have been written into it and both were false.
 
 A merged commit on the row is work evidence: `collectWorkEvidence` reads `merged_commit_sha`
 where `merged_at` is set, so an issue the mark accepted is not refused `NO_WORK_EVIDENCE` when forge-plugin 3.36.542
-names the retired `developed` or `testing` rung one move later (`transition-evidence.ts:legacyRungEvidenceFault`).
+names the retired `developed` or `testing` rung one move later (`packages/core/src/issues/transition-evidence.ts:legacyRungEvidenceFault`).
 
 Where the row already holds a stamp, the gated UPDATE moves nothing and the answer
 describes what the row HOLDS, not which branch this call took. So the "your commit is not

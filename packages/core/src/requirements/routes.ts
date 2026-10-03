@@ -2,7 +2,7 @@ import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { refused } from '../project-config/respond.js';
 import { linkIssue, linkWorkflow, unlinkIssue, unlinkWorkflow } from './issue-links.js';
 import { listRequirementsAs, type RequirementActor, readRequirementAs } from './read.js';
@@ -50,11 +50,6 @@ const revisionParam = zValidator(
       throw badRequest('invalid path: a project uuid, a requirement and a revision number');
   },
 );
-
-const strictBody = <T extends z.ZodType>(schema: T, what: string) =>
-  zValidator('json', schema, (r) => {
-    if (!r.success) throw badRequest(`invalid body: ${what}`);
-  });
 
 const revisionFields = {
   reason: z.string().max(4_000),

@@ -1,89 +1,93 @@
 {
-	"name": "@forge/contracts",
-	"version": "0.3.0",
-	"private": true,
-	"license": "Apache-2.0",
-	"description": "Shared TypeScript types + request schemas derived from @forge/core (Drizzle rows + Zod schemas). Type-only surface — no runtime coupling.",
-	"type": "module",
-	"exports": {
-		".": {
-			"types": "./src/index.ts",
-			"default": "./src/index.ts"
-		},
-		"./failure-causes": {
-			"types": "./src/failure-causes.ts",
-			"default": "./src/failure-causes.ts"
-		},
-		"./pipeline-registry": {
-			"types": "./src/pipeline-registry.ts",
-			"default": "./src/pipeline-registry.ts"
-		},
-		"./issue-vocabulary": {
-			"types": "./src/issue-vocabulary.ts",
-			"default": "./src/issue-vocabulary.ts"
-		},
-		"./notifications": {
-			"types": "./src/notifications.ts",
-			"default": "./src/notifications.ts"
-		},
-		"./attachments": {
-			"types": "./dist/attachments.d.ts",
-			"default": "./dist/attachments.js"
-		},
-		"./deploy-capability": {
-			"types": "./src/deploy-capability.ts",
-			"default": "./src/deploy-capability.ts"
-		},
-		"./status-sets": {
-			"types": "./src/status-sets.ts",
-			"default": "./src/status-sets.ts"
-		},
-		"./record-events": {
-			"types": "./src/record-events.ts",
-			"default": "./src/record-events.ts"
-		},
-		"./requirement-standing": {
-			"types": "./src/requirement-standing.ts",
-			"default": "./src/requirement-standing.ts"
-		},
-		"./wireframe": {
-			"types": "./dist/wireframe.d.ts",
-			"default": "./dist/wireframe.js"
-		},
-		"./field-changes": {
-			"types": "./dist/field-changes.d.ts",
-			"default": "./dist/field-changes.js"
-		},
-		"./ui-actions": {
-			"types": "./dist/ui-actions.d.ts",
-			"default": "./dist/ui-actions.js"
-		},
-		"./document-patch": {
-			"types": "./dist/document-patch.d.ts",
-			"default": "./dist/document-patch.js"
-		},
-		"./workflow-templates": {
-			"types": "./dist/workflow-templates.d.ts",
-			"default": "./dist/workflow-templates.js"
-		}
-	},
-	"types": "./src/index.ts",
-	"files": [
-		"dist",
-		"src"
-	],
-	"dependencies": {
-		"@forge/core": "workspace:*",
-		"drizzle-orm": "^0.45.3",
-		"zod": "^4.6.5"
-	},
-	"devDependencies": {
-		"typescript": "^5.7.2",
-		"vitest": "^5.0.2"
-	},
-	"scripts": {
-		"build": "tsc -p tsconfig.emit.json && tsc --noEmit -p tsconfig.build.json",
-		"test": "vitest run --passWithNoTests",
-		"typecheck": "tsc --noEmit -p tsconfig.json"
-	}
+  "name": "@forge/contracts",
+  "version": "0.3.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Shared TypeScript types + request schemas derived from @forge/core (Drizzle rows + Zod schemas). Type-only surface — no runtime coupling.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./failure-causes": {
+      "types": "./src/failure-causes.ts",
+      "default": "./src/failure-causes.ts"
+    },
+    "./pipeline-registry": {
+      "types": "./src/pipeline-registry.ts",
+      "default": "./src/pipeline-registry.ts"
+    },
+    "./issue-vocabulary": {
+      "types": "./src/issue-vocabulary.ts",
+      "default": "./src/issue-vocabulary.ts"
+    },
+    "./notifications": {
+      "types": "./src/notifications.ts",
+      "default": "./src/notifications.ts"
+    },
+    "./attachments": {
+      "types": "./dist/attachments.d.ts",
+      "default": "./dist/attachments.js"
+    },
+    "./deploy-capability": {
+      "types": "./src/deploy-capability.ts",
+      "default": "./src/deploy-capability.ts"
+    },
+    "./status-sets": {
+      "types": "./src/status-sets.ts",
+      "default": "./src/status-sets.ts"
+    },
+    "./record-events": {
+      "types": "./src/record-events.ts",
+      "default": "./src/record-events.ts"
+    },
+    "./requirements": {
+      "types": "./dist/requirements.d.ts",
+      "default": "./dist/requirements.js"
+    },
+    "./wireframe": {
+      "types": "./dist/wireframe.d.ts",
+      "default": "./dist/wireframe.js"
+    },
+    "./field-changes": {
+      "types": "./dist/field-changes.d.ts",
+      "default": "./dist/field-changes.js"
+    },
+    "./suggestions": {
+      "types": "./dist/suggestions.d.ts",
+      "default": "./dist/suggestions.js"
+    },
+    "./ui-actions": {
+      "types": "./dist/ui-actions.d.ts",
+      "default": "./dist/ui-actions.js"
+    },
+    "./document-patch": {
+      "types": "./dist/document-patch.d.ts",
+      "default": "./dist/document-patch.js"
+    },
+    "./workflow-templates": {
+      "types": "./dist/workflow-templates.d.ts",
+      "default": "./dist/workflow-templates.js"
+    }
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "dependencies": {
+    "@forge/core": "workspace:*",
+    "drizzle-orm": "^0.45.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^5.0.2"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.emit.json && tsc --noEmit -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
 }

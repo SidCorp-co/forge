@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Input } from "@/design";
+import { AGENT_TINT, Button, Input } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { AI_TINT } from "./tone";
-import { useRequirementSuggestions, useSuggestionDecision } from "../hooks";
-import type { Suggestion, SuggestionKind } from "../types";
-import { RefusalLine } from "./refusal";
+import { RefusalLine } from "@/features/requirements/components/refusal";
+import { useSuggestionDecision, useWaitingSuggestions } from "../hooks";
+import type { SuggestionKind, SuggestionProducer, SuggestionView as Suggestion } from "../types";
 
 export const KIND_LABEL: Record<SuggestionKind, string> = {
   requirement_draft: "Requirement draft",
@@ -17,7 +16,7 @@ export const KIND_LABEL: Record<SuggestionKind, string> = {
   duplicate: "Duplicate",
 };
 
-const PRODUCER_LABEL: Record<Suggestion["producerKind"], string> = {
+const PRODUCER_LABEL: Record<SuggestionProducer, string> = {
   ba_assistant: "BA assistant",
   agent: "Agent",
   person: "Person",
@@ -29,7 +28,7 @@ const list = (v: unknown) => (Array.isArray(v) ? (v as Payload[]) : []);
 
 /** One line saying what accepting it would do; the rest sits behind the expander and the tooltip. */
 export function summaryOf(s: Suggestion): string {
-  const p = s.payload ?? {};
+  const p = (s.payload ?? {}) as Payload;
   switch (s.kind) {
     case "revision_diff":
       return str(p.changeSummary) ?? str(p.reason) ?? "A new revision";
@@ -49,7 +48,7 @@ export function summaryOf(s: Suggestion): string {
 }
 
 function detailLines(s: Suggestion): string[] {
-  const p = s.payload ?? {};
+  const p = (s.payload ?? {}) as Payload;
   if (s.kind === "revision_diff" || s.kind === "requirement_draft") {
     return list(p.criteria).map((c) => `${str(c.code) ?? "New"} · ${str(c.body) ?? ""}`);
   }
@@ -74,10 +73,10 @@ export function PendingBadge() {
   return (
     <span
       className="inline-flex items-center gap-[5px] rounded-pill px-2 py-px text-11-5 font-semibold"
-      style={{ color: AI_TINT.fg }}
+      style={{ color: AGENT_TINT.fg }}
       title="proposed · Waiting for a person to accept or reject it; never applied on its own"
     >
-      <span aria-hidden className="size-1.5 rounded-full" style={{ background: AI_TINT.bar }} />
+      <span aria-hidden className="size-1.5 rounded-full" style={{ background: AGENT_TINT.dot }} />
       Pending
     </span>
   );
@@ -92,12 +91,12 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
   return (
     <li
       className="grid gap-1.5 border-l-[3px] px-3 py-[9px] text-12-5"
-      style={{ borderColor: AI_TINT.bar, background: AI_TINT.bg }}
+      style={{ borderColor: AGENT_TINT.dot, background: AGENT_TINT.bg }}
       data-testid="requirement-suggestion"
       data-kind={s.kind}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold" style={{ color: AI_TINT.fg }} title={tipOf(s)}>
+        <span className="font-semibold" style={{ color: AGENT_TINT.fg }} title={tipOf(s)}>
           {PRODUCER_LABEL[s.producerKind]} · {KIND_LABEL[s.kind]}
         </span>
         <PendingBadge />
@@ -108,7 +107,7 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
       <p className="text-13-5">{summaryOf(s)}</p>
       {details.length > 0 ? (
         <details className="text-12 text-muted">
-          <summary className="cursor-pointer select-none font-semibold" style={{ color: AI_TINT.fg }}>
+          <summary className="cursor-pointer select-none font-semibold" style={{ color: AGENT_TINT.fg }}>
             Show details
           </summary>
           <ul className="mt-1 grid gap-0.5">
@@ -154,7 +153,7 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
 
 /** The suggestions waiting on this requirement, each an accent bar with Accept and Reject; nothing when none wait. */
 export function RequirementSuggestions({ projectId, reqKey }: { projectId: string; reqKey: string }) {
-  const q = useRequirementSuggestions(projectId, reqKey);
+  const q = useWaitingSuggestions(projectId, reqKey);
   const rows = q.data?.suggestions ?? [];
   if (rows.length === 0) return null;
   return (

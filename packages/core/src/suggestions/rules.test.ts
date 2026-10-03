@@ -1,23 +1,19 @@
+import { SUGGESTION_MAX_OPEN_PER_TARGET as MAX_OPEN_PER_TARGET } from '@forge/contracts/suggestions';
 import { describe, expect, it } from 'vitest';
+import { type PersonActFacts, personActRefusal } from '../lib/person-act.js';
 import {
   baseStaleRefusal,
   decidedRefusal,
-  deciderRefusal,
   duplicateRefusal,
   fingerprintOf,
-  MAX_OPEN_PER_TARGET,
   payloadRefusal,
+  producerRefusal,
   queueFullRefusal,
   rejectReasonRefusal,
   withdrawRefusal,
 } from './rules.js';
 
-const person = {
-  userId: 'u1',
-  agency: 'human' as const,
-  role: 'member' as const,
-  producerId: 'p1',
-};
+const person: PersonActFacts = { userId: 'u1', agency: 'human', role: 'member' };
 
 describe('suggestion-lifecycle guards', () => {
   it('start → proposed: a payload that does not parse for its kind is SUGGESTION_PAYLOAD_INVALID', () => {
@@ -56,17 +52,19 @@ describe('suggestion-lifecycle guards', () => {
     expect(queueFullRefusal(MAX_OPEN_PER_TARGET)?.code).toBe('SUGGESTION_QUEUE_FULL');
   });
 
-  it('proposed → accepted: an agent, a non-member or the producer is SUGGESTION_ACCEPT_FORBIDDEN', () => {
-    expect(deciderRefusal(person, 'accept')).toBeNull();
-    expect(deciderRefusal({ ...person, agency: 'agent' }, 'accept')?.code).toBe(
-      'SUGGESTION_ACCEPT_FORBIDDEN',
-    );
-    expect(deciderRefusal({ ...person, role: 'viewer' }, 'accept')?.code).toBe(
-      'SUGGESTION_ACCEPT_FORBIDDEN',
-    );
-    expect(deciderRefusal({ ...person, producerId: 'u1' }, 'accept')?.code).toBe(
-      'SUGGESTION_ACCEPT_FORBIDDEN',
-    );
+  it('proposed → accepted: an agent or a non-member is SUGGESTION_ACCEPT_FORBIDDEN, by the shared person-act check', () => {
+    const accept = (f: PersonActFacts) =>
+      personActRefusal(f, 'p', 'accepting a suggestion', 'SUGGESTION_ACCEPT_FORBIDDEN')?.code ??
+      null;
+    expect(accept(person)).toBeNull();
+    expect(accept({ ...person, agency: 'agent' })).toBe('SUGGESTION_ACCEPT_FORBIDDEN');
+    expect(accept({ ...person, role: 'viewer' })).toBe('SUGGESTION_ACCEPT_FORBIDDEN');
+  });
+
+  it('proposed → accepted: the producer is SUGGESTION_ACCEPT_FORBIDDEN', () => {
+    expect(producerRefusal('u1', 'p1')).toBeNull();
+    expect(producerRefusal('u1', null)).toBeNull();
+    expect(producerRefusal('u1', 'u1')?.code).toBe('SUGGESTION_ACCEPT_FORBIDDEN');
   });
 
   it('proposed → rejected: a rejection without a reason is SUGGESTION_REJECT_REASON_REQUIRED', () => {

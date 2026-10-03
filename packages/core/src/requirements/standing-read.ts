@@ -7,7 +7,7 @@
 import type {
   RequirementHistoryEntry,
   RequirementStanding,
-} from '@forge/contracts/requirement-standing';
+} from '@forge/contracts/requirements';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, issues, users } from '../db/schema.js';

@@ -20,12 +20,12 @@ import {
   type RequirementState,
   type RequirementWaitingOn,
   type StandingTone,
-} from "@forge/contracts/requirement-standing";
+} from "@forge/contracts/requirements";
 import type { ReactNode } from "react";
-import { Icon, Tooltip } from "@/design";
+import { AGENT_TINT, Icon, STATUS_META, StatusChip, Tooltip } from "@/design";
+import { TONE_CHIP } from "@/features/issues/derive";
 import { cn } from "@/lib/utils/cn";
 import type { RequirementBaseline, RequirementRevision } from "../types";
-import { TONE } from "./tone";
 
 const hintOf = (h: string) => h.replace(/^[a-z_]+: /, "");
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -42,46 +42,20 @@ export function ageOf(iso: string, now: number = Date.now()): string {
 
 export const stamp = (iso: string) => new Date(iso).toLocaleString();
 
-/** One enum value as a badge: glyph and sentence-case label; the raw value and its meaning in the tooltip. */
-export function ToneBadge({
-  tone,
-  glyph,
-  label,
-  value,
-  hint,
-  extra,
-}: {
-  tone: StandingTone;
-  glyph: string;
-  label: string;
-  value: string;
-  hint: string;
-  extra?: string;
-}) {
-  const c = TONE[tone];
-  const flat = c.bg === "transparent";
+/** A legend tone's colours, read from the design kit through the issue legend's chip. */
+export const toneOf = (tone: StandingTone) => STATUS_META[TONE_CHIP[tone]];
+
+/** One enum value as the design kit's chip: glyph and sentence-case label; the raw value and its meaning in the tooltip. */
+function EnumChip({ tone, glyph, label, value, hint }: { tone: StandingTone; glyph: string; label: string; value: string; hint: string }) {
   return (
-    <Tooltip label={`${value} · ${cap(hint)}`} multiline>
-      <span
-        className={cn(
-          "inline-flex cursor-help items-center gap-[5px] whitespace-nowrap rounded-pill py-px text-11-5 font-semibold leading-[18px]",
-          flat ? "pl-0.5 pr-2" : "pl-[7px] pr-2",
-        )}
-        style={{ color: c.fg, background: c.bg }}
-        data-value={value}
-      >
-        <span aria-hidden className="text-[10.5px] leading-none" style={{ color: c.dot }}>
-          {glyph}
-        </span>
-        {label}
-        {extra ? <span className="font-medium"> · {extra}</span> : null}
-      </span>
-    </Tooltip>
+    <span className="inline-flex cursor-help" data-value={value}>
+      <StatusChip size="sm" status={TONE_CHIP[tone]} glyph={glyph} label={label} title={`${value} · ${cap(hint)}`} />
+    </span>
   );
 }
 
 export const StateBadge = ({ state }: { state: RequirementState }) => (
-  <ToneBadge
+  <EnumChip
     tone={REQUIREMENT_STATE_TONES[state]}
     glyph={REQUIREMENT_STATE_GLYPHS[state]}
     label={REQUIREMENT_STATE_LABELS[state]}
@@ -99,7 +73,7 @@ const VERDICT_GLYPH: Record<BcVerdict, string> = {
 };
 
 export const VerdictBadge = ({ verdict }: { verdict: BcVerdict }) => (
-  <ToneBadge
+  <EnumChip
     tone={BC_VERDICT_TONES[verdict]}
     glyph={VERDICT_GLYPH[verdict]}
     label={BC_VERDICT_LABELS[verdict]}
@@ -114,7 +88,7 @@ export function WhoMark({ kind, who, size = 15 }: { kind: string; who: string; s
   const style = { width: size, height: size, fontSize: Math.round(size * 0.57) };
   if (kind === "you")
     return (
-      <span aria-hidden className={cn(base, "rounded-full text-on-accent")} style={{ ...style, background: TONE.you.dot }}>
+      <span aria-hidden className={cn(base, "rounded-full text-on-accent")} style={{ ...style, background: toneOf("you").dot }}>
         {who.charAt(0).toUpperCase()}
       </span>
     );
@@ -126,7 +100,7 @@ export function WhoMark({ kind, who, size = 15 }: { kind: string; who: string; s
     );
   if (kind === "agent")
     return (
-      <span aria-hidden className={cn(base, "rounded-[4px]")} style={{ ...style, background: TONE.ai.bg, color: TONE.ai.fg }}>
+      <span aria-hidden className={cn(base, "rounded-[4px]")} style={{ ...style, background: AGENT_TINT.bg, color: AGENT_TINT.fg }}>
         <Icon name="agent" size={Math.round(size * 0.68)} />
       </span>
     );
@@ -152,13 +126,13 @@ export function WaitingOn({ w }: { w: RequirementWaitingOn }) {
   return (
     <span
       className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap text-12-5"
-      style={{ color: you ? TONE.you.fg : "var(--fg-muted)" }}
+      style={{ color: you ? toneOf("you").fg : "var(--fg-muted)" }}
       title={w.rule}
       data-testid="waiting-on"
     >
       <WhoMark kind={w.kind} who={w.who} />
       <span className="truncate">
-        <b className="font-semibold" style={{ color: you ? TONE.you.fg : "var(--fg-default)" }}>
+        <b className="font-semibold" style={{ color: you ? toneOf("you").fg : "var(--fg-default)" }}>
           {w.who}
         </b>
         {w.act ? ` · ${w.act}` : null}
@@ -191,11 +165,11 @@ export function OwnerAge({ owner, at }: { owner: RequirementStanding["owner"]; a
 }
 
 const VERDICT_MARK: Record<BcVerdict, string> = {
-  passing: TONE.ready.dot,
-  failing: TONE.err.dot,
+  passing: toneOf("ready").dot,
+  failing: toneOf("err").dot,
   stale: "repeating-linear-gradient(135deg, var(--ink-400) 0 3px, var(--paper-400) 3px 6px)",
   not_judged: "var(--paper-400)",
-  gap: TONE.you.dot,
+  gap: toneOf("you").dot,
 };
 
 /** One mark per business criterion, coloured by its verdict; the code, verdict and wording on hover. */
@@ -226,7 +200,7 @@ export function Stepper({ state }: { state: RequirementState }) {
       {REQUIREMENT_LIFECYCLE.map((s, i) => {
         const done = at >= 0 && (i < at || (i === at && s === "accepted"));
         const now = i === at && s !== "accepted";
-        const tone = now ? (s === "delivered" ? TONE.you : TONE.run) : null;
+        const tone = now ? (s === "delivered" ? toneOf("you") : toneOf("run")) : null;
         return (
           <li key={s} className="inline-flex items-center" style={{ color: tone?.fg ?? (done ? "var(--fg-muted)" : "var(--fg-subtle)") }}>
             <span
@@ -280,7 +254,7 @@ export function RevisionTimeline({ revisions, baselines }: { revisions: Requirem
                   className="block size-3 rounded-full border-2"
                   style={
                     open
-                      ? { background: "var(--bg-surface)", borderColor: TONE.you.dot, borderStyle: "dashed" }
+                      ? { background: "var(--bg-surface)", borderColor: toneOf("you").dot, borderStyle: "dashed" }
                       : { background: r.state === "current" ? "var(--ink-600)" : "var(--ink-400)", borderColor: "var(--bg-surface)" }
                   }
                 />
@@ -296,10 +270,10 @@ export function RevisionTimeline({ revisions, baselines }: { revisions: Requirem
   );
 }
 
-const BANNER_TONE: Record<RequirementWaitingOn["kind"], StandingTone | "calm"> = {
+const BANNER_TONE: Record<RequirementWaitingOn["kind"], StandingTone | "calm" | "agent"> = {
   you: "you",
   person: "calm",
-  agent: "ai",
+  agent: "agent",
   issues: "run",
   none: "calm",
 };
@@ -308,7 +282,7 @@ const BANNER_TONE: Record<RequirementWaitingOn["kind"], StandingTone | "calm"> =
 export function WaitBanner({ standing, children }: { standing: RequirementStanding; children?: ReactNode }) {
   const w = standing.waitingOn;
   const toneKey = standing.attentionGroup === "stuck" && w.kind === "none" ? "you" : BANNER_TONE[w.kind];
-  const c = toneKey === "calm" ? { bg: "var(--bg-sunken)", dot: "var(--ink-400)" } : { bg: TONE[toneKey].bg, dot: TONE[toneKey].dot };
+  const c = toneKey === "calm" ? { bg: "var(--bg-sunken)", dot: "var(--ink-400)" } : toneKey === "agent" ? AGENT_TINT : toneOf(toneKey);
   const head =
     standing.attentionGroup === "done"
       ? standing.state === "accepted"

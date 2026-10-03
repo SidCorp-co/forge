@@ -6,7 +6,7 @@ import {
 } from '@forge/contracts/workflow-templates';
 import type { OrgMemberRole, ProjectMemberRole } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { orgRoleAtLeast, projectRoleAtLeast } from '../lib/authz.js';
+import { actMiss, approverRule } from '../lib/person-act.js';
 import type { DesignApprover } from '../project-config/schema.js';
 import { impliedKind } from './edges.js';
 import { stepsOf, type WorkflowWrite } from './schema.js';
@@ -143,27 +143,28 @@ export function designApproverRefusal(
   projectId: string,
   approver: DesignApprover,
 ): DesignRefusal | null {
-  if (facts.agency !== 'agent') {
-    if (orgRoleAtLeast(facts.orgRole, 'admin')) return null;
-    return {
-      code: 'WORKFLOW_DESIGN_APPROVER_NOT_ADMIN',
-      path: '',
-      detail: `${facts.userId} holds ${facts.orgRole ?? 'no role'} in project ${projectId}'s organization; a person deciding a workflow design is an org owner or admin.`,
-    };
+  const miss = actMiss(facts, approverRule(approver === 'master'));
+  if (!miss) return null;
+  switch (miss.kind) {
+    case 'agent-not-allowed':
+      return {
+        code: 'WORKFLOW_DESIGN_APPROVER_NOT_PERSON',
+        path: '',
+        detail: `agent ${facts.userId} acts as an agent; project ${projectId} declares workflows.designApprover "owner", so only an org admin person decides its designs. The owner sets it to "master" (PUT /api/projects/${projectId}/config) to let the project's master decide.`,
+      };
+    case 'agent-below-member':
+      return {
+        code: 'WORKFLOW_DESIGN_APPROVER_NOT_PROJECT',
+        path: '',
+        detail: `agent ${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}; with workflows.designApprover "master" a design is decided by that project's own master, never another project's agent.`,
+      };
+    default:
+      return {
+        code: 'WORKFLOW_DESIGN_APPROVER_NOT_ADMIN',
+        path: '',
+        detail: `${facts.userId} holds ${facts.orgRole ?? 'no role'} in project ${projectId}'s organization; a person deciding a workflow design is an org owner or admin.`,
+      };
   }
-  if (approver === 'owner') {
-    return {
-      code: 'WORKFLOW_DESIGN_APPROVER_NOT_PERSON',
-      path: '',
-      detail: `agent ${facts.userId} acts as an agent; project ${projectId} declares workflows.designApprover "owner", so only an org admin person decides its designs. The owner sets it to "master" (PUT /api/projects/${projectId}/config) to let the project's master decide.`,
-    };
-  }
-  if (projectRoleAtLeast(facts.role, 'member')) return null;
-  return {
-    code: 'WORKFLOW_DESIGN_APPROVER_NOT_PROJECT',
-    path: '',
-    detail: `agent ${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}; with workflows.designApprover "master" a design is decided by that project's own master, never another project's agent.`,
-  };
 }
 
 export function decisionRefusals(input: {

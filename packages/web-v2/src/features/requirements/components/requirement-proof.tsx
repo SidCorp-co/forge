@@ -4,22 +4,22 @@
 // criterion → issues → verdict) and readiness, the relations rail, and the history by source.
 
 import { ISSUE_STATUS_LABELS, ISSUE_STATUS_TONES, type KernelIssueStatus } from "@forge/contracts/issue-vocabulary";
-import type { CoverageIssue, HistorySource, RequirementHistoryEntry } from "@forge/contracts/requirement-standing";
+import type { CoverageIssue, HistorySource, RequirementHistoryEntry } from "@forge/contracts/requirements";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
-import { SegmentedControl, StatusChip } from "@/design";
+import { AGENT_TINT, SegmentedControl, StatusChip } from "@/design";
 import { issueStatusChip } from "@/features/issues/derive";
 import type { IssueStatus } from "@/features/issues/types";
 import { workflowHref } from "@/features/workflows/routes";
 import { formatRelativeTime } from "@/lib/utils/format";
-import type { RequirementCriterion, RequirementDetail, RequirementRevision, Suggestion } from "../types";
+import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
+import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
 import { DesignStatusBadge } from "./badges";
-import { VerdictBadge, WhoMark, stamp } from "./standing-bits";
-import { TONE } from "./tone";
+import { VerdictBadge, WhoMark, stamp, toneOf } from "./standing-bits";
 
 const issueHref = (slug: string, key: string) => `/projects/${encodeURIComponent(slug)}/issues/${encodeURIComponent(key)}`;
 const issueWord = (s: string) => ISSUE_STATUS_LABELS[s as KernelIssueStatus] ?? s;
-const issueDot = (s: string) => TONE[ISSUE_STATUS_TONES[s as KernelIssueStatus] ?? "neutral"].dot;
+const issueDot = (s: string) => toneOf(ISSUE_STATUS_TONES[s as KernelIssueStatus] ?? "neutral").dot;
 
 export function IssueChip({ status }: { status: string }) {
   const c = issueStatusChip(status as IssueStatus);
@@ -36,12 +36,12 @@ export function SubHead({ children, right }: { children: ReactNode; right?: Reac
 }
 
 const Ins = ({ children }: { children: ReactNode }) => (
-  <ins className="rounded-[3px] px-[3px] no-underline" style={{ background: TONE.ready.bg, color: TONE.ready.fg }}>
+  <ins className="rounded-[3px] px-[3px] no-underline" style={{ background: toneOf("ready").bg, color: toneOf("ready").fg }}>
     {children}
   </ins>
 );
 const Del = ({ children }: { children: ReactNode }) => (
-  <del className="rounded-[3px] px-[3px]" style={{ background: TONE.err.bg, color: TONE.err.fg }}>
+  <del className="rounded-[3px] px-[3px]" style={{ background: toneOf("err").bg, color: toneOf("err").fg }}>
     {children}
   </del>
 );
@@ -186,7 +186,8 @@ type Check = { check?: unknown; passed?: unknown; detail?: unknown };
 /** The newest readiness check the BA assistant proposed, as met-of-total and one mark per check. */
 export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
   const r = suggestions.find((s) => s.kind === "readiness");
-  const checks = (Array.isArray(r?.payload?.checks) ? r?.payload?.checks : []) as Check[];
+  const raw = (r?.payload as { checks?: unknown } | null | undefined)?.checks;
+  const checks = (Array.isArray(raw) ? raw : []) as Check[];
   if (!r || checks.length === 0) return <p className="py-1.5 text-12-5 text-subtle">No readiness check yet.</p>;
   const met = checks.filter((c) => c.passed === true).length;
   return (
@@ -200,7 +201,7 @@ export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
             key={`${String(c.check)}-${String(c.detail)}`}
             title={`${String(c.check ?? "")}${typeof c.detail === "string" ? ` — ${c.detail}` : ""}`}
             className="block h-2.5 w-4 rounded-[2px]"
-            style={{ background: c.passed === true ? TONE.ready.dot : TONE.you.dot }}
+            style={{ background: c.passed === true ? toneOf("ready").dot : toneOf("you").dot }}
           />
         ))}
       </span>
@@ -244,7 +245,7 @@ export function RelationsRail({ d, slug }: { d: RequirementDetail; slug: string 
               {i.title}
             </span>
             {i.changedSincePlan ? (
-              <span role="img" aria-label="Changed since plan" title="Changed since plan" className="size-1.5 flex-none rounded-full" style={{ background: TONE.you.dot }} />
+              <span role="img" aria-label="Changed since plan" title="Changed since plan" className="size-1.5 flex-none rounded-full" style={{ background: toneOf("you").dot }} />
             ) : null}
             <IssueChip status={i.status} />
           </div>
@@ -338,7 +339,7 @@ export function History({ entries }: { entries: RequirementHistoryEntry[] }) {
             <li
               key={e.id}
               className="grid grid-cols-[20px_minmax(0,1fr)] gap-2 border-b border-line-subtle py-2 text-13 last:border-0"
-              style={question ? { background: TONE.ai.bg, borderLeft: `3px solid ${TONE.ai.dot}`, paddingLeft: 6 } : undefined}
+              style={question ? { background: AGENT_TINT.bg, borderLeft: `3px solid ${AGENT_TINT.dot}`, paddingLeft: 6 } : undefined}
             >
               <span className="pt-px">
                 <WhoMark kind={e.source} who={e.who} size={18} />

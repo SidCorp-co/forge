@@ -13,7 +13,7 @@ import type {
   RequirementStanding,
   RequirementState,
   RequirementWaitingOn,
-} from '@forge/contracts/requirement-standing';
+} from '@forge/contracts/requirements';
 import type { DeliveryPhase, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
 
 /** Untouched this long, an open requirement is listed as stuck. */

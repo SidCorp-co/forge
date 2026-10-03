@@ -4,8 +4,6 @@ import type {
   RequirementAction,
   RequirementDetail,
   RequirementList,
-  SuggestionDecision,
-  SuggestionList,
 } from "./types";
 
 const base = (projectId: string) => `/projects/${projectId}/requirements`;
@@ -30,17 +28,7 @@ export const requirementsApi = {
     apiClient<RequirementDetail>(base(projectId), post(body)),
   act: (projectId: string, req: string, action: RequirementAction) =>
     apiClient<RequirementDetail>(actionPath(projectId, req, action), post(actionBody(action))),
-  suggestions: (projectId: string, req: string) =>
-    apiClient<SuggestionList>(`/projects/${projectId}/suggestions?requirement=${encodeURIComponent(req)}&status=proposed`),
-  /** Every suggestion still waiting on a person in the project: the list's BA assistant strip. */
-  projectSuggestions: (projectId: string) =>
-    apiClient<SuggestionList>(`/projects/${projectId}/suggestions?status=proposed`),
   /** Opens (or hands back) the viewer's BA assistant room about one requirement (ISS-58). */
   openAssistant: (projectId: string, req: string) =>
     apiClient<{ conversation: { id: string }; reused: boolean }>(`${one(projectId, req)}/assistant`, post({})),
-  decide: (projectId: string, d: SuggestionDecision) =>
-    apiClient<unknown>(
-      `/projects/${projectId}/suggestions/${d.id}/${d.kind}`,
-      post(d.kind === "reject" ? { reason: d.reason } : {}),
-    ),
 };

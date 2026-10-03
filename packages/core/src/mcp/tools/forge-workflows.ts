@@ -27,6 +27,7 @@ import {
   type ContextScopedMcpToolFactory,
   type McpContext,
   principalAgency,
+  refusedAnswer,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
@@ -128,12 +129,8 @@ function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]
   return value as NonNullable<Input[K]>;
 }
 
-function refusedBy(refusals: readonly NamedRefusal[]): never {
-  const codes = [...new Set(refusals.map((r) => r.code))];
-  throw new Error(
-    `${codes.join(', ')}: refused, nothing written — ${refusals.map((r) => `${r.code} at ${r.path || '/'}: ${r.detail}`).join(' | ')}`,
-  );
-}
+const refusedBy = (refusals: readonly NamedRefusal[]) =>
+  refusedAnswer(refusals, 'WORKFLOW_REFUSED');
 
 async function run(args: unknown, ctx: McpContext): Promise<unknown> {
   const input = inputSchema.parse(args);
@@ -160,7 +157,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
             raw: input.document,
           })
         : await createWorkflow({ projectId, writer: actor, baseRevision, raw: input.document });
-      if (!outcome.ok) refusedBy(outcome.refusals);
+      if (!outcome.ok) return refusedBy(outcome.refusals);
       return { ...workflowView(outcome.row, outcome.document), created: outcome.created };
     }
     case 'propose': {

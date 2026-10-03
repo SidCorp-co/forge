@@ -4,23 +4,26 @@
  * the REST routes in `suggestions/routes.ts` are the same services.
  */
 
+import { SUGGESTION_KINDS, SUGGESTION_STATUSES } from '@forge/contracts/suggestions';
 import { z } from 'zod';
-import { SUGGESTION_KINDS, SUGGESTION_STATUSES } from '../../db/schema-suggestions.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
+import {
+  listSuggestions,
+  type SuggestionActor,
+  type SuggestionTargetRef,
+} from '../../suggestions/read.js';
 import {
   acceptSuggestion,
   createSuggestion,
-  listSuggestions,
   rejectSuggestion,
-  type SuggestionActor,
   type SuggestionOutcome,
-  type SuggestionTargetRef,
   withdrawSuggestion,
 } from '../../suggestions/service.js';
 import {
   type ContextScopedMcpToolFactory,
   type McpContext,
   principalAgency,
+  refusedAnswer,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
@@ -80,12 +83,8 @@ function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]
   return value as NonNullable<Input[K]>;
 }
 
-function refusedBy(refusals: readonly NamedRefusal[]): never {
-  const codes = [...new Set(refusals.map((r) => r.code))];
-  throw new Error(
-    `${codes.join(', ')}: refused — ${refusals.map((r) => `${r.code} at ${r.path || '/'}: ${r.detail}`).join(' | ')}`,
-  );
-}
+const refusedBy = (refusals: readonly NamedRefusal[]) =>
+  refusedAnswer(refusals, 'SUGGESTION_REFUSED');
 
 const settle = (outcome: SuggestionOutcome) =>
   outcome.ok

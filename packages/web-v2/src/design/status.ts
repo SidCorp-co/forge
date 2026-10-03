@@ -35,6 +35,13 @@ export const TONE_META: Record<SemanticTone, ColorMeta> = {
   infra: { label: "Infra", fg: "var(--slate-600)", bg: "var(--slate-50)", dot: "var(--slate-500)" },
 };
 
+/** What an agent's turn or proposal wears, so it is never read as a person's or a run's. */
+export const AGENT_TINT: Omit<ColorMeta, "label"> = {
+  fg: "var(--wf-violet)",
+  bg: "color-mix(in srgb, var(--stage-triage) 10%, var(--bg-surface))",
+  dot: "var(--stage-triage)",
+};
+
 export type StatusKey =
   | "running"
   | "queued"

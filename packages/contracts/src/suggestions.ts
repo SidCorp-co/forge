@@ -1,0 +1,259 @@
+// cm:why one declaration of the suggestion vocabulary (workflow suggestion-lifecycle rev 2, ISS-58):
+// core's table CHECKs, REST, MCP and the web all import these values, the request schemas and the
+// response shapes from here, so no surface can name a kind, status or code another does not know.
+
+import { z } from "zod";
+
+/** The six kinds rev 2 names; cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
+export const SUGGESTION_KINDS = [
+	"requirement_draft",
+	"revision_diff",
+	"readiness",
+	"breakdown",
+	"triage",
+	"duplicate",
+] as const;
+export type SuggestionKind = (typeof SUGGESTION_KINDS)[number];
+
+/** proposed → accepted | rejected | stale (rev 2), and withdrawn (the producer retracts; not yet drawn in rev 2). */
+export const SUGGESTION_STATUSES = [
+	"proposed",
+	"accepted",
+	"rejected",
+	"stale",
+	"withdrawn",
+] as const;
+export type SuggestionStatus = (typeof SUGGESTION_STATUSES)[number];
+
+/** Who wrote it: the BA assistant door, an agent credential, or a person through REST. */
+export const SUGGESTION_PRODUCERS = [
+	"ba_assistant",
+	"agent",
+	"person",
+] as const;
+export type SuggestionProducer = (typeof SUGGESTION_PRODUCERS)[number];
+
+/** What a suggestion is about: one arm of its exclusive arc. feedback joins with the feedback table (S6). */
+export const SUGGESTION_TARGET_TYPES = ["requirement", "issue"] as const;
+export type SuggestionTargetType = (typeof SUGGESTION_TARGET_TYPES)[number];
+
+/** An item embedding row's state: a write never skips in silence (Q7). */
+export const ITEM_EMBEDDING_STATUSES = [
+	"embedded",
+	"provider_not_configured",
+	"failed",
+] as const;
+export type ItemEmbeddingStatus = (typeof ITEM_EMBEDDING_STATUSES)[number];
+
+/** At most this many proposed suggestions wait on one target (SUGGESTION_QUEUE_FULL). */
+export const SUGGESTION_MAX_OPEN_PER_TARGET = 5;
+/** A suggestion nobody decided within this many days is marked stale by the retention sweep. */
+export const SUGGESTION_STALE_AFTER_DAYS = 30;
+/** A rejected, stale or withdrawn suggestion keeps its payload this many days after the decision. */
+export const SUGGESTION_PURGE_PAYLOAD_AFTER_DAYS = 90;
+
+/** Every refusal a suggestion write or the BA door answers with, by name. */
+export const SUGGESTION_REFUSAL_CODES = [
+	"SUGGESTION_PAYLOAD_INVALID",
+	"SUGGESTION_TARGET_INVALID",
+	"SUGGESTION_BASE_STALE",
+	"SUGGESTION_DUPLICATE",
+	"SUGGESTION_QUEUE_FULL",
+	"SUGGESTION_ACCEPT_FORBIDDEN",
+	"SUGGESTION_REJECT_REASON_REQUIRED",
+	"SUGGESTION_DECIDED",
+	"SUGGESTION_WITHDRAW_FORBIDDEN",
+	"CLARIFICATION_ALREADY_OPEN",
+] as const;
+export type SuggestionRefusalCode = (typeof SUGGESTION_REFUSAL_CODES)[number];
+
+export interface SuggestionRefusal {
+	code: SuggestionRefusalCode;
+	path: string;
+	detail: string;
+}
+
+/** A requirement revision's spec, as ISS-57's revision write takes it. */
+export const requirementSpecSchema = z.strictObject({
+	goal: z.string().max(20_000).optional(),
+	personas: z.array(z.string().max(500)).max(50).optional(),
+	scopeIn: z.array(z.string().max(2_000)).max(100).optional(),
+	scopeOut: z.array(z.string().max(2_000)).max(100).optional(),
+});
+
+export const REQUIREMENT_CRITERION_FORMS = ["statement", "scenario"] as const;
+
+/** One criterion of a revision: a live BC code keeps it, no code takes the next one. */
+export const requirementCriterionSchema = z.strictObject({
+	code: z
+		.string()
+		.regex(/^BC-[1-9][0-9]*$/, "a criterion code reads BC-n")
+		.optional(),
+	body: z.string().trim().min(1).max(10_000),
+	form: z.enum(REQUIREMENT_CRITERION_FORMS).optional(),
+});
+
+const revisionWrite = {
+	reason: z.string().trim().min(1).max(4_000),
+	spec: requirementSpecSchema.optional(),
+	tldr: z.string().max(4_000).nullable().optional(),
+	changeSummary: z.string().max(4_000).nullable().optional(),
+	criteria: z.array(requirementCriterionSchema).max(200),
+};
+
+const bcCode = z.string().regex(/^BC-[1-9][0-9]*$/);
+
+/** Each kind's payload and the targets it may name; a payload that does not parse is refused. */
+export const SUGGESTION_PAYLOADS = {
+	requirement_draft: {
+		targets: ["issue"],
+		schema: z.strictObject({
+			title: z.string().trim().min(1).max(500),
+			...revisionWrite,
+		}),
+	},
+	revision_diff: {
+		targets: ["requirement"],
+		schema: z.strictObject(revisionWrite),
+	},
+	readiness: {
+		targets: ["requirement"],
+		schema: z.strictObject({
+			checks: z
+				.array(
+					z.strictObject({
+						check: z.string().trim().min(1).max(200),
+						passed: z.boolean(),
+						detail: z.string().max(2_000).optional(),
+					}),
+				)
+				.min(1)
+				.max(20),
+		}),
+	},
+	breakdown: {
+		targets: ["requirement"],
+		schema: z.strictObject({
+			issues: z
+				.array(
+					z.strictObject({
+						title: z.string().trim().min(1).max(500),
+						description: z.string().max(20_000).optional(),
+						criteria: z
+							.array(
+								z.strictObject({
+									body: z.string().trim().min(1).max(4_000),
+									tracesTo: bcCode.optional(),
+								}),
+							)
+							.max(100)
+							.optional(),
+						blockedBy: z.array(z.number().int().min(0)).max(50).optional(),
+					}),
+				)
+				.min(1)
+				.max(30),
+			uncovered: z
+				.array(z.strictObject({ code: bcCode, reason: z.string() }))
+				.max(100)
+				.optional(),
+		}),
+	},
+	triage: {
+		targets: ["issue"],
+		schema: z.strictObject({
+			priority: z.enum(["low", "medium", "high", "critical"]).optional(),
+			category: z.string().max(100).optional(),
+			route: z.string().max(200).optional(),
+			note: z.string().trim().min(1).max(4_000),
+		}),
+	},
+	duplicate: {
+		targets: ["requirement", "issue"],
+		schema: z.strictObject({
+			duplicateOf: z.string().trim().min(1).max(200),
+			similarity: z.number().min(0).max(1).optional(),
+			note: z.string().max(4_000).optional(),
+		}),
+	},
+} as const satisfies Record<
+	SuggestionKind,
+	{ targets: readonly SuggestionTargetType[]; schema: z.ZodType }
+>;
+
+const targetFields = {
+	requirement: z.string().trim().min(1).max(64).optional(),
+	issue: z.string().trim().min(1).max(200).optional(),
+};
+
+/** `POST /api/projects/:id/suggestions` — one of `requirement` or `issue`. */
+export const createSuggestionRequestSchema = z.strictObject({
+	kind: z.enum(SUGGESTION_KINDS),
+	...targetFields,
+	baseRevision: z.number().int().min(1).nullable(),
+	payload: z.unknown(),
+	model: z.string().max(200).nullable().optional(),
+});
+export type CreateSuggestionRequest = z.infer<
+	typeof createSuggestionRequestSchema
+>;
+export const CREATE_SUGGESTION_SHAPE = `{ kind: ${SUGGESTION_KINDS.join(" | ")}, requirement | issue, baseRevision, payload, model? }`;
+
+/** `POST /api/projects/:id/suggestions/:sid/reject`. */
+export const rejectSuggestionRequestSchema = z.strictObject({
+	reason: z.string().max(4_000),
+});
+export type RejectSuggestionRequest = z.infer<
+	typeof rejectSuggestionRequestSchema
+>;
+
+/** `GET /api/projects/:id/suggestions` — `status` is comma-separated. */
+export const listSuggestionsQuerySchema = z.strictObject({
+	...targetFields,
+	status: z
+		.string()
+		.optional()
+		.transform((s) => (s ? s.split(",") : undefined))
+		.pipe(z.array(z.enum(SUGGESTION_STATUSES)).optional()),
+});
+
+/** One suggestion as every reader sees it. */
+export interface SuggestionView {
+	id: string;
+	kind: SuggestionKind;
+	status: SuggestionStatus;
+	target: { type: SuggestionTargetType; id: string };
+	baseRevision: number | null;
+	/** null once purged, 90 days after a rejection, stale mark or withdrawal. */
+	payload: unknown;
+	payloadVersion: number;
+	fingerprint: string;
+	producerKind: SuggestionProducer;
+	producerId: string | null;
+	conversationMessageId: string | null;
+	model: string | null;
+	decidedBy: string | null;
+	decidedAt: string | null;
+	reason: string | null;
+	createdAt: string;
+	payloadPurgedAt: string | null;
+}
+
+/** What an accept wrote, read back for the caller; never stored on the row. */
+export interface SuggestionEffect {
+	requirementId: string;
+	requirement: string;
+	revision: number;
+}
+
+/** The answer to create, accept, reject and withdraw. */
+export interface SuggestionResponse {
+	suggestion: SuggestionView;
+	effect?: SuggestionEffect;
+}
+
+/** The answer to the list: the rows asked for, and how many are open on the target. */
+export interface SuggestionListResponse {
+	suggestions: SuggestionView[];
+	open: number;
+}

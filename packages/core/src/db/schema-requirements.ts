@@ -1,3 +1,4 @@
+import { REQUIREMENT_CRITERION_FORMS } from '@forge/contracts/suggestions';
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -25,7 +26,7 @@ export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
 export const REVISION_STATES = ['draft', 'proposed', 'current', 'superseded'] as const;
 export type RevisionState = (typeof REVISION_STATES)[number];
 
-export const CRITERION_FORMS = ['statement', 'scenario'] as const;
+export const CRITERION_FORMS = REQUIREMENT_CRITERION_FORMS;
 export type CriterionForm = (typeof CRITERION_FORMS)[number];
 
 // cm:why the stored status holds only what a person decides (workflow requirement-lifecycle); in

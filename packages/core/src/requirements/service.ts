@@ -37,7 +37,6 @@ export {
 
 import {
   detailOf,
-  forbidden,
   linkedDesigns,
   notFound,
   type RequirementActor,
@@ -254,7 +253,7 @@ export async function returnRevision(input: {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
   const signer = await signerRefusal(actor, projectId, 'returning a revision');
-  if (signer) throw forbidden(signer);
+  if (signer) return { ok: false, refusals: [signer] };
   if (!input.reason.trim()) {
     return {
       ok: false,
@@ -314,7 +313,7 @@ export async function acceptRevision(input: {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
   const signer = await signerRefusal(actor, projectId, 'accepting a revision');
-  if (signer) throw forbidden(signer);
+  if (signer) return { ok: false, refusals: [signer] };
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);
@@ -375,7 +374,7 @@ export async function agreeRequirement(input: {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
   const signer = await signerRefusal(actor, projectId, 'agreeing a requirement');
-  if (signer) throw forbidden(signer);
+  if (signer) return { ok: false, refusals: [signer] };
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);

@@ -3,7 +3,7 @@
  * every write resolves a requirement and its signer with.
  */
 
-import type { RequirementStanding } from '@forge/contracts/requirement-standing';
+import type { RequirementStanding } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
@@ -27,12 +27,7 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../workflows/service.js';
-import {
-  changedSincePlan,
-  type LinkedDesign,
-  type RequirementRefusal,
-  signoffRefusal,
-} from './rules.js';
+import { changedSincePlan, type LinkedDesign, signoffRefusal } from './rules.js';
 import { historyOf, standingsOf } from './standing-read.js';
 
 export interface RequirementActor {
@@ -53,12 +48,6 @@ export type CriterionRow = typeof requirementCriteria.$inferSelect;
 
 export const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-export const forbidden = (refusal: RequirementRefusal) =>
-  new HTTPException(403, {
-    message: refusal.detail,
-    cause: { code: refusal.code, details: { refusals: [refusal] } },
-  });
 
 export const requirementKey = (seq: number) => `REQ-${seq}`;
 

@@ -9,7 +9,7 @@
 
 import type { OrgMemberRole, ProjectMemberRole } from '../../db/schema.js';
 import type { ActorAgency } from '../../issues/actor-agency.js';
-import { orgRoleAtLeast, projectRoleAtLeast } from '../../lib/authz.js';
+import { actMiss, approverRule } from '../../lib/person-act.js';
 import type { DesignApprover } from '../../project-config/schema.js';
 
 export const CONTRACT_APPROVALS = ['proposed', 'approved', 'returned'] as const;
@@ -54,33 +54,34 @@ export function approverRefusal(
   approver: DesignApprover,
   projectId: string,
 ): ApprovalRefusal | null {
-  if (facts.agency !== 'agent') {
-    if (orgRoleAtLeast(facts.orgRole, 'admin')) return null;
-    return {
-      code: 'CONTRACT_APPROVER_NOT_ADMIN',
-      path: '',
-      detail: `${facts.userId} holds ${facts.orgRole ?? 'no role'} in project ${projectId}'s organization; a person deciding a contract version is an org owner or admin.`,
-    };
-  }
-  if (!AGENT_DECIDABLE.has(version.classification)) {
+  const decidable = AGENT_DECIDABLE.has(version.classification);
+  const miss = actMiss(facts, approverRule(decidable && approver === 'master'));
+  if (!miss) return null;
+  if (miss.kind === 'agent-not-allowed' && !decidable) {
     return {
       code: 'CONTRACT_BREAKING_NEEDS_PERSON',
       path: '',
       detail: `${version.ref} is measured ${version.classification}; a breaking or unmeasured version is decided by a person (an org owner or admin), whatever contracts.approver says, because the consumers it may break are not an agent's to break.`,
     };
   }
-  if (approver === 'owner') {
+  if (miss.kind === 'agent-not-allowed') {
     return {
       code: 'CONTRACT_APPROVER_NOT_PERSON',
       path: '',
       detail: `agent ${facts.userId} acts as an agent; project ${projectId} declares contracts.approver "owner", so only an org admin person decides its contract versions. The owner sets it to "master" (PUT /api/projects/${projectId}/config) to let the project's master approve non-breaking ones.`,
     };
   }
-  if (projectRoleAtLeast(facts.role, 'member')) return null;
+  if (miss.kind === 'agent-below-member') {
+    return {
+      code: 'CONTRACT_APPROVER_NOT_PROJECT',
+      path: '',
+      detail: `agent ${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}; with contracts.approver "master" a version is decided by that project's own master, never another project's agent.`,
+    };
+  }
   return {
-    code: 'CONTRACT_APPROVER_NOT_PROJECT',
+    code: 'CONTRACT_APPROVER_NOT_ADMIN',
     path: '',
-    detail: `agent ${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}; with contracts.approver "master" a version is decided by that project's own master, never another project's agent.`,
+    detail: `${facts.userId} holds ${facts.orgRole ?? 'no role'} in project ${projectId}'s organization; a person deciding a contract version is an org owner or admin.`,
   };
 }
 

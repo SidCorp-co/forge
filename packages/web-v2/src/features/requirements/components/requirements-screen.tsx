@@ -12,10 +12,11 @@ import {
   REQUIREMENT_STATE_TONES,
   REQUIREMENT_STATES,
   type StandingTone,
-} from "@forge/contracts/requirement-standing";
+} from "@forge/contracts/requirements";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AGENT_TINT,
   Button,
   EmptyState,
   ErrorState,
@@ -30,14 +31,15 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
-import { useCreateRequirement, useProjectSuggestions, useRequirements, useSuggestionDecision } from "../hooks";
+import { PendingBadge, summaryOf } from "@/features/suggestions/components/suggestion-list";
+import { useProjectWaitingSuggestions, useSuggestionDecision } from "@/features/suggestions/hooks";
+import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
+import { useCreateRequirement, useRequirements } from "../hooks";
 import { rememberListOrigin, requirementHref, requirementsHref } from "../routes";
-import type { RequirementSummary, Suggestion } from "../types";
+import type { RequirementSummary } from "../types";
 import { RequirementPeek } from "./requirement-peek";
 import { RefusalLine } from "./refusal";
-import { OwnerAge, StateBadge, WaitingOn, revisionText } from "./standing-bits";
-import { PendingBadge, summaryOf } from "./suggestions";
-import { AI_TINT, TONE } from "./tone";
+import { OwnerAge, StateBadge, WaitingOn, revisionText, toneOf } from "./standing-bits";
 
 function CreateForm({ projectId, onDone }: { projectId: string; onDone: (key: string) => void }) {
   const create = useCreateRequirement(projectId);
@@ -166,7 +168,7 @@ function Row({ r, selected, onOpen }: { r: RequirementSummary; selected: boolean
 }
 
 function GroupHeader({ g, open, onToggle }: { g: Group; open: boolean; onToggle: () => void }) {
-  const c = g.tone === "neutral" || g.tone === "done" ? "var(--fg-muted)" : TONE[g.tone].fg;
+  const c = g.tone === "neutral" || g.tone === "done" ? "var(--fg-muted)" : toneOf(g.tone).fg;
   return (
     <button
       type="button"
@@ -197,19 +199,19 @@ function AssistantStrip({
   rows: RequirementSummary[];
   onPeek: (key: string) => void;
 }) {
-  const q = useProjectSuggestions(projectId);
+  const q = useProjectWaitingSuggestions(projectId);
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
   const open = (q.data?.suggestions ?? []).filter((s) => s.target.type === "requirement" && byId.has(s.target.id));
   if (open.length === 0) return null;
   return (
     <section
       className="border-l-[3px] py-2 pl-[17px] pr-5 text-12-5"
-      style={{ background: AI_TINT.bg, borderColor: AI_TINT.bar }}
+      style={{ background: AGENT_TINT.bg, borderColor: AGENT_TINT.dot }}
       aria-label="BA assistant suggestions"
       data-testid="assistant-strip"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold" style={{ color: AI_TINT.fg }}>
+        <span className="font-semibold" style={{ color: AGENT_TINT.fg }}>
           BA assistant
         </span>
         <span className="text-subtle">Suggestions {open.length} · never applied on its own</span>

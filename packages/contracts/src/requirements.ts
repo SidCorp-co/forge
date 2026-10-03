@@ -3,6 +3,8 @@
 // decide it, and the coverage of each business criterion. Core writes the shapes; web-v2 reads the
 // labels, so one value keeps one badge on every screen.
 
+import type { IssueStatusTone } from "./issue-vocabulary.js";
+
 /** The lifecycle a person reads: the stored status (draft, agreed, accepted, dropped) with agreed
  *  split by the derived delivery phase. `dropped` is off the line. */
 export const REQUIREMENT_LIFECYCLE = [
@@ -18,16 +20,8 @@ export const REQUIREMENT_STATES = [
 ] as const;
 export type RequirementState = (typeof REQUIREMENT_STATES)[number];
 
-/** The badge legend's tones: `you` waits on a person, `run` work is moving, `ready` agreed and free
- *  to take, `done` over, `err` failed, `neutral` not moving, `ai` an agent's turn. */
-export type StandingTone =
-	| "you"
-	| "run"
-	| "ready"
-	| "done"
-	| "err"
-	| "neutral"
-	| "ai";
+/** The issue badge legend's tones, so a requirement's colours mean what an issue's do. */
+export type StandingTone = IssueStatusTone;
 
 export const REQUIREMENT_STATE_LABELS: Record<RequirementState, string> = {
 	draft: "Draft",

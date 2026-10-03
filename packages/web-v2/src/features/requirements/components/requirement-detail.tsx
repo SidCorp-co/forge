@@ -6,18 +6,18 @@
 // comes from core's read model; this file only lays it out.
 
 import type { ReactNode } from "react";
-import { ErrorState, ProjectLoader } from "@/design";
+import { AGENT_TINT, ErrorState, ProjectLoader } from "@/design";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { useRequirement, useRequirementSuggestions } from "../hooks";
+import { PendingBadge, RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
+import { useWaitingSuggestions } from "@/features/suggestions/hooks";
+import { useRequirement } from "../hooks";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
 import { PrimaryActions, ProposalDecision } from "./requirement-actions";
 import { Source, decidingFacts } from "./requirement-peek";
 import { History, ProofChain, Readiness, RelationsRail, RevisionDiff, SubHead } from "./requirement-proof";
 import { CoverageMarks, RevisionTimeline, StateBadge, Stepper, WaitBanner, stamp } from "./standing-bits";
-import { PendingBadge, RequirementSuggestions } from "./suggestions";
-import { AI_TINT } from "./tone";
 
 function ZoneHead({ n, title, q, rail }: { n: number; title: string; q: string; rail?: boolean }) {
   return (
@@ -137,11 +137,11 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
     <div
       id="proposal"
       className="my-2.5 scroll-mt-4 border-l-[3px] px-3 py-[9px] text-12-5"
-      style={{ background: AI_TINT.bg, borderColor: AI_TINT.bar }}
+      style={{ background: AGENT_TINT.bg, borderColor: AGENT_TINT.dot }}
       data-testid="open-revision"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold" style={{ color: AI_TINT.fg }}>
+        <span className="font-semibold" style={{ color: AGENT_TINT.fg }}>
           {proposed ? "Proposal" : "Draft"} r{open.revision}
         </span>
         {proposed ? <PendingBadge /> : <span className="text-12 text-subtle">In draft</span>}
@@ -154,7 +154,7 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
       </div>
       <p className="my-1.5 text-13-5">{open.changeSummary ?? open.reason}</p>
       <details className="text-12-5">
-        <summary className="cursor-pointer select-none font-semibold" style={{ color: AI_TINT.fg }}>
+        <summary className="cursor-pointer select-none font-semibold" style={{ color: AGENT_TINT.fg }}>
           Show full {proposed ? "proposal" : "draft"}
         </summary>
         <div className="mt-1.5 border-t border-line-subtle pt-1">
@@ -226,7 +226,7 @@ function WhatItIs({ d, projectId }: { d: RequirementDetail; projectId: string })
 }
 
 function Proof({ d, projectId, slug }: { d: RequirementDetail; projectId: string; slug: string }) {
-  const sug = useRequirementSuggestions(projectId, d.key);
+  const sug = useWaitingSuggestions(projectId, d.key);
   const judged = d.standing.facts;
   return (
     <Zone n={3} title="Proof" q="Traceability and readiness">
