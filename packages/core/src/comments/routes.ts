@@ -40,6 +40,7 @@ import {
   rethrowBodyInvalid,
 } from './body-input.js';
 import { CommentCursorInvalidError, decodeCommentCursor } from './cursor.js';
+import { commentRowIn, placeOfComment } from './entity-read.js';
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import { messageRefusalHttp } from './screen.js';
@@ -91,7 +92,7 @@ async function loadComment(commentId: string) {
   const [row] = await db
     .select({
       id: comments.id,
-      issueId: comments.issueId,
+      issueId: issues.id,
       authorId: comments.authorId,
       body: comments.body,
       projectId: issues.projectId,
@@ -100,9 +101,24 @@ async function loadComment(commentId: string) {
     .innerJoin(issues, eq(comments.issueId, issues.id))
     .where(eq(comments.id, commentId))
     .limit(1);
-  if (!row) throw notFound('comment not found');
-  return row;
+  if (row) return row;
+  const elsewhere = await commentRowIn(db, commentId);
+  if (!elsewhere) throw notFound('comment not found');
+  const place = await placeOfComment(db, elsewhere);
+  const segment = { requirement: 'requirements', workflow: 'workflows', feedback: 'feedback' }[
+    place.scope
+  ];
+  throw notFound(
+    `comment ${commentId} sits on a ${place.scope}, not an issue: read and edit it at /api/projects/${place.projectId}/${segment}/${place.targetId}/comments`,
+  );
 }
+
+const commentsShown = <T>(
+  c: Parameters<typeof restActor>[0],
+  projectId: string,
+  rows: T,
+  what: string,
+) => egressForRequest(restActor(c).agency, projectId, 'issue.comments', rows, what);
 
 export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.post(
@@ -247,13 +263,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
             : eq(comments.issueId, issueId),
         );
       const page = await listIssueCommentPage(issueId, { after, limit, intent });
-      const rows = await egressForRequest(
-        c.get('agency'),
-        issue.projectId,
-        'issue.comments',
-        page.rows,
-        `the comments on ${rawId}`,
-      );
+      const rows = await commentsShown(c, issue.projectId, page.rows, `the comments on ${rawId}`);
 
       // Join each comment's attachments in a single grouped query, keyed by
       // commentId. Guard the empty-ids case so `inArray` never receives an
@@ -332,10 +342,9 @@ commentRoutes.get(
       .from(comments)
       .where(eq(comments.parentId, id));
 
-    const rows = await egressForRequest(
-      c.get('agency'),
+    const rows = await commentsShown(
+      c,
       parent.projectId,
-      'issue.comments',
       await db
         .select(commentThreadColumns)
         .from(comments)

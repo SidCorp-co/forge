@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Button, ErrorState, PageTitle, ProjectLoader, Textarea, Toggle, Tooltip } from "@/design";
+import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
+import { useEntityDecisions } from "@/features/comments/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { templateFor } from "../canvas/model";
 import { WorkflowCanvas } from "../canvas/workflow-canvas";
@@ -74,7 +76,9 @@ export function WorkflowDesignScreen({ projectId, flow }: { projectId: string; s
   const templates = useWorkflowTemplates(projectId);
   const record = list.data?.workflows.find((r) => r.document.flow === flow || r.document.id === flow) ?? null;
   const design = useWorkflowDesign(projectId, record?.document.id);
+  const decisions = useEntityDecisions(projectId, "workflow", record?.document.id);
   const [changes, setChanges] = useState(false);
+  const [showDecisions, setShowDecisions] = useState(false);
 
   if (list.isLoading || templates.isLoading || (record && design.isLoading)) return centred(<ProjectLoader label="loading workflow…" />);
   const failed = list.error ?? templates.error ?? design.error;
@@ -121,9 +125,22 @@ export function WorkflowDesignScreen({ projectId, flow }: { projectId: string; s
             Changes since approved
           </span>
         ) : null}
+        <Button size="sm" variant={showDecisions ? "primary" : "secondary"} onClick={() => setShowDecisions((v) => !v)} aria-pressed={showDecisions} data-testid="design-decisions-toggle">
+          Decisions{decisions.data ? ` ${decisions.data.returned}` : ""}
+        </Button>
         {decision}
       </header>
-      <WorkflowCanvas doc={{ ...shown, steps }} template={template} diff={diff} decision={decision} />
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <WorkflowCanvas doc={{ ...shown, steps }} template={template} diff={diff} decision={decision} />
+        </div>
+        {showDecisions ? (
+          <aside className="w-[380px] shrink-0 overflow-y-auto border-l border-line-subtle bg-surface px-5 py-4 max-md:w-full" aria-label="Decisions" data-testid="design-decisions">
+            <h2 className="mb-3 text-15 font-semibold text-fg">Decisions</h2>
+            <DecisionsPanel projectId={projectId} scope="workflow" targetRef={record.document.id} />
+          </aside>
+        ) : null}
+      </div>
     </div>
   );
 }

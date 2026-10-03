@@ -209,9 +209,6 @@ export interface RequirementStanding {
 	touchedAt: string;
 }
 
-// cm:why what an agree reads of the accepted readiness result at the head (decision on ISS-58,
-// 2026-10-04, policy over the kernel): `off` reads nothing, `warn` records the result on the
-// baseline, `block` refuses an agree without a ready result, REQUIREMENT_NOT_READY. Absent is `off`.
 export const REQUIREMENT_READINESS_GATES = ["off", "warn", "block"] as const;
 export type RequirementReadinessGate =
 	(typeof REQUIREMENT_READINESS_GATES)[number];

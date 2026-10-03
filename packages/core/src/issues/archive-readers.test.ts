@@ -34,10 +34,16 @@ const NOT_DISCOVERY: Record<string, string> = {
     'resolves ids already quoted in a reply; existence, not discovery',
   'comments/attachment-routes.ts': 'by comment or attachment id',
   'comments/routes.ts': 'by issue or comment id',
+  'comments/entity-read.ts':
+    'the decision ledger: a decision is a record of the project, and the issue it names is joined for its key and title, not discovered',
   'comments/service.ts': 'by issue or comment id',
   'devices/admissible.ts': 'reads only backlog-admissible statuses; relations by edge',
   'devices/claim.ts': 'the issue of the claimed job',
   'devices/pool.ts': 'issues of queued jobs on live runs; relations by edge',
+  'ecosystem/waits/gate.ts':
+    'the issues a run or claim names, by id or seq; an archived issue is terminal and dispatches nothing',
+  'ecosystem/waits/read.ts': 'the waits of the one issue named, by issue id',
+  'ecosystem/waits/routes.ts': 'the one issue a contract wait route names, by id',
   'devices/run-evidence.ts': 'the seqs a run names',
   'devices/run-issue-return.ts': 'the seqs a run names',
   'devices/run-session.ts': 'the seqs a run names',

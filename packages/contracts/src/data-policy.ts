@@ -26,10 +26,6 @@ export const SENSITIVE_DATA_BADGES: Record<
 
 export const SENSITIVE_DATA_DEFAULT: SensitiveDataLevel = "off";
 
-// cm:why the two classes a surface declares in core's one table (`lib/data-egress.ts:EGRESS_SURFACES`):
-// product is readable by agents at every level, operational is withheld at no_egress. A withheld
-// read is refused CONTENT_EGRESS_FORBIDDEN and answers metadata; a surface no table row declares is
-// refused EGRESS_SURFACE_UNDECLARED.
 export const EGRESS_CLASSES = ["product", "operational"] as const;
 export type EgressClass = (typeof EGRESS_CLASSES)[number];
 

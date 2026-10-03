@@ -174,4 +174,6 @@ export const targetTypeOf = (r: Row): FeedbackTargetType =>
         ? 'release'
         : r.workflowId
           ? 'workflow'
-          : 'screen';
+          : r.contractVersion
+            ? 'contract'
+            : 'screen';

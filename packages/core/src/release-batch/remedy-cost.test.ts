@@ -19,6 +19,8 @@ const selectRows = vi.fn(async () => [] as unknown[]);
 const selectLimit = vi.fn(async () => [] as unknown[]);
 const execRows = vi.fn(async () => [] as unknown[]);
 
+vi.mock('../ecosystem/waits/live.js', () => ({ contractProviderShortfalls: async () => [] }));
+
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => ({
@@ -72,6 +74,7 @@ const BLOCKER_CODES = [
   'RELEASE_ROSTER_OVERSIZE',
   'RELEASE_RECORD_MISSING',
   'RELEASE_WORK_UNMERGED',
+  'CONTRACT_PROVIDER_NOT_LIVE',
   'RELEASE_PROBES_UNREADABLE',
   'RELEASE_POOL_EMPTY',
   'NO_RUNNER_ONLINE',
@@ -110,6 +113,12 @@ function everyMessage(): Array<{ code: ReasonCode; message: string }> {
       code: 'RELEASE_PROBES_UNREADABLE' as ReasonCode,
       message: releaseBlockerSentence('RELEASE_PROBES_UNREADABLE', {
         bindings: ['coolify b-1'],
+      }),
+    },
+    {
+      code: 'CONTRACT_PROVIDER_NOT_LIVE' as ReasonCode,
+      message: releaseBlockerSentence('CONTRACT_PROVIDER_NOT_LIVE', {
+        waits: [{ issueId: 'u-9', issue: 'ISS-9', contract: 'p/c', needed: '2.0.0', live: null }],
       }),
     },
     {

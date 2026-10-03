@@ -7,6 +7,7 @@
  * ever inserted; the latest per live criterion is the one the gate and the UI read.
  */
 
+import type { VerdictCorroboration } from '@forge/contracts/verdict-identity';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { Tx } from '../../db/client.js';
@@ -19,6 +20,7 @@ import {
 } from '../../db/schema-issue-criteria.js';
 import { dbContractLookup } from '../../messaging/verdict-contract.js';
 import { dbDesignLookup } from '../../messaging/verdict-design.js';
+import { readProjectDocument } from '../../project-config/service.js';
 import type { ActorAgency } from '../actor-agency.js';
 import {
   normalizeStatement,
@@ -26,7 +28,18 @@ import {
   parseCriteriaText,
   renderCriteriaText,
 } from './criteria-text.js';
-import { type VerdictDraft, type VerdictRefusal, verdictDraftFault } from './verdict-input.js';
+import {
+  corroborationOf,
+  type DraftReader,
+  environmentFault,
+  readSourceDraft,
+} from './storefront-draft.js';
+import {
+  type VerdictDraft,
+  type VerdictIdentity,
+  type VerdictRefusal,
+  verdictDraftFault,
+} from './verdict-input.js';
 
 /**
  * A write refused by name. An `HTTPException`, so every REST door answers it with its code without
@@ -77,6 +90,11 @@ export interface LatestVerdict {
   readonly designRevision: number | null;
   readonly contractRef: string | null;
   readonly contractVersion: string | null;
+  readonly storefrontWorkflowId: string | null;
+  readonly storefrontDraftVersion: string | null;
+  readonly storefrontEnvironment: string | null;
+  readonly corroboration: VerdictCorroboration | null;
+  readonly corroborationNote: string | null;
   readonly evidence: readonly string[];
   readonly authorAgency: ActorAgency;
   readonly backfilled: boolean;
@@ -238,7 +256,8 @@ const LIST_SQL = (issueId: string) => sql`
   SELECT c.id, c.n, c.statement, c.position, c.requirement_criterion_id,
          v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
          v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
-         v.contract_version, v.evidence, v.author_agency, v.backfilled, v.created_at AS v_created_at
+         v.contract_version, v.storefront_workflow_id, v.storefront_draft_version,
+         v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.author_agency, v.backfilled, v.created_at AS v_created_at
     FROM issue_criteria c
     LEFT JOIN LATERAL (
       SELECT * FROM criterion_verdicts cv
@@ -267,6 +286,11 @@ type ListRow = {
   design_revision: number | null;
   contract_ref: string | null;
   contract_version: string | null;
+  storefront_workflow_id: string | null;
+  storefront_draft_version: string | null;
+  storefront_environment: string | null;
+  corroboration: VerdictCorroboration | null;
+  corroboration_note: string | null;
   evidence: string[] | null;
   author_agency: ActorAgency | null;
   backfilled: boolean | null;
@@ -287,6 +311,11 @@ function latestOf(row: ListRow): LatestVerdict | null {
     designRevision: row.design_revision,
     contractRef: row.contract_ref,
     contractVersion: row.contract_version,
+    storefrontWorkflowId: row.storefront_workflow_id,
+    storefrontDraftVersion: row.storefront_draft_version,
+    storefrontEnvironment: row.storefront_environment,
+    corroboration: row.corroboration,
+    corroborationNote: row.corroboration_note,
     evidence: row.evidence ?? [],
     authorAgency: row.author_agency ?? 'human',
     backfilled: row.backfilled === true,
@@ -316,15 +345,42 @@ export interface VerdictAuthor {
   readonly agency: ActorAgency;
 }
 
+type Columns = Partial<typeof criterionVerdicts.$inferInsert>;
+
+async function storefrontColumns(
+  projectId: string,
+  criterion: number,
+  identity: Extract<VerdictIdentity, { kind: 'storefront_draft' }>,
+  readDraft: DraftReader,
+): Promise<Columns> {
+  const document = (await readProjectDocument(projectId))?.document ?? null;
+  const environment = identity.environment.trim();
+  const unknown = environmentFault(criterion, document, environment);
+  if (unknown) throw new VerdictRefused(unknown);
+  const workflowId = identity.workflowId.trim();
+  const found = corroborationOf(identity, await readDraft(document, workflowId));
+  return {
+    identityKind: 'storefront_draft',
+    storefrontWorkflowId: workflowId,
+    storefrontDraftVersion: identity.draftVersion.trim(),
+    storefrontEnvironment: environment,
+    corroboration: found.corroboration,
+    corroborationNote: found.note,
+  };
+}
+
 /** The identity columns a draft writes, the design resolved to its workflow row. */
 async function identityColumns(
   tx: Tx,
   projectId: string,
   draft: VerdictDraft,
-): Promise<Partial<typeof criterionVerdicts.$inferInsert>> {
+  readDraft: DraftReader,
+): Promise<Columns> {
   const identity = draft.identity;
   if (identity === null) return {};
   switch (identity.kind) {
+    case 'storefront_draft':
+      return storefrontColumns(projectId, draft.criterion, identity, readDraft);
     case 'commit':
       return { identityKind: 'commit', commitSha: identity.sha.trim().toLowerCase() };
     case 'runtime':
@@ -379,6 +435,7 @@ export async function recordVerdict(
     draft: VerdictDraft;
     author: VerdictAuthor;
     commentId?: string | null;
+    readDraft?: DraftReader;
   },
 ): Promise<{ id: string }> {
   const { issue, draft, author } = args;
@@ -410,7 +467,12 @@ export async function recordVerdict(
       }.`,
     });
   }
-  const identity = await identityColumns(tx, issue.projectId, draft);
+  const identity = await identityColumns(
+    tx,
+    issue.projectId,
+    draft,
+    args.readDraft ?? readSourceDraft,
+  );
   const [row] = await tx
     .insert(criterionVerdicts)
     .values({

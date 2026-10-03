@@ -296,8 +296,8 @@ describe('every document records who wrote it, and through what', () => {
 
   it('refuses a viewer, and a master writing for a project it is fenced from, each by name', async () => {
     const viewer = await say('viewer', 'POST', `${plugin()}/drafts`, acknowledgement(w, 'FP-CN-1'));
-    expect([viewer.status, viewer.json.code]).toEqual([403, 'CHANNEL_WRITE_NOT_AUTHORISED']);
-    expect(viewer.json.details.refusals).toEqual([
+    expect([viewer.status, viewer.json.error.code]).toEqual([422, 'CHANNEL_WRITE_NOT_AUTHORISED']);
+    expect(viewer.json.error.refusals).toEqual([
       expect.objectContaining({ code: 'CHANNEL_WRITE_NOT_AUTHORISED', path: '/from' }),
     ]);
     const fenced = await say(

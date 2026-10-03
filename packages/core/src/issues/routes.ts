@@ -27,7 +27,6 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { requirementOfIssue } from '../requirements/issue-links.js';
-import { buildsWorkflowOf } from '../workflows/build-gate.js';
 import { proposesWorkflowOf } from '../workflows/design-issue.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';
@@ -38,6 +37,7 @@ import { hydrateCreatorsForIssues } from './creator.js';
 import { toHttpDependencyError } from './dependency-routes.js';
 import { IssueDependencyError } from './dependency-service.js';
 import { serializeIssue } from './detail-projection.js';
+import { dispatchGatesOf } from './dispatch-gates.js';
 import { attachmentInputSchema, labelAttachItemSchema } from './input-schemas.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
 import {
@@ -247,7 +247,7 @@ issueProjectRoutes.get(
     if (!parsed.ok) throw badRequest({ formErrors: [parsed.message], fieldErrors: {} });
     const found = await findIssueByDisplaySeq(projectId, parsed.issSeq);
     if (!found) throw notFound('issue not found');
-    const issue = await egressForRequest(c.get('agency'), projectId, 'issue', found, displayId);
+    const issue = await egressForRequest(restActor(c).agency, projectId, 'issue', found, displayId);
 
     const labelRows = await listIssueLabels(issue.id);
 
@@ -266,7 +266,7 @@ issueProjectRoutes.get(
       ...creatorMap.get(issue.id),
       pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
       liveReach: await liveReachForIssue(issue),
-      buildsWorkflow: await buildsWorkflowOf(issue.id),
+      ...(await dispatchGatesOf(issue.id, issue.projectId)),
       proposesWorkflow: await proposesWorkflowOf(issue.id),
       requirement: await requirementOfIssue(issue.id),
       labels: labelRows,
@@ -316,7 +316,7 @@ issueProjectRoutes.get(
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
 
     const rows = await egressForRequest(
-      c.get('agency'),
+      restActor(c).agency,
       projectId,
       'issue',
       await issueListPageQuery({
@@ -405,7 +405,7 @@ issueRoutes.get(
 
     const resolved = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
     const issue = await egressForRequest(
-      c.get('agency'),
+      restActor(c).agency,
       resolved.projectId,
       'issue',
       resolved,
@@ -434,7 +434,7 @@ issueRoutes.get(
       agentStatus: agentBucket?.agentStatus ?? null,
       pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
       liveReach: await liveReachForIssue(issue),
-      buildsWorkflow: await buildsWorkflowOf(issue.id),
+      ...(await dispatchGatesOf(issue.id, issue.projectId)),
       proposesWorkflow: await proposesWorkflowOf(issue.id),
       requirement: await requirementOfIssue(issue.id),
       labels: labelRows,

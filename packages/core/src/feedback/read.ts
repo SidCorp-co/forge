@@ -19,7 +19,7 @@ import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { and, asc, count, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
-import { issues, pipelineRuns } from '../db/schema.js';
+import { issues, pipelineRuns, projects } from '../db/schema.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
@@ -29,13 +29,7 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { isUuid } from '../issues/issue-route-ref.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
-import {
-  dataPolicyOf,
-  type EgressReader,
-  egressAt,
-  isProviderBound,
-  withheldAt,
-} from '../lib/data-egress.js';
+import { dataPolicyOf, type EgressReader, egressReading } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { actMiss, PERSON_ACT, PERSON_ADMIN_ACT } from '../lib/person-act.js';
 import { requirementKey } from '../requirements/read.js';
@@ -89,6 +83,7 @@ interface Linked {
   requirements: Map<string, { key: string; title: string; status: string; delivered: boolean }>;
   releases: Map<string, string>;
   workflows: Map<string, { flow: string; title: string | null }>;
+  providers: Map<string, string>;
   suggestions: Map<string, { status: string; revisionLive: boolean; delivered: boolean }>;
   roots: Map<string, Row>;
   names: Map<string, string>;
@@ -163,12 +158,20 @@ async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
       rootIds.length ? db.select().from(feedback).where(inArray(feedback.id, rootIds)) : [],
     ]);
   const allRows = [...rows, ...rootRows];
+  const providerIds = ids(rows.map((r) => r.contractProviderProjectId));
+  const providerRows = providerIds.length
+    ? await db
+        .select({ id: projects.id, slug: projects.slug })
+        .from(projects)
+        .where(inArray(projects.id, providerIds))
+    : [];
   const delivered = await deliveredAmong(
     projectId,
     ids([...reqRows.map((r) => r.id), ...suggestionRows.map((s) => s.requirementId)]),
   );
   return {
     prefix,
+    providers: new Map(providerRows.map((p) => [p.id, p.slug])),
     issues: new Map(
       issueRows.map((i) => [
         i.id,
@@ -261,6 +264,10 @@ function targetView(r: Row, l: Linked): FeedbackTargetView {
     const w = l.workflows.get(r.workflowId as string);
     return { type, key: w?.flow ?? (r.workflowId as string), title: w?.title ?? null };
   }
+  if (type === 'contract') {
+    const provider = l.providers.get(r.contractProviderProjectId as string);
+    return { type, key: `${provider}/${r.contractSlug}@${r.contractVersion}`, title: null };
+  }
   return { type, key: r.whereSeen ?? '', title: null };
 }
 
@@ -298,22 +305,14 @@ const WITHHELD = 'content withheld: this project keeps its data out of every pro
 export type ReadDoor = Pick<EgressReader, 'providerBound'>;
 
 // cm:guard a provider-bound reader (an agent, or any reader on the MCP door) reads feedback through
-// the one egress rule (`lib/data-egress.ts:egressAt`, surface `feedback`, operational): withheld to
+// the one egress rule (`lib/data-egress.ts:egressReading`, surface `feedback`, operational): withheld to
 // metadata at no_egress, scrubbed at redact; a person off every such door reads it as stored
 export function feedbackEgress(
   level: SensitiveDataLevel,
   agency: ActorAgency,
   door: ReadDoor = {},
 ) {
-  const bound = isProviderBound({ agency, providerBound: door.providerBound });
-  const withhold = bound && withheldAt(level, 'feedback');
-  const shown = <T>(view: T, what: string): T => {
-    if (!bound || withhold) return view;
-    const out = egressAt(level, 'feedback', view, what);
-    if (!out.ok) throw new Error(`feedback: ${what} was withheld after the guard let it through`);
-    return out.value;
-  };
-  return { withhold, shown };
+  return egressReading(level, { agency, providerBound: door.providerBound }, 'feedback');
 }
 
 function summaryOf(r: Row, l: Linked, viewer: FeedbackActor, withhold: boolean): FeedbackSummary {
@@ -333,6 +332,7 @@ function summaryOf(r: Row, l: Linked, viewer: FeedbackActor, withhold: boolean):
     target: targetView(r, l),
     route: withhold && route?.answer ? { ...route, answer: null } : route,
     reporter: { id: r.reportedBy, name: reporterName, agency: r.reporterAgency },
+    dueAt: r.dueAt?.toISOString() ?? null,
     redacted: r.redactedAt !== null,
     redactedAt: r.redactedAt?.toISOString() ?? null,
     createdAt: r.createdAt.toISOString(),

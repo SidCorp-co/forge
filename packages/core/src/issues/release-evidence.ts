@@ -15,20 +15,38 @@ export type CriteriaEvidence =
       unidentified: number[];
       /** Passing, but recorded at or before the issue's latest reopen: not current evidence. */
       predateReopen: number[];
+      inadmissible: number[];
+      uncorroborated: Array<{ criterion: number; note: string }>;
     };
+
+export type SourceType = 'git' | 'storefront' | 'none' | null;
+
+function draftFinding(
+  latest: NonNullable<CriterionWithVerdict['latest']>,
+  source: SourceType,
+): 'inadmissible' | 'uncorroborated' | null {
+  if (latest.identityKind !== 'storefront_draft') return null;
+  if (source !== 'storefront') return 'inadmissible';
+  return latest.corroboration === 'corroborated' ? null : 'uncorroborated';
+}
 
 /**
  * The gate's reading of a set of criteria and their latest verdicts. A verdict at or before
  * `reopenedAt` is evidence about a build the reopen rejected, never current.
  */
+// cm:why a storefront draft stands in for a landed commit only where the work lives on a storefront
+// (`source.type: "storefront"`), and only once the source read the draft back (ISS-91).
 export function evaluateCriteria(
   criteria: readonly CriterionWithVerdict[],
   reopenedAt: Date | null = null,
+  source: SourceType = null,
 ): CriteriaEvidence {
   if (criteria.length === 0) return { kind: 'no-criteria' };
   const unpassed: Array<{ criterion: number; verdict: string | null }> = [];
   const unidentified: number[] = [];
   const predateReopen: number[] = [];
+  const inadmissible: number[] = [];
+  const uncorroborated: Array<{ criterion: number; note: string }> = [];
   for (const { n, latest } of criteria) {
     if (!latest || !PASSING.has(latest.verdict)) {
       unpassed.push({ criterion: n, verdict: latest?.verdict ?? null });
@@ -40,9 +58,18 @@ export function evaluateCriteria(
     }
     if (latest.identityKind === null || latest.identityKind === 'commit_unresolved') {
       unidentified.push(n);
+      continue;
+    }
+    const draft = draftFinding(latest, source);
+    if (draft === 'inadmissible') inadmissible.push(n);
+    if (draft === 'uncorroborated') {
+      uncorroborated.push({
+        criterion: n,
+        note: latest.corroborationNote ?? 'no reading recorded',
+      });
     }
   }
-  return { kind: 'criteria', unpassed, unidentified, predateReopen };
+  return { kind: 'criteria', unpassed, unidentified, predateReopen, inadmissible, uncorroborated };
 }
 
 /**
@@ -71,10 +98,11 @@ export async function reopenedAtOf(
 export async function unpassedCriteria(
   executor: Pick<Tx, 'execute'>,
   issueId: string,
+  source: SourceType = null,
 ): Promise<CriteriaEvidence & { reopenedAt: Date | null }> {
   // Sequential: inside the transition's transaction both reads share one connection.
   const criteria = await listCriteria(executor, issueId);
   const reopened = await reopenedAtOf(executor, [issueId]);
   const reopenedAt = reopened.get(issueId) ?? null;
-  return { ...evaluateCriteria(criteria, reopenedAt), reopenedAt };
+  return { ...evaluateCriteria(criteria, reopenedAt, source), reopenedAt };
 }

@@ -179,6 +179,22 @@ export async function egressAs<T>(
   return egressDeep(projectId, surface, value, what);
 }
 
+export function egressReading(
+  level: SensitiveDataLevel,
+  reader: EgressReader,
+  surface: EgressSurface,
+) {
+  const bound = isProviderBound(reader);
+  const withhold = bound && withheldAt(level, surface);
+  const shown = <T>(view: T, what: string): T => {
+    if (!bound || withhold) return view;
+    const out = egressAt(level, surface, view, what);
+    if (!out.ok) throw new EgressRefused(out.refusal);
+    return out.value;
+  };
+  return { withhold, shown };
+}
+
 export function egressText(
   level: SensitiveDataLevel,
   surface: EgressSurface,
