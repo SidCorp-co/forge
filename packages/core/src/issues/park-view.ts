@@ -9,10 +9,9 @@ import {
   eq,
   gt,
   isNull,
-  like,
   lt,
   notInArray,
-  or,
+  notLike,
   type SQL,
   sql,
 } from 'drizzle-orm';
@@ -26,8 +25,9 @@ import {
   type WaitingKind,
 } from '../db/schema.js';
 import { activityLog } from '../db/schema-activity.js';
-import { parseForgeRecord } from '../messaging/forge-record.js';
+import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
 import { openHumanQuestionIdsOn } from '../questions/issue-coupling.js';
+import { type RecordEntry, recordHistory } from './record-events/history.js';
 import {
   AWAITING_INPUT_STATUSES,
   HUMAN_PARK_STATUSES,
@@ -57,6 +57,12 @@ export interface ParkComment {
   createdAt: Date;
   /** Posted on a paired device's token: a run's write, never a person's reply. */
   byDevice?: boolean;
+  /** The record this entry carries, read from its typed event (ISS-56); else the body is parsed. */
+  record?: ForgeRecord | null;
+  /** The event the record is stored as, where it is one. */
+  eventId?: string | null;
+  /** The comment that carried it, where one did; `null` for a record written only as an event. */
+  commentId?: string | null;
 }
 
 export interface ParkInput {
@@ -92,10 +98,15 @@ function owesOf(status: IssueStatus, waitingKind: WaitingKind | null): ParkOwes 
   return status === 'waiting' ? null : 'information';
 }
 
-function fieldsOf(body: string, kind: string) {
-  const record = parseForgeRecord(body);
+function fieldsOf(entry: ParkComment, kind: string) {
+  const record = entry.record !== undefined ? entry.record : parseForgeRecord(entry.body);
   if (record?.kind !== kind) return null;
   return record.fields;
+}
+
+/** Whether this entry carries any record at all, whichever store it was read from. */
+function carriesRecord(entry: ParkComment): boolean {
+  return (entry.record !== undefined ? entry.record : parseForgeRecord(entry.body)) !== null;
 }
 
 function resumeFrom(park: { id: string; left: string | undefined } | null): ParkResume {
@@ -142,11 +153,12 @@ export function readPark(input: ParkInput): IssuePark | null {
   let left: string | undefined;
   let readings: string[] = [];
   for (const c of input.comments) {
-    const park = fieldsOf(c.body, 'park');
+    const park = fieldsOf(c, 'park');
     if (park) {
       const one = (key: string) => park.find((f) => f.key === key)?.value;
       record = {
-        commentId: c.id,
+        commentId: c.commentId !== undefined ? c.commentId : c.id,
+        eventId: c.eventId ?? null,
         kind: one('kind') ?? null,
         why: one('why') ?? null,
         postedAt: c.createdAt.toISOString(),
@@ -154,7 +166,7 @@ export function readPark(input: ParkInput): IssuePark | null {
       left = one('left');
       continue;
     }
-    const question = fieldsOf(c.body, 'question');
+    const question = fieldsOf(c, 'question');
     if (question) readings = question.filter((f) => f.key === 'reading').map((f) => f.value);
   }
   return {
@@ -164,7 +176,7 @@ export function readPark(input: ParkInput): IssuePark | null {
     since: entry ? entry.at.toISOString() : null,
     reason: entry?.reason ?? null,
     resume: parked
-      ? resumeFrom(record ? { id: record.commentId, left } : null)
+      ? resumeFrom(record ? { id: record.eventId ?? record.commentId ?? '', left } : null)
       : {
           at: null,
           why: `the issue has not stopped: it stands at \`${input.status}\` and waits on the answer`,
@@ -185,12 +197,12 @@ function answerAfter(replies: readonly ParkComment[], recordAt: string): IssuePa
   const after = new Date(recordAt).getTime();
   const reply = [...replies].reverse().find((c) => {
     if (c.createdAt.getTime() <= after) return false;
-    if (fieldsOf(c.body, 'answer')) return true;
-    return !c.byDevice && !announcesAMove(c.body) && !parseForgeRecord(c.body);
+    if (fieldsOf(c, 'answer')) return true;
+    return !c.byDevice && !announcesAMove(c.body) && !carriesRecord(c);
   });
   if (!reply) return null;
   return {
-    commentId: reply.id,
+    commentId: reply.commentId !== undefined ? (reply.commentId ?? reply.id) : reply.id,
     postedAt: reply.createdAt.toISOString(),
     text: reply.body,
   };
@@ -279,43 +291,40 @@ export async function loadIssuePark(issueId: string): Promise<IssuePark | null> 
   }
   const { moves, reaches } = await movesOf(issueId, status);
   const boundary = boundaryOf(moves);
-  const records = await db
+  const asEntry = (r: RecordEntry): ParkComment => ({
+    id: r.id,
+    body: '',
+    createdAt: r.createdAt,
+    byDevice: r.byDevice,
+    record: r.record,
+    eventId: r.eventId,
+    commentId: r.commentId,
+  });
+  const records = await recordHistory(issueId, { kinds: ['park', 'question'], after: boundary });
+  const answers = await recordHistory(issueId, { kinds: ['answer'], after: boundary });
+  const prose = await db
     .select({ id: comments.id, body: comments.body, createdAt: comments.createdAt })
     .from(comments)
     .where(
       and(
         eq(comments.issueId, issueId),
         after(boundary),
-        or(
-          like(comments.body, '%forge-record: park%'),
-          like(comments.body, '%forge-record: question%'),
-        ),
+        isNull(comments.authorDeviceId),
+        notLike(comments.body, '%forge-record%'),
       ),
     )
     .orderBy(comments.createdAt);
-  const replies = await db
-    .select({
-      id: comments.id,
-      body: comments.body,
-      createdAt: comments.createdAt,
-      device: comments.authorDeviceId,
-    })
-    .from(comments)
-    .where(
-      and(
-        eq(comments.issueId, issueId),
-        after(boundary),
-        or(isNull(comments.authorDeviceId), like(comments.body, '%forge-record: answer%')),
-      ),
-    )
-    .orderBy(comments.createdAt);
+  const replies = [
+    ...prose.map((r): ParkComment => ({ ...r, byDevice: false, record: null, commentId: r.id })),
+    ...answers.map(asEntry),
+  ].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   return readPark({
     status,
     waitingKind: (issue.waitingKind as WaitingKind | null) ?? null,
     moves,
     historyReaches: reaches,
-    comments: records,
-    replies: replies.map((r) => ({ ...r, byDevice: r.device !== null })),
+    comments: records.map(asEntry),
+    replies,
     openHumanQuestionIds,
   });
 }

@@ -26,6 +26,7 @@ import type { UnblockedDependent } from './drop-cascade.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { parkQuestionNotMinted } from './park-question.js';
 import { issueParkRoutes } from './park-routes.js';
+import { recordEventRoutes } from './record-events/routes.js';
 
 const transitionBodySchema = z
   .object({
@@ -206,6 +207,7 @@ transitionRoutes.use('*', requireAuth(), assertEmailVerified());
 
 /** `GET /:id/park` — where an issue at a park goes back to, beside the move that takes it there. */
 transitionRoutes.route('/', issueParkRoutes);
+transitionRoutes.route('/', recordEventRoutes);
 
 transitionRoutes.post(
   '/:id/transition',

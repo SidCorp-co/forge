@@ -183,7 +183,7 @@ pmRoutes.post(
 
       const [inserted] = await db
         .insert(comments)
-        .values({ issueId, authorId: userId, body, parentId: null })
+        .values({ issueId, authorId: userId, body, parentId: null, intent: 'decision' })
         .returning({ id: comments.id, body: comments.body, parentId: comments.parentId });
       if (!inserted) continue;
       await hooks.emit('commentCreated', {

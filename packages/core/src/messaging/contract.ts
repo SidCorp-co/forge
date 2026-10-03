@@ -79,6 +79,7 @@ export type DoorPolicy =
 
 export type DoorId =
   | 'comment-write'
+  | 'record-event-write'
   | 'question-ask'
   | 'question-delivery'
   | 'chat-sync'

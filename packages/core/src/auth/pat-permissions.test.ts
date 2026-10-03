@@ -69,6 +69,7 @@ const REACHABLE_ON_2026_09_10 = [
 /** ISS-1373 — what the menu grew by, written out so a prefix cannot join it quietly. */
 const ADDED_AT_EPOCH_2 = [
   '/api/admin',
+  '/api/agent-reports',
   '/api/agent-sessions',
   '/api/agents',
   '/api/app-config',

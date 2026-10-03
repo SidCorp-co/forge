@@ -18,8 +18,8 @@ import {
   THead,
   TR,
 } from "@/design";
-import { useFeedbackReports, useMarkFeedbackReviewed } from "@/features/feedback/hooks";
-import type { FeedbackReport } from "@/features/feedback/types";
+import { useAgentReports, useMarkAgentReportReviewed } from "@/features/agent-reports/hooks";
+import type { AgentReport } from "@/features/agent-reports/types";
 import { useCreateIssue } from "@/features/issues/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
@@ -32,21 +32,21 @@ import {
   type ImprovementRow,
   type LoopRuns,
   improvementRows,
-  issueFromFeedback,
+  issueFromReport,
   matchesFilter,
 } from "../improvements";
 import { ImproveCatalog } from "./improve-catalog";
 
 const FILTER_LABEL: Record<ImprovementFilter, string> = {
   all: "All",
-  feedback: "Feedback",
+  reports: "Agent reports",
   proposals: "Proposals",
   done: "Done",
 };
 
 const STATE_BADGE: Record<ImprovementRow["state"], { label: string; tone: "amber" | "neutral" | "green" }> = {
   proposal: { label: "Proposal", tone: "amber" },
-  feedback: { label: "Feedback", tone: "neutral" },
+  report: { label: "Agent report", tone: "neutral" },
   done: { label: "Done", tone: "green" },
 };
 
@@ -64,9 +64,9 @@ function useLoopRuns(projectId: string) {
   return { runs, isLoading: catalogQ.isLoading || runsQ.some((q) => q.isLoading), error };
 }
 
-function OpenIssueButton({ report, projectId }: { report: FeedbackReport; projectId: string }) {
+function OpenIssueButton({ report, projectId }: { report: AgentReport; projectId: string }) {
   const create = useCreateIssue(projectId);
-  const review = useMarkFeedbackReviewed(projectId);
+  const review = useMarkAgentReportReviewed(projectId);
   const { toast } = useToast();
   return (
     <Button
@@ -75,7 +75,7 @@ function OpenIssueButton({ report, projectId }: { report: FeedbackReport; projec
       disabled={create.isPending || review.isPending}
       onClick={async () => {
         try {
-          const issue = await create.mutateAsync(issueFromFeedback(report));
+          const issue = await create.mutateAsync(issueFromReport(report));
           review.mutate({ id: report.id, reviewed: true, linkedIssueId: issue.id });
           toast({ title: `Opened ${issue.displayId}`, tone: "success" });
         } catch (err) {
@@ -104,7 +104,7 @@ function RowAction({ row, projectId, slug, canWrite }: { row: ImprovementRow; pr
       </Link>
     );
   }
-  if (row.state === "feedback" && canWrite) return <OpenIssueButton report={row.report} projectId={projectId} />;
+  if (row.state === "report" && canWrite) return <OpenIssueButton report={row.report} projectId={projectId} />;
   return null;
 }
 
@@ -116,17 +116,17 @@ export function ImprovementsScreen({
   const { projectId, slug } = scope;
   const [filter, setFilter] = useState<ImprovementFilter>("all");
   const [catalogOpen, setCatalogOpen] = useState(false);
-  const feedbackQ = useFeedbackReports(projectId);
+  const reportsQ = useAgentReports(projectId);
   const loops = useLoopRuns(projectId);
-  const rows = useMemo(() => improvementRows(feedbackQ.data ?? [], loops.runs), [feedbackQ.data, loops.runs]);
+  const rows = useMemo(() => improvementRows(reportsQ.data ?? [], loops.runs), [reportsQ.data, loops.runs]);
   const shown = rows.filter((r) => matchesFilter(r, filter));
-  const loading = feedbackQ.isLoading || loops.isLoading;
-  const error = feedbackQ.error ?? loops.error;
+  const loading = reportsQ.isLoading || loops.isLoading;
+  const error = reportsQ.error ?? loops.error;
 
   return (
     <PageContainer className="min-h-dvh">
       <PageTitle
-          hint="Feedback from people and agents comes in; the improvement loop's proposals go out. One list for both."
+          hint="What agents report about the harness comes in; the improvement loop's proposals go out. One list for both."
         >
           Improvements
       </PageTitle>
@@ -153,7 +153,7 @@ export function ImprovementsScreen({
       {!loading && error == null && shown.length === 0 && (
         <EmptyState
           title={rows.length === 0 ? "Nothing yet" : "Nothing here"}
-          message="Feedback reports and the improvement loop's proposals appear here."
+          message="Agent reports and the improvement loop's proposals appear here."
         />
       )}
       {!loading && error == null && shown.length > 0 && (

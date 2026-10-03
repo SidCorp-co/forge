@@ -1,12 +1,12 @@
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 import {
+  agentReports,
   comments,
   devicePlatforms,
   deviceStatuses,
   devices,
   emailVerificationTokens,
-  feedbackReports,
   issueDependencies,
   issueDependencyKinds,
   issueLabels,
@@ -654,9 +654,13 @@ describe('tasks table (ISS-146 cascade verification)', () => {
   });
 });
 
-describe('feedbackReports table (ISS-552 C1)', () => {
+describe('agentReports table (ISS-552 C1)', () => {
+  it('is the agent_reports table, leaving the word feedback to product feedback', () => {
+    expect(getTableConfig(agentReports).name).toBe('agent_reports');
+  });
+
   it('has the expected columns', () => {
-    const names = getTableConfig(feedbackReports)
+    const names = getTableConfig(agentReports)
       .columns.map((c) => c.name)
       .sort();
     expect(names).toEqual(
@@ -686,7 +690,7 @@ describe('feedbackReports table (ISS-552 C1)', () => {
   });
 
   it('project_id cascades on delete', () => {
-    const cfg = getTableConfig(feedbackReports);
+    const cfg = getTableConfig(agentReports);
     const fk = cfg.foreignKeys.find((k) =>
       k.reference().columns.some((c) => c.name === 'project_id'),
     );
@@ -695,7 +699,7 @@ describe('feedbackReports table (ISS-552 C1)', () => {
   });
 
   it('issue_id, run_id, job_id are nullable (set null on delete)', () => {
-    const cfg = getTableConfig(feedbackReports);
+    const cfg = getTableConfig(agentReports);
     const cols = cfg.columns;
     const issueId = cols.find((c) => c.name === 'issue_id');
     const runId = cols.find((c) => c.name === 'run_id');
@@ -707,19 +711,19 @@ describe('feedbackReports table (ISS-552 C1)', () => {
   });
 
   it('severity defaults to "low"', () => {
-    const col = getTableConfig(feedbackReports).columns.find((c) => c.name === 'severity');
+    const col = getTableConfig(agentReports).columns.find((c) => c.name === 'severity');
     if (!col) throw new Error('severity column not found');
     expect(col.default).toBe('low');
   });
 
   it('has the expected indexes (ISS-557 adds session_id_idx)', () => {
-    const names = getTableConfig(feedbackReports).indexes.map((i) => i.config.name);
-    expect(names).toContain('feedback_reports_project_id_idx');
-    expect(names).toContain('feedback_reports_project_kind_idx');
-    expect(names).toContain('feedback_reports_project_target_idx');
-    expect(names).toContain('feedback_reports_signal_key_idx');
-    expect(names).toContain('feedback_reports_created_at_idx');
-    expect(names).toContain('feedback_reports_session_id_idx');
-    expect(names).toContain('feedback_reports_linked_issue_id_idx');
+    const names = getTableConfig(agentReports).indexes.map((i) => i.config.name);
+    expect(names).toContain('agent_reports_project_id_idx');
+    expect(names).toContain('agent_reports_project_kind_idx');
+    expect(names).toContain('agent_reports_project_target_idx');
+    expect(names).toContain('agent_reports_signal_key_idx');
+    expect(names).toContain('agent_reports_created_at_idx');
+    expect(names).toContain('agent_reports_session_id_idx');
+    expect(names).toContain('agent_reports_linked_issue_id_idx');
   });
 });

@@ -2,9 +2,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServingReading } from '../release-batch/serving-reading.js';
 
 const listIssueCommentsMock = vi.fn(async (_issueId: string) => [] as Array<{ body: string }>);
-vi.mock('../comments/service.js', () => ({
-  listIssueComments: (issueId: string) => listIssueCommentsMock(issueId),
-}));
+// The record store reads each mocked comment body as the record it carries (ISS-56).
+vi.mock('./record-events/history.js', async () => {
+  const { parseForgeRecord } = await import('../messaging/forge-record.js');
+  return {
+    recordHistory: async (issueId: string) =>
+      (await listIssueCommentsMock(issueId)).flatMap((row, at) => {
+        const record = parseForgeRecord(row.body);
+        return record?.kind === 'verdict' ? [{ id: String(at), record }] : [];
+      }),
+  };
+});
 
 interface IssueRow {
   id: string;

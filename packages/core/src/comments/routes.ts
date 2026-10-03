@@ -1,4 +1,4 @@
-import { asc, count, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -11,6 +11,8 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from '../issues/issue-route-ref.js';
+import { isCommentIntent } from '../issues/record-events/kinds.js';
+import { mirroredEventsFor } from '../issues/record-events/store.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -41,7 +43,9 @@ import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import { messageRefusalHttp } from './screen.js';
 import {
+  CommentIntentRefused,
   commentThreadColumns,
+  deleteComment,
   insertComment,
   listIssueCommentPage,
   updateCommentBody,
@@ -54,7 +58,14 @@ const idParamSchema = z.object({ id: z.uuid() });
 const threadQuerySchema = paginationSchema.extend({
   cursor: z.string().min(1).optional(),
   projectId: projectScopeQuerySchema.shape.projectId,
+  intent: z.string().max(64).optional(),
 });
+
+/** A refused intent, as the 422 that names the valid set. */
+function intentRefusalHttp(err: unknown): HTTPException | null {
+  if (!(err instanceof CommentIntentRefused)) return null;
+  return new HTTPException(422, { message: err.message, cause: { code: err.code } });
+}
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -103,7 +114,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
     }),
     async (c) => {
       const { id: issueId } = c.req.valid('param');
-      const { body, format, parentId } = c.req.valid('json');
+      const { body, format, parentId, intent } = c.req.valid('json');
       const userId = c.get('userId');
 
       const issue = await loadIssue(issueId);
@@ -135,9 +146,10 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
           format,
           parentId: parentId ?? null,
           declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
+          intent,
         });
       } catch (err) {
-        const refusal = bodyRefusalHttp(err) ?? messageRefusalHttp(err);
+        const refusal = bodyRefusalHttp(err) ?? messageRefusalHttp(err) ?? intentRefusalHttp(err);
         if (refusal) throw refusal;
         const pgCode = pgErrorCode(err);
         if (pgCode === '23514') {
@@ -206,8 +218,11 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
     }),
     async (c) => {
       const { id: rawId } = c.req.valid('param');
-      const { limit, cursor, projectId: projectIdQuery } = c.req.valid('query');
+      const { limit, cursor, projectId: projectIdQuery, intent } = c.req.valid('query');
       const userId = c.get('userId');
+      if (intent !== undefined && !isCommentIntent(intent)) {
+        throw intentRefusalHttp(new CommentIntentRefused(intent)) as HTTPException;
+      }
 
       const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
       const issueId = issue.id;
@@ -225,8 +240,12 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       const [{ n: total } = { n: 0 }] = await db
         .select({ n: count() })
         .from(comments)
-        .where(eq(comments.issueId, issueId));
-      const page = await listIssueCommentPage(issueId, { after, limit });
+        .where(
+          intent
+            ? and(eq(comments.issueId, issueId), eq(comments.intent, intent))
+            : eq(comments.issueId, issueId),
+        );
+      const page = await listIssueCommentPage(issueId, { after, limit, intent });
       const rows = page.rows;
 
       // Join each comment's attachments in a single grouped query, keyed by
@@ -265,6 +284,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         rows,
         attachmentsByCommentId,
         await projectLens(issue.projectId),
+        await mirroredEventsFor(issueId, commentIds),
       );
 
       const refs: ActorRef[] = rows.map((r) =>
@@ -386,7 +406,7 @@ commentRoutes.delete(
       }
     }
 
-    await db.delete(comments).where(eq(comments.id, id));
+    await deleteComment(id);
     await hooks.emit('commentDeleted', {
       issueId: comment.issueId,
       projectId: comment.projectId,

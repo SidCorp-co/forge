@@ -1,5 +1,11 @@
 
-import type { BodyNode, ForgeRecordView, RecordLens, ReleaseNotes } from "@forge/contracts";
+import type {
+  BodyNode,
+  CommentIntent,
+  ForgeRecordView,
+  RecordLens,
+  ReleaseNotes,
+} from "@forge/contracts";
 import {
   REGISTRY_ISSUE_COMPLEXITIES,
   REGISTRY_ISSUE_PRIORITIES,
@@ -337,8 +343,21 @@ export interface CommentNode {
   authorId: string;
   /** ISS-967 — parsed tree for a `format:'html'` body, null otherwise. */
   nodes: BodyNode[] | null;
-  /** ISS-1089 — the `forge-record` block core parsed, with the project's lens. */
-  record: (ForgeRecordView & { lens: RecordLens }) | null;
+  /**
+   * ISS-1089 — the comment's `forge-record`, with the project's lens. ISS-56: its content comes
+   * from the typed event it was mirrored into (`source: "event"`), or the fence of a legacy comment.
+   */
+  record:
+    | (ForgeRecordView & {
+        lens: RecordLens;
+        source?: "event" | "comment";
+        eventId?: string | null;
+      })
+    | null;
+  /** ISS-56 — what the comment means to do. */
+  intent?: CommentIntent;
+  /** ISS-56 — what the comment is about (its arc target). */
+  scope?: "issue";
   /** ISS-932 wave 4 — the BOX a credential was issued to. Answers *where*, never *who*. */
   authorDeviceId?: string | null;
   body: string;

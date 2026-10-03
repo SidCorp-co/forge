@@ -78,6 +78,8 @@ export async function postLeaveComment(
     authorId: args.actor.type === 'user' ? args.actor.id : args.actor.ownerId,
     body: buildLeaveBody(args.fromStatus, args.toStatus, reason),
     parentId: null,
+    // A person's word on leaving a park is owed a reply, as every person's comment was (ISS-56).
+    intent: actorAgency(args.actor) === 'human' ? 'question' : 'note',
   });
 }
 

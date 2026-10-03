@@ -17,6 +17,9 @@ vi.mock('../../queue/boss.js', () => ({
   boss: { createQueue: vi.fn(async () => {}), schedule: vi.fn(async () => {}), work: vi.fn() },
 }));
 vi.mock('../../jobs/session-transcript.js', () => ({ deriveSessionFinal: deriveMock }));
+vi.mock('../../issues/record-events/collapse.js', () => ({
+  collapseNarration: vi.fn(async () => ({ issues: 0, collapsed: 0 })),
+}));
 
 const { runRetentionSweep } = await import('./sweep.js');
 const { RETENTION_STATEMENTS } = await import('./statements.js');
