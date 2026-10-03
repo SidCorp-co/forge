@@ -21,7 +21,7 @@ import {
   EmptyState,
   ErrorState,
   GroupedList,
-  Icon,
+  ListSearch,
   LEGEND,
   type LegendTone,
   type ListGroup,
@@ -288,17 +288,7 @@ function Toolbar({ data, scope, n, children }: { data: IssueStandingList | undef
         value={scope}
         onChange={(v) => set({ filter: v === "open" ? null : v, peek: null })}
       />
-      <label className="flex h-[30px] min-w-[150px] max-w-[260px] flex-1 items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 text-12-5 text-subtle max-md:h-10 max-md:max-w-none max-md:basis-full">
-        <Icon name="search" size={14} />
-        <input
-          type="search"
-          aria-label="Search issues"
-          placeholder="Search issues…"
-          defaultValue={n.q}
-          onChange={(e) => set({ q: e.target.value || null })}
-          className="w-full min-w-0 border-0 bg-transparent text-fg outline-none"
-        />
-      </label>
+      <ListSearch noun="issues" value={n.q} onChange={(q) => set({ q: q || null })} />
       {QUICK.map((c) => {
         const on = n.quick.has(c.id);
         return (

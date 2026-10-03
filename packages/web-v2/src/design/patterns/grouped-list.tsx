@@ -27,6 +27,8 @@ export interface ListGroup<R> {
 
 export interface ListRowView {
   key: string;
+  /** Drawn in the key column in place of `key` (a path that wraps at its slashes, say); `key` stays the row's identity. */
+  keyLabel?: ReactNode;
   /** The full page: the row's link target. */
   href: string;
   title: ReactNode;
@@ -131,7 +133,7 @@ function Row({ v, selected, onPeek }: { v: ListRowView; selected: boolean; onPee
         selected && "bg-[var(--cobalt-50)] before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-link hover:bg-[var(--cobalt-50)]",
       )}
     >
-      <span className={cn("truncate font-mono text-11-5 font-semibold text-link max-md:order-1", v.dim && "opacity-65")}>{v.key}</span>
+      <span className={cn("truncate font-mono text-11-5 font-semibold text-link max-md:order-1", v.dim && "opacity-65")}>{v.keyLabel ?? v.key}</span>
       <span className="flex min-w-0 flex-col max-md:order-3 max-md:col-span-3">
         <span className={cn("truncate text-13-5 font-medium max-md:whitespace-normal", v.dim && "opacity-65")}>{v.title}</span>
         {v.facts.length ? (
@@ -161,6 +163,14 @@ function Row({ v, selected, onPeek }: { v: ListRowView; selected: boolean; onPee
   );
 }
 
+export interface ListColumnLabels {
+  key: string;
+  title: string;
+  state: string;
+  waitingOn: string;
+  meta: string;
+}
+
 export interface GroupedListProps<R> {
   ariaLabel: string;
   groups: readonly ListGroup<R>[];
@@ -170,9 +180,11 @@ export interface GroupedListProps<R> {
   onPeek: (key: string) => void;
   /** Said where no group has a row, e.g. "Nothing matches this search." */
   empty?: ReactNode;
+  /** The header's words where a list's columns are not the entity default: Key · Title · State · Waiting on · Owner · age. */
+  columns?: Partial<ListColumnLabels>;
 }
 
-export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek, empty }: GroupedListProps<R>) {
+export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek, empty, columns }: GroupedListProps<R>) {
   const shown = groups.filter((g) => g.rows.length > 0);
   return (
     <section aria-label={ariaLabel} data-testid="grouped-list">
@@ -180,11 +192,11 @@ export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek,
         aria-hidden
         className={cn(COLS, "sticky top-0 z-[6] h-8 items-center border-b border-line-subtle bg-sunken text-11-5 font-semibold text-subtle max-md:hidden")}
       >
-        <span>Key</span>
-        <span>Title</span>
-        <span>State</span>
-        <span>Waiting on</span>
-        <span className="text-right max-lg:hidden">Owner · age</span>
+        <span>{columns?.key ?? "Key"}</span>
+        <span>{columns?.title ?? "Title"}</span>
+        <span>{columns?.state ?? "State"}</span>
+        <span>{columns?.waitingOn ?? "Waiting on"}</span>
+        <span className="text-right max-lg:hidden">{columns?.meta ?? "Owner · age"}</span>
       </div>
       {shown.length === 0 ? <p className="px-5 py-8 text-13 text-subtle">{empty ?? "Nothing to show."}</p> : null}
       {shown.map((g) => {

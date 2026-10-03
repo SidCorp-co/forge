@@ -44,7 +44,7 @@ export const isProjGroup = (e: ProjEntry): e is ProjGroup => "items" in e;
 export const DEVELOPMENT_GROUP_KEY = "development";
 
 // cm:why the owner's IA ruling (ISS-65, FB-6): what a project is for comes first, and the
-// machinery that builds it sits under one Development group; Overview and Modules have no page yet.
+// machinery that builds it sits under one Development group.
 export const PROJECT_MENU: ProjEntry[] = [
   { key: "proj-overview", label: "Dashboard", icon: "grid", sub: "" },
   { key: "proj-requirements", label: "Requirements", icon: "book", sub: "/requirements" },
@@ -57,6 +57,7 @@ export const PROJECT_MENU: ProjEntry[] = [
     icon: "code",
     items: [
       { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
+      { key: "proj-modules", label: "Modules", icon: "rows", sub: "/modules" },
       { key: "proj-agents", label: "Agents", icon: "agent", sub: "/agents" },
       { key: "proj-contracts", label: "Contracts", icon: "link", sub: "/ecosystem/contracts" },
       { key: "proj-automation", label: "Automation", icon: "calendar", sub: "/automation" },

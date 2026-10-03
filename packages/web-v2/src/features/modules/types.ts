@@ -1,0 +1,18 @@
+export type {
+  ModuleActiveIssue,
+  ModuleActivityDay,
+  ModuleAttentionGroup,
+  ModuleCoupling,
+  ModuleDetail,
+  ModuleFact,
+  ModuleFeedbackRef,
+  ModuleLanding,
+  ModuleOpenKind,
+  ModuleRef,
+  ModuleRequirementTrace,
+  ModuleRollupResponse,
+  ModuleRollupRow,
+  ModuleStanding,
+  ModuleUnavailable,
+  ModuleWaitingOn,
+} from "@forge/contracts/modules";

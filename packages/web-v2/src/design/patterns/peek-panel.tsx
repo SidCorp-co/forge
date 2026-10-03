@@ -99,7 +99,7 @@ export function PeekPanel({ peek, listLabel, noun, onOpenFull, children, testId 
         </Button>
         <IconButton icon="x" size="sm" aria-label="Close (Esc)" onClick={() => peek.set(null)} />
       </div>
-      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+      <div className="flex flex-1 shrink-0 flex-col">{children}</div>
       <div className="mt-auto border-t border-line-subtle px-[18px] pb-4 pt-2.5 text-12 text-subtle max-lg:hidden">
         <Kbd>j</Kbd> <Kbd>k</Kbd> move · <Kbd>Enter</Kbd> full page · <Kbd>Esc</Kbd> close
       </div>

@@ -1,5 +1,5 @@
 import { count, eq } from 'drizzle-orm';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -8,7 +8,7 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { moduleDrift } from './module-drift.js';
-import { DEFAULT_ACTIVE_WITHIN_DAYS, moduleRollup } from './module-rollup.js';
+import { DEFAULT_ACTIVE_WITHIN_DAYS } from './module-rollup.js';
 import {
   assertDemotionIsLegal,
   assertKnowledgeNodeIsForModule,
@@ -19,6 +19,11 @@ import {
   deriveModuleSlug,
   ModuleHierarchyError,
 } from './module-service.js';
+import {
+  ModuleNotFoundError,
+  moduleDetailOf,
+  moduleRollupWithStanding,
+} from './module-standing-read.js';
 import { labelUniqueConflict } from './unique-conflicts.js';
 
 const colorRegex = /^#[0-9a-f]{6}$/i;
@@ -56,6 +61,16 @@ const rollupQuerySchema = z.object({
   activeWithinDays: z.coerce.number().int().min(1).max(3650).optional(),
 });
 const labelIdParamSchema = z.object({ id: z.uuid() });
+const moduleDetailParamSchema = z.object({
+  id: z.uuid(),
+  module: z.string().trim().min(1).max(128),
+});
+
+function viewerOf(c: Context<{ Variables: AuthVars }>) {
+  const agency = c.get('agency');
+  if (!agency) throw new Error('modules: a request reached its handler without an auth gate');
+  return { userId: c.get('userId'), agency };
+}
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -178,7 +193,31 @@ labelProjectRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'viewer', 'not a project member');
 
-    return c.json(await moduleRollup(projectId, activeWithinDays ?? DEFAULT_ACTIVE_WITHIN_DAYS));
+    return c.json(
+      await moduleRollupWithStanding(
+        projectId,
+        activeWithinDays ?? DEFAULT_ACTIVE_WITHIN_DAYS,
+        viewerOf(c),
+      ),
+    );
+  },
+);
+
+labelProjectRoutes.get(
+  '/:id/modules/:module/detail',
+  zValidator('param', moduleDetailParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: projectId, module } = c.req.valid('param');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    assertProjectRole(access, 'viewer', 'not a project member');
+    try {
+      return c.json(await moduleDetailOf(projectId, module, viewerOf(c)));
+    } catch (err) {
+      if (err instanceof ModuleNotFoundError) throw notFound(err.message);
+      throw err;
+    }
   },
 );
 
