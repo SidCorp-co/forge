@@ -137,9 +137,16 @@
 
 ### Added
 
-- **Workflows opens on what the system is.** A System overview shows the system-context summary,
-  key facts and a C4 context diagram that fits the screen; designs are grouped by purpose; a
-  system-context design toggles Context | Containers. The dashboard shows it too.
+- **Workflows opens on what the system is.** On the left, a one-line description, key facts with
+  detail on hover, and the system-context design on a pannable canvas; on the right, every design
+  grouped by purpose. The dashboard shows it too.
+- **A project has a one-line description.** Set it in project settings → Basics, from the Workflows
+  overview, or as `project.description` in the project document. The overview leads with it.
+- **Large system-context designs stay readable.** The context diagram groups outside systems by
+  boundary, with a count, until no text is under 12px. Hover a group for its systems and whether
+  each is confirmed; zoom in to show them all.
+- **A system-context design is drawn on the same canvas as every other design**, with the same
+  minimap, zoom, search, side panel and walk-through, for both its Context and Containers views.
 - **A new project can be onboarded in a chat thread.** The agent reads the code, drafts the key
   designs for your approval and asks what it cannot tell in one questionnaire card,
   at most three rounds. The BA assistant asks through the same card.
