@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { usePathname } from 'next/navigation';
-import { useLocationSearch } from './use-location-search';
+import { notifyLocationChange, useLocationSearch } from './use-location-search';
 
 export function useQueryParam(name: string): [string | null, (next: string | null) => void] {
   const pathname = usePathname() || '';
@@ -16,6 +16,7 @@ export function useQueryParam(name: string): [string | null, (next: string | nul
       else sp.set(name, next);
       const qs = sp.toString();
       window.history.replaceState(window.history.state, '', `${pathname}${qs ? `?${qs}` : ''}`);
+      notifyLocationChange();
     },
     [pathname, name],
   );

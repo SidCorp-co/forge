@@ -42,6 +42,10 @@
       "types": "./src/record-events.ts",
       "default": "./src/record-events.ts"
     },
+    "./requirements": {
+      "types": "./dist/requirements.d.ts",
+      "default": "./dist/requirements.js"
+    },
     "./wireframe": {
       "types": "./dist/wireframe.d.ts",
       "default": "./dist/wireframe.js"

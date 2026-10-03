@@ -151,7 +151,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
   const on = () => ({ projectId, ref: need(input, 'requirement'), actor });
   switch (input.action) {
     case 'list':
-      return { requirements: await listRequirementsAs(actor.userId, projectId) };
+      return { requirements: await listRequirementsAs(actor, projectId) };
     case 'get':
       return readRequirementAs(actor, projectId, need(input, 'requirement'));
     case 'create':

@@ -3,6 +3,7 @@
  * every write resolves a requirement and its signer with.
  */
 
+import type { RequirementStanding } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
@@ -27,6 +28,7 @@ import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../workflows/service.js';
 import { changedSincePlan, type LinkedDesign, signoffRefusal } from './rules.js';
+import { historyOf, standingsOf } from './standing-read.js';
 
 export interface RequirementActor {
   userId: string;
@@ -142,8 +144,14 @@ function summaryOf(
 
 export type RequirementSummary = ReturnType<typeof summaryOf>;
 
-export async function listRequirementsAs(userId: string, projectId: string) {
-  await assertProjectAccess(projectId, userId, 'viewer');
+async function standingViewer(viewer: RequirementActor | null, projectId: string) {
+  if (!viewer) return null;
+  const refusal = await signerRefusal(viewer, projectId, 'a sign-off');
+  return { userId: viewer.userId, canSignOff: refusal === null };
+}
+
+export async function listRequirementsAs(viewer: RequirementActor, projectId: string) {
+  await assertProjectAccess(projectId, viewer.userId, 'viewer');
   const rows = await db
     .select()
     .from(requirements)
@@ -151,7 +159,7 @@ export async function listRequirementsAs(userId: string, projectId: string) {
     .orderBy(desc(requirements.reqSeq));
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
-  const [latest, delivery] = await Promise.all([
+  const [latest, delivery, standings] = await Promise.all([
     db
       .selectDistinctOn([requirementRevisions.requirementId], {
         requirementId: requirementRevisions.requirementId,
@@ -162,73 +170,91 @@ export async function listRequirementsAs(userId: string, projectId: string) {
       .where(inArray(requirementRevisions.requirementId, ids))
       .orderBy(requirementRevisions.requirementId, desc(requirementRevisions.revision)),
     db.select().from(requirementDelivery).where(inArray(requirementDelivery.requirementId, ids)),
+    standingViewer(viewer, projectId).then((v) => standingsOf(projectId, rows, v)),
   ]);
   const latestBy = new Map(latest.map((l) => [l.requirementId, l]));
   const deliveryBy = new Map(delivery.map((d) => [d.requirementId, d]));
   return rows.map((r) => {
     const l = latestBy.get(r.id);
-    return summaryOf(
-      r,
-      l ? { revision: l.revision, state: l.state as RevisionState } : null,
-      deliveryOf(deliveryBy.get(r.id)),
-    );
+    return {
+      ...summaryOf(
+        r,
+        l ? { revision: l.revision, state: l.state as RevisionState } : null,
+        deliveryOf(deliveryBy.get(r.id)),
+      ),
+      standing: standings.get(r.id) as RequirementStanding,
+    };
   });
 }
 
 export async function detailOf(row: Row, viewer: RequirementActor | null) {
-  const [revisions, criteria, designs, baselines, pins, linked, delivery, prefix] =
-    await Promise.all([
-      db
-        .select()
-        .from(requirementRevisions)
-        .where(eq(requirementRevisions.requirementId, row.id))
-        .orderBy(desc(requirementRevisions.revision)),
-      db.select().from(requirementCriteria).where(eq(requirementCriteria.requirementId, row.id)),
-      db
-        .select({
-          workflowId: projectWorkflows.id,
-          flow: projectWorkflows.flow,
-          title: sql<string | null>`${projectWorkflows.document}->>'title'`,
-          designStatus: projectWorkflows.designStatus,
-          approvedRevision: projectWorkflows.approvedRevision,
-        })
-        .from(requirementWorkflows)
-        .innerJoin(projectWorkflows, eq(projectWorkflows.id, requirementWorkflows.workflowId))
-        .where(eq(requirementWorkflows.requirementId, row.id))
-        .orderBy(asc(projectWorkflows.flow)),
-      db
-        .select()
-        .from(requirementBaselines)
-        .where(eq(requirementBaselines.requirementId, row.id))
-        .orderBy(desc(requirementBaselines.revision)),
-      db
-        .select({
-          revision: requirementBaselinePins.revision,
-          workflowId: requirementBaselinePins.workflowId,
-          flow: projectWorkflows.flow,
-          designRevision: requirementBaselinePins.designRevision,
-          providerProjectId: requirementBaselinePins.providerProjectId,
-          contractSlug: requirementBaselinePins.contractSlug,
-          contractVersion: requirementBaselinePins.contractVersion,
-        })
-        .from(requirementBaselinePins)
-        .leftJoin(projectWorkflows, eq(projectWorkflows.id, requirementBaselinePins.workflowId))
-        .where(eq(requirementBaselinePins.requirementId, row.id)),
-      db
-        .select({
-          id: issues.id,
-          issSeq: issues.issSeq,
-          title: issues.title,
-          status: issues.status,
-          plan: issues.plan,
-          plannedRevision: issues.plannedRevision,
-        })
-        .from(issues)
-        .where(eq(issues.requirementId, row.id))
-        .orderBy(asc(issues.issSeq)),
-      db.select().from(requirementDelivery).where(eq(requirementDelivery.requirementId, row.id)),
-      activeIssuePrefix(row.projectId),
-    ]);
+  const [
+    revisions,
+    criteria,
+    designs,
+    baselines,
+    pins,
+    linked,
+    delivery,
+    prefix,
+    standing,
+    history,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(requirementRevisions)
+      .where(eq(requirementRevisions.requirementId, row.id))
+      .orderBy(desc(requirementRevisions.revision)),
+    db.select().from(requirementCriteria).where(eq(requirementCriteria.requirementId, row.id)),
+    db
+      .select({
+        workflowId: projectWorkflows.id,
+        flow: projectWorkflows.flow,
+        title: sql<string | null>`${projectWorkflows.document}->>'title'`,
+        designStatus: projectWorkflows.designStatus,
+        approvedRevision: projectWorkflows.approvedRevision,
+      })
+      .from(requirementWorkflows)
+      .innerJoin(projectWorkflows, eq(projectWorkflows.id, requirementWorkflows.workflowId))
+      .where(eq(requirementWorkflows.requirementId, row.id))
+      .orderBy(asc(projectWorkflows.flow)),
+    db
+      .select()
+      .from(requirementBaselines)
+      .where(eq(requirementBaselines.requirementId, row.id))
+      .orderBy(desc(requirementBaselines.revision)),
+    db
+      .select({
+        revision: requirementBaselinePins.revision,
+        workflowId: requirementBaselinePins.workflowId,
+        flow: projectWorkflows.flow,
+        designRevision: requirementBaselinePins.designRevision,
+        providerProjectId: requirementBaselinePins.providerProjectId,
+        contractSlug: requirementBaselinePins.contractSlug,
+        contractVersion: requirementBaselinePins.contractVersion,
+      })
+      .from(requirementBaselinePins)
+      .leftJoin(projectWorkflows, eq(projectWorkflows.id, requirementBaselinePins.workflowId))
+      .where(eq(requirementBaselinePins.requirementId, row.id)),
+    db
+      .select({
+        id: issues.id,
+        issSeq: issues.issSeq,
+        title: issues.title,
+        status: issues.status,
+        plan: issues.plan,
+        plannedRevision: issues.plannedRevision,
+      })
+      .from(issues)
+      .where(eq(issues.requirementId, row.id))
+      .orderBy(asc(issues.issSeq)),
+    db.select().from(requirementDelivery).where(eq(requirementDelivery.requirementId, row.id)),
+    activeIssuePrefix(row.projectId),
+    standingViewer(viewer, row.projectId)
+      .then((v) => standingsOf(row.projectId, [row], v))
+      .then((m) => m.get(row.id) as RequirementStanding),
+    historyOf(row.id, row.projectId),
+  ]);
   const names = await userNames([
     ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
     ...baselines.map((b) => b.agreedBy),
@@ -280,6 +306,8 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
     canSignOff: viewer
       ? (await signerRefusal(viewer, row.projectId, 'a sign-off')) === null
       : false,
+    standing,
+    history,
   };
 }
 

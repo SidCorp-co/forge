@@ -28,4 +28,7 @@ export const requirementsApi = {
     apiClient<RequirementDetail>(base(projectId), post(body)),
   act: (projectId: string, req: string, action: RequirementAction) =>
     apiClient<RequirementDetail>(actionPath(projectId, req, action), post(actionBody(action))),
+  /** Opens (or hands back) the viewer's BA assistant room about one requirement (ISS-58). */
+  openAssistant: (projectId: string, req: string) =>
+    apiClient<{ conversation: { id: string }; reused: boolean }>(`${one(projectId, req)}/assistant`, post({})),
 };

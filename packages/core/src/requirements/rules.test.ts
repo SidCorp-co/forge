@@ -103,9 +103,25 @@ describe('agreeRefusals', () => {
       ],
     });
     expect(refusals.map((r) => r.code)).toEqual(['REQUIREMENT_DESIGN_UNAPPROVED']);
-    expect(refusals[0]?.detail).toContain('"booking"');
     expect(refusals[0]?.detail).toContain('"reminder"');
+    expect(refusals[0]?.detail).not.toContain('"booking"');
     expect(refusals[0]?.detail).not.toContain('"discharge"');
+  });
+  it('pins the approved revision while a newer one is only proposed', () => {
+    const refusals = agreeRefusals({
+      ...base,
+      status: 'agreed',
+      rebaseline: true,
+      designs: [
+        {
+          workflowId: 'w1',
+          flow: 'discharge-post-care',
+          designStatus: 'proposed',
+          approvedRevision: 4,
+        },
+      ],
+    });
+    expect(refusals).toEqual([]);
   });
   it('refuses agreeing twice, but a re-baseline on accept passes the same guards', () => {
     expect(agreeRefusals({ ...base, status: 'agreed' }).map((r) => r.code)).toEqual([

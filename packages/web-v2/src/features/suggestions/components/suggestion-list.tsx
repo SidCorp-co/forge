@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Input } from "@/design";
+import { AGENT_TINT, Button, Input } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { RefusalLine } from "@/features/requirements/components/refusal";
 import { useSuggestionDecision, useWaitingSuggestions } from "../hooks";
 import type { SuggestionKind, SuggestionProducer, SuggestionView as Suggestion } from "../types";
 
-const KIND_LABEL: Record<SuggestionKind, string> = {
+export const KIND_LABEL: Record<SuggestionKind, string> = {
   requirement_draft: "Requirement draft",
   revision_diff: "Revision",
   readiness: "Readiness",
@@ -28,7 +28,7 @@ const str = (v: unknown) => (typeof v === "string" ? v : null);
 const list = (v: unknown) => (Array.isArray(v) ? (v as Payload[]) : []);
 
 /** One line saying what accepting it would do; the rest sits behind the expander and the tooltip. */
-function summaryOf(s: Suggestion): string {
+export function summaryOf(s: Suggestion): string {
   const p = (s.payload ?? {}) as Payload;
   switch (s.kind) {
     case "revision_diff":
@@ -71,6 +71,20 @@ function tipOf(s: Suggestion): string {
   ].join("\n");
 }
 
+/** "Pending": the suggestion's own state, in the assistant's colour. */
+export function PendingBadge() {
+  return (
+    <span
+      className="inline-flex items-center gap-[5px] rounded-pill px-2 py-px text-11-5 font-semibold"
+      style={{ color: AGENT_TINT.fg }}
+      title="proposed · Waiting for a person to accept or reject it; never applied on its own"
+    >
+      <span aria-hidden className="size-1.5 rounded-full" style={{ background: AGENT_TINT.dot }} />
+      Pending
+    </span>
+  );
+}
+
 function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKey: string }) {
   const decide = useSuggestionDecision(projectId, reqKey);
   const [rejecting, setRejecting] = useState(false);
@@ -79,30 +93,25 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
   const busy = decide.isPending;
   return (
     <li
-      className="grid gap-1.5 border-l-2 py-1.5 pl-3"
-      style={{ borderColor: "var(--accent)" }}
+      className="grid gap-1.5 border-l-[3px] px-3 py-[9px] text-12-5"
+      style={{ borderColor: AGENT_TINT.dot, background: AGENT_TINT.bg }}
       data-testid="requirement-suggestion"
       data-kind={s.kind}
     >
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-13">
-        <span className="text-12 font-semibold" style={{ color: "var(--accent-text)" }} title={tipOf(s)}>
-          {KIND_LABEL[s.kind]}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold" style={{ color: AGENT_TINT.fg }} title={tipOf(s)}>
+          {PRODUCER_LABEL[s.producerKind]} · {KIND_LABEL[s.kind]}
         </span>
-        <span className="min-w-0 flex-1">{summaryOf(s)}</span>
-        <span className="text-12 text-subtle">{formatRelativeTime(s.createdAt)}</span>
-        <span className="flex items-center gap-1.5">
-          <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => decide.mutate({ kind: "accept", id: s.id })}>
-            Accept
-          </Button>
-          <Button type="button" size="sm" disabled={busy} onClick={() => setRejecting((v) => !v)} aria-expanded={rejecting}>
-            Reject
-          </Button>
+        <PendingBadge />
+        <span className="text-12 text-subtle" title={new Date(s.createdAt).toLocaleString()}>
+          {formatRelativeTime(s.createdAt)}
         </span>
       </div>
+      <p className="text-13-5">{summaryOf(s)}</p>
       {details.length > 0 ? (
         <details className="text-12 text-muted">
-          <summary className="cursor-pointer select-none">
-            {details.length} {details.length === 1 ? "line" : "lines"}
+          <summary className="cursor-pointer select-none font-semibold" style={{ color: AGENT_TINT.fg }}>
+            Show details
           </summary>
           <ul className="mt-1 grid gap-0.5">
             {[...new Set(details)].map((d) => (
@@ -111,6 +120,14 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
           </ul>
         </details>
       ) : null}
+      <div className="flex flex-wrap items-center gap-2 pt-0.5">
+        <Button type="button" size="sm" loading={busy} onClick={() => decide.mutate({ kind: "accept", id: s.id })}>
+          Accept
+        </Button>
+        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setRejecting((v) => !v)} aria-expanded={rejecting}>
+          Reject
+        </Button>
+      </div>
       {rejecting ? (
         <form
           className="flex flex-wrap items-center gap-2"
@@ -144,11 +161,7 @@ export function RequirementSuggestions({ projectId, reqKey }: { projectId: strin
   if (rows.length === 0) return null;
   return (
     <section className="grid gap-2" data-testid="requirement-suggestions">
-      <h3 className="text-12 font-semibold text-muted">
-        Suggestions
-        <span className="ml-1.5 font-normal text-subtle">{rows.length}</span>
-      </h3>
-      <ul className="grid gap-2">
+      <ul className="grid gap-2.5">
         {rows.map((s) => (
           <Row key={s.id} s={s} projectId={projectId} reqKey={reqKey} />
         ))}

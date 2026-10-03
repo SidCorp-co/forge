@@ -112,7 +112,9 @@ export interface LinkedDesign {
 
 // cm:guard an agree reads the current head and pins only current revisions: the named revision must
 // be the head (REQUIREMENT_REVISION_STALE), the head must be current (REQUIREMENT_REVISION_NOT_CURRENT),
-// and every linked design approved, each one named (REQUIREMENT_DESIGN_UNAPPROVED, Q10)
+// and every linked design must hold an approved revision, each one named (REQUIREMENT_DESIGN_UNAPPROVED, Q10)
+// cm:guard the pin is the design's approved revision, as the build gate reads it; a newer revision only
+// proposed does not unapprove the one already approved (HOP REQ-1 accept refused while rev 5 was proposed)
 export function agreeRefusals(input: {
   status: RequirementStatus;
   named: number;
@@ -143,9 +145,7 @@ export function agreeRefusals(input: {
   } else if (input.named !== input.head) {
     out.push(staleBaseRefusal(input.named, input.head, '/revision') as RequirementRefusal);
   }
-  const unapproved = input.designs.filter(
-    (d) => d.designStatus !== 'approved' || d.approvedRevision === null,
-  );
+  const unapproved = input.designs.filter((d) => d.approvedRevision === null);
   if (unapproved.length > 0) {
     out.push({
       code: 'REQUIREMENT_DESIGN_UNAPPROVED',
