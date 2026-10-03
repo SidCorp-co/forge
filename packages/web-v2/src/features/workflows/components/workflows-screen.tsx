@@ -85,20 +85,19 @@ export function WorkflowsScreen({ projectId, slug, projectName }: { projectId: s
   return (
     <div className="grid min-h-full content-start bg-app" data-testid="workflows-screen">
       <PageTitle hint="What the system is, then every design the project draws, grouped by what it is for">Workflows</PageTitle>
+      <SystemOverviewRegion
+        records={all}
+        templates={templates}
+        projectId={projectId}
+        slug={slug}
+        projectName={projectName}
+        sensitivity={sensitivityOf(projectDocument.data?.document)}
+      />
       {all.length === 0 ? (
         <div className="px-7 py-10 max-md:px-4">
           <EmptyState title="No workflow has been drawn" message="The project's master draws each workflow; none has been written for this project yet." />
         </div>
       ) : (
-        <>
-          <SystemOverviewRegion
-            records={all}
-            templates={templates}
-            projectId={projectId}
-            slug={slug}
-            projectName={projectName}
-            sensitivity={sensitivityOf(projectDocument.data?.document)}
-          />
           <section aria-labelledby="designs-title" className="pt-5">
             <header className="flex flex-wrap items-center gap-x-4 gap-y-2.5 px-7 pb-3 max-md:px-4">
               <h2 id="designs-title" className="fg-h3 m-0">
@@ -151,7 +150,6 @@ export function WorkflowsScreen({ projectId, slug, projectName }: { projectId: s
               ))}
             </div>
           </section>
-        </>
       )}
     </div>
   );
