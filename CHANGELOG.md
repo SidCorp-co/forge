@@ -3252,6 +3252,23 @@
 
 ### Fixed
 
+- **Accepting a suggestion now writes what it proposes.** A breakdown files its issues at draft,
+  linked to the requirement and traced to its criteria; readiness, issue triage and duplicate take
+  effect too. An agent's feedback triage proposal no longer fails.
+- **The prompt preview shows the prompt a job actually gets**, with the requirement criteria,
+  design pins and contracts a claimed job carries.
+- **Uppercase and unlabelled Vietnamese names are scrubbed on sensitive projects.** "NGUYỄN VĂN A"
+  is hidden whole, and a name in a title is caught without a label before it.
+- **A reopened issue needs new passing verdicts** before it can reach awaiting release again.
+- **Feedback routed to a new requirement stays planned until that requirement is delivered**, not
+  merely agreed.
+- **An agent's note no longer clears a person's question from the master's inbox**; only a reply
+  threaded under the question does.
+- **The onboarding hint no longer says "No system context yet"** on a project whose system-context
+  design is approved.
+- **A requirement reads delivered only once every criterion is proven**, names issues planned
+  against an older revision and drafts nobody promoted, and keeps each return's own time and signer.
+
 - **A write made with a paired box's token is recorded as an agent's, with the person who paired
   it kept behind it.** It used to read as that person on the issue's creator, its activity, its
   status history and its comments, so a person's box looked like the person typing and its comments
