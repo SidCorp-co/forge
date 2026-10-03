@@ -24,13 +24,23 @@ import {
 } from './apply-transition.js';
 import type { UnblockedDependent } from './drop-cascade.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
+import {
+  LEGACY_STATUSES,
+  LIFECYCLE_HEADER,
+  legacyWarning,
+  readsLegacyStatuses,
+  resolveStatusInput,
+  STATUS_COMPAT_HEADER,
+} from './legacy-status.js';
 import { parkQuestionNotMinted } from './park-question.js';
 import { issueParkRoutes } from './park-routes.js';
 import { recordEventRoutes } from './record-events/routes.js';
 
 const transitionBodySchema = z
   .object({
-    toStatus: z.enum(issueStatuses),
+    // cm:hack the seven retired names are accepted and mapped (`legacy-status.ts`). Exit: until
+    // forge-plugin moves to the 10-status model (plugin-followups.md).
+    toStatus: z.enum([...issueStatuses, ...LEGACY_STATUSES]),
     reason: z.string().trim().min(1).max(2000).optional(),
     waitingKind: z.enum(waitingKinds).optional(),
     needs: z.string().trim().min(1).max(2000).optional(),
@@ -57,8 +67,12 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
     case 'RELEASE_RECORD_REQUIRED':
     case 'CLOSE_REQUIRES_SHIPPED':
     case 'VOID_REASON_REQUIRED':
+    case 'PLAN_REQUIRED':
+    case 'VERDICT_IDENTITY_REQUIRED':
       return new HTTPException(422, { message: err.detail, cause });
     case 'NO_WORK_EVIDENCE':
+    case 'NO_HOLDER':
+    case 'ILLEGAL_TRANSITION':
       return new HTTPException(409, { message: err.detail, cause });
     default:
       return new HTTPException(409, { message: err.detail, cause });
@@ -219,7 +233,13 @@ transitionRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { toStatus, reason, waitingKind, needs, voidQuestions } = c.req.valid('json');
+    const { toStatus: named, reason, waitingKind, needs, voidQuestions } = c.req.valid('json');
+    const resolved = resolveStatusInput(named);
+    const toStatus = resolved.status;
+    const client17 = readsLegacyStatuses({
+      principal: c.get('principal'),
+      lifecycleHeader: c.req.header(LIFECYCLE_HEADER),
+    });
     const userId = c.get('userId');
 
     const [issue] = await db
@@ -251,7 +271,14 @@ transitionRoutes.post(
         },
         toStatus,
         restActor(c),
-        { reason, transitionReason: reason, waitingKind, needs, voidQuestions },
+        {
+          reason,
+          transitionReason: reason,
+          waitingKind,
+          needs,
+          voidQuestions,
+          legacy: { named, target: resolved.legacy, client17 },
+        },
       );
     } catch (err) {
       if (err instanceof TransitionError) throw transitionErrorToHttp(err);
@@ -276,12 +303,19 @@ transitionRoutes.post(
       actor: restActor(c),
       options: { needs },
     });
+    const warnings = [
+      ...(resolved.legacy ? [legacyWarning(resolved.legacy.named)] : []),
+      ...(unasked ? [unasked] : []),
+    ];
+    if (resolved.legacy) c.header(STATUS_COMPAT_HEADER, legacyWarning(resolved.legacy.named));
     return c.json({
       id: result.id,
-      status: result.status,
+      // cm:hack a 17-status reader is answered in the rung it wrote (`legacyReadStatus`).
+      status: client17 && result.legacyRung ? result.legacyRung : result.status,
+      step: result.step,
       reopenCount: result.reopenCount,
       transitionedAt: result.updatedAt,
-      ...(unasked ? { warnings: [unasked] } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
     });
   },
 );

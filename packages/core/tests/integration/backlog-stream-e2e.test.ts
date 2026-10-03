@@ -232,8 +232,13 @@ describe('the ordering endpoint', () => {
     const first = itemsOf(frames).find((f) => f.issueId === undefined && f.id === blocker);
 
     expect(first).toBeDefined();
-    const rel = (first as unknown as { relations: { blocks: unknown[] } }).relations;
-    expect(rel.blocks).toHaveLength(1);
+    const rel = (
+      first as unknown as {
+        relations: { blocks: { outgoing: Array<{ otherIssueId: string }>; incoming: unknown[] } };
+      }
+    ).relations;
+    expect(rel.blocks.outgoing.map((e) => e.otherIssueId)).toEqual([blocked]);
+    expect(rel.blocks.incoming).toEqual([]);
     for (const item of itemsOf(frames)) {
       expect(item).not.toHaveProperty('score');
       expect(item).not.toHaveProperty('rank');

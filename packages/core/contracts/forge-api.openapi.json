@@ -9892,22 +9892,15 @@
                       },
                       "status": {
                         "enum": [
-                          "open",
-                          "confirmed",
-                          "clarified",
-                          "waiting",
-                          "approved",
-                          "in_progress",
-                          "developed",
-                          "testing",
-                          "tested",
-                          "awaiting_release",
-                          "releasing",
-                          "closed",
-                          "reopen",
-                          "on_hold",
-                          "needs_info",
                           "draft",
+                          "open",
+                          "reopen",
+                          "in_progress",
+                          "approved",
+                          "needs_info",
+                          "on_hold",
+                          "awaiting_release",
+                          "closed",
                           "dropped"
                         ],
                         "type": "string"
@@ -10359,6 +10352,56 @@
                     "maxLength": 500,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "workState": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "branch": {
+                        "anyOf": [
+                          {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "headSha": {
+                        "anyOf": [
+                          {
+                            "pattern": "^[0-9a-f]{40}$",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "step": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "triage",
+                              "clarify",
+                              "plan",
+                              "build",
+                              "test",
+                              "release"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "type": "object",
+                    "x-forge-refinements": [
+                      "`workState` names no field to write"
+                    ]
                   }
                 },
                 "type": "object",
@@ -11825,23 +11868,23 @@
                   },
                   "toStatus": {
                     "enum": [
+                      "draft",
                       "open",
+                      "reopen",
+                      "in_progress",
+                      "approved",
+                      "needs_info",
+                      "on_hold",
+                      "awaiting_release",
+                      "closed",
+                      "dropped",
                       "confirmed",
                       "clarified",
                       "waiting",
-                      "approved",
-                      "in_progress",
                       "developed",
                       "testing",
                       "tested",
-                      "awaiting_release",
-                      "releasing",
-                      "closed",
-                      "reopen",
-                      "on_hold",
-                      "needs_info",
-                      "draft",
-                      "dropped"
+                      "releasing"
                     ],
                     "type": "string"
                   },
@@ -11851,6 +11894,7 @@
                   },
                   "waitingKind": {
                     "enum": [
+                      "needs_answer",
                       "needs_decision",
                       "needs_resource"
                     ],
@@ -18971,23 +19015,23 @@
             "required": false,
             "schema": {
               "enum": [
+                "draft",
                 "open",
+                "reopen",
+                "in_progress",
+                "approved",
+                "needs_info",
+                "on_hold",
+                "awaiting_release",
+                "closed",
+                "dropped",
                 "confirmed",
                 "clarified",
                 "waiting",
-                "approved",
-                "in_progress",
                 "developed",
                 "testing",
                 "tested",
-                "awaiting_release",
-                "releasing",
-                "closed",
-                "reopen",
-                "on_hold",
-                "needs_info",
-                "draft",
-                "dropped"
+                "releasing"
               ],
               "type": "string"
             }
@@ -19379,22 +19423,15 @@
                       "statuses": {
                         "items": {
                           "enum": [
-                            "open",
-                            "confirmed",
-                            "clarified",
-                            "waiting",
-                            "approved",
-                            "in_progress",
-                            "developed",
-                            "testing",
-                            "tested",
-                            "awaiting_release",
-                            "releasing",
-                            "closed",
-                            "reopen",
-                            "on_hold",
-                            "needs_info",
                             "draft",
+                            "open",
+                            "reopen",
+                            "in_progress",
+                            "approved",
+                            "needs_info",
+                            "on_hold",
+                            "awaiting_release",
+                            "closed",
                             "dropped"
                           ],
                           "type": "string"
@@ -19501,46 +19538,46 @@
               "anyOf": [
                 {
                   "enum": [
+                    "draft",
                     "open",
+                    "reopen",
+                    "in_progress",
+                    "approved",
+                    "needs_info",
+                    "on_hold",
+                    "awaiting_release",
+                    "closed",
+                    "dropped",
                     "confirmed",
                     "clarified",
                     "waiting",
-                    "approved",
-                    "in_progress",
                     "developed",
                     "testing",
                     "tested",
-                    "awaiting_release",
-                    "releasing",
-                    "closed",
-                    "reopen",
-                    "on_hold",
-                    "needs_info",
-                    "draft",
-                    "dropped"
+                    "releasing"
                   ],
                   "type": "string"
                 },
                 {
                   "items": {
                     "enum": [
+                      "draft",
                       "open",
+                      "reopen",
+                      "in_progress",
+                      "approved",
+                      "needs_info",
+                      "on_hold",
+                      "awaiting_release",
+                      "closed",
+                      "dropped",
                       "confirmed",
                       "clarified",
                       "waiting",
-                      "approved",
-                      "in_progress",
                       "developed",
                       "testing",
                       "tested",
-                      "awaiting_release",
-                      "releasing",
-                      "closed",
-                      "reopen",
-                      "on_hold",
-                      "needs_info",
-                      "draft",
-                      "dropped"
+                      "releasing"
                     ],
                     "type": "string"
                   },
@@ -19557,46 +19594,46 @@
               "anyOf": [
                 {
                   "enum": [
+                    "draft",
                     "open",
+                    "reopen",
+                    "in_progress",
+                    "approved",
+                    "needs_info",
+                    "on_hold",
+                    "awaiting_release",
+                    "closed",
+                    "dropped",
                     "confirmed",
                     "clarified",
                     "waiting",
-                    "approved",
-                    "in_progress",
                     "developed",
                     "testing",
                     "tested",
-                    "awaiting_release",
-                    "releasing",
-                    "closed",
-                    "reopen",
-                    "on_hold",
-                    "needs_info",
-                    "draft",
-                    "dropped"
+                    "releasing"
                   ],
                   "type": "string"
                 },
                 {
                   "items": {
                     "enum": [
+                      "draft",
                       "open",
+                      "reopen",
+                      "in_progress",
+                      "approved",
+                      "needs_info",
+                      "on_hold",
+                      "awaiting_release",
+                      "closed",
+                      "dropped",
                       "confirmed",
                       "clarified",
                       "waiting",
-                      "approved",
-                      "in_progress",
                       "developed",
                       "testing",
                       "tested",
-                      "awaiting_release",
-                      "releasing",
-                      "closed",
-                      "reopen",
-                      "on_hold",
-                      "needs_info",
-                      "draft",
-                      "dropped"
+                      "releasing"
                     ],
                     "type": "string"
                   },
@@ -19917,22 +19954,15 @@
                       "statuses": {
                         "items": {
                           "enum": [
-                            "open",
-                            "confirmed",
-                            "clarified",
-                            "waiting",
-                            "approved",
-                            "in_progress",
-                            "developed",
-                            "testing",
-                            "tested",
-                            "awaiting_release",
-                            "releasing",
-                            "closed",
-                            "reopen",
-                            "on_hold",
-                            "needs_info",
                             "draft",
+                            "open",
+                            "reopen",
+                            "in_progress",
+                            "approved",
+                            "needs_info",
+                            "on_hold",
+                            "awaiting_release",
+                            "closed",
                             "dropped"
                           ],
                           "type": "string"
@@ -26114,22 +26144,15 @@
             "required": true,
             "schema": {
               "enum": [
-                "open",
-                "confirmed",
-                "clarified",
-                "waiting",
-                "approved",
-                "in_progress",
-                "developed",
-                "testing",
-                "tested",
-                "awaiting_release",
-                "releasing",
-                "closed",
-                "reopen",
-                "on_hold",
-                "needs_info",
                 "draft",
+                "open",
+                "reopen",
+                "in_progress",
+                "approved",
+                "needs_info",
+                "on_hold",
+                "awaiting_release",
+                "closed",
                 "dropped"
               ],
               "type": "string"
@@ -26199,27 +26222,20 @@
                   "stages": {
                     "items": {
                       "enum": [
-                        "open",
-                        "confirmed",
-                        "clarified",
-                        "waiting",
-                        "approved",
-                        "in_progress",
-                        "developed",
-                        "testing",
-                        "tested",
-                        "awaiting_release",
-                        "releasing",
-                        "closed",
-                        "reopen",
-                        "on_hold",
-                        "needs_info",
                         "draft",
+                        "open",
+                        "reopen",
+                        "in_progress",
+                        "approved",
+                        "needs_info",
+                        "on_hold",
+                        "awaiting_release",
+                        "closed",
                         "dropped"
                       ],
                       "type": "string"
                     },
-                    "maxItems": 17,
+                    "maxItems": 10,
                     "type": "array"
                   },
                   "tier": {
@@ -26456,22 +26472,15 @@
                     "anyOf": [
                       {
                         "enum": [
-                          "open",
-                          "confirmed",
-                          "clarified",
-                          "waiting",
-                          "approved",
-                          "in_progress",
-                          "developed",
-                          "testing",
-                          "tested",
-                          "awaiting_release",
-                          "releasing",
-                          "closed",
-                          "reopen",
-                          "on_hold",
-                          "needs_info",
                           "draft",
+                          "open",
+                          "reopen",
+                          "in_progress",
+                          "approved",
+                          "needs_info",
+                          "on_hold",
+                          "awaiting_release",
+                          "closed",
                           "dropped"
                         ],
                         "type": "string"

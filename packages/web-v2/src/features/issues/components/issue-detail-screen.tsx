@@ -44,17 +44,18 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  allowedTransitions,
   canonicalIssueId,
   deriveBlockerState,
   deriveStepOutcomes,
   isLiveRun,
+  issueStatusChip,
   runningStepOf,
   issueQueryKey,
   parseChecklist,
   runStatusChip,
   threadQuestionOf,
-  statusLabel,
-  statusToChip,
+  workStepOf,
 } from "../derive";
 import { deriveQueuedStep } from "../waiting";
 import {
@@ -72,6 +73,7 @@ import {
   useIssueDeps,
   usePatchIssue,
   useProjectMembers,
+  useStatusExits,
 } from "../hooks";
 import { useIssuePark } from "../park";
 import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
@@ -145,6 +147,7 @@ export function IssueDetailScreen({
   const tasksQ = useTasks(canonicalId, projectId);
   const attachmentsQ = useAttachments(canonicalId, projectId);
   const depsQ = useIssueDeps(canonicalId, true, projectId);
+  const { exits: statusExits } = useStatusExits();
   const costQ = useIssueCost(canonicalId, true, projectId);
   const membersQ = useProjectMembers(projectId);
   const handoffsQ = useStepHandoffs(projectId, canonicalId);
@@ -231,9 +234,6 @@ export function IssueDetailScreen({
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
     patch.mutate({ id: issue.id, body }, { onSuccess: refreshIssue });
 
-  const onBannerResume = () =>
-    requestTransition(issue.id, "reopen", { successMessage: "Issue resumed", onSuccess: refreshIssue });
-
   const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data, park);
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
   const stepOutcomes = deriveStepOutcomes(handoffsQ.data, durationsQ.data, {
@@ -266,7 +266,8 @@ export function IssueDetailScreen({
   const threadQuestion = park.state === "ready" && park.park ? threadQuestionOf(park.park) : null;
 
   const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
-  const isParked = issue.status === "on_hold";
+  // The menu offers Pause and Reopen only where core's exits row for this status has them.
+  const exitsHere = allowedTransitions(statusExits, issue.status, issue.workState?.leftStatus ?? null);
   // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150).
   const runChip = runStatusChip(issue);
   const isRunActive = isLiveRun(runChip) || issue.status === "in_progress" || issue.status === "reopen";
@@ -283,7 +284,7 @@ export function IssueDetailScreen({
 
   const moreItems: MenuItem[] = [
     { label: "Open pipeline", icon: "pipeline", onSelect: openPipeline },
-    ...(isTerminal || isParked || !canWrite
+    ...(!exitsHere.includes("on_hold") || !canWrite
       ? []
       : [
           {
@@ -292,7 +293,7 @@ export function IssueDetailScreen({
             onSelect: () => onTransition("on_hold"),
           } as MenuItem,
         ]),
-    ...(isTerminal || !canWrite
+    ...(!exitsHere.includes("reopen") || !canWrite
       ? []
       : [
           {
@@ -332,7 +333,7 @@ export function IssueDetailScreen({
           <div className="flex flex-wrap items-center gap-2">
             <MonoTag hue="cobalt">{issue.displayId}</MonoTag>
             {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
-            <StatusChip status={statusToChip(issue.status)} label={statusLabel(issue.status)} />
+            <StatusChip {...issueStatusChip(issue.status, workStepOf(issue))} />
             {runChip && (
               <StatusChip
                 status={runChip}
@@ -423,7 +424,6 @@ export function IssueDetailScreen({
               blocker={blocker}
               slug={slug}
               pending={pending || !canWrite}
-              onResume={onBannerResume}
               onResumePark={onTransition}
               onResumeRun={onResumeRun}
               onProvideInfo={focusDecisions}

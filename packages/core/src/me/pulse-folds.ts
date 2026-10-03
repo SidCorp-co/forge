@@ -3,8 +3,8 @@
  * database.
  */
 
-import { HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
 import { type FailureCause, resolveFailureCause } from '../pipeline/failure-causes.js';
+import { PARK_STATUSES } from '../pipeline/state-machine.js';
 import {
   PULSE_AWAITING_RELEASE_STATUSES,
   PULSE_FLOW_WEEKS,
@@ -36,7 +36,7 @@ const BUCKET_OF = new Map<string, keyof PulseWorkBuckets>();
 for (const s of PULSE_OPEN_STATUSES) BUCKET_OF.set(s, 'open');
 for (const s of PULSE_IN_PROGRESS_STATUSES) BUCKET_OF.set(s, 'inProgress');
 for (const s of PULSE_AWAITING_RELEASE_STATUSES) BUCKET_OF.set(s, 'awaitingRelease');
-for (const s of HUMAN_PARK_STATUSES) BUCKET_OF.set(s, 'humanBlocked');
+for (const s of PARK_STATUSES) BUCKET_OF.set(s, 'humanBlocked');
 
 /** Which of the four buckets a status belongs to, or null where it is finished. */
 export const bucketOfStatus = (status: string): keyof PulseWorkBuckets | null =>

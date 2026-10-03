@@ -27,10 +27,10 @@ export async function countClaimHeldIssues(
 ): Promise<number> {
   const projectClause = scope.projectId ? sql`AND i.project_id = ${scope.projectId}` : sql``;
   const rows = (await db.execute(sql`
-    SELECT i.session_context -> 'lease' AS lease
+    SELECT (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id) AS lease
       FROM issues i
      WHERE ${NON_TERMINAL}
-       AND i.session_context -> 'lease' ->> 'holder' IS NOT NULL
+       AND (SELECT w.lease ->> 'holder' FROM issue_work_state w WHERE w.issue_id = i.id) IS NOT NULL
        ${projectClause}
   `)) as unknown as Array<{ lease: unknown }>;
   const fanout = await holderFanout(
@@ -49,10 +49,10 @@ export async function countClaimHeldIssuesByProject(
   const counts = new Map<string, number>(projectIds.map((id) => [id, 0]));
   if (projectIds.length === 0) return counts;
   const rows = (await db.execute(sql`
-    SELECT i.project_id, i.session_context -> 'lease' AS lease
+    SELECT i.project_id, (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id) AS lease
       FROM issues i
      WHERE ${NON_TERMINAL}
-       AND i.session_context -> 'lease' ->> 'holder' IS NOT NULL
+       AND (SELECT w.lease ->> 'holder' FROM issue_work_state w WHERE w.issue_id = i.id) IS NOT NULL
        AND i.project_id IN (${sql.join(
          projectIds.map((id) => sql`${id}::uuid`),
          sql`, `,

@@ -90,13 +90,13 @@ const NOTES: NotificationItem[] = [
   { id: "FRG-230", label: "STATUS", text: "Release agent opened PR #1284", sub: "ready to merge", time: "1h", unread: false, hue: "green" },
 ];
 
-/** The kit's own sample columns — the lane's own labels and their tones, which is what a real
- *  board draws (`features/pipeline/derive.ts:boardColumns`). */
+/** The kit's own sample columns — statuses and their tones, which is what a real board draws
+ *  (`features/pipeline/derive.ts:boardColumns`). */
 const KANBAN_COLUMNS: { title: string; color: string }[] = [
   { title: "Open", color: TONE_META.neutral.dot },
-  { title: "Running", color: TONE_META.active.dot },
-  { title: "Needs a human", color: TONE_META.attention.dot },
-  { title: "Awaiting release", color: TONE_META.shipped.dot },
+  { title: "In progress", color: TONE_META.active.dot },
+  { title: "Needs info", color: TONE_META.attention.dot },
+  { title: "Awaiting release", color: TONE_META.attention.dot },
 ];
 
 const NAV_ANCHORS = [
@@ -187,7 +187,7 @@ function StreamingDemo() {
     if (done) return;
     const id = setInterval(() => setN((x) => Math.min(full.length, x + 2)), 24);
     return () => clearInterval(id);
-  }, [done, full.length]);
+  }, [done]);
   return (
     <div className="flex max-w-xl flex-col gap-3">
       <StreamingText text={full.slice(0, n)} streaming={!done} />
@@ -518,10 +518,10 @@ export default function KitPage() {
                 <Input id="kit-search" icon="search" placeholder="Search or jump to…" />
               </Field>
               <div className="flex items-center gap-8">
-                <label className="flex items-center gap-3">
+                <div className="flex items-center gap-3">
                   <Toggle checked={toggleOn} onChange={setToggleOn} aria-label="Enabled" />
                   <span className="fg-body-sm text-fg">Schedule enabled</span>
-                </label>
+                </div>
                 <SegmentedControl
                   options={[
                     { value: "cards", label: "Cards", icon: "grid" },

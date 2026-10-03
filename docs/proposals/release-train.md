@@ -1,7 +1,7 @@
 # The release train: the system proof is batched, a change's own proof is not
 
 A **release train** is a set of changes that share one payment of the expensive, whole-product half
-of proving. It forms at `developed`, it is cut by whichever of two triggers fires first, and its
+of proving. It forms once a change is built — `in_progress` at its `test` step since ISS-54 retired `developed` — it is cut by whichever of two triggers fires first, and its
 members wait as branches and land through one integration pull request, each still its own merge
 commit inside it.
 
@@ -108,10 +108,10 @@ attribute-then-split`, and the train inherits it.
 Held in the plugin's per-project JSON, beside `shape`, `release`, `redBatch` and `rank`:
 
 ```json
-"train": { "at": "developed", "minutes": 90, "size": 5, "maxSize": 10 }
+"train": { "at": "test", "minutes": 90, "size": 5, "maxSize": 10 }
 ```
 
-- **`at`** — the rung the train forms at. `developed` is the only rung where the 43 minutes is
+- **`at`** — the step the train forms at. `test` (inside `in_progress`) is the only point where the 43 minutes is
   still unspent; a train forming at `awaiting_release` batches the deploy alone and saves minutes,
   not hours.
 - **`minutes`** — cut when the oldest member has waited this long, so a member never waits
@@ -142,7 +142,7 @@ train's criterion is amortising a fixed cost: it wants as many members as attrib
 does not care whether they touch the same files. One word `batch` is doing two jobs whose optimal
 sizes point in opposite directions.
 
-**It is not a reason to skip a change's own gate.** A change joins at `developed` already green at
+**It is not a reason to skip a change's own gate.** A change joins at its `test` step already green at
 its own head.
 
 ## Two things that must be true before `size` is raised
@@ -151,7 +151,7 @@ its own head.
    ISS-1286; ISS-1162 came back with verdicts and ISS-1286 with none, the brief having read as the
    other issue's only. Seen twice on 2026-09-27 and reported to forge-plugin. Raising `size` while
    this stands multiplies the issues silently dropped by `size`. ISS-1286 was still stuck at
-   `developed` on 2026-09-29 as a direct consequence.
+   `developed` (a status then) on 2026-09-29 as a direct consequence.
 2. **Attribution must be demonstrated, not assumed.** `redBatch: attribute-then-split` is a
    declared policy, not a measurement. Plant a train with one deliberately broken member and watch
    it name that member before trusting it with real work.

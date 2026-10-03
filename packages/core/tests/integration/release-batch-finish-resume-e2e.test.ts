@@ -22,7 +22,7 @@ import {
 } from '../helpers/index.js';
 import { collapseProbeWaits } from '../helpers/probe-window.js';
 import { stubProbe } from '../helpers/production.js';
-import { PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { AT_RELEASE, PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 const closeRun = vi.hoisted(() => ({ failNext: false }));
 vi.mock('../../src/pipeline/runs.js', async (importOriginal) => {
@@ -199,7 +199,7 @@ describe('the sweep takes up an attempt nobody is working', () => {
 
     expect(await fx.runStatus(runId)).toBe('completed');
     expect(await stored(runId)).toEqual(planted);
-    expect((await fx.stored(issueId)).status).toBe('releasing');
+    expect(await fx.stored(issueId)).toMatchObject(AT_RELEASE);
     expect(await closesOf(issueId)).toBe(0);
   }, 30_000);
 });
@@ -244,7 +244,7 @@ describe('a live worker keeps its attempt', () => {
     await working;
 
     expect(await stored(runId)).toEqual(thief);
-    expect((await fx.stored(issueId)).status).toBe('releasing');
+    expect(await fx.stored(issueId)).toMatchObject(AT_RELEASE);
     expect(await closesOf(issueId)).toBe(0);
     expect(await fx.runStatus(runId)).toBe('running');
   }, 30_000);
@@ -276,7 +276,7 @@ describe('a worker that loses its hold mid-close, and a run close that fails', (
     });
 
     expect(await stored(runId)).toEqual(thief);
-    expect((await fx.stored(issueId)).status).toBe('releasing');
+    expect(await fx.stored(issueId)).toMatchObject(AT_RELEASE);
     expect(await closesOf(issueId)).toBe(0);
     expect(await shipped(runId)).toBeNull();
     expect(await fx.runStatus(runId)).toBe('running');
@@ -320,8 +320,9 @@ describe('a worker that loses its hold mid-close, and a run close that fails', (
     const thief = await (takeover as unknown as Promise<Record<string, unknown>>);
 
     expect(waitedBehindTheLock).toBe(true);
-    const statuses = [(await fx.stored(first)).status, (await fx.stored(second)).status].sort();
-    expect(statuses).toEqual(['closed', 'releasing']);
+    const rows = [await fx.stored(first), await fx.stored(second)];
+    expect(rows.map((r) => r.status).sort()).toEqual(['awaiting_release', 'closed']);
+    expect(rows.find((r) => r.status === 'awaiting_release')).toMatchObject(AT_RELEASE);
     expect(await stored(runId)).toEqual(thief);
     expect(await shipped(runId)).toBeNull();
     expect(await fx.runStatus(runId)).toBe('running');

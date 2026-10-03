@@ -2,48 +2,28 @@
 // the status, the park record in the thread and the open question rows (ISS-1310).
 
 import type { IssuePark, ParkOwes, ParkResume } from '@forge/contracts';
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  gt,
-  isNull,
-  lt,
-  notInArray,
-  notLike,
-  type SQL,
-  sql,
-} from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, notInArray, notLike, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   comments,
   type IssueStatus,
-  issueStatuses,
   issues,
   kernelTransitions,
   type WaitingKind,
 } from '../db/schema.js';
-import { activityLog } from '../db/schema-activity.js';
+import { issueWorkState } from '../db/schema-issue-work-state.js';
 import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
+import { PARK_STATUSES } from '../pipeline/state-machine.js';
 import { openHumanQuestionIdsOn } from '../questions/issue-coupling.js';
 import { type RecordEntry, recordHistory } from './record-events/history.js';
-import {
-  AWAITING_INPUT_STATUSES,
-  HUMAN_PARK_STATUSES,
-  ISSUE_TERMINAL_STATUSES,
-} from './status-sets.js';
+import { AWAITING_INPUT_STATUSES } from './status-sets.js';
 import { announcesAMove } from './transition-reason.js';
 
-/** A park is set down from a working rung and returned to one; a side status never is one. */
-const SIDE_STATUSES: readonly string[] = HUMAN_PARK_STATUSES;
-const NOT_A_RUNG: readonly string[] = [...HUMAN_PARK_STATUSES, ...ISSUE_TERMINAL_STATUSES, 'draft'];
+/** A park is set down from a working status and returned to one; a side status never is one. */
+const SIDE_STATUSES: readonly string[] = PARK_STATUSES;
 
-const HISTORY_SHORT =
-  'the moves before this park were made before Forge recorded each move inside its own write, so nothing says which park record is this one — move it where it belongs with Move anyway';
-
-const NO_RECORD =
-  'no park record was posted for this park, so nothing says where it resumes — move it where it belongs with Move anyway';
+const LEFT_UNKNOWN =
+  'this park began before Forge kept the status a park leaves (migration 0346 found no audited move into it), so nothing says where it resumes — a person names it with Move anyway';
 
 export interface ParkMove {
   to: string;
@@ -68,13 +48,10 @@ export interface ParkComment {
 export interface ParkInput {
   status: IssueStatus;
   waitingKind: WaitingKind | null;
+  /** `issue_work_state.left_status`: where the park returns, or null where nothing recorded it. */
+  leftStatus?: IssueStatus | null;
   /** Status moves, newest first. */
   moves: readonly ParkMove[];
-  /**
-   * Whether `moves` reach back to the move before this park, or to the issue's creation where it
-   * made none. `false` where the park began before moves were recorded inside their own write.
-   */
-  historyReaches?: boolean;
   /** Record comments posted after `boundaryOf(moves)`, oldest first. */
   comments: readonly ParkComment[];
   /** Comments after the boundary that could be a person's reply, oldest first. */
@@ -84,50 +61,37 @@ export interface ParkInput {
 
 /**
  * The transition that preceded this park: the newest move into a working rung. A park record is
- * written just before a `needs_info` move and just after a `waiting` one, so both fall after it,
+ * written around the `needs_info` move it records, so it falls after this boundary,
  * and a record from an earlier park falls before it. `null` where the history holds no such move.
  */
 export function boundaryOf(moves: readonly ParkMove[]): Date | null {
   return moves.find((m) => !SIDE_STATUSES.includes(m.to))?.at ?? null;
 }
 
-/** The kind the park stored decides; a `needs_info` park that stored none asks for information. */
-function owesOf(status: IssueStatus, waitingKind: WaitingKind | null): ParkOwes | null {
+/** The kind the park stored decides what a person owes it. */
+function owesOf(waitingKind: WaitingKind | null): ParkOwes {
   if (waitingKind === 'needs_decision') return 'decision';
   if (waitingKind === 'needs_resource') return 'resource';
-  return status === 'waiting' ? null : 'information';
+  return 'information';
+}
+
+function recordIn(entry: ParkComment): ForgeRecord | null {
+  return entry.record !== undefined ? entry.record : parseForgeRecord(entry.body);
 }
 
 function fieldsOf(entry: ParkComment, kind: string) {
-  const record = entry.record !== undefined ? entry.record : parseForgeRecord(entry.body);
+  const record = recordIn(entry);
   if (record?.kind !== kind) return null;
   return record.fields;
 }
 
-/** Whether this entry carries any record at all, whichever store it was read from. */
-function carriesRecord(entry: ParkComment): boolean {
-  return (entry.record !== undefined ? entry.record : parseForgeRecord(entry.body)) !== null;
-}
+/** The comment an entry stands for: its own id where it is a comment read whole. */
+const commentOf = (entry: ParkComment): string | null =>
+  entry.commentId !== undefined ? entry.commentId : entry.id;
 
-function resumeFrom(park: { id: string; left: string | undefined } | null): ParkResume {
-  if (!park) return { at: null, why: NO_RECORD };
-  const left = park.left?.trim();
-  if (!left) {
-    return {
-      at: null,
-      why: 'the park record names no status it left, so nothing says where it resumes',
-    };
-  }
-  if (!(issueStatuses as readonly string[]).includes(left)) {
-    return { at: null, why: `the park record says it left \`${left}\`, which is no status` };
-  }
-  if (NOT_A_RUNG.includes(left)) {
-    return {
-      at: null,
-      why: `the park record says it left \`${left}\`, which is not a rung work resumes at`,
-    };
-  }
-  return { at: left as IssueStatus, recordId: park.id };
+function resumeFrom(leftStatus: IssueStatus | null, recordId: string | null): ParkResume {
+  if (leftStatus === null) return { at: null, why: LEFT_UNKNOWN };
+  return { at: leftStatus, recordId };
 }
 
 /** The park view for one issue, or `null` where nobody owes it anything. */
@@ -135,35 +99,19 @@ export function readPark(input: ParkInput): IssuePark | null {
   const parked = AWAITING_INPUT_STATUSES.includes(input.status);
   if (!parked && input.openHumanQuestionIds.length === 0) return null;
   const entry = input.moves[0]?.to === input.status ? input.moves[0] : undefined;
-  if (parked && input.historyReaches === false) {
-    return {
-      shape: 'park',
-      status: input.status,
-      owes: owesOf(input.status, input.waitingKind),
-      since: entry ? entry.at.toISOString() : null,
-      reason: entry?.reason ?? null,
-      resume: { at: null, why: HISTORY_SHORT },
-      record: null,
-      readings: [],
-      answer: null,
-      openQuestionIds: [...input.openHumanQuestionIds],
-    };
-  }
   let record: IssuePark['record'] = null;
-  let left: string | undefined;
   let readings: string[] = [];
   for (const c of input.comments) {
     const park = fieldsOf(c, 'park');
     if (park) {
       const one = (key: string) => park.find((f) => f.key === key)?.value;
       record = {
-        commentId: c.commentId !== undefined ? c.commentId : c.id,
+        commentId: commentOf(c),
         eventId: c.eventId ?? null,
         kind: one('kind') ?? null,
         why: one('why') ?? null,
         postedAt: c.createdAt.toISOString(),
       };
-      left = one('left');
       continue;
     }
     const question = fieldsOf(c, 'question');
@@ -172,11 +120,11 @@ export function readPark(input: ParkInput): IssuePark | null {
   return {
     shape: parked ? 'park' : 'question',
     status: input.status,
-    owes: parked ? owesOf(input.status, input.waitingKind) : 'information',
+    owes: parked ? owesOf(input.waitingKind) : 'information',
     since: entry ? entry.at.toISOString() : null,
     reason: entry?.reason ?? null,
     resume: parked
-      ? resumeFrom(record ? { id: record.eventId ?? record.commentId ?? '', left } : null)
+      ? resumeFrom(input.leftStatus ?? null, record?.eventId ?? record?.commentId ?? null)
       : {
           at: null,
           why: `the issue has not stopped: it stands at \`${input.status}\` and waits on the answer`,
@@ -198,11 +146,11 @@ function answerAfter(replies: readonly ParkComment[], recordAt: string): IssuePa
   const reply = [...replies].reverse().find((c) => {
     if (c.createdAt.getTime() <= after) return false;
     if (fieldsOf(c, 'answer')) return true;
-    return !c.byDevice && !announcesAMove(c.body) && !carriesRecord(c);
+    return !c.byDevice && !announcesAMove(c.body) && !recordIn(c);
   });
   if (!reply) return null;
   return {
-    commentId: reply.commentId !== undefined ? (reply.commentId ?? reply.id) : reply.id,
+    commentId: commentOf(reply) ?? reply.id,
     postedAt: reply.createdAt.toISOString(),
     text: reply.body,
   };
@@ -225,53 +173,19 @@ function newestMove(issueId: string, scope: SQL | undefined) {
 }
 
 /**
- * The two moves `readPark` reads — the newest, and the newest into a working rung — from
- * `kernel_transitions`, which the transition writes inside its own transaction. The history row a
- * bus subscriber writes after the commit trails the move, so a record posted after the move could
- * read as older than it (ISS-1310, judge j1). `reaches` says whether that record goes back far
- * enough to bound this park.
+ * The two moves `readPark` reads — the newest, and the newest into a working status — from
+ * `kernel_transitions`, which the transition writes inside its own transaction. They bound which
+ * park record and which reply belong to this park; where the park resumes is the work state's.
  */
-async function movesOf(
-  issueId: string,
-  status: IssueStatus,
-): Promise<{ moves: ParkMove[]; reaches: boolean }> {
+async function movesOf(issueId: string): Promise<ParkMove[]> {
   const [newest] = await newestMove(issueId, undefined);
   const [boundary] = await newestMove(
     issueId,
     notInArray(kernelTransitions.toStatus, [...SIDE_STATUSES]),
   );
-  const moves = [newest, boundary]
+  return [newest, boundary]
     .filter((r) => r !== undefined)
     .map((r) => ({ to: r.to, at: r.at, reason: r.reason ?? null }));
-  if (!newest || newest.to !== status) return { moves, reaches: false };
-  if (boundary) return { moves, reaches: true };
-  return { moves, reaches: !(await movedBeforeTheAudit(issueId)) };
-}
-
-/**
- * Whether this issue moved before its oldest audited move: an `issue.statusChanged` history row
- * older than it. Read for existence only — that row's time is never a boundary.
- */
-async function movedBeforeTheAudit(issueId: string): Promise<boolean> {
-  const [oldest] = await db
-    .select({ at: kernelTransitions.createdAt })
-    .from(kernelTransitions)
-    .where(and(eq(kernelTransitions.entity, 'issue'), eq(kernelTransitions.entityId, issueId)))
-    .orderBy(asc(kernelTransitions.createdAt))
-    .limit(1);
-  if (!oldest) return true;
-  const [earlier] = await db
-    .select({ id: activityLog.id })
-    .from(activityLog)
-    .where(
-      and(
-        eq(activityLog.issueId, issueId),
-        eq(activityLog.action, 'issue.statusChanged'),
-        lt(activityLog.createdAt, oldest.at),
-      ),
-    )
-    .limit(1);
-  return earlier !== undefined;
 }
 
 const after = (boundary: Date | null) => (boundary ? gt(comments.createdAt, boundary) : sql`true`);
@@ -289,7 +203,12 @@ export async function loadIssuePark(issueId: string): Promise<IssuePark | null> 
   if (!AWAITING_INPUT_STATUSES.includes(status)) {
     return readPark({ status, waitingKind: null, moves: [], comments: [], openHumanQuestionIds });
   }
-  const { moves, reaches } = await movesOf(issueId, status);
+  const moves = await movesOf(issueId);
+  const [work] = await db
+    .select({ leftStatus: issueWorkState.leftStatus })
+    .from(issueWorkState)
+    .where(eq(issueWorkState.issueId, issueId))
+    .limit(1);
   const boundary = boundaryOf(moves);
   const asEntry = (r: RecordEntry): ParkComment => ({
     id: r.id,
@@ -322,7 +241,7 @@ export async function loadIssuePark(issueId: string): Promise<IssuePark | null> 
     status,
     waitingKind: (issue.waitingKind as WaitingKind | null) ?? null,
     moves,
-    historyReaches: reaches,
+    leftStatus: (work?.leftStatus ?? null) as IssueStatus | null,
     comments: records.map(asEntry),
     replies,
     openHumanQuestionIds,

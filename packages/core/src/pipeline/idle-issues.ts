@@ -2,7 +2,7 @@
  * ISS-1122 — no issue rests in a non-terminal status with nothing working it.
  *
  * The kernel keeps this invariant on runs and jobs, in both directions. On the entity a person
- * reads off the board it was kept by nobody: `stranded-issues.ts` watches `waiting` and
+ * reads off the board it was kept by nobody: `stranded-issues.ts` watches decision parks and
  * merged-and-stranded, `issue-run-invariant.ts` watches three statuses, and between them most of a
  * board went unread — and all three only ever emitted a notification, so a row they did see stayed
  * exactly where it was.
@@ -278,7 +278,7 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
   const rows = (await db.execute(sql`
     SELECT i.id, i.project_id, i.iss_seq, i.status, i.title, i.updated_at, i.merged_at,
            p.issue_prefix, p.name AS project_name,
-           i.session_context -> 'lease'  AS lease,
+           (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id)  AS lease,
            i.session_context -> 'strand' AS strand,
            i.session_context -> 'releaseHold' AS release_hold,
            i.updated_at::text AS cursor_ts,
@@ -326,12 +326,11 @@ async function projectsWithAdmittedRunner(
 }
 
 /**
- * Write the finding onto the row, and release the lease where it has lapsed.
- *
- * Guarded on the lease value that was read, so a claim landing between the read and the write wins
- * and this pass skips the row; and written through `jsonb_set` on named keys, so another key of
- * `session_context` written concurrently survives. `updated_at` is deliberately absent from the
- * SET clause: it has no database trigger, and a swept row must not read as freshly worked.
+ * Write the finding onto the row, and release a lapsed lease. Guarded on the lease value read, under
+ * the row lock, so a claim landing between read and write wins and this pass skips the row. The
+ * finding goes through `jsonb_set` on its own key, so a concurrent write to another key survives;
+ * the release goes to the lease's home, `issue_work_state` (ISS-54). `updated_at` is left alone:
+ * it has no trigger, and a swept row must not read as freshly worked.
  */
 async function writeStrand(args: {
   row: CandidateRow;
@@ -340,41 +339,48 @@ async function writeStrand(args: {
   now: Date;
 }): Promise<boolean> {
   const { row, record, release, now } = args;
-  const base = sql`jsonb_set(coalesce(i.session_context, '{}'::jsonb), '{strand}', ${JSON.stringify(record)}::jsonb, true)`;
   const entry = JSON.stringify({
     at: now.toISOString(),
     how: 'swept',
     holder: leaseHolderOf(row.lease),
     status: row.status,
   });
-  const next = release
-    ? sql`jsonb_set(
-          jsonb_set(${base}, '{lease,stopped}', to_jsonb(${now.toISOString()}::text), true),
-          '{lease,history}',
-          (CASE WHEN jsonb_typeof(i.session_context -> 'lease' -> 'history') = 'array'
-                THEN i.session_context -> 'lease' -> 'history'
-                ELSE '[]'::jsonb END) || ${entry}::jsonb,
-          true)`
-    : base;
-
   const read = row.lease === null || row.lease === undefined ? null : JSON.stringify(row.lease);
-  const written = (await db.execute(sql`
-    UPDATE issues i
-       SET session_context = ${next}
-     WHERE i.id = ${row.id}
-       AND coalesce(i.session_context -> 'lease', 'null'::jsonb)
-           IS NOT DISTINCT FROM coalesce(${read}::jsonb, 'null'::jsonb)
-    RETURNING i.id
-  `)) as unknown as Array<{ id: string }>;
-
-  if (written.length === 0) {
-    logger.info(
-      { issueId: row.id },
-      'idle-issues: the lease moved between the read and the write — the row is left as the other writer left it',
-    );
-    return false;
-  }
-  return true;
+  return db.transaction(async (tx) => {
+    const held = (await tx.execute(sql`
+      SELECT 1 FROM issues i
+       WHERE i.id = ${row.id}
+         AND coalesce((SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id), 'null'::jsonb)
+             IS NOT DISTINCT FROM coalesce(${read}::jsonb, 'null'::jsonb)
+       FOR UPDATE OF i
+    `)) as unknown as Array<unknown>;
+    if (held.length === 0) {
+      logger.info(
+        { issueId: row.id },
+        'idle-issues: the lease moved between the read and the write — the row is left as the other writer left it',
+      );
+      return false;
+    }
+    await tx.execute(sql`
+      UPDATE issues i
+         SET session_context = jsonb_set(coalesce(i.session_context, '{}'::jsonb), '{strand}', ${JSON.stringify(record)}::jsonb, true)
+       WHERE i.id = ${row.id}
+    `);
+    if (release) {
+      await tx.execute(sql`
+        UPDATE issue_work_state w
+           SET lease = jsonb_set(
+                 jsonb_set(w.lease, '{stopped}', to_jsonb(${now.toISOString()}::text), true),
+                 '{history}',
+                 (CASE WHEN jsonb_typeof(w.lease -> 'history') = 'array'
+                       THEN w.lease -> 'history' ELSE '[]'::jsonb END) || ${entry}::jsonb,
+                 true),
+               updated_at = now()
+         WHERE w.issue_id = ${row.id} AND jsonb_typeof(w.lease) = 'object'
+      `);
+    }
+    return true;
+  });
 }
 
 /**
@@ -397,7 +403,7 @@ async function clearRecovered(now: Date, scope: { projectId?: string }): Promise
   const rows = (await db.execute(sql`
     SELECT i.id, i.status, i.updated_at,
            i.updated_at::text AS cursor_ts,
-           i.session_context -> 'lease'  AS lease,
+           (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id)  AS lease,
            i.session_context -> 'strand' AS strand,
            (${NOTHING_LIVE_ON_THIS_ISSUE}) AS nothing_running
       FROM issues i

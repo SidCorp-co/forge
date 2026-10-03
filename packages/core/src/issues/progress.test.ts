@@ -24,7 +24,7 @@ function failingDb(): { execute: () => unknown } {
   return { execute: () => Promise.reject(new Error('connection reset')) };
 }
 
-const REMAINING: IssueStatus[] = ['draft', 'waiting', 'needs_info', 'on_hold'];
+const REMAINING: IssueStatus[] = ['draft', 'needs_info', 'on_hold'];
 
 describe('bucketOf', () => {
   it('released always counts as shipped, regardless of hasShippedEvidence', () => {
@@ -66,6 +66,7 @@ describe('bucketOf', () => {
       (s) =>
         !REMAINING.includes(s) && s !== 'closed' && s !== 'awaiting_release' && s !== 'dropped',
     );
+    expect([...inFlightStatuses].sort()).toEqual(['approved', 'in_progress', 'open', 'reopen']);
     for (const status of inFlightStatuses) {
       expect(bucketOf(status, false)).toBe('in_flight');
       expect(bucketOf(status, true)).toBe('in_flight');

@@ -74,7 +74,7 @@ describe("TransitionReasonDialog, leaving a park without the answer", () => {
     );
     const move = () => screen.getByRole("button", { name: "Move" });
     expect(move()).toBeDisabled();
-    fireEvent.click(screen.getByLabelText("In progress"));
+    fireEvent.click(screen.getByRole("radio", { name: "In progress" }));
     expect(move()).toBeDisabled();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "settled on the call" } });
     expect(move()).toBeEnabled();
@@ -124,5 +124,55 @@ describe("TransitionReasonDialog's words for leaving without the answer", () => 
     );
     const said = `${document.body.textContent ?? ""} ${container.textContent ?? ""}`;
     expect(said).not.toMatch(/\b(park|parked|rung|decision round)\b/i);
+  });
+});
+
+// ISS-54 — `waiting` folded into `needs_info`, whose kind the server requires; a hold and a drop
+// now carry a reason too.
+describe("TransitionReasonDialog, at the statuses that need a reason", () => {
+  const draw = (status: "needs_info" | "on_hold" | "dropped" | "reopen", onConfirm = vi.fn()) => {
+    render(<TransitionReasonDialog status={status} loading={false} onConfirm={onConfirm} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "a reason" } });
+    return onConfirm;
+  };
+  const send = () => screen.getAllByRole("button").at(-1) as HTMLElement;
+
+  it("asks needs_info what it is stopped on, a question by default, and sends that kind", () => {
+    const onConfirm = draw("needs_info");
+    expect(screen.getAllByRole("radio")).toHaveLength(3);
+    fireEvent.click(send());
+    expect(onConfirm).toHaveBeenCalledWith("a reason", "needs_answer");
+  });
+
+  it("sends the kind a person picked", () => {
+    const onConfirm = draw("needs_info");
+    fireEvent.click(screen.getByRole("radio", { name: /A decision/ }));
+    fireEvent.click(send());
+    expect(onConfirm).toHaveBeenCalledWith("a reason", "needs_decision");
+  });
+
+  it.each(["on_hold", "dropped", "reopen"] as const)("asks %s for a reason and no kind", (status) => {
+    const onConfirm = draw(status);
+    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+    fireEvent.click(send());
+    expect(onConfirm).toHaveBeenCalledWith("a reason", undefined);
+  });
+
+  it("asks the kind when Move anyway picks needs_info", () => {
+    const onConfirm = vi.fn();
+    render(
+      <TransitionReasonDialog
+        status="move_anyway"
+        targets={["in_progress", "needs_info"]}
+        loading={false}
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Needs info" }));
+    expect(screen.getAllByRole("radio")).toHaveLength(5);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "a reason" } });
+    fireEvent.click(screen.getByRole("button", { name: "Move" }));
+    expect(onConfirm).toHaveBeenCalledWith("a reason", "needs_answer", "needs_info");
   });
 });

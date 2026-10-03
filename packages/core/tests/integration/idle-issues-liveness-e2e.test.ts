@@ -43,18 +43,18 @@ describe('detectOrphanedRunAssertions keeps its predicate across the extraction 
   });
 
   it('still ignores a status it never watched', async () => {
-    await seedIssue('developed');
+    await seedIssue('awaiting_release');
     expect(await orphans()).toBe(0);
   });
 
   it('is still held back by a live run', async () => {
-    const issueId = await seedIssue('releasing');
+    const issueId = await seedIssue('in_progress');
     await seedRun(issueId, 'running');
     expect(await orphans()).toBe(0);
   });
 
   it.each(['running', 'paused'])('is still held back by a %s issue run', async (status) => {
-    const issueId = await seedIssue('testing');
+    const issueId = await seedIssue('in_progress');
     await seedRun(issueId, status);
     expect(await orphans()).toBe(0);
     expect(await idle()).toBe(0);
@@ -102,18 +102,20 @@ describe('the job probe holds on its own (ISS-1122)', () => {
   });
 
   it('holds reconcileIdleIssues back with no live run to help it', async () => {
-    await jobUnderTerminalRun('developed');
+    await jobUnderTerminalRun('awaiting_release');
     expect(await idle()).toBe(0);
   });
 });
 
 /** The two passes this change was told not to alter, read at the source. */
 describe('the existing detectors keep their predicates (ISS-1122)', () => {
-  it('keeps `waiting` on detectStrandedIssues and the merge mark on detectOwedCloses', async () => {
+  it('keeps decision and resource parks on detectStrandedIssues and the merge mark on detectOwedCloses', async () => {
     const source = await import('node:fs/promises').then((fs) =>
       fs.readFile(new URL('../../src/pipeline/stranded-issues.ts', import.meta.url), 'utf8'),
     );
-    expect(source).toContain("eq(issues.status, 'waiting')");
+    // What `waiting` became (ISS-54): a `needs_info` park stopped on a decision or a resource.
+    expect(source).toContain("eq(issues.status, 'needs_info')");
+    expect(source).toContain("inArray(issues.waitingKind, ['needs_decision', 'needs_resource'])");
     expect(source).toContain('isNotNull(issues.mergedAt)');
   });
 });

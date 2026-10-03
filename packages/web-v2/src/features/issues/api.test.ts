@@ -8,7 +8,7 @@ import { releaseBatchApi } from "./api";
  */
 
 const ROSTER = {
-  gateStatus: "tested",
+  gateStatus: "awaiting_release",
   channels: ["coolify"],
   releaseRunnerLabel: "release",
   baseBranch: "main",

@@ -7,7 +7,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { ToastProvider } from "@/providers/toast-provider";
@@ -35,8 +35,9 @@ vi.mock("../hooks", async () => {
 });
 
 const STATUS_EXITS = {
-  open: ["confirmed", "in_progress", "needs_info", "on_hold", "dropped"],
-  in_progress: ["developed", "closed", "needs_info", "on_hold", "dropped"],
+  open: ["in_progress", "needs_info", "on_hold", "dropped"],
+  in_progress: ["approved", "awaiting_release", "closed", "needs_info", "on_hold", "dropped"],
+  awaiting_release: ["closed", "reopen", "needs_info", "on_hold", "dropped"],
   closed: ["reopen"],
   dropped: [],
 } as const;
@@ -89,13 +90,17 @@ describe("StatusEdit, once the exits have answered", () => {
     expect(screen.getByRole("menuitem")).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("puts focus on the inert row, and Escape still closes the menu", async () => {
+  // Base UI (the design Menu since the shadcn move) skips a disabled item in the focus order, so the
+  // menu that holds the inert row takes focus; what must hold is that focus is not left behind.
+  it("keeps focus in the menu holding the inert row, and Escape still closes the menu", async () => {
     get.mockResolvedValue(ANSWERED);
     openPicker("dropped");
-    const rowItem = await screen.findByRole("menuitem");
-    expect(document.activeElement).toBe(rowItem);
-    fireEvent.keyDown(rowItem, { key: "Escape" });
-    expect(screen.queryByRole("menuitem")).toBeNull();
+    const rowItem = await screen.findByText(/re-file instead/);
+    const menu = screen.getByRole("menu");
+    expect(menu).toContainElement(rowItem);
+    await waitFor(() => expect(menu).toContainElement(document.activeElement as HTMLElement));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menuitem")).toBeNull());
   });
 
   it("does nothing when an inert row is activated", async () => {
@@ -108,29 +113,37 @@ describe("StatusEdit, once the exits have answered", () => {
     expect(screen.getByRole("menuitem")).toBeInTheDocument();
   });
 
-  it("puts the forward rung first and the discards last", async () => {
+  it("puts the forward moves first and the discards last", async () => {
     get.mockResolvedValue(ANSWERED);
     openPicker("in_progress");
     await screen.findByRole("menuitem", { name: "On hold" });
-    expect(labels()).toEqual(["Developed", "Needs info", "On hold", "Closed", "Dropped"]);
+    expect(labels()).toEqual(["Approved", "Awaiting release", "Needs info", "On hold", "Closed", "Dropped"]);
   });
 
   // ISS-1213: a target has no holder, so the lane word "Running" would name a move nobody is behind.
   it("names each target by its own status word, never by a lane word", async () => {
     get.mockResolvedValue(ANSWERED);
     openPicker("open");
-    await screen.findByText("Confirmed");
-    expect(labels()).toEqual(["Confirmed", "In progress", "Needs info", "On hold", "Dropped"]);
+    await screen.findByText("In progress");
+    expect(labels()).toEqual(["In progress", "Needs info", "On hold", "Dropped"]);
     expect(labels().some((l) => /Running|Stalled|No check-in/u.test(l))).toBe(false);
   });
 
   it("offers no retired status", async () => {
     get.mockResolvedValue(ANSWERED);
-    openPicker("open");
-    await screen.findByText("Confirmed");
-    for (const retired of ["Clarified", "Waiting", "Tested"]) {
+    openPicker("in_progress");
+    await screen.findByText("Approved");
+    for (const retired of ["Confirmed", "Clarified", "Developed", "Testing", "Tested", "Releasing", "Waiting"]) {
       expect(screen.queryByText(retired)).toBeNull();
     }
+  });
+
+  it("returns a park to the status it left, first", async () => {
+    get.mockResolvedValue({ ...ANSWERED, statusExits: { ...STATUS_EXITS, on_hold: ["needs_info", "dropped"] } });
+    wrap(<StatusEdit status="on_hold" leftStatus="approved" onTransition={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText("Change status (currently On hold)"));
+    await screen.findByText("Approved");
+    expect(labels()).toEqual(["Approved", "Needs info", "Dropped"]);
   });
 });
 
@@ -160,9 +173,16 @@ describe("StatusEdit, before the exits have answered", () => {
 });
 
 describe("BulkActionBar", () => {
+  /** The `<button>` itself: an open Set status menu's trigger also wraps it in a `role="button"` span. */
+  const buttonNamed = (name: RegExp) => {
+    const found = screen.getAllByRole("button", { name }).filter((el) => el.tagName === "BUTTON");
+    if (found.length !== 1) throw new Error(`expected one <button> named ${name}, found ${found.length}`);
+    return found[0];
+  };
+
   function bulk(rows: IssueRow[]) {
     wrap(<BulkActionBar projectId="p1" selectedRows={rows} onCleared={vi.fn()} />);
-    return () => screen.getByRole("button", { name: /Set status/ });
+    return () => buttonNamed(/Set status/);
   }
 
   const describedBy = (el: HTMLElement) =>
@@ -192,12 +212,19 @@ describe("BulkActionBar", () => {
     expect(screen.queryByText("Loading the status moves…")).toBeNull();
   });
 
-  it("offers the intersection once the exits have answered", async () => {
+  it("offers the intersection once the exits have answered, less the moves that need a reason", async () => {
     get.mockResolvedValue(ANSWERED);
-    const btn = bulk([row({ status: "open" }), row({ id: "i2", status: "in_progress" })]);
+    const btn = bulk([row({ status: "awaiting_release" }), row({ id: "i2", status: "in_progress" })]);
     await vi.waitFor(() => expect(btn()).not.toBeDisabled());
     fireEvent.click(btn());
-    expect(labels()).toEqual(["On hold", "Dropped"]);
+    expect(labels()).toEqual(["Closed"]);
+  });
+
+  it("names the intersection empty where every shared move needs a reason", async () => {
+    get.mockResolvedValue(ANSWERED);
+    const btn = bulk([row({ status: "open" }), row({ id: "i2", status: "in_progress" })]);
+    await screen.findByText("No status change is valid for every selected issue");
+    expect(btn()).toBeDisabled();
   });
 });
 
@@ -351,14 +378,14 @@ describe("row overflow menu, while an agent is working the row", () => {
   it("locks nothing on a row no agent holds", async () => {
     get.mockResolvedValue(ANSWERED);
     openRowMenu("in_progress", null);
-    await screen.findByText("Status: Developed");
+    await screen.findByText("Status: Approved");
     expect(labels()).not.toContain(held);
   });
 
   it("locks nothing on a row whose last session failed", async () => {
     get.mockResolvedValue(ANSWERED);
     openRowMenu("in_progress", "failed");
-    await screen.findByText("Status: Developed");
+    await screen.findByText("Status: Approved");
     expect(labels()).not.toContain(held);
   });
 });
@@ -366,7 +393,11 @@ describe("row overflow menu, while an agent is working the row", () => {
 describe("BulkActionBar, while an agent is working part of the selection", () => {
   function bulk(rows: IssueRow[]) {
     wrap(<BulkActionBar projectId="p1" selectedRows={rows} onCleared={vi.fn()} />);
-    return (name: RegExp) => screen.getByRole("button", { name });
+    return (name: RegExp) => {
+      const found = screen.getAllByRole("button", { name }).filter((el) => el.tagName === "BUTTON");
+      if (found.length !== 1) throw new Error(`expected one <button> named ${name}, found ${found.length}`);
+      return found[0];
+    };
   }
 
   const describedBy = (el: HTMLElement) =>
@@ -404,22 +435,28 @@ describe("BulkActionBar, while an agent is working part of the selection", () =>
   });
 
   // The shared fixture declares no exits out of `needs_info`, which would disable
-  // Set status for a reason that is not the lock; this one declares them, so the
-  // assertion is about the lock and nothing else.
+  // Set status for a reason that is not the lock; this one declares core's row, and the
+  // rows carry the status the park left, whose way back is the one move needing no reason —
+  // so the assertion is about the lock and nothing else.
   const ANSWERED_FROM_NEEDS_INFO = {
     ...ANSWERED,
-    statusExits: { ...STATUS_EXITS, needs_info: ["in_progress", "on_hold"] },
+    statusExits: { ...STATUS_EXITS, needs_info: ["on_hold", "dropped"] },
   };
+  const parkedRow = row({
+    status: "needs_info",
+    agentStatus: "running",
+    workState: { step: null, stepStartedAt: null, leaseHolder: null, branch: null, headSha: null, leftStatus: "in_progress", legacyStatus: null },
+  });
 
   it("offers Set status when every running issue in the selection is at needs_info", async () => {
     get.mockResolvedValue(ANSWERED_FROM_NEEDS_INFO);
-    const btn = bulk([row({ status: "needs_info", agentStatus: "running" })]);
+    const btn = bulk([parkedRow]);
     await vi.waitFor(() => expect(btn(/Set status/)).not.toBeDisabled());
   });
 
   it("offers Set priority in that same selection", async () => {
     get.mockResolvedValue(ANSWERED_FROM_NEEDS_INFO);
-    const btn = bulk([row({ status: "needs_info", agentStatus: "running" })]);
+    const btn = bulk([parkedRow]);
     await vi.waitFor(() => expect(btn(/Set priority/)).not.toBeDisabled());
   });
 });

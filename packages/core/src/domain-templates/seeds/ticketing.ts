@@ -20,14 +20,10 @@ export const ticketingTemplate: BuiltinTemplate = {
       enabledChannels: ['web', 'widget'],
     },
     skillRegistrations: [
+      // Registered at the statuses a run starts from. Planning and review are steps inside
+      // `in_progress` (ISS-54), which no status names, so they have no stage of their own here.
       { skillName: 'forge-triage', stage: 'open' },
-      // `confirmed` hosts the clarify step (clarify-on-happy-path). The
-      // template deliberately registers no skill there — the missing-skill
-      // soft-skip advances confirmed → clarified, so template projects get
-      // the classic triage → plan flow until they opt into forge-clarify.
-      { skillName: 'forge-plan', stage: 'clarified' },
       { skillName: 'forge-code', stage: 'approved' },
-      { skillName: 'forge-review', stage: 'developed' },
       { skillName: 'forge-fix', stage: 'reopen' },
     ],
   },

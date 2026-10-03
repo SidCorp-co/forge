@@ -16,22 +16,15 @@ import { z } from 'zod';
 // value from the other, so the tuple is mirrored and held in lockstep by the parity
 // test in `packages/core/src/pipeline/registry.test.ts` rather than by an import.
 export const REGISTRY_ISSUE_STATUSES = [
-  'open',
-  'confirmed',
-  'clarified',
-  'waiting',
-  'approved',
-  'in_progress',
-  'developed',
-  'testing',
-  'tested',
-  'awaiting_release',
-  'releasing',
-  'closed',
-  'reopen',
-  'on_hold',
-  'needs_info',
   'draft',
+  'open',
+  'reopen',
+  'in_progress',
+  'approved',
+  'needs_info',
+  'on_hold',
+  'awaiting_release',
+  'closed',
   'dropped',
 ] as const;
 

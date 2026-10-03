@@ -39,17 +39,16 @@ function movedTo(status: IssueStatus, opts?: { successMessage?: string }): strin
 }
 
 describe("the default success toast", () => {
-  it("names the kernel status the issue moved to", () => {
-    expect(movedTo("developed")).toBe("Moved to Developed");
-    expect(movedTo("testing")).toBe("Moved to Testing");
-    expect(movedTo("releasing")).toBe("Moved to Releasing");
+  it("names the status the issue moved to", () => {
+    expect(movedTo("approved")).toBe("Moved to Approved");
+    expect(movedTo("awaiting_release")).toBe("Moved to Awaiting release");
+    expect(movedTo("in_progress")).toBe("Moved to In progress");
   });
 
-  it("gives three statuses the lane folds together three different sentences", () => {
-    const said = ["in_progress", "developed", "releasing"].map((s) =>
-      movedTo(s as IssueStatus),
-    );
-    expect(new Set(said).size).toBe(3);
+  it("gives every status that needs no reason its own sentence", () => {
+    const plain: IssueStatus[] = ["draft", "open", "in_progress", "approved", "awaiting_release", "closed"];
+    const said = plain.map((s) => movedTo(s));
+    expect(new Set(said).size).toBe(plain.length);
     expect(said.some((t) => t.includes("Running"))).toBe(false);
   });
 });
@@ -74,7 +73,7 @@ describe("the two paths that deliberately do NOT name a status", () => {
   });
 
   it("gives each reason-required move its own action sentence, none of them a status word", () => {
-    const said = (["reopen", "waiting", "needs_info"] as const).map((s) => {
+    const said = (["reopen", "needs_info", "on_hold", "dropped"] as const).map((s) => {
       const { result } = renderHook(() => useGuardedTransition());
       act(() => result.current.requestTransition("id", s));
       const dialog = result.current.dialog as { props: { onConfirm: (r: string) => void } };
@@ -84,8 +83,33 @@ describe("the two paths that deliberately do NOT name a status", () => {
       act(() => call[1].onSuccess());
       return toast.mock.calls.at(-1)?.[0]?.title ?? "";
     });
-    expect(new Set(said).size).toBe(3);
+    expect(new Set(said).size).toBe(4);
     expect(said.some((t) => t.startsWith("Moved to"))).toBe(false);
+  });
+
+  it("asks for a reason before a hold or a drop, firing nothing until it has one", () => {
+    for (const s of ["on_hold", "dropped"] as const) {
+      const { result } = renderHook(() => useGuardedTransition());
+      act(() => result.current.requestTransition("id", s));
+      expect(mutate).not.toHaveBeenCalled();
+      const dialog = result.current.dialog as { props: { status: string | null } };
+      expect(dialog.props.status).toBe(s);
+    }
+  });
+
+  it("sends the kind a needs_info move asks for, the question by default", () => {
+    const { result } = renderHook(() => useGuardedTransition());
+    act(() => result.current.requestTransition("id", "needs_info"));
+    const dialog = result.current.dialog as {
+      props: { onConfirm: (r: string, k?: string) => void };
+    };
+    act(() => dialog.props.onConfirm("which tenant?", "needs_answer"));
+    expect(mutate.mock.calls.at(-1)?.[0]).toEqual({
+      id: "id",
+      toStatus: "needs_info",
+      reason: "which tenant?",
+      waitingKind: "needs_answer",
+    });
   });
 
   it("lets a caller's own success message through untouched", () => {

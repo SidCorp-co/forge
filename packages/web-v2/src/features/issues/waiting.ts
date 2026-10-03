@@ -1,5 +1,5 @@
 
-import { statusesForLabels } from "@forge/contracts/issue-vocabulary";
+import { DONE_ISSUE_STATUSES } from "@forge/contracts/issue-vocabulary";
 import { formatCountdown, formatElapsed } from "@/lib/utils/format";
 import type {
 	IssueStatus,
@@ -10,7 +10,7 @@ import type {
 
 export const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
-const SETTLED = new Set<IssueStatus>(statusesForLabels("done", "dropped"));
+const SETTLED: ReadonlySet<IssueStatus> = new Set<IssueStatus>(DONE_ISSUE_STATUSES);
 
 /**
  * How long since the issue ROW itself was last written, graded against a caller-held instant so

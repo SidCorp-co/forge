@@ -85,8 +85,19 @@ async function insertIssue(status: string, updatedAt: SQL = sql`now()`): Promise
   const id = randomUUID();
   seq += 1;
   await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, assignee_id, updated_at)
-    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${ownerId}, ${ownerId}, ${updatedAt})
+    INSERT INTO issues (id, project_id, iss_seq, title, status, waiting_kind, created_by_id,
+                        assignee_id, updated_at)
+    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status},
+            ${status === 'needs_info' ? 'needs_answer' : null}, ${ownerId}, ${ownerId}, ${updatedAt})
+  `);
+  return id;
+}
+
+/** An issue a run holds at the test step: what the seventeen statuses called `testing`. */
+async function insertAtTest(): Promise<string> {
+  const id = await insertIssue('in_progress');
+  await harness.db.execute(sql`
+    INSERT INTO issue_work_state (issue_id, step, step_started_at) VALUES (${id}, 'test', now())
   `);
   return id;
 }
@@ -182,20 +193,20 @@ const choice = {
 };
 
 describe('an ask marks the issue and moves nothing', () => {
-  it('leaves an issue at testing where it is when an agent asks a person through forge_questions', async () => {
-    const issueId = await insertIssue('testing');
+  it('leaves an issue at the test step where it is when an agent asks a person through forge_questions', async () => {
+    const issueId = await insertAtTest();
     const principal = makeFakeJobPrincipal(randomUUID(), ownerId, randomUUID(), projectId);
     const tool = tools.forgeQuestionsTool({ principal, projectSlug: null } as never);
     const asked = (await tool.handler({
       action: 'ask',
       data: { issueId, prompt, blockerKind: 'human', ...choice },
     })) as { id: string };
-    expect(await statusOf(issueId)).toBe('testing');
+    expect(await statusOf(issueId)).toBe('in_progress');
     expect(await openQuestionsOn(issueId)).toEqual([asked.id]);
   });
 
-  it('leaves an issue at testing where it is when a person asks through POST /api/questions', async () => {
-    const issueId = await insertIssue('testing');
+  it('leaves an issue at the test step where it is when a person asks through POST /api/questions', async () => {
+    const issueId = await insertAtTest();
     const res = await app.request('/api/questions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -203,19 +214,22 @@ describe('an ask marks the issue and moves nothing', () => {
     });
     expect(res.status).toBe(201);
     const asked = (await res.json()) as { id: string };
-    expect(await statusOf(issueId)).toBe('testing');
+    expect(await statusOf(issueId)).toBe('in_progress');
     expect(await openQuestionsOn(issueId)).toEqual([asked.id]);
   });
 });
 
 describe('an answer moves only a needs_info park', () => {
-  it('returns an answered park to open, the one status a master admits', async () => {
+  it('returns an answered park to the status it left', async () => {
     const issueId = await insertIssue('needs_info');
+    await harness.db.execute(sql`
+      INSERT INTO issue_work_state (issue_id, left_status) VALUES (${issueId}, 'open')
+    `);
     await answer(await openQuestion(issueId));
     expect(await statusOf(issueId)).toBe('open');
   });
 
-  for (const status of ['testing', 'in_progress', 'developed', 'awaiting_release'] as const) {
+  for (const status of ['open', 'in_progress', 'approved', 'awaiting_release'] as const) {
     it(`leaves an issue at ${status} where it is when its question is answered`, async () => {
       const issueId = await insertIssue(status);
       await answer(await openQuestion(issueId));
@@ -232,6 +246,7 @@ describe('a park on an issue that already waits on a person asks nothing twice',
     const first = await openQuestion(issueId);
     await transition.transitionIssueStatus(await load(issueId), 'needs_info', agent(), {
       transitionReason: 'Waiting on the publish decision asked above.',
+      waitingKind: 'needs_answer',
     });
     expect(await statusOf(issueId)).toBe('needs_info');
     expect(await openQuestionsOn(issueId)).toEqual([first]);
@@ -243,6 +258,7 @@ describe('a park on an issue that already waits on a person asks nothing twice',
     await transition.transitionIssueStatus(await load(issueId), 'needs_info', agent(), {
       transitionReason: 'A second thing is missing.',
       needs: 'the tenant slug',
+      waitingKind: 'needs_answer',
     });
     expect(await openQuestionsOn(issueId)).toHaveLength(2);
   });
@@ -253,6 +269,7 @@ describe('a park on an issue that already waits on a person asks nothing twice',
     await whileAnAskIsInFlight(issueId, () =>
       transition.transitionIssueStatus(row, 'needs_info', agent(), {
         transitionReason: 'Stopped for a person.',
+        waitingKind: 'needs_answer',
       }),
     );
     expect(await statusOf(issueId)).toBe('needs_info');
@@ -264,6 +281,7 @@ describe('a park on an issue that already waits on a person asks nothing twice',
     await openQuestion(issueId, 'master_or_peer');
     await transition.transitionIssueStatus(await load(issueId), 'needs_info', agent(), {
       transitionReason: 'Stopped for a person.',
+      waitingKind: 'needs_answer',
     });
     expect(await openQuestionsOn(issueId)).toHaveLength(2);
   });
@@ -284,20 +302,20 @@ describe('the reads a person looks at see the marker as well as the status', () 
     };
   }
 
-  const NEEDS_YOU = 'status=needs_info&status=waiting&orWaitingOnPerson=true';
+  const NEEDS_YOU = 'status=needs_info&orWaitingOnPerson=true';
 
-  it('lists an issue at testing holding a person’s question under Needs you, beside a needs_info park', async () => {
-    const marked = await insertIssue('testing');
+  it('lists an issue at the test step holding a person’s question under Needs you, beside a needs_info park', async () => {
+    const marked = await insertAtTest();
     await openQuestion(marked);
     const parked = await insertIssue('needs_info');
-    const peerOnly = await insertIssue('testing');
+    const peerOnly = await insertAtTest();
     await openQuestion(peerOnly, 'master_or_peer');
     const body = await search(NEEDS_YOU);
     expect(body.items.map((i) => i.id).sort()).toEqual([marked, parked].sort());
   });
 
   it('drops the issue from Needs you once its last question for a person is answered', async () => {
-    const marked = await insertIssue('testing');
+    const marked = await insertAtTest();
     await answer(await openQuestion(marked));
     const body = await search(NEEDS_YOU);
     expect(body.items).toEqual([]);
@@ -314,24 +332,24 @@ describe('the reads a person looks at see the marker as well as the status', () 
   });
 
   it('counts marker holders by status in the buckets, once per issue', async () => {
-    const marked = await insertIssue('testing');
+    const marked = await insertAtTest();
     await openQuestion(marked);
     await openQuestion(marked);
-    await insertIssue('testing');
+    await insertAtTest();
     const body = await search('withBuckets=true');
-    expect(body.buckets?.waitingOnPersonByStatus).toEqual({ testing: 1 });
-    expect(body.buckets?.byStatus.testing).toBe(2);
+    expect(body.buckets?.waitingOnPersonByStatus).toEqual({ in_progress: 1 });
+    expect(body.buckets?.byStatus.in_progress).toBe(2);
   });
 
-  it('puts an issue at testing holding a person’s question in the viewer’s Attention', async () => {
-    const issueId = await insertIssue('testing');
+  it('puts an issue at the test step holding a person’s question in the viewer’s Attention', async () => {
+    const issueId = await insertAtTest();
     await openQuestion(issueId);
     const rows = await attention.selectAwaitingInput(ownerId);
     expect(rows.map((r) => r.id)).toEqual([issueId]);
   });
 
-  it('counts an issue at developed holding a person’s question once, as awaiting input', async () => {
-    const issueId = await insertIssue('developed');
+  it('counts an issue awaiting review holding a person’s question once, as awaiting input', async () => {
+    const issueId = await insertAtTest();
     await openQuestion(issueId);
     const review = await attention.selectNeedsReview(ownerId);
     const awaiting = await attention.selectAwaitingInput(ownerId);

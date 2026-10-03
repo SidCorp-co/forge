@@ -63,8 +63,8 @@ beforeEach(async () => {
   deviceId = (await createTestDevice(harness.db, ownerId, { name: 'park-box' })).id;
   issueId = randomUUID();
   await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-    VALUES (${issueId}, ${projectId}, 1, 'parked', 'needs_info', ${ownerId})
+    INSERT INTO issues (id, project_id, iss_seq, title, status, waiting_kind, created_by_id)
+    VALUES (${issueId}, ${projectId}, 1, 'parked', 'needs_info', 'needs_answer', ${ownerId})
   `);
 });
 

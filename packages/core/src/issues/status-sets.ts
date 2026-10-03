@@ -11,27 +11,16 @@ export const ISSUE_TERMINAL_STATUSES: readonly IssueStatus[] = ['closed', 'dropp
 /**
  * The statuses a master may start work from: what `forge next` ranks (forge-plugin
  * `rank/weights.mjs:TAKEABLE`), what the backlog stream orders, and what the admissible list hands a
- * box. One answer, so a reopened issue is never eligible on one read and absent on the other.
+ * box. One answer, so a reopened issue is never eligible on one read and absent on the other. The
+ * backlog, the plan checkpoint a run resumes at build, and a reopen (workflow `issue-lifecycle`).
  */
-export const TAKEABLE_STATUSES: readonly IssueStatus[] = [
-  'open',
-  'confirmed',
-  'approved',
-  'reopen',
-];
+export const TAKEABLE_STATUSES: readonly IssueStatus[] = ['open', 'approved', 'reopen'];
 
-/** The issue is stopped until a person acts: what Needs you and the park view both count (ISS-1310). */
-export const AWAITING_INPUT_STATUSES: readonly IssueStatus[] = ['waiting', 'needs_info'];
+/** The issue is stopped until a person answers: what Needs you and the park view both count (ISS-1310). */
+export const AWAITING_INPUT_STATUSES: readonly IssueStatus[] = ['needs_info'];
 
-/** A person parked the issue here, which outranks any automatic restore. */
-export const HUMAN_PARK_STATUSES: readonly IssueStatus[] = ['needs_info', 'waiting', 'on_hold'];
-
-/** The issue claims a run is working it right now. */
-export const ASSERTS_WORK_IN_PROGRESS: readonly IssueStatus[] = [
-  'in_progress',
-  'testing',
-  'releasing',
-];
+/** The issue claims a run is working it right now; its step is on `issue_work_state`. */
+export const ASSERTS_WORK_IN_PROGRESS: readonly IssueStatus[] = ['in_progress'];
 
 /** The issue has nothing left to do: a job that failed against it no longer matters. */
 export const ISSUE_RESOLVED_STATUSES: readonly IssueStatus[] = ['awaiting_release', 'closed'];
@@ -41,21 +30,14 @@ export const NON_OPEN_STATUSES: readonly IssueStatus[] = ['awaiting_release', 'c
 
 /** Each status in a person's words: contracts' map, which core cannot import at runtime; held equal by a parity test. */
 export const ISSUE_STATUS_LABELS: Readonly<Record<IssueStatus, string>> = {
-  open: 'Open',
-  confirmed: 'Confirmed',
-  clarified: 'Clarified',
-  waiting: 'Waiting',
-  approved: 'Approved',
-  in_progress: 'In progress',
-  developed: 'Developed',
-  testing: 'Testing',
-  tested: 'Tested',
-  awaiting_release: 'Awaiting release',
-  releasing: 'Releasing',
-  closed: 'Closed',
-  reopen: 'Reopened',
-  on_hold: 'On hold',
-  needs_info: 'Needs info',
   draft: 'Draft',
+  open: 'Open',
+  reopen: 'Reopened',
+  in_progress: 'In progress',
+  approved: 'Approved',
+  needs_info: 'Needs info',
+  on_hold: 'On hold',
+  awaiting_release: 'Awaiting release',
+  closed: 'Closed',
   dropped: 'Dropped',
 };

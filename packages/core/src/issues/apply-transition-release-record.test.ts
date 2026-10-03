@@ -66,16 +66,29 @@ vi.mock('./park-question.js', () => ({
   mintParkQuestion: vi.fn(async () => undefined),
 }));
 
-vi.mock('./transition-evidence.js', () => ({ checkTransitionEvidence: vi.fn(async () => null) }));
+// The lifecycle guards and the work state have suites of their own (issue-lifecycle-guards-e2e);
+// this one is about the close, so both stand aside.
+vi.mock('./transition-guards.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./transition-guards.js')>()),
+  guardFault: vi.fn(async () => null),
+}));
+vi.mock('./work-state.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./work-state.js')>()),
+  readWorkState: vi.fn(async () => null),
+  setWorkStep: vi.fn(async () => undefined),
+  setLeftStatus: vi.fn(async () => undefined),
+  setLegacyStatus: vi.fn(async () => undefined),
+}));
+vi.mock('./transition-evidence.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./transition-evidence.js')>()),
+  legacyRungEvidenceFault: vi.fn(async () => null),
+}));
 vi.mock('./merged-at.js', () => ({
   BASE_MERGE_STATE: 'awaiting_release',
   refuseUnshippedClose: vi.fn(async () => null),
 }));
 vi.mock('./pipeline-health.js', () => ({
   publishPipelineHealthChanged: vi.fn(async () => undefined),
-}));
-vi.mock('./autonomous-reopen.js', () => ({
-  resolveAutonomousReopenTarget: vi.fn(async (_p: string, s: string) => s),
 }));
 vi.mock('./release-gate-hold.js', () => ({
   resolveAgentCloseTarget: vi.fn(async (a: { requested: string }) => ({
@@ -196,7 +209,10 @@ describe('the closes this rule deliberately does not touch', () => {
     everyRowRefusable();
     queueUpdate('dropped');
 
-    expect((await transitionIssueStatus(AT_WORK, 'dropped', AGENT)).status).toBe('dropped');
+    expect(
+      (await transitionIssueStatus(AT_WORK, 'dropped', AGENT, { transitionReason: 'a duplicate' }))
+        .status,
+    ).toBe('dropped');
   });
 
   it('a park, which is not a close at all', async () => {
@@ -205,6 +221,7 @@ describe('the closes this rule deliberately does not touch', () => {
 
     const result = await transitionIssueStatus(AT_WORK, 'needs_info', AGENT, {
       transitionReason: 'which of the two shapes do you want',
+      waitingKind: 'needs_decision',
     });
 
     expect(result.status).toBe('needs_info');

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { aggregateStepCosts, cardStatus, checkInLine, drawerRunChip, median, runGateNote } from "./derive";
-import { LABEL_VIEW, statusToChip } from "@/features/issues/derive";
+import { aggregateStepCosts, cardStatus, checkInLine, drawerRunChip, median, runGateNote, UNHELD_VIEW } from "./derive";
+import { statusToChip } from "@/features/issues/derive";
 import { PIPELINE_RUN_STATUSES, type PipelineIssueRow, type RunGateCondition, type StepDurationRow } from "./types";
 
 function step(over: Partial<StepDurationRow> & { step: string }): StepDurationRow {
@@ -149,26 +149,36 @@ describe("cardStatus", () => {
     expect(card.label).toBe("No runner online");
   });
 
-  it("falls back to the lane word a held row reads with no run and nothing queued", () => {
+  it("falls back to the status word a held row reads with no run and nothing queued", () => {
     const card = cardStatus(issue(), undefined);
     expect(card.domain).toBe("issue");
-    expect(card.label).toBe("Running");
+    expect(card.label).toBe("In progress");
     expect(card.status).toBe(statusToChip("in_progress"));
   });
 
-  // ISS-1213: rows stood at `testing` for hours with nothing on them, their cards reading Running.
+  it("names the run's step on an in_progress card whose work state has one", () => {
+    const row = issue({ workState: { step: "test", stepStartedAt: null, leaseHolder: "run", branch: null, headSha: null, leftStatus: null, legacyStatus: null } });
+    expect(cardStatus(row, undefined).label).toBe("In progress · Test");
+  });
+
+  it("names no step on a card at any other status, whatever the work state says", () => {
+    const row = issue({ status: "awaiting_release", workState: { step: "release", stepStartedAt: null, leaseHolder: null, branch: null, headSha: null, leftStatus: null, legacyStatus: null } });
+    expect(cardStatus(row, undefined).label).toBe("Awaiting release");
+  });
+
+  // ISS-1213: rows stood in progress for hours with nothing on them, their cards reading as live work.
   // Reopen 1: one of them was being worked by a run core was never told about, so the card says
   // what core knows, not that the row is stalled.
-  it("reads No check-in, in the unheld chip, on a row nothing holds", () => {
-    const card = cardStatus(issue({ status: "testing", held: false }), undefined);
-    expect([card.label, card.status]).toEqual(["No check-in", LABEL_VIEW.unheld.status]);
-    expect(card.status).not.toBe(statusToChip("testing"));
+  it("reads No check-in, in the unheld chip, on an in_progress row nothing holds", () => {
+    const card = cardStatus(issue({ status: "in_progress", held: false }), undefined);
+    expect([card.label, card.status]).toEqual(["No check-in", UNHELD_VIEW.status]);
+    expect(card.status).not.toBe(statusToChip("in_progress"));
   });
 
   // A live run would have made the row held, so every run the board kept for an unheld row is history.
   it.each(PIPELINE_RUN_STATUSES)("reads No check-in on a row nothing holds whatever its kept run (%s)", (status) => {
-    const card = cardStatus(issue({ status: "testing", held: false }), { status });
-    expect([card.label, card.status, card.domain]).toEqual(["No check-in", LABEL_VIEW.unheld.status, "issue"]);
+    const card = cardStatus(issue({ status: "in_progress", held: false }), { status });
+    expect([card.label, card.status, card.domain]).toEqual(["No check-in", UNHELD_VIEW.status, "issue"]);
   });
 
   it("gives an unheld card the clock time of its last check-in and how long ago it was", () => {
@@ -179,7 +189,7 @@ describe("cardStatus", () => {
   });
 
   it("says no check-in is on record on an unheld card core has no time for", () => {
-    const card = cardStatus(issue({ status: "developed", held: false, lastCheckInAt: null }), undefined);
+    const card = cardStatus(issue({ status: "in_progress", held: false, lastCheckInAt: null }), undefined);
     expect(card.note).toBe("No check-in on record");
   });
 
@@ -201,9 +211,14 @@ describe("cardStatus", () => {
     expect(card.note).toBe("");
   });
 
-  it("keeps a party's word on a row nothing holds, since no run was owed there", () => {
-    const card = cardStatus(issue({ status: "needs_info", held: false }), undefined);
-    expect(card.label).toBe("Needs a human");
+  it.each([
+    ["needs_info", "Needs info"],
+    ["approved", "Approved"],
+    ["open", "Open"],
+  ] as const)("keeps %s's own word on a row nothing holds, since no run was owed there", (status, word) => {
+    const card = cardStatus(issue({ status, held: false }), undefined);
+    expect(card.label).toBe(word);
+    expect(card.note).toBe("");
   });
 });
 

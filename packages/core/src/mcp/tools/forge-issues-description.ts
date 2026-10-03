@@ -53,7 +53,14 @@ export function forgeIssuesDescription(refClause: string): string {
     'and blocking (gatesDispatch and not expired); nothing else is blocking. A legacy ' +
     'relations.blockedBy lists only the blocking incoming edges, until forge-plugin reads ' +
     'relations.<kind>.\n' +
-    'TRANSITION. on_hold is a deliberate pause, waiting parks the issue for human review, and ' +
+    'TRANSITION. Ten statuses (draft, open, reopen, in_progress, approved, needs_info, on_hold, ' +
+    "awaiting_release, closed, dropped); a run's progress is data.workState.step, never a status. " +
+    'Each move is guarded and refused by name: in_progress needs a holder (NO_HOLDER), approved a ' +
+    'plan and criteria (PLAN_REQUIRED), awaiting_release a passing verdict on every criterion ' +
+    '(NO_WORK_EVIDENCE, VERDICT_IDENTITY_REQUIRED); needs_info needs reason + waitingKind ' +
+    '(needs_answer, needs_decision, needs_resource), on_hold and reopen a reason, dropped a reason ' +
+    '(VOID_REASON_REQUIRED); a park returns only to the status it left. A retired name (confirmed, ' +
+    'developed, testing, waiting, ...) is refused STATUS_RETIRED. on_hold is a deliberate pause, and ' +
     'closed means the work shipped: a close on an issue with no merged_at is refused ' +
     '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped. On a ' +
     'project whose work lands outside git (source.type storefront or none) the close also needs ' +

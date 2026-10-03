@@ -85,7 +85,7 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
 
   it('does not hold a pipeline_outbox row lock while a subscriber blocks on a contended advisory lock', async () => {
     const { issueId } = await seedIssue('open');
-    await harness.db.execute(sql`UPDATE issues SET status = 'confirmed' WHERE id = ${issueId}`);
+    await harness.db.execute(sql`UPDATE issues SET status = 'in_progress' WHERE id = ${issueId}`);
 
     const { hooks } = await import('../../src/pipeline/hooks.js');
     const { drainOutboxOnce } = await import('../../src/pipeline/outbox-worker.js');
@@ -136,7 +136,7 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
 
   it('the wait+probe pair still reports 55P03 when a claim is stamped but never committed (pre-ISS-678 shape)', async () => {
     const { issueId } = await seedIssue('open');
-    await harness.db.execute(sql`UPDATE issues SET status = 'confirmed' WHERE id = ${issueId}`);
+    await harness.db.execute(sql`UPDATE issues SET status = 'in_progress' WHERE id = ${issueId}`);
 
     let releaseHeldClaim: () => void = () => undefined;
     const heldSignal = new Promise<void>((resolve) => {
@@ -162,7 +162,7 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
 
   it('re-claims and re-emits a row whose lease expired (crash recovery)', async () => {
     const { issueId } = await seedIssue('open');
-    await harness.db.execute(sql`UPDATE issues SET status = 'confirmed' WHERE id = ${issueId}`);
+    await harness.db.execute(sql`UPDATE issues SET status = 'in_progress' WHERE id = ${issueId}`);
 
     await harness.db.execute(sql`
       UPDATE pipeline_outbox SET claimed_at = now() - interval '10 minutes' WHERE issue_id = ${issueId}
@@ -179,7 +179,7 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
 
   it('does not re-claim a row whose lease has not yet expired', async () => {
     const { issueId } = await seedIssue('open');
-    await harness.db.execute(sql`UPDATE issues SET status = 'confirmed' WHERE id = ${issueId}`);
+    await harness.db.execute(sql`UPDATE issues SET status = 'in_progress' WHERE id = ${issueId}`);
     await harness.db.execute(sql`
       UPDATE pipeline_outbox SET claimed_at = now() WHERE issue_id = ${issueId}
     `);

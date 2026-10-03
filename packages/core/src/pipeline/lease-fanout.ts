@@ -20,10 +20,10 @@ export async function holderFanout(
   if (holders.length === 0) return counts;
 
   const rows = (await db.execute(sql`
-    SELECT i.session_context -> 'lease' AS lease
+    SELECT (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id) AS lease
       FROM issues i
      WHERE i.status NOT IN ('closed', 'dropped')
-       AND i.session_context -> 'lease' ->> 'holder' IN (${sql.join(
+       AND (SELECT w.lease ->> 'holder' FROM issue_work_state w WHERE w.issue_id = i.id) IN (${sql.join(
          holders.map((h) => sql`${h}`),
          sql`, `,
        )})

@@ -1,8 +1,9 @@
 /**
  * ISS-762 — `detectStrandedIssues` against real Postgres.
  *
- * The condition is an issue parked at `waiting` whose code already reached the
- * base branch (`merged_at` set). Three real cases sat that way for 7–12 days
+ * The condition is an issue parked on a decision or a resource (`needs_info`
+ * with that kind — what `waiting` became in ISS-54) whose code already reached
+ * the base branch (`merged_at` set). Three real cases sat that way for 7–12 days
  * each, holding a `pipeline_run` slot on a project whose concurrency cap is 2,
  * because the only thing that would ever surface them was someone happening to
  * look.
@@ -31,6 +32,14 @@ type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   STRANDED_GRACE_MS: typeof import('../../src/pipeline/stranded-issues.js').STRANDED_GRACE_MS;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
+};
+
+/** A park defaults to `needs_info` stopped on a decision — what `waiting` became (ISS-54). */
+type SeedOpts = {
+  status?: string | undefined;
+  waitingKind?: string | undefined;
+  mergedAgoMs?: number | null;
+  updatedAgoMs?: number;
 };
 
 type NotifRow = { user_id: string; type: string; resolution_key: string; read: boolean };
@@ -111,9 +120,7 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
 
   const HOUR = 60 * 60 * 1000;
 
-  async function seed(
-    opts: { status?: string; mergedAgoMs?: number | null; updatedAgoMs?: number } = {},
-  ) {
+  async function seed(opts: SeedOpts = {}) {
     const owner = await createTestUser(harness.db);
     const org = await seedOrg(harness.db, owner.id);
     const project = await createTestProject(harness.db, owner.id, { orgId: org.id });
@@ -134,9 +141,11 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     const mergedAgo = opts.mergedAgoMs === undefined ? 48 * HOUR : opts.mergedAgoMs;
     const mergedAt = mergedAgo === null ? null : new Date(Date.now() - mergedAgo).toISOString();
     const issueId = randomUUID();
+    const status = opts.status ?? 'needs_info';
+    const kind = status === 'needs_info' ? (opts.waitingKind ?? 'needs_decision') : null;
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, title, status, created_by_id, merged_at, iss_seq)
-      VALUES (${issueId}, ${project.id}, 'stranded probe', ${opts.status ?? 'waiting'},
+      INSERT INTO issues (id, project_id, title, status, waiting_kind, created_by_id, merged_at, iss_seq)
+      VALUES (${issueId}, ${project.id}, 'stranded probe', ${status}, ${kind},
               ${owner.id}, ${mergedAt}, 762)
     `);
     const updatedAgo = opts.updatedAgoMs ?? 48 * HOUR;
@@ -147,7 +156,7 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     return { issueId, projectId: project.id, owner, projAdmin, plain };
   }
 
-  it('surfaces an issue parked at waiting whose code already merged', async () => {
+  it('surfaces an issue parked on a decision whose code already merged', async () => {
     const s = await seed();
     const res = await announce(harness, mods.detectStrandedIssues);
     expect(res.detected).toBe(1);
@@ -233,12 +242,15 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0, notified: 0 });
   });
 
-  it('surfaces a waiting park whose code never merged', async () => {
-    await seed({ mergedAgoMs: null });
-    await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 1 });
-  });
+  it.each(['needs_decision', 'needs_resource'])(
+    'surfaces a %s park whose code never merged',
+    async (waitingKind) => {
+      await seed({ mergedAgoMs: null, waitingKind });
+      await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 1 });
+    },
+  );
 
-  it.each(['closed', 'in_progress', 'developed', 'testing', 'reopen'])(
+  it.each(['closed', 'in_progress', 'awaiting_release', 'reopen'])(
     'stays silent for a merged issue in status %s',
     async (status) => {
       await seed({ status });
@@ -273,20 +285,22 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0 });
   });
 
-  it.each(['needs_info', 'on_hold', 'open'])(
-    'stays silent for an aged issue in status %s — only `waiting` is a silent park',
-    async (status) => {
-      await seed({ status, mergedAgoMs: null, updatedAgoMs: 48 * HOUR });
+  // A question park (`needs_answer`) is answered through its question, which has its own alarm.
+  it.each(['needs_info:needs_answer', 'on_hold', 'open'])(
+    'stays silent for an aged issue in status %s — only a decision or resource park is silent',
+    async (named) => {
+      const [status, waitingKind] = named.split(':');
+      await seed({ status, waitingKind, mergedAgoMs: null, updatedAgoMs: 48 * HOUR });
       await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0 });
     },
   );
 
-  it('never moves the issue — waiting is a human park', async () => {
+  it('never moves the issue — a decision park is a human park', async () => {
     const s = await seed();
     await mods.detectStrandedIssues();
     const r = (await harness.db.execute(
       sql`SELECT status FROM issues WHERE id = ${s.issueId}`,
     )) as unknown as { status: string }[];
-    expect(r[0]?.status).toBe('waiting');
+    expect(r[0]?.status).toBe('needs_info');
   });
 });

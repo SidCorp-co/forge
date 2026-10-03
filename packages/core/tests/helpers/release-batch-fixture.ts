@@ -14,8 +14,14 @@ import { createTestDevice, seedProjectDocument, type TestDatabase } from './inde
 export const RELEASE_LABEL = 'release-box';
 export const SKIP_NOTE = { section: 'Skip', userFacing: '-' };
 
+/** Where a batch holds a claimed row (ISS-54): at the gate, at step `release`, where the
+ *  seventeen-status model had `releasing`. */
+export const AT_RELEASE = { status: 'awaiting_release', step: 'release' } as const;
+
 export interface StoredIssue {
   status: string;
+  /** `issue_work_state.step` (ISS-54): `release` while a batch holds the row at the gate. */
+  step: string | null;
   mergedAt: unknown;
   claim: unknown;
 }
@@ -179,10 +185,12 @@ export function releaseBatchFixture(
 
   async function stored(id: string): Promise<StoredIssue> {
     const rows = await harness().db.execute(sql`
-      SELECT status, merged_at, release_batch_run_id FROM issues WHERE id = ${id}
+      SELECT i.status, i.merged_at, i.release_batch_run_id, w.step
+      FROM issues i LEFT JOIN issue_work_state w ON w.issue_id = i.id WHERE i.id = ${id}
     `);
     return {
       status: String(rows[0]?.status),
+      step: (rows[0]?.step as string | null | undefined) ?? null,
       mergedAt: rows[0]?.merged_at ?? null,
       claim: rows[0]?.release_batch_run_id ?? null,
     };

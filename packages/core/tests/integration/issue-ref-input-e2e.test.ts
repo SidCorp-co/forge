@@ -151,7 +151,8 @@ const ARGS: Record<string, (ref: string, projectId: string) => Record<string, un
   transition: (ref) => ({
     action: 'transition',
     documentId: ref,
-    data: { status: 'in_progress' },
+    // A move that needs no holder (ISS-54 refuses `in_progress` nobody holds with NO_HOLDER).
+    data: { status: 'on_hold', reason: 'parked to prove the key resolved' },
   }),
   setAttributes: (ref) => ({
     action: 'setAttributes',

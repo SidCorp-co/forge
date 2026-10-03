@@ -180,7 +180,7 @@ describe('F6 pipeline E2E', () => {
       mods.registerActivitySubscribers(bus);
 
       type S = Parameters<typeof mods.canTransition>[0];
-      const chain = ['open', 'in_progress', 'developed', 'testing', 'awaiting_release'] as S[];
+      const chain = ['open', 'in_progress', 'approved', 'in_progress', 'awaiting_release'] as S[];
       for (let i = 1; i < chain.length; i += 1) {
         const [from, to] = [chain[i - 1] as S, chain[i] as S];
         expect(mods.canTransition(from, to)).toBe(true);
@@ -288,17 +288,17 @@ describe('F6 pipeline E2E', () => {
     it('status filter (multi): IN combinator', async () => {
       const { user, project } = await seed();
       await insertIssue(project.id, user.id, { title: 'a', status: 'open' });
-      await insertIssue(project.id, user.id, { title: 'b', status: 'confirmed' });
+      await insertIssue(project.id, user.id, { title: 'b', status: 'approved' });
       await insertIssue(project.id, user.id, { title: 'c', status: 'closed' });
 
       const res = await authedGet(
-        `/api/projects/${project.id}/issues/search?status=open&status=confirmed`,
+        `/api/projects/${project.id}/issues/search?status=open&status=approved`,
         user.id,
       );
       expect(res.status).toBe(200);
       const list = ((await res.json()) as { items: Array<{ status: string }> }).items;
       expect(list.length).toBe(2);
-      expect(list.map((i) => i.status).sort()).toEqual(['confirmed', 'open']);
+      expect(list.map((i) => i.status).sort()).toEqual(['approved', 'open']);
     });
 
     it('label filter (any-of): EXISTS subquery against issue_labels', async () => {

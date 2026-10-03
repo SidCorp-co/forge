@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod';
+import { workSteps } from '../db/schema-issue-work-state.js';
 
 export const attachmentInputSchema = z
   .object({
@@ -22,3 +23,20 @@ export const labelAttachItemSchema = z.union([
     })
     .strict(),
 ]);
+
+/**
+ * ISS-54 — the holder's step (`null` ends it), branch and pushed head. The lease is not written
+ * here: it is the holder's claim, and stays with the claim verbs.
+ */
+export const workStatePatchSchema = z
+  .object({
+    step: z.enum(workSteps).nullable().optional(),
+    branch: z.string().trim().min(1).max(255).nullable().optional(),
+    headSha: z
+      .string()
+      .regex(/^[0-9a-f]{40}$/iu, 'a head is the full 40-hex commit sha')
+      .nullable()
+      .optional(),
+  })
+  .strict()
+  .refine((o) => Object.keys(o).length > 0, { message: '`workState` names no field to write' });

@@ -44,10 +44,10 @@ import { getActiveReleaseBatch } from './queries.js';
 
 export * from './blocker-sentences.js';
 
-/** One transition short of the gate, which `RELEASE_ROSTER_EMPTY` counts so its
- *  sentence names where the work stands. `transitions` admits `needs_info` and
- *  `on_hold` too, and both are parks rather than work on its way. */
-const NEAR_GATE_STATUSES: readonly IssueStatus[] = ['testing', 'tested'];
+/** One move short of the gate — a run at its test step (ISS-54) — which `RELEASE_ROSTER_EMPTY`
+ *  counts so its sentence names where the work stands. */
+const NEAR_GATE = sql`${issues.status} = 'in_progress' AND EXISTS (
+  SELECT 1 FROM issue_work_state w WHERE w.issue_id = ${issues.id} AND w.step = 'test')`;
 
 /** How many issues stand one move short of the gate; undefined where the read failed. */
 async function countNearGate(
@@ -60,7 +60,7 @@ async function countNearGate(
       await db
         .select({ id: issues.id })
         .from(issues)
-        .where(and(eq(issues.projectId, projectId), inArray(issues.status, NEAR_GATE_STATUSES))),
+        .where(and(eq(issues.projectId, projectId), NEAR_GATE)),
     out,
   );
   return rows?.length;

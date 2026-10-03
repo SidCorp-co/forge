@@ -12,6 +12,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 process.env.JWT_SECRET ??= 'integration-test-secret-padded-to-32-chars-long';
 process.env.DEVICE_TOKEN_PEPPER ??= 'integration-test-pepper-padded-to-32-chars-long';
 
+import { resolveStatusInput } from '../../src/issues/legacy-status.js';
+import { splitSessionContext, writeSplitSessionContext } from '../../src/issues/work-state.js';
 import {
   createTestProject,
   createTestUser,
@@ -158,21 +160,30 @@ beforeEach(async () => {
   await seedProjectSource(harness.db, projectId, userId, 'git');
 });
 
+/** An `in_progress` issue; `rung` is the retired rung forge-plugin 3.36.542 last wrote on it. */
 async function seed(
   opts: {
-    status?: string;
     sessionContext?: Record<string, unknown>;
     source?: 'storefront';
     seq?: number;
+    rung?: 'developed';
   } = {},
 ) {
   if (opts.source) await seedProjectSource(harness.db, projectId, userId, opts.source);
   const id = randomUUID();
+  const split = splitSessionContext(opts.sessionContext ?? { worklog: { branch: 'main' } });
   await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, session_context)
-      VALUES (${id}, ${projectId}, ${opts.seq ?? SEQ}, 'base-branch landing', ${opts.status ?? 'in_progress'},
-              ${userId}, ${JSON.stringify(opts.sessionContext ?? { worklog: { branch: 'main' } })}::jsonb)
+      VALUES (${id}, ${projectId}, ${opts.seq ?? SEQ}, 'base-branch landing', 'in_progress',
+              ${userId}, ${JSON.stringify(split.rest ?? {})}::text::jsonb)
     `);
+  await writeSplitSessionContext(harness.db, id, split);
+  if (opts.rung) {
+    await harness.db.execute(sql`
+      UPDATE issue_work_state SET legacy_status = ${opts.rung}, step = 'test', step_started_at = now()
+      WHERE issue_id = ${id}
+    `);
+  }
   return { id, projectId, mergedAt: null };
 }
 
@@ -217,17 +228,23 @@ async function row(id: string) {
   return r as { status: string; merged_at: unknown; merged_commit_sha: string | null };
 }
 
-async function advance(id: string, from: string, to: string) {
+/** An agent naming a retired rung, as forge-plugin 3.36.542 does: a step-only move inside `in_progress`. */
+async function advance(id: string, rung: 'developed' | 'testing') {
   const { transitionIssueStatus } = await import('../../src/issues/apply-transition.js');
+  const resolved = resolveStatusInput(rung);
   return transitionIssueStatus(
-    { id, projectId, status: from, reopenCount: 0 } as never,
-    to as never,
-    {
-      type: 'user',
-      id: userId,
-      agency: 'agent',
-    },
+    { id, projectId, status: 'in_progress', reopenCount: 0 } as never,
+    resolved.status,
+    { type: 'user', id: userId, agency: 'agent' },
+    { legacy: { named: rung, target: resolved.legacy, client17: true } },
   );
+}
+
+async function heldRung(id: string): Promise<string | null> {
+  const [w] = await harness.db.execute<{ legacy_status: string | null }>(
+    sql`SELECT legacy_status FROM issue_work_state WHERE issue_id = ${id}`,
+  );
+  return w?.legacy_status ?? null;
 }
 
 async function comments(id: string): Promise<string[]> {
@@ -238,7 +255,7 @@ async function comments(id: string): Promise<string[]> {
 }
 
 describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres)', () => {
-  it('accepts the commit, stores it observed, and lets the issue reach developed then testing (criteria 1-3)', async () => {
+  it('accepts the commit, stores it observed, and lets an agent name developed then testing (criteria 1-3)', async () => {
     const issue = await seed();
 
     const res = await mark(issue, OWN);
@@ -250,9 +267,10 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     expect((await row(issue.id)).merged_commit_sha).toBe(OWN);
     expect((await comments(issue.id)).at(-1)).toContain(`read from ${repo.fullName} itself`);
 
-    await advance(issue.id, 'in_progress', 'developed');
-    await advance(issue.id, 'developed', 'testing');
-    expect((await row(issue.id)).status).toBe('testing');
+    await advance(issue.id, 'developed');
+    await advance(issue.id, 'testing');
+    expect((await row(issue.id)).status).toBe('in_progress');
+    expect(await heldRung(issue.id)).toBe('testing');
   });
 
   it('resolves an abbreviated commit to the full sha the repository holds (criterion 9)', async () => {
@@ -300,7 +318,7 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
       for (const s of says) expect(refused.message).toContain(s);
       expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
       expect(await comments(issue.id)).toEqual(before);
-      const blocked = await refusal(() => advance(issue.id, 'in_progress', 'developed'));
+      const blocked = await refusal(() => advance(issue.id, 'developed'));
       expect(blocked.code).toBe('NO_WORK_EVIDENCE');
     },
   );
@@ -332,13 +350,10 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
 
   it('still refuses developed and testing with the base branch recorded and no merged commit (criterion 11)', async () => {
     const issue = await seed();
-    expect((await refusal(() => advance(issue.id, 'in_progress', 'developed'))).code).toBe(
-      'NO_WORK_EVIDENCE',
-    );
-    const atDeveloped = await seed({ status: 'developed', seq: SEQ + 1 });
-    expect((await refusal(() => advance(atDeveloped.id, 'developed', 'testing'))).code).toBe(
-      'NO_WORK_EVIDENCE',
-    );
+    expect((await refusal(() => advance(issue.id, 'developed'))).code).toBe('NO_WORK_EVIDENCE');
+    const atDeveloped = await seed({ rung: 'developed', seq: SEQ + 1 });
+    expect((await refusal(() => advance(atDeveloped.id, 'testing'))).code).toBe('NO_WORK_EVIDENCE');
+    expect(await heldRung(atDeveloped.id)).toBe('developed');
   });
 
   it('keeps the commit a claim, and reads nothing, where the issue already has a branch (criterion 13)', async () => {

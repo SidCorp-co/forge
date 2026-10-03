@@ -15,11 +15,11 @@ export type CommentScope = (typeof COMMENT_SCOPES)[number];
  * `NarrationRecordKind` below is typed so that it cannot name one.
  */
 export const KERNEL_RECORD_KINDS = [
-	"verdict",
-	"transition",
-	"landing",
-	"park",
-	"correction",
+  "verdict",
+  "transition",
+  "landing",
+  "park",
+  "correction",
 ] as const;
 export type KernelRecordKind = (typeof KERNEL_RECORD_KINDS)[number];
 
@@ -28,27 +28,27 @@ export type KernelRecordKind = (typeof KERNEL_RECORD_KINDS)[number];
  * `NARRATION_COLLAPSE_DAYS` (req-feedback decision Q6).
  */
 export const NARRATION_RECORD_KINDS = [
-	"fold",
-	"routed",
-	"gap",
-	"baseline",
+  "fold",
+  "routed",
+  "gap",
+  "baseline",
 ] as const satisfies readonly Exclude<RecordEventKind, KernelRecordKind>[];
 export type NarrationRecordKind = (typeof NARRATION_RECORD_KINDS)[number];
 
 /** Kinds that are neither: kept, and not kernel evidence any gate reads. */
 export const KEPT_RECORD_KINDS = [
-	"decision",
-	"question",
-	"answer",
-	"confirmation",
-	"superseded",
-	"review",
-	"finding",
-	"triage",
-	"folded",
-	"declined",
-	"wave",
-	"verification",
+  "decision",
+  "question",
+  "answer",
+  "confirmation",
+  "superseded",
+  "review",
+  "finding",
+  "triage",
+  "folded",
+  "declined",
+  "wave",
+  "verification",
 ] as const;
 
 /**
@@ -56,27 +56,27 @@ export const KEPT_RECORD_KINDS = [
  * (`EVENT_KIND_UNKNOWN`), and `activity_log_record_kind_chk` refuses it again at the table.
  */
 export const RECORD_EVENT_KINDS = [
-	"verdict",
-	"transition",
-	"landing",
-	"park",
-	"correction",
-	"fold",
-	"routed",
-	"gap",
-	"baseline",
-	"decision",
-	"question",
-	"answer",
-	"confirmation",
-	"superseded",
-	"review",
-	"finding",
-	"triage",
-	"folded",
-	"declined",
-	"wave",
-	"verification",
+  "verdict",
+  "transition",
+  "landing",
+  "park",
+  "correction",
+  "fold",
+  "routed",
+  "gap",
+  "baseline",
+  "decision",
+  "question",
+  "answer",
+  "confirmation",
+  "superseded",
+  "review",
+  "finding",
+  "triage",
+  "folded",
+  "declined",
+  "wave",
+  "verification",
 ] as const;
 export type RecordEventKind = (typeof RECORD_EVENT_KINDS)[number];
 
@@ -90,23 +90,23 @@ export const RECORD_ACTION_PREFIX = "record.";
 export const NARRATION_COLLAPSE_DAYS = 180;
 
 export interface RecordEventFieldView {
-	readonly key: string;
-	readonly value: string;
+  readonly key: string;
+  readonly value: string;
 }
 
 /** One record event as `GET /api/issues/:id/events` serves it. */
 export interface RecordEventView {
-	readonly id: string;
-	readonly issueId: string;
-	readonly kind: RecordEventKind | typeof RECORD_DIGEST_KIND;
-	readonly contract: number;
-	readonly fields: readonly RecordEventFieldView[];
-	readonly lead: string | null;
-	/** The comment this event was mirrored from, while forge-plugin still posts records as comments. */
-	readonly commentId: string | null;
-	/** On a digest only: how many narration events of each kind it replaced. */
-	readonly counts?: Readonly<Record<string, number>>;
-	readonly actorType: string;
-	readonly actorId: string;
-	readonly createdAt: string;
+  readonly id: string;
+  readonly issueId: string;
+  readonly kind: RecordEventKind | typeof RECORD_DIGEST_KIND;
+  readonly contract: number;
+  readonly fields: readonly RecordEventFieldView[];
+  readonly lead: string | null;
+  /** The comment this event was mirrored from, while forge-plugin still posts records as comments. */
+  readonly commentId: string | null;
+  /** On a digest only: how many narration events of each kind it replaced. */
+  readonly counts?: Readonly<Record<string, number>>;
+  readonly actorType: string;
+  readonly actorId: string;
+  readonly createdAt: string;
 }

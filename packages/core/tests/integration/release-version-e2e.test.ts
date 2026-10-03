@@ -33,7 +33,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { AT_RELEASE, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 // Setup is module-level rather than inside one outer `describe`, whose callback would be a single
 // function past the 150-line budget. Each block below names the rule it stands on.
@@ -459,7 +459,7 @@ describe('the release path itself', () => {
     ).rejects.toBeInstanceOf(ReleaseVersionMissingError);
 
     // And it refused BEFORE closing anything, which is what makes the refusal worth having.
-    expect((await fx.stored(issue)).status).toBe('releasing');
+    expect(await fx.stored(issue)).toMatchObject(AT_RELEASE);
   });
 
   it('stamps the ship on finish, so the project reports what it is serving', async () => {

@@ -48,8 +48,9 @@ async function issue(status: string): Promise<string> {
   const id = randomUUID();
   seq += 1;
   await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at)
-    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${userId}, now())
+    INSERT INTO issues (id, project_id, iss_seq, title, status, waiting_kind, created_by_id, merged_at)
+    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status},
+            ${status === 'needs_info' ? 'needs_answer' : null}, ${userId}, now())
   `);
   return id;
 }

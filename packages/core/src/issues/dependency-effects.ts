@@ -1,11 +1,12 @@
 import type { IssueDependencyKind, IssueStatus } from '../db/schema.js';
+import { ISSUE_RESOLVED_STATUSES } from './status-sets.js';
 
 export const WORK_EVIDENCE_WAIVER_KIND: IssueDependencyKind = 'decomposes';
 
 export const WORK_EVIDENCE_WAIVER_NOTE =
   `It does not gate dispatch, but it is NOT inert: one live \`${WORK_EVIDENCE_WAIVER_KIND}\` edge ` +
   "OUT of an issue waives that issue's work-evidence gate, so it can be marked merged and moved " +
-  'to `developed`/`testing` with no branch, no commit and no code handoff of its own. That ' +
+  'to a test step with no branch, no commit and no code handoff of its own. That ' +
   'exemption exists for grouping parents whose children carry the code; wiring one onto an issue ' +
   'that is meant to prove its own work removes the check that would have caught a fabricated ' +
   'merge.';
@@ -14,12 +15,10 @@ const NO_EFFECT_NOTE = 'Metadata only — it gates no dispatch and waives no evi
 
 export const DISPATCH_GATING_KIND: IssueDependencyKind = 'blocks';
 
-export const BLOCKER_SETTLED_STATUSES: readonly IssueStatus[] = [
-  'developed',
-  'testing',
-  'awaiting_release',
-  'closed',
-];
+/** A blocker releases its dependents once every criterion it carries has passed (ISS-54): exactly
+ *  when its issue is resolved, so this is `ISSUE_RESOLVED_STATUSES` under the name the dispatcher and
+ *  the browser's copy read. A status says it, so the screen and the dispatcher read one column. */
+export const BLOCKER_SETTLED_STATUSES: readonly IssueStatus[] = ISSUE_RESOLVED_STATUSES;
 
 export const GATES_DISPATCH_NOTE =
   'B is held out of the admissible set a master reads while a live `blocks` edge points at it ' +

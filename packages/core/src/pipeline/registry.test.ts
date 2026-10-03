@@ -1,4 +1,5 @@
 import {
+  NEEDS_INFO_KINDS,
   pipelineRegistryResponseSchema,
   REGISTRY_ISSUE_COMPLEXITIES,
   REGISTRY_ISSUE_PRIORITIES,
@@ -7,6 +8,7 @@ import {
   REGISTRY_PIPELINE_RUN_KINDS,
   REGISTRY_PIPELINE_RUN_STATUSES,
   REGISTRY_RUNNER_TYPES,
+  WORK_STEPS,
 } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -19,7 +21,9 @@ import {
   pipelineRunKinds,
   pipelineRunStatuses,
   runnerTypes,
+  waitingKinds,
 } from '../db/schema.js';
+import { workSteps } from '../db/schema-issue-work-state.js';
 import { getPipelineRegistry, PIPELINE_REGISTRY_VERSION, RUNNER_CAPABILITIES } from './registry.js';
 import { transitions } from './state-machine.js';
 
@@ -62,6 +66,14 @@ describe('contracts ↔ core enum parity', () => {
 
   it('REGISTRY_PIPELINE_RUN_KINDS mirrors core pipelineRunKinds', () => {
     expect([...REGISTRY_PIPELINE_RUN_KINDS]).toEqual([...pipelineRunKinds]);
+  });
+
+  it('WORK_STEPS mirrors core workSteps, order included', () => {
+    expect([...WORK_STEPS]).toEqual([...workSteps]);
+  });
+
+  it('NEEDS_INFO_KINDS mirrors core waitingKinds', () => {
+    expect([...NEEDS_INFO_KINDS].sort()).toEqual([...waitingKinds].sort());
   });
 });
 

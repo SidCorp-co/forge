@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { issues, pipelineRuns, projectMembers, projects, runners, users } from '../db/schema.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
 import { firstShipped } from '../pipeline/shipped-at.js';
+import { PARK_STATUSES } from '../pipeline/state-machine.js';
 
 /**
  * The ten independent per-project reads behind `GET /api/projects/health`, and
@@ -23,8 +24,6 @@ export const healthReadLoad = {
     return healthReadLimiter.waiting;
   },
 };
-
-export const BLOCKED_STATUSES = ['on_hold', 'needs_info'] as const;
 
 export type BlockerRow = {
   projectId: string;
@@ -64,9 +63,7 @@ const readBlockerRows = (projectIds: string[]) =>
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(
-      and(inArray(issues.projectId, projectIds), inArray(issues.status, [...BLOCKED_STATUSES])),
-    )
+    .where(and(inArray(issues.projectId, projectIds), inArray(issues.status, [...PARK_STATUSES])))
     .orderBy(issues.projectId, sql`${issues.updatedAt} DESC`);
 
 export type ThroughputRow = { projectId: string; n: number };

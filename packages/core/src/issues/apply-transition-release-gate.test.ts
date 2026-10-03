@@ -76,7 +76,23 @@ vi.mock('./transition-reason.js', async (importActual) => {
   const actual = await importActual<typeof import('./transition-reason.js')>();
   return { ...actual, postTransitionReasonComment: vi.fn(async () => undefined) };
 });
-vi.mock('./transition-evidence.js', () => ({ checkTransitionEvidence: vi.fn(async () => null) }));
+// The lifecycle guards and the work state have suites of their own (issue-lifecycle-guards-e2e);
+// this one is about the close, so both stand aside.
+vi.mock('./transition-guards.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./transition-guards.js')>()),
+  guardFault: vi.fn(async () => null),
+}));
+vi.mock('./work-state.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./work-state.js')>()),
+  readWorkState: vi.fn(async () => null),
+  setWorkStep: vi.fn(async () => undefined),
+  setLeftStatus: vi.fn(async () => undefined),
+  setLegacyStatus: vi.fn(async () => undefined),
+}));
+vi.mock('./transition-evidence.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./transition-evidence.js')>()),
+  legacyRungEvidenceFault: vi.fn(async () => null),
+}));
 
 const refuseUnshippedCloseMock = vi.fn(async (..._a: unknown[]) => null);
 vi.mock('./merged-at.js', () => ({
@@ -204,7 +220,9 @@ describe('an agent closing on a project that declared a release gate', () => {
   it('lets `dropped` through the gate untouched', async () => {
     queueUpdate('dropped');
 
-    const result = await transitionIssueStatus(AT_WORK, 'dropped', AGENT);
+    const result = await transitionIssueStatus(AT_WORK, 'dropped', AGENT, {
+      transitionReason: 'a duplicate',
+    });
 
     expect(result.status).toBe('dropped');
     expect(productionPair).not.toHaveBeenCalled();

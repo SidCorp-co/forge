@@ -23,9 +23,9 @@ import { useCallback, useState } from "react";
 import {
   complexityLabel,
   initials,
+  issueStatusChip,
   priorityLabel,
-  statusLabel,
-  statusToChip,
+  workStepOf,
 } from "../derive";
 import {
   deriveQueuedStep,
@@ -117,11 +117,7 @@ export function StatusCell({ row }: { row: IssueRow }) {
   );
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <StatusChip
-        status={statusToChip(row.status)}
-        label={statusLabel(row.status)}
-        size="sm"
-      />
+      <StatusChip {...issueStatusChip(row.status, workStepOf(row))} size="sm" />
       <AgentChip agentStatus={row.agentStatus} failureInfo={row.failureInfo} />
       {queuedStep && <QueuedChip step={queuedStep} />}
     </div>
@@ -187,7 +183,7 @@ function useRowMenuItems(
     return items;
   }
 
-  const grouped = groupedTransitions(exits, row.status);
+  const grouped = groupedTransitions(exits, row.status, row.workState?.leftStatus ?? null);
   if (isPending) {
     items.push({ label: "Loading status moves…", disabled: true, separatorBefore: true });
   } else if (isError) {
@@ -306,7 +302,7 @@ export function IssueTableRow({
     >
       {selection && (
         <TD className="w-9 pr-0">
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents: wrapper only blocks bubbling; the Checkbox button is the control. */}
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: wrapper only blocks bubbling; the Checkbox button is the control. */}
           <span
             className="inline-flex"
             onClick={(e) => e.stopPropagation()}

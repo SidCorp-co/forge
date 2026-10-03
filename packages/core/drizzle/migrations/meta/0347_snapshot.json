@@ -1,6 +1,6 @@
 {
-  "id": "9a84724b-5828-4d62-a252-718b05247197",
-  "prevId": "5de26aed-a6fd-4d21-9961-a8ad5af041b0",
+  "id": "085a2f57-f59e-40b5-8915-c74eb84a46fe",
+  "prevId": "8e338a3c-e962-4d37-a50a-f43420521672",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -18273,6 +18273,151 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.issue_work_state": {
+      "name": "issue_work_state",
+      "schema": "",
+      "columns": {
+        "issue_id": {
+          "name": "issue_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "step": {
+          "name": "step",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "step_started_at": {
+          "name": "step_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "steps": {
+          "name": "steps",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "lease": {
+          "name": "lease",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_holder": {
+          "name": "lease_holder",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "nullif(lease ->> 'holder', '')",
+            "type": "stored"
+          }
+        },
+        "branch": {
+          "name": "branch",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "head_sha": {
+          "name": "head_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "left_status": {
+          "name": "left_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "legacy_status": {
+          "name": "legacy_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "issue_work_state_lease_holder_idx": {
+          "name": "issue_work_state_lease_holder_idx",
+          "columns": [
+            {
+              "expression": "lease_holder",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "lease_holder IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "issue_work_state_issue_id_issues_id_fk": {
+          "name": "issue_work_state_issue_id_issues_id_fk",
+          "tableFrom": "issue_work_state",
+          "tableTo": "issues",
+          "columnsFrom": [
+            "issue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "issue_work_state_step_pair_chk": {
+          "name": "issue_work_state_step_pair_chk",
+          "value": "(\"issue_work_state\".\"step\" IS NULL) = (\"issue_work_state\".\"step_started_at\" IS NULL)"
+        },
+        "issue_work_state_step_chk": {
+          "name": "issue_work_state_step_chk",
+          "value": "\"issue_work_state\".\"step\" IS NULL OR \"issue_work_state\".\"step\" IN ('triage', 'clarify', 'plan', 'build', 'test', 'release')"
+        },
+        "issue_work_state_steps_chk": {
+          "name": "issue_work_state_steps_chk",
+          "value": "jsonb_typeof(\"issue_work_state\".\"steps\") = 'array'"
+        },
+        "issue_work_state_head_sha_chk": {
+          "name": "issue_work_state_head_sha_chk",
+          "value": "\"issue_work_state\".\"head_sha\" IS NULL OR \"issue_work_state\".\"head_sha\" ~ '^[0-9a-f]{40}$'"
+        },
+        "issue_work_state_branch_chk": {
+          "name": "issue_work_state_branch_chk",
+          "value": "\"issue_work_state\".\"branch\" IS NULL OR (\"issue_work_state\".\"branch\" ~ '[^[:space:]]' AND char_length(\"issue_work_state\".\"branch\") <= 255)"
+        },
+        "issue_work_state_left_status_chk": {
+          "name": "issue_work_state_left_status_chk",
+          "value": "\"issue_work_state\".\"left_status\" IS NULL OR \"issue_work_state\".\"left_status\" IN ('open', 'reopen', 'in_progress', 'approved', 'awaiting_release')"
+        },
+        "issue_work_state_legacy_status_chk": {
+          "name": "issue_work_state_legacy_status_chk",
+          "value": "\"issue_work_state\".\"legacy_status\" IS NULL OR \"issue_work_state\".\"legacy_status\" IN ('confirmed', 'clarified', 'developed', 'testing', 'tested', 'releasing')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.deploy_locks": {

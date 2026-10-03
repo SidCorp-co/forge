@@ -119,7 +119,10 @@ async function reconcileIssueStatusAfterFailure(
   const entry = JOB_TYPE_ENTRY_STATUS[job.type];
   if (entry && row.status !== entry && classifyVerdict(row.status, job.type) === 'pending') {
     try {
-      await applyStatusTransition(issueRow, entry, device, { skip: true });
+      await applyStatusTransition(issueRow, entry, device, {
+        recovery: true,
+        reason: 'job_failed_entry_revert',
+      });
     } catch (err) {
       logger.warn(
         { err, issueId: row.id, to: entry },
@@ -198,7 +201,7 @@ export async function finalizeFailedJob(
     retry.reason === 'completed_via_recovery' || retry.reason === 'cancelled_stale';
 
   // ISS-393 — never no-op a failed job with an issueId: revert to entry-status
-  // (retry path) or park at `waiting` + reap the run (no-retry path).
+  // (retry path) or hold the job + reap the run (no-retry path).
   await reconcileIssueStatusAfterFailure(updated, retry, recoveredViaVerify);
 
   if (!retry.scheduled) {

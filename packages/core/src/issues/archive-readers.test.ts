@@ -1,7 +1,7 @@
 /**
  * ISS-1237 — every query that reads `issues` decides about archived rows, checked rather than
  * remembered. A file reading the table must compose `issueArchiveSide(...)`, filter on
- * `issues.archivedAt` with `isNull`/`isNotNull`, or compose `memoryOfLiveIssue`; otherwise it is
+ * `issues.archivedAt` with `isNull`/`isNotNull` (or `archived_at IS [NOT] NULL` on the issues row in raw SQL), or compose `memoryOfLiveIssue`; otherwise it is
  * listed below with the reason it may answer an archived issue.
  *
  * A read may answer one when it is keyed by an id, key, seq, commit or run somebody named; when it
@@ -22,7 +22,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'admin/aggregate-routes.ts': 'lead-time percentiles and open counts, no issue identity',
   'admin/alert-queries.ts': 'starvation counts over queued jobs, no issue identity',
   'admin/metric-series.ts': 'bucketed lead-time sums and counts, no issue identity',
-  'admin/pipeline-health-routes.ts': 'reads only `waiting`',
+  'admin/pipeline-health-routes.ts':
+    'reads only `needs_info`, a park an archived issue never holds',
   'agent-reports/routes.ts': 'the issue an agent report links',
   'agent-reports/service.ts': 'by issue id',
   'agent-sessions/interactive-routes.ts': "titles of the session's own issue ids",
@@ -37,7 +38,6 @@ const NOT_DISCOVERY: Record<string, string> = {
   'devices/admissible.ts': 'reads only backlog-admissible statuses; relations by edge',
   'devices/claim.ts': 'the issue of the claimed job',
   'devices/pool.ts': 'issues of queued jobs on live runs; relations by edge',
-  'devices/comment-inbox.ts': 'filters `archived_at IS NULL` in its own SQL',
   'devices/run-evidence.ts': 'the seqs a run names',
   'devices/run-issue-return.ts': 'the seqs a run names',
   'devices/run-session.ts': 'the seqs a run names',
@@ -78,10 +78,13 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/park-view.ts': 'the park of the one issue asked for by id',
   'issues/pipeline-health.ts': 'the ids passed in',
   'issues/read-service.ts': 'retrieval by id or key, which answers an archived issue by design',
+  'issues/release-evidence.ts': 'the criteria of the one issue a release-gate move names, by id',
   'issues/release-record-required.ts': 'the ids passed in',
   'issues/steer-routes.ts': 'by issue id',
   'issues/transition.ts': 'dependents over edges of the issues being moved',
+  'issues/transition-guards.ts': 'the plan of the one issue a move names, by id; a guard',
   'issues/update-service.ts': 'guards by issue id inside a write',
+  'issues/work-state.ts': 'whether anything holds the one issue a work-state write names, by id',
   'jobs/agent-session-link.ts': 'the issue of the job',
   'jobs/finalize-failure.ts': 'the issue of the job',
   'jobs/job-policy.ts': 'the issue of the job',
@@ -125,10 +128,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'pipeline/retention/statements.ts': 'a NOT EXISTS guard keyed by entity id',
   'pipeline/runs-control.ts': 'the issue of the run',
   'pipeline/runs-rollup.ts': 'the issues of the runs',
-  'pipeline/stranded-issues.ts': 'reads only `waiting` and non-terminal merged rows',
+  'pipeline/stranded-issues.ts': 'reads only `needs_info` and non-terminal merged rows',
   'pipeline/sweeper.ts': 'reaps runs still running on closed or dropped issues, a write path',
-  'pipeline/wedge-lease.ts':
-    'the lease of the one in-flight issue a wedge reset has locked, by id; an archived issue is never in flight',
   'pipeline/work-evidence.ts': 'by issue id',
   'pm/routes.ts': 'the ids a decision event names',
   'pm/snapshot-service.ts': 'status counts; stalled rows read only active statuses',
@@ -146,7 +147,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'release-batch/blockers.ts': 'gate statuses, counted; claims by id',
   'release-batch/claim-conflicts.ts': 'the ids passed in',
   'release-batch/finish-job.ts':
-    'counts rows of one release run: releasing, or closed by it, so never archived live work',
+    'counts rows of one release run: claimed at `awaiting_release`, or closed by it, so never archived live work',
   'release-batch/queries.ts': 'reads only the gate status, or rows of one release run',
   'release-batch/recorded.ts': 'the ids passed in',
   'release-batch/releasing-recovery.ts': 'rows of one release run',
@@ -157,7 +158,6 @@ const NOT_DISCOVERY: Record<string, string> = {
   'uploads/attachment-bytes.ts': 'by attachment id',
   'uploads/attachment-lookup.ts': 'by issue, comment or attachment id',
   'workflows/build-gate.ts': 'the issues a build link names, by issue id or seq',
-  'workflows/design-issue.ts': 'the one issue a design names, skipped when archived',
   'workflows/store.ts': 'the issues a build link names, by issue id',
 };
 
@@ -183,7 +183,8 @@ const READS_ISSUES = [
   /\b(?:from|join)\s+(?:"?public"?\.)?"?issues"?\b/i,
   /\bquery\.issues\.find(?:First|Many)\b/,
 ];
-const DECIDES = /issueArchiveSide\(|memoryOfLiveIssue|is(?:Not)?Null\(\s*issues\.archivedAt\)/;
+const DECIDES =
+  /issueArchiveSide\(|memoryOfLiveIssue|is(?:Not)?Null\(\s*issues\.archivedAt\)|(?:\b(?:i|issues)\.|(?<![.\w]))archived_at\s+IS\s+(?:NOT\s+)?NULL\b/i;
 
 type Reading = 'reads-and-decides' | 'reads-undecided' | 'no-read';
 

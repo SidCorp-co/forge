@@ -143,6 +143,14 @@ export const projectDocumentSchema = z.strictObject({
       'none',
     ]),
   }),
+  // cm:why who approves a plan held as a project rule: `required` makes the kernel refuse a move
+  // into `approved` that a person did not make (`issues/transition-guards.ts:planGuard`, refusal
+  // PLAN_REQUIRED); absent is not required, and a run's own plan checkpoint is enough.
+  plan: z
+    .strictObject({
+      approval: z.strictObject({ required: z.boolean() }),
+    })
+    .optional(),
   // cm:why approval held as a project rule rather than a master's habit: `required` makes the
   // kernel refuse every production act of a release batch until a person approved it
   // (`release-batch/approvals.ts:assertApprovalAllowsAttempt`); absent is not required.

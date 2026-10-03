@@ -124,6 +124,22 @@ export class ReleaseFinishedForOtherCommitError extends Error {
   }
 }
 
+/**
+ * The finish reached an issue its batch no longer claims: an abort handed it back to the gate while
+ * the finish was verifying. A claim is no longer a status (ISS-54), so the status alone cannot say so.
+ */
+export class ReleaseClaimLostError extends Error {
+  constructor(
+    public readonly issueId: string,
+    public readonly runId: string,
+  ) {
+    super(
+      `RELEASE_CLAIM_LOST: release batch ${runId} no longer claims issue ${issueId} — an abort handed it back to the gate, so this finish does not close it`,
+    );
+    this.name = 'ReleaseClaimLostError';
+  }
+}
+
 /** A finish worker's hold on its attempt was taken over; it must write nothing more. */
 export class ReleaseFinishFenceLostError extends Error {
   constructor() {

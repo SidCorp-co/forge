@@ -14,7 +14,7 @@ const ENTRY = {
 
 function body(over: Record<string, unknown> = {}) {
   return {
-    gateStatus: "tested",
+    gateStatus: "awaiting_release",
     channels: ["coolify"],
     releaseRunnerLabel: "release",
     baseBranch: "main",
@@ -34,7 +34,7 @@ function without(key: string) {
 describe("parseReleaseRoster", () => {
   it("reads a well-formed response", () => {
     expect(parseReleaseRoster(body(), ENDPOINT)).toEqual({
-      gateStatus: "tested",
+      gateStatus: "awaiting_release",
       channels: ["coolify"],
       releaseRunnerLabel: "release",
       baseBranch: "main",

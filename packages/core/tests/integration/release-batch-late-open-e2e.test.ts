@@ -23,7 +23,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 import { collapseProbeWaits } from '../helpers/probe-window.js';
-import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { AT_RELEASE, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 describe('a release batch opened after its own release', () => {
   let harness: TestDatabase;
@@ -92,7 +92,7 @@ describe('a release batch opened after its own release', () => {
     }).catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(ReleaseNotVerifiedError);
-    expect((await stored(a)).status).toBe('releasing');
+    expect(await stored(a)).toMatchObject(AT_RELEASE);
   });
 
   it('says at the door when what is already serving carries a roster merge', async () => {

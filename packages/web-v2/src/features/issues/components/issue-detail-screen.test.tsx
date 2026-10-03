@@ -6,7 +6,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IssueDetailScreen } from "./issue-detail-screen";
 
@@ -23,6 +23,7 @@ let park: Record<string, unknown> = { state: "ready", park: null };
 let role: string | null = "admin";
 let intake: "auto" | "manual" = "auto";
 let sessionContext: Record<string, unknown> | null = null;
+let workState: Record<string, unknown> | null = null;
 let policyError: Error | null = null;
 const startIssue = vi.fn();
 
@@ -74,7 +75,7 @@ vi.mock("./html-attachment-card", () => ({
   HtmlAttachmentCard: ({ name }: { name: string }) => <div>preview {name}</div>,
 }));
 vi.mock("../detail-hooks", () => ({
-  useIssue: () => ok({ ...ISSUE, status, pipelineHealth, sessionContext }),
+  useIssue: () => ok({ ...ISSUE, status, pipelineHealth, sessionContext, workState }),
   useComments: () => ok({ items: [], totalCount: 0 }),
   useActivity: () => ok({ items: [] }),
   useTasks: () => ok([]),
@@ -91,7 +92,17 @@ vi.mock("../hooks", () => ({
   useProjectMembers: () => ok([]),
   useSaveDescription: () => ({ mutate: vi.fn(), isPending: false }),
   useRunPipelineStep: () => ({ mutate: startIssue, isPending: false }),
+  useStatusExits: () => ({ exits: EXITS, isPending: false, isError: false }),
 }));
+
+/** Core's exits rows for the statuses these tests stand at (`pipeline/state-machine.ts`). */
+const EXITS = {
+  open: ["in_progress", "needs_info", "on_hold", "dropped"],
+  in_progress: ["approved", "awaiting_release", "closed", "needs_info", "on_hold", "dropped"],
+  awaiting_release: ["closed", "reopen", "needs_info", "on_hold", "dropped"],
+  closed: ["reopen"],
+  on_hold: ["needs_info", "dropped"],
+};
 
 function renderScreen() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -116,6 +127,7 @@ beforeEach(() => {
   role = "admin";
   intake = "auto";
   sessionContext = null;
+  workState = null;
   policyError = null;
   startIssue.mockClear();
 });
@@ -228,13 +240,13 @@ describe("the issue header's run", () => {
 describe("the issue page of work a person owes an answer", () => {
   const WAITING_FOR_INFORMATION = /waiting for information/;
 
-  it("says so above an issue at testing holding an open question blocked on a person", () => {
-    status = "testing";
+  it("says so above an issue in progress holding an open question blocked on a person", () => {
+    status = "in_progress";
     park = {
       state: "ready",
       park: {
         shape: "question",
-        status: "testing",
+        status: "in_progress",
         owes: "information",
         since: null,
         reason: null,
@@ -250,10 +262,50 @@ describe("the issue page of work a person owes an answer", () => {
   });
 
   it("says nothing of the kind once that question is answered", () => {
-    status = "testing";
+    status = "in_progress";
     park = { state: "ready", park: null };
     renderScreen();
     expect(screen.queryByText(WAITING_FOR_INFORMATION)).toBeNull();
+  });
+});
+
+// ISS-54 — the issue menu offers Pause and Reopen only where core's exits row has them.
+describe("the issue actions menu", () => {
+  const menu = () => {
+    fireEvent.click(screen.getByRole("button", { name: "Issue actions" }));
+    return screen.getAllByRole("menuitem").map((el) => el.textContent ?? "");
+  };
+
+  it("offers Pause and no Reopen on an open issue, which cannot be reopened", () => {
+    status = "open";
+    renderScreen();
+    const items = menu();
+    expect(items).toContain("Pause (hold)");
+    expect(items).not.toContain("Reopen");
+  });
+
+  it("offers Reopen and no Pause on a closed issue", () => {
+    status = "closed";
+    renderScreen();
+    const items = menu();
+    expect(items).toContain("Reopen");
+    expect(items).not.toContain("Pause (hold)");
+  });
+
+  it("offers neither on a hold that left in_progress, whose way back is that status", () => {
+    status = "on_hold";
+    workState = { step: null, leftStatus: "in_progress", steps: [] };
+    renderScreen();
+    const items = menu();
+    expect(items).not.toContain("Reopen");
+    expect(items).not.toContain("Pause (hold)");
+  });
+
+  it("offers Reopen on a hold that recorded no status it left, as core lets a person name one", () => {
+    status = "on_hold";
+    workState = null;
+    renderScreen();
+    expect(menu()).toContain("Reopen");
   });
 });
 

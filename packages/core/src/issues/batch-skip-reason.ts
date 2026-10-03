@@ -15,6 +15,9 @@ export const BATCH_SKIP_BY_CODE = {
   ISSUE_ARCHIVED: 'issue_archived',
   OPEN_QUESTIONS: 'open_questions',
   VOID_REASON_REQUIRED: 'void_reason_required',
+  NO_HOLDER: 'no_holder',
+  PLAN_REQUIRED: 'plan_required',
+  VERDICT_IDENTITY_REQUIRED: 'verdict_identity_required',
 } as const satisfies Record<TransitionErrorCode, string>;
 
 export type BatchSkipReason =

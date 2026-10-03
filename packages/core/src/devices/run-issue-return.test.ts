@@ -25,7 +25,8 @@ vi.mock('../issues/apply-transition.js', () => ({
   },
 }));
 
-import { ASSERTS_WORK_IN_PROGRESS, HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
+import { ASSERTS_WORK_IN_PROGRESS } from '../issues/status-sets.js';
+import { PARK_STATUSES } from '../pipeline/state-machine.js';
 import { returnIssuesForRun } from './run-issue-return.js';
 
 const RUN = 'run-1';
@@ -43,6 +44,13 @@ function runRow(keys: string[], statuses: Record<string, string>) {
       statuses,
     },
   ];
+}
+
+/** The two raw reads `returnIssuesForRun` makes: the run row, then the keys other live runs hold. */
+function runReads(row: ReturnType<typeof runRow>, heldElsewhere: string[] = []) {
+  execute
+    .mockResolvedValueOnce(row)
+    .mockResolvedValueOnce(heldElsewhere.map((issue_key) => ({ issue_key })));
 }
 
 /** The issue rows the drizzle select returns. */
@@ -72,7 +80,7 @@ beforeEach(() => {
 
 describe('returnIssuesForRun', () => {
   it('returns an issue to the status its run was claimed out of', async () => {
-    execute.mockResolvedValue(runRow(['ISS-457'], { 'ISS-457': 'open' }));
+    runReads(runRow(['ISS-457'], { 'ISS-457': 'open' }));
     issueRows([{ seq: 457, status: 'in_progress' }]);
 
     const returned = await returnIssuesForRun(RUN, { reason: 'box silent' });
@@ -82,12 +90,12 @@ describe('returnIssuesForRun', () => {
       expect.objectContaining({ id: 'issue-457' }),
       'open',
       expect.anything(),
-      expect.objectContaining({ transitionReason: 'box silent', skip: true }),
+      expect.objectContaining({ transitionReason: 'box silent', recovery: true }),
     );
   });
 
   it('moves the issue out of a status that reads as someone working it', async () => {
-    execute.mockResolvedValue(runRow(['ISS-457'], { 'ISS-457': 'open' }));
+    runReads(runRow(['ISS-457'], { 'ISS-457': 'open' }));
     issueRows([{ seq: 457, status: 'in_progress' }]);
 
     await returnIssuesForRun(RUN, { reason: 'box silent' });
@@ -96,8 +104,8 @@ describe('returnIssuesForRun', () => {
     expect(target).not.toBe('in_progress');
   });
 
-  it.each(HUMAN_PARK_STATUSES)('leaves an issue a person parked at %s alone', async (parked) => {
-    execute.mockResolvedValue(runRow(['ISS-406'], { 'ISS-406': 'open' }));
+  it.each(PARK_STATUSES)('leaves an issue a person parked at %s alone', async (parked) => {
+    runReads(runRow(['ISS-406'], { 'ISS-406': 'open' }));
     issueRows([{ seq: 406, status: parked }]);
 
     const returned = await returnIssuesForRun(RUN, { reason: 'box silent' });
@@ -106,10 +114,10 @@ describe('returnIssuesForRun', () => {
     expect(transitionIssueStatus).not.toHaveBeenCalled();
   });
 
-  it.each(['developed', 'tested', 'awaiting_release', 'closed'])(
+  it.each(['approved', 'awaiting_release', 'closed', 'dropped'])(
     'leaves an issue the run had already carried to %s where it stands',
     async (reached) => {
-      execute.mockResolvedValue(runRow(['ISS-241'], { 'ISS-241': 'open' }));
+      runReads(runRow(['ISS-241'], { 'ISS-241': 'open' }));
       issueRows([{ seq: 241, status: reached }]);
 
       expect(await returnIssuesForRun(RUN, { reason: 'box silent' })).toEqual([]);
@@ -118,15 +126,15 @@ describe('returnIssuesForRun', () => {
   );
 
   it('never lists a human park as a status to take an issue back from', () => {
-    expect(ASSERTS_WORK_IN_PROGRESS.filter((s) => HUMAN_PARK_STATUSES.includes(s))).toEqual([]);
+    expect(ASSERTS_WORK_IN_PROGRESS.filter((s) => PARK_STATUSES.includes(s))).toEqual([]);
   });
 
   it('leaves an issue whose run stamped a merge before dying', async () => {
-    execute.mockResolvedValue(runRow(['ISS-265'], { 'ISS-265': 'open' }));
+    runReads(runRow(['ISS-265'], { 'ISS-265': 'open' }));
     issueRows([
       {
         seq: 265,
-        status: 'testing',
+        status: 'in_progress',
         mergedAt: new Date(RUN_STARTED.getTime() + 60_000),
       },
     ]);
@@ -136,7 +144,7 @@ describe('returnIssuesForRun', () => {
   });
 
   it('returns an issue carrying a merge mark left over from an earlier cycle', async () => {
-    execute.mockResolvedValue(runRow(['ISS-500'], { 'ISS-500': 'reopen' }));
+    runReads(runRow(['ISS-500'], { 'ISS-500': 'reopen' }));
     issueRows([
       {
         seq: 500,
@@ -151,7 +159,7 @@ describe('returnIssuesForRun', () => {
   });
 
   it('is a no-op when the issue never left the status it was claimed from', async () => {
-    execute.mockResolvedValue(runRow(['ISS-1'], { 'ISS-1': 'open' }));
+    runReads(runRow(['ISS-1'], { 'ISS-1': 'open' }));
     issueRows([{ seq: 1, status: 'open' }]);
 
     expect(await returnIssuesForRun(RUN, { reason: 'r' })).toEqual([]);
@@ -160,28 +168,26 @@ describe('returnIssuesForRun', () => {
   });
 
   it('counts a run that opened over a rung already asserting work nobody was doing', async () => {
-    execute.mockResolvedValue(runRow(['ISS-265'], { 'ISS-265': 'testing' }));
-    issueRows([{ seq: 265, status: 'testing' }]);
+    runReads(runRow(['ISS-265'], { 'ISS-265': 'in_progress' }));
+    issueRows([{ seq: 265, status: 'in_progress' }]);
 
     expect(await returnIssuesForRun(RUN, { reason: 'r' })).toEqual([]);
     expect(transitionIssueStatus).not.toHaveBeenCalled();
     expect(warn.mock.calls).toEqual([
-      [expect.objectContaining({ issueKey: 'ISS-265', status: 'testing' }), expect.any(String)],
+      [expect.objectContaining({ issueKey: 'ISS-265', status: 'in_progress' }), expect.any(String)],
     ]);
   });
 
   it('leaves an issue whose opening status was never recorded alone', async () => {
-    execute.mockResolvedValue(runRow(['ISS-9'], {}));
-    issueRows([{ seq: 9, status: 'developed' }]);
+    runReads(runRow(['ISS-9'], {}));
+    issueRows([{ seq: 9, status: 'in_progress' }]);
 
     expect(await returnIssuesForRun(RUN, { reason: 'r' })).toEqual([]);
     expect(transitionIssueStatus).not.toHaveBeenCalled();
   });
 
   it('returns the rest of the group when one issue refuses', async () => {
-    execute.mockResolvedValue(
-      runRow(['ISS-1', 'ISS-2'], { 'ISS-1': 'open', 'ISS-2': 'confirmed' }),
-    );
+    runReads(runRow(['ISS-1', 'ISS-2'], { 'ISS-1': 'open', 'ISS-2': 'approved' }));
     issueRows([
       { seq: 1, status: 'in_progress' },
       { seq: 2, status: 'in_progress' },
@@ -190,11 +196,28 @@ describe('returnIssuesForRun', () => {
 
     const returned = await returnIssuesForRun(RUN, { reason: 'r' });
 
-    expect(returned).toEqual([{ issueKey: 'ISS-2', from: 'in_progress', to: 'confirmed' }]);
+    expect(returned).toEqual([{ issueKey: 'ISS-2', from: 'in_progress', to: 'approved' }]);
+  });
+
+  it('reads a floor stored under a retired status the way migration 0346 resolved rows', async () => {
+    runReads(runRow(['ISS-7'], { 'ISS-7': 'confirmed' }));
+    issueRows([{ seq: 7, status: 'in_progress' }]);
+
+    expect(await returnIssuesForRun(RUN, { reason: 'r' })).toEqual([
+      { issueKey: 'ISS-7', from: 'in_progress', to: 'open' },
+    ]);
+  });
+
+  it('leaves an issue a live run session other than this one now holds', async () => {
+    runReads(runRow(['ISS-8'], { 'ISS-8': 'open' }), ['ISS-8']);
+    issueRows([{ seq: 8, status: 'in_progress' }]);
+
+    expect(await returnIssuesForRun(RUN, { reason: 'r' })).toEqual([]);
+    expect(transitionIssueStatus).not.toHaveBeenCalled();
   });
 
   it('does nothing for a run that holds no issues', async () => {
-    execute.mockResolvedValue(runRow([], {}));
+    runReads(runRow([], {}));
     expect(await returnIssuesForRun(RUN, { reason: 'r' })).toEqual([]);
     expect(select).not.toHaveBeenCalled();
   });

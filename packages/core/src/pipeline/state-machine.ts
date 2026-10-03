@@ -1,80 +1,68 @@
+// Workflow `issue-lifecycle` rev 2's moves (ISS-54): a status says who it waits on, the run's step
+// lives in `issue_work_state`. Enforced by `issues/apply-transition.ts` and `transition-guards.ts`.
+
 import { type IssueStatus, issueStatuses } from '../db/schema.js';
 
 export type { IssueStatus };
 export { issueStatuses };
 
-export const DRAFT_EXIT_TARGETS: readonly IssueStatus[] = [
+export const DRAFT_EXIT_TARGETS: readonly IssueStatus[] = ['open', 'dropped'];
+
+/** The two parks: they store the status they left (`issue_work_state.left_status`) and return to it. */
+export const PARK_STATUSES: readonly IssueStatus[] = ['needs_info', 'on_hold'];
+
+export const PARKABLE_STATUSES: readonly IssueStatus[] = [
   'open',
-  'closed',
-  'dropped',
-  'developed',
+  'reopen',
   'in_progress',
+  'approved',
+  'awaiting_release',
 ];
 
+const SIDE_EXITS: readonly IssueStatus[] = ['needs_info', 'on_hold', 'dropped'];
+
+/** Forward edges; a park's return is decided by its stored left status (`parkExitTargets`). */
 export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
-  open: ['confirmed', 'in_progress', 'needs_info', 'on_hold', 'dropped'],
-  confirmed: ['approved', 'in_progress', 'needs_info', 'on_hold', 'dropped'],
-  approved: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
-  in_progress: ['developed', 'closed', 'needs_info', 'on_hold', 'dropped'],
-  developed: ['testing', 'reopen', 'needs_info', 'on_hold', 'dropped'],
-  testing: ['awaiting_release', 'closed', 'reopen', 'needs_info', 'on_hold', 'dropped'],
-  awaiting_release: ['releasing', 'needs_info', 'on_hold', 'dropped'],
-  releasing: ['closed', 'reopen', 'needs_info', 'on_hold'],
+  draft: DRAFT_EXIT_TARGETS,
+  open: ['in_progress', ...SIDE_EXITS],
+  reopen: ['in_progress', ...SIDE_EXITS],
+  in_progress: ['approved', 'awaiting_release', 'closed', ...SIDE_EXITS],
+  approved: ['in_progress', ...SIDE_EXITS],
+  awaiting_release: ['closed', 'reopen', ...SIDE_EXITS],
+  needs_info: ['on_hold', 'dropped'],
+  on_hold: ['needs_info', 'dropped'],
   closed: ['reopen'],
-  reopen: ['in_progress', 'developed', 'needs_info', 'on_hold', 'dropped'],
-
-  needs_info: [
-    'open',
-    'confirmed',
-    'approved',
-    'in_progress',
-    'developed',
-    'testing',
-    'awaiting_release',
-    'on_hold',
-    'dropped',
-  ],
-  on_hold: [
-    'open',
-    'confirmed',
-    'approved',
-    'in_progress',
-    'developed',
-    'testing',
-    'awaiting_release',
-    'needs_info',
-    'dropped',
-  ],
-
-  draft: [...DRAFT_EXIT_TARGETS],
   dropped: [],
-
-  clarified: ['in_progress', 'needs_info', 'on_hold', 'dropped'],
-  waiting: ['open', 'in_progress', 'needs_info', 'on_hold', 'dropped'],
-  tested: ['awaiting_release', 'closed', 'reopen', 'needs_info', 'on_hold', 'dropped'],
 };
 
 export function getAllowedTransitions(from: IssueStatus): readonly IssueStatus[] {
   return transitions[from];
 }
 
-export function canTransition(from: IssueStatus, to: IssueStatus): boolean {
+/** A park's exits; `leftStatus` null (a park 0346 could not read) lets a person name any parkable status. */
+export function parkExitTargets(
+  from: IssueStatus,
+  leftStatus: IssueStatus | null,
+): readonly IssueStatus[] {
+  const back = leftStatus === null ? PARKABLE_STATUSES : [leftStatus];
+  return [...back, ...transitions[from]];
+}
+
+export function canTransition(
+  from: IssueStatus,
+  to: IssueStatus,
+  leftStatus: IssueStatus | null = null,
+): boolean {
+  if (PARK_STATUSES.includes(from)) return parkExitTargets(from, leftStatus).includes(to);
   return transitions[from].includes(to);
 }
 
-/**
- * Statuses that may never be a transition TARGET at runtime. `draft` is an
- * AI-proposal ingress state (issues are created as draft, then promoted to
- * open/closed) — nothing in the live lifecycle transitions INTO draft.
- */
-export const NON_TARGETABLE_STATUSES: ReadonlySet<IssueStatus> = new Set(['draft']);
+// cm:why the kernel hands an `in_progress` issue nothing holds back to where a master takes it, or a
+// dead run's issue rests there ownerless — the defect ISS-54 removes. Only `recovery: true` reaches it.
+export const RECOVERY_EDGES: Readonly<Partial<Record<IssueStatus, readonly IssueStatus[]>>> = {
+  in_progress: ['open', 'approved', 'reopen'],
+};
 
-export function canTransitionFree(from: IssueStatus, to: IssueStatus): boolean {
-  if (NON_TARGETABLE_STATUSES.has(to)) return false;
-  if (from === 'draft') return DRAFT_EXIT_TARGETS.includes(to);
-  return true;
-}
-
-export function isReopenEntry(from: IssueStatus, to: IssueStatus): boolean {
-  return to === 'reopen' && from !== 'reopen' && from !== 'in_progress';
+export function isRecoveryEdge(from: IssueStatus, to: IssueStatus): boolean {
+  return RECOVERY_EDGES[from]?.includes(to) ?? false;
 }

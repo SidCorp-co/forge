@@ -11,7 +11,7 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IssuesListView } from "./components/issues-list-view";
 import { ToastProvider } from "@/providers/toast-provider";
@@ -86,7 +86,12 @@ describe("Issues list · module filter", () => {
 
   it("offers the module in the Module filter and nowhere else", () => {
     mountAt("");
-    expect(screen.getAllByLabelText("Module filter").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const filters = screen.getByRole("dialog", { name: "Filter issues" });
+    const group = (name: string) => within(within(filters).getByRole("group", { name }));
+    expect(group("Module").getByRole("button", { name: "core" })).toBeInTheDocument();
+    expect(group("Label").getByRole("button", { name: "bug" })).toBeInTheDocument();
+    expect(group("Label").queryByRole("button", { name: "core" })).not.toBeInTheDocument();
   });
 
   it("names the module in the empty state instead of the generic 'Nothing here'", () => {

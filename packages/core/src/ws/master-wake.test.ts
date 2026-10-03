@@ -73,15 +73,14 @@ describe('master.wake — which statuses wake a box', () => {
     expect([...MASTER_WAKE_STATUSES].sort()).toEqual([
       'approved',
       'awaiting_release',
-      'confirmed',
       'draft',
       'open',
       'reopen',
     ]);
-    for (const s of ['open', 'reopen', 'draft', 'awaiting_release'] as const) {
+    for (const s of ['open', 'approved', 'reopen', 'draft', 'awaiting_release'] as const) {
       expect(isMasterWakeStatus(s)).toBe(true);
     }
-    for (const s of ['in_progress', 'needs_info', 'closed', 'dropped'] as const) {
+    for (const s of ['in_progress', 'needs_info', 'on_hold', 'closed', 'dropped'] as const) {
       expect(isMasterWakeStatus(s)).toBe(false);
     }
   });
@@ -185,7 +184,12 @@ describe('master.wake — what triggers it', () => {
     const { bus, fire } = fakeBus();
     registerMasterWakeSubscribers(bus as never);
 
-    await fire('transition', { projectId: 'p1', issueId: 'i1', from: 'developed', to: 'reopen' });
+    await fire('transition', {
+      projectId: 'p1',
+      issueId: 'i1',
+      from: 'awaiting_release',
+      to: 'reopen',
+    });
     expect(publish).toHaveBeenCalledTimes(1);
     expect(publishedData(0)).toMatchObject({ source: 'issue', status: 'reopen' });
   });

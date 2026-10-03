@@ -11,6 +11,11 @@ export interface StatusChipProps {
   /** Status vocabulary this chip belongs to. Defaults to `issue`. */
   domain?: StatusDomain;
   label?: string;
+  /** Issue domain only: a mark drawn in the dot's place (the status badge legend), so the status
+   *  is not told by colour alone. Drawn by CSS, so it never joins the chip's text. */
+  glyph?: string;
+  /** The chip's tooltip; defaults to its text. */
+  title?: string;
 }
 
 /** Execution-vocabulary overrides for the `session` domain so an agent run reads
@@ -24,7 +29,15 @@ const SESSION_LABELS: Partial<Record<StatusKey, string>> = {
   waiting: "Waiting for me",
 };
 
-export function StatusChip({ status, stage, size = "md", domain = "issue", label }: StatusChipProps) {
+export function StatusChip({
+  status,
+  stage,
+  size = "md",
+  domain = "issue",
+  label,
+  glyph,
+  title,
+}: StatusChipProps) {
   const m = STATUS_META[status] ?? STATUS_META.queued;
   const isRunning = status === "running";
   const isSession = domain === "session";
@@ -52,6 +65,13 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
           className={isRunning ? "forge-pulse" : ""}
           style={{ color: m.dot }}
         />
+      ) : glyph ? (
+        <span
+          aria-hidden
+          data-glyph={glyph}
+          className={`leading-none before:content-[attr(data-glyph)] ${isRunning ? "forge-pulse" : ""}`}
+          style={{ color: m.dot, fontSize: size === "sm" ? 10 : 11 }}
+        />
       ) : (
         <span
           className={isRunning ? "forge-pulse" : ""}
@@ -64,7 +84,7 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
           }}
         />
       )}
-      <span className="max-w-[16ch] truncate" title={text}>
+      <span className="max-w-[22ch] truncate" title={title ?? text}>
         {text}
       </span>
     </span>
