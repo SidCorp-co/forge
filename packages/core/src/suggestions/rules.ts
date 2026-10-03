@@ -1,136 +1,22 @@
 /**
  * The guards of workflow `suggestion-lifecycle` rev 2, as pure functions over what the service read:
  * which payload a kind takes and on which target, whether the base is still the head, the open
- * queue's cap, who may decide, and what a decided row refuses. Every refusal is named; the service
- * answers it with nothing written, except a stale base, which marks the row stale as it refuses.
+ * queue's cap, who may not accept, and what a decided row refuses. Every refusal is named; the
+ * service answers it with nothing written, except a stale base on accept, which marks the row stale.
+ * Who is a person of the project is the shared check in `lib/person-act.ts`, not a rule of this file.
  */
 
 import { createHash } from 'node:crypto';
-import { z } from 'zod';
-import type { ProjectMemberRole } from '../db/schema.js';
-import type { SuggestionKind, SuggestionStatus } from '../db/schema-suggestions.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
-import { projectRoleAtLeast } from '../lib/authz.js';
-import { criterionSchema, specSchema } from '../requirements/schemas.js';
+import {
+  SUGGESTION_MAX_OPEN_PER_TARGET,
+  SUGGESTION_PAYLOADS,
+  type SuggestionKind,
+  type SuggestionRefusal,
+  type SuggestionStatus,
+  type SuggestionTargetType,
+} from '@forge/contracts/suggestions';
 
-export type SuggestionRefusalCode =
-  | 'SUGGESTION_PAYLOAD_INVALID'
-  | 'SUGGESTION_TARGET_INVALID'
-  | 'SUGGESTION_BASE_STALE'
-  | 'SUGGESTION_DUPLICATE'
-  | 'SUGGESTION_QUEUE_FULL'
-  | 'SUGGESTION_ACCEPT_FORBIDDEN'
-  | 'SUGGESTION_REJECT_REASON_REQUIRED'
-  | 'SUGGESTION_DECIDED'
-  | 'SUGGESTION_WITHDRAW_FORBIDDEN';
-
-export interface SuggestionRefusal {
-  code: SuggestionRefusalCode;
-  path: string;
-  detail: string;
-}
-
-/** At most this many proposed suggestions wait on one target (SUGGESTION_QUEUE_FULL). */
-export const MAX_OPEN_PER_TARGET = 5;
-/** A suggestion nobody decided within this many days is marked stale by the retention sweep. */
-export const STALE_AFTER_DAYS = 30;
-/** A rejected, stale or withdrawn suggestion keeps its payload this many days after the decision. */
-export const PURGE_PAYLOAD_AFTER_DAYS = 90;
-
-export type SuggestionTargetType = 'requirement' | 'issue';
-
-const revisionWrite = {
-  reason: z.string().trim().min(1).max(4_000),
-  spec: specSchema.optional(),
-  tldr: z.string().max(4_000).nullable().optional(),
-  changeSummary: z.string().max(4_000).nullable().optional(),
-  criteria: z.array(criterionSchema).max(200),
-};
-
-/** Each kind's payload and the targets it may name. A payload that does not parse is refused. */
-export const SUGGESTION_PAYLOADS = {
-  requirement_draft: {
-    targets: ['issue'],
-    schema: z.strictObject({ title: z.string().trim().min(1).max(500), ...revisionWrite }),
-  },
-  revision_diff: {
-    targets: ['requirement'],
-    schema: z.strictObject(revisionWrite),
-  },
-  readiness: {
-    targets: ['requirement'],
-    schema: z.strictObject({
-      checks: z
-        .array(
-          z.strictObject({
-            check: z.string().trim().min(1).max(200),
-            passed: z.boolean(),
-            detail: z.string().max(2_000).optional(),
-          }),
-        )
-        .min(1)
-        .max(20),
-    }),
-  },
-  breakdown: {
-    targets: ['requirement'],
-    schema: z.strictObject({
-      issues: z
-        .array(
-          z.strictObject({
-            title: z.string().trim().min(1).max(500),
-            description: z.string().max(20_000).optional(),
-            criteria: z
-              .array(
-                z.strictObject({
-                  body: z.string().trim().min(1).max(4_000),
-                  tracesTo: z
-                    .string()
-                    .regex(/^BC-[1-9][0-9]*$/)
-                    .optional(),
-                }),
-              )
-              .max(100)
-              .optional(),
-            blockedBy: z.array(z.number().int().min(0)).max(50).optional(),
-          }),
-        )
-        .min(1)
-        .max(30),
-      uncovered: z
-        .array(z.strictObject({ code: z.string().regex(/^BC-[1-9][0-9]*$/), reason: z.string() }))
-        .max(100)
-        .optional(),
-    }),
-  },
-  triage: {
-    targets: ['issue'],
-    schema: z.strictObject({
-      priority: z.enum(['low', 'medium', 'high', 'critical']).optional(),
-      category: z.string().max(100).optional(),
-      route: z.string().max(200).optional(),
-      note: z.string().trim().min(1).max(4_000),
-    }),
-  },
-  duplicate: {
-    targets: ['requirement', 'issue'],
-    schema: z.strictObject({
-      duplicateOf: z.string().trim().min(1).max(200),
-      similarity: z.number().min(0).max(1).optional(),
-      note: z.string().max(4_000).optional(),
-    }),
-  },
-} as const satisfies Record<
-  SuggestionKind,
-  { targets: readonly SuggestionTargetType[]; schema: z.ZodType }
->;
-
-/** The kinds whose base is a requirement revision: an accept compares it with the head. */
-export const REVISION_BASED: readonly SuggestionKind[] = [
-  'revision_diff',
-  'readiness',
-  'breakdown',
-];
+export type { SuggestionRefusal, SuggestionRefusalCode } from '@forge/contracts/suggestions';
 
 // cm:guard kind is one of the 6 and the payload parses for it (SUGGESTION_PAYLOAD_INVALID), on a target
 // the kind takes (SUGGESTION_TARGET_INVALID)
@@ -203,49 +89,26 @@ export function duplicateRefusal(twinId: string | null): SuggestionRefusal | nul
 
 // cm:guard at most 5 proposed suggestions wait on one target; a 6th is SUGGESTION_QUEUE_FULL
 export function queueFullRefusal(openOnTarget: number): SuggestionRefusal | null {
-  if (openOnTarget < MAX_OPEN_PER_TARGET) return null;
+  if (openOnTarget < SUGGESTION_MAX_OPEN_PER_TARGET) return null;
   return {
     code: 'SUGGESTION_QUEUE_FULL',
     path: '/target',
-    detail: `${openOnTarget} suggestions already wait on this target (at most ${MAX_OPEN_PER_TARGET}); a person decides one before another is proposed.`,
+    detail: `${openOnTarget} suggestions already wait on this target (at most ${SUGGESTION_MAX_OPEN_PER_TARGET}); a person decides one before another is proposed.`,
   };
 }
 
-export interface DeciderFacts {
-  userId: string;
-  agency: ActorAgency;
-  role: ProjectMemberRole | null;
-  producerId: string | null;
-}
-
-// cm:guard only a person of the project decides a suggestion, and never the one who produced it: an
-// agent, the assistant or the producer is SUGGESTION_ACCEPT_FORBIDDEN
-export function deciderRefusal(
-  facts: DeciderFacts,
-  act: 'accept' | 'reject',
+// cm:guard the person who produced a suggestion never accepts it (SUGGESTION_ACCEPT_FORBIDDEN); that
+// it is a person at all is the shared person-act check
+export function producerRefusal(
+  userId: string,
+  producerId: string | null,
 ): SuggestionRefusal | null {
-  if (facts.agency !== 'human') {
-    return {
-      code: 'SUGGESTION_ACCEPT_FORBIDDEN',
-      path: '',
-      detail: `${facts.userId} acts as an agent; to ${act} a suggestion is a person's act. An agent or the assistant proposes and leaves the decision to them.`,
-    };
-  }
-  if (!projectRoleAtLeast(facts.role, 'member')) {
-    return {
-      code: 'SUGGESTION_ACCEPT_FORBIDDEN',
-      path: '',
-      detail: `${facts.userId} holds ${facts.role ?? 'no role'} on this project; a member or above decides a suggestion.`,
-    };
-  }
-  if (act === 'accept' && facts.producerId === facts.userId) {
-    return {
-      code: 'SUGGESTION_ACCEPT_FORBIDDEN',
-      path: '',
-      detail: `${facts.userId} produced this suggestion; somebody else accepts it.`,
-    };
-  }
-  return null;
+  if (producerId === null || producerId !== userId) return null;
+  return {
+    code: 'SUGGESTION_ACCEPT_FORBIDDEN',
+    path: '',
+    detail: `${userId} produced this suggestion; somebody else accepts it.`,
+  };
 }
 
 // cm:guard a rejection carries its reason, which feeds the next suggestion on that target

@@ -5,10 +5,13 @@
  * also purges the payload of a rejected, stale or withdrawn row 90 days after its decision.
  */
 
+import {
+  SUGGESTION_PURGE_PAYLOAD_AFTER_DAYS as PURGE_PAYLOAD_AFTER_DAYS,
+  SUGGESTION_STALE_AFTER_DAYS as STALE_AFTER_DAYS,
+} from '@forge/contracts/suggestions';
 import { and, eq, isNotNull, lt, ne, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { PURGE_PAYLOAD_AFTER_DAYS, STALE_AFTER_DAYS } from './rules.js';
 
 // cm:guard a newer revision of the target is written → every proposed suggestion whose base is not
 // that revision is stale, in the same transaction, so no accept can apply it on a moved head

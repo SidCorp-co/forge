@@ -8,12 +8,12 @@ import { createHash } from 'node:crypto';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
+import { type ItemEmbeddingStatus, itemEmbeddings } from '../db/schema-item-embeddings.js';
 import {
   requirementCriteria,
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
-import { type ItemEmbeddingStatus, itemEmbeddings } from '../db/schema-suggestions.js';
 import { embeddingsConfigured, embedWithModel } from '../embeddings/index.js';
 import { logger } from '../logger.js';
 import { requirementKey } from './read.js';

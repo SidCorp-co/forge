@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { Button, Input } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { useRequirementSuggestions, useSuggestionDecision } from "../hooks";
-import type { Suggestion, SuggestionKind } from "../types";
-import { RefusalLine } from "./refusal";
+import { RefusalLine } from "@/features/requirements/components/refusal";
+import { useSuggestionDecision, useWaitingSuggestions } from "../hooks";
+import type { SuggestionKind, SuggestionProducer, SuggestionView as Suggestion } from "../types";
 
 const KIND_LABEL: Record<SuggestionKind, string> = {
   requirement_draft: "Requirement draft",
@@ -16,7 +16,7 @@ const KIND_LABEL: Record<SuggestionKind, string> = {
   duplicate: "Duplicate",
 };
 
-const PRODUCER_LABEL: Record<Suggestion["producerKind"], string> = {
+const PRODUCER_LABEL: Record<SuggestionProducer, string> = {
   ba_assistant: "BA assistant",
   agent: "Agent",
   person: "Person",
@@ -28,7 +28,7 @@ const list = (v: unknown) => (Array.isArray(v) ? (v as Payload[]) : []);
 
 /** One line saying what accepting it would do; the rest sits behind the expander and the tooltip. */
 function summaryOf(s: Suggestion): string {
-  const p = s.payload ?? {};
+  const p = (s.payload ?? {}) as Payload;
   switch (s.kind) {
     case "revision_diff":
       return str(p.changeSummary) ?? str(p.reason) ?? "A new revision";
@@ -48,7 +48,7 @@ function summaryOf(s: Suggestion): string {
 }
 
 function detailLines(s: Suggestion): string[] {
-  const p = s.payload ?? {};
+  const p = (s.payload ?? {}) as Payload;
   if (s.kind === "revision_diff" || s.kind === "requirement_draft") {
     return list(p.criteria).map((c) => `${str(c.code) ?? "New"} · ${str(c.body) ?? ""}`);
   }
@@ -136,7 +136,7 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
 
 /** The suggestions waiting on this requirement, each an accent bar with Accept and Reject; nothing when none wait. */
 export function RequirementSuggestions({ projectId, reqKey }: { projectId: string; reqKey: string }) {
-  const q = useRequirementSuggestions(projectId, reqKey);
+  const q = useWaitingSuggestions(projectId, reqKey);
   const rows = q.data?.suggestions ?? [];
   if (rows.length === 0) return null;
   return (

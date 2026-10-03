@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { Button, ErrorState, Input, ProjectLoader } from "@/design";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
+import { RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
 import { workflowHref } from "@/features/workflows/routes";
 import { useRequirement, useRequirementAction } from "../hooks";
 import type {
@@ -22,7 +23,6 @@ import {
   RevisionStateBadge,
 } from "./badges";
 import { RefusalLine } from "./refusal";
-import { RequirementSuggestions } from "./suggestions";
 
 const stamp = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : null);
 
