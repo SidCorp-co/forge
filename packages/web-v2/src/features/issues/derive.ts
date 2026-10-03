@@ -103,28 +103,6 @@ export function statusToChip(status: IssueStatus): StatusKey {
 	return TONE_CHIP[ISSUE_STATUS_TONES[status]] ?? "queued";
 }
 
-export interface IssueStatusChipView {
-	status: StatusKey;
-	label: string;
-	glyph: string;
-	title: string;
-}
-
-/** The one reading every issue-status chip takes. */
-export function issueStatusChip(
-	status: IssueStatus,
-	step?: WorkStep | null,
-	/** The status's tone on this project, where it is known (`release-approval.tsx:useStatusTone`). */
-	tone?: IssueStatusTone,
-): IssueStatusChipView {
-	return {
-		status: tone ? TONE_CHIP[tone] : statusToChip(status),
-		label: statusStepLabel(status, step),
-		glyph: ISSUE_STATUS_GLYPHS[status] ?? "●",
-		title: statusHint(status),
-	};
-}
-
 /** What an issue carries about its run: the sessions' verdict and the pipeline's queued job. */
 export interface RunReadingSource {
 	agentStatus?: IssueAgentStatus;

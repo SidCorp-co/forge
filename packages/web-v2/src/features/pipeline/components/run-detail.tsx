@@ -34,7 +34,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
 import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
-import { issueStatusChip, priorityLabel, runStatusChip, workStepOf } from "@/features/issues/derive";
+import { priorityLabel, runStatusChip, workStepOf } from "@/features/issues/derive";
 import type { IssuePriority, IssueStatus } from "@/features/issues/types";
 import { drawerRunChip, formatDurationMs, formatUsd } from "../derive";
 import { useCancelRun, useIssueTasks, usePauseRun, useResumeRun, useRun } from "../hooks";
@@ -183,7 +183,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
           <MonoTag>{label}</MonoTag>
           {/* Writers read the issue's status off the quick-actions row; a viewer has no such row. */}
           {issueStatus && !canWrite && (
-            <StatusChip {...issueStatusChip(issueStatus, workStepOf(issue ?? {}))} size="sm" />
+            <StatusBadge family="issue" value={issueStatus} step={workStepOf(issue ?? {})} size="sm" />
           )}
           {/* The session vocabulary reads `paused` as an idle session; a pipeline run that is paused says so. */}
           {chipStatus && (

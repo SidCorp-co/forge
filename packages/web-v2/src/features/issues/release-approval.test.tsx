@@ -6,7 +6,6 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { issueStatusChip } from "./derive";
 import { ReleaseApprovalProvider, useStatusTone } from "./release-approval";
 
 afterEach(cleanup);
@@ -46,10 +45,5 @@ describe("an issue status's tone on its project", () => {
       </ReleaseApprovalProvider>,
     );
     expect(screen.getByTestId("tone").textContent).toBe("you");
-  });
-
-  it("draws the chip in the tone it is given, else the contract default", () => {
-    expect(issueStatusChip("awaiting_release", null, "ready").status).toBe("passed");
-    expect(issueStatusChip("awaiting_release", null).status).toBe("waiting");
   });
 });

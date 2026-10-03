@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { BodyView, Button, ErrorState, Input, ProjectLoader, Textarea } from "@/design";
-import { PersonChip, stamp } from "@/features/requirements/components/standing-bits";
+import { ActorChip, BodyView, Button, ErrorState, Input, ProjectLoader, Textarea } from "@/design";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
 import { useEntityDecisions, usePostEntityComment } from "../hooks";
 import type { EntityCommentScope, EntityCommentView } from "../types";
 
@@ -34,7 +33,7 @@ function DecisionRow({ c }: { c: EntityCommentView }) {
         <p className="text-13 text-subtle">Content withheld under this project's data policy.</p>
       )}
       <span className="mt-0.5 inline-flex items-center gap-2 text-12 text-subtle">
-        <PersonChip name={c.author.name ?? "Unknown author"} kind={c.author.agency} size={16} />
+        <ActorChip name={c.author.name ?? "Unknown author"} kind={c.author.agency} size={16} />
         <span aria-hidden>·</span>
         <span title={stamp(c.createdAt)}>{formatRelativeTime(c.createdAt)}</span>
         {c.edited ? <span title={`Edited ${stamp(c.updatedAt)}`}>· edited</span> : null}

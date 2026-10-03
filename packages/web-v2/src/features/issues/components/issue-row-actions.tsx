@@ -14,6 +14,7 @@ import {
   type MenuItem,
   MonoTag,
   Spinner,
+  StatusBadge,
   StatusChip,
   TD,
   Tooltip,
@@ -25,7 +26,6 @@ import { useCallback, useState } from "react";
 import {
   complexityLabel,
   initials,
-  issueStatusChip,
   priorityLabel,
   workStepOf,
 } from "../derive";
@@ -121,7 +121,7 @@ export function StatusCell({ row }: { row: IssueRow }) {
   const tone = useStatusTone(row.status);
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <StatusChip {...issueStatusChip(row.status, workStepOf(row), tone)} size="sm" />
+      <StatusBadge family="issue" value={row.status} step={workStepOf(row)} tone={tone} size="sm" />
       <AgentChip agentStatus={row.agentStatus} failureInfo={row.failureInfo} />
       {queuedStep && <QueuedChip step={queuedStep} />}
     </div>
