@@ -27,6 +27,7 @@ import { onboardings } from '../db/schema-onboarding.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
+import { dataPolicyOf, egressDeep } from '../lib/data-egress.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import type { NamedRefusal } from '../project-config/respond.js';
@@ -465,9 +466,13 @@ export async function readAnswers(projectId: string, actor: OnboardingActor) {
   await assertProjectAccess(projectId, actor.userId, 'viewer');
   const row = await onboardingOf(db, projectId);
   if (!row) return { ok: false as const, refusals: [notStarted()] };
-  return {
-    ok: true as const,
-    onboarding: await onboardingView(db, row),
-    questionnaires: await batchesOfConversation(row.conversationId),
-  };
+  const questionnaires = await batchesOfConversation(row.conversationId);
+  // cm:guard a person's answers reach a model only as the project's data policy allows: an agent
+  // reader is provider-bound, so it reads them scrubbed at redact and is refused at no_egress
+  const out =
+    actor.agency === 'agent'
+      ? egressDeep(await dataPolicyOf(projectId), questionnaires, 'the onboarding answers')
+      : { ok: true as const, value: questionnaires };
+  if (!out.ok) return { ok: false as const, refusals: [out.refusal] };
+  return { ok: true as const, onboarding: await onboardingView(db, row), questionnaires: out.value };
 }

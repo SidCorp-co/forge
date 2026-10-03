@@ -20,6 +20,7 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { assertProjectAccess } from '../lib/authz.js';
+import { dataPolicyOf } from '../lib/data-egress.js';
 import { readProjectDocument } from '../project-config/service.js';
 import type { LiveJob } from './rules.js';
 
@@ -58,13 +59,9 @@ export async function liveJobOf(tx: Executor, projectId: string): Promise<LiveJo
   return row ?? null;
 }
 
-// cm:hack ISS-59 until:lib/data-egress.ts:dataPolicyOf lands on dev — reads the project document's
-// sensitiveData key untyped; the strict schema refuses the key until ISS-59 adds it, so every project
-// reads as not sensitive before then and the data-flow guard waits on that slice
+/** Whether the project's data policy (ISS-59) is above `off`: its onboarding then owes a data-flow design. */
 export async function projectHoldsSensitiveData(projectId: string): Promise<boolean> {
-  const doc = await readProjectDocument(projectId);
-  const level = (doc?.document as { sensitiveData?: unknown } | undefined)?.sensitiveData;
-  return typeof level === 'string' && level !== 'off';
+  return (await dataPolicyOf(projectId)) !== 'off';
 }
 
 export async function projectHasRepository(projectId: string): Promise<boolean> {

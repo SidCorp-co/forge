@@ -4,6 +4,7 @@
 // not know.
 
 import { z } from "zod";
+import type { DataEgressRefusalCode } from "./data-policy.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 
 /** The onboarding thread's status, as the conversation list and the dashboard hint show it. */
@@ -124,7 +125,8 @@ export type QuestionnaireRefusalCode =
 	(typeof QUESTIONNAIRE_REFUSAL_CODES)[number];
 
 export interface OnboardingRefusal {
-	code: OnboardingRefusalCode | QuestionnaireRefusalCode;
+	/** CONTENT_EGRESS_FORBIDDEN: an agent read of a no_egress project's answers (ISS-59's one guard). */
+	code: OnboardingRefusalCode | QuestionnaireRefusalCode | DataEgressRefusalCode;
 	path: string;
 	detail: string;
 }
