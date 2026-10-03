@@ -1,13 +1,14 @@
 // ISS-55 — an issue's criteria as rows (`GET /api/issues/:id/criteria`), each with its latest
 // verdict, and the one badge each verdict state reads as on every screen.
 
+import type { StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 
-export interface CriterionVerdict {
+export interface CriterionVerdict extends StorefrontDraftVerdictView {
   verdict: "pass" | "short" | "fail" | "skipped";
   reason: string | null;
-  identityKind: "commit" | "runtime" | "design" | "contract" | "commit_unresolved" | null;
+  identityKind: "commit" | "runtime" | "design" | "contract" | "storefront_draft" | "commit_unresolved" | null;
   commitSha: string | null;
   runtimeRef: string | null;
   designFlow: string | null;
@@ -61,6 +62,8 @@ export function identityPhrase(v: CriterionVerdict): string {
       return `design ${v.designFlow ?? v.designWorkflowId} rev ${v.designRevision}`;
     case "contract":
       return `contract ${v.contractRef}@${v.contractVersion}`;
+    case "storefront_draft":
+      return `storefront draft ${v.storefrontWorkflowId}@${v.storefrontDraftVersion?.slice(0, 12)} on ${v.storefrontEnvironment}${v.corroboration === "corroborated" ? "" : ` (uncorroborated: ${v.corroborationNote})`}`;
     default:
       return "no identity";
   }

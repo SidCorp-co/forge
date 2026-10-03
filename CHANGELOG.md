@@ -137,6 +137,10 @@
 
 ### Added
 
+- **A storefront project's work can be judged on an unpublished draft.** A verdict names an Autoflow
+  workflow, its draft version and a preview environment; Forge reads the draft back, and only a
+  confirmed draft counts toward `awaiting_release`, never on a git project.
+
 - **An issue can wait on another project's contract version.** `POST /api/issues/:id/contract-waits`
   or `forge_ecosystem contract_wait_add` with `<provider>/<contract> >= version`: the issue is not
   dispatched until the provider approves that version or a later one, and a production release that

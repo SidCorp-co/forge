@@ -10,21 +10,36 @@
  *   a design is `<flow or id> rev <n>`           VERDICT_DESIGN_SHAPE
  *   a contract is `<project>/<contract>@<version>`  VERDICT_CONTRACT_SHAPE
  *
+ * A storefront draft names a workflow id, a draft version and an environment key (VERDICT_STOREFRONT_DRAFT_SHAPE).
  * `commit_unresolved` is not an identity a writer can name: it exists only on backfilled rows.
  */
 
+import {
+  STOREFRONT_DRAFT_SHAPE,
+  STOREFRONT_DRAFT_VERSION,
+  STOREFRONT_ENVIRONMENT,
+  STOREFRONT_WORKFLOW_ID,
+  type StorefrontDraftRefusalCode,
+} from '@forge/contracts/verdict-identity';
 import { verdictValues } from '../../db/schema-issue-criteria.js';
 import {
   type CriterionBlock,
   parseContractIdentity,
   parseDesignIdentity,
+  parseStorefrontDraftRuntime,
 } from '../../messaging/verdict-identity.js';
 
 export type VerdictIdentity =
   | { readonly kind: 'commit'; readonly sha: string }
   | { readonly kind: 'runtime'; readonly ref: string }
   | { readonly kind: 'design'; readonly workflow: string; readonly revision: number }
-  | { readonly kind: 'contract'; readonly ref: string; readonly version: string };
+  | { readonly kind: 'contract'; readonly ref: string; readonly version: string }
+  | {
+      readonly kind: 'storefront_draft';
+      readonly workflowId: string;
+      readonly draftVersion: string;
+      readonly environment: string;
+    };
 
 export interface VerdictDraft {
   readonly criterion: number;
@@ -44,7 +59,8 @@ export type VerdictRefusalCode =
   | 'VERDICT_CONTRACT_SHAPE'
   | 'VERDICT_CRITERION_UNKNOWN'
   | 'VERDICT_DESIGN_UNKNOWN'
-  | 'VERDICT_CONTRACT_UNKNOWN';
+  | 'VERDICT_CONTRACT_UNKNOWN'
+  | StorefrontDraftRefusalCode;
 
 export interface VerdictRefusal {
   readonly code: VerdictRefusalCode;
@@ -61,8 +77,33 @@ function refuse(code: VerdictRefusalCode, criterion: number, detail: string): Ve
   return { code, criterion, detail };
 }
 
+function storefrontDraftFault(
+  criterion: number,
+  identity: Extract<VerdictIdentity, { kind: 'storefront_draft' }>,
+): VerdictRefusal | null {
+  const wrong = [
+    STOREFRONT_WORKFLOW_ID.test(identity.workflowId.trim())
+      ? null
+      : `workflowId \`${identity.workflowId}\` is not a provider workflow id (letters, digits, \`-\` and \`_\`, at most 100)`,
+    STOREFRONT_DRAFT_VERSION.test(identity.draftVersion.trim())
+      ? null
+      : `draftVersion \`${identity.draftVersion}\` is not a draft version id (letters, digits, \`.\`, \`:\`, \`-\` and \`_\`, at most 128)`,
+    STOREFRONT_ENVIRONMENT.test(identity.environment.trim())
+      ? null
+      : `environment \`${identity.environment}\` is not an environment key of the project document (a lowercase slug)`,
+  ].filter((w): w is string => w !== null);
+  if (wrong.length === 0) return null;
+  return refuse(
+    'VERDICT_STOREFRONT_DRAFT_SHAPE',
+    criterion,
+    `criterion ${criterion} names a storefront draft whose ${wrong.join('; and whose ')}. A storefront draft is ${STOREFRONT_DRAFT_SHAPE}.`,
+  );
+}
+
 function identityFault(criterion: number, identity: VerdictIdentity): VerdictRefusal | null {
   switch (identity.kind) {
+    case 'storefront_draft':
+      return storefrontDraftFault(criterion, identity);
     case 'commit':
       return WHOLE_COMMIT.test(identity.sha.trim())
         ? null
@@ -122,7 +163,7 @@ export function verdictDraftFault(draft: VerdictDraft): VerdictRefusal | null {
     return refuse(
       'VERDICT_IDENTITY_REQUIRED',
       criterion,
-      `criterion ${criterion}'s \`${verdict}\` names nothing it was judged against: a whole commit sha, a runtime, a design (\`<flow> rev <n>\`) or a contract (\`<project>/<contract>@<version>\`).`,
+      `criterion ${criterion}'s \`${verdict}\` names nothing it was judged against: a whole commit sha, a runtime, a design (\`<flow> rev <n>\`), a contract (\`<project>/<contract>@<version>\`) or a storefront draft (${STOREFRONT_DRAFT_SHAPE}).`,
     );
   }
   return identityFault(criterion, draft.identity);
@@ -135,6 +176,8 @@ export function verdictDraftFault(draft: VerdictDraft): VerdictRefusal | null {
  *
  */
 export function identityFromBlock(block: CriterionBlock): VerdictIdentity | null {
+  const draft = parseStorefrontDraftRuntime(block.runtime);
+  if (draft) return { kind: 'storefront_draft', ...draft, environment: block.environment ?? '' };
   if (block.runtime !== null) return { kind: 'runtime', ref: block.runtime };
   if (block.source !== null) return { kind: 'commit', sha: block.source };
   if (block.design !== null) {

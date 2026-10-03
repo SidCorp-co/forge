@@ -1,5 +1,5 @@
 {
-  "id": "125b0fe6-42dc-454e-95a7-356702b2d9fc",
+  "id": "396d0daf-b623-45a7-a8f5-b1a8eb8af9a7",
   "prevId": "38ffb1c4-4ffd-40c6-b2a9-6d630b78a49a",
   "version": "7",
   "dialect": "postgresql",
@@ -1778,25 +1778,7 @@
           "name": "issue_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
-        },
-        "requirement_id": {
-          "name": "requirement_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "workflow_id": {
-          "name": "workflow_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "feedback_id": {
-          "name": "feedback_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "author_id": {
           "name": "author_id",
@@ -1841,12 +1823,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'note'"
-        },
-        "decision": {
-          "name": "decision",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -1906,112 +1882,6 @@
           "method": "btree",
           "with": {}
         },
-        "comments_requirement_created_idx": {
-          "name": "comments_requirement_created_idx",
-          "columns": [
-            {
-              "expression": "requirement_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "requirement_id IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "comments_workflow_created_idx": {
-          "name": "comments_workflow_created_idx",
-          "columns": [
-            {
-              "expression": "workflow_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "workflow_id IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "comments_feedback_created_idx": {
-          "name": "comments_feedback_created_idx",
-          "columns": [
-            {
-              "expression": "feedback_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "feedback_id IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "comments_decision_created_idx": {
-          "name": "comments_decision_created_idx",
-          "columns": [
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "intent = 'decision'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "comments_parent_id_idx": {
           "name": "comments_parent_id_idx",
           "columns": [
@@ -2035,45 +1905,6 @@
           "tableTo": "issues",
           "columnsFrom": [
             "issue_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "comments_requirement_id_requirements_id_fk": {
-          "name": "comments_requirement_id_requirements_id_fk",
-          "tableFrom": "comments",
-          "tableTo": "requirements",
-          "columnsFrom": [
-            "requirement_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "comments_workflow_id_project_workflows_id_fk": {
-          "name": "comments_workflow_id_project_workflows_id_fk",
-          "tableFrom": "comments",
-          "tableTo": "project_workflows",
-          "columnsFrom": [
-            "workflow_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "comments_feedback_id_feedback_id_fk": {
-          "name": "comments_feedback_id_feedback_id_fk",
-          "tableFrom": "comments",
-          "tableTo": "feedback",
-          "columnsFrom": [
-            "feedback_id"
           ],
           "columnsTo": [
             "id"
@@ -2132,18 +1963,6 @@
         "comments_intent_chk": {
           "name": "comments_intent_chk",
           "value": "\"comments\".\"intent\" IN ('question', 'decision', 'note')"
-        },
-        "comments_scope_chk": {
-          "name": "comments_scope_chk",
-          "value": "num_nonnulls(\"comments\".\"issue_id\", \"comments\".\"requirement_id\", \"comments\".\"workflow_id\", \"comments\".\"feedback_id\") = 1"
-        },
-        "comments_decision_intent_chk": {
-          "name": "comments_decision_intent_chk",
-          "value": "\"comments\".\"decision\" IS NULL OR \"comments\".\"intent\" = 'decision'"
-        },
-        "comments_decision_fields_chk": {
-          "name": "comments_decision_fields_chk",
-          "value": "\"comments\".\"intent\" <> 'decision' OR \"comments\".\"issue_id\" IS NOT NULL OR COALESCE(jsonb_typeof(\"comments\".\"decision\" -> 'decision') = 'string' AND jsonb_typeof(\"comments\".\"decision\" -> 'reason') = 'string' AND (\"comments\".\"decision\" ->> 'decision') ~ '[^[:space:]]' AND (\"comments\".\"decision\" ->> 'reason') ~ '[^[:space:]]', false)"
         }
       },
       "isRLSEnabled": false
@@ -18783,30 +18602,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "contract_provider_project_id": {
-          "name": "contract_provider_project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "contract_slug": {
-          "name": "contract_slug",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "contract_version": {
-          "name": "contract_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "due_at": {
-          "name": "due_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "status": {
           "name": "status",
           "type": "text",
@@ -19073,19 +18868,6 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "feedback_contract_provider_project_id_projects_id_fk": {
-          "name": "feedback_contract_provider_project_id_projects_id_fk",
-          "tableFrom": "feedback",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "contract_provider_project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "feedback_routed_issue_id_issues_id_fk": {
           "name": "feedback_routed_issue_id_issues_id_fk",
           "tableFrom": "feedback",
@@ -19163,23 +18945,6 @@
           ],
           "onDelete": "restrict",
           "onUpdate": "no action"
-        },
-        "feedback_contract_version_fk": {
-          "name": "feedback_contract_version_fk",
-          "tableFrom": "feedback",
-          "tableTo": "contract_versions",
-          "columnsFrom": [
-            "contract_provider_project_id",
-            "contract_slug",
-            "contract_version"
-          ],
-          "columnsTo": [
-            "provider_project_id",
-            "contract_slug",
-            "version"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -19188,15 +18953,7 @@
       "checkConstraints": {
         "feedback_arc_chk": {
           "name": "feedback_arc_chk",
-          "value": "num_nonnulls(\"feedback\".\"requirement_id\", \"feedback\".\"issue_id\", \"feedback\".\"release_run_id\", \"feedback\".\"workflow_id\", \"feedback\".\"contract_version\") = 1 OR (num_nonnulls(\"feedback\".\"requirement_id\", \"feedback\".\"issue_id\", \"feedback\".\"release_run_id\", \"feedback\".\"workflow_id\", \"feedback\".\"contract_version\") = 0 AND \"feedback\".\"where_seen\" IS NOT NULL)"
-        },
-        "feedback_contract_target_chk": {
-          "name": "feedback_contract_target_chk",
-          "value": "num_nonnulls(\"feedback\".\"contract_provider_project_id\", \"feedback\".\"contract_slug\", \"feedback\".\"contract_version\") IN (0, 3)"
-        },
-        "feedback_due_chk": {
-          "name": "feedback_due_chk",
-          "value": "\"feedback\".\"due_at\" IS NULL OR \"feedback\".\"contract_version\" IS NOT NULL"
+          "value": "num_nonnulls(\"feedback\".\"requirement_id\", \"feedback\".\"issue_id\", \"feedback\".\"release_run_id\", \"feedback\".\"workflow_id\") = 1 OR (num_nonnulls(\"feedback\".\"requirement_id\", \"feedback\".\"issue_id\", \"feedback\".\"release_run_id\", \"feedback\".\"workflow_id\") = 0 AND \"feedback\".\"where_seen\" IS NOT NULL)"
         },
         "feedback_kind_chk": {
           "name": "feedback_kind_chk",
@@ -19533,694 +19290,6 @@
         "feedback_decisions_agency_chk": {
           "name": "feedback_decisions_agency_chk",
           "value": "\"feedback_decisions\".\"decided_agency\" IN ('human', 'agent')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.comment_events": {
-      "name": "comment_events",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "comment_id": {
-          "name": "comment_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "body": {
-          "name": "body",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "decision": {
-          "name": "decision",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "actor_id": {
-          "name": "actor_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "actor_agency": {
-          "name": "actor_agency",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "comment_events_comment_idx": {
-          "name": "comment_events_comment_idx",
-          "columns": [
-            {
-              "expression": "comment_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "comment_events_project_idx": {
-          "name": "comment_events_project_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "comment_events_project_id_projects_id_fk": {
-          "name": "comment_events_project_id_projects_id_fk",
-          "tableFrom": "comment_events",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "comment_events_comment_id_comments_id_fk": {
-          "name": "comment_events_comment_id_comments_id_fk",
-          "tableFrom": "comment_events",
-          "tableTo": "comments",
-          "columnsFrom": [
-            "comment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "comment_events_actor_id_users_id_fk": {
-          "name": "comment_events_actor_id_users_id_fk",
-          "tableFrom": "comment_events",
-          "tableTo": "users",
-          "columnsFrom": [
-            "actor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "comment_events_kind_chk": {
-          "name": "comment_events_kind_chk",
-          "value": "\"comment_events\".\"kind\" IN ('posted', 'edited')"
-        },
-        "comment_events_agency_chk": {
-          "name": "comment_events_agency_chk",
-          "value": "\"comment_events\".\"actor_agency\" IN ('human', 'agent')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.contract_requests": {
-      "name": "contract_requests",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider_project_id": {
-          "name": "provider_project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "contract_slug": {
-          "name": "contract_slug",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "channel_document_id": {
-          "name": "channel_document_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "requirement_id": {
-          "name": "requirement_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "requested_by": {
-          "name": "requested_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "requested_agency": {
-          "name": "requested_agency",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "contract_requests_document_uq": {
-          "name": "contract_requests_document_uq",
-          "columns": [
-            {
-              "expression": "channel_document_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "contract_requests_requirement_uq": {
-          "name": "contract_requests_requirement_uq",
-          "columns": [
-            {
-              "expression": "requirement_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "contract_requests_project_idx": {
-          "name": "contract_requests_project_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "contract_requests_provider_idx": {
-          "name": "contract_requests_provider_idx",
-          "columns": [
-            {
-              "expression": "provider_project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "contract_requests_project_id_projects_id_fk": {
-          "name": "contract_requests_project_id_projects_id_fk",
-          "tableFrom": "contract_requests",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "contract_requests_provider_project_id_projects_id_fk": {
-          "name": "contract_requests_provider_project_id_projects_id_fk",
-          "tableFrom": "contract_requests",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "provider_project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "contract_requests_channel_document_id_channel_documents_id_fk": {
-          "name": "contract_requests_channel_document_id_channel_documents_id_fk",
-          "tableFrom": "contract_requests",
-          "tableTo": "channel_documents",
-          "columnsFrom": [
-            "channel_document_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "contract_requests_requirement_id_requirements_id_fk": {
-          "name": "contract_requests_requirement_id_requirements_id_fk",
-          "tableFrom": "contract_requests",
-          "tableTo": "requirements",
-          "columnsFrom": [
-            "requirement_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "contract_requests_requested_by_users_id_fk": {
-          "name": "contract_requests_requested_by_users_id_fk",
-          "tableFrom": "contract_requests",
-          "tableTo": "users",
-          "columnsFrom": [
-            "requested_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "contract_requests_not_self_chk": {
-          "name": "contract_requests_not_self_chk",
-          "value": "\"contract_requests\".\"project_id\" <> \"contract_requests\".\"provider_project_id\""
-        },
-        "contract_requests_agency_chk": {
-          "name": "contract_requests_agency_chk",
-          "value": "\"contract_requests\".\"requested_agency\" IN ('human', 'agent')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.issue_contract_waits": {
-      "name": "issue_contract_waits",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "issue_id": {
-          "name": "issue_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider_project_id": {
-          "name": "provider_project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "contract_slug": {
-          "name": "contract_slug",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "min_version": {
-          "name": "min_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "contract_request_id": {
-          "name": "contract_request_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_agency": {
-          "name": "created_agency",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "settled_version": {
-          "name": "settled_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "settled_at": {
-          "name": "settled_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "retracted_by": {
-          "name": "retracted_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "retracted_agency": {
-          "name": "retracted_agency",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "retracted_at": {
-          "name": "retracted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "retract_reason": {
-          "name": "retract_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "issue_contract_waits_live_uq": {
-          "name": "issue_contract_waits_live_uq",
-          "columns": [
-            {
-              "expression": "issue_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider_project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "contract_slug",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "retracted_at IS NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "issue_contract_waits_project_issue_idx": {
-          "name": "issue_contract_waits_project_issue_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "issue_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "issue_contract_waits_open_idx": {
-          "name": "issue_contract_waits_open_idx",
-          "columns": [
-            {
-              "expression": "provider_project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "contract_slug",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "retracted_at IS NULL AND settled_at IS NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "issue_contract_waits_project_id_projects_id_fk": {
-          "name": "issue_contract_waits_project_id_projects_id_fk",
-          "tableFrom": "issue_contract_waits",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "issue_contract_waits_issue_id_issues_id_fk": {
-          "name": "issue_contract_waits_issue_id_issues_id_fk",
-          "tableFrom": "issue_contract_waits",
-          "tableTo": "issues",
-          "columnsFrom": [
-            "issue_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "issue_contract_waits_provider_project_id_projects_id_fk": {
-          "name": "issue_contract_waits_provider_project_id_projects_id_fk",
-          "tableFrom": "issue_contract_waits",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "provider_project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "issue_contract_waits_contract_request_id_contract_requests_id_fk": {
-          "name": "issue_contract_waits_contract_request_id_contract_requests_id_fk",
-          "tableFrom": "issue_contract_waits",
-          "tableTo": "contract_requests",
-          "columnsFrom": [
-            "contract_request_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "issue_contract_waits_created_by_users_id_fk": {
-          "name": "issue_contract_waits_created_by_users_id_fk",
-          "tableFrom": "issue_contract_waits",
-          "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "issue_contract_waits_retracted_by_users_id_fk": {
-          "name": "issue_contract_waits_retracted_by_users_id_fk",
-          "tableFrom": "issue_contract_waits",
-          "tableTo": "users",
-          "columnsFrom": [
-            "retracted_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "issue_contract_waits_settled_version_fk": {
-          "name": "issue_contract_waits_settled_version_fk",
-          "tableFrom": "issue_contract_waits",
-          "tableTo": "contract_versions",
-          "columnsFrom": [
-            "provider_project_id",
-            "contract_slug",
-            "settled_version"
-          ],
-          "columnsTo": [
-            "provider_project_id",
-            "contract_slug",
-            "version"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "issue_contract_waits_not_self_chk": {
-          "name": "issue_contract_waits_not_self_chk",
-          "value": "\"issue_contract_waits\".\"project_id\" <> \"issue_contract_waits\".\"provider_project_id\""
-        },
-        "issue_contract_waits_version_chk": {
-          "name": "issue_contract_waits_version_chk",
-          "value": "length(\"issue_contract_waits\".\"min_version\") BETWEEN 1 AND 40"
-        },
-        "issue_contract_waits_reason_chk": {
-          "name": "issue_contract_waits_reason_chk",
-          "value": "\"issue_contract_waits\".\"reason\" IS NULL OR length(\"issue_contract_waits\".\"reason\") BETWEEN 1 AND 1000"
-        },
-        "issue_contract_waits_settled_chk": {
-          "name": "issue_contract_waits_settled_chk",
-          "value": "(\"issue_contract_waits\".\"settled_version\" IS NULL) = (\"issue_contract_waits\".\"settled_at\" IS NULL)"
-        },
-        "issue_contract_waits_retracted_chk": {
-          "name": "issue_contract_waits_retracted_chk",
-          "value": "(\"issue_contract_waits\".\"retracted_at\" IS NULL) = (\"issue_contract_waits\".\"retracted_by\" IS NULL) AND (\"issue_contract_waits\".\"retracted_at\" IS NULL) = (\"issue_contract_waits\".\"retracted_agency\" IS NULL) AND (\"issue_contract_waits\".\"retracted_at\" IS NULL) = (\"issue_contract_waits\".\"retract_reason\" IS NULL)"
-        },
-        "issue_contract_waits_agency_chk": {
-          "name": "issue_contract_waits_agency_chk",
-          "value": "\"issue_contract_waits\".\"created_agency\" IN ('human', 'agent') AND (\"issue_contract_waits\".\"retracted_agency\" IS NULL OR \"issue_contract_waits\".\"retracted_agency\" IN ('human', 'agent'))"
         }
       },
       "isRLSEnabled": false
@@ -22636,6 +21705,36 @@
           "primaryKey": false,
           "notNull": false
         },
+        "storefront_workflow_id": {
+          "name": "storefront_workflow_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "storefront_draft_version": {
+          "name": "storefront_draft_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "storefront_environment": {
+          "name": "storefront_environment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "corroboration": {
+          "name": "corroboration",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "corroboration_note": {
+          "name": "corroboration_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "evidence": {
           "name": "evidence",
           "type": "text[]",
@@ -22805,7 +21904,11 @@
         },
         "criterion_verdicts_identity_chk": {
           "name": "criterion_verdicts_identity_chk",
-          "value": "(\"criterion_verdicts\".\"identity_kind\" IS NULL AND \"criterion_verdicts\".\"commit_sha\" IS NULL AND \"criterion_verdicts\".\"runtime_ref\" IS NULL AND \"criterion_verdicts\".\"design_workflow_id\" IS NULL AND \"criterion_verdicts\".\"design_revision\" IS NULL AND \"criterion_verdicts\".\"contract_ref\" IS NULL AND \"criterion_verdicts\".\"contract_version\" IS NULL)\n        OR (\"criterion_verdicts\".\"identity_kind\" = 'commit' AND \"criterion_verdicts\".\"commit_sha\" ~ '^[0-9a-f]{40}$' AND \"criterion_verdicts\".\"runtime_ref\" IS NULL AND \"criterion_verdicts\".\"design_workflow_id\" IS NULL AND \"criterion_verdicts\".\"design_revision\" IS NULL AND \"criterion_verdicts\".\"contract_ref\" IS NULL AND \"criterion_verdicts\".\"contract_version\" IS NULL)\n        OR (\"criterion_verdicts\".\"identity_kind\" = 'commit_unresolved' AND \"criterion_verdicts\".\"backfilled\" AND \"criterion_verdicts\".\"commit_sha\" ~ '^[0-9a-f]{7,39}$' AND \"criterion_verdicts\".\"runtime_ref\" IS NULL AND \"criterion_verdicts\".\"design_workflow_id\" IS NULL AND \"criterion_verdicts\".\"design_revision\" IS NULL AND \"criterion_verdicts\".\"contract_ref\" IS NULL AND \"criterion_verdicts\".\"contract_version\" IS NULL)\n        OR (\"criterion_verdicts\".\"identity_kind\" = 'runtime' AND \"criterion_verdicts\".\"runtime_ref\" ~ '^[0-9a-f]{40,64}$' AND \"criterion_verdicts\".\"commit_sha\" IS NULL AND \"criterion_verdicts\".\"design_workflow_id\" IS NULL AND \"criterion_verdicts\".\"design_revision\" IS NULL AND \"criterion_verdicts\".\"contract_ref\" IS NULL AND \"criterion_verdicts\".\"contract_version\" IS NULL)\n        OR (\"criterion_verdicts\".\"identity_kind\" = 'design' AND \"criterion_verdicts\".\"design_workflow_id\" IS NOT NULL AND \"criterion_verdicts\".\"design_revision\" >= 1 AND \"criterion_verdicts\".\"commit_sha\" IS NULL AND \"criterion_verdicts\".\"runtime_ref\" IS NULL AND \"criterion_verdicts\".\"contract_ref\" IS NULL AND \"criterion_verdicts\".\"contract_version\" IS NULL)\n        OR (\"criterion_verdicts\".\"identity_kind\" = 'contract' AND \"criterion_verdicts\".\"contract_ref\" ~ '[^[:space:]]' AND \"criterion_verdicts\".\"contract_version\" ~ '[^[:space:]]' AND \"criterion_verdicts\".\"commit_sha\" IS NULL AND \"criterion_verdicts\".\"runtime_ref\" IS NULL AND \"criterion_verdicts\".\"design_workflow_id\" IS NULL AND \"criterion_verdicts\".\"design_revision\" IS NULL)"
+          "value": "(\"criterion_verdicts\".\"identity_kind\" IS NULL AND \"criterion_verdicts\".\"commit_sha\" IS NULL AND \"criterion_verdicts\".\"runtime_ref\" IS NULL AND \"criterion_verdicts\".\"design_workflow_id\" IS NULL AND \"criterion_verdicts\".\"design_revision\" IS NULL AND \"criterion_verdicts\".\"contract_ref\" IS NULL AND \"criterion_verdicts\".\"contract_version\" IS NULL)\n        OR (\"criterion_verdicts\".\"identity_kind\" = 'commit' AND \"criterion_verdicts\".\"commit_sha\" ~ '^[0-9a-f]{40}$' AND \"criterion_verdicts\".\"runtime_ref\" IS NULL AND \"criterion_verdicts\".\"design_workflow_id\" IS NULL AND \"criterion_verdicts\".\"design_revision\" IS NULL AND \"criterion_verdicts\".\"contract_ref\" IS NULL AND \"criterion_verdicts\".\"contract_version\" IS NULL)\n        OR (\"criterion_verdicts\".\"identity_kind\" = 'commit_unresolved' AND \"criterion_verdicts\".\"backfilled\" AND \"criterion_verdicts\".\"commit_sha\" ~ '^[0-9a-f]{7,39}$' AND \"criterion_verdicts\".\"runtime_ref\" IS NULL AND \"criterion_verdicts\".\"design_workflow_id\" IS NULL AND \"criterion_verdicts\".\"design_revision\" IS NULL AND \"criterion_verdicts\".\"contract_ref\" IS NULL AND \"criterion_verdicts\".\"contract_version\" IS NULL)\n        OR (\"criterion_verdicts\".\"identity_kind\" = 'runtime' AND \"criterion_verdicts\".\"runtime_ref\" ~ '^[0-9a-f]{40,64}$' AND \"criterion_verdicts\".\"commit_sha\" IS NULL AND \"criterion_verdicts\".\"design_workflow_id\" IS NULL AND \"criterion_verdicts\".\"design_revision\" IS NULL AND \"criterion_verdicts\".\"contract_ref\" IS NULL AND \"criterion_verdicts\".\"contract_version\" IS NULL)\n        OR (\"criterion_verdicts\".\"identity_kind\" = 'design' AND \"criterion_verdicts\".\"design_workflow_id\" IS NOT NULL AND \"criterion_verdicts\".\"design_revision\" >= 1 AND \"criterion_verdicts\".\"commit_sha\" IS NULL AND \"criterion_verdicts\".\"runtime_ref\" IS NULL AND \"criterion_verdicts\".\"contract_ref\" IS NULL AND \"criterion_verdicts\".\"contract_version\" IS NULL)\n        OR (\"criterion_verdicts\".\"identity_kind\" = 'contract' AND \"criterion_verdicts\".\"contract_ref\" ~ '[^[:space:]]' AND \"criterion_verdicts\".\"contract_version\" ~ '[^[:space:]]' AND \"criterion_verdicts\".\"commit_sha\" IS NULL AND \"criterion_verdicts\".\"runtime_ref\" IS NULL AND \"criterion_verdicts\".\"design_workflow_id\" IS NULL AND \"criterion_verdicts\".\"design_revision\" IS NULL)\n        OR (\"criterion_verdicts\".\"identity_kind\" = 'storefront_draft' AND \"criterion_verdicts\".\"commit_sha\" IS NULL AND \"criterion_verdicts\".\"runtime_ref\" IS NULL AND \"criterion_verdicts\".\"design_workflow_id\" IS NULL AND \"criterion_verdicts\".\"design_revision\" IS NULL AND \"criterion_verdicts\".\"contract_ref\" IS NULL AND \"criterion_verdicts\".\"contract_version\" IS NULL)"
+        },
+        "criterion_verdicts_storefront_chk": {
+          "name": "criterion_verdicts_storefront_chk",
+          "value": "(\"criterion_verdicts\".\"identity_kind\" = 'storefront_draft' AND \"criterion_verdicts\".\"storefront_workflow_id\" ~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$' AND \"criterion_verdicts\".\"storefront_draft_version\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' AND \"criterion_verdicts\".\"storefront_environment\" ~ '^[a-z][a-z0-9-]{0,62}$' AND \"criterion_verdicts\".\"corroboration\" IN ('corroborated', 'uncorroborated') AND (\"criterion_verdicts\".\"corroboration\" = 'corroborated' OR coalesce(\"criterion_verdicts\".\"corroboration_note\", '') ~ '[^[:space:]]'))\n        OR (\"criterion_verdicts\".\"identity_kind\" IS DISTINCT FROM 'storefront_draft' AND \"criterion_verdicts\".\"storefront_workflow_id\" IS NULL AND \"criterion_verdicts\".\"storefront_draft_version\" IS NULL AND \"criterion_verdicts\".\"storefront_environment\" IS NULL AND \"criterion_verdicts\".\"corroboration\" IS NULL AND \"criterion_verdicts\".\"corroboration_note\" IS NULL)"
         }
       },
       "isRLSEnabled": false

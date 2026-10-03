@@ -335,6 +335,11 @@ export interface StorefrontTargetArgs {
   readSecrets(): Record<string, unknown>;
 }
 
+export type StorefrontDraftReading =
+  | { readonly kind: 'read'; readonly draftVersion: string; readonly workflowCode: string }
+  | { readonly kind: 'missing'; readonly detail: string }
+  | { readonly kind: 'unreadable'; readonly detail: string };
+
 /** What an adapter DOES. Absent on a provider that integrates nothing (`agent`). */
 export interface IntegrationAdapterMethods<
   TConfig extends Record<string, unknown> = Record<string, unknown>,
@@ -429,6 +434,9 @@ export interface IntegrationDeclaration<
    * every provider declaring it and names the rest when asked for one.
    */
   readonly storefrontTarget?: (args: StorefrontTargetArgs) => Promise<Record<string, unknown>>;
+  readonly storefrontDraft?: (
+    args: StorefrontTargetArgs & { workflowId: string },
+  ) => Promise<StorefrontDraftReading>;
   /** Present where a binding of this provider is the host a project's repository lives on. */
   readonly sourceHost?: SourceHostFactory;
   /** Present where this provider can mint a short-lived HTTPS git credential for a runner. */
