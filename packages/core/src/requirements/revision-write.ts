@@ -92,7 +92,14 @@ export async function resetDraftCriteria(tx: Tx, requirementId: string, revision
 /** Writes REQ-n at revision 1 (draft) inside the caller's transaction; the caller has locked the project. */
 export async function createRequirementIn(
   tx: Tx,
-  input: { projectId: string; actor: RequirementActor; title: string; write: RevisionWrite },
+  input: {
+    projectId: string;
+    actor: RequirementActor;
+    title: string;
+    write: RevisionWrite;
+    /** Who wrote revision 1's content when not the actor: an accepted suggestion's producer. */
+    authorId?: string | undefined;
+  },
 ): Promise<{ id: string; refusals: RequirementRefusal[] | null }> {
   const { projectId, actor, write } = input;
   const [{ next } = { next: 1 }] = await tx
@@ -111,7 +118,7 @@ export async function createRequirementIn(
     tldr: write.tldr ?? null,
     changeSummary: write.changeSummary ?? null,
     reason: write.reason.trim(),
-    authorId: actor.userId,
+    authorId: input.authorId ?? actor.userId,
     fromSuggestionId: write.fromSuggestionId ?? null,
   });
   return { id: row.id, refusals: await writeCriteria(tx, row.id, 1, write.criteria) };
