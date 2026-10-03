@@ -117,6 +117,8 @@ export interface CriterionBlock {
   readonly runtime: string | null;
   readonly source: string | null;
   readonly design: string | null;
+  /** The block's `why` line: the reason a `skipped` verdict must carry (ISS-55). */
+  readonly why: string | null;
   /** Everything this block cites, in the order written. An empty value cites nothing. */
   readonly cited: readonly string[];
 }
@@ -127,6 +129,7 @@ interface OpenBlock {
   runtime: string | null;
   source: string | null;
   design: string | null;
+  why: string | null;
   cited: string[];
 }
 
@@ -156,6 +159,7 @@ export function criterionBlocksIn(record: ForgeRecord | null): CriterionBlock[] 
           runtime: null,
           source: null,
           design: null,
+          why: null,
           cited: [],
         };
       }
@@ -166,6 +170,7 @@ export function criterionBlocksIn(record: ForgeRecord | null): CriterionBlock[] 
     else if (field.key === RUNTIME_FIELD && block.runtime === null) block.runtime = value;
     else if (field.key === SOURCE_FIELD && block.source === null) block.source = value;
     else if (field.key === DESIGN_FIELD && block.design === null) block.design = value;
+    else if (field.key === 'why' && block.why === null && value !== '') block.why = value;
     else if (field.key === EVIDENCE_FIELD && value !== '') block.cited.push(value);
   }
   close();

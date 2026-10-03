@@ -14,6 +14,7 @@ import {
   type PersistedIssueAttachment,
   persistDecodedIssueAttachments,
 } from './attachment-service.js';
+import { syncCriteriaFromText } from './criteria/store.js';
 import { claimDetectorKey, isValidDetectorKey } from './detector-key.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import {
@@ -184,6 +185,9 @@ export async function createIssue(
       })
       .returning();
     if (!inserted) throw new Error('issues: insert returned no row');
+    if (inserted.acceptanceCriteria) {
+      await syncCriteriaFromText(tx, inserted.id, inserted.acceptanceCriteria);
+    }
     // ISS-54 cm:hack — the lease, branch and head a `sessionContext` names belong to the work
     // state (`work-state.ts:splitSessionContext`). Exit: until forge-plugin moves to the 10-status
     // model (plugin-followups.md).

@@ -198,7 +198,7 @@ async function verdictGuard(ctx: GuardContext): Promise<GuardFault | null> {
     return {
       code: 'NO_WORK_EVIDENCE',
       detail:
-        '`awaiting_release` says every criterion holds a passing verdict, and this issue has no numbered acceptance criteria for a verdict to hold on. Write the criteria and record a verdict on each, then move it.',
+        '`awaiting_release` says every criterion holds a passing verdict, and this issue has no criteria for a verdict to hold on. Write them (`PUT /api/issues/:id/criteria`, or numbered `acceptanceCriteria`) and record a verdict on each (`POST /api/issues/:id/verdicts`), then move it.',
       details: { from: ctx.from, to: ctx.to, criteria: [] },
     };
   }
@@ -215,7 +215,7 @@ async function verdictGuard(ctx: GuardContext): Promise<GuardFault | null> {
   if (found.unidentified.length > 0) {
     return {
       code: 'VERDICT_IDENTITY_REQUIRED',
-      detail: `a passing verdict says what it held in — a full commit (\`source:\`), a runtime (\`runtime:\`) or a design revision (\`design: <flow> rev <n>\`) — and the latest verdict on criteria ${found.unidentified.join(', ')} names none. Record each again with its identity, then move it.`,
+      detail: `a passing verdict says what it held in — a whole commit sha, a runtime, a design revision (\`<flow> rev <n>\`) or a contract version (\`<ref>@<version>\`) — and the latest verdict on criteria ${found.unidentified.join(', ')} names none the gate accepts (a backfilled \`commit_unresolved\` abbreviation is not one). Record each again with its identity, then move it.`,
       details: { from: ctx.from, to: ctx.to, unidentified: found.unidentified },
     };
   }

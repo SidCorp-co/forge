@@ -2241,6 +2241,13 @@
       "when": 1812844800000,
       "tag": "0346_issue_status_is_who_it_waits_on",
       "breakpoints": true
+    },
+    {
+      "idx": 350,
+      "version": "7",
+      "when": 1813190400000,
+      "tag": "0350_issue_criteria_and_verdicts_are_rows",
+      "breakpoints": true
     }
   ]
 }
