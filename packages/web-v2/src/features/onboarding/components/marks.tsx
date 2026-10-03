@@ -3,16 +3,11 @@
 // The small marks the onboarding thread and the questionnaire share: a hover note with rich
 // content (the evidence behind "Why we ask"), the thread status chip, and the design chips.
 
-import {
-  ONBOARDING_STATUS_LABELS,
-  ONBOARDING_STATUS_TONES,
-  type OnboardingStatus,
-} from "@forge/contracts/onboarding";
+import type { OnboardingStatus } from "@forge/contracts/onboarding";
 import type { IssueStatusTone } from "@forge/contracts/issue-vocabulary";
 import type { ReactNode } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { StatusChip } from "@/design";
-import type { StatusKey } from "@/design/status";
+import { StatusBadge, ToneBadge } from "@/design";
 
 /** A dotted-underline word whose tooltip carries a sentence and its evidence. */
 export function HoverNote({ label, children, className }: { label: ReactNode; children: ReactNode; className?: string }) {
@@ -34,23 +29,17 @@ export function HoverNote({ label, children, className }: { label: ReactNode; ch
   );
 }
 
-const TONE_CHIP: Record<IssueStatusTone, StatusKey> = {
-  neutral: "queued",
-  ready: "passed",
-  run: "running",
-  you: "waiting",
-  done: "archived",
-  err: "failed",
-};
 const TONE_GLYPH: Record<IssueStatusTone, string> = {
   neutral: "○",
   ready: "✓",
   run: "•",
   you: "?",
+  blocked: "■",
   done: "✓",
   err: "!",
 };
 
+/** A legend-toned mark with its own words ("New", "Open", "As-built"): the shared ToneBadge. */
 export function ToneChip({
   tone,
   label,
@@ -62,25 +51,15 @@ export function ToneChip({
   title?: string;
   glyph?: string;
 }) {
-  return (
-    <StatusChip size="sm" status={TONE_CHIP[tone]} glyph={glyph ?? TONE_GLYPH[tone]} label={label} title={title ?? label} />
-  );
+  return <ToneBadge tone={tone} label={label} glyph={glyph ?? TONE_GLYPH[tone]} title={title ?? label} />;
 }
 
 export function ThreadStatusChip({ status }: { status: OnboardingStatus }) {
-  return <ToneChip tone={ONBOARDING_STATUS_TONES[status]} label={ONBOARDING_STATUS_LABELS[status]} />;
+  return <StatusBadge family="onboarding" value={status} />;
 }
 
-const DESIGN_TONE: Record<string, [IssueStatusTone, string, string]> = {
-  draft: ["neutral", "Draft", "○"],
-  proposed: ["you", "Proposed", "‹"],
-  approved: ["ready", "Approved", "✓"],
-  returned: ["err", "Returned", "!"],
-};
-
 export function DesignStatusChip({ status }: { status: string | null }) {
-  const [tone, label, glyph] = DESIGN_TONE[status ?? ""] ?? ["neutral", status ?? "Not a design", "○"];
-  return <ToneChip tone={tone} label={label} glyph={glyph} />;
+  return status ? <StatusBadge family="design" value={status} /> : <ToneChip tone="neutral" label="Not a design" />;
 }
 
 /** The agent's own marks: Inferred beside a default it read from the code, New on a question it just raised. */

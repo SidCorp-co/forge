@@ -3,6 +3,8 @@
 // `ui-vocabulary.ts`); this file only names which map each family reads and which design-kit colours
 // each legend tone draws. A screen never declares a colour map.
 
+import { SENSITIVE_DATA_BADGES } from "@forge/contracts/data-policy";
+import { ONBOARDING_STATUS_LABELS, ONBOARDING_STATUS_TONES } from "@forge/contracts/onboarding";
 import { DESIGN_STATUS_GLYPHS, DESIGN_STATUS_HINTS, DESIGN_STATUS_LABELS, DESIGN_STATUS_TONES } from "@forge/contracts/design-status";
 import {
   FEEDBACK_DECISION_LABELS,
@@ -84,6 +86,12 @@ const fromReadings = (r: Record<string, Reading>): Maps => ({
   glyphs: Object.fromEntries(Object.entries(r).flatMap(([k, v]) => (v[2] ? [[k, v[2]]] : []))),
 });
 
+const POLICY_TONE: Record<(typeof SENSITIVE_DATA_BADGES)[keyof typeof SENSITIVE_DATA_BADGES]["tone"], LegendTone> = {
+  neutral: "neutral",
+  attention: "you",
+  failure: "err",
+};
+
 const CONTRACT_FAMILIES = {
   issue: { labels: ISSUE_STATUS_LABELS, tones: ISSUE_STATUS_TONES, glyphs: ISSUE_STATUS_GLYPHS, hints: ISSUE_STATUS_HINTS },
   requirement: { labels: REQUIREMENT_STATE_LABELS, tones: REQUIREMENT_STATE_TONES, glyphs: REQUIREMENT_STATE_GLYPHS, hints: REQUIREMENT_STATE_HINTS },
@@ -104,6 +112,12 @@ const CONTRACT_FAMILIES = {
     tones: Object.fromEntries(Object.entries(ISSUE_ATTENTION_LABELS).map(([k, v]) => [k, v.tone])),
   },
   suggestion: { labels: SUGGESTION_STATUS_LABELS, tones: SUGGESTION_STATUS_TONES, glyphs: SUGGESTION_STATUS_GLYPHS },
+  onboarding: { labels: ONBOARDING_STATUS_LABELS, tones: ONBOARDING_STATUS_TONES, glyphs: { in_progress: "•", waiting_on_you: "?", done: "✓" } },
+  dataPolicy: {
+    labels: Object.fromEntries(Object.entries(SENSITIVE_DATA_BADGES).map(([k, v]) => [k, v.label])),
+    tones: Object.fromEntries(Object.entries(SENSITIVE_DATA_BADGES).map(([k, v]) => [k, POLICY_TONE[v.tone]])),
+    hints: Object.fromEntries(Object.entries(SENSITIVE_DATA_BADGES).map(([k, v]) => [k, `${k}: ${v.tip}`])),
+  },
 } satisfies Record<string, Maps>;
 
 type ReadingFamily = keyof typeof STATE_READINGS;

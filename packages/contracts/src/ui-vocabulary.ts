@@ -218,6 +218,11 @@ export const STATE_READINGS = {
 		failed: ["Failed", "err", "×"],
 		running: ["Running", "run", "●"],
 	},
+	/** Whether a C4 design names an outside system's integration as settled (web `workflows/c4/geometry.ts:IntegrationState`). */
+	integration: {
+		confirmed: ["Confirmed", "ready", "✓"],
+		unconfirmed: ["Unconfirmed", "you", "?"],
+	},
 	/** How an issue's shipped claim was recorded (web `issues/types.ts:MergeMarkKind`). */
 	mergeMark: {
 		landed: ["Landed", "ready", "✓"],
