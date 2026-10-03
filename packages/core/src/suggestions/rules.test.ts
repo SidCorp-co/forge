@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { type PersonActFacts, personActRefusal } from '../lib/person-act.js';
 import {
   baseStaleRefusal,
+  breakdownFaults,
   decidedRefusal,
   duplicateRefusal,
   fingerprintOf,
@@ -82,5 +83,68 @@ describe('suggestion-lifecycle guards', () => {
   it('proposed → withdrawn: only the producer withdraws (SUGGESTION_WITHDRAW_FORBIDDEN)', () => {
     expect(withdrawRefusal('p1', 'p1')).toBeNull();
     expect(withdrawRefusal('u1', 'p1')?.code).toBe('SUGGESTION_WITHDRAW_FORBIDDEN');
+  });
+});
+
+describe('a breakdown, checked at propose and again at accept', () => {
+  const codes = new Map([
+    ['BC-1', 'w1'],
+    ['BC-2', 'w2'],
+  ]);
+
+  it('traces to live BCs and blockers among the proposed issues pass', () => {
+    const p = {
+      issues: [
+        { title: 'A', criteria: [{ body: 'a', tracesTo: 'BC-1' }] },
+        { title: 'B', blockedBy: [0] },
+      ],
+    };
+    expect(breakdownFaults(p, codes, 1)).toEqual([]);
+  });
+
+  it('a trace to a BC the base revision does not hold is SUGGESTION_PAYLOAD_INVALID at its path', () => {
+    const faults = breakdownFaults(
+      { issues: [{ title: 'A', criteria: [{ body: 'a', tracesTo: 'BC-9' }] }] },
+      codes,
+      3,
+    );
+    expect(faults).toEqual([
+      expect.objectContaining({
+        code: 'SUGGESTION_PAYLOAD_INVALID',
+        path: '/payload/issues/0/criteria/0/tracesTo',
+      }),
+    ]);
+    expect(faults[0]?.detail).toContain('revision 3');
+  });
+
+  it('a blocker index outside the payload, or the issue itself, is named', () => {
+    const faults = breakdownFaults(
+      {
+        issues: [
+          { title: 'A', blockedBy: [0] },
+          { title: 'B', blockedBy: [5] },
+        ],
+      },
+      codes,
+      1,
+    );
+    expect(faults.map((f) => f.path)).toEqual([
+      '/payload/issues/0/blockedBy/0',
+      '/payload/issues/1/blockedBy/0',
+    ]);
+  });
+
+  it('blockers that close a cycle are refused at the entry that closes it', () => {
+    const faults = breakdownFaults(
+      {
+        issues: [
+          { title: 'A', blockedBy: [1] },
+          { title: 'B', blockedBy: [0] },
+        ],
+      },
+      codes,
+      1,
+    );
+    expect(faults[0]).toMatchObject({ path: '/payload/issues/1/blockedBy/0' });
   });
 });

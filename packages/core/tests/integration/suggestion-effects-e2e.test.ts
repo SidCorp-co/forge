@@ -87,6 +87,18 @@ async function propose(body: Doc) {
 
 const accept = (id: string) => call(person, 'POST', `/suggestions/${id}/accept`, {});
 
+/** A breakdown row written past the propose-time guard, as one written before it existed would be. */
+async function plantBreakdown(req: string, payload: Doc): Promise<string> {
+  const rows = (await harness.db.execute(sql`
+    INSERT INTO suggestions (project_id, kind, requirement_id, base_revision, payload, fingerprint, producer_kind)
+    SELECT ${projectId}, 'breakdown', id, current_revision, ${JSON.stringify(payload)}::jsonb, md5(random()::text), 'agent'
+      FROM requirements WHERE project_id = ${projectId} AND req_seq = ${Number(req.slice(4))}
+    RETURNING id`)) as unknown as { id: string }[];
+  const id = [...rows][0]?.id;
+  if (!id) throw new Error(`no requirement ${req} to plant a breakdown on`);
+  return id;
+}
+
 async function plantIssue(title: string): Promise<{ id: string; key: string }> {
   const r = await call(person, 'POST', '/issues', { title, status: 'open' });
   expect(r.status, JSON.stringify(r.body)).toBe(201);
@@ -146,7 +158,7 @@ describe('breakdown: accepting files the issues at draft, in one transaction', (
     const filed = accepted.body.effect.issues as { issueId: string; key: string }[];
     expect(filed).toHaveLength(2);
     const rows = (await harness.db.execute(sql`
-      SELECT i.id, i.status, i.planned_revision, r.req_seq,
+      SELECT i.id, i.status, i.planned_revision, r.req_seq, i.from_suggestion_id,
              (SELECT rc.code FROM issue_criteria c JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
                WHERE c.issue_id = i.id AND c.retired_at IS NULL LIMIT 1) AS traced,
              (SELECT count(*)::int FROM issue_criteria c WHERE c.issue_id = i.id AND c.retired_at IS NULL) AS criteria
@@ -158,6 +170,7 @@ describe('breakdown: accepting files the issues at draft, in one transaction', (
         planned_revision: 1,
         traced: 'BC-1',
         criteria: 1,
+        from_suggestion_id: sid,
       }),
       expect.objectContaining({ status: 'draft', planned_revision: 1, traced: null, criteria: 1 }),
     ]);
@@ -172,18 +185,30 @@ describe('breakdown: accepting files the issues at draft, in one transaction', (
     expect(detail.body.standing.waitingOn.act).toBe('promote 2 draft issues');
   });
 
-  it('a criterion tracing to a BC the revision does not hold refuses the accept by name and files nothing', async () => {
-    const req = await agreedRequirement('Exports');
-    const sid = await propose({
+  it('a criterion tracing to a BC the revision does not hold is refused at propose, by name', async () => {
+    const req = await agreedRequirement('Exports at propose');
+    const refused = await call(agent, 'POST', '/suggestions', {
       kind: 'breakdown',
       requirement: req,
       baseRevision: 1,
-      payload: {
-        issues: [
-          { title: 'Export A' },
-          { title: 'Export B', criteria: [{ body: 'x', tracesTo: 'BC-9' }] },
-        ],
-      },
+      payload: { issues: [{ title: 'Export', criteria: [{ body: 'x', tracesTo: 'BC-9' }] }] },
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
+    expect(refused.body.error.refusals).toEqual([
+      expect.objectContaining({
+        code: 'SUGGESTION_PAYLOAD_INVALID',
+        path: '/payload/issues/0/criteria/0/tracesTo',
+      }),
+    ]);
+  });
+
+  it('a criterion tracing to a BC the revision does not hold refuses the accept by name and files nothing', async () => {
+    const req = await agreedRequirement('Exports');
+    const sid = await plantBreakdown(req, {
+      issues: [
+        { title: 'Export A' },
+        { title: 'Export B', criteria: [{ body: 'x', tracesTo: 'BC-9' }] },
+      ],
     });
     const refused = await accept(sid);
     expect(refused.status).toBe(422);
@@ -202,17 +227,23 @@ describe('breakdown: accepting files the issues at draft, in one transaction', (
 describe('breakdown: blocks edges that form a cycle', () => {
   it('are refused by name at the entry that closes the cycle, and nothing is filed', async () => {
     const req = await agreedRequirement('Cycle');
-    const sid = await propose({
+    const payload = {
+      issues: [
+        { title: 'First', blockedBy: [1] },
+        { title: 'Second', blockedBy: [0] },
+      ],
+    };
+    const atPropose = await call(agent, 'POST', '/suggestions', {
       kind: 'breakdown',
       requirement: req,
       baseRevision: 1,
-      payload: {
-        issues: [
-          { title: 'First', blockedBy: [1] },
-          { title: 'Second', blockedBy: [0] },
-        ],
-      },
+      payload,
     });
+    expect(atPropose.status, JSON.stringify(atPropose.body)).toBe(422);
+    expect(atPropose.body.error.refusals[0]).toMatchObject({
+      path: '/payload/issues/1/blockedBy/0',
+    });
+    const sid = await plantBreakdown(req, payload);
     const refused = await accept(sid);
     expect(refused.status, JSON.stringify(refused.body)).toBe(422);
     expect(refused.body.error.refusals).toEqual([

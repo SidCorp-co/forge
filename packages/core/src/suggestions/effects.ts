@@ -30,6 +30,7 @@ import {
   type RevisionWrite,
 } from '../requirements/service.js';
 import { type Row, type SuggestionActor, targetOfRow } from './read.js';
+import { breakdownFaults } from './rules.js';
 
 export type Effect = SuggestionEffect | FeedbackTriageEffect;
 export type AcceptChannel = 'web' | 'mcp';
@@ -45,10 +46,6 @@ export interface EffectWritten {
   /** An issue whose fields the accept moved, announced after the commit. */
   updatedIssue?: { before: typeof issues.$inferSelect; written: string[] };
 }
-
-const refuse = (code: string, path: string, detail: string): EffectWritten => ({
-  refusals: [{ code, path, detail }],
-});
 
 export const undecided = (kind: string, path: string, what: string): NamedRefusal => ({
   code: 'SUGGESTION_EFFECT_UNDECIDED',
@@ -78,59 +75,31 @@ async function liveCodes(tx: Tx, requirementId: string, revision: number) {
 
 type Breakdown = ReturnType<(typeof SUGGESTION_PAYLOADS)['breakdown']['schema']['parse']>;
 
-/** The first blockedBy entry that closes a cycle among the proposed issues, as [issue, entry]. */
-function cycleAt(p: Breakdown): [number, number] | null {
-  const state = new Map<number, 'open' | 'done'>();
-  const visit = (i: number): [number, number] | null => {
-    state.set(i, 'open');
-    for (const [j, k] of (p.issues[i]?.blockedBy ?? []).entries()) {
-      if (k >= p.issues.length || k === i) continue;
-      if (state.get(k) === 'open') return [i, j];
-      const found = state.has(k) ? null : visit(k);
-      if (found) return found;
-    }
-    state.set(i, 'done');
-    return null;
-  };
-  for (let i = 0; i < p.issues.length; i++) {
-    const found = state.has(i) ? null : visit(i);
-    if (found) return found;
+/** What a breakdown is checked against, at propose and again at accept: the requirement is agreed,
+ *  and the payload's traces and blockers hold at `head`. */
+export async function breakdownGuardIn(
+  tx: Tx,
+  projectId: string,
+  requirementId: string,
+  head: number | null,
+  p: Breakdown,
+): Promise<{ refusals: NamedRefusal[]; codes: ReadonlyMap<string, string> }> {
+  const req = await rowIn(tx, projectId, requirementId);
+  const notAgreed = linkIssueRefusal(req.status as Parameters<typeof linkIssueRefusal>[0]);
+  if (notAgreed || head === null) {
+    return {
+      refusals: [
+        {
+          code: notAgreed?.code ?? 'REQUIREMENT_NOT_AGREED',
+          path: '/target',
+          detail: `${requirementKey(req.reqSeq)} is ${req.status}; a breakdown files issues against an agreed requirement.`,
+        },
+      ],
+      codes: new Map(),
+    };
   }
-  return null;
-}
-
-function breakdownFaults(p: Breakdown, codes: ReadonlyMap<string, string>, revision: number) {
-  const out: NamedRefusal[] = [];
-  const cycle = cycleAt(p);
-  if (cycle) {
-    out.push({
-      code: 'SUGGESTION_PAYLOAD_INVALID',
-      path: `/payload/issues/${cycle[0]}/blockedBy/${cycle[1]}`,
-      detail:
-        'the blockedBy edges among the proposed issues form a cycle, so none of them could ever start.',
-    });
-  }
-  p.issues.forEach((issue, i) => {
-    (issue.criteria ?? []).forEach((c, j) => {
-      if (c.tracesTo && !codes.has(c.tracesTo)) {
-        out.push({
-          code: 'SUGGESTION_PAYLOAD_INVALID',
-          path: `/payload/issues/${i}/criteria/${j}/tracesTo`,
-          detail: `${c.tracesTo} is not a business criterion of revision ${revision}; it holds ${[...codes.keys()].join(', ') || 'none'}.`,
-        });
-      }
-    });
-    (issue.blockedBy ?? []).forEach((k, j) => {
-      if (k >= p.issues.length || k === i) {
-        out.push({
-          code: 'SUGGESTION_PAYLOAD_INVALID',
-          path: `/payload/issues/${i}/blockedBy/${j}`,
-          detail: `blockedBy names issue index ${k}, which is ${k === i ? 'this issue itself' : `outside the ${p.issues.length} proposed issues`}.`,
-        });
-      }
-    });
-  });
-  return out;
+  const codes = await liveCodes(tx, req.id, head);
+  return { refusals: breakdownFaults(p, codes, head), codes };
 }
 
 // cm:why workflow requirement-to-delivery step `approve`: core creates every issue with
@@ -145,19 +114,11 @@ async function breakdownEffect(
   channel: AcceptChannel,
 ): Promise<EffectWritten> {
   const target = targetOfRow(row);
-  const req = await rowIn(tx, projectId, target.id);
-  const notAgreed = linkIssueRefusal(req.status as Parameters<typeof linkIssueRefusal>[0]);
-  if (notAgreed || head === null) {
-    return refuse(
-      'REQUIREMENT_NOT_AGREED',
-      '/target',
-      `${requirementKey(req.reqSeq)} is ${req.status}; a breakdown files issues against an agreed requirement.`,
-    );
-  }
   const p = SUGGESTION_PAYLOADS.breakdown.schema.parse(row.payload);
-  const codes = await liveCodes(tx, req.id, head);
-  const faults = breakdownFaults(p, codes, head);
-  if (faults.length) return { refusals: faults };
+  const guard = await breakdownGuardIn(tx, projectId, target.id, head, p);
+  if (guard.refusals.length || head === null) return { refusals: guard.refusals };
+  const { codes } = guard;
+  const req = await rowIn(tx, projectId, target.id);
   const ids: string[] = [];
   for (const item of p.issues) {
     const issue = await insertIssueRow(tx, {
@@ -171,6 +132,7 @@ async function breakdownEffect(
       createdVia: channel,
       requirementId: req.id,
       plannedRevision: head,
+      fromSuggestionId: row.id,
     });
     ids.push(issue.id);
     const criteria = (item.criteria ?? []).map((c, j) => ({

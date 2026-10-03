@@ -56,6 +56,7 @@ async function fileDraftIssue(
   t: FeedbackTriage,
   actor: FeedbackActor,
   channel: FeedbackChannel,
+  fromSuggestionId: string | null,
 ): Promise<string> {
   const level = await dataPolicyOf(row.projectId);
   const key = feedbackKey(row.fbSeq);
@@ -85,6 +86,7 @@ async function fileDraftIssue(
     createdByDeviceId: null,
     createdVia: channel,
     requirementId,
+    fromSuggestionId,
   });
   return issue.id;
 }
@@ -191,7 +193,14 @@ export async function triageIn(
   });
   if (fit) return { refusals: [fit] };
   if (t.route === 'issue' && t.createIssue) {
-    createdIssueId = await fileDraftIssue(tx, row, t, actor, input.channel);
+    createdIssueId = await fileDraftIssue(
+      tx,
+      row,
+      t,
+      actor,
+      input.channel,
+      input.fromSuggestionId ?? null,
+    );
     set.routedIssueId = createdIssueId;
     const [n] = await tx
       .select({ seq: issues.issSeq })

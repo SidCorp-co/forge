@@ -36,7 +36,13 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { personActRefusalFor } from '../lib/person-act.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { lockRequirements } from '../requirements/service.js';
-import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
+import {
+  type AcceptChannel,
+  breakdownGuardIn,
+  type Effect,
+  type EffectWritten,
+  writeEffect,
+} from './effects.js';
 import {
   headOf,
   onTarget,
@@ -152,8 +158,19 @@ export async function createSuggestion(input: {
   let id = '';
   const refusals = await inTx(async (tx) => {
     await lockTarget(tx, projectId, target);
-    const stale = baseStaleRefusal(input.baseRevision, await headOf(tx, projectId, target));
+    const head = await headOf(tx, projectId, target);
+    const stale = baseStaleRefusal(input.baseRevision, head);
     if (stale) return [stale];
+    if (kind === 'breakdown' && target.type === 'requirement') {
+      const guard = await breakdownGuardIn(
+        tx,
+        projectId,
+        target.id,
+        head,
+        SUGGESTION_PAYLOADS.breakdown.schema.parse(payload),
+      );
+      if (guard.refusals.length) return guard.refusals;
+    }
     const open = await tx
       .select({ id: suggestions.id, kind: suggestions.kind, fingerprint: suggestions.fingerprint })
       .from(suggestions)
