@@ -4,12 +4,19 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
 import { supersedeBuilderRun } from '../../ecosystem/builder-supersede.js';
+import {
+  CONTRACT_DECISION_REASON_MAX,
+  CONTRACT_DECISIONS,
+  type ContractDecision,
+} from '../../ecosystem/contract/approval.js';
+import { decideContractVersion } from '../../ecosystem/contract/decide.js';
 import { MAX_ARTIFACT_BYTES } from '../../ecosystem/contract/measure.js';
 import { publishContractVersion } from '../../ecosystem/contract/publish.js';
 import {
   loadContractContext,
   recordContractContext,
 } from '../../ecosystem/contract/run-context-service.js';
+import { approvalView } from '../../ecosystem/contract/store.js';
 import { SOURCE_REF } from '../../ecosystem/contract/version-schema.js';
 import {
   commitmentsSetter,
@@ -55,6 +62,7 @@ const WRITES = [
   'builder_run_update',
   'builder_run_supersede',
   'contract_version_publish',
+  'contract_version_decide',
 ] as const;
 const ACTIONS = [...READS, ...WRITES] as const;
 type Action = (typeof ACTIONS)[number];
@@ -99,6 +107,12 @@ const BY_ACTION = {
         'sourceRef is <repository path>@<commit sha>, e.g. schema.graphql@1a2b3c4',
       ),
   }),
+  contract_version_decide: z.strictObject({
+    contract: z.string().regex(/^[a-z][a-z0-9-]{0,62}$/, 'contract is the publication slug'),
+    version: z.string().min(1).max(40),
+    decision: z.enum(CONTRACT_DECISIONS),
+    reason: z.string().max(CONTRACT_DECISION_REASON_MAX).optional(),
+  }),
 } satisfies Record<Action, z.ZodType>;
 
 const SHAPES: Record<Action, string> = {
@@ -118,6 +132,8 @@ const SHAPES: Record<Action, string> = {
   builder_run_supersede: '{ run: the open builder run uuid, reason: why it is replaced }',
   contract_version_publish:
     '{ contract: the publication slug, version, kind: graphql | mcp-tools | openapi | json-schema, source: SDL text or the { tools } JSON, sourceRef: <repo path>@<sha> }',
+  contract_version_decide:
+    '{ contract: the publication slug, version: a proposed version, decision: approve | return, reason?: why, required to return }',
 };
 
 type Answer = Record<string, unknown>;
@@ -253,6 +269,18 @@ const HANDLERS: Record<
     };
   },
   contract_version_publish: async (ctx, side, a) => publish(ctx, side, a),
+  contract_version_decide: async (ctx, side, a) => {
+    const out = await decideContractVersion({
+      projectId: side,
+      contract: String(a.contract),
+      version: String(a.version),
+      decision: a.decision as ContractDecision,
+      reason: typeof a.reason === 'string' ? a.reason : null,
+      actor: { userId: ctx.principal.userId, agency: ctx.principal.agency },
+    });
+    if (!out.ok) return refusedWith(out.refusals);
+    return { version: out.version.document, approval: approvalView(out.version) };
+  },
   link_create: async (ctx, side, a) =>
     recorded(await createLink({ projectId: side, ...writeOf(ctx, a) })),
   link_update: async (ctx, side, a) =>
@@ -321,6 +349,7 @@ const PATH_OF: Partial<Record<Action, string>> = {
   context: '/session',
   bus: '/ecosystem',
   contract_version_publish: '/contract',
+  contract_version_decide: '/version',
 };
 
 async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answer> {
@@ -373,6 +402,7 @@ const DESCRIPTION = [
   'Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks).',
   "Writes take { baseRevision, document } as their REST route does: interface_write (the project's own agent, member or above, or a person holding admin; commitment windows an agent writes read as set by the agent, and once a person has set them an agent's write that moves them is refused COMMITMENTS_SET_BY_PERSON), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite), builder_run_supersede ({ run, reason }: closes an open run as superseded and opens a fresh manual run with the steps the project's current source type derives, waking its master; the project's own agent's, or an org admin's of the steward or the project's org).",
   "contract_version_publish ({ contract, version, kind, source, sourceRef }, POST /api/projects/:id/contracts/:contract/versions on REST) records a version of a contract this project publishes with artifact { upload: true }: kind is graphql (SDL text), mcp-tools ({ tools: [{ name, inputSchema }] }), openapi or json-schema, and must be the publication's type; core indexes its elements and measures it against the latest version. Refused by name: CONTRACT_KIND_UNKNOWN, CONTRACT_KIND_MISMATCH, ARTIFACT_UNREADABLE, VERSION_BUMP_TOO_SMALL, VERSION_NOT_IN_SCHEME, CONTRACT_NOT_PUBLISHED, CONTRACT_WRITER_NOT_PROVIDER (the writer rule of interface_write).",
+  'contract_version_decide ({ contract, version, decision: approve | return, reason? }, POST /api/projects/:id/contracts/:contract/versions/:version/decision on REST) decides a proposed version: a recorded version is proposed, and current only once approved. An org owner or admin person decides any version; with contracts.approver "master" the project\'s own agent may approve a non-breaking or initial one. Refused by name: CONTRACT_BREAKING_NEEDS_PERSON (a breaking or unmeasured version, whatever the policy), CONTRACT_APPROVER_NOT_PERSON, CONTRACT_APPROVER_NOT_ADMIN, CONTRACT_APPROVER_NOT_PROJECT, CONTRACT_VERSION_NOT_PROPOSED, CONTRACT_DECISION_REASON_MISSING.',
   "The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written.",
   'For the channel, use forge_channel.',
 ].join(' ');
@@ -391,7 +421,13 @@ const INPUT_SCHEMA: Record<string, unknown> = {
     ),
     link: prop('link, link_update: the link uuid.'),
     run: prop('builder_run, builder_run_update, builder_run_supersede: the builder run uuid.'),
-    reason: prop('builder_run_supersede: why the open run is replaced, 1 to 1000 characters.'),
+    reason: prop(
+      'builder_run_supersede: why the open run is replaced, 1 to 1000 characters. contract_version_decide: why, required to return.',
+    ),
+    decision: prop('contract_version_decide: approve or return.', {
+      type: 'string',
+      enum: [...CONTRACT_DECISIONS],
+    }),
     ecosystem: prop('bus: the ecosystem uuid.'),
     contract: prop(
       'contract_version_publish: the publication slug of a contract this project publishes.',

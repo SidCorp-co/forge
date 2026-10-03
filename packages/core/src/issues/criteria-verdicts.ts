@@ -2,10 +2,11 @@
 // fence convention already used in issue comments (parseForgeRecord), the same shape ISS-1114
 // and ISS-1139 carry live today.
 
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { listIssueComments } from '../comments/service.js';
 import { db } from '../db/client.js';
-import { commentAttachments, comments, issueAttachments, issues } from '../db/schema.js';
+import { commentAttachments, comments, issueAttachments, issues, projects } from '../db/schema.js';
+import { contractVersions } from '../db/schema-ecosystem.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
 import { criterionBlocksIn, longestSpelling } from '../messaging/verdict-identity.js';
@@ -58,7 +59,9 @@ export function verdictPairsIn(body: string): CriterionVerdict[] {
           ? { kind: 'source', value: block.source }
           : block.design !== null
             ? { kind: 'design', value: block.design }
-            : null;
+            : block.contract !== null
+              ? { kind: 'contract', value: block.contract }
+              : null;
     out.push({ criterion: block.criterion, verdict: block.verdict, at, cited: block.cited });
   }
   return out;
@@ -246,13 +249,45 @@ async function designRevisions(projectIds: string[]): Promise<Map<string, Map<st
   return out;
 }
 
+/** Each contract's current (newest approved) version, keyed `<project slug>/<contract slug>`. */
+async function currentContracts(projectIds: string[]): Promise<Map<string, Map<string, string>>> {
+  const out = new Map<string, Map<string, string>>(projectIds.map((id) => [id, new Map()]));
+  if (projectIds.length === 0) return out;
+  const rows = await db
+    .select({
+      projectId: contractVersions.providerProjectId,
+      slug: projects.slug,
+      contract: contractVersions.contractSlug,
+      version: contractVersions.version,
+      recordedAt: contractVersions.recordedAt,
+    })
+    .from(contractVersions)
+    .innerJoin(projects, eq(projects.id, contractVersions.providerProjectId))
+    .where(
+      and(
+        inArray(contractVersions.providerProjectId, projectIds),
+        eq(contractVersions.approval, 'approved'),
+      ),
+    );
+  const newestFirst = [...rows].sort(
+    (a, b) => (b.recordedAt?.getTime() ?? 0) - (a.recordedAt?.getTime() ?? 0),
+  );
+  for (const row of newestFirst) {
+    const held = out.get(row.projectId);
+    const key = `${row.slug}/${row.contract}`;
+    if (held && !held.has(key)) held.set(key, row.version);
+  }
+  return out;
+}
+
 async function reportFor(
   row: CriteriaRow,
   serving: ServingReading,
   designs: ReadonlyMap<string, number>,
+  contracts: ReadonlyMap<string, string>,
 ): Promise<IssueCriteriaReport> {
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
-  const identities = { ...issueIdentities(row), designs };
+  const identities = { ...issueIdentities(row), designs, contracts };
   const numbers = acceptanceCriteriaNumbers(row.acceptanceCriteria);
   if (numbers.length === 0) {
     return { issueId: row.id, unearned: [], broken: [], serving, uncorroborated: [] };
@@ -293,10 +328,21 @@ export async function unearnedCriteriaReports(
     .from(issues)
     .where(inArray(issues.id, issueIds))) as CriteriaRow[];
   // Oldest merge first, then id, as the sweep reads the gate: every list of them agrees (ISS-1346).
-  const designs = await designRevisions([...new Set(rows.map((row) => row.projectId))]);
+  const projectIds = [...new Set(rows.map((row) => row.projectId))];
+  const [designs, contracts] = await Promise.all([
+    designRevisions(projectIds),
+    currentContracts(projectIds),
+  ]);
   const out: IssueCriteriaReport[] = [];
   for (const row of [...rows].sort(byMerge)) {
-    out.push(await reportFor(row, serving, designs.get(row.projectId) ?? new Map()));
+    out.push(
+      await reportFor(
+        row,
+        serving,
+        designs.get(row.projectId) ?? new Map(),
+        contracts.get(row.projectId) ?? new Map(),
+      ),
+    );
   }
   return out;
 }

@@ -136,7 +136,8 @@ const publicationSchema = z
       z.null(),
     ]),
     lifecycle: z.enum(['experimental', 'production', 'deprecated']),
-    ecosystems: unique(z.array(uuid()).min(1).max(10)),
+    // cm:why zero ecosystems is an in-project contract: the project's own modules consume it (Q11, 2026-10-03) and no other project can, since a cross-project consumption names an ecosystem the contract is published in
+    ecosystems: unique(z.array(uuid()).max(10)),
     implementedBy: unique(z.array(slug()).max(20)).optional(),
   })
   .meta({
@@ -151,9 +152,10 @@ const publicationSchema = z
 
 export type Publication = z.infer<typeof publicationSchema>;
 
+// cm:why a consumption with no ecosystem is in-project — the project consuming its own contract; one of another project's contract always names the ecosystem both share (`interface-rules.ts:consumptionRefusals`)
 const consumptionSchema = z.strictObject({
   contract: z.string().regex(CONTRACT_REF),
-  ecosystem: uuid(),
+  ecosystem: uuid().optional(),
   builtAgainst: z.string().min(1).max(40),
   usedBy: unique(z.array(slug()).max(20)).optional(),
   elements: unique(z.array(z.string().min(1).max(200)).max(200)).optional(),

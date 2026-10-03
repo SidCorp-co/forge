@@ -137,6 +137,14 @@ publishes and the versions of its contracts, and a person is not handed that wor
    \`CONTRACT_KIND_MISMATCH\` (not the publication's type), \`ARTIFACT_UNREADABLE\` (the source does not
    parse; the detail names the line and column), \`VERSION_BUMP_TOO_SMALL\` or \`VERSION_NOT_IN_SCHEME\`,
    \`CONTRACT_NOT_PUBLISHED\` (no such publication, or another project's).
+   A recorded version is proposed; it is current only once approved:
+   \`contract_version_decide { contract, version, decision: approve | return, reason? }\`
+   (REST: \`POST /api/projects/:id/contracts/:contract/versions/:version/decision\`). An org owner or
+   admin decides any version; with the project document's \`contracts.approver: master\` your own agent
+   may approve a non-breaking or initial one, and a breaking or unmeasured one is refused
+   \`CONTRACT_BREAKING_NEEDS_PERSON\` whatever the policy. A contract published in no ecosystem is
+   in-project: the project's own modules consume it (a \`consumes\` entry or a link naming no
+   ecosystem), and naming an ecosystem for it is refused \`SELF_CONSUMPTION\`.
 
 Only this project's own agent (member or above) or a person holding admin on it writes either; another
 project's agent is refused \`INTERFACE_WRITER_NOT_PROJECT\` for the interface and

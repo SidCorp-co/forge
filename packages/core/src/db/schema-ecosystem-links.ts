@@ -18,9 +18,8 @@ export const ecosystemLinks = pgTable(
   'ecosystem_links',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    ecosystemId: uuid('ecosystem_id')
-      .notNull()
-      .references(() => ecosystems.id, { onDelete: 'restrict' }),
+    // cm:why null is an in-project link, a module of a project calling that project's own contract; every cross-project link names the ecosystem it was made in (`ecosystem_links_scope_chk`)
+    ecosystemId: uuid('ecosystem_id').references(() => ecosystems.id, { onDelete: 'restrict' }),
     consumerProjectId: uuid('consumer_project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
@@ -57,9 +56,9 @@ export const ecosystemLinks = pgTable(
         contractVersions.version,
       ],
     }).onDelete('restrict'),
-    notSelfChk: check(
-      'ecosystem_links_not_self_chk',
-      sql`${t.consumerProjectId} <> ${t.providerProjectId}`,
+    scopeChk: check(
+      'ecosystem_links_scope_chk',
+      sql`(${t.consumerProjectId} <> ${t.providerProjectId}) = (${t.ecosystemId} IS NOT NULL)`,
     ),
     stateChk: check(
       'ecosystem_links_state_chk',

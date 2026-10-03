@@ -214,9 +214,31 @@ export const contractVersions = pgTable(
       onDelete: 'restrict',
     }),
     elements: text('elements').array(),
+    // cm:why a version is proposed when recorded and current only once approved; `decided_as` says whether a person or the project's own agent decided, and `before-approval` marks the versions recorded before the gate existed (migration 0348), which were current as recorded
+    approval: text('approval').notNull().default('proposed'),
+    decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'restrict' }),
+    decidedAs: text('decided_as'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    decisionReason: text('decision_reason'),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.providerProjectId, t.contractSlug, t.version] }),
+    approvalChk: check(
+      'contract_versions_approval_chk',
+      sql`${t.approval} IN ('proposed', 'approved', 'returned')`,
+    ),
+    decidedChk: check(
+      'contract_versions_decided_chk',
+      sql`(${t.approval} = 'proposed') = (${t.decidedAt} IS NULL AND ${t.decidedAs} IS NULL)`,
+    ),
+    decidedAsChk: check(
+      'contract_versions_decided_as_chk',
+      sql`${t.decidedAs} IS NULL OR (${t.decidedAs} IN ('person', 'agent') AND ${t.decidedBy} IS NOT NULL) OR (${t.decidedAs} = 'before-approval' AND ${t.decidedBy} IS NULL)`,
+    ),
+    returnedChk: check(
+      'contract_versions_returned_chk',
+      sql`${t.approval} <> 'returned' OR (${t.decisionReason} IS NOT NULL AND length(${t.decisionReason}) BETWEEN 1 AND 2000)`,
+    ),
     latestIdx: index('contract_versions_latest_idx').on(
       t.providerProjectId,
       t.contractSlug,

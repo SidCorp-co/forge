@@ -54,9 +54,9 @@ const plants: [string, string, string, () => Doc][] = [
     },
   ],
   [
-    'consume its own contract',
+    'consume its own contract through an ecosystem',
     'SELF_CONSUMPTION',
-    '/consumes/2/contract',
+    '/consumes/2/ecosystem',
     () => {
       const d = pif();
       d.consumes.push({
@@ -64,6 +64,36 @@ const plants: [string, string, string, () => Doc][] = [
         ecosystem: FP,
         builtAgainst: '2026-09-28',
       });
+      return d;
+    },
+  ],
+  [
+    "consume another project's contract with no ecosystem",
+    'CONSUMPTION_ECOSYSTEM_MISSING',
+    '/consumes/0',
+    () => {
+      const d = pif();
+      delete d.consumes[0].ecosystem;
+      return d;
+    },
+  ],
+  [
+    'consume in-project a contract it does not publish',
+    'REF_NOT_PUBLISHED',
+    '/consumes/2/contract',
+    () => {
+      const d = pif();
+      d.consumes.push({ contract: 'forge-plugin/runner', builtAgainst: '2026-09-28' });
+      return d;
+    },
+  ],
+  [
+    'consume in-project a version never recorded',
+    'VERSION_UNKNOWN',
+    '/consumes/2/builtAgainst',
+    () => {
+      const d = pif();
+      d.consumes.push({ contract: 'forge-plugin/driver-skill', builtAgainst: '2020-01-01' });
       return d;
     },
   ],
@@ -122,6 +152,22 @@ describe('an interface write is refused by the rule it breaks, and by that rule 
     'store-a.interface.json',
   ])('%s breaks none', (file) => {
     expect(interfaceRefusals(example(file))).toEqual([]);
+  });
+
+  it('accepts a project consuming its own contract in-project, with no ecosystem', () => {
+    const d = pif();
+    d.consumes.push({
+      contract: 'forge-plugin/driver-skill',
+      builtAgainst: '2026-09-28',
+      usedBy: ['issue-flow'],
+    });
+    expect(interfaceRefusals(d)).toEqual([]);
+  });
+
+  it('accepts a contract published in no ecosystem, which is in-project only', () => {
+    const d = pif();
+    d.publishes['driver-skill'].ecosystems = [];
+    expect(interfaceRefusals(d)).toEqual([]);
   });
 
   it('holds a promise equal to the ecosystem window, which is the boundary', () => {

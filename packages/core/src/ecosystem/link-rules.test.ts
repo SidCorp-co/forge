@@ -180,10 +180,16 @@ const plants: [string, () => Doc, LinkWorld, string][] = [
     'REF_UNRESOLVED /contract/provider',
   ],
   [
-    'a link to its own contract',
+    'a link to its own contract through an ecosystem',
     () => withDoc((d) => (d.contract.provider = PLUGIN)),
     world(),
-    'SELF_CONSUMPTION /contract/provider',
+    'SELF_CONSUMPTION /ecosystem',
+  ],
+  [
+    'a link to another project naming no ecosystem',
+    () => withDoc((d) => delete d.ecosystem),
+    world(),
+    'LINK_ECOSYSTEM_MISSING /ecosystem',
   ],
   [
     'a link naming another consumer',
@@ -341,5 +347,41 @@ describe('a call site is read the way the consumer holds its code', () => {
     const rec = record();
     rec.callSites[0].artefact = { kind: 'workflow', id: 'wf' };
     expect(emittedAccepts(rec)).toBe(false);
+  });
+});
+
+describe("an in-project link: a module calling its own project's contract", () => {
+  const own = (over: Partial<LinkWorld> = {}) =>
+    world({
+      consumerActiveIn: new Set(),
+      provider: {
+        id: PLUGIN,
+        activeIn: new Set(),
+        interface: example('forge-plugin.interface.json') as InterfaceDocument,
+      },
+      versions: new Set(['2026-09-28']),
+      ...over,
+    });
+  const inProject = () =>
+    withDoc((d) => {
+      delete d.ecosystem;
+      d.contract = { provider: PLUGIN, slug: 'driver-skill' };
+      d.pinnedVersion = '2026-09-28';
+    });
+
+  it('is accepted with no ecosystem, whatever ecosystems either side is in', () => {
+    expect(codesAt(inProject(), own())).toEqual([]);
+  });
+
+  it('is refused when the contract is not one the project publishes', () => {
+    const d = inProject();
+    d.contract.slug = 'runner';
+    expect(codesAt(d, own())).toEqual(['REF_NOT_PUBLISHED /contract/slug']);
+  });
+
+  it('is refused when it pins a version never recorded', () => {
+    expect(codesAt(inProject(), own({ versions: new Set() }))).toEqual([
+      'VERSION_UNKNOWN /pinnedVersion',
+    ]);
   });
 });

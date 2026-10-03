@@ -9,6 +9,7 @@ import {
   taskStatuses,
   waitingKinds,
 } from '../../db/schema.js';
+import { LANDED_CONTRACT } from '../../ecosystem/contract/drift.js';
 import { actorAgency } from '../../issues/actor-agency.js';
 import { transitionIssueStatus } from '../../issues/apply-transition.js';
 import { issueArchiveFilterSchema } from '../../issues/archive.js';
@@ -130,6 +131,12 @@ const dataObject = z
     target: z.enum(['feature', 'base', 'prod']).optional(),
     commit: mergedCommitShaSchema.optional(),
     landing: mergedLandingSchema.optional(),
+    contracts: z
+      .array(
+        z.string().regex(LANDED_CONTRACT, 'a contract version is <project>/<contract>@<version>'),
+      )
+      .max(20)
+      .optional(),
     mergedAt: z.string().optional(),
     note: z.string().max(10_000).optional(),
     issueId: issueRefSchema.optional(),
@@ -816,6 +823,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             ...(input.data?.note ? { note: input.data.note } : {}),
             ...(input.data?.commit ? { commit: input.data.commit } : {}),
             ...(input.data?.landing ? { landing: input.data.landing } : {}),
+            ...(input.data?.contracts ? { contracts: input.data.contracts } : {}),
             ...(input.data?.mergedAt
               ? { mergedAt: parseDate(input.data.mergedAt, 'mergedAt') }
               : {}),
