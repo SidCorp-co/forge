@@ -29,29 +29,24 @@ const NAME_LABELS = [
 	"bn",
 ];
 
-// cm:why a labelled field ("Họ tên: …", "patient: …") names a person up to the end of its clause;
-// one already scrubbed is left as it is, so a second scrub changes nothing
+// cm:why a labelled field names a person up to the end of its clause; one already scrubbed stays
 const LABELLED = new RegExp(
 	`(^|[\\s(\\[,;])((?:${NAME_LABELS.join("|")})\\s*[:=]\\s*)(?!\\s*\\[name\\])([^\\n,;)\\]]+)`,
 	"giu",
 );
 
-// A capitalised word, title-case or uppercase, whole: diacritics are letters or combining marks,
-// so "NGUYỄN" is one word and never four.
 const WORD = "\\p{Lu}\\p{M}*[\\p{L}\\p{M}]*";
 const GAP = "[^\\S\\n]+";
 const NOT_AFTER_LETTER = "(?<![\\p{L}\\p{M}\\d_])";
 const NOT_BEFORE_LETTER = "(?![\\p{L}\\p{M}])";
 
-// cm:why "bệnh nhân Nguyễn Văn An" / "Người bệnh NGUYỄN VĂN A" / "patient John Smith": two to four
-// capitalised words after the noun that marks a patient. "Patient" capitalised opens headings
-// ("Patient Care Coordination"), so the English marker counts only in lower case.
+// cm:why two to four capitalised words after a patient noun; "Patient" capitalised opens headings
+// ("Patient Care Coordination"), so the English marker counts only in lower case
 const MARKED = new RegExp(
 	`(^|[\\s(\\[,;])((?:[bB]ệnh nhân|[nN]gười bệnh|patient|BN)${GAP})(${WORD}(?:${GAP}${WORD}){1,3})${NOT_BEFORE_LETTER}`,
 	"gu",
 );
 
-// The most common Vietnamese surnames, together about nine in ten people.
 const SURNAMES = [
 	"Nguyễn", "Trần", "Lê", "Phạm", "Hoàng", "Huỳnh", "Phan", "Vũ", "Võ", "Đặng",
 	"Bùi", "Đỗ", "Hồ", "Ngô", "Dương", "Lý", "Đinh", "Đoàn", "Trịnh", "Trương",
@@ -77,8 +72,6 @@ const NOT_A_NAME = new Set(
 	].map((p) => p.toUpperCase()),
 );
 
-// cm:why an unlabelled name is a known surname and one to three more capitalised words; see the
-// trade-off on scrubPersonalData
 const UNLABELLED = new RegExp(
 	`${NOT_AFTER_LETTER}(?:${SURNAMES.join("|")})(?:${GAP}${WORD}){1,3}${NOT_BEFORE_LETTER}`,
 	"gu",
