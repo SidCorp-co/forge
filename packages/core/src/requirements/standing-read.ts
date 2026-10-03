@@ -4,13 +4,10 @@
  * questions and status moves recorded on its linked issues.
  */
 
-import type {
-  RequirementHistoryEntry,
-  RequirementStanding,
-} from '@forge/contracts/requirements';
+import type { RequirementHistoryEntry, RequirementStanding } from '@forge/contracts/requirements';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { activityLog, issues, users } from '../db/schema.js';
+import { activityLog, issues } from '../db/schema.js';
 import {
   type DeliveryPhase,
   type RequirementStatus,
@@ -23,6 +20,7 @@ import {
 import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { peopleOf } from '../lib/people.js';
 import { deriveStanding, type StandingIssueCriterion } from './standing.js';
 
 export interface StandingRow {
@@ -37,27 +35,6 @@ export interface StandingRow {
 export interface StandingViewer {
   userId: string;
   canSignOff: boolean;
-}
-
-interface Person {
-  name: string;
-  kind: 'human' | 'agent';
-}
-
-/** A person's label: the name they set, else the part of their address before the `@`. */
-async function peopleOf(ids: readonly (string | null)[]): Promise<Map<string, Person>> {
-  const unique = [...new Set(ids.filter((i): i is string => i !== null))];
-  if (unique.length === 0) return new Map();
-  const rows = await db
-    .select({ id: users.id, displayName: users.displayName, email: users.email, kind: users.kind })
-    .from(users)
-    .where(inArray(users.id, unique));
-  return new Map(
-    rows.map((u) => [
-      u.id,
-      { name: u.displayName?.trim() || (u.email.split('@')[0] ?? u.email), kind: u.kind },
-    ]),
-  );
 }
 
 type CriterionVerdictRow = {
@@ -169,7 +146,11 @@ export async function standingsOf(
         status: row.status as RequirementStatus,
         phase: phaseBy.get(row.id) ?? null,
         owner: row.ownerId
-          ? { id: row.ownerId, name: people.get(row.ownerId)?.name ?? null }
+          ? {
+              id: row.ownerId,
+              name: people.get(row.ownerId)?.name ?? null,
+              kind: people.get(row.ownerId)?.kind ?? 'human',
+            }
           : null,
         viewer,
         revisions: by(revisions, row.id).map((r) => ({

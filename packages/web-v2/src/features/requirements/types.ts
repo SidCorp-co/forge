@@ -18,7 +18,7 @@ export interface RequirementCriterion { id: string; code: string; body: string; 
 export interface RequirementRevision {
   revision: number; state: RevisionState; baseRevision: number | null;
   spec: RequirementSpec; tldr: string | null; changeSummary: string | null; reason: string;
-  authorId: string; authorName: string | null; createdAt: string;
+  authorId: string; authorName: string | null; authorKind: 'human' | 'agent'; createdAt: string;
   proposedAt: string | null; decidedBy: string | null; decidedByName: string | null; decidedAt: string | null; returnReason: string | null;
   criteria: RequirementCriterion[];
 }
