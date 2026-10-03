@@ -1,3 +1,4 @@
+import { ANSWER_VIEWS } from '@forge/contracts/projection';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -5,6 +6,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { refused } from '../project-config/respond.js';
 import { linkIssue, linkWorkflow, unlinkIssue, unlinkWorkflow } from './issue-links.js';
+import { requirementSummaryOf } from './projection.js';
 import { listRequirementsAs, type RequirementActor, readRequirementAs } from './read.js';
 import { criterionSchema, specSchema } from './schemas.js';
 import {
@@ -51,6 +53,14 @@ const revisionParam = zValidator(
   },
 );
 
+const viewQuery = zValidator(
+  'query',
+  z.strictObject({ view: z.enum(ANSWER_VIEWS).optional() }),
+  (r) => {
+    if (!r.success) throw badRequest('invalid query: view? (summary | full, full by default)');
+  },
+);
+
 const revisionFields = {
   reason: z.string().max(4_000),
   spec: specSchema.optional(),
@@ -70,8 +80,10 @@ function answer(c: Context, outcome: RequirementOutcome) {
   return c.json(outcome.requirement, outcome.created ? 201 : 200);
 }
 
-requirementRoutes.get('/:id/requirements', projectParam, async (c) => {
-  const requirements = await listRequirementsAs(actorOf(c), c.req.valid('param').id);
+requirementRoutes.get('/:id/requirements', projectParam, viewQuery, async (c) => {
+  const listed = await listRequirementsAs(actorOf(c), c.req.valid('param').id);
+  const requirements =
+    c.req.valid('query').view === 'summary' ? listed.map(requirementSummaryOf) : listed;
   return c.json({ requirements, returned: requirements.length });
 });
 

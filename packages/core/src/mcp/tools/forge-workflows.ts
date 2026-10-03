@@ -4,6 +4,7 @@
  * `workflows/routes.ts` are the same services; this face only carries the principal across.
  */
 
+import { DESIGN_VIEWS } from '@forge/contracts/workflows';
 import { z } from 'zod';
 import type { NamedRefusal } from '../../project-config/respond.js';
 import { DESIGN_DECISIONS, DESIGN_REASON_MAX } from '../../workflows/design.js';
@@ -14,6 +15,13 @@ import {
   readDesignAs,
   unlinkBuildAs,
 } from '../../workflows/design-service.js';
+import {
+  designActAnswerOf,
+  designStepsOf,
+  designSummaryOf,
+  workflowSummaryOf,
+  workflowWriteAnswerOf,
+} from '../../workflows/projection.js';
 import {
   createWorkflow,
   listWorkflowsAs,
@@ -31,6 +39,7 @@ import {
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { projectMany, projectOne, summaryNotice, VIEW_RULE } from './projection.js';
 
 const inputSchema = z
   .object({
@@ -60,6 +69,9 @@ const inputSchema = z
     /** template: the diagram template to read, by id and version. */
     templateId: z.string().trim().min(1).max(64).optional(),
     templateVersion: z.number().int().min(1).optional(),
+    view: z.enum(DESIGN_VIEWS).optional(),
+    stepFrom: z.number().int().min(1).optional(),
+    stepTo: z.number().int().min(1).optional(),
   })
   .strict();
 
@@ -111,7 +123,16 @@ const DESCRIPTION =
   'design (its template, steps, order, nodes, edge contracts, return edges) of a proposed, approved or returned workflow ' +
   'proposes that revision again; a write that only refreshes status or evidence does not. ' +
   'design: { workflowId } — the status (draft | proposed | approved | returned), every proposed ' +
-  'revision with its decision and reason, the approved revision, and the issues that build it. ' +
+  'revision with its decision, reason and step count (no document), the approved revision, and the issues ' +
+  "that build it; view: 'steps' adds one revision's steps ({ revision? (the newest by default), stepFrom?, " +
+  "stepTo? } numbered from 1, with the edges that touch them); view: 'full' answers every revision with its whole document. " +
+  'list answers each workflow as { workflowId, flow, title, kind, template, status, revision, approvedRevision, ' +
+  'stepCount, edgeCount, returnReason, writerName, updatedAt }; get answers the whole current document. ' +
+  'write answers { workflowId, flow, revision, created, status, approvedRevision, stepCount, edgeCount, ' +
+  'updatedAt }; propose and decide answer the design head and the revision acted on, link and unlink the ' +
+  'head and the issues that build it. ' +
+  VIEW_RULE +
+  ' ' +
   'decide: { workflowId, revision, decision: approve|return, reason } — only the approver the ' +
   "project's `workflows.designApprover` names: `owner` (default) is an org admin person, and an " +
   "agent is refused WORKFLOW_DESIGN_APPROVER_NOT_PERSON; `master` lets this project's own master " +
@@ -120,6 +141,20 @@ const DESCRIPTION =
   'then refused WORKFLOW_DESIGN_NOT_APPROVED until the design is approved, and forge_issues get ' +
   'shows why under `buildsWorkflow`. unlink lifts the gate, so only the approver may. ' +
   'Guides: forge_guide get workflow-templates (which template to pick) and workflow-design.';
+
+function answerView(input: Input) {
+  if (input.view === 'steps' && input.action !== 'design') {
+    throw new Error(
+      `BAD_REQUEST: view 'steps' reads a design; ${input.action} takes view summary or full`,
+    );
+  }
+  if ((input.stepFrom !== undefined || input.stepTo !== undefined) && input.view !== 'steps') {
+    throw new Error(
+      "BAD_REQUEST: stepFrom and stepTo bound view 'steps'; send view: 'steps' with them",
+    );
+  }
+  return input.view === 'steps' ? undefined : input.view;
+}
 
 function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]> {
   const value = input[key];
@@ -139,13 +174,42 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
     userId: ctx.principal.userId,
     agency: principalAgency(ctx.principal),
   };
+  const view = answerView(input);
   switch (input.action) {
     case 'list':
-      return { workflows: await listWorkflowsAs(actor.userId, projectId) };
-    case 'get':
-      return readWorkflowAs(actor.userId, projectId, need(input, 'workflowId'));
-    case 'design':
-      return readDesignAs(actor, projectId, need(input, 'workflowId'));
+      return {
+        workflows: projectMany(
+          view,
+          await listWorkflowsAs(actor.userId, projectId),
+          workflowSummaryOf,
+        ),
+        ...summaryNotice(
+          view,
+          "get { workflowId } for one workflow's whole document, or view: 'full'",
+        ),
+      };
+    case 'get': {
+      const read = await readWorkflowAs(actor.userId, projectId, need(input, 'workflowId'));
+      return input.view === 'summary' ? workflowSummaryOf(read) : read;
+    }
+    case 'design': {
+      const design = await readDesignAs(actor, projectId, need(input, 'workflowId'));
+      if (input.view === 'full') return design;
+      if (input.view === 'steps') {
+        return designStepsOf(design, {
+          revision: input.revision,
+          from: input.stepFrom,
+          to: input.stepTo,
+        });
+      }
+      return {
+        ...designSummaryOf(design),
+        ...summaryNotice(
+          view,
+          "view: 'steps' with revision and stepFrom / stepTo for a revision's steps, or view: 'full'",
+        ),
+      };
+    }
     case 'write': {
       const baseRevision = input.baseRevision ?? null;
       const outcome = input.workflowId
@@ -158,7 +222,11 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
           })
         : await createWorkflow({ projectId, writer: actor, baseRevision, raw: input.document });
       if (!outcome.ok) return refusedBy(outcome.refusals);
-      return { ...workflowView(outcome.row, outcome.document), created: outcome.created };
+      return projectOne(
+        view,
+        { ...workflowView(outcome.row, outcome.document), created: outcome.created },
+        (full) => workflowWriteAnswerOf(full, full.created),
+      );
     }
     case 'propose': {
       const outcome = await proposeDesign({
@@ -168,7 +236,10 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         revision: need(input, 'revision'),
         issue: input.issue,
       });
-      return outcome.ok ? outcome.design : refusedBy(outcome.refusals);
+      if (!outcome.ok) return refusedBy(outcome.refusals);
+      return projectOne(view, outcome.design, (d) =>
+        designActAnswerOf(d, 'propose', input.revision),
+      );
     }
     case 'decide': {
       const outcome = await decideDesignAs({
@@ -179,7 +250,10 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         decision: need(input, 'decision'),
         reason: input.reason ?? null,
       });
-      return outcome.ok ? outcome.design : refusedBy(outcome.refusals);
+      if (!outcome.ok) return refusedBy(outcome.refusals);
+      return projectOne(view, outcome.design, (d) =>
+        designActAnswerOf(d, 'decide', input.revision),
+      );
     }
     case 'templates':
       return { templates: await listProjectTemplatesAs(actor.userId, projectId) };
@@ -199,7 +273,10 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         actor,
         issue: need(input, 'issue'),
       });
-      return outcome.ok ? outcome.design : refusedBy(outcome.refusals);
+      if (!outcome.ok) return refusedBy(outcome.refusals);
+      return projectOne(view, outcome.design, (d) =>
+        designActAnswerOf(d, input.action as 'link' | 'unlink'),
+      );
     }
   }
 }

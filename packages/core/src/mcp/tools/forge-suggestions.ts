@@ -4,7 +4,11 @@
  * the REST routes in `suggestions/routes.ts` are the same services.
  */
 
-import { SUGGESTION_KINDS, SUGGESTION_STATUSES } from '@forge/contracts/suggestions';
+import {
+  SUGGESTION_KINDS,
+  SUGGESTION_STATUSES,
+  suggestionSummaryOf,
+} from '@forge/contracts/suggestions';
 import { z } from 'zod';
 import type { NamedRefusal } from '../../project-config/respond.js';
 import {
@@ -27,6 +31,7 @@ import {
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { projectMany, projectOne, summaryNotice, VIEW_RULE, viewInput } from './projection.js';
 
 const ACTIONS = ['list', 'create', 'accept', 'reject', 'withdraw'] as const;
 
@@ -46,6 +51,7 @@ const inputSchema = z
     model: z.string().max(200).optional(),
     reason: z.string().max(4_000).optional(),
     status: z.array(z.enum(SUGGESTION_STATUSES)).optional(),
+    view: viewInput,
   })
   .strict();
 
@@ -76,7 +82,10 @@ const DESCRIPTION =
   'feedback_triage on `feedback` (FB-n), baseRevision null: { route: issue | revision | new_requirement | answer | duplicate, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }; accepting it writes the route (forge_feedback_items). ' +
   'accept / reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); ' +
   'accepting a revision_diff writes a new DRAFT revision, never a current one. withdraw: the producer retracts its own. ' +
-  'list: { requirement | issue, status? }.';
+  'list: { requirement | issue, status? } answers each suggestion as { id, kind, status, target, baseRevision, ' +
+  'producerKind, producerId, model, decidedBy, decidedAt, createdAt, payloadPurgedAt }, without its payload, ' +
+  'fingerprint or decision reason; a write answers the same summary of the suggestion it wrote, and the effect. ' +
+  VIEW_RULE;
 
 function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]> {
   const value = input[key];
@@ -89,9 +98,12 @@ function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]
 const refusedBy = (refusals: readonly NamedRefusal[]) =>
   refusedAnswer(refusals, 'SUGGESTION_REFUSED');
 
-const settle = (outcome: SuggestionOutcome) =>
+const settle = (input: Input, outcome: SuggestionOutcome) =>
   outcome.ok
-    ? { suggestion: outcome.suggestion, ...(outcome.effect ? { effect: outcome.effect } : {}) }
+    ? {
+        suggestion: projectOne(input.view, outcome.suggestion, suggestionSummaryOf),
+        ...(outcome.effect ? { effect: outcome.effect } : {}),
+      }
     : refusedBy(outcome.refusals);
 
 function targetOf(input: Input): SuggestionTargetRef | undefined {
@@ -112,18 +124,25 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
     agency: principalAgency(ctx.principal),
   };
   switch (input.action) {
-    case 'list':
-      return listSuggestions({
+    case 'list': {
+      const listed = await listSuggestions({
         projectId,
         userId: actor.userId,
         target: targetOf(input),
         statuses: input.status,
       });
+      return {
+        suggestions: projectMany(input.view, listed.suggestions, suggestionSummaryOf),
+        open: listed.open,
+        ...summaryNotice(input.view, "view: 'full' for each suggestion's payload and reason"),
+      };
+    }
     case 'create': {
       const target = targetOf(input);
       if (!target)
         throw new Error('BAD_REQUEST: create needs `requirement`, `issue` or `feedback`');
       return settle(
+        input,
         await createSuggestion({
           projectId,
           actor,
@@ -138,9 +157,13 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     }
     case 'accept':
-      return settle(await acceptSuggestion({ projectId, id: need(input, 'suggestionId'), actor }));
+      return settle(
+        input,
+        await acceptSuggestion({ projectId, id: need(input, 'suggestionId'), actor }),
+      );
     case 'reject':
       return settle(
+        input,
         await rejectSuggestion({
           projectId,
           id: need(input, 'suggestionId'),
@@ -150,6 +173,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'withdraw':
       return settle(
+        input,
         await withdrawSuggestion({ projectId, id: need(input, 'suggestionId'), actor }),
       );
   }

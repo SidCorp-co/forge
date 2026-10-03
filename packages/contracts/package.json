@@ -85,6 +85,14 @@
     "./workflow-templates": {
       "types": "./dist/workflow-templates.d.ts",
       "default": "./dist/workflow-templates.js"
+    },
+    "./workflows": {
+      "types": "./dist/workflows.d.ts",
+      "default": "./dist/workflows.js"
+    },
+    "./projection": {
+      "types": "./dist/projection.d.ts",
+      "default": "./dist/projection.js"
     }
   },
   "types": "./src/index.ts",
