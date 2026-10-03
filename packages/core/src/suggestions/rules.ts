@@ -151,7 +151,7 @@ function cycleAt(p: Breakdown): [number, number] | null {
   const visit = (i: number): [number, number] | null => {
     state.set(i, 'open');
     for (const [j, k] of (p.issues[i]?.blockedBy ?? []).entries()) {
-      if (k >= p.issues.length || k === i) continue;
+      if (typeof k !== 'number' || k >= p.issues.length || k === i) continue;
       if (state.get(k) === 'open') return [i, j];
       const found = state.has(k) ? null : visit(k);
       if (found) return found;
@@ -194,7 +194,7 @@ export function breakdownFaults(
       }
     });
     (issue.blockedBy ?? []).forEach((k, j) => {
-      if (k >= p.issues.length || k === i) {
+      if (typeof k === 'number' && (k >= p.issues.length || k === i)) {
         out.push({
           code: 'SUGGESTION_PAYLOAD_INVALID',
           path: `/payload/issues/${i}/blockedBy/${j}`,
@@ -204,4 +204,45 @@ export function breakdownFaults(
     });
   });
   return out;
+}
+
+/** An existing issue a breakdown names as a blocker, as it was read; null when nothing answers. */
+export interface BlockerFound {
+  key: string;
+  projectId: string;
+  status: string;
+  archived: boolean;
+}
+
+const TERMINAL_BLOCKER = new Set(['closed', 'dropped']);
+
+// cm:guard a blocker named by key or uuid is a live issue of this project: one that does not
+// resolve here is SUGGESTION_BLOCKER_UNKNOWN (another project's included), a closed, dropped or
+// archived one SUGGESTION_BLOCKER_TERMINAL, since a blocks edge on it holds nothing back (ISS-89)
+export function blockerRefusal(
+  path: string,
+  ref: string,
+  projectId: string,
+  found: BlockerFound | null,
+  unreadable: string | null = null,
+): SuggestionRefusal | null {
+  if (!found || found.projectId !== projectId) {
+    return {
+      code: 'SUGGESTION_BLOCKER_UNKNOWN',
+      path,
+      detail: unreadable
+        ? `blockedBy entry "${ref}" is neither an issue of this project nor an index: ${unreadable}`
+        : found
+          ? `blockedBy entry "${ref}" is an issue of another project; a blocks edge stays inside one project.`
+          : `blockedBy entry "${ref}" names no issue of this project; a string names an existing issue by key (ISS-12) or uuid, a number another issue of this breakdown.`,
+    };
+  }
+  if (found.archived || TERMINAL_BLOCKER.has(found.status)) {
+    return {
+      code: 'SUGGESTION_BLOCKER_TERMINAL',
+      path,
+      detail: `blockedBy entry ${found.key} is ${found.archived ? 'archived' : found.status}, so a blocks edge on it would hold nothing back; name a live issue, or leave it out.`,
+    };
+  }
+  return null;
 }

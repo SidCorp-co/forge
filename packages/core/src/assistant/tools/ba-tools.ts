@@ -218,7 +218,7 @@ const suggest =
     name: 'ba_suggest',
     grant: 'projects:write',
     description:
-      'Propose a change for a person to accept or reject. kind revision_diff: payload { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } — the whole criteria list of the new revision (a live code keeps it, no code takes the next, one left out is retired). readiness: { checks: [{ check, passed, detail? }] }. breakdown: { issues: [{ title, description?, criteria?: [{ body, tracesTo? }] }], uncovered? }. duplicate: { duplicateOf, similarity?, note? }. requirement_draft / triage target an issue (pass `issue`). baseRevision is the currentRevision you read (null when there is none).',
+      'Propose a change for a person to accept or reject. kind revision_diff: payload { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } — the whole criteria list of the new revision (a live code keeps it, no code takes the next, one left out is retired). readiness: { checks: [{ check, passed, detail? }] }. breakdown: { issues: [{ title, description?, criteria?: [{ body, tracesTo? }], blockedBy?: [index | issue key] }], uncovered? } — a blockedBy number is another issue of the breakdown, a string an existing live issue (ISS-12). duplicate: { duplicateOf, similarity?, note? }. requirement_draft / triage target an issue (pass `issue`). baseRevision is the currentRevision you read (null when there is none).',
     inputSchema: schema(suggestInput),
     handler: async (args) => {
       const input = suggestInput.parse(args);

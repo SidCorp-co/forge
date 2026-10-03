@@ -71,7 +71,11 @@ const DESCRIPTION =
   'target SUGGESTION_QUEUE_FULL, a payload that does not parse for its kind SUGGESTION_PAYLOAD_INVALID. ' +
   'revision_diff takes { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } on a ' +
   'requirement; requirement_draft takes { title, reason, … } on an issue; readiness { checks: [{ check, passed, detail? }] }; ' +
-  'breakdown { issues: [{ title, description?, criteria?: [{ body, tracesTo? }] }], uncovered? }; ' +
+  'breakdown { issues: [{ title, description?, criteria?: [{ body, tracesTo? }], blockedBy?: [index | issue key] }], uncovered? } — ' +
+  'a blockedBy number is another issue of this breakdown, a string an existing live issue of the project (ISS-12 or uuid), ' +
+  'so the order can run after another requirement’s work; checked at create and at accept (SUGGESTION_PAYLOAD_INVALID for a BC ' +
+  'the base revision lacks or a blocker cycle, SUGGESTION_BLOCKER_UNKNOWN, SUGGESTION_BLOCKER_TERMINAL), and accepting it files ' +
+  'every issue at draft, linked, traced and edged, in one transaction; ' +
   'triage { note, priority?, category?, route? } on an issue; duplicate { duplicateOf, similarity?, note? }; ' +
   'feedback_triage on `feedback` (FB-n), baseRevision null: { route: issue | revision | new_requirement | answer | duplicate, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }; accepting it writes the route (forge_feedback_items). ' +
   'accept { suggestionId, reason? } and reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); ' +

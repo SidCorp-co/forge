@@ -17,9 +17,10 @@ import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import { type TriageWritten, triageIn } from '../feedback/triage.js';
 import { insertIssueRow } from '../issues/create-service.js';
 import { putCriteria } from '../issues/criteria/store.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { activeIssuePrefix, heldIssuePrefixes } from '../issues/issue-prefix-read.js';
+import { isUuid } from '../issues/issue-route-ref.js';
 import { type PendingIssueRelation, writeIssueRelations } from '../issues/relations-service.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
+import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { requirementKey, rowIn } from '../requirements/read.js';
 import { linkIssueRefusal } from '../requirements/rules.js';
@@ -30,7 +31,7 @@ import {
   type RevisionWrite,
 } from '../requirements/service.js';
 import { type Row, type SuggestionActor, targetOfRow } from './read.js';
-import { breakdownFaults } from './rules.js';
+import { blockerRefusal, breakdownFaults } from './rules.js';
 
 export type Effect = SuggestionEffect | FeedbackTriageEffect;
 export type AcceptChannel = 'web' | 'mcp';
@@ -77,13 +78,72 @@ type Breakdown = ReturnType<(typeof SUGGESTION_PAYLOADS)['breakdown']['schema'][
 
 /** What a breakdown is checked against, at propose and again at accept: the requirement is agreed,
  *  and the payload's traces and blockers hold at `head`. */
+/** Each blockedBy entry that names an existing issue, read in the caller's transaction. */
+async function namedBlockersIn(tx: Tx, projectId: string, p: Breakdown) {
+  const refusals: NamedRefusal[] = [];
+  const ids = new Map<string, string>();
+  const prefix = await activeIssuePrefix(projectId);
+  let held: string[] = [];
+  const cols = {
+    id: issues.id,
+    projectId: issues.projectId,
+    issSeq: issues.issSeq,
+    status: issues.status,
+    archivedAt: issues.archivedAt,
+  };
+  for (const [i, item] of p.issues.entries()) {
+    for (const [j, ref] of (item.blockedBy ?? []).entries()) {
+      if (typeof ref !== 'string') continue;
+      let unreadable: string | null = null;
+      let rows: {
+        id: string;
+        projectId: string;
+        issSeq: number;
+        status: string;
+        archivedAt: Date | null;
+      }[] = [];
+      if (isUuid(ref)) {
+        rows = await tx.select(cols).from(issues).where(eq(issues.id, ref));
+      } else {
+        if (issueRefNeedsHeldPrefixes(ref) && !held.length)
+          held = await heldIssuePrefixes(projectId);
+        const parsed = parseIssueRef(ref, held);
+        if (parsed.ok) {
+          rows = await tx
+            .select(cols)
+            .from(issues)
+            .where(and(eq(issues.projectId, projectId), eq(issues.issSeq, parsed.issSeq)));
+        } else unreadable = parsed.message;
+      }
+      const row = rows[0];
+      const found = row
+        ? {
+            key: formatIssueRef(prefix, row.issSeq),
+            projectId: row.projectId,
+            status: row.status,
+            archived: row.archivedAt !== null,
+          }
+        : null;
+      const path = `/payload/issues/${i}/blockedBy/${j}`;
+      const refusal = blockerRefusal(path, ref, projectId, found, unreadable);
+      if (refusal) refusals.push(refusal);
+      else if (row) ids.set(ref, row.id);
+    }
+  }
+  return { refusals, ids };
+}
+
 export async function breakdownGuardIn(
   tx: Tx,
   projectId: string,
   requirementId: string,
   head: number | null,
   p: Breakdown,
-): Promise<{ refusals: NamedRefusal[]; codes: ReadonlyMap<string, string> }> {
+): Promise<{
+  refusals: NamedRefusal[];
+  codes: ReadonlyMap<string, string>;
+  blockers: ReadonlyMap<string, string>;
+}> {
   const req = await rowIn(tx, projectId, requirementId);
   const notAgreed = linkIssueRefusal(req.status as Parameters<typeof linkIssueRefusal>[0]);
   if (notAgreed || head === null) {
@@ -96,10 +156,16 @@ export async function breakdownGuardIn(
         },
       ],
       codes: new Map(),
+      blockers: new Map(),
     };
   }
   const codes = await liveCodes(tx, req.id, head);
-  return { refusals: breakdownFaults(p, codes, head), codes };
+  const named = await namedBlockersIn(tx, projectId, p);
+  return {
+    refusals: [...breakdownFaults(p, codes, head), ...named.refusals],
+    codes,
+    blockers: named.ids,
+  };
 }
 
 // cm:why workflow requirement-to-delivery step `approve`: core creates every issue with
@@ -117,7 +183,7 @@ async function breakdownEffect(
   const p = SUGGESTION_PAYLOADS.breakdown.schema.parse(row.payload);
   const guard = await breakdownGuardIn(tx, projectId, target.id, head, p);
   if (guard.refusals.length || head === null) return { refusals: guard.refusals };
-  const { codes } = guard;
+  const { codes, blockers } = guard;
   const req = await rowIn(tx, projectId, target.id);
   const ids: string[] = [];
   for (const item of p.issues) {
@@ -150,7 +216,7 @@ async function breakdownEffect(
   for (const [i, item] of p.issues.entries()) {
     const edges = (item.blockedBy ?? []).map((k) => ({
       kind: 'blocks' as const,
-      dependsOnId: ids[k] as string,
+      dependsOnId: (typeof k === 'number' ? ids[k] : blockers.get(k)) as string,
       reason: `breakdown of ${requirementKey(req.reqSeq)} (suggestion ${row.id})`,
     }));
     relations.push(...(await writeIssueRelations(writer, projectId, ids[i] as string, edges, tx)));

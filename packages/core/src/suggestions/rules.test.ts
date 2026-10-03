@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { type PersonActFacts, personActRefusal } from '../lib/person-act.js';
 import {
   baseStaleRefusal,
+  blockerRefusal,
   breakdownFaults,
   decidedRefusal,
   duplicateRefusal,
@@ -146,5 +147,38 @@ describe('a breakdown, checked at propose and again at accept', () => {
       1,
     );
     expect(faults[0]).toMatchObject({ path: '/payload/issues/1/blockedBy/0' });
+  });
+});
+
+describe('a breakdown blocker named by key or uuid (ISS-89)', () => {
+  const live = { key: 'ISS-9', projectId: 'p1', status: 'open', archived: false };
+  const at = '/payload/issues/0/blockedBy/0';
+
+  it('a live issue of this project passes, and a string index never reads as a payload index', () => {
+    expect(blockerRefusal(at, 'ISS-9', 'p1', live)).toBeNull();
+    expect(
+      breakdownFaults({ issues: [{ title: 'A', blockedBy: ['ISS-9'] }] }, new Map(), 1),
+    ).toEqual([]);
+  });
+
+  it('nothing answering, another project’s issue, or an unreadable key is SUGGESTION_BLOCKER_UNKNOWN', () => {
+    expect(blockerRefusal(at, 'ISS-404', 'p1', null)?.code).toBe('SUGGESTION_BLOCKER_UNKNOWN');
+    const foreign = blockerRefusal(at, 'u-1', 'p1', { ...live, projectId: 'p2' });
+    expect(foreign?.code).toBe('SUGGESTION_BLOCKER_UNKNOWN');
+    expect(foreign?.detail).toContain('another project');
+    expect(blockerRefusal(at, 'nope', 'p1', null, 'not a key')?.detail).toContain('not a key');
+  });
+
+  it('a closed, dropped or archived issue is SUGGESTION_BLOCKER_TERMINAL', () => {
+    for (const found of [
+      { ...live, status: 'closed' },
+      { ...live, status: 'dropped' },
+      { ...live, archived: true },
+    ]) {
+      expect(blockerRefusal(at, 'ISS-9', 'p1', found)).toMatchObject({
+        code: 'SUGGESTION_BLOCKER_TERMINAL',
+        path: at,
+      });
+    }
   });
 });

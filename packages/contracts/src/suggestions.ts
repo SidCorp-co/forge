@@ -67,6 +67,8 @@ export const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_DECIDED",
 	"SUGGESTION_WITHDRAW_FORBIDDEN",
 	"SUGGESTION_EFFECT_UNDECIDED",
+	"SUGGESTION_BLOCKER_UNKNOWN",
+	"SUGGESTION_BLOCKER_TERMINAL",
 	"CLARIFICATION_ALREADY_OPEN",
 ] as const;
 export type SuggestionRefusalCode = (typeof SUGGESTION_REFUSAL_CODES)[number];
@@ -106,6 +108,14 @@ const revisionWrite = {
 };
 
 const bcCode = z.string().regex(/^BC-[1-9][0-9]*$/);
+
+/** A breakdown issue's blocker: a number is the index of another issue in the same payload; a
+ *  string names an existing live issue of the project by key (ISS-12) or uuid, so the order can
+ *  run after another requirement's work (ISS-89). */
+const breakdownBlocker = z.union([
+	z.number().int().min(0),
+	z.string().trim().min(1).max(200),
+]);
 
 /** Each kind's payload and the targets it may name; a payload that does not parse is refused. */
 export const SUGGESTION_PAYLOADS = {
@@ -152,7 +162,7 @@ export const SUGGESTION_PAYLOADS = {
 							)
 							.max(100)
 							.optional(),
-						blockedBy: z.array(z.number().int().min(0)).max(50).optional(),
+						blockedBy: z.array(breakdownBlocker).max(50).optional(),
 					}),
 				)
 				.min(1)

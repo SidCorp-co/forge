@@ -257,6 +257,73 @@ describe('breakdown: blocks edges that form a cycle', () => {
   });
 });
 
+describe('breakdown: a blocker can be an existing issue of another requirement (ISS-89)', () => {
+  it('accepting writes the blocks edge from the named issue, in the same transaction', async () => {
+    const earlier = await plantIssue('Audit layer, from another requirement');
+    const req = await agreedRequirement('Builds on the audit layer');
+    const sid = await propose({
+      kind: 'breakdown',
+      requirement: req,
+      baseRevision: 1,
+      payload: {
+        issues: [
+          { title: 'Build', blockedBy: [earlier.key] },
+          { title: 'Report', blockedBy: [0, earlier.id] },
+        ],
+      },
+    });
+    const accepted = await accept(sid);
+    expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
+    const [build, report] = accepted.body.effect.issues as { issueId: string }[];
+    const edges = (await harness.db.execute(sql`
+      SELECT from_issue_id, to_issue_id FROM issue_dependencies
+       WHERE kind = 'blocks' AND from_issue_id = ${earlier.id} ORDER BY to_issue_id`)) as unknown as Doc[];
+    expect([...edges].map((e) => e.to_issue_id).sort()).toEqual(
+      [build?.issueId, report?.issueId].sort(),
+    );
+  });
+
+  it('an unknown or terminal issue is refused by name at propose', async () => {
+    const req = await agreedRequirement('Unknown blocker');
+    const gone = await plantIssue('Archived before the breakdown');
+    await harness.db.execute(sql`UPDATE issues SET archived_at = now() WHERE id = ${gone.id}`);
+    const refused = await call(agent, 'POST', '/suggestions', {
+      kind: 'breakdown',
+      requirement: req,
+      baseRevision: 1,
+      payload: { issues: [{ title: 'A', blockedBy: ['ISS-99999', gone.key] }] },
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
+    expect(refused.body.error.refusals).toEqual([
+      expect.objectContaining({
+        code: 'SUGGESTION_BLOCKER_UNKNOWN',
+        path: '/payload/issues/0/blockedBy/0',
+      }),
+      expect.objectContaining({
+        code: 'SUGGESTION_BLOCKER_TERMINAL',
+        path: '/payload/issues/0/blockedBy/1',
+      }),
+    ]);
+  });
+
+  it('a blocker that went terminal after the proposal refuses the accept and files nothing', async () => {
+    const req = await agreedRequirement('Blocker archived later');
+    const blocker = await plantIssue('Archived after the breakdown');
+    const sid = await propose({
+      kind: 'breakdown',
+      requirement: req,
+      baseRevision: 1,
+      payload: { issues: [{ title: 'A', blockedBy: [blocker.key] }] },
+    });
+    await harness.db.execute(sql`UPDATE issues SET archived_at = now() WHERE id = ${blocker.id}`);
+    const refused = await accept(sid);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
+    expect(refused.body.error.refusals[0]).toMatchObject({ code: 'SUGGESTION_BLOCKER_TERMINAL' });
+    expect((await call(person, 'GET', `/requirements/${req}`)).body.issues).toEqual([]);
+    expect(await statusOf(sid)).toBe('proposed');
+  });
+});
+
 describe('readiness, triage and duplicate: each kind writes its own effect', () => {
   it('readiness: the accepted row is the readiness result the requirement reads at its head', async () => {
     const req = await agreedRequirement('Readiness');
