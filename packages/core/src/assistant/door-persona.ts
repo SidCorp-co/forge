@@ -1,5 +1,10 @@
 import { composeLayers } from './prompt/layer.js';
-import { ROCKETCHAT_DOOR_LAYERS, WEB_AGENT_DOOR_LAYERS, WEB_DOOR_LAYERS } from './prompt/layers.js';
+import {
+  BA_DOOR_LAYERS,
+  ROCKETCHAT_DOOR_LAYERS,
+  WEB_AGENT_DOOR_LAYERS,
+  WEB_DOOR_LAYERS,
+} from './prompt/layers.js';
 
 /** What a door tells `assistantOpening` about itself. */
 export interface DoorOpening {
@@ -73,6 +78,20 @@ export function webAgentConversationPersona(
       projectSlug,
     }),
     askedBy,
+  });
+}
+
+/** The BA door's voice: the assistant in a room opened about one requirement (ISS-58). */
+export function baDoorPersona(
+  projectName: string,
+  requirementKey: string,
+  askedBy: string | null,
+): string {
+  return composeLayers(BA_DOOR_LAYERS, {
+    projectName,
+    venue: `answering in the Forge web app about requirement ${requirementKey}`,
+    requirementKey,
+    askedBy: askedBy ?? 'the person asking',
   });
 }
 

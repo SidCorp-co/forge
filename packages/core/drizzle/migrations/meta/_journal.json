@@ -2262,6 +2262,13 @@
       "when": 1813104000000,
       "tag": "0349_a_requirement_has_a_home",
       "breakpoints": true
+    },
+    {
+      "idx": 351,
+      "version": "7",
+      "when": 1813276800000,
+      "tag": "0351_assistant_output_waits_as_a_suggestion",
+      "breakpoints": true
     }
   ]
 }

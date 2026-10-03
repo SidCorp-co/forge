@@ -17,6 +17,9 @@ vi.mock('../../queue/boss.js', () => ({
   boss: { createQueue: vi.fn(async () => {}), schedule: vi.fn(async () => {}), work: vi.fn() },
 }));
 vi.mock('../../jobs/session-transcript.js', () => ({ deriveSessionFinal: deriveMock }));
+vi.mock('../../suggestions/stale.js', () => ({
+  sweepSuggestions: vi.fn(async () => ({ staled: 0, purged: 0 })),
+}));
 vi.mock('../../issues/record-events/collapse.js', () => ({
   collapseNarration: vi.fn(async () => ({ issues: 0, collapsed: 0 })),
 }));

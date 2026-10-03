@@ -65,6 +65,22 @@ export async function embedQuery(text: string): Promise<number[]> {
   return vec;
 }
 
+/** Whether a provider is configured at all; false means every write reports it, never skips silently. */
+export function embeddingsConfigured(): boolean {
+  return singleton !== null || Boolean(env.EMBEDDINGS_BASE_URL && env.EMBEDDINGS_API_KEY);
+}
+
+/** One vector and the model that produced it — the configured one, or its fallback. */
+export async function embedWithModel(text: string): Promise<{ vector: number[]; model: string }> {
+  const client = get();
+  const { vectors, model } = client.embedDetailed
+    ? await client.embedDetailed([text])
+    : { vectors: [await client.embed(text)], model: env.EMBEDDINGS_MODEL };
+  const vector = vectors[0];
+  if (!vector) throw new Error('embeddings: empty result');
+  return { vector, model };
+}
+
 export async function embedBatch(texts: string[]): Promise<number[][]> {
   return get().embedBatch(texts);
 }

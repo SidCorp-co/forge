@@ -424,6 +424,12 @@ conversationRoutes.post(
       });
     }
     const asking = mode ?? effectiveConversationMode(conversation);
+    if (conversation.requirementId && asking === 'agent') {
+      throw new HTTPException(409, {
+        message: `conversation ${id} is a BA room about a requirement, answered in Assistant mode through its narrow tool set; an Agent turn would reach past it, so this message was not taken in`,
+        cause: { code: 'CONVERSATION_BA_ASSISTANT_ONLY' },
+      });
+    }
     const unavailable =
       asking === 'agent' ? await conversationAgentUnavailableReason(projectId) : null;
     if (unavailable) {

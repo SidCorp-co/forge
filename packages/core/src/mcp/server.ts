@@ -98,6 +98,7 @@ import {
 } from './tools/forge-step-handoff.js';
 import { forgeStepStartTool } from './tools/forge-step-start.js';
 import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
+import { forgeSuggestionsTool } from './tools/forge-suggestions.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
 import { forgeWorkflowsTool } from './tools/forge-workflows.js';
 import type { McpContext, McpTool } from './tools/lib.js';
@@ -179,6 +180,7 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     forgeStorefrontTargetTool(ctx),
     forgeWorkflowsTool(ctx),
     forgeRequirementsTool(ctx),
+    forgeSuggestionsTool(ctx),
     forgeJobsListTool(ctx),
     forgeJobsGetTool(ctx),
     forgeJobsEventsTool(ctx),

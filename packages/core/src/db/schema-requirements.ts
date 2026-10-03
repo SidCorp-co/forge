@@ -16,6 +16,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { projects, users } from './schema.js';
 import { contractVersions } from './schema-ecosystem.js';
+import { suggestions } from './schema-suggestions.js';
 import { projectWorkflowDesigns, projectWorkflows } from './schema-workflows.js';
 
 export const REQUIREMENT_STATUSES = ['draft', 'agreed', 'accepted', 'dropped'] as const;
@@ -91,6 +92,10 @@ export const requirementRevisions = pgTable(
     decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'restrict' }),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     returnReason: text('return_reason'),
+    // cm:why an accepted suggestion's effect points back at it (suggestion-lifecycle step accepted)
+    fromSuggestionId: uuid('from_suggestion_id').references((): AnyPgColumn => suggestions.id, {
+      onDelete: 'no action',
+    }),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.requirementId, t.revision] }),

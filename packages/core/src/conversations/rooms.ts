@@ -37,6 +37,8 @@ export interface ConversationRow {
   /** The room's own routing thresholds, or null where it set none (ISS-1087). */
   presence: RoomPresence | null;
   ecosystemId: string | null;
+  /** The requirement a BA-door room is about, or null for every other room. */
+  requirementId: string | null;
 }
 
 export const selection = {
@@ -49,6 +51,7 @@ export const selection = {
   archivedAt: conversations.archivedAt,
   presence: conversations.presence,
   ecosystemId: conversations.ecosystemId,
+  requirementId: conversations.requirementId,
 };
 
 /** Which side of the archive a list is asking for. */

@@ -22,6 +22,7 @@ import {
   RevisionStateBadge,
 } from "./badges";
 import { RefusalLine } from "./refusal";
+import { RequirementSuggestions } from "./suggestions";
 
 const stamp = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : null);
 
@@ -268,6 +269,7 @@ export function RequirementDetailView({
       </header>
 
       <Actions projectId={projectId} d={d} />
+      {d.canSignOff ? <RequirementSuggestions projectId={projectId} reqKey={d.key} /> : null}
 
       {shown?.tldr ? <p className="text-14 leading-relaxed">{shown.tldr}</p> : null}
       {spec.goal ? (

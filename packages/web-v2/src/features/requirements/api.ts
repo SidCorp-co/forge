@@ -4,6 +4,8 @@ import type {
   RequirementAction,
   RequirementDetail,
   RequirementList,
+  SuggestionDecision,
+  SuggestionList,
 } from "./types";
 
 const base = (projectId: string) => `/projects/${projectId}/requirements`;
@@ -28,4 +30,11 @@ export const requirementsApi = {
     apiClient<RequirementDetail>(base(projectId), post(body)),
   act: (projectId: string, req: string, action: RequirementAction) =>
     apiClient<RequirementDetail>(actionPath(projectId, req, action), post(actionBody(action))),
+  suggestions: (projectId: string, req: string) =>
+    apiClient<SuggestionList>(`/projects/${projectId}/suggestions?requirement=${encodeURIComponent(req)}&status=proposed`),
+  decide: (projectId: string, d: SuggestionDecision) =>
+    apiClient<unknown>(
+      `/projects/${projectId}/suggestions/${d.id}/${d.kind}`,
+      post(d.kind === "reject" ? { reason: d.reason } : {}),
+    ),
 };

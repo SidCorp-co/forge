@@ -5243,6 +5243,95 @@
       "name": "forge_storefront_target"
     },
     {
+      "description": "Suggestions (workflow suggestion-lifecycle): a proposed change that waits on a person instead of changing anything. Actions: list | create | accept | reject | withdraw. create: { kind: requirement_draft | revision_diff | readiness | breakdown | triage | duplicate, requirement | issue, baseRevision, payload } — baseRevision is the requirement head you read (null for an issue, or a requirement with no current revision); a moved head is SUGGESTION_BASE_STALE, an open twin SUGGESTION_DUPLICATE, a 6th open on one target SUGGESTION_QUEUE_FULL, a payload that does not parse for its kind SUGGESTION_PAYLOAD_INVALID. revision_diff takes { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } on a requirement; requirement_draft takes { title, reason, … } on an issue; readiness { checks: [{ check, passed, detail? }] }; breakdown { issues: [{ title, description?, criteria?: [{ body, tracesTo? }] }], uncovered? }; triage { note, priority?, category?, route? } on an issue; duplicate { duplicateOf, similarity?, note? }. accept / reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); accepting a revision_diff writes a new DRAFT revision, never a current one. withdraw: the producer retracts its own. list: { requirement | issue, status? }.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "create",
+              "accept",
+              "reject",
+              "withdraw"
+            ],
+            "type": "string"
+          },
+          "baseRevision": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "issue": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "requirement_draft",
+              "revision_diff",
+              "readiness",
+              "breakdown",
+              "triage",
+              "duplicate"
+            ],
+            "type": "string"
+          },
+          "model": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "payload": {},
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 4000,
+            "type": "string"
+          },
+          "requirement": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "items": {
+              "enum": [
+                "proposed",
+                "accepted",
+                "rejected",
+                "stale",
+                "withdrawn"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "suggestionId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "forge_suggestions"
+    },
+    {
       "description": "Upload (action=request) or READ (action=fetch) an issue/comment/session attachment.\naction=request — mint a short-lived, single-use upload URL WITHOUT base64-inlining bytes through the model context (presigned-URL pattern). data={target:\"issue\"|\"comment\"|\"session\", targetId:<uuid>, name:\"<filename>\", mime?:\"<type>\"}. LEAVE `mime` OFF unless you mean to constrain the file: the type is read from the BYTES at upload time, so ANY extension of plain UTF-8 text (.log, .sql, .diff, none at all) lands as text/plain. A refusal carries `details.allowed` with the accepted types and extensions, so print that rather than guessing. Returns {uploadId, method:\"PUT\", uploadUrl, uploadPath, expiresIn (~300s), maxBytes}. Upload out-of-band with NO auth header: `curl -X PUT -T <localPath> \"<uploadUrl>\"` (if uploadUrl is null, prepend your Forge API origin to uploadPath). The PUT returns the attachment {id,name,mime,size,url}.\naction=fetch — read an EXISTING attachment's content so you can analyze it. data={target:\"issue\"|\"comment\"|\"session\", attachmentId:<uuid from any attachments[].id>}. Images EVERY fetch also returns `downloadUrl` (+ `downloadExpiresAt`): a short-lived, self-authenticating URL you can `curl` to get the RAW BYTES onto disk, and that you can hand to a third-party service that must fetch the file itself (e.g. re-hosting an owner-supplied image into a store media library). Use it instead of `url`, which requires a Forge session the runner does not have. Treat it as a secret: do not log it or paste it into a comment. (png/jpeg/gif/webp) return as a viewable image block (you SEE the screenshot); text/markdown return inline as text. PDFs/video and oversized files (> inline cap) return metadata + the download url only (not inlined). Use this whenever an issue/comment references an attached image or file — the prompt does NOT inline attachment bytes.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",

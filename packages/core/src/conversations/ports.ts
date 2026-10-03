@@ -11,6 +11,8 @@ export interface ConversationVenue {
   projectId: string;
   title?: string | null;
   ecosystemId?: string | null;
+  /** Opens the room about this requirement, answered through the BA door. */
+  requirementId?: string | null;
 }
 
 export interface DeliveryReceipt {
