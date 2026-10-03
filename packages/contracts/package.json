@@ -42,6 +42,18 @@
       "types": "./src/record-events.ts",
       "default": "./src/record-events.ts"
     },
+    "./design-status": {
+      "types": "./dist/design-status.d.ts",
+      "default": "./dist/design-status.js"
+    },
+    "./ui-vocabulary": {
+      "types": "./dist/ui-vocabulary.d.ts",
+      "default": "./dist/ui-vocabulary.js"
+    },
+    "./issue-standing": {
+      "types": "./dist/issue-standing.d.ts",
+      "default": "./dist/issue-standing.js"
+    },
     "./requirements": {
       "types": "./dist/requirements.d.ts",
       "default": "./dist/requirements.js"

@@ -1,3 +1,4 @@
+import { REVISION_STATES } from '@forge/contracts/requirements';
 import { REQUIREMENT_CRITERION_FORMS } from '@forge/contracts/suggestions';
 import { sql } from 'drizzle-orm';
 import {
@@ -23,8 +24,7 @@ import { projectWorkflowDesigns, projectWorkflows } from './schema-workflows.js'
 export const REQUIREMENT_STATUSES = ['draft', 'agreed', 'accepted', 'dropped'] as const;
 export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
 
-export const REVISION_STATES = ['draft', 'proposed', 'current', 'superseded'] as const;
-export type RevisionState = (typeof REVISION_STATES)[number];
+export { REVISION_STATES, type RevisionState } from '@forge/contracts/requirements';
 
 export const CRITERION_FORMS = REQUIREMENT_CRITERION_FORMS;
 export type CriterionForm = (typeof CRITERION_FORMS)[number];

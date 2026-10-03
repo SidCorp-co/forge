@@ -1,6 +1,7 @@
 
 import {
 	DONE_ISSUE_STATUSES,
+	ISSUE_STATUS_GLYPHS,
 	ISSUE_STATUS_HINTS,
 	PARKABLE_ISSUE_STATUSES,
 	PARKED_ISSUE_STATUSES,
@@ -23,7 +24,6 @@ import {
 	STATUS_KEY_TONE,
 	type StatusKey,
 } from "@/design/status";
-import { statusGlyph } from "./status-glyphs";
 import { gateView, pausedRunView } from "./waiting";
 import type {
 	CommentKind,
@@ -93,6 +93,7 @@ export const TONE_CHIP: Record<IssueStatusTone, StatusKey> = {
 	ready: "passed",
 	run: "running",
 	you: "waiting",
+	blocked: "blocked",
 	done: "archived",
 	err: "failed",
 };
@@ -122,7 +123,7 @@ export function issueStatusChip(
 	return {
 		status: statusToChip(status),
 		label: statusStepLabel(status, step),
-		glyph: statusGlyph(status),
+		glyph: ISSUE_STATUS_GLYPHS[status] ?? "●",
 		title: statusHint(status),
 	};
 }

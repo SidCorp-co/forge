@@ -1,0 +1,148 @@
+// The badge legend and every fixed enum's reading, in one place. Labels, tones, glyphs and hints are
+// declared in @forge/contracts beside each enum (or, for an enum core declares, in contracts'
+// `ui-vocabulary.ts`); this file only names which map each family reads and which design-kit colours
+// each legend tone draws. A screen never declares a colour map.
+
+import { DESIGN_STATUS_GLYPHS, DESIGN_STATUS_HINTS, DESIGN_STATUS_LABELS, DESIGN_STATUS_TONES } from "@forge/contracts/design-status";
+import {
+  FEEDBACK_DECISION_LABELS,
+  FEEDBACK_KIND_LABELS,
+  FEEDBACK_PHASE_GLYPHS,
+  FEEDBACK_PHASE_HINTS,
+  FEEDBACK_PHASE_LABELS,
+  FEEDBACK_PHASE_TONES,
+  FEEDBACK_ROUTE_LABELS,
+  FEEDBACK_SEVERITY_LABELS,
+  FEEDBACK_SEVERITY_TONES,
+  FEEDBACK_TARGET_LABELS,
+} from "@forge/contracts/feedback";
+import {
+  CRITERION_STANDING_GLYPHS,
+  CRITERION_STANDING_HINTS,
+  CRITERION_STANDING_LABELS,
+  CRITERION_STANDING_TONES,
+  ISSUE_CATEGORY_LABELS,
+  ISSUE_PRIORITY_BARS,
+  ISSUE_PRIORITY_LABELS,
+  ISSUE_STATUS_GLYPHS,
+  ISSUE_STATUS_HINTS,
+  ISSUE_STATUS_LABELS,
+  ISSUE_STATUS_TONES,
+  type IssueStatusTone,
+  WORK_STEP_LABELS,
+} from "@forge/contracts/issue-vocabulary";
+import {
+  BC_VERDICT_HINTS,
+  BC_VERDICT_LABELS,
+  BC_VERDICT_TONES,
+  REQUIREMENT_STATE_GLYPHS,
+  REQUIREMENT_STATE_HINTS,
+  REQUIREMENT_STATE_LABELS,
+  REQUIREMENT_STATE_TONES,
+  REVISION_STATE_GLYPHS,
+  REVISION_STATE_HINTS,
+  REVISION_STATE_LABELS,
+  REVISION_STATE_TONES,
+} from "@forge/contracts/requirements";
+import { SUGGESTION_STATUS_GLYPHS, SUGGESTION_STATUS_LABELS, SUGGESTION_STATUS_TONES } from "@forge/contracts/suggestions";
+import { ENUM_LABELS, type Reading, STATE_READINGS } from "@forge/contracts/ui-vocabulary";
+import { type ColorMeta, TONE_META } from "./status";
+
+/** The legend's meaning per tone: amber waits on you, cobalt is running, slate is blocked, green is
+ *  ready, grey is done, red came back; neutral is not moving. */
+export type LegendTone = IssueStatusTone;
+
+export const LEGEND: Record<LegendTone, Omit<ColorMeta, "label">> = {
+  neutral: TONE_META.neutral,
+  ready: TONE_META.success,
+  run: TONE_META.active,
+  you: TONE_META.attention,
+  blocked: TONE_META.infra,
+  done: TONE_META.archived,
+  err: TONE_META.failure,
+};
+
+export interface StatusReading {
+  label: string;
+  tone: LegendTone;
+  glyph: string | null;
+  /** What the value means, for the tooltip; the badge prefixes the raw value. */
+  hint: string | null;
+}
+
+interface Maps {
+  labels: Record<string, string>;
+  tones: Record<string, LegendTone>;
+  glyphs?: Record<string, string>;
+  hints?: Record<string, string>;
+}
+
+const fromReadings = (r: Record<string, Reading>): Maps => ({
+  labels: Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v[0]])),
+  tones: Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v[1]])),
+  glyphs: Object.fromEntries(Object.entries(r).flatMap(([k, v]) => (v[2] ? [[k, v[2]]] : []))),
+});
+
+const CONTRACT_FAMILIES = {
+  issue: { labels: ISSUE_STATUS_LABELS, tones: ISSUE_STATUS_TONES, glyphs: ISSUE_STATUS_GLYPHS, hints: ISSUE_STATUS_HINTS },
+  requirement: { labels: REQUIREMENT_STATE_LABELS, tones: REQUIREMENT_STATE_TONES, glyphs: REQUIREMENT_STATE_GLYPHS, hints: REQUIREMENT_STATE_HINTS },
+  bcVerdict: {
+    labels: BC_VERDICT_LABELS,
+    tones: BC_VERDICT_TONES,
+    glyphs: { passing: "✓", failing: "×", stale: "↻", not_judged: "○", gap: "!" },
+    hints: BC_VERDICT_HINTS,
+  },
+  criterion: { labels: CRITERION_STANDING_LABELS, tones: CRITERION_STANDING_TONES, glyphs: CRITERION_STANDING_GLYPHS, hints: CRITERION_STANDING_HINTS },
+  revision: { labels: REVISION_STATE_LABELS, tones: REVISION_STATE_TONES, glyphs: REVISION_STATE_GLYPHS, hints: REVISION_STATE_HINTS },
+  design: { labels: DESIGN_STATUS_LABELS, tones: DESIGN_STATUS_TONES, glyphs: DESIGN_STATUS_GLYPHS, hints: DESIGN_STATUS_HINTS },
+  feedbackPhase: { labels: FEEDBACK_PHASE_LABELS, tones: FEEDBACK_PHASE_TONES, glyphs: FEEDBACK_PHASE_GLYPHS, hints: FEEDBACK_PHASE_HINTS },
+  severity: { labels: FEEDBACK_SEVERITY_LABELS, tones: FEEDBACK_SEVERITY_TONES },
+  suggestion: { labels: SUGGESTION_STATUS_LABELS, tones: SUGGESTION_STATUS_TONES, glyphs: SUGGESTION_STATUS_GLYPHS },
+} satisfies Record<string, Maps>;
+
+type ReadingFamily = keyof typeof STATE_READINGS;
+
+/** State families: each value wears its legend tone. */
+export type StatusFamily = keyof typeof CONTRACT_FAMILIES | ReadingFamily;
+
+const STATUS_MAPS: Record<StatusFamily, Maps> = {
+  ...CONTRACT_FAMILIES,
+  ...(Object.fromEntries(Object.entries(STATE_READINGS).map(([k, r]) => [k, fromReadings(r)])) as Record<ReadingFamily, Maps>),
+};
+
+/** `change_request` reads "Change request": the fallback for a value no map names yet. */
+export function sentenceCase(v: string): string {
+  const t = v.replace(/[_-]+/g, " ").trim();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+const hintOf = (h: string | undefined) => (h ? h.replace(/^[a-z_-]+: /, "") : null);
+
+/** One state value's reading. A value its family does not name reads sentence-cased and neutral,
+ *  so a new core value shows as words, never as a raw token. */
+export function statusReading(family: StatusFamily, value: string): StatusReading {
+  const m = STATUS_MAPS[family];
+  const label = m.labels[value];
+  if (label === undefined) return { label: sentenceCase(value), tone: "neutral", glyph: null, hint: null };
+  return { label, tone: m.tones[value] ?? "neutral", glyph: m.glyphs?.[value] ?? null, hint: hintOf(m.hints?.[value]) };
+}
+
+/** Non-state families: a neutral badge with an icon, never a status colour. */
+export const ENUM_FAMILIES = {
+  priority: ISSUE_PRIORITY_LABELS,
+  category: ISSUE_CATEGORY_LABELS,
+  feedbackKind: FEEDBACK_KIND_LABELS,
+  feedbackRoute: FEEDBACK_ROUTE_LABELS,
+  feedbackDecision: FEEDBACK_DECISION_LABELS,
+  feedbackTarget: FEEDBACK_TARGET_LABELS,
+  step: WORK_STEP_LABELS,
+  ...ENUM_LABELS,
+} as const satisfies Record<string, Record<string, string>>;
+
+export type EnumFamily = keyof typeof ENUM_FAMILIES;
+
+export function enumLabel(family: EnumFamily, value: string): string {
+  return (ENUM_FAMILIES[family] as Record<string, string>)[value] ?? sentenceCase(value);
+}
+
+export const PRIORITY_BARS: Record<string, number> = ISSUE_PRIORITY_BARS;

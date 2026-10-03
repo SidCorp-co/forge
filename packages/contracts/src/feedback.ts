@@ -74,6 +74,65 @@ export type FeedbackDecision = (typeof FEEDBACK_DECISIONS)[number];
 export const FEEDBACK_ATTENTION = ["you", "moving", "others", "done"] as const;
 export type FeedbackAttention = (typeof FEEDBACK_ATTENTION)[number];
 
+export const FEEDBACK_KIND_LABELS: Record<FeedbackKind, string> = {
+	bug: "Bug",
+	change_request: "Change request",
+	question: "Question",
+	idea: "Idea",
+	contract_change: "Contract change",
+};
+
+export const FEEDBACK_PHASE_LABELS: Record<FeedbackPhase, string> = {
+	new: "New",
+	triaged: "Triaged",
+	planned: "Planned",
+	resolved: "Resolved",
+	reopened: "Reopened",
+	verified: "Verified",
+	declined: "Declined",
+};
+
+export const FEEDBACK_SEVERITY_LABELS: Record<FeedbackSeverity, string> = {
+	low: "Low",
+	medium: "Medium",
+	high: "High",
+	critical: "Critical",
+};
+
+export const FEEDBACK_ROUTE_LABELS: Record<FeedbackRoute, string> = {
+	issue: "Issue",
+	revision: "Revision",
+	new_requirement: "New requirement",
+	answer: "Answer",
+	duplicate: "Duplicate",
+};
+
+export const FEEDBACK_DECISION_LABELS: Record<FeedbackDecision, string> = {
+	triaged: "Triaged",
+	declined: "Declined",
+	verified: "Verified",
+	reopened: "Reopened",
+	redacted: "Reporter data deleted",
+};
+
+export const FEEDBACK_TARGET_LABELS: Record<FeedbackTargetType, string> = {
+	requirement: "Requirement",
+	issue: "Issue",
+	release: "Release",
+	workflow: "Workflow",
+	screen: "Screen",
+};
+
+export const FEEDBACK_ATTENTION_LABELS: Record<
+	FeedbackAttention,
+	{ label: string; hint: string; tone: IssueStatusTone; collapsed: boolean }
+> = {
+	you: { label: "Needs you", hint: "Triage it, or confirm the fix you reported", tone: "you", collapsed: false },
+	moving: { label: "Moving", hint: "An issue, revision or requirement carries it", tone: "run", collapsed: false },
+	others: { label: "Someone else’s turn", hint: "The reporter confirms the fix", tone: "neutral", collapsed: false },
+	done: { label: "Done", hint: "Verified or declined", tone: "done", collapsed: true },
+};
+
 export const FEEDBACK_PHASE_TONES: Record<FeedbackPhase, IssueStatusTone> = {
 	new: "you",
 	triaged: "you",
@@ -291,6 +350,18 @@ export interface FeedbackAttachmentView {
 }
 
 /** One item as a list row reads it; the derived facts are the server's, never the client's. */
+/** Whose turn a row is, as the shared "Waiting on" cell draws it: `you` is the viewer, `issue` a
+ *  carrier (an issue, a requirement, a root item), `none` nothing is owed. */
+export const FEEDBACK_WAITING_KINDS = ["you", "person", "issue", "none"] as const;
+export type FeedbackWaitingKind = (typeof FEEDBACK_WAITING_KINDS)[number];
+
+export interface FeedbackWaiting {
+	kind: FeedbackWaitingKind;
+	who: string;
+	/** What they owe, after the name: "triage it", "ship". Empty when the name says it all. */
+	act: string;
+}
+
 export interface FeedbackSummary {
 	id: string;
 	key: string;
@@ -300,8 +371,10 @@ export interface FeedbackSummary {
 	status: FeedbackStatus;
 	phase: FeedbackPhase;
 	attention: FeedbackAttention;
-	/** Who or what it waits on, in a sentence: "a person to triage", "ISS-12 to ship". */
+	/** Who or what it waits on, in a sentence: "A person to triage it", "ISS-12 to ship". */
 	waitingOn: string;
+	/** The same fact for this viewer, split for the "Waiting on" cell. */
+	waiting: FeedbackWaiting;
 	target: FeedbackTargetView;
 	route: FeedbackRouteView | null;
 	reporter: { id: string; name: string | null; agency: "human" | "agent" };

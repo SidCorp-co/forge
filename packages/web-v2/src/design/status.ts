@@ -60,7 +60,9 @@ export type StatusKey =
 export const STATUS_KEY_TONE: Record<StatusKey, SemanticTone> = {
   running: "active",
   queued: "neutral",
-  blocked: "blocked",
+  // Slate is the legend's "blocked" (req-feedback-decisions: slate = blocked), so a blocked chip
+  // reads the same as a blocked issue status and no longer as a heavier grey than "queued".
+  blocked: "infra",
   waiting: "attention",
   passed: "success",
   failed: "failure",

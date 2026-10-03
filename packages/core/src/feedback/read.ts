@@ -39,7 +39,7 @@ import { actMiss, PERSON_ACT, PERSON_ADMIN_ACT } from '../lib/person-act.js';
 import { requirementKey } from '../requirements/read.js';
 import { userNames } from '../workflows/service.js';
 import { targetTypeOf } from './refs.js';
-import { attentionOf, type PhaseFacts, phaseOf, waitingOnOf } from './rules.js';
+import { attentionOf, type PhaseFacts, phaseOf, waitingFor, waitingOf, waitingOnOf } from './rules.js';
 
 export interface FeedbackActor {
   userId: string;
@@ -290,6 +290,8 @@ function summaryOf(r: Row, l: Linked, viewer: FeedbackActor, withhold: boolean):
   const phase = phaseIn(r, l);
   const route = routeView(r, l);
   const reporterName = l.names.get(r.reportedBy) ?? null;
+  const attention = attentionOf(phase, viewer.userId === r.reportedBy);
+  const waiting = waitingOf(phase, r.route, route?.key ?? null, reporterName ?? 'The reporter');
   return {
     id: r.id,
     key: feedbackKey(r.fbSeq),
@@ -298,8 +300,9 @@ function summaryOf(r: Row, l: Linked, viewer: FeedbackActor, withhold: boolean):
     severity: r.severity,
     status: r.status,
     phase,
-    attention: attentionOf(phase, viewer.userId === r.reportedBy),
+    attention,
     waitingOn: waitingOnOf(phase, r.route, route?.key ?? null, reporterName ?? 'The reporter'),
+    waiting: waitingFor(waiting, attention),
     target: targetView(r, l),
     route: withhold && route?.answer ? { ...route, answer: null } : route,
     reporter: { id: r.reportedBy, name: reporterName, agency: r.reporterAgency },

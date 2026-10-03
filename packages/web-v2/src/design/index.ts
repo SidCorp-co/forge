@@ -101,6 +101,28 @@ export {
   SessionRowSkeleton, ProjectCardSkeleton,
 } from "./skeletons";
 
+export { ToneBadge, StatusBadge, EnumBadge, type ToneBadgeProps, type StatusBadgeProps, type EnumBadgeProps } from "./primitives/enum-badge";
+export {
+  LEGEND, statusReading, enumLabel, sentenceCase, PRIORITY_BARS,
+  type LegendTone, type StatusFamily, type EnumFamily, type StatusReading,
+} from "./vocabulary";
+export { WhoMark, PersonChip, AgentChip, ActorChip, type WhoKind } from "./patterns/person-chip";
+export { WaitingOn, WaitBanner, type WaitingOnView, type BannerTone } from "./patterns/waiting-on";
+export {
+  GroupedList, useGroupFold, visibleRows, type ListGroup, type ListRowView, type GroupedListProps,
+} from "./patterns/grouped-list";
+export { PeekPanel, PeekHead, usePeek, usePeekKeys, type PeekState, type PeekPanelProps } from "./patterns/peek-panel";
+export {
+  DetailHeader, DetailMobileTitle, rememberListOrigin, useListOrigin, type DetailHeaderProps,
+} from "./patterns/detail-header";
+export {
+  FactsRail, FactsGroup, Fact, FactsEmpty, CoverageBar, MarkStrip, StepBar,
+  type CoverageSegment, type MarkView, type StepView,
+} from "./patterns/facts-rail";
+export { DetailTabs, DetailLayout, DetailPane, useUrlTab, type DetailTabItem } from "./patterns/detail-tabs";
+export { ViewModeSwitcher, useViewMode, type ViewMode } from "./patterns/view-mode-switcher";
+export { useUrlParams, useUrlChoice, writeUrlParams, type UrlPatch } from "./hooks/use-url-params";
+
 export { useDebounced } from "./hooks/use-debounced";
 export { useElapsed } from "./hooks/use-elapsed";
 export { useNow } from "./hooks/use-now";
