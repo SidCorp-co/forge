@@ -239,3 +239,109 @@ export interface RequirementHistoryEntry {
 	/** A linked issue's status move, as raw statuses the reader labels; else null. */
 	move: { from: string | null; to: string } | null;
 }
+
+export const REQUIREMENT_SUMMARY_FIELDS = [
+	"id",
+	"key",
+	"title",
+	"status",
+	"state",
+	"currentRevision",
+	"latestRevision",
+	"counts",
+	"waitingOn",
+	"updatedAt",
+] as const;
+
+export interface RequirementSummaryView {
+	id: string;
+	key: string;
+	title: string;
+	status: string;
+	state: RequirementState;
+	currentRevision: number | null;
+	latestRevision: { revision: number; state: string } | null;
+	counts: RequirementFacts;
+	waitingOn: RequirementWaitingOn;
+	updatedAt: string;
+}
+
+export const REQUIREMENT_HEAD_FIELDS = [
+	"id",
+	"key",
+	"title",
+	"status",
+	"currentRevision",
+	"latestRevision",
+	"updatedAt",
+] as const;
+
+export type RequirementHeadView = Pick<
+	RequirementSummaryView,
+	(typeof REQUIREMENT_HEAD_FIELDS)[number]
+>;
+
+export const REQUIREMENT_REVISION_HEAD_FIELDS = [
+	"revision",
+	"state",
+	"baseRevision",
+	"proposedAt",
+	"decidedByName",
+	"decidedAt",
+	"returnReason",
+] as const;
+
+export interface RequirementRevisionHead {
+	revision: number;
+	state: string;
+	baseRevision: number | null;
+	proposedAt: string | null;
+	decidedByName: string | null;
+	decidedAt: string | null;
+	returnReason: string | null;
+}
+
+export interface RequirementRevisionWritten extends RequirementRevisionHead {
+	criteria: { code: string; form: string; body: string }[];
+}
+
+export interface RequirementLinkedIssue {
+	issueId: string;
+	displayId: string;
+	title: string;
+	status: string;
+	plannedRevision: number | null;
+	changedSincePlan: boolean;
+}
+
+export interface RequirementLinkedDesign {
+	workflowId: string;
+	flow: string;
+	title: string;
+	designStatus: string | null;
+	approvedRevision: number | null;
+}
+
+export const REQUIREMENT_ACTS = [
+	"create",
+	"revise",
+	"edit",
+	"propose",
+	"accept",
+	"return",
+	"agree",
+	"link_issue",
+	"unlink_issue",
+	"link_workflow",
+	"unlink_workflow",
+] as const;
+export type RequirementAct = (typeof REQUIREMENT_ACTS)[number];
+
+export interface RequirementActAnswer {
+	act: RequirementAct;
+	requirement: RequirementHeadView;
+	revision?: RequirementRevisionHead | RequirementRevisionWritten;
+	baseline?: { revision: number; agreedAt: string; pins: number };
+	issues?: RequirementLinkedIssue[];
+	workflows?: RequirementLinkedDesign[];
+}

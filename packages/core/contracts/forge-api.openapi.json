@@ -24451,6 +24451,18 @@
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "enum": [
+                "summary",
+                "full"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -24462,8 +24474,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -26212,6 +26226,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "enum": [
+                "summary",
+                "full"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -26739,6 +26765,18 @@
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "enum": [
+                "summary",
+                "full"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -26750,8 +26788,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       },
       "post": {
@@ -27276,6 +27316,49 @@
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "enum": [
+                "summary",
+                "steps",
+                "full"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": false,
+            "schema": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stepFrom",
+            "required": false,
+            "schema": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stepTo",
+            "required": false,
+            "schema": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -27287,8 +27370,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },

@@ -30,11 +30,12 @@ import {
   unlinkBuild,
 } from './store.js';
 
+export type DesignView = Awaited<ReturnType<typeof designView>> & {
+  designIssue?: DesignIssueOutcome;
+};
+
 export type DesignOutcome =
-  | {
-      ok: true;
-      design: Awaited<ReturnType<typeof designView>> & { designIssue?: DesignIssueOutcome };
-    }
+  | { ok: true; design: DesignView }
   | { ok: false; refusals: DesignRefusal[] };
 
 const notFound = (message: string) =>
