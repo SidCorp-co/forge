@@ -51,24 +51,36 @@ const TONE_GLYPH: Record<IssueStatusTone, string> = {
   err: "!",
 };
 
-export function ToneChip({ tone, label, title }: { tone: IssueStatusTone; label: string; title?: string }) {
-  return <StatusChip size="sm" status={TONE_CHIP[tone]} glyph={TONE_GLYPH[tone]} label={label} title={title ?? label} />;
+export function ToneChip({
+  tone,
+  label,
+  title,
+  glyph,
+}: {
+  tone: IssueStatusTone;
+  label: string;
+  title?: string;
+  glyph?: string;
+}) {
+  return (
+    <StatusChip size="sm" status={TONE_CHIP[tone]} glyph={glyph ?? TONE_GLYPH[tone]} label={label} title={title ?? label} />
+  );
 }
 
 export function ThreadStatusChip({ status }: { status: OnboardingStatus }) {
   return <ToneChip tone={ONBOARDING_STATUS_TONES[status]} label={ONBOARDING_STATUS_LABELS[status]} />;
 }
 
-const DESIGN_TONE: Record<string, [IssueStatusTone, string]> = {
-  draft: ["neutral", "Draft"],
-  proposed: ["you", "Proposed"],
-  approved: ["ready", "Approved"],
-  returned: ["err", "Returned"],
+const DESIGN_TONE: Record<string, [IssueStatusTone, string, string]> = {
+  draft: ["neutral", "Draft", "○"],
+  proposed: ["you", "Proposed", "‹"],
+  approved: ["ready", "Approved", "✓"],
+  returned: ["err", "Returned", "!"],
 };
 
 export function DesignStatusChip({ status }: { status: string | null }) {
-  const [tone, label] = DESIGN_TONE[status ?? ""] ?? ["neutral", status ?? "Not a design"];
-  return <ToneChip tone={tone} label={label} />;
+  const [tone, label, glyph] = DESIGN_TONE[status ?? ""] ?? ["neutral", status ?? "Not a design", "○"];
+  return <ToneChip tone={tone} label={label} glyph={glyph} />;
 }
 
 /** The agent's own marks: Inferred beside a default it read from the code, New on a question it just raised. */

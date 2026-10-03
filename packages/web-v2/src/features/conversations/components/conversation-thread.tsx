@@ -333,7 +333,8 @@ export function ConversationThread({
       {entries.map((entry) => {
         if (entry.kind === "said")
           return (
-            <div key={entry.key}>
+            // cm:why a questionnaire collapsed into its answers draws nothing, and an empty entry must not leave a gap
+            <div key={entry.key} className="empty:hidden">
               <Said
                 message={entry.message}
                 {...(withdrawn[entry.message.id] ? { withdrawn: withdrawn[entry.message.id] } : {})}

@@ -21,7 +21,7 @@ vi.mock("./conversation-chat", () => ({
 vi.mock("./conversation-list", () => ({ ConversationList: () => <div data-testid="list" /> }));
 vi.mock("./start-conversation", () => ({ StartConversation: () => <div data-testid="start" /> }));
 
-const { ChatDock } = await import("./chat-dock");
+const { ChatDock, pageLabel } = await import("./chat-dock");
 const { DOCK_WIDTH_KEY, useChatDockState } = await import("../dock");
 
 beforeEach(() => {
@@ -108,5 +108,14 @@ describe("the chat dock", () => {
     expect(result.current.target).toEqual({ kind: "room", projectId: "p1", conversationId: "c1" });
     rerender({ p: "p2" });
     expect(result.current.target).toEqual({ kind: "draft", projectId: "p2" });
+  });
+});
+
+describe("pageLabel — the full-screen panel's way back names the page under it (ISS-63)", () => {
+  it("names a project's dashboard, a slug as words, and a record key as it is written", () => {
+    expect(pageLabel("/projects/hop")).toBe("Dashboard");
+    expect(pageLabel("/projects/hop/workflows/patient-data-flow")).toBe("Patient data flow");
+    expect(pageLabel("/projects/hop/requirements/REQ-1")).toBe("REQ-1");
+    expect(pageLabel(null)).toBe("Back");
   });
 });

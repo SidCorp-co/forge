@@ -49,8 +49,11 @@ function RoomScopeChip({ project, ecosystemId }: { project: { id: string; name: 
 export function pageLabel(pathname: string | null): string {
   const parts = (pathname ?? "").split("/").filter(Boolean);
   if (parts[0] === "projects" && parts.length <= 2) return "Dashboard";
-  const last = parts.at(-1) ?? "";
-  return last ? decodeURIComponent(last).replace(/[-_]/g, " ").replace(/^./, (c) => c.toUpperCase()) : "Back";
+  const last = decodeURIComponent(parts.at(-1) ?? "");
+  if (!last) return "Back";
+  // cm:why a record key (REQ-1, ISS-63) is a name already; only a slug reads better as words
+  if (/^[A-Z]+-\d+$/.test(last)) return last;
+  return last.replace(/[-_]/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 
 export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScreen?: boolean }) {
@@ -155,7 +158,7 @@ export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScre
         onDismiss={() => setHistory(false)}
         placement="bottom-end"
         maxHeight={520}
-        className="flex w-[360px] max-w-[calc(100vw-2rem)] flex-col p-3"
+        className="flex w-[360px] max-w-[calc(100vw-2rem)] flex-col rounded-lg border border-line bg-surface p-3 shadow-lg"
       >
         <ConversationList projectId={dock.projectId} conversationId={conversationId} onSelect={pick} />
       </Popover>

@@ -114,9 +114,10 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
   const rows = block.workflowIds.map((id) => ({ id, design: byId.get(id) }));
   return (
     <div className="my-1" data-testid="designs-block">
-      <div className={block.approve ? "mb-1 font-bold text-fg" : "py-1.5 text-[11.5px] text-subtle"}>
+      {/* cm:why the analysis's list reads as a labelled count, as the prototype draws it; every later list is the message's own heading */}
+      <div className={first ? "py-1.5 text-[11.5px] text-subtle" : "mb-1 font-bold text-fg"}>
         {block.heading}
-        {!block.approve && ` ${rows.length}`}
+        {first && ` ${rows.length}`}
       </div>
       <div className="flex w-full flex-col">
         {rows.map(({ id, design }) => {
@@ -134,7 +135,7 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
               ) : (
                 <span className="min-w-0 flex-1 truncate font-semibold text-muted">{design?.title ?? id}</span>
               )}
-              <ToneChip tone="neutral" label="As-built" title="Drawn from the code; steps without file:symbol evidence are asked about" />
+              <ToneChip tone="neutral" glyph="⌂" label="As-built" title="Drawn from the code; steps without file:symbol evidence are asked about" />
               <DesignStatusChip status={design?.designStatus ?? null} />
               {block.approve && href && design?.designStatus === "proposed" && (
                 <Link
@@ -228,7 +229,7 @@ export function StructuredMessage({
         const key = `${b.type}-${i}`;
         if (b.type === "text" && b.text)
           return (
-            <div key={key} className="my-[3px] [&_p]:my-[3px] [&_p]:mb-1.5">
+            <div key={key} className="my-[3px] [&_p]:my-[3px] [&_p]:mb-1.5 [&_p]:text-[12.5px]! [&_p]:leading-[1.55]! [&_p]:text-fg!">
               <Markdown>{b.text}</Markdown>
             </div>
           );
