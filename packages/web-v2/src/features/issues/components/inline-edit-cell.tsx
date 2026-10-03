@@ -2,14 +2,15 @@
 
 // Inline-edit primitives shared by the table row + mobile card. `InlineSelect`
 // commits a priority/complexity/assignee change (PATCH); `StatusEdit` shows the
-// StatusChip and opens a status menu (transition — 409 surfaces as a toast via
+// StatusBadge and opens a status menu (transition — 409 surfaces as a toast via
 // the mutation factory, the row value snaps back since nothing is invalidated).
 
 import type { WorkStep } from "@forge/contracts/issue-vocabulary";
-import { Menu, NativeSelect, Select, StatusChip, type MenuItem, type SelectOption } from "@/design";
-import { groupedTransitions, issueStatusChip, statusLabel, transitionLabels } from "../derive";
+import { Menu, NativeSelect, Select, StatusBadge, type MenuItem, type SelectOption } from "@/design";
+import { groupedTransitions, statusLabel, transitionLabels } from "../derive";
 import { AGENT_HOLDS_MOVE, heldByAgent } from "../edit-lock";
 import { useStatusExits } from "../hooks";
+import { useStatusTone } from "../release-approval";
 import type { ParkReading } from "../derive";
 import { type ParkMenuActions, parkMenuItems } from "../park";
 import type { IssueAgentStatus, IssueStatus } from "../types";
@@ -52,6 +53,7 @@ export function InlineSelect({
   }
   return (
     <Select
+      quiet
       aria-label={ariaLabel}
       value={value}
       disabled={disabled}
@@ -102,7 +104,7 @@ interface StatusEditProps {
 }
 
 /**
- * StatusChip that doubles as an inline status editor. The menu offers the moves
+ * StatusBadge that doubles as an inline status editor. The menu offers the moves
  * the RUNG has — core's exits row for this status, read over the pipeline
  * registry — forward move first, then the bounces, then the discards. A rung
  * with no exit says so rather than opening empty (ISS-982).
@@ -118,6 +120,7 @@ export function StatusEdit({
   park,
 }: StatusEditProps) {
   const { exits, isPending, isError } = useStatusExits();
+  const tone = useStatusTone(status);
   const grouped = groupedTransitions(exits, status, leftStatus);
   const held = heldByAgent(status, agentStatus);
   let items: MenuItem[];
@@ -138,7 +141,7 @@ export function StatusEdit({
       : null;
     if (parkItems) items = parkItems;
   }
-  const chip = <StatusChip {...issueStatusChip(status, step)} size={size} />;
+  const chip = <StatusBadge family="issue" value={status} step={step} tone={tone} size={size} />;
   if (disabled) return chip;
   return (
     <Menu

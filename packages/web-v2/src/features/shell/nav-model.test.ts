@@ -12,6 +12,7 @@ import {
   projectMenu,
   projectRailItems,
 } from "./nav-model";
+import { isRailGroup } from "./nav-rail-compact";
 
 const PROJECT_ROUTES = join(__dirname, "../../app/(workspace)/projects/[slug]");
 
@@ -53,29 +54,27 @@ describe("the Ecosystem group", () => {
 });
 
 describe("the project menu", () => {
-  it("is Dashboard, Requirements, Workflows, Issues, Agents, Automation, Releases and Feedback, in that order", () => {
-    expect(PROJECT_MENU.map((e) => e.label)).toEqual([
-      "Dashboard",
-      "Requirements",
-      "Workflows",
-      "Issues",
-      "Agents",
-      "Automation",
-      "Releases",
-      "Feedback",
-    ]);
+  it("is Dashboard, Requirements, Workflows, Releases, Feedback, then Development, in that order (ISS-65)", () => {
+    expect(PROJECT_MENU.map((e) => e.label)).toEqual(["Dashboard", "Requirements", "Workflows", "Releases", "Feedback", "Development"]);
   });
 
-  it("holds Schedules and Improvements under Automation, and nothing else there", () => {
+  it("holds Issues, Agents, Contracts and Automation under Development, and Releases outside it", () => {
     const group = PROJECT_MENU.find(isProjGroup);
-    expect(group?.label).toBe("Automation");
-    expect(group?.items.map((i) => i.sub)).toEqual(["/automation/schedules", "/automation/improvements"]);
+    expect(group?.label).toBe("Development");
+    expect(group?.items.map((i) => [i.label, i.sub])).toEqual([
+      ["Issues", "/issues"],
+      ["Agents", "/agents"],
+      ["Contracts", "/ecosystem/contracts"],
+      ["Automation", "/automation"],
+    ]);
   });
 
   it.each(PROJECT_ITEMS.map((it) => [it.label, it.sub] as const))("links %s to a page that exists", (_, sub) => {
     expect(existsSync(join(PROJECT_ROUTES, sub, "page.tsx"))).toBe(true);
   });
 
+  // Modules and the Development overview are in the owner's IA but have no page yet: a row that
+  // leads nowhere is not listed.
   it("names no Library, Board, Insights, Modules or PM destination", () => {
     const labels = PROJECT_ITEMS.map((it) => it.label);
     for (const gone of ["Library", "Board", "Insights", "Modules", "PM", "Improve"]) {
@@ -84,10 +83,13 @@ describe("the project menu", () => {
     expect(existsSync(join(PROJECT_ROUTES, "library"))).toBe(false);
   });
 
-  it("lights each Automation page, Releases, a version address included, Workflows and Requirements", () => {
+  it("lights Automation on its old addresses too, Contracts, Releases, a version address included, Workflows and Requirements", () => {
     const at = (sub: string) => buildActiveKey(`/projects/forge-dev${sub}`, "forge-dev");
-    expect(at("/automation/schedules")).toBe("proj-schedules");
-    expect(at("/automation/improvements")).toBe("proj-improvements");
+    expect(at("/automation")).toBe("proj-automation");
+    expect(at("/automation/schedules")).toBe("proj-automation");
+    expect(at("/automation/improvements")).toBe("proj-automation");
+    expect(at("/ecosystem/contracts")).toBe("proj-contracts");
+    expect(at("/ecosystem/contracts/bookFollowUp")).toBe("proj-contracts");
     expect(at("/releases")).toBe("proj-releases");
     expect(at("/releases/0.42.1")).toBe("proj-releases");
     expect(at("/workflows")).toBe("proj-workflows");
@@ -103,9 +105,18 @@ describe("the project menu", () => {
     expect(Object.fromEntries(flat.map((i) => [i.key, i.badge]))).toMatchObject({
       "proj-issues": 12,
       "proj-releases": 1,
-      "proj-schedules": undefined,
+      "proj-automation": undefined,
     });
-    expect(projectRailItems(badges).find((i) => i.key === "proj-releases")?.badge).toBe(1);
+    const rail = projectRailItems(badges).flatMap((e) => (isRailGroup(e) ? e.items : [e]));
+    expect(rail.find((i) => i.key === "proj-releases")?.badge).toBe(1);
+    expect(rail.find((i) => i.key === "proj-issues")?.badge).toBe(12);
+  });
+
+  it("folds the compact rail's build machinery under Development, in the menu's order", () => {
+    const rail = projectRailItems({});
+    expect(rail.map((e) => e.label)).toEqual(["Dashboard", "Requirements", "Workflows", "Releases", "Feedback", "Development"]);
+    const dev = rail.find(isRailGroup);
+    expect(dev?.items.map((i) => i.label)).toEqual(["Issues", "Agents", "Contracts", "Automation"]);
   });
 });
 

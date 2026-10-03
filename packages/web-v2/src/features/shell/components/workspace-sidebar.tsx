@@ -84,6 +84,8 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
       <NavRailCompact
         workspaceItems={compactWorkspaceRailItems(attentionCount)}
         projectItems={rail.compactActiveProject ? projectRailItems(badges) : null}
+        groupOpen={props.groupOpen}
+        onToggleGroup={props.onToggleGroup}
         ecosystemItems={ecosystemItems}
         activeKey={activeKey}
         activeSlug={props.railSlug}

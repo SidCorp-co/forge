@@ -4,6 +4,7 @@
  * questions and status moves recorded on its linked issues.
  */
 
+import { issueStatusToneOn, type KernelIssueStatus } from '@forge/contracts/issue-vocabulary';
 import type { RequirementHistoryEntry, RequirementStanding } from '@forge/contracts/requirements';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -23,6 +24,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { approvalRequired } from '../release-batch/approvals.js';
 import { changedSincePlan } from './rules.js';
 import { deriveStanding } from './standing.js';
 import { issueCriteriaOf, latestPinsOf } from './standing-facts.js';
@@ -50,53 +52,55 @@ export async function standingsOf(
 ): Promise<Map<string, RequirementStanding>> {
   if (rows.length === 0) return new Map();
   const ids = rows.map((r) => r.id);
-  const [revisions, criteria, delivery, linked, open, prefix, pins] = await Promise.all([
-    db
-      .select({
-        requirementId: requirementRevisions.requirementId,
-        revision: requirementRevisions.revision,
-        state: requirementRevisions.state,
-        authorId: requirementRevisions.authorId,
-        createdAt: requirementRevisions.createdAt,
-        proposedAt: requirementRevisions.proposedAt,
-        decidedAt: requirementRevisions.decidedAt,
-      })
-      .from(requirementRevisions)
-      .where(inArray(requirementRevisions.requirementId, ids))
-      .orderBy(desc(requirementRevisions.revision)),
-    db
-      .select({
-        requirementId: requirementCriteria.requirementId,
-        id: requirementCriteria.id,
-        code: requirementCriteria.code,
-        body: requirementCriteria.body,
-        sinceRevision: requirementCriteria.sinceRevision,
-        retiredRevision: requirementCriteria.retiredRevision,
-      })
-      .from(requirementCriteria)
-      .where(inArray(requirementCriteria.requirementId, ids)),
-    db.select().from(requirementDelivery).where(inArray(requirementDelivery.requirementId, ids)),
-    db
-      .select({
-        requirementId: issues.requirementId,
-        id: issues.id,
-        issSeq: issues.issSeq,
-        title: issues.title,
-        status: issues.status,
-        updatedAt: issues.updatedAt,
-        plan: issues.plan,
-        plannedRevision: issues.plannedRevision,
-      })
-      .from(issues)
-      .where(inArray(issues.requirementId, ids))
-      .orderBy(issues.issSeq),
-    db
-      .select({ requirementId: suggestions.requirementId, kind: suggestions.kind })
-      .from(suggestions)
-      .where(and(inArray(suggestions.requirementId, ids), eq(suggestions.status, 'proposed'))),
-    activeIssuePrefix(projectId),
-    latestPinsOf(ids),
-  ]);
+  const [revisions, criteria, delivery, linked, open, prefix, pins, releaseApproval] =
+    await Promise.all([
+      db
+        .select({
+          requirementId: requirementRevisions.requirementId,
+          revision: requirementRevisions.revision,
+          state: requirementRevisions.state,
+          authorId: requirementRevisions.authorId,
+          createdAt: requirementRevisions.createdAt,
+          proposedAt: requirementRevisions.proposedAt,
+          decidedAt: requirementRevisions.decidedAt,
+        })
+        .from(requirementRevisions)
+        .where(inArray(requirementRevisions.requirementId, ids))
+        .orderBy(desc(requirementRevisions.revision)),
+      db
+        .select({
+          requirementId: requirementCriteria.requirementId,
+          id: requirementCriteria.id,
+          code: requirementCriteria.code,
+          body: requirementCriteria.body,
+          sinceRevision: requirementCriteria.sinceRevision,
+          retiredRevision: requirementCriteria.retiredRevision,
+        })
+        .from(requirementCriteria)
+        .where(inArray(requirementCriteria.requirementId, ids)),
+      db.select().from(requirementDelivery).where(inArray(requirementDelivery.requirementId, ids)),
+      db
+        .select({
+          requirementId: issues.requirementId,
+          id: issues.id,
+          issSeq: issues.issSeq,
+          title: issues.title,
+          status: issues.status,
+          updatedAt: issues.updatedAt,
+          plan: issues.plan,
+          plannedRevision: issues.plannedRevision,
+        })
+        .from(issues)
+        .where(inArray(issues.requirementId, ids))
+        .orderBy(issues.issSeq),
+      db
+        .select({ requirementId: suggestions.requirementId, kind: suggestions.kind })
+        .from(suggestions)
+        .where(and(inArray(suggestions.requirementId, ids), eq(suggestions.status, 'proposed'))),
+      activeIssuePrefix(projectId),
+      latestPinsOf(ids),
+      approvalRequired(projectId),
+    ]);
   const [people, issueCriteria] = await Promise.all([
     peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
     issueCriteriaOf(linked.map((i) => i.id)),
@@ -111,6 +115,7 @@ export async function standingsOf(
       displayId: formatIssueRef(prefix, i.issSeq),
       title: i.title,
       status: i.status,
+      tone: issueStatusToneOn(i.status as KernelIssueStatus, releaseApproval),
       updatedAt: i.updatedAt,
       changedSincePlan: changedSincePlan({ ...i, currentRevision: row.currentRevision }),
     }));

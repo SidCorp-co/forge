@@ -37,7 +37,7 @@ describe("the status control", () => {
   it("draws one chip with the issue's own label while its run is queued", () => {
     wrap(<StatusEdit status="open" agentStatus="queued" onTransition={vi.fn()} />);
     const control = screen.getByRole("button", { name: "Change status (currently Open)" });
-    expect(control).toHaveTextContent(/^Open$/);
+    expect(control).toHaveTextContent(/Open$/);
     expect(screen.queryByText("Queued")).toBeNull();
   });
 
@@ -50,7 +50,7 @@ describe("the status control", () => {
 describe("the board's quick actions", () => {
   it("shows the run's state as its own chip beside the issue's", () => {
     wrap(<IssueQuickActions issueId="i1" status="open" agentStatus="queued" priority="medium" />);
-    expect(screen.getByRole("button", { name: "Change status (currently Open)" })).toHaveTextContent(/^Open$/);
+    expect(screen.getByRole("button", { name: "Change status (currently Open)" })).toHaveTextContent(/Open$/);
     expect(screen.getByText("Queued")).toBeInTheDocument();
   });
 
@@ -60,7 +60,7 @@ describe("the board's quick actions", () => {
       queuedStep: { jobId: "j1", jobType: "drive", stageStatus: null, queuedAt: "2026-09-05T14:16:00Z", retryAfterAt: null },
     };
     wrap(<IssueQuickActions issueId="i1" status="open" agentStatus={null} pipelineHealth={pipelineHealth} priority="medium" />);
-    expect(screen.getByRole("button", { name: "Change status (currently Open)" })).toHaveTextContent(/^Open$/);
+    expect(screen.getByRole("button", { name: "Change status (currently Open)" })).toHaveTextContent(/Open$/);
     expect(screen.getByText("Queued")).toBeInTheDocument();
   });
 

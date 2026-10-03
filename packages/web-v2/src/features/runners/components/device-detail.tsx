@@ -3,15 +3,16 @@
 import {
 	Banner,
 	Button,
+	EnumBadge,
 	EmptyState,
 	ErrorState,
 	Field,
 	HealthDot,
 	Icon,
 	Input,
-	MonoTag,
 	Skeleton,
 	SlideOver,
+	StatusBadge,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
@@ -23,7 +24,6 @@ import {
 	type DeviceRunnerAssignment,
 	deviceBuildChip,
 	deviceGateBanner,
-	deviceHealth,
 	runnerHealth,
 } from "../types";
 
@@ -89,13 +89,10 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 
 			<div className="rounded-lg border border-line bg-sunken px-3 py-1.5">
 				<MetaRow label="Status">
-					<span className="inline-flex items-center gap-1.5 capitalize">
-						<HealthDot health={deviceHealth(device.status)} />
-						{device.status}
-					</span>
+					<StatusBadge family="device" value={device.status} />
 				</MetaRow>
 				<MetaRow label="Platform">
-					<MonoTag>{device.platform}</MonoTag>
+					<EnumBadge family="platform" value={device.platform} />
 				</MetaRow>
 				<MetaRow label="Agent version">
 					<span className="inline-flex items-center gap-2">

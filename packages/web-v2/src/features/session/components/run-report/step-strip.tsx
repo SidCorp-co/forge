@@ -6,7 +6,7 @@
 // page whose job is to say where in the pipeline this is. STAGES now only
 // supplies the accent colour when a step happens to be one of them.
 
-import { STAGES } from "@/design";
+import { enumLabel, STAGES } from "@/design";
 import { formatDurationMs } from "@/features/pipeline/derive";
 import type { PipelineRunSummary } from "@/features/pipeline/types";
 
@@ -40,7 +40,9 @@ export function StepStrip({ run, currentStep }: { run: PipelineRunSummary; curre
               <span aria-hidden="true" style={{ color: tick.color }}>
                 {tick.glyph}
               </span>
-              <span className="fg-body-sm truncate">{step.jobType}</span>
+              <span className="fg-body-sm truncate" title={`step: ${step.jobType}`}>
+                {enumLabel("jobType", step.jobType)}
+              </span>
               <span className="fg-caption ml-auto">
                 {step.durationMs != null ? formatDurationMs(step.durationMs) : "—"}
               </span>

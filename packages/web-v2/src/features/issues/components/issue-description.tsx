@@ -7,15 +7,7 @@
 // typed wrong at create stayed wrong forever.
 
 import { useState } from "react";
-import {
-  BodyView,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Skeleton,
-} from "@/design";
+import { BodyView, Button, Skeleton, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import type { AttachmentRow, IssueDetail } from "../types";
 import { AttachmentList } from "./attachment-list";
@@ -23,7 +15,7 @@ import { BodyEditor } from "./body-editor";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import { useSaveDescription } from "../hooks";
 
-export interface DescriptionCardProps {
+export interface IssueDescriptionProps {
   issue: IssueDetail;
   attachments: AttachmentRow[];
   canWrite: boolean;
@@ -32,13 +24,13 @@ export interface DescriptionCardProps {
   attachmentsError?: unknown;
 }
 
-export function DescriptionCard({
+export function IssueDescription({
   issue,
   attachments,
   canWrite,
   attachmentsLoading = false,
   attachmentsError = null,
-}: DescriptionCardProps) {
+}: IssueDescriptionProps) {
   const [draft, setDraft] = useState<string | null>(null);
   const save = useSaveDescription(issue.id);
   const editing = draft !== null;
@@ -50,76 +42,71 @@ export function DescriptionCard({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle>Description</CardTitle>
-          {canWrite &&
-            !editing &&
-            (held ? (
+    <section aria-label="Description" data-testid="issue-description">
+      <ViewHeading
+        right={
+          canWrite && !editing ? (
+            held ? (
               <span role="status" className="fg-body-sm text-subtle">
                 {AGENT_HOLDS_EDIT}
               </span>
             ) : (
+              <Button variant="ghost" size="sm" onClick={() => setDraft(issue.description ?? "")}>
+                Edit
+              </Button>
+            )
+          ) : undefined
+        }
+      >
+        Description
+      </ViewHeading>
+      <IssueAttachments rows={attachments} loading={attachmentsLoading} error={attachmentsError} />
+      {editing ? (
+        <BodyEditor
+          label="Issue description"
+          value={draft}
+          onChange={setDraft}
+          disabled={save.isPending}
+          placeholder="What is the problem, and what does done look like?"
+          actions={
+            <div className="flex gap-2">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setDraft(issue.description ?? "")}
+                disabled={save.isPending}
+                onClick={() => setDraft(null)}
               >
-                Edit
+                Cancel
               </Button>
-            ))}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <IssueAttachments rows={attachments} loading={attachmentsLoading} error={attachmentsError} />
-        {editing ? (
-          <BodyEditor
-            label="Issue description"
-            value={draft}
-            onChange={setDraft}
-            disabled={save.isPending}
-            placeholder="What is the problem, and what does done look like?"
-            actions={
-              <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={save.isPending}
-                  onClick={() => setDraft(null)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  loading={save.isPending}
-                  onClick={() =>
-                    save.mutate(
-                      { id: issue.id, body: { description: draft } },
-                      { onSuccess: () => setDraft(null) },
-                    )
-                  }
-                >
-                  Save
-                </Button>
-              </div>
-            }
-          />
-        ) : issue.description ? (
-          <BodyView
-            body={issue.description}
-            format={issue.descriptionFormat}
-            nodes={issue.descriptionNodes}
-            renderArtifact={renderArtifact}
-          />
-        ) : (
-          <p className="fg-body-sm text-muted">
-            {canWrite ? "No description yet — Edit adds one." : "No description."}
-          </p>
-        )}
-      </CardContent>
-    </Card>
+              <Button
+                variant="primary"
+                size="sm"
+                loading={save.isPending}
+                onClick={() =>
+                  save.mutate(
+                    { id: issue.id, body: { description: draft } },
+                    { onSuccess: () => setDraft(null) },
+                  )
+                }
+              >
+                Save
+              </Button>
+            </div>
+          }
+        />
+      ) : issue.description ? (
+        <BodyView
+          body={issue.description}
+          format={issue.descriptionFormat}
+          nodes={issue.descriptionNodes}
+          renderArtifact={renderArtifact}
+        />
+      ) : (
+        <p className="fg-body-sm text-muted">
+          {canWrite ? "No description yet — Edit adds one." : "No description."}
+        </p>
+      )}
+    </section>
   );
 }
 

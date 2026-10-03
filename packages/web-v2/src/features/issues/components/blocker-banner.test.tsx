@@ -79,7 +79,7 @@ describe("BlockerBanner — a paused run on an issue that looks healthy", () => 
       kind: "stage_stalled",
       detail: "code",
     });
-    expect(screen.getByText(/stage_stalled/)).toBeInTheDocument();
+    expect(screen.getByText(/held by a stalled stage at code/)).toBeInTheDocument();
   });
 });
 

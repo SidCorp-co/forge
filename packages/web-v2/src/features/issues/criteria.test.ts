@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BADGE, type CriterionVerdict, criterionBadge } from "./criteria";
+import { CRITERION_STANDING_LABELS } from "@forge/contracts/issue-vocabulary";
+import { type CriterionVerdict, criterionBadge } from "./criteria";
 
 const v = (over: Partial<CriterionVerdict>): CriterionVerdict => ({
   verdict: "pass",
@@ -38,6 +39,6 @@ describe("criterionBadge (ISS-55)", () => {
 
   it("reads no verdict as Not judged, and labels every state in sentence case", () => {
     expect(criterionBadge(null)).toBe("unjudged");
-    expect(Object.values(BADGE).map((b) => b.label)).toEqual(["Pass", "Fail", "Skipped", "Unresolved", "Not judged"]);
+    expect(Object.values(CRITERION_STANDING_LABELS)).toEqual(["Pass", "Fail", "Skipped", "Unresolved", "Not judged"]);
   });
 });

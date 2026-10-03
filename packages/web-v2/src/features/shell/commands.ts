@@ -111,6 +111,18 @@ export function buildWorkspaceCommands(deps: WorkspaceCommandDeps): Command[] {
         onRun: () => router.push(`/projects/${slug}${it.sub}`),
       });
     }
+    // Automation's two tabs, by name: the rail names only Automation (ISS-65).
+    for (const [label, tab, icon] of [
+      ["Schedules", "schedules", "clock"],
+      ["Improvements", "improvements", "star"],
+    ] as const) {
+      out.push({
+        label: `${activeProjectName ?? slug} · ${label}`,
+        icon,
+        group: "navigate",
+        onRun: () => router.push(`/projects/${slug}/automation?tab=${tab}`),
+      });
+    }
     // Project settings (ISS-316) — a nested route kept off the rail, reachable
     // via the dashboard gear and here.
     out.push({

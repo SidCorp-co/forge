@@ -19,11 +19,11 @@ import {
   ErrorState,
   Field,
   Input,
-  MonoTag,
   Pagination,
   Skeleton,
   Textarea,
   Toggle,
+  EnumBadge,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { usePmConfig, usePmDecisions, useUpdatePmConfig } from "../hooks";
@@ -262,13 +262,13 @@ function DecisionRow({ decision }: { decision: PmDecision }) {
         className="absolute left-0 top-1.5 size-2.5 rounded-pill border border-line-strong bg-accent"
       />
       <div className="flex flex-wrap items-center gap-2">
-        <MonoTag>{decision.cause}</MonoTag>
+        <EnumBadge family="pmCause" value={decision.cause} />
         {decision.confidence !== null && (
           <span className="fg-caption text-subtle">
             confidence {(decision.confidence * 100).toFixed(0)}%
           </span>
         )}
-        {decision.modelTier && <Badge tone="cobalt">{decision.modelTier}</Badge>}
+        {decision.modelTier && <EnumBadge family="modelTier" value={decision.modelTier} />}
         <span className="fg-caption ml-auto text-subtle">{fmtTime(decision.createdAt)}</span>
       </div>
       <p className="fg-body-sm mt-1 text-fg">{decision.summary}</p>

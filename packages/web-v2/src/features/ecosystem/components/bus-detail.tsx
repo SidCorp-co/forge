@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Badge, Tooltip } from "@/design";
+import { Badge, enumLabel, StatusBadge, Tooltip } from "@/design";
 import { readingOf } from "@/lib/api/refusals";
 import { formatRelativeTime } from "@/lib/utils/format";
 import {
@@ -15,25 +15,14 @@ import {
   impactLine,
   impactOf,
   STATE_MEANING,
-  STATE_TONE,
   shortSha,
   triggerRef,
   type StepStatus,
-  type Tone,
-  VERDICT_TONE,
 } from "../bus";
 import { useBuilderRun, useLink } from "../hooks";
 import { ecosystemRoutes } from "../routes";
 import { ProjectMark, type Selection } from "./bus-diagram";
 import { Loading, UnreadNotice } from "./notices";
-
-const BADGE: Record<Tone, "green" | "amber" | "red" | "neutral" | "cobalt"> = {
-  ok: "green",
-  warn: "amber",
-  bad: "red",
-  pend: "neutral",
-  own: "cobalt",
-};
 
 function Group({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
   return (
@@ -111,7 +100,7 @@ function BuilderSummary({ builder }: { builder: BusBuilder }) {
       <Steps builder={builder} />
       <Tooltip label={`Started ${new Date(builder.createdAt).toLocaleString()} · updated ${new Date(builder.updatedAt).toLocaleString()}`}>
         <span className="fg-caption">
-          {prog.done}/{prog.total} steps · on {builder.trigger.kind} at <span className="font-mono">{triggerRef(builder.trigger)}</span>
+          {prog.done}/{prog.total} steps · on {enumLabel("trigger", builder.trigger.kind).toLowerCase()} at <span className="font-mono">{triggerRef(builder.trigger)}</span>
           {builder.stepsStale ? " · steps stale for this source: supersede the run" : ""}
         </span>
       </Tooltip>
@@ -176,7 +165,7 @@ function ProjectDetail({
             <Tooltip key={l.id} label={`${l.module} · ${STATE_MEANING[l.state]}`} multiline>
               <button type="button" onClick={() => onSelect({ kind: "link", id: l.id })} className="flex min-w-0 items-center gap-2 text-left text-13">
                 <span className="truncate font-mono">→ {l.contract.slug}</span>
-                <Badge tone={BADGE[STATE_TONE[l.state]]}>{l.state}</Badge>
+                <StatusBadge family="link" value={l.state} />
               </button>
             </Tooltip>
           ))
@@ -223,7 +212,7 @@ function LinkDetail({ bus, id }: { bus: Bus; id: string }) {
           {consumer} <span className="text-subtle">→</span> <span className="font-mono">{l.contract.slug}</span>
         </h2>
         <Tooltip label={STATE_MEANING[l.state]}>
-          <Badge tone={BADGE[STATE_TONE[l.state]]}>{l.state}</Badge>
+          <StatusBadge family="link" value={l.state} />
         </Tooltip>
         <Tooltip label={`Only ${consumer}'s master writes this link · updated ${new Date(l.updatedAt).toLocaleString()}`}>
           <span className="fg-caption">
@@ -357,7 +346,7 @@ function ContractDetail({
         {c ? (
           <Tooltip label={`${c.title} · ${c.type}`}>
             <span className="fg-caption">
-              by {provider} · {c.currentVersion ?? "no version recorded"} · {c.lifecycle}
+              by {provider} · {c.currentVersion ?? "no version recorded"} · {enumLabel("lifecycle", c.lifecycle)}
             </span>
           </Tooltip>
         ) : (
@@ -384,7 +373,7 @@ function ContractDetail({
                 >
                   <b className="truncate">{names.get(l.consumer) ?? "a member"}</b>
                   <span className="fg-caption font-mono">on {l.pinnedVersion}</span>
-                  <Badge tone={BADGE[VERDICT_TONE[v]]}>{v}</Badge>
+                  <StatusBadge family="check" value={v} />
                 </button>
               </Tooltip>
             );
@@ -425,7 +414,7 @@ function BuilderDetail({ bus, id }: { bus: Bus; id: string }) {
         <h2 className="text-15 font-semibold">{p.slug} ecosystem builder</h2>
         <Tooltip label={`Run ${p.builder.id}`}>
           <span className="fg-caption">
-            on {p.builder.trigger.kind} at <span className="font-mono">{triggerRef(p.builder.trigger)}</span> ·{" "}
+            on {enumLabel("trigger", p.builder.trigger.kind).toLowerCase()} at <span className="font-mono">{triggerRef(p.builder.trigger)}</span> ·{" "}
             {formatRelativeTime(p.builder.updatedAt)}
           </span>
         </Tooltip>
@@ -456,9 +445,7 @@ function BuilderDetail({ bus, id }: { bus: Bus; id: string }) {
                         ? f.host
                         : f.site.operation}
                   </span>
-                  <Badge tone={f.classification === "matched" ? "green" : f.classification === "unknown" ? "amber" : "neutral"}>
-                    {f.classification === "matched" ? "matched" : f.classification === "outside_ecosystem" ? "outside" : "unknown"}
-                  </Badge>
+                  <StatusBadge family="finding" value={f.classification} />
                 </span>
               </Tooltip>
             ))

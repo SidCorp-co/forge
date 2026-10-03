@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Banner, CardTitle, ErrorState, MonoTag, Skeleton, Table, TBody, TD, TH, THead, TR } from "@/design";
+import { Badge, Banner, CardTitle, enumLabel, ErrorState, MonoTag, StatusBadge, Skeleton, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { canonicalJson } from "@forge/contracts/document-patch";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
@@ -78,16 +78,6 @@ export function EffectiveSection({ projectId }: { projectId: string }) {
 	);
 }
 
-const STATE_TONE = {
-	deployed: "green",
-	deploying: "cobalt",
-	failed: "red",
-	cancelled: "neutral",
-	unknown: "amber",
-} as const;
-
-const PROBE_TONE = { confirmed: "green", mismatch: "red", uncompared: "amber", unreachable: "red" } as const;
-
 function probeLine(p: ProbeOutcome): string {
 	switch (p.status) {
 		case "confirmed":
@@ -111,12 +101,12 @@ function EnvironmentRow({ env }: { env: EnvironmentState }) {
 		<section className="rounded-md border border-line p-3" aria-label={`Environment ${env.environment}`}>
 			<div className="flex flex-wrap items-center gap-2">
 				<MonoTag>{env.environment}</MonoTag>
-				<Badge tone={STATE_TONE[env.state]}>{env.state}</Badge>
-				<span className="fg-caption text-subtle">evidence: {env.evidence}</span>
+				<StatusBadge family="deployment" value={env.state} />
+				<span className="fg-caption text-subtle">Evidence: {enumLabel("environmentEvidence", env.evidence)}</span>
 			</div>
 			{env.state === "unknown" ? (
 				<p className="fg-body-sm mt-2 text-muted">
-					{env.reason.cause}: {env.reason.message}
+					{enumLabel("environmentCause", env.reason.cause)}: {env.reason.message}
 				</p>
 			) : (
 				<dl className="fg-body-sm mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
@@ -127,12 +117,12 @@ function EnvironmentRow({ env }: { env: EnvironmentState }) {
 					<div>
 						<dt className="fg-caption text-subtle">Deployment</dt>
 						<dd>
-							{env.deployment.provider} <code>{env.deployment.id}</code> {env.deployment.status} at {env.deployment.at}
+							{env.deployment.provider} <code>{env.deployment.id}</code> <StatusBadge family="deployment" value={env.deployment.status} /> at {env.deployment.at}
 						</dd>
 					</div>
 					<div>
 						<dt className="fg-caption text-subtle">Artifact</dt>
-						<dd>{env.artifact ? `${env.artifact.kind} ${env.artifact.id}` : "none reported by the platform"}</dd>
+						<dd>{env.artifact ? `${enumLabel("artifactKind", env.artifact.kind)} ${env.artifact.id}` : "none reported by the platform"}</dd>
 					</div>
 					<div>
 						<dt className="fg-caption text-subtle">Probes</dt>
@@ -141,7 +131,7 @@ function EnvironmentRow({ env }: { env: EnvironmentState }) {
 								<ul className="space-y-1">
 									{env.probes.map((p) => (
 										<li key={`${p.url}:${p.identifies}`}>
-											<Badge tone={PROBE_TONE[p.status]}>{p.status}</Badge> <code>{p.url}</code> ({p.identifies}) —{" "}
+											<StatusBadge family="probe" value={p.status} /> <code>{p.url}</code> ({p.identifies}) —{" "}
 											{probeLine(p)}
 										</li>
 									))}

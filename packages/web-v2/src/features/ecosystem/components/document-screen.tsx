@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Badge } from "@/design";
+import { Badge, enumLabel, StatusBadge, statusReading } from "@/design";
 import { AskAboutThis } from "@/features/conversations/components/ask-about-this";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useDocument, useThread } from "../hooks";
@@ -15,24 +15,17 @@ import { Loading, UnreadNotice } from "./notices";
 import { AuthorLine, HoldLine, type Names, PeopleNames, useProjectNames } from "./people";
 import { TYPE_LABEL } from "../types";
 
-const STATUS_TEXT: Record<string, string> = {
-  awaiting: "awaiting a reply",
-  answered: "answered",
-  overdue: "overdue",
-  "not-owed": "owes no reply",
-};
-
 function EventLine({ e }: { e: DocumentEvent }) {
   return (
     <li className="min-w-0 break-words text-13">
-      <span className="font-semibold">{e.verb}</span>
+      <span className="font-semibold">{enumLabel("documentVerb", e.verb)}</span>
       {e.from ? (
         <span className="text-muted">
           {" "}
-          {e.from} → {e.to}
+          {statusReading("document", e.from).label} → {statusReading("document", e.to).label}
         </span>
       ) : (
-        <span className="text-muted"> → {e.to}</span>
+        <span className="text-muted"> → {statusReading("document", e.to).label}</span>
       )}{" "}
       · <AuthorLine author={e.by as DocumentView["document"]["authoredBy"]} label="" /> ·{" "}
       <span title={e.at}>{formatRelativeTime(e.at)}</span>
@@ -57,7 +50,7 @@ function Conversation({ projectId, slug, thread, names }: { projectId: string; s
               {d.document.number ?? "draft"}
             </Link>
             <Badge>{TYPE_LABEL[d.document.type] ?? d.document.type}</Badge>
-            {d.document.state !== "published" ? <Badge tone="neutral">{d.document.state}</Badge> : null}
+            {d.document.state !== "published" ? <StatusBadge family="document" value={d.document.state} /> : null}
             <span className="min-w-0 break-words">{d.document.subject}</span>
           </li>
         ))}
@@ -103,7 +96,7 @@ export function DocumentScreen({
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-13 font-semibold">{d.number ?? "draft"}</span>
             <Badge>{TYPE_LABEL[d.type] ?? d.type}</Badge>
-            <Badge tone={d.state === "published" ? "green" : d.state === "returned" ? "red" : "neutral"}>{d.state}</Badge>
+            <StatusBadge family="document" value={d.state} />
             {view.standing?.overdue ? <Badge tone="red">Overdue</Badge> : null}
             {held ? <Badge tone="amber">Held</Badge> : null}
             <span className="fg-caption">{view.side === "sender" ? "you sent this" : "sent to you"}</span>
@@ -155,9 +148,7 @@ export function DocumentScreen({
               {view.standing.recipients.map((r) => (
                 <li key={r.project} className="flex flex-wrap items-center gap-2 text-13">
                   <span>{names(r.project)}</span>
-                  <Badge tone={r.status === "overdue" ? "red" : r.status === "answered" ? "green" : r.status === "awaiting" ? "amber" : "neutral"}>
-                    {STATUS_TEXT[r.status] ?? r.status}
-                  </Badge>
+                  <StatusBadge family="replyOwed" value={r.status} />
                   {r.answeredBy ? (
                     <Link href={ecosystemRoutes.document(slug, r.answeredBy)} className="font-mono hover:underline">
                       {r.answeredBy}

@@ -1,17 +1,19 @@
 "use client";
 
-import { Badge, Kicker } from "@/design";
+import { Badge, enumLabel, Kicker, statusReading, ToneBadge } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { durationOf, msOf, stampOf } from "../format";
 import type { ReleaseAttempt, ReleaseBoundsReading } from "../types";
 import { AttemptBacking } from "./attempt-backing";
 
+/** The attempt's verdict with how long it took; the colour is the verdict's legend tone. */
 function verdictPill(a: ReleaseAttempt) {
-  if (a.settledAt === null) return <Badge tone="amber">running · {durationOf(a.startedAt, null)}</Badge>;
+  if (a.settledAt === null)
+    return <ToneBadge tone="run" pulse label={`Running · ${durationOf(a.startedAt, null)}`} title="running: not settled yet" value="running" />;
   const took = durationOf(a.startedAt, a.settledAt);
-  if (a.verdict === "ok") return <Badge tone="green">{took}</Badge>;
-  if (a.verdict === "failed") return <Badge tone="red">failed · {took}</Badge>;
-  return <Badge tone="amber">unverified · {took}</Badge>;
+  const v = a.verdict ?? "unverified";
+  const r = statusReading("attemptVerdict", v);
+  return <ToneBadge tone={r.tone} glyph={r.glyph} label={`${r.label} · ${took}`} title={v} value={v} />;
 }
 
 function LogTail({ attempt }: { attempt: ReleaseAttempt }) {
@@ -87,7 +89,7 @@ export function DeploymentRows({ attempts, bounds, environment, open, onToggle, 
               <span className="text-12 text-subtle">{stampOf(a.startedAt)}</span>
               <span>{environment ?? "—"}</span>
               <span className="truncate">
-                {a.stage} <span className="font-mono text-12 text-subtle">{a.providerRef ?? a.idempotencyKey}</span>
+                {enumLabel("attemptStage", a.stage)} <span className="font-mono text-12 text-subtle">{a.providerRef ?? a.idempotencyKey}</span>
               </span>
               {verdictPill(a)}
             </button>

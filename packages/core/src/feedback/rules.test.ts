@@ -18,6 +18,9 @@ import {
   triagePhaseRefusal,
   verifyActRefusal,
   verifyRefusal,
+  waitingFor,
+  waitingOf,
+  waitingOnOf,
 } from './rules.js';
 
 const triaged = (over: Partial<PhaseFacts>): PhaseFacts => ({
@@ -191,5 +194,40 @@ describe('who may act, through actMiss', () => {
     expect(redactActRefusal({ ...person, role: 'admin' })).toBeNull();
     expect(redactActRefusal(person)?.code).toBe('FEEDBACK_REDACT_FORBIDDEN');
     expect(redactActRefusal({ ...agent, role: 'admin' })?.code).toBe('FEEDBACK_REDACT_FORBIDDEN');
+  });
+});
+
+describe('whose turn a feedback row is', () => {
+  it('names the carrier a planned item waits on, as a cell and as a sentence', () => {
+    expect(waitingOf('planned', 'issue', 'ISS-12', 'Bao')).toEqual({
+      kind: 'issue',
+      who: 'ISS-12',
+      act: 'ship',
+    });
+    expect(waitingOnOf('planned', 'issue', 'ISS-12', 'Bao')).toBe('ISS-12 to ship');
+  });
+
+  it('puts a resolved item on its reporter, and on the viewer when they are that reporter', () => {
+    const w = waitingOf('resolved', 'issue', 'ISS-12', 'Bao');
+    expect(w).toEqual({ kind: 'person', who: 'Bao', act: 'verify the fix' });
+    expect(waitingFor(w, attentionOf('resolved', true))).toEqual({
+      kind: 'you',
+      who: 'You',
+      act: 'verify the fix',
+    });
+    expect(waitingFor(w, attentionOf('resolved', false))).toEqual(w);
+  });
+
+  it('owes nothing once verified or declined, and says so without an act', () => {
+    expect(waitingOf('verified', 'issue', 'ISS-12', 'Bao')).toEqual({
+      kind: 'none',
+      who: 'Nothing',
+      act: '',
+    });
+    expect(waitingOnOf('declined', null, null, 'Bao')).toBe('Nothing');
+  });
+
+  it('names a root with no key without a stray space', () => {
+    expect(waitingOnOf('planned', 'duplicate', null, 'Bao')).toBe('Its root to be resolved');
   });
 });

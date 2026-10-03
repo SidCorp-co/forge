@@ -172,34 +172,35 @@ describe("the top bar", () => {
 });
 
 describe("the project menu", () => {
-  it("lists Dashboard, Requirements, Workflows, Issues, Agents, Automation and Releases, and no Library", () => {
+  it("lists Dashboard, Requirements, Workflows, Releases, Feedback and Development, and no Library", () => {
     rail(false);
     at("/projects/forge-dev");
     mount();
-    for (const name of ["Dashboard", "Requirements", "Workflows", "Issues", "Agents", "Automation", "Releases"]) {
+    for (const name of ["Dashboard", "Requirements", "Workflows", "Releases", "Feedback", "Development"]) {
       expect(side().getByRole("button", { name: new RegExp(`^${name}`) })).toBeInTheDocument();
     }
     expect(side().queryByRole("button", { name: /^Library/ })).toBeNull();
   });
 
-  it("opens the Automation group on a page inside it and lights that page", () => {
+  it("opens the Development group on a page inside it and lights that page", () => {
     rail(false);
-    at("/projects/forge-dev/automation/improvements");
+    at("/projects/forge-dev/automation");
     mount();
-    expect(side().getByRole("button", { name: "Automation" })).toHaveAttribute("aria-expanded", "true");
-    expect(side().getByRole("button", { name: "Improvements" })).toHaveAttribute("aria-current", "page");
-    fireEvent.click(side().getByRole("button", { name: "Schedules" }));
-    expect(nav.push).toHaveBeenLastCalledWith("/projects/forge-dev/automation/schedules");
+    expect(side().getByRole("button", { name: "Development" })).toHaveAttribute("aria-expanded", "true");
+    expect(side().getByRole("button", { name: "Automation" })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(side().getByRole("button", { name: /^Issues/ }));
+    expect(nav.push).toHaveBeenLastCalledWith("/projects/forge-dev/issues");
   });
 
-  it("keeps the Automation group shut until it is opened, then shows its two pages", () => {
+  it("keeps the Development group shut until it is opened, then shows its four pages", () => {
     rail(false);
-    at("/projects/forge-dev/issues");
+    at("/projects/forge-dev/requirements");
     mount();
-    expect(side().queryByRole("button", { name: "Schedules" })).toBeNull();
-    fireEvent.click(side().getByRole("button", { name: "Automation" }));
-    expect(side().getByRole("button", { name: "Schedules" })).toBeInTheDocument();
-    expect(side().getByRole("button", { name: "Improvements" })).toBeInTheDocument();
+    expect(side().queryByRole("button", { name: "Automation" })).toBeNull();
+    fireEvent.click(side().getByRole("button", { name: "Development" }));
+    for (const name of ["Issues", "Agents", "Contracts", "Automation"]) {
+      expect(side().getByRole("button", { name: new RegExp(`^${name}`) })).toBeInTheDocument();
+    }
   });
 
   it("counts the versions awaiting approval on Releases", () => {

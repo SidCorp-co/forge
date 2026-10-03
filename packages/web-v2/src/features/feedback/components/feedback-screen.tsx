@@ -1,85 +1,76 @@
 "use client";
 
-import { FEEDBACK_KINDS, FEEDBACK_SEVERITIES, FEEDBACK_TARGET_TYPES } from "@forge/contracts/feedback";
-import Link from "next/link";
-import { Fragment, useMemo, useState } from "react";
+// The Feedback list (`forge-prototype.html` #/feedback): the grouping in the top header, a search,
+// the triage funnel, then the shared GroupedList — the same columns as Requirements and Issues — by
+// whose turn it is or by what each item is about. Whose turn comes from core's read model
+// (`feedback/read.ts`); the URL carries the view (`?group=…&q=…&peek=FB-n`).
+
+import { FEEDBACK_ATTENTION, FEEDBACK_ATTENTION_LABELS, FEEDBACK_KINDS, FEEDBACK_PHASE_TONES, FEEDBACK_SEVERITIES, FEEDBACK_TARGET_TYPES } from "@forge/contracts/feedback";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
 import {
+  ActorChip,
   Button,
   EmptyState,
+  enumLabel,
   ErrorState,
   Field,
-  IconButton,
+  GroupedList,
+  Icon,
   Input,
+  LEGEND,
+  type ListGroup,
+  type ListRowView,
   NativeSelect,
   PageTitle,
   ProjectLoader,
-  SegmentedControl,
-  Table,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TopBarActions,
-  TR,
+  rememberListOrigin,
+  StatusBadge,
+  statusReading,
   Textarea,
+  TopBarActions,
+  useGroupFold,
+  usePeek,
+  usePeekKeys,
+  useUrlParams,
+  useViewMode,
+  ViewModeSwitcher,
+  visibleRows,
+  WaitingOn,
 } from "@/design";
-import { TONE_META } from "@/design/status";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
-import { formatRelativeTime } from "@/lib/utils/format";
-import { useQueryParam } from "@/lib/utils/use-query-param";
+import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useCreateFeedback, useFeedbackList } from "../hooks";
-import { feedbackHref } from "../routes";
-import type {
-  CreateFeedbackRequest,
-  FeedbackAttention,
-  FeedbackGrouping,
-  FeedbackKind,
-  FeedbackListResponse,
-  FeedbackSeverity,
-  FeedbackSummary,
-  FeedbackTargetType,
-} from "../types";
-import { KindBadge, PhaseBadge, SeverityBadge, sentence } from "./badges";
+import { FEEDBACK_LIST, feedbackHref } from "../routes";
+import type { CreateFeedbackRequest, FeedbackKind, FeedbackSeverity, FeedbackSummary, FeedbackTargetType } from "../types";
 import { RefusalLine } from "./feedback-actions";
-import { FeedbackDetailView } from "./feedback-detail";
+import { FeedbackPeek } from "./feedback-peek";
 
-const GROUPS: { id: FeedbackAttention; label: string; note: string; tone: string }[] = [
-  { id: "you", label: "Needs you", note: "Triage it, or confirm the fix you reported", tone: TONE_META.attention.fg },
-  { id: "moving", label: "Moving", note: "An issue, revision or requirement carries it", tone: TONE_META.active.fg },
-  { id: "others", label: "Someone else’s turn", note: "The reporter confirms the fix", tone: "var(--fg-muted)" },
-  { id: "done", label: "Done", note: "Verified or declined", tone: "var(--fg-muted)" },
-];
-
-const FUNNEL = [
-  ["new", TONE_META.attention.dot],
-  ["triaged", TONE_META.attention.dot],
-  ["planned", TONE_META.active.dot],
-  ["resolved", "var(--paper-300)"],
-  ["verified", TONE_META.blocked.dot],
-] as const;
-
-/** The table's `.fg-*` type rules are unlayered and beat Tailwind utilities, so the two
- *  cells that differ from them say so inline: an accent key, and a sentence-case group line. */
-const KEY_CELL = { fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)" } as const;
-const GROUP_CELL = { fontFamily: "var(--font-sans)", textTransform: "none", letterSpacing: "normal", color: "var(--fg-default)" } as const;
+const FUNNEL = ["new", "triaged", "planned", "resolved", "verified"] as const;
 
 function Funnel({ rows }: { rows: FeedbackSummary[] }) {
   const n = (p: string) => rows.filter((r) => r.phase === p).length;
-  const total = Math.max(1, ...FUNNEL.map(([p]) => n(p)));
+  const total = Math.max(1, ...FUNNEL.map((p) => n(p)));
   return (
-    <div className="grid gap-2 bg-surface px-4 py-3 sm:px-7" data-testid="feedback-funnel">
+    <div className="grid gap-2 border-b border-line-subtle bg-app px-5 py-3 max-md:px-3" data-testid="feedback-funnel">
       <p className="text-12 text-muted">
         <span className="font-semibold text-fg">Triage funnel</span> Every item, counted once
       </p>
       <div className="grid grid-cols-5 gap-3">
-        {FUNNEL.map(([p, colour]) => (
-          <div key={p} className="grid gap-1">
-            <span className="h-2 rounded-xs" style={{ background: colour, opacity: n(p) ? 1 : 0.35, width: `${Math.max(12, (n(p) / total) * 100)}%` }} />
-            <span className="text-12 text-muted">{sentence(p)}</span>
-            <span className="text-13 font-semibold tabular-nums">{n(p)}</span>
-          </div>
-        ))}
+        {FUNNEL.map((p) => {
+          const r = statusReading("feedbackPhase", p);
+          return (
+            <div key={p} className="grid gap-1">
+              <span
+                className="h-2 rounded-xs"
+                style={{ background: LEGEND[FEEDBACK_PHASE_TONES[p]].dot, opacity: n(p) ? 1 : 0.35, width: `${Math.max(12, (n(p) / total) * 100)}%` }}
+              />
+              <span className="text-12 text-muted">{r.label}</span>
+              <span className="text-13 font-semibold tabular-nums">{n(p)}</span>
+            </div>
+          );
+        })}
       </div>
       <p className="text-12 text-muted">
         Off the funnel: Declined {n("declined")} · Reopened {n("reopened")}
@@ -88,103 +79,49 @@ function Funnel({ rows }: { rows: FeedbackSummary[] }) {
   );
 }
 
-function aboutLine(r: FeedbackSummary) {
-  const t = r.target;
-  return t.type === "screen" ? `Screen “${t.key}”` : `${sentence(t.type)} ${t.key}`;
-}
+const aboutLine = (r: FeedbackSummary) =>
+  r.target.type === "screen" ? `Screen “${r.target.key}”` : `${enumLabel("feedbackTarget", r.target.type)} ${r.target.key}`;
 
-function Row({ r, selected, onOpen }: { r: FeedbackSummary; selected: boolean; onOpen: () => void }) {
-  return (
-    <TR
-      className={cn("cursor-pointer", selected && "bg-active hover:bg-active")}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      tabIndex={0}
-      aria-selected={selected}
-      data-testid="feedback-row"
-      data-key={r.key}
-    >
-      <TD className="whitespace-nowrap" style={KEY_CELL}>
-        {r.key}
-      </TD>
-      <TD className="min-w-0">
-        <span className="grid gap-1">
-          <span className="truncate font-medium" style={{ color: "var(--fg-default)" }}>
-            {r.title}
-          </span>
-          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-12 text-muted">
-            <span className="sm:hidden">
-              <PhaseBadge phase={r.phase} />
-            </span>
-            <KindBadge kind={r.kind} />
-            <span className="truncate">About {aboutLine(r)}</span>
-            <span aria-hidden>·</span>
-            <span className="truncate">{r.reporter.name ?? "Unknown reporter"}</span>
-          </span>
-        </span>
-      </TD>
-      <TD className="hidden sm:table-cell">
-        <PhaseBadge phase={r.phase} />
-      </TD>
-      <TD className="text-13">
-        <span className={r.attention === "you" ? "font-semibold" : undefined} style={r.attention === "you" ? { color: TONE_META.attention.fg } : undefined}>
-          {r.attention === "you" ? "You · " : ""}
-        </span>
-        <span className="text-muted">{r.waitingOn}</span>
-      </TD>
-      <TD className="hidden md:table-cell">
-        <SeverityBadge severity={r.severity} />
-      </TD>
-      <TD className="hidden whitespace-nowrap text-right text-12 text-muted md:table-cell" title={new Date(r.createdAt).toLocaleString()}>
-        {formatRelativeTime(r.createdAt)}
-      </TD>
-    </TR>
-  );
-}
+const GROUP_MODES = [
+  { value: "attention" as const, label: "Attention", title: "Grouped by whose turn it is" },
+  { value: "subject" as const, label: "Subject", title: "Grouped by what each item is about" },
+];
+type Grouping = (typeof GROUP_MODES)[number]["value"];
 
-interface Group {
-  id: string;
-  label: string;
-  note?: string;
-  tone: string;
-  rows: FeedbackSummary[];
-}
-
-function groupsOf(data: FeedbackListResponse, by: FeedbackGrouping, q: string): Group[] {
-  const needle = q.trim().toLowerCase();
-  const rows = needle
-    ? data.feedback.filter((r) => `${r.key} ${r.title} ${r.reporter.name ?? ""}`.toLowerCase().includes(needle))
-    : data.feedback;
+function groupsOf(rows: FeedbackSummary[], by: Grouping): ListGroup<FeedbackSummary>[] {
   if (by === "attention") {
-    return GROUPS.map((g) => ({ ...g, rows: rows.filter((r) => r.attention === g.id) }));
+    return FEEDBACK_ATTENTION.map((a) => ({ id: a, ...FEEDBACK_ATTENTION_LABELS[a], rows: rows.filter((r) => r.attention === a) }));
   }
-  const order: string[] = [];
   const byTarget = new Map<string, FeedbackSummary[]>();
   for (const r of rows) {
     const id = `${r.target.type}:${r.target.key}`;
-    if (!byTarget.has(id)) {
-      byTarget.set(id, []);
-      order.push(id);
-    }
-    byTarget.get(id)?.push(r);
+    byTarget.set(id, [...(byTarget.get(id) ?? []), r]);
   }
-  return order.map((id) => {
-    const list = byTarget.get(id) ?? [];
+  return [...byTarget.entries()].map(([id, list]) => {
     const you = list.filter((r) => r.attention === "you").length;
     return {
-      id,
-      label: list[0] ? aboutLine(list[0]) : id,
-      ...(you ? { note: `Needs you ${you}` } : {}),
-      tone: you ? TONE_META.attention.fg : "var(--fg)",
+      id: `subject:${id}`,
+      label: aboutLine(list[0] as FeedbackSummary),
+      tone: you ? ("you" as const) : null,
+      summary: you ? [{ label: "Needs you", count: you, tone: "you" as const }] : undefined,
       rows: list,
     };
   });
 }
+
+const rowOf =
+  (slug: string) =>
+  (r: FeedbackSummary): ListRowView => ({
+    key: r.key,
+    href: feedbackHref(slug, r.key),
+    title: r.title,
+    facts: [enumLabel("feedbackKind", r.kind), `About ${aboutLine(r)}`, r.reporter.name ?? "Unknown reporter", `Severity ${statusReading("severity", r.severity).label}`],
+    state: <StatusBadge family="feedbackPhase" value={r.phase} />,
+    waitingOn: <WaitingOn w={r.waiting} />,
+    owner: <ActorChip name={r.reporter.name ?? "Unknown reporter"} kind={r.reporter.agency} size={20} />,
+    age: { text: formatAge(r.updatedAt), title: `Sent ${formatStamp(r.createdAt)} · last changed ${formatStamp(r.updatedAt)}` },
+    dim: r.attention === "done",
+  });
 
 function CreateForm({ projectId, onDone }: { projectId: string; onDone: (key: string) => void }) {
   const create = useCreateFeedback(projectId);
@@ -218,14 +155,14 @@ function CreateForm({ projectId, onDone }: { projectId: string; onDone: (key: st
           <NativeSelect
             value={kind}
             onChange={(e) => setKind(e.target.value as FeedbackKind)}
-            options={FEEDBACK_KINDS.filter((k) => k !== "contract_change").map((k) => ({ value: k, label: sentence(k) }))}
+            options={FEEDBACK_KINDS.filter((k) => k !== "contract_change").map((k) => ({ value: k, label: enumLabel("feedbackKind", k) }))}
           />
         </Field>
         <Field label="Severity">
           <NativeSelect
             value={severity}
             onChange={(e) => setSeverity(e.target.value as FeedbackSeverity)}
-            options={FEEDBACK_SEVERITIES.map((v) => ({ value: v, label: sentence(v) }))}
+            options={FEEDBACK_SEVERITIES.map((v) => ({ value: v, label: statusReading("severity", v).label }))}
           />
         </Field>
         <Field label="About" hint="REQ-3, ISS-12, a release version, a workflow flow, or a screen name">
@@ -233,7 +170,7 @@ function CreateForm({ projectId, onDone }: { projectId: string; onDone: (key: st
             <NativeSelect
               value={targetType}
               onChange={(e) => setTargetType(e.target.value as FeedbackTargetType)}
-              options={FEEDBACK_TARGET_TYPES.map((t) => ({ value: t, label: sentence(t) }))}
+              options={FEEDBACK_TARGET_TYPES.map((t) => ({ value: t, label: enumLabel("feedbackTarget", t) }))}
             />
             <Input value={target} onChange={(e) => setTarget(e.target.value)} />
           </span>
@@ -257,17 +194,36 @@ function CreateForm({ projectId, onDone }: { projectId: string; onDone: (key: st
 
 export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const q = useFeedbackList(projectId);
-  const [peek, setPeek] = useQueryParam("peek");
-  const [groupParam, setGroupParam] = useQueryParam("group");
-  const [search, setSearch] = useState("");
+  const router = useRouter();
+  const [params, setParams] = useUrlParams();
+  const [grouping, setGrouping] = useViewMode(GROUP_MODES);
+  const text = params.get("q") ?? "";
   const [creating, setCreating] = useState(false);
-  const [openDone, setOpenDone] = useState(false);
-  const grouping: FeedbackGrouping = groupParam === "subject" ? "subject" : "attention";
-  const groups = useMemo(() => (q.data ? groupsOf(q.data, grouping, search) : []), [q.data, grouping, search]);
+  const fold = useGroupFold("web-v2:feedback-fold");
+
+  const all = q.data?.feedback ?? [];
+  const rows = useMemo(() => {
+    const t = text.trim().toLowerCase();
+    return t ? all.filter((r) => `${r.key} ${r.title} ${r.reporter.name ?? ""}`.toLowerCase().includes(t)) : all;
+  }, [all, text]);
+  const groups = useMemo(() => groupsOf(rows, grouping), [rows, grouping]);
+  const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.key), [groups, fold]);
+  const allKeys = useMemo(() => all.map((r) => r.key), [all]);
+  const peek = usePeek(visible, allKeys);
+  const row = useMemo(() => rowOf(slug), [slug]);
+
+  const openFull = useCallback(
+    (key: string) => {
+      rememberListOrigin(FEEDBACK_LIST);
+      router.push(feedbackHref(slug, key));
+    },
+    [router, slug],
+  );
+  usePeekKeys(peek, openFull);
 
   const title = (
     <>
-      <PageTitle>Feedback</PageTitle>
+      <PageTitle after={<ViewModeSwitcher modes={GROUP_MODES} value={grouping} onChange={setGrouping} placement="header" />}>Feedback</PageTitle>
       <TopBarActions>
         <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
           Feedback
@@ -291,110 +247,55 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
       </div>
     );
   }
-  const rows = q.data.feedback;
-  const open = peek && rows.some((r) => r.key === peek) ? peek : null;
   return (
-    <div className="grid content-start" data-testid="feedback-screen">
+    <div className="grid min-h-full content-start bg-app" data-testid="feedback-screen">
       {title}
       {creating ? (
         <CreateForm
           projectId={projectId}
           onDone={(key) => {
             setCreating(false);
-            if (key) setPeek(key);
+            if (key) peek.set(key);
           }}
         />
       ) : null}
-      <div className={cn("grid min-h-[60vh]", open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,460px)]")}>
+      <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-3 bg-surface px-4 py-3 sm:px-7">
-            <span className="text-12 text-muted">Group</span>
-            <SegmentedControl<FeedbackGrouping>
-              options={[
-                { value: "attention", label: "Attention" },
-                { value: "subject", label: "Subject" },
-              ]}
-              value={grouping}
-              onChange={(v) => setGroupParam(v === "attention" ? null : v)}
-            />
-            <div className="w-full max-w-xs">
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search feedback…" aria-label="Search feedback" />
-            </div>
+          <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
+            <ViewModeSwitcher modes={GROUP_MODES} value={grouping} onChange={setGrouping} placement="toolbar" />
+            <label className="flex h-[30px] min-w-[150px] max-w-[260px] flex-1 items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 text-12-5 text-subtle max-md:h-10 max-md:max-w-none max-md:basis-full">
+              <Icon name="search" size={14} />
+              <input
+                type="search"
+                aria-label="Search feedback"
+                placeholder="Search feedback…"
+                defaultValue={text}
+                onChange={(e) => setParams({ q: e.target.value || null })}
+                className="w-full min-w-0 border-0 bg-transparent text-fg outline-none"
+              />
+            </label>
           </div>
-          {rows.length === 0 ? (
-            <div className="px-4 py-10 sm:px-7">
+          {all.length === 0 ? (
+            <div className="px-5 py-10">
               <EmptyState title="No feedback yet" message="Feedback is what a BA, a tester or a user says about a requirement, an issue, a release, a workflow or a screen." />
             </div>
           ) : (
             <>
-              <Funnel rows={rows} />
-              <Table flush aria-label="Feedback">
-                <THead className="bg-sunken">
-                  <tr>
-                    <TH className="w-20">Key</TH>
-                    <TH>Title</TH>
-                    <TH className="hidden w-28 sm:table-cell">State</TH>
-                    <TH>Waiting on</TH>
-                    <TH className="hidden w-24 md:table-cell">Severity</TH>
-                    <TH className="hidden w-16 text-right md:table-cell">Age</TH>
-                  </tr>
-                </THead>
-                <TBody>
-                  {groups.map((g) => {
-                    const collapsed = g.id === "done" && !openDone;
-                    return (
-                      <Fragment key={g.id}>
-                        <TR className="bg-sunken hover:bg-sunken" data-testid="feedback-group">
-                          <TH scope="colgroup" colSpan={6} className="text-left" style={GROUP_CELL}>
-                            <button
-                              type="button"
-                              className="flex items-baseline gap-2"
-                              onClick={() => g.id === "done" && setOpenDone((v) => !v)}
-                              aria-expanded={!collapsed}
-                            >
-                              <span className="text-13 font-semibold" style={{ color: g.tone }}>
-                                {g.label}
-                              </span>
-                              <span className="text-12 font-semibold tabular-nums">{g.rows.length}</span>
-                              {g.note ? <span className="text-12 font-normal text-muted">{g.note}</span> : null}
-                            </button>
-                          </TH>
-                        </TR>
-                        {collapsed
-                          ? null
-                          : g.rows.map((r) => (
-                              <Row key={r.id} r={r} selected={r.key === open} onOpen={() => setPeek(r.key === open ? null : r.key)} />
-                            ))}
-                      </Fragment>
-                    );
-                  })}
-                </TBody>
-              </Table>
+              <Funnel rows={all} />
+              <GroupedList
+                ariaLabel="Feedback"
+                groups={groups}
+                fold={fold}
+                row={row}
+                selected={peek.open}
+                onPeek={(k) => peek.set(k === peek.open ? null : k)}
+                empty="Nothing matches this search."
+              />
             </>
           )}
         </div>
-        {open ? (
-          <aside
-            className="fixed inset-0 z-30 overflow-y-auto bg-surface px-5 py-5 lg:static lg:inset-auto lg:z-auto lg:border-l lg:border-line"
-            aria-label={`${open} summary`}
-            data-testid="feedback-peek"
-          >
-            <FeedbackDetailView
-              key={open}
-              projectId={projectId}
-              slug={slug}
-              fbKey={open}
-              full={false}
-              head={
-                <>
-                  <Link href={feedbackHref(slug, open)} className="text-12 font-semibold text-accent hover:underline">
-                    Open full page
-                  </Link>
-                  <IconButton icon="x" size="sm" aria-label="Close" onClick={() => setPeek(null)} />
-                </>
-              }
-            />
-          </aside>
+        {peek.open ? (
+          <FeedbackPeek key={peek.open} projectId={projectId} slug={slug} fbKey={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} />
         ) : null}
       </div>
     </div>

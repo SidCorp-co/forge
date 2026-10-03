@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Banner, Button, CardTitle, ErrorState, Field, Input, Skeleton } from "@/design";
+import { Banner, Button, CardTitle, ErrorState, Field, Input, Skeleton, enumLabel } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { documentRefusals, readRefusal } from "@/lib/api/refusals";
 import {
@@ -204,7 +204,7 @@ export function BindingsSection({ projectId, canEdit }: { projectId: string; can
 			</p>
 			{q.data.unrepresentable.map((u) => (
 				<Banner key={u.id} tone="attention">
-					Binding <code>{u.id}</code> ({u.provider}, {u.role}) has no binding-document form: {u.reason}
+					Binding <code>{u.id}</code> ({u.provider}, {enumLabel("bindingRole", u.role)}) has no binding-document form: {u.reason}
 				</Banner>
 			))}
 			{q.data.bindings.length === 0 && pending.length === 0 && (

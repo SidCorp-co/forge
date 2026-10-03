@@ -1,4 +1,5 @@
 import type { NotificationAction, NotificationItem } from "@/design";
+import { enumLabel } from "@/design/vocabulary";
 import { formatRelativeTime } from "@/lib/utils/format";
 import type { NotificationRow, PendingInvitation } from "./types";
 
@@ -109,7 +110,7 @@ export function toInvitationItem(
   return {
     id: `invite-${inv.token}`,
     label: "INVITE",
-    text: `${inv.inviterEmail} invited you to ${inv.name} as ${inv.role}`,
+    text: `${inv.inviterEmail} invited you to ${inv.name} as ${enumLabel("role", inv.role)}`,
     time: formatRelativeTime(inv.createdAt),
     unread: true,
     hue: "amber",

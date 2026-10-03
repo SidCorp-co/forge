@@ -60,6 +60,43 @@ export const REQUIREMENT_STATE_HINTS: Record<RequirementState, string> = {
 	dropped: "dropped: no longer wanted",
 };
 
+/** A revision's one state (domain-entities.md "Revisions: one vocabulary"). */
+export const REVISION_STATES = [
+	"draft",
+	"proposed",
+	"current",
+	"superseded",
+] as const;
+export type RevisionState = (typeof REVISION_STATES)[number];
+
+export const REVISION_STATE_LABELS: Record<RevisionState, string> = {
+	draft: "Draft",
+	proposed: "Proposed",
+	current: "Current",
+	superseded: "Superseded",
+};
+
+export const REVISION_STATE_TONES: Record<RevisionState, StandingTone> = {
+	draft: "neutral",
+	proposed: "you",
+	current: "ready",
+	superseded: "done",
+};
+
+export const REVISION_STATE_GLYPHS: Record<RevisionState, string> = {
+	draft: "○",
+	proposed: "●",
+	current: "✓",
+	superseded: "×",
+};
+
+export const REVISION_STATE_HINTS: Record<RevisionState, string> = {
+	draft: "draft: still being written",
+	proposed: "proposed: waiting for a person to accept or return it",
+	current: "current: the accepted revision",
+	superseded: "superseded: replaced by a later accepted revision",
+};
+
 /** The list's attention groups, in the order they are drawn. */
 export const REQUIREMENT_ATTENTION_GROUPS = [
 	"needs_you",
@@ -182,6 +219,8 @@ export interface CoverageIssue {
 	displayId: string;
 	title: string;
 	status: string;
+	/** The status's tone on this project (`issue-vocabulary.ts:issueStatusToneOn`). */
+	tone: IssueStatusTone;
 	/** The issue criterion number that traces here, its latest verdict, and whether it traces to an
 	 *  earlier wording of the business criterion. */
 	criterion: number;

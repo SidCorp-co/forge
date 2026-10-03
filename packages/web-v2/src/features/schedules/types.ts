@@ -1,5 +1,3 @@
-import type { StatusKey } from "@/design/status";
-
 export type ScheduleLastStatus = "success" | "failed" | "running" | null;
 
 /** A schedule is either 'prompt' (existing agent-session behavior) or
@@ -28,20 +26,6 @@ export interface ScheduleRow {
   appliedMessageVersions: Record<string, number> | null;
   createdAt: string;
   updatedAt: string;
-}
-
-/** Map a schedule's last run result to a design-kit StatusChip key. */
-export function lastStatusToChip(status: ScheduleLastStatus): StatusKey | null {
-  switch (status) {
-    case "success":
-      return "passed";
-    case "failed":
-      return "failed";
-    case "running":
-      return "running";
-    default:
-      return null;
-  }
 }
 
 export type ScheduleRunTrigger = "manual" | "scheduled";
@@ -84,20 +68,4 @@ export interface ScheduleRun {
   /** script-kind runs only: captured console output + failure message. */
   output?: string | null;
   error?: string | null;
-}
-
-/** Map an agent-session status to a design-kit StatusChip key (session domain). */
-export function sessionStatusToChip(status: string): StatusKey {
-  switch (status) {
-    case "completed":
-    case "completed_via_recovery":
-      return "passed";
-    case "failed":
-    case "cancelled_stale":
-      return "failed";
-    case "running":
-      return "running";
-    default:
-      return "queued";
-  }
 }

@@ -2,7 +2,7 @@
 
 
 import { useState } from "react";
-import { Icon } from "@/design";
+import { enumLabel, Icon } from "@/design";
 import { stageColor } from "@/design/stages";
 import type { StepOutcome, StepState } from "../derive";
 
@@ -106,7 +106,9 @@ export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardPr
           className="inline-block h-3 w-0.5 flex-none rounded-pill"
           style={{ background: stageColor(outcome.step) }}
         />
-        <span className="fg-label min-w-0 truncate font-mono">{outcome.step}</span>
+        <span className="fg-label min-w-0 truncate" title={`step: ${outcome.step}`}>
+          {enumLabel("jobType", outcome.step)}
+        </span>
         <span className="fg-caption text-muted">{meta.label}</span>
         <span className="ml-auto flex flex-none items-center gap-3">
           {outcome.durationSeconds != null && (

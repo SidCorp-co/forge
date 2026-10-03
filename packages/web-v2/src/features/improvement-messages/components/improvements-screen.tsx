@@ -110,8 +110,11 @@ function RowAction({ row, projectId, slug, canWrite }: { row: ImprovementRow; pr
 
 export function ImprovementsScreen({
   scope,
+  header,
 }: {
   scope: { projectId: string; slug: string; canManage: boolean; canWrite: boolean };
+  /** The page's title when it hosts this screen as a tab (Automation); the screen's own otherwise. */
+  header?: React.ReactNode;
 }) {
   const { projectId, slug } = scope;
   const [filter, setFilter] = useState<ImprovementFilter>("all");
@@ -125,11 +128,11 @@ export function ImprovementsScreen({
 
   return (
     <PageContainer className="min-h-dvh">
-      <PageTitle
-          hint="What agents report about the harness comes in; the improvement loop's proposals go out. One list for both."
-        >
+      {header ?? (
+        <PageTitle hint="What agents report about the harness comes in; the improvement loop's proposals go out. One list for both.">
           Improvements
-      </PageTitle>
+        </PageTitle>
+      )}
 
       <fieldset className="mb-3 flex flex-wrap gap-1.5 border-0 p-0" aria-label="Show">
         {IMPROVEMENT_FILTERS.map((f) => (

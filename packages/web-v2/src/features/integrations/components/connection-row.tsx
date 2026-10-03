@@ -2,7 +2,7 @@
 
 
 import { useId, useState } from "react";
-import { Badge, Button, Icon } from "@/design";
+import { Badge, Button, Icon, statusReading } from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useCanManageConnection, useRemoveConnection, useUpdateConnection } from "../hooks";
@@ -194,7 +194,7 @@ export function ConnectionRow({
           <UsageLine connection={connection} projectName={projectName} emptyId={usageEmptyId} />
           <span id={healthId} className="fg-body-sm text-subtle">
             {connection.lastHealthStatus
-              ? `last health: ${connection.lastHealthStatus}${checked ? ` · ${checked}` : ""}`
+              ? `Last health: ${statusReading("connection", connection.lastHealthStatus).label}${checked ? ` · ${checked}` : ""}`
               : "never health-checked"}
             {!connection.hasSecrets && " · no credential stored"}
           </span>

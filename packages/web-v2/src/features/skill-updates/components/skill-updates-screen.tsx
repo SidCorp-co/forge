@@ -8,7 +8,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Badge, Card, EmptyState, ErrorState, Skeleton } from "@/design";
+import { Badge, Card, EmptyState, ErrorState, Skeleton, StatusBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { awaitsHuman, useReconcileRuns } from "../hooks";
 import type { ReconcileRunSummary } from "../types";
@@ -48,9 +48,7 @@ function RunRow({
     >
       <div className="flex flex-wrap items-center gap-2">
         {waiting ? <Badge tone="amber">Needs you</Badge> : null}
-        <Badge tone={run.verdict === "escalate" ? "red" : "neutral"}>
-          {run.verdict ?? run.status}
-        </Badge>
+        {run.verdict ? <StatusBadge family="reconcileVerdict" value={run.verdict} /> : <StatusBadge family="reconcileRun" value={run.status} />}
         <span className="text-muted text-xs">{relative(run.createdAt)}</span>
       </div>
       <p className="text-muted mt-1 truncate text-xs">run {run.id.slice(0, 8)}</p>

@@ -26,6 +26,18 @@ export interface RailItem {
   badge?: number;
 }
 
+/** A titled run of project rows the rail folds under one head (Development). */
+export interface RailGroup {
+  key: string;
+  label: string;
+  icon: IconName;
+  items: RailItem[];
+}
+
+export type RailEntry = RailItem | RailGroup;
+
+export const isRailGroup = (e: RailEntry): e is RailGroup => "items" in e;
+
 export interface SwitcherProject {
   id: string;
   slug: string;
@@ -39,8 +51,11 @@ export interface SwitcherProject {
 
 export interface NavRailCompactProps {
   workspaceItems: RailItem[];
-  /** Project-tier items — null/empty when no project is active. */
-  projectItems?: RailItem[] | null;
+  /** Project-tier rows and groups — null/empty when no project is active. */
+  projectItems?: RailEntry[] | null;
+  /** Which groups the reader opened; a group holding the current page is open regardless. */
+  groupOpen?: Record<string, boolean>;
+  onToggleGroup?: (key: string, open?: boolean) => void;
   activeKey: string;
   /** Slug of the active project — marks the current row in the switcher. */
   activeSlug?: string | null;
@@ -89,10 +104,13 @@ function RailButton({
   item,
   active,
   onClick,
+  nested,
 }: {
   item: RailItem;
   active: boolean;
   onClick: () => void;
+  /** A row inside a group: a step narrower, so the group's hairline shows beside it. */
+  nested?: boolean;
 }) {
   const count = item.badge && item.badge > 0 ? item.badge : 0;
   return (
@@ -103,7 +121,8 @@ function RailButton({
       aria-label={item.label}
       title={item.label}
       className={cn(
-        'relative flex w-[76px] flex-col items-center gap-1 rounded-md px-1 pb-1.5 pt-2 transition-colors duration-[120ms]',
+        'relative flex flex-col items-center gap-1 rounded-md px-1 pb-1.5 pt-2 transition-colors duration-[120ms]',
+        nested ? 'w-[64px]' : 'w-[76px]',
         'focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]',
         active ? 'bg-accent-tint' : 'text-subtle hover:bg-hover',
       )}
@@ -136,6 +155,57 @@ function RailButton({
   );
 }
 
+/** A group head ("Development ▾") over its rows, drawn indented on a hairline while open. Closed,
+ *  the head carries the sum of its rows' counts so nothing actionable hides behind the fold. */
+function RailGroupBlock({
+  group,
+  activeKey,
+  open,
+  onToggle,
+  onNavigate,
+}: {
+  group: RailGroup;
+  activeKey: string;
+  open: boolean;
+  onToggle: () => void;
+  onNavigate: (key: string) => void;
+}) {
+  const folded = open ? 0 : group.items.reduce((n, it) => n + (it.badge && it.badge > 0 ? it.badge : 0), 0);
+  return (
+    <div className="flex w-[76px] flex-col items-center" data-testid={`rail-group-${group.key}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-label={group.label}
+        title={group.label}
+        className="relative flex w-[76px] flex-col items-center gap-1 rounded-md px-1 pb-1.5 pt-2 text-subtle transition-colors duration-[120ms] hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+      >
+        <span className="flex items-center gap-0.5">
+          <Icon name={group.icon} size={18} />
+          <Icon name="chevronDown" size={11} className={cn("transition-transform", !open && "-rotate-90")} />
+        </span>
+        <span className="block min-w-0 max-w-full truncate text-10 font-semibold tracking-[-0.01em] text-fg">{group.label}</span>
+        {folded > 0 && (
+          <span
+            className="absolute right-2 top-3px inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-pill px-[3px] font-mono text-9 font-bold text-white"
+            style={{ background: 'var(--accent)', border: '1.5px solid var(--bg-surface)' }}
+          >
+            {folded > 99 ? '99+' : folded}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="ml-2.5 flex flex-col items-center gap-3px border-l border-line-subtle pl-0.5">
+          {group.items.map((it) => (
+            <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} nested />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function NavRailCompact({
   workspaceItems,
   projectItems,
@@ -157,6 +227,8 @@ export function NavRailCompact({
   search,
   bell,
   ecosystemItems,
+  groupOpen,
+  onToggleGroup,
 }: NavRailCompactProps) {
   const [flyOpen, setFlyOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -210,6 +282,7 @@ export function NavRailCompact({
       {search && <div className="mb-2">{search}</div>}
 
       {projectItems && projectItems.length > 0 && activeProject && (
+        // biome-ignore lint/a11y/noStaticElementInteractions: hover only keeps the flyout open for a pointer; the button inside opens it from the keyboard
         <div ref={switcherRef} className="relative" onMouseEnter={show} onMouseLeave={hide}>
           <button
             type="button"
@@ -267,7 +340,9 @@ export function NavRailCompact({
             <div className="mb-1 flex items-center gap-[7px] border-b border-line-subtle px-2 py-1.5">
               <Icon name="search" size={14} className="text-subtle" />
               <input
-                autoFocus
+                // the flyout opens to type in: focus lands in its search as it mounts
+                ref={(el) => el?.focus()}
+                aria-label="Find a project"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Find a project…"
@@ -349,9 +424,20 @@ export function NavRailCompact({
             {/* Project tier. */}
             <RailKicker label="Project" className="mt-1.5" />
             <div className="mt-1 flex flex-col items-center gap-3px">
-              {projectItems.map((it) => (
-                <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
-              ))}
+              {projectItems.map((it) =>
+                isRailGroup(it) ? (
+                  <RailGroupBlock
+                    key={it.key}
+                    group={it}
+                    activeKey={activeKey}
+                    open={groupOpen?.[it.key] === true || it.items.some((c) => c.key === activeKey)}
+                    onToggle={() => onToggleGroup?.(it.key, groupOpen?.[it.key] !== true)}
+                    onNavigate={onNavigate}
+                  />
+                ) : (
+                  <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
+                ),
+              )}
             </div>
 
             <div className="my-[9px] h-px w-[34px] bg-[color:var(--border-subtle)]" />

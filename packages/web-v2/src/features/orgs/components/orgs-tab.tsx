@@ -1,16 +1,6 @@
 "use client";
 
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  ErrorState,
-  Field,
-  Input,
-  SectionTitle,
-  Skeleton,
-} from "@/design";
+import { Badge, Button, Card, CardContent, ErrorState, Field, Input, SectionTitle, Skeleton, EnumBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { SLUG_RE, slugify } from "@/lib/slug";
@@ -70,10 +60,8 @@ export function OrgsTab() {
                   {o.name}
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
-                  {o.isPersonal && <Badge tone="neutral">personal</Badge>}
-                  <Badge tone={o.role === "owner" ? "accent" : "neutral"}>
-                    {o.role}
-                  </Badge>
+                  {o.isPersonal && <Badge tone="neutral">Personal</Badge>}
+                  <EnumBadge family="role" value={o.role} />
                   {!o.isPersonal && (
                     <Button
                       variant="ghost"

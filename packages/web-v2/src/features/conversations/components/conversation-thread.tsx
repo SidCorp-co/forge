@@ -373,8 +373,9 @@ export function ConversationThread({
             data-testid="thread-silence"
             className="rounded-md border border-line bg-surface px-3 py-2"
           >
-            <p className="fg-body-sm text-muted">{SILENCE_REASON[entry.decision]}</p>
-            <p className="fg-caption mt-0.5 font-mono text-subtle">{entry.decision}</p>
+            <p className="fg-body-sm text-muted" title={`decision: ${entry.decision}`}>
+              {SILENCE_REASON[entry.decision]}
+            </p>
           </div>
         );
       })}
@@ -427,9 +428,6 @@ function AgentTurnEntry({ turn }: { turn: AgentTurn }) {
           Ask again to start a fresh session, or open a conversation in Assistant mode if the
           question does not need the repository.
         </p>
-      )}
-      {!failed && (
-        <p className="fg-caption mt-0.5 font-mono text-subtle">agent · {turn.state}</p>
       )}
     </div>
   );

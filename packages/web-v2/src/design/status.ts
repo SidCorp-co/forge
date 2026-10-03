@@ -60,7 +60,7 @@ export type StatusKey =
 export const STATUS_KEY_TONE: Record<StatusKey, SemanticTone> = {
   running: "active",
   queued: "neutral",
-  blocked: "blocked",
+  blocked: "infra",
   waiting: "attention",
   passed: "success",
   failed: "failure",

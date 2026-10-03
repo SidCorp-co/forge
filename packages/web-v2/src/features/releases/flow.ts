@@ -1,3 +1,4 @@
+import { enumLabel, statusReading } from "@/design/vocabulary";
 import { stampOf } from "./format";
 import type { ReleaseEnvironmentRow, ReleaseVersionList, ReleaseVersionRow } from "./versions-types";
 
@@ -186,12 +187,14 @@ export function stepTip(v: ReleaseVersionRow, stage: FlowStage, state: StepState
     if (!a) return v.approvalRequired ? `${head} · required, not asked yet` : head;
     const asked = `asked by ${a.requestedBy.name} ${stampOf(a.requestedAt)}`;
     if (!a.decision) return `${head} · ${asked}`;
-    const by = `${a.decision} by ${a.decidedBy?.name ?? "someone"}${a.decidedAt ? ` ${stampOf(a.decidedAt)}` : ""}`;
+    const by = `${statusReading("release", a.decision).label} by ${a.decidedBy?.name ?? "someone"}${a.decidedAt ? ` ${stampOf(a.decidedAt)}` : ""}`;
     return `${head} · ${asked} · ${by}${a.reason ? ` · ${a.reason}` : ""}`;
   }
   if (stage.key === deployKey) {
     if (v.stages.length === 0) return head;
-    const parts = v.stages.map((s) => `${s.stage} ${s.settled ? (s.verdict ?? "settled") : "running"}`);
+    const parts = v.stages.map(
+      (s) => `${enumLabel("attemptStage", s.stage)} ${s.settled ? (s.verdict ? statusReading("attemptVerdict", s.verdict).label.toLowerCase() : "settled") : "running"}`,
+    );
     return `${head} · ${parts.join(" · ")}`;
   }
   if (stage.kind === "live") {

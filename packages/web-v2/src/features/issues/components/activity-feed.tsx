@@ -6,7 +6,7 @@
 // show by action only; the Comments tab is the source for those.
 
 import { formatFieldPath, isIssueUpdatedPayload } from "@forge/contracts/field-changes";
-import { Badge, EmptyState, Icon, MonoTag, type IconName } from "@/design";
+import { Badge, EmptyState, EnumBadge, Icon, MonoTag, sentenceCase, StatusBadge, type IconName } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import type { ActivityItem } from "../types";
 
@@ -25,8 +25,8 @@ function describe(item: ActivityItem): Node {
         icon: "pipeline",
         text: (
           <span className="inline-flex flex-wrap items-center gap-1.5">
-            Status {from && <MonoTag>{from}</MonoTag>} <Icon name="arrowRight" size={12} />{" "}
-            {to && <MonoTag hue="cobalt">{to}</MonoTag>}
+            Status {from && <StatusBadge family="issue" value={from} />} <Icon name="arrowRight" size={12} />{" "}
+            {to && <StatusBadge family="issue" value={to} />}
           </span>
         ),
       };
@@ -49,13 +49,14 @@ function describe(item: ActivityItem): Node {
         icon: "alert",
         text: (
           <span className="inline-flex flex-wrap items-center gap-1.5">
-            Priority {from && <MonoTag>{from}</MonoTag>} <Icon name="arrowRight" size={12} />{" "}
-            {to && <MonoTag>{to}</MonoTag>}
+            Priority {from && <EnumBadge family="priority" value={from} />} <Icon name="arrowRight" size={12} />{" "}
+            {to && <EnumBadge family="priority" value={to} />}
           </span>
         ),
       };
     default:
-      return { icon: "dot", text: item.action };
+      // An action this build has no line for reads as words, never as its `issue.someAction` key.
+      return { icon: "dot", text: sentenceCase(item.action.replace(/^issue\./, "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()) };
   }
 }
 
@@ -91,7 +92,7 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
         // over the bare actorType. Fall back to the raw type for older payloads;
         // never show just "user"/"device" when a name is available (ISS-519).
         const isAgent = item.actor?.isAgent ?? item.actorType === "device";
-        const actorLabel = item.actor?.displayName ?? item.actorType;
+        const actorLabel = item.actor?.displayName ?? sentenceCase(item.actorType);
         return (
           <li key={item.id} className="flex items-start gap-3">
             <span className="mt-0.5 flex size-6 flex-none items-center justify-center rounded-pill bg-sunken text-subtle">

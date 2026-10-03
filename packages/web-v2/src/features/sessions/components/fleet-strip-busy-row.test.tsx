@@ -50,7 +50,8 @@ async function renderStrip(session: SessionRow) {
 describe("the busy device's detail row (ISS-999)", () => {
   it("names the step the session recorded", async () => {
     await renderStrip(row({ metadata: { type: "pipeline", step: "drive" }, title: "ISS-42 a title" }));
-    expect(screen.getByText("drive")).toBeInTheDocument();
+    expect(screen.getByText("Drive")).toBeInTheDocument();
+    expect(screen.queryByText("drive")).toBeNull();
     expect(screen.getByText("ISS-42")).toBeInTheDocument();
   });
 

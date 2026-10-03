@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { DesignStatus } from '@forge/contracts/design-status';
 import {
   bandOfNode,
   LEGACY_V2_TEMPLATE,
@@ -11,8 +12,7 @@ import type { DesignApprover } from '../project-config/schema.js';
 import { impliedKind } from './edges.js';
 import { stepsOf, type WorkflowWrite } from './schema.js';
 
-export const DESIGN_STATUSES = ['draft', 'proposed', 'approved', 'returned'] as const;
-export type DesignStatus = (typeof DESIGN_STATUSES)[number];
+export { DESIGN_STATUSES, type DesignStatus } from '@forge/contracts/design-status';
 
 export const DESIGN_DECISIONS = ['approve', 'return'] as const;
 export type DesignDecision = (typeof DESIGN_DECISIONS)[number];

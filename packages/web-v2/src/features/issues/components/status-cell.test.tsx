@@ -82,7 +82,9 @@ const row = (status: IssueStatus, step: WorkStep | null = null): IssueRow =>
 /** The word the STATUS column prints for a row at this status (and step). */
 function printed(status: IssueStatus, step: WorkStep | null = null): string {
   const { container, unmount } = render(<StatusCell row={row(status, step)} />);
-  const text = container.textContent ?? "";
+  const text = [...container.querySelectorAll('[data-testid="status-badge"]')]
+    .map((b) => b.lastElementChild?.textContent ?? "")
+    .join("");
   unmount();
   return text.trim();
 }
@@ -138,14 +140,14 @@ describe("the word the detail header prints", () => {
   );
   const chip = header
     .split("\n")
-    .find((l) => l.includes("<StatusChip") && l.includes("issueStatusChip(issue.status"));
+    .find((l) => l.includes("<StatusBadge") && l.includes("value={issue.status}"));
 
   it("reads a call site that is actually there", () => {
-    expect(chip, "the detail header's StatusChip line was not found").toBeDefined();
+    expect(chip, "the detail header's StatusBadge line was not found").toBeDefined();
   });
 
-  it("labels the header chip through the one chip reading, with the issue's own step", () => {
-    expect(chip).toMatch(/\{\.\.\.issueStatusChip\(issue\.status, workStepOf\(issue\)\)\}/u);
+  it("labels the header badge through the one status reading, with the issue's own step", () => {
+    expect(chip).toMatch(/family="issue" value=\{issue\.status\} step=\{workStepOf\(issue\)\}/u);
     expect(chip).not.toMatch(/label=/u);
   });
 

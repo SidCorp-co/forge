@@ -39,7 +39,6 @@ import {
 	STATUS_LABELS,
 	statusLabel,
 	statusStepLabel,
-	issueStatusChip,
 	runStatusChip,
 	statusToChip,
 	statusToTone,
@@ -168,23 +167,6 @@ describe("statusStepLabel — the run's step on an in_progress chip", () => {
 	it("gives every step its own word", () => {
 		const words = WORK_STEPS.map((step) => statusStepLabel("in_progress", step));
 		expect(new Set(words).size).toBe(WORK_STEPS.length);
-	});
-});
-
-describe("issueStatusChip — the one reading every issue-status chip takes", () => {
-	it("carries the chip key, the step-bearing word, a glyph and the legend's tooltip", () => {
-		const view = issueStatusChip("in_progress", "build");
-		expect(view.status).toBe(statusToChip("in_progress"));
-		expect(view.label).toBe("In progress · Build");
-		expect(view.glyph.length).toBeGreaterThan(0);
-		expect(view.title).toMatch(/run holds it/);
-	});
-	it("gives every status a glyph, and tells apart every status but the two filled dots", () => {
-		const glyphs = ISSUE_STATUSES.map((s) => issueStatusChip(s).glyph);
-		for (const g of glyphs) expect(g).toBeTruthy();
-		expect(new Set(glyphs).size).toBe(ISSUE_STATUSES.length - 1);
-		expect(issueStatusChip("open").glyph).toBe(issueStatusChip("in_progress").glyph);
-		expect(issueStatusChip("open").status).not.toBe(issueStatusChip("in_progress").status);
 	});
 });
 
@@ -1390,7 +1372,8 @@ describe("deriveBlockerState — ISS-853, the paused run the screen used to hide
 			}),
 			undefined,
 		);
-		expect(b?.reason).toContain("stage_stalled");
+		expect(b?.reason).toContain("held by a stalled stage");
+		expect(b?.reason).not.toContain("stage_stalled");
 		expect(b?.reason).toContain("code");
 	});
 
@@ -1434,7 +1417,8 @@ describe("deriveBlockerState — ISS-853, the paused run the screen used to hide
 			},
 			undefined,
 		);
-		expect(b?.reason).toContain("stage_stalled");
+		expect(b?.reason).toContain("held by a stalled stage");
+		expect(b?.reason).not.toContain("stage_stalled");
 		expect(b?.cta.kind).toBe("resume-run");
 	});
 

@@ -3,6 +3,7 @@
  * every write resolves a requirement and its signer with.
  */
 
+import { issueStatusToneOn, type KernelIssueStatus } from '@forge/contracts/issue-vocabulary';
 import type { RequirementStanding } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -28,6 +29,7 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
+import { approvalRequired } from '../release-batch/approvals.js';
 import {
   changedSincePlan,
   type LinkedDesign,
@@ -213,6 +215,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
     standing,
     history,
     readiness,
+    releaseApproval,
   ] = await Promise.all([
     db
       .select()
@@ -269,6 +272,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
       .then((m) => m.get(row.id) as RequirementStanding),
     historyOf(row.id, row.projectId),
     readinessOf(row),
+    approvalRequired(row.projectId),
   ]);
   const people = await peopleOf([
     ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
@@ -312,6 +316,8 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
       displayId: formatIssueRef(prefix, i.issSeq),
       title: i.title,
       status: i.status,
+      // awaiting_release is a person's turn only where this project requires a release approval
+      tone: issueStatusToneOn(i.status as KernelIssueStatus, releaseApproval),
       plannedRevision: i.plannedRevision,
       changedSincePlan: changedSincePlan({
         plan: i.plan,

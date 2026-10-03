@@ -8,8 +8,11 @@ import {
   SankeyFlow,
   SectionTitle,
   Waffle,
+  enumLabel,
+  sentenceCase,
 } from "@/design";
 import { TONE_META } from "@/design/status";
+import { failureReasonLabel } from "@/features/sessions/types";
 import { formatElapsed, qualityRates } from "../derive";
 import type { PulseQuality } from "../types";
 
@@ -106,8 +109,8 @@ export function QualitySection({ quality }: QualitySectionProps) {
             <ul className="flex flex-col gap-0.5">
               {sessionFailures.map((r) => (
                 <li key={r.reason} className="fg-body-sm flex justify-between gap-2">
-                  <span className={r.reason === "unclassified" ? "text-subtle" : ""}>
-                    {r.reason}
+                  <span className={r.reason === "unclassified" ? "text-subtle" : ""} title={`reason: ${r.reason}`}>
+                    {failureReasonLabel(r.reason) ?? sentenceCase(r.reason)}
                   </span>
                   <span className="tabular-nums text-muted">{r.count}</span>
                 </li>
@@ -124,14 +127,14 @@ export function QualitySection({ quality }: QualitySectionProps) {
             <SankeyFlow
               nodes={pipelineFlow.map((n) => ({
                 key: n.type,
-                label: n.type,
+                label: enumLabel("jobType", n.type),
                 count: n.count,
                 medianSeconds: n.medianSeconds,
                 loop: n.type === "fix",
               }))}
               formatDuration={(s) => (s === null ? "—" : formatElapsed(s))}
               label={`Jobs by pipeline stage over 90 days. ${pipelineFlow
-                .map((n) => `${n.type}: ${n.count}`)
+                .map((n) => `${enumLabel("jobType", n.type)}: ${n.count}`)
                 .join(", ")}.`}
             />
           )}

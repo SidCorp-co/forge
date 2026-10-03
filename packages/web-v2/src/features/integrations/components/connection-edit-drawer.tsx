@@ -23,6 +23,7 @@ import {
   Input,
   Skeleton,
   SlideOver,
+  statusReading,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
@@ -204,14 +205,14 @@ function CredentialSection({
         )}
         <span className="fg-body-sm text-muted">
           {connection.lastHealthStatus
-            ? `last health: ${connection.lastHealthStatus}${checked ? ` · ${checked}` : ""}`
+            ? `Last health: ${statusReading("connection", connection.lastHealthStatus).label}${checked ? ` · ${checked}` : ""}`
             : "never health-checked"}
           {!connection.hasSecrets && " · no credential stored"}
         </span>
       </div>
       {testResult && (
         <Banner tone={testResult.status === "ok" ? "success" : "danger"}>
-          {testResult.status === "ok" ? "Connection healthy" : `Test failed: ${testResult.status}`}
+          {testResult.status === "ok" ? "Connection healthy" : `Test failed: ${statusReading("connection", testResult.status).label}`}
           {testResult.message ? ` — ${testResult.message}` : ""}
         </Banner>
       )}

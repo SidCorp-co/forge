@@ -1,34 +1,39 @@
 "use client";
 
-// web-v2 Issue detail (`/projects/[slug]/issues/[id]`, ISS-294). Live via WS on the keys
-// `['issue',id]` / `['comments',id]` / `['activities',id]` — the event-router invalidates
+// web-v2 Issue detail (`/projects/[slug]/issues/[id]`, ISS-294): the shared DetailHeader in the top
+// bar (back to the list view it came from, key, title, status, one primary action), whose turn as
+// banners, then Overview / Criteria / Runs / Activity as tabs (`?tab=`) beside a sticky facts rail —
+// the read model's standing over the editable properties. Live via WS on the keys `['issue',id]` /
+// `['comments',id]` / `['activities',id]` and `['issues','standing']` — the event-router invalidates
 // exactly those, so a query keyed anything else here stops updating and nothing reports it.
 
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   Checkbox,
-  Collapsible,
+  DetailHeader,
+  DetailLayout,
+  DetailMobileTitle,
+  DetailPane,
+  DetailTabs,
   EmptyPanelLine,
   EmptyState,
   ErrorState,
+  FactsGroup,
+  FactsRail,
   HelpButton,
   IconButton,
   Markdown,
   Menu,
-  MonoTag,
-  PageContainer,
-  PageTitle,
   ProjectLoader,
+  SegmentedControl,
   Skeleton,
+  StatusBadge,
   StatusChip,
-  Tabs,
+  useListOrigin,
+  useUrlTab,
   type MenuItem,
-  type TabItem,
+  ViewHeading,
 } from "@/design";
 import { useResumeRun } from "@/features/pipeline/hooks";
 import { usePolicyDocument } from "@/features/project-settings/config-hooks";
@@ -42,14 +47,13 @@ import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   allowedTransitions,
   canonicalIssueId,
   deriveBlockerState,
   deriveStepOutcomes,
   isLiveRun,
-  issueStatusChip,
   runningStepOf,
   issueQueryKey,
   parseChecklist,
@@ -73,10 +77,14 @@ import {
 import {
   useIssueCost,
   useIssueDeps,
+  useIssueStandingOf,
   usePatchIssue,
   useProjectMembers,
   useStatusExits,
 } from "../hooks";
+import { ISSUES_LIST, issuesHref } from "../routes";
+import { ReleaseApprovalProvider } from "../release-approval";
+import { IssueBanner, IssueStandingFacts } from "./issue-standing-bits";
 import { useIssuePark } from "../park";
 import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
 import { ActivityFeed } from "./activity-feed";
@@ -85,7 +93,7 @@ import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
-import { DescriptionCard } from "./description-card";
+import { IssueDescription } from "./issue-description";
 import { ReleaseNoteCard } from "./release-note-card";
 import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
 import { ModulePicker } from "./module-picker";
@@ -128,7 +136,9 @@ export function IssueDetailScreen({
   const router = useRouter();
   const { toast } = useToast();
   const { push: pushRecent } = useRecents();
-  const [tab, setTab] = useState("comments");
+  const [tab, setTab] = useUrlTab(ISSUE_TABS);
+  const [thread, setThread] = useState<"comments" | "activity" | "tasks">("comments");
+  const back = useListOrigin(ISSUES_LIST, issuesHref(slug));
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
 
   useRoom(projectRoom(projectId));
@@ -176,6 +186,7 @@ export function IssueDetailScreen({
   const pending = patch.isPending || transitionPending || resumeRun.isPending;
 
   const issue = issueQ.data;
+  const standingQ = useIssueStandingOf(projectId, issue?.displayId);
   // ISS-1310 — one reading of what a person owes this issue, for the banner, the status control and the decision panel.
   const park = useIssuePark(issue?.id, issue?.status);
   const stickyHeader = useRef<HTMLDivElement>(null);
@@ -287,6 +298,7 @@ export function IssueDetailScreen({
   });
 
   const moreItems: MenuItem[] = [
+    { label: "Open session", icon: "agent", onSelect: openSessions },
     { label: "Open pipeline", icon: "pipeline", onSelect: openPipeline },
     ...(!exitsHere.includes("on_hold") || !canWrite
       ? []
@@ -309,120 +321,102 @@ export function IssueDetailScreen({
     { label: "Copy link", icon: "link", onSelect: copyLink },
   ];
 
-  const tabs: TabItem[] = [
-    {
-      value: "comments",
-      label: "Comments",
-      count: commentsQ.data?.totalCount,
-    },
-    {
-      value: "activity",
-      label: "History",
-      count: activityQ.data?.items.length,
-    },
-    { value: "tasks", label: "Tasks", count: tasksQ.data?.length },
+  const tabs = [
+    { value: "overview" as const, label: "Overview" },
+    { value: "criteria" as const, label: "Criteria", count: criteriaQ.data?.criteria.length ?? checklist.length },
+    { value: "runs" as const, label: "Runs", count: stepOutcomes.length },
+    { value: "activity" as const, label: "Activity", count: commentsQ.data?.totalCount },
   ];
 
-  return (
-    <PageContainer className="min-h-dvh">
-      {/* cm:why the way back is the arrow, not a breadcrumb: the shell carries no trail (ISS-49), and a trail in this sticky bar is the doubled header that hid the detail in ISS-360 */}
-      <div ref={stickyHeader} className="sticky top-0 z-20 -mx-4 mb-5 flex flex-wrap items-start gap-3 border-b border-line-subtle bg-app/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
-        <IconButton
-          icon="arrowRight"
-          aria-label="Back to issues"
-          className="rotate-180"
-          onClick={() => router.push(`/projects/${slug}/issues`)}
-        />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <MonoTag hue="cobalt">{issue.displayId}</MonoTag>
-            {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
-            <StatusChip {...issueStatusChip(issue.status, workStepOf(issue))} />
-            {runChip && (
-              <StatusChip
-                status={runChip}
-                stage={runChip === "running" ? (liveStep ?? undefined) : undefined}
-                domain="session"
-              />
-            )}
-            {liveStep && <span className="fg-caption font-mono">{liveStep}</span>}
-          </div>
-          <PageTitle className="fg-h3 mt-1.5 break-words">{issue.title}</PageTitle>
-        </div>
-        {/* Its own row under the title at phone width rather than hidden there: the help tells a
-            reader to choose Reopen at the top of the issue page, on whatever screen they read it. */}
-        <div className="flex basis-full flex-wrap items-center gap-2 sm:flex-none sm:basis-auto">
-          <HelpButton
-            summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / History / Tasks."
-            actions={[
-              "Edit properties (status, priority, complexity) in the rail",
-              "Start an open issue on a project that starts work by hand, or pause / reopen it, from the header",
-              "Jump to related sessions, pipeline, and runs",
-            ]}
-            shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
-          />
-          {start.kind !== "none" && !isRunActive ? (
-            <StartIssueAction issueId={issue.id} reading={start} onStarted={refreshIssue} />
-          ) : !canWrite || isTerminal ? (
-            canWrite ? (
-              <Button
-                variant="primary"
-                size="sm"
-                icon="rerun"
-                loading={pending}
-                onClick={() => onTransition("reopen")}
-              >
-                Reopen
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                size="sm"
-                icon="pipeline"
-                onClick={openPipeline}
-              >
-                View pipeline
-              </Button>
-            )
-          ) : isRunActive ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="stop"
-              loading={pending}
-              onClick={() => onTransition("on_hold")}
-            >
-              Pause
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              icon="pipeline"
-              onClick={openPipeline}
-            >
-              Run pipeline
-            </Button>
-          )}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="agent"
-            onClick={openSessions}
-          >
-            Open session
-          </Button>
-          <AskAboutThis kind="issue" refId={issue.displayId} />
-          <Menu
-            align="right"
-            items={moreItems}
-            trigger={<IconButton icon="more" aria-label="Issue actions" />}
-          />
-        </div>
-      </div>
+  const primary =
+    start.kind !== "none" && !isRunActive ? (
+      <StartIssueAction issueId={issue.id} reading={start} onStarted={refreshIssue} />
+    ) : !canWrite || isTerminal ? (
+      canWrite ? (
+        <Button variant="primary" size="sm" icon="rerun" loading={pending} onClick={() => onTransition("reopen")}>
+          Reopen
+        </Button>
+      ) : (
+        <Button variant="primary" size="sm" icon="pipeline" onClick={openPipeline}>
+          View pipeline
+        </Button>
+      )
+    ) : isRunActive ? (
+      <Button variant="secondary" size="sm" icon="stop" loading={pending} onClick={() => onTransition("on_hold")}>
+        Pause
+      </Button>
+    ) : (
+      <Button variant="primary" size="sm" icon="pipeline" onClick={openPipeline}>
+        Run pipeline
+      </Button>
+    );
 
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,22.5rem)] 2xl:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,23.75rem)]">
-        <div className="min-w-0 space-y-4">
+  const badge = (
+    <>
+      <StatusBadge family="issue" value={issue.status} step={workStepOf(issue)} tone={standingQ.data?.standing.tone} />
+      {runChip && <StatusChip status={runChip} stage={runChip === "running" ? (liveStep ?? undefined) : undefined} domain="session" />}
+    </>
+  );
+
+  const properties = (
+    <PropertiesRail
+      issue={issue}
+      slug={slug}
+      cost={costQ.data}
+      deps={depsQ.data}
+      pending={pending || !canWrite}
+      onPatch={onPatch}
+      onTransition={onTransition}
+      onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
+      canMarkMerged={canWrite}
+      park={statusPark}
+    />
+  );
+
+  return (
+    <ReleaseApprovalProvider value={standingQ.data?.releaseApproval}>
+    <div className="min-h-full bg-app" ref={stickyHeader} data-testid="issue-detail">
+      <DetailHeader
+        back={{ href: back, label: "Issues" }}
+        itemKey={issue.displayId}
+        keyTitle={issue.id}
+        title={issue.title}
+        badge={badge}
+        action={
+          <span className="flex items-center gap-1.5" data-testid="issue-actions">
+            {primary}
+            {/* below 768px the bar holds the back control, the one primary act and the menu; asking and help wait for the room */}
+            <span className="contents max-md:hidden">
+              <AskAboutThis kind="issue" refId={issue.displayId} />
+              <HelpButton
+              summary="The full record for one issue: whose turn it is, then Overview, Criteria, Runs and Activity as tabs beside its facts."
+              actions={[
+                "Edit properties (status, priority, complexity) in the rail",
+                "Start an open issue on a project that starts work by hand, or pause / reopen it, from the header",
+                "Jump to related sessions, pipeline, and runs from the actions menu",
+              ]}
+              shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
+              />
+            </span>
+            <Menu align="right" items={moreItems} trigger={<IconButton icon="more" aria-label="Issue actions" />} />
+          </span>
+        }
+      />
+      <DetailLayout
+        testId="issue-detail-layout"
+        dataKey={issue.displayId}
+        rail={
+          <FactsRail>
+            {standingQ.data ? <IssueStandingFacts row={standingQ.data} slug={slug} /> : null}
+            <FactsGroup title="Properties" testId="facts-properties">
+              {properties}
+            </FactsGroup>
+          </FactsRail>
+        }
+      >
+        <DetailMobileTitle itemKey={issue.displayId} title={<span className="break-words">{issue.title}</span>} badge={badge} />
+        <div className="grid gap-3 px-8 pt-4 empty:hidden max-md:px-4">
+          {!blocker && standingQ.data ? <IssueBanner standing={standingQ.data.standing} className="rounded-md" /> : null}
           {blocker && (
             <BlockerBanner
               blocker={blocker}
@@ -433,130 +427,110 @@ export function IssueDetailScreen({
               onProvideInfo={focusDecisions}
             />
           )}
-
           <DecisionPanel
             issueId={issue.id}
             parkedForInfo={issue.status === "needs_info"}
             threadQuestion={threadQuestion}
-            onAnswerInThread={
-              canWrite ? (text) => answerInThread.mutateAsync({ body: text }) : undefined
-            }
+            onAnswerInThread={canWrite ? (text) => answerInThread.mutateAsync({ body: text }) : undefined}
           />
-
-          <AwaitingReleaseBanner
-            projectId={issue.projectId}
-            issueId={issue.id}
-            canWrite={canWrite}
-          />
-
+          <AwaitingReleaseBanner projectId={issue.projectId} issueId={issue.id} canWrite={canWrite} />
           {reasonDialog}
-
-          {agentState && (
-            <LiveAgentPanel
-              state={agentState}
-              step={liveStep ?? "—"}
-              slug={slug}
-              issueId={id}
-            />
-          )}
-
-          <ReleaseNoteCard issue={issue} />
-
-          <DescriptionCard
-            issue={issue}
-            attachments={attachmentsQ.data ?? []}
-            attachmentsLoading={attachmentsQ.isLoading}
-            attachmentsError={attachmentsQ.isError ? attachmentsQ.error : null}
-            canWrite={canWrite}
-          />
-
-          {/* Session-group continuity (ISS-376) — resumed/fresh per step. Self-
-              hides when no session carries group metadata. */}
-          <SessionGroupTimeline sessions={issue.agentSessions ?? []} />
-
-          {handoffsQ.isLoading || durationsQ.isLoading ? (
-            <EmptyPanelLine title="Steps" status="Loading…" />
-          ) : handoffsQ.isError || durationsQ.isError ? (
-            <EmptyPanelLine
-              title="Steps"
-              status="Couldn't load"
-              detail={formatApiError(handoffsQ.isError ? handoffsQ.error : durationsQ.error)}
-            />
-          ) : stepOutcomes.length === 0 ? (
-            <EmptyPanelLine
-              title="Steps"
-              status="None yet"
-              detail="Steps appear here as agents record them."
-            />
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Steps</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {stepOutcomes.map((outcome) => (
-                    <StepArtifactCard
-                      key={outcome.step}
-                      outcome={outcome}
-                      open={expandedStep === outcome.step}
-                      onToggle={() =>
-                        setExpandedStep((cur) => (cur === outcome.step ? null : outcome.step))
-                      }
-                    />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {hasCriteriaRows ? (
-            <CriteriaList issueId={issue.id} />
-          ) : checklist.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Acceptance criteria</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {checklist.map((item) => (
-                    <li key={item.key}>
-                      <Checkbox
-                        checked={item.checked}
-                        disabled
-                        label={item.text}
+          {agentState && <LiveAgentPanel state={agentState} step={liveStep ?? "—"} slug={slug} issueId={id} />}
+        </div>
+        <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="issue-tabs" />
+        <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
+          {tab === "overview" ? (
+            <div className="grid gap-8" data-testid="view-overview">
+              <ReleaseNoteCard issue={issue} />
+              <IssueDescription
+                issue={issue}
+                attachments={attachmentsQ.data ?? []}
+                attachmentsLoading={attachmentsQ.isLoading}
+                attachmentsError={attachmentsQ.isError ? attachmentsQ.error : null}
+                canWrite={canWrite}
+              />
+              <section aria-label="Plan">
+                <ViewHeading>Plan</ViewHeading>
+                {issue.plan ? (
+                  <Markdown>{issue.plan}</Markdown>
+                ) : (
+                  <p className="text-13 text-subtle">Not written yet; the plan step writes it once a master takes the issue.</p>
+                )}
+              </section>
+            </div>
+          ) : null}
+          {tab === "criteria" ? (
+            <div data-testid="view-criteria">
+              {hasCriteriaRows ? (
+                <CriteriaList issueId={issue.id} />
+              ) : checklist.length > 0 ? (
+                <section aria-label="Acceptance criteria">
+                  <ViewHeading>Acceptance criteria</ViewHeading>
+                  <ul className="space-y-2">
+                    {checklist.map((item) => (
+                      <li key={item.key}>
+                        <Checkbox checked={item.checked} disabled label={item.text} />
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : (
+                <p className="text-13 text-subtle">No criteria yet; the plan step writes them.</p>
+              )}
+            </div>
+          ) : null}
+          {tab === "runs" ? (
+            <div className="grid gap-6" data-testid="view-runs">
+              {/* Session-group continuity (ISS-376) — resumed/fresh per step. Self-hides when no session carries group metadata. */}
+              <SessionGroupTimeline sessions={issue.agentSessions ?? []} />
+              {handoffsQ.isLoading || durationsQ.isLoading ? (
+                <EmptyPanelLine title="Steps" status="Loading…" />
+              ) : handoffsQ.isError || durationsQ.isError ? (
+                <EmptyPanelLine
+                  title="Steps"
+                  status="Couldn't load"
+                  detail={formatApiError(handoffsQ.isError ? handoffsQ.error : durationsQ.error)}
+                />
+              ) : stepOutcomes.length === 0 ? (
+                <EmptyPanelLine title="Steps" status="None yet" detail="Steps appear here as agents record them." />
+              ) : (
+                <section aria-label="Steps">
+                  <ViewHeading>Steps</ViewHeading>
+                  <div className="space-y-2">
+                    {stepOutcomes.map((outcome) => (
+                      <StepArtifactCard
+                        key={outcome.step}
+                        outcome={outcome}
+                        open={expandedStep === outcome.step}
+                        onToggle={() => setExpandedStep((cur) => (cur === outcome.step ? null : outcome.step))}
                       />
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-
-          {issue.plan && (
-            <Collapsible title="Agent plan">
-              <Markdown>{issue.plan}</Markdown>
-            </Collapsible>
-          )}
-
-          <Card id="issue-comments">
-            <CardContent>
-              <Tabs tabs={tabs} value={tab} onChange={setTab} />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          ) : null}
+          {tab === "activity" ? (
+            <section id="issue-comments" aria-label="Activity" data-testid="view-activity">
+              <SegmentedControl
+                options={[
+                  { value: "comments", label: "Comments", count: commentsQ.data?.totalCount },
+                  { value: "activity", label: "History", count: activityQ.data?.items.length },
+                  { value: "tasks", label: "Tasks", count: tasksQ.data?.length },
+                ]}
+                value={thread}
+                onChange={setThread}
+              />
               <div className="mt-4">
-                {tab === "comments" &&
+                {thread === "comments" &&
                   (commentsQ.isLoading ? (
                     <TabLoading />
                   ) : commentsQ.isError ? (
                     <TabError query={commentsQ} what="comments" />
                   ) : (
-                    <CommentThread
-                      issueId={issue.id}
-                      comments={commentsQ.data?.items ?? []}
-                      members={membersQ.data}
-                      readOnly={!canWrite}
-                    />
+                    <CommentThread issueId={issue.id} comments={commentsQ.data?.items ?? []} members={membersQ.data} readOnly={!canWrite} />
                   ))}
-                {tab === "activity" &&
+                {thread === "activity" &&
                   (activityQ.isLoading ? (
                     <TabLoading />
                   ) : activityQ.isError ? (
@@ -564,82 +538,28 @@ export function IssueDetailScreen({
                   ) : (
                     <ActivityFeed items={activityQ.data?.items ?? []} />
                   ))}
-                {tab === "tasks" &&
+                {thread === "tasks" &&
                   (tasksQ.isLoading ? (
                     <TabLoading />
                   ) : tasksQ.isError ? (
                     <TabError query={tasksQ} what="tasks" />
                   ) : (tasksQ.data?.length ?? 0) === 0 ? (
-                    <EmptyState
-                      title="No tasks"
-                      message="This issue has no sub-tasks."
-                      mascot={false}
-                    />
+                    <EmptyState title="No tasks" message="This issue has no sub-tasks." mascot={false} />
                   ) : (
-                    <ul className="space-y-2">
+                    <ul className="border-t border-line-subtle">
                       {tasksQ.data?.map((t) => (
-                        <li
-                          key={t.id}
-                          className="flex items-center justify-between gap-3 rounded-md border border-line-subtle px-3 py-2"
-                        >
-                          <span className="fg-body-sm min-w-0 truncate text-fg">
-                            {t.title}
-                          </span>
-                          <Badge tone={TASK_STATUS_TONE[t.status]}>
-                            {TASK_STATUS_LABELS[t.status]}
-                          </Badge>
+                        <li key={t.id} className="flex items-center justify-between gap-3 border-b border-line-subtle py-2">
+                          <span className="fg-body-sm min-w-0 truncate text-fg">{t.title}</span>
+                          <Badge tone={TASK_STATUS_TONE[t.status]}>{TASK_STATUS_LABELS[t.status]}</Badge>
                         </li>
                       ))}
                     </ul>
                   ))}
               </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Properties rail — desktop sidebar (sticky so it stays in view while
-            reading a long comment thread, ISS-347 follow-up); mobile collapsible.
-            `self-start` keeps the grid item at content height so sticky has room;
-            `top-20` clears the pinned action bar; a max-height + scroll keeps a
-            long rail (many deps) usable. */}
-        <aside className="hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100dvh-6rem)] lg:self-start lg:overflow-y-auto">
-          <Card>
-            <CardHeader>
-              <CardTitle>Properties</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <PropertiesRail
-                issue={issue}
-                slug={slug}
-                cost={costQ.data}
-                deps={depsQ.data}
-                pending={pending || !canWrite}
-                onPatch={onPatch}
-                onTransition={onTransition}
-                onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
-                canMarkMerged={canWrite}
-                park={statusPark}
-              />
-            </CardContent>
-          </Card>
-        </aside>
-        <div className="lg:hidden">
-          <Collapsible title="Properties" defaultOpen>
-            <PropertiesRail
-              issue={issue}
-              slug={slug}
-              cost={costQ.data}
-              deps={depsQ.data}
-              pending={pending || !canWrite}
-              onPatch={onPatch}
-              onTransition={onTransition}
-              onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
-              canMarkMerged={canWrite}
-              park={statusPark}
-            />
-          </Collapsible>
-        </div>
-      </div>
+            </section>
+          ) : null}
+        </DetailPane>
+      </DetailLayout>
 
       <ModulePicker
         open={modulePickerOpen}
@@ -649,9 +569,12 @@ export function IssueDetailScreen({
         slug={slug}
         labels={issue.labels ?? []}
       />
-    </PageContainer>
+    </div>
+    </ReleaseApprovalProvider>
   );
 }
+
+const ISSUE_TABS = ["overview", "criteria", "runs", "activity"] as const;
 
 /** Skeleton placeholder for the detail tab bodies (comments / activity / tasks)
  *  while their queries load — replaces the bare "Loading …" text (ISS-308 F1). */

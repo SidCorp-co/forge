@@ -5,39 +5,39 @@
 // fact and each act appears once: the facts live in the rail, Accept / Reject only beside the diff.
 // Everything derived (whose turn, coverage, history) comes from core's read model.
 
-import { useSearchParams } from "next/navigation";
-import { type ReactNode, useCallback, useRef } from "react";
-import { AGENT_TINT, ErrorState, ProjectLoader, Tabs } from "@/design";
+import {
+  ActorChip,
+  AGENT_TINT,
+  DetailLayout,
+  DetailMobileTitle,
+  DetailPane,
+  DetailTabs,
+  ErrorState,
+  FactsRail,
+  ProjectLoader,
+  StatusBadge,
+  useUrlTab,
+  FieldLabel,
+  ViewHeading,
+} from "@/design";
 import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
 import { useEntityDecisions } from "@/features/comments/hooks";
 import { PendingBadge, RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
 import { useWaitingSuggestions } from "@/features/suggestions/hooks";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
 import { useRequirement } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";
 import { ProposalDecision, ProposeChange } from "./requirement-actions";
 import { RequirementFacts } from "./requirement-facts";
-import { CriteriaTable, FieldLabel, History, Readiness, RevisionDiff, RevisionList, ViewHeading } from "./requirement-proof";
-import { PersonChip, StateBadge, WaitBanner, stamp } from "./standing-bits";
+import { CriteriaTable, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
+import { RequirementBanner } from "./standing-bits";
 
 export const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "decisions", "activity"] as const;
 export type RequirementTab = (typeof REQUIREMENT_TABS)[number];
 
 /** The open view rides `?tab=`, written without a navigation, so back from an issue lands on it. */
-export function useRequirementTab(): [RequirementTab, (t: RequirementTab) => void] {
-  const sp = useSearchParams();
-  const raw = sp.get("tab");
-  const tab = (REQUIREMENT_TABS as readonly string[]).includes(raw ?? "") ? (raw as RequirementTab) : "overview";
-  const setTab = useCallback((t: RequirementTab) => {
-    const next = new URLSearchParams(window.location.search);
-    if (t === "overview") next.delete("tab");
-    else next.set("tab", t);
-    const qs = next.toString();
-    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
-  }, []);
-  return [tab, setTab];
-}
+export const useRequirementTab = () => useUrlTab(REQUIREMENT_TABS);
 
 function Bullets({ items }: { items: string[] }) {
   return (
@@ -132,7 +132,7 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
       <ViewHeading
         right={
           <span className="inline-flex items-center gap-2 text-12-5 text-muted">
-            <PersonChip name={open.authorName ?? "Its author"} kind={open.authorKind} />
+            <ActorChip name={open.authorName ?? "Its author"} kind={open.authorKind} />
             <span title={`${proposed ? "Proposed" : "Written"} ${stamp(at)}`}>{formatRelativeTime(at)}</span>
           </span>
         }
@@ -172,10 +172,6 @@ function Revisions({ d, projectId }: { d: RequirementDetail; projectId: string }
   );
 }
 
-function Pane({ children }: { children: ReactNode }) {
-  return <div className="px-8 pb-12 pt-6 max-md:px-4">{children}</div>;
-}
-
 export function RequirementPage({
   projectId,
   slug,
@@ -191,17 +187,6 @@ export function RequirementPage({
 }) {
   const q = useRequirement(projectId, reqKey);
   const decisions = useEntityDecisions(projectId, "requirement", reqKey);
-  const top = useRef<HTMLDivElement>(null);
-  const go = useCallback(
-    (t: RequirementTab) => {
-      onTab(t);
-      // a tab opened from below the fold starts at its own top, under the sticky tab bar
-      const el = top.current;
-      const floor = el?.closest("main")?.getBoundingClientRect().top ?? 0;
-      if (el && el.getBoundingClientRect().top < floor) el.scrollIntoView({ block: "start" });
-    },
-    [onTab],
-  );
   if (q.isLoading) {
     return (
       <div className="grid min-h-[40vh] place-items-center">
@@ -220,51 +205,41 @@ export function RequirementPage({
   const s = d.standing;
   const banner = s.waitingOn.kind === "you" || (s.attentionGroup === "stuck" && s.waitingOn.kind === "none");
   const tabs = [
-    { value: "overview", label: "Overview" },
-    { value: "criteria", label: "Criteria", count: s.coverage.length },
-    { value: "revisions", label: "Revisions", count: d.revisions.length },
-    { value: "decisions", label: "Decisions", count: decisions.data?.returned },
-    { value: "activity", label: "Activity", count: d.history.length },
+    { value: "overview" as const, label: "Overview" },
+    { value: "criteria" as const, label: "Criteria", count: s.coverage.length },
+    { value: "revisions" as const, label: "Revisions", count: d.revisions.length },
+    { value: "decisions" as const, label: "Decisions", count: decisions.data?.returned },
+    { value: "activity" as const, label: "Activity", count: d.history.length },
   ];
   return (
-    <article className="grid min-h-[calc(100dvh-48px)] bg-surface lg:grid-cols-[minmax(0,1fr)_320px]" data-testid="requirement-detail" data-key={d.key}>
-      <div className="min-w-0">
-        <div className="px-4 pb-1 pt-4 md:hidden" data-testid="requirement-mobile-title">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-12 font-semibold text-muted">{d.key}</span>
-            <StateBadge state={s.state} />
-          </div>
-          <p className="mt-1 text-[19px] font-semibold leading-snug text-fg">{d.title}</p>
-        </div>
-        {banner ? (
-          <WaitBanner standing={s} className="px-8 py-2.5 max-md:px-4" />
+    <DetailLayout
+      testId="requirement-detail"
+      dataKey={d.key}
+      rail={
+        <FactsRail testId="relations-rail">
+          <RequirementFacts d={d} projectId={projectId} slug={slug} onOpenRevisions={() => onTab("revisions")} />
+        </FactsRail>
+      }
+    >
+      <DetailMobileTitle itemKey={d.key} title={d.title} badge={<StatusBadge family="requirement" value={s.state} />} />
+      {banner ? <RequirementBanner standing={s} className="px-8 py-2.5 max-md:px-4" /> : null}
+      <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="requirement-tabs" />
+      <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
+        {tab === "overview" ? <Overview d={d} projectId={projectId} /> : null}
+        {tab === "criteria" ? <Criteria d={d} projectId={projectId} slug={slug} /> : null}
+        {tab === "revisions" ? <Revisions d={d} projectId={projectId} /> : null}
+        {tab === "decisions" ? (
+          <section data-testid="view-decisions" aria-label="Decisions">
+            <ViewHeading>Decisions</ViewHeading>
+            <DecisionsPanel projectId={projectId} scope="requirement" targetRef={d.key} />
+          </section>
         ) : null}
-        <div ref={top} />
-        <div className="sticky top-0 z-10 overflow-x-auto bg-surface px-6 max-md:px-2" data-testid="requirement-tabs">
-          <Tabs tabs={tabs} value={tab} onChange={(v) => go(v as RequirementTab)} />
-        </div>
-        <Pane>
-          {tab === "overview" ? <Overview d={d} projectId={projectId} /> : null}
-          {tab === "criteria" ? <Criteria d={d} projectId={projectId} slug={slug} /> : null}
-          {tab === "revisions" ? <Revisions d={d} projectId={projectId} /> : null}
-          {tab === "decisions" ? (
-            <section data-testid="view-decisions" aria-label="Decisions">
-              <ViewHeading>Decisions</ViewHeading>
-              <DecisionsPanel projectId={projectId} scope="requirement" targetRef={d.key} />
-            </section>
-          ) : null}
-          {tab === "activity" ? (
-            <section data-testid="view-activity" aria-label="Activity">
-              <History entries={d.history} />
-            </section>
-          ) : null}
-        </Pane>
-      </div>
-      <aside className="min-w-0 border-line-subtle bg-app max-lg:border-t lg:border-l" aria-label="Facts" data-testid="relations-rail">
-        <div className="px-5 py-5 max-md:px-4 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-48px)] lg:overflow-y-auto">
-          <RequirementFacts d={d} slug={slug} onOpenRevisions={() => go("revisions")} />
-        </div>
-      </aside>
-    </article>
+        {tab === "activity" ? (
+          <section data-testid="view-activity" aria-label="Activity">
+            <History entries={d.history} />
+          </section>
+        ) : null}
+      </DetailPane>
+    </DetailLayout>
   );
 }

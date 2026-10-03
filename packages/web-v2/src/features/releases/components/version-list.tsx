@@ -31,7 +31,7 @@ export function VersionList({ versions, draft, flow, selected, onSelect }: Versi
         >
           <span className="font-mono text-13 font-semibold">{draft.version}</span>
           <span className="text-12 text-subtle">draft · {draft.issues.length} issues</span>
-          <Badge>draft</Badge>
+          <Badge>Draft</Badge>
         </button>
       ) : null}
       {versions.map((v) => {
