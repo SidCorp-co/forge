@@ -209,7 +209,7 @@ export function applyUiAction(action: UiAction, env: UiActionEnv): UiActionOutco
       if (!bridge)
         return refuse(
           "UI_ACTION_UNAVAILABLE",
-          "UI_ACTION_UNAVAILABLE: ui.select needs the Issues list open beside the chat, and it is not. Nothing was selected.",
+          "UI_ACTION_UNAVAILABLE: ui.select needs the Issues list open beside the chat in its Table view (the grouped views select nothing), and it is not. Nothing was selected.",
         );
       const rows = bridge.rows();
       const byKey = new Map(rows.map((r) => [r.displayId, r.id]));

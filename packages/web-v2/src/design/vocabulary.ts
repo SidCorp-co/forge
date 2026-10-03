@@ -16,6 +16,7 @@ import {
   FEEDBACK_SEVERITY_TONES,
   FEEDBACK_TARGET_LABELS,
 } from "@forge/contracts/feedback";
+import { ISSUE_ATTENTION_LABELS, ISSUE_LEASE_VERDICT_LABELS, ISSUE_LEASE_VERDICT_TONES } from "@forge/contracts/issue-standing";
 import {
   CRITERION_STANDING_GLYPHS,
   CRITERION_STANDING_HINTS,
@@ -97,6 +98,11 @@ const CONTRACT_FAMILIES = {
   design: { labels: DESIGN_STATUS_LABELS, tones: DESIGN_STATUS_TONES, glyphs: DESIGN_STATUS_GLYPHS, hints: DESIGN_STATUS_HINTS },
   feedbackPhase: { labels: FEEDBACK_PHASE_LABELS, tones: FEEDBACK_PHASE_TONES, glyphs: FEEDBACK_PHASE_GLYPHS, hints: FEEDBACK_PHASE_HINTS },
   severity: { labels: FEEDBACK_SEVERITY_LABELS, tones: FEEDBACK_SEVERITY_TONES },
+  lease: { labels: ISSUE_LEASE_VERDICT_LABELS, tones: ISSUE_LEASE_VERDICT_TONES },
+  attention: {
+    labels: Object.fromEntries(Object.entries(ISSUE_ATTENTION_LABELS).map(([k, v]) => [k, v.label])),
+    tones: Object.fromEntries(Object.entries(ISSUE_ATTENTION_LABELS).map(([k, v]) => [k, v.tone])),
+  },
   suggestion: { labels: SUGGESTION_STATUS_LABELS, tones: SUGGESTION_STATUS_TONES, glyphs: SUGGESTION_STATUS_GLYPHS },
 } satisfies Record<string, Maps>;
 

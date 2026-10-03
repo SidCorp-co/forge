@@ -66,13 +66,14 @@ export interface WaitBannerProps {
   rule?: string;
   children?: ReactNode;
   className?: string;
+  testId?: string;
 }
 
 /** A single tinted line, never a box: whom it waits on and for what. */
-export function WaitBanner({ tone, head, body, rule, children, className }: WaitBannerProps) {
+export function WaitBanner({ tone, head, body, rule, children, className, testId }: WaitBannerProps) {
   const c = bannerColours(tone);
   return (
-    <div className={cn("flex items-start gap-2.5 px-3 py-[9px] text-13", className)} style={{ background: c.bg }} data-testid="wait-banner" title={rule}>
+    <div className={cn("flex items-start gap-2.5 px-3 py-[9px] text-13", className)} style={{ background: c.bg }} data-testid={testId ?? "wait-banner"} title={rule}>
       <span aria-hidden className="mt-1.5 size-2 flex-none rounded-full" style={{ background: c.dot }} />
       <div className="min-w-0 flex-1">
         <span className="font-bold">{head}</span> {body}

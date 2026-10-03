@@ -8,6 +8,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, releaseBatchApi } from "./api";
 import { registryApi } from "./registry-api";
+import type { IssueStandingScope } from "@forge/contracts/issue-standing";
 import type {
   IssueLabel,
   IssuePriority,
@@ -43,6 +44,25 @@ export function useIssues(projectId: string | undefined, opts: IssueSearchOpts) 
 }
 
 /** Per-issue cost rollup. Keyed `['issue', id, 'cost']` — lazy + cached; `projectId` lets a display-key `id` (ISS-1160) resolve. */
+/** Keyed under `['issues','standing']`, which the event router invalidates on every issue event. */
+export function useIssueStanding(projectId: string | undefined, scope: IssueStandingScope) {
+  return useQuery({
+    queryKey: ["issues", "standing", projectId ?? "", scope],
+    queryFn: () => issuesApi.standing(projectId as string, scope),
+    enabled: Boolean(projectId),
+    staleTime: 10_000,
+  });
+}
+
+export function useIssueStandingOf(projectId: string | undefined, key: string | undefined) {
+  return useQuery({
+    queryKey: ["issues", "standing", projectId ?? "", "one", key ?? ""],
+    queryFn: () => issuesApi.standingOf(projectId as string, key as string),
+    enabled: Boolean(projectId && key),
+    staleTime: 10_000,
+  });
+}
+
 export function useIssueCost(id: string | undefined, enabled = true, projectId?: string) {
   return useQuery({
     queryKey: ["issue", id, "cost"],

@@ -1,6 +1,7 @@
 
 import {
 	DONE_ISSUE_STATUSES,
+	ISSUE_PRIORITY_LABELS,
 	ISSUE_STATUS_GLYPHS,
 	ISSUE_STATUS_HINTS,
 	PARKABLE_ISSUE_STATUSES,
@@ -48,13 +49,7 @@ import type {
 
 export const STATUS_LABELS: Record<IssueStatus, string> = ISSUE_STATUS_LABELS;
 
-export const PRIORITY_LABELS: Record<IssuePriority, string> = {
-	critical: "Critical",
-	high: "High",
-	medium: "Medium",
-	low: "Low",
-	none: "None",
-};
+export const PRIORITY_LABELS: Record<IssuePriority, string> = ISSUE_PRIORITY_LABELS;
 
 export const COMPLEXITY_LABELS: Record<IssueComplexity, string> = {
 	xs: "XS",

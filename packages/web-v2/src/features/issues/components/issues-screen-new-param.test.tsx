@@ -6,7 +6,7 @@
 // never remounts, which is the case the screen's own mount cannot see.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useMemo, useSyncExternalStore } from "react";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { buildWorkspaceCommands } from "@/features/shell/commands";
@@ -90,7 +90,9 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", slug: "forge-dev", role: "admin" }] }),
 }));
-vi.mock("./issues-list-view", () => ({ IssuesListView: () => null }));
+vi.mock("./issues-list-view", () => ({ IssuesListView: () => <div data-testid="table-view" /> }));
+vi.mock("./issues-board", () => ({ IssuesBoard: ({ mode }: { mode: string }) => <div data-testid="board" data-mode={mode} /> }));
+vi.mock("../hooks", () => ({ useProjectModules: () => ({ data: [{ id: "m1" }], modules: [{ id: "m1" }] }) }));
 // The dialog's own behaviour has its own tests; this stub keeps the two exits it hands back to
 // the screen — a plain close, and the close that the real dialog makes before it routes to the
 // issue it created.
@@ -193,10 +195,16 @@ it("leaves no entry that reopens the form when Back is taken from the issue just
   expect(form()).toBeNull();
 });
 
-it("is a list only: no Board, Insights or Modules view to switch to", () => {
+it("switches between the four view modes from the header, the mode held in ?group=", () => {
   mountAt("/projects/forge-dev/issues");
-  for (const name of ["List", "Board", "Insights", "Modules"]) {
-    expect(screen.queryByRole("radio", { name })).toBeNull();
-    expect(screen.queryByRole("button", { name })).toBeNull();
+  const header = screen.getByTestId("view-mode-header");
+  for (const name of ["Attention", "Module", "Waves", "Table"]) {
+    expect(within(header).getByRole("button", { name })).toBeInTheDocument();
   }
+  expect(screen.getByTestId("board").dataset.mode).toBe("attention");
+  fireEvent.click(within(header).getByRole("button", { name: "Waves" }));
+  expect(window.location.search).toBe("?group=waves");
+  expect(screen.getByTestId("board").dataset.mode).toBe("waves");
+  fireEvent.click(within(header).getByRole("button", { name: "Table" }));
+  expect(screen.getByTestId("table-view")).toBeInTheDocument();
 });

@@ -91,6 +91,23 @@ export interface IssueModuleRef {
 export const ISSUE_LEASE_VERDICTS = ["live", "shared", "expired", "abandoned", "malformed"] as const;
 export type IssueLeaseVerdict = (typeof ISSUE_LEASE_VERDICTS)[number];
 
+/** A lease as a person reads it: live and shared hold the issue; the rest no longer do. */
+export const ISSUE_LEASE_VERDICT_LABELS: Record<IssueLeaseVerdict, string> = {
+	live: "Live",
+	shared: "Shared",
+	expired: "Expired",
+	abandoned: "Abandoned",
+	malformed: "Unreadable",
+};
+
+export const ISSUE_LEASE_VERDICT_TONES: Record<IssueLeaseVerdict, IssueStatusTone> = {
+	live: "run",
+	shared: "run",
+	expired: "blocked",
+	abandoned: "blocked",
+	malformed: "err",
+};
+
 export interface IssueLeaseView {
 	holder: string | null;
 	verdict: IssueLeaseVerdict;
