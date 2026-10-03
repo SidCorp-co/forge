@@ -89,7 +89,7 @@ export async function resetDraftCriteria(tx: Tx, requirementId: string, revision
     );
 }
 
-/** Writes REQ-n at revision 1 (draft) inside the caller's transaction; the caller has locked the project. */
+/** REQ-n at revision 1 (draft), numbered max+1 under that lock. */
 export async function createRequirementIn(
   tx: Tx,
   input: {
@@ -124,10 +124,7 @@ export async function createRequirementIn(
   return { id: row.id, refusals: await writeCriteria(tx, row.id, 1, write.criteria) };
 }
 
-/**
- * A new draft revision on the head, inside the caller's transaction under the project's requirement
- * lock: refused while another revision is open, or when `baseRevision` is no longer the head.
- */
+/** A new draft revision on the head: refused while another is open, or when `baseRevision` moved. */
 export async function newDraftRevisionIn(
   tx: Tx,
   input: {

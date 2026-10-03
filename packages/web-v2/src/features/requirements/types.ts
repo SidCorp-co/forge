@@ -20,7 +20,6 @@ export interface RequirementRevision {
   spec: RequirementSpec; tldr: string | null; changeSummary: string | null; reason: string;
   authorId: string; authorName: string | null; authorKind: 'human' | 'agent'; createdAt: string;
   proposedAt: string | null; decidedBy: string | null; decidedByName: string | null; decidedAt: string | null; returnReason: string | null;
-  /** The accepted suggestion this revision is the effect of, else null. */
   fromSuggestionId: string | null;
   criteria: RequirementCriterion[];
 }
@@ -36,7 +35,6 @@ export interface RequirementDetail extends RequirementSummary {
   issues: RequirementIssueLink[];
   canSignOff: boolean;                // the viewer is a person allowed to accept / return / agree
   history: RequirementHistoryEntry[];  // newest first
-  /** The newest accepted readiness suggestion at the current revision, else null. */
   readiness: { revision: number; ready: boolean; failed: string[]; suggestionId: string; decidedAt: string | null } | null;
 }
 

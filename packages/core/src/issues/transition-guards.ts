@@ -9,10 +9,8 @@
  *   approved           plan and criteria written; a person made the move where   PLAN_REQUIRED
  *                      the project document sets `plan.approval.required`
  *   awaiting_release   every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
- *                      identity, recorded after the issue's latest reopen        VERDICT_IDENTITY_REQUIRED,
- *                                                                                VERDICT_PREDATES_REOPEN
- *   closed             shipped (`merged-at.ts`, inside the write); from          CLOSE_REQUIRES_SHIPPED,
- *                      in_progress after a reopen, the awaiting_release rule     + the three above
+ *                      identity, recorded after the latest reopen                VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN
+ *   closed             shipped; from in_progress after a reopen, as above        CLOSE_REQUIRES_SHIPPED + the three above
  *
  *   needs_info         a question (the reason) and its kind                      TRANSITION_REASON_REQUIRED,
  *                                                                                WAITING_KIND_REQUIRED

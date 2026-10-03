@@ -24,14 +24,10 @@ export type OwedComment = {
 const BY_AN_AGENT = (alias: string) =>
   sql.raw(`(${alias}.author_device_id IS NOT NULL OR ${alias}_u.kind = 'agent')`);
 
-// cm:guard owed = a PERSON's `question` comment (ISS-56: a note or a decision is not owed a reply)
-// on a live issue (any status but closed/dropped, not archived) that no agent has REPLIED to. A
-// reply is an agent comment threaded under that question (parent_id = the question), or, where the
-// question was itself a reply, a later agent comment in the same thread (same parent). Any other
-// agent comment on the issue — a top-level note, a verdict, a run's narration — answers nothing and
-// clears nothing (e2e D7). An agent's own comment is never owed, so a reply cannot owe itself.
-// Terminal is out: a person's closing word is the commonest last comment there, and reopening the
-// issue brings its thread back in.
+// cm:guard owed = a PERSON's `question` comment (ISS-56) on a live issue (not closed, dropped or
+// archived) that no agent comment threaded under it answers: parent_id = the question, or, for a
+// question that is itself a reply, a newer agent comment with the same parent. A top-level note or
+// verdict clears nothing. Terminal is out: reopening the issue brings its thread back in.
 export async function readOwedComments(
   projectId: string,
 ): Promise<{ items: OwedComment[]; count: number }> {

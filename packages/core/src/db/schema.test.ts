@@ -244,6 +244,7 @@ describe('db/schema — jobs', () => {
       'reconcile',
       'verify_skill',
       'drive',
+      'onboarding',
     ]);
     expect(modelTiers).toEqual(['haiku', 'sonnet', 'opus']);
   });

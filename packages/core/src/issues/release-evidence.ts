@@ -18,9 +18,8 @@ export type CriteriaEvidence =
     };
 
 /**
- * The gate's reading of a set of criteria and their latest verdicts. A verdict recorded at or
- * before `reopenedAt` said the issue was right before a person said it was not, so it is
- * evidence about a build the reopen rejected and never counts as current.
+ * The gate's reading of a set of criteria and their latest verdicts. A verdict at or before
+ * `reopenedAt` is evidence about a build the reopen rejected, never current.
  */
 export function evaluateCriteria(
   criteria: readonly CriterionWithVerdict[],
