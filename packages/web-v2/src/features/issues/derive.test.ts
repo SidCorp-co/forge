@@ -443,6 +443,7 @@ describe("depCounts", () => {
 				kind: "blocks",
 				reason: null,
 				createdAt: "",
+				expired: false,
 			},
 			{
 				id: "e2",
@@ -451,6 +452,7 @@ describe("depCounts", () => {
 				kind: "relates",
 				reason: null,
 				createdAt: "",
+				expired: false,
 			},
 		],
 		incoming: [
@@ -461,6 +463,7 @@ describe("depCounts", () => {
 				kind: "blocks",
 				reason: null,
 				createdAt: "",
+				expired: false,
 			},
 		],
 	};
@@ -490,6 +493,7 @@ describe("depCounts", () => {
 					kind: "decomposes",
 					reason: null,
 					createdAt: "",
+					expired: false,
 				},
 				{
 					id: "d2",
@@ -498,6 +502,7 @@ describe("depCounts", () => {
 					kind: "decomposes",
 					reason: null,
 					createdAt: "",
+					expired: false,
 				},
 				{
 					id: "b1",
@@ -506,6 +511,7 @@ describe("depCounts", () => {
 					kind: "blocks",
 					reason: null,
 					createdAt: "",
+					expired: false,
 				},
 			],
 			incoming: [],
@@ -528,6 +534,7 @@ describe("depCounts", () => {
 					kind: "decomposes",
 					reason: null,
 					createdAt: "",
+					expired: false,
 				},
 			],
 		};
@@ -548,6 +555,7 @@ describe("depCounts", () => {
 					kind: "parent",
 					reason: null,
 					createdAt: "",
+					expired: false,
 				},
 			],
 			incoming: [
@@ -558,6 +566,7 @@ describe("depCounts", () => {
 					kind: "parent",
 					reason: null,
 					createdAt: "",
+					expired: false,
 				},
 			],
 		};
@@ -782,6 +791,7 @@ function incomingBlocks(
 		kind: "blocks",
 		reason: null,
 		createdAt: "2026-01-01T00:00:00.000Z",
+		expired: over.expired ?? false,
 		fromDisplayId: over.fromDisplayId ?? "ISS-9",
 		fromTitle: over.fromTitle ?? "Blocker",
 		fromStatus: over.fromStatus ?? "in_progress",
@@ -810,6 +820,13 @@ describe("heartbeatState", () => {
 });
 
 describe("openBlockingRefs", () => {
+	it("reports nothing for a retracted edge, whatever its blocker's status", () => {
+		expect(
+			openBlockingRefs(incomingBlocks({ fromStatus: "in_progress", expired: true })),
+		).toEqual([]);
+		expect(depCounts(incomingBlocks({ expired: true })).blockedBy).toBe(0);
+	});
+
 	it("reports a blocker core has not settled, so the row can flag it", () => {
 		const refs = openBlockingRefs(incomingBlocks({ fromStatus: "in_progress" }));
 		expect(refs.map((r) => r.displayId)).toEqual(["ISS-9"]);

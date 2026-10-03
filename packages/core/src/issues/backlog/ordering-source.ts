@@ -11,7 +11,7 @@
 
 import type { IssueStatus } from '../../db/schema.js';
 import { issues } from '../../db/schema.js';
-import { loadIssueRelationsForIssues } from '../dependency-read.js';
+import { emptyIssueRelations, loadIssueRelationsForIssues } from '../dependency-read.js';
 import { issueRefFormatter } from '../issue-prefix-read.js';
 import type { Cancellation } from './cancellation.js';
 import type { BacklogSource, SourceDone } from './emitter.js';
@@ -88,7 +88,7 @@ export async function* orderingSource(input: OrderingInput): BacklogSource<unkno
       yield {
         ...fields,
         displayId: displayIdOf(fields.issSeq),
-        relations: relations.get(fields.id) ?? { blocks: [], blockedBy: [] },
+        relations: relations.get(fields.id) ?? emptyIssueRelations(),
       };
     }
 

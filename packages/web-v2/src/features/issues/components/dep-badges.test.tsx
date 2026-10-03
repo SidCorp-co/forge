@@ -37,6 +37,7 @@ const edge = (over: Partial<IssueDependencyEdge>): IssueDependencyEdge => ({
   toDisplayId: "ISS-2",
   toTitle: "the dependent",
   toStatus: "closed",
+  expired: false,
   ...over,
 });
 
@@ -90,5 +91,29 @@ describe("direction", () => {
     show(deps({ outgoing: [edge({ id: "s", kind: "decomposes" })], incoming: [edge({ id: "p", kind: "decomposes" })] }));
     expect(screen.getByTitle("1 subtask")).toBeInTheDocument();
     expect(screen.getByTitle("Subtask of")).toBeInTheDocument();
+  });
+});
+
+describe("a retracted edge", () => {
+  it("is never counted as blocking, on a closed issue or an open one", () => {
+    const { container } = show(
+      deps({ incoming: [edge({ id: "gone", fromStatus: "in_progress", expired: true })] }),
+    );
+    expect(screen.queryByTitle(/Blocked by/)).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("drops out of the count beside a live one", () => {
+    show(
+      deps({
+        incoming: [
+          edge({ id: "gone", expired: true }),
+          edge({ id: "live", fromDisplayId: "ISS-7", fromStatus: "in_progress" }),
+        ],
+        outgoing: [edge({ id: "o-gone", expired: true }), edge({ id: "o-live" })],
+      }),
+    );
+    expect(screen.getByTitle("Blocked by ISS-7")).toBeInTheDocument();
+    expect(screen.getByTitle("Blocks 1")).toBeInTheDocument();
   });
 });

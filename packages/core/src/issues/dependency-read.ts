@@ -8,8 +8,14 @@
 import { and, eq, inArray, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
-import { type IssueDependencyKind, issueDependencies, issues } from '../db/schema.js';
+import {
+  type IssueDependencyKind,
+  issueDependencies,
+  issueDependencyKinds,
+  issues,
+} from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { DISPATCH_GATING_KIND } from './dependency-effects.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 
 export type IssueDependencyEdge = {
@@ -22,6 +28,8 @@ export type IssueDependencyEdge = {
   createdById: string | null;
   createdAt: Date;
   validUntil: Date | null;
+  /** `valid_until` has passed: the edge is retracted, shown as such and counted as nothing. */
+  expired: boolean;
   fromTitle: string | null;
   fromStatus: string | null;
   fromMergedAt: Date | null;
@@ -108,8 +116,10 @@ export async function loadIssueDependencyEdgesForIssues(
   const prefixOf = await readPrefixes(
     rows.flatMap((r) => [r.fromProjectId, r.toProjectId]).concat(projectId),
   );
+  const now = Date.now();
   const enrich = <
     T extends {
+      validUntil: Date | null;
       fromIssSeq: number | null;
       toIssSeq: number | null;
       fromProjectId: string | null;
@@ -121,6 +131,7 @@ export async function loadIssueDependencyEdgesForIssues(
     const { fromIssSeq, toIssSeq, fromProjectId, toProjectId, ...rest } = edge;
     return {
       ...rest,
+      expired: rest.validUntil != null && rest.validUntil.getTime() <= now,
       fromDisplayId:
         fromIssSeq != null
           ? formatIssueRef(prefixOf.get(fromProjectId ?? '') ?? null, fromIssSeq)
@@ -149,14 +160,15 @@ export type IssueRelationDigest = {
   otherMergedAt: Date | null;
   validUntil: Date | null;
   expired: boolean;
+  /** Whether this edge's KIND gates dispatch — only `blocks` does, whatever list it sits in. */
+  gatesDispatch: boolean;
+  /** A live edge of the gating kind: the only edge anything may call blocking. */
+  blocking: boolean;
 };
 
-const isExpired = (edge: IssueDependencyEdge, now: number): boolean =>
-  edge.validUntil != null && edge.validUntil.getTime() <= now;
-
-function digest(edge: IssueDependencyEdge, issueId: string, now: number): IssueRelationDigest {
+function digest(edge: IssueDependencyEdge, issueId: string): IssueRelationDigest {
   const outgoing = edge.fromIssueId === issueId;
-  const expired = isExpired(edge, now);
+  const gatesDispatch = edge.kind === DISPATCH_GATING_KIND;
   return {
     edgeId: edge.id,
     kind: edge.kind,
@@ -167,8 +179,35 @@ function digest(edge: IssueDependencyEdge, issueId: string, now: number): IssueR
     otherStatus: outgoing ? edge.toStatus : edge.fromStatus,
     otherMergedAt: outgoing ? edge.toMergedAt : edge.fromMergedAt,
     validUntil: edge.validUntil,
-    expired,
+    expired: edge.expired,
+    gatesDispatch,
+    blocking: gatesDispatch && !edge.expired,
   };
+}
+
+/** One kind's edges at an issue: `outgoing` from it, `incoming` to it. For `blocks`, outgoing is
+ *  what this issue holds back and incoming is what holds this issue back. */
+export type IssueRelationDirections = {
+  outgoing: IssueRelationDigest[];
+  incoming: IssueRelationDigest[];
+};
+
+/** An issue's relations keyed by kind, every kind present, so a `relates` edge can never be read
+ *  out of a list named for blocking. */
+export type IssueRelations = Record<IssueDependencyKind, IssueRelationDirections>;
+
+export function emptyIssueRelations(): IssueRelations {
+  return Object.fromEntries(
+    issueDependencyKinds.map((kind) => [kind, { outgoing: [], incoming: [] }]),
+  ) as unknown as IssueRelations;
+}
+
+/** Every edge of every kind and direction, for a reader that walks them all. */
+export function allRelationDigests(relations: IssueRelations): IssueRelationDigest[] {
+  return issueDependencyKinds.flatMap((kind) => [
+    ...relations[kind].outgoing,
+    ...relations[kind].incoming,
+  ]);
 }
 
 /**
@@ -183,10 +222,8 @@ export async function loadIssueRelations(
   projectId: string,
 ): Promise<IssueRelations> {
   const byIssue = await loadIssueRelationsForIssues([issueId], projectId);
-  return byIssue.get(issueId) ?? { blocks: [], blockedBy: [] };
+  return byIssue.get(issueId) ?? emptyIssueRelations();
 }
-
-export type IssueRelations = { blocks: IssueRelationDigest[]; blockedBy: IssueRelationDigest[] };
 
 /**
  * ISS-1024 — the same projection over a SET of issues, off the one batched edge query, so
@@ -199,13 +236,12 @@ export async function loadIssueRelationsForIssues(
   projectId: string,
 ): Promise<Map<string, IssueRelations>> {
   const edges = await loadIssueDependencyEdgesForIssues(issueIds, projectId);
-  const now = Date.now();
   const out = new Map<string, IssueRelations>();
   for (const [issueId, { outgoing, incoming }] of edges) {
-    out.set(issueId, {
-      blocks: outgoing.map((e) => digest(e, issueId, now)),
-      blockedBy: incoming.map((e) => digest(e, issueId, now)),
-    });
+    const relations = emptyIssueRelations();
+    for (const e of outgoing) relations[e.kind].outgoing.push(digest(e, issueId));
+    for (const e of incoming) relations[e.kind].incoming.push(digest(e, issueId));
+    out.set(issueId, relations);
   }
   return out;
 }

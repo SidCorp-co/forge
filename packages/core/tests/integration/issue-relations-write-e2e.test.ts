@@ -83,7 +83,7 @@ describe('ISS-868 issue relations writer', () => {
       updated: false,
     });
 
-    const [live] = (await loadIssueRelations(dependent, projectId)).blockedBy;
+    const [live] = (await loadIssueRelations(dependent, projectId)).blocks.incoming;
     expect(live?.expired).toBe(false);
 
     const [retracted] = await applyIssueRelations(writer, projectId, dependent, [
@@ -91,7 +91,7 @@ describe('ISS-868 issue relations writer', () => {
     ]);
     expect(retracted).toMatchObject({ edgeId: created?.edgeId, created: false, updated: true });
 
-    const [expired] = (await loadIssueRelations(dependent, projectId)).blockedBy;
+    const [expired] = (await loadIssueRelations(dependent, projectId)).blocks.incoming;
     expect(expired?.expired).toBe(true);
     expect(expired?.edgeId).toBe(live?.edgeId);
 
@@ -129,13 +129,9 @@ describe('ISS-868 issue relations writer', () => {
     `);
     expect(rows).toHaveLength(3);
 
-    const { blocks, blockedBy } = await loadIssueRelations(dependent, projectId);
-    expect(
-      blockedBy
-        .filter((e) => e.kind === 'blocks')
-        .map((e) => e.fromIssueId)
-        .sort(),
-    ).toEqual([blockerA, blockerB].sort());
-    expect(blocks.map((e) => e.toIssueId)).toEqual([downstream]);
+    const { blocks, relates } = await loadIssueRelations(dependent, projectId);
+    expect(blocks.incoming.map((e) => e.fromIssueId).sort()).toEqual([blockerA, blockerB].sort());
+    expect(blocks.outgoing.map((e) => e.toIssueId)).toEqual([downstream]);
+    expect(relates.incoming.map((e) => e.fromIssueId)).toEqual([blockerA]);
   });
 });

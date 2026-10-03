@@ -13,6 +13,7 @@ import {
   type BlockingRef,
   COMPLEXITY_LABELS,
   PRIORITY_LABELS,
+  liveDependencies,
   openBlockingRefs,
 } from "../derive";
 import type {
@@ -138,8 +139,7 @@ export function DepBadges({
   const navigate = (otherId: string) =>
     router.push(`/projects/${slug}/issues/${otherId}`);
 
-  const incoming = deps?.incoming ?? [];
-  const outgoing = deps?.outgoing ?? [];
+  const { incoming, outgoing } = liveDependencies(deps);
   const blockedBy = incoming.filter((e) => e.kind === "blocks");
   const blocks = outgoing.filter((e) => e.kind === "blocks");
   const subtasks = outgoing.filter((e) => isParentEdge(e.kind));

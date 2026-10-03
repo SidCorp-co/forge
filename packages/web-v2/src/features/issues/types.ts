@@ -145,6 +145,9 @@ export interface IssueDependencyEdge {
   kind: IssueDependencyKind;
   reason: string | null;
   createdAt: string;
+  validUntil?: string | null;
+  /** Retracted: `validUntil` has passed. The server decides it; an expired edge counts as nothing. */
+  expired: boolean;
   fromDisplayId?: string | null;
   fromTitle?: string | null;
   fromStatus?: IssueStatus | null;
