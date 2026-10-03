@@ -27,6 +27,7 @@ export default defineConfig({
       'src/**/*.test.ts',
       'tests/helpers/**/*.test.ts',
       '../contracts/src/**/*.test.ts',
+      '../observability/src/**/*.test.ts',
       '../../scripts/**/*.test.mjs',
     ],
     environment: 'node',

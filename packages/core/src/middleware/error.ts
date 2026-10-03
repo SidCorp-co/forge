@@ -1,6 +1,7 @@
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { withoutQueryParams } from '../lib/db-errors.js';
+import { RefusalError, refusalEnvelope } from '../lib/refusal.js';
 import { getLogger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import type { RequestIdVars } from './request-id.js';
@@ -53,6 +54,12 @@ function extractCause(cause: unknown): {
 
 export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c) => {
   const log = getLogger(c);
+
+  if (err instanceof RefusalError) {
+    const envelope = refusalEnvelope(err.refusals, err.fallbackCode);
+    log.warn({ status: 422, code: envelope.error.code, err: err.message }, 'http.error');
+    return c.json(envelope, 422);
+  }
 
   if (err instanceof HTTPException) {
     const status = err.status;

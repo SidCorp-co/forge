@@ -207,6 +207,32 @@ export const requirementBaselines = pgTable(
   }),
 );
 
+// cm:why a return is a decision that can happen more than once on one revision (proposed, returned,
+// proposed again), so each is its own insert-only row with who, when and why; the revision's
+// return_reason keeps only the latest for the draft's author to read
+export const requirementReturns = pgTable(
+  'requirement_returns',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    requirementId: uuid('requirement_id').notNull(),
+    revision: integer('revision').notNull(),
+    returnedBy: uuid('returned_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    returnedAt: timestamp('returned_at', { withTimezone: true }).notNull().defaultNow(),
+    reason: text('reason').notNull(),
+  },
+  (t) => ({
+    revisionFk: foreignKey({
+      name: 'requirement_returns_revision_fk',
+      columns: [t.requirementId, t.revision],
+      foreignColumns: [requirementRevisions.requirementId, requirementRevisions.revision],
+    }).onDelete('cascade'),
+    reasonChk: check('requirement_returns_reason_chk', sql`${t.reason} ~ '[^[:space:]]'`),
+    requirementIdx: index('requirement_returns_requirement_idx').on(t.requirementId, t.revision),
+  }),
+);
+
 // cm:why one pin per linked design revision or contract version at the agree: an exclusive arc over
 // two composite keys, each a real foreign key, so a pinned revision or version cannot be deleted
 export const requirementBaselinePins = pgTable(

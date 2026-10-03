@@ -57,9 +57,9 @@ const create = (document: Doc, who: Parameters<typeof say>[0] = 'masterPlugin') 
   say(who, 'POST', links(), { baseRevision: null, document });
 
 const deniedAs = (r: Reply) => {
-  expect(r.status, JSON.stringify(r.json)).toBe(403);
-  expect(r.json.details.refusals.map((x: Doc) => x.code)).toEqual([r.json.code]);
-  return r.json.code as string;
+  expect(r.status, JSON.stringify(r.json)).toBe(422);
+  expect(r.json.error.refusals.map((x: Doc) => x.code)).toEqual([r.json.error.code]);
+  return r.json.error.code as string;
 };
 
 describe("the consumer's master writes a link", () => {

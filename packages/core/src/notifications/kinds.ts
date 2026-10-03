@@ -46,6 +46,7 @@ export const NOTIFICATION_KIND_TABLE: Record<NotificationType, NotificationKindE
   channel_document_published: { kind: 'signal', tier: 'ticket' },
   channel_thread_held: { kind: 'condition', tier: 'ticket' },
   channel_gate_pending: { kind: 'task', tier: 'ticket' },
+  contract_version_published: { kind: 'signal', tier: 'log' },
 };
 
 export function kindOf(type: NotificationType): NotificationKind {

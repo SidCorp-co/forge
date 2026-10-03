@@ -28,6 +28,8 @@ export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus
   release_batch: [],
   reconcile: [],
   verify_skill: [],
+  // the onboarding analysis (ISS-63) is issue-less too.
+  onboarding: [],
 };
 
 export const JOB_TYPE_ENTRY_STATUS: Partial<Record<JobType, IssueStatus>> = {

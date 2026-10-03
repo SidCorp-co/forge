@@ -5,7 +5,7 @@ export type RequirementStatus = 'draft' | 'agreed' | 'accepted' | 'dropped';
 export type RevisionState = 'draft' | 'proposed' | 'current' | 'superseded';
 export type DeliveryPhase = 'agreed' | 'in_delivery' | 'delivered';
 export interface RequirementSpec { goal?: string; personas?: string[]; scopeIn?: string[]; scopeOut?: string[] }
-export interface RequirementDelivery { phase: DeliveryPhase | null; liveIssues: number; startedIssues: number; closedIssues: number; criteriaCoverage: 'unmeasured' }
+export interface RequirementDelivery { phase: DeliveryPhase | null; liveIssues: number; startedIssues: number; closedIssues: number; criteriaCoverage: { criteria: number; passing: number; judged: number } }
 export interface RequirementSummary {
   id: string; key: string; title: string; status: RequirementStatus;
   currentRevision: number | null;
@@ -21,6 +21,7 @@ export interface RequirementRevision {
   spec: RequirementSpec; tldr: string | null; changeSummary: string | null; reason: string;
   authorId: string; authorName: string | null; authorKind: 'human' | 'agent'; createdAt: string;
   proposedAt: string | null; decidedBy: string | null; decidedByName: string | null; decidedAt: string | null; returnReason: string | null;
+  fromSuggestionId: string | null;
   criteria: RequirementCriterion[];
 }
 export interface RequirementPin { kind: 'workflow-design' | 'contract-version'; workflowId: string | null; flow: string | null; designRevision: number | null; providerProjectId: string | null; contractSlug: string | null; contractVersion: string | null }
@@ -44,6 +45,7 @@ export interface RequirementDetail extends RequirementSummary {
   issues: RequirementIssueLink[];
   canSignOff: boolean;                // the viewer is a person allowed to accept / return / agree
   history: RequirementHistoryEntry[];  // newest first
+  readiness: { revision: number; ready: boolean; failed: string[]; suggestionId: string; decidedAt: string | null } | null;
 }
 
 export interface RequirementList { requirements: RequirementSummary[]; returned: number }

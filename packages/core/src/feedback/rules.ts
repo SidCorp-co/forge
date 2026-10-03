@@ -41,6 +41,8 @@ export interface PhaseFacts {
   routedIssueStatus: string | null;
   suggestion: { status: SuggestionStatus; revisionLive: boolean; delivered: boolean } | null;
   routedRequirementStatus: string | null;
+  /** The routed requirement reads delivered (requirement_delivery) or was accepted. */
+  routedRequirementDelivered: boolean;
   rootPhase: FeedbackPhase | null;
 }
 
@@ -59,10 +61,10 @@ export function phaseOf(f: PhaseFacts): FeedbackPhase {
         return f.suggestion.revisionLive && f.suggestion.delivered ? 'resolved' : 'planned';
       }
       return f.suggestion.status === 'proposed' ? 'planned' : 'triaged';
+    // cm:guard workflow feedback-lifecycle edge planned → resolved: the linked requirement reads
+    // delivered; agreeing it only plans the work, so an agreed requirement keeps the item planned
     case 'new_requirement':
-      if (f.routedRequirementStatus === 'agreed' || f.routedRequirementStatus === 'accepted') {
-        return 'resolved';
-      }
+      if (f.routedRequirementDelivered) return 'resolved';
       return f.routedRequirementStatus === 'dropped' ? 'triaged' : 'planned';
     case 'answer':
       return 'resolved';
@@ -72,6 +74,20 @@ export function phaseOf(f: PhaseFacts): FeedbackPhase {
     default:
       return 'triaged';
   }
+}
+
+// cm:guard a text search over content the viewer may not read is refused by name: matching titles
+// would answer what the policy withholds, and dropping `q` would list every item as a match
+export function searchWithheldRefusal(
+  q: string | undefined,
+  withheld: boolean,
+): FeedbackRefusal | null {
+  if (!q || !withheld) return null;
+  return refusal(
+    'FEEDBACK_SEARCH_WITHHELD',
+    '/q',
+    "this project's no_egress policy withholds feedback content from this reader, so a text search over it cannot be answered; list without `q`, filtering by phase.",
+  );
 }
 
 /** Who a row waits on for this viewer: a member triages, the reporter verifies. */
@@ -101,7 +117,7 @@ export function waitingOf(
       if (route === 'revision')
         return { kind: 'person', who: 'The revision proposal', act: 'be accepted and delivered' };
       if (route === 'new_requirement')
-        return { kind: 'issue', who: carrier ?? 'The new requirement', act: 'be agreed' };
+        return { kind: 'issue', who: carrier ?? 'The new requirement', act: 'be agreed and delivered' };
       if (route === 'duplicate')
         return { kind: 'issue', who: `Its root ${carrier ?? ''}`.trim(), act: 'be resolved' };
       return { kind: 'issue', who: 'The linked work', act: '' };

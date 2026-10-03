@@ -34,10 +34,14 @@ import {
   upcomingSchedules,
 } from "@/features/project-dashboard/derive";
 import { useAttention } from "@/features/attention/hooks";
+import { OnboardingHint } from "@/features/onboarding/components/onboarding-hint";
 import { useProjectRuns, useStepDurations } from "@/features/pipeline/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
+import { useProjectDocument } from "@/features/project-settings/config-hooks";
+import { SystemOverviewRegion } from "@/features/workflows/components/system-overview";
+import { useWorkflowTemplates, useWorkflows } from "@/features/workflows/hooks";
 import { useSchedules } from "@/features/schedules/hooks";
 import { useQueueStats } from "@/features/sessions/hooks";
 import { formatApiError } from "@/lib/api/error";
@@ -67,6 +71,9 @@ export default function ProjectOverviewPage() {
   const projectRunnersQ = useProjectRunners(projectId ?? null);
   const activeRunnersQ = useActiveRunners(projectId ?? null);
   const schedulesQ = useSchedules(projectId);
+  const workflowsQ = useWorkflows(projectId);
+  const templatesQ = useWorkflowTemplates(projectId);
+  const projectDocumentQ = useProjectDocument(projectId);
 
   // Tick once a second while some runner is limited (live reset countdown);
   // the active-runner card's busy state refreshes via its own 10s poll + WS,
@@ -133,6 +140,9 @@ export default function ProjectOverviewPage() {
   const schedules = upcomingSchedules(schedulesQ.data);
 
   return (
+    <>
+    {/* cm:why onboarding is offered, never required: one line above the dashboard, gone once its designs are approved */}
+    <OnboardingHint projectId={project.id} projectName={project.name} />
     <PageContainer className="min-h-dvh">
       <header className="mb-6 flex items-center gap-4">
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(project.name)} size={48} />
@@ -187,6 +197,19 @@ export default function ProjectOverviewPage() {
 
         <AttentionQueue items={attention} now={now} />
 
+        {workflowsQ.data && workflowsQ.data.workflows.length > 0 ? (
+          <SystemOverviewRegion
+            records={workflowsQ.data.workflows}
+            projectId={project.id}
+            templates={(templatesQ.data?.templates ?? []).map((t) => t.template)}
+            slug={project.slug}
+            projectName={project.name}
+            projectDocument={projectDocumentQ.data}
+            canEdit={project.role === "admin"}
+            variant="compact"
+          />
+        ) : null}
+
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
           <LiveRunsCard runs={runsActive} slug={project.slug} idle={runsIdle} />
           <AwaitingReleaseCard runs={runsAwaitingRelease} slug={project.slug} projectId={project.id} />
@@ -197,5 +220,6 @@ export default function ProjectOverviewPage() {
         </div>
       </div>
     </PageContainer>
+    </>
   );
 }

@@ -14,6 +14,7 @@ import { AttributeRefusal } from '../../issues/attributes/write.js';
 import { createIssue } from '../../issues/create-service.js';
 import { loadIssueRelations } from '../../issues/dependency-read.js';
 import { isValidDetectorKey } from '../../issues/detector-key.js';
+import { dispatchGatesOf } from '../../issues/dispatch-gates.js';
 import { workStatePatchSchema } from '../../issues/input-schemas.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import {
@@ -49,7 +50,6 @@ import {
   type TaskRow,
   updateTask as updateTaskRow,
 } from '../../tasks/task-service.js';
-import { buildsWorkflowOf } from '../../workflows/build-gate.js';
 import { proposesWorkflowOf } from '../../workflows/design-issue.js';
 import { refuseStrayArchiveFields, runArchiveAction } from './forge-issues-archive.js';
 import { forgeIssuesDescription } from './forge-issues-description.js';
@@ -603,16 +603,16 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
           return projected;
         }
-        const [full, relations, attributes, buildsWorkflow, proposesWorkflow, requirement] =
+        const [full, relations, attributes, gates, proposesWorkflow, requirement] =
           await Promise.all([
             serializeWithAttachments(issue),
             loadIssueRelations(issue.id, issue.projectId),
             loadIssueAttributes(issue.id),
-            buildsWorkflowOf(issue.id),
+            dispatchGatesOf(issue.id, issue.projectId),
             proposesWorkflowOf(issue.id),
             requirementOfIssue(issue.id),
           ]);
-        return { ...full, relations, attributes, buildsWorkflow, proposesWorkflow, requirement };
+        return { ...full, relations, attributes, ...gates, proposesWorkflow, requirement };
       }
 
       case 'setAttributes': {

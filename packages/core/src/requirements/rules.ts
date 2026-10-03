@@ -1,8 +1,8 @@
 /**
  * The guards of workflow `requirement-lifecycle` rev 3, as pure functions over what the service
- * read: who may sign a requirement off, which revision may move where, what an agree pins, and how
- * a revision's criteria list becomes rows with stable BC codes. Every refusal is named; the service
- * answers it with nothing written.
+ * read: who may sign a requirement off, which revision may move where, what an agree pins, and the
+ * BC codes a criteria list keeps or takes. Every refusal is named; the service answers it with
+ * nothing written.
  */
 
 import type { ProjectMemberRole } from '../db/schema.js';

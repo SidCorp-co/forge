@@ -24,11 +24,10 @@ export type OwedComment = {
 const BY_AN_AGENT = (alias: string) =>
   sql.raw(`(${alias}.author_device_id IS NOT NULL OR ${alias}_u.kind = 'agent')`);
 
-// cm:guard owed = a PERSON's `question` comment (ISS-56: a note or a decision is not owed a reply)
-// on a live issue (any status but closed/dropped, not archived) with no newer agent-authored
-// comment on that issue; an agent's own comment is never owed, so a
-// master's reply clears the thread and cannot owe itself. Terminal is out: a person's closing word
-// is the commonest last comment there, and reopening the issue brings its thread back in.
+// cm:guard owed = a PERSON's `question` comment (ISS-56) on a live issue (not closed, dropped or
+// archived) that no agent comment threaded under it answers: parent_id = the question, or, for a
+// question that is itself a reply, a newer agent comment with the same parent. A top-level note or
+// verdict clears nothing. Terminal is out: reopening the issue brings its thread back in.
 export async function readOwedComments(
   projectId: string,
 ): Promise<{ items: OwedComment[]; count: number }> {
@@ -54,7 +53,9 @@ export async function readOwedComments(
         JOIN users a_u ON a_u.id = a.author_id
         WHERE a.issue_id = c.issue_id
           AND ${BY_AN_AGENT('a')}
-          AND a.created_at > c.created_at
+          AND (a.parent_id = c.id
+               OR (c.parent_id IS NOT NULL AND a.parent_id = c.parent_id
+                   AND a.created_at > c.created_at))
       )
     ORDER BY i.id, c.created_at DESC, c.id DESC
   `)) as unknown as Array<Record<string, unknown>>;

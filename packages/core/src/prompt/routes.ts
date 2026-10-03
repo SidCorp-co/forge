@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type JobType, jobTypes } from '../db/schema.js';
+import { buildJobSystemPrompt, JobContextRefused } from '../jobs/job-system-prompt.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -13,7 +14,6 @@ import {
   requirePolicy,
 } from '../project-config/dispatch-policy.js';
 import { loadIssueSnapshot } from './issue-snapshot.js';
-import { buildPipelinePreambleStructured } from './system.js';
 import { buildJobPromptString } from './user.js';
 
 const badRequest = (details: unknown) =>
@@ -92,10 +92,24 @@ promptRoutes.post(
       throw err;
     }
 
-    const { content: systemPrompt, blocks } = await buildPipelinePreambleStructured(
-      body.projectId,
-      { step: body.state as JobType, policy },
-    );
+    // cm:why the preview calls the builder prepare calls (jobs/job-system-prompt.ts), so the
+    // requirement, design and contract blocks a claimed job is given are the ones shown here
+    let built: Awaited<ReturnType<typeof buildJobSystemPrompt>>;
+    try {
+      built = await buildJobSystemPrompt({
+        projectId: body.projectId,
+        issueId: body.issueId ?? null,
+        step: body.state as JobType,
+        policy,
+        subject: `preview refused issue ${body.issueId ?? 'none'}`,
+      });
+    } catch (err) {
+      if (err instanceof JobContextRefused) {
+        throw new HTTPException(409, { message: err.message, cause: { code: err.code } });
+      }
+      throw err;
+    }
+    const { systemPrompt, blocks } = built;
 
     const userPrompt = buildJobPromptString({
       skillName: body.skillName ?? null,
@@ -120,7 +134,7 @@ promptRoutes.post(
         policyState: policy.status,
         policyStateFrom: policy.from,
         model: policy.model,
-        deniedTools: policy.deniedTools,
+        deniedTools: built.deniedTools,
       },
     });
   },

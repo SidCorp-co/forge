@@ -70,6 +70,10 @@
       "types": "./dist/suggestions.d.ts",
       "default": "./dist/suggestions.js"
     },
+    "./onboarding": {
+      "types": "./dist/onboarding.d.ts",
+      "default": "./dist/onboarding.js"
+    },
     "./content-language": {
       "types": "./dist/content-language.d.ts",
       "default": "./dist/content-language.js"
@@ -81,6 +85,10 @@
     "./feedback": {
       "types": "./dist/feedback.d.ts",
       "default": "./dist/feedback.js"
+    },
+    "./contract-waits": {
+      "types": "./dist/contract-waits.d.ts",
+      "default": "./dist/contract-waits.js"
     },
     "./ui-actions": {
       "types": "./dist/ui-actions.d.ts",

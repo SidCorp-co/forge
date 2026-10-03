@@ -2,6 +2,16 @@ import type { Refusal, RefusalEnvelope } from '@forge/contracts';
 
 export type { Refusal, RefusalEnvelope };
 
+export class RefusalError extends Error {
+  constructor(
+    readonly refusals: readonly Refusal[],
+    readonly fallbackCode: string,
+  ) {
+    super(refusals.map((r) => r.code).join(', '));
+    this.name = 'RefusalError';
+  }
+}
+
 /** The body `respond.ts:refused` answers 422 and `mcp/tools/lib.ts:refusedAnswer` returns. */
 export function refusalEnvelope(
   refusals: readonly Refusal[],

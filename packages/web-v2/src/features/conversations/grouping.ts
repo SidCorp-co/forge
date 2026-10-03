@@ -61,14 +61,17 @@ export interface Section<Row> {
 }
 
 // cm:why a room is shown once: pinned first, then the rooms with other people in them, then the rest by recency, so a pinned group room is not listed twice
-export function sidebarSections<Row extends { updatedAt: string; pinned?: boolean; shape: string }>(
-  rows: Row[],
-  now = Date.now(),
-): Array<Section<Row>> {
-  const pinned = rows.filter((r) => r.pinned);
-  const shared = rows.filter((r) => !r.pinned && r.shape === "group");
-  const rest = rows.filter((r) => !r.pinned && r.shape !== "group");
+export function sidebarSections<
+  Row extends { updatedAt: string; pinned?: boolean; shape: string; kind?: string | null },
+>(rows: Row[], now = Date.now()): Array<Section<Row>> {
+  // the project's onboarding thread leads the list, as the project's own conversation (ISS-63)
+  const project = rows.filter((r) => r.kind === "onboarding");
+  const others = rows.filter((r) => r.kind !== "onboarding");
+  const pinned = others.filter((r) => r.pinned);
+  const shared = others.filter((r) => !r.pinned && r.shape === "group");
+  const rest = others.filter((r) => !r.pinned && r.shape !== "group");
   return [
+    ...(project.length ? [{ key: "project", label: "Project", rows: project }] : []),
     ...(pinned.length ? [{ key: "pinned", label: "Pinned", rows: pinned }] : []),
     ...(shared.length ? [{ key: "shared", label: "With other people", rows: shared }] : []),
     ...groupByRecency(rest, now),

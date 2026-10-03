@@ -8,6 +8,7 @@ import { readClaimConflictDetails } from './claim-conflicts.js';
 import {
   BatchInFlightError,
   ClaimConflictError,
+  ContractProviderNotLiveError,
   NoReleaseGateError,
   NoRunnerOnlineError,
   ReleasePoolEmptyError,
@@ -90,6 +91,8 @@ function errorFor(
       return new ReleaseRecordMissingError(ids);
     case 'RELEASE_WORK_UNMERGED':
       return new ReleaseWorkUnmergedError(ids);
+    case 'CONTRACT_PROVIDER_NOT_LIVE':
+      return new ContractProviderNotLiveError(ids);
     case 'RELEASE_PROBES_UNREADABLE':
       return new ReleaseProbesUnreadableError(
         (first.details?.bindings as string[] | undefined) ?? [],

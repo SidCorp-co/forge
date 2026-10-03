@@ -26,6 +26,8 @@ const execRows = vi.fn(async () => [] as unknown[]);
 const fromChain: Record<string, unknown> = {};
 fromChain.where = () => Object.assign(selectRows(), { limit: selectLimit });
 fromChain.innerJoin = fromChain.leftJoin = () => fromChain;
+vi.mock('../ecosystem/waits/live.js', () => ({ contractProviderShortfalls: async () => [] }));
+
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => ({ from: () => fromChain }),

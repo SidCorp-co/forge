@@ -8,9 +8,9 @@ vi.mock('./landing-evidence.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./landing-evidence.js')>()),
   readLandingShape: async () => 'git',
 }));
-vi.mock('../workflows/build-gate.js', async (importOriginal) => ({
+vi.mock('./dispatch-gates.js', async (importOriginal) => ({
   ...((await importOriginal()) as Record<string, unknown>),
-  buildsWorkflowOf: async () => null,
+  dispatchGatesOf: async () => ({ buildsWorkflow: null, waitsOnContracts: null }),
 }));
 vi.mock('../workflows/design-issue.js', () => ({ proposesWorkflowOf: async () => null }));
 vi.mock('../requirements/issue-links.js', () => ({ requirementOfIssue: async () => null }));

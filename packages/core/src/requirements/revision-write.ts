@@ -89,10 +89,18 @@ export async function resetDraftCriteria(tx: Tx, requirementId: string, revision
     );
 }
 
-/** Writes REQ-n at revision 1 (draft) inside the caller's transaction; the caller has locked the project. */
+/** REQ-n at revision 1 (draft), numbered max+1 under that lock. */
 export async function createRequirementIn(
   tx: Tx,
-  input: { projectId: string; actor: RequirementActor; title: string; write: RevisionWrite },
+  input: {
+    projectId: string;
+    actor: RequirementActor;
+    title: string;
+    write: RevisionWrite;
+    ownerId?: string | null;
+    /** Who wrote revision 1's content when not the actor: an accepted suggestion's producer. */
+    authorId?: string | undefined;
+  },
 ): Promise<{ id: string; refusals: RequirementRefusal[] | null }> {
   const { projectId, actor, write } = input;
   const [{ next } = { next: 1 }] = await tx
@@ -101,7 +109,12 @@ export async function createRequirementIn(
     .where(eq(requirements.projectId, projectId));
   const [row] = await tx
     .insert(requirements)
-    .values({ projectId, reqSeq: next, title: input.title.trim(), ownerId: actor.userId })
+    .values({
+      projectId,
+      reqSeq: next,
+      title: input.title.trim(),
+      ownerId: input.ownerId === undefined ? actor.userId : input.ownerId,
+    })
     .returning({ id: requirements.id });
   if (!row) throw new Error('requirements: the insert returned no row');
   await tx.insert(requirementRevisions).values({
@@ -111,16 +124,13 @@ export async function createRequirementIn(
     tldr: write.tldr ?? null,
     changeSummary: write.changeSummary ?? null,
     reason: write.reason.trim(),
-    authorId: actor.userId,
+    authorId: input.authorId ?? actor.userId,
     fromSuggestionId: write.fromSuggestionId ?? null,
   });
   return { id: row.id, refusals: await writeCriteria(tx, row.id, 1, write.criteria) };
 }
 
-/**
- * A new draft revision on the head, inside the caller's transaction under the project's requirement
- * lock: refused while another revision is open, or when `baseRevision` is no longer the head.
- */
+/** A new draft revision on the head: refused while another is open, or when `baseRevision` moved. */
 export async function newDraftRevisionIn(
   tx: Tx,
   input: {

@@ -17,6 +17,7 @@
 
 import { useState } from "react";
 import { IconButton, Input, ProjectMark } from "@/design";
+import { ThreadStatusChip } from "@/features/onboarding/components/marks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { formatRelativeTime } from "@/lib/utils/format";
 import type { ListedConversation } from "../hooks";
@@ -104,6 +105,7 @@ export function ConversationRow({
       >
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={initials} size={22} />
         <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{conversationTitle(row)}</span>
+        {row.threadStatus && <ThreadStatusChip status={row.threadStatus} />}
       </button>
 
       {/* Out of the layout until wanted: an invisible group still takes its width, and four

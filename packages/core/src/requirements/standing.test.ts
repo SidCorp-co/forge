@@ -38,6 +38,7 @@ const issue = (id: string, status: string, extra: Partial<StandingIssue> = {}): 
   status,
   tone: issueStatusToneOn(status as KernelIssueStatus, false),
   updatedAt: daysAgo(1),
+  changedSincePlan: false,
   ...extra,
 });
 
@@ -81,6 +82,7 @@ const base = (over: Partial<StandingInput> = {}): StandingInput => ({
   issues: [issue('1', 'in_progress'), issue('2', 'closed')],
   issueCriteria: [],
   openSuggestionKinds: [],
+  stalePins: [],
   updatedAt: daysAgo(3),
   now: NOW,
   ...over,
@@ -95,6 +97,25 @@ describe('stateOf: the lifecycle a person reads', () => {
     expect(stateOf('draft', 'delivered')).toBe('draft');
     expect(stateOf('accepted', 'delivered')).toBe('accepted');
     expect(stateOf('dropped', null)).toBe('dropped');
+  });
+});
+
+describe('the delivery phase is proven, not counted', () => {
+  it('every issue closed with a BC unproven reads in_delivery; every BC passing reads delivered', () => {
+    const closed = { phase: 'delivered' as const, issues: [issue('2', 'closed')] };
+    const unproven = deriveStanding(base(closed));
+    expect(unproven.state).toBe('in_delivery');
+    expect(unproven.attentionGroup).toBe('others');
+    expect(unproven.waitingOn).toMatchObject({ who: 'Master', act: 'prove BC-1, BC-2, BC-3' });
+    const proven = deriveStanding(
+      base({
+        ...closed,
+        criteria: [BC1],
+        issueCriteria: [{ issueId: '2', n: 1, requirementCriterionId: 'bc1-r1', verdict: 'pass' }],
+      }),
+    );
+    expect(proven.state).toBe('delivered');
+    expect(proven.waitingOn.act).toBe('accept delivery');
   });
 });
 
@@ -171,8 +192,15 @@ describe('whose turn it is', () => {
     expect(s.waitingOn.act).toBe('agree r2');
   });
 
-  it('rule 5: every linked issue closed waits on a signer to accept the delivery', () => {
-    const s = deriveStanding(base({ phase: 'delivered', issues: [issue('2', 'closed')] }));
+  it('rule 5: every linked issue closed and every BC proven waits on a signer to accept the delivery', () => {
+    const s = deriveStanding(
+      base({
+        phase: 'delivered',
+        issues: [issue('2', 'closed')],
+        criteria: [BC1],
+        issueCriteria: [{ issueId: '2', n: 1, requirementCriterionId: 'bc1-r1', verdict: 'pass' }],
+      }),
+    );
     expect(s.state).toBe('delivered');
     expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'accept delivery' });
   });
@@ -193,6 +221,41 @@ describe('whose turn it is', () => {
     expect(s.attentionGroup).toBe('others');
     expect(s.waitingOn).toMatchObject({ kind: 'agent', who: 'Master', act: 'break down' });
     expect(s.facts.issuesTotal).toBe(0);
+  });
+
+  it('a live issue planned against an earlier revision is the master’s turn to re-plan it, not "running"', () => {
+    const s = deriveStanding(
+      base({
+        issues: [issue('1', 'in_progress', { changedSincePlan: true }), issue('2', 'closed')],
+      }),
+    );
+    expect(s.attentionGroup).toBe('others');
+    expect(s.waitingOn).toMatchObject({ kind: 'agent', who: 'Master', act: 're-plan ISS-1' });
+    expect(s.waitingOn.rule).toContain('REQUIREMENT_CHANGED_SINCE_PLAN');
+  });
+
+  it('only draft issues are not "being worked": a person promotes or drops them', () => {
+    const s = deriveStanding(base({ phase: 'agreed', issues: [issue('2', 'draft')] }));
+    expect(s.attentionGroup).toBe('needs_you');
+    expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'promote 1 draft issue' });
+    const other = deriveStanding(
+      base({
+        phase: 'agreed',
+        viewer: VIEWER_ONLY,
+        issues: [issue('2', 'draft'), issue('3', 'draft')],
+      }),
+    );
+    expect(other.waitingOn).toMatchObject({ kind: 'person', act: 'promote 2 draft issues' });
+    const mixed = deriveStanding(
+      base({ issues: [issue('2', 'draft'), issue('3', 'in_progress')] }),
+    );
+    expect(mixed.attentionGroup).toBe('moving');
+  });
+
+  it('says which pinned designs were approved at a newer revision since the baseline', () => {
+    const pins = [{ flow: 'hop-system-context', pinned: 4, approved: 5 }];
+    expect(deriveStanding(base({ stalePins: pins })).facts.stalePins).toEqual(pins);
+    expect(deriveStanding(base()).facts.stalePins).toEqual([]);
   });
 
   it('rule 8: agreed with issues being worked is moving, counted label-first', () => {
