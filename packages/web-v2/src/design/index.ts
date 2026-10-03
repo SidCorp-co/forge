@@ -112,6 +112,7 @@ export { WaitingOn, WaitBanner, type WaitingOnView, type BannerTone } from "./pa
 export {
   GroupedList, useGroupFold, visibleRows, type ListGroup, type ListRowView, type GroupedListProps,
 } from "./patterns/grouped-list";
+export { ListSearch, type ListSearchProps } from "./patterns/list-search";
 export { PeekPanel, PeekHead, usePeek, usePeekKeys, type PeekState, type PeekPanelProps } from "./patterns/peek-panel";
 export {
   DetailHeader, DetailMobileTitle, rememberListOrigin, useListOrigin, type DetailHeaderProps,

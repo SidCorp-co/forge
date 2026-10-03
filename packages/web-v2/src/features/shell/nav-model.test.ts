@@ -58,12 +58,13 @@ describe("the project menu", () => {
     expect(PROJECT_MENU.map((e) => e.label)).toEqual(["Dashboard", "Requirements", "Workflows", "Releases", "Feedback", "Development"]);
   });
 
-  it("holds Overview, Issues, Agents, Contracts and Automation under Development, and Releases outside it", () => {
+  it("holds Overview, Issues, Modules, Agents, Contracts and Automation under Development, and Releases outside it", () => {
     const group = PROJECT_MENU.find(isProjGroup);
     expect(group?.label).toBe("Development");
     expect(group?.items.map((i) => [i.label, i.sub])).toEqual([
       ["Overview", "/overview"],
       ["Issues", "/issues"],
+      ["Modules", "/modules"],
       ["Agents", "/agents"],
       ["Contracts", "/ecosystem/contracts"],
       ["Automation", "/automation"],
@@ -74,10 +75,9 @@ describe("the project menu", () => {
     expect(existsSync(join(PROJECT_ROUTES, sub, "page.tsx"))).toBe(true);
   });
 
-  // cm:why Modules is in the owner's IA but has no page yet, and a row that leads nowhere is not listed
-  it("names no Library, Board, Insights, Modules or PM destination", () => {
+  it("names no Library, Board, Insights or PM destination", () => {
     const labels = PROJECT_ITEMS.map((it) => it.label);
-    for (const gone of ["Library", "Board", "Insights", "Modules", "PM", "Improve"]) {
+    for (const gone of ["Library", "Board", "Insights", "PM", "Improve"]) {
       expect(labels).not.toContain(gone);
     }
     expect(existsSync(join(PROJECT_ROUTES, "library"))).toBe(false);
@@ -97,6 +97,8 @@ describe("the project menu", () => {
     expect(at("/workflows")).toBe("proj-workflows");
     expect(at("/requirements")).toBe("proj-requirements");
     expect(at("/requirements/REQ-3")).toBe("proj-requirements");
+    expect(at("/modules")).toBe("proj-modules");
+    expect(at("/modules/outreach")).toBe("proj-modules");
     expect(at("/feedback")).toBe("proj-feedback");
     expect(at("/feedback/FB-3")).toBe("proj-feedback");
   });
@@ -118,7 +120,7 @@ describe("the project menu", () => {
     const rail = projectRailItems({});
     expect(rail.map((e) => e.label)).toEqual(["Dashboard", "Requirements", "Workflows", "Releases", "Feedback", "Development"]);
     const dev = rail.find(isRailGroup);
-    expect(dev?.items.map((i) => i.label)).toEqual(["Overview", "Issues", "Agents", "Contracts", "Automation"]);
+    expect(dev?.items.map((i) => i.label)).toEqual(["Overview", "Issues", "Modules", "Agents", "Contracts", "Automation"]);
   });
 });
 

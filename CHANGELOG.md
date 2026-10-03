@@ -137,6 +137,13 @@
 
 ### Added
 
+- **Development has a Modules list and a page for each module.** The list groups modules by what
+  needs you, what is moving and what is stuck, or as a tree, and a click opens a peek. A module's
+  page shows what is open in it, what landed, the paths and couplings its knowledge entry records
+  and the issues, requirements and feedback that touch it, from `GET /api/projects/:id/modules/rollup`
+  and `GET /api/projects/:id/modules/:module/detail`. Owner and contracts say "Not available": a
+  module records neither.
+
 - **Development has an Overview page.** It shows what is running, what is stuck and what waits on
   you, from one read, `GET /api/projects/:id/development/overview`. CI and post-merge say "Not
   available": core stores no branch-head check.

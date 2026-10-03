@@ -62,6 +62,10 @@
       "types": "./dist/requirements.d.ts",
       "default": "./dist/requirements.js"
     },
+    "./modules": {
+      "types": "./dist/modules.d.ts",
+      "default": "./dist/modules.js"
+    },
     "./wireframe": {
       "types": "./dist/wireframe.d.ts",
       "default": "./dist/wireframe.js"

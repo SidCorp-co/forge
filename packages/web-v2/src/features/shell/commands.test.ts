@@ -31,7 +31,7 @@ describe("⌘K", () => {
   it("offers the project menu's destinations, Schedules and Improvements among them", () => {
     const { list, routeOf } = commands();
     const labels = list.map((c) => c.label);
-    for (const page of ["Dashboard", "Requirements", "Workflows", "Issues", "Agents", "Schedules", "Improvements", "Releases"]) {
+    for (const page of ["Dashboard", "Requirements", "Workflows", "Issues", "Modules", "Agents", "Schedules", "Improvements", "Releases"]) {
       expect(labels).toContain(`Forge · ${page}`);
     }
     expect(routeOf("Forge · Schedules")).toBe("/projects/forge-dev/automation?tab=schedules");
@@ -39,12 +39,13 @@ describe("⌘K", () => {
     expect(routeOf("Forge · Automation")).toBe("/projects/forge-dev/automation");
     expect(routeOf("Forge · Contracts")).toBe("/projects/forge-dev/ecosystem/contracts");
     expect(routeOf("Forge · Requirements")).toBe("/projects/forge-dev/requirements");
+    expect(routeOf("Forge · Modules")).toBe("/projects/forge-dev/modules");
   });
 
-  it("offers nothing removed: no Library, Board, Insights, Modules, PM or Chat mode", () => {
+  it("offers nothing removed: no Library, Board, Insights, PM or Chat mode", () => {
     const { list } = commands();
     const text = list.map((c) => `${c.label} ${c.keywords ?? ""}`).join("\n");
-    for (const gone of ["Library", "Board", "Insights", "Modules", "· PM", "Go to Chat", "Go to Activity"]) {
+    for (const gone of ["Library", "Board", "Insights", "· PM", "Go to Chat", "Go to Activity"]) {
       expect(text).not.toContain(gone);
     }
   });
