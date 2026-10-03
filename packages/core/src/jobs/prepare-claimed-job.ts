@@ -15,46 +15,17 @@
 import { and, eq } from 'drizzle-orm';
 import { recordContentLanguage } from '../content-language/read.js';
 import { db } from '../db/client.js';
-import { devices, issueLabels, issues, jobs, labels, runners } from '../db/schema.js';
-import {
-  contractsNamedIn,
-  type LoadedNamedContract,
-  loadNamedContracts,
-  NamedContractError,
-  recordNamedContracts,
-  renderNamedContracts,
-} from '../ecosystem/contract/named-context.js';
-import {
-  type LoadedContract,
-  pathsNamedIn,
-  renderContractContext,
-} from '../ecosystem/contract/run-context.js';
-import {
-  loadContractContext,
-  recordContractContext,
-} from '../ecosystem/contract/run-context-service.js';
+import { devices, issues, jobs, runners } from '../db/schema.js';
+import { recordNamedContracts } from '../ecosystem/contract/named-context.js';
+import { recordContractContext } from '../ecosystem/contract/run-context-service.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { buildPipelinePreambleStructured, type PreambleBlock } from '../lib/chat-preamble.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { estimateTokens } from '../lib/token-estimator.js';
-import { logger } from '../logger.js';
 import type { DispatchState, PolicyStateSource } from '../project-config/dispatch-policy.js';
 import { injectAfterInvocation, injectTurnLevelRules } from '../prompt/user.js';
 import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from '../runners/device-cap.js';
-import {
-  ArtifactContextError,
-  type LoadedArtifact,
-  type LoadedRequirement,
-  RequirementContextError,
-  renderArtifactContext,
-} from '../workflows/run-context.js';
-import {
-  loadArtifactContext,
-  loadRequirementContext,
-  recordArtifactContext,
-} from '../workflows/run-context-service.js';
+import { recordArtifactContext } from '../workflows/run-context-service.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
-import { SKILL_MAINTENANCE_LABEL, withSkillMaintenanceCarveout } from './job-policy.js';
+import { buildJobSystemPrompt } from './job-system-prompt.js';
 import { loadPriorAttempts, renderPriorAttemptsBlock } from './prior-attempts.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { finalizeResumeForDevice, resolveResumePolicy } from './resume-policy.js';
@@ -116,55 +87,6 @@ export interface PreparedJob {
 }
 
 /**
- * Give a `code`/`fix` job on a skill-maintenance issue its skill-write tools
- * back. Best-effort: an absent label leaves the deny list untouched.
- */
-async function applyCarveout(
-  job: typeof jobs.$inferSelect,
-  deniedTools: string[],
-): Promise<string[]> {
-  if (!job.issueId || (job.type !== 'code' && job.type !== 'fix')) return deniedTools;
-  try {
-    const [labelRow] = await db
-      .select({ id: labels.id })
-      .from(labels)
-      .where(and(eq(labels.projectId, job.projectId), eq(labels.name, SKILL_MAINTENANCE_LABEL)))
-      .limit(1);
-    let hasSkillMaintenanceLabel = false;
-    if (labelRow) {
-      const [issueLabelRow] = await db
-        .select({ issueId: issueLabels.issueId })
-        .from(issueLabels)
-        .where(and(eq(issueLabels.issueId, job.issueId), eq(issueLabels.labelId, labelRow.id)))
-        .limit(1);
-      hasSkillMaintenanceLabel = Boolean(issueLabelRow);
-    }
-    const carved = withSkillMaintenanceCarveout(deniedTools, {
-      hasSkillMaintenanceLabel,
-      jobType: job.type,
-    });
-    if (carved.length < deniedTools.length) {
-      logger.info(
-        {
-          jobId: job.id,
-          issueId: job.issueId,
-          jobType: job.type,
-          removed: deniedTools.length - carved.length,
-        },
-        'prepare: skill-maintenance carve-out unblocked skill-write tools',
-      );
-    }
-    return carved;
-  } catch (err) {
-    logger.warn(
-      { err, jobId: job.id, issueId: job.issueId, type: job.type },
-      'prepare: skill-maintenance label lookup failed, preparing without carve-out',
-    );
-    return deniedTools;
-  }
-}
-
-/**
  * Prepare a job a master has just claimed on `deviceId`.
  *
  * Throws if the box has no runner bound to the job's project — that box cannot
@@ -180,94 +102,6 @@ export async function canNameItsAgent(deviceId: string): Promise<boolean> {
     .where(eq(devices.id, deviceId))
     .limit(1);
   return atLeastVersion(device?.v ?? null, AGENT_NAMING_MIN_RUNNER);
-}
-
-// cm:why a run is given the contracts its issue's named paths reach before it starts, since the paths it will change are not known yet; it asks forge_ecosystem action=context for paths it finds later
-async function contractsNamedBy(
-  job: typeof jobs.$inferSelect,
-  issue:
-    | { description: string | null; plan: string | null; acceptanceCriteria: string | null }
-    | undefined,
-): Promise<LoadedContract[]> {
-  if (!issue) return [];
-  const text = [issue.description, issue.plan, issue.acceptanceCriteria].filter(Boolean).join('\n');
-  try {
-    return await loadContractContext(job.projectId, pathsNamedIn(text));
-  } catch (err) {
-    // cm:guard a run whose contract context cannot be read is refused, never prepared without it — it would edit a call site blind (owner, 2026-10-02)
-    throw new Error(
-      `CONTRACT_CONTEXT_UNLOADABLE: prepare refused job ${job.id}: the contracts its issue's paths reach could not be read (${err instanceof Error ? err.message : String(err)})`,
-      { cause: err },
-    );
-  }
-}
-
-// cm:why a job is given the contract versions its issue names, the provider's and the in-project consumer's view alike, where path matching reaches only a link's call sites
-async function contractVersionsNamedBy(
-  job: typeof jobs.$inferSelect,
-  issue:
-    | { description: string | null; plan: string | null; acceptanceCriteria: string | null }
-    | undefined,
-): Promise<LoadedNamedContract[]> {
-  if (!issue) return [];
-  const text = [issue.description, issue.plan, issue.acceptanceCriteria].filter(Boolean).join('\n');
-  try {
-    return await loadNamedContracts(job.projectId, contractsNamedIn(text));
-  } catch (err) {
-    // cm:guard a named contract version that cannot be given, or is not approved, refuses the job by name: it would build against a contract nobody agreed
-    const code = err instanceof NamedContractError ? err.code : 'CONTRACT_CONTEXT_UNLOADABLE';
-    throw new Error(
-      `${code}: prepare refused job ${job.id}: the contract versions its issue names could not be given (${err instanceof Error ? err.message : String(err)})`,
-      { cause: err },
-    );
-  }
-}
-
-// cm:why a build job is given the design revision its approver approved, so it builds the journey it was held for rather than one it guesses at; an issue that builds no workflow is given nothing
-async function designsBuiltBy(job: typeof jobs.$inferSelect): Promise<LoadedArtifact[]> {
-  if (!job.issueId) return [];
-  try {
-    return await loadArtifactContext(job.issueId);
-  } catch (err) {
-    // cm:guard an unreadable approved revision stops the job as `ARTIFACT_CONTEXT_UNLOADABLE`: an agent given no design would build the journey blind
-    const code = err instanceof ArtifactContextError ? err.code : 'ARTIFACT_CONTEXT_UNLOADABLE';
-    throw new Error(
-      `${code}: prepare refused job ${job.id}: the approved design its issue builds could not be given (${err instanceof Error ? err.message : String(err)})`,
-      { cause: err },
-    );
-  }
-}
-
-// cm:why a job on an issue that delivers a requirement is given its current revision's business criteria and the design revisions its baseline pins, so it builds what was agreed rather than what the description paraphrased
-async function requirementServedBy(
-  job: typeof jobs.$inferSelect,
-): Promise<LoadedRequirement | null> {
-  if (!job.issueId) return null;
-  try {
-    return await loadRequirementContext(job.issueId);
-  } catch (err) {
-    // cm:guard a requirement that cannot be given at its current revision stops the job by name: a run given a superseded or unagreed revision would build the wrong intent
-    const code = err instanceof RequirementContextError ? err.code : 'ARTIFACT_CONTEXT_UNLOADABLE';
-    throw new Error(
-      `${code}: prepare refused job ${job.id}: the requirement its issue delivers could not be given (${err instanceof Error ? err.message : String(err)})`,
-      { cause: err },
-    );
-  }
-}
-
-function withContextBlock(
-  prior: { systemPrompt: string; blocks: PreambleBlock[] },
-  id: PreambleBlock['id'],
-  body: string | null,
-): { systemPrompt: string; blocks: PreambleBlock[] } {
-  if (!body) return prior;
-  return {
-    systemPrompt: `${prior.systemPrompt}\n\n${body}`,
-    blocks: [
-      ...prior.blocks,
-      { id, kind: 'system', chars: body.length, estTokens: estimateTokens(body) },
-    ],
-  };
 }
 
 export async function prepareClaimedJob(args: {
@@ -288,47 +122,21 @@ export async function prepareClaimedJob(args: {
   const proposedResume = await resolveResumePolicy({ job });
   const resume = finalizeResumeForDevice(proposedResume, args.deviceId);
 
-  const deniedTools = await applyCarveout(job, args.policy.deniedTools);
-
-  const preamble = await buildPipelinePreambleStructured(job.projectId, {
-    step: job.type,
-    policy: { ...args.policy, deniedTools },
-  });
-
   const [issueRow, issuePrefix] = await Promise.all([
     job.issueId
-      ? db
-          .select({
-            issSeq: issues.issSeq,
-            description: issues.description,
-            plan: issues.plan,
-            acceptanceCriteria: issues.acceptanceCriteria,
-          })
-          .from(issues)
-          .where(eq(issues.id, job.issueId))
-          .limit(1)
+      ? db.select({ issSeq: issues.issSeq }).from(issues).where(eq(issues.id, job.issueId)).limit(1)
       : Promise.resolve([]),
     activeIssuePrefix(job.projectId),
   ]);
-  const designs = await designsBuiltBy(job);
-  const requirement = await requirementServedBy(job);
-  const contracts = await contractsNamedBy(job, issueRow[0]);
-  const namedContracts = await contractVersionsNamedBy(job, issueRow[0]);
-  const artifactBlock =
-    [requirement?.text, renderArtifactContext(designs)].filter(Boolean).join('\n\n') || null;
-  const { systemPrompt, blocks } = withContextBlock(
-    withContextBlock(
-      withContextBlock(
-        { systemPrompt: preamble.content, blocks: preamble.blocks },
-        'artifact-context',
-        artifactBlock,
-      ),
-      'contract-context',
-      renderContractContext(contracts),
-    ),
-    'named-contract-context',
-    renderNamedContracts(job.projectId, namedContracts),
-  );
+  const built = await buildJobSystemPrompt({
+    projectId: job.projectId,
+    issueId: job.issueId,
+    step: job.type,
+    policy: args.policy,
+    subject: `prepare refused job ${job.id}`,
+  });
+  const { systemPrompt, blocks, deniedTools, designs, requirement, contracts, namedContracts } =
+    built;
 
   const payloadIn = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
   const basePromptString =
@@ -376,8 +184,8 @@ export async function prepareClaimedJob(args: {
   }
   // cm:why the language the preamble told this job is on its session beside `artifactContext`, so a
   // reader sees what it was asked to write in without replaying the prompt
-  if (preamble.contentLanguage) {
-    await recordContentLanguage(agentSessionId, preamble.contentLanguage);
+  if (built.contentLanguage) {
+    await recordContentLanguage(agentSessionId, built.contentLanguage);
   }
   if (contracts.length) await recordContractContext(agentSessionId, contracts, 'issue-paths');
   if (namedContracts.length) await recordNamedContracts(agentSessionId, namedContracts);
