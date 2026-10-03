@@ -474,5 +474,9 @@ export async function readAnswers(projectId: string, actor: OnboardingActor) {
       ? egressDeep(await dataPolicyOf(projectId), questionnaires, 'the onboarding answers')
       : { ok: true as const, value: questionnaires };
   if (!out.ok) return { ok: false as const, refusals: [out.refusal] };
-  return { ok: true as const, onboarding: await onboardingView(db, row), questionnaires: out.value };
+  return {
+    ok: true as const,
+    onboarding: await onboardingView(db, row),
+    questionnaires: out.value,
+  };
 }

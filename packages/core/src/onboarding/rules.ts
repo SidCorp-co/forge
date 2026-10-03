@@ -44,8 +44,7 @@ export function startRefusal(
   };
 }
 
-// cm:guard a re-analysis runs only on a person asking, never over a running job
-// (ONBOARDING_ALREADY_RUNNING), and only on an onboarding that exists (ONBOARDING_NOT_STARTED)
+// cm:guard a re-analysis runs only on an onboarding that exists (ONBOARDING_NOT_STARTED)
 export function reanalyzeRefusal(
   existing: { id: string } | null,
   live: LiveJob | null,

@@ -23,6 +23,7 @@ import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
 import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { hooks } from '../pipeline/hooks.js';
 import { wakeMastersForAnswer } from '../ws/master-wake.js';
+import { batchItemRefusal } from './batch-item.js';
 import { resolveAskOrigin } from './origin.js';
 import { screenRound } from './screen.js';
 
@@ -303,12 +304,7 @@ export async function answerQuestion(args: AnswerInput) {
       .limit(1)
       .for('update');
     if (!row) throw new QuestionRefused(`no question ${args.questionId}`, 'QUESTION_NOT_FOUND');
-    // cm:guard a questionnaire item is answered with its whole batch, through the one submit
-    if (row.batchId)
-      throw new QuestionRefused(
-        `question ${row.id} is an item of questionnaire ${row.batchId}; answer it with its batch (POST …/questionnaires/${row.batchId}/answers)`,
-        'QUESTION_IN_QUESTIONNAIRE',
-      );
+    if (row.batchId) throw new QuestionRefused(...batchItemRefusal(row.id, row.batchId));
     const now = new Date();
     if (row.status !== 'open') {
       throw new QuestionRefused(

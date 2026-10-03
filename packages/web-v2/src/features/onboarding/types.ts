@@ -1,5 +1,4 @@
-// The onboarding and questionnaire vocabulary and response shapes are core's own, declared once in
-// @forge/contracts (ISS-63); this file adds only what the screen holds before a send.
+// Declared once in @forge/contracts (ISS-63); this file adds only what the screen holds before a send.
 export type {
   OnboardingDesignView,
   OnboardingHint,

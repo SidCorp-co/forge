@@ -137,14 +137,9 @@
 
 ### Added
 
-- **A new project can be onboarded in a chat thread.** The dashboard says a project has no
-  system context yet; Start onboarding opens a thread in the chat panel where the project agent
-  reads the code, drafts the key designs as-built and asks what it cannot tell in one questionnaire
-  card: questions, clarifications and recommendations, each with why it asks and its evidence,
-  answered inline and sent once, partial allowed, at most three rounds. Every design it drafts waits
-  for a person's approval. `/api/projects/:id/onboarding` and `forge_onboarding`; the BA assistant
-  asks through the same card (`ba_send_questionnaire`). A project with sensitive data cannot finish
-  onboarding without a data-flow design (`ONBOARDING_DATA_FLOW_MISSING`).
+- **A new project can be onboarded in a chat thread.** The agent reads the code, drafts the key
+  designs for your approval and asks what it cannot tell in one questionnaire card,
+  at most three rounds. The BA assistant asks through the same card.
 - **A project sets the language agents write its prose in.** Project settings → Basics, or
   `PUT /api/projects/:id/content-language`: requirements, comments, suggestions, plans and assistant
   replies follow it; code, commits and PR titles stay English. Each session records what it was
