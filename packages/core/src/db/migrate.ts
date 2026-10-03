@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
-import { initSentry, Sentry } from '../observability/sentry.js';
 import { runCriteriaBackfillOnce } from '../issues/criteria/backfill.js';
+import { initSentry, Sentry } from '../observability/sentry.js';
 import { runCanonicalBackfillOnce } from './backfill-canonical-transcripts.js';
 import { closeDb } from './client.js';
 import {
@@ -37,7 +37,8 @@ try {
 
   const criteria = await runCriteriaBackfillOnce();
   if (criteria) {
-    for (const line of criteria.refusals) console.warn(`[migrate] criteria backfill refused: ${line}`);
+    for (const line of criteria.refusals)
+      console.warn(`[migrate] criteria backfill refused: ${line}`);
     console.log(
       `[migrate] criteria backfill: ${criteria.criteria} criteria on ${criteria.issues} issue(s), ${criteria.verdicts} verdict(s) (${criteria.commitUnresolved} commit_unresolved), ${criteria.refusals.length} refused by name`,
     );

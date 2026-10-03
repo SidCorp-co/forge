@@ -56,7 +56,7 @@ export class VerdictRefused extends HTTPException {
   }
 }
 
-// status-tuple: differs — where a criterion's verdicts were earned and its wording is frozen, not where dispatch stops
+// status-tuple: differs — not TERMINAL_FOR_DISPATCH: where verdicts were earned, so the wording is frozen
 const LOCKED_STATUSES: ReadonlySet<string> = new Set(['awaiting_release', 'closed', 'dropped']);
 
 export interface CriterionInput {
