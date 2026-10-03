@@ -40,6 +40,8 @@ export interface PhaseFacts {
   routedIssueStatus: string | null;
   suggestion: { status: SuggestionStatus; revisionLive: boolean; delivered: boolean } | null;
   routedRequirementStatus: string | null;
+  /** The routed requirement reads delivered (requirement_delivery) or was accepted. */
+  routedRequirementDelivered: boolean;
   rootPhase: FeedbackPhase | null;
 }
 
@@ -58,10 +60,10 @@ export function phaseOf(f: PhaseFacts): FeedbackPhase {
         return f.suggestion.revisionLive && f.suggestion.delivered ? 'resolved' : 'planned';
       }
       return f.suggestion.status === 'proposed' ? 'planned' : 'triaged';
+    // cm:guard workflow feedback-lifecycle edge planned → resolved: the linked requirement reads
+    // delivered; agreeing it only plans the work, so an agreed requirement keeps the item planned
     case 'new_requirement':
-      if (f.routedRequirementStatus === 'agreed' || f.routedRequirementStatus === 'accepted') {
-        return 'resolved';
-      }
+      if (f.routedRequirementDelivered) return 'resolved';
       return f.routedRequirementStatus === 'dropped' ? 'triaged' : 'planned';
     case 'answer':
       return 'resolved';
@@ -71,6 +73,20 @@ export function phaseOf(f: PhaseFacts): FeedbackPhase {
     default:
       return 'triaged';
   }
+}
+
+// cm:guard a text search over content the viewer may not read is refused by name: matching titles
+// would answer what the policy withholds, and dropping `q` would list every item as a match
+export function searchWithheldRefusal(
+  q: string | undefined,
+  withheld: boolean,
+): FeedbackRefusal | null {
+  if (!q || !withheld) return null;
+  return refusal(
+    'FEEDBACK_SEARCH_WITHHELD',
+    '/q',
+    "this project's no_egress policy withholds feedback content from this reader, so a text search over it cannot be answered; list without `q`, filtering by phase.",
+  );
 }
 
 /** Who a row waits on for this viewer: a member triages, the reporter verifies. */
@@ -96,7 +112,9 @@ export function waitingOnOf(
     case 'planned':
       if (route === 'issue') return `${carrier ?? 'The linked issue'} to ship`;
       if (route === 'revision') return 'The revision proposal to be accepted and delivered';
-      if (route === 'new_requirement') return `${carrier ?? 'The new requirement'} to be agreed`;
+      if (route === 'new_requirement') {
+        return `${carrier ?? 'The new requirement'} to be agreed and delivered`;
+      }
       if (route === 'duplicate') return `Its root ${carrier ?? ''} to be resolved`.trim();
       return 'The linked work';
     case 'resolved':

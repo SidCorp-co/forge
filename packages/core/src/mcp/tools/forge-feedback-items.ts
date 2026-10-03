@@ -145,8 +145,10 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
   const door = { providerBound: true };
   const item = () => need(input, 'feedback');
   switch (input.action) {
-    case 'list':
-      return listFeedbackAs(actor, projectId, { phases: input.phase, q: input.q }, door);
+    case 'list': {
+      const out = await listFeedbackAs(actor, projectId, { phases: input.phase, q: input.q }, door);
+      return out.ok ? out.list : refusedBy(out.refusals);
+    }
     case 'get':
       return { feedback: await detailAs(actor, projectId, item(), door) };
     case 'similar':
