@@ -1,9 +1,5 @@
 "use client";
 
-// The peek (`?peek=ISS-12`) beside the grouped views: the shared PeekPanel holding the issue's
-// header, a strip of its steps and criteria, whose turn it is and the facts that decide it. It reads the row the list already holds;
-// the full page adds the properties, description, plan and history.
-
 import type { IssueStandingRow } from "@forge/contracts/issue-standing";
 import { PeekHead, PeekPanel, type PeekState } from "@/design";
 import { IssueBanner, IssuePeekFacts, IssueStrip, issueBadge } from "./issue-standing-bits";

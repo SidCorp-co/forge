@@ -354,7 +354,6 @@ export function IssueDetailScreen({
   const badge = (
     <>
       <StatusBadge family="issue" value={issue.status} step={workStepOf(issue)} tone={standingQ.data?.standing.tone} />
-      {/* The live run is its own squared chip beside the lifecycle badge, never merged into it (ISS-360, ISS-1150). */}
       {runChip && <StatusChip status={runChip} stage={runChip === "running" ? (liveStep ?? undefined) : undefined} domain="session" />}
     </>
   );

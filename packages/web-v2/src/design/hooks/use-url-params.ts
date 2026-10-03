@@ -1,9 +1,5 @@
 "use client";
 
-// A list's or page's view state lives in the URL (`?group=`, `?peek=`, `?tab=`), written with
-// replaceState so opening, closing and moving never stack history entries, and back from a full
-// page lands on exactly the view it was opened from.
-
 import { useCallback } from "react";
 import { notifyLocationChange, useLocationSearch } from "@/lib/utils/use-location-search";
 

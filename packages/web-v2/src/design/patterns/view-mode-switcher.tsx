@@ -1,9 +1,5 @@
 "use client";
 
-// How a list is grouped (`?group=`) is a choice about the whole page, so it sits in the top header
-// beside the page title, not in the list's toolbar. Below 768px the header has no room for it and it
-// heads the toolbar instead — the same control, one URL param.
-
 import { useUrlChoice } from "../hooks/use-url-params";
 import type { IconName } from "../icons/icon";
 import { SegmentedControl } from "../primitives/segmented-control";

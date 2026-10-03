@@ -1,9 +1,5 @@
 "use client";
 
-// A full page's body: a main column whose views are tabs (`?tab=`) under a tab bar that sticks below
-// the top bar, beside the facts rail. Tabs replace an endless scroll of numbered zones; switching a tab
-// opened from below the fold starts the new view at its own top, under the sticky bar.
-
 import type { ReactNode } from "react";
 import { useCallback, useRef } from "react";
 import { useUrlChoice } from "../hooks/use-url-params";

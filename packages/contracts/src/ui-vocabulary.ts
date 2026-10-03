@@ -260,7 +260,6 @@ export const ENUM_LABELS = {
 		verify_skill: "Verify skill",
 		drive: "Drive",
 	},
-	/** A contract change's kind (core `ecosystem/contract/diff.ts:CHANGE_KINDS`). */
 	changeKind: {
 		added: "Added",
 		removed: "Removed",

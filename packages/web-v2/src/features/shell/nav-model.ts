@@ -43,10 +43,8 @@ export const isProjGroup = (e: ProjEntry): e is ProjGroup => "items" in e;
 
 export const DEVELOPMENT_GROUP_KEY = "development";
 
-// cm:why the owner's IA ruling (ISS-65, FB-6): what a project is for comes first — Requirements,
-// Workflows, Releases, Feedback — and the machinery that builds it sits under one Development
-// group. Its Overview and Modules screens are prototype-only and have no page yet, so they are not
-// listed; a row that leads nowhere is worse than one missing.
+// cm:why the owner's IA ruling (ISS-65, FB-6): what a project is for comes first, and the
+// machinery that builds it sits under one Development group; Overview and Modules have no page yet.
 export const PROJECT_MENU: ProjEntry[] = [
   { key: "proj-overview", label: "Dashboard", icon: "grid", sub: "" },
   { key: "proj-requirements", label: "Requirements", icon: "book", sub: "/requirements" },
@@ -193,9 +191,6 @@ export function workspaceNavItems(attentionCount: number): NavItem[] {
   );
 }
 
-/** Compact-rail workspace rows. Derived from WORKSPACE_ITEMS so the compact
- *  and expanded rails can never drift (ISS-433 live-E2E caught this list as a
- *  stale hardcoded duplicate — it was missing the promoted Integrations row). */
 export function compactWorkspaceRailItems(attentionCount: number): RailItem[] {
   return WORKSPACE_ITEMS.map((it) => ({
     key: it.key,

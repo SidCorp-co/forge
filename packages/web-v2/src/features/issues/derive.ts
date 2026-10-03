@@ -82,7 +82,6 @@ export const workStepOf = (row: {
 	workState?: Pick<IssueWorkStateRow, "step"> | null;
 }): WorkStep | null => row.workState?.step ?? null;
 
-/** Which design-kit chip draws each of contracts' `ISSUE_STATUS_TONES`. */
 export const TONE_CHIP: Record<IssueStatusTone, StatusKey> = {
 	neutral: "queued",
 	ready: "passed",
@@ -93,7 +92,6 @@ export const TONE_CHIP: Record<IssueStatusTone, StatusKey> = {
 	err: "failed",
 };
 
-/** A tone of the badge legend as a design-kit chip; every contracts tone map is drawn through it. */
 export function toneChip(tone: IssueStatusTone): StatusKey {
 	return TONE_CHIP[tone];
 }
@@ -481,8 +479,7 @@ export function parseChecklist(
 /** Heartbeat staleness threshold. Mirrors core's sweeper
  *  `HEARTBEAT_TIMEOUT_MS_DEFAULT = 3*60_000` (`pipeline/sweeper.ts`, env
  *  `PIPELINE_HEARTBEAT_TIMEOUT_MS`). Not env-readable from the FE, so kept in
- *  lockstep here; a session whose last heartbeat is older than this is the same
- *  "stale" the server uses before marking it failed. */
+ *  lockstep: a session older than this is the "stale" the server uses. */
 export const HEARTBEAT_STALE_MS = 3 * 60_000;
 
 export type HeartbeatState = "alive" | "stale" | "unknown";

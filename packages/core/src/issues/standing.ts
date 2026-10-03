@@ -106,16 +106,12 @@ function forPerson(
 const held = (lease: IssueLeaseView | null) =>
   lease !== null && (lease.verdict === 'live' || lease.verdict === 'shared');
 
-// cm:why whose turn it is, first rule that holds wins:
-// 1. closed or dropped → done; 2. on_hold → paused, a person resumes it;
-// 3. needs_info → a person answers (by its waiting kind); 4. an open human question at a working
-// status → a person answers it; 5. draft → a person takes it on or drops it;
-// 6. awaiting_release → a person approves the release where the project requires it, else queued
-// for the release (moving while a run holds it);
-// 7. a live lease or a job in flight → moving, on the run and its step;
-// 8. a live blocker not yet settled → stuck, on the first such blocker;
-// 9. in_progress with no holder → stuck: the status claims work nothing is doing;
-// 10. reopen → stuck, the master re-runs it; 11. open or approved → queued for a master slot.
+// cm:why whose turn it is, first rule that holds wins: closed or dropped → done; on_hold → paused;
+// needs_info → a person answers; an open human question at a working status → a person answers it;
+// draft → a person takes it on or drops it; awaiting_release → a person approves where the project
+// requires it, else queued for the release; a live lease or a job in flight → moving, on the run and
+// its step; a live unsettled blocker → stuck on the first; in_progress with no holder → stuck;
+// reopen → stuck, the master re-runs it; open or approved → queued for a master slot.
 function turnOf(input: IssueStandingInput): {
   group: IssueAttentionGroup;
   waitingOn: IssueWaitingOn;

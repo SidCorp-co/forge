@@ -19,8 +19,8 @@
       "default": "./src/pipeline-registry.ts"
     },
     "./issue-vocabulary": {
-      "types": "./src/issue-vocabulary.ts",
-      "default": "./src/issue-vocabulary.ts"
+      "types": "./dist/issue-vocabulary.d.ts",
+      "default": "./dist/issue-vocabulary.js"
     },
     "./notifications": {
       "types": "./src/notifications.ts",

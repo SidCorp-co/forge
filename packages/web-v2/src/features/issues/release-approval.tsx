@@ -1,10 +1,5 @@
 "use client";
 
-// Whether this project requires a person to approve a release, for the issue chips drawn outside
-// core's standing read model (the Table view, the status edit). awaiting_release is a person's turn
-// only where it does (contracts `issueStatusToneOn`); with no provider the chip falls back to the
-// contract's default tone, and says so by passing no tone at all.
-
 import { type IssueStatusTone, issueStatusToneOn, type KernelIssueStatus } from "@forge/contracts/issue-vocabulary";
 import { createContext, type ReactNode, useContext } from "react";
 

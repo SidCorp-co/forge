@@ -33,6 +33,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'assistant/weekly/read-rows.ts':
     'resolves ids already quoted in a reply; existence, not discovery',
   'comments/attachment-routes.ts': 'by comment or attachment id',
+  'comments/entity-read.ts':
+    'the title of the issue a decision sits on, joined by id: a decision is a record that outlives the archive',
   'comments/routes.ts': 'by issue or comment id',
   'comments/service.ts': 'by issue or comment id',
   'devices/admissible.ts': 'reads only backlog-admissible statuses; relations by edge',

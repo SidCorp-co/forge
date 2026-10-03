@@ -1,9 +1,3 @@
-// Where an issue stands — the read model core derives in `issues/standing.ts` and every issue
-// surface draws: the attention group the list puts it under, whom it waits on and for what, the
-// step inside `in_progress`, criteria passing, the requirement it serves, its blockers and lease,
-// and the wave it sits in. Core writes the shapes; web-v2 reads the labels, so one value keeps one
-// badge on every screen.
-
 import type {
 	IssueStatusTone,
 	KernelIssueStatus,
@@ -225,13 +219,11 @@ export interface IssueStandingList {
 	/** Rows answered; below the scope's count when the read hit its limit. */
 	returned: number;
 	limit: number;
-	/** Whether the project requires a person to approve a release (`release.approval.required`). */
 	releaseApproval: boolean;
 }
 
 export interface IssueStandingDetail extends IssueStandingRow {
 	/** The run's step log, oldest first. */
 	steps: IssueStepEntry[];
-	/** Whether this project requires a person to approve a release (`release.approval.required`). */
 	releaseApproval: boolean;
 }

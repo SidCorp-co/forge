@@ -82,7 +82,9 @@ const row = (status: IssueStatus, step: WorkStep | null = null): IssueRow =>
 /** The word the STATUS column prints for a row at this status (and step). */
 function printed(status: IssueStatus, step: WorkStep | null = null): string {
   const { container, unmount } = render(<StatusCell row={row(status, step)} />);
-  const text = container.textContent ?? "";
+  const text = [...container.querySelectorAll('[data-testid="status-badge"]')]
+    .map((b) => b.lastElementChild?.textContent ?? "")
+    .join("");
   unmount();
   return text.trim();
 }

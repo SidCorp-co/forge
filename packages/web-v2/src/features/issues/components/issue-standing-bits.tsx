@@ -258,9 +258,6 @@ export function IssuePeekFacts({ row, slug }: { row: IssueStandingRow; slug: str
   );
 }
 
-/** The facts the read model adds to the full page's rail. Whose turn it is is the banner's and the
- *  state is the header's, and the properties below show module, branch and the dependency lists,
- *  so none of those is repeated here. */
 export function IssueStandingFacts({ row, slug }: { row: IssueStandingRow; slug: string }) {
   const s = row.standing;
   const c = s.criteria;
