@@ -7,6 +7,7 @@ import {
   rejectSuggestionRequestSchema,
   SUGGESTION_STATUSES,
   type SuggestionResponse,
+  suggestionSummaryOf,
 } from '@forge/contracts/suggestions';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -75,19 +76,19 @@ suggestionRoutes.get(
   zValidator('query', listSuggestionsQuerySchema, (r) => {
     if (!r.success)
       throw badRequest(
-        `invalid query: requirement?, issue?, feedback?, status? (comma-separated: ${SUGGESTION_STATUSES.join(', ')})`,
+        `invalid query: requirement?, issue?, feedback?, status? (comma-separated: ${SUGGESTION_STATUSES.join(', ')}), view? (summary | full, full by default)`,
       );
   }),
   async (c) => {
     const q = c.req.valid('query');
-    return c.json(
-      await listSuggestions({
-        projectId: c.req.valid('param').id,
-        userId: c.get('userId'),
-        target: targetOf(q),
-        statuses: q.status,
-      }),
-    );
+    const listed = await listSuggestions({
+      projectId: c.req.valid('param').id,
+      userId: c.get('userId'),
+      target: targetOf(q),
+      statuses: q.status,
+    });
+    if (q.view !== 'summary') return c.json(listed);
+    return c.json({ ...listed, suggestions: listed.suggestions.map(suggestionSummaryOf) });
   },
 );
 

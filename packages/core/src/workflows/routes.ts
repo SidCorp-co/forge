@@ -1,3 +1,5 @@
+import { ANSWER_VIEWS } from '@forge/contracts/projection';
+import { DESIGN_VIEWS } from '@forge/contracts/workflows';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -13,6 +15,7 @@ import {
   readDesignAs,
   unlinkBuildAs,
 } from './design-service.js';
+import { designStepsOf, designSummaryOf, workflowSummaryOf } from './projection.js';
 import {
   createWorkflow,
   listWorkflowsAs,
@@ -48,6 +51,31 @@ const workflowParam = zValidator('param', z.object({ id: z.uuid(), workflow: z.u
 
 const envelope = zValidator('json', z.unknown());
 
+const listView = zValidator(
+  'query',
+  z.strictObject({ view: z.enum(ANSWER_VIEWS).optional() }),
+  (r) => {
+    if (!r.success) throw badRequest('invalid query: view? (summary | full, full by default)');
+  },
+);
+
+const designView = zValidator(
+  'query',
+  z.strictObject({
+    view: z.enum(DESIGN_VIEWS).optional(),
+    revision: z.coerce.number().int().min(1).optional(),
+    stepFrom: z.coerce.number().int().min(1).optional(),
+    stepTo: z.coerce.number().int().min(1).optional(),
+  }),
+  (r) => {
+    if (!r.success) {
+      throw badRequest(
+        'invalid query: view? (summary | steps | full, full by default), and with view=steps revision?, stepFrom?, stepTo? (whole numbers from 1)',
+      );
+    }
+  },
+);
+
 function writerOf(c: Context<{ Variables: AuthVars }>): WorkflowWriter {
   const agency = c.get('agency');
   if (!agency) throw new Error('workflows: a write reached its handler without an auth gate');
@@ -71,8 +99,10 @@ workflowRoutes.post('/:id/workflows', idParam, envelope, async (c) => {
   );
 });
 
-workflowRoutes.get('/:id/workflows', idParam, async (c) => {
-  const workflows = await listWorkflowsAs(c.get('userId'), c.req.valid('param').id);
+workflowRoutes.get('/:id/workflows', idParam, listView, async (c) => {
+  const listed = await listWorkflowsAs(c.get('userId'), c.req.valid('param').id);
+  const workflows =
+    c.req.valid('query').view === 'summary' ? listed.map(workflowSummaryOf) : listed;
   return c.json({ workflows, returned: workflows.length });
 });
 
@@ -101,9 +131,23 @@ function answerDesign(c: Context, outcome: DesignOutcome) {
   return c.json(outcome.design);
 }
 
-workflowRoutes.get('/:id/workflows/:workflow/design', workflowParam, async (c) => {
+workflowRoutes.get('/:id/workflows/:workflow/design', workflowParam, designView, async (c) => {
   const { id, workflow } = c.req.valid('param');
-  return c.json(await readDesignAs(writerOf(c), id, workflow));
+  const q = c.req.valid('query');
+  if (
+    q.view !== 'steps' &&
+    (q.revision !== undefined || q.stepFrom !== undefined || q.stepTo !== undefined)
+  ) {
+    throw badRequest(
+      'invalid query: revision, stepFrom and stepTo bound view=steps; send view=steps with them',
+    );
+  }
+  const design = await readDesignAs(writerOf(c), id, workflow);
+  if (q.view === 'summary') return c.json(designSummaryOf(design));
+  if (q.view === 'steps') {
+    return c.json(designStepsOf(design, { revision: q.revision, from: q.stepFrom, to: q.stepTo }));
+  }
+  return c.json(design);
 });
 
 workflowRoutes.post(

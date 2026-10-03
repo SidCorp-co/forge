@@ -174,7 +174,9 @@ describe('a design over the budget is trimmed by rule, and every cut is named', 
     expect(loaded?.stepsGiven).toBe(kept.length);
     expect((loaded?.edgesGiven ?? 0) + (loaded?.cut.edges ?? 0)).toBe(doc.edges.length);
     for (const id of loaded?.cut.steps ?? []) expect(loaded?.text).toContain(`- step \`${id}\``);
-    expect(loaded?.text).toContain(`forge_workflows action=design workflowId=${WORKFLOW}`);
+    expect(loaded?.text).toContain(
+      `forge_workflows action=design workflowId=${WORKFLOW} view=steps revision=`,
+    );
     expect(artifactContext([traced()], cap)[0]?.text).toBe(loaded?.text);
   });
 

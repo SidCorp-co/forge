@@ -205,7 +205,7 @@ no writer gets a fourth state.
   issue to carry an activity row, so its post and each edit insert a
   `packages/core/src/db/schema-comments.ts:commentEvents` row holding the content as it stood,
   insert-only by `comment_event_guard()` in
-  `packages/core/drizzle/migrations/0359_a_comment_sits_on_exactly_one_target.sql`. A decision there
+  `packages/core/drizzle/migrations/0361_a_comment_sits_on_exactly_one_target.sql`. A decision there
   carries `decision: { decision, reason, options?, authority?, reversedWhen? }`
   (`packages/contracts/src/comments.ts:decisionFieldsSchema`).
 
@@ -243,6 +243,16 @@ means `off`).
 - **Input** is one `z.strictObject`. A per-action `need(input, key)` throws
   `BAD_REQUEST: <action> needs <key>`.
 - **Refusals** come back through `packages/core/src/mcp/tools/lib.ts:refusedAnswer`, never as thrown text.
+- **Answers.** A list answers summaries and a write answers what it changed: `act`, the entity's head,
+  and the relation or revision it touched. A whole document comes only from `get` or `view: 'full'`.
+  - The summary field set is declared in contracts beside the full shape
+    (`packages/contracts/src/requirements.ts:REQUIREMENT_SUMMARY_FIELDS`,
+    `packages/contracts/src/workflows.ts:WORKFLOW_SUMMARY_FIELDS`,
+    `packages/contracts/src/suggestions.ts:SUGGESTION_SUMMARY_FIELDS`).
+  - Core projects it in `packages/core/src/<domain>/projection.ts`, and the door picks the view with
+    `packages/core/src/mcp/tools/projection.ts:projectOne`.
+  - A REST read takes the same `?view=`, full by default, because the web draws the whole document.
+  - `packages/core/src/mcp/tools/answer-size.test.ts` holds each tool's default answer to its size class.
 - **References:** `packages/core/src/mcp/tools/forge-suggestions.ts`, `packages/core/src/mcp/tools/forge-requirements.ts`.
 
 ## Web module
@@ -361,6 +371,11 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, and their number
 | 35 | A change request's channel decision document can still answer it in prose; only the draft requirement it landed as (`packages/core/src/ecosystem/requests/land.ts:landChangeRequestIn`) and the provider's approved versions gate anything | review (owner question) |
 | 36 | A provider's live version is derived, not recorded: its newest verified release identity matched to a contract measurement's commit (`packages/core/src/ecosystem/waits/live.ts:providerLiveVersion`). An uploaded version, an unprobed provider or a stale land reads as no version, so E4 refuses until the ecosystem sets `releases.providerLive` to `off` | review |
 | 37 | Comments (ISS-83): an issue decision stays prose, held only off issues by `comments_decision_fields_chk` (`cm:hack ISS-83` in `packages/core/src/db/schema.ts:comments`); the issue door keeps its untyped `comment.created` activity rows and writes no `comment_events`; `comments` has no `project_id` and no `author_agency` (the agency is read from the device or `users.kind`, as ISS-1137 decided); a comment on another entity is not screened by `packages/core/src/comments/screen.ts:screenAgentComment` and takes no mentions or attachments | review |
+| 38 | REST and MCP answer different defaults: a REST read is full unless `?view=summary`, an MCP call a summary unless `view: 'full'`; REST writes take no view and answer the whole entity | review |
+| 39 | Workflows and designs carry no `waitingOn`, as requirements do; a design's `status` and `approver` say who is owed | review |
+| 40 | `forge_issues`, `forge_feedback_items` and `forge_knowledge` take no `view`: their lists were already summaries and their writes answer one item, at most 3.5 KB as measured on dev on 2026-10-04. `forge_feedback_items` `propose_triage` answers the whole suggestion | review |
+| 41 | A projection runs after the whole read: a write still reads the full detail (`packages/core/src/requirements/read.ts:detailOf`, `packages/core/src/workflows/design-service.ts:designView`) and the door drops most of it | review |
+| 42 | `forge_suggestions` has no `get`: a suggestion's payload is read by `list` with `view: 'full'`, narrowed by target | review |
 
 ## Honest costs
 
@@ -370,4 +385,4 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, and their number
 | One declaration in contracts, compiled | Core's start depends on `@forge/contracts` being built first; a contracts edit rebuilds before core typechecks |
 | Agency in one module | A slice that needs a new standing (for example a steward org admin) extends `ActRule` for everyone, rather than writing its own `if` |
 | `max+1` keys under the entity lock | A keyed row can never be hard-deleted, or its number is reissued |
-| Thirty-five listed divergences left in place | Until the review pass, two patterns are live for each of them, and a new slice must copy the reference, not the nearest file |
+| Forty listed divergences left in place | Until the review pass, two patterns are live for each of them, and a new slice must copy the reference, not the nearest file |

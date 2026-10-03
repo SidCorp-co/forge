@@ -115,8 +115,8 @@ export const TRIM_TIERS: readonly { node: readonly string[]; edge: readonly stri
   { node: ['purpose', 'expectedOutcome', 'owner', 'sla', 'channel'], edge: ['label'] },
 ];
 
-const fetchLine = (workflowId: string) =>
-  `\`forge_workflows action=design workflowId=${workflowId}\``;
+const fetchLine = (workflowId: string, revision: number | null) =>
+  `\`forge_workflows action=design workflowId=${workflowId} view=steps${revision === null ? '' : ` revision=${revision}`}\``;
 
 function readApproved(row: TracedDesignRow): { revision: number; doc: WorkflowWrite } {
   const artifact = {
@@ -231,7 +231,7 @@ function renderDesign(
   const parts = [head.join('\n'), ['Steps:', ...slice.steps.map(renderStep)].join('\n')];
   if (slice.edges.length) parts.push(['Edges:', ...slice.edges.map(renderEdge)].join('\n'));
   if (cut.fields.length || cutSteps.length) {
-    const lines = [`Cut to fit the context budget — read them with ${fetchLine(row.workflowId)}:`];
+    const lines = [`Cut to fit the budget; read them with ${fetchLine(row.workflowId, revision)}:`];
     if (cut.fields.length) lines.push(`- fields: ${cut.fields.join(', ')}`);
     for (const s of cutSteps) {
       const name = s.title ?? (typeof s.node?.label === 'string' ? s.node.label : null);
@@ -468,7 +468,7 @@ export function requirementContext(row: RequirementContextRow | null): LoadedReq
       'Pinned in the latest baseline (build to these revisions):',
       ...row.baseline.pins.map((p) =>
         p.workflowId
-          ? `- design \`${p.flow ?? p.workflowId}\` at revision ${p.designRevision} — ${fetchLine(p.workflowId)}`
+          ? `- design \`${p.flow ?? p.workflowId}\` at revision ${p.designRevision} — ${fetchLine(p.workflowId, p.designRevision)}`
           : `- contract \`${p.contractSlug}\`@${p.contractVersion} (provider ${p.providerProjectId})`,
       ),
     );
