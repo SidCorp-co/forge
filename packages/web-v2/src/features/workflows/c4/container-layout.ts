@@ -1,11 +1,11 @@
 import type { ElkExtendedEdge, ElkNode, ElkPoint } from "elkjs/lib/elk-api";
 import { type CanvasEdge, titleOf } from "../canvas/model";
 import { elk } from "../canvas/layout";
-import { type DBox, type Diagram, type DLine, LABEL_SIZE, lineStyle, PathBuilder, type Pt, textWidth, TITLE_SIZE, wrap } from "./geometry";
-import { type C4Element, type C4Model, shortLabel } from "./model";
+import { type DBox, type Diagram, type DLine, FONT, lineStyle, PathBuilder, type Pt, textWidth, wrap } from "./geometry";
+import { type C4Element, type C4Model, integrationOf, shortLabel } from "./model";
 
 const BOX_W = 196;
-const BOX_H = 62;
+const BOX_H = 66;
 const PAD = 16;
 const BRACKET = 14;
 const BOUNDARY = "__boundary";
@@ -18,7 +18,7 @@ const KICKER: Record<C4Element["kind"], [inside: string, outside: string]> = {
 
 /** Where a line's words go: the middle of its longest level run, if the words fit along it; otherwise nowhere on the canvas. */
 function labelSpot(points: readonly Pt[], text: string): Pt | null {
-  const need = textWidth(text, LABEL_SIZE) + 14;
+  const need = textWidth(text, FONT.label) + 14;
   let best: { at: Pt; len: number } | null = null;
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1] as Pt;
@@ -103,7 +103,7 @@ export async function layoutContainers(m: C4Model): Promise<Diagram | null> {
   const room = (side: "l" | "r") => {
     const own = brackets.filter((b) => sideOf(b) === side);
     if (own.length === 0) return 0;
-    return 16 + BRACKET * depth[side] + Math.max(...own.map((e) => textWidth(words.get(e.id) ?? "", LABEL_SIZE))) + 8;
+    return 16 + BRACKET * depth[side] + Math.max(...own.map((e) => textWidth(words.get(e.id) ?? "", FONT.label))) + 8;
   };
   const left = PAD + room("l");
 
@@ -125,14 +125,17 @@ export async function layoutContainers(m: C4Model): Promise<Diagram | null> {
   for (const [id, b] of abs) {
     const el = byId.get(id);
     if (!el) continue;
+    const outsider = outside.has(id);
+    const said = integrationOf(el.title);
     boxes.push({
       id,
       ...b,
       kind: el.kind,
       kicker: KICKER[el.kind][inside.has(id) ? 0 : 1],
-      lines: wrap(el.title, BOX_W - 24, TITLE_SIZE),
+      lines: wrap(outsider ? said.name : el.title, BOX_W - 24, FONT.title),
       tip: [el.title, el.owner ? `Owner: ${el.owner}` : null, el.purpose].filter(Boolean).join("\n"),
       step: id,
+      state: outsider ? said.state : null,
     });
   }
 
@@ -154,6 +157,7 @@ export async function layoutContainers(m: C4Model): Promise<Diagram | null> {
     arrowStart: false,
     arrowEnd: true,
     edge: e.id,
+    edges: [e.id],
     ends: [e.from, e.to],
   });
 

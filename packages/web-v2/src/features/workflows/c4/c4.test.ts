@@ -4,14 +4,19 @@ import { templateFor } from "../canvas/model";
 import type { WorkflowBody, WorkflowStep } from "../types";
 import { layoutContainers } from "./container-layout";
 import { layoutContext } from "./context-layout";
-import type { Diagram, Pt, Rect } from "./geometry";
+import { type Diagram, FONT, MIN_FONT_PX, type Pt, type Rect } from "./geometry";
 import hop from "./hop-system-context.fixture.json";
-import { FOCAL, readC4, shortLabel } from "./model";
+import hop5 from "./hop-system-context-rev5.fixture.json";
+import { FOCAL, integrationOf, readC4, shortLabel } from "./model";
+import { fitContext, PEOPLE_AT_A_GLANCE, summarise } from "./summary";
 
 // The HOP system-context design as dev stores it at rev 4: 17 steps (4 people, 4 systems, 6 containers
 // and the site, in five boundaries) and 24 lines.
 const hopDoc = hop as unknown as WorkflowBody;
 const template = templateFor(hopDoc, BUILTIN_WORKFLOW_TEMPLATES);
+// Rev 5, as dev held it on 2026-10-04: 19 outside systems in six boundaries, nine of them the hospital's.
+const hop5Doc = hop5 as unknown as WorkflowBody;
+const laneLabel = (id: string) => hop5Doc.lanes?.find((l) => l.id === id)?.label ?? id;
 
 function cross(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
   const o = (p: Pt, q: Pt, r: Pt) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
@@ -214,6 +219,133 @@ describe("the Context layout (C4 level 1)", () => {
     const a = layoutContext(readC4(hopDoc, template));
     const b = layoutContext(readC4(structuredClone(hopDoc), template));
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+});
+
+/** A Workflows overview pane at 1440px beside the designs list, and a phone. */
+const PANE = { width: 940, height: 600 };
+const PHONE = { width: 368, height: 520 };
+
+/** A design with `n` outside systems spread over `lanes` boundaries, every one talking to the system. */
+function wide(n: number, lanes: number, people = 3): WorkflowBody {
+  const steps: WorkflowStep[] = [
+    ...Array.from({ length: people }, (_, i) => step(`p${i}`, "PERSON", "people")),
+    step("app", "CONTAINER", "ours", Array.from({ length: people }, (_, i) => `p${i}`)),
+    ...Array.from({ length: n }, (_, i) => step(`x${i}`, "SYSTEM", `b${i % lanes}`, ["app"])),
+  ];
+  return {
+    ...design(steps),
+    lanes: [
+      { id: "people", label: "People" },
+      { id: "ours", label: "Our product" },
+      ...Array.from({ length: lanes }, (_, i) => ({ id: `b${i}`, label: `Boundary ${i}` })),
+    ],
+  };
+}
+
+describe("folding a Context by boundary", () => {
+  it("folds HOP rev 5's nineteen outside systems into one element per boundary, each with its count", () => {
+    const m = readC4(hop5Doc, template);
+    expect(m.externals).toHaveLength(19);
+    const s = summarise(m, "boundaries");
+    const counts = Object.fromEntries([...(s.groups?.values() ?? [])].map((g) => [g.lane, g.members.length]));
+    expect(counts).toEqual({ hospital: 9, partners: 3, channels: 2, outside: 3, delivery: 2 });
+    // four people is not more than PEOPLE_AT_A_GLANCE, so they stay as they are
+    expect(m.people).toHaveLength(PEOPLE_AT_A_GLANCE);
+    expect(s.people.map((p) => p.id)).toEqual(m.people.map((p) => p.id));
+    // every relation now ends at an element the folded model draws
+    const drawn = new Set([FOCAL, ...s.people.map((p) => p.id), ...s.externals.map((x) => x.id)]);
+    for (const r of s.relations) expect(drawn.has(r.from) && drawn.has(r.to)).toBe(true);
+    // the eleven lines between the nine hospital systems and the system become one line
+    const hospital = s.relations.filter((r) => [r.from, r.to].includes("group:externals:hospital"));
+    expect(hospital).toHaveLength(1);
+    expect(hospital[0]?.src).toHaveLength(11);
+  });
+
+  it("draws one line per boundary, labelled with how many design lines it stands for", () => {
+    const d = layoutContext(summarise(readC4(hop5Doc, template), "boundaries")) as Diagram;
+    const hospital = d.lines.find((l) => l.ends.includes("group:externals:hospital"));
+    expect(hospital?.label).toBe("11 links");
+    expect(hospital?.edges).toHaveLength(11);
+    const box = d.boxes.find((b) => b.id === "group:externals:hospital");
+    expect(box?.kicker).toBe("9 systems");
+    expect(box?.lines.join(" ")).toBe(laneLabel("hospital"));
+    expect(box?.members?.filter((x) => x.state === "unconfirmed").map((x) => x.id)).toEqual(["emr", "lis", "pacs-ris", "pos-billing", "call-center", "bed-mgmt"]);
+    expect(box?.members?.find((x) => x.id === "his")).toMatchObject({ name: "HIS / EMR", state: "confirmed", mark: null });
+  });
+
+  it("folds people by boundary once there are more than four of them", () => {
+    const m = readC4(wide(4, 2, 6), template);
+    const s = summarise(m, "boundaries");
+    expect(s.people.map((p) => p.id)).toEqual(["group:people:people"]);
+    expect(s.groups?.get("group:people:people")?.members).toHaveLength(6);
+  });
+
+  it("leaves a boundary the viewer opened unfolded, and a boundary of one system as that system", () => {
+    const m = readC4(hop5Doc, template);
+    const s = summarise(m, "boundaries", new Set(["group:externals:hospital"]));
+    expect(s.externals.filter((x) => x.lane === "hospital")).toHaveLength(9);
+    const d = layoutContext(s) as Diagram;
+    expect(d.captions.find((c) => c.folds === "group:externals:hospital")?.text).toBe(laneLabel("hospital"));
+    const lone = summarise(readC4(wide(3, 3), template), "boundaries");
+    expect(lone.groups?.size).toBe(0);
+    expect(lone.externals.map((x) => x.id)).toEqual(["x0", "x1", "x2"]);
+  });
+});
+
+describe("fitting a Context with 15 or more outside systems", () => {
+  // Every size the canvas draws a C4 diagram's text in comes from FONT, so its least is the floor to hold.
+  const smallest = Math.min(...Object.values(FONT));
+
+  it.each([
+    ["HOP rev 5 (19 systems)", () => hop5Doc],
+    ["16 systems in four boundaries", () => wide(16, 4)],
+    ["24 systems in six boundaries", () => wide(24, 6, 7)],
+  ])("%s: folds by boundary at fit, with no type under 12px, no line crossing and none through a box", (_name, doc) => {
+    const m = readC4(doc(), template);
+    expect(m.externals.length).toBeGreaterThanOrEqual(15);
+    const fit = fitContext(m, PANE);
+    if (!fit) throw new Error("no fit");
+    expect(fit.level).not.toBe("full");
+    expect(fit.fits).toBe(true);
+    expect(smallest * fit.zoom).toBeGreaterThanOrEqual(MIN_FONT_PX);
+    expect(fit.diagram.boxes.some((b) => b.members && b.members.length > 1)).toBe(true);
+    expect(fit.diagram.boxes.length).toBeLessThan(m.people.length + m.externals.length + 1);
+    expect(crossings(fit.diagram)).toEqual([]);
+    expect(throughBoxes(fit.diagram)).toEqual([]);
+  });
+
+  it("would need type under 12px to fit HOP rev 5 unfolded, which is why it folds", () => {
+    const m = readC4(hop5Doc, template);
+    const full = layoutContext(m) as Diagram;
+    expect(Math.min(PANE.width / full.width, PANE.height / full.height) * Math.min(...Object.values(FONT))).toBeLessThan(MIN_FONT_PX);
+  });
+
+  it("folds further on a phone instead of drawing smaller, and pans past the last fold", () => {
+    const m = readC4(hop5Doc, template);
+    const fit = fitContext(m, PHONE);
+    if (!fit) throw new Error("no fit");
+    expect(fit.level).toBe("columns");
+    expect(fit.zoom * Math.min(...Object.values(FONT))).toBeGreaterThanOrEqual(MIN_FONT_PX);
+    expect(fit.fits).toBe(false);
+  });
+
+  it("draws every system when the box is large enough to read them all", () => {
+    const fit = fitContext(readC4(hopDoc, template), { width: 1600, height: 1000 });
+    expect(fit?.level).toBe("full");
+  });
+});
+
+describe("reading an outside system's integration state from its label", () => {
+  it.each([
+    ["EMR (chưa xác nhận tích hợp)", "EMR", "unconfirmed"], // i18n-allow: a label as HOP's design writes it
+    ["SMS (đề xuất, chưa xác nhận)", "SMS", "unconfirmed"], // i18n-allow: a label as HOP's design writes it
+    ["Partner / Referral systems (chưa xác nhận)", "Partner / Referral systems", "unconfirmed"], // i18n-allow: a label as HOP's design writes it
+    ["Billing (proposed)", "Billing", "unconfirmed"],
+    ["HIS / EMR", "HIS / EMR", "confirmed"],
+    ["LLM, embedding, BA assistant (ở nước ngoài)", "LLM, embedding, BA assistant (ở nước ngoài)", "confirmed"], // i18n-allow: an aside that is not about confirmation
+  ])("%s", (title, name, state) => {
+    expect(integrationOf(title)).toMatchObject({ name, state });
   });
 });
 
