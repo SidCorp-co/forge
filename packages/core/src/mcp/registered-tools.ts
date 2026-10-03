@@ -40,6 +40,7 @@ export const REGISTERED_TOOLS = [
   'forge_metrics.session_failures',
   'forge_orgs.list',
   'forge_orgs.members',
+  'forge_requirements',
   'forge_phase',
   'forge_pipeline_runs.get',
   'forge_pm.set_dependency',

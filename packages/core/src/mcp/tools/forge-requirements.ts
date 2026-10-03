@@ -1,0 +1,220 @@
+/**
+ * `forge_requirements` — the agent's face of this project's requirements (REQ-n). An agent drafts
+ * and proposes revisions and links issues and designs; accepting a revision, returning one and
+ * agreeing a requirement are a person's acts and refuse an agent (REQUIREMENT_SIGNOFF_FORBIDDEN).
+ * The REST routes in `requirements/routes.ts` are the same services.
+ */
+
+import { z } from 'zod';
+import type { NamedRefusal } from '../../project-config/respond.js';
+import {
+  linkIssue,
+  linkWorkflow,
+  unlinkIssue,
+  unlinkWorkflow,
+} from '../../requirements/issue-links.js';
+import {
+  listRequirementsAs,
+  type RequirementActor,
+  readRequirementAs,
+} from '../../requirements/read.js';
+import { criterionSchema, specSchema } from '../../requirements/schemas.js';
+import {
+  acceptRevision,
+  agreeRequirement,
+  createRequirement,
+  proposeRevision,
+  type RequirementOutcome,
+  returnRevision,
+  writeRevision,
+} from '../../requirements/service.js';
+import {
+  type ContextScopedMcpToolFactory,
+  type McpContext,
+  principalAgency,
+  resolveEffectiveProjectId,
+  zodToMcpSchema,
+} from './lib.js';
+
+const ACTIONS = [
+  'list',
+  'get',
+  'create',
+  'revise',
+  'edit',
+  'propose',
+  'accept',
+  'return',
+  'agree',
+  'link_issue',
+  'unlink_issue',
+  'link_workflow',
+  'unlink_workflow',
+] as const;
+
+const inputSchema = z
+  .object({
+    action: z.enum(ACTIONS),
+    projectId: z.uuid().optional(),
+    /** The requirement, by uuid or key (REQ-12). */
+    requirement: z.string().trim().min(1).max(64).optional(),
+    title: z.string().trim().min(1).max(500).optional(),
+    reason: z.string().max(4_000).optional(),
+    spec: specSchema.optional(),
+    tldr: z.string().max(4_000).nullable().optional(),
+    changeSummary: z.string().max(4_000).nullable().optional(),
+    criteria: z.array(criterionSchema).max(200).optional(),
+    /** revise: the head revision the new one is written against (null when none is current). */
+    baseRevision: z.number().int().min(1).nullable().optional(),
+    /** edit / propose / accept / return / agree: the revision acted on. */
+    revision: z.number().int().min(1).optional(),
+    issue: z.string().trim().min(1).max(200).optional(),
+    workflowId: z.uuid().optional(),
+  })
+  .strict();
+
+type Input = z.infer<typeof inputSchema>;
+
+const write = 'projects:write';
+const GRANTS = {
+  byAction: {
+    list: 'projects:read',
+    get: 'projects:read',
+    create: write,
+    revise: write,
+    edit: write,
+    propose: write,
+    accept: write,
+    return: write,
+    agree: write,
+    link_issue: write,
+    unlink_issue: write,
+    link_workflow: write,
+    unlink_workflow: write,
+  },
+} as const;
+
+const DESCRIPTION =
+  "This project's requirements (REQ-n): the business intent issues deliver, in immutable revisions " +
+  'with stable business criteria (BC-n). Workflow requirement-lifecycle. Actions: ' +
+  `${ACTIONS.join(' | ')}. ` +
+  'create: { title, reason, spec?, tldr?, criteria: [{ body, form? }] } writes REQ-n at revision 1 (draft). ' +
+  'revise: { requirement, baseRevision, reason, criteria: [{ code?, body, form? }], … } writes a new draft ' +
+  'revision on the head you read (REQUIREMENT_REVISION_STALE otherwise); a criterion naming a live code keeps ' +
+  'it, one naming none takes the next code, one left out is retired. edit: { requirement, revision, … } ' +
+  'rewrites a draft. propose: { requirement, revision } puts the draft in front of the BA or owner. ' +
+  'Statement form is the default; form "scenario" must read Given / When / Then (CRITERION_SCENARIO_UNPARSEABLE). ' +
+  'accept: { requirement, revision } makes a proposed revision current (the head) and supersedes the previous ' +
+  'one; return: { requirement, revision, reason } sends it back to draft; agree: { requirement, revision } ' +
+  'signs the head off and writes a baseline pinning every linked design, refused REQUIREMENT_DESIGN_UNAPPROVED ' +
+  'naming each unapproved design and REQUIREMENT_REVISION_NOT_CURRENT unless the head is current. accept, return ' +
+  'and agree are a person’s acts: an agent is refused REQUIREMENT_SIGNOFF_FORBIDDEN. ' +
+  'link_issue: { requirement, issue } once the requirement is agreed (REQUIREMENT_NOT_AGREED); the issue’s plan ' +
+  'then records the revision it was written against, and forge_issues get shows `requirement.changedSincePlan`. ' +
+  'link_workflow: { requirement, workflowId } names a design the next agree pins. ' +
+  'get: revisions with their criteria, baselines with pins, linked designs and issues, and the delivery phase ' +
+  '(agreed | in_delivery | delivered), computed on read.';
+
+function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]> {
+  const value = input[key];
+  if (value === undefined || value === null) {
+    throw new Error(`BAD_REQUEST: ${input.action} needs \`${String(key)}\``);
+  }
+  return value as NonNullable<Input[K]>;
+}
+
+function refusedBy(refusals: readonly NamedRefusal[]): never {
+  const codes = [...new Set(refusals.map((r) => r.code))];
+  throw new Error(
+    `${codes.join(', ')}: refused, nothing written — ${refusals.map((r) => `${r.code} at ${r.path || '/'}: ${r.detail}`).join(' | ')}`,
+  );
+}
+
+const settle = (outcome: RequirementOutcome) =>
+  outcome.ok ? outcome.requirement : refusedBy(outcome.refusals);
+
+const revisionWrite = (input: Input) => ({
+  reason: need(input, 'reason'),
+  spec: input.spec,
+  tldr: input.tldr,
+  changeSummary: input.changeSummary,
+  criteria: input.criteria ?? [],
+});
+
+async function run(args: unknown, ctx: McpContext): Promise<unknown> {
+  const input = inputSchema.parse(args);
+  const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
+  const actor: RequirementActor = {
+    userId: ctx.principal.userId,
+    agency: principalAgency(ctx.principal),
+  };
+  const on = () => ({ projectId, ref: need(input, 'requirement'), actor });
+  switch (input.action) {
+    case 'list':
+      return { requirements: await listRequirementsAs(actor.userId, projectId) };
+    case 'get':
+      return readRequirementAs(actor, projectId, need(input, 'requirement'));
+    case 'create':
+      return settle(
+        await createRequirement({
+          projectId,
+          actor,
+          title: need(input, 'title'),
+          write: revisionWrite(input),
+        }),
+      );
+    case 'revise':
+      return settle(
+        await writeRevision({
+          ...on(),
+          baseRevision: input.baseRevision ?? null,
+          write: revisionWrite(input),
+        }),
+      );
+    case 'edit':
+      return settle(
+        await writeRevision({
+          ...on(),
+          revision: need(input, 'revision'),
+          write: revisionWrite(input),
+        }),
+      );
+    case 'propose':
+      return settle(await proposeRevision({ ...on(), revision: need(input, 'revision') }));
+    case 'accept':
+      return settle(await acceptRevision({ ...on(), revision: need(input, 'revision') }));
+    case 'return':
+      return settle(
+        await returnRevision({
+          ...on(),
+          revision: need(input, 'revision'),
+          reason: need(input, 'reason'),
+        }),
+      );
+    case 'agree':
+      return settle(
+        await agreeRequirement({
+          ...on(),
+          revision: need(input, 'revision'),
+          reason: input.reason,
+        }),
+      );
+    case 'link_issue':
+      return settle(await linkIssue({ ...on(), issue: need(input, 'issue') }));
+    case 'unlink_issue':
+      return settle(await unlinkIssue({ ...on(), issue: need(input, 'issue') }));
+    case 'link_workflow':
+      return settle(await linkWorkflow({ ...on(), workflowId: need(input, 'workflowId') }));
+    case 'unlink_workflow':
+      return settle(await unlinkWorkflow({ ...on(), workflowId: need(input, 'workflowId') }));
+  }
+}
+
+export const forgeRequirementsTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_requirements',
+  reach: 'project',
+  grant: GRANTS,
+  description: DESCRIPTION,
+  inputSchema: zodToMcpSchema(inputSchema),
+  handler: (args) => run(args, ctx),
+});

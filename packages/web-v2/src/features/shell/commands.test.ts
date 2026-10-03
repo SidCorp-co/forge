@@ -31,11 +31,12 @@ describe("⌘K", () => {
   it("offers the project menu's destinations, Schedules and Improvements among them", () => {
     const { list, routeOf } = commands();
     const labels = list.map((c) => c.label);
-    for (const page of ["Dashboard", "Issues", "Agents", "Workflows", "Schedules", "Improvements", "Releases"]) {
+    for (const page of ["Dashboard", "Requirements", "Workflows", "Issues", "Agents", "Schedules", "Improvements", "Releases"]) {
       expect(labels).toContain(`Forge · ${page}`);
     }
     expect(routeOf("Forge · Schedules")).toBe("/projects/forge-dev/automation/schedules");
     expect(routeOf("Forge · Improvements")).toBe("/projects/forge-dev/automation/improvements");
+    expect(routeOf("Forge · Requirements")).toBe("/projects/forge-dev/requirements");
   });
 
   it("offers nothing removed: no Library, Board, Insights, Modules, PM or Chat mode", () => {

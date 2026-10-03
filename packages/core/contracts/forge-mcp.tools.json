@@ -623,7 +623,7 @@
       "name": "forge_coolify_deploy"
     },
     {
-      "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks). Writes take { baseRevision, document } as their REST route does: interface_write (the project's own agent, member or above, or a person holding admin; commitment windows an agent writes read as set by the agent, and once a person has set them an agent's write that moves them is refused COMMITMENTS_SET_BY_PERSON), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite), builder_run_supersede ({ run, reason }: closes an open run as superseded and opens a fresh manual run with the steps the project's current source type derives, waking its master; the project's own agent's, or an org admin's of the steward or the project's org). contract_version_publish ({ contract, version, kind, source, sourceRef }, POST /api/projects/:id/contracts/:contract/versions on REST) records a version of a contract this project publishes with artifact { upload: true }: kind is graphql (SDL text), mcp-tools ({ tools: [{ name, inputSchema }] }), openapi or json-schema, and must be the publication's type; core indexes its elements and measures it against the latest version. Refused by name: CONTRACT_KIND_UNKNOWN, CONTRACT_KIND_MISMATCH, ARTIFACT_UNREADABLE, VERSION_BUMP_TOO_SMALL, VERSION_NOT_IN_SCHEME, CONTRACT_NOT_PUBLISHED, CONTRACT_WRITER_NOT_PROVIDER (the writer rule of interface_write). The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
+      "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks). Writes take { baseRevision, document } as their REST route does: interface_write (the project's own agent, member or above, or a person holding admin; commitment windows an agent writes read as set by the agent, and once a person has set them an agent's write that moves them is refused COMMITMENTS_SET_BY_PERSON), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite), builder_run_supersede ({ run, reason }: closes an open run as superseded and opens a fresh manual run with the steps the project's current source type derives, waking its master; the project's own agent's, or an org admin's of the steward or the project's org). contract_version_publish ({ contract, version, kind, source, sourceRef }, POST /api/projects/:id/contracts/:contract/versions on REST) records a version of a contract this project publishes with artifact { upload: true }: kind is graphql (SDL text), mcp-tools ({ tools: [{ name, inputSchema }] }), openapi or json-schema, and must be the publication's type; core indexes its elements and measures it against the latest version. Refused by name: CONTRACT_KIND_UNKNOWN, CONTRACT_KIND_MISMATCH, ARTIFACT_UNREADABLE, VERSION_BUMP_TOO_SMALL, VERSION_NOT_IN_SCHEME, CONTRACT_NOT_PUBLISHED, CONTRACT_WRITER_NOT_PROVIDER (the writer rule of interface_write). contract_version_decide ({ contract, version, decision: approve | return, reason? }, POST /api/projects/:id/contracts/:contract/versions/:version/decision on REST) decides a proposed version: a recorded version is proposed, and current only once approved. An org owner or admin person decides any version; with contracts.approver \"master\" the project's own agent may approve a non-breaking or initial one. Refused by name: CONTRACT_BREAKING_NEEDS_PERSON (a breaking or unmeasured version, whatever the policy), CONTRACT_APPROVER_NOT_PERSON, CONTRACT_APPROVER_NOT_ADMIN, CONTRACT_APPROVER_NOT_PROJECT, CONTRACT_VERSION_NOT_PROPOSED, CONTRACT_DECISION_REASON_MISSING. The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -642,7 +642,8 @@
               "builder_run_create",
               "builder_run_update",
               "builder_run_supersede",
-              "contract_version_publish"
+              "contract_version_publish",
+              "contract_version_decide"
             ],
             "type": "string"
           },
@@ -655,6 +656,14 @@
           },
           "contract": {
             "description": "contract_version_publish: the publication slug of a contract this project publishes.",
+            "type": "string"
+          },
+          "decision": {
+            "description": "contract_version_decide: approve or return.",
+            "enum": [
+              "approve",
+              "return"
+            ],
             "type": "string"
           },
           "document": {
@@ -685,7 +694,7 @@
             "type": "string"
           },
           "reason": {
-            "description": "builder_run_supersede: why the open run is replaced, 1 to 1000 characters.",
+            "description": "builder_run_supersede: why the open run is replaced, 1 to 1000 characters. contract_version_decide: why, required to return.",
             "type": "string"
           },
           "run": {
@@ -1325,6 +1334,14 @@
                     "type": "null"
                   }
                 ]
+              },
+              "contracts": {
+                "items": {
+                  "pattern": "^([a-z][a-z0-9-]{0,62})\\/([a-z][a-z0-9-]{0,62})@([A-Za-z0-9][A-Za-z0-9._+-]{0,39})$",
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
               },
               "description": {
                 "anyOf": [
@@ -3406,6 +3423,169 @@
         "type": "object"
       },
       "name": "forge_release_batch"
+    },
+    {
+      "description": "This project's requirements (REQ-n): the business intent issues deliver, in immutable revisions with stable business criteria (BC-n). Workflow requirement-lifecycle. Actions: list | get | create | revise | edit | propose | accept | return | agree | link_issue | unlink_issue | link_workflow | unlink_workflow. create: { title, reason, spec?, tldr?, criteria: [{ body, form? }] } writes REQ-n at revision 1 (draft). revise: { requirement, baseRevision, reason, criteria: [{ code?, body, form? }], … } writes a new draft revision on the head you read (REQUIREMENT_REVISION_STALE otherwise); a criterion naming a live code keeps it, one naming none takes the next code, one left out is retired. edit: { requirement, revision, … } rewrites a draft. propose: { requirement, revision } puts the draft in front of the BA or owner. Statement form is the default; form \"scenario\" must read Given / When / Then (CRITERION_SCENARIO_UNPARSEABLE). accept: { requirement, revision } makes a proposed revision current (the head) and supersedes the previous one; return: { requirement, revision, reason } sends it back to draft; agree: { requirement, revision } signs the head off and writes a baseline pinning every linked design, refused REQUIREMENT_DESIGN_UNAPPROVED naming each unapproved design and REQUIREMENT_REVISION_NOT_CURRENT unless the head is current. accept, return and agree are a person’s acts: an agent is refused REQUIREMENT_SIGNOFF_FORBIDDEN. link_issue: { requirement, issue } once the requirement is agreed (REQUIREMENT_NOT_AGREED); the issue’s plan then records the revision it was written against, and forge_issues get shows `requirement.changedSincePlan`. link_workflow: { requirement, workflowId } names a design the next agree pins. get: revisions with their criteria, baselines with pins, linked designs and issues, and the delivery phase (agreed | in_delivery | delivered), computed on read.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "get",
+              "create",
+              "revise",
+              "edit",
+              "propose",
+              "accept",
+              "return",
+              "agree",
+              "link_issue",
+              "unlink_issue",
+              "link_workflow",
+              "unlink_workflow"
+            ],
+            "type": "string"
+          },
+          "baseRevision": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "changeSummary": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "criteria": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "body": {
+                  "maxLength": 10000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "code": {
+                  "pattern": "^BC-[1-9][0-9]*$",
+                  "type": "string"
+                },
+                "form": {
+                  "enum": [
+                    "statement",
+                    "scenario"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "body"
+              ],
+              "type": "object"
+            },
+            "maxItems": 200,
+            "type": "array"
+          },
+          "issue": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 4000,
+            "type": "string"
+          },
+          "requirement": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "spec": {
+            "additionalProperties": false,
+            "properties": {
+              "goal": {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              "personas": {
+                "items": {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              "scopeIn": {
+                "items": {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              "scopeOut": {
+                "items": {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "tldr": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workflowId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "forge_requirements"
     },
     {
       "description": "Manage runners for projects in your scope (projects you own or are a member of). Actions: `list` (optional projectId/status/type filters, restricted to your projects; returns inFlightCount per runner plus quarantinedUntil/quarantineReason — non-null means the box is HARD-excluded from dispatch after repeated identical box-scoped failures, either the same preflight check or the same never-claimed dispatch; distinct from the rate/usage/auth limitReason fields), `register` (insert with default status=offline; requires owner/admin on the target project), `retire` (sets status=disabled; requires owner/admin; refuses with RUNNER_BUSY unless force:true), `restore` (the inverse of retire: sets status=online, returning a withdrawn box to the pool; requires owner/admin), `update_capabilities` (replaces capabilities jsonb after server-side validation; requires owner/admin).",

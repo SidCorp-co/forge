@@ -39,6 +39,7 @@ import { emitIssueFieldUpdate } from '../../issues/update-hook.js';
 import { updateIssueFields } from '../../issues/update-service.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
+import { requirementOfIssue } from '../../requirements/issue-links.js';
 import {
   createTask as createTaskRow,
   deleteTask as deleteTaskRow,
@@ -602,14 +603,16 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
           return projected;
         }
-        const [full, relations, attributes, buildsWorkflow, proposesWorkflow] = await Promise.all([
-          serializeWithAttachments(issue),
-          loadIssueRelations(issue.id, issue.projectId),
-          loadIssueAttributes(issue.id),
-          buildsWorkflowOf(issue.id),
-          proposesWorkflowOf(issue.id),
-        ]);
-        return { ...full, relations, attributes, buildsWorkflow, proposesWorkflow };
+        const [full, relations, attributes, buildsWorkflow, proposesWorkflow, requirement] =
+          await Promise.all([
+            serializeWithAttachments(issue),
+            loadIssueRelations(issue.id, issue.projectId),
+            loadIssueAttributes(issue.id),
+            buildsWorkflowOf(issue.id),
+            proposesWorkflowOf(issue.id),
+            requirementOfIssue(issue.id),
+          ]);
+        return { ...full, relations, attributes, buildsWorkflow, proposesWorkflow, requirement };
       }
 
       case 'setAttributes': {

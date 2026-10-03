@@ -72,6 +72,7 @@ import {
 import { forgeQuestionsTool } from './tools/forge-questions.js';
 import { forgeReconcileTool } from './tools/forge-reconcile.js';
 import { forgeReleaseBatchTool } from './tools/forge-release-batch.js';
+import { forgeRequirementsTool } from './tools/forge-requirements.js';
 import { forgeRunnersTool } from './tools/forge-runners.js';
 import { forgeSchedulesTool } from './tools/forge-schedules.js';
 import { forgeSentryTool } from './tools/forge-sentry.js';
@@ -177,6 +178,7 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     forgeGoogleSheetsTool(ctx),
     forgeStorefrontTargetTool(ctx),
     forgeWorkflowsTool(ctx),
+    forgeRequirementsTool(ctx),
     forgeJobsListTool(ctx),
     forgeJobsGetTool(ctx),
     forgeJobsEventsTool(ctx),

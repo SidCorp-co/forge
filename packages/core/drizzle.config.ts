@@ -12,6 +12,7 @@ export default defineConfig({
     './src/db/schema-ecosystem.ts',
     './src/db/schema-ecosystem-links.ts',
     './src/db/schema-workflows.ts',
+    './src/db/schema-requirements.ts',
     './src/db/schema-questions.ts',
     './src/db/schema-rocketchat.ts',
     './src/db/schema-agent-session-events.ts',

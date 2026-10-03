@@ -126,6 +126,7 @@ vi.mock('../../workflows/build-gate.js', async (importOriginal) => ({
   buildsWorkflowOf: async () => null,
 }));
 vi.mock('../../workflows/design-issue.js', () => ({ proposesWorkflowOf: async () => null }));
+vi.mock('../../requirements/issue-links.js', () => ({ requirementOfIssue: async () => null }));
 vi.mock('../../pipeline/work-evidence.js', () => ({
   findMissingWorkEvidence: async () => null,
   collectWorkEvidence: async () => ({ handoffCommitSha: null }),

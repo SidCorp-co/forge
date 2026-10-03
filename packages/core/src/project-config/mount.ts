@@ -1,5 +1,6 @@
 import type { Hono } from 'hono';
 import type { RequestIdVars } from '../middleware/request-id.js';
+import { requirementRoutes } from '../requirements/routes.js';
 import { workflowRoutes } from '../workflows/routes.js';
 import { workflowTemplateCatalogueRoutes } from '../workflows/template-routes.js';
 import { environmentStateRoutes } from './environment-state-routes.js';
@@ -12,4 +13,5 @@ export function mountProjectConfig(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/projects', projectConfigRoutes);
   app.route('/api/projects', environmentStateRoutes);
   app.route('/api/projects', workflowRoutes);
+  app.route('/api/projects', requirementRoutes);
 }

@@ -153,11 +153,16 @@ const NOT_DISCOVERY: Record<string, string> = {
   'release-batch/releasing-recovery.ts': 'rows of one release run',
   'release-batch/service.ts': 'the ids passed in, or rows of one release run',
   'release-batch/versions.ts': 'reads only the gate status, not yet in a release run',
+  'requirements/issue-links.ts':
+    'by issue id: the requirement an issue names, and the issue a link or a plan write names',
+  'requirements/read.ts':
+    'the issues a requirement links; an archived one still delivered it, so its status is counted',
   'runners/routes.ts': 'issues of dispatched or running jobs',
   'tasks/routes.ts': 'by issue id',
   'uploads/attachment-bytes.ts': 'by attachment id',
   'uploads/attachment-lookup.ts': 'by issue, comment or attachment id',
   'workflows/build-gate.ts': 'the issues a build link names, by issue id or seq',
+  'workflows/run-context-service.ts': 'the issue of the job being prepared',
   'workflows/store.ts': 'the issues a build link names, by issue id',
 };
 

@@ -25,6 +25,7 @@ import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
+import { requirementOfIssue } from '../requirements/issue-links.js';
 import { buildsWorkflowOf } from '../workflows/build-gate.js';
 import { proposesWorkflowOf } from '../workflows/design-issue.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
@@ -265,6 +266,7 @@ issueProjectRoutes.get(
       liveReach: await liveReachForIssue(issue),
       buildsWorkflow: await buildsWorkflowOf(issue.id),
       proposesWorkflow: await proposesWorkflowOf(issue.id),
+      requirement: await requirementOfIssue(issue.id),
       labels: labelRows,
       comments: [],
       activity: [],
@@ -419,6 +421,7 @@ issueRoutes.get(
       liveReach: await liveReachForIssue(issue),
       buildsWorkflow: await buildsWorkflowOf(issue.id),
       proposesWorkflow: await proposesWorkflowOf(issue.id),
+      requirement: await requirementOfIssue(issue.id),
       labels: labelRows,
       comments: [],
       activity: [],
