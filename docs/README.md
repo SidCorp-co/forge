@@ -20,6 +20,7 @@ answered the same question in several places at once. Better no document than a 
 | Know which surface answers which question | [proposals/destination/one-question-one-answer.md](proposals/destination/one-question-one-answer.md) |
 | See what the tree does instead of what the set describes | [proposals/destination/module-1-work-lifecycle.md](proposals/destination/module-1-work-lifecycle.md) |
 | Know how much of the system the set actually covers | [proposals/destination/coverage.md](proposals/destination/coverage.md) |
+| Build a domain entity (a table, its routes, MCP tool and web module) the way every other one is built | [conventions/domain-entities.md](conventions/domain-entities.md) — the pattern, not a description: each rule names its reference code, and what does not meet it yet is listed with an owner |
 
 ## Rules for this tree
 

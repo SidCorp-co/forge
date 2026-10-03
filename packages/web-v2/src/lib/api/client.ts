@@ -31,6 +31,20 @@ export class ApiError extends Error {
   }
 }
 
+/** Core's refusal envelope `{ error: { code, message, refusals } }`: its details are the message. */
+function refusalOf(error: unknown): { message: string; code?: string } | null {
+  if (!error || typeof error !== 'object') return null;
+  const { code, message, refusals } = error as { code?: unknown; message?: unknown; refusals?: unknown };
+  if (typeof message !== 'string') return null;
+  const details = Array.isArray(refusals)
+    ? refusals.map((r) => (r as { detail?: unknown })?.detail).filter((d): d is string => typeof d === 'string')
+    : [];
+  return {
+    message: details.length > 0 ? details.join('; ') : message,
+    ...(typeof code === 'string' ? { code } : {}),
+  };
+}
+
 async function parseErrorBody(res: Response): Promise<{
   message: string;
   code?: string;
@@ -40,6 +54,8 @@ async function parseErrorBody(res: Response): Promise<{
   try {
     const body = await res.json();
     if (body && typeof body === 'object') {
+      const refused = refusalOf(body.error);
+      if (refused) return { ...refused, details: body.details, body };
       const msg = typeof body.message === 'string' ? body.message : res.statusText;
       const code = typeof body.code === 'string' ? body.code : undefined;
       return { message: msg, code, details: body.details, body };

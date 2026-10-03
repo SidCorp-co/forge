@@ -2,7 +2,6 @@ import { ApiError } from "./client";
 
 import type { Refusal } from "@forge/contracts";
 
-/** One named refusal, exactly as core named it: declared once in `@forge/contracts`. */
 export type { Refusal };
 
 const isRefusal = (r: unknown): r is Refusal => {

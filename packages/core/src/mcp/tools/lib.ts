@@ -208,10 +208,7 @@ export async function resolveEffectiveProjectId(
   );
 }
 
-/**
- * A refusal at the MCP door: the same `{ error: { code, message, refusals } }` the REST door
- * answers (`lib/refusal.ts`), flagged `isError` so a caller reads one shape at both doors.
- */
+/** The REST refusal body, flagged `isError`, so both doors answer one shape. */
 export function refusedAnswer(
   refusals: readonly Refusal[],
   fallbackCode: string,

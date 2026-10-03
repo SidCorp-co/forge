@@ -58,11 +58,7 @@ export function rawBody(
   return middleware;
 }
 
-/**
- * A domain write's JSON body: 400 `BAD_REQUEST` whose message carries the valid shape (`hint`) and
- * whose `details` name each field that was wrong (`route-errors.ts:flatten`), so neither the shape
- * nor the field is left for the caller to guess.
- */
+/** A bad body is 400 naming both the valid shape (`hint`) and each field that broke it. */
 export function strictBody<T extends z.ZodType>(schema: T, hint: string) {
   return zValidator('json', schema, (r) => {
     if (!r.success) {

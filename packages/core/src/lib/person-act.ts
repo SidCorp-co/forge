@@ -1,20 +1,13 @@
 /**
- * Who may act (S0 agency), decided once. `actMiss` reads an actor against a declared rule; every
- * person-only act (a requirement sign-off, deciding a suggestion), every approval a project's policy
- * assigns (a workflow design, a contract version) and every write only the project's own agent makes
- * (a workflow, an ecosystem link) reads it, and words the refusal under the code its slice names.
- * `personActRefusal` is the person-only case, worded once.
+ * Who may act (S0 agency), decided once by `actMiss` against a declared rule; each slice words the
+ * refusal under its own code.
  */
 
 import type { OrgMemberRole, ProjectMemberRole } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { effectiveProjectRole, orgRoleAtLeast, projectRoleAtLeast } from './authz.js';
 
-/**
- * `person`: whether a person may act, and with what standing (member or above on the project, or an
- * owner or admin of its org). `agent`: whether an agent may act; one that may still holds member or
- * above on the project, which is what keeps another project's agent out.
- */
+/** An agent that may act still holds member or above, which keeps another project's agent out. */
 export interface ActRule {
   person: 'never' | 'member' | 'org-admin';
   agent: 'never' | 'member';
@@ -36,11 +29,9 @@ export interface ActorFacts {
   userId: string;
   agency: ActorAgency;
   role: ProjectMemberRole | null;
-  /** Read only by a rule whose `person` is `org-admin`. */
   orgRole?: OrgMemberRole | null;
 }
 
-/** Why the actor is refused; the slice turns it into its own code and sentence. */
 export type ActMiss =
   | { kind: 'person-not-allowed' }
   | { kind: 'agent-not-allowed' }
