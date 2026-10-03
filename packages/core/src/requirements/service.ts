@@ -9,16 +9,32 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
-  type CriterionForm,
   type RequirementStatus,
   type RevisionState,
   requirementBaselinePins,
   requirementBaselines,
-  requirementCriteria,
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
 import { assertProjectAccess } from '../lib/authz.js';
+import { staleOnTargetRevised } from '../suggestions/stale.js';
+import { embedRequirementHeadLater } from './embeddings.js';
+import {
+  createRequirementIn,
+  newDraftRevisionIn,
+  type RevisionWrite,
+  resetDraftCriteria,
+  specOf,
+  writeCriteria,
+} from './revision-write.js';
+
+export {
+  createRequirementIn,
+  newDraftRevisionIn,
+  openRevisionOf,
+  type RevisionWrite,
+} from './revision-write.js';
+
 import {
   detailOf,
   forbidden,
@@ -26,7 +42,6 @@ import {
   notFound,
   type RequirementActor,
   type RequirementDetail,
-  type RequirementSpec,
   type RevisionRow,
   type Row,
   requirementKey,
@@ -35,24 +50,12 @@ import {
 } from './read.js';
 import {
   agreeRefusals,
-  type CriterionInput,
   type LinkedDesign,
-  type LiveCriterion,
-  openRevisionRefusal,
-  planCriteria,
   type RequirementRefusal,
   reasonRefusal,
   staleBaseRefusal,
   stateRefusal,
 } from './rules.js';
-
-export interface RevisionWrite {
-  reason: string;
-  spec?: RequirementSpec | undefined;
-  tldr?: string | null | undefined;
-  changeSummary?: string | null | undefined;
-  criteria: CriterionInput[];
-}
 
 export type RequirementOutcome =
   | { ok: true; requirement: RequirementDetail; created?: boolean }
@@ -77,61 +80,6 @@ export async function answer(
     requirement: await detailOf(await rowIn(db, projectId, id), viewer),
     ...(created ? { created } : {}),
   };
-}
-
-const specOf = (spec: RequirementSpec | undefined) => spec ?? {};
-
-/** Applies a revision's criteria list as rows; refusals when a code is unknown or a scenario unparseable. */
-async function writeCriteria(
-  tx: Tx,
-  requirementId: string,
-  revision: number,
-  input: readonly CriterionInput[],
-): Promise<RequirementRefusal[] | null> {
-  const all = await tx
-    .select()
-    .from(requirementCriteria)
-    .where(eq(requirementCriteria.requirementId, requirementId));
-  const live: LiveCriterion[] = all
-    .filter((c) => c.retiredRevision === null)
-    .map((c) => ({ id: c.id, code: c.code, body: c.body, form: c.form as CriterionForm }));
-  const highest = all.reduce((m, c) => Math.max(m, Number(c.code.slice(3))), 0);
-  const planned = planCriteria(input, live, highest);
-  if (!planned.ok) return planned.refusals;
-  const { retire, insert } = planned.plan;
-  if (retire.length) {
-    await tx
-      .update(requirementCriteria)
-      .set({ retiredRevision: revision })
-      .where(inArray(requirementCriteria.id, retire));
-  }
-  if (insert.length) {
-    await tx
-      .insert(requirementCriteria)
-      .values(insert.map((c) => ({ ...c, requirementId, sinceRevision: revision })));
-  }
-  return null;
-}
-
-/** Undoes what an earlier write of draft `revision` did to the criteria, so an edit re-applies whole. */
-async function resetDraftCriteria(tx: Tx, requirementId: string, revision: number) {
-  await tx
-    .delete(requirementCriteria)
-    .where(
-      and(
-        eq(requirementCriteria.requirementId, requirementId),
-        eq(requirementCriteria.sinceRevision, revision),
-      ),
-    );
-  await tx
-    .update(requirementCriteria)
-    .set({ retiredRevision: null })
-    .where(
-      and(
-        eq(requirementCriteria.requirementId, requirementId),
-        eq(requirementCriteria.retiredRevision, revision),
-      ),
-    );
 }
 
 class Refused extends Error {
@@ -169,26 +117,9 @@ export async function createRequirement(input: {
   let id = '';
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
-    const [{ next } = { next: 1 }] = await tx
-      .select({ next: sql<number>`coalesce(max(${requirements.reqSeq}), 0)::int + 1` })
-      .from(requirements)
-      .where(eq(requirements.projectId, projectId));
-    const [row] = await tx
-      .insert(requirements)
-      .values({ projectId, reqSeq: next, title: input.title.trim(), ownerId: actor.userId })
-      .returning({ id: requirements.id });
-    if (!row) throw new Error('requirements: the insert returned no row');
-    id = row.id;
-    await tx.insert(requirementRevisions).values({
-      requirementId: id,
-      revision: 1,
-      spec: specOf(write.spec),
-      tldr: write.tldr ?? null,
-      changeSummary: write.changeSummary ?? null,
-      reason: write.reason.trim(),
-      authorId: actor.userId,
-    });
-    return writeCriteria(tx, id, 1, write.criteria);
+    const written = await createRequirementIn(tx, input);
+    id = written.id;
+    return written.refusals;
   });
   if (refusals) return { ok: false, refusals };
   return answer(projectId, id, actor, null, true);
@@ -229,23 +160,14 @@ export async function writeRevision(input: {
       reason: write.reason.trim(),
     };
     if (input.revision === undefined) {
-      const refusal =
-        openRevisionRefusal(
-          open ? { revision: open.revision, state: open.state as RevisionState } : null,
-        ) ?? staleBaseRefusal(input.baseRevision ?? null, current.currentRevision);
-      if (refusal) return [refusal];
-      const [{ next } = { next: 1 }] = await tx
-        .select({ next: sql<number>`coalesce(max(${requirementRevisions.revision}), 0)::int + 1` })
-        .from(requirementRevisions)
-        .where(eq(requirementRevisions.requirementId, row.id));
-      await tx.insert(requirementRevisions).values({
+      return newDraftRevisionIn(tx, {
         requirementId: row.id,
-        revision: next,
-        baseRevision: current.currentRevision,
-        authorId: actor.userId,
-        ...content,
+        head: current.currentRevision,
+        open: open ? { revision: open.revision, state: open.state as RevisionState } : null,
+        baseRevision: input.baseRevision ?? null,
+        actor,
+        write,
       });
-      return writeCriteria(tx, row.id, next, write.criteria);
     }
     const [target] = await tx
       .select()
@@ -435,8 +357,10 @@ export async function acceptRevision(input: {
     if (rebaseline) {
       await writeBaseline(tx, row.id, target.revision, designs, actor, target.reason);
     }
+    await staleOnTargetRevised(tx, row.id, target.revision);
     return null;
   });
+  if (!refusals) embedRequirementHeadLater(row.id);
   return answer(projectId, row.id, actor, refusals);
 }
 

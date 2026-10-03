@@ -24,6 +24,7 @@ import {
 import { projects, users } from './schema.js';
 import type { PresenceConfig } from './schema-agent-selves.js';
 import { ecosystems } from './schema-ecosystem.js';
+import { requirements } from './schema-requirements.js';
 
 export const conversationAdapters = ['web', 'widget', 'rocketchat', 'telegram'] as const;
 export type ConversationAdapter = (typeof conversationAdapters)[number];
@@ -82,6 +83,11 @@ export const conversations = pgTable(
      */
     presence: jsonb('presence').$type<RoomPresence | null>(),
     ecosystemId: uuid('ecosystem_id').references(() => ecosystems.id, { onDelete: 'restrict' }),
+    // cm:why a room opened about a requirement is answered through the BA door with its narrow tool
+    // set; written when the room is opened and never changed
+    requirementId: uuid('requirement_id').references(() => requirements.id, {
+      onDelete: 'cascade',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

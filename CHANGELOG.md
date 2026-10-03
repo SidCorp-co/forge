@@ -137,6 +137,12 @@
 
 ### Added
 
+- **Assistant output waits for a person as a suggestion.** `/api/projects/:id/suggestions` and
+  `forge_suggestions` hold six kinds of proposed change against a base revision; a person accepts or
+  rejects it, a moved base makes it stale (`SUGGESTION_BASE_STALE`), at most 5 wait per target, and
+  accepting a revision suggestion writes a draft, never a current revision. A room opened about a
+  requirement is answered by a BA assistant that can only read, suggest and ask one question. The
+  requirement page lists waiting suggestions with Accept and Reject.
 - **An issue's criteria and verdicts are rows.** `GET`/`PUT /api/issues/:id/criteria`, `POST
   /api/issues/:id/verdicts` and `forge_criteria`; a verdict names a whole commit, runtime, design or
   contract, and `skipped` needs a reason and never passes. The issue page shows each verdict.

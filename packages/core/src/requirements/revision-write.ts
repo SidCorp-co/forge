@@ -1,0 +1,169 @@
+/**
+ * The requirement writes that run inside a caller's transaction, under the project's requirement
+ * lock: a revision's criteria as rows, REQ-n at revision 1, and a new draft revision on the head.
+ * `service.ts` composes them into its own transactions; an accepted suggestion composes them into
+ * the transaction that marks it accepted (ISS-58).
+ */
+
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import type { Tx } from '../db/client.js';
+import {
+  type CriterionForm,
+  type RevisionState,
+  requirementCriteria,
+  requirementRevisions,
+  requirements,
+} from '../db/schema-requirements.js';
+import type { RequirementActor, RequirementSpec } from './read.js';
+import {
+  type CriterionInput,
+  type LiveCriterion,
+  openRevisionRefusal,
+  planCriteria,
+  type RequirementRefusal,
+  staleBaseRefusal,
+} from './rules.js';
+
+export interface RevisionWrite {
+  reason: string;
+  spec?: RequirementSpec | undefined;
+  tldr?: string | null | undefined;
+  changeSummary?: string | null | undefined;
+  criteria: CriterionInput[];
+  /** The accepted suggestion this revision is the effect of (suggestion-lifecycle step accepted). */
+  fromSuggestionId?: string | undefined;
+}
+
+export const specOf = (spec: RequirementSpec | undefined) => spec ?? {};
+
+/** Applies a revision's criteria list as rows; refusals when a code is unknown or a scenario unparseable. */
+export async function writeCriteria(
+  tx: Tx,
+  requirementId: string,
+  revision: number,
+  input: readonly CriterionInput[],
+): Promise<RequirementRefusal[] | null> {
+  const all = await tx
+    .select()
+    .from(requirementCriteria)
+    .where(eq(requirementCriteria.requirementId, requirementId));
+  const live: LiveCriterion[] = all
+    .filter((c) => c.retiredRevision === null)
+    .map((c) => ({ id: c.id, code: c.code, body: c.body, form: c.form as CriterionForm }));
+  const highest = all.reduce((m, c) => Math.max(m, Number(c.code.slice(3))), 0);
+  const planned = planCriteria(input, live, highest);
+  if (!planned.ok) return planned.refusals;
+  const { retire, insert } = planned.plan;
+  if (retire.length) {
+    await tx
+      .update(requirementCriteria)
+      .set({ retiredRevision: revision })
+      .where(inArray(requirementCriteria.id, retire));
+  }
+  if (insert.length) {
+    await tx
+      .insert(requirementCriteria)
+      .values(insert.map((c) => ({ ...c, requirementId, sinceRevision: revision })));
+  }
+  return null;
+}
+
+/** Undoes what an earlier write of draft `revision` did to the criteria, so an edit re-applies whole. */
+export async function resetDraftCriteria(tx: Tx, requirementId: string, revision: number) {
+  await tx
+    .delete(requirementCriteria)
+    .where(
+      and(
+        eq(requirementCriteria.requirementId, requirementId),
+        eq(requirementCriteria.sinceRevision, revision),
+      ),
+    );
+  await tx
+    .update(requirementCriteria)
+    .set({ retiredRevision: null })
+    .where(
+      and(
+        eq(requirementCriteria.requirementId, requirementId),
+        eq(requirementCriteria.retiredRevision, revision),
+      ),
+    );
+}
+
+/** Writes REQ-n at revision 1 (draft) inside the caller's transaction; the caller has locked the project. */
+export async function createRequirementIn(
+  tx: Tx,
+  input: { projectId: string; actor: RequirementActor; title: string; write: RevisionWrite },
+): Promise<{ id: string; refusals: RequirementRefusal[] | null }> {
+  const { projectId, actor, write } = input;
+  const [{ next } = { next: 1 }] = await tx
+    .select({ next: sql<number>`coalesce(max(${requirements.reqSeq}), 0)::int + 1` })
+    .from(requirements)
+    .where(eq(requirements.projectId, projectId));
+  const [row] = await tx
+    .insert(requirements)
+    .values({ projectId, reqSeq: next, title: input.title.trim(), ownerId: actor.userId })
+    .returning({ id: requirements.id });
+  if (!row) throw new Error('requirements: the insert returned no row');
+  await tx.insert(requirementRevisions).values({
+    requirementId: row.id,
+    revision: 1,
+    spec: specOf(write.spec),
+    tldr: write.tldr ?? null,
+    changeSummary: write.changeSummary ?? null,
+    reason: write.reason.trim(),
+    authorId: actor.userId,
+    fromSuggestionId: write.fromSuggestionId ?? null,
+  });
+  return { id: row.id, refusals: await writeCriteria(tx, row.id, 1, write.criteria) };
+}
+
+/**
+ * A new draft revision on the head, inside the caller's transaction under the project's requirement
+ * lock: refused while another revision is open, or when `baseRevision` is no longer the head.
+ */
+export async function newDraftRevisionIn(
+  tx: Tx,
+  input: {
+    requirementId: string;
+    head: number | null;
+    open: { revision: number; state: RevisionState } | null;
+    baseRevision: number | null;
+    actor: RequirementActor;
+    write: RevisionWrite;
+  },
+): Promise<RequirementRefusal[] | null> {
+  const { requirementId, write } = input;
+  const refusal =
+    openRevisionRefusal(input.open) ?? staleBaseRefusal(input.baseRevision, input.head);
+  if (refusal) return [refusal];
+  const [{ next } = { next: 1 }] = await tx
+    .select({ next: sql<number>`coalesce(max(${requirementRevisions.revision}), 0)::int + 1` })
+    .from(requirementRevisions)
+    .where(eq(requirementRevisions.requirementId, requirementId));
+  await tx.insert(requirementRevisions).values({
+    requirementId,
+    revision: next,
+    baseRevision: input.head,
+    authorId: input.actor.userId,
+    spec: specOf(write.spec),
+    tldr: write.tldr ?? null,
+    changeSummary: write.changeSummary ?? null,
+    reason: write.reason.trim(),
+    fromSuggestionId: write.fromSuggestionId ?? null,
+  });
+  return writeCriteria(tx, requirementId, next, write.criteria);
+}
+
+/** The open (draft or proposed) revision of a requirement, if any. */
+export async function openRevisionOf(tx: Tx, requirementId: string) {
+  const [open] = await tx
+    .select({ revision: requirementRevisions.revision, state: requirementRevisions.state })
+    .from(requirementRevisions)
+    .where(
+      and(
+        eq(requirementRevisions.requirementId, requirementId),
+        inArray(requirementRevisions.state, ['draft', 'proposed']),
+      ),
+    );
+  return open ? { revision: open.revision, state: open.state as RevisionState } : null;
+}

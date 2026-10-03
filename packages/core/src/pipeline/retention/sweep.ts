@@ -6,6 +6,7 @@ import { type CollapseResult, collapseNarration } from '../../issues/record-even
 import { deriveSessionFinal } from '../../jobs/session-transcript.js';
 import { logger } from '../../logger.js';
 import { boss } from '../../queue/boss.js';
+import { type SuggestionSweepResult, sweepSuggestions } from '../../suggestions/stale.js';
 import {
   finalizeRepairMax,
   RETENTION_RULES,
@@ -80,6 +81,8 @@ export interface RetentionSweepResult {
   repair: RepairSweepResult;
   /** Narration record events collapsed into per-issue digests this tick (ISS-56). */
   narration: CollapseResult;
+  /** Suggestions staled after 30 undecided days and payloads purged 90 days after a decision (ISS-58). */
+  suggestions: SuggestionSweepResult;
 }
 
 async function countRows(statement: ReturnType<typeof sql>): Promise<number> {
@@ -227,12 +230,18 @@ export async function runRetentionSweep(
     logger.info(narration, 'retention: narration record events collapsed into digests');
   }
 
+  const suggestions = await sweepSuggestions();
+  if (suggestions.staled > 0 || suggestions.purged > 0) {
+    logger.info(suggestions, 'retention: suggestions staled and payloads purged');
+  }
+
   return {
     durationMs: Date.now() - t0,
     deleted: tables.reduce((sum, t) => sum + t.deleted, 0),
     tables,
     repair,
     narration,
+    suggestions,
   };
 }
 

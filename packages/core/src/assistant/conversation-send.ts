@@ -37,6 +37,7 @@ import {
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import type { ConversationMode, ConversationShape } from '../db/schema-conversations.js';
+import { requirements } from '../db/schema-requirements.js';
 import { logger } from '../logger.js';
 import {
   publishToConversationReaders,
@@ -48,7 +49,12 @@ import {
 import { makeConversationImageResolver } from './conversation-images.js';
 import { type ConversationProgress, startConversationProgress } from './conversation-progress.js';
 import { registerTurnStop } from './conversation-stops.js';
-import { webAgentConversationPersona, webConversationPersona } from './door-persona.js';
+import {
+  baDoorPersona,
+  webAgentConversationPersona,
+  webConversationPersona,
+} from './door-persona.js';
+import { buildBaToolset } from './tools/ba-tools.js';
 import { mergeToolsets } from './tools/mcp-adapter.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset } from './tools/registry.js';
@@ -160,27 +166,48 @@ export function webConversationTurn(args: {
       return { send: false, reason: 'agent-turn-dispatch-failed' };
     },
 
-    prepare: async ({ credential, speakerUserId, conversationId, handleUserId }) => ({
-      persona: webConversationPersona(args.project.name, args.project.slug, args.askedBy),
-      resolveImage: makeConversationImageResolver(conversationId),
-      pageContext: uiSnapshotPageContext(conversationId),
-      tools: mergeToolsets(
-        buildProjectToolset(
-          buildChatToolContext({
-            credential: await credential(),
-            projectSlug: args.project.slug,
-            turn: {
-              conversationId,
-              speakerUserId,
-              handleUserId,
-              ecosystemId: (await getConversation(conversationId))?.ecosystemId ?? null,
-            },
+    prepare: async ({ credential, speakerUserId, conversationId, handleUserId }) => {
+      const room = await getConversation(conversationId);
+      const ctx = buildChatToolContext({
+        credential: await credential(),
+        projectSlug: args.project.slug,
+        turn: {
+          conversationId,
+          speakerUserId,
+          handleUserId,
+          ecosystemId: room?.ecosystemId ?? null,
+        },
+      });
+      // cm:guard a room opened about a requirement answers through the BA door: its persona and its
+      // narrow tool set only, never the project toolset or the UI actions
+      if (room?.requirementId) {
+        const key = await requirementKeyOf(room.requirementId);
+        return {
+          persona: baDoorPersona(args.project.name, key, args.askedBy),
+          resolveImage: makeConversationImageResolver(conversationId),
+          tools: buildBaToolset(ctx, {
+            projectId: args.project.id,
+            requirementId: room.requirementId,
           }),
-        ),
-        buildUiActionToolset(),
-      ),
-    }),
+        };
+      }
+      return {
+        persona: webConversationPersona(args.project.name, args.project.slug, args.askedBy),
+        resolveImage: makeConversationImageResolver(conversationId),
+        pageContext: uiSnapshotPageContext(conversationId),
+        tools: mergeToolsets(buildProjectToolset(ctx), buildUiActionToolset()),
+      };
+    },
   };
+}
+
+async function requirementKeyOf(requirementId: string): Promise<string> {
+  const [row] = await db
+    .select({ seq: requirements.reqSeq })
+    .from(requirements)
+    .where(eq(requirements.id, requirementId))
+    .limit(1);
+  return row ? `REQ-${row.seq}` : requirementId;
 }
 
 /**

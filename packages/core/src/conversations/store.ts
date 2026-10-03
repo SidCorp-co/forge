@@ -128,6 +128,7 @@ export async function openConversationIn(
         shape: venue.shape,
         title: venue.title ?? null,
         ecosystemId: venue.ecosystemId ?? null,
+        requirementId: venue.requirementId ?? null,
       })
       .onConflictDoNothing({ target: [conversations.adapter, conversations.externalId] })
       .returning(selection);

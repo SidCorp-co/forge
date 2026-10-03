@@ -76,6 +76,7 @@ export const REGISTERED_TOOLS = [
   'forge_step_handoff.write',
   'forge_step_start',
   'forge_storefront_target',
+  'forge_suggestions',
   'forge_uploads',
   'forge_workflows',
 ];

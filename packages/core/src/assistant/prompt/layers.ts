@@ -1,4 +1,5 @@
 import { BASE_LAYER } from './base.js';
+import { BA_DOOR_LAYER } from './door-ba.js';
 import { ROCKETCHAT_DOOR_LAYER } from './door-rocketchat.js';
 import { WEB_DOOR_LAYER } from './door-web.js';
 import { WEB_AGENT_DOOR_LAYER } from './door-web-agent.js';
@@ -16,6 +17,7 @@ export const ALL_LAYERS: readonly PromptLayer[] = [
   WEB_DOOR_LAYER,
   WEB_AGENT_DOOR_LAYER,
   ROCKETCHAT_DOOR_LAYER,
+  BA_DOOR_LAYER,
 ];
 
 export const METHOD_LAYERS: readonly PromptLayer[] = [BASE_LAYER, TOOLS_LAYER];
@@ -26,3 +28,5 @@ const OPENING: readonly PromptLayer[] = [IDENTITY_LAYER, BASE_LAYER, TOOLS_LAYER
 export const WEB_DOOR_LAYERS: readonly PromptLayer[] = [...OPENING, WEB_DOOR_LAYER];
 export const WEB_AGENT_DOOR_LAYERS: readonly PromptLayer[] = [...OPENING, WEB_AGENT_DOOR_LAYER];
 export const ROCKETCHAT_DOOR_LAYERS: readonly PromptLayer[] = [...OPENING, ROCKETCHAT_DOOR_LAYER];
+/** The BA door: who it is and its narrow role, without the tracker method the other doors carry. */
+export const BA_DOOR_LAYERS: readonly PromptLayer[] = [IDENTITY_LAYER, BA_DOOR_LAYER];
