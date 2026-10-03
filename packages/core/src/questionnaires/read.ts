@@ -3,6 +3,7 @@
  * every surface sees it, and the per-thread facts a new batch is checked against.
  */
 
+import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import {
   QUESTIONNAIRE_MAX_ROUNDS,
   type QuestionnaireAnswer,
@@ -16,6 +17,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionStep } from '../db/schema-questions.js';
+import { dataPolicyOf } from '../lib/data-egress.js';
 
 export type Executor = typeof db | Tx;
 export type BatchRow = typeof questionnaireBatches.$inferSelect;
@@ -62,7 +64,11 @@ export function itemViewOf(row: ItemRow): QuestionnaireItemView {
   };
 }
 
-export function batchViewOf(batch: BatchRow, rows: readonly ItemRow[]): QuestionnaireView {
+export function batchViewOf(
+  batch: BatchRow,
+  rows: readonly ItemRow[],
+  sensitiveData: SensitiveDataLevel,
+): QuestionnaireView {
   const items = [...rows]
     .sort((a, b) => (a.item as StoredItem).position - (b.item as StoredItem).position)
     .map(itemViewOf);
@@ -88,6 +94,7 @@ export function batchViewOf(batch: BatchRow, rows: readonly ItemRow[]): Question
     supersededBy: batch.supersededBy,
     messageId: batch.messageId,
     answersMessageId: batch.answersMessageId,
+    sensitiveData,
   };
 }
 
@@ -117,7 +124,7 @@ export async function itemsOf(tx: Executor, batchIds: readonly string[]): Promis
 
 export async function batchView(tx: Executor, projectId: string, id: string) {
   const batch = await batchIn(tx, projectId, id);
-  return batchViewOf(batch, await itemsOf(tx, [batch.id]));
+  return batchViewOf(batch, await itemsOf(tx, [batch.id]), await dataPolicyOf(projectId));
 }
 
 /** Every batch posted in a conversation, oldest first, as the thread renders them. */
@@ -134,10 +141,15 @@ export async function batchesOfConversation(
     tx,
     batches.map((b) => b.id),
   );
+  const projects = [...new Set(batches.map((b) => b.projectId))];
+  const levels = new Map(
+    await Promise.all(projects.map(async (p) => [p, await dataPolicyOf(p)] as const)),
+  );
   return batches.map((b) =>
     batchViewOf(
       b,
       rows.filter((r) => r.batchId === b.id),
+      levels.get(b.projectId) ?? 'off',
     ),
   );
 }

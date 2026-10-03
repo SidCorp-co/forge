@@ -26,6 +26,7 @@ import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionOrigin, type QuestionStep } from '../db/schema-questions.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { effectiveProjectRole } from '../lib/authz.js';
+import { dataPolicyOf, storedAnswers } from '../lib/data-egress.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import {
   type BatchRow,
@@ -340,6 +341,7 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
   const who = submitterRefusal({ ...input.actor, role: access?.role ?? null }, input.projectId);
   if (who) return { ok: false, refusals: [who] };
   const skip = input.skip === true;
+  const answers = storedAnswers(await dataPolicyOf(input.projectId), input.answers);
   let conversationId = '';
   let messageId: string | null = null;
   const refused = await inTx(async (tx) => {
@@ -347,7 +349,7 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
     conversationId = batch.conversationId;
     const state = submitStateRefusal(batch, skip);
     if (state) return [state];
-    if (skip && input.answers.length > 0) {
+    if (skip && answers.length > 0) {
       return [
         {
           code: 'QUESTIONNAIRE_ANSWER_INVALID',
@@ -364,7 +366,7 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
         { item: r.item as StoredItem, open: r.status === 'open', row: r },
       ]),
     );
-    const refusals = answerRefusals(byId, input.answers, skip);
+    const refusals = answerRefusals(byId, answers, skip);
     if (refusals.length) return refusals;
     const now = new Date();
     if (skip) {
@@ -377,7 +379,7 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
     }
     const at = now.toISOString();
     const given = new Map<string, Omit<QuestionnaireAnswer, 'itemId'>>();
-    for (const a of input.answers) {
+    for (const a of answers) {
       const entry = byId.get(a.itemId);
       if (!entry) continue;
       const { itemId: _id, ...answer } = a;

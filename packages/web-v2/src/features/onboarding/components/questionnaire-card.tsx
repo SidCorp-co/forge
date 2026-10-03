@@ -5,6 +5,7 @@
 // room; which thread it sits in decides nothing here. Once sent it collapses into the person's
 // answers message (QuestionnaireSummary); a skipped batch folds to one line that can still be answered.
 
+import { scrubsOnWrite } from "@forge/contracts/data-policy";
 import {
   QUESTIONNAIRE_GROUP_LABELS,
   QUESTIONNAIRE_GROUPS,
@@ -249,6 +250,13 @@ export function QuestionnaireCard({
           </HoverNote>
         </span>
       </div>
+      {/* cm:why on a redact or no_egress project the answers reach the agent (scrubbed): the owner's
+          2026-10-04 ruling holds them to product information, and the card says so where they are typed */}
+      {scrubsOnWrite(batch.sensitiveData) && (
+        <p data-testid="questionnaire-data-warning" className="border-t border-line-subtle py-1.5 pl-[11px] pr-3 text-[11.5px] text-muted">
+          Answers are product information. Do not include patient data.
+        </p>
+      )}
       {QUESTIONNAIRE_GROUPS.map((g) => {
         const mine = open.filter((i) => i.group === g);
         if (mine.length === 0) return null;
