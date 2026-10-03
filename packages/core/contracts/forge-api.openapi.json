@@ -22265,6 +22265,9 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "adoptPlan": {
+                    "type": "boolean"
+                  },
                   "issue": {
                     "maxLength": 200,
                     "minLength": 1,
