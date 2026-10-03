@@ -69,6 +69,7 @@ const inputSchema = z
     /** edit / propose / accept / return / agree: the revision acted on. */
     revision: z.number().int().min(1).optional(),
     issue: z.string().trim().min(1).max(200).optional(),
+    adoptPlan: z.boolean().optional(),
     workflowId: z.uuid().optional(),
   })
   .strict();
@@ -111,6 +112,8 @@ const DESCRIPTION =
   'and agree are a person’s acts: an agent is refused REQUIREMENT_SIGNOFF_FORBIDDEN. ' +
   'link_issue: { requirement, issue } once the requirement is agreed (REQUIREMENT_NOT_AGREED); the issue’s plan ' +
   'then records the revision it was written against, and forge_issues get shows `requirement.changedSincePlan`. ' +
+  'A plan written before the link reads changed-since-plan unless a person passes adoptPlan: true, attesting it ' +
+  'already satisfies the current revision (REQUIREMENT_NO_PLAN_TO_ADOPT when the issue has no plan). ' +
   'link_workflow: { requirement, workflowId } names a design the next agree pins. ' +
   'get: revisions with their criteria, baselines with pins, linked designs and issues, and the delivery phase ' +
   '(agreed | in_delivery | delivered), computed on read.';
@@ -200,7 +203,13 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         }),
       );
     case 'link_issue':
-      return settle(await linkIssue({ ...on(), issue: need(input, 'issue') }));
+      return settle(
+        await linkIssue({
+          ...on(),
+          issue: need(input, 'issue'),
+          adoptPlan: input.adoptPlan === true,
+        }),
+      );
     case 'unlink_issue':
       return settle(await unlinkIssue({ ...on(), issue: need(input, 'issue') }));
     case 'link_workflow':
