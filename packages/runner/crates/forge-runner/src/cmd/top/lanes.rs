@@ -2,10 +2,12 @@
 //! between two of core's readings.
 //!
 //! The counts are core's `buckets.byStatus` (`issues/search.ts:countBuckets`),
-//! keyed by kernel status. A lane is a stage an operator reads at a glance:
-//! MOV is being worked, HAND is done and waiting on the next hand, QUE is
-//! admitted and not started, BLK rests on a person or a pause, DRF is parked
-//! before admission. `closed` and `dropped` are in no lane.
+//! keyed by kernel status — the ten of workflow `issue-lifecycle` (ISS-54),
+//! where a run's progress is its step and never a status. A lane is a stage an
+//! operator reads at a glance: MOV is being worked, HAND is judged and waiting
+//! on the release, QUE is admitted and not started, BLK rests on a person, a
+//! pause or a rejection, DRF is parked before admission. `closed` and
+//! `dropped` are in no lane.
 
 use std::collections::BTreeMap;
 
@@ -15,28 +17,21 @@ use super::source::Read;
 pub type Counts = BTreeMap<String, u64>;
 
 pub const LANES: [(&str, &[&str]); 5] = [
-    ("MOV", &["in_progress", "testing", "releasing"]),
-    ("HAND", &["developed", "tested", "awaiting_release"]),
-    ("QUE", &["open", "confirmed", "clarified", "approved"]),
-    ("BLK", &["needs_info", "waiting", "on_hold", "reopen"]),
+    ("MOV", &["in_progress"]),
+    ("HAND", &["awaiting_release"]),
+    ("QUE", &["open", "approved"]),
+    ("BLK", &["needs_info", "on_hold", "reopen"]),
     ("DRF", &["draft"]),
 ];
 
 /// The label CHANGE writes for each status, in the order it writes them: the
 /// lanes' statuses first, lane by lane, then the two terminal ones.
-pub const LABELS: [(&str, &str); 17] = [
+pub const LABELS: [(&str, &str); 10] = [
     ("in_progress", "prog"),
-    ("testing", "test"),
-    ("releasing", "rlsg"),
-    ("developed", "dev"),
-    ("tested", "tstd"),
     ("awaiting_release", "await"),
     ("open", "open"),
-    ("confirmed", "conf"),
-    ("clarified", "clar"),
     ("approved", "appr"),
     ("needs_info", "info"),
-    ("waiting", "wait"),
     ("on_hold", "hold"),
     ("reopen", "reop"),
     ("draft", "drft"),
@@ -160,26 +155,25 @@ mod tests {
     fn each_lane_sums_its_own_statuses() {
         let c = counts(&[
             ("in_progress", 1),
-            ("testing", 2),
-            ("releasing", 4),
-            ("developed", 8),
-            ("tested", 16),
-            ("awaiting_release", 32),
-            ("open", 64),
-            ("confirmed", 128),
-            ("clarified", 256),
-            ("approved", 512),
-            ("needs_info", 1024),
-            ("waiting", 2048),
-            ("on_hold", 4096),
-            ("reopen", 8192),
-            ("draft", 16384),
+            ("awaiting_release", 2),
+            ("open", 4),
+            ("approved", 8),
+            ("needs_info", 16),
+            ("on_hold", 32),
+            ("reopen", 64),
+            ("draft", 128),
             ("closed", 1 << 20),
             ("dropped", 1 << 21),
         ]);
-        assert_eq!(sums(&c), [7, 56, 960, 15360, 16384]);
-        assert_eq!(live(&c), 7 + 56 + 960 + 15360);
+        assert_eq!(sums(&c), [1, 2, 12, 112, 128]);
+        assert_eq!(live(&c), 1 + 2 + 12 + 112);
         assert!(outside(&c).is_empty());
+        // A status ISS-54 retired, still counted by an older core, is shown by
+        // name rather than summed into a lane it no longer belongs to.
+        assert_eq!(
+            outside(&counts(&[("developed", 2)])),
+            vec![("developed", 2)]
+        );
         assert_eq!(
             outside(&counts(&[("parked_by_owner", 3), ("open", 1)])),
             vec![("parked_by_owner", 3)]

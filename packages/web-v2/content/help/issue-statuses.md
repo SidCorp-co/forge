@@ -10,23 +10,22 @@ audience: user
 Every issue carries one status. The status answers a single question — **who holds
 this work right now** — and from that follows what, if anything, you have to do.
 
-There are only three answers, and the tabs on the Issues list are named after
-them: the work is **with an agent**, it **needs you**, or it is **finished**.
+There are only three answers: the work is **with an agent**, it **needs you**, or it
+is **finished**. The Issues list's **Closed** tab holds the finished ones; **Open**
+holds the other two.
 
 ## The short version
 
 | Status | Who holds it | What you do |
 |---|---|---|
 | **Draft** | you | Nothing is running. Open it when you are ready to start it. |
-| **Open** | an agent | Nothing. It has been picked up. |
-| **In progress** | an agent | Nothing. |
-| **Developed**, **Testing** | an agent | Nothing. |
-| **Tested** | **you** | Review it for release. It passed its checks and has not been released. |
-| **Releasing** | an agent | Nothing. A release carrying it is running. It is done only once it reads **Closed**. |
-| **Needs info** | **you** | **Answer the question.** The work restarts by itself once you do. |
+| **Open** | an agent | Nothing. An agent picks it up. |
+| **In progress** | an agent | Nothing. The status names the step the agent is at — *In progress · Plan*, *In progress · Build*, *In progress · Test*. |
+| **Approved** | an agent | Nothing. Its plan is agreed, and the next run goes straight to building it. |
+| **Needs info** | **you** | **Answer the question**, make the decision or supply what it asks for. It then resumes where it stopped. |
 | **On hold** | **you** | **Resume it.** Nothing moves until you do — this is a brake, not a question. |
 | **Awaiting release** | **you** | **Release it** with **Release now**, or let the next scheduled release take it — the issue page says which. |
-| **Reopened** | **you** | Move it on. Nothing picks a reopened issue up on its own. |
+| **Reopened** | an agent | Nothing. It was sent back with a reason, and an agent takes it up again. |
 | **Closed** | nobody | Done — see [Tell when an issue is done](?path=what-done-means). |
 | **Dropped** | nobody | Decided against. It has no way back — file a new issue instead. |
 
@@ -36,15 +35,16 @@ them: the work is **with an agent**, it **needs you**, or it is **finished**.
 flowchart LR
   draft[Draft]:::you --> open[Open]:::bot
   open --> prog[In progress]:::bot
-  prog --> dev[Developed]:::bot
-  dev --> test[Testing]:::bot
-  test --> gate[Awaiting release]:::you
+  prog --> appr[Approved]:::bot
+  appr --> prog
+  prog --> gate[Awaiting release]:::you
   gate --> closed[Closed]:::over
   prog -.-> info[Needs info]:::you
   info -.answer.-> prog
   prog -.-> hold[On hold]:::you
   hold -.resume.-> prog
-  closed -.-> re[Reopened]:::you
+  gate -.-> re[Reopened]:::bot
+  closed -.-> re
   re --> prog
   open -.-> drop[Dropped]:::over
 
@@ -56,27 +56,29 @@ flowchart LR
 Amber is yours. Blue is the agent's. Grey is over.
 
 The dotted lines are the ones worth knowing: an issue can stop and wait at almost
-any point, and it goes back to where it left rather than starting again.
+any point, and it goes back to exactly the status it left rather than starting
+again.
 
 ## The three that catch people out
 
 **Needs info and On hold look alike and behave in opposite ways.**
-*Needs info* means somebody is asking you something — answer it and the work picks
-itself back up. *On hold* means the work was deliberately stopped; answering
-nothing restarts it, because there is no question. You resume it by hand.
+*Needs info* means somebody is asking you something — a question, a decision, or
+something only you can supply — and once you have given it, the issue resumes where
+it stopped. *On hold* means the work was deliberately stopped; there is no question
+to answer. You resume it by hand, and it goes back to the status it was paused from.
 
 An issue also lands on hold **whenever a run is cancelled**. That is on purpose:
 it parks somewhere nothing will pick up, so a cancel actually stops the work
 instead of a fresh run starting seconds later.
 
-**Awaiting release is not finished.** The work is built and verified and is
-waiting to be released — by a person choosing **Release now**, or by the next
-scheduled release, whichever the issue page names. It sits under *Needs you* on the
-Issues list for that reason — counting it as done is how a gate stops being
-noticed.
+**Awaiting release is not finished.** The work is built and every check passed, and
+it is waiting to be released — by a person choosing **Release now**, or by the next
+scheduled release, whichever the issue page names. It stays under the **Open** tab
+for that reason — counting it as done is how a gate stops being noticed.
 
-**Reopened does not restart anything by itself.** Reopening an issue puts it back
-in your hands, not an agent's. Move it on when you want the work to resume.
+**In progress is one status, whatever step it is at.** Planning, building and
+testing are steps of a single run, shown after the status, not statuses of their
+own. An issue that reads *In progress · Test* is still with the agent.
 
 ## Dropped is final
 
@@ -109,10 +111,11 @@ discarded out from under you.
 
 ## Verify it worked
 
-- Open a project's Issues list. Each tab carries a count, and **Needs you** is the
-  one that wants your attention.
-- Open an issue at *Needs info*: it shows the question and a box to answer it.
-- Open an issue at *On hold*: it shows a resume action and no question.
+- Open a project's Issues list. Each tab carries a count; the issues that want you
+  read **Needs info**, **On hold** or **Awaiting release**.
+- Open an issue at *Needs info*: it shows what it is waiting for and a way to answer.
+- Open an issue at *On hold*: it shows **Resume at** the status it was paused from,
+  and no question.
 
 ## Troubleshooting
 

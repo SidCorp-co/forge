@@ -27,7 +27,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 import { declareProductionDocument } from '../helpers/production.js';
-import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { AT_RELEASE, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 /** The identity the issues seeded here record as serving them. */
 const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
@@ -178,7 +178,7 @@ describe('release sweep E2E (ISS-1117)', () => {
     expect(result.issuesExcluded).toBe(1);
 
     const earned = await stored(earnedId);
-    expect(earned.status).toBe('releasing');
+    expect(earned).toMatchObject(AT_RELEASE);
     expect(earned.claim).not.toBeNull();
 
     const unearned = await stored(unearnedId);
@@ -208,7 +208,7 @@ describe('release sweep E2E (ISS-1117)', () => {
     const result = await sweepAutomaticReleases();
 
     expect(result.issuesCut).toBe(1);
-    expect((await stored(id)).status).toBe('releasing');
+    expect(await stored(id)).toMatchObject(AT_RELEASE);
     expect(await holdOf(id)).toBeNull();
   }, 30_000);
 

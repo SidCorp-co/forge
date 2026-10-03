@@ -32,18 +32,37 @@ function park(over: Partial<IssuePark> = {}): IssuePark {
 }
 
 describe("parkMenuItems — where the ordinary map stays the whole answer", () => {
-  it("leaves a working rung alone while its park is being read, or reads nobody owes it", () => {
+  it("leaves a working status alone while its park is being read, or reads nobody owes it", () => {
     for (const reading of [{ state: "loading" as const }, { state: "error" as const }, { state: "ready" as const, park: null }]) {
       expect(
-        parkMenuItems({ status: "testing", reading, exits: undefined, ordinary, actions: actions() }),
+        parkMenuItems({ status: "in_progress", reading, exits: undefined, ordinary, actions: actions() }),
       ).toBeNull();
     }
   });
 
-  it("disables Move anyway where the map offers nothing from this rung", () => {
+  it("leaves on_hold to its own exits: a deliberate pause owes nobody an answer", () => {
+    for (const reading of [{ state: "loading" as const }, { state: "error" as const }, { state: "ready" as const, park: null }]) {
+      expect(
+        parkMenuItems({ status: "on_hold", reading, exits: undefined, ordinary, actions: actions() }),
+      ).toBeNull();
+    }
+  });
+
+  it("says needs_info's park is being read rather than offering a resume it cannot back", () => {
     const items = parkMenuItems({
-      status: "waiting",
-      reading: { state: "ready", park: park({ status: "waiting" }) },
+      status: "needs_info",
+      reading: { state: "loading" },
+      exits: undefined,
+      ordinary,
+      actions: actions(),
+    });
+    expect(items?.[0]).toMatchObject({ label: PARK_LOADING_LABEL, disabled: true });
+  });
+
+  it("disables Move anyway where the map offers nothing from this status", () => {
+    const items = parkMenuItems({
+      status: "needs_info",
+      reading: { state: "ready", park: park() },
       exits: {} as never,
       ordinary: [],
       actions: actions(),
@@ -53,8 +72,8 @@ describe("parkMenuItems — where the ordinary map stays the whole answer", () =
 });
 
 describe("what counts as a question to answer", () => {
-  it("is an open question row, whatever the rung", () => {
-    expect(parkAsksAQuestion(park({ status: "waiting", openQuestionIds: ["q1"] }))).toBe(true);
+  it("is an open question row, whatever the status", () => {
+    expect(parkAsksAQuestion(park({ shape: "question", status: "in_progress", openQuestionIds: ["q1"] }))).toBe(true);
     expect(threadQuestionOf(park({ openQuestionIds: ["q1"], reason: "asked" }))).toBeNull();
   });
 
@@ -69,7 +88,7 @@ describe("what counts as a question to answer", () => {
       threadQuestionOf(
         park({
           reason: "Should the export keep the legacy column order?",
-          record: { commentId: "c", kind: "question", why: "the export order is not stated", postedAt: "x" },
+          record: { commentId: "c", eventId: null, kind: "question", why: "the export order is not stated", postedAt: "x" },
           readings: ["keep -> the legacy order stays", "B"],
         }),
       ),
@@ -83,7 +102,7 @@ describe("what counts as a question to answer", () => {
       answer: null,
     });
     expect(
-      threadQuestionOf(park({ record: { commentId: "c", kind: "question", why: "Pick one", postedAt: "x" } }))
+      threadQuestionOf(park({ record: { commentId: "c", eventId: null, kind: "question", why: "Pick one", postedAt: "x" } }))
         ?.prompt,
     ).toBe("Pick one");
   });
@@ -104,11 +123,11 @@ describe("what counts as a question to answer", () => {
         state: "ready",
         park: park({
           reason: "Which tenant?",
-          resume: { at: "in_progress", recordId: "r" },
+          resume: { at: "in_progress", recordId: null },
           answer: { commentId: "a1", postedAt: "2026-09-30T00:00:00.000Z", text: "tenant B" },
         }),
       },
-      exits: { needs_info: ["open", "in_progress", "on_hold", "dropped"] } as never,
+      exits: { needs_info: ["in_progress", "on_hold", "dropped"] } as never,
       ordinary: [],
       actions: actions(),
     });
@@ -118,16 +137,16 @@ describe("what counts as a question to answer", () => {
     expect(labels).not.toContain("The question is not needed any more…");
   });
 
-  it("is nothing on a waiting park with no row, nor a needs_info park that said nothing", () => {
-    expect(parkAsksAQuestion(park({ status: "waiting", reason: "look at the screen" }))).toBe(false);
+  it("is nothing on a working status's reading with no row, nor a needs_info park that said nothing", () => {
+    expect(parkAsksAQuestion(park({ shape: "question", status: "in_progress", reason: "look at the screen" }))).toBe(false);
     expect(parkAsksAQuestion(park())).toBe(false);
   });
 });
 
 describe("parkQueryKey", () => {
   it("sits under the issue's comments, so a new comment rereads the park, and moves with the status", () => {
-    expect(parkQueryKey("i1", "waiting")).toEqual(["comments", "i1", "park", "waiting"]);
-    expect(parkQueryKey("i1", "waiting")).not.toEqual(parkQueryKey("i1", "developed"));
+    expect(parkQueryKey("i1", "needs_info")).toEqual(["comments", "i1", "park", "needs_info"]);
+    expect(parkQueryKey("i1", "needs_info")).not.toEqual(parkQueryKey("i1", "in_progress"));
   });
 });
 

@@ -1,4 +1,5 @@
 import { configure } from '@testing-library/dom';
+import { afterEach } from 'vitest';
 
 configure({ asyncUtilTimeout: 10_000 });
 
@@ -15,4 +16,13 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
       removeListener: () => {},
       dispatchEvent: () => false,
     }) as MediaQueryList;
+}
+
+// cm:why sonner keeps its toasts in one module-level store and replays every undismissed one to the
+// next Toaster that mounts, so a toast raised in one test was found by the next test's queries
+if (typeof window !== 'undefined') {
+  afterEach(async () => {
+    const { toast } = await import('sonner');
+    toast.dismiss();
+  });
 }

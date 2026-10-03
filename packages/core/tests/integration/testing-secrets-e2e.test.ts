@@ -81,8 +81,11 @@ async function seedJob(
   const issueId = randomUUID();
   await harness.db.execute(sql`
     INSERT INTO issues (id, project_id, title, status, created_by_id, merged_at, merged_target)
-    VALUES (${issueId}, ${projectId}, 'testing-secrets probe', 'developed', ${ownerId},
+    VALUES (${issueId}, ${projectId}, 'testing-secrets probe', 'in_progress', ${ownerId},
             ${landedOn ? sql`now()` : null}, ${landedOn})
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO issue_work_state (issue_id, step, step_started_at) VALUES (${issueId}, 'test', now())
   `);
   const runId = randomUUID();
   await harness.db.execute(sql`

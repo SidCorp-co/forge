@@ -13,9 +13,8 @@ import { resolveNotifications } from './auto-resolve.js';
 import { emitNotification } from './emit.js';
 
 const NOTIFY_ON_STATUS: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
-  'tested',
+  'awaiting_release',
   'reopen',
-  'waiting',
   'needs_info',
   'closed',
 ]);
@@ -25,9 +24,8 @@ function severityForStatus(to: IssueStatus): NotificationSeverity {
   switch (to) {
     case 'reopen':
       return 'error';
-    case 'waiting':
     case 'needs_info':
-    case 'tested':
+    case 'awaiting_release':
       return 'warning';
     case 'closed':
       return 'success';
@@ -63,14 +61,12 @@ async function alreadyNotifiedTransition(dedupeKey: string): Promise<boolean> {
 function bodyForStatus(to: IssueStatus, reason?: string): string {
   if (reason && reason.trim().length > 0) return reason.trim();
   switch (to) {
-    case 'tested':
-      return 'Ready for your release review.';
+    case 'awaiting_release':
+      return 'Every criterion passed — ready for your release review.';
     case 'reopen':
       return 'Reopened — needs another look.';
-    case 'waiting':
-      return 'Parked for your review.';
     case 'needs_info':
-      return 'The driver asked a question — it cannot continue until you answer.';
+      return 'Stopped on you — it cannot continue until you answer.';
     case 'closed':
       return 'Closed.';
     default:
@@ -93,7 +89,7 @@ function bodyForStatus(to: IssueStatus, reason?: string): string {
  */
 export function registerTransitionNotifications(bus: HooksBus): void {
   bus.on('transition', async (p) => {
-    if (p.to !== 'waiting') {
+    if (p.to !== 'needs_info') {
       await resolveNotifications(strandedResolutionKey(p.issueId));
     }
 

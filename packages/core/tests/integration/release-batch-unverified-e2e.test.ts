@@ -16,7 +16,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 import { type DeclaredProbes, declareProductionDocument } from '../helpers/production.js';
-import { PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { AT_RELEASE, PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 const RELEASED = 'b853f813d0e4b2a1c9f8e7d6c5b4a39281706f5e';
 const ACCOUNT =
@@ -129,7 +129,7 @@ describe('a project with no verify probe releases unverified', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.verification).toBe('unverified');
-    expect((await fx.stored(a)).status).toBe('releasing');
+    expect(await fx.stored(a)).toMatchObject(AT_RELEASE);
     expect((await runMetadata(String(res.body.runId))).verification).toBe('unverified');
 
     // The open batch says so too, where `live: null` would otherwise stand unexplained.
@@ -363,7 +363,7 @@ describe('a batch whose production came to declare only artifact probes after it
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('RELEASE_PROBES_UNREADABLE');
-    expect((await fx.stored(a)).status).toBe('releasing');
+    expect(await fx.stored(a)).toMatchObject(AT_RELEASE);
     expect(await fx.runStatus(runId)).toBe('running');
   });
 });

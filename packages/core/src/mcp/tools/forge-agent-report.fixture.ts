@@ -1,4 +1,4 @@
-// The drizzle chain mock the two `forge_feedback` suites share, plus the ids and the row-queueing
+// The drizzle chain mock the `forge_agent_report` suites share, plus the ids and the row-queueing
 // helpers they both file against. It is a factory and not a module of singletons so each suite
 // owns its own mocks: vitest isolates files, not module state within a worker.
 
@@ -24,7 +24,7 @@ export function makeCtx(projectSlug = PROJECT_SLUG) {
   return { principal: jobPrincipal, projectSlug };
 }
 
-export interface FeedbackDbMocks {
+export interface AgentReportDbMocks {
   db: { select: Mock; selectDistinct: Mock; insert: Mock; update: Mock };
   selectLimit: Mock;
   selectOrderBy: Mock;
@@ -45,7 +45,7 @@ export interface FeedbackDbMocks {
   mockVisibleProjects: (ids: string[]) => void;
 }
 
-export function makeFeedbackDbMocks(): FeedbackDbMocks {
+export function makeAgentReportDbMocks(): AgentReportDbMocks {
   const selectLimit = vi.fn();
   const selectOrderBy = vi.fn();
   const selectWhere = vi.fn();

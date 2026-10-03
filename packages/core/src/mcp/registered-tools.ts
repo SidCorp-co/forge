@@ -7,6 +7,7 @@
  */
 
 export const REGISTERED_TOOLS = [
+  'forge_agent_report',
   'forge_agent_sessions.get',
   'forge_agent_sessions.list',
   'forge_channel',
@@ -20,6 +21,7 @@ export const REGISTERED_TOOLS = [
   'forge_google_sheets',
   'forge_guide',
   'forge_health',
+  'forge_issue_events',
   'forge_issues',
   'forge_jobs.cancel',
   'forge_jobs.events',

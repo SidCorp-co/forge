@@ -55,13 +55,25 @@ const STRANGER = '00000000-0000-4000-8000-000000000000';
 
 const seen = new Set<string>();
 
+/** A check's refusals, each code recorded for the vocabulary test at the end. */
+function recorded(out: ConfigRefusal[]): ConfigRefusal[] {
+  for (const r of out) seen.add(r.code);
+  return out;
+}
+const checked = (doc: ProjectDocument, ctx: ProjectConfigContext) =>
+  recorded(checkProjectConfig(doc, ctx));
+
+const env = (d: ProjectDocument, n: string) => {
+  const e = d.environments[n];
+  if (!e) throw new Error(`fixture has no environment ${n}`);
+  return e;
+};
+
 function refusals(plant: (d: ProjectDocument, ctx: ProjectConfigContext) => void): ConfigRefusal[] {
   const doc = structuredClone(simProject);
   const ctx = simCtx();
   plant(doc, ctx);
-  const out = checkProjectConfig(doc, ctx);
-  for (const r of out) seen.add(r.code);
-  return out;
+  return checked(doc, ctx);
 }
 
 const pick = (out: ConfigRefusal[]) => out.map(({ code, path }) => ({ code, path }));
@@ -84,12 +96,6 @@ describe('happy', () => {
 });
 
 describe('sim_core.py plants (negative)', () => {
-  const env = (d: ProjectDocument, n: string) => {
-    const e = d.environments[n];
-    if (!e) throw new Error(`sim fixture has no environment ${n}`);
-    return e;
-  };
-
   const plants: [
     string,
     (d: ProjectDocument, c: ProjectConfigContext) => void,
@@ -305,8 +311,7 @@ describe('the rest of the pure codes', () => {
     const deny = p.permissions.development?.deny;
     if (!deny) throw new Error('sim policy has no development profile');
     deny.push('mcp__forge__forge_projects_archive', 'mcp__forge__*', 'mcp__playwright__*');
-    const out = checkPolicy(p);
-    for (const r of out) seen.add(r.code);
+    const out = recorded(checkPolicy(p));
     expect(pick(out)).toEqual([
       { code: 'TOOL_PATTERN_INVALID', path: `/permissions/development/deny/${deny.length - 3}` },
     ]);
@@ -380,65 +385,45 @@ describe('boundaries', () => {
 
   it('an environment name holding / is escaped in the pointer', () => {
     const doc = structuredClone(simProject);
-    const e = doc.environments.dev;
-    if (!e) throw new Error('sim fixture has no dev');
+    const e = env(doc, 'dev');
     doc.environments = { 'a/b': { ...e, testing: 'nope' } } as ProjectDocument['environments'];
-    const out = checkProjectConfig(doc, simCtx());
-    expect(out.map((r) => r.path)).toEqual(['/environments/a~1b/testing']);
+    expect(checked(doc, simCtx()).map((r) => r.path)).toEqual(['/environments/a~1b/testing']);
   });
 });
 
 describe('the declared store example', () => {
+  const storeBindings = ['store-source.binding.json', 'store-deploy.binding.json'].map((f) =>
+    bindingDocumentSchema.parse(raw(`examples/${f}`)),
+  );
+  const storeCtx = (): ProjectConfigContext => ({
+    bindings: new Map(storeBindings.map(factsOf)),
+    testingProfileIds: new Set(['theme-preview', 'storefront-smoke']),
+  });
+  const store = () => projectDocumentSchema.parse(raw('examples/store.project.json'));
+  const TRIGGER_REFUSED = [
+    { code: 'TRIGGER_UNSUPPORTED', path: '/environments/production/deployment/trigger' },
+  ];
+
   it('refuses Forge deploying the storefront while Forge has no shopify deploy adapter', () => {
-    const doc = projectDocumentSchema.parse(raw('examples/store.project.json'));
-    const bindings = ['store-source.binding.json', 'store-deploy.binding.json'].map((f) =>
-      bindingDocumentSchema.parse(raw(`examples/${f}`)),
-    );
-    expect(new Set(bindings.map((b) => b.connection)).size).toBe(1);
-    const ctx: ProjectConfigContext = {
-      bindings: new Map(bindings.map(factsOf)),
-      testingProfileIds: new Set(['theme-preview', 'storefront-smoke']),
-    };
-    const out = checkProjectConfig(doc, ctx);
-    for (const r of out) seen.add(r.code);
-    expect(pick(out)).toEqual([
-      { code: 'TRIGGER_UNSUPPORTED', path: '/environments/production/deployment/trigger' },
-    ]);
+    expect(new Set(storeBindings.map((b) => b.connection)).size).toBe(1);
+    const out = checked(store(), storeCtx());
+    expect(pick(out)).toEqual(TRIGGER_REFUSED);
     expect(out[0]?.detail).toContain('no deploy adapter for shopify');
   });
 
   it('passes the storefront once production is deployed outside Forge', () => {
-    const doc = projectDocumentSchema.parse(raw('examples/store.project.json'));
-    const production = doc.environments.production;
-    if (!production) throw new Error('store example has no production');
-    production.deployment = { mode: 'external' };
-    const bindings = ['store-source.binding.json', 'store-deploy.binding.json'].map((f) =>
-      bindingDocumentSchema.parse(raw(`examples/${f}`)),
-    );
-    expect(
-      checkProjectConfig(doc, {
-        bindings: new Map(bindings.map(factsOf)),
-        testingProfileIds: new Set(['theme-preview', 'storefront-smoke']),
-      }),
-    ).toEqual([]);
+    const doc = store();
+    env(doc, 'production').deployment = { mode: 'external' };
+    expect(checked(doc, storeCtx())).toEqual([]);
   });
 
   it('refuses trigger provider through an adapter that cannot read deployment history', () => {
-    const doc = projectDocumentSchema.parse(raw('examples/store.project.json'));
-    const production = doc.environments.production;
-    if (!production || !('binding' in production.deployment))
-      throw new Error('store example has no bound production');
+    const doc = store();
+    const production = env(doc, 'production');
+    if (!('binding' in production.deployment)) throw new Error('store production is unbound');
     production.deployment = { ...production.deployment, trigger: 'provider' };
-    const bindings = ['store-source.binding.json', 'store-deploy.binding.json'].map((f) =>
-      bindingDocumentSchema.parse(raw(`examples/${f}`)),
-    );
-    const out = checkProjectConfig(doc, {
-      bindings: new Map(bindings.map(factsOf)),
-      testingProfileIds: new Set(['theme-preview', 'storefront-smoke']),
-    });
-    expect(pick(out)).toEqual([
-      { code: 'TRIGGER_UNSUPPORTED', path: '/environments/production/deployment/trigger' },
-    ]);
+    const out = checked(doc, storeCtx());
+    expect(pick(out)).toEqual(TRIGGER_REFUSED);
     expect(out[0]?.detail).toContain("cannot read shopify's deployment history");
   });
 
@@ -453,22 +438,10 @@ describe('the declared store example', () => {
   });
 
   it('refuses deploysFrom on a storefront project', () => {
-    const doc = projectDocumentSchema.parse(raw('examples/store.project.json'));
-    const preview = doc.environments.preview;
-    if (!preview) throw new Error('store example has no preview');
-    preview.deploysFrom = 'main';
-    const production = doc.environments.production;
-    if (!production) throw new Error('store example has no production');
-    production.deployment = { mode: 'external' };
-    const bindings = ['store-source.binding.json', 'store-deploy.binding.json'].map((f) =>
-      bindingDocumentSchema.parse(raw(`examples/${f}`)),
-    );
-    const out = checkProjectConfig(doc, {
-      bindings: new Map(bindings.map(factsOf)),
-      testingProfileIds: new Set(['theme-preview', 'storefront-smoke']),
-    });
-    for (const r of out) seen.add(r.code);
-    expect(pick(out)).toEqual([
+    const doc = store();
+    env(doc, 'preview').deploysFrom = 'main';
+    env(doc, 'production').deployment = { mode: 'external' };
+    expect(pick(checked(doc, storeCtx()))).toEqual([
       { code: 'DEPLOYS_FROM_NEEDS_GIT', path: '/environments/preview/deploysFrom' },
     ]);
   });
@@ -483,21 +456,16 @@ describe('an autoflow project (ISS-51)', () => {
     testingProfileIds: new Set(['flow-draft', 'flow-smoke']),
   });
   const hop = () => projectDocumentSchema.parse(raw('examples/hop.project.json'));
-  const run = (doc: ProjectDocument, ctx: ProjectConfigContext) => {
-    const out = checkProjectConfig(doc, ctx);
-    for (const r of out) seen.add(r.code);
-    return out;
-  };
 
   it('the HOP example has zero refusals against its own autoflow bindings', () => {
-    expect(run(hop(), hopCtx())).toEqual([]);
+    expect(checked(hop(), hopCtx())).toEqual([]);
   });
 
   it('BINDING_PROVIDER_MISMATCH when source.storefront names a provider its binding is not', () => {
     const doc = hop();
     if (doc.source.type !== 'storefront') throw new Error('hop example is not a storefront');
     doc.source.storefront.provider = 'epodsystem';
-    const out = run(doc, hopCtx());
+    const out = checked(doc, hopCtx());
     expect(pick(out)).toEqual([
       { code: 'BINDING_PROVIDER_MISMATCH', path: '/source/storefront/provider' },
     ]);

@@ -3,16 +3,17 @@
  * refused when the field moved.
  *
  * This runs against a real Postgres because the whole rule IS the SQL: the
- * precondition is a term in the UPDATE's own WHERE (`IS NOT DISTINCT FROM` a
- * jsonb parameter), and a fake query builder cannot tell that apart from a
- * read-then-write, which is the exact race the rule closes. The unit suite
- * (`src/issues/update-service.test.ts`) never executes a `where`.
+ * precondition is compared against the composed value (`issue_session_context()`,
+ * ISS-54: the lease lives on `issue_work_state`) read `FOR UPDATE` inside the
+ * write's own transaction, and a fake query builder cannot tell that apart from
+ * a read-then-write, which is the exact race the rule closes.
  */
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { splitSessionContext, writeSplitSessionContext } from '../../src/issues/work-state.js';
 import {
   createTestProject,
   createTestProjectMember,
@@ -81,11 +82,13 @@ describe('ISS-959 A — conditional sessionContext write', () => {
       role: 'admin',
     });
     const id = randomUUID();
+    const split = splitSessionContext(sessionContext ?? null);
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, session_context)
       VALUES (${id}, ${project.id}, ${Math.floor(Math.random() * 1_000_000)}, 'lease', 'open',
-              ${user.id}, ${sessionContext ? JSON.stringify(sessionContext) : null}::jsonb)
+              ${user.id}, ${split.rest ? JSON.stringify(split.rest) : null}::text::jsonb)
     `);
+    if (split.lease.present || split.branch) await writeSplitSessionContext(harness.db, id, split);
     const token = await mods.signUserToken(user.id);
     return { id, token };
   }
@@ -98,9 +101,10 @@ describe('ISS-959 A — conditional sessionContext write', () => {
     });
   }
 
+  /** The blob a reader is served: the column with the work state's lease composed back in. */
   async function storedContext(id: string): Promise<unknown> {
     const rows = await harness.db.execute<{ session_context: unknown }>(
-      sql`SELECT session_context FROM issues WHERE id = ${id}`,
+      sql`SELECT issue_session_context(id, session_context) AS session_context FROM issues WHERE id = ${id}`,
     );
     return (rows[0] as { session_context: unknown }).session_context;
   }

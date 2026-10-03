@@ -11,7 +11,7 @@ export const ECOSYSTEM_INBOX_GUIDE: ForgeGuide = {
   title: "Working a project's ecosystem inbox",
   summary:
     'What a channel document or an open builder run owes a master, how the box tells it, and the order to read, reply, submit, map the links this project uses and keep them true, and publish the interface and contract versions this project provides — on /mcp, with the author taken from the token.',
-  version: 4,
+  version: 5,
   body: `## Working a project's ecosystem inbox
 
 A project in an ecosystem is written to by the projects it shares that ecosystem with: a change notice
@@ -137,6 +137,14 @@ publishes and the versions of its contracts, and a person is not handed that wor
    \`CONTRACT_KIND_MISMATCH\` (not the publication's type), \`ARTIFACT_UNREADABLE\` (the source does not
    parse; the detail names the line and column), \`VERSION_BUMP_TOO_SMALL\` or \`VERSION_NOT_IN_SCHEME\`,
    \`CONTRACT_NOT_PUBLISHED\` (no such publication, or another project's).
+   A recorded version is proposed; it is current only once approved:
+   \`contract_version_decide { contract, version, decision: approve | return, reason? }\`
+   (REST: \`POST /api/projects/:id/contracts/:contract/versions/:version/decision\`). An org owner or
+   admin decides any version; with the project document's \`contracts.approver: master\` your own agent
+   may approve a non-breaking or initial one, and a breaking or unmeasured one is refused
+   \`CONTRACT_BREAKING_NEEDS_PERSON\` whatever the policy. A contract published in no ecosystem is
+   in-project: the project's own modules consume it (a \`consumes\` entry or a link naming no
+   ecosystem), and naming an ecosystem for it is refused \`SELF_CONSUMPTION\`.
 
 Only this project's own agent (member or above) or a person holding admin on it writes either; another
 project's agent is refused \`INTERFACE_WRITER_NOT_PROJECT\` for the interface and
@@ -145,7 +153,7 @@ project's agent is refused \`INTERFACE_WRITER_NOT_PROJECT\` for the interface an
 ### Issue comments
 A comment a person writes on one of this project's issues is owed a reply until an agent comments on
 that issue after it — a master's reply, or a run's. It is owed at every status but \`closed\` and
-\`dropped\`, so it reaches you on an issue at \`developed\` or \`awaiting_release\` that no admissible
+\`dropped\`, so it reaches you on an issue at \`in_progress\` or \`awaiting_release\` that no admissible
 read lists. The nudge names those issues. Read each thread (\`forge_comments action=list\`), answer
 on the issue, and move the issue when the comment asks for it. Your reply is what takes it off the
 list: a comment read and left unanswered is still owed on the next pass. An agent's own comment is

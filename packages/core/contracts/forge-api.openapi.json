@@ -637,6 +637,174 @@
         ]
       }
     },
+    "/api/agent-reports": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "projectId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "enum": [
+                "project",
+                "all"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "enum": [
+                "friction",
+                "bug",
+                "skill_gap",
+                "unclear_step",
+                "redundant_step",
+                "learning",
+                "suggestion"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "enum": [
+                "skill",
+                "prompt",
+                "tool",
+                "doc",
+                "orientation",
+                "pipeline",
+                "other"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reviewed",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "true",
+                  "type": "string"
+                },
+                {
+                  "const": "false",
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
+      }
+    },
+    "/api/agent-reports/{id}/reviewed": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "linkedIssueId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "reviewed": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "reviewed"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json"
+        ]
+      }
+    },
     "/api/agent-sessions": {
       "get": {
         "parameters": [
@@ -5487,22 +5655,15 @@
                           "status": {
                             "items": {
                               "enum": [
-                                "open",
-                                "confirmed",
-                                "clarified",
-                                "waiting",
-                                "approved",
-                                "in_progress",
-                                "developed",
-                                "testing",
-                                "tested",
-                                "awaiting_release",
-                                "releasing",
-                                "closed",
-                                "reopen",
-                                "on_hold",
-                                "needs_info",
                                 "draft",
+                                "open",
+                                "reopen",
+                                "in_progress",
+                                "approved",
+                                "needs_info",
+                                "on_hold",
+                                "awaiting_release",
+                                "closed",
                                 "dropped"
                               ],
                               "type": "string"
@@ -9724,22 +9885,15 @@
                       },
                       "status": {
                         "enum": [
-                          "open",
-                          "confirmed",
-                          "clarified",
-                          "waiting",
-                          "approved",
-                          "in_progress",
-                          "developed",
-                          "testing",
-                          "tested",
-                          "awaiting_release",
-                          "releasing",
-                          "closed",
-                          "reopen",
-                          "on_hold",
-                          "needs_info",
                           "draft",
+                          "open",
+                          "reopen",
+                          "in_progress",
+                          "approved",
+                          "needs_info",
+                          "on_hold",
+                          "awaiting_release",
+                          "closed",
                           "dropped"
                         ],
                         "type": "string"
@@ -10191,6 +10345,56 @@
                     "maxLength": 500,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "workState": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "branch": {
+                        "anyOf": [
+                          {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "headSha": {
+                        "anyOf": [
+                          {
+                            "pattern": "^[0-9a-f]{40}$",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "step": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "triage",
+                              "clarify",
+                              "plan",
+                              "build",
+                              "test",
+                              "release"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "type": "object",
+                    "x-forge-refinements": [
+                      "`workState` names no field to write"
+                    ]
                   }
                 },
                 "type": "object",
@@ -10616,6 +10820,15 @@
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "intent",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -10663,6 +10876,10 @@
                       "markdown",
                       "html"
                     ],
+                    "type": "string"
+                  },
+                  "intent": {
+                    "maxLength": 64,
                     "type": "string"
                   },
                   "parentId": {
@@ -10908,6 +11125,127 @@
         ]
       }
     },
+    "/api/issues/{id}/events": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "param",
+          "query"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "contract": {
+                    "type": "number"
+                  },
+                  "fields": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "key": {
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "maxLength": 64,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "contract",
+                  "fields"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
     "/api/issues/{id}/job-history": {
       "get": {
         "parameters": [
@@ -10987,6 +11325,14 @@
                     "pattern": "^[0-9a-f]{7,64}$",
                     "type": "string"
                   },
+                  "contracts": {
+                    "items": {
+                      "pattern": "^([a-z][a-z0-9-]{0,62})\\/([a-z][a-z0-9-]{0,62})@([A-Za-z0-9][A-Za-z0-9._+-]{0,39})$",
+                      "type": "string"
+                    },
+                    "maxItems": 20,
+                    "type": "array"
+                  },
                   "landing": {
                     "maxLength": 2000,
                     "minLength": 1,
@@ -11050,6 +11396,14 @@
                   "commit": {
                     "pattern": "^[0-9a-f]{7,64}$",
                     "type": "string"
+                  },
+                  "contracts": {
+                    "items": {
+                      "pattern": "^([a-z][a-z0-9-]{0,62})\\/([a-z][a-z0-9-]{0,62})@([A-Za-z0-9][A-Za-z0-9._+-]{0,39})$",
+                      "type": "string"
+                    },
+                    "maxItems": 20,
+                    "type": "array"
                   },
                   "landing": {
                     "maxLength": 2000,
@@ -11523,23 +11877,23 @@
                   },
                   "toStatus": {
                     "enum": [
+                      "draft",
                       "open",
+                      "reopen",
+                      "in_progress",
+                      "approved",
+                      "needs_info",
+                      "on_hold",
+                      "awaiting_release",
+                      "closed",
+                      "dropped",
                       "confirmed",
                       "clarified",
                       "waiting",
-                      "approved",
-                      "in_progress",
                       "developed",
                       "testing",
                       "tested",
-                      "awaiting_release",
-                      "releasing",
-                      "closed",
-                      "reopen",
-                      "on_hold",
-                      "needs_info",
-                      "draft",
-                      "dropped"
+                      "releasing"
                     ],
                     "type": "string"
                   },
@@ -11549,6 +11903,7 @@
                   },
                   "waitingKind": {
                     "enum": [
+                      "needs_answer",
                       "needs_decision",
                       "needs_resource"
                     ],
@@ -18300,6 +18655,128 @@
         ]
       }
     },
+    "/api/projects/{id}/contracts/{contract}/versions/{version}/artifact": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "contract",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z][a-z0-9-]{0,62}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "maxLength": 40,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/contracts/{contract}/versions/{version}/decision": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "contract",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z][a-z0-9-]{0,62}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "maxLength": 40,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "approve",
+                      "return"
+                    ],
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "decision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
     "/api/projects/{id}/devices/pairing-codes": {
       "post": {
         "parameters": [
@@ -18669,23 +19146,23 @@
             "required": false,
             "schema": {
               "enum": [
+                "draft",
                 "open",
+                "reopen",
+                "in_progress",
+                "approved",
+                "needs_info",
+                "on_hold",
+                "awaiting_release",
+                "closed",
+                "dropped",
                 "confirmed",
                 "clarified",
                 "waiting",
-                "approved",
-                "in_progress",
                 "developed",
                 "testing",
                 "tested",
-                "awaiting_release",
-                "releasing",
-                "closed",
-                "reopen",
-                "on_hold",
-                "needs_info",
-                "draft",
-                "dropped"
+                "releasing"
               ],
               "type": "string"
             }
@@ -19077,22 +19554,15 @@
                       "statuses": {
                         "items": {
                           "enum": [
-                            "open",
-                            "confirmed",
-                            "clarified",
-                            "waiting",
-                            "approved",
-                            "in_progress",
-                            "developed",
-                            "testing",
-                            "tested",
-                            "awaiting_release",
-                            "releasing",
-                            "closed",
-                            "reopen",
-                            "on_hold",
-                            "needs_info",
                             "draft",
+                            "open",
+                            "reopen",
+                            "in_progress",
+                            "approved",
+                            "needs_info",
+                            "on_hold",
+                            "awaiting_release",
+                            "closed",
                             "dropped"
                           ],
                           "type": "string"
@@ -19199,46 +19669,46 @@
               "anyOf": [
                 {
                   "enum": [
+                    "draft",
                     "open",
+                    "reopen",
+                    "in_progress",
+                    "approved",
+                    "needs_info",
+                    "on_hold",
+                    "awaiting_release",
+                    "closed",
+                    "dropped",
                     "confirmed",
                     "clarified",
                     "waiting",
-                    "approved",
-                    "in_progress",
                     "developed",
                     "testing",
                     "tested",
-                    "awaiting_release",
-                    "releasing",
-                    "closed",
-                    "reopen",
-                    "on_hold",
-                    "needs_info",
-                    "draft",
-                    "dropped"
+                    "releasing"
                   ],
                   "type": "string"
                 },
                 {
                   "items": {
                     "enum": [
+                      "draft",
                       "open",
+                      "reopen",
+                      "in_progress",
+                      "approved",
+                      "needs_info",
+                      "on_hold",
+                      "awaiting_release",
+                      "closed",
+                      "dropped",
                       "confirmed",
                       "clarified",
                       "waiting",
-                      "approved",
-                      "in_progress",
                       "developed",
                       "testing",
                       "tested",
-                      "awaiting_release",
-                      "releasing",
-                      "closed",
-                      "reopen",
-                      "on_hold",
-                      "needs_info",
-                      "draft",
-                      "dropped"
+                      "releasing"
                     ],
                     "type": "string"
                   },
@@ -19255,46 +19725,46 @@
               "anyOf": [
                 {
                   "enum": [
+                    "draft",
                     "open",
+                    "reopen",
+                    "in_progress",
+                    "approved",
+                    "needs_info",
+                    "on_hold",
+                    "awaiting_release",
+                    "closed",
+                    "dropped",
                     "confirmed",
                     "clarified",
                     "waiting",
-                    "approved",
-                    "in_progress",
                     "developed",
                     "testing",
                     "tested",
-                    "awaiting_release",
-                    "releasing",
-                    "closed",
-                    "reopen",
-                    "on_hold",
-                    "needs_info",
-                    "draft",
-                    "dropped"
+                    "releasing"
                   ],
                   "type": "string"
                 },
                 {
                   "items": {
                     "enum": [
+                      "draft",
                       "open",
+                      "reopen",
+                      "in_progress",
+                      "approved",
+                      "needs_info",
+                      "on_hold",
+                      "awaiting_release",
+                      "closed",
+                      "dropped",
                       "confirmed",
                       "clarified",
                       "waiting",
-                      "approved",
-                      "in_progress",
                       "developed",
                       "testing",
                       "tested",
-                      "awaiting_release",
-                      "releasing",
-                      "closed",
-                      "reopen",
-                      "on_hold",
-                      "needs_info",
-                      "draft",
-                      "dropped"
+                      "releasing"
                     ],
                     "type": "string"
                   },
@@ -19615,22 +20085,15 @@
                       "statuses": {
                         "items": {
                           "enum": [
-                            "open",
-                            "confirmed",
-                            "clarified",
-                            "waiting",
-                            "approved",
-                            "in_progress",
-                            "developed",
-                            "testing",
-                            "tested",
-                            "awaiting_release",
-                            "releasing",
-                            "closed",
-                            "reopen",
-                            "on_hold",
-                            "needs_info",
                             "draft",
+                            "open",
+                            "reopen",
+                            "in_progress",
+                            "approved",
+                            "needs_info",
+                            "on_hold",
+                            "awaiting_release",
+                            "closed",
                             "dropped"
                           ],
                           "type": "string"
@@ -26808,22 +27271,15 @@
             "required": true,
             "schema": {
               "enum": [
-                "open",
-                "confirmed",
-                "clarified",
-                "waiting",
-                "approved",
-                "in_progress",
-                "developed",
-                "testing",
-                "tested",
-                "awaiting_release",
-                "releasing",
-                "closed",
-                "reopen",
-                "on_hold",
-                "needs_info",
                 "draft",
+                "open",
+                "reopen",
+                "in_progress",
+                "approved",
+                "needs_info",
+                "on_hold",
+                "awaiting_release",
+                "closed",
                 "dropped"
               ],
               "type": "string"
@@ -26893,27 +27349,20 @@
                   "stages": {
                     "items": {
                       "enum": [
-                        "open",
-                        "confirmed",
-                        "clarified",
-                        "waiting",
-                        "approved",
-                        "in_progress",
-                        "developed",
-                        "testing",
-                        "tested",
-                        "awaiting_release",
-                        "releasing",
-                        "closed",
-                        "reopen",
-                        "on_hold",
-                        "needs_info",
                         "draft",
+                        "open",
+                        "reopen",
+                        "in_progress",
+                        "approved",
+                        "needs_info",
+                        "on_hold",
+                        "awaiting_release",
+                        "closed",
                         "dropped"
                       ],
                       "type": "string"
                     },
-                    "maxItems": 17,
+                    "maxItems": 10,
                     "type": "array"
                   },
                   "tier": {
@@ -27150,22 +27599,15 @@
                     "anyOf": [
                       {
                         "enum": [
-                          "open",
-                          "confirmed",
-                          "clarified",
-                          "waiting",
-                          "approved",
-                          "in_progress",
-                          "developed",
-                          "testing",
-                          "tested",
-                          "awaiting_release",
-                          "releasing",
-                          "closed",
-                          "reopen",
-                          "on_hold",
-                          "needs_info",
                           "draft",
+                          "open",
+                          "reopen",
+                          "in_progress",
+                          "approved",
+                          "needs_info",
+                          "on_hold",
+                          "awaiting_release",
+                          "closed",
                           "dropped"
                         ],
                         "type": "string"

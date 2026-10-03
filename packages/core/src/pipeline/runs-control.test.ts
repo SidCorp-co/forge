@@ -200,7 +200,7 @@ describe('cancelPipelineRun', () => {
       (c) => (c[1] as { event: string }).event === 'job.cancel',
     );
     expect(kills).toHaveLength(1);
-    expect((kills[0]?.[1] as { data: { jobId: string } }).data.jobId).toBe('job-1');
+    expect((kills[0]?.[1] as { data?: { jobId?: string } } | undefined)?.data?.jobId).toBe('job-1');
   });
 
   it('is idempotent on an already-cancelled run', async () => {
@@ -251,12 +251,15 @@ describe('cancelPipelineRun', () => {
       { id: string; status: string },
       string,
       { type: string; id: string; ownerId?: string },
-      { skip?: boolean },
+      { reason?: string; transitionReason?: string; skip?: boolean },
     ];
     expect(issueArg).toMatchObject({ id: ISSUE_ID, status: 'in_progress' });
     expect(toStatus).toBe('on_hold');
     expect(actorArg).toMatchObject({ type: 'device', id: 'owner-1', ownerId: 'owner-1' });
-    expect(opts).toMatchObject({ skip: true });
+    // on_hold takes a reason (transition-guards); the park carries one rather than skipping guards.
+    expect(opts).toMatchObject({ reason: 'run_cancelled' });
+    expect(opts.transitionReason).toMatch(/cancelled/);
+    expect(opts).not.toHaveProperty('skip');
   });
 
   it('attributes the park to the human who cancelled, not to the project creator', async () => {

@@ -113,7 +113,8 @@ CREATE INDEX "requirements_project_status_idx" ON "requirements" USING btree ("p
 ALTER TABLE "issues" ADD CONSTRAINT "issues_requirement_id_requirements_id_fk" FOREIGN KEY ("requirement_id") REFERENCES "public"."requirements"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "issues" ADD CONSTRAINT "issues_planned_revision_fk" FOREIGN KEY ("requirement_id","planned_revision") REFERENCES "public"."requirement_revisions"("requirement_id","revision") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "issues_requirement_idx" ON "issues" USING btree ("requirement_id") WHERE requirement_id IS NOT NULL;--> statement-breakpoint
-ALTER TABLE "issues" ADD CONSTRAINT "issues_planned_revision_chk" CHECK ("issues"."planned_revision" IS NULL OR "issues"."requirement_id" IS NOT NULL);--> statement-breakpoint
+ALTER TABLE "issues" ADD CONSTRAINT "issues_planned_revision_chk" CHECK ("issues"."planned_revision" IS NULL OR "issues"."requirement_id" IS NOT NULL);
+--> statement-breakpoint
 CREATE FUNCTION "requirement_revision_guard"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN

@@ -10,6 +10,7 @@ const NOTICES = new Map<string, DeprecationNotice>([
     'forge_pipeline_runs.get',
     { tool: 'forge_pipeline_runs.get', replacement: 'forge_project_pipeline_runs (action=get)' },
   ],
+  ['forge_feedback', { tool: 'forge_feedback', replacement: 'forge_agent_report (same actions)' }],
   [
     'forge_pm.set_dependency',
     { tool: 'forge_pm.set_dependency', replacement: 'forge_project_pm (action=set_dependency)' },

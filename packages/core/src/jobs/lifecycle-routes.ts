@@ -327,7 +327,7 @@ jobLifecycleDeviceRoutes.post(
         updated = await reclassifyAbortedResume(updated);
       }
       // ISS-280 / ISS-393 — shared finalize path: auto-retry → revert to
-      // entry-status (or park at `waiting` when exhausted) → session sync →
+      // entry-status (or hold the job when exhausted) → session sync →
       // broadcast → hooks → dispatch re-tick → health refresh.
       const retry = await finalizeFailedJob(updated, {
         error: effectiveError ?? 'exit nonzero',

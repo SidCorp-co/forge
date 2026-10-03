@@ -4,8 +4,9 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReleaseNotes } from "@forge/contracts";
 import { afterEach, describe, expect, it } from "vitest";
+import type { WorkStep } from "@forge/contracts/issue-vocabulary";
 import type { IssueStatus } from "../types";
-import { BUILT_NOT_RELEASED, ReleaseNoteCard } from "./release-note-card";
+import { ReleaseNoteCard } from "./release-note-card";
 
 expect.extend(matchers);
 afterEach(cleanup);
@@ -16,8 +17,12 @@ const FIXED: ReleaseNotes = {
 };
 const SKIP: ReleaseNotes = { section: "Skip", userFacing: "-" };
 
-function show(status: IssueStatus, releaseNotes: ReleaseNotes | null | undefined) {
-  return render(<ReleaseNoteCard issue={{ status, releaseNotes }} />);
+function show(
+  status: IssueStatus,
+  releaseNotes: ReleaseNotes | null | undefined,
+  step: WorkStep | null = null,
+) {
+  return render(<ReleaseNoteCard issue={{ status, releaseNotes, workState: { step } }} />);
 }
 
 describe("the release note on an issue's page", () => {
@@ -32,16 +37,27 @@ describe("the release note on an issue's page", () => {
     expect(screen.getByText("What will change once it ships")).toBeInTheDocument();
   });
 
-  it.each([...BUILT_NOT_RELEASED])(
-    "speaks of a change still to ship at %s",
-    (status) => {
-      show(status, FIXED);
-      expect(screen.getByText("What will change once it ships")).toBeInTheDocument();
-      expect(screen.getByText(FIXED.userFacing)).toBeInTheDocument();
+  it("speaks of a change still to ship while a run tests what it built (In progress · Test)", () => {
+    show("in_progress", FIXED, "test");
+    expect(screen.getByText("What will change once it ships")).toBeInTheDocument();
+    expect(screen.getByText(FIXED.userFacing)).toBeInTheDocument();
+  });
+
+  it.each(["triage", "clarify", "plan", "build"] as const)(
+    "keeps a neutral heading at In progress · %s, where nothing is built yet",
+    (step) => {
+      show("in_progress", FIXED, step);
+      expect(screen.getByText("Release note")).toBeInTheDocument();
+      expect(screen.queryByText("What will change once it ships")).toBeNull();
     },
   );
 
-  it.each(["reopen", "needs_info", "on_hold", "in_progress"] as const)(
+  it("does not read a test step off any status but in_progress", () => {
+    show("needs_info", FIXED, "test");
+    expect(screen.getByText("Release note")).toBeInTheDocument();
+  });
+
+  it.each(["draft", "open", "approved", "reopen", "needs_info", "on_hold", "in_progress"] as const)(
     "keeps a neutral heading at %s, where nothing says whether it shipped",
     (status) => {
       show(status, FIXED);
@@ -64,10 +80,14 @@ describe("the release note on an issue's page", () => {
   });
 
   it("renders the note's markdown instead of showing its markup", () => {
-    const { container } = show("testing", {
-      section: "Fixed",
-      userFacing: "Run `forge-runner status` to see **which** version is live.",
-    });
+    const { container } = show(
+      "in_progress",
+      {
+        section: "Fixed",
+        userFacing: "Run `forge-runner status` to see **which** version is live.",
+      },
+      "test",
+    );
     expect(container.textContent).toContain("Run forge-runner status to see which version is live.");
     expect(container.textContent).not.toMatch(/[`*]/);
     expect(container.querySelector("code")).toHaveTextContent("forge-runner status");

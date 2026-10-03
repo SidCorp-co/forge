@@ -25,22 +25,22 @@ const held = async (issueId: string) => (await hold(issueId))?.held;
 const checkIn = async (issueId: string) => (await hold(issueId))?.lastCheckInAt;
 
 const claimed = (over: Record<string, unknown> = {}) =>
-  fx.seedIssue({ status: 'testing', sessionContext: { lease: testLease(over) } });
+  fx.seedIssue({ status: 'in_progress', sessionContext: { lease: testLease(over) } });
 
 describe('hydrateHeldForIssues — what holds a row (ISS-1213)', () => {
-  it('holds nothing on a `testing` row with nothing on it: the measured eleven', async () => {
-    expect(await held(await fx.seedIssue({ status: 'testing' }))).toBe(false);
+  it('holds nothing on an `in_progress` row with nothing on it: the measured eleven', async () => {
+    expect(await held(await fx.seedIssue({ status: 'in_progress' }))).toBe(false);
   });
 
   it('holds a row a live job is on', async () => {
-    const id = await fx.seedIssue({ status: 'testing' });
+    const id = await fx.seedIssue({ status: 'in_progress' });
     const runId = await fx.seedLiveJob(id);
     await fx.db.execute(sql`UPDATE pipeline_runs SET status='completed' WHERE id=${runId}`);
     expect(await held(id)).toBe(true);
   });
 
   it('holds a row a live pipeline run is on', async () => {
-    const id = await fx.seedIssue({ status: 'developed' });
+    const id = await fx.seedIssue({ status: 'in_progress' });
     await fx.seedRun(id, 'running');
     expect(await held(id)).toBe(true);
   });
@@ -79,7 +79,7 @@ describe('hydrateHeldForIssues — what does not (ISS-1213)', () => {
 
   // The board asks whether a box is moving the row, not whether it owes escalation (ISS-1213 F1).
   it('does not hold a row whose only job is held, waiting on a person', async () => {
-    const id = await fx.seedIssue({ status: 'testing' });
+    const id = await fx.seedIssue({ status: 'in_progress' });
     const runId = await fx.seedLiveJob(id);
     await fx.db.execute(sql`UPDATE jobs SET status='held' WHERE issue_id=${id}`);
     await fx.db.execute(sql`UPDATE pipeline_runs SET status='completed' WHERE id=${runId}`);
@@ -87,15 +87,15 @@ describe('hydrateHeldForIssues — what does not (ISS-1213)', () => {
   });
 
   it('does not hold a row whose only run is paused', async () => {
-    const id = await fx.seedIssue({ status: 'developed' });
+    const id = await fx.seedIssue({ status: 'in_progress' });
     await fx.seedRun(id, 'paused');
     expect(await held(id)).toBe(false);
   });
 
   it('answers only for the ids it was asked about', async () => {
     const { hydrateHeldForIssues } = await import('../../src/issues/held-hydrator.js');
-    const asked = await fx.seedIssue({ status: 'testing' });
-    const other = await fx.seedIssue({ status: 'testing' });
+    const asked = await fx.seedIssue({ status: 'in_progress' });
+    const other = await fx.seedIssue({ status: 'in_progress' });
     await fx.seedRun(other, 'running');
     expect([...(await hydrateHeldForIssues([asked], NOW)).keys()]).toEqual([asked]);
   });
@@ -141,7 +141,7 @@ describe('hydrateHeldForIssues — a declared run holds its row past its claim (
 
 describe('hydrateHeldForIssues — when anything last spoke for the row (ISS-1213 reopen 1)', () => {
   it('reads null on a row nothing ever checked in for', async () => {
-    expect(await checkIn(await fx.seedIssue({ status: 'testing' }))).toBeNull();
+    expect(await checkIn(await fx.seedIssue({ status: 'in_progress' }))).toBeNull();
   });
 
   it("reads the claim's renewal", async () => {
@@ -167,7 +167,7 @@ describe('hydrateHeldForIssues — when anything last spoke for the row (ISS-121
   });
 
   it('reads the heartbeat of a session under one of the row’s pipeline runs', async () => {
-    const id = await fx.seedIssue({ status: 'developed' });
+    const id = await fx.seedIssue({ status: 'in_progress' });
     const runId = await fx.seedRun(id, 'completed');
     await fx.seedRunSession(runId, '2026-09-20T12:15:00.000Z');
     expect(await checkIn(id)).toBe('2026-09-20T12:15:00.000Z');
@@ -194,9 +194,9 @@ describe('hydrateHeldForIssues — when anything last spoke for the row (ISS-121
 
 describe('GET /issues/search?withAgentSessions returns `held` on every row (ISS-1213)', () => {
   it('reads true on the row a run is on and false on the row nothing is on', async () => {
-    const heldId = await fx.seedIssue({ status: 'testing' });
+    const heldId = await fx.seedIssue({ status: 'in_progress' });
     await fx.seedRun(heldId, 'running');
-    const idleId = await fx.seedIssue({ status: 'testing' });
+    const idleId = await fx.seedIssue({ status: 'in_progress' });
 
     await fx.db.execute(
       sql`UPDATE users SET email_verified_at = now() WHERE id = ${fx.ownerId}::uuid`,

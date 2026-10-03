@@ -6267,6 +6267,9 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **An issue has ten statuses, each saying who it waits on.** Confirmed, clarified, developed,
+  testing, tested, releasing and waiting are gone; how far a run got is its step. Every move is
+  checked and refused by name.
 - **Whether a project's work lands in git comes from its project document's `source.type`.** A
   project with no project document closes an issue only on a merge Forge saw; any other mark is
   refused until `source.type` is declared.

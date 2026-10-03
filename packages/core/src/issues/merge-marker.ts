@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { comments } from '../db/schema.js';
+import {
+  type DriftRefusal,
+  landingDriftRefusal,
+  landingWorld,
+} from '../ecosystem/contract/drift.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
@@ -83,6 +88,7 @@ export class MergeMarkerError extends Error {
       | 'MARK_ALREADY_STANDS'
       | 'TARGET_REQUIRED'
       | 'PROJECT_DOCUMENT_NOT_FOUND'
+      | DriftRefusal['code']
       | Exclude<CommitLanding, { ok: true }>['code'],
     message: string,
     readonly details?: Record<string, unknown>,
@@ -111,6 +117,8 @@ export async function applyMergeMarker(args: {
   /** Where the work landed outside git; whether this project takes one is `landing-evidence.ts`'s. */
   landing?: string | undefined;
   mergedAt?: Date | null;
+  /** The contract versions the landed work implemented, `<project>/<contract>@<version>` each. */
+  contracts?: readonly string[] | undefined;
   actor: MergeMarkerActor;
 }): Promise<{
   issue: IssueRow;
@@ -144,6 +152,9 @@ export async function applyMergeMarker(args: {
     if (markTargetRequired(shape) && !args.target && !args.landing) {
       throw new MergeMarkerError('TARGET_REQUIRED', 'target is required');
     }
+    const landed = args.contracts ?? [];
+    const drift = landingDriftRefusal(landed, await landingWorld(prior, landed));
+    if (drift) throw new MergeMarkerError(drift.code, drift.detail, drift.details);
     // An agent with nothing else behind it may still have landed on the base branch itself, where
     // the commit is the only trace: it counts once the repository says it is this issue's landing.
     if (args.actor.agency === 'agent') {

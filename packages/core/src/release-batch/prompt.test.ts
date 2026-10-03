@@ -299,9 +299,10 @@ describe('where a release run reads its verdict (ISS-1190)', () => {
       /finish already closed stays closed \(`alreadyClosed`\)/,
     );
     expect(releaseBatchStatePrompt).toMatch(
-      /recorded a promotion, the code may already be on\s+production, so the roster keeps its claims and stays at `releasing`/,
+      /recorded a promotion, the code may already be on\s+production, so the roster keeps its claims and stays at its `release` step/,
     );
     expect(releaseBatchStatePrompt).toMatch(/back to the release gate for\s+a later batch/);
+    expect(releaseBatchStatePrompt).not.toContain('`releasing`');
   });
 
   // The coolify step said 'Any failed → abort' above the section that says repair forward, so an

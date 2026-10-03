@@ -1,6 +1,6 @@
 /** ISS-1273 — who is working one issue, on whichever of the three lanes opened the work: the job
  *  lane's `agent_sessions.metadata.issueId`, the run-session lane's `issue_leases` row, and
- *  `issues.session_context.lease`. `none` carries its reason: an absent field reads as quiet. */
+ *  `issue_work_state.lease`. `none` carries its reason: an absent field reads as quiet. */
 
 import {
   type LeaseReading,

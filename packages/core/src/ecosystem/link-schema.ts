@@ -98,7 +98,8 @@ const contractRefSchema = z.strictObject({ provider: uuid(), slug: slug() });
 const linkFields = {
   $schema: z.literal(LINK_SCHEMA_ID),
   version: z.literal(1),
-  ecosystem: uuid(),
+  // cm:why absent is an in-project link, a module calling its own project's contract; a link to another project's contract names the ecosystem it was made in (`link-rules.ts:referenceRefusals`, `ecosystem_links_scope_chk`)
+  ecosystem: uuid().optional(),
   consumer: z.strictObject({ project: uuid(), module: repoPath() }),
   contract: contractRefSchema,
   pinnedVersion: z.string().min(1).max(40),

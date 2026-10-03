@@ -1,131 +1,133 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AUTONOMOUS_LABELS,
-  LABEL_TO_KERNEL,
-  statusesForLabels,
-  toAutonomousLabel,
-  type WritableLabel,
+  DONE_ISSUE_STATUSES,
+  ISSUE_STATUS_HINTS,
+  ISSUE_STATUS_LABELS,
+  ISSUE_STATUS_TONES,
+  NEEDS_INFO_KIND_LABELS,
+  NEEDS_INFO_KINDS,
+  PARKED_ISSUE_STATUSES,
+  WORK_STEP_LABELS,
+  WORK_STEPS,
 } from './issue-vocabulary.js';
 import { REGISTRY_ISSUE_STATUSES } from './pipeline-registry.js';
 
-/** The statuses that read `running` on a held row — derived, so the tests track the map. */
-const IN_FLIGHT = REGISTRY_ISSUE_STATUSES.filter((s) => toAutonomousLabel(s, true) === 'running');
-
-describe('toAutonomousLabel', () => {
-  it('has a label for every kernel status, held or not, including ones the driver never writes', () => {
-    for (const status of REGISTRY_ISSUE_STATUSES) {
-      expect(AUTONOMOUS_LABELS).toContain(toAutonomousLabel(status, true));
-      expect(AUTONOMOUS_LABELS).toContain(toAutonomousLabel(status, false));
-    }
-  });
-
-  it('reads the staged middle as running while something holds the row', () => {
-    for (const status of ['confirmed', 'approved', 'developed', 'testing'] as const) {
-      expect(toAutonomousLabel(status, true)).toBe('running');
-    }
-  });
-
-  // ISS-1213: eleven rows stood at `testing` for 5–12h with nothing on ten of them, all reading
-  // `running`. The same row with nothing on it reads `unheld`.
-  it('reads a row nothing holds as unheld, never as running', () => {
-    expect(toAutonomousLabel('testing', false)).toBe('unheld');
-    for (const status of IN_FLIGHT) {
-      expect([status, toAutonomousLabel(status, false)]).toEqual([status, 'unheld']);
-    }
-  });
-
-  it('counts the seven statuses whose word needs a holder, and no others', () => {
-    expect([...IN_FLIGHT].sort()).toEqual(
+// ISS-54: the statuses are the labels. The autonomous label layer (running/unheld/needs_human/…)
+// and its round-trip through LABEL_TO_KERNEL are gone with it; what is left is one word, one tone
+// and one hint per status, and every surface reads the same three maps.
+describe('the status vocabulary', () => {
+  it('names exactly the ten lifecycle statuses, no retired one', () => {
+    expect([...REGISTRY_ISSUE_STATUSES].sort()).toEqual(
       [
         'approved',
-        'clarified',
-        'confirmed',
-        'developed',
+        'awaiting_release',
+        'closed',
+        'draft',
+        'dropped',
         'in_progress',
-        'releasing',
-        'testing',
+        'needs_info',
+        'on_hold',
+        'open',
+        'reopen',
       ].sort(),
     );
-  });
-
-  it('reads every status outside that set the same word whether or not the row is held', () => {
-    for (const status of REGISTRY_ISSUE_STATUSES) {
-      if (IN_FLIGHT.includes(status)) continue;
-      expect([status, toAutonomousLabel(status, false)]).toEqual([
-        status,
-        toAutonomousLabel(status, true),
-      ]);
-    }
-  });
-
-  it('collapses the two statuses that ask a human into needs_human', () => {
-    for (const status of ['waiting', 'needs_info'] as const) {
-      expect(toAutonomousLabel(status, false)).toBe('needs_human');
-    }
-  });
-
-  it('reads a deliberate pause as paused, never as a question for a human', () => {
-    expect(toAutonomousLabel('on_hold', false)).toBe('paused');
-    expect(toAutonomousLabel('on_hold', false)).not.toBe('needs_human');
-  });
-
-  it('keeps done and dropped apart', () => {
-    expect(toAutonomousLabel('closed', false)).toBe('done');
-    expect(toAutonomousLabel('dropped', false)).toBe('dropped');
-  });
-
-  it('reads either release park as its own label, not as running or unheld', () => {
-    expect(toAutonomousLabel('awaiting_release', false)).toBe('awaiting_release');
-    expect(toAutonomousLabel('tested', false)).toBe('awaiting_release');
-  });
-
-  it('reads reopen as a close somebody disputed, not as a session or a queue', () => {
-    expect(toAutonomousLabel('reopen', false)).toBe('reopened');
-    expect(toAutonomousLabel('reopen', false)).not.toBe('open');
-    expect(statusesForLabels('needs_human')).not.toContain('reopen');
-  });
-});
-
-describe('LABEL_TO_KERNEL', () => {
-  const writable = AUTONOMOUS_LABELS.filter((l): l is WritableLabel => l !== 'unheld');
-
-  it('writes every label but unheld to a status the kernel enum defines', () => {
-    expect(Object.keys(LABEL_TO_KERNEL).sort()).toEqual([...writable].sort());
-    for (const label of writable) {
-      expect(REGISTRY_ISSUE_STATUSES).toContain(LABEL_TO_KERNEL[label]);
-    }
-  });
-
-  it('round-trips every writable label through the kernel and back, on a held row', () => {
-    for (const label of writable) {
-      expect(toAutonomousLabel(LABEL_TO_KERNEL[label], true)).toBe(label);
-    }
-  });
-});
-
-describe('statusesForLabels', () => {
-  it('answers with exactly the statuses carrying the labels asked for', () => {
-    expect(statusesForLabels('needs_human')).toEqual(['waiting', 'needs_info']);
-    expect(statusesForLabels('paused')).toEqual(['on_hold']);
-    expect(statusesForLabels('needs_human', 'paused')).toEqual([
+    for (const retired of [
+      'confirmed',
+      'clarified',
+      'developed',
+      'testing',
+      'tested',
+      'releasing',
       'waiting',
-      'on_hold',
-      'needs_info',
-    ]);
+    ]) {
+      expect(REGISTRY_ISSUE_STATUSES).not.toContain(retired);
+    }
   });
 
-  it('names the same statuses for running and for unheld, because a filter cannot see the holder', () => {
-    expect(statusesForLabels('unheld')).toEqual(statusesForLabels('running'));
-    expect([...statusesForLabels('running')].sort()).toEqual([...IN_FLIGHT].sort());
+  it('gives every status a label, a tone and a hint, and nothing else', () => {
+    const statuses = [...REGISTRY_ISSUE_STATUSES].sort();
+    expect(Object.keys(ISSUE_STATUS_LABELS).sort()).toEqual(statuses);
+    expect(Object.keys(ISSUE_STATUS_TONES).sort()).toEqual(statuses);
+    expect(Object.keys(ISSUE_STATUS_HINTS).sort()).toEqual(statuses);
   });
 
-  it('answers with nothing when no status carries the label', () => {
-    expect(statusesForLabels()).toEqual([]);
+  it('starts every hint with the status it explains', () => {
+    for (const status of REGISTRY_ISSUE_STATUSES) {
+      expect(ISSUE_STATUS_HINTS[status].startsWith(`${status}:`)).toBe(true);
+    }
   });
 
-  it("returns statuses in the map's own order, not the caller's", () => {
-    expect(statusesForLabels('paused', 'needs_human')).toEqual(
-      statusesForLabels('needs_human', 'paused'),
+  it('gives no two statuses the same label', () => {
+    const labels = Object.values(ISSUE_STATUS_LABELS);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it('reads only in_progress as held by a run', () => {
+    const run = REGISTRY_ISSUE_STATUSES.filter((s) => ISSUE_STATUS_TONES[s] === 'run');
+    expect(run).toEqual(['in_progress']);
+  });
+
+  it('reads approved as ready for a master, not as a run in flight', () => {
+    expect(ISSUE_STATUS_TONES.approved).toBe('ready');
+  });
+
+  it('reads reopen as a close somebody disputed, not as open', () => {
+    expect(ISSUE_STATUS_LABELS.reopen).toBe('Reopened');
+    expect(ISSUE_STATUS_TONES.reopen).toBe('err');
+    expect(ISSUE_STATUS_TONES.reopen).not.toBe(ISSUE_STATUS_TONES.open);
+    expect(PARKED_ISSUE_STATUSES).not.toContain('reopen');
+  });
+
+  it('reads a deliberate pause apart from a question for a person', () => {
+    expect(ISSUE_STATUS_TONES.on_hold).toBe('neutral');
+    expect(ISSUE_STATUS_TONES.needs_info).toBe('you');
+  });
+
+  it('reads awaiting_release as waiting on a person', () => {
+    expect(ISSUE_STATUS_TONES.awaiting_release).toBe('you');
+  });
+});
+
+describe('DONE_ISSUE_STATUSES and PARKED_ISSUE_STATUSES', () => {
+  it('keeps done and dropped apart as statuses but both over', () => {
+    expect([...DONE_ISSUE_STATUSES].sort()).toEqual(['closed', 'dropped']);
+    expect(ISSUE_STATUS_LABELS.closed).not.toBe(ISSUE_STATUS_LABELS.dropped);
+    for (const status of DONE_ISSUE_STATUSES) expect(ISSUE_STATUS_TONES[status]).toBe('done');
+  });
+
+  it('parks exactly needs_info and on_hold', () => {
+    expect([...PARKED_ISSUE_STATUSES].sort()).toEqual(['needs_info', 'on_hold']);
+  });
+
+  it('never counts one status as both over and parked', () => {
+    for (const status of DONE_ISSUE_STATUSES) expect(PARKED_ISSUE_STATUSES).not.toContain(status);
+  });
+});
+
+describe('WORK_STEPS', () => {
+  it('orders the run steps triage → release', () => {
+    expect(WORK_STEPS).toEqual(['triage', 'clarify', 'plan', 'build', 'test', 'release']);
+  });
+
+  it('labels every step and nothing else', () => {
+    expect(Object.keys(WORK_STEP_LABELS).sort()).toEqual([...WORK_STEPS].sort());
+  });
+
+  it('shares no word with a status, so a step cannot be read as one', () => {
+    for (const step of WORK_STEPS) {
+      expect(REGISTRY_ISSUE_STATUSES as readonly string[]).not.toContain(step);
+    }
+  });
+});
+
+describe('NEEDS_INFO_KINDS', () => {
+  it('names the three things a needs_info park can be stopped on', () => {
+    expect([...NEEDS_INFO_KINDS].sort()).toEqual(
+      ['needs_answer', 'needs_decision', 'needs_resource'].sort(),
     );
+  });
+
+  it('labels every kind and nothing else', () => {
+    expect(Object.keys(NEEDS_INFO_KIND_LABELS).sort()).toEqual([...NEEDS_INFO_KINDS].sort());
   });
 });

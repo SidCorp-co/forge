@@ -155,23 +155,26 @@ describe('registerCiFixPatternLearner', () => {
       issueId: 'iss-1',
       projectId: 'proj-1',
       actor: { type: 'user', id: 'u-1' },
-      from: 'testing',
-      to: 'developed',
+      from: 'in_progress',
+      to: 'awaiting_release',
       reopenCount: 0,
     } as never);
     await new Promise((r) => setImmediate(r));
     expect(indexMemoryMock).not.toHaveBeenCalled();
   });
 
-  it('skips when target status is not developed', async () => {
+  it('skips when target status is not awaiting_release', async () => {
+    nextSelect.mockResolvedValue([
+      { sessionContext: { ciFixContext: { errors: [{ type: 'module_not_found' }] } } },
+    ]);
     const bus = new HooksBus();
     registerCiFixPatternLearner(bus);
     await bus.emit('transition', {
       issueId: 'iss-1',
       projectId: 'proj-1',
       actor: { type: 'user', id: 'u-1' },
-      from: 'developed',
-      to: 'awaiting_release',
+      from: 'reopen',
+      to: 'in_progress',
       reopenCount: 2,
     } as never);
     await new Promise((r) => setImmediate(r));
@@ -186,15 +189,15 @@ describe('registerCiFixPatternLearner', () => {
       issueId: 'iss-1',
       projectId: 'proj-1',
       actor: { type: 'user', id: 'u-1' },
-      from: 'reopen',
-      to: 'developed',
+      from: 'in_progress',
+      to: 'awaiting_release',
       reopenCount: 1,
     } as never);
     await new Promise((r) => setImmediate(r));
     expect(indexMemoryMock).not.toHaveBeenCalled();
   });
 
-  it('stores pattern on reopen→developed with ciFixContext', async () => {
+  it('stores pattern when a reopened issue reaches awaiting_release with ciFixContext', async () => {
     nextSelect.mockResolvedValueOnce([
       {
         sessionContext: {
@@ -213,8 +216,8 @@ describe('registerCiFixPatternLearner', () => {
       issueId: 'iss-1',
       projectId: 'proj-1',
       actor: { type: 'user', id: 'u-1' },
-      from: 'reopen',
-      to: 'developed',
+      from: 'in_progress',
+      to: 'awaiting_release',
       reopenCount: 1,
     } as never);
     await new Promise((r) => setImmediate(r));

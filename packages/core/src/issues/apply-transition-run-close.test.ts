@@ -31,6 +31,20 @@ vi.mock('../db/client.js', () => {
   };
 });
 
+// The guards and the work state have suites of their own (issue-lifecycle-guards-e2e); this one
+// is about which moves close the run, so both stand aside.
+vi.mock('./transition-guards.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./transition-guards.js')>()),
+  guardFault: vi.fn(async () => null),
+}));
+vi.mock('./work-state.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./work-state.js')>()),
+  readWorkState: vi.fn(async () => null),
+  setWorkStep: vi.fn(async () => undefined),
+  setLeftStatus: vi.fn(async () => undefined),
+  setLegacyStatus: vi.fn(async () => undefined),
+}));
+
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: vi.fn() },
 }));
@@ -63,7 +77,7 @@ describe('transitionIssueStatus — run-closing decoupled from terminal-for-disp
   it('entering `awaiting_release` does NOT close the open run but still reports terminal:true', async () => {
     queueUpdate('awaiting_release');
     const result = await transitionIssueStatus(
-      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'tested', reopenCount: 0 },
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress', reopenCount: 0 },
       'awaiting_release',
       { type: 'user', id: ACTOR_ID, agency: 'human' as const },
     );

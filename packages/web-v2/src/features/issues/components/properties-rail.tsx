@@ -244,6 +244,8 @@ export function PropertiesRail({
       <Row label="Status">
         <StatusEdit
           status={issue.status}
+          step={issue.workState?.step ?? null}
+          leftStatus={issue.workState?.leftStatus ?? null}
           agentStatus={issue.agentStatus}
           disabled={pending}
           onTransition={onTransition}

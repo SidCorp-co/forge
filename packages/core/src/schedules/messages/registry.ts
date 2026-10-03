@@ -55,7 +55,7 @@ export const RETIRED_STRATEGY_INPUTS = {
     appliesWhen:
       'The project uses blocks issue relations AND the base-merge ' +
       'state is a manual gate (a pipeline status the system does not ' +
-      'auto-advance, such as "awaiting_release" or "tested"), meaning merged_at is ' +
+      'auto-advance, such as "awaiting_release"), meaning merged_at is ' +
       'not stamped automatically on status transition.',
     appliesToSkills: ['forge-test'],
   },
@@ -115,7 +115,7 @@ export const improvementMessages: ImprovementMessage[] = [
     title: 'Standing skill steward — continuous per-project optimization',
     message:
       'The skill steward observes accumulated quality signals across pipeline runs ' +
-      '(reopen rates, step durations, forge_feedback reports, domain weaknesses) ' +
+      '(reopen rates, step durations, forge_agent_report reports, domain weaknesses) ' +
       'and uses a per-skill memory namespace to propose or apply targeted improvements ' +
       "to this project's skills. Each run absorbs the forge-skill-audit rubric and " +
       'playbook, curates per-skill memory to ≤2k tokens, and emits a structured run ' +
@@ -124,7 +124,7 @@ export const improvementMessages: ImprovementMessage[] = [
       'Skills improve continuously rather than through one-time patches. ' +
       'The steward accumulates project-specific knowledge in a dedicated memory ' +
       'namespace (2k token cap per skill), raises accept standards gradually as ' +
-      'quality improves, and routes Forge-level issues to the owner via forge_feedback ' +
+      'quality improves, and routes Forge-level issues to the owner via forge_agent_report ' +
       'rather than silently dropping them. replaces the recurring forge-skill-audit ' +
       'daily schedule and the 3 retired one-shot templates.',
     category: 'steward',
@@ -190,13 +190,13 @@ export const improvementMessages: ImprovementMessage[] = [
     key: 'feedback-triage-digest',
     title: 'Standing fleet feedback digest — weekly unreviewed-feedback rollup',
     message:
-      'The feedback-digest agent pulls unreviewed forge_feedback reports fleet-wide ' +
+      'The feedback-digest agent pulls unreviewed forge_agent_report reports fleet-wide ' +
       '(scope="all", reviewed=false), dedupes by signalKey, groups by target then ' +
       'severity, and files ONE draft issue into forge-dev per run summarizing the ' +
       'backlog (top clusters, counts per project, capped). It never reviews or ' +
-      'edits feedback reports itself — a human triages the underlying reports.',
+      'edits agent reports itself — a human triages the underlying reports.',
     rationale:
-      'Without a standing digest, triage of forge_feedback reports depends on a ' +
+      'Without a standing digest, triage of forge_agent_report reports depends on a ' +
       'human hand-scanning every project — which happens rarely and lets friction ' +
       'signals pile up unseen. A weekly fleet-wide rollup surfaces the backlog ' +
       'continuously and routes it through the same draft-issue review gate as ' +

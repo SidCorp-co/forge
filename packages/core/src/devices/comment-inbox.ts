@@ -24,8 +24,9 @@ export type OwedComment = {
 const BY_AN_AGENT = (alias: string) =>
   sql.raw(`(${alias}.author_device_id IS NOT NULL OR ${alias}_u.kind = 'agent')`);
 
-// cm:guard owed = a PERSON's comment on a live issue (any status but closed/dropped, not archived)
-// with no newer agent-authored comment on that issue; an agent's own comment is never owed, so a
+// cm:guard owed = a PERSON's `question` comment (ISS-56: a note or a decision is not owed a reply)
+// on a live issue (any status but closed/dropped, not archived) with no newer agent-authored
+// comment on that issue; an agent's own comment is never owed, so a
 // master's reply clears the thread and cannot owe itself. Terminal is out: a person's closing word
 // is the commonest last comment there, and reopening the issue brings its thread back in.
 export async function readOwedComments(
@@ -47,6 +48,7 @@ export async function readOwedComments(
       AND i.archived_at IS NULL
       AND i.status NOT IN (${terminal})
       AND NOT ${BY_AN_AGENT('c')}
+      AND c.intent = 'question'
       AND NOT EXISTS (
         SELECT 1 FROM comments a
         JOIN users a_u ON a_u.id = a.author_id

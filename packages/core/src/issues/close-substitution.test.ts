@@ -8,18 +8,16 @@ describe('noOpSentence', () => {
     expect(
       noOpSentence({
         projectId: PROJECT,
-        requested: 'developed',
-        parked: 'developed',
-        final: 'developed',
+        requested: 'in_progress',
+        final: 'in_progress',
       }),
-    ).toBe('issue already in status developed');
+    ).toBe('issue already in status in_progress');
   });
 
   it('names both statuses when the release gate rewrote the close', () => {
     const sentence = noOpSentence({
       projectId: PROJECT,
       requested: 'closed',
-      parked: 'closed',
       final: 'awaiting_release',
     });
 
@@ -32,7 +30,6 @@ describe('noOpSentence', () => {
     const sentence = noOpSentence({
       projectId: PROJECT,
       requested: 'closed',
-      parked: 'closed',
       final: 'awaiting_release',
     });
 
@@ -44,37 +41,10 @@ describe('noOpSentence', () => {
     const sentence = noOpSentence({
       projectId: PROJECT,
       requested: 'closed',
-      parked: 'closed',
       final: 'awaiting_release',
     });
 
     expect(sentence).toContain(`/api/projects/${PROJECT}/release-batches`);
     expect(sentence).toContain(`/api/projects/${PROJECT}/release-records`);
-  });
-
-  it('names the driver rather than the release gate when a park was rewritten', () => {
-    const sentence = noOpSentence({
-      projectId: PROJECT,
-      requested: 'waiting',
-      parked: 'needs_info',
-      final: 'needs_info',
-    });
-
-    expect(sentence).toContain('`waiting`');
-    expect(sentence).toContain('`needs_info`');
-    expect(sentence).not.toContain('release gate');
-  });
-
-  it('reports the release gate where a park rewrite and a close rewrite both fired', () => {
-    const sentence = noOpSentence({
-      projectId: PROJECT,
-      requested: 'waiting',
-      parked: 'needs_info',
-      final: 'awaiting_release',
-    });
-
-    expect(sentence).toContain('`waiting`');
-    expect(sentence).toContain('`awaiting_release`');
-    expect(sentence).toContain('release gate');
   });
 });

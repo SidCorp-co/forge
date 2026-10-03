@@ -60,10 +60,11 @@ describe("exactly one kernel-status-to-word map", () => {
   const KEY_OF = new RegExp(`^\\s*(${ISSUE_STATUSES.join("|")})\\s*:\\s*["'\`]`, "u");
   const HOME = resolve(SRC, "../../contracts/src/issue-vocabulary.ts");
   // A DISPLAY-WORD map is total or nearly so, since a partial one shows raw enum values, so a second
-  // one is a literal over a large majority of the statuses. Twelve spares the two eight-status tables
-  // in `features/skills/types.ts` and `lib/api/error.ts`, which map a status to the pipeline STEP it
-  // dispatches — another vocabulary; `docs/proposals/two-copies-of-the-status-to-step-table.md`.
-  const MAJORITY = 12;
+  // one is a literal over a large majority of the ten statuses: eight of them.
+  const MAJORITY = 8;
+  // The one file keyed over every status that is not a word map: the badge legend's glyphs, a mark
+  // per status, read beside `statusLabel`'s word and never instead of it.
+  const NOT_A_WORD_MAP = new Set(["features/issues/status-glyphs.ts"]);
 
   const statusesIn = (text: string): Set<string> => {
     const seen = new Set<string>();
@@ -79,10 +80,17 @@ describe("exactly one kernel-status-to-word map", () => {
     for (const { path, text } of FILES) {
       // A test's expected-word fixture is a second opinion, not a second map.
       if (path.endsWith(".test.ts") || path.endsWith(".test.tsx")) continue;
+      if (NOT_A_WORD_MAP.has(path)) continue;
       const n = statusesIn(text).size;
       if (n >= MAJORITY) found.push(`${path}: ${n} kernel statuses keyed to words`);
     }
     expect(found).toEqual([]);
+  });
+
+  it("would see a second map in the glyph file, were it not named as the exception", () => {
+    const glyphs = FILES.find((f) => NOT_A_WORD_MAP.has(f.path));
+    expect(glyphs, "the exempted file is not in the tree").toBeDefined();
+    expect(statusesIn(glyphs?.text ?? "").size).toBeGreaterThanOrEqual(MAJORITY);
   });
 
   it("finds the one that IS there, so the scan is not passing on a broken pattern", () => {

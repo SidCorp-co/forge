@@ -2,13 +2,8 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { BODY_FORMATS } from '../../body/formats.js';
 import { bodyText } from '../../body/prepare.js';
-import {
-  issueComplexities,
-  issuePriorities,
-  issueStatuses,
-  taskStatuses,
-  waitingKinds,
-} from '../../db/schema.js';
+import { issueComplexities, issuePriorities, taskStatuses, waitingKinds } from '../../db/schema.js';
+import { LANDED_CONTRACT } from '../../ecosystem/contract/drift.js';
 import { actorAgency } from '../../issues/actor-agency.js';
 import { transitionIssueStatus } from '../../issues/apply-transition.js';
 import { issueArchiveFilterSchema } from '../../issues/archive.js';
@@ -19,6 +14,7 @@ import { AttributeRefusal } from '../../issues/attributes/write.js';
 import { createIssue } from '../../issues/create-service.js';
 import { loadIssueRelations } from '../../issues/dependency-read.js';
 import { isValidDetectorKey } from '../../issues/detector-key.js';
+import { workStatePatchSchema } from '../../issues/input-schemas.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import {
   listIssueLabels,
@@ -59,6 +55,7 @@ import { refuseStrayArchiveFields, runArchiveAction } from './forge-issues-archi
 import { forgeIssuesDescription } from './forge-issues-description.js';
 import { toMcpIssueError } from './forge-issues-errors.js';
 import { ISSUE_REF_CLAUSE, issueRefSchema, refsFor } from './issue-ref-input.js';
+import { issueStatusInput, WORK_STATE_FIELD } from './issue-status-input.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
@@ -82,8 +79,8 @@ import { buildListEnvelope, overfetch } from './list-envelope.js';
 const filtersSchema = z
   .object({
     search: z.string().trim().min(1).optional(),
-    status: z.enum(issueStatuses).optional(),
-    statusNot: z.enum(issueStatuses).optional(),
+    status: issueStatusInput.optional(),
+    statusNot: issueStatusInput.optional(),
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().optional(),
     complexity: z.enum(issueComplexities).optional(),
@@ -117,7 +114,8 @@ const dataObject = z
     title: z.string().trim().min(1).max(500).optional(),
     description: z.string().max(100_000).nullable().optional(),
     descriptionFormat: z.enum(BODY_FORMATS).optional(),
-    status: z.enum(issueStatuses).optional(),
+    status: issueStatusInput.optional(),
+    workState: workStatePatchSchema.optional().describe(WORK_STATE_FIELD),
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().min(1).max(100).nullable().optional(),
     complexity: z.enum(issueComplexities).nullable().optional(),
@@ -131,6 +129,12 @@ const dataObject = z
     target: z.enum(['feature', 'base', 'prod']).optional(),
     commit: mergedCommitShaSchema.optional(),
     landing: mergedLandingSchema.optional(),
+    contracts: z
+      .array(
+        z.string().regex(LANDED_CONTRACT, 'a contract version is <project>/<contract>@<version>'),
+      )
+      .max(20)
+      .optional(),
     mergedAt: z.string().optional(),
     note: z.string().max(10_000).optional(),
     issueId: issueRefSchema.optional(),
@@ -278,6 +282,7 @@ export function serialize(row: IssueRow, prefix: string | null): Record<string, 
     descriptionFormat: row.descriptionFormat,
     status: row.status,
     waitingKind: row.waitingKind,
+    workState: row.workState,
     priority: row.priority,
     category: row.category,
     complexity: row.complexity,
@@ -317,6 +322,7 @@ export function serializeListRow(
     title: sanitizeUntrusted(row.title),
     status: row.status,
     waitingKind: row.waitingKind,
+    step: row.step,
     priority: row.priority,
     category: row.category,
     complexity: row.complexity,
@@ -379,6 +385,7 @@ export function serializeManifest(row: IssueRow, prefix: string | null): Record<
     issueId: formatIssueRef(prefix, row.issSeq),
     title: markUntrusted(row.title, { source: 'issue.title' }),
     status: row.status,
+    workState: row.workState,
     priority: row.priority,
     category: row.category,
     complexity: row.complexity,
@@ -710,7 +717,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
         const { updates, warnings: bodyWarnings } = collected;
 
-        const willWriteFields = Object.keys(updates).length > 0 || labelIds !== undefined;
+        const workState = input.data.workState;
+        const willWriteFields =
+          Object.keys(updates).length > 0 || labelIds !== undefined || workState !== undefined;
         if (input.data.expect && !willWriteFields) {
           throw new Error(
             'BAD_REQUEST: data.expect is a precondition on a FIELD write — it holds nothing against a status or relations change. Send the field(s) to write alongside it.',
@@ -726,6 +735,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
               updates,
               labelIds,
               ...(input.data.expect ? { expect: input.data.expect } : {}),
+              ...(workState ? { workState } : {}),
               actor: principalHookActor(principal),
             });
           } catch (err) {
@@ -819,6 +829,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             ...(input.data?.note ? { note: input.data.note } : {}),
             ...(input.data?.commit ? { commit: input.data.commit } : {}),
             ...(input.data?.landing ? { landing: input.data.landing } : {}),
+            ...(input.data?.contracts ? { contracts: input.data.contracts } : {}),
             ...(input.data?.mergedAt
               ? { mergedAt: parseDate(input.data.mergedAt, 'mergedAt') }
               : {}),

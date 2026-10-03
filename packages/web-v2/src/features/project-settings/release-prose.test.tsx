@@ -75,7 +75,7 @@ describe("the Release section's prose", () => {
 					{
 						code: "RELEASE_ROSTER_EMPTY",
 						evaluated: true,
-						message: "Nothing waits at `awaiting_release`, and 3 stand at `testing`.",
+						message: "Nothing waits at `awaiting_release`, and 3 stand at `in_progress`.",
 					},
 				],
 			}),
@@ -86,7 +86,7 @@ describe("the Release section's prose", () => {
 		expect(container.textContent).not.toContain("`");
 		expect([...container.querySelectorAll("code")].map((n) => n.textContent)).toEqual([
 			"awaiting_release",
-			"testing",
+			"in_progress",
 		]);
 	});
 

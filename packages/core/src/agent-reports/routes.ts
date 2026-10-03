@@ -4,10 +4,10 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import {
-  feedbackKinds,
-  feedbackReports,
-  feedbackSeverities,
-  feedbackTargets,
+  agentReportKinds,
+  agentReportSeverities,
+  agentReports,
+  agentReportTargets,
   issues,
   projects,
 } from '../db/schema.js';
@@ -22,9 +22,9 @@ const listQuerySchema = z
     // (owns or member) — bounded via loadVisibleProjectIds, same primitive as
     // the pipeline analytics/project-health routes. Default 'project'.
     scope: z.enum(['project', 'all']).optional(),
-    kind: z.enum(feedbackKinds).optional(),
-    severity: z.enum(feedbackSeverities).optional(),
-    target: z.enum(feedbackTargets).optional(),
+    kind: z.enum(agentReportKinds).optional(),
+    severity: z.enum(agentReportSeverities).optional(),
+    target: z.enum(agentReportTargets).optional(),
     reviewed: z
       .union([z.literal('true'), z.literal('false'), z.boolean()])
       .optional()
@@ -48,10 +48,10 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-export const feedbackReportRoutes = new Hono<{ Variables: AuthVars }>();
-feedbackReportRoutes.use('*', requireAuth(), assertEmailVerified());
+export const agentReportRoutes = new Hono<{ Variables: AuthVars }>();
+agentReportRoutes.use('*', requireAuth(), assertEmailVerified());
 
-feedbackReportRoutes.get(
+agentReportRoutes.get(
   '/',
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
@@ -64,35 +64,35 @@ feedbackReportRoutes.get(
       const visibleIds = await loadVisibleProjectIds(userId);
       if (visibleIds.length === 0) return c.json([]);
 
-      const conditions = [inArray(feedbackReports.projectId, visibleIds)];
-      if (kind) conditions.push(eq(feedbackReports.kind, kind));
-      if (severity) conditions.push(eq(feedbackReports.severity, severity));
-      if (target) conditions.push(eq(feedbackReports.target, target));
-      if (reviewed === true) conditions.push(isNotNull(feedbackReports.reviewedAt));
-      if (reviewed === false) conditions.push(isNull(feedbackReports.reviewedAt));
+      const conditions = [inArray(agentReports.projectId, visibleIds)];
+      if (kind) conditions.push(eq(agentReports.kind, kind));
+      if (severity) conditions.push(eq(agentReports.severity, severity));
+      if (target) conditions.push(eq(agentReports.target, target));
+      if (reviewed === true) conditions.push(isNotNull(agentReports.reviewedAt));
+      if (reviewed === false) conditions.push(isNull(agentReports.reviewedAt));
 
       const rows = await db
         .select({
-          id: feedbackReports.id,
-          projectId: feedbackReports.projectId,
+          id: agentReports.id,
+          projectId: agentReports.projectId,
           projectSlug: projects.slug,
-          kind: feedbackReports.kind,
-          severity: feedbackReports.severity,
-          target: feedbackReports.target,
-          targetRef: feedbackReports.targetRef,
-          summary: feedbackReports.summary,
-          detail: feedbackReports.detail,
-          suggestion: feedbackReports.suggestion,
-          signalKey: feedbackReports.signalKey,
-          sessionId: feedbackReports.sessionId,
-          reviewedAt: feedbackReports.reviewedAt,
-          linkedIssueId: feedbackReports.linkedIssueId,
-          createdAt: feedbackReports.createdAt,
+          kind: agentReports.kind,
+          severity: agentReports.severity,
+          target: agentReports.target,
+          targetRef: agentReports.targetRef,
+          summary: agentReports.summary,
+          detail: agentReports.detail,
+          suggestion: agentReports.suggestion,
+          signalKey: agentReports.signalKey,
+          sessionId: agentReports.sessionId,
+          reviewedAt: agentReports.reviewedAt,
+          linkedIssueId: agentReports.linkedIssueId,
+          createdAt: agentReports.createdAt,
         })
-        .from(feedbackReports)
-        .leftJoin(projects, eq(projects.id, feedbackReports.projectId))
+        .from(agentReports)
+        .leftJoin(projects, eq(projects.id, agentReports.projectId))
         .where(and(...conditions))
-        .orderBy(desc(feedbackReports.createdAt))
+        .orderBy(desc(agentReports.createdAt))
         .limit(limit ?? 50);
 
       const serialized = rows.map((r) => ({
@@ -111,32 +111,32 @@ feedbackReportRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'viewer', 'not a project member');
 
-    const conditions = [eq(feedbackReports.projectId, projectId)];
-    if (kind) conditions.push(eq(feedbackReports.kind, kind));
-    if (severity) conditions.push(eq(feedbackReports.severity, severity));
-    if (target) conditions.push(eq(feedbackReports.target, target));
-    if (reviewed === true) conditions.push(isNotNull(feedbackReports.reviewedAt));
-    if (reviewed === false) conditions.push(isNull(feedbackReports.reviewedAt));
+    const conditions = [eq(agentReports.projectId, projectId)];
+    if (kind) conditions.push(eq(agentReports.kind, kind));
+    if (severity) conditions.push(eq(agentReports.severity, severity));
+    if (target) conditions.push(eq(agentReports.target, target));
+    if (reviewed === true) conditions.push(isNotNull(agentReports.reviewedAt));
+    if (reviewed === false) conditions.push(isNull(agentReports.reviewedAt));
 
     const rows = await db
       .select({
-        id: feedbackReports.id,
-        kind: feedbackReports.kind,
-        severity: feedbackReports.severity,
-        target: feedbackReports.target,
-        targetRef: feedbackReports.targetRef,
-        summary: feedbackReports.summary,
-        detail: feedbackReports.detail,
-        suggestion: feedbackReports.suggestion,
-        signalKey: feedbackReports.signalKey,
-        sessionId: feedbackReports.sessionId,
-        reviewedAt: feedbackReports.reviewedAt,
-        linkedIssueId: feedbackReports.linkedIssueId,
-        createdAt: feedbackReports.createdAt,
+        id: agentReports.id,
+        kind: agentReports.kind,
+        severity: agentReports.severity,
+        target: agentReports.target,
+        targetRef: agentReports.targetRef,
+        summary: agentReports.summary,
+        detail: agentReports.detail,
+        suggestion: agentReports.suggestion,
+        signalKey: agentReports.signalKey,
+        sessionId: agentReports.sessionId,
+        reviewedAt: agentReports.reviewedAt,
+        linkedIssueId: agentReports.linkedIssueId,
+        createdAt: agentReports.createdAt,
       })
-      .from(feedbackReports)
+      .from(agentReports)
       .where(and(...conditions))
-      .orderBy(desc(feedbackReports.createdAt))
+      .orderBy(desc(agentReports.createdAt))
       .limit(limit ?? 50);
 
     // REST endpoint is human-facing (web UI); React escapes all text on render.
@@ -151,7 +151,7 @@ feedbackReportRoutes.get(
   },
 );
 
-feedbackReportRoutes.post(
+agentReportRoutes.post(
   '/:id/reviewed',
   zValidator('json', markReviewedBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
@@ -165,12 +165,12 @@ feedbackReportRoutes.post(
     const userId = c.get('userId');
 
     const [existing] = await db
-      .select({ id: feedbackReports.id, projectId: feedbackReports.projectId })
-      .from(feedbackReports)
-      .where(eq(feedbackReports.id, reportId))
+      .select({ id: agentReports.id, projectId: agentReports.projectId })
+      .from(agentReports)
+      .where(eq(agentReports.id, reportId))
       .limit(1);
 
-    if (!existing) throw notFound('feedback report not found');
+    if (!existing) throw notFound('agent report not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
     assertProjectRole(access, 'member', 'not a project member');
@@ -190,7 +190,7 @@ feedbackReportRoutes.post(
     }
 
     const [updated] = await db
-      .update(feedbackReports)
+      .update(agentReports)
       .set({
         reviewedAt: reviewed ? new Date() : null,
         // Omitting linkedIssueId on a reviewed:true call leaves any existing
@@ -201,14 +201,14 @@ feedbackReportRoutes.post(
             ? { linkedIssueId: validatedLinkedIssueId }
             : {}),
       })
-      .where(eq(feedbackReports.id, reportId))
+      .where(eq(agentReports.id, reportId))
       .returning({
-        id: feedbackReports.id,
-        reviewedAt: feedbackReports.reviewedAt,
-        linkedIssueId: feedbackReports.linkedIssueId,
+        id: agentReports.id,
+        reviewedAt: agentReports.reviewedAt,
+        linkedIssueId: agentReports.linkedIssueId,
       });
 
-    if (!updated) throw notFound('feedback report not found after update');
+    if (!updated) throw notFound('agent report not found after update');
 
     return c.json({
       id: updated.id,
@@ -217,3 +217,40 @@ feedbackReportRoutes.post(
     });
   },
 );
+
+/** What a caller of the old mount is told, on the object it gets back and in its headers. */
+export const FEEDBACK_REPORTS_ALIAS_DEPRECATION = {
+  alias: '/api/feedback-reports',
+  replacement: '/api/agent-reports',
+  reason:
+    'agent friction reports are `agent_reports` now; the word `feedback` belongs to a person reporting on the product',
+  endsWhen: 'forge-plugin no longer calls the alias',
+} as const;
+
+// cm:hack the pinned forge-plugin still calls `/api/feedback-reports`, so the old mount answers with
+// the same handlers and says it is deprecated — ends when forge-plugin moves to `/api/agent-reports`
+// and `forge_agent_report` (logged in forge-local-docs/plugin-followups.md); then delete this mount.
+export const feedbackReportsAliasRoutes = new Hono<{ Variables: AuthVars }>();
+feedbackReportsAliasRoutes.use('*', async (c, next) => {
+  await next();
+  const res = c.res;
+  const headers = new Headers(res.headers);
+  headers.set('Deprecation', 'true');
+  headers.set(
+    'Link',
+    `<${FEEDBACK_REPORTS_ALIAS_DEPRECATION.replacement}>; rel="successor-version"`,
+  );
+  let body: ReadableStream<Uint8Array> | string | null = res.body;
+  if ((res.headers.get('content-type') ?? '').includes('application/json')) {
+    const text = await res.text();
+    const parsed: unknown = JSON.parse(text);
+    // An array keeps its shape: a caller iterating it must not meet a new element; the header says it.
+    body =
+      parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? JSON.stringify({ ...parsed, deprecation: FEEDBACK_REPORTS_ALIAS_DEPRECATION })
+        : text;
+    headers.delete('content-length');
+  }
+  c.res = new Response(body, { status: res.status, statusText: res.statusText, headers });
+});
+feedbackReportsAliasRoutes.route('/', agentReportRoutes);

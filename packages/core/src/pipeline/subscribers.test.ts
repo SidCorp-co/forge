@@ -111,7 +111,7 @@ describe('registerActivitySubscribers', () => {
       projectId: PROJECT_ID,
       actor: ACTOR,
       from: 'open',
-      to: 'confirmed',
+      to: 'in_progress',
       reopenCount: 0,
       reason: 'triage done',
     });
@@ -119,7 +119,7 @@ describe('registerActivitySubscribers', () => {
       issueId: ISSUE_ID,
       actor: ACTOR,
       action: 'issue.statusChanged',
-      payload: { from: 'open', to: 'confirmed', reopenCount: 0, reason: 'triage done' },
+      payload: { from: 'open', to: 'in_progress', reopenCount: 0, reason: 'triage done' },
     });
   });
 
@@ -130,11 +130,11 @@ describe('registerActivitySubscribers', () => {
       projectId: PROJECT_ID,
       actor: ACTOR,
       from: 'open',
-      to: 'confirmed',
+      to: 'in_progress',
       reopenCount: 0,
     });
     const call = safeRecordActivity.mock.calls[0]?.[0];
-    expect(call?.payload).toEqual({ from: 'open', to: 'confirmed', reopenCount: 0 });
+    expect(call?.payload).toEqual({ from: 'open', to: 'in_progress', reopenCount: 0 });
   });
 
   it('ISS-849: a redelivery of the same outbox row yields exactly one activity row', async () => {
@@ -144,7 +144,7 @@ describe('registerActivitySubscribers', () => {
       projectId: PROJECT_ID,
       actor: ACTOR,
       from: 'open' as const,
-      to: 'confirmed' as const,
+      to: 'in_progress' as const,
       reopenCount: 0,
       outboxId: 'outbox-1',
     };
@@ -168,7 +168,7 @@ describe('registerActivitySubscribers', () => {
       projectId: PROJECT_ID,
       actor: ACTOR,
       from: 'open' as const,
-      to: 'confirmed' as const,
+      to: 'in_progress' as const,
       reopenCount: 0,
       outboxId,
     });
@@ -191,7 +191,7 @@ describe('registerActivitySubscribers', () => {
       projectId: PROJECT_ID,
       actor: ACTOR,
       from: 'open',
-      to: 'confirmed',
+      to: 'in_progress',
       reopenCount: 0,
     });
     expect(selectLimit.mock.calls).toHaveLength(0);
@@ -258,7 +258,7 @@ describe('the time a transition is recorded at (ISS-1317)', () => {
       projectId: PROJECT_ID,
       actor: ACTOR,
       from: 'open',
-      to: 'confirmed',
+      to: 'in_progress',
       reopenCount: 0,
       at,
     });

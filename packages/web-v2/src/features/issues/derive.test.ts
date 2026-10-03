@@ -1,4 +1,4 @@
-import { toAutonomousLabel } from "@forge/contracts/issue-vocabulary";
+import { ISSUE_STATUS_TONES, WORK_STEPS } from "@forge/contracts/issue-vocabulary";
 import { describe, expect, it } from "vitest";
 import {
 	REGISTRY_ISSUE_STATUSES,
@@ -34,10 +34,12 @@ import {
 	openBlockingRefs,
 	PRIORITY_LABELS,
 	parseChecklist,
+	parkReturnTargets,
 	priorityLabel,
 	STATUS_LABELS,
 	statusLabel,
-	LABEL_VIEW,
+	statusStepLabel,
+	issueStatusChip,
 	runStatusChip,
 	statusToChip,
 	statusToTone,
@@ -48,7 +50,6 @@ import type { ParkReading } from "./derive";
 import type {
 	IssueDependencies,
 	IssuePark,
-	IssueStatus,
 	IssueDependencyEdge,
 	IssueDetail,
 	IssueRow,
@@ -83,10 +84,6 @@ function row(over: Partial<IssueRow> & { id: string }): IssueRow {
 	};
 }
 
-
-/** The word the board shows for a row: its lane label, held or not. */
-const lane = (s: IssueStatus, held: boolean): string => LABEL_VIEW[toAutonomousLabel(s, held)].label;
-
 describe("runStatusChip — the run's state, never the issue's", () => {
 	const queuedJob = {
 		stage: "open",
@@ -117,30 +114,77 @@ describe("runStatusChip — the run's state, never the issue's", () => {
 
 describe("statusToChip", () => {
 	it("reads the issue's status alone, so an open issue is not drawn as its run", () => {
-		expect(statusToChip("approved")).toBe("queued");
+		expect(statusToChip("open")).toBe("queued");
 		expect(statusToChip("in_progress")).toBe("running");
 	});
-	it("maps lifecycle status to a kit StatusKey", () => {
-		expect(statusToChip("in_progress")).toBe("running");
-		expect(statusToChip("waiting")).toBe("waiting");
-		expect(statusToChip("tested")).toBe("passed");
-		expect(statusToChip("on_hold")).toBe("paused");
+	it("draws each status in the badge legend's tone", () => {
+		expect(statusToChip("draft")).toBe("queued");
+		expect(statusToChip("approved")).toBe("passed");
+		expect(statusToChip("needs_info")).toBe("waiting");
+		expect(statusToChip("awaiting_release")).toBe("waiting");
+		expect(statusToChip("on_hold")).toBe("queued");
+		expect(statusToChip("reopen")).toBe("failed");
 	});
-	it("splits the terminal/gate tail into distinct keys (ISS-511)", () => {
-		expect(statusToChip("tested")).toBe("passed");
-		expect(statusToChip("awaiting_release")).toBe("shipped");
+	it("draws the two ways an issue ends alike, apart from every status still moving", () => {
 		expect(statusToChip("closed")).toBe("archived");
+		expect(statusToChip("dropped")).toBe("archived");
+		for (const s of ISSUE_STATUSES.filter((x) => x !== "closed" && x !== "dropped")) {
+			expect(statusToChip(s), s).not.toBe("archived");
+		}
 	});
-	it("folds five distinct statuses onto queued, which is why the label is separate", () => {
-		const folded = ["draft", "open", "confirmed", "clarified", "approved"] as const;
+	it("gives statuses of one tone one chip, and statuses of different tones different chips", () => {
+		for (const a of ISSUE_STATUSES) {
+			for (const b of ISSUE_STATUSES) {
+				const sameTone = ISSUE_STATUS_TONES[a] === ISSUE_STATUS_TONES[b];
+				expect(statusToChip(a) === statusToChip(b), `${a} / ${b}`).toBe(sameTone);
+			}
+		}
+	});
+	it("folds three statuses onto queued, which is why the label is separate", () => {
+		const folded = ["draft", "open", "on_hold"] as const;
 		for (const s of folded) {
 			expect(statusToChip(s)).toBe("queued");
 		}
-		const kernel = folded.map(statusLabel);
-		expect(new Set(kernel).size).toBe(folded.length);
-		expect(statusLabel("draft")).toMatch(/draft/i);
-		// The lane word does NOT separate them, which is why it may not label a status chip.
-		expect(new Set(folded.map((s) => lane(s, true))).size).toBeLessThan(folded.length);
+		expect(new Set(folded.map(statusLabel)).size).toBe(folded.length);
+	});
+});
+
+describe("statusStepLabel — the run's step on an in_progress chip", () => {
+	it("names the step after the status where in_progress has one", () => {
+		expect(statusStepLabel("in_progress", "test")).toBe("In progress · Test");
+		expect(statusStepLabel("in_progress", "triage")).toBe("In progress · Triage");
+	});
+	it("reads the status alone where the work state names no step", () => {
+		expect(statusStepLabel("in_progress", null)).toBe("In progress");
+		expect(statusStepLabel("in_progress", undefined)).toBe("In progress");
+	});
+	it("never adds a step to any other status, whatever the work state says", () => {
+		for (const s of ISSUE_STATUSES.filter((x) => x !== "in_progress")) {
+			for (const step of WORK_STEPS) {
+				expect(statusStepLabel(s, step), `${s} at ${step}`).toBe(statusLabel(s));
+			}
+		}
+	});
+	it("gives every step its own word", () => {
+		const words = WORK_STEPS.map((step) => statusStepLabel("in_progress", step));
+		expect(new Set(words).size).toBe(WORK_STEPS.length);
+	});
+});
+
+describe("issueStatusChip — the one reading every issue-status chip takes", () => {
+	it("carries the chip key, the step-bearing word, a glyph and the legend's tooltip", () => {
+		const view = issueStatusChip("in_progress", "build");
+		expect(view.status).toBe(statusToChip("in_progress"));
+		expect(view.label).toBe("In progress · Build");
+		expect(view.glyph.length).toBeGreaterThan(0);
+		expect(view.title).toMatch(/run holds it/);
+	});
+	it("gives every status a glyph, and tells apart every status but the two filled dots", () => {
+		const glyphs = ISSUE_STATUSES.map((s) => issueStatusChip(s).glyph);
+		for (const g of glyphs) expect(g).toBeTruthy();
+		expect(new Set(glyphs).size).toBe(ISSUE_STATUSES.length - 1);
+		expect(issueStatusChip("open").glyph).toBe(issueStatusChip("in_progress").glyph);
+		expect(issueStatusChip("open").status).not.toBe(issueStatusChip("in_progress").status);
 	});
 });
 
@@ -157,30 +201,30 @@ describe("statusToTone (ISS-509 — chip↔dashboard color consistency)", () => 
 		}
 	});
 
-	it("never resolves a benign / blocked / idle status to the failure tone", () => {
-		for (const s of ISSUE_STATUSES) {
-			expect(statusToTone(s), s).not.toBe("failure");
-		}
+	it("resolves only a reopened issue — one that came back — to the failure tone", () => {
+		expect(ISSUE_STATUSES.filter((s) => statusToTone(s) === "failure")).toEqual(["reopen"]);
 	});
 
-	it("reconciles the statuses that used to disagree across dashboards", () => {
-		expect(statusToTone("reopen")).toBe("active");
-		expect(statusToTone("on_hold")).toBe("blocked");
+	it("reads the statuses a person owes in the attention tone", () => {
 		expect(statusToTone("needs_info")).toBe("attention");
+		expect(statusToTone("awaiting_release")).toBe("attention");
+		expect(statusToTone("in_progress")).toBe("active");
 	});
 });
 
+/** The legal moves of workflow `issue-lifecycle` rev 2, as core's exits table serves them: a park's
+ *  way back to the status it left is not in it (`parkReturnTargets` adds it). */
 const EXITS = {
-	open: ["confirmed", "in_progress", "needs_info", "on_hold", "dropped"],
+	draft: ["open", "dropped"],
+	open: ["in_progress", "needs_info", "on_hold", "dropped"],
+	reopen: ["in_progress", "needs_info", "on_hold", "dropped"],
+	in_progress: ["approved", "awaiting_release", "closed", "needs_info", "on_hold", "dropped"],
 	approved: ["in_progress", "needs_info", "on_hold", "dropped"],
-	in_progress: ["developed", "closed", "needs_info", "on_hold", "dropped"],
-	developed: ["testing", "reopen", "needs_info", "on_hold", "dropped"],
-	testing: ["awaiting_release", "closed", "reopen", "needs_info", "on_hold", "dropped"],
-	releasing: ["closed", "reopen", "needs_info", "on_hold"],
+	awaiting_release: ["closed", "reopen", "needs_info", "on_hold", "dropped"],
+	needs_info: ["on_hold", "dropped"],
+	on_hold: ["needs_info", "dropped"],
 	closed: ["reopen"],
 	dropped: [],
-	confirmed: ["approved", "in_progress", "needs_info", "on_hold", "dropped"],
-	draft: ["open", "closed", "dropped", "developed", "in_progress"],
 } satisfies StatusExits;
 
 describe("allowedTransitions", () => {
@@ -192,18 +236,16 @@ describe("allowedTransitions", () => {
 		expect(allowedTransitions(EXITS, "dropped")).toEqual([]);
 	});
 
-	it("offers no retired status from any rung it is given", () => {
+	it("offers only statuses the lifecycle has, from every status it is given", () => {
+		const known = new Set<string>(ISSUE_STATUSES);
 		for (const from of Object.keys(EXITS) as (keyof typeof EXITS)[]) {
-			const offered = allowedTransitions(EXITS, from);
-			expect(offered).not.toContain("clarified");
-			expect(offered).not.toContain("waiting");
-			expect(offered).not.toContain("tested");
+			for (const to of allowedTransitions(EXITS, from)) expect(known.has(to), `${from} -> ${to}`).toBe(true);
 		}
 	});
 
 	it("returns the row in the order core declared it", () => {
-		expect(allowedTransitions(EXITS, "developed")).toEqual([
-			"testing",
+		expect(allowedTransitions(EXITS, "awaiting_release")).toEqual([
+			"closed",
 			"reopen",
 			"needs_info",
 			"on_hold",
@@ -211,26 +253,51 @@ describe("allowedTransitions", () => {
 		]);
 	});
 
-	it("restricts draft to promote, take up, direct-ship, or either discard", () => {
-		expect(allowedTransitions(EXITS, "draft")).toEqual([
-			"open",
-			"closed",
-			"dropped",
-			"developed",
-			"in_progress",
-		]);
+	it("restricts draft to accepting it as work or dropping it", () => {
+		expect(allowedTransitions(EXITS, "draft")).toEqual(["open", "dropped"]);
 	});
 
 	it("offers nothing at all while the exits are unread", () => {
 		expect(allowedTransitions(undefined, "open")).toEqual([]);
 		expect(allowedTransitions({}, "open")).toEqual([]);
+		expect(allowedTransitions(undefined, "needs_info", "in_progress")).toEqual([]);
+	});
+
+	it("returns a park first to the status it left, and to no other working status", () => {
+		expect(allowedTransitions(EXITS, "needs_info", "awaiting_release")).toEqual([
+			"awaiting_release",
+			"on_hold",
+			"dropped",
+		]);
+		expect(allowedTransitions(EXITS, "on_hold", "approved")).toEqual(["approved", "needs_info", "dropped"]);
+	});
+
+	it("offers every parkable status from a park whose left status nothing recorded", () => {
+		expect(allowedTransitions(EXITS, "on_hold", null)).toEqual([
+			"open",
+			"reopen",
+			"in_progress",
+			"approved",
+			"awaiting_release",
+			"needs_info",
+			"dropped",
+		]);
+		expect(parkReturnTargets("needs_info", undefined)).not.toContain("draft");
+		expect(parkReturnTargets("needs_info", undefined)).not.toContain("closed");
+	});
+
+	it("adds no way back to a status that is not a park, whatever left status it is handed", () => {
+		for (const from of ISSUE_STATUSES.filter((s) => s !== "needs_info" && s !== "on_hold")) {
+			expect(parkReturnTargets(from, "in_progress"), from).toEqual([]);
+			expect(allowedTransitions(EXITS, from, "in_progress")).toEqual(allowedTransitions(EXITS, from));
+		}
 	});
 });
 
 describe("groupedTransitions (ISS-982)", () => {
-	it("puts the forward rung first", () => {
+	it("puts the forward move first", () => {
 		expect(groupedTransitions(EXITS, "open")[0]).toEqual({
-			to: "confirmed",
+			to: "in_progress",
 			kind: "forward",
 			startsGroup: false,
 		});
@@ -238,7 +305,8 @@ describe("groupedTransitions (ISS-982)", () => {
 
 	it("orders the groups forward, then bounce, then discard", () => {
 		expect(groupedTransitions(EXITS, "in_progress").map((g) => g.to)).toEqual([
-			"developed",
+			"approved",
+			"awaiting_release",
 			"needs_info",
 			"on_hold",
 			"closed",
@@ -247,18 +315,19 @@ describe("groupedTransitions (ISS-982)", () => {
 	});
 
 	it("keeps each group in the order core declared it, not in any order of its own", () => {
-		expect(groupedTransitions(EXITS, "testing").map((g) => g.to)).toEqual([
+		const reordered = { ...EXITS, in_progress: ["awaiting_release", "on_hold", "approved", "dropped", "needs_info", "closed"] } satisfies StatusExits;
+		expect(groupedTransitions(reordered, "in_progress").map((g) => g.to)).toEqual([
 			"awaiting_release",
-			"reopen",
-			"needs_info",
+			"approved",
 			"on_hold",
-			"closed",
+			"needs_info",
 			"dropped",
+			"closed",
 		]);
 	});
 
 	it("marks the three bounce targets as bounces", () => {
-		const byTo = new Map(groupedTransitions(EXITS, "developed").map((g) => [g.to, g.kind]));
+		const byTo = new Map(groupedTransitions(EXITS, "awaiting_release").map((g) => [g.to, g.kind]));
 		expect(byTo.get("needs_info")).toBe("bounce");
 		expect(byTo.get("on_hold")).toBe("bounce");
 		expect(byTo.get("reopen")).toBe("bounce");
@@ -270,8 +339,8 @@ describe("groupedTransitions (ISS-982)", () => {
 		expect(byTo.get("dropped")).toBe("discard");
 	});
 
-	it("does not file releasing's close under the discards", () => {
-		expect(groupedTransitions(EXITS, "releasing")[0]).toEqual({
+	it("does not file awaiting_release's close under the discards", () => {
+		expect(groupedTransitions(EXITS, "awaiting_release")[0]).toEqual({
 			to: "closed",
 			kind: "forward",
 			startsGroup: false,
@@ -288,6 +357,18 @@ describe("groupedTransitions (ISS-982)", () => {
 			const g = groupedTransitions(EXITS, from);
 			if (g.length > 0) expect(g[0].startsGroup).toBe(false);
 		}
+	});
+
+	it("files a park's way back as forward, even a way back to reopen", () => {
+		const g = groupedTransitions(EXITS, "on_hold", null);
+		expect(g.filter((x) => x.kind === "forward").map((x) => x.to)).toEqual([
+			"open",
+			"reopen",
+			"in_progress",
+			"approved",
+			"awaiting_release",
+		]);
+		expect(g.find((x) => x.to === "needs_info")?.kind).toBe("bounce");
 	});
 
 	it("groups nothing when the exits are unread", () => {
@@ -321,13 +402,14 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 	it("never offers a status that requires an authored reason", () => {
 		const rows = [
 			row({ id: "a", status: "in_progress" }),
-			row({ id: "b", status: "developed" }),
+			row({ id: "b", status: "awaiting_release" }),
 		];
 		const result = bulkAllowedStatuses(EXITS, rows);
-		expect(result).not.toContain("waiting");
 		expect(result).not.toContain("needs_info");
 		expect(result).not.toContain("reopen");
-		expect(result).toContain("on_hold");
+		expect(result).not.toContain("on_hold");
+		expect(result).not.toContain("dropped");
+		expect(result).toEqual(["closed"]);
 	});
 	it("intersects allowed targets across mixed statuses", () => {
 		const rows = [
@@ -339,14 +421,15 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 			expect(allowedTransitions(EXITS, "open")).toContain(s);
 			expect(allowedTransitions(EXITS, "approved")).toContain(s);
 		}
-		expect(result).toEqual(["in_progress", "on_hold", "dropped"]);
+		expect(result).toEqual(["in_progress"]);
 	});
 	it("keeps the first selected row's declared order, not the enum's", () => {
+		const exits = { ...EXITS, reopen: ["closed", "awaiting_release", "approved"] } satisfies StatusExits;
 		const rows = [
-			row({ id: "a", status: "draft" }),
-			row({ id: "b", status: "approved" }),
+			row({ id: "a", status: "in_progress" }),
+			row({ id: "b", status: "reopen" }),
 		];
-		expect(bulkAllowedStatuses(EXITS, rows)).toEqual(["dropped", "in_progress"]);
+		expect(bulkAllowedStatuses(exits, rows)).toEqual(["approved", "awaiting_release", "closed"]);
 	});
 	it("narrows to nothing when a terminal row is in the mix", () => {
 		const rows = [
@@ -355,12 +438,12 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 		];
 		expect(bulkAllowedStatuses(EXITS, rows)).toEqual([]);
 	});
-	it("narrows hard when a draft row is in the mix (a draft's five exits bound the whole selection)", () => {
+	it("narrows to nothing when a draft row is in the mix (a draft's two exits bound the whole selection)", () => {
 		const rows = [
 			row({ id: "a", status: "draft" }),
 			row({ id: "b", status: "approved" }),
 		];
-		expect(bulkAllowedStatuses(EXITS, rows)).toEqual(["dropped", "in_progress"]);
+		expect(bulkAllowedStatuses(EXITS, rows)).toEqual([]);
 	});
 	it("offers nothing while the exits are unread", () => {
 		const rows = [row({ id: "a", status: "open" })];
@@ -371,45 +454,26 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 describe("label helpers", () => {
 	it("humanizes status / priority / complexity (no raw enum leaks)", () => {
 		expect(statusLabel("in_progress")).toBe("In progress");
-		expect(lane("in_progress", true)).toBe("Running");
-		expect(lane("needs_info", true)).toBe("Needs a human");
-
 		expect(statusLabel("needs_info")).toBe("Needs info");
+		expect(statusLabel("reopen")).toBe("Reopened");
+		expect(statusLabel("awaiting_release")).toBe("Awaiting release");
 		expect(priorityLabel("critical")).toBe("Critical");
 		expect(complexityLabel("xs")).toBe("XS");
 		expect(complexityLabel("m")).toBe("Medium");
 	});
-	it("labels a deliberate pause as paused, never as needing a human", () => {
-		expect(lane("on_hold", false)).toBe("Paused");
-		expect(lane("on_hold", false)).not.toBe("Needs a human");
-		expect(lane("waiting", false)).toBe("Needs a human");
-		expect(lane("needs_info", false)).toBe("Needs a human");
+	it("labels a deliberate pause as on hold, never as needing information", () => {
+		expect(statusLabel("on_hold")).toBe("On hold");
+		expect(statusLabel("on_hold")).not.toBe(statusLabel("needs_info"));
 	});
-	it("keeps the ten lane words for the surfaces that want ten buckets", () => {
-		expect(lane("in_progress", true)).toBe("Running");
-		expect(lane("developed", true)).toBe("Running");
-		expect(lane("releasing", true)).toBe("Running");
-		expect(lane("waiting", true)).toBe("Needs a human");
-		expect(lane("needs_info", true)).toBe("Needs a human");
-		const words = ISSUE_STATUSES.flatMap((s) => [lane(s, true), lane(s, false)]);
-		expect(new Set(words).size).toBe(10);
-	});
-	// ISS-1213: a row nothing holds does not read Running, whatever its status.
-	it("reads No check-in, never Running or Stalled, on a row nothing holds", () => {
-		expect(lane("testing", false)).toBe("No check-in");
-		expect(lane("developed", false)).toBe("No check-in");
-		expect(ISSUE_STATUSES.map((s) => lane(s, false))).not.toContain("Stalled");
-		expect(ISSUE_STATUSES.map((s) => lane(s, false))).not.toContain("Running");
-	});
-	it("names each move target by its own status word, never by a lane word", () => {
-		expect(transitionLabels(["in_progress", "developed", "testing"])).toEqual([
+	it("names each move target by its own status word", () => {
+		expect(transitionLabels(["in_progress", "approved", "awaiting_release"])).toEqual([
 			"In progress",
-			"Developed",
-			"Testing",
+			"Approved",
+			"Awaiting release",
 		]);
 		expect(transitionLabels([...ISSUE_STATUSES])).toEqual(ISSUE_STATUSES.map(statusLabel));
 	});
-	it("keeps seventeen status words beside the ten lane words", () => {
+	it("keeps ten distinct status words, one per status", () => {
 		expect(new Set(ISSUE_STATUSES.map(statusLabel)).size).toBe(ISSUE_STATUSES.length);
 	});
 
@@ -428,7 +492,7 @@ describe("label helpers", () => {
 		expect(Object.keys(STATUS_LABELS).sort()).toEqual(
 			[...REGISTRY_ISSUE_STATUSES].sort(),
 		);
-		expect(REGISTRY_ISSUE_STATUSES).toHaveLength(17);
+		expect(REGISTRY_ISSUE_STATUSES).toHaveLength(10);
 	});
 });
 
@@ -615,7 +679,7 @@ describe("groupRows", () => {
 		}),
 		row({
 			id: "c",
-			status: "developed",
+			status: "awaiting_release",
 			priority: "high",
 			createdById: "u1",
 			creatorLabel: "ann@x.co",
@@ -628,7 +692,7 @@ describe("groupRows", () => {
 	});
 	it("groups by status preserving server order", () => {
 		const g = groupRows(rows, "status");
-		expect(g.map((x) => x.key)).toEqual(["open", "developed"]);
+		expect(g.map((x) => x.key)).toEqual(["open", "awaiting_release"]);
 		expect(g[0].rows.map((r) => r.id)).toEqual(["a", "b"]);
 	});
 	// ISS-1137 — an agent is an account with a name, so two agents are two
@@ -923,16 +987,16 @@ describe("deriveBlockerState", () => {
 	});
 
 	describe("a park names what the person owes, and never requests approved (ISS-1310)", () => {
-		it("names a decision and resumes at the recorded rung — sid-desk ISS-529's shape", () => {
+		it("names a decision and resumes at the status the park left — sid-desk ISS-529's shape", () => {
 			const b = deriveBlockerState(
-				blockerIssue({ status: "waiting" }),
-				{ stage: "waiting", waitingCause: { kind: "needs_decision" } },
+				blockerIssue({ status: "needs_info" }),
+				{ stage: "needs_info", waitingCause: { kind: "needs_decision" } },
 				undefined,
-				readPark({ status: "waiting", owes: "decision", resume: { at: "developed", recordId: "c1" } }),
+				readPark({ status: "needs_info", owes: "decision", resume: { at: "awaiting_release", recordId: null } }),
 			);
 			expect(b?.reason).toContain("a decision");
-			expect(b?.cta).toEqual({ label: "Resume at Developed", kind: "resume-park" });
-			expect(b?.resumeAt).toBe("developed");
+			expect(b?.cta).toEqual({ label: "Resume at Awaiting release", kind: "resume-park" });
+			expect(b?.resumeAt).toBe("awaiting_release");
 		});
 
 		it("names a resource in words a person reads", () => {
@@ -947,15 +1011,16 @@ describe("deriveBlockerState", () => {
 			expect(b?.cta.kind).toBe("provide-info");
 		});
 
-		it("says the park did not say what it waits for, and offers no move it cannot back", () => {
+		it("offers no move it cannot back where nothing says which status the park left", () => {
 			const b = deriveBlockerState(
-				blockerIssue({ status: "waiting" }),
+				blockerIssue({ status: "needs_info" }),
 				undefined,
 				undefined,
-				readPark({ status: "waiting", owes: null }),
+				readPark({ status: "needs_info", owes: "decision", resume: { at: null, why: "no left status" } }),
 			);
-			expect(b?.reason).toContain("did not say for what");
+			expect(b?.reason).toContain("a decision");
 			expect(b?.cta.kind).toBe("none");
+			expect(b?.resumeAt).toBeUndefined();
 			expect(b?.detail).toMatch(/Move anyway/);
 		});
 
@@ -979,9 +1044,10 @@ describe("deriveBlockerState", () => {
 		it("speaks no kernel word — park, rung, decision round — in any banner a park can show", () => {
 			const KERNEL_WORDS = /\b(park|parked|parking|rung|decision round)\b/i;
 			const shapes: Array<Partial<IssuePark>> = [];
-			for (const owes of ["information", "decision", "resource", null] as const) {
-				for (const resume of [{ at: "developed" as const, recordId: "c" }, { at: null, why: "x" }]) {
-					shapes.push({ status: "waiting", owes, resume });
+			const resumes: IssuePark["resume"][] = [{ at: "in_progress", recordId: null }, { at: null, why: "x" }];
+			for (const owes of ["information", "decision", "resource"] as const) {
+				for (const resume of resumes) {
+					shapes.push({ status: "needs_info", owes, resume });
 					shapes.push({ status: "needs_info", owes, resume, reason: "Which tenant?" });
 					shapes.push({
 						status: "needs_info",
@@ -1001,13 +1067,13 @@ describe("deriveBlockerState", () => {
 		});
 
 		it("never requests approved from any park shape", () => {
-			for (const owes of ["information", "decision", "resource", null] as const) {
-				for (const status of ["needs_info", "waiting"] as const) {
+			for (const owes of ["information", "decision", "resource"] as const) {
+				for (const at of ["open", "reopen", "in_progress", "awaiting_release"] as const) {
 					const b = deriveBlockerState(
-						blockerIssue({ status }),
+						blockerIssue({ status: "needs_info" }),
 						undefined,
 						undefined,
-						readPark({ status, owes, resume: { at: "developed", recordId: "c" } }),
+						readPark({ status: "needs_info", owes, resume: { at, recordId: null } }),
 					);
 					expect(b?.cta.kind).not.toBe("approve");
 					expect(b?.cta.label).not.toMatch(/approve/i);
@@ -1017,7 +1083,7 @@ describe("deriveBlockerState", () => {
 
 		it("says so while the park is being read, or could not be read, and offers nothing", () => {
 			for (const state of ["loading", "error"] as const) {
-				const b = deriveBlockerState(blockerIssue({ status: "waiting" }), undefined, undefined, { state });
+				const b = deriveBlockerState(blockerIssue({ status: "needs_info" }), undefined, undefined, { state });
 				expect(b?.tone).toBe("attention");
 				expect(b?.cta.kind).toBe("none");
 			}
@@ -1028,22 +1094,38 @@ describe("deriveBlockerState", () => {
 		});
 	});
 
-	it("on_hold status → resume action, in the calm tone", () => {
+	it("on_hold resumes only at the status it left, in the calm tone", () => {
 		const b = deriveBlockerState(
-			blockerIssue({ status: "on_hold" }),
+			{ status: "on_hold", workState: { leftStatus: "in_progress" } },
 			undefined,
 			undefined,
 		);
-		expect(b?.cta.kind).toBe("resume");
+		expect(b?.cta).toEqual({ label: "Resume at In progress", kind: "resume-park" });
+		expect(b?.resumeAt).toBe("in_progress");
 		expect(b?.reason).toContain("paused");
 		expect(b?.tone).toBe("info");
 	});
 
-	it("keeps the attention tone for the two parks that DO ask a person", () => {
-		for (const status of ["needs_info", "waiting"] as const) {
-			const b = deriveBlockerState(blockerIssue({ status }), undefined, undefined, readPark({ status }));
-			expect(b?.tone).toBe("attention");
+	it("on_hold with no status it left offers no resume, and says the status menu has the moves", () => {
+		for (const workState of [{ leftStatus: null }, null, undefined]) {
+			const b = deriveBlockerState({ status: "on_hold", workState }, undefined, undefined);
+			expect(b?.cta.kind).toBe("none");
+			expect(b?.resumeAt).toBeUndefined();
+			expect(b?.detail).toMatch(/status menu/);
+			expect(b?.tone).toBe("info");
 		}
+	});
+
+	it("never offers a reopen to resume a hold — a hold returns where it stopped", () => {
+		for (const leftStatus of ["open", "approved", "awaiting_release"] as const) {
+			const b = deriveBlockerState({ status: "on_hold", workState: { leftStatus } }, undefined, undefined);
+			expect(b?.resumeAt).toBe(leftStatus);
+		}
+	});
+
+	it("keeps the attention tone for the park that DOES ask a person", () => {
+		const b = deriveBlockerState(blockerIssue({ status: "needs_info" }), undefined, undefined, readPark());
+		expect(b?.tone).toBe("attention");
 	});
 
 	it("maps each pipelineHealth.waitingOn reason", () => {
@@ -1368,8 +1450,8 @@ describe("deriveBlockerState — ISS-853, the paused run the screen used to hide
 
 describe("statusesFromParam", () => {
 	it("names exactly the statuses the parameter carries", () => {
-		expect(statusesFromParam("waiting,needs_info,on_hold")).toEqual([
-			"waiting",
+		expect(statusesFromParam("approved,needs_info,on_hold")).toEqual([
+			"approved",
 			"needs_info",
 			"on_hold",
 		]);
@@ -1377,6 +1459,11 @@ describe("statusesFromParam", () => {
 
 	it("drops a status the lifecycle does not have, keeping the rest", () => {
 		expect(statusesFromParam("open,banana,closed")).toEqual(["open", "closed"]);
+	});
+
+	it("drops a retired status a bookmarked link still carries, rather than guessing its successor", () => {
+		expect(statusesFromParam("developed,testing,in_progress")).toEqual(["in_progress"]);
+		expect(statusesFromParam("waiting,tested")).toBeUndefined();
 	});
 
 	it("returns undefined where the parameter names nothing valid, leaving the tab filter in charge", () => {
@@ -1491,21 +1578,21 @@ describe("issueQueryKey (ISS-1160 — codex 1a508e/F1, recheck-confirmed)", () =
 // ISS-1257 — a question marks its issue and moves nothing, so the surfaces a person reads take
 // the marker as well as the status.
 describe("the marker that a person owes an issue an answer", () => {
-	it("shows a banner on an issue at testing that a person owes an answer", () => {
+	it("shows a banner on an issue in progress that a person owes an answer", () => {
 		const banner = deriveBlockerState(
-			blockerIssue({ status: "testing" }),
+			blockerIssue({ status: "in_progress" }),
 			undefined,
 			undefined,
-			readPark({ shape: "question", status: "testing", openQuestionIds: ["q1"], resume: { at: null, why: "not stopped" } }),
+			readPark({ shape: "question", status: "in_progress", openQuestionIds: ["q1"], resume: { at: null, why: "not stopped" } }),
 		);
 		expect(banner?.tone).toBe("attention");
 		expect(banner?.reason).toMatch(/information/);
 		expect(banner?.cta.kind).toBe("provide-info");
 	});
 
-	it("shows no banner at testing when the park view reads nobody owes it anything", () => {
+	it("shows no banner in progress when the park view reads nobody owes it anything", () => {
 		expect(
-			deriveBlockerState(blockerIssue({ status: "testing" }), undefined, undefined, {
+			deriveBlockerState(blockerIssue({ status: "in_progress" }), undefined, undefined, {
 				state: "ready",
 				park: null,
 			}),

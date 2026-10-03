@@ -27,15 +27,11 @@ export function useTopBarSlotTargets() {
   return { titleRef: ctx?.setTitle, actionsRef: ctx?.setActions };
 }
 
-/** Whether this tree sits under a shell top bar. */
 export function useInTopBar(): boolean {
   return useContext(TopBarSlotContext) !== null;
 }
 
-/**
- * Renders `node` into the named top-bar slot. Outside a shell it renders in place; inside one it
- * renders nothing until the bar has mounted, so the title never flashes as a row of the page.
- */
+/** In place outside a shell; inside one, nothing until the bar mounts, so a title never flashes. */
 export function useTopBarPortal(slot: "title" | "actions", node: ReactNode): ReactNode {
   const ctx = useContext(TopBarSlotContext);
   if (!ctx) return node;

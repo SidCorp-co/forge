@@ -9,16 +9,16 @@ import { bodyInvalidHttp } from '../body/http-error.js';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
 import { db } from '../db/client.js';
 import {
+  type IssueStatus,
   issueComplexities,
   issuePriorities,
-  issueStatuses,
   issues,
   jobTypes,
   projectMembers,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
-import { listResponse, paginationSchema } from '../lib/pagination.js';
+import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
@@ -52,16 +52,23 @@ import {
   resolveLabelIdsForWrite,
 } from './label-service.js';
 import { readLandingShape } from './landing-evidence.js';
+import {
+  issueForReader,
+  legacyFilterWarnings,
+  readerOnSeventeen,
+  STATUS_COMPAT_HEADER,
+  statusFilterSql,
+} from './legacy-status.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { liveReachForIssue } from './live-reach-read.js';
-import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
+import { isSelfReferentialBranch } from './metadata.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
 import { issueRelationInputSchema } from './relations-service.js';
+import { issueFiltersSchema, issuePatchSchema } from './request-schemas.js';
 import { jobHistoryForStep } from './search.js';
-import { sessionContextExpectSchema, sessionContextSchema } from './session-context.js';
-import { buildIssueOrderBy, issueSortValues } from './sort.js';
+import { buildIssueOrderBy } from './sort.js';
 import {
   IssueUpdateNotFound,
   SessionContextDropsUnreadKeys,
@@ -78,7 +85,6 @@ export {
 
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
-import { ReleaseNotesSchema } from './release-notes.js';
 
 export const issueCreateSchema = z
   .object({
@@ -100,55 +106,12 @@ export const issueCreateSchema = z
 
 export type IssueCreateInput = z.infer<typeof issueCreateSchema>;
 
-export const issuePatchSchema = z
-  .object({
-    title: z.string().trim().min(1).max(500).optional(),
-    description: z.string().max(100_000).nullable().optional(),
-    descriptionFormat: z.enum(BODY_FORMATS).optional(),
-    priority: z.enum(issuePriorities).optional(),
-    category: z.string().trim().min(1).max(100).nullable().optional(),
-    complexity: z.enum(issueComplexities).nullable().optional(),
-    plan: z.string().max(200_000).nullable().optional(),
-    acceptanceCriteria: z.string().max(100_000).nullable().optional(),
-    assigneeId: z.uuid().nullable().optional(),
-    labels: z.array(labelAttachItemSchema).max(100).optional(),
-    metadata: issueMetadataSchema.optional(),
-    releaseNotes: ReleaseNotesSchema.nullable().optional(),
-    sessionContext: sessionContextSchema,
-    detectorKey: z.string().trim().min(1).max(120).optional(),
-    expect: sessionContextExpectSchema.optional(),
-  })
-  .strict()
-  .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' })
-  .refine((o) => Object.keys(o).some((k) => k !== 'expect'), {
-    message: '`expect` is a precondition on a write — send the field(s) to write alongside it',
-  });
-
-export type IssuePatchInput = z.infer<typeof issuePatchSchema>;
-
-const issueKeyFilterSchema = z
-  .string()
-  .trim()
-  .regex(
-    /^(?:[A-Za-z][A-Za-z0-9]{1,5}-)?\d{1,10}$/,
-    'expected a display id like `ISS-42`, or its bare sequence number',
-  );
-
-export const issueFiltersSchema = paginationSchema
-  .extend({
-    status: z.enum(issueStatuses).optional(),
-    priority: z.enum(issuePriorities).optional(),
-    assigneeId: z.uuid().optional(),
-    category: z.string().trim().min(1).max(100).optional(),
-    key: issueKeyFilterSchema.optional(),
-    sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
-    withAgentSessions: z.coerce.boolean().optional().default(false),
-    /** ISS-1237 — archived issues are left out unless asked for; a `key` is retrieval and always answers. */
-    includeArchived: z.stringbool().optional(),
-  })
-  .strict();
-
-export type IssueFilters = z.infer<typeof issueFiltersSchema>;
+export {
+  type IssueFilters,
+  type IssuePatchInput,
+  issueFiltersSchema,
+  issuePatchSchema,
+} from './request-schemas.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const issueIdParamSchema = z.object({ id: z.uuid() });
@@ -286,17 +249,20 @@ issueProjectRoutes.get(
 
     const labelRows = await listIssueLabels(issue.id);
 
-    const serialized = serializeIssue(
-      issue,
-      await activeIssuePrefix(projectId),
-      await readLandingShape(db, projectId),
+    const serialized = issueForReader(
+      serializeIssue(
+        issue,
+        await activeIssuePrefix(projectId),
+        await readLandingShape(db, projectId),
+      ),
+      readerOnSeventeen(c),
     );
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, [issue.id]);
     const creatorMap = await hydrateCreatorsForIssues([issue]);
     return c.json({
       ...serialized,
       ...creatorMap.get(issue.id),
-      pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
+      pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
       liveReach: await liveReachForIssue(issue),
       buildsWorkflow: await buildsWorkflowOf(issue.id),
       proposesWorkflow: await proposesWorkflowOf(issue.id),
@@ -325,7 +291,12 @@ issueProjectRoutes.get(
     if (!access.role) throw forbidden('not a project member');
 
     const conditions = [eq(issues.projectId, projectId)];
-    if (q.status) conditions.push(eq(issues.status, q.status));
+    const client17 = readerOnSeventeen(c);
+    if (q.status) {
+      conditions.push(statusFilterSql(q.status, client17));
+      const retired = legacyFilterWarnings([q.status]);
+      if (retired.length > 0) c.header(STATUS_COMPAT_HEADER, retired.join(' '));
+    }
     if (q.priority) conditions.push(eq(issues.priority, q.priority));
     if (q.assigneeId) conditions.push(eq(issues.assigneeId, q.assigneeId));
     if (q.category) conditions.push(eq(issues.category, q.category));
@@ -352,7 +323,9 @@ issueProjectRoutes.get(
     const total = Number(n);
 
     const listPrefix = await activeIssuePrefix(projectId);
-    const serialized = rows.map((r) => serializeRestListRow(r, listPrefix));
+    const serialized = rows.map((r) =>
+      issueForReader(serializeRestListRow(r, listPrefix), client17),
+    );
     if (serialized.length === 0) {
       return c.json(listResponse(c, serialized, total, q));
     }
@@ -368,7 +341,7 @@ issueProjectRoutes.get(
           serialized.map((r) => ({
             ...r,
             ...creatorMap.get(r.id),
-            pipelineHealth: healthMap.get(r.id) ?? pipelineHealthUnderived(r.status),
+            pipelineHealth: healthMap.get(r.id) ?? pipelineHealthUnderived(r.status as IssueStatus),
           })),
           total,
           q,
@@ -387,7 +360,7 @@ issueProjectRoutes.get(
             ...creatorMap.get(r.id),
             agentSessions: bucket?.agentSessions ?? [],
             agentStatus: bucket?.agentStatus ?? null,
-            pipelineHealth: healthMap.get(r.id) ?? pipelineHealthUnderived(r.status),
+            pipelineHealth: healthMap.get(r.id) ?? pipelineHealthUnderived(r.status as IssueStatus),
           };
         }),
         total,
@@ -428,10 +401,13 @@ issueRoutes.get(
     const labelRows = await listIssueLabels(id);
 
     const healthMap = await safeHydratePipelineHealthForIssues(issue.projectId, [issue.id]);
-    const serialized = serializeIssue(
-      issue,
-      await activeIssuePrefix(issue.projectId),
-      await readLandingShape(db, issue.projectId),
+    const serialized = issueForReader(
+      serializeIssue(
+        issue,
+        await activeIssuePrefix(issue.projectId),
+        await readLandingShape(db, issue.projectId),
+      ),
+      readerOnSeventeen(c),
     );
     const agentMap = await hydrateAgentSessionsForIssues(issue.projectId, [issue.id]);
     const agentBucket = agentMap.get(issue.id);
@@ -441,7 +417,7 @@ issueRoutes.get(
       ...creatorMap.get(issue.id),
       agentSessions: agentBucket?.agentSessions ?? [],
       agentStatus: agentBucket?.agentStatus ?? null,
-      pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
+      pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
       liveReach: await liveReachForIssue(issue),
       buildsWorkflow: await buildsWorkflowOf(issue.id),
       proposesWorkflow: await proposesWorkflowOf(issue.id),
@@ -549,6 +525,7 @@ issueRoutes.patch(
         updates,
         labelIds: resolvedLabelIds,
         ...(patch.expect ? { expect: patch.expect } : {}),
+        ...(patch.workState ? { workState: patch.workState } : {}),
         actor,
       });
     } catch (err) {
@@ -569,10 +546,13 @@ issueRoutes.patch(
       });
     }
 
-    const patched = serializeIssue(
-      updated,
-      await activeIssuePrefix(issue.projectId),
-      await readLandingShape(db, issue.projectId),
+    const patched = issueForReader(
+      serializeIssue(
+        updated,
+        await activeIssuePrefix(issue.projectId),
+        await readLandingShape(db, issue.projectId),
+      ),
+      readerOnSeventeen(c),
     );
     return c.json(
       collected.warnings.length > 0 ? { ...patched, warnings: collected.warnings } : patched,

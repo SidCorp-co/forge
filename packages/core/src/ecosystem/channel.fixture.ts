@@ -111,15 +111,18 @@ export function channelWorld(overrides: Partial<ChannelWorld> = {}): ChannelWorl
     }),
   );
   const edges: EdgeRow[] = [...interfaces.values()].flatMap((i) =>
-    i.consumes.map((c) => {
+    i.consumes.flatMap((c) => {
       const [provider = '', contractSlug = ''] = c.contract.split('/');
-      return {
-        consumerProjectId: i.project,
-        providerProjectId: idOf(provider),
-        contractSlug,
-        ecosystemId: c.ecosystem,
-        builtAgainst: c.builtAgainst,
-      };
+      if (c.ecosystem === undefined) return [];
+      return [
+        {
+          consumerProjectId: i.project,
+          providerProjectId: idOf(provider),
+          contractSlug,
+          ecosystemId: c.ecosystem,
+          builtAgainst: c.builtAgainst,
+        },
+      ];
     }),
   );
   return {

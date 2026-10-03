@@ -16,6 +16,14 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, issueLabels, issues, jobs, labels, runners } from '../db/schema.js';
 import {
+  contractsNamedIn,
+  type LoadedNamedContract,
+  loadNamedContracts,
+  NamedContractError,
+  recordNamedContracts,
+  renderNamedContracts,
+} from '../ecosystem/contract/named-context.js';
+import {
   type LoadedContract,
   pathsNamedIn,
   renderContractContext,
@@ -193,6 +201,27 @@ async function contractsNamedBy(
   }
 }
 
+// cm:why a job is given the contract versions its issue names, the provider's and the in-project consumer's view alike, where path matching reaches only a link's call sites
+async function contractVersionsNamedBy(
+  job: typeof jobs.$inferSelect,
+  issue:
+    | { description: string | null; plan: string | null; acceptanceCriteria: string | null }
+    | undefined,
+): Promise<LoadedNamedContract[]> {
+  if (!issue) return [];
+  const text = [issue.description, issue.plan, issue.acceptanceCriteria].filter(Boolean).join('\n');
+  try {
+    return await loadNamedContracts(job.projectId, contractsNamedIn(text));
+  } catch (err) {
+    // cm:guard a named contract version that cannot be given, or is not approved, refuses the job by name: it would build against a contract nobody agreed
+    const code = err instanceof NamedContractError ? err.code : 'CONTRACT_CONTEXT_UNLOADABLE';
+    throw new Error(
+      `${code}: prepare refused job ${job.id}: the contract versions its issue names could not be given (${err instanceof Error ? err.message : String(err)})`,
+      { cause: err },
+    );
+  }
+}
+
 // cm:why a build job is given the design revision its approver approved, so it builds the journey it was held for rather than one it guesses at; an issue that builds no workflow is given nothing
 async function designsBuiltBy(job: typeof jobs.$inferSelect): Promise<LoadedArtifact[]> {
   if (!job.issueId) return [];
@@ -283,16 +312,21 @@ export async function prepareClaimedJob(args: {
   const designs = await designsBuiltBy(job);
   const requirement = await requirementServedBy(job);
   const contracts = await contractsNamedBy(job, issueRow[0]);
+  const namedContracts = await contractVersionsNamedBy(job, issueRow[0]);
   const artifactBlock =
     [requirement?.text, renderArtifactContext(designs)].filter(Boolean).join('\n\n') || null;
   const { systemPrompt, blocks } = withContextBlock(
     withContextBlock(
-      { systemPrompt: preamble.content, blocks: preamble.blocks },
-      'artifact-context',
-      artifactBlock,
+      withContextBlock(
+        { systemPrompt: preamble.content, blocks: preamble.blocks },
+        'artifact-context',
+        artifactBlock,
+      ),
+      'contract-context',
+      renderContractContext(contracts),
     ),
-    'contract-context',
-    renderContractContext(contracts),
+    'named-contract-context',
+    renderNamedContracts(job.projectId, namedContracts),
   );
 
   const payloadIn = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
@@ -340,6 +374,7 @@ export async function prepareClaimedJob(args: {
     );
   }
   if (contracts.length) await recordContractContext(agentSessionId, contracts, 'issue-paths');
+  if (namedContracts.length) await recordNamedContracts(agentSessionId, namedContracts);
 
   return {
     jobId: job.id,

@@ -1,12 +1,12 @@
 /**
  * ISS-1080 criteria 6-13 — a release batch nothing ever started does not keep its roster.
- * `createReleaseBatch` claims the roster and moves every issue to `releasing` before the job runs;
+ * `createReleaseBatch` claims the roster and puts every issue at its `release` step before the job runs;
  * when no box takes it, the only writer reaching those issues runs on the run going terminal, and
  * nothing makes it. `pixelight` held one there for 16 hours.
  *
  * Integration because every proposition here is about rows under real
  * constraints: which arm a CAS matches, what a transition is permitted to do to
- * an issue at `releasing`, and whether a second reader finds an empty set. The
+ * an issue at its `release` step, and whether a second reader finds an empty set. The
  * race in particular has no mocked form — what makes the fence sound is that
  * `startJobForMaster`'s own UPDATE requires `status = 'queued'`, and only
  * Postgres can be asked whether both statements can win.
@@ -23,7 +23,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture, SKIP_NOTE } from '../helpers/release-batch-fixture.js';
+import { AT_RELEASE, releaseBatchFixture, SKIP_NOTE } from '../helpers/release-batch-fixture.js';
 
 let harness: TestDatabase;
 let projectId: string;
@@ -114,7 +114,7 @@ describe('a release batch whose job no box ever took', () => {
     ]);
     expect(before.get(b)).toBeNull();
     const { runId, jobId } = await claim([a, b]);
-    expect((await stored(a)).status).toBe('releasing');
+    expect(await stored(a)).toMatchObject(AT_RELEASE);
     await ageJob(jobId, overdue());
 
     expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 1 });
@@ -150,7 +150,7 @@ describe('a release batch whose job no box ever took', () => {
     expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 0 });
 
     expect(await jobStatus(jobId)).toBe('queued');
-    expect((await stored(a)).status).toBe('releasing');
+    expect(await stored(a)).toMatchObject(AT_RELEASE);
     expect(await runStatus(runId)).toBe('running');
   });
 });
@@ -167,7 +167,7 @@ describe('what the pass must not touch', () => {
     expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 0 });
 
     expect(await jobStatus(jobId)).toBe('dispatched');
-    expect((await stored(a)).status).toBe('releasing');
+    expect(await stored(a)).toMatchObject(AT_RELEASE);
     expect(await runStatus(runId)).toBe('running');
   });
 
@@ -182,7 +182,7 @@ describe('what the pass must not touch', () => {
     expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 0 });
 
     expect(await jobStatus(jobId)).toBe('queued');
-    expect((await stored(a)).status).toBe('releasing');
+    expect(await stored(a)).toMatchObject(AT_RELEASE);
     expect(await runStatus(runId)).toBe('running');
   });
 
@@ -197,7 +197,7 @@ describe('what the pass must not touch', () => {
     expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 0 });
 
     expect(await jobStatus(jobId)).toBe('queued');
-    expect((await stored(a)).status).toBe('releasing');
+    expect(await stored(a)).toMatchObject(AT_RELEASE);
     expect(await runStatus(runId)).toBe('running');
   });
 
@@ -209,7 +209,7 @@ describe('what the pass must not touch', () => {
 
     expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 0 });
 
-    expect(await stored(a)).toMatchObject({ status: 'releasing', claim: runId });
+    expect(await stored(a)).toMatchObject({ ...AT_RELEASE, claim: runId });
     expect(await jobStatus(jobId)).toBe('queued');
   });
 });
@@ -262,7 +262,7 @@ describe('a fence whose cleanup never ran', () => {
     await harness.db.execute(sql`
       UPDATE jobs SET status = 'cancelled', finished_at = now() WHERE id = ${jobId}
     `);
-    expect(await stored(a)).toMatchObject({ status: 'releasing', claim: runId });
+    expect(await stored(a)).toMatchObject({ ...AT_RELEASE, claim: runId });
 
     const anHourOn = new Date(Date.now() + 61 * 60_000);
     expect(await reapConcludedRuns(anHourOn)).toEqual({ reaped: 1 });
@@ -291,7 +291,7 @@ describe('a fence this pass already made', () => {
         error = 'no box took this release batch before its deadline, so it never started'
       WHERE id = ${jobId}
     `);
-    expect(await stored(a)).toMatchObject({ status: 'releasing', claim: runId });
+    expect(await stored(a)).toMatchObject({ ...AT_RELEASE, claim: runId });
     expect(await wedgesFor(jobId)).toBe(0);
 
     expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 1 });
@@ -313,7 +313,7 @@ describe('a fence this pass already made', () => {
 
     expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 0 });
 
-    expect(await stored(a)).toMatchObject({ status: 'releasing', claim: runId });
+    expect(await stored(a)).toMatchObject({ ...AT_RELEASE, claim: runId });
   });
 
   /**

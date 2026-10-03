@@ -1,14 +1,11 @@
-// cm:why the board is one module-level store rather than component state: the assistant's actions (ISS-47's
-// executor), the dock's width, the page snapshot and the canvas itself all read it, and they sit in
-// different subtrees. The store holds the board as wireframe-v1 and the canvas is a read-only view of it:
-// the board is the assistant's surface, and only ui.board.draw opens it.
+// cm:why one module-level store: the assistant's executor (ISS-47), the dock, the page snapshot and the
+// canvas read it from different subtrees; the canvas is a read-only view, and only ui.board.draw opens it.
 
 import type { WireframeDoc } from "@forge/contracts/wireframe";
 import { useSyncExternalStore } from "react";
 
 export interface BoardState {
   open: boolean;
-  /** The board as the assistant last drew it. */
   doc: WireframeDoc | null;
   /** Bumped each time the doc is loaded, which the canvas redraws from. */
   loaded: number;

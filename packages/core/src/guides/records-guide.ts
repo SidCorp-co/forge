@@ -120,12 +120,19 @@ block names what that criterion was judged against before the next \`criterion\`
   repository. It is weighed against that workflow's current revision and no serving reading: it
   stands while the workflow is still at that revision, is superseded once a later revision is
   written, and reads as unanchored where the project no longer holds the workflow.
+- \`contract: <project slug>/<contract slug>@<version>\` — a contract version this issue's project
+  recorded, for a criterion judged against the contract itself, such as a provider's contract test.
+  It stands while that version is the contract's current one (the newest approved), is superseded
+  once a later version is approved, and reads as unanchored where the project recorded no such
+  version.
 
-A block carrying a verdict and naming none of the three is refused at the write door under
+A block carrying a verdict and naming none of the four is refused at the write door under
 \`verdict-identity\`, as is an identity not written as one and a \`runtime\` written as an
 abbreviation. A \`design\` naming a workflow this issue's project does not hold, a revision that
 workflow never held, or a workflow of another project is refused under \`verdict-design\`, which
-names the flows or revisions that do exist. A verdict already stored naming neither reads as unanchored: nothing says where it
+names the flows or revisions that do exist. A \`contract\` naming another project's contract, or a
+version this issue's project never recorded, is refused under \`verdict-contract\`, which names the
+versions that were recorded. A verdict already stored naming neither reads as unanchored: nothing says where it
 held, so nothing can say it still holds.
 
 ### What a verdict block cites, and whether it is still there

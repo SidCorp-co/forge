@@ -64,17 +64,30 @@ const liveLease = () => lease({ renewedAt: new Date(Date.now() - 5 * MINUTE).toI
 const lapsedLease = () =>
   lease({ renewedAt: new Date(Date.now() - 61 * MINUTE).toISOString(), minutes: 60 });
 
+/** Write the lease where it lives (ISS-54): the issue's work state, never `session_context`. */
+function setLease(
+  executor: Pick<typeof harness.db, 'execute'>,
+  id: string,
+  value: unknown,
+): Promise<unknown> {
+  return executor.execute(sql`
+    INSERT INTO issue_work_state (issue_id, lease)
+    VALUES (${id}, ${JSON.stringify(value)}::text::jsonb)
+    ON CONFLICT (issue_id) DO UPDATE SET lease = EXCLUDED.lease, updated_at = now()
+  `);
+}
+
 /** An `in_progress` issue whose latest job is a `done` `drive` job, whose issue run has ended and
  *  which nothing has written for two days — every term of the wedge read but the lease. */
 async function wedged(sessionLease: unknown, id: string = randomUUID()): Promise<string> {
   seq += 1;
-  const context = sessionLease === undefined ? {} : { lease: sessionLease };
   await harness.db.execute(sql`
     INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, assignee_id,
                         session_context, updated_at)
     VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, 'in_progress', ${ownerId}, ${ownerId},
-            ${JSON.stringify(context)}::jsonb, now() - interval '2 days')
+            '{}'::jsonb, now() - interval '2 days')
   `);
+  if (sessionLease !== undefined) await setLease(harness.db, id, sessionLease);
   const runId = randomUUID();
   await harness.db.execute(sql`
     INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at, finished_at)
@@ -166,11 +179,10 @@ describe('the wedge net reads the lease (ISS-1317)', () => {
     await reconciler.resetAutonomousWedgesOnce();
     expect(await statusOf(id)).toBe('in_progress');
 
-    await harness.db.execute(sql`
-      UPDATE issues SET session_context = ${JSON.stringify({ lease: lapsedLease() })}::jsonb,
-                        updated_at = now() - interval '2 days'
-      WHERE id = ${id}
-    `);
+    await setLease(harness.db, id, lapsedLease());
+    await harness.db.execute(
+      sql`UPDATE issues SET updated_at = now() - interval '2 days' WHERE id = ${id}`,
+    );
     expect(await reconciler.resetAutonomousWedgesOnce()).toBe(1);
     expect(await statusOf(id)).toBe('open');
   });
@@ -205,11 +217,7 @@ describe('the wedge net reads the lease (ISS-1317)', () => {
     const id = await wedged(lapsedLease());
     const reset = await whileRowIsHeld(
       id,
-      (tx) =>
-        tx.execute(sql`
-          UPDATE issues SET session_context = ${JSON.stringify({ lease: liveLease() })}::jsonb
-          WHERE id = ${id}
-        `),
+      (tx) => setLease(tx, id, liveLease()),
       () => reconciler.resetAutonomousWedgesOnce(),
     );
     expect(reset).toBe(0);
@@ -276,7 +284,9 @@ describe('a reset the wedge net makes is on the issue (ISS-1317)', () => {
       id,
       async (tx) => {
         await tx.execute(sql`SELECT set_config('forge.kernel_txn', txid_current()::text, true)`);
-        await tx.execute(sql`UPDATE issues SET status = 'needs_info' WHERE id = ${id}`);
+        await tx.execute(
+          sql`UPDATE issues SET status = 'needs_info', waiting_kind = 'needs_answer' WHERE id = ${id}`,
+        );
       },
       () => reconciler.resetAutonomousWedgesOnce(),
     );

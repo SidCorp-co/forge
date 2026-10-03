@@ -46,12 +46,8 @@ async function strandOf(issueId: string): Promise<Record<string, unknown> | null
   return rows[0]?.strand ?? null;
 }
 
-async function leaseOf(issueId: string): Promise<Record<string, unknown> | null> {
-  const rows = (await fx.db.execute(sql`
-    SELECT session_context -> 'lease' AS lease FROM issues WHERE id = ${issueId}
-  `)) as unknown as Array<{ lease: Record<string, unknown> | null }>;
-  return rows[0]?.lease ?? null;
-}
+/** The lease lives on the issue's work state (ISS-54), not in `session_context`. */
+const leaseOf = (issueId: string) => fx.leaseOf(issueId);
 
 /**
  * ISS-1195 — the one condition the pass above cannot see: a lease inside its own term whose holder
@@ -158,7 +154,7 @@ describe('A holder that stopped reporting (ISS-1195)', () => {
     const issueId = await seedSilentRow({ stopped: undefined });
     await fx.db.execute(sql`
       UPDATE issues
-         SET status = 'testing',
+         SET status = 'awaiting_release',
              updated_at = ${NOW.toISOString()}::timestamptz,
              session_context = session_context || ${JSON.stringify({
                strand: { status: 'in_progress', lease: 'abandoned' },

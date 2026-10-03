@@ -65,29 +65,82 @@ function publicationRefusals(doc: InterfaceDocument, world: InterfaceWorld): Eco
   return out;
 }
 
+/** The version and element checks a consumption owes once its provider and contract are known. */
+function builtAgainstRefusals(
+  c: InterfaceDocument['consumes'][number],
+  providerId: string,
+  contract: string,
+  world: InterfaceWorld,
+  at: (...rest: PropertyKey[]) => string,
+): EcosystemRefusal[] {
+  const versions = world.versions.get(versionKey(providerId, contract));
+  if (!versions?.has(c.builtAgainst)) {
+    const known = versions && versions.size > 0 ? [...versions].sort().join(', ') : 'none yet';
+    return [
+      {
+        code: 'VERSION_UNKNOWN',
+        path: at('builtAgainst'),
+        detail: `${c.contract} has no recorded version "${c.builtAgainst}" (recorded: ${known}); builtAgainst names a version core has recorded for that contract.`,
+      },
+    ];
+  }
+  const known = world.elements.get(`${versionKey(providerId, contract)}@${c.builtAgainst}`);
+  return missingElements(
+    c.elements ?? [],
+    known ?? null,
+    (j) => at('elements', j),
+    `${c.contract}@${c.builtAgainst}`,
+  );
+}
+
+// cm:why a project consuming its own contract is the in-project case and names no ecosystem (Q11, 2026-10-03): its UI and its backend share one interface. Naming an ecosystem for it is still SELF_CONSUMPTION, because an ecosystem is where two projects meet, and another project's contract is consumed only inside an ecosystem both share
+function ownConsumptionRefusals(
+  doc: InterfaceDocument,
+  c: InterfaceDocument['consumes'][number],
+  contract: string,
+  world: InterfaceWorld,
+  at: (...rest: PropertyKey[]) => string,
+): EcosystemRefusal[] {
+  if (c.ecosystem !== undefined) {
+    return [
+      {
+        code: 'SELF_CONSUMPTION',
+        path: at('ecosystem'),
+        detail: `${c.contract} is this project's own contract; a project consumes itself in-project, with no ecosystem, and never through one. Drop ecosystem to declare the in-project consumption.`,
+      },
+    ];
+  }
+  if (!doc.publishes[contract]) {
+    return [
+      {
+        code: 'REF_NOT_PUBLISHED',
+        path: at('contract'),
+        detail: `${world.project.slug} publishes no contract "${contract}" in this interface; an in-project consumption names one of the project's own publications.`,
+      },
+    ];
+  }
+  return builtAgainstRefusals(c, world.project.id, contract, world, at);
+}
+
 function consumptionRefusals(doc: InterfaceDocument, world: InterfaceWorld): EcosystemRefusal[] {
   const out: EcosystemRefusal[] = [];
   const seen = new Set<string>();
   doc.consumes.forEach((c, i) => {
     const at = (...rest: PropertyKey[]) => pointer(['consumes', i, ...rest]);
     const { provider, contract } = splitContractRef(c.contract);
-    const pair = `${c.contract} ${c.ecosystem}`;
+    const pair = `${c.contract} ${c.ecosystem ?? 'in-project'}`;
     if (seen.has(pair)) {
       out.push({
         code: 'CONSUMPTION_DUPLICATE',
         path: at(),
-        detail: `${c.contract} in ecosystem ${c.ecosystem} is already declared above; a contract is consumed once per ecosystem, against one version.`,
+        detail: `${c.contract} ${c.ecosystem ? `in ecosystem ${c.ecosystem}` : 'in-project'} is already declared above; a contract is consumed once per ecosystem, or once in-project, against one version.`,
       });
       return;
     }
     seen.add(pair);
     const view = world.providers.get(provider);
     if (provider === world.project.slug || view?.projectId === world.project.id) {
-      out.push({
-        code: 'SELF_CONSUMPTION',
-        path: at('contract'),
-        detail: `${c.contract} is this project's own contract; a project never consumes itself through an ecosystem.`,
-      });
+      out.push(...ownConsumptionRefusals(doc, c, contract, world, at));
       return;
     }
     if (!view) {
@@ -95,6 +148,14 @@ function consumptionRefusals(doc: InterfaceDocument, world: InterfaceWorld): Eco
         code: 'REF_UNRESOLVED',
         path: at('contract'),
         detail: `no project has the slug "${provider}"; a contract reference is <project-slug>/<contract-slug>.`,
+      });
+      return;
+    }
+    if (c.ecosystem === undefined) {
+      out.push({
+        code: 'CONSUMPTION_ECOSYSTEM_MISSING',
+        path: at(),
+        detail: `${c.contract} is project ${provider}'s contract; only a project's own contract is consumed with no ecosystem. Name the ecosystem ${world.project.slug} and ${provider} share.`,
       });
       return;
     }
@@ -115,25 +176,7 @@ function consumptionRefusals(doc: InterfaceDocument, world: InterfaceWorld): Eco
       });
       return;
     }
-    const versions = world.versions.get(versionKey(view.projectId, contract));
-    if (!versions?.has(c.builtAgainst)) {
-      const known = versions && versions.size > 0 ? [...versions].sort().join(', ') : 'none yet';
-      out.push({
-        code: 'VERSION_UNKNOWN',
-        path: at('builtAgainst'),
-        detail: `${c.contract} has no recorded version "${c.builtAgainst}" (recorded: ${known}); builtAgainst names a version core has recorded for that contract.`,
-      });
-      return;
-    }
-    const known = world.elements.get(`${versionKey(view.projectId, contract)}@${c.builtAgainst}`);
-    out.push(
-      ...missingElements(
-        c.elements ?? [],
-        known ?? null,
-        (j) => at('elements', j),
-        `${c.contract}@${c.builtAgainst}`,
-      ),
-    );
+    out.push(...builtAgainstRefusals(c, view.projectId, contract, world, at));
   });
   return out;
 }

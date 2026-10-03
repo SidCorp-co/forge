@@ -29,7 +29,7 @@ vi.mock("../hooks", () => ({
   useCancelRun: () => idle,
 }));
 vi.mock("@/features/issues/registry-api", () => ({
-  registryApi: { get: () => ({ version: 1, runnerCapabilities: {}, statusExits: { open: ["confirmed"] } }) },
+  registryApi: { get: () => ({ version: 1, runnerCapabilities: {}, statusExits: { open: ["in_progress"] } }) },
 }));
 
 const QUEUED_JOB = {

@@ -13,7 +13,7 @@ import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readRunnerLoad } from './runner-load-service.js';
 
-const ACTIVE_PIPELINE_STATUSES = ['approved', 'in_progress', 'developed', 'testing'] as const;
+const ACTIVE_PIPELINE_STATUSES = ['approved', 'in_progress'] as const;
 
 const FAILURE_REASON_TRUNC = 200;
 

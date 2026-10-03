@@ -3,7 +3,7 @@
  *
  * Real Postgres, because the two things in question are both database-shaped:
  * the testimony is read with a jsonb path operator over
- * `session_context.lease.next`, and "exactly once" is a containment match over
+ * `issue_work_state.lease.next` (ISS-54), and "exactly once" is a containment match over
  * a comment body. A mocked db would assert the shape of those queries rather
  * than what they select, which is the only thing being claimed here.
  */

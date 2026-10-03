@@ -10,29 +10,6 @@ export interface SkillFile {
   encoding?: "utf8" | "base64";
 }
 
-export const REGISTERABLE_STAGES = [
-  "open",
-  "confirmed",
-  "clarified",
-  "approved",
-  "developed",
-  "testing",
-  "reopen",
-  "awaiting_release",
-] as const;
-export type RegisterableStage = (typeof REGISTERABLE_STAGES)[number];
-
-export const STAGE_LABELS: Record<RegisterableStage, string> = {
-  open: "Triage",
-  confirmed: "Clarify",
-  clarified: "Plan",
-  approved: "Code",
-  developed: "Review",
-  testing: "Test",
-  reopen: "Fix",
-  awaiting_release: "Release",
-};
-
 export interface InvokableSkill {
   name: string;
   description: string;
@@ -169,8 +146,9 @@ export function usableSkillOptions(rows: SkillRow[]): UsableSkillOption[] {
   const out: UsableSkillOption[] = [];
   for (const name of new Set([...project.keys(), ...global.keys()])) {
     const p = project.get(name);
+    const g = global.get(name);
     if (p) out.push({ kind: "project", skillId: p.id, name });
-    else out.push({ kind: "adopt", globalSkillId: global.get(name)!.id, name });
+    else if (g) out.push({ kind: "adopt", globalSkillId: g.id, name });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }

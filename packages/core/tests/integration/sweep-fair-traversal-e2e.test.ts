@@ -67,12 +67,12 @@ describe('a bounded notify-only sweep reaches every candidate (ISS-1021)', () =>
     });
 
     const total = mods.STRANDED_SCAN_LIMIT + OVERFLOW;
-    // Every row is equally and permanently eligible: parked at `waiting`, well past the grace, and
+    // Every row is equally and permanently eligible: parked at `needs_info` on a decision, well past the grace, and
     // nothing in this pass will ever change that. `updated_at` is strictly increasing so the
     // traversal order is total and the assertions below can name pages by it.
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, title, status, created_by_id, iss_seq, updated_at)
-      SELECT gen_random_uuid(), ${projectId}, 'strand ' || g, 'waiting', ${owner.id}, g,
+      INSERT INTO issues (id, project_id, title, status, waiting_kind, created_by_id, iss_seq, updated_at)
+      SELECT gen_random_uuid(), ${projectId}, 'strand ' || g, 'needs_info', 'needs_decision', ${owner.id}, g,
              now() - interval '30 days' + (g || ' seconds')::interval
       FROM generate_series(1, ${total}) g
     `);

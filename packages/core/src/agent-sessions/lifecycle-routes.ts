@@ -69,8 +69,8 @@ agentSessionLifecycleRoutes.post(
     if (!updated) throw notFound('agent session not found');
 
     // Aborting a pipeline session just flips it to `idle`; the failure path
-    // (ISS-393) reverts the issue to its stage entry-status or parks it at
-    // `waiting`, so there is no separate hold flag to pin here.
+    // (ISS-393) reverts the issue to its stage entry-status or holds the job,
+    // so there is no separate hold flag to pin here.
     const meta = (updated.metadata ?? {}) as {
       type?: string;
       issueId?: string;

@@ -123,8 +123,8 @@ async function actWith(token: string) {
   const id = created.json.id as string;
   expect((await call(token, 'PATCH', `/api/issues/${id}`, { title: 'edited' })).status).toBe(200);
   const moved = await call(token, 'POST', `/api/issues/${id}/transition`, {
-    toStatus: 'confirmed',
-    reason: 'triaged',
+    toStatus: 'on_hold',
+    reason: 'parked for the next window',
   });
   expect(moved.status).toBe(200);
   await drainOutboxOnce();
@@ -146,7 +146,8 @@ async function actWith(token: string) {
     Record<string, string>
   >;
   const [comment] = (await harness.db.execute(sql`
-    SELECT author_id, author_device_id FROM comments WHERE issue_id = ${id}`)) as unknown as Array<
+    SELECT author_id, author_device_id FROM comments
+    WHERE issue_id = ${id} AND body = 'a word on the thread'`)) as unknown as Array<
     Record<string, string | null>
   >;
   const listed = await call(token, 'GET', `/api/projects/${projectId}/issues?limit=100`);
@@ -240,7 +241,7 @@ describe('a record that does not say who acted is refused, never written as a pe
         await tx.execute(sql`
           SELECT set_config('pipeline.actor_id', ${personId}, true),
                  set_config('pipeline.actor_type', 'user', true)`);
-        await tx.execute(sql`UPDATE issues SET status = 'confirmed' WHERE id = ${id}`);
+        await tx.execute(sql`UPDATE issues SET status = 'on_hold' WHERE id = ${id}`);
       }),
     ).rejects.toMatchObject({
       cause: { message: expect.stringMatching(/pipeline_outbox_user_actor_has_agency/) },

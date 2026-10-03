@@ -73,8 +73,8 @@ beforeEach(async () => {
   projectId = (await createTestProject(harness.db, adminId)).id;
   issueId = randomUUID();
   await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-    VALUES (${issueId}, ${projectId}, 1, 'the column', 'needs_info', ${adminId})
+    INSERT INTO issues (id, project_id, iss_seq, title, status, waiting_kind, created_by_id)
+    VALUES (${issueId}, ${projectId}, 1, 'the column', 'needs_info', 'needs_answer', ${adminId})
   `);
   const { pairDevice } = await import('../helpers/pair-device.js');
   const issued = await pairDevice({ ownerId: adminId, name: 'ask-box', platform: 'linux' });

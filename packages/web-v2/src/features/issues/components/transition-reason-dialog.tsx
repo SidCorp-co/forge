@@ -1,18 +1,20 @@
-// RFC 0002 INV-8 — the three statuses that STOP the pipeline carry the reason
-// they stopped it. The server rejects the write without one (422
-// TRANSITION_REASON_REQUIRED, plus WAITING_KIND_REQUIRED for `waiting`), so
-// every surface that offers these three routes through here rather than firing
-// the mutation and surfacing a 422 toast.
+// RFC 0002 INV-8 — the statuses that stop or end the work carry the reason they
+// did (`REASON_REQUIRED_ISSUE_STATUSES`: reopen, needs_info, on_hold, dropped).
+// The server rejects the write without one (422 TRANSITION_REASON_REQUIRED, plus
+// WAITING_KIND_REQUIRED for `needs_info`), so every surface that offers these
+// routes through here rather than firing the mutation and surfacing a 422 toast.
 
 "use client";
 
+import { NEEDS_INFO_KIND_LABELS } from "@forge/contracts/issue-vocabulary";
+import type { REASON_REQUIRED_ISSUE_STATUSES } from "@forge/contracts/status-sets";
 import { useEffect, useState } from "react";
 import { Button, Field, Radio, RadioGroup, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";
 import { statusLabel } from "../derive";
 import type { IssueStatus, WaitingCause } from "../types";
 
-export type ReasonStatus = "reopen" | "waiting" | "needs_info";
+export type ReasonStatus = (typeof REASON_REQUIRED_ISSUE_STATUSES)[number];
 /**
  * ISS-1257 — a close or drop the server refused because questions on the issue are still open.
  * ISS-1310 — the two ways out of a park that leave its question unanswered, each asking why.
@@ -34,19 +36,26 @@ const COPY: Record<DialogMode, CopySpec> = {
       "Posted as a comment before the status flips, where whoever picks the work back up reads it — say what regressed or what is still wrong.",
     placeholder: "e.g. the login redirect still 500s on a fresh session — trace in the last comment",
   },
-  waiting: {
-    title: "Park this issue for a human",
-    confirm: "Park",
-    blurb:
-      "Parking stops the pipeline until a person acts, so it has to say what that person is being asked for. Nobody can answer a question that was never written down.",
-    placeholder: "e.g. need a Stripe test account with 3DS enabled — I cannot create one",
-  },
   needs_info: {
-    title: "Ask for information",
+    title: "Stop this issue on a person",
     confirm: "Request info",
     blurb:
-      "The question is posted as a comment before the status flips. Ask it in full here — this is the only place the reporter will see it.",
+      "The work stops until a person acts, so say what they are being asked for — posted as a comment before the status flips. Nobody can answer a question that was never written down.",
     placeholder: "e.g. which environment did you see this on, and was the user an org admin?",
+  },
+  on_hold: {
+    title: "Put this issue on hold",
+    confirm: "Hold",
+    blurb:
+      "A hold pauses the work deliberately until someone resumes it where it stopped. Say why, so whoever picks it up knows whether the reason still stands.",
+    placeholder: "e.g. paused until the billing migration lands next sprint",
+  },
+  dropped: {
+    title: "Drop this issue",
+    confirm: "Drop",
+    blurb:
+      "Dropping says this work will not be done. The reason is posted on the thread, where anyone who finds the issue later reads why.",
+    placeholder: "e.g. superseded by ISS-412, which covers the same flow",
   },
   move_anyway: {
     title: "Move this issue anyway",
@@ -71,10 +80,14 @@ const COPY: Record<DialogMode, CopySpec> = {
   },
 };
 
-const KIND_LABEL: Record<WaitingCause, string> = {
-  needs_decision: "A decision — someone has to choose",
-  needs_resource: "A resource — someone has to supply what I cannot create",
+/** What each kind asks of the person, after the legend's own word for it. */
+const KIND_ASKS: Record<WaitingCause, string> = {
+  needs_answer: "someone has to answer it",
+  needs_decision: "someone has to choose",
+  needs_resource: "someone has to supply what I cannot create",
 };
+const KIND_ORDER: WaitingCause[] = ["needs_answer", "needs_decision", "needs_resource"];
+const kindLabel = (k: WaitingCause): string => `${NEEDS_INFO_KIND_LABELS[k]} — ${KIND_ASKS[k]}`;
 
 interface TransitionReasonDialogProps {
   status: DialogMode | null;
@@ -96,7 +109,7 @@ export function TransitionReasonDialog({
   onClose,
 }: TransitionReasonDialogProps) {
   const [reason, setReason] = useState("");
-  const [kind, setKind] = useState<WaitingCause>("needs_decision");
+  const [kind, setKind] = useState<WaitingCause>("needs_answer");
   const [target, setTarget] = useState<IssueStatus | null>(null);
   /** Set on the first confirm, so a second click before `loading` arrives sends no second move. */
   const [sent, setSent] = useState(false);
@@ -104,7 +117,7 @@ export function TransitionReasonDialog({
   useEffect(() => {
     if (status) {
       setReason("");
-      setKind("needs_decision");
+      setKind("needs_answer");
       setTarget(null);
       setSent(false);
     }
@@ -117,7 +130,7 @@ export function TransitionReasonDialog({
   const copy = COPY[status];
   const trimmed = reason.trim();
   const picking = status === "move_anyway";
-  const asksKind = status === "waiting" || (picking && target === "waiting");
+  const asksKind = status === "needs_info" || (picking && target === "needs_info");
   const ready = trimmed.length > 0 && (!picking || target !== null);
 
   return (
@@ -149,8 +162,9 @@ export function TransitionReasonDialog({
               value={kind}
               onChange={(v) => setKind(v as WaitingCause)}
             >
-              <Radio value="needs_decision" label={KIND_LABEL.needs_decision} />
-              <Radio value="needs_resource" label={KIND_LABEL.needs_resource} />
+              {KIND_ORDER.map((k) => (
+                <Radio key={k} value={k} label={kindLabel(k)} />
+              ))}
             </RadioGroup>
           </Field>
         )}

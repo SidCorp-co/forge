@@ -3,6 +3,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
+// The lifecycle guards and the work state have suites of their own (issue-lifecycle-guards-e2e).
+vi.mock('./transition-guards.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./transition-guards.js')>()),
+  guardFault: vi.fn(async () => null),
+}));
+vi.mock('./work-state.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./work-state.js')>()),
+  readWorkState: vi.fn(async () => null),
+  setWorkStep: vi.fn(async () => undefined),
+  setLeftStatus: vi.fn(async () => undefined),
+  setLegacyStatus: vi.fn(async () => undefined),
+}));
 // The archived-issue guard reads the row itself; these tests script every select, so it answers none.
 vi.mock('./archive.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./archive.js')>()),
@@ -54,9 +66,7 @@ const updateMock = vi.fn((..._args: unknown[]) => ({ set: updateSet }));
 const txExecute = vi.fn(async (..._args: unknown[]) => undefined);
 const txInsertValues = vi.fn(async (..._args: unknown[]) => undefined);
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
-// ISS-232 — `markMergedIfLeavingBase` issues a `tx.select(...).from
-// (projects)...` to resolve `mergeStates`. Stub it as an empty resolve so
-// the helper short-circuits with defaults under the in-memory db mock.
+// ISS-232 — `tx.select(...).from(projects)` resolves empty, so the helper takes its defaults.
 const txSelectLimit = vi.fn(async () => [] as unknown[]);
 const txSelectWhere = vi.fn(() => ({ limit: txSelectLimit }));
 const txSelectFrom = vi.fn(() => ({ where: txSelectWhere }));
@@ -68,9 +78,7 @@ const txProxy = {
   select: txSelect,
 };
 const transactionMock = vi.fn(async (cb: (tx: typeof txProxy) => Promise<unknown>) => cb(txProxy));
-// Backwards-compat aliases for the older manual-hold / plain-patch test
-// assertions that named these explicitly. They now point at the same chain
-// the status UPDATE uses, so `txUpdate` calls === `updateMock` calls.
+// Aliases for older assertions: `txUpdate` calls === `updateMock` calls.
 const txUpdate = updateMock;
 const txUpdateSet = updateSet;
 const txUpdateWhere = updateWhere;
@@ -331,7 +339,7 @@ describe('PATCH /api/issues/batch', () => {
     });
     // ISS2's status update returns its row.
     updateReturning.mockResolvedValueOnce([
-      { id: ISS2, status: 'testing', reopenCount: 0, updatedAt: new Date() },
+      { id: ISS2, status: 'in_progress', reopenCount: 0, updatedAt: new Date() },
     ]);
 
     const res = await buildApp().request('/api/issues/batch', {
@@ -339,7 +347,7 @@ describe('PATCH /api/issues/batch', () => {
       headers: await headers(),
       body: JSON.stringify({
         ids: [ISS1, ISS2],
-        data: { status: 'testing', priority: 'high' },
+        data: { status: 'in_progress', priority: 'high' },
       }),
     });
     expect(res.status).toBe(200);
@@ -367,7 +375,7 @@ describe('PATCH /api/issues/batch', () => {
       expect.any(String),
       expect.objectContaining({
         event: 'issue.statusChanged',
-        data: expect.objectContaining({ issueId: ISS2, from: 'approved', to: 'testing' }),
+        data: expect.objectContaining({ issueId: ISS2, from: 'approved', to: 'in_progress' }),
       }),
     );
   });
@@ -423,12 +431,12 @@ describe('PATCH /api/issues/batch', () => {
   it('batches the dependents query once across every terminal issue, and broadcasts one cascade per blocker', async () => {
     authVerified();
     selectAwait.mockResolvedValueOnce([
-      // Two issues in PROJECT_A, both at `tested` → `released` (terminal).
+      // Two issues in PROJECT_A, both at `in_progress` → `awaiting_release` (terminal for dispatch).
       {
         id: ISS1,
         issSeq: 1,
         projectId: PROJECT_A,
-        status: 'tested',
+        status: 'in_progress',
         priority: 'medium',
         category: null,
         complexity: null,
@@ -438,7 +446,7 @@ describe('PATCH /api/issues/batch', () => {
         id: ISS2,
         issSeq: 2,
         projectId: PROJECT_A,
-        status: 'tested',
+        status: 'in_progress',
         priority: 'medium',
         category: null,
         complexity: null,

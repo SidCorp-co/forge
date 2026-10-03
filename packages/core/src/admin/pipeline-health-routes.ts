@@ -2,9 +2,9 @@
  * Admin pipeline-health surface.
  *
  * GET /api/admin/pipeline/health
- *   Lists issues currently parked at `waiting` (the single human-review state
- *   the failure path now routes to — ISS-393 replaced the manualHold-block
- *   model) plus an aggregate failure-kind breakdown for SRE dashboards.
+ *   Lists issues currently parked at `needs_info` (stopped on a person, whatever the park's
+ *   kind — the old `waiting` park folded in, ISS-54) plus an aggregate failure-kind breakdown
+ *   for SRE dashboards.
  */
 
 import { and, count, desc, eq, sql } from 'drizzle-orm';
@@ -31,7 +31,7 @@ pipelineHealthAdminRoutes.get('/health', async (c) => {
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(eq(issues.status, 'waiting'))
+    .where(eq(issues.status, 'needs_info'))
     .orderBy(desc(issues.updatedAt))
     .limit(100);
 

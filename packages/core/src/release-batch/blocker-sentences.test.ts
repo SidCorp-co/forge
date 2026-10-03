@@ -163,9 +163,11 @@ describe('RELEASE_ROSTER_EMPTY', () => {
     const message = releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 11 });
 
     expect(message).toContain('11 issues');
-    expect(message).toContain('`testing`');
-    expect(message).toContain('`tested`');
+    expect(message).toContain('`in_progress` at their test step');
     expect(message).toContain('`awaiting_release`');
+    for (const retired of ['`testing`', '`tested`', '`releasing`']) {
+      expect(message).not.toContain(retired);
+    }
   });
 
   it('no longer says an issue reaches the gate by being merged and marked', () => {
