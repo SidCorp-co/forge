@@ -100,18 +100,34 @@ describe('what a verdict cites, once the evidence is gone (ISS-1198)', () => {
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id,
                           acceptance_criteria, session_context)
-      VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${'testing'}, ${ownerId},
+      VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${'in_progress'}, ${ownerId},
               ${criteria}, ${landing}::jsonb)
     `);
+    // The criteria rows the verdicts land on, as the issue write's own text path reads them (ISS-55).
+    const { db } = await import('../../src/db/client.js');
+    const { syncCriteriaFromText } = await import('../../src/issues/criteria/store.js');
+    await db.transaction((tx) => syncCriteriaFromText(tx, id, criteria));
     return id;
   }
 
   async function postVerdict(issueId: string, body: string): Promise<string> {
     const id = randomUUID();
-    await harness.db.execute(sql`
+    const rows = (await harness.db.execute(sql`
       INSERT INTO comments (id, issue_id, author_id, body)
       VALUES (${id}, ${issueId}, ${ownerId}, ${body})
-    `);
+      RETURNING created_at
+    `)) as unknown as Array<{ created_at: Date | string }>;
+    // What the comment door does with a verdict fence: mirror it into `criterion_verdicts`.
+    const { db } = await import('../../src/db/client.js');
+    const { mirrorCommentRecord } = await import('../../src/issues/record-events/mirror.js');
+    const createdAt = new Date(rows[0]?.created_at ?? Date.now());
+    await db.transaction((tx) =>
+      mirrorCommentRecord(
+        { id, issueId, body, createdAt },
+        { type: 'user', id: ownerId, agency: 'human' },
+        tx,
+      ),
+    );
     return id;
   }
 
