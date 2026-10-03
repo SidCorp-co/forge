@@ -14,6 +14,19 @@ export interface Rect {
   h: number;
 }
 
+/** Whether a design states an outside system's integration as settled, read from its label (`integrationOf`). */
+export type IntegrationState = "confirmed" | "unconfirmed";
+
+/** One system a folded boundary stands for, as its hover card lists it. */
+export interface GroupMember {
+  id: string;
+  name: string;
+  owner: string | null;
+  state: IntegrationState | null;
+  /** The words the state was read from, for the badge's tooltip. */
+  mark: string | null;
+}
+
 /** A box on a C4 diagram. `step` is the design step it draws; the system box on Context draws none. */
 export interface DBox extends Rect {
   id: string;
@@ -23,6 +36,10 @@ export interface DBox extends Rect {
   lines: string[];
   tip: string;
   step: string | null;
+  /** An outside system's integration state, drawn as a dashed outline when it is not confirmed. */
+  state?: IntegrationState | null;
+  /** A folded boundary: the systems (or people) it stands for. */
+  members?: GroupMember[];
 }
 
 export interface DLine {
@@ -40,6 +57,8 @@ export interface DLine {
   arrowEnd: boolean;
   /** The design line a click opens; a merged Context line opens its first. */
   edge: string | null;
+  /** Every design line the drawn line stands for, so selecting one lights it. */
+  edges: string[];
   ends: [string, string];
 }
 
@@ -51,6 +70,8 @@ export interface DCaption {
   tone: "heading" | "group";
   tip?: string;
   maxWidth: number;
+  /** A boundary the viewer opened, which this caption folds back. */
+  folds?: string;
 }
 
 export interface Diagram {
@@ -63,8 +84,28 @@ export interface Diagram {
   boundary: (Rect & { title: string; tip: string }) | null;
 }
 
-export const LABEL_SIZE = 11;
-export const TITLE_SIZE = 12.5;
+/**
+ * Every type size a C4 diagram draws, in diagram units: one unit is one CSS pixel at 100% zoom. The
+ * renderer reads them from here, so the smallest one is the floor `MIN_FONT_PX` is held against.
+ */
+export const FONT = {
+  title: 13.5,
+  focal: 15,
+  label: 12,
+  kicker: 12,
+  heading: 13,
+  group: 12,
+  boundary: 14,
+} as const;
+
+/** No text on a diagram is drawn smaller than this on screen at fit; a diagram that cannot fit summarises more instead. */
+export const MIN_FONT_PX = 12;
+
+/** The smallest type a diagram draws, in its own units. */
+export const SMALLEST_FONT = Math.min(...Object.values(FONT));
+
+/** The lowest zoom at which the smallest type still reads at `MIN_FONT_PX`. */
+export const MIN_READABLE_ZOOM = MIN_FONT_PX / SMALLEST_FONT;
 
 /** A string's drawn width in the UI face, estimated: Vietnamese with its diacritics runs close to 0.56em. */
 export const textWidth = (s: string, size: number) => s.length * size * 0.56;

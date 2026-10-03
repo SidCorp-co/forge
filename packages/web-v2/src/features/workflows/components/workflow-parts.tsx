@@ -3,6 +3,7 @@
 import { SENSITIVE_DATA_BADGES, type SensitiveDataLevel } from "@forge/contracts/data-policy";
 import { Tooltip } from "@/design";
 import { TONE_META } from "@/design/status";
+import type { IntegrationState } from "../c4/geometry";
 import type { DesignStatus, WorkflowRecord } from "../types";
 
 const DESIGN_PILL: Record<DesignStatus, { label: string; tone: keyof typeof TONE_META; tip: string }> = {
@@ -55,6 +56,30 @@ export function SensitivityBadge({ level }: { level: SensitiveDataLevel }) {
         style={{ color: c.fg, background: c.bg }}
         data-testid="sensitivity-badge"
         data-level={level}
+      >
+        <span aria-hidden className="size-1.5 rounded-full" style={{ background: c.dot }} />
+        {b.label}
+      </span>
+    </Tooltip>
+  );
+}
+
+const INTEGRATION: Record<IntegrationState, { label: string; tone: keyof typeof TONE_META; tip: string }> = {
+  confirmed: { label: "Confirmed", tone: "success", tip: "The design names this integration without an open question" },
+  unconfirmed: { label: "Unconfirmed", tone: "attention", tip: "The design marks this integration as not yet confirmed" },
+};
+
+/** Whether an outside system's integration is settled, as a colour badge; the design's own words sit in its tooltip. */
+export function IntegrationBadge({ state, mark }: { state: IntegrationState; mark?: string | null }) {
+  const b = INTEGRATION[state];
+  const c = TONE_META[b.tone];
+  return (
+    <Tooltip label={mark ? `${b.tip}: “${mark}”` : b.tip} side="bottom" multiline>
+      <span
+        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-0.5 text-11 font-semibold"
+        style={{ color: c.fg, background: c.bg }}
+        data-testid="integration-badge"
+        data-state={state}
       >
         <span aria-hidden className="size-1.5 rounded-full" style={{ background: c.dot }} />
         {b.label}
