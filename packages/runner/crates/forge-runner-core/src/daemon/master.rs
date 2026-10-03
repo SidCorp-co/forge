@@ -48,6 +48,7 @@ use crate::runner::ledger::{Ledger, MasterAuthority, MasterStanding, Run};
 use crate::runner::terminate;
 use crate::transport::admissible::{self, AdmissibleIssue, DISPATCH_GATING_KIND};
 use crate::transport::channel_inbox::{self, UnansweredDocument};
+use crate::transport::comment_inbox;
 use crate::transport::{master as master_api, mcp_servers, runners, CoreClient};
 use tokio::sync::mpsc;
 
@@ -3966,12 +3967,52 @@ fn nudge(inbox: &[UnansweredDocument]) -> String {
     )
 }
 
-/// What this project's channel owes, as core answers it this sweep.
+/// What this project's channel and issue threads owe, as core answers them this sweep.
 ///
-/// A read that fails is said once per cause and counts as nothing owed for this
-/// pass only: the issues the sweep already read still decide it, and the next
-/// sweep reads again. A failure is never cached as an empty inbox.
+/// Each read that fails is said once per cause and counts as nothing owed for
+/// this pass only: the issues the sweep already read still decide it, and the
+/// next sweep reads again. A failure is never cached as an empty inbox, and one
+/// read failing never hides what the other found.
 async fn read_inbox(
+    client: &CoreClient,
+    masters: &Arc<Masters>,
+    project_id: &str,
+    slug: &str,
+) -> Vec<UnansweredDocument> {
+    let mut owed = read_channel_inbox(client, masters, project_id, slug).await;
+    owed.extend(read_comment_inbox(client, masters, project_id, slug).await);
+    owed
+}
+
+/// What a person is owed a reply to on this project's issues, at any status.
+async fn read_comment_inbox(
+    client: &CoreClient,
+    masters: &Arc<Masters>,
+    project_id: &str,
+    slug: &str,
+) -> Vec<UnansweredDocument> {
+    // Keyed apart from the channel read, so each failure is said once and each recovery once.
+    let key = format!("{project_id}#comments");
+    match comment_inbox::unanswered(client, project_id).await {
+        Ok(owed) => {
+            if masters.note_inbox_read(&key, None) {
+                tracing::info!("[master] {slug}: the comment inbox reads again");
+            }
+            owed
+        }
+        Err(e) => {
+            let why = e.to_string();
+            if masters.note_inbox_read(&key, Some(why.clone())) {
+                tracing::warn!(
+                    "[master] {slug}: cannot read which issue comments a person is owed a reply to ({why}) — this pass is decided without them, and a comment waiting for a reply is not seen until the read succeeds"
+                );
+            }
+            Vec::new()
+        }
+    }
+}
+
+async fn read_channel_inbox(
     client: &CoreClient,
     masters: &Arc<Masters>,
     project_id: &str,
@@ -4017,7 +4058,7 @@ async fn nudge_master(
             tracing::info!("[master] {slug}: admissible work — nudging {name}")
         }
         None => tracing::info!(
-            "[master] {slug}: admissible work, {} channel document(s) owed a reply — nudging {name}",
+            "[master] {slug}: admissible work, {} channel document(s) or issue comment(s) owed a reply — nudging {name}",
             inbox.len()
         ),
     }
@@ -7535,6 +7576,32 @@ mod give_back_tests {
             Placement::AdoptOrStart,
             "a project whose channel owes a reply may have a master started for it"
         );
+    }
+
+    #[test]
+    fn a_comment_owed_a_reply_places_a_master_and_keeps_its_pane() {
+        let comment: UnansweredDocument = serde_json::from_value(serde_json::json!({
+            "id": "c1", "number": "ISS-7", "type": comment_inbox::ISSUE_COMMENT_TYPE, "from": "developed"
+        }))
+        .expect("comment fixture");
+        assert!(asked_this_sweep(&[], std::slice::from_ref(&comment), None));
+        assert_eq!(
+            placement_for(&[], std::slice::from_ref(&comment)),
+            Placement::AdoptOrStart,
+            "a person owed a reply on an issue no takeable read reaches still gets a master, and AdoptOrStart is what keeps retire_if_idle from running"
+        );
+        assert!(nudge(&[comment]).contains("ISS-7"));
+    }
+
+    #[test]
+    fn the_sweep_reads_the_comment_inbox_beside_the_channel() {
+        let body = THIS_SOURCE
+            .split("\nasync fn read_inbox(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .expect("read_inbox must be findable");
+        assert!(body.contains("read_channel_inbox(client,"), "{body}");
+        assert!(body.contains("read_comment_inbox(client,"), "{body}");
     }
 
     #[test]

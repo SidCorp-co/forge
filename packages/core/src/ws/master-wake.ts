@@ -23,6 +23,7 @@ export const MASTER_WAKE_SOURCES = [
   'channel',
   'ecosystem_build',
   'workflow_design',
+  'comment',
 ] as const;
 export type MasterWakeSource = (typeof MASTER_WAKE_SOURCES)[number];
 
@@ -105,6 +106,20 @@ export async function wakeMastersForDesign(args: {
   });
 }
 
+/** A person commented on one of this project's issues, and its master owes the thread a reply. */
+export async function wakeMastersForComment(args: {
+  projectId: string;
+  issueId: string;
+  commentId: string;
+}): Promise<{ boxes: number; delivered: number }> {
+  return publishWake(args.projectId, {
+    projectId: args.projectId,
+    source: 'comment',
+    issueId: args.issueId,
+    commentId: args.commentId,
+  });
+}
+
 async function publishWake(
   projectId: string,
   data: { projectId: string; source: MasterWakeSource } & Record<string, unknown>,
@@ -146,5 +161,16 @@ export function registerMasterWakeSubscribers(bus: HooksBus): void {
   bus.on('issueCreated', (p) => {
     if (!isMasterWakeStatus(p.status)) return;
     void wakeMastersForProject({ projectId: p.projectId, issueId: p.issueId, status: p.status });
+  });
+
+  // cm:guard only a person's comment wakes: a master's own reply is agent-authored, so it can never
+  // wake the master that wrote it, whatever status the issue is at.
+  bus.on('commentCreated', (p) => {
+    if (p.authored !== 'human') return;
+    void wakeMastersForComment({
+      projectId: p.projectId,
+      issueId: p.issueId,
+      commentId: p.commentId,
+    });
   });
 }

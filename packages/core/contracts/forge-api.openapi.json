@@ -5970,6 +5970,33 @@
         ]
       }
     },
+    "/api/devices/me/comments/unanswered": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireDevice"
+        ],
+        "x-forge-validated": [
+          "query"
+        ]
+      }
+    },
     "/api/devices/me/git-credential": {
       "post": {
         "requestBody": {
@@ -22457,6 +22484,11 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "issue": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "revision": {
                     "maximum": 9007199254740991,
                     "minimum": 1,

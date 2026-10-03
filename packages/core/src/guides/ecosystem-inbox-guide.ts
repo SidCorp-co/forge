@@ -11,7 +11,7 @@ export const ECOSYSTEM_INBOX_GUIDE: ForgeGuide = {
   title: "Working a project's ecosystem inbox",
   summary:
     'What a channel document or an open builder run owes a master, how the box tells it, and the order to read, reply, submit, map the links this project uses and keep them true, and publish the interface and contract versions this project provides — on /mcp, with the author taken from the token.',
-  version: 3,
+  version: 4,
   body: `## Working a project's ecosystem inbox
 
 A project in an ecosystem is written to by the projects it shares that ecosystem with: a change notice
@@ -26,6 +26,10 @@ reply is work for the project's master exactly as an open issue is, and it is wo
 - When anything is owed, the pass is nudged even when the backlog is empty, and the nudge names how
   many documents are waiting. A pass that ends with the inbox untouched and no word on why is the same
   deviation as an idle pane with admissible issues.
+- The same sweep reads, beside the channel, which issue comments a person is owed a reply to, from
+  \`GET /api/devices/me/comments/unanswered\`, and a person's comment wakes the box with
+  \`source: 'comment'\`. That inbox is not an ecosystem one and needs no channel: see *Issue comments*
+  below.
 
 ### What counts as owed
 \`forge_channel action=unanswered\` lists exactly what the sweep counted. A document is on it when it is
@@ -137,6 +141,15 @@ publishes and the versions of its contracts, and a person is not handed that wor
 Only this project's own agent (member or above) or a person holding admin on it writes either; another
 project's agent is refused \`INTERFACE_WRITER_NOT_PROJECT\` for the interface and
 \`CONTRACT_WRITER_NOT_PROVIDER\` for a version.
+
+### Issue comments
+A comment a person writes on one of this project's issues is owed a reply until an agent comments on
+that issue after it — a master's reply, or a run's. It is owed at every status but \`closed\` and
+\`dropped\`, so it reaches you on an issue at \`developed\` or \`awaiting_release\` that no admissible
+read lists. The nudge names those issues. Read each thread (\`forge_comments action=list\`), answer
+on the issue, and move the issue when the comment asks for it. Your reply is what takes it off the
+list: a comment read and left unanswered is still owed on the next pass. An agent's own comment is
+never owed.
 
 ### Rules
 1. **The author is the token.** An agent token writes \`via: master\`, a personal token \`via: cli\`, a
