@@ -19,6 +19,7 @@ import {
   type RequirementActor,
   readRequirementAs,
 } from '../../requirements/read.js';
+import { repinRequirement } from '../../requirements/repin.js';
 import { criterionSchema, specSchema } from '../../requirements/schemas.js';
 import {
   acceptRevision,
@@ -48,6 +49,7 @@ const ACTIONS = [
   'accept',
   'return',
   'agree',
+  'repin',
   'defer',
   'undefer',
   'link_issue',
@@ -94,6 +96,7 @@ const GRANTS = {
     accept: write,
     return: write,
     agree: write,
+    repin: write,
     defer: write,
     undefer: write,
     link_issue: write,
@@ -118,6 +121,10 @@ const DESCRIPTION =
   'signs the head off and writes a baseline pinning every linked design, refused REQUIREMENT_DESIGN_UNAPPROVED ' +
   'naming each unapproved design and REQUIREMENT_REVISION_NOT_CURRENT unless the head is current. accept, return ' +
   'and agree are a person’s acts: an agent is refused REQUIREMENT_SIGNOFF_FORBIDDEN. ' +
+  'repin: { requirement, revision, reason? } writes a new baseline of the head pinning each linked design’s approved ' +
+  'revision, with no text revision, once a design is approved past what the agreed baseline pins (the standing waits on ' +
+  '"re-pin"); REQUIREMENT_PINS_CURRENT when nothing moved, and the agree’s own guards otherwise. Issues planned before it ' +
+  'read changedSincePlan. A person’s act. ' +
   'defer: { requirement, reason, targetPhase? } takes a draft or agreed requirement out of the current release ' +
   '(REQUIREMENT_DEFER_REASON_REQUIRED, REQUIREMENT_NOT_DEFERRABLE, REQUIREMENT_HAS_LIVE_ISSUES naming each linked issue past draft); ' +
   'a deferred requirement waits on nobody and is not broken down, and accept, agree and link_issue on it are REQUIREMENT_DEFERRED. ' +
@@ -211,6 +218,14 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
     case 'agree':
       return settle(
         await agreeRequirement({
+          ...on(),
+          revision: need(input, 'revision'),
+          reason: input.reason,
+        }),
+      );
+    case 'repin':
+      return settle(
+        await repinRequirement({
           ...on(),
           revision: need(input, 'revision'),
           reason: input.reason,

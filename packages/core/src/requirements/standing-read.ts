@@ -24,7 +24,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { changedSincePlan } from './rules.js';
+import { changedSincePlan, stalePinsOf } from './rules.js';
 import { deriveStanding } from './standing.js';
 import { issueCriteriaOf, latestPinsOf } from './standing-facts.js';
 
@@ -42,6 +42,16 @@ export interface StandingViewer {
   canSignOff: boolean;
 }
 
+const latestSeqAt = (
+  rows: readonly { requirementId: string; revision: number; seq: number }[],
+  id: string,
+  revision: number | null,
+) =>
+  rows.reduce<number | null>(
+    (m, b) => (b.requirementId === id && b.revision === revision ? Math.max(m ?? 0, b.seq) : m),
+    null,
+  );
+
 /** The standing of each requirement in `rows`, keyed by id; all rows belong to `projectId`. */
 export async function standingsOf(
   projectId: string,
@@ -51,53 +61,63 @@ export async function standingsOf(
 ): Promise<Map<string, RequirementStanding>> {
   if (rows.length === 0) return new Map();
   const ids = rows.map((r) => r.id);
-  const [revisions, criteria, delivery, linked, open, prefix, pins] = await Promise.all([
-    db
-      .select({
-        requirementId: requirementRevisions.requirementId,
-        revision: requirementRevisions.revision,
-        state: requirementRevisions.state,
-        authorId: requirementRevisions.authorId,
-        createdAt: requirementRevisions.createdAt,
-        proposedAt: requirementRevisions.proposedAt,
-        decidedAt: requirementRevisions.decidedAt,
-      })
-      .from(requirementRevisions)
-      .where(inArray(requirementRevisions.requirementId, ids))
-      .orderBy(desc(requirementRevisions.revision)),
-    db
-      .select({
-        requirementId: requirementCriteria.requirementId,
-        id: requirementCriteria.id,
-        code: requirementCriteria.code,
-        body: requirementCriteria.body,
-        sinceRevision: requirementCriteria.sinceRevision,
-        retiredRevision: requirementCriteria.retiredRevision,
-      })
-      .from(requirementCriteria)
-      .where(inArray(requirementCriteria.requirementId, ids)),
-    db.select().from(requirementDelivery).where(inArray(requirementDelivery.requirementId, ids)),
-    db
-      .select({
-        requirementId: issues.requirementId,
-        id: issues.id,
-        issSeq: issues.issSeq,
-        title: issues.title,
-        status: issues.status,
-        updatedAt: issues.updatedAt,
-        plan: issues.plan,
-        plannedRevision: issues.plannedRevision,
-      })
-      .from(issues)
-      .where(inArray(issues.requirementId, ids))
-      .orderBy(issues.issSeq),
-    db
-      .select({ requirementId: suggestions.requirementId, kind: suggestions.kind })
-      .from(suggestions)
-      .where(and(inArray(suggestions.requirementId, ids), eq(suggestions.status, 'proposed'))),
-    activeIssuePrefix(projectId),
-    latestPinsOf(ids),
-  ]);
+  const [revisions, criteria, delivery, linked, open, prefix, pins, baselineSeqs] =
+    await Promise.all([
+      db
+        .select({
+          requirementId: requirementRevisions.requirementId,
+          revision: requirementRevisions.revision,
+          state: requirementRevisions.state,
+          authorId: requirementRevisions.authorId,
+          createdAt: requirementRevisions.createdAt,
+          proposedAt: requirementRevisions.proposedAt,
+          decidedAt: requirementRevisions.decidedAt,
+        })
+        .from(requirementRevisions)
+        .where(inArray(requirementRevisions.requirementId, ids))
+        .orderBy(desc(requirementRevisions.revision)),
+      db
+        .select({
+          requirementId: requirementCriteria.requirementId,
+          id: requirementCriteria.id,
+          code: requirementCriteria.code,
+          body: requirementCriteria.body,
+          sinceRevision: requirementCriteria.sinceRevision,
+          retiredRevision: requirementCriteria.retiredRevision,
+        })
+        .from(requirementCriteria)
+        .where(inArray(requirementCriteria.requirementId, ids)),
+      db.select().from(requirementDelivery).where(inArray(requirementDelivery.requirementId, ids)),
+      db
+        .select({
+          requirementId: issues.requirementId,
+          id: issues.id,
+          issSeq: issues.issSeq,
+          title: issues.title,
+          status: issues.status,
+          updatedAt: issues.updatedAt,
+          plan: issues.plan,
+          plannedRevision: issues.plannedRevision,
+          plannedBaselineSeq: issues.plannedBaselineSeq,
+        })
+        .from(issues)
+        .where(inArray(issues.requirementId, ids))
+        .orderBy(issues.issSeq),
+      db
+        .select({ requirementId: suggestions.requirementId, kind: suggestions.kind })
+        .from(suggestions)
+        .where(and(inArray(suggestions.requirementId, ids), eq(suggestions.status, 'proposed'))),
+      activeIssuePrefix(projectId),
+      latestPinsOf(ids),
+      db
+        .select({
+          requirementId: requirementBaselines.requirementId,
+          revision: requirementBaselines.revision,
+          seq: requirementBaselines.seq,
+        })
+        .from(requirementBaselines)
+        .where(inArray(requirementBaselines.requirementId, ids)),
+    ]);
   const [people, issueCriteria] = await Promise.all([
     peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
     issueCriteriaOf(linked.map((i) => i.id)),
@@ -113,7 +133,11 @@ export async function standingsOf(
       title: i.title,
       status: i.status,
       updatedAt: i.updatedAt,
-      changedSincePlan: changedSincePlan({ ...i, currentRevision: row.currentRevision }),
+      changedSincePlan: changedSincePlan({
+        ...i,
+        currentRevision: row.currentRevision,
+        latestBaselineSeq: latestSeqAt(baselineSeqs, row.id, row.currentRevision),
+      }),
     }));
     const issueIds = new Set(mine.map((i) => i.id));
     out.set(
@@ -144,11 +168,7 @@ export async function standingsOf(
         issues: mine,
         issueCriteria: issueCriteria.filter((c) => issueIds.has(c.issueId)),
         openSuggestionKinds: by(open, row.id).map((s) => s.kind),
-        stalePins: by(pins, row.id).flatMap((p) =>
-          p.approved !== null && p.pinned !== null && p.approved > p.pinned
-            ? [{ flow: p.flow, pinned: p.pinned, approved: p.approved }]
-            : [],
-        ),
+        stalePins: stalePinsOf(by(pins, row.id)),
         updatedAt: row.updatedAt,
         now,
       }),
@@ -317,12 +337,12 @@ const deferralEntry = (d: DeferralRow, n: Namer) =>
 
 const baselineEntry = (b: BaselineRow, n: Namer) =>
   entry({
-    id: `baseline-${b.revision}`,
+    id: `baseline-${b.revision}-${b.seq}`,
     at: b.agreedAt.toISOString(),
     source: 'person',
     who: n.who(b.agreedBy, 'A signer'),
     kind: 'Agreed',
-    text: `Agreed r${b.revision}${b.reason ? `: ${b.reason}` : ''}`,
+    text: `${b.act === 'repin' ? 'Re-pinned' : 'Agreed'} r${b.revision}${b.act === 'repin' ? ' onto the approved designs' : ''}${b.reason ? `: ${b.reason}` : ''}`,
   });
 
 function suggestionEntries(s: SuggestionRow, n: Namer): RequirementHistoryEntry[] {

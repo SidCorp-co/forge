@@ -28,6 +28,7 @@ export type RequirementRefusalCode =
   | 'REQUIREMENT_NOT_DEFERRABLE'
   | 'REQUIREMENT_NOT_DEFERRED'
   | 'REQUIREMENT_HAS_LIVE_ISSUES'
+  | 'REQUIREMENT_PINS_CURRENT'
   | 'REVISION_REASON_REQUIRED'
   | 'CRITERION_CODE_UNKNOWN'
   | 'CRITERION_CODE_DUPLICATE'
@@ -271,15 +272,93 @@ export function planCriteria(
   return { ok: true, plan };
 }
 
-// cm:why the flag is read, never stored: an issue's plan names the revision it was written against,
-// and the requirement has changed since when its head is another (REQUIREMENT_CHANGED_SINCE_PLAN)
+// cm:why the flag is read, never stored: an issue's plan names the revision and the baseline it was
+// written against, and the requirement has changed since when its head is another revision, or
+// when that revision was re-pinned onto newly approved designs after the plan (ISS-86)
 export function changedSincePlan(input: {
   plan: string | null;
   plannedRevision: number | null;
   currentRevision: number | null;
+  plannedBaselineSeq?: number | null | undefined;
+  latestBaselineSeq?: number | null | undefined;
 }): boolean {
   if (!input.plan?.trim()) return false;
-  return input.plannedRevision !== input.currentRevision;
+  if (input.plannedRevision !== input.currentRevision) return true;
+  return (input.latestBaselineSeq ?? 1) > (input.plannedBaselineSeq ?? 1);
+}
+
+export interface BaselinePin {
+  workflowId: string;
+  designRevision: number;
+}
+
+export interface PinPosition {
+  flow: string;
+  pinned: number | null;
+  approved: number | null;
+}
+
+// cm:why the one detector of a pin that has fallen behind (D14, ISS-86): the standing reads it to
+// say "re-pin" and the re-pin act reads it to refuse when nothing moved, so the two cannot disagree
+export function stalePinsOf(
+  positions: readonly PinPosition[],
+): { flow: string; pinned: number; approved: number }[] {
+  return positions.flatMap((p) =>
+    p.approved !== null && p.pinned !== null && p.approved > p.pinned
+      ? [{ flow: p.flow, pinned: p.pinned, approved: p.approved }]
+      : [],
+  );
+}
+
+// cm:guard a re-pin writes a baseline of the head with no text revision (ISS-86): an agreed
+// requirement (an accepted one is delivered, and a draft has nothing to move), the head named and
+// current, every linked design approved (the agree's own guards), and at least one design approved
+// past what the latest baseline pins, else REQUIREMENT_PINS_CURRENT
+export function repinRefusals(input: {
+  status: RequirementStatus;
+  named: number;
+  head: number | null;
+  headState: RevisionState | null;
+  designs: readonly LinkedDesign[];
+  pins: readonly BaselinePin[] | null;
+}): RequirementRefusal[] {
+  const deferred = deferredRefusal(input.status, 're-pinning it', '/revision');
+  if (deferred) return [deferred];
+  if (input.status !== 'agreed') {
+    return [
+      {
+        code: 'REQUIREMENT_NOT_AGREED',
+        path: '/revision',
+        detail: `the requirement is ${input.status}; a re-pin moves the baseline of an agreed requirement, so a draft is agreed first and an accepted one is delivered.`,
+      },
+    ];
+  }
+  const guards = agreeRefusals({ ...input, rebaseline: true });
+  if (guards.length) return guards;
+  if (input.pins === null) {
+    return [
+      {
+        code: 'REQUIREMENT_NOT_AGREED',
+        path: '/revision',
+        detail: `revision ${input.named} has no baseline to re-pin; accepting it re-baselines.`,
+      },
+    ];
+  }
+  const pins = input.pins;
+  const positions = input.designs.flatMap((d) => {
+    const pin = pins.find((p) => p.workflowId === d.workflowId);
+    return pin ? [{ flow: d.flow, pinned: pin.designRevision, approved: d.approvedRevision }] : [];
+  });
+  if (stalePinsOf(positions).length === 0) {
+    return [
+      {
+        code: 'REQUIREMENT_PINS_CURRENT',
+        path: '/revision',
+        detail: `the latest baseline of revision ${input.named} already pins every linked design at its approved revision; there is nothing to re-pin.`,
+      },
+    ];
+  }
+  return [];
 }
 
 // cm:guard a deferred requirement is out of the current release: nothing is signed off, agreed,

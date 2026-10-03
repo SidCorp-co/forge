@@ -3,6 +3,8 @@ import {
   acceptRevisionRequestSchema,
   DEFER_REQUIREMENT_SHAPE,
   deferRequirementRequestSchema,
+  REPIN_REQUIREMENT_SHAPE,
+  repinRequirementRequestSchema,
   UNDEFER_REQUIREMENT_SHAPE,
   undeferRequirementRequestSchema,
 } from '@forge/contracts/requirements';
@@ -15,6 +17,7 @@ import { refused } from '../project-config/respond.js';
 import { deferRequirement, undeferRequirement } from './deferral.js';
 import { linkIssue, linkWorkflow, unlinkIssue, unlinkWorkflow } from './issue-links.js';
 import { listRequirementsAs, type RequirementActor, readRequirementAs } from './read.js';
+import { repinRequirement } from './repin.js';
 import { criterionSchema, specSchema } from './schemas.js';
 import {
   acceptRevision,
@@ -218,6 +221,26 @@ requirementRoutes.post(
     return answer(
       c,
       await agreeRequirement({
+        projectId: id,
+        ref: req,
+        actor: actorOf(c),
+        revision: body.revision,
+        reason: body.reason,
+      }),
+    );
+  },
+);
+
+requirementRoutes.post(
+  '/:id/requirements/:req/repin',
+  reqParam,
+  strictBody(repinRequirementRequestSchema, REPIN_REQUIREMENT_SHAPE),
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    const body = c.req.valid('json');
+    return answer(
+      c,
+      await repinRequirement({
         projectId: id,
         ref: req,
         actor: actorOf(c),

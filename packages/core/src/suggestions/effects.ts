@@ -22,6 +22,7 @@ import { isUuid } from '../issues/issue-route-ref.js';
 import { type PendingIssueRelation, writeIssueRelations } from '../issues/relations-service.js';
 import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import type { NamedRefusal } from '../project-config/respond.js';
+import { plannedBaselineSeqIn } from '../requirements/baselines.js';
 import { requirementKey, rowIn } from '../requirements/read.js';
 import { linkIssueRefusal } from '../requirements/rules.js';
 import {
@@ -185,6 +186,7 @@ async function breakdownEffect(
   if (guard.refusals.length || head === null) return { refusals: guard.refusals };
   const { codes, blockers } = guard;
   const req = await rowIn(tx, projectId, target.id);
+  const plannedBaselineSeq = await plannedBaselineSeqIn(tx, req.id, head);
   const ids: string[] = [];
   for (const item of p.issues) {
     const issue = await insertIssueRow(tx, {
@@ -198,6 +200,7 @@ async function breakdownEffect(
       createdVia: channel,
       requirementId: req.id,
       plannedRevision: head,
+      plannedBaselineSeq,
       fromSuggestionId: row.id,
     });
     ids.push(issue.id);

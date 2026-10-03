@@ -14,6 +14,7 @@
  */
 
 import { estimateTokens } from '../lib/token-estimator.js';
+import { changedSincePlan } from '../requirements/rules.js';
 import type { DesignStatus } from './design.js';
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
 
@@ -381,10 +382,12 @@ export interface RequirementContextRow {
   criteria: { id: string; code: string; body: string; form: string }[];
   baseline: {
     revision: number;
+    seq: number;
     agreedAt: string;
     pins: RequirementPinRow[];
   } | null;
   plannedRevision: number | null;
+  plannedBaselineSeq: number | null;
   plan: string | null;
 }
 
@@ -442,7 +445,8 @@ export function requirementContext(row: RequirementContextRow | null): LoadedReq
       `its latest baseline pins revision ${row.baseline.revision}, but the current revision is ${row.currentRevision}; the current revision is re-agreed before a job is given it`,
     );
   }
-  const changed = !!row.plan?.trim() && row.plannedRevision !== row.currentRevision;
+  const changed = changedSincePlan({ ...row, latestBaselineSeq: row.baseline.seq });
+  const repinned = changed && row.plannedRevision === row.currentRevision;
   const lines = [
     `## The requirement this issue delivers`,
     `${row.key} · ${row.title} — current revision ${row.currentRevision}, agreed (baseline r${row.baseline.revision}, ${row.baseline.agreedAt}).`,
@@ -450,12 +454,14 @@ export function requirementContext(row: RequirementContextRow | null): LoadedReq
   if (row.tldr) lines.push(row.tldr);
   if (row.goal) lines.push(`Goal: ${row.goal}`);
   lines.push(
-    changed
-      ? `REQUIREMENT_CHANGED_SINCE_PLAN: this issue's plan was written against ${row.plannedRevision === null ? 'no revision' : `revision ${row.plannedRevision}`}; re-plan against revision ${row.currentRevision} before building.`
-      : row.plannedRevision !== null
-        ? `This issue's plan was written against revision ${row.plannedRevision}, the current one.`
-        : 'No plan has been written against it yet; a plan written now records revision ' +
-          `${row.currentRevision}.`,
+    repinned
+      ? `REQUIREMENT_CHANGED_SINCE_PLAN: revision ${row.currentRevision} was re-pinned onto newly approved designs after this issue's plan was written; re-plan against the pins below before building.`
+      : changed
+        ? `REQUIREMENT_CHANGED_SINCE_PLAN: this issue's plan was written against ${row.plannedRevision === null ? 'no revision' : `revision ${row.plannedRevision}`}; re-plan against revision ${row.currentRevision} before building.`
+        : row.plannedRevision !== null
+          ? `This issue's plan was written against revision ${row.plannedRevision}, the current one.`
+          : 'No plan has been written against it yet; a plan written now records revision ' +
+            `${row.currentRevision}.`,
   );
   lines.push(
     '',

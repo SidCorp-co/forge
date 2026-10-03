@@ -156,11 +156,12 @@ interface Turn {
 // cm:why whose turn it is, first rule that holds wins: 1. accepted or dropped → done, deferred →
 // deferred, waiting on nobody, so no queue and no master pass offers it (ISS-85); 2. a proposed
 // revision → a signer; 3. a draft revision → its author; 4. a draft requirement, head current → a
-// signer agrees it; 5. every issue closed and every BC proven → a signer accepts the delivery, a BC
-// unproven → the master proves it; 6. an open breakdown → a signer; 7. an issue planned against an
-// earlier revision → the master re-plans it; 8. no issue → the master breaks it down; 9. only
-// drafts → a person promotes them; 10. otherwise moving. Then, unless it needs you: no owner, or
-// untouched for STUCK_AFTER_DAYS → stuck.
+// signer agrees it; 5. a linked design approved past the baseline's pin → its owner re-pins it
+// (ISS-86); 6. every issue closed and every BC proven → a signer accepts the delivery, a BC
+// unproven → the master proves it; 7. an open breakdown → a signer; 8. an issue planned against an
+// earlier revision or baseline → the master re-plans it; 9. no issue → the master breaks it down;
+// 10. only drafts → a person promotes them; 11. otherwise moving. Then, unless it needs you: no
+// owner, or untouched for STUCK_AFTER_DAYS → stuck.
 function turnOf(
   input: StandingInput,
   live: readonly StandingIssue[],
@@ -206,6 +207,13 @@ function turnOf(
       head === null ? 'agree it' : `agree r${head}`,
       'a current revision not yet agreed waits on a sign-off',
     );
+  }
+  if (input.stalePins.length > 0) {
+    const act = `re-pin ${input.stalePins.map((p) => `${p.flow} r${p.approved}`).join(', ')}`;
+    const rule = 'a linked design was approved past the revision the agreed baseline pins';
+    if (viewer?.canSignOff) return { group: 'needs_you', waitingOn: wait('you', 'You', act, rule) };
+    const owner = input.owner?.kind === 'human' ? input.owner.name : null;
+    return { group: 'others', waitingOn: wait('person', owner ?? SIGNER, act, rule) };
   }
   if (input.phase === 'delivered' && live.length > 0) {
     return signerWait(viewer, 'accept delivery', 'every linked issue is closed');

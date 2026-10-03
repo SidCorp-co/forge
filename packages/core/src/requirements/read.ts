@@ -233,10 +233,11 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
       .select()
       .from(requirementBaselines)
       .where(eq(requirementBaselines.requirementId, row.id))
-      .orderBy(desc(requirementBaselines.revision)),
+      .orderBy(desc(requirementBaselines.revision), desc(requirementBaselines.seq)),
     db
       .select({
         revision: requirementBaselinePins.revision,
+        baselineSeq: requirementBaselinePins.baselineSeq,
         workflowId: requirementBaselinePins.workflowId,
         flow: projectWorkflows.flow,
         designRevision: requirementBaselinePins.designRevision,
@@ -255,6 +256,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
         status: issues.status,
         plan: issues.plan,
         plannedRevision: issues.plannedRevision,
+        plannedBaselineSeq: issues.plannedBaselineSeq,
       })
       .from(issues)
       .where(eq(issues.requirementId, row.id))
@@ -288,12 +290,14 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
     workflows: designs.map((d) => ({ ...d, title: d.title ?? d.flow })),
     baselines: baselines.map((b) => ({
       revision: b.revision,
+      seq: b.seq,
+      act: b.act,
       agreedBy: b.agreedBy,
       agreedByName: name(b.agreedBy),
       agreedAt: b.agreedAt.toISOString(),
       reason: b.reason,
       pins: pins
-        .filter((p) => p.revision === b.revision)
+        .filter((p) => p.revision === b.revision && p.baselineSeq === b.seq)
         .map((p) => ({
           kind: p.workflowId ? ('workflow-design' as const) : ('contract-version' as const),
           workflowId: p.workflowId,
@@ -311,9 +315,9 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
       status: i.status,
       plannedRevision: i.plannedRevision,
       changedSincePlan: changedSincePlan({
-        plan: i.plan,
-        plannedRevision: i.plannedRevision,
+        ...i,
         currentRevision: row.currentRevision,
+        latestBaselineSeq: baselines.find((b) => b.revision === row.currentRevision)?.seq ?? null,
       }),
     })),
     canSignOff: viewer

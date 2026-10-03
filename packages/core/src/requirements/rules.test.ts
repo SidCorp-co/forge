@@ -8,9 +8,11 @@ import {
   openRevisionRefusal,
   planCriteria,
   reasonRefusal,
+  repinRefusals,
   scenarioParses,
   signoffRefusal,
   staleBaseRefusal,
+  stalePinsOf,
   stateRefusal,
   undeferRefusal,
 } from './rules.js';
@@ -210,6 +212,136 @@ describe('changedSincePlan (REQUIREMENT_CHANGED_SINCE_PLAN)', () => {
   it('does not flag a plan at the current revision, or an issue with no plan', () => {
     expect(changedSincePlan({ plan: 'p', plannedRevision: 4, currentRevision: 4 })).toBe(false);
     expect(changedSincePlan({ plan: null, plannedRevision: null, currentRevision: 4 })).toBe(false);
+  });
+});
+
+describe('changedSincePlan reads pin drift (ISS-86)', () => {
+  const at = { plan: 'p', plannedRevision: 4, currentRevision: 4 };
+
+  it('flags a plan written against an earlier baseline of the same revision', () => {
+    expect(changedSincePlan({ ...at, plannedBaselineSeq: 1, latestBaselineSeq: 2 })).toBe(true);
+  });
+  it('does not flag a plan written against the latest baseline', () => {
+    expect(changedSincePlan({ ...at, plannedBaselineSeq: 2, latestBaselineSeq: 2 })).toBe(false);
+    expect(changedSincePlan({ ...at, plannedBaselineSeq: 1, latestBaselineSeq: 1 })).toBe(false);
+  });
+  it('reads a plan with no baseline recorded as the first, so only a later re-pin flags it', () => {
+    expect(changedSincePlan({ ...at, plannedBaselineSeq: null, latestBaselineSeq: 1 })).toBe(false);
+    expect(changedSincePlan({ ...at, plannedBaselineSeq: null, latestBaselineSeq: 3 })).toBe(true);
+  });
+  it('never flags an issue with no plan, whatever the baselines', () => {
+    expect(
+      changedSincePlan({ ...at, plan: ' ', plannedBaselineSeq: 1, latestBaselineSeq: 5 }),
+    ).toBe(false);
+  });
+  it('still flags another revision whatever the baseline', () => {
+    expect(
+      changedSincePlan({
+        plan: 'p',
+        plannedRevision: 3,
+        currentRevision: 4,
+        plannedBaselineSeq: 2,
+        latestBaselineSeq: 2,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('stalePinsOf: the one detector of a pin behind its design (D14, ISS-86)', () => {
+  it('lists each pin whose design is approved at a newer revision', () => {
+    expect(
+      stalePinsOf([
+        { flow: 'discharge', pinned: 4, approved: 5 },
+        { flow: 'booking', pinned: 2, approved: 2 },
+        { flow: 'reminder', pinned: 1, approved: 3 },
+      ]),
+    ).toEqual([
+      { flow: 'discharge', pinned: 4, approved: 5 },
+      { flow: 'reminder', pinned: 1, approved: 3 },
+    ]);
+  });
+  it('passes over a design never pinned, one not approved, and one pinned ahead', () => {
+    expect(
+      stalePinsOf([
+        { flow: 'new-link', pinned: null, approved: 2 },
+        { flow: 'unapproved', pinned: 2, approved: null },
+        { flow: 'ahead', pinned: 5, approved: 4 },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe('repinRefusals (ISS-86)', () => {
+  const design = (approvedRevision: number | null) => ({
+    workflowId: 'w1',
+    flow: 'discharge',
+    designStatus: approvedRevision === null ? 'draft' : 'approved',
+    approvedRevision,
+  });
+  const base = {
+    status: 'agreed' as const,
+    named: 2,
+    head: 2,
+    headState: 'current' as const,
+    designs: [design(6)],
+    pins: [{ workflowId: 'w1', designRevision: 5 }],
+  };
+
+  it('re-pins an agreed head whose design was approved past the pin', () => {
+    expect(repinRefusals(base)).toEqual([]);
+  });
+
+  it('nothing moved is REQUIREMENT_PINS_CURRENT', () => {
+    const refusals = repinRefusals({ ...base, designs: [design(5)] });
+    expect(refusals.map((r) => r.code)).toEqual(['REQUIREMENT_PINS_CURRENT']);
+    expect(refusals[0]?.detail).toContain('revision 2');
+  });
+
+  it('a design linked after the agree is no drift, so a re-pin of only that is REQUIREMENT_PINS_CURRENT', () => {
+    expect(repinRefusals({ ...base, pins: [] }).map((r) => r.code)).toEqual([
+      'REQUIREMENT_PINS_CURRENT',
+    ]);
+  });
+
+  it('a draft or accepted requirement is REQUIREMENT_NOT_AGREED', () => {
+    for (const status of ['draft', 'accepted', 'dropped'] as const) {
+      expect(repinRefusals({ ...base, status }).map((r) => r.code)).toEqual([
+        'REQUIREMENT_NOT_AGREED',
+      ]);
+    }
+  });
+
+  it('a deferred requirement is REQUIREMENT_DEFERRED', () => {
+    expect(repinRefusals({ ...base, status: 'deferred' }).map((r) => r.code)).toEqual([
+      'REQUIREMENT_DEFERRED',
+    ]);
+  });
+
+  it('a head with no baseline is REQUIREMENT_NOT_AGREED, never a silent no-op', () => {
+    const refusals = repinRefusals({ ...base, pins: null });
+    expect(refusals.map((r) => r.code)).toEqual(['REQUIREMENT_NOT_AGREED']);
+    expect(refusals[0]?.detail).toContain('no baseline');
+  });
+
+  it('a revision that is not the head is REQUIREMENT_REVISION_STALE', () => {
+    expect(repinRefusals({ ...base, named: 1 }).map((r) => r.code)).toEqual([
+      'REQUIREMENT_REVISION_STALE',
+    ]);
+  });
+
+  it('a head that is not current is REQUIREMENT_REVISION_NOT_CURRENT', () => {
+    expect(repinRefusals({ ...base, headState: 'proposed' }).map((r) => r.code)).toEqual([
+      'REQUIREMENT_REVISION_NOT_CURRENT',
+    ]);
+  });
+
+  it('a linked design not approved is REQUIREMENT_DESIGN_UNAPPROVED, naming it', () => {
+    const refusals = repinRefusals({
+      ...base,
+      designs: [design(6), { ...design(null), workflowId: 'w2', flow: 'reminder' }],
+    });
+    expect(refusals.map((r) => r.code)).toEqual(['REQUIREMENT_DESIGN_UNAPPROVED']);
+    expect(refusals[0]?.detail).toContain('"reminder"');
   });
 });
 
