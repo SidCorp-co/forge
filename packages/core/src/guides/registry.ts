@@ -356,8 +356,8 @@ needs_info / on_hold: entered from open, reopen, in_progress, approved, awaiting
 | \`approved\` | a master; the next run goes straight to build | plan and criteria written (\`PLAN_REQUIRED\`), and a person's move where the project document sets \`plan.approval.required\` |
 | \`needs_info\` | a person, to answer, decide or supply | the question as \`reason\` and its \`waitingKind\` (\`needs_answer\`, \`needs_decision\`, \`needs_resource\`) |
 | \`on_hold\` | the person who paused it | a reason |
-| \`awaiting_release\` | the release (a person, where nothing releases automatically) | every criterion's latest verdict passes and names its identity (\`NO_WORK_EVIDENCE\`, \`VERDICT_IDENTITY_REQUIRED\`) |
-| \`closed\` | nobody | \`merged_at\` (\`CLOSE_REQUIRES_SHIPPED\`) |
+| \`awaiting_release\` | the release (a person, where nothing releases automatically) | every criterion's latest verdict passes and names its identity (\`NO_WORK_EVIDENCE\`, \`VERDICT_IDENTITY_REQUIRED\`), recorded after the issue's latest reopen (\`VERDICT_PREDATES_REOPEN\`) |
+| \`closed\` | nobody | \`merged_at\` (\`CLOSE_REQUIRES_SHIPPED\`); from \`in_progress\` after a reopen, the \`awaiting_release\` rule too |
 | \`dropped\` | nobody | a reason (\`VOID_REASON_REQUIRED\`) |
 
 **Leaving a park returns to the status it left**, which \`issue_work_state.left_status\` records on the way in — never a guess, and not always \`open\`. That return is the park's own edge: the guard of the status it returns to is not asked again, because it was met when that status was first entered. A park taken at \`awaiting_release\` goes back to \`awaiting_release\`; an answered \`needs_info\` question returns the issue there too (\`pipeline/answer-resume.ts\`). A park that predates the record (migration 0346 found no history to read it from) carries no left status, and a person names where it resumes.
