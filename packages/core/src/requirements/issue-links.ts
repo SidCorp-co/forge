@@ -15,7 +15,7 @@ import {
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
 import { assertProjectAccess } from '../lib/authz.js';
-import { notFound, type RequirementActor, requirementKey, rowIn } from './read.js';
+import { notFound, type RequirementActor, requirementKey, rowIn, signerRefusal } from './read.js';
 import { changedSincePlan, linkIssueRefusal } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './service.js';
 
@@ -33,21 +33,50 @@ export async function linkIssue(input: {
   ref: string;
   actor: RequirementActor;
   issue: string;
+  adoptPlan?: boolean | undefined;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
   await assertProjectAccess(projectId, actor.userId, 'member');
   const row = await rowIn(db, projectId, input.ref);
   const issue = await issueIn(projectId, input.issue, actor.userId);
+  if (input.adoptPlan) {
+    const signer = await signerRefusal(
+      actor,
+      projectId,
+      'adopting an existing plan for a revision',
+    );
+    if (signer) return answer(projectId, row.id, actor, [signer]);
+  }
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);
     const refusal = linkIssueRefusal(current.status as RequirementStatus);
     if (refusal) return [refusal];
     const [held] = await tx
-      .select({ requirementId: issues.requirementId })
+      .select({ requirementId: issues.requirementId, plan: issues.plan })
       .from(issues)
       .where(eq(issues.id, issue.id));
-    if (held?.requirementId === row.id) return null;
+    if (input.adoptPlan && !held?.plan?.trim()) {
+      return [
+        {
+          code: 'REQUIREMENT_NO_PLAN_TO_ADOPT',
+          path: '/adoptPlan',
+          detail: `${input.issue} has no plan, so there is nothing to adopt for revision ${current.currentRevision ?? 'none'}; link it without adoptPlan and its next plan records the revision it read.`,
+        },
+      ];
+    }
+    // cm:guard without adoptPlan a pre-existing plan stays planned against no revision and reads changed-since-plan;
+    // only a person attesting the plan already satisfies the current revision may record it (D1, requirements-walkthrough)
+    const plannedRevision = input.adoptPlan ? (current.currentRevision ?? null) : null;
+    if (held?.requirementId === row.id) {
+      if (input.adoptPlan) {
+        await tx
+          .update(issues)
+          .set({ plannedRevision, updatedAt: new Date() })
+          .where(eq(issues.id, issue.id));
+      }
+      return null;
+    }
     if (held?.requirementId) {
       return [
         {
@@ -59,7 +88,7 @@ export async function linkIssue(input: {
     }
     await tx
       .update(issues)
-      .set({ requirementId: row.id, plannedRevision: null, updatedAt: new Date() })
+      .set({ requirementId: row.id, plannedRevision, updatedAt: new Date() })
       .where(eq(issues.id, issue.id));
     return null;
   });
