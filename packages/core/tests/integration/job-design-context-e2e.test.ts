@@ -2,8 +2,9 @@
  * ISS-53 (dev) — a claimed build job is given the design revision its approver approved, against a
  * real Postgres: the approved revision is read through `workflow_builds`, carried in the system
  * prompt as a measured block, recorded on the job's session, and a revision that cannot be read
- * refuses the job by name. An issue that builds nothing is untouched, and an issue whose design is
- * not approved is held by the build gate before preparation is reached.
+ * refuses the job by name. A newer revision the workflow holds is never given in its place. An issue
+ * that builds nothing is untouched, and an issue whose design is not approved is held by the build
+ * gate before preparation is reached.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -170,6 +171,30 @@ describe('a build job is given the approved design its issue builds', () => {
         },
       ],
     });
+  });
+
+  it('gives the approved revision, never a newer unapproved one the workflow and its designs now hold', async () => {
+    const w = await seed();
+    const { workflowId, doc } = await linkDesign(w, { approved: true, workflowRevision: 2 });
+    const newer = structuredClone(doc);
+    newer.steps[0].does = 'NEWER_UNAPPROVED_REVISION';
+    await harness.db.execute(sql`
+      UPDATE project_workflows SET document = ${JSON.stringify(newer)}::jsonb WHERE id = ${workflowId}
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO project_workflow_designs (workflow_id, revision, document, proposed_by_user)
+      VALUES (${workflowId}, 2, ${JSON.stringify(newer)}::jsonb, ${w.owner.id})
+    `);
+
+    const result = await prepare(w.job, w.device.id);
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const prompt = result.prepared.systemPrompt;
+    expect(prompt).toContain('`post-discharge` at approved revision 1');
+    expect(prompt).toContain(doc.steps[0].does);
+    expect(prompt).not.toContain('NEWER_UNAPPROVED_REVISION');
+    expect(prompt).toContain('The workflow stands at revision 2');
   });
 
   it('refuses the job by name when the approved revision cannot be read, and leaves nothing behind', async () => {
