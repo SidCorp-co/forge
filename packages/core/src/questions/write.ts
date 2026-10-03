@@ -23,6 +23,7 @@ import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
 import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { hooks } from '../pipeline/hooks.js';
 import { wakeMastersForAnswer } from '../ws/master-wake.js';
+import { batchItemRefusal } from './batch-item.js';
 import { resolveAskOrigin } from './origin.js';
 import { screenRound } from './screen.js';
 
@@ -81,6 +82,7 @@ export const questionRefusalCodes = [
   'QUESTION_MESSAGE_REFUSED',
   'QUESTION_CURSOR_INVALID',
   'QUESTION_NOTE_NOT_TAKEN',
+  'QUESTION_IN_QUESTIONNAIRE',
 ] as const;
 export type QuestionRefusalCode = (typeof questionRefusalCodes)[number];
 
@@ -302,6 +304,7 @@ export async function answerQuestion(args: AnswerInput) {
       .limit(1)
       .for('update');
     if (!row) throw new QuestionRefused(`no question ${args.questionId}`, 'QUESTION_NOT_FOUND');
+    if (row.batchId) throw new QuestionRefused(...batchItemRefusal(row.id, row.batchId));
     const now = new Date();
     if (row.status !== 'open') {
       throw new QuestionRefused(

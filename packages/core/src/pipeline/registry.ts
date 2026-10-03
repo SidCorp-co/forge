@@ -1,10 +1,10 @@
 import type { IssueStatus, JobType, RunnerType } from '../db/schema.js';
 import { transitions } from './state-machine.js';
 
-export const PIPELINE_REGISTRY_VERSION = 7;
+export const PIPELINE_REGISTRY_VERSION = 8;
 
 export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
-  'claude-code': ['drive', 'smoke', 'release_batch', 'reconcile', 'verify_skill'],
+  'claude-code': ['drive', 'smoke', 'release_batch', 'reconcile', 'verify_skill', 'onboarding'],
 };
 
 export interface PipelineRegistryPayload {

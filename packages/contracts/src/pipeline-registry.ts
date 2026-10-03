@@ -45,6 +45,7 @@ export const REGISTRY_JOB_TYPES = [
   'reconcile',
   'verify_skill',
   'drive',
+  'onboarding',
 ] as const;
 
 export const REGISTRY_RUNNER_TYPES = ['claude-code'] as const;

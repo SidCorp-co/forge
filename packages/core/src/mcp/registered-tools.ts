@@ -40,6 +40,7 @@ export const REGISTERED_TOOLS = [
   'forge_metrics.project_step_durations',
   'forge_metrics.project_timeseries',
   'forge_metrics.session_failures',
+  'forge_onboarding',
   'forge_orgs.list',
   'forge_orgs.members',
   'forge_requirements',

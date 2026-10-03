@@ -170,6 +170,8 @@ export async function projectQuestionsFor(
     eq(agentQuestions.projectId, projectId),
     status ? eq(agentQuestions.status, status) : undefined,
     issueless ? isNull(agentQuestions.issueId) : undefined,
+    // a questionnaire item is answered in its thread, with its batch, never from the queue
+    isNull(agentQuestions.batchId),
   );
   const after = cursorPredicate(page.cursor);
   const where = after ? and(scope, after) : scope;

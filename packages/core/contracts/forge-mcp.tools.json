@@ -2399,7 +2399,8 @@
               "release_batch",
               "reconcile",
               "verify_skill",
-              "drive"
+              "drive",
+              "onboarding"
             ],
             "type": "string"
           }
@@ -2923,7 +2924,8 @@
               "release_batch",
               "reconcile",
               "verify_skill",
-              "drive"
+              "drive",
+              "onboarding"
             ],
             "type": "string"
           }
@@ -3016,6 +3018,40 @@
         "type": "object"
       },
       "name": "forge_metrics.session_failures"
+    },
+    {
+      "description": "Onboarding (workflow project-onboarding): the thread in the chat panel where the project agent agrees the key designs with a person. Actions: post_questionnaire | read_answers | post_update | mark_done. post_questionnaire: { questionnaire: { title, intro?, items: [{ id, group: question | clarification | recommendation, control: choice | multi | text | accept_reject, prompt, options?: [{ id, label }], inferredDefault?, placeholder?, why, evidence: [file:symbol | record], affects?, isNew? }] } (1-15 items) } — one batch answered once; a second open batch is QUESTIONNAIRE_ALREADY_OPEN, a 4th round QUESTIONNAIRE_ROUNDS_EXHAUSTED, an item answered before QUESTIONNAIRE_ITEM_ANSWERED_BEFORE, a rejected recommendation QUESTIONNAIRE_RECOMMENDATION_REJECTED, a malformed item QUESTIONNAIRE_ITEM_INVALID. read_answers: every batch of the thread with each item’s state (open / answered / void) and answer. post_update: { update: { text, designs?: { heading, workflowIds: [uuid], approve? } } } — a message in the thread; designs it names are registered with the onboarding and take only a person’s approval. mark_done: { text? } — refused ONBOARDING_DATA_FLOW_MISSING on a sensitive-data project with no data-flow design. Start, re-analysis and answering are a person’s acts (REST).",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "post_questionnaire",
+              "read_answers",
+              "post_update",
+              "mark_done"
+            ],
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "questionnaire": {},
+          "text": {
+            "maxLength": 8000,
+            "type": "string"
+          },
+          "update": {}
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "forge_onboarding"
     },
     {
       "description": "List organizations the calling principal belongs to, with the caller's org role (owner|admin|member) and the isPersonal flag. Use the id as `orgId` for forge_projects.create or org-owned integration connections. Org management (create/members) lives on REST /api/orgs.",
@@ -3392,7 +3428,8 @@
               "release_batch",
               "reconcile",
               "verify_skill",
-              "drive"
+              "drive",
+              "onboarding"
             ],
             "type": "string"
           },
@@ -4390,7 +4427,8 @@
               "release_batch",
               "reconcile",
               "verify_skill",
-              "drive"
+              "drive",
+              "onboarding"
             ],
             "type": "string"
           }
@@ -4431,7 +4469,8 @@
               "release_batch",
               "reconcile",
               "verify_skill",
-              "drive"
+              "drive",
+              "onboarding"
             ],
             "type": "string"
           }
@@ -5650,7 +5689,8 @@
               "release_batch",
               "reconcile",
               "verify_skill",
-              "drive"
+              "drive",
+              "onboarding"
             ],
             "type": "string"
           }

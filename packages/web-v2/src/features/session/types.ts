@@ -43,7 +43,10 @@ export type CanonicalBlock =
   | { type: "text"; text?: string }
   | { type: "tool"; toolCall?: CanonicalToolCall }
   | { type: "todos"; todos?: AgentTodo[] }
-  | { type: "thinking"; thinking?: string; durationMs?: number };
+  | { type: "thinking"; thinking?: string; durationMs?: number }
+  // Structured messages a service writes (ISS-63), drawn by features/onboarding, never by the session renderer.
+  | { type: "questionnaire" | "questionnaire_answers"; batchId?: string }
+  | { type: "designs"; designs?: { heading: string; workflowIds: string[]; approve?: boolean } };
 
 /** A file attached to a chat user turn (ISS-499). Same `{id,name,mime,size,url}`
  * shape the shared `AttachmentList` renderer accepts. */

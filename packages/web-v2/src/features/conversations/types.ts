@@ -1,4 +1,5 @@
 
+import type { OnboardingStatus, QuestionnaireView } from "@forge/contracts/onboarding";
 import type { CanonicalBlock, MessageEntry } from "@/features/session/types";
 
 export type ConversationAdapter = "web" | "widget" | "rocketchat" | "telegram";
@@ -49,6 +50,10 @@ export interface ConversationRow {
   archivedAt: string | null;
   ecosystemId: string | null;
   pinned?: boolean;
+  requirementId?: string | null;
+  /** The thread's kind and badge (ISS-63). */
+  kind?: "onboarding" | "requirement" | null;
+  threadStatus?: OnboardingStatus | null;
 }
 
 export interface ConversationImage {
@@ -158,6 +163,7 @@ export interface ConversationDetail extends ConversationRow, ConversationMembers
   windows: ConversationWindow[];
   agentMode: AgentModeOffer;
   agentTurns: AgentTurn[];
+  questionnaires?: QuestionnaireView[];
 }
 
 /**

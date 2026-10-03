@@ -140,6 +140,9 @@
 - **Workflows opens on what the system is.** A System overview shows the system-context summary,
   key facts and a C4 context diagram that fits the screen; designs are grouped by purpose; a
   system-context design toggles Context | Containers. The dashboard shows it too.
+- **A new project can be onboarded in a chat thread.** The agent reads the code, drafts the key
+  designs for your approval and asks what it cannot tell in one questionnaire card,
+  at most three rounds. The BA assistant asks through the same card.
 - **A project sets the language agents write its prose in.** Project settings → Basics, or
   `PUT /api/projects/:id/content-language`: requirements, comments, suggestions, plans and assistant
   replies follow it; code, commits and PR titles stay English. Each session records what it was

@@ -22,7 +22,15 @@ export interface AgentTodo {
 }
 
 export interface ContentBlock {
-  type: 'text' | 'tool' | 'todos' | 'thinking';
+  /** `questionnaire`, `questionnaire_answers` and `designs` are written by a service, never by a model (ISS-63). */
+  type:
+    | 'text'
+    | 'tool'
+    | 'todos'
+    | 'thinking'
+    | 'questionnaire'
+    | 'questionnaire_answers'
+    | 'designs';
   text?: string | undefined;
   toolCall?: ToolCall | undefined;
   todos?: AgentTodo[] | undefined;
@@ -30,6 +38,10 @@ export interface ContentBlock {
   thinking?: string | undefined;
   /** How long a `thinking` block was open: its first delta to the event that closed it. */
   durationMs?: number | undefined;
+  /** A `questionnaire` or `questionnaire_answers` block's batch; its items and state are read live. */
+  batchId?: string | undefined;
+  /** A `designs` block: the designs a message names, whose status is read live. */
+  designs?: { heading: string; workflowIds: string[]; approve?: boolean | undefined } | undefined;
 }
 
 export interface AgentMessage {
