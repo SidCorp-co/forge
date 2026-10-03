@@ -229,6 +229,35 @@ export async function postQuestionnaireIn(
     .update(questionnaireBatches)
     .set({ messageId: message.id })
     .where(eq(questionnaireBatches.id, batch.id));
+  // cm:why what stayed open in an answered batch is asked again here or not at all: its rows close
+  // as carried, so no decision is open twice
+  const answeredBefore = await tx
+    .select({ id: questionnaireBatches.id })
+    .from(questionnaireBatches)
+    .where(
+      and(
+        eq(questionnaireBatches.conversationId, input.conversationId),
+        eq(questionnaireBatches.status, 'submitted'),
+      ),
+    );
+  if (answeredBefore.length) {
+    await tx
+      .update(agentQuestions)
+      .set({
+        status: 'void',
+        voidReason: `carried into questionnaire ${batch.id}`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          inArray(
+            agentQuestions.batchId,
+            answeredBefore.map((b) => b.id),
+          ),
+          eq(agentQuestions.status, 'open'),
+        ),
+      );
+  }
   // cm:why an answer to a superseded batch is refused naming the batch that replaced it: the next
   // batch posted in the thread is that replacement
   await tx
