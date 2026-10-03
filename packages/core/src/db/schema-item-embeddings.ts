@@ -12,13 +12,14 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { projects } from './schema.js';
+import { feedback } from './schema-feedback.js';
 import { requirements } from './schema-requirements.js';
 import { MEMORY_EMBEDDING_DIM, pgVector } from './schema-types.js';
 
 export { ITEM_EMBEDDING_STATUSES, type ItemEmbeddingStatus } from '@forge/contracts/suggestions';
 
-const itemTypeOf = (requirementId: AnyPgColumn): SQL =>
-  sql`CASE WHEN ${requirementId} IS NOT NULL THEN 'requirement' END`;
+const itemTypeOf = (requirementId: AnyPgColumn, feedbackId: AnyPgColumn): SQL =>
+  sql`CASE WHEN ${requirementId} IS NOT NULL THEN 'requirement' WHEN ${feedbackId} IS NOT NULL THEN 'feedback' END`;
 
 // cm:why separate from memories (Q7): a missed source filter on memory recall would leak requirements
 // into it. One row per item holds its head revision only; the arc cascades the row with its item
@@ -32,11 +33,14 @@ export const itemEmbeddings = pgTable(
     requirementId: uuid('requirement_id').references((): AnyPgColumn => requirements.id, {
       onDelete: 'cascade',
     }),
+    feedbackId: uuid('feedback_id').references((): AnyPgColumn => feedback.id, {
+      onDelete: 'cascade',
+    }),
     itemType: text('item_type').generatedAlwaysAs(
-      (): SQL => itemTypeOf(itemEmbeddings.requirementId),
+      (): SQL => itemTypeOf(itemEmbeddings.requirementId, itemEmbeddings.feedbackId),
     ),
     itemId: uuid('item_id').generatedAlwaysAs(
-      (): SQL => sql`coalesce(${itemEmbeddings.requirementId})`,
+      (): SQL => sql`coalesce(${itemEmbeddings.requirementId}, ${itemEmbeddings.feedbackId})`,
     ),
     /** The item's revision this vector was taken from: its head when written. */
     version: integer('version').notNull(),
@@ -48,10 +52,13 @@ export const itemEmbeddings = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    arcChk: check('item_embeddings_arc_chk', sql`num_nonnulls(${t.requirementId}) = 1`),
+    arcChk: check(
+      'item_embeddings_arc_chk',
+      sql`num_nonnulls(${t.requirementId}, ${t.feedbackId}) = 1`,
+    ),
     statusChk: check(
       'item_embeddings_status_chk',
-      sql`${t.status} IN ('embedded', 'provider_not_configured', 'failed')`,
+      sql`${t.status} IN (${sql.raw(ITEM_EMBEDDING_STATUSES.map((s) => `'${s}'`).join(', '))})`,
     ),
     embeddedChk: check(
       'item_embeddings_embedded_chk',

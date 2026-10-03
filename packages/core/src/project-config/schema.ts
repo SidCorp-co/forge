@@ -1,3 +1,4 @@
+import { SENSITIVE_DATA_LEVELS } from '@forge/contracts/data-policy';
 import {
   projectWorkflowTemplateSchema,
   TEMPLATE_LIMITS,
@@ -179,6 +180,10 @@ export const projectDocumentSchema = z.strictObject({
       approver: z.enum(DESIGN_APPROVERS).optional(),
     })
     .optional(),
+  // cm:why what of this project's content may leave for an embedding or LLM provider (decision Q8,
+  // owner ruling 2026-10-03): `redact` scrubs on write and lets only redacted text out, `no_egress`
+  // scrubs on write and lets nothing out. One guard reads it (`lib/data-egress.ts`). Absent is `off`.
+  sensitiveData: z.enum(SENSITIVE_DATA_LEVELS).optional(),
   execution: z.strictObject({
     plugin: z.strictObject({
       source: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
