@@ -16,7 +16,8 @@ import { answer, inTx, lockRequirements, type RequirementOutcome } from './servi
 // cm:why when a linked design is approved past the revision the agreed baseline pins, a person
 // writes a further baseline of the same head revision pinning each linked design's approved
 // revision, with no text revision; the earlier baseline stays, and an issue whose plan read it
-// reads changed-since-plan until it is re-planned (ISS-86)
+// reads changed-since-plan until it is re-planned; the text is unchanged, so the readiness result
+// the agree recorded carries over (ISS-86, ISS-98)
 export async function repinRequirement(input: {
   projectId: string;
   ref: string;
@@ -69,6 +70,7 @@ export async function repinRequirement(input: {
       act: 'repin',
       agreedBy: actor.userId,
       reason: input.reason?.trim() || null,
+      readiness: latest.readiness,
     });
     const pins = [
       ...designs.flatMap((d) =>

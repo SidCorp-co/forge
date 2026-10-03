@@ -25,6 +25,7 @@ import {
   type TurnCredential,
 } from '../auth/turn-credential.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
+import { egressDeep } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
 import type { DoorId } from '../messaging/contract.js';
 import { Sentry } from '../observability/sentry.js';
@@ -244,6 +245,23 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     conversationId: ctx.conversationId,
     handleUserId: req.handleUserId ?? null,
   };
+
+  // cm:guard a conversation with a person is operational content (`lib/data-egress.ts`, surface
+  // `conversation`): on a no_egress project no turn hands it to a model or a box, and the room is
+  // told so by name instead of answered by one
+  const gate = await egressDeep(
+    req.venue.projectId,
+    'conversation',
+    null,
+    `conversation ${ctx.conversationId}`,
+  );
+  if (!gate.ok) {
+    return {
+      send: true,
+      message: codeAuthored(`${gate.refusal.code}: ${gate.refusal.detail}`),
+      screenReplaced: false,
+    };
+  }
 
   const early = await req.divertBeforeTurn?.(hook);
   if (early) return early;

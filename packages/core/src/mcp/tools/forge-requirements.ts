@@ -7,6 +7,7 @@
 
 import type { RequirementAct } from '@forge/contracts/requirements';
 import { z } from 'zod';
+import { egressShown } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
 import { deferRequirement, undeferRequirement } from '../../requirements/deferral.js';
 import {
@@ -158,9 +159,20 @@ function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]
 const refusedBy = (refusals: readonly NamedRefusal[]) =>
   refusedAnswer(refusals, 'REQUIREMENT_REFUSED');
 
-function settle(input: Input, outcome: RequirementOutcome, revision?: number) {
+async function settle(
+  projectId: string,
+  input: Input,
+  outcome: RequirementOutcome,
+  revision?: number,
+) {
   if (!outcome.ok) return refusedBy(outcome.refusals);
-  return projectOne(input.view, outcome.requirement, (detail) =>
+  const shown = await egressShown(
+    projectId,
+    'requirement',
+    outcome.requirement,
+    outcome.requirement.key,
+  );
+  return projectOne(input.view, shown, (detail) =>
     requirementActAnswerOf(detail, input.action as RequirementAct, revision),
   );
 }
@@ -186,7 +198,12 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       return {
         requirements: projectMany(
           input.view,
-          await listRequirementsAs(actor, projectId),
+          await egressShown(
+            projectId,
+            'requirement',
+            await listRequirementsAs(actor, projectId),
+            'the requirement list',
+          ),
           requirementSummaryOf,
         ),
         ...summaryNotice(
@@ -195,11 +212,17 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         ),
       };
     case 'get': {
-      const detail = await readRequirementAs(actor, projectId, need(input, 'requirement'));
+      const detail = await egressShown(
+        projectId,
+        'requirement',
+        await readRequirementAs(actor, projectId, need(input, 'requirement')),
+        need(input, 'requirement'),
+      );
       return input.view === 'summary' ? requirementSummaryOf(detail) : detail;
     }
     case 'create':
       return settle(
+        projectId,
         input,
         await createRequirement({
           projectId,
@@ -210,6 +233,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'revise':
       return settle(
+        projectId,
         input,
         await writeRevision({
           ...on(),
@@ -219,6 +243,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'edit':
       return settle(
+        projectId,
         input,
         await writeRevision({
           ...on(),
@@ -229,12 +254,14 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'propose':
       return settle(
+        projectId,
         input,
         await proposeRevision({ ...on(), revision: need(input, 'revision') }),
         input.revision,
       );
     case 'accept':
       return settle(
+        projectId,
         input,
         await acceptRevision({
           ...on(),
@@ -245,6 +272,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'return':
       return settle(
+        projectId,
         input,
         await returnRevision({
           ...on(),
@@ -255,6 +283,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'agree':
       return settle(
+        projectId,
         input,
         await agreeRequirement({
           ...on(),
@@ -265,6 +294,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'repin':
       return settle(
+        projectId,
         input,
         await repinRequirement({
           ...on(),
@@ -274,6 +304,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       );
     case 'defer':
       return settle(
+        projectId,
         input,
         await deferRequirement({
           ...on(),
@@ -282,9 +313,10 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         }),
       );
     case 'undefer':
-      return settle(input, await undeferRequirement({ ...on(), reason: input.reason }));
+      return settle(projectId, input, await undeferRequirement({ ...on(), reason: input.reason }));
     case 'link_issue':
       return settle(
+        projectId,
         input,
         await linkIssue({
           ...on(),
@@ -293,11 +325,16 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         }),
       );
     case 'unlink_issue':
-      return settle(input, await unlinkIssue({ ...on(), issue: need(input, 'issue') }));
+      return settle(projectId, input, await unlinkIssue({ ...on(), issue: need(input, 'issue') }));
     case 'link_workflow':
-      return settle(input, await linkWorkflow({ ...on(), workflowId: need(input, 'workflowId') }));
+      return settle(
+        projectId,
+        input,
+        await linkWorkflow({ ...on(), workflowId: need(input, 'workflowId') }),
+      );
     case 'unlink_workflow':
       return settle(
+        projectId,
         input,
         await unlinkWorkflow({ ...on(), workflowId: need(input, 'workflowId') }),
       );

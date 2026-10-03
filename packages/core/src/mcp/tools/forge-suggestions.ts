@@ -10,6 +10,7 @@ import {
   suggestionSummaryOf,
 } from '@forge/contracts/suggestions';
 import { z } from 'zod';
+import { dataPolicyOf, egressAt, egressOr } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
 import {
   listSuggestions,
@@ -136,8 +137,23 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         target: targetOf(input),
         statuses: input.status,
       });
+      const level = await dataPolicyOf(projectId);
+      const rows =
+        input.view === 'full'
+          ? listed.suggestions.map((v) =>
+              egressOr(
+                egressAt(
+                  level,
+                  v.target.type === 'feedback' ? 'feedback' : 'suggestion',
+                  v,
+                  `suggestion ${v.id}`,
+                ),
+                { id: v.id, kind: v.kind, status: v.status, target: v.target },
+              ),
+            )
+          : projectMany(input.view, listed.suggestions, suggestionSummaryOf);
       return {
-        suggestions: projectMany(input.view, listed.suggestions, suggestionSummaryOf),
+        suggestions: rows,
         open: listed.open,
         ...summaryNotice(input.view, "view: 'full' for each suggestion's payload and reason"),
       };

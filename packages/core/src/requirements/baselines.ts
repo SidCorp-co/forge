@@ -6,7 +6,7 @@ import { requirementBaselinePins, requirementBaselines } from '../db/schema-requ
 // baseline of a revision is the highest seq there (ISS-86)
 export async function latestBaselineIn(tx: Tx, requirementId: string, revision: number) {
   const [b] = await tx
-    .select({ seq: requirementBaselines.seq })
+    .select({ seq: requirementBaselines.seq, readiness: requirementBaselines.readiness })
     .from(requirementBaselines)
     .where(
       and(
@@ -27,7 +27,7 @@ export async function latestBaselineIn(tx: Tx, requirementId: string, revision: 
         eq(requirementBaselinePins.baselineSeq, b.seq),
       ),
     );
-  return { seq: b.seq, pins };
+  return { seq: b.seq, readiness: b.readiness, pins };
 }
 
 export async function plannedBaselineSeqIn(

@@ -1,5 +1,6 @@
 import {
   BASELINE_ACTS,
+  type BaselineReadiness,
   DEFERRABLE_STATUSES,
   REQUIREMENT_DEFERRAL_ACTS,
   REQUIREMENT_STATUSES,
@@ -210,6 +211,7 @@ export const requirementBaselines = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     agreedAt: timestamp('agreed_at', { withTimezone: true }).notNull().defaultNow(),
     reason: text('reason'),
+    readiness: jsonb('readiness').$type<BaselineReadiness>(),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.requirementId, t.revision, t.seq] }),

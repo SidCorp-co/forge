@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { type FeedbackTriageEffect, feedbackTriageSchema } from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import { REGISTRY_ISSUE_COMPLEXITIES } from "./pipeline-registry.js";
 import { ANSWER_VIEWS, pickFields } from "./projection.js";
 
 /** The six kinds rev 2 names, and feedback_triage (workflow feedback-triage, ISS-59); cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
@@ -212,6 +213,7 @@ export const SUGGESTION_PAYLOADS = {
 		schema: z.strictObject({
 			priority: z.enum(["low", "medium", "high", "critical"]).optional(),
 			category: z.string().max(100).optional(),
+			complexity: z.enum(REGISTRY_ISSUE_COMPLEXITIES).optional(),
 			route: z.string().max(200).optional(),
 			note: z.string().trim().min(1).max(4_000),
 		}),
@@ -327,12 +329,13 @@ export interface SuggestionReadinessEffect {
 	failed: string[];
 }
 
-/** A triage accept on an issue: the priority and category it set. */
 export interface SuggestionIssueTriageEffect {
 	issueId: string;
 	issue: string;
 	priority: string | null;
 	category: string | null;
+	complexity: string | null;
+	routeCommentId: string | null;
 }
 
 /** A duplicate accept on an issue: dropped as a duplicate of its root, with a relates edge to it. */

@@ -71,6 +71,10 @@ const criterion = (n: number) => ({
   },
 });
 
+vi.mock('../../project-config/service.js', () => ({
+  readProjectDocument: async () => null,
+}));
+
 vi.mock('../../ecosystem/waits/read.js', () => ({
   issueContractWaitsOf: async () => ({
     waits: Array.from({ length: 4 }, (_, i) => wait(i)),

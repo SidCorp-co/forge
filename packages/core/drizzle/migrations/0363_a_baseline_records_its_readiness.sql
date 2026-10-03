@@ -1,0 +1,1 @@
+ALTER TABLE "requirement_baselines" ADD COLUMN "readiness" jsonb;

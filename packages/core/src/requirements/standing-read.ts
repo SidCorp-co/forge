@@ -346,8 +346,15 @@ const baselineEntry = (b: BaselineRow, n: Namer) =>
     source: 'person',
     who: n.who(b.agreedBy, 'A signer'),
     kind: 'Agreed',
-    text: `${b.act === 'repin' ? 'Re-pinned' : 'Agreed'} r${b.revision}${b.act === 'repin' ? ' onto the approved designs' : ''}${b.reason ? `: ${b.reason}` : ''}`,
+    text: `${b.act === 'repin' ? 'Re-pinned' : 'Agreed'} r${b.revision}${b.act === 'repin' ? ' onto the approved designs' : ''}${b.reason ? `: ${b.reason}` : ''}${readinessNote(b.readiness)}`,
   });
+
+function readinessNote(r: BaselineRow['readiness']): string {
+  if (!r) return '';
+  if (r.ready) return ' (ready)';
+  if (r.suggestionId === null) return ' (no readiness result)';
+  return ` (not ready: ${r.failed.join(', ')})`;
+}
 
 function suggestionEntries(s: SuggestionRow, n: Namer): RequirementHistoryEntry[] {
   const label = SUGGESTION_LABEL[s.kind] ?? 'a change';

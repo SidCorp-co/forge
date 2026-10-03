@@ -3287,6 +3287,17 @@
 
 - **A `forge_uploads` fetch carries the text it inlines in its structured answer.** A client reading
   the structured result no longer sees `inlined: true` with the body missing.
+- **One rule decides what an agent may read on a sensitive project.** Requirements, designs, issues,
+  criteria, comments and onboarding answers reach agents at every level, scrubbed on a redact or
+  no-egress project; feedback, its attachments and comments, and assistant conversations with people
+  are withheld on a no-egress project, whichever door the agent reads through. A read that no rule
+  names is refused rather than let through.
+- **A requirement can be held to its readiness result.** `requirements.readinessGate` in the project
+  config is `off`, `warn` or `block`: `warn` records the result on the baseline, `block` refuses an
+  agree without a ready result. Off by default.
+- **An accepted triage on an issue sets its priority, category and complexity**, and its route is
+  kept as a note comment on the issue instead of being refused.
+
 - **forge-runner no longer retires a resident master mid-turn.** It retires one only after an
   hour in which its pane reported no turn and no input, nothing was claimable and no child run
   was open; the log line names each.

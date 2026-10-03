@@ -279,6 +279,19 @@ export interface RequirementStanding {
 	touchedAt: string;
 }
 
+export const REQUIREMENT_READINESS_GATES = ["off", "warn", "block"] as const;
+export type RequirementReadinessGate =
+	(typeof REQUIREMENT_READINESS_GATES)[number];
+export const REQUIREMENT_READINESS_GATE_DEFAULT: RequirementReadinessGate =
+	"off";
+
+export interface BaselineReadiness {
+	gate: Exclude<RequirementReadinessGate, "off">;
+	suggestionId: string | null;
+	ready: boolean;
+	failed: string[];
+}
+
 /** Who a history entry came from, the filter the history is read by. */
 export const HISTORY_SOURCES = ["person", "agent", "system"] as const;
 export type HistorySource = (typeof HISTORY_SOURCES)[number];

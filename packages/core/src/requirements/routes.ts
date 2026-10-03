@@ -12,6 +12,7 @@ import {
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { refused } from '../project-config/respond.js';
@@ -93,7 +94,14 @@ function answer(c: Context, outcome: RequirementOutcome) {
 }
 
 requirementRoutes.get('/:id/requirements', projectParam, viewQuery, async (c) => {
-  const listed = await listRequirementsAs(actorOf(c), c.req.valid('param').id);
+  const { id } = c.req.valid('param');
+  const listed = await egressForRequest(
+    c.get('agency'),
+    id,
+    'requirement',
+    await listRequirementsAs(actorOf(c), id),
+    'the requirement list',
+  );
   const requirements =
     c.req.valid('query').view === 'summary' ? listed.map(requirementSummaryOf) : listed;
   return c.json({ requirements, returned: requirements.length });
@@ -122,7 +130,15 @@ requirementRoutes.post(
 
 requirementRoutes.get('/:id/requirements/:req', reqParam, async (c) => {
   const { id, req } = c.req.valid('param');
-  return c.json(await readRequirementAs(actorOf(c), id, req));
+  return c.json(
+    await egressForRequest(
+      c.get('agency'),
+      id,
+      'requirement',
+      await readRequirementAs(actorOf(c), id, req),
+      req,
+    ),
+  );
 });
 
 requirementRoutes.post(

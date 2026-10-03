@@ -350,32 +350,42 @@ describe('readiness, triage and duplicate: each kind writes its own effect', () 
     expect(detail.body.readiness).toMatchObject({ revision: 1, ready: false, suggestionId: sid });
   });
 
-  it('triage on an issue sets its priority and category; a route the lifecycle does not define is refused', async () => {
+  it('triage on an issue sets its priority, category and complexity; its route becomes a note comment', async () => {
     const issue = await plantIssue('Triage me');
     const sid = await propose({
       kind: 'triage',
       issue: issue.id,
       baseRevision: null,
-      payload: { priority: 'high', category: 'bug', note: 'crashes on save' },
+      payload: { priority: 'high', category: 'bug', complexity: 's', note: 'crashes on save' },
     });
     const accepted = await accept(sid);
     expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
     const [row] = [
       ...((await harness.db.execute(
-        sql`SELECT priority, category FROM issues WHERE id = ${issue.id}`,
+        sql`SELECT priority, category, complexity FROM issues WHERE id = ${issue.id}`,
       )) as unknown as Doc[]),
     ];
-    expect(row).toEqual({ priority: 'high', category: 'bug' });
+    expect(row).toEqual({ priority: 'high', category: 'bug', complexity: 's' });
+    expect(accepted.body.effect).toMatchObject({ complexity: 's', routeCommentId: null });
     const routed = await propose({
       kind: 'triage',
       issue: issue.id,
       baseRevision: null,
       payload: { route: 'master', note: 'route it' },
     });
-    const refused = await accept(routed);
-    expect(refused.status).toBe(422);
-    expect(refused.body.error.code).toBe('SUGGESTION_EFFECT_UNDECIDED');
-    expect(await statusOf(routed)).toBe('proposed');
+    const noted = await accept(routed);
+    expect(noted.status, JSON.stringify(noted.body)).toBe(200);
+    expect(await statusOf(routed)).toBe('accepted');
+    const comments = (await harness.db.execute(
+      sql`SELECT id, intent, body FROM comments WHERE issue_id = ${issue.id}`,
+    )) as unknown as Doc[];
+    expect([...comments]).toEqual([
+      {
+        id: noted.body.effect.routeCommentId,
+        intent: 'note',
+        body: `Triage route (suggestion ${routed}): master\n\nroute it`,
+      },
+    ]);
   });
 
   it('duplicate on an issue drops it naming the root, with a relates edge; on a requirement it is refused', async () => {

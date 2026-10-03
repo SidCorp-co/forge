@@ -17,6 +17,7 @@ import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
 import {
   type CommentTarget,
+  commentEgress,
   commentRowIn,
   type EntityCommentActor,
   type EntityCommentRow,
@@ -24,7 +25,6 @@ import {
   entityCommentView,
   notFound,
   targetIn,
-  withholdFor,
 } from './entity-read.js';
 import {
   arcOf,
@@ -105,11 +105,11 @@ async function viewIn(
   actor: EntityCommentActor,
   door: ReadDoor,
 ): Promise<EntityCommentView> {
-  const [authors, withhold] = await Promise.all([
+  const [authors, egress] = await Promise.all([
     peopleOf([row.authorId]),
-    withholdFor(target.projectId, target.scope, actor, door),
+    commentEgress(target.projectId, target.scope, actor, door),
   ]);
-  return entityCommentView(row, target, authors, withhold);
+  return entityCommentView(row, target, authors, egress);
 }
 
 async function factsOf(actor: EntityCommentActor, projectId: string) {
