@@ -194,12 +194,16 @@ export type IssueRelationDirections = {
 
 /** An issue's relations keyed by kind, every kind present, so a `relates` edge can never be read
  *  out of a list named for blocking. */
-export type IssueRelations = Record<IssueDependencyKind, IssueRelationDirections>;
+export type IssueRelations = Record<IssueDependencyKind, IssueRelationDirections> & {
+  /** Legacy: the live gating edges into this issue, for readers still on the old shape. */
+  blockedBy: IssueRelationDigest[];
+};
 
 export function emptyIssueRelations(): IssueRelations {
-  return Object.fromEntries(
+  const byKind = Object.fromEntries(
     issueDependencyKinds.map((kind) => [kind, { outgoing: [], incoming: [] }]),
-  ) as unknown as IssueRelations;
+  ) as unknown as Record<IssueDependencyKind, IssueRelationDirections>;
+  return { ...byKind, blockedBy: [] };
 }
 
 /** Every edge of every kind and direction, for a reader that walks them all. */
@@ -241,6 +245,8 @@ export async function loadIssueRelationsForIssues(
     const relations = emptyIssueRelations();
     for (const e of outgoing) relations[e.kind].outgoing.push(digest(e, issueId));
     for (const e of incoming) relations[e.kind].incoming.push(digest(e, issueId));
+    // cm:hack plugin-followups.md "forge_issues get → relations is now keyed by kind" until:forge-plugin reads relations.<kind> (plugin-followups.md) — the pinned plugin reads `relations.blockedBy ?? []`, so its absence reads as "nothing blocks"; it holds ONLY live `blocks` edges, so the old key now tells the truth. A legacy `relations.blocks` array cannot be emitted: that key is the new shape's `blocks` kind, and no plugin reader reads it.
+    relations.blockedBy = relations.blocks.incoming.filter((e) => e.blocking);
     out.set(issueId, relations);
   }
   return out;
