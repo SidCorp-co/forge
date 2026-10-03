@@ -5,9 +5,11 @@ import { Button, ErrorState, PageTitle, ProjectLoader, Textarea, Toggle, Tooltip
 import { formatApiError } from "@/lib/api/error";
 import { templateFor } from "../canvas/model";
 import { WorkflowCanvas } from "../canvas/workflow-canvas";
+import { SYSTEM_CONTEXT_TEMPLATE } from "../c4/model";
 import { designDiff, stepsWithRemoved } from "../design-diff";
 import { useDesignDecision, useWorkflowDesign, useWorkflowTemplates, useWorkflows } from "../hooks";
 import type { WorkflowDesign } from "../types";
+import { SystemContextView } from "./system-context-view";
 import { DesignPill } from "./workflow-parts";
 
 /** Approve, or Return with the reason the master revises against; only for the approver, only while it is proposed. */
@@ -123,7 +125,11 @@ export function WorkflowDesignScreen({ projectId, flow }: { projectId: string; s
         ) : null}
         {decision}
       </header>
-      <WorkflowCanvas doc={{ ...shown, steps }} template={template} diff={diff} decision={decision} />
+      {template?.id === SYSTEM_CONTEXT_TEMPLATE ? (
+        <SystemContextView doc={{ ...shown, steps }} template={template} diff={diff} decision={decision} />
+      ) : (
+        <WorkflowCanvas doc={{ ...shown, steps }} template={template} diff={diff} decision={decision} />
+      )}
     </div>
   );
 }

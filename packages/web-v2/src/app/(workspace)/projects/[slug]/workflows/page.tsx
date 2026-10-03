@@ -31,5 +31,5 @@ export default function ProjectWorkflowsPage() {
       </div>
     );
   }
-  return <WorkflowsScreen projectId={project.id} slug={project.slug} />;
+  return <WorkflowsScreen projectId={project.id} slug={project.slug} projectName={project.name} />;
 }
