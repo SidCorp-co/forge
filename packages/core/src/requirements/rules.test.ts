@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   agreeRefusals,
+  baselineReadiness,
   changedSincePlan,
   linkIssueRefusal,
   openRevisionRefusal,
   planCriteria,
+  readinessRefusal,
   reasonRefusal,
   scenarioParses,
   signoffRefusal,
@@ -207,5 +209,53 @@ describe('changedSincePlan (REQUIREMENT_CHANGED_SINCE_PLAN)', () => {
   it('does not flag a plan at the current revision, or an issue with no plan', () => {
     expect(changedSincePlan({ plan: 'p', plannedRevision: 4, currentRevision: 4 })).toBe(false);
     expect(changedSincePlan({ plan: null, plannedRevision: null, currentRevision: 4 })).toBe(false);
+  });
+});
+
+describe('requirements.readinessGate: off | warn | block (REQUIREMENT_NOT_READY)', () => {
+  const passed = { suggestionId: 's-1', failed: [] };
+  const failing = { suggestionId: 's-2', failed: ['has-criteria', 'names-actor'] };
+
+  it('off reads nothing and records nothing, so an agree is never refused for readiness', () => {
+    expect(baselineReadiness('off', failing)).toBeNull();
+    expect(baselineReadiness('off', null)).toBeNull();
+    expect(readinessRefusal(baselineReadiness('off', null), 2)).toBeNull();
+  });
+
+  it('warn records the result, ready or not, and never refuses', () => {
+    expect(baselineReadiness('warn', passed)).toEqual({
+      gate: 'warn',
+      suggestionId: 's-1',
+      ready: true,
+      failed: [],
+    });
+    const notReady = baselineReadiness('warn', failing);
+    expect(notReady).toMatchObject({ gate: 'warn', ready: false, failed: failing.failed });
+    expect(baselineReadiness('warn', null)).toEqual({
+      gate: 'warn',
+      suggestionId: null,
+      ready: false,
+      failed: [],
+    });
+    expect(readinessRefusal(notReady, 2)).toBeNull();
+    expect(readinessRefusal(baselineReadiness('warn', null), 2)).toBeNull();
+  });
+
+  it('block lets a ready head through', () => {
+    expect(readinessRefusal(baselineReadiness('block', passed), 2)).toBeNull();
+  });
+
+  it('block refuses a failing result naming the checks that failed', () => {
+    const out = readinessRefusal(baselineReadiness('block', failing), 2);
+    expect(codeOf(out)).toBe('REQUIREMENT_NOT_READY');
+    expect(out?.detail).toContain('has-criteria, names-actor');
+    expect(out?.detail).toContain('s-2');
+  });
+
+  it('block refuses a head with no accepted readiness result, and says to accept one', () => {
+    const out = readinessRefusal(baselineReadiness('block', null), 3);
+    expect(codeOf(out)).toBe('REQUIREMENT_NOT_READY');
+    expect(out?.detail).toContain('no accepted readiness result');
+    expect(out?.detail).toContain('revision 3');
   });
 });

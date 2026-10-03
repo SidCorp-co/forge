@@ -34,6 +34,7 @@ import { emitIssueFieldUpdate } from '../issues/update-hook.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { personActRefusalFor } from '../lib/person-act.js';
+import { hooks } from '../pipeline/hooks.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { lockRequirements } from '../requirements/service.js';
 import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
@@ -200,6 +201,18 @@ async function announceEffect(written: EffectWritten, projectId: string, actor: 
       projectId,
       written.relations,
     );
+  }
+  if (written.routeComment) {
+    const { issueId, row, authored } = written.routeComment;
+    await hooks.emit('commentCreated', {
+      issueId,
+      projectId,
+      actor: who,
+      authored,
+      commentId: row.id,
+      body: row.body,
+      parentId: null,
+    });
   }
   if (written.updatedIssue?.written.length) {
     const { before } = written.updatedIssue;

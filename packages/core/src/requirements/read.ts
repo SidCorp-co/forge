@@ -28,7 +28,12 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
-import { changedSincePlan, type LinkedDesign, signoffRefusal } from './rules.js';
+import {
+  changedSincePlan,
+  type LinkedDesign,
+  type ReadinessAtHead,
+  signoffRefusal,
+} from './rules.js';
 import { provenPhase } from './standing.js';
 import { historyOf, standingsOf } from './standing-read.js';
 
@@ -289,6 +294,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
       agreedByName: name(b.agreedBy),
       agreedAt: b.agreedAt.toISOString(),
       reason: b.reason,
+      readiness: b.readiness,
       pins: pins
         .filter((p) => p.revision === b.revision)
         .map((p) => ({
@@ -353,10 +359,13 @@ function revisionView(
 type ReadinessPayload = { checks?: { check: string; passed: boolean }[] } | null;
 
 // cm:why workflow requirement-to-delivery step `ready`: readiness is a suggestion kind with no
-// table, so the readiness result at the head is the newest accepted readiness suggestion on it
-async function readinessOf(row: Row) {
-  if (row.currentRevision === null) return null;
-  const [s] = await db
+// table, so the readiness result at a revision is the newest accepted readiness suggestion on it
+export async function readinessAt(
+  tx: Tx,
+  requirementId: string,
+  revision: number,
+): Promise<(ReadinessAtHead & { decidedAt: Date | null }) | null> {
+  const [s] = await tx
     .select({
       id: suggestions.id,
       payload: suggestions.payload,
@@ -365,10 +374,10 @@ async function readinessOf(row: Row) {
     .from(suggestions)
     .where(
       and(
-        eq(suggestions.requirementId, row.id),
+        eq(suggestions.requirementId, requirementId),
         eq(suggestions.kind, 'readiness'),
         eq(suggestions.status, 'accepted'),
-        eq(suggestions.baseRevision, row.currentRevision),
+        eq(suggestions.baseRevision, revision),
       ),
     )
     .orderBy(desc(suggestions.decidedAt))
@@ -377,11 +386,18 @@ async function readinessOf(row: Row) {
   const failed = ((s.payload as ReadinessPayload)?.checks ?? [])
     .filter((c) => !c.passed)
     .map((c) => c.check);
+  return { suggestionId: s.id, failed, decidedAt: s.decidedAt };
+}
+
+async function readinessOf(row: Row) {
+  if (row.currentRevision === null) return null;
+  const s = await readinessAt(db, row.id, row.currentRevision);
+  if (!s) return null;
   return {
     revision: row.currentRevision,
-    ready: failed.length === 0,
-    failed,
-    suggestionId: s.id,
+    ready: s.failed.length === 0,
+    failed: s.failed,
+    suggestionId: s.suggestionId,
     decidedAt: s.decidedAt?.toISOString() ?? null,
   };
 }

@@ -5,6 +5,7 @@
  * nothing written.
  */
 
+import type { BaselineReadiness, RequirementReadinessGate } from '@forge/contracts/requirements';
 import type { ProjectMemberRole } from '../db/schema.js';
 import type { CriterionForm, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
@@ -20,6 +21,7 @@ export type RequirementRefusalCode =
   | 'REQUIREMENT_DESIGN_UNAPPROVED'
   | 'REQUIREMENT_NOT_AGREED'
   | 'REQUIREMENT_ALREADY_AGREED'
+  | 'REQUIREMENT_NOT_READY'
   | 'REQUIREMENT_ISSUE_LINKED_ELSEWHERE'
   | 'REQUIREMENT_NO_PLAN_TO_ADOPT'
   | 'REVISION_REASON_REQUIRED'
@@ -156,6 +158,41 @@ export function agreeRefusals(input: {
     });
   }
   return out;
+}
+
+export interface ReadinessAtHead {
+  suggestionId: string;
+  failed: string[];
+}
+
+export function baselineReadiness(
+  gate: RequirementReadinessGate,
+  read: ReadinessAtHead | null,
+): BaselineReadiness | null {
+  if (gate === 'off') return null;
+  return {
+    gate,
+    suggestionId: read?.suggestionId ?? null,
+    ready: read !== null && read.failed.length === 0,
+    failed: read?.failed ?? [],
+  };
+}
+
+// cm:guard at `requirements.readinessGate: block` an agree needs an accepted readiness result at the
+// head with every check passing; one missing or failing is refused by name (REQUIREMENT_NOT_READY)
+export function readinessRefusal(
+  recorded: BaselineReadiness | null,
+  head: number | null,
+): RequirementRefusal | null {
+  if (recorded?.gate !== 'block' || recorded.ready) return null;
+  return {
+    code: 'REQUIREMENT_NOT_READY',
+    path: '/revision',
+    detail:
+      recorded.suggestionId === null
+        ? `this project's requirements.readinessGate is block, and revision ${head ?? '(none)'} has no accepted readiness result; accept a readiness suggestion on it first.`
+        : `this project's requirements.readinessGate is block, and the readiness result at revision ${head ?? '(none)'} (suggestion ${recorded.suggestionId}) failed: ${recorded.failed.join(', ')}.`,
+  };
 }
 
 /** Linking an issue reads an agreed requirement: a draft or dropped one has nothing to deliver. */

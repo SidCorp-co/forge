@@ -6,6 +6,11 @@
  * transaction under the project's requirement lock.
  */
 
+import {
+  type BaselineReadiness,
+  REQUIREMENT_READINESS_GATE_DEFAULT,
+  type RequirementReadinessGate,
+} from '@forge/contracts/requirements';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
@@ -18,6 +23,7 @@ import {
   requirements,
 } from '../db/schema-requirements.js';
 import { assertProjectAccess } from '../lib/authz.js';
+import { readProjectDocument } from '../project-config/service.js';
 import { staleOnTargetRevised } from '../suggestions/stale.js';
 import { embedRequirementHeadLater } from './embeddings.js';
 import {
@@ -44,18 +50,26 @@ import {
   type RequirementDetail,
   type RevisionRow,
   type Row,
+  readinessAt,
   requirementKey,
   rowIn,
   signerRefusal,
 } from './read.js';
 import {
   agreeRefusals,
+  baselineReadiness,
   type LinkedDesign,
   type RequirementRefusal,
+  readinessRefusal,
   reasonRefusal,
   staleBaseRefusal,
   stateRefusal,
 } from './rules.js';
+
+async function readinessGateOf(projectId: string): Promise<RequirementReadinessGate> {
+  const doc = await readProjectDocument(projectId);
+  return doc?.document.requirements?.readinessGate ?? REQUIREMENT_READINESS_GATE_DEFAULT;
+}
 
 export type RequirementOutcome =
   | { ok: true; requirement: RequirementDetail; created?: boolean }
@@ -295,10 +309,11 @@ async function writeBaseline(
   designs: readonly LinkedDesign[],
   actor: RequirementActor,
   reason: string | null,
+  readiness: BaselineReadiness | null = null,
 ) {
   await tx
     .insert(requirementBaselines)
-    .values({ requirementId, revision, agreedBy: actor.userId, reason });
+    .values({ requirementId, revision, agreedBy: actor.userId, reason, readiness });
   const pins = designs.flatMap((d) =>
     d.approvedRevision === null
       ? []
@@ -393,6 +408,7 @@ export async function agreeRequirement(input: {
   const row = await rowIn(db, projectId, input.ref);
   const signer = await signerRefusal(actor, projectId, 'agreeing a requirement');
   if (signer) return { ok: false, refusals: [signer] };
+  const gate = await readinessGateOf(projectId);
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);
@@ -410,7 +426,23 @@ export async function agreeRequirement(input: {
       rebaseline: false,
     });
     if (guards.length) return guards;
-    await writeBaseline(tx, row.id, input.revision, designs, actor, input.reason?.trim() || null);
+    const readiness = baselineReadiness(
+      gate,
+      current.currentRevision === null
+        ? null
+        : await readinessAt(tx, row.id, current.currentRevision),
+    );
+    const notReady = readinessRefusal(readiness, current.currentRevision);
+    if (notReady) return [notReady];
+    await writeBaseline(
+      tx,
+      row.id,
+      input.revision,
+      designs,
+      actor,
+      input.reason?.trim() || null,
+      readiness,
+    );
     await tx
       .update(requirements)
       .set({ status: 'agreed', updatedAt: new Date() })

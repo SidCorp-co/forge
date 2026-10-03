@@ -1,3 +1,4 @@
+import type { BaselineReadiness } from '@forge/contracts/requirements';
 import { REQUIREMENT_CRITERION_FORMS } from '@forge/contracts/suggestions';
 import { sql } from 'drizzle-orm';
 import {
@@ -196,6 +197,7 @@ export const requirementBaselines = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     agreedAt: timestamp('agreed_at', { withTimezone: true }).notNull().defaultNow(),
     reason: text('reason'),
+    readiness: jsonb('readiness').$type<BaselineReadiness>(),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.requirementId, t.revision] }),

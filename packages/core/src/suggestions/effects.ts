@@ -9,6 +9,7 @@
 import type { FeedbackTriageEffect } from '@forge/contracts/feedback';
 import { SUGGESTION_PAYLOADS, type SuggestionEffect } from '@forge/contracts/suggestions';
 import { and, eq, sql } from 'drizzle-orm';
+import { insertComment, type WrittenComment } from '../comments/service.js';
 import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { requirementCriteria, requirementRevisions } from '../db/schema-requirements.js';
@@ -44,6 +45,7 @@ export interface EffectWritten {
   relations?: PendingIssueRelation[];
   /** An issue whose fields the accept moved, announced after the commit. */
   updatedIssue?: { before: typeof issues.$inferSelect; written: string[] };
+  routeComment?: { issueId: string; row: WrittenComment['row']; authored: 'human' | 'agent' };
 }
 
 const refuse = (code: string, path: string, detail: string): EffectWritten => ({
@@ -248,31 +250,73 @@ async function issueRowOf(tx: Tx, projectId: string, issueId: string) {
   return issue;
 }
 
-// cm:why a triage suggestion on an issue carries priority and category, which an accept sets; its
-// free-text `route` names nothing the issue lifecycle defines, so it is refused, never dropped
-async function issueTriageEffect(tx: Tx, projectId: string, row: Row): Promise<EffectWritten> {
-  const p = SUGGESTION_PAYLOADS.triage.schema.parse(row.payload);
-  if (p.route !== undefined) {
-    return { refusals: [undecided('triage', '/payload/route', 'a triage route on an issue')] };
-  }
-  const before = await issueRowOf(tx, projectId, targetOfRow(row).id);
-  const set: Partial<typeof issues.$inferInsert> = {};
+type IssueTriage = ReturnType<(typeof SUGGESTION_PAYLOADS)['triage']['schema']['parse']>;
+
+// cm:why decision on ISS-58 (2026-10-04): a triage suggestion on an issue applies only the fields the
+// feedback-triage design names, priority, category and complexity; its free-text `route` is not an
+// effect, so it is kept as a note comment on the issue rather than refused or dropped
+export function issueTriageOf(p: IssueTriage, suggestionId: string) {
+  const set: Partial<Pick<typeof issues.$inferInsert, 'priority' | 'category' | 'complexity'>> = {};
   if (p.priority) set.priority = p.priority;
   if (p.category !== undefined) set.category = p.category;
+  if (p.complexity) set.complexity = p.complexity;
+  const routeNote =
+    p.route === undefined
+      ? null
+      : `Triage route (suggestion ${suggestionId}): ${p.route}\n\n${p.note}`;
+  return { set, routeNote };
+}
+
+async function issueTriageEffect(
+  tx: Tx,
+  projectId: string,
+  row: Row,
+  actor: SuggestionActor,
+): Promise<EffectWritten> {
+  const { set, routeNote } = issueTriageOf(
+    SUGGESTION_PAYLOADS.triage.schema.parse(row.payload),
+    row.id,
+  );
+  const before = await issueRowOf(tx, projectId, targetOfRow(row).id);
   if (Object.keys(set).length) {
     await tx
       .update(issues)
       .set({ ...set, updatedAt: new Date() })
       .where(eq(issues.id, before.id));
   }
+  const note = routeNote
+    ? await insertComment(
+        {
+          issueId: before.id,
+          authorId: authorOf(row, actor).userId,
+          authorDeviceId: null,
+          body: routeNote,
+          format: 'markdown',
+          parentId: null,
+          intent: 'note',
+        },
+        tx,
+      )
+    : null;
   return {
     refusals: null,
     updatedIssue: { before, written: Object.keys(set) },
+    ...(note
+      ? {
+          routeComment: {
+            issueId: before.id,
+            row: note.row,
+            authored: row.producerKind === 'person' ? ('human' as const) : ('agent' as const),
+          },
+        }
+      : {}),
     effect: {
       issueId: before.id,
       issue: formatIssueRef(await activeIssuePrefix(projectId), before.issSeq),
-      priority: p.priority ?? null,
-      category: p.category ?? null,
+      priority: set.priority ?? null,
+      category: set.category ?? null,
+      complexity: set.complexity ?? null,
+      routeCommentId: note?.row.id ?? null,
     },
   };
 }
@@ -364,7 +408,7 @@ export async function writeEffect(
     return readinessEffect(tx, projectId, row);
   }
   if (row.kind === 'triage' && target.type === 'issue') {
-    return issueTriageEffect(tx, projectId, row);
+    return issueTriageEffect(tx, projectId, row, actor);
   }
   if (row.kind === 'duplicate' && target.type === 'requirement') {
     return {
