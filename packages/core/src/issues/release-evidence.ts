@@ -1,12 +1,8 @@
-// ISS-55 — every criterion's latest verdict, the evidence `awaiting_release` stands on, read from
-// `issue_criteria` and `criterion_verdicts` (`criteria/store.ts`). No comment is parsed here: a
-// verdict posted as a comment fence reaches this table on the comment's own write
-// (`criteria/comment-verdicts.ts`). `transition-guards.ts:verdictGuard` reads this answer's shape.
+// ISS-55 — the evidence `awaiting_release` stands on, read from `criterion_verdicts`, never comments.
 
 import type { Tx } from '../db/client.js';
 import { type CriterionWithVerdict, listCriteria } from './criteria/store.js';
 
-/** As the release gate counts them (`criteria-verdicts.ts:EARNED_VERDICTS`); `skipped` never. */
 const PASSING: ReadonlySet<string> = new Set(['pass', 'short']);
 
 export type CriteriaEvidence =
@@ -14,11 +10,7 @@ export type CriteriaEvidence =
   | {
       kind: 'criteria';
       unpassed: Array<{ criterion: number; verdict: string | null }>;
-      /**
-       * Passing criteria whose latest verdict names no identity the gate accepts. A backfilled
-       * `commit_unresolved` is one: its amnesty covers the closed issue it was read from, and a
-       * reopened issue earns a new verdict with a whole sha before it is released again.
-       */
+      /** Passing, with no identity the gate accepts; a backfilled `commit_unresolved` is none. */
       unidentified: number[];
     };
 

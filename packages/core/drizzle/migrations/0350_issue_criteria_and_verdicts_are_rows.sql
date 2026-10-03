@@ -11,7 +11,7 @@
 --                     issues, which the gate never counts).
 --
 -- The rows already held as text (`issues.acceptance_criteria`, `forge-record: verdict` comment
--- fences) are read in by `db/criteria-backfill.ts`, run once by `db/migrate.ts` after this file;
+-- fences) are read in by `issues/criteria/backfill.ts`, run once by `db/migrate.ts` after this file;
 -- every row it cannot represent is refused by name in the deploy log, never skipped silently.
 
 CREATE TABLE "criterion_verdicts" (

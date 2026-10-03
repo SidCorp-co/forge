@@ -11,7 +11,7 @@ import { type ServingReading, servedCommits } from '../release-batch/serving-rea
 /** `source` is a commit that was read, which cannot say the code was ever running. `design` is a
  *  stored workflow design revision: for work that lands as a design, the thing itself. */
 export interface VerdictIdentity {
-  readonly kind: 'runtime' | 'source' | 'design';
+  readonly kind: 'runtime' | 'source' | 'design' | 'contract';
   readonly value: string;
 }
 
@@ -91,6 +91,8 @@ export function verdictStanding(
   identities: IssueIdentities,
 ): VerdictStanding {
   if (!at) return 'unanchored';
+  // cm:seam ISS-60 — a contract version is earned and weaker until ISS-60's reader checks it exists.
+  if (at.kind === 'contract') return 'uncorroborated';
   if (at.kind === 'design') return designStanding(at.value, identities);
   if (at.kind === 'runtime') return runtimeStanding(at.value, serving);
   const observed = servedSource(at.value, serving);
@@ -156,6 +158,9 @@ export function standingSentence(
   identities: IssueIdentities,
 ): string {
   if (at?.kind === 'design') return designSentence(standing, at.value, identities);
+  if (at?.kind === 'contract') {
+    return `judged against contract ${at.value}, which nothing here re-reads yet`;
+  }
   if (standing === 'stands') {
     return `judged at ${named(at?.value ?? null)}, which this project is serving`;
   }

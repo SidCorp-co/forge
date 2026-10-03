@@ -55,7 +55,7 @@ export class VerdictRefused extends HTTPException {
   }
 }
 
-/** A status at which the criteria a verdict was earned on may no longer move. */
+// status-tuple: differs — where a criterion's verdicts were earned and its wording is frozen, not where dispatch stops
 const LOCKED_STATUSES: ReadonlySet<string> = new Set(['awaiting_release', 'closed', 'dropped']);
 
 export interface CriterionInput {
@@ -140,7 +140,9 @@ export async function applyCriteria(
   for (const [position, c] of desired.entries()) {
     const kept = keep.get(c.n);
     const requirement =
-      c.requirementCriterionId === undefined ? {} : { requirementCriterionId: c.requirementCriterionId };
+      c.requirementCriterionId === undefined
+        ? {}
+        : { requirementCriterionId: c.requirementCriterionId };
     if (kept) {
       await tx
         .update(issueCriteria)
@@ -193,7 +195,9 @@ export async function putCriteria(
   const issue = await lockIssue(tx, issueId);
   if (!issue) return false;
   await applyCriteria(tx, issue, desired);
-  const text = renderCriteriaText(desired.map(({ n, statement }) => ({ n, statement: statement.trim() })));
+  const text = renderCriteriaText(
+    desired.map(({ n, statement }) => ({ n, statement: statement.trim() })),
+  );
   await tx
     .update(issues)
     .set({ acceptanceCriteria: text === '' ? null : text })
@@ -382,7 +386,14 @@ export async function recordVerdict(
     throw new VerdictRefused({
       code: 'VERDICT_CRITERION_UNKNOWN',
       criterion: draft.criterion,
-      detail: `this issue has no criterion ${draft.criterion}; its criteria are ${live.length === 0 ? 'none — write them first (`PUT /api/issues/:id/criteria`, or numbered `acceptanceCriteria`)' : live.map((r) => r.n).sort((a, b) => a - b).join(', ')}.`,
+      detail: `this issue has no criterion ${draft.criterion}; its criteria are ${
+        live.length === 0
+          ? 'none — write them first (`PUT /api/issues/:id/criteria`, or numbered `acceptanceCriteria`)'
+          : live
+              .map((r) => r.n)
+              .sort((a, b) => a - b)
+              .join(', ')
+      }.`,
     });
   }
   const identity = await identityColumns(tx, issue.projectId, draft);

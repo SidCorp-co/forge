@@ -1,6 +1,5 @@
 /**
- * ISS-55 — what a new criterion verdict must carry before it is a row, refused by name otherwise.
- * Pure, so the REST door, the MCP door and the comment dual path ask the one question.
+ * ISS-55 — what a new criterion verdict must carry, asked by every door alike.
  *
  *   rule                                         code
  *   verdict is pass | short | fail | skipped     VERDICT_VALUE_UNKNOWN
@@ -50,8 +49,6 @@ export interface VerdictRefusal {
 
 const WHOLE_COMMIT = /^[0-9a-f]{40}$/iu;
 const WHOLE_RUNTIME = /^[0-9a-f]{40,64}$/iu;
-/** `<ref>@<version>`: the ref may hold `/` (ISS-60 writes `<project>/<contract>`), the version no `@`. */
-const CONTRACT = /^(\S+)@([^@\s]+)$/u;
 
 const blank = (s: string | null | undefined) => !s?.trim();
 
@@ -78,7 +75,9 @@ function identityFault(criterion: number, identity: VerdictIdentity): VerdictRef
             `criterion ${criterion} names runtime \`${identity.ref}\`, and a runtime is the whole object id the deployment reports (40 to 64 hex characters).`,
           );
     case 'design':
-      return !blank(identity.workflow) && Number.isSafeInteger(identity.revision) && identity.revision >= 1
+      return !blank(identity.workflow) &&
+        Number.isSafeInteger(identity.revision) &&
+        identity.revision >= 1
         ? null
         : refuse(
             'VERDICT_DESIGN_SHAPE',
@@ -124,21 +123,13 @@ export function verdictDraftFault(draft: VerdictDraft): VerdictRefusal | null {
   return identityFault(criterion, draft.identity);
 }
 
-/** A `contract:` value as `<ref>@<version>`, or null where it is not written that way. */
-export function parseContractIdentity(
-  value: string | null | undefined,
-): { ref: string; version: string } | null {
-  const match = CONTRACT.exec(String(value ?? '').trim());
-  return match ? { ref: match[1] as string, version: match[2] as string } : null;
-}
-
 /**
  * The identity a comment fence's criterion block names, in the order the release hold prefers it
  * (`criteria-verdicts.ts:verdictPairsIn`): runtime, then commit, then design. A design written in
  * the wrong shape is kept as a malformed draft so its refusal names it.
  *
  * cm:seam ISS-60 — `contract: <ref>@<version>` on a fence is ISS-60's block field; once
- * `criterionBlocksIn` carries it, it maps here through `parseContractIdentity`.
+ * `criterionBlocksIn` carries it, it maps here to `{ kind: 'contract', ref, version }`.
  */
 export function identityFromBlock(block: CriterionBlock): VerdictIdentity | null {
   if (block.runtime !== null) return { kind: 'runtime', ref: block.runtime };
@@ -161,18 +152,4 @@ export function draftFromBlock(block: CriterionBlock & { verdict: string }): Ver
     identity: identityFromBlock(block),
     evidence: block.cited,
   };
-}
-
-/** How an identity is spoken in a sentence or a badge tooltip. */
-export function identityLabel(identity: VerdictIdentity): string {
-  switch (identity.kind) {
-    case 'commit':
-      return `commit ${identity.sha}`;
-    case 'runtime':
-      return `runtime ${identity.ref}`;
-    case 'design':
-      return `design ${identity.workflow} rev ${identity.revision}`;
-    case 'contract':
-      return `contract ${identity.ref}@${identity.version}`;
-  }
 }

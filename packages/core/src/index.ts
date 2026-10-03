@@ -84,6 +84,7 @@ import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-ro
 import { issueArchiveRoutes } from './issues/archive-routes.js';
 import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-routes.js';
 import { backlogStreamRoutes, closeBacklogStreams } from './issues/backlog/routes.js';
+import { issueCriteriaRoutes } from './issues/criteria/routes.js';
 import { issueDependencyRoutes } from './issues/dependency-routes.js';
 import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueMergeRoutes } from './issues/merge-routes.js';
@@ -341,6 +342,7 @@ app.route('/api/issues', transitionRoutes);
 app.route('/api/issues', issueActivityRoutes);
 app.route('/api/issues', issueDependencyRoutes);
 app.route('/api/issues', issueSteerRoutes);
+app.route('/api/issues', issueCriteriaRoutes);
 app.route('/api/issues', taskIssueRoutes);
 app.route('/api/tasks', taskRoutes);
 app.route('/api/body', bodyRoutes);

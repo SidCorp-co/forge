@@ -1,13 +1,6 @@
-/**
- * ISS-55 — numbered acceptance criteria as text, read into rows and rendered back.
- *
- * `issues.acceptance_criteria` stays the text a plan writes (forge-plugin 3.36.542 PATCHes it);
- * `issue_criteria` is what the gate and the UI read. Each write of the text is read here, and a PUT
- * of the rows renders the text from them, so the two never say different things. Pure: the deploy's
- * backfill (`db/criteria-backfill.ts`) imports it before any database client exists.
- */
+// ISS-55 — numbered acceptance criteria as text, read into `issue_criteria` rows on every write of
+// the text, and rendered back from the rows on a PUT, so the two never say different things.
 
-/** A top-level numbered line: up to three leading spaces, a number, a dot, a space. */
 const NUMBERED = /^ {0,3}(\d+)\.\s+(.*)$/u;
 
 export interface ParsedCriterion {
@@ -33,10 +26,7 @@ export function normalizeStatement(statement: string): string {
   return statement.replace(/\s+/gu, ' ').trim();
 }
 
-/**
- * The numbered criteria a text holds, in the order written. A line under a numbered line belongs to
- * it; text before the first numbered line is a heading, not a criterion.
- */
+/** The numbered criteria a text holds, in order; lines under a number belong to it. */
 export function parseCriteriaText(text: string | null | undefined): ParsedCriteriaText {
   const body = String(text ?? '');
   const open: Array<{ n: number; lines: string[] }> = [];

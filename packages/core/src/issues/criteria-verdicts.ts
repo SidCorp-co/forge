@@ -1,5 +1,6 @@
-// ISS-1117 — no per-criterion verdict table exists; verdicts are `verdict` record events
-// (ISS-56), with the records posted as comment fences before events existed read for history.
+// ISS-1117 / ISS-55 — the release hold's reading of every criterion's latest verdict, off
+// `issue_criteria` and `criterion_verdicts` (`criteria/store.ts`), the same rows the
+// `awaiting_release` gate reads (`release-evidence.ts`), so the two never disagree about a verdict.
 
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -8,8 +9,8 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
 import { criterionBlocksIn, longestSpelling } from '../messaging/verdict-identity.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
+import { type CriterionWithVerdict, type LatestVerdict, listCriteria } from './criteria/store.js';
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
-import { recordHistory } from './record-events/history.js';
 import {
   type IssueIdentities,
   issueIdentities,
@@ -24,17 +25,6 @@ const EARNED_VERDICTS: ReadonlySet<string> = new Set(['pass', 'short']);
 
 // A verdict nothing could re-read is weaker evidence, not a refusal, so it earns (ISS-1286).
 const EARNED_STANDINGS: ReadonlySet<VerdictStanding> = new Set(['stands', 'uncorroborated']);
-
-/** The numbered top-level lines of an acceptance-criteria field, in order written. */
-export function acceptanceCriteriaNumbers(text: string | null | undefined): number[] {
-  const body = String(text ?? '');
-  const found = new Set<number>();
-  for (const match of body.matchAll(/^\s{0,3}(\d+)\.\s/gmu)) {
-    const n = Number.parseInt(match[1] as string, 10);
-    if (Number.isFinite(n)) found.add(n);
-  }
-  return [...found].sort((a, b) => a - b);
-}
 
 export interface CriterionVerdict {
   readonly criterion: number;
@@ -68,18 +58,53 @@ export function verdictPairsOf(record: ForgeRecord | null): CriterionVerdict[] {
   return out;
 }
 
-// Read oldest-to-newest so a re-judged criterion overwrites the verdict before it.
+/**
+ * The identity a stored verdict is weighed on. A backfilled `commit_unresolved` abbreviation is
+ * weighed as naming none: its amnesty covers the closed issue it was read from, not a release.
+ */
+function identityOfRow(row: LatestVerdict): VerdictIdentity | null {
+  switch (row.identityKind) {
+    case 'commit':
+      return row.commitSha ? { kind: 'source', value: row.commitSha } : null;
+    case 'runtime':
+      return row.runtimeRef ? { kind: 'runtime', value: row.runtimeRef } : null;
+    case 'design':
+      return row.designRevision
+        ? {
+            kind: 'design',
+            value: `${row.designFlow ?? row.designWorkflowId} rev ${row.designRevision}`,
+          }
+        : null;
+    case 'contract':
+      return row.contractRef && row.contractVersion
+        ? { kind: 'contract', value: `${row.contractRef}@${row.contractVersion}` }
+        : null;
+    default:
+      return null;
+  }
+}
+
+/** Each live criterion's latest verdict, keyed by the criterion's number. */
+export function latestByNumber(
+  criteria: readonly CriterionWithVerdict[],
+): Map<number, CriterionVerdict> {
+  const latest = new Map<number, CriterionVerdict>();
+  for (const { n, latest: row } of criteria) {
+    if (!row) continue;
+    latest.set(n, {
+      criterion: n,
+      verdict: row.verdict,
+      at: identityOfRow(row),
+      cited: row.evidence,
+    });
+  }
+  return latest;
+}
+
 export async function latestCriterionVerdicts(
   issueId: string,
 ): Promise<Map<number, CriterionVerdict>> {
-  const entries = await recordHistory(issueId, { kinds: ['verdict'] });
-  const latest = new Map<number, CriterionVerdict>();
-  for (const entry of entries) {
-    for (const pair of verdictPairsOf(entry.record)) {
-      latest.set(pair.criterion, pair);
-    }
-  }
-  return latest;
+  return latestByNumber(await listCriteria(db, issueId));
 }
 
 /** One criterion an issue does not carry an earned, standing verdict on. */
@@ -257,11 +282,12 @@ async function reportFor(
 ): Promise<IssueCriteriaReport> {
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
   const identities = { ...issueIdentities(row), designs };
-  const numbers = acceptanceCriteriaNumbers(row.acceptanceCriteria);
+  const criteria = await listCriteria(db, row.id);
+  const numbers = criteria.map((c) => c.n);
   if (numbers.length === 0) {
     return { issueId: row.id, unearned: [], broken: [], serving, uncorroborated: [] };
   }
-  const latest = await latestCriterionVerdicts(row.id);
+  const latest = latestByNumber(criteria);
   const held = await heldAttachmentNames(row.id);
   const found = findingsFor(numbers, latest, serving, identities, held);
   return {

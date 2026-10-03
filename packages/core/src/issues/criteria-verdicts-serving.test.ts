@@ -9,15 +9,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServingReading } from '../release-batch/serving-reading.js';
 
 const listIssueCommentsMock = vi.fn(async (_issueId: string) => [] as Array<{ body: string }>);
-// The record store reads each mocked comment body as the record it carries (ISS-56).
-vi.mock('./record-events/history.js', async () => {
-  const { parseForgeRecord } = await import('../messaging/forge-record.js');
+// The criteria store reads the issue's criteria text and each mocked comment body as the rows they
+// would have written (ISS-55, `criteria/store.fixture.ts`).
+vi.mock('./criteria/store.js', async () => {
+  const { criteriaOfText } = await import('./criteria/store.fixture.js');
   return {
-    recordHistory: async (issueId: string) =>
-      (await listIssueCommentsMock(issueId)).flatMap((row, at) => {
-        const record = parseForgeRecord(row.body);
-        return record?.kind === 'verdict' ? [{ id: String(at), record }] : [];
-      }),
+    listCriteria: async (_executor: unknown, issueId: string) =>
+      criteriaOfText(
+        issueRows.find((row) => row.id === issueId)?.acceptanceCriteria ?? null,
+        (await listIssueCommentsMock(issueId)).map((row) => row.body),
+      ),
   };
 });
 

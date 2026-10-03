@@ -137,6 +137,9 @@
 
 ### Added
 
+- **An issue's criteria and verdicts are rows.** `GET`/`PUT /api/issues/:id/criteria`, `POST
+  /api/issues/:id/verdicts` and `forge_criteria`; a verdict names a whole commit, runtime, design or
+  contract, and `skipped` needs a reason and never passes. The issue page shows each verdict.
 - **A job that builds a workflow is given the design its approver approved**, and records which
   revision it saw. An unreadable design refuses the job (`ARTIFACT_CONTEXT_UNLOADABLE`); a large
   one is trimmed, saying what was cut.

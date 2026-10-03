@@ -6,6 +6,7 @@ import { db, type Tx } from '../../db/client.js';
 import { activityLog } from '../../db/schema-activity.js';
 import { type ForgeRecord, overBudget, REQUESTED_FIELDS } from '../../messaging/forge-record.js';
 import type { Actor } from '../../pipeline/activity.js';
+import { recordEventVerdicts } from '../criteria/event-verdicts.js';
 import {
   isRecordEventKind,
   RECORD_ACTION_PREFIX,
@@ -211,6 +212,14 @@ export async function writeRecordEvent(
     })
     .returning();
   if (!row) throw new Error('record event insert returned no row');
+  if (kind === 'verdict') {
+    await recordEventVerdicts(executor, {
+      issueId: input.issueId,
+      record: recordOfFields(kind, input.contract, fields),
+      actor: input.actor,
+      commentId: input.commentId ?? null,
+    });
+  }
   return eventOfRow(row);
 }
 

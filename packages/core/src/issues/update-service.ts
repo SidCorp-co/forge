@@ -76,7 +76,11 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       .returning({ id: issues.id });
     if (!row) throw new IssueUpdateNotFound(issueId);
     if (updates.acceptanceCriteria !== undefined) {
-      await syncCriteriaFromText(tx, issueId, (updates.acceptanceCriteria as string | null) ?? null);
+      await syncCriteriaFromText(
+        tx,
+        issueId,
+        (updates.acceptanceCriteria as string | null) ?? null,
+      );
     }
 
     if (labelIds !== undefined) {
