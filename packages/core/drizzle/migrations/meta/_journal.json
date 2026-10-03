@@ -2264,6 +2264,13 @@
       "breakpoints": true
     },
     {
+      "idx": 350,
+      "version": "7",
+      "when": 1813190400000,
+      "tag": "0350_issue_criteria_and_verdicts_are_rows",
+      "breakpoints": true
+    },
+    {
       "idx": 351,
       "version": "7",
       "when": 1813276800000,

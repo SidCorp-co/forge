@@ -30,6 +30,7 @@ import { forgeCollaboratorsTool } from './tools/forge-collaborators.js';
 import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
+import { forgeCriteriaTool } from './tools/forge-criteria.js';
 import { forgeEcosystemTool } from './tools/forge-ecosystem.js';
 import { forgeGoogleSheetsTool } from './tools/forge-google-sheets.js';
 import { forgeGuideTool } from './tools/forge-guide.js';
@@ -172,6 +173,7 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     forgeAgentReportTool(ctx),
     forgeFeedbackAliasTool(ctx),
     forgeUploadsTool(ctx),
+    forgeCriteriaTool(ctx),
     forgeConfigTool(ctx),
     forgeKnowledgeTool(ctx),
     forgeCoolifyDeployTool(ctx),

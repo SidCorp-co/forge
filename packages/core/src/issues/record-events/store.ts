@@ -1,11 +1,12 @@
-// Typed record events (ISS-56): a `forge-record` that used to live in comment prose is a row of
-// `activity_log` with action `record.<kind>`, so a gate reads a table instead of parsing a thread.
+// Typed record events (ISS-56): a `forge-record` is a row of `activity_log` with action
+// `record.<kind>`, so a gate reads a table instead of parsing a thread.
 
 import { and, asc, eq, inArray, like } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import { activityLog } from '../../db/schema-activity.js';
 import { type ForgeRecord, overBudget, REQUESTED_FIELDS } from '../../messaging/forge-record.js';
 import type { Actor } from '../../pipeline/activity.js';
+import { recordEventVerdicts } from '../criteria/event-verdicts.js';
 import {
   isRecordEventKind,
   RECORD_ACTION_PREFIX,
@@ -192,26 +193,37 @@ export async function writeRecordEvent(
   const kind = input.kind as RecordEventKind;
   const fields = input.fields.map((f) => ({ key: f.key, value: f.value }));
   const lead = fields.find((f) => f.key === 'lead')?.value ?? null;
-  const [row] = await executor
-    .insert(activityLog)
-    .values({
-      issueId: input.issueId,
-      actorType: input.actor.type,
-      actorId: input.actor.id,
-      actorAgency: input.actor.agency,
-      action: recordAction(kind),
-      payload: {
-        contract: input.contract,
-        fields,
-        lead,
-        ...(input.commentId ? { commentId: input.commentId } : {}),
-      },
-      dedupeKey: input.commentId ? commentMirrorKey(input.commentId) : null,
-      ...(input.at ? { createdAt: input.at } : {}),
-    })
-    .returning();
-  if (!row) throw new Error('record event insert returned no row');
-  return eventOfRow(row);
+  // One transaction: a verdict whose criterion rows are refused leaves no event behind (ISS-55).
+  return executor.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(activityLog)
+      .values({
+        issueId: input.issueId,
+        actorType: input.actor.type,
+        actorId: input.actor.id,
+        actorAgency: input.actor.agency,
+        action: recordAction(kind),
+        payload: {
+          contract: input.contract,
+          fields,
+          lead,
+          ...(input.commentId ? { commentId: input.commentId } : {}),
+        },
+        dedupeKey: input.commentId ? commentMirrorKey(input.commentId) : null,
+        ...(input.at ? { createdAt: input.at } : {}),
+      })
+      .returning();
+    if (!row) throw new Error('record event insert returned no row');
+    if (kind === 'verdict') {
+      await recordEventVerdicts(tx, {
+        issueId: input.issueId,
+        record: recordOfFields(kind, input.contract, fields),
+        actor: input.actor,
+        commentId: input.commentId ?? null,
+      });
+    }
+    return eventOfRow(row);
+  });
 }
 
 export interface RecordEventQuery {

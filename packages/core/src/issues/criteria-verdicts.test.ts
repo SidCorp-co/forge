@@ -2,15 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServingReading } from '../release-batch/serving-reading.js';
 
 const listIssueCommentsMock = vi.fn(async (_issueId: string) => [] as Array<{ body: string }>);
-// The record store reads each mocked comment body as the record it carries (ISS-56).
-vi.mock('./record-events/history.js', async () => {
-  const { parseForgeRecord } = await import('../messaging/forge-record.js');
+// The criteria store reads the issue's criteria text and each mocked comment body as the rows they
+// would have written (ISS-55, `criteria/store.fixture.ts`).
+vi.mock('./criteria/store.js', async () => {
+  const { criteriaOfText } = await import('./criteria/store.fixture.js');
   return {
-    recordHistory: async (issueId: string) =>
-      (await listIssueCommentsMock(issueId)).flatMap((row, at) => {
-        const record = parseForgeRecord(row.body);
-        return record?.kind === 'verdict' ? [{ id: String(at), record }] : [];
-      }),
+    listCriteria: async (_executor: unknown, issueId: string) =>
+      criteriaOfText(
+        issueRows.find((row) => row.id === issueId)?.acceptanceCriteria ?? null,
+        (await listIssueCommentsMock(issueId)).map((row) => row.body),
+      ),
   };
 });
 
@@ -32,13 +33,8 @@ const selectMock = vi.fn((arg: unknown) => {
 });
 vi.mock('../db/client.js', () => ({ db: { select: (arg: unknown) => selectMock(arg) } }));
 
-const {
-  acceptanceCriteriaNumbers,
-  verdictPairsIn,
-  latestCriterionVerdicts,
-  issuesWithUnearnedCriteria,
-  unearnedCriteriaReports,
-} = await import('./criteria-verdicts.js');
+const { verdictPairsIn, latestByNumber, issuesWithUnearnedCriteria, unearnedCriteriaReports } =
+  await import('./criteria-verdicts.js');
 
 /** The identity this project's probes answer while these tests run. */
 const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
@@ -72,24 +68,6 @@ beforeEach(() => {
   listIssueCommentsMock.mockResolvedValue([]);
   issueRows = [];
   heldNames = ['judge-evidence.txt'];
-});
-
-describe('acceptanceCriteriaNumbers', () => {
-  it('reads the numbered top-level lines', () => {
-    const text = '1. First outcome.\n2. Second outcome.\n10. Tenth outcome.';
-    expect(acceptanceCriteriaNumbers(text)).toEqual([1, 2, 10]);
-  });
-
-  it('does not mint a number from an indented continuation line', () => {
-    const text =
-      '1. First outcome spanning\n   a wrapped second line that starts "2. not a criterion".';
-    expect(acceptanceCriteriaNumbers(text)).toEqual([1]);
-  });
-
-  it('is empty for null or blank text', () => {
-    expect(acceptanceCriteriaNumbers(null)).toEqual([]);
-    expect(acceptanceCriteriaNumbers('')).toEqual([]);
-  });
 });
 
 /** One criterion's verdict block, in the exact shape the CLI's `forge record verdict` writes. */
@@ -198,23 +176,49 @@ describe('verdictPairsIn', () => {
   });
 });
 
-describe('latestCriterionVerdicts', () => {
-  it('lets a later comment supersede an earlier verdict for the same criterion', async () => {
-    listIssueCommentsMock.mockResolvedValueOnce([
-      { body: verdictComment([verdictBlock(16, 'close loop sends the project id', 'skipped')]) },
-      { body: verdictComment([verdictBlock(16, 'close loop sends the project id', 'pass')]) },
-    ]);
-    const latest = await latestCriterionVerdicts('iss-1139');
-    expect(latest.get(16)?.verdict).toBe('pass');
+describe('latestByNumber (ISS-55: the stored rows the release hold weighs)', () => {
+  const row = (n: number, latest: Record<string, unknown> | null) => ({
+    id: `c${n}`,
+    n,
+    statement: 'ok',
+    position: n,
+    requirementCriterionId: null,
+    latest: latest && {
+      id: `v${n}`,
+      verdict: 'pass' as const,
+      reason: null,
+      identityKind: null,
+      commitSha: null,
+      runtimeRef: null,
+      designWorkflowId: null,
+      designFlow: null,
+      designRevision: null,
+      contractRef: null,
+      contractVersion: null,
+      evidence: [],
+      authorAgency: 'agent' as const,
+      backfilled: false,
+      createdAt: '2026-10-03T00:00:00.000Z',
+      ...latest,
+    },
   });
 
-  it('keeps criteria untouched by a later comment at their earlier verdict', async () => {
-    listIssueCommentsMock.mockResolvedValueOnce([
-      { body: verdictComment([verdictBlock(1, 'a', 'pass'), verdictBlock(2, 'b', 'pass')]) },
-      { body: verdictComment([verdictBlock(1, 'a', 'pass')]) },
+  it('weighs a whole commit as a source and a design by its flow and revision', () => {
+    const latest = latestByNumber([
+      row(1, { identityKind: 'commit', commitSha: SOURCE }),
+      row(2, { identityKind: 'design', designFlow: 'discharge-post-care', designRevision: 4 }),
+      row(3, null),
     ]);
-    const latest = await latestCriterionVerdicts('iss-x');
-    expect(latest.get(2)?.verdict).toBe('pass');
+    expect(latest.get(1)?.at).toEqual({ kind: 'source', value: SOURCE });
+    expect(latest.get(2)?.at).toEqual({ kind: 'design', value: 'discharge-post-care rev 4' });
+    expect(latest.has(3)).toBe(false);
+  });
+
+  it('weighs a backfilled commit_unresolved abbreviation as naming no identity', () => {
+    const latest = latestByNumber([
+      row(1, { identityKind: 'commit_unresolved', commitSha: '1810f84', backfilled: true }),
+    ]);
+    expect(latest.get(1)?.at).toBeNull();
   });
 });
 
