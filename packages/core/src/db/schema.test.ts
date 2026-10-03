@@ -409,9 +409,9 @@ describe('db/schema — project_iss_counters', () => {
 });
 
 describe('db/schema — comments', () => {
-  it('issue_id cascades, author_id restricts, author_device_id set null, parent_id cascades', () => {
+  it('each target cascades, author_id restricts, author_device_id set null, parent_id cascades', () => {
     const cfg = getTableConfig(comments);
-    expect(cfg.foreignKeys).toHaveLength(4);
+    expect(cfg.foreignKeys).toHaveLength(7);
     const byCol = new Map(
       cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
     );
@@ -419,6 +419,12 @@ describe('db/schema — comments', () => {
     expect(byCol.get('author_id')?.onDelete).toBe('restrict');
     expect(byCol.get('author_device_id')?.onDelete).toBe('set null');
     expect(byCol.get('parent_id')?.onDelete).toBe('cascade');
+    const targets = cfg.foreignKeys.map((fk) => fk.reference().columns[0]?.name);
+    for (const column of ['requirement_id', 'workflow_id', 'feedback_id']) {
+      expect(targets).toContain(column);
+      expect(byCol.get(column)?.onDelete).toBe('cascade');
+    }
+    expect(cfg.checks.map((c) => c.name)).toContain('comments_scope_chk');
   });
 
   it('has indexes on issue_id and parent_id', () => {

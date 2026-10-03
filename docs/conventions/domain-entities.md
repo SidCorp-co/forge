@@ -96,7 +96,7 @@ refusal under its own code. It never compares `agency` itself.
 | `PERSON_ACT` | member or above | never | `packages/core/src/lib/person-act.ts:personActRefusal`, which requirement sign-off and suggestion decide both call |
 | `approverRule(agentMay)` | org owner or admin | member or above, only when the project's policy says `master` | `packages/core/src/workflows/design.ts:designApproverRefusal`, `packages/core/src/ecosystem/contract/approval.ts:approverRefusal` |
 | `PROJECT_AGENT_WRITE` | never | member or above | `packages/core/src/workflows/rules.ts:workflowWriterRefusal`, `packages/core/src/ecosystem/link-rules.ts:writerRefusal` |
-| `PROJECT_MEMBER_WRITE` | member or above | member or above | `packages/core/src/ecosystem/waits/rules.ts:writerRefusal` (adding or retracting a contract wait) |
+| `PROJECT_MEMBER_WRITE` | member or above | member or above | `packages/core/src/ecosystem/waits/rules.ts:writerRefusal` (adding or retracting a contract wait); `packages/core/src/comments/entity-rules.ts:posterRefusal` (a comment on a requirement, design or feedback item; its author edits it, else a project admin person, `:editorRefusal`) |
 | `SUPERSEDE` | org owner or admin (of the steward org when it is one there, else of the project's org) | member or above | `packages/core/src/ecosystem/builder-supersede-rules.ts:supersederRefusal` |
 | `PERSON_ADMIN_ACT` | project owner or admin | never | `packages/core/src/feedback/rules.ts:redactActRefusal` (deleting a reporter's data) |
 
@@ -200,6 +200,14 @@ no writer gets a fourth state.
   insert-only by `requirement_return_guard()` in
   `packages/core/drizzle/migrations/0355_a_requirement_return_is_a_row.sql`); a re-proposal is still a
   **target** (item 10).
+- **Comments on other entities.** A comment sits on exactly one of issue | requirement | workflow |
+  feedback (`comments_scope_chk`, ISS-83). One on a requirement, design or feedback item has no
+  issue to carry an activity row, so its post and each edit insert a
+  `packages/core/src/db/schema-comments.ts:commentEvents` row holding the content as it stood,
+  insert-only by `comment_event_guard()` in
+  `packages/core/drizzle/migrations/0361_a_comment_sits_on_exactly_one_target.sql`. A decision there
+  carries `decision: { decision, reason, options?, authority?, reversedWhen? }`
+  (`packages/contracts/src/comments.ts:decisionFieldsSchema`).
 
 ## Data policy (sensitive projects)
 
@@ -349,7 +357,7 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, and their number
 | 21 | FB-n's MCP tool is `forge_feedback_items`, because `forge_feedback` is still the agent-reports alias; the `feedback:*` token grant also still means agent reports, so FB-n routes ride `projects:*` (`cm:hack ISS-59` in `packages/core/src/auth/pat-permissions.ts`) | review (a migration rewrites stored `feedback:*` grants, then the names move) |
 | 22 | Feedback's target arc holds requirement, issue, release and workflow; a screen is `where_seen` text with no key, as the approved design has it, not the arc member REQ-7 BC-1 lists. A release is a `pipeline_runs` row | review |
 | 23 | Feedback's stored statuses are new, triaged, reopened, verified, declined; `planned` and `resolved` are derived on read from what the route carries (`packages/core/src/feedback/rules.ts:phaseOf`) | review |
-| 24 | The `answer` route stores its text on `feedback.answer`, not a decision comment, because comments have no feedback arc | review |
+| 24 | The `answer` route stores its text on `feedback.answer`, not a decision comment; comments gained the feedback arc in ISS-83, and nothing moved the answer onto one | review |
 | 25 | Feedback gaps the POC left: an agent's clarification answer is not turned into a triage suggestion; a high or critical item does not wake the master; deleting a reporter's data does not reach text already copied into a filed draft issue; a person on the MCP door is treated as provider-bound; the scrubber recognises an unlabelled name only when it opens with a common Vietnamese surname (`packages/observability/src/personal-data.ts:scrubPersonalData` names the trade-off), so a name with a rarer surname still passes; a clarification answer (written by the questions module) and a triage suggestion's note are stored unscrubbed | review |
 | 26 | The conversation detail carries the room's questionnaire batches, and the list each room's `kind` and `threadStatus` (`packages/core/src/assistant/conversation-routes.ts`): a conversation route reading the onboarding and questionnaire rows instead of the client reading `/questionnaires/:bid` | review |
 | 27 | `onboardings.status` is set by each writer (start, post, submit, done), not derived on read from the batches and the job; the dashboard hint is derived (`packages/core/src/onboarding/read.ts:hintOf`) | review |
@@ -362,11 +370,12 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, and their number
 | 34 | The admissible list holds a waiting issue by SQL (`packages/core/src/ecosystem/waits/gate.ts:waitUnsettledSql`) that mirrors `packages/core/src/ecosystem/waits/rules.ts:holdsDispatch`; only the predicate is unit-tested | review (an integration test) |
 | 35 | A change request's channel decision document can still answer it in prose; only the draft requirement it landed as (`packages/core/src/ecosystem/requests/land.ts:landChangeRequestIn`) and the provider's approved versions gate anything | review (owner question) |
 | 36 | A provider's live version is derived, not recorded: its newest verified release identity matched to a contract measurement's commit (`packages/core/src/ecosystem/waits/live.ts:providerLiveVersion`). An uploaded version, an unprobed provider or a stale land reads as no version, so E4 refuses until the ecosystem sets `releases.providerLive` to `off` | review |
-| 37 | REST and MCP answer different defaults: a REST read is full unless `?view=summary`, an MCP call a summary unless `view: 'full'`; REST writes take no view and answer the whole entity | review |
-| 38 | Workflows and designs carry no `waitingOn`, as requirements do; a design's `status` and `approver` say who is owed | review |
-| 39 | `forge_issues`, `forge_feedback_items` and `forge_knowledge` take no `view`: their lists were already summaries and their writes answer one item, at most 3.5 KB as measured on dev on 2026-10-04. `forge_feedback_items` `propose_triage` answers the whole suggestion | review |
-| 40 | A projection runs after the whole read: a write still reads the full detail (`packages/core/src/requirements/read.ts:detailOf`, `packages/core/src/workflows/design-service.ts:designView`) and the door drops most of it | review |
-| 41 | `forge_suggestions` has no `get`: a suggestion's payload is read by `list` with `view: 'full'`, narrowed by target | review |
+| 37 | Comments (ISS-83): an issue decision stays prose, held only off issues by `comments_decision_fields_chk` (`cm:hack ISS-83` in `packages/core/src/db/schema.ts:comments`); the issue door keeps its untyped `comment.created` activity rows and writes no `comment_events`; `comments` has no `project_id` and no `author_agency` (the agency is read from the device or `users.kind`, as ISS-1137 decided); a comment on another entity is not screened by `packages/core/src/comments/screen.ts:screenAgentComment` and takes no mentions or attachments | review |
+| 38 | REST and MCP answer different defaults: a REST read is full unless `?view=summary`, an MCP call a summary unless `view: 'full'`; REST writes take no view and answer the whole entity | review |
+| 39 | Workflows and designs carry no `waitingOn`, as requirements do; a design's `status` and `approver` say who is owed | review |
+| 40 | `forge_issues`, `forge_feedback_items` and `forge_knowledge` take no `view`: their lists were already summaries and their writes answer one item, at most 3.5 KB as measured on dev on 2026-10-04. `forge_feedback_items` `propose_triage` answers the whole suggestion | review |
+| 41 | A projection runs after the whole read: a write still reads the full detail (`packages/core/src/requirements/read.ts:detailOf`, `packages/core/src/workflows/design-service.ts:designView`) and the door drops most of it | review |
+| 42 | `forge_suggestions` has no `get`: a suggestion's payload is read by `list` with `view: 'full'`, narrowed by target | review |
 
 ## Honest costs
 
@@ -376,4 +385,4 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, and their number
 | One declaration in contracts, compiled | Core's start depends on `@forge/contracts` being built first; a contracts edit rebuilds before core typechecks |
 | Agency in one module | A slice that needs a new standing (for example a steward org admin) extends `ActRule` for everyone, rather than writing its own `if` |
 | `max+1` keys under the entity lock | A keyed row can never be hard-deleted, or its number is reissued |
-| Thirty-nine listed divergences left in place | Until the review pass, two patterns are live for each of them, and a new slice must copy the reference, not the nearest file |
+| Forty listed divergences left in place | Until the review pass, two patterns are live for each of them, and a new slice must copy the reference, not the nearest file |

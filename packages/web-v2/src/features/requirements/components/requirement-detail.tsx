@@ -1,13 +1,15 @@
 "use client";
 
-// A requirement's full page: a main column for reading and acting, split into four views by tabs
-// (Overview, Criteria, Revisions, Activity), beside a sticky rail of the at-a-glance facts. Each
+// A requirement's full page: a main column for reading and acting, split into five views by tabs
+// (Overview, Criteria, Revisions, Decisions, Activity), beside a sticky rail of the at-a-glance facts. Each
 // fact and each act appears once: the facts live in the rail, Accept / Reject only beside the diff.
 // Everything derived (whose turn, coverage, history) comes from core's read model.
 
 import { useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useRef } from "react";
 import { AGENT_TINT, ErrorState, ProjectLoader, Tabs } from "@/design";
+import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
+import { useEntityDecisions } from "@/features/comments/hooks";
 import { PendingBadge, RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
 import { useWaitingSuggestions } from "@/features/suggestions/hooks";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
@@ -19,7 +21,7 @@ import { RequirementFacts } from "./requirement-facts";
 import { CriteriaTable, FieldLabel, History, Readiness, RevisionDiff, RevisionList, ViewHeading } from "./requirement-proof";
 import { PersonChip, StateBadge, WaitBanner, stamp } from "./standing-bits";
 
-export const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "activity"] as const;
+export const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "decisions", "activity"] as const;
 export type RequirementTab = (typeof REQUIREMENT_TABS)[number];
 
 /** The open view rides `?tab=`, written without a navigation, so back from an issue lands on it. */
@@ -188,6 +190,7 @@ export function RequirementPage({
   onTab: (t: RequirementTab) => void;
 }) {
   const q = useRequirement(projectId, reqKey);
+  const decisions = useEntityDecisions(projectId, "requirement", reqKey);
   const top = useRef<HTMLDivElement>(null);
   const go = useCallback(
     (t: RequirementTab) => {
@@ -220,6 +223,7 @@ export function RequirementPage({
     { value: "overview", label: "Overview" },
     { value: "criteria", label: "Criteria", count: s.coverage.length },
     { value: "revisions", label: "Revisions", count: d.revisions.length },
+    { value: "decisions", label: "Decisions", count: decisions.data?.returned },
     { value: "activity", label: "Activity", count: d.history.length },
   ];
   return (
@@ -243,6 +247,12 @@ export function RequirementPage({
           {tab === "overview" ? <Overview d={d} projectId={projectId} /> : null}
           {tab === "criteria" ? <Criteria d={d} projectId={projectId} slug={slug} /> : null}
           {tab === "revisions" ? <Revisions d={d} projectId={projectId} /> : null}
+          {tab === "decisions" ? (
+            <section data-testid="view-decisions" aria-label="Decisions">
+              <ViewHeading>Decisions</ViewHeading>
+              <DecisionsPanel projectId={projectId} scope="requirement" targetRef={d.key} />
+            </section>
+          ) : null}
           {tab === "activity" ? (
             <section data-testid="view-activity" aria-label="Activity">
               <History entries={d.history} />

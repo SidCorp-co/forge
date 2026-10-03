@@ -241,7 +241,7 @@ export async function drainOwedAnnouncements(
   const rows = await db
     .select({
       commentId: rocketchatCommentMirrors.commentId,
-      issueId: comments.issueId,
+      issueId: issues.id,
       projectId: issues.projectId,
       authorId: comments.authorId,
       body: comments.body,

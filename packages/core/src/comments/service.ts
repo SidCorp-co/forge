@@ -47,6 +47,17 @@ export const commentThreadColumns = {
   updatedAt: comments.updatedAt,
 } as const;
 
+// cm:guard the issue thread reads issue comments only: a row on another target reaching it is an
+// invariant break named here, never a thread entry with no issue
+export function onIssue<T extends { id: string; issueId: string | null }>(
+  row: T,
+): T & { issueId: string } {
+  if (row.issueId === null) {
+    throw new Error(`comment ${row.id} sits on no issue, so the issue thread cannot carry it`);
+  }
+  return row as T & { issueId: string };
+}
+
 /** One issue's comments, oldest first, all of them. */
 export async function listIssueComments(issueId: string) {
   return db
@@ -111,7 +122,7 @@ export async function listIssueCommentPage(
       : null;
 
   const cursorKeyById = new Map(keyed.map((r) => [r.id, r.cursorKey]));
-  const roots = keyed.map(({ cursorKey: _key, ...row }) => row);
+  const roots = keyed.map(({ cursorKey: _key, ...row }) => onIssue(row));
 
   const rows = [...roots];
   let frontier = roots.map((r) => r.id);
@@ -121,7 +132,7 @@ export async function listIssueCommentPage(
       .from(comments)
       .where(inArray(comments.parentId, frontier))
       .orderBy(asc(comments.createdAt), asc(comments.id));
-    rows.push(...replies);
+    rows.push(...replies.map(onIssue));
     frontier = replies.map((r) => r.id);
   }
 
@@ -152,7 +163,7 @@ export async function loadCommentForAccess(commentId: string): Promise<CommentAc
   const [row] = await db
     .select({
       id: comments.id,
-      issueId: comments.issueId,
+      issueId: issues.id,
       authorId: comments.authorId,
       projectId: issues.projectId,
     })
@@ -296,9 +307,10 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
       })
       .returning(commentThreadColumns);
     if (!row) throw new Error('comment insert returned no row');
-    const untyped = await mirrorCommentRecord(row, commentActor(input, byAnAgent), t);
+    const written = onIssue(row);
+    const untyped = await mirrorCommentRecord(written, commentActor(input, byAnAgent), t);
     const warnings = [...prepared.warnings, ...fence, ...untyped, ...(warning ? [warning] : [])];
-    return { row, warnings };
+    return { row: written, warnings };
   });
 }
 
@@ -330,9 +342,12 @@ export async function updateCommentBody(
     .where(eq(comments.id, commentId))
     .limit(1);
   if (!existing) return null;
+  const issueId = existing.issueId;
+  if (issueId === null)
+    throw new Error(`comment ${commentId} sits on no issue; edit it at its own target`);
   const byAnAgent = await writtenByAnAgent(existing, db);
   if (byAnAgent) {
-    const context = await loadStageContext(existing.issueId);
+    const context = await loadStageContext(issueId);
     if (context) await screenAgentComment(context.projectId, input.body, db);
   }
 
@@ -347,8 +362,9 @@ export async function updateCommentBody(
       .where(eq(comments.id, commentId))
       .returning(commentThreadColumns);
     if (!row) return null;
-    const untyped = await remirrorCommentRecord(row, commentActor(existing, byAnAgent), t);
-    return { row, warnings: [...prepared.warnings, ...fence, ...untyped] };
+    const edited = onIssue(row);
+    const untyped = await remirrorCommentRecord(edited, commentActor(existing, byAnAgent), t);
+    return { row: edited, warnings: [...prepared.warnings, ...fence, ...untyped] };
   });
 }
 
