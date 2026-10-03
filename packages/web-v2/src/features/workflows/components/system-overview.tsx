@@ -1,5 +1,6 @@
 "use client";
 
+import type { SensitiveDataLevel } from "@forge/contracts/data-policy";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -11,7 +12,7 @@ import { type C4Model, FOCAL, relationWords, shortLabel } from "../c4/model";
 import { type SystemOverview, systemOverview } from "../catalogue";
 import { workflowHref } from "../routes";
 import type { WorkflowRecord } from "../types";
-import { DesignPill } from "./workflow-parts";
+import { DesignPill, SensitivityBadge } from "./workflow-parts";
 
 /** Context as a list, for a phone: who uses the system, the system, what it talks to, each with its one line. */
 function ContextStack({ m }: { m: C4Model }) {
@@ -53,7 +54,7 @@ function ContextStack({ m }: { m: C4Model }) {
   );
 }
 
-function Facts({ o, slug }: { o: SystemOverview; slug: string }) {
+function Facts({ o, slug, sensitivity }: { o: SystemOverview; slug: string; sensitivity: SensitiveDataLevel | null }) {
   return (
     <dl className="m-0 flex flex-wrap gap-x-9 gap-y-2" data-testid="overview-facts">
       {o.facts.map((f) => (
@@ -66,6 +67,14 @@ function Facts({ o, slug }: { o: SystemOverview; slug: string }) {
           </dd>
         </div>
       ))}
+      {sensitivity ? (
+        <div className="grid gap-0.5">
+          <dt className="text-12 font-semibold text-muted">Data sensitivity</dt>
+          <dd className="m-0 pt-0.5">
+            <SensitivityBadge level={sensitivity} />
+          </dd>
+        </div>
+      ) : null}
       {o.journey ? (
         <div className="grid min-w-0 gap-0.5">
           <dt className="text-12 font-semibold text-muted">Main journey</dt>
@@ -101,6 +110,8 @@ export interface SystemOverviewRegionProps {
   templates: readonly WorkflowTemplate[];
   slug: string;
   projectName: string;
+  /** The project document's data policy, when it restricts anything. */
+  sensitivity?: SensitiveDataLevel | null;
   /** `page` heads Workflows; `compact` sits on the project dashboard and points to Workflows. */
   variant?: "page" | "compact";
 }
@@ -109,7 +120,7 @@ export interface SystemOverviewRegionProps {
  * What the system is, read from its system-context design: the summary, the facts it states and the
  * C4 level 1 diagram, fitted whole into the region.
  */
-export function SystemOverviewRegion({ records, templates, slug, projectName, variant = "page" }: SystemOverviewRegionProps) {
+export function SystemOverviewRegion({ records, templates, slug, projectName, sensitivity = null, variant = "page" }: SystemOverviewRegionProps) {
   const o = useMemo(() => systemOverview(records, templates), [records, templates]);
   const diagram = useMemo(() => (o ? layoutContext(o.model) : null), [o]);
   const compact = variant === "compact";
@@ -162,7 +173,7 @@ export function SystemOverviewRegion({ records, templates, slug, projectName, va
         </span>
       </div>
       <Summary text={design.document.summary} lines={compact ? 2 : 3} />
-      <Facts o={o} slug={slug} />
+      <Facts o={o} slug={slug} sensitivity={sensitivity} />
       {diagram ? (
         <>
           <figure className="m-0 max-md:hidden" data-testid="overview-diagram">

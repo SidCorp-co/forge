@@ -3,11 +3,12 @@
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
 import { EmptyState, ErrorState, PageTitle, ProjectLoader, Tooltip } from "@/design";
+import { useProjectDocument } from "@/features/project-settings/config-hooks";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useQueryParam } from "@/lib/utils/use-query-param";
-import { catalogue, templateIdOf, templateTitle } from "../catalogue";
+import { catalogue, sensitivityOf, templateIdOf, templateTitle } from "../catalogue";
 import { useWorkflowTemplates, useWorkflows } from "../hooks";
 import { workflowHref } from "../routes";
 import type { WorkflowRecord } from "../types";
@@ -59,6 +60,7 @@ export function WorkflowsScreen({ projectId, slug, projectName }: { projectId: s
   const q = useWorkflows(projectId);
   const templatesQ = useWorkflowTemplates(projectId);
   const [picked, setPicked] = useQueryParam("template");
+  const projectDocument = useProjectDocument(projectId);
 
   if (q.isLoading) {
     return (
@@ -89,7 +91,13 @@ export function WorkflowsScreen({ projectId, slug, projectName }: { projectId: s
         </div>
       ) : (
         <>
-          <SystemOverviewRegion records={all} templates={templates} slug={slug} projectName={projectName} />
+          <SystemOverviewRegion
+            records={all}
+            templates={templates}
+            slug={slug}
+            projectName={projectName}
+            sensitivity={sensitivityOf(projectDocument.data?.document)}
+          />
           <section aria-labelledby="designs-title" className="pt-5">
             <header className="flex flex-wrap items-center gap-x-4 gap-y-2.5 px-7 pb-3 max-md:px-4">
               <h2 id="designs-title" className="fg-h3 m-0">

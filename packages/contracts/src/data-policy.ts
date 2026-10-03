@@ -9,6 +9,28 @@
 export const SENSITIVE_DATA_LEVELS = ["off", "redact", "no_egress"] as const;
 export type SensitiveDataLevel = (typeof SENSITIVE_DATA_LEVELS)[number];
 
+/** The badge each level wears where a screen shows it: a sentence-case label, a tone, and what it means. */
+export const SENSITIVE_DATA_BADGES: Record<
+	SensitiveDataLevel,
+	{ label: string; tone: "neutral" | "attention" | "failure"; tip: string }
+> = {
+	off: {
+		label: "No restriction",
+		tone: "neutral",
+		tip: "Content may reach an embedding or LLM provider as written",
+	},
+	redact: {
+		label: "Redacted",
+		tone: "attention",
+		tip: "Content is scrubbed on write; only redacted text reaches a provider",
+	},
+	no_egress: {
+		label: "No egress",
+		tone: "failure",
+		tip: "Content is scrubbed on write and none of it reaches a provider",
+	},
+};
+
 /** A level absent from the project document reads as this. */
 export const SENSITIVE_DATA_DEFAULT: SensitiveDataLevel = "off";
 

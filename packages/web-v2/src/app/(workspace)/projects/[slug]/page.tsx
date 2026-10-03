@@ -38,6 +38,8 @@ import { useProjectRuns, useStepDurations } from "@/features/pipeline/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
+import { useProjectDocument } from "@/features/project-settings/config-hooks";
+import { sensitivityOf } from "@/features/workflows/catalogue";
 import { SystemOverviewRegion } from "@/features/workflows/components/system-overview";
 import { useWorkflowTemplates, useWorkflows } from "@/features/workflows/hooks";
 import { useSchedules } from "@/features/schedules/hooks";
@@ -71,6 +73,7 @@ export default function ProjectOverviewPage() {
   const schedulesQ = useSchedules(projectId);
   const workflowsQ = useWorkflows(projectId);
   const templatesQ = useWorkflowTemplates(projectId);
+  const projectDocumentQ = useProjectDocument(projectId);
 
   // Tick once a second while some runner is limited (live reset countdown);
   // the active-runner card's busy state refreshes via its own 10s poll + WS,
@@ -197,6 +200,7 @@ export default function ProjectOverviewPage() {
             templates={(templatesQ.data?.templates ?? []).map((t) => t.template)}
             slug={project.slug}
             projectName={project.name}
+            sensitivity={sensitivityOf(projectDocumentQ.data?.document)}
             variant="compact"
           />
         ) : null}

@@ -1,3 +1,4 @@
+import { SENSITIVE_DATA_LEVELS, type SensitiveDataLevel } from "@forge/contracts/data-policy";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { LEGACY_V2_TEMPLATE } from "@forge/contracts/workflow-templates";
 import { templateFor, titleOf } from "./canvas/model";
@@ -114,4 +115,11 @@ export function systemOverview(records: readonly WorkflowRecord[], templates: re
     },
   ];
   return { record, model, facts, journey: mainJourneyOf(records) };
+}
+
+/** The data policy a project document declares, when it restricts anything; absent or `off` is nothing to show. */
+export function sensitivityOf(document: unknown): SensitiveDataLevel | null {
+  const v = document && typeof document === "object" ? (document as { sensitiveData?: unknown }).sensitiveData : undefined;
+  const level = SENSITIVE_DATA_LEVELS.find((l) => l === v);
+  return level && level !== "off" ? level : null;
 }

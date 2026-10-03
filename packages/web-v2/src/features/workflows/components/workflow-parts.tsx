@@ -1,5 +1,6 @@
 "use client";
 
+import { SENSITIVE_DATA_BADGES, type SensitiveDataLevel } from "@forge/contracts/data-policy";
 import { Tooltip } from "@/design";
 import { TONE_META } from "@/design/status";
 import type { DesignStatus, WorkflowRecord } from "../types";
@@ -38,6 +39,25 @@ export function ProposedMarker({ r }: { r: WorkflowRecord }) {
     <Tooltip label={`Revision ${r.revision} is waiting on its approver; revision ${approved} stays the approved design until then`} side="bottom" multiline>
       <span className="whitespace-nowrap font-mono text-11-5 font-semibold" style={{ color: TONE_META.attention.fg }} data-testid="proposed-marker">
         r{r.revision} proposed
+      </span>
+    </Tooltip>
+  );
+}
+
+/** A project's data policy as a colour badge; the raw level sits in its tooltip. */
+export function SensitivityBadge({ level }: { level: SensitiveDataLevel }) {
+  const b = SENSITIVE_DATA_BADGES[level];
+  const c = TONE_META[b.tone];
+  return (
+    <Tooltip label={`${b.tip} (sensitiveData: ${level})`} side="bottom" multiline>
+      <span
+        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-0.5 text-12 font-semibold"
+        style={{ color: c.fg, background: c.bg }}
+        data-testid="sensitivity-badge"
+        data-level={level}
+      >
+        <span aria-hidden className="size-1.5 rounded-full" style={{ background: c.dot }} />
+        {b.label}
       </span>
     </Tooltip>
   );

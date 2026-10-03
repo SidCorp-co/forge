@@ -1,7 +1,7 @@
 import { BUILTIN_WORKFLOW_TEMPLATES } from "@forge/contracts/workflow-templates";
 import { describe, expect, it } from "vitest";
 import hop from "./c4/hop-system-context.fixture.json";
-import { catalogue, mainJourneyOf, purposeOf, systemContextOf, systemOverview, templateTitle } from "./catalogue";
+import { catalogue, mainJourneyOf, purposeOf, sensitivityOf, systemContextOf, systemOverview, templateTitle } from "./catalogue";
 import type { DesignStatus, WorkflowBody, WorkflowRecord } from "./types";
 
 const record = (flow: string, template: string | null, status: DesignStatus | null, updatedAt: string, steps = 3, kind: "flow" | "state" = "flow"): WorkflowRecord => ({
@@ -75,5 +75,15 @@ describe("the system overview", () => {
     ]);
     expect(o?.facts[0]?.tip.split("\n")).toHaveLength(4);
     expect(o?.journey).toBeNull();
+  });
+});
+
+describe("the data policy fact", () => {
+  it("shows a restricting level and nothing for an absent or open one", () => {
+    expect(sensitivityOf({ sensitiveData: "no_egress" })).toBe("no_egress");
+    expect(sensitivityOf({ sensitiveData: "redact" })).toBe("redact");
+    expect(sensitivityOf({ sensitiveData: "off" })).toBeNull();
+    expect(sensitivityOf({ project: { name: "x" } })).toBeNull();
+    expect(sensitivityOf(undefined)).toBeNull();
   });
 });
