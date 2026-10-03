@@ -39,12 +39,6 @@ export type DesignOutcome =
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (refusal: DesignRefusal) =>
-  new HTTPException(403, {
-    message: refusal.detail,
-    cause: { code: refusal.code, details: { refusals: [refusal] } },
-  });
-
 export async function designApproverOf(projectId: string): Promise<DesignApprover> {
   return (await readProjectDocument(projectId))?.document.workflows?.designApprover ?? 'owner';
 }
@@ -191,7 +185,7 @@ export async function decideDesignAs(input: {
   const reason = input.reason?.trim() || null;
   await rowIn(projectId, id);
   const refusal = await approverRefusalFor(decider, projectId, await designApproverOf(projectId));
-  if (refusal) throw forbidden(refusal);
+  if (refusal) return { ok: false, refusals: [refusal] };
   type Decided = { refusals: DesignRefusal[] } | { flow: string; designIssueId: string | null };
   const outcome = await db.transaction(async (tx): Promise<Decided> => {
     await lockWorkflows(tx, projectId);
@@ -293,7 +287,7 @@ export async function unlinkBuildAs(input: {
   const { projectId, id, actor } = input;
   await rowIn(projectId, id);
   const refusal = await approverRefusalFor(actor, projectId, await designApproverOf(projectId));
-  if (refusal) throw forbidden(refusal);
+  if (refusal) return { ok: false, refusals: [refusal] };
   const issue = await resolveIssueRouteRef(input.issue, projectId, actor.userId);
   const missing = await db.transaction(async (tx): Promise<DesignRefusal | null> => {
     await lockWorkflows(tx, projectId);

@@ -2,7 +2,7 @@ import type { WorkflowTemplate } from '@forge/contracts/workflow-templates';
 import type { ProjectMemberRole } from '../db/schema.js';
 import { REPO_PATH_MESSAGE } from '../ecosystem/link-schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { projectRoleAtLeast } from '../lib/authz.js';
+import { actMiss, PROJECT_AGENT_WRITE } from '../lib/person-act.js';
 import {
   type ApiRefusal,
   isRecord,
@@ -173,9 +173,10 @@ export function workflowWriterRefusal(
   facts: WorkflowWriterFacts,
   projectId: string,
 ): WorkflowRefusal | null {
-  if (facts.agency === 'agent' && projectRoleAtLeast(facts.role, 'member')) return null;
+  const miss = actMiss(facts, PROJECT_AGENT_WRITE);
+  if (!miss) return null;
   const held =
-    facts.agency !== 'agent'
+    miss.kind === 'person-not-allowed'
       ? `${facts.userId} acts as a person`
       : `agent ${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}`;
   return {

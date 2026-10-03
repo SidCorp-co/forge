@@ -154,8 +154,8 @@ describe('a workflow design is approved before anything builds it', () => {
       revision: 1,
       decision: 'approve',
     });
-    expect(r.status, JSON.stringify(r.body)).toBe(403);
-    expect(r.body.code).toBe('WORKFLOW_DESIGN_APPROVER_NOT_PERSON');
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    expect(r.body.error.code).toBe('WORKFLOW_DESIGN_APPROVER_NOT_PERSON');
   });
 
   it('refuses a run over an issue that builds the proposed design, and says why on the issue', async () => {
@@ -193,8 +193,8 @@ describe('a workflow design is approved before anything builds it', () => {
         decision: 'approve',
       },
     );
-    expect(other.status, JSON.stringify(other.body)).toBe(403);
-    expect(other.body.code).toBe('WORKFLOW_DESIGN_APPROVER_NOT_PROJECT');
+    expect(other.status, JSON.stringify(other.body)).toBe(422);
+    expect(other.body.error.code).toBe('WORKFLOW_DESIGN_APPROVER_NOT_PROJECT');
     const own = await call('master', 'POST', at(`/workflows/${workflowId}/design/decision`), {
       revision: 1,
       decision: 'approve',
@@ -272,7 +272,7 @@ describe('a workflow design is approved before anything builds it', () => {
   it('refuses unlinking the build to anyone but the approver', async () => {
     await setApprover('owner');
     const r = await call('master', 'DELETE', at(`/workflows/${workflowId}/builds/${issueId}`));
-    expect(r.status, JSON.stringify(r.body)).toBe(403);
-    expect(r.body.code).toBe('WORKFLOW_DESIGN_APPROVER_NOT_PERSON');
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    expect(r.body.error.code).toBe('WORKFLOW_DESIGN_APPROVER_NOT_PERSON');
   });
 });

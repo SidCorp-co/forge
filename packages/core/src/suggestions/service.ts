@@ -336,6 +336,7 @@ export async function withdrawSuggestion(input: {
   actor: SuggestionActor;
 }): Promise<SuggestionOutcome> {
   const { projectId, actor } = input;
+  await assertProjectAccess(projectId, actor.userId, 'member');
   const refusals = await inTx(async (tx) => {
     const row = await rowOf(tx, projectId, input.id, true);
     const refusal = withdrawRefusal(actor.userId, row.producerId) ?? decidedRefusal(row.status);

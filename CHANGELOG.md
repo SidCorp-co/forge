@@ -6276,6 +6276,9 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **A refusal reads the same everywhere.** A refused requirement sign-off or design decision now
+  answers 422 with `error.code` and its refusals, like every other refusal; MCP returns that same
+  body, and the web shows its reason.
 - **An issue has ten statuses, each saying who it waits on.** Confirmed, clarified, developed,
   testing, tested, releasing and waiting are gone; how far a run got is its step. Every move is
   checked and refused by name.

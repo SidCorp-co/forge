@@ -1,5 +1,5 @@
 // The comment-intent and record-event vocabulary (ISS-56). This package owns it; web-v2 reads the
-// copy in `@forge/contracts/record-events`, held identical by `kinds-parity.test.ts`.
+// copy in `@forge/contracts/record-events`, held identical by `kinds.test.ts`.
 
 /** What a person or agent means a comment to do. Three values, never more (data-model review). */
 export const COMMENT_INTENTS = ['question', 'decision', 'note'] as const;

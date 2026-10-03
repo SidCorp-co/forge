@@ -1,6 +1,6 @@
 // The browser's copy of the comment-intent and record-event vocabulary core owns (ISS-56). Neither
 // package may import a runtime value from the other, so these constants are a second declaration on
-// purpose, and `packages/core/src/issues/record-events/kinds-parity.test.ts` keeps them identical.
+// purpose, and `packages/core/src/issues/record-events/kinds.test.ts` keeps them identical.
 
 /** What a person or agent means a comment to do. Three values, never more (data-model review). */
 export const COMMENT_INTENTS = ["question", "decision", "note"] as const;

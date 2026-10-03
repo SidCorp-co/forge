@@ -1,6 +1,8 @@
 import { zValidator as honoZodValidator } from '@hono/zod-validator';
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import type { z } from 'zod';
+import { flatten } from './route-errors.js';
 
 type Args = Parameters<typeof honoZodValidator>;
 
@@ -54,4 +56,16 @@ export function rawBody(
   };
   declaredRaw.set(middleware, { contentType, description, required });
   return middleware;
+}
+
+/** A bad body is 400 naming both the valid shape (`hint`) and each field that broke it. */
+export function strictBody<T extends z.ZodType>(schema: T, hint: string) {
+  return zValidator('json', schema, (r) => {
+    if (!r.success) {
+      throw new HTTPException(400, {
+        message: `invalid body: ${hint}`,
+        cause: { code: 'BAD_REQUEST', details: flatten(r.error) },
+      });
+    }
+  });
 }

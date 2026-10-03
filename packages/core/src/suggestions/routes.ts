@@ -10,7 +10,7 @@ import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { refused } from '../project-config/respond.js';
 import { listSuggestions, type SuggestionActor, type SuggestionTargetRef } from './read.js';
 import {
@@ -37,11 +37,6 @@ const projectParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
 const suggestionParam = zValidator('param', z.object({ id: z.uuid(), sid: z.uuid() }), (r) => {
   if (!r.success) throw badRequest('invalid path: a project uuid and a suggestion uuid');
 });
-
-const strictBody = <T extends z.ZodType>(schema: T, what: string) =>
-  zValidator('json', schema, (r) => {
-    if (!r.success) throw badRequest(`invalid body: ${what}`);
-  });
 
 function actorOf(c: Context<{ Variables: AuthVars }>): SuggestionActor {
   const agency = c.get('agency');
