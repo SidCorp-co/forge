@@ -23,6 +23,8 @@ export interface BuildSystemPromptInput {
   persona?: string | null | undefined;
   /** Deterministic project-progress block (ISS-671); always appended when set. */
   progressFacts?: string | null | undefined;
+  /** The project's content language block (`content-language/block.ts`); appended after an override too. */
+  contentLanguage?: string | null | undefined;
 }
 
 function renderWho(self: SelfSummary): string | null {
@@ -59,6 +61,11 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   if (progressFacts) {
     sections.push(progressFacts);
   }
+
+  // cm:why an override replaces the persona, not the project's language: what a reply and a stored
+  // suggestion are written in is the project's setting whoever wrote the persona
+  const contentLanguage = input.contentLanguage?.trim();
+  if (contentLanguage) sections.push(contentLanguage);
 
   return sections.join('\n\n');
 }

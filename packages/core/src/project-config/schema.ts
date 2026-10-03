@@ -1,3 +1,7 @@
+import {
+  CONTENT_LANGUAGE_LIMITS,
+  keepTermsInEnglishSchema,
+} from '@forge/contracts/content-language';
 import { SENSITIVE_DATA_LEVELS } from '@forge/contracts/data-policy';
 import {
   projectWorkflowTemplateSchema,
@@ -184,6 +188,14 @@ export const projectDocumentSchema = z.strictObject({
   // owner ruling 2026-10-03): `redact` scrubs on write and lets only redacted text out, `no_egress`
   // scrubs on write and lets nothing out. One guard reads it (`lib/data-egress.ts`). Absent is `off`.
   sensitiveData: z.enum(SENSITIVE_DATA_LEVELS).optional(),
+  // cm:why the language agents write this project's prose in (owner, 2026-10-04): a BCP-47 tag,
+  // absent is `en`. Policy over the kernel: no write is refused for its language, only a tag that
+  // is not one (`rules.ts:checkContentLanguage`, CONTENT_LANGUAGE_INVALID). Code, identifiers,
+  // commits, PR text, machine-read fields and Forge's UI chrome are English whatever it says.
+  contentLanguage: z.string().min(1).max(CONTENT_LANGUAGE_LIMITS.tagMax).optional(),
+  // cm:why terms the prose keeps in English beyond the built-in technical ones
+  // (`@forge/contracts/content-language:TECHNICAL_TERMS_KEPT_IN_ENGLISH`); absent is none.
+  keepTermsInEnglish: unique(keepTermsInEnglishSchema).optional(),
   execution: z.strictObject({
     plugin: z.strictObject({
       source: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),

@@ -491,7 +491,7 @@ describe('an autoflow project (ISS-51)', () => {
 describe('the code vocabulary', () => {
   it('holds every code of the design table once', () => {
     expect(new Set(CONFIG_REFUSAL_CODES).size).toBe(CONFIG_REFUSAL_CODES.length);
-    expect(CONFIG_REFUSAL_CODES).toHaveLength(33);
+    expect(CONFIG_REFUSAL_CODES).toHaveLength(34);
   });
 
   it('every pure code is emitted by some plant in this file', () => {
