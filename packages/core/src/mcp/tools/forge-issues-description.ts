@@ -50,7 +50,9 @@ export function forgeIssuesDescription(refClause: string): string {
     'relations.<kind>.outgoing (from this issue) and .incoming (to it) for blocks, relates, ' +
     'duplicates, parent and decomposes. Only relations.blocks.incoming holds this issue back. ' +
     'Each edge carries expired (its validUntil has passed), gatesDispatch (its kind is blocks) ' +
-    'and blocking (gatesDispatch and not expired); nothing else is blocking.\n' +
+    'and blocking (gatesDispatch and not expired); nothing else is blocking. A legacy ' +
+    'relations.blockedBy lists only the blocking incoming edges, until forge-plugin reads ' +
+    'relations.<kind>.\n' +
     'TRANSITION. on_hold is a deliberate pause, waiting parks the issue for human review, and ' +
     'closed means the work shipped: a close on an issue with no merged_at is refused ' +
     '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped. On a ' +

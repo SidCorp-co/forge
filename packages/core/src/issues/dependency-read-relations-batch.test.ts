@@ -78,6 +78,7 @@ describe('loadIssueRelationsForIssues', () => {
     expect([...out.keys()].sort()).toEqual(['A', 'B', 'Z']);
     expect(out.get('Z')).toEqual(emptyIssueRelations());
     expect(Object.keys(out.get('Z') ?? {}).sort()).toEqual([
+      'blockedBy',
       'blocks',
       'decomposes',
       'duplicates',
@@ -151,7 +152,8 @@ describe('loadIssueRelationsForIssues', () => {
     expect(a?.duplicates.incoming.map((e) => e.edgeId)).toEqual(['d']);
     expect(a?.parent.incoming.map((e) => e.edgeId)).toEqual(['p']);
     expect(a?.decomposes.outgoing.map((e) => e.edgeId)).toEqual(['c']);
-    const blocking = Object.values(a ?? {})
+    const { blockedBy: _legacy, ...byKind } = a ?? ({} as NonNullable<typeof a>);
+    const blocking = Object.values(byKind)
       .flatMap((d) => [...d.outgoing, ...d.incoming])
       .filter((e) => e.blocking)
       .map((e) => e.edgeId);
@@ -168,5 +170,17 @@ describe('loadIssueRelationsForIssues', () => {
       ['gone', true],
       ['live', false],
     ]);
+  });
+
+  // cm:hack plugin-followups.md — the pinned forge-plugin reads only `relations.blockedBy`.
+  it('keeps the legacy blockedBy key, holding only live blocks edges', async () => {
+    edgeRows = [
+      edgeRow({ id: 'live', fromIssueId: 'X', toIssueId: 'A', kind: 'blocks' }),
+      edgeRow({ id: 'rel', fromIssueId: 'X', toIssueId: 'A', kind: 'relates' }),
+      edgeRow({ id: 'gone', fromIssueId: 'Y', toIssueId: 'A', kind: 'blocks', validUntil: PAST }),
+      edgeRow({ id: 'out', fromIssueId: 'A', toIssueId: 'Z', kind: 'blocks' }),
+    ];
+    const a = (await loadIssueRelationsForIssues(['A'], PROJECT)).get('A');
+    expect(a?.blockedBy.map((e) => e.edgeId)).toEqual(['live']);
   });
 });

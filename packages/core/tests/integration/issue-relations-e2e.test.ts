@@ -89,6 +89,7 @@ describe('ISS-868 issue relations read', () => {
     const onDependent = await loadIssueRelations(dependent, projectId);
     expect(onDependent.blocks.outgoing).toEqual([]);
     expect(onDependent.blocks.incoming).toHaveLength(1);
+    expect(onDependent.blockedBy.map((e) => e.otherIssueId)).toEqual([blocker]);
     expect(onDependent.blocks.incoming[0]).toMatchObject({
       fromIssueId: blocker,
       toIssueId: dependent,
@@ -196,6 +197,7 @@ describe('ISS-868 issue relations read', () => {
       duplicates: none,
       parent: none,
       decomposes: none,
+      blockedBy: [],
     });
   });
 });

@@ -116,6 +116,7 @@ vi.mock('../../issues/dependency-read.js', () => ({
     duplicates: { outgoing: [], incoming: [] },
     parent: { outgoing: [], incoming: [] },
     decomposes: { outgoing: [], incoming: [] },
+    blockedBy: [],
   }),
 }));
 vi.mock('../../issues/attributes/read.js', () => ({ loadIssueAttributes: async () => [] }));
