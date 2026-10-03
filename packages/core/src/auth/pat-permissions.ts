@@ -70,9 +70,18 @@ export const PAT_PERMISSION_RESOURCES = {
     reach: 'project',
     prefixes: { '/api/agents': 2, '/api/conversations': 2, '/api/chat-logs': 2 },
   },
+  // The key and its `feedback:read`/`feedback:write` grants stay as they are: issued tokens store
+  // them, so renaming them would silently strip every token holding one. A priced residual for
+  // ISS-59, which owns the word for product feedback: it ends when those grants are migrated.
+  // `/api/agent-reports` is `/api/feedback-reports` renamed — the same rows — so it takes that
+  // prefix's epoch rather than the next: no token reaches anything it could not reach before.
   feedback: {
     reach: 'project',
-    prefixes: { '/api/feedback-reports': 2, '/api/improvement-messages': 2 },
+    prefixes: {
+      '/api/agent-reports': 2,
+      '/api/feedback-reports': 2,
+      '/api/improvement-messages': 2,
+    },
   },
   account: {
     reach: 'account',

@@ -1,7 +1,7 @@
 import { apiClient } from "@/lib/api/client";
-import type { FeedbackFilters, FeedbackReport } from "./types";
+import type { AgentReportFilters, AgentReport } from "./types";
 
-function buildQuery(projectId: string, filters?: FeedbackFilters, limit?: number): string {
+function buildQuery(projectId: string, filters?: AgentReportFilters, limit?: number): string {
   const params = new URLSearchParams({ projectId });
   if (filters?.kind) params.set("kind", filters.kind);
   if (filters?.severity) params.set("severity", filters.severity);
@@ -10,15 +10,15 @@ function buildQuery(projectId: string, filters?: FeedbackFilters, limit?: number
   return params.toString();
 }
 
-export const feedbackApi = {
-  /** `GET /api/feedback-reports?projectId=&kind=&severity=&target=&limit=` */
-  list: (projectId: string, filters?: FeedbackFilters, limit?: number) =>
-    apiClient<FeedbackReport[]>(`/feedback-reports?${buildQuery(projectId, filters, limit)}`),
+export const agentReportsApi = {
+  /** `GET /api/agent-reports?projectId=&kind=&severity=&target=&limit=` */
+  list: (projectId: string, filters?: AgentReportFilters, limit?: number) =>
+    apiClient<AgentReport[]>(`/agent-reports?${buildQuery(projectId, filters, limit)}`),
 
-  /** `POST /api/feedback-reports/:id/reviewed` — toggle reviewed state, optionally linking the issue it was folded into. */
+  /** `POST /api/agent-reports/:id/reviewed` — toggle reviewed state, optionally linking the issue it was folded into. */
   markReviewed: (id: string, reviewed: boolean, linkedIssueId?: string) =>
     apiClient<{ id: string; reviewedAt: string | null; linkedIssueId: string | null }>(
-      `/feedback-reports/${id}/reviewed`,
+      `/agent-reports/${id}/reviewed`,
       {
         method: "POST",
         body: JSON.stringify({ reviewed, ...(linkedIssueId ? { linkedIssueId } : {}) }),

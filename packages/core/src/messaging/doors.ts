@@ -19,6 +19,12 @@ export const DOORS: readonly DoorPolicy[] = [
     why: 'a synchronous write with the agent on the line — nothing is posted for it, so telling it what broke IS the answer, and substituting a fallback here would be us writing words the agent did not write',
   },
   {
+    id: 'record-event-write',
+    cell: 'role:report',
+    ending: 'refusal',
+    why: 'a typed record written to `POST /api/issues/:id/events` with its writer on the line (ISS-56) — the same reasons as `comment-write`: nothing is stored for a refused record, so naming what broke is the whole answer',
+  },
+  {
     id: 'question-ask',
     cell: 'role:ask',
     ending: 'refusal',

@@ -24,6 +24,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'admin/metric-series.ts': 'bucketed lead-time sums and counts, no issue identity',
   'admin/pipeline-health-routes.ts':
     'reads only `needs_info`, a park an archived issue never holds',
+  'agent-reports/routes.ts': 'the issue an agent report links',
+  'agent-reports/service.ts': 'by issue id',
   'agent-sessions/interactive-routes.ts': "titles of the session's own issue ids",
   'agent-sessions/routes.ts': 'the one issue a session names',
   'assistant/tools/issue-dedup.ts':
@@ -39,8 +41,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'devices/run-evidence.ts': 'the seqs a run names',
   'devices/run-issue-return.ts': 'the seqs a run names',
   'devices/run-session.ts': 'the seqs a run names',
-  'feedback/routes.ts': 'the issue a feedback row links',
-  'feedback/service.ts': 'by issue id',
+  'issues/record-events/collapse.ts': 'retention: an archived issue collapses its narration too',
+  'issues/record-events/routes.ts': 'the one issue a route names',
   'integrations/github/issue-link.ts': 'the seq a pull request names',
   'integrations/github/review-note.ts': 'by issue id, locked for a write',
   'integrations/rocketchat/comment-inbound.ts': 'by issue id, or by mirror and comment rows',

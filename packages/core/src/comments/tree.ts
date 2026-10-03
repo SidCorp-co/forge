@@ -1,11 +1,19 @@
 import type { BodyNode } from '../body/parse.js';
 import { bodyNodes } from '../body/prepare.js';
 import { actorKey, type ResolvedActor } from '../issues/actor-identity.js';
+import { type RecordEvent, recordOfEvent } from '../issues/record-events/store.js';
 import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
 import type { RecordLens } from '../messaging/record-screen.js';
 
-/** The record a comment carries, with the reading its project is drawn under. */
-export type CommentRecord = ForgeRecord & { readonly lens: RecordLens };
+/**
+ * The record a comment carries, with the reading its project is drawn under, and where its content
+ * was read from: the typed event it was mirrored into, or the fence itself for a legacy comment.
+ */
+export type CommentRecord = ForgeRecord & {
+  readonly lens: RecordLens;
+  readonly source: 'event' | 'comment';
+  readonly eventId: string | null;
+};
 
 export interface CommentRow {
   id: string;
@@ -37,6 +45,8 @@ export type CommentNode<R extends CommentRow = CommentRow> = R & {
   attachments: CommentAttachmentLite[];
   nodes: BodyNode[] | null;
   record: CommentRecord | null;
+  /** What the comment is about: its arc target. Derived from the row, never stored twice. */
+  scope: 'issue';
   // ISS-519 — resolved author identity (email for a human, device name + Agent
   // marker for an agent comment). Optional so existing builders/tests that
   // don't enrich the tree still compile; the comments route attaches it (null
@@ -44,20 +54,48 @@ export type CommentNode<R extends CommentRow = CommentRow> = R & {
   author?: ResolvedActor | null;
 };
 
+/**
+ * A comment's record: the event's content where the record was mirrored into one, placed where the
+ * fence sits in the body so the prose around it keeps its place.
+ *
+ * cm:hack — the fence parse stands in for a record that has no event: a comment written before
+ * migration 0347, read for history. Ends with the backfill that gives every such record an event
+ * (`issues/record-events/history.ts`).
+ */
+function recordOf(
+  body: string,
+  event: RecordEvent | undefined,
+  lens: RecordLens,
+): CommentRecord | null {
+  const fence = parseForgeRecord(body);
+  if (event) {
+    return {
+      ...recordOfEvent(event),
+      at: fence?.at ?? 0,
+      to: fence?.to ?? 0,
+      lens,
+      source: 'event',
+      eventId: event.id,
+    };
+  }
+  return fence ? { ...fence, lens, source: 'comment', eventId: null } : null;
+}
+
 export function buildCommentTree<R extends CommentRow>(
   rows: R[],
   attachmentsByCommentId?: Map<string, CommentAttachmentLite[]>,
   lens: RecordLens = 'product',
+  eventsByComment: ReadonlyMap<string, RecordEvent> = new Map(),
 ): CommentNode<R>[] {
   const byId = new Map<string, CommentNode<R>>();
   for (const r of rows) {
-    const record = parseForgeRecord(r.body);
     byId.set(r.id, {
       ...r,
       replies: [],
       attachments: attachmentsByCommentId?.get(r.id) ?? [],
       nodes: bodyNodes(r.body, r.format),
-      record: record ? { ...record, lens } : null,
+      record: recordOf(r.body, eventsByComment.get(r.id), lens),
+      scope: 'issue',
     });
   }
   const roots: CommentNode<R>[] = [];
