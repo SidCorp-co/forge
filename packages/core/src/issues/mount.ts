@@ -1,4 +1,5 @@
 import type { Hono } from 'hono';
+import { contractWaitRoutes } from '../ecosystem/waits/routes.js';
 import type { RequestIdVars } from '../middleware/request-id.js';
 import { issueActivityRoutes } from './activity-routes.js';
 import { issueCriteriaRoutes } from './criteria/routes.js';
@@ -15,4 +16,5 @@ export function mountIssueRoutes(app: Hono<{ Variables: RequestIdVars }>): void 
   app.route('/api/issues', issueDependencyRoutes);
   app.route('/api/issues', issueSteerRoutes);
   app.route('/api/issues', issueCriteriaRoutes);
+  app.route('/api/issues', contractWaitRoutes);
 }

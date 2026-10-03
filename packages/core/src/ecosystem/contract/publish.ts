@@ -1,5 +1,5 @@
 import { db } from '../../db/client.js';
-import { assertProviderWriter, loadInterface, type ProviderWriter } from '../interface-service.js';
+import { loadInterface, type ProviderWriter, providerWriterMiss } from '../interface-service.js';
 import type { EcosystemRefusal } from '../refusals.js';
 import { projectsWhere } from '../store.js';
 import { INDEXED_TYPES, isIndexed } from './elements.js';
@@ -49,7 +49,8 @@ function kindRefusals(kind: string | undefined, published: string | undefined, r
 // cm:why the REST upload and forge_ecosystem contract_version_publish are one service, so the writer rule, the kind check and the version rules are the same at both doors
 export async function publishContractVersion(input: PublishInput): Promise<PublishOutcome> {
   const { projectId, writer, contract, kind, sourceRef, ...body } = input;
-  await assertProviderWriter(writer, projectId, 'CONTRACT_WRITER_NOT_PROVIDER');
+  const denied = await providerWriterMiss(writer, projectId, 'CONTRACT_WRITER_NOT_PROVIDER');
+  if (denied) return refused([denied]);
   const [project] = await projectsWhere(db, { ids: [projectId] });
   if (!project)
     throw new Error(`ecosystem: project ${projectId} passed the writer rule and has no row`);

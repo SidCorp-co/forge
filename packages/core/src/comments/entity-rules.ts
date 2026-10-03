@@ -7,9 +7,12 @@ import {
 import type { CommentIntent } from '@forge/contracts/record-events';
 import { BodyInvalidError } from '../body/errors.js';
 import { prepareBody } from '../body/prepare.js';
-import { type ActorFacts, type ActRule, actMiss, PERSON_ADMIN_ACT } from '../lib/person-act.js';
-
-export const COMMENT_POST: ActRule = { person: 'member', agent: 'member' };
+import {
+  type ActorFacts,
+  actMiss,
+  PERSON_ADMIN_ACT,
+  PROJECT_MEMBER_WRITE,
+} from '../lib/person-act.js';
 
 export interface CommentArc {
   issueId?: string | null | undefined;
@@ -135,7 +138,7 @@ export function parentRefusal(
 }
 
 export function posterRefusal(facts: ActorFacts, targetKey: string): CommentRefusal | null {
-  const miss = actMiss(facts, COMMENT_POST);
+  const miss = actMiss(facts, PROJECT_MEMBER_WRITE);
   if (!miss) return null;
   return {
     code: 'COMMENT_POST_FORBIDDEN',
@@ -150,7 +153,7 @@ export function editorRefusal(
   targetKey: string,
 ): CommentRefusal | null {
   if (facts.userId === authorId) {
-    const miss = actMiss(facts, COMMENT_POST);
+    const miss = actMiss(facts, PROJECT_MEMBER_WRITE);
     if (!miss) return null;
   } else if (!actMiss(facts, PERSON_ADMIN_ACT)) {
     return null;

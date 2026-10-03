@@ -17,6 +17,7 @@ export default defineConfig({
     './src/db/schema-onboarding.ts',
     './src/db/schema-feedback.ts',
     './src/db/schema-comments.ts',
+    './src/db/schema-contract-waits.ts',
     './src/db/schema-item-embeddings.ts',
     './src/db/schema-questions.ts',
     './src/db/schema-rocketchat.ts',
