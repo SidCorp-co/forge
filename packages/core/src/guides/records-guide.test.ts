@@ -33,6 +33,11 @@ describe('the records-and-comments guide', () => {
     expect(prose).toContain('reads as unanchored');
   });
 
+  it('says a design revision is an identity, and what the write door refuses about one', () => {
+    expect(prose).toContain('`design: <workflow flow or id> rev <n>`');
+    expect(prose).toContain('refused under `verdict-design`');
+  });
+
   it('says what a verdict cites, and what each standing of a citation reads as', () => {
     expect(prose).toContain('the tracker holds an attachment under that name');
     expect(prose).toContain('the tracker holds nothing under it');

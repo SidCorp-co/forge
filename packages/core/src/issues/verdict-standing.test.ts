@@ -325,3 +325,38 @@ describe('wholeIdentity', () => {
     expect(wholeIdentity('dce6f354c')).toBe(false);
   });
 });
+
+// HOP ISS-1: a design verdict is weighed against the workflow's revision, never a serving reading.
+describe('a design verdict', () => {
+  const design = (value: string): VerdictIdentity => ({ kind: 'design', value });
+  const designs = new Map([
+    ['discharge-post-care', 4],
+    ['b2eb2792-a043-4d5f-80a3-50a32c29e6e9', 4],
+  ]);
+  const held: IssueIdentities = { source: null, designs };
+
+  it('stands on the revision the workflow is at now, by flow or by id, whatever is served', () => {
+    for (const reading of [undeclared, serving(SERVING)]) {
+      expect(verdictStanding(design('discharge-post-care rev 4'), reading, held)).toBe('stands');
+      expect(
+        verdictStanding(design('b2eb2792-a043-4d5f-80a3-50a32c29e6e9 rev 4'), reading, held),
+      ).toBe('stands');
+    }
+  });
+
+  it('is superseded by a later revision, and says which', () => {
+    const stood = verdictStanding(design('discharge-post-care rev 2'), undeclared, held);
+    expect(stood).toBe('superseded');
+    expect(
+      standingSentence(stood, design('discharge-post-care rev 2'), undeclared, held),
+    ).toContain('now at revision 4');
+  });
+
+  it('anchors nothing where the project no longer holds the workflow, or the value is no design', () => {
+    expect(verdictStanding(design('gone rev 1'), undeclared, held)).toBe('unanchored');
+    expect(verdictStanding(design('discharge-post-care'), undeclared, held)).toBe('unanchored');
+    expect(verdictStanding(design('discharge-post-care rev 4'), undeclared, has(null))).toBe(
+      'unanchored',
+    );
+  });
+});

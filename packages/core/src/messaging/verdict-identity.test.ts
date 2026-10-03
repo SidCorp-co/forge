@@ -5,7 +5,12 @@
 import { describe, expect, it } from 'vitest';
 import { parseForgeRecord } from './forge-record.js';
 import { RECORD_RULE_IDS } from './record-screen.js';
-import { criterionBlocksIn, longestSpelling, verdictIdentityRefusals } from './verdict-identity.js';
+import {
+  criterionBlocksIn,
+  longestSpelling,
+  parseDesignIdentity,
+  verdictIdentityRefusals,
+} from './verdict-identity.js';
 
 const FENCE = '```';
 const WHOLE = '33637c612ef15be6f924520c0d201a0889d8ed7e';
@@ -121,8 +126,8 @@ describe('criterionBlocksIn', () => {
         ),
       ),
     ).toEqual([
-      { criterion: 1, verdict: 'pass', runtime: null, source: null, cited: [] },
-      { criterion: 2, verdict: 'fail', runtime: WHOLE, source: null, cited: [] },
+      { criterion: 1, verdict: 'pass', runtime: null, source: null, design: null, cited: [] },
+      { criterion: 2, verdict: 'fail', runtime: WHOLE, source: null, design: null, cited: [] },
     ]);
   });
 
@@ -167,5 +172,59 @@ describe('longestSpelling', () => {
 
   it('respells nothing shorter than seven characters, which is no identity', () => {
     expect(longestSpelling([WHOLE])(WHOLE.slice(0, 6))).toBe(WHOLE.slice(0, 6));
+  });
+});
+
+// HOP ISS-1: work that lands as a workflow design, outside git, has no commit to name.
+describe('a design identity', () => {
+  it('is accepted in place of a runtime or a commit, written as `<flow or id> rev <n>`', () => {
+    for (const value of [
+      'discharge-post-care rev 4',
+      'b2eb2792-a043-4d5f-80a3-50a32c29e6e9 rev 1',
+      'discharge-post-care   rev   12',
+    ]) {
+      expect(
+        refusalsFor('verdict', ['criterion: 1', 'verdict: pass', `design: ${value}`]),
+        value,
+      ).toEqual([]);
+    }
+  });
+
+  it('refuses a design value not written as one, by field and value, saying what is valid', () => {
+    for (const value of [
+      'discharge-post-care',
+      'discharge-post-care rev',
+      'x rev 0',
+      'x rev -1',
+      'x r 4',
+      'rev 4',
+    ]) {
+      const [refusal, ...rest] = refusalsFor('verdict', [
+        'criterion: 3',
+        'verdict: pass',
+        `design: ${value}`,
+      ]);
+      expect(rest, value).toEqual([]);
+      expect(refusal?.rule, value).toBe('verdict-identity');
+      expect(refusal?.why, value).toContain("criterion 3's `design` field");
+      expect(refusal?.why, value).toContain('the word `rev`');
+      expect(refusal?.shape, value).toContain('design: <workflow flow or id> rev <n>');
+    }
+  });
+
+  it('is read whole: workflow and revision', () => {
+    expect(parseDesignIdentity('discharge-post-care rev 4')).toEqual({
+      workflow: 'discharge-post-care',
+      revision: 4,
+    });
+    expect(parseDesignIdentity('discharge-post-care')).toBeNull();
+    expect(parseDesignIdentity(null)).toBeNull();
+  });
+
+  it('is carried on the block beside the other identities', () => {
+    const [block] = criterionBlocksIn(
+      parseForgeRecord(record('verdict', ['criterion: 1', 'verdict: pass', 'design: f rev 2'])),
+    );
+    expect(block?.design).toBe('f rev 2');
   });
 });

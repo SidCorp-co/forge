@@ -6,6 +6,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { listIssueComments } from '../comments/service.js';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issueAttachments, issues } from '../db/schema.js';
+import { projectWorkflows } from '../db/schema-workflows.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
 import { criterionBlocksIn, longestSpelling } from '../messaging/verdict-identity.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
@@ -55,7 +56,9 @@ export function verdictPairsIn(body: string): CriterionVerdict[] {
         ? { kind: 'runtime', value: block.runtime }
         : block.source !== null
           ? { kind: 'source', value: block.source }
-          : null;
+          : block.design !== null
+            ? { kind: 'design', value: block.design }
+            : null;
     out.push({ criterion: block.criterion, verdict: block.verdict, at, cited: block.cited });
   }
   return out;
@@ -208,6 +211,7 @@ function findingsFor(
 /** The issue rows this check reads, and the only ones it reads. */
 interface CriteriaRow {
   id: string;
+  projectId: string;
   acceptanceCriteria: string | null;
   sessionContext: unknown;
   mergedCommitSha: string | null;
@@ -221,9 +225,34 @@ function byMerge(a: CriteriaRow, b: CriteriaRow): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-async function reportFor(row: CriteriaRow, serving: ServingReading): Promise<IssueCriteriaReport> {
+/** Each workflow's current revision, under its flow and under its id, for every project named. */
+async function designRevisions(projectIds: string[]): Promise<Map<string, Map<string, number>>> {
+  const out = new Map<string, Map<string, number>>(projectIds.map((id) => [id, new Map()]));
+  if (projectIds.length === 0) return out;
+  const rows = await db
+    .select({
+      id: projectWorkflows.id,
+      flow: projectWorkflows.flow,
+      projectId: projectWorkflows.projectId,
+      revision: projectWorkflows.revision,
+    })
+    .from(projectWorkflows)
+    .where(inArray(projectWorkflows.projectId, projectIds));
+  for (const row of rows) {
+    const held = out.get(row.projectId);
+    held?.set(row.flow, row.revision);
+    held?.set(row.id, row.revision);
+  }
+  return out;
+}
+
+async function reportFor(
+  row: CriteriaRow,
+  serving: ServingReading,
+  designs: ReadonlyMap<string, number>,
+): Promise<IssueCriteriaReport> {
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
-  const identities = issueIdentities(row);
+  const identities = { ...issueIdentities(row), designs };
   const numbers = acceptanceCriteriaNumbers(row.acceptanceCriteria);
   if (numbers.length === 0) {
     return { issueId: row.id, unearned: [], broken: [], serving, uncorroborated: [] };
@@ -255,6 +284,7 @@ export async function unearnedCriteriaReports(
   const rows = (await db
     .select({
       id: issues.id,
+      projectId: issues.projectId,
       acceptanceCriteria: issues.acceptanceCriteria,
       sessionContext: issues.sessionContext,
       mergedCommitSha: issues.mergedCommitSha,
@@ -263,8 +293,11 @@ export async function unearnedCriteriaReports(
     .from(issues)
     .where(inArray(issues.id, issueIds))) as CriteriaRow[];
   // Oldest merge first, then id, as the sweep reads the gate: every list of them agrees (ISS-1346).
+  const designs = await designRevisions([...new Set(rows.map((row) => row.projectId))]);
   const out: IssueCriteriaReport[] = [];
-  for (const row of [...rows].sort(byMerge)) out.push(await reportFor(row, serving));
+  for (const row of [...rows].sort(byMerge)) {
+    out.push(await reportFor(row, serving, designs.get(row.projectId) ?? new Map()));
+  }
   return out;
 }
 
