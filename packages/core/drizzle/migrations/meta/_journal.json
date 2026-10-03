@@ -2292,6 +2292,13 @@
       "breakpoints": true
     },
     {
+      "idx": 354,
+      "version": "7",
+      "when": 1813536000000,
+      "tag": "0354_an_issue_waits_on_a_contract_version",
+      "breakpoints": true
+    },
+    {
       "idx": 355,
       "version": "7",
       "when": 1813622400000,

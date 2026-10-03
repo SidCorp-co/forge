@@ -882,7 +882,7 @@
       "name": "forge_criteria"
     },
     {
-      "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks). Writes take { baseRevision, document } as their REST route does: interface_write (the project's own agent, member or above, or a person holding admin; commitment windows an agent writes read as set by the agent, and once a person has set them an agent's write that moves them is refused COMMITMENTS_SET_BY_PERSON), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite), builder_run_supersede ({ run, reason }: closes an open run as superseded and opens a fresh manual run with the steps the project's current source type derives, waking its master; the project's own agent's, or an org admin's of the steward or the project's org). contract_version_publish ({ contract, version, kind, source, sourceRef }, POST /api/projects/:id/contracts/:contract/versions on REST) records a version of a contract this project publishes with artifact { upload: true }: kind is graphql (SDL text), mcp-tools ({ tools: [{ name, inputSchema }] }), openapi or json-schema, and must be the publication's type; core indexes its elements and measures it against the latest version. Refused by name: CONTRACT_KIND_UNKNOWN, CONTRACT_KIND_MISMATCH, ARTIFACT_UNREADABLE, VERSION_BUMP_TOO_SMALL, VERSION_NOT_IN_SCHEME, CONTRACT_NOT_PUBLISHED, CONTRACT_WRITER_NOT_PROVIDER (the writer rule of interface_write). contract_version_decide ({ contract, version, decision: approve | return, reason? }, POST /api/projects/:id/contracts/:contract/versions/:version/decision on REST) decides a proposed version: a recorded version is proposed, and current only once approved. An org owner or admin person decides any version; with contracts.approver \"master\" the project's own agent may approve a non-breaking or initial one. Refused by name: CONTRACT_BREAKING_NEEDS_PERSON (a breaking or unmeasured version, whatever the policy), CONTRACT_APPROVER_NOT_PERSON, CONTRACT_APPROVER_NOT_ADMIN, CONTRACT_APPROVER_NOT_PROJECT, CONTRACT_VERSION_NOT_PROPOSED, CONTRACT_DECISION_REASON_MISSING. The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
+      "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks). Writes take { baseRevision, document } as their REST route does: interface_write (the project's own agent, member or above, or a person holding admin; commitment windows an agent writes read as set by the agent, and once a person has set them an agent's write that moves them is refused COMMITMENTS_SET_BY_PERSON), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite), builder_run_supersede ({ run, reason }: closes an open run as superseded and opens a fresh manual run with the steps the project's current source type derives, waking its master; the project's own agent's, or an org admin's of the steward or the project's org). contract_version_publish ({ contract, version, kind, source, sourceRef }, POST /api/projects/:id/contracts/:contract/versions on REST) records a version of a contract this project publishes with artifact { upload: true }: kind is graphql (SDL text), mcp-tools ({ tools: [{ name, inputSchema }] }), openapi or json-schema, and must be the publication's type; core indexes its elements and measures it against the latest version. Refused by name: CONTRACT_KIND_UNKNOWN, CONTRACT_KIND_MISMATCH, ARTIFACT_UNREADABLE, VERSION_BUMP_TOO_SMALL, VERSION_NOT_IN_SCHEME, CONTRACT_NOT_PUBLISHED, CONTRACT_WRITER_NOT_PROVIDER (the writer rule of interface_write). contract_version_decide ({ contract, version, decision: approve | return, reason? }, POST /api/projects/:id/contracts/:contract/versions/:version/decision on REST) decides a proposed version: a recorded version is proposed, and current only once approved. An org owner or admin person decides any version; with contracts.approver \"master\" the project's own agent may approve a non-breaking or initial one. Refused by name: CONTRACT_BREAKING_NEEDS_PERSON (a breaking or unmeasured version, whatever the policy), CONTRACT_APPROVER_NOT_PERSON, CONTRACT_APPROVER_NOT_ADMIN, CONTRACT_APPROVER_NOT_PROJECT, CONTRACT_VERSION_NOT_PROPOSED, CONTRACT_DECISION_REASON_MISSING. contract_waits ({ issue }, GET /api/issues/:id/contract-waits) reads what an issue waits on: another project's contract at or above a version, settled once the provider approves one, and whether that holds it out of dispatch (CONTRACT_WAIT_UNSETTLED at the run and claim doors). contract_wait_add ({ issue, contract: <provider>/<slug>, minVersion, reason?, request? }) adds one, by a member or the project's own agent; refused by name: CONTRACT_WAIT_CONTRACT_UNKNOWN, CONTRACT_WAIT_OWN_CONTRACT (use a blocks edge), CONTRACT_WAIT_NOT_SHARED, CONTRACT_WAIT_VERSION_NOT_IN_SCHEME, CONTRACT_WAIT_DUPLICATE, CONTRACT_WAIT_REQUEST_MISMATCH, CONTRACT_WAIT_WRITE_FORBIDDEN. contract_wait_retract ({ issue, wait, reason }) stops one (CONTRACT_WAIT_RETRACTED). A production release of the project is refused CONTRACT_PROVIDER_NOT_LIVE while a provider does not serve the version an issue in it waits on. contract_requests ({}) lists the change requests this project sent or received, each as the provider's draft requirement it landed as; a published change-request document is what files one (forge_channel). The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -895,6 +895,8 @@
               "builder_run",
               "bus",
               "context",
+              "contract_waits",
+              "contract_requests",
               "interface_write",
               "link_create",
               "link_update",
@@ -902,7 +904,9 @@
               "builder_run_update",
               "builder_run_supersede",
               "contract_version_publish",
-              "contract_version_decide"
+              "contract_version_decide",
+              "contract_wait_add",
+              "contract_wait_retract"
             ],
             "type": "string"
           },
@@ -914,7 +918,7 @@
             ]
           },
           "contract": {
-            "description": "contract_version_publish: the publication slug of a contract this project publishes.",
+            "description": "contract_version_publish, contract_version_decide: the publication slug of a contract this project publishes. contract_wait_add: <provider slug>/<publication slug> of another project.",
             "type": "string"
           },
           "decision": {
@@ -933,12 +937,20 @@
             "description": "bus: the ecosystem uuid.",
             "type": "string"
           },
+          "issue": {
+            "description": "contract_waits, contract_wait_add, contract_wait_retract: ISS-n or the issue uuid.",
+            "type": "string"
+          },
           "kind": {
             "description": "contract_version_publish: graphql, mcp-tools, openapi or json-schema; the publication type.",
             "type": "string"
           },
           "link": {
             "description": "link, link_update: the link uuid.",
+            "type": "string"
+          },
+          "minVersion": {
+            "description": "contract_wait_add: the version the issue needs, in the provider's scheme.",
             "type": "string"
           },
           "paths": {
@@ -953,7 +965,11 @@
             "type": "string"
           },
           "reason": {
-            "description": "builder_run_supersede: why the open run is replaced, 1 to 1000 characters. contract_version_decide: why, required to return.",
+            "description": "builder_run_supersede: why the open run is replaced, 1 to 1000 characters. contract_version_decide: why, required to return. contract_wait_add: why it waits, optional. contract_wait_retract: why it no longer waits.",
+            "type": "string"
+          },
+          "request": {
+            "description": "contract_wait_add: the change request number the wait rides on, e.g. HOP-CR-3.",
             "type": "string"
           },
           "run": {
@@ -977,6 +993,10 @@
           },
           "version": {
             "description": "contract_version_publish: the version name, in the interface versioning scheme, after the latest.",
+            "type": "string"
+          },
+          "wait": {
+            "description": "contract_wait_retract: the wait uuid.",
             "type": "string"
           }
         },

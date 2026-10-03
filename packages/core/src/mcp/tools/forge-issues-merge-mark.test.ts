@@ -121,9 +121,9 @@ vi.mock('../../issues/dependency-read.js', () => ({
 }));
 vi.mock('../../issues/attributes/read.js', () => ({ loadIssueAttributes: async () => [] }));
 // The issue read also asks which workflow the issue builds; this issue builds none.
-vi.mock('../../workflows/build-gate.js', async (importOriginal) => ({
+vi.mock('../../issues/dispatch-gates.js', async (importOriginal) => ({
   ...((await importOriginal()) as Record<string, unknown>),
-  buildsWorkflowOf: async () => null,
+  dispatchGatesOf: async () => ({ buildsWorkflow: null, waitsOnContracts: null }),
 }));
 vi.mock('../../workflows/design-issue.js', () => ({ proposesWorkflowOf: async () => null }));
 vi.mock('../../requirements/issue-links.js', () => ({ requirementOfIssue: async () => null }));

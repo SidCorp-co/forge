@@ -15,6 +15,7 @@
 import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
+import { assertDispatchGatesForSeqs } from '../issues/dispatch-gates.js';
 import {
   type IssueLeaseRelease,
   readDeviceIssueLease,
@@ -33,7 +34,6 @@ import {
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
 import { requirePolicy } from '../project-config/dispatch-policy.js';
-import { assertDesignsApprovedForSeqs } from '../workflows/build-gate.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
 import { projectAdmission, RunnerNotAdmittedError } from './pool-admission.js';
@@ -216,8 +216,8 @@ export async function openRunSession(args: {
     );
   }
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
-  // cm:guard a flow's build waits for its approved design (ISS-53), refused as the job claim refuses it
-  await assertDesignsApprovedForSeqs(args.projectId, canonical.seqs);
+  // cm:guard a flow's build waits for its approved design (ISS-53) and a contract wait for its version (E1), refused as the job claim refuses them
+  await assertDispatchGatesForSeqs(args.projectId, canonical.seqs);
   const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
   const spec: OneShotRunSpec = {
     projectId: args.projectId,

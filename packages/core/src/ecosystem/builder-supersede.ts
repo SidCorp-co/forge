@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { wakeMastersForBuild } from '../ws/master-wake.js';
-import { notFound, refusedBy, stewardRole } from './access.js';
+import { notFound, stewardRole } from './access.js';
 import { owedTrigger } from './builder-head.js';
 import {
   notOpenRefusal,
@@ -63,7 +63,7 @@ export async function supersedeBuilderRun(input: {
     },
     projectId,
   );
-  if (denied) throw refusedBy(denied);
+  if (denied) return refusedWith(denied);
   const closed = notOpenRefusal(runId, storedBuilderRun(row));
   if (closed) return refusedWith(closed);
 

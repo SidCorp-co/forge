@@ -38,6 +38,10 @@ const NOT_DISCOVERY: Record<string, string> = {
   'devices/admissible.ts': 'reads only backlog-admissible statuses; relations by edge',
   'devices/claim.ts': 'the issue of the claimed job',
   'devices/pool.ts': 'issues of queued jobs on live runs; relations by edge',
+  'ecosystem/waits/gate.ts':
+    'the issues a run or claim names, by id or seq; an archived issue is terminal and dispatches nothing',
+  'ecosystem/waits/read.ts': 'the waits of the one issue named, by issue id',
+  'ecosystem/waits/routes.ts': 'the one issue a contract wait route names, by id',
   'devices/run-evidence.ts': 'the seqs a run names',
   'devices/run-issue-return.ts': 'the seqs a run names',
   'devices/run-session.ts': 'the seqs a run names',

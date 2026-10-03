@@ -3,6 +3,7 @@
  * explains it. Every door reads these, so none carries its own copy (ISS-1127).
  */
 
+import { type LiveShortfall, notLiveSentence } from '../ecosystem/waits/rules.js';
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { AGENT_NAMING_MIN_RUNNER } from '../runners/device-cap.js';
 import type { RunnerHold, RunnerHoldReason } from '../runners/ineligible.js';
@@ -22,6 +23,7 @@ export type ReleaseBlockerCode =
   | 'RELEASE_ROSTER_OVERSIZE'
   | 'RELEASE_RECORD_MISSING'
   | 'RELEASE_WORK_UNMERGED'
+  | 'CONTRACT_PROVIDER_NOT_LIVE'
   | 'RELEASE_PROBES_UNREADABLE'
   | 'RELEASE_POOL_EMPTY'
   | 'NO_RUNNER_ONLINE'
@@ -114,6 +116,8 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     `nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
   RELEASE_WORK_UNMERGED:
     '{n} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not.',
+  CONTRACT_PROVIDER_NOT_LIVE:
+    "{n} issue(s) named here wait on another project's contract version that its production does not serve yet, so this release would ship a consumer ahead of its provider. Release once the provider serves it, or take those issues out of this release.",
   RELEASE_PROBES_UNREADABLE:
     'Every runtime probe the production environment declares identifies an artifact, so no reading can say which commit production serves and the release could never be proved. Declare a probe that identifies the source on the production environment.',
   RELEASE_POOL_EMPTY:
@@ -152,6 +156,7 @@ export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_ROSTER_OVERSIZE: [],
   RELEASE_RECORD_MISSING: [],
   RELEASE_WORK_UNMERGED: [],
+  CONTRACT_PROVIDER_NOT_LIVE: [],
   RELEASE_PROBES_UNREADABLE: [],
   RELEASE_POOL_EMPTY: [],
   NO_RUNNER_ONLINE: [],
@@ -306,6 +311,9 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   }
   if (code === 'RELEASE_WORK_UNMERGED' && details?.shape === 'outside_git') {
     return `${namedHere(details)} have no mark saying where their work landed. This project's work lands outside git, so mark each one merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`;
+  }
+  if (code === 'CONTRACT_PROVIDER_NOT_LIVE' && Array.isArray(details?.waits)) {
+    return notLiveSentence(details.waits as LiveShortfall[]);
   }
   if (code === 'RELEASE_TARGET_UNDECLARED' && typeof details?.reason === 'string') {
     return `Nowhere is declared for a release to land: ${details.reason}.`;

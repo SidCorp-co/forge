@@ -19,6 +19,11 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { jobs } from '../db/schema.js';
+import {
+  assertDispatchGatesForIssue,
+  type DispatchGateCode,
+  isDispatchGateError,
+} from '../issues/dispatch-gates.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { resolveJobPolicy } from '../jobs/job-policy.js';
 import { poolPrompt, settleNoPromptJob } from '../jobs/pool-served.js';
@@ -36,8 +41,6 @@ import {
   type PolicyRefusalCode,
   PolicyRefusedError,
 } from '../project-config/dispatch-policy.js';
-import { assertDesignApprovedForIssue } from '../workflows/build-gate.js';
-import { WorkflowDesignNotApprovedError } from '../workflows/design.js';
 import { runnerAdmission } from './pool-admission.js';
 import { releaseLabelVerdict } from './release-label.js';
 
@@ -65,7 +68,7 @@ export type PrepareResult =
   | {
       ok: false;
       reason: 'policy_refused';
-      code: PolicyRefusalCode | WorkflowDesignNotApprovedError['code'];
+      code: PolicyRefusalCode | DispatchGateCode;
       detail: string;
     }
   | { ok: false; reason: 'checkout_unbound'; detail: string };
@@ -219,8 +222,9 @@ async function policyStateFor(
 }
 
 /**
- * A job for an issue that builds a workflow whose design is not approved is refused by the
- * policy-refusal shape the box already reads, and stays queued until the design is approved.
+ * A job for an issue that builds a workflow whose design is not approved, or waits on a contract
+ * version not yet published, is refused by the policy-refusal shape the box already reads, and stays
+ * queued until the design is approved or the version is.
  */
 async function designGateFor(jobId: string): Promise<Extract<PrepareResult, { ok: false }> | null> {
   const [job] = await db
@@ -230,10 +234,10 @@ async function designGateFor(jobId: string): Promise<Extract<PrepareResult, { ok
     .limit(1);
   if (!job?.issueId) return null;
   try {
-    await assertDesignApprovedForIssue(job.projectId, job.issueId);
+    await assertDispatchGatesForIssue(job.projectId, job.issueId);
     return null;
   } catch (err) {
-    if (!(err instanceof WorkflowDesignNotApprovedError)) throw err;
+    if (!isDispatchGateError(err)) throw err;
     logger.warn({ jobId, projectId: job.projectId, code: err.code }, err.message);
     return { ok: false, reason: 'policy_refused', code: err.code, detail: err.message };
   }

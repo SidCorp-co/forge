@@ -5,6 +5,7 @@ import type { Author, Gate, PersonVia } from './channel-schema.js';
 import { announceGateDecided } from './channel-signals.js';
 import { insertEvent, readDocument, rewriteDocument } from './channel-store.js';
 import { serve } from './channel-world.js';
+import { landChangeRequestIn } from './requests/land.js';
 import { lockKeys } from './store.js';
 
 export const GATE_OPTIONS = { approve: 'approve', return: 'return' } as const;
@@ -92,6 +93,10 @@ export async function decideChannelGate(
       fromState: 'submitted',
       toState: 'published',
       ...at,
+    });
+    await landChangeRequestIn(tx, doc, {
+      documentId: row.id,
+      by: { userId: args.by, agency: 'human' },
     });
   }
   return () => announceGateDecided(row.id, doc);
