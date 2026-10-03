@@ -97,13 +97,16 @@ export async function decide(
     fromSuggestionId?: string | null;
   },
 ) {
+  const said = d.reason?.trim();
+  // A reason is free text a person typed about the item; a sensitive project scrubs it like the body.
+  const reason = said ? storedText(await dataPolicyOf(row.projectId), said).text : null;
   await tx.insert(feedbackDecisions).values({
     projectId: row.projectId,
     feedbackId: row.id,
     decision: d.decision,
     route: d.route ?? null,
     carrier: d.carrier ?? null,
-    reason: d.reason?.trim() || null,
+    reason,
     decidedBy: actor.userId,
     decidedAgency: actor.agency,
     fromSuggestionId: d.fromSuggestionId ?? null,
@@ -140,7 +143,8 @@ export async function createFeedback(input: {
   const level = await dataPolicyOf(projectId);
   const title = storedText(level, request.title.trim());
   const body = request.body?.trim() ? storedText(level, request.body) : null;
-  const whereSeen = target.screen ?? (request.whereSeen?.trim() || null);
+  const seen = target.screen ?? (request.whereSeen?.trim() || null);
+  const whereSeen = seen ? storedText(level, seen) : null;
   let id = '';
   let created = true;
   const refusals = await inTx(async (tx) => {
@@ -169,7 +173,7 @@ export async function createFeedback(input: {
         severity: request.severity ?? 'medium',
         title: title.text,
         body: body?.text ?? null,
-        whereSeen,
+        whereSeen: whereSeen?.text ?? null,
         requirementId: target.requirementId,
         issueId: target.issueId,
         releaseRunId: target.releaseRunId,
@@ -177,7 +181,7 @@ export async function createFeedback(input: {
         reportedBy: actor.userId,
         reporterAgency: actor.agency,
         scrubbed: title.scrubbed,
-        redactions: title.redactions + (body?.redactions ?? 0),
+        redactions: title.redactions + (body?.redactions ?? 0) + (whereSeen?.redactions ?? 0),
         dedupKey: input.dedupKey ?? null,
       })
       .returning({ id: feedback.id });

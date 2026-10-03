@@ -15,7 +15,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
 import { assertProjectAccess } from '../lib/authz.js';
-import { dataPolicyOf } from '../lib/data-egress.js';
+import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { hooks } from '../pipeline/hooks.js';
 import type { NamedRefusal } from '../project-config/respond.js';
@@ -162,7 +162,10 @@ export async function triageIn(
     set.routedRequirementId = req.id;
     carrier = req.key;
   }
-  if (t.route === 'answer') set.answer = t.answer?.trim() ?? null;
+  if (t.route === 'answer') {
+    const said = t.answer?.trim();
+    set.answer = said ? storedText(await dataPolicyOf(projectId), said).text : null;
+  }
   if (t.route === 'duplicate' && t.duplicateOf) {
     const root = await rowIn(tx, projectId, t.duplicateOf);
     const rootOf = root.duplicateOf ? await rowIn(tx, projectId, root.duplicateOf) : null;
