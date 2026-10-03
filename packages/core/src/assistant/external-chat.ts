@@ -217,7 +217,11 @@ export async function runExternalChatTurn(
         ? toProviderMessages(turn, resolvedImages).slice(-PROVIDER_HISTORY_WINDOW)
         : [{ role: 'user' as const, content: args.message }]),
     ],
-    { conversationContext: args.conversationContext, pageContext: args.pageContext ?? null, speakerContext },
+    {
+      conversationContext: args.conversationContext,
+      pageContext: args.pageContext ?? null,
+      speakerContext,
+    },
   );
 
   const startedAt = Date.now();

@@ -13,6 +13,7 @@
 // had to carve an exception for.
 
 import { randomUUID } from 'node:crypto';
+import { uiSnapshotSchema } from '@forge/contracts/ui-actions';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -71,7 +72,6 @@ import {
 import { ConversationModeSettledError, sendWebConversationMessage } from './conversation-send.js';
 import { conversationToolCallRoutes } from './conversation-tool-calls.js';
 import { rememberUiSnapshot } from './ui-snapshot.js';
-import { uiSnapshotSchema } from '@forge/contracts/ui-actions';
 
 const READ_WINDOW = 200;
 
