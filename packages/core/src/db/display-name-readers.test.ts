@@ -23,8 +23,8 @@ const PRESENTATION_AND_MAPPING: Record<string, string> = {
     'the name a person’s own message is attributed by in a conversation transcript, which is a label read by whoever opens the room and by the model answering in it — it addresses nobody and resolves nothing',
   'release-batch/approvals.ts':
     'the name a release approval prints for who asked and who decided, attached on the way out of the request beside the id that is what is checked (ISS-45)',
-  'workflows/service.ts':
-    'the name a workflow document prints for who last wrote it, attached on the way out beside the user id the row stores (ISS-44)',
+  'lib/people.ts':
+    'the one helper the workflow, requirement and standing reads print who wrote or decided by, attached on the way out beside the user id the row stores (ISS-44, ISS-57)',
   'assistant/conversation-people.ts':
     'the name a room’s member list and its candidate list are PRINTED by, attached on the way out of the request. It exists because `conversations/` is named below as a place the column may not be read, and a roster still has to say who somebody is: an agent prints its address, which is what resolves, and a person prints this label, which resolves nothing (ISS-1011)',
 };

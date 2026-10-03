@@ -2,7 +2,7 @@ import { db, type Tx } from '../db/client.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { isRecord, parseVersionedDocument, staleBase } from '../project-config/documents.js';
-import { notFound, refusedBy } from './access.js';
+import { notFound } from './access.js';
 import { versionsOf } from './contract/store.js';
 import { heldEcosystem, storedAs } from './ecosystem-service.js';
 import {
@@ -64,15 +64,14 @@ export interface ProviderWriter {
   agency: ActorAgency;
 }
 
-/** Refuses, by its code, a writer that is neither the project's own agent nor a person holding admin on it. */
-export async function assertProviderWriter(
+/** The refusal, under its code, of a writer that is neither the project's own agent nor a person holding admin on it. */
+export async function providerWriterMiss(
   writer: ProviderWriter,
   projectId: string,
   code: ProviderWriterCode,
-): Promise<void> {
+): Promise<EcosystemRefusal | null> {
   const role = (await effectiveProjectRole(writer.userId, projectId))?.role ?? null;
-  const refusal = providerWriterRefusal({ ...writer, role }, projectId, code);
-  if (refusal) throw refusedBy(refusal);
+  return providerWriterRefusal({ ...writer, role }, projectId, code);
 }
 
 /** Who set the commitments the interface makes now, so a reader can tell an agent's proposal from a person's decision. */
@@ -193,7 +192,8 @@ export async function writeInterface(input: {
 }): Promise<InterfaceOutcome> {
   const { projectId, writer, baseRevision, raw } = input;
   const userId = writer.userId;
-  await assertProviderWriter(writer, projectId, 'INTERFACE_WRITER_NOT_PROJECT');
+  const denied = await providerWriterMiss(writer, projectId, 'INTERFACE_WRITER_NOT_PROJECT');
+  if (denied) return { ok: false, refusals: [denied] };
   const parsed = parseInterface(raw, projectId);
   if (Array.isArray(parsed)) return { ok: false, refusals: parsed };
   const doc = parsed;

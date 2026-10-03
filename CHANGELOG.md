@@ -137,6 +137,14 @@
 
 ### Added
 
+- **An issue can wait on another project's contract version.** `POST /api/issues/:id/contract-waits`
+  or `forge_ecosystem contract_wait_add` with `<provider>/<contract> >= version`: the issue is not
+  dispatched until the provider approves that version or a later one, and a production release that
+  carries it is refused `CONTRACT_PROVIDER_NOT_LIVE` until the provider's production serves it (an
+  ecosystem can turn that off with `releases.providerLive: "off"`). A published change request lands
+  in the provider as a draft requirement (`/api/projects/:id/contract-requests`). Approving a
+  breaking version files one contract-change feedback item per consumer, due by the provider's notice
+  window; any other version only notifies them.
 - **Workflows opens on what the system is.** A System overview shows the system-context summary,
   key facts and a C4 context diagram that fits the screen; designs are grouped by purpose; a
   system-context design toggles Context | Containers. The dashboard shows it too.
@@ -6288,7 +6296,10 @@
 ### Changed
 - **A refusal reads the same everywhere.** A refused requirement sign-off or design decision now
   answers 422 with `error.code` and its refusals, like every other refusal; MCP returns that same
-  body, and the web shows its reason.
+  body, and the web shows its reason. Ecosystem writes refused for who is acting (a link, an
+  interface, a contract publish or decision, a channel write, a builder supersede) moved from 403 to
+  that 422 too; a read you are fenced from stays 403. A builder supersede by an agent now needs
+  member on the project.
 - **An issue has ten statuses, each saying who it waits on.** Confirmed, clarified, developed,
   testing, tested, releasing and waiting are gone; how far a run got is its step. Every move is
   checked and refused by name.

@@ -74,6 +74,10 @@
       "types": "./dist/feedback.d.ts",
       "default": "./dist/feedback.js"
     },
+    "./contract-waits": {
+      "types": "./dist/contract-waits.d.ts",
+      "default": "./dist/contract-waits.js"
+    },
     "./ui-actions": {
       "types": "./dist/ui-actions.d.ts",
       "default": "./dist/ui-actions.js"

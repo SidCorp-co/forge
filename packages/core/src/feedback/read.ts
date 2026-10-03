@@ -19,7 +19,7 @@ import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { and, asc, count, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
-import { issues, pipelineRuns } from '../db/schema.js';
+import { issues, pipelineRuns, projects } from '../db/schema.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import {
@@ -79,6 +79,7 @@ interface Linked {
   requirements: Map<string, { key: string; title: string; status: string }>;
   releases: Map<string, string>;
   workflows: Map<string, { flow: string; title: string | null }>;
+  providers: Map<string, string>;
   suggestions: Map<string, { status: string; revisionLive: boolean; delivered: boolean }>;
   roots: Map<string, Row>;
   names: Map<string, string>;
@@ -157,8 +158,16 @@ async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
       rootIds.length ? db.select().from(feedback).where(inArray(feedback.id, rootIds)) : [],
     ]);
   const allRows = [...rows, ...rootRows];
+  const providerIds = ids(rows.map((r) => r.contractProviderProjectId));
+  const providerRows = providerIds.length
+    ? await db
+        .select({ id: projects.id, slug: projects.slug })
+        .from(projects)
+        .where(inArray(projects.id, providerIds))
+    : [];
   return {
     prefix,
+    providers: new Map(providerRows.map((p) => [p.id, p.slug])),
     issues: new Map(
       issueRows.map((i) => [
         i.id,
@@ -240,6 +249,10 @@ function targetView(r: Row, l: Linked): FeedbackTargetView {
     const w = l.workflows.get(r.workflowId as string);
     return { type, key: w?.flow ?? (r.workflowId as string), title: w?.title ?? null };
   }
+  if (type === 'contract') {
+    const provider = l.providers.get(r.contractProviderProjectId as string);
+    return { type, key: `${provider}/${r.contractSlug}@${r.contractVersion}`, title: null };
+  }
   return { type, key: r.whereSeen ?? '', title: null };
 }
 
@@ -303,6 +316,7 @@ function summaryOf(r: Row, l: Linked, viewer: FeedbackActor, withhold: boolean):
     target: targetView(r, l),
     route: withhold && route?.answer ? { ...route, answer: null } : route,
     reporter: { id: r.reportedBy, name: reporterName, agency: r.reporterAgency },
+    dueAt: r.dueAt?.toISOString() ?? null,
     redacted: r.redactedAt !== null,
     redactedAt: r.redactedAt?.toISOString() ?? null,
     createdAt: r.createdAt.toISOString(),

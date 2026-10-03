@@ -40,12 +40,13 @@ export const FEEDBACK_PHASES = [
 ] as const;
 export type FeedbackPhase = (typeof FEEDBACK_PHASES)[number];
 
-/** What one item is about: an exclusive arc of four foreign keys, or a screen named in words. */
+/** What one item is about: an exclusive arc of five foreign keys, or a screen named in words; core alone files against a contract version (E3). */
 export const FEEDBACK_TARGET_TYPES = [
 	"requirement",
 	"issue",
 	"release",
 	"workflow",
+	"contract",
 	"screen",
 ] as const;
 export type FeedbackTargetType = (typeof FEEDBACK_TARGET_TYPES)[number];
@@ -254,7 +255,7 @@ export const listFeedbackQuerySchema = z.strictObject({
 
 export interface FeedbackTargetView {
 	type: FeedbackTargetType;
-	/** REQ-n, ISS-n, a release version, a workflow flow, or the screen as written. */
+	/** REQ-n, ISS-n, a release version, a workflow flow, `<provider>/<contract>@<version>`, or the screen as written. */
 	key: string;
 	title: string | null;
 }
@@ -305,6 +306,7 @@ export interface FeedbackSummary {
 	target: FeedbackTargetView;
 	route: FeedbackRouteView | null;
 	reporter: { id: string; name: string | null; agency: "human" | "agent" };
+	dueAt: string | null;
 	redacted: boolean;
 	redactedAt: string | null;
 	createdAt: string;

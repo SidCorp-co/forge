@@ -73,6 +73,9 @@ A write a rule refuses answers **422** with one body, and nothing is written:
 - **MCP.** `packages/core/src/mcp/tools/lib.ts:refusedAnswer`, which returns the same body flagged
   `isError`.
 - **Both doors** build the body with `packages/core/src/lib/refusal.ts:refusalEnvelope`.
+- **A guard that runs before the service** (a route-level who-may-act check) throws
+  `packages/core/src/lib/refusal.ts:RefusalError`, and `packages/core/src/middleware/error.ts`
+  answers it with the same 422 body. A service returns its refusals; it never throws them.
 - **The status never varies by rule**, so a client reads `error.code` and nothing else. Who-may-act
   refusals are 422 too. The 403 in the error handler's shape (`{ code, message, details }`) stays
   for transport: no session, no project membership, a fenced token.
@@ -93,14 +96,15 @@ refusal under its own code. It never compares `agency` itself.
 | `PERSON_ACT` | member or above | never | `packages/core/src/lib/person-act.ts:personActRefusal`, which requirement sign-off and suggestion decide both call |
 | `approverRule(agentMay)` | org owner or admin | member or above, only when the project's policy says `master` | `packages/core/src/workflows/design.ts:designApproverRefusal`, `packages/core/src/ecosystem/contract/approval.ts:approverRefusal` |
 | `PROJECT_AGENT_WRITE` | never | member or above | `packages/core/src/workflows/rules.ts:workflowWriterRefusal`, `packages/core/src/ecosystem/link-rules.ts:writerRefusal` |
+| `PROJECT_MEMBER_WRITE` | member or above | member or above | `packages/core/src/ecosystem/waits/rules.ts:writerRefusal` (adding or retracting a contract wait) |
+| `SUPERSEDE` | org owner or admin (of the steward org when it is one there, else of the project's org) | member or above | `packages/core/src/ecosystem/builder-supersede-rules.ts:supersederRefusal` |
 | `PERSON_ADMIN_ACT` | project owner or admin | never | `packages/core/src/feedback/rules.ts:redactActRefusal` (deleting a reporter's data) |
 
 - **Before this page:** seven separate implementations across the slices: requirement sign-off,
   suggestion decide, design approver, contract approver, workflow writer, link writer and builder
-  supersede. ISS-58 folded the first two into `personActRefusal`. This change puts six of the seven
-  on `actMiss`.
-- **Still outside it:** `packages/core/src/ecosystem/builder-supersede-rules.ts:supersederRefusal` and five
-  agency checks older than the redesign (listed below).
+  supersede. ISS-58 folded the first two into `personActRefusal`, the conventions change put five
+  more on `actMiss`, and ISS-61 the last, builder supersede.
+- **Still outside it:** five agency checks older than the redesign (item 14).
 - **Recording the agency.** A table records it in `<role>_agency text`, CHECK `('human','agent')`,
   the values of `packages/core/src/issues/actor-agency.ts:ActorAgency`. The word is `human`, never `person`.
 
@@ -307,11 +311,10 @@ Read at `origin/dev` `0b3a1069a`.
 ## Non-conforming today
 
 Two owners appear here. **Review** is the review pass after the POC. A numbered slice is the next
-slice to touch that code. Nothing below is migrated in this change.
+slice to touch that code. Items 1 and 13 were closed by ISS-61, and their numbers are not reused.
 
 | # | Divergence | Owner |
 |---|---|---|
-| 1 | Ecosystem services throw who-may-act refusals at 403 in the error handler's shape (`packages/core/src/ecosystem/access.ts:refusedBy`, used by contract version decide), and their entity writes answer through the document 422 | ISS-61 |
 | 2 | `packages/core/src/workflows/service.ts:assertWriter` throws a 403 instead of returning `WORKFLOW_WRITER_NOT_PROJECT` | review |
 | 3 | Record events refuse with a thrown 422 and criteria and verdicts with a thrown 400 or 409, each in the error handler's shape, not the envelope (`packages/core/src/issues/record-events/routes.ts:refusalHttp`, `packages/core/src/issues/criteria/store.ts:CriteriaRefused`, `:VerdictRefused`); `forge_criteria` takes a non-strict input, and `forge_issue_events` throws text | review |
 | 4 | Requirement codes, statuses and views are declared in core (`packages/core/src/requirements/rules.ts:RequirementRefusalCode`, `packages/core/src/db/schema-requirements.ts:REVISION_STATES`) and redeclared in `packages/web-v2/src/features/requirements/types.ts`; the requirement spec and criterion schemas live in `packages/contracts/src/suggestions.ts` instead of a requirements module of its own in contracts; route bodies are built inline (`packages/core/src/requirements/routes.ts:revisionFields`) | review |
@@ -323,7 +326,6 @@ slice to touch that code. Nothing below is migrated in this change.
 | 10 | A requirement return overwrites `proposed_at` / `return_reason`, with no row per decision (walkthrough D6) | review |
 | 11 | Refusals name another requirement by uuid (`REQUIREMENT_ISSUE_LINKED_ELSEWHERE`, walkthrough D10) | review |
 | 12 | Who-may-act codes predating the suffix: `WORKFLOW_DESIGN_APPROVER_NOT_*`, `CONTRACT_APPROVER_NOT_*`, `CONTRACT_BREAKING_NEEDS_PERSON`, `WORKFLOW_WRITER_NOT_PROJECT`, `LINK_WRITER_NOT_CONSUMER` | review (a rename touches guides and MCP descriptions) |
-| 13 | `packages/core/src/ecosystem/builder-supersede-rules.ts:supersederRefusal` decides agency on its own (an org admin of either side may act, whatever the agency) | ISS-61 |
 | 14 | Agency checks older than the redesign: `packages/core/src/issues/transition-guards.ts`, `packages/core/src/issues/merge-marker.ts`, `packages/core/src/release-batch/approvals.ts`, `packages/core/src/issues/release-gate-hold.ts`, `packages/core/src/projects/master-charter-routes.ts` | review |
 | 15 | Body validation outside `strictBody`: criteria, record events and agent reports use `zValidator` + `flattenError` with no shape hint | review |
 | 16 | `packages/core/src/agent-reports/routes.ts` writes with inline drizzle rather than `packages/core/src/agent-reports/service.ts`; `forge_agent_report` is a singular name | review |
@@ -342,6 +344,12 @@ slice to touch that code. Nothing below is migrated in this change.
 | 29 | The web maps onboarding tones onto `StatusChip` keys (`packages/web-v2/src/features/onboarding/components/marks.tsx:TONE_CHIP`), one more colour map outside contracts beside item 18 | review |
 | 30 | Answering a questionnaire row through the questions route is refused `QUESTION_IN_QUESTIONNAIRE` as a thrown 409 in the questions slice's own shape (`packages/core/src/questions/write.ts:answerQuestion`), not the envelope | review |
 | 31 | The data-flow guard reads the level itself (`packages/core/src/onboarding/read.ts:projectHoldsSensitiveData`) to decide whether a data-flow design is owed, which is not an egress decision | review |
+| 32 | `CONTRACT_PROVIDER_NOT_LIVE` answers in the release blockers' 409 shape (`packages/core/src/release-batch/blocker-errors.ts:releaseBlockerError`), not the envelope, as every release blocker does; and it refuses the whole release, the auto-release sweep included, not only the issue that waits | review |
+| 33 | A contract wait is named by its uuid in refusals and routes, because a wait carries no key | review |
+| 34 | The admissible list holds a waiting issue by SQL (`packages/core/src/ecosystem/waits/gate.ts:waitUnsettledSql`) that mirrors `packages/core/src/ecosystem/waits/rules.ts:holdsDispatch`; only the predicate is unit-tested | review (an integration test) |
+| 35 | A change request's channel decision document can still answer it in prose; only the draft requirement it landed as (`packages/core/src/ecosystem/requests/land.ts:landChangeRequestIn`) and the provider's approved versions gate anything | review (owner question) |
+| 36 | A provider's live version is derived, not recorded: its newest verified release identity matched to a contract measurement's commit (`packages/core/src/ecosystem/waits/live.ts:providerLiveVersion`). An uploaded version, an unprobed provider or a stale land reads as no version, so E4 refuses until the ecosystem sets `releases.providerLive` to `off` | review |
+| 37 | `packages/core/src/feedback/triage.ts` inserts the draft issue it files itself, because `createIssue` takes no transaction, so `packages/core/src/issues/one-create-path.test.ts` is red and that issue emits no `issueCreated` | ISS-59 |
 
 ## Honest costs
 
@@ -351,4 +359,4 @@ slice to touch that code. Nothing below is migrated in this change.
 | One declaration in contracts, compiled | Core's start depends on `@forge/contracts` being built first; a contracts edit rebuilds before core typechecks |
 | Agency in one module | A slice that needs a new standing (for example a steward org admin) extends `ActRule` for everyone, rather than writing its own `if` |
 | `max+1` keys under the entity lock | A keyed row can never be hard-deleted, or its number is reissued |
-| Thirty-one listed divergences left in place | Until the review pass, two patterns are live for each of them, and a new slice must copy the reference, not the nearest file |
+| Thirty-five listed divergences left in place | Until the review pass, two patterns are live for each of them, and a new slice must copy the reference, not the nearest file |

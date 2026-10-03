@@ -26,7 +26,6 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { requirementOfIssue } from '../requirements/issue-links.js';
-import { buildsWorkflowOf } from '../workflows/build-gate.js';
 import { proposesWorkflowOf } from '../workflows/design-issue.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';
@@ -37,6 +36,7 @@ import { hydrateCreatorsForIssues } from './creator.js';
 import { toHttpDependencyError } from './dependency-routes.js';
 import { IssueDependencyError } from './dependency-service.js';
 import { serializeIssue } from './detail-projection.js';
+import { dispatchGatesOf } from './dispatch-gates.js';
 import { attachmentInputSchema, labelAttachItemSchema } from './input-schemas.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
 import {
@@ -264,7 +264,7 @@ issueProjectRoutes.get(
       ...creatorMap.get(issue.id),
       pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
       liveReach: await liveReachForIssue(issue),
-      buildsWorkflow: await buildsWorkflowOf(issue.id),
+      ...(await dispatchGatesOf(issue.id, issue.projectId)),
       proposesWorkflow: await proposesWorkflowOf(issue.id),
       requirement: await requirementOfIssue(issue.id),
       labels: labelRows,
@@ -419,7 +419,7 @@ issueRoutes.get(
       agentStatus: agentBucket?.agentStatus ?? null,
       pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
       liveReach: await liveReachForIssue(issue),
-      buildsWorkflow: await buildsWorkflowOf(issue.id),
+      ...(await dispatchGatesOf(issue.id, issue.projectId)),
       proposesWorkflow: await proposesWorkflowOf(issue.id),
       requirement: await requirementOfIssue(issue.id),
       labels: labelRows,

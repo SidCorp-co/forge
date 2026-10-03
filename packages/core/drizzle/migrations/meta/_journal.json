@@ -2290,6 +2290,13 @@
       "when": 1813449600000,
       "tag": "0353_onboarding_is_a_conversation",
       "breakpoints": true
+    },
+    {
+      "idx": 354,
+      "version": "7",
+      "when": 1813536000000,
+      "tag": "0354_an_issue_waits_on_a_contract_version",
+      "breakpoints": true
     }
   ]
 }

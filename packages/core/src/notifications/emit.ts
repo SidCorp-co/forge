@@ -16,6 +16,7 @@ const DEFAULT_SEVERITY_BY_TYPE: Record<NotificationType, string> = {
   channel_document_published: 'info',
   channel_thread_held: 'warning',
   channel_gate_pending: 'warning',
+  contract_version_published: 'info',
 };
 
 function defaultSeverityForType(type: NotificationType): string {

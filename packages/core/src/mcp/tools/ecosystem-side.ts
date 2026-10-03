@@ -1,5 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import type { EcosystemRefusal, EcosystemRefusalCode } from '../../ecosystem/refusals.js';
+import { RefusalError } from '../../lib/refusal.js';
 import { findProjectIdBySlug } from '../../projects/service.js';
 import type { McpContext } from './lib.js';
 import { patEffectiveProjectIds } from './project-scope.js';
@@ -67,6 +68,7 @@ async function namedSide(ctx: McpContext, named: unknown, codes: SideCodes): Pro
 
 // cm:why a service that refuses by name throws the refusal it decided, and it reaches the caller under that code; only a bare not-found or forbidden is left for the tool to name
 export function namedRefusals(err: unknown): EcosystemRefusal[] | null {
+  if (err instanceof RefusalError) return err.refusals as EcosystemRefusal[];
   if (!(err instanceof HTTPException)) return null;
   const cause = err.cause as { details?: { refusals?: unknown } } | undefined;
   const refusals = cause?.details?.refusals;
