@@ -39,6 +39,8 @@ export type AskInput = {
   issueId?: string;
   /** A BA clarification's requirement: at most one open question per requirement (Q5). */
   requirementId?: string;
+  /** A BA clarification's feedback item: at most one open question per item (Q5). */
+  feedbackId?: string;
   agentSessionId?: string;
   prompt: string;
   blockerKind: QuestionBlockerKind;
@@ -241,6 +243,7 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
       projectId: input.projectId,
       issueId: input.issueId,
       requirementId: input.requirementId,
+      feedbackId: input.feedbackId,
       agentSessionId: input.agentSessionId,
       blockerKind: input.blockerKind,
       steps: [step(1, input.prompt, input.answer, input.sensitive)],

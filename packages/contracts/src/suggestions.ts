@@ -3,8 +3,9 @@
 // response shapes from here, so no surface can name a kind, status or code another does not know.
 
 import { z } from "zod";
+import { type FeedbackTriageEffect, feedbackTriageSchema } from "./feedback.js";
 
-/** The six kinds rev 2 names; cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
+/** The six kinds rev 2 names, and feedback_triage (workflow feedback-triage, ISS-59); cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
 export const SUGGESTION_KINDS = [
 	"requirement_draft",
 	"revision_diff",
@@ -12,6 +13,7 @@ export const SUGGESTION_KINDS = [
 	"breakdown",
 	"triage",
 	"duplicate",
+	"feedback_triage",
 ] as const;
 export type SuggestionKind = (typeof SUGGESTION_KINDS)[number];
 
@@ -33,15 +35,16 @@ export const SUGGESTION_PRODUCERS = [
 ] as const;
 export type SuggestionProducer = (typeof SUGGESTION_PRODUCERS)[number];
 
-/** What a suggestion is about: one arm of its exclusive arc. feedback joins with the feedback table (S6). */
-export const SUGGESTION_TARGET_TYPES = ["requirement", "issue"] as const;
+/** What a suggestion is about: one arm of its exclusive arc. */
+export const SUGGESTION_TARGET_TYPES = ["requirement", "issue", "feedback"] as const;
 export type SuggestionTargetType = (typeof SUGGESTION_TARGET_TYPES)[number];
 
-/** An item embedding row's state: a write never skips in silence (Q7). */
+/** An item embedding row's state: a write never skips in silence (Q7), a no_egress project's included (Q8). */
 export const ITEM_EMBEDDING_STATUSES = [
 	"embedded",
 	"provider_not_configured",
 	"failed",
+	"withheld_by_policy",
 ] as const;
 export type ItemEmbeddingStatus = (typeof ITEM_EMBEDDING_STATUSES)[number];
 
@@ -168,6 +171,10 @@ export const SUGGESTION_PAYLOADS = {
 			note: z.string().trim().min(1).max(4_000),
 		}),
 	},
+	feedback_triage: {
+		targets: ["feedback"],
+		schema: feedbackTriageSchema,
+	},
 	duplicate: {
 		targets: ["requirement", "issue"],
 		schema: z.strictObject({
@@ -184,9 +191,10 @@ export const SUGGESTION_PAYLOADS = {
 const targetFields = {
 	requirement: z.string().trim().min(1).max(64).optional(),
 	issue: z.string().trim().min(1).max(200).optional(),
+	feedback: z.string().trim().min(1).max(64).optional(),
 };
 
-/** `POST /api/projects/:id/suggestions` — one of `requirement` or `issue`. */
+/** `POST /api/projects/:id/suggestions` — one of `requirement`, `issue` or `feedback`. */
 export const createSuggestionRequestSchema = z.strictObject({
 	kind: z.enum(SUGGESTION_KINDS),
 	...targetFields,
@@ -197,7 +205,7 @@ export const createSuggestionRequestSchema = z.strictObject({
 export type CreateSuggestionRequest = z.infer<
 	typeof createSuggestionRequestSchema
 >;
-export const CREATE_SUGGESTION_SHAPE = `{ kind: ${SUGGESTION_KINDS.join(" | ")}, requirement | issue, baseRevision, payload, model? }`;
+export const CREATE_SUGGESTION_SHAPE = `{ kind: ${SUGGESTION_KINDS.join(" | ")}, requirement | issue | feedback, baseRevision, payload, model? }`;
 
 /** `POST /api/projects/:id/suggestions/:sid/reject`. */
 export const rejectSuggestionRequestSchema = z.strictObject({
@@ -249,7 +257,7 @@ export interface SuggestionEffect {
 /** The answer to create, accept, reject and withdraw. */
 export interface SuggestionResponse {
 	suggestion: SuggestionView;
-	effect?: SuggestionEffect;
+	effect?: SuggestionEffect | FeedbackTriageEffect;
 }
 
 /** The answer to the list: the rows asked for, and how many are open on the target. */

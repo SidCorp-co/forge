@@ -1,3 +1,5 @@
+import type { RequirementHistoryEntry, RequirementStanding } from '@forge/contracts/requirements';
+
 export type RequirementStatus = 'draft' | 'agreed' | 'accepted' | 'dropped';
 export type RevisionState = 'draft' | 'proposed' | 'current' | 'superseded';
 export type DeliveryPhase = 'agreed' | 'in_delivery' | 'delivered';
@@ -9,12 +11,14 @@ export interface RequirementSummary {
   latestRevision: { revision: number; state: RevisionState } | null;
   delivery: RequirementDelivery;
   createdAt: string; updatedAt: string;
+  /** Where it stands, derived in core (`requirements/standing.ts`): group, waiting on, facts, coverage. */
+  standing: RequirementStanding;
 }
 export interface RequirementCriterion { id: string; code: string; body: string; form: 'statement' | 'scenario'; sinceRevision: number; retiredRevision: number | null }
 export interface RequirementRevision {
   revision: number; state: RevisionState; baseRevision: number | null;
   spec: RequirementSpec; tldr: string | null; changeSummary: string | null; reason: string;
-  authorId: string; authorName: string | null; createdAt: string;
+  authorId: string; authorName: string | null; authorKind: 'human' | 'agent'; createdAt: string;
   proposedAt: string | null; decidedBy: string | null; decidedByName: string | null; decidedAt: string | null; returnReason: string | null;
   criteria: RequirementCriterion[];
 }
@@ -29,6 +33,7 @@ export interface RequirementDetail extends RequirementSummary {
   baselines: RequirementBaseline[];   // newest first
   issues: RequirementIssueLink[];
   canSignOff: boolean;                // the viewer is a person allowed to accept / return / agree
+  history: RequirementHistoryEntry[];  // newest first
 }
 
 export interface RequirementList { requirements: RequirementSummary[]; returned: number }

@@ -42,6 +42,10 @@
       "types": "./src/record-events.ts",
       "default": "./src/record-events.ts"
     },
+    "./requirements": {
+      "types": "./dist/requirements.d.ts",
+      "default": "./dist/requirements.js"
+    },
     "./wireframe": {
       "types": "./dist/wireframe.d.ts",
       "default": "./dist/wireframe.js"
@@ -57,6 +61,14 @@
     "./onboarding": {
       "types": "./dist/onboarding.d.ts",
       "default": "./dist/onboarding.js"
+    },
+    "./data-policy": {
+      "types": "./dist/data-policy.d.ts",
+      "default": "./dist/data-policy.js"
+    },
+    "./feedback": {
+      "types": "./dist/feedback.d.ts",
+      "default": "./dist/feedback.js"
     },
     "./ui-actions": {
       "types": "./dist/ui-actions.d.ts",

@@ -1,6 +1,6 @@
 {
-  "id": "ec2ff3fe-bc8c-45fa-b4bd-10086d87b98e",
-  "prevId": "69f580e5-670e-4bba-b185-7afaa6f2204d",
+  "id": "409c93c5-27d8-409f-9999-e5093179ac5d",
+  "prevId": "0e71b87b-e6f4-4975-a0f8-9d055b31315d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -17468,6 +17468,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "feedback_id": {
+          "name": "feedback_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "base_revision": {
           "name": "base_revision",
           "type": "integer",
@@ -17567,7 +17573,7 @@
               "nulls": "last"
             },
             {
-              "expression": "coalesce(\"requirement_id\", \"issue_id\")",
+              "expression": "coalesce(\"requirement_id\", \"issue_id\", \"feedback_id\")",
               "asc": true,
               "isExpression": true,
               "nulls": "last"
@@ -17625,6 +17631,28 @@
           ],
           "isUnique": false,
           "where": "issue_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "suggestions_feedback_idx": {
+          "name": "suggestions_feedback_idx",
+          "columns": [
+            {
+              "expression": "feedback_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "feedback_id IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -17691,6 +17719,19 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
+        "suggestions_feedback_id_feedback_id_fk": {
+          "name": "suggestions_feedback_id_feedback_id_fk",
+          "tableFrom": "suggestions",
+          "tableTo": "feedback",
+          "columnsFrom": [
+            "feedback_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "suggestions_producer_id_users_id_fk": {
           "name": "suggestions_producer_id_users_id_fk",
           "tableFrom": "suggestions",
@@ -17737,11 +17778,11 @@
       "checkConstraints": {
         "suggestions_arc_chk": {
           "name": "suggestions_arc_chk",
-          "value": "num_nonnulls(\"suggestions\".\"requirement_id\", \"suggestions\".\"issue_id\") = 1"
+          "value": "num_nonnulls(\"suggestions\".\"requirement_id\", \"suggestions\".\"issue_id\", \"suggestions\".\"feedback_id\") = 1"
         },
         "suggestions_kind_chk": {
           "name": "suggestions_kind_chk",
-          "value": "\"suggestions\".\"kind\" IN ('requirement_draft', 'revision_diff', 'readiness', 'breakdown', 'triage', 'duplicate')"
+          "value": "\"suggestions\".\"kind\" IN ('requirement_draft', 'revision_diff', 'readiness', 'breakdown', 'triage', 'duplicate', 'feedback_triage')"
         },
         "suggestions_status_chk": {
           "name": "suggestions_status_chk",
@@ -18376,6 +18417,776 @@
       },
       "isRLSEnabled": false
     },
+    "public.feedback": {
+      "name": "feedback",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fb_seq": {
+          "name": "fb_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "severity": {
+          "name": "severity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'medium'"
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "where_seen": {
+          "name": "where_seen",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requirement_id": {
+          "name": "requirement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "issue_id": {
+          "name": "issue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "release_run_id": {
+          "name": "release_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "workflow_id": {
+          "name": "workflow_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'new'"
+        },
+        "route": {
+          "name": "route",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "routed_issue_id": {
+          "name": "routed_issue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "routed_requirement_id": {
+          "name": "routed_requirement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "routed_suggestion_id": {
+          "name": "routed_suggestion_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duplicate_of": {
+          "name": "duplicate_of",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "answer": {
+          "name": "answer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reported_by": {
+          "name": "reported_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reporter_agency": {
+          "name": "reporter_agency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scrubbed": {
+          "name": "scrubbed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "redactions": {
+          "name": "redactions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "redacted_at": {
+          "name": "redacted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "redacted_by": {
+          "name": "redacted_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dedup_key": {
+          "name": "dedup_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "feedback_project_seq_uq": {
+          "name": "feedback_project_seq_uq",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "fb_seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feedback_project_dedup_uq": {
+          "name": "feedback_project_dedup_uq",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "dedup_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "dedup_key IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feedback_project_status_idx": {
+          "name": "feedback_project_status_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feedback_routed_issue_idx": {
+          "name": "feedback_routed_issue_idx",
+          "columns": [
+            {
+              "expression": "routed_issue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "routed_issue_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feedback_duplicate_of_idx": {
+          "name": "feedback_duplicate_of_idx",
+          "columns": [
+            {
+              "expression": "duplicate_of",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "duplicate_of IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "feedback_project_id_projects_id_fk": {
+          "name": "feedback_project_id_projects_id_fk",
+          "tableFrom": "feedback",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "feedback_requirement_id_requirements_id_fk": {
+          "name": "feedback_requirement_id_requirements_id_fk",
+          "tableFrom": "feedback",
+          "tableTo": "requirements",
+          "columnsFrom": [
+            "requirement_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "feedback_issue_id_issues_id_fk": {
+          "name": "feedback_issue_id_issues_id_fk",
+          "tableFrom": "feedback",
+          "tableTo": "issues",
+          "columnsFrom": [
+            "issue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "feedback_release_run_id_pipeline_runs_id_fk": {
+          "name": "feedback_release_run_id_pipeline_runs_id_fk",
+          "tableFrom": "feedback",
+          "tableTo": "pipeline_runs",
+          "columnsFrom": [
+            "release_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "feedback_workflow_id_project_workflows_id_fk": {
+          "name": "feedback_workflow_id_project_workflows_id_fk",
+          "tableFrom": "feedback",
+          "tableTo": "project_workflows",
+          "columnsFrom": [
+            "workflow_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "feedback_routed_issue_id_issues_id_fk": {
+          "name": "feedback_routed_issue_id_issues_id_fk",
+          "tableFrom": "feedback",
+          "tableTo": "issues",
+          "columnsFrom": [
+            "routed_issue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "feedback_routed_requirement_id_requirements_id_fk": {
+          "name": "feedback_routed_requirement_id_requirements_id_fk",
+          "tableFrom": "feedback",
+          "tableTo": "requirements",
+          "columnsFrom": [
+            "routed_requirement_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "feedback_routed_suggestion_id_suggestions_id_fk": {
+          "name": "feedback_routed_suggestion_id_suggestions_id_fk",
+          "tableFrom": "feedback",
+          "tableTo": "suggestions",
+          "columnsFrom": [
+            "routed_suggestion_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "feedback_duplicate_of_feedback_id_fk": {
+          "name": "feedback_duplicate_of_feedback_id_fk",
+          "tableFrom": "feedback",
+          "tableTo": "feedback",
+          "columnsFrom": [
+            "duplicate_of"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "feedback_reported_by_users_id_fk": {
+          "name": "feedback_reported_by_users_id_fk",
+          "tableFrom": "feedback",
+          "tableTo": "users",
+          "columnsFrom": [
+            "reported_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "feedback_redacted_by_users_id_fk": {
+          "name": "feedback_redacted_by_users_id_fk",
+          "tableFrom": "feedback",
+          "tableTo": "users",
+          "columnsFrom": [
+            "redacted_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "feedback_arc_chk": {
+          "name": "feedback_arc_chk",
+          "value": "num_nonnulls(\"feedback\".\"requirement_id\", \"feedback\".\"issue_id\", \"feedback\".\"release_run_id\", \"feedback\".\"workflow_id\") = 1 OR (num_nonnulls(\"feedback\".\"requirement_id\", \"feedback\".\"issue_id\", \"feedback\".\"release_run_id\", \"feedback\".\"workflow_id\") = 0 AND \"feedback\".\"where_seen\" IS NOT NULL)"
+        },
+        "feedback_kind_chk": {
+          "name": "feedback_kind_chk",
+          "value": "\"feedback\".\"kind\" IN ('bug', 'change_request', 'question', 'idea', 'contract_change')"
+        },
+        "feedback_severity_chk": {
+          "name": "feedback_severity_chk",
+          "value": "\"feedback\".\"severity\" IN ('low', 'medium', 'high', 'critical')"
+        },
+        "feedback_status_chk": {
+          "name": "feedback_status_chk",
+          "value": "\"feedback\".\"status\" IN ('new', 'triaged', 'reopened', 'verified', 'declined')"
+        },
+        "feedback_route_chk": {
+          "name": "feedback_route_chk",
+          "value": "(\"feedback\".\"route\" IS NULL AND num_nonnulls(\"feedback\".\"routed_issue_id\", \"feedback\".\"routed_requirement_id\", \"feedback\".\"routed_suggestion_id\", \"feedback\".\"duplicate_of\", \"feedback\".\"answer\") = 0)\n        OR (\"feedback\".\"route\" = 'issue' AND \"feedback\".\"routed_issue_id\" IS NOT NULL AND num_nonnulls(\"feedback\".\"routed_requirement_id\", \"feedback\".\"routed_suggestion_id\", \"feedback\".\"duplicate_of\", \"feedback\".\"answer\") = 0)\n        OR (\"feedback\".\"route\" = 'revision' AND \"feedback\".\"routed_suggestion_id\" IS NOT NULL AND num_nonnulls(\"feedback\".\"routed_issue_id\", \"feedback\".\"routed_requirement_id\", \"feedback\".\"duplicate_of\", \"feedback\".\"answer\") = 0)\n        OR (\"feedback\".\"route\" = 'new_requirement' AND \"feedback\".\"routed_requirement_id\" IS NOT NULL AND num_nonnulls(\"feedback\".\"routed_issue_id\", \"feedback\".\"routed_suggestion_id\", \"feedback\".\"duplicate_of\", \"feedback\".\"answer\") = 0)\n        OR (\"feedback\".\"route\" = 'answer' AND \"feedback\".\"answer\" ~ '[^[:space:]]' AND num_nonnulls(\"feedback\".\"routed_issue_id\", \"feedback\".\"routed_requirement_id\", \"feedback\".\"routed_suggestion_id\", \"feedback\".\"duplicate_of\") = 0)\n        OR (\"feedback\".\"route\" = 'duplicate' AND \"feedback\".\"duplicate_of\" IS NOT NULL AND num_nonnulls(\"feedback\".\"routed_issue_id\", \"feedback\".\"routed_requirement_id\", \"feedback\".\"routed_suggestion_id\", \"feedback\".\"answer\") = 0)"
+        },
+        "feedback_status_route_chk": {
+          "name": "feedback_status_route_chk",
+          "value": "(\"feedback\".\"status\" <> 'triaged' OR \"feedback\".\"route\" IS NOT NULL) AND (\"feedback\".\"status\" <> 'new' OR \"feedback\".\"route\" IS NULL)"
+        },
+        "feedback_duplicate_self_chk": {
+          "name": "feedback_duplicate_self_chk",
+          "value": "\"feedback\".\"duplicate_of\" IS NULL OR \"feedback\".\"duplicate_of\" <> \"feedback\".\"id\""
+        },
+        "feedback_redacted_chk": {
+          "name": "feedback_redacted_chk",
+          "value": "\"feedback\".\"redacted_at\" IS NULL OR (\"feedback\".\"body\" IS NULL AND \"feedback\".\"redacted_by\" IS NOT NULL)"
+        },
+        "feedback_reporter_agency_chk": {
+          "name": "feedback_reporter_agency_chk",
+          "value": "\"feedback\".\"reporter_agency\" IN ('human', 'agent')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.feedback_attachments": {
+      "name": "feedback_attachments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feedback_id": {
+          "name": "feedback_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mime": {
+          "name": "mime",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size": {
+          "name": "size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storage_path": {
+          "name": "storage_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "flagged": {
+          "name": "flagged",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "uploaded_by": {
+          "name": "uploaded_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "feedback_attachments_feedback_idx": {
+          "name": "feedback_attachments_feedback_idx",
+          "columns": [
+            {
+              "expression": "feedback_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "feedback_attachments_project_id_projects_id_fk": {
+          "name": "feedback_attachments_project_id_projects_id_fk",
+          "tableFrom": "feedback_attachments",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "feedback_attachments_feedback_id_feedback_id_fk": {
+          "name": "feedback_attachments_feedback_id_feedback_id_fk",
+          "tableFrom": "feedback_attachments",
+          "tableTo": "feedback",
+          "columnsFrom": [
+            "feedback_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "feedback_attachments_uploaded_by_users_id_fk": {
+          "name": "feedback_attachments_uploaded_by_users_id_fk",
+          "tableFrom": "feedback_attachments",
+          "tableTo": "users",
+          "columnsFrom": [
+            "uploaded_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.feedback_decisions": {
+      "name": "feedback_decisions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feedback_id": {
+          "name": "feedback_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "decision": {
+          "name": "decision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "route": {
+          "name": "route",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "carrier": {
+          "name": "carrier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "decided_agency": {
+          "name": "decided_agency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "from_suggestion_id": {
+          "name": "from_suggestion_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "feedback_decisions_feedback_idx": {
+          "name": "feedback_decisions_feedback_idx",
+          "columns": [
+            {
+              "expression": "feedback_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "decided_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "feedback_decisions_project_id_projects_id_fk": {
+          "name": "feedback_decisions_project_id_projects_id_fk",
+          "tableFrom": "feedback_decisions",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "feedback_decisions_feedback_id_feedback_id_fk": {
+          "name": "feedback_decisions_feedback_id_feedback_id_fk",
+          "tableFrom": "feedback_decisions",
+          "tableTo": "feedback",
+          "columnsFrom": [
+            "feedback_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "feedback_decisions_decided_by_users_id_fk": {
+          "name": "feedback_decisions_decided_by_users_id_fk",
+          "tableFrom": "feedback_decisions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "decided_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "feedback_decisions_from_suggestion_id_suggestions_id_fk": {
+          "name": "feedback_decisions_from_suggestion_id_suggestions_id_fk",
+          "tableFrom": "feedback_decisions",
+          "tableTo": "suggestions",
+          "columnsFrom": [
+            "from_suggestion_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "feedback_decisions_decision_chk": {
+          "name": "feedback_decisions_decision_chk",
+          "value": "\"feedback_decisions\".\"decision\" IN ('triaged', 'declined', 'verified', 'reopened', 'redacted')"
+        },
+        "feedback_decisions_route_chk": {
+          "name": "feedback_decisions_route_chk",
+          "value": "(\"feedback_decisions\".\"decision\" = 'triaged') = (\"feedback_decisions\".\"route\" IS NOT NULL)"
+        },
+        "feedback_decisions_reason_chk": {
+          "name": "feedback_decisions_reason_chk",
+          "value": "\"feedback_decisions\".\"decision\" NOT IN ('declined', 'reopened') OR \"feedback_decisions\".\"reason\" ~ '[^[:space:]]'"
+        },
+        "feedback_decisions_agency_chk": {
+          "name": "feedback_decisions_agency_chk",
+          "value": "\"feedback_decisions\".\"decided_agency\" IN ('human', 'agent')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.item_embeddings": {
       "name": "item_embeddings",
       "schema": "",
@@ -18399,13 +19210,19 @@
           "primaryKey": false,
           "notNull": false
         },
+        "feedback_id": {
+          "name": "feedback_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "item_type": {
           "name": "item_type",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "generated": {
-            "as": "CASE WHEN \"item_embeddings\".\"requirement_id\" IS NOT NULL THEN 'requirement' END",
+            "as": "CASE WHEN \"item_embeddings\".\"requirement_id\" IS NOT NULL THEN 'requirement' WHEN \"item_embeddings\".\"feedback_id\" IS NOT NULL THEN 'feedback' END",
             "type": "stored"
           }
         },
@@ -18415,7 +19232,7 @@
           "primaryKey": false,
           "notNull": false,
           "generated": {
-            "as": "coalesce(\"item_embeddings\".\"requirement_id\")",
+            "as": "coalesce(\"item_embeddings\".\"requirement_id\", \"item_embeddings\".\"feedback_id\")",
             "type": "stored"
           }
         },
@@ -18548,6 +19365,19 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "item_embeddings_feedback_id_feedback_id_fk": {
+          "name": "item_embeddings_feedback_id_feedback_id_fk",
+          "tableFrom": "item_embeddings",
+          "tableTo": "feedback",
+          "columnsFrom": [
+            "feedback_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -18556,11 +19386,11 @@
       "checkConstraints": {
         "item_embeddings_arc_chk": {
           "name": "item_embeddings_arc_chk",
-          "value": "num_nonnulls(\"item_embeddings\".\"requirement_id\") = 1"
+          "value": "num_nonnulls(\"item_embeddings\".\"requirement_id\", \"item_embeddings\".\"feedback_id\") = 1"
         },
         "item_embeddings_status_chk": {
           "name": "item_embeddings_status_chk",
-          "value": "\"item_embeddings\".\"status\" IN ('embedded', 'provider_not_configured', 'failed')"
+          "value": "\"item_embeddings\".\"status\" IN ('embedded', 'provider_not_configured', 'failed', 'withheld_by_policy')"
         },
         "item_embeddings_embedded_chk": {
           "name": "item_embeddings_embedded_chk",
@@ -18593,6 +19423,12 @@
         },
         "requirement_id": {
           "name": "requirement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "feedback_id": {
+          "name": "feedback_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -18796,6 +19632,22 @@
           "method": "btree",
           "with": {}
         },
+        "agent_questions_feedback_open_uq": {
+          "name": "agent_questions_feedback_open_uq",
+          "columns": [
+            {
+              "expression": "feedback_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"agent_questions\".\"status\" = 'open' and \"agent_questions\".\"feedback_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "agent_questions_channel_gate_open_uq": {
           "name": "agent_questions_channel_gate_open_uq",
           "columns": [
@@ -18846,6 +19698,19 @@
           "tableTo": "requirements",
           "columnsFrom": [
             "requirement_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "agent_questions_feedback_id_feedback_id_fk": {
+          "name": "agent_questions_feedback_id_feedback_id_fk",
+          "tableFrom": "agent_questions",
+          "tableTo": "feedback",
+          "columnsFrom": [
+            "feedback_id"
           ],
           "columnsTo": [
             "id"

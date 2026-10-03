@@ -20,6 +20,7 @@ export * from "./reconcile.js";
 export * from "./record-events.js";
 export * from "./refusal.js";
 export * from "./requests.js";
+export * from "./requirements.js";
 export * from "./responses.js";
 export * from "./rows.js";
 export * from "./skill-activity.js";

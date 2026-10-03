@@ -56,10 +56,14 @@ function answer(c: Context, outcome: SuggestionOutcome) {
 function targetOf(v: {
   requirement?: string | undefined;
   issue?: string | undefined;
+  feedback?: string | undefined;
 }): SuggestionTargetRef | undefined {
-  if (v.requirement && v.issue) throw badRequest('name one target: `requirement` or `issue`');
+  if ([v.requirement, v.issue, v.feedback].filter(Boolean).length > 1) {
+    throw badRequest('name one target: `requirement`, `issue` or `feedback`');
+  }
   if (v.requirement) return { requirement: v.requirement };
   if (v.issue) return { issue: v.issue };
+  if (v.feedback) return { feedback: v.feedback };
   return undefined;
 }
 
@@ -69,7 +73,7 @@ suggestionRoutes.get(
   zValidator('query', listSuggestionsQuerySchema, (r) => {
     if (!r.success)
       throw badRequest(
-        `invalid query: requirement?, issue?, status? (comma-separated: ${SUGGESTION_STATUSES.join(', ')})`,
+        `invalid query: requirement?, issue?, feedback?, status? (comma-separated: ${SUGGESTION_STATUSES.join(', ')})`,
       );
   }),
   async (c) => {

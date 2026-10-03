@@ -88,7 +88,7 @@ export const workStepOf = (row: {
 }): WorkStep | null => row.workState?.step ?? null;
 
 /** Which design-kit chip draws each of contracts' `ISSUE_STATUS_TONES`. */
-const TONE_CHIP: Record<IssueStatusTone, StatusKey> = {
+export const TONE_CHIP: Record<IssueStatusTone, StatusKey> = {
 	neutral: "queued",
 	ready: "passed",
 	run: "running",
@@ -96,6 +96,11 @@ const TONE_CHIP: Record<IssueStatusTone, StatusKey> = {
 	done: "archived",
 	err: "failed",
 };
+
+/** A tone of the badge legend as a design-kit chip; every contracts tone map is drawn through it. */
+export function toneChip(tone: IssueStatusTone): StatusKey {
+	return TONE_CHIP[tone];
+}
 
 /** The issue's lifecycle status as a design-kit `StatusKey`. The agent run's state is a different fact with its own chip: `runStatusChip`. */
 export function statusToChip(status: IssueStatus): StatusKey {

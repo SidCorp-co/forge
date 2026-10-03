@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { type AboutKind, aboutDraft } from "./ask-about";
 import { type ChatTarget, clampDockWidth, defaultDockWidth, targetInScope } from "./dock-target";
@@ -21,7 +21,13 @@ export interface ChatDockApi {
   select: (target: ChatTarget) => void;
   follow: (conversationId: string) => void;
   askAbout: (kind: AboutKind, ref: string) => void;
+  /** A page names the room Ask Agent opens on it (a requirement's BA assistant room); null clears it. */
+  setDoor: (door: DockDoor | null) => void;
 }
+
+/** Resolves the target the dock opens on, when it is opened from the top bar on a page that set one.
+ *  It reports its own failure to the person and resolves null; it never rejects. */
+export type DockDoor = () => Promise<ChatTarget | null>;
 
 const ChatDockContext = createContext<ChatDockApi | null>(null);
 
@@ -30,6 +36,7 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
   const [storedWidth, setStoredWidth] = usePersistedState(DOCK_WIDTH_KEY, defaultDockWidth(), { syncTabs: false });
   const [picked, setPicked] = useState<ChatTarget | null>(null);
   const [generation, setGeneration] = useState(0);
+  const door = useRef<DockDoor | null>(null);
   const target = targetInScope(picked, projectId);
 
   const select = useCallback((t: ChatTarget) => {
@@ -69,10 +76,20 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
       setWidth: (w: number) => setStoredWidth(clampDockWidth(w)),
       show,
       close: () => setOpen(false),
-      toggle: () => setOpen((o) => !o),
+      // cm:why opening from the top bar on a page that named a door lands in that page's room (the
+      // requirement's BA assistant, ISS-58); a door that cannot open says so itself and answers null,
+      // which leaves the dock on its own target
+      toggle: () => {
+        const opening = !open;
+        setOpen((o) => !o);
+        if (opening && door.current) void door.current().then((t) => t && select(t));
+      },
       select,
       follow,
       askAbout,
+      setDoor: (d: DockDoor | null) => {
+        door.current = d;
+      },
     }),
     [projectId, open, target, generation, storedWidth, setStoredWidth, show, setOpen, select, follow, askAbout],
   );
@@ -84,4 +101,15 @@ export function ChatDockProvider({ value, children }: { value: ChatDockApi; chil
 
 export function useChatDock(): ChatDockApi | null {
   return useContext(ChatDockContext);
+}
+
+/** Names this page's door for as long as the page is mounted. */
+export function useChatDockDoor(door: DockDoor | null) {
+  const dock = useChatDock();
+  const setDoor = dock?.setDoor;
+  useEffect(() => {
+    if (!setDoor) return;
+    setDoor(door);
+    return () => setDoor(null);
+  }, [setDoor, door]);
 }

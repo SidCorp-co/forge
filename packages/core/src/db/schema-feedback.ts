@@ -1,0 +1,218 @@
+import {
+  FEEDBACK_DECISIONS,
+  FEEDBACK_KINDS,
+  FEEDBACK_ROUTES,
+  FEEDBACK_SEVERITIES,
+  FEEDBACK_STATUSES,
+} from '@forge/contracts/feedback';
+import { sql } from 'drizzle-orm';
+import {
+  type AnyPgColumn,
+  boolean,
+  check,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
+import { issues, pipelineRuns, projects, users } from './schema.js';
+import { requirements } from './schema-requirements.js';
+import { suggestions } from './schema-suggestions.js';
+import { projectWorkflows } from './schema-workflows.js';
+
+export {
+  FEEDBACK_DECISIONS,
+  FEEDBACK_KINDS,
+  FEEDBACK_ROUTES,
+  FEEDBACK_SEVERITIES,
+  FEEDBACK_STATUSES,
+} from '@forge/contracts/feedback';
+
+const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
+
+// cm:why FB-n (workflow feedback-lifecycle rev 2): the stored status is only what a person decided;
+// planned and resolved are read from the linked work (Q1). A keyed row is never deleted: a
+// redaction (UC15) empties its text and keeps the row so every link to it still resolves
+export const feedback = pgTable(
+  'feedback',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    fbSeq: integer('fb_seq').notNull(),
+    kind: text('kind', { enum: FEEDBACK_KINDS }).notNull(),
+    severity: text('severity', { enum: FEEDBACK_SEVERITIES }).notNull().default('medium'),
+    title: text('title').notNull(),
+    body: text('body'),
+    /** Where it was seen; with no target key it is the screen the item is about. */
+    whereSeen: text('where_seen'),
+    // cm:why an exclusive arc of real foreign keys; `no action` so a target is never deleted out
+    // from under a keyed row, while a project's cascade still removes both
+    requirementId: uuid('requirement_id').references((): AnyPgColumn => requirements.id, {
+      onDelete: 'no action',
+    }),
+    issueId: uuid('issue_id').references((): AnyPgColumn => issues.id, { onDelete: 'no action' }),
+    releaseRunId: uuid('release_run_id').references((): AnyPgColumn => pipelineRuns.id, {
+      onDelete: 'no action',
+    }),
+    workflowId: uuid('workflow_id').references((): AnyPgColumn => projectWorkflows.id, {
+      onDelete: 'no action',
+    }),
+    status: text('status', { enum: FEEDBACK_STATUSES }).notNull().default('new'),
+    route: text('route', { enum: FEEDBACK_ROUTES }),
+    routedIssueId: uuid('routed_issue_id').references((): AnyPgColumn => issues.id, {
+      onDelete: 'no action',
+    }),
+    routedRequirementId: uuid('routed_requirement_id').references(
+      (): AnyPgColumn => requirements.id,
+      { onDelete: 'no action' },
+    ),
+    routedSuggestionId: uuid('routed_suggestion_id').references((): AnyPgColumn => suggestions.id, {
+      onDelete: 'no action',
+    }),
+    duplicateOf: uuid('duplicate_of').references((): AnyPgColumn => feedback.id, {
+      onDelete: 'no action',
+    }),
+    answer: text('answer'),
+    reportedBy: uuid('reported_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    reporterAgency: text('reporter_agency', { enum: ['human', 'agent'] }).notNull(),
+    /** The project's data policy scrubbed title and body on write; `redactions` counts what it replaced. */
+    scrubbed: boolean('scrubbed').notNull().default(false),
+    redactions: integer('redactions').notNull().default(0),
+    redactedAt: timestamp('redacted_at', { withTimezone: true }),
+    redactedBy: uuid('redacted_by').references(() => users.id, { onDelete: 'restrict' }),
+    // cm:why the seam E3 fills (ISS-61): one item per consumer per breaking contract version, held by
+    // a unique key the filer names, so a retried notice cannot file a twin
+    dedupKey: text('dedup_key'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    arcChk: check(
+      'feedback_arc_chk',
+      sql`num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}) = 1 OR (num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}) = 0 AND ${t.whereSeen} IS NOT NULL)`,
+    ),
+    kindChk: check('feedback_kind_chk', sql`${t.kind} IN (${inList(FEEDBACK_KINDS)})`),
+    severityChk: check(
+      'feedback_severity_chk',
+      sql`${t.severity} IN (${inList(FEEDBACK_SEVERITIES)})`,
+    ),
+    statusChk: check('feedback_status_chk', sql`${t.status} IN (${inList(FEEDBACK_STATUSES)})`),
+    routeChk: check(
+      'feedback_route_chk',
+      sql`(${t.route} IS NULL AND num_nonnulls(${t.routedIssueId}, ${t.routedRequirementId}, ${t.routedSuggestionId}, ${t.duplicateOf}, ${t.answer}) = 0)
+        OR (${t.route} = 'issue' AND ${t.routedIssueId} IS NOT NULL AND num_nonnulls(${t.routedRequirementId}, ${t.routedSuggestionId}, ${t.duplicateOf}, ${t.answer}) = 0)
+        OR (${t.route} = 'revision' AND ${t.routedSuggestionId} IS NOT NULL AND num_nonnulls(${t.routedIssueId}, ${t.routedRequirementId}, ${t.duplicateOf}, ${t.answer}) = 0)
+        OR (${t.route} = 'new_requirement' AND ${t.routedRequirementId} IS NOT NULL AND num_nonnulls(${t.routedIssueId}, ${t.routedSuggestionId}, ${t.duplicateOf}, ${t.answer}) = 0)
+        OR (${t.route} = 'answer' AND ${t.answer} ~ '[^[:space:]]' AND num_nonnulls(${t.routedIssueId}, ${t.routedRequirementId}, ${t.routedSuggestionId}, ${t.duplicateOf}) = 0)
+        OR (${t.route} = 'duplicate' AND ${t.duplicateOf} IS NOT NULL AND num_nonnulls(${t.routedIssueId}, ${t.routedRequirementId}, ${t.routedSuggestionId}, ${t.answer}) = 0)`,
+    ),
+    statusRouteChk: check(
+      'feedback_status_route_chk',
+      sql`(${t.status} <> 'triaged' OR ${t.route} IS NOT NULL) AND (${t.status} <> 'new' OR ${t.route} IS NULL)`,
+    ),
+    duplicateSelfChk: check(
+      'feedback_duplicate_self_chk',
+      sql`${t.duplicateOf} IS NULL OR ${t.duplicateOf} <> ${t.id}`,
+    ),
+    redactedChk: check(
+      'feedback_redacted_chk',
+      sql`${t.redactedAt} IS NULL OR (${t.body} IS NULL AND ${t.redactedBy} IS NOT NULL)`,
+    ),
+    agencyChk: check(
+      'feedback_reporter_agency_chk',
+      sql`${t.reporterAgency} IN ('human', 'agent')`,
+    ),
+    seqUq: uniqueIndex('feedback_project_seq_uq').on(t.projectId, t.fbSeq),
+    dedupUq: uniqueIndex('feedback_project_dedup_uq')
+      .on(t.projectId, t.dedupKey)
+      .where(sql`dedup_key IS NOT NULL`),
+    statusIdx: index('feedback_project_status_idx').on(t.projectId, t.status),
+    routedIssueIdx: index('feedback_routed_issue_idx')
+      .on(t.routedIssueId)
+      .where(sql`routed_issue_id IS NOT NULL`),
+    duplicateIdx: index('feedback_duplicate_of_idx')
+      .on(t.duplicateOf)
+      .where(sql`duplicate_of IS NOT NULL`),
+  }),
+);
+
+// cm:why a decision is a row, not an overwrite (domain-entities.md "Records and audit"): a re-triage
+// after a reopen keeps the route it replaced. Insert-only by trigger, removed only with its item
+export const feedbackDecisions = pgTable(
+  'feedback_decisions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    feedbackId: uuid('feedback_id')
+      .notNull()
+      .references(() => feedback.id, { onDelete: 'cascade' }),
+    decision: text('decision', { enum: FEEDBACK_DECISIONS }).notNull(),
+    route: text('route', { enum: FEEDBACK_ROUTES }),
+    /** What the route points at, by key (ISS-12, REQ-3, FB-4), as it read when decided. */
+    carrier: text('carrier'),
+    reason: text('reason'),
+    decidedBy: uuid('decided_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    decidedAgency: text('decided_agency', { enum: ['human', 'agent'] }).notNull(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+    fromSuggestionId: uuid('from_suggestion_id').references((): AnyPgColumn => suggestions.id, {
+      onDelete: 'no action',
+    }),
+  },
+  (t) => ({
+    decisionChk: check(
+      'feedback_decisions_decision_chk',
+      sql`${t.decision} IN (${inList(FEEDBACK_DECISIONS)})`,
+    ),
+    routeChk: check(
+      'feedback_decisions_route_chk',
+      sql`(${t.decision} = 'triaged') = (${t.route} IS NOT NULL)`,
+    ),
+    reasonChk: check(
+      'feedback_decisions_reason_chk',
+      sql`${t.decision} NOT IN ('declined', 'reopened') OR ${t.reason} ~ '[^[:space:]]'`,
+    ),
+    agencyChk: check(
+      'feedback_decisions_agency_chk',
+      sql`${t.decidedAgency} IN ('human', 'agent')`,
+    ),
+    feedbackIdx: index('feedback_decisions_feedback_idx').on(t.feedbackId, t.decidedAt),
+  }),
+);
+
+// cm:why a reporter's screenshot is reporter data (UC15): stored beside its item, flagged when the
+// project's data policy is on, and removed with the bytes on a redaction
+export const feedbackAttachments = pgTable(
+  'feedback_attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    feedbackId: uuid('feedback_id')
+      .notNull()
+      .references(() => feedback.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    mime: text('mime').notNull(),
+    size: integer('size').notNull(),
+    storagePath: text('storage_path').notNull(),
+    flagged: boolean('flagged').notNull(),
+    uploadedBy: uuid('uploaded_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    feedbackIdx: index('feedback_attachments_feedback_idx').on(t.feedbackId),
+  }),
+);

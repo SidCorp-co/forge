@@ -3,12 +3,11 @@ import {
   resolveProjectTemplates,
   type WorkflowTemplate,
 } from '@forge/contracts/workflow-templates';
-import { inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
-import { users } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
+import { peopleOf } from '../lib/people.js';
 import { staleBase } from '../project-config/documents.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { designFingerprint, designStatusAfterWrite, designStatusAtCreate } from './design.js';
@@ -274,11 +273,6 @@ async function writerNames(rows: readonly StoredWorkflow[]): Promise<Map<string,
 }
 
 export async function userNames(userIds: readonly (string | null)[]): Promise<Map<string, string>> {
-  const ids = [...new Set(userIds.filter((u): u is string => u !== null))];
-  if (ids.length === 0) return new Map();
-  const found = await db
-    .select({ id: users.id, displayName: users.displayName, email: users.email })
-    .from(users)
-    .where(inArray(users.id, ids));
-  return new Map(found.map((u) => [u.id, u.displayName ?? u.email]));
+  const people = await peopleOf(userIds);
+  return new Map([...people].map(([id, p]) => [id, p.name]));
 }

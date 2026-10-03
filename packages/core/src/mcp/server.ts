@@ -32,6 +32,7 @@ import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
 import { forgeCriteriaTool } from './tools/forge-criteria.js';
 import { forgeEcosystemTool } from './tools/forge-ecosystem.js';
+import { forgeFeedbackItemsTool } from './tools/forge-feedback-items.js';
 import { forgeGoogleSheetsTool } from './tools/forge-google-sheets.js';
 import { forgeGuideTool } from './tools/forge-guide.js';
 import { forgeHealthTool } from './tools/forge-health.js';
@@ -185,6 +186,7 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     forgeRequirementsTool(ctx),
     forgeSuggestionsTool(ctx),
     forgeOnboardingTool(ctx),
+    forgeFeedbackItemsTool(ctx),
     forgeJobsListTool(ctx),
     forgeJobsGetTool(ctx),
     forgeJobsEventsTool(ctx),

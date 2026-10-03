@@ -14,6 +14,7 @@
 import type { QuestionnaireItem } from '@forge/contracts/onboarding';
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   check,
   index,
   integer,
@@ -26,6 +27,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { agentSessions, issues, projects } from './schema.js';
 import type { ConversationAdapter } from './schema-conversations.js';
+import { feedback } from './schema-feedback.js';
 import { questionnaireBatches } from './schema-onboarding.js';
 import { requirements } from './schema-requirements.js';
 
@@ -121,6 +123,10 @@ export const agentQuestions = pgTable(
     requirementId: uuid('requirement_id').references(() => requirements.id, {
       onDelete: 'cascade',
     }),
+    /** The feedback item a BA clarification is scoped to (Q5); null on every other question. */
+    feedbackId: uuid('feedback_id').references((): AnyPgColumn => feedback.id, {
+      onDelete: 'cascade',
+    }),
     agentSessionId: uuid('agent_session_id').references(() => agentSessions.id, {
       onDelete: 'set null',
     }),
@@ -154,6 +160,9 @@ export const agentQuestions = pgTable(
     uniqueIndex('agent_questions_requirement_open_uq')
       .on(t.requirementId)
       .where(sql`${t.status} = 'open' and ${t.requirementId} is not null`),
+    uniqueIndex('agent_questions_feedback_open_uq')
+      .on(t.feedbackId)
+      .where(sql`${t.status} = 'open' and ${t.feedbackId} is not null`),
     // cm:why a channel document waits at its gate on one open question, so two approvers cannot each publish a copy
     uniqueIndex('agent_questions_channel_gate_open_uq')
       .on(sql`(${t.origin} ->> 'documentId')`)

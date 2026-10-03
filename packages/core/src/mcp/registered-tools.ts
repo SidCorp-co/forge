@@ -18,6 +18,7 @@ export const REGISTERED_TOOLS = [
   'forge_criteria',
   'forge_ecosystem',
   'forge_feedback',
+  'forge_feedback_items',
   'forge_github',
   'forge_google_sheets',
   'forge_guide',

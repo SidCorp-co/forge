@@ -59,6 +59,7 @@ export const PROJECT_MENU: ProjEntry[] = [
     ],
   },
   { key: "proj-releases", label: "Releases", icon: "rocket", sub: "/releases" },
+  { key: "proj-feedback", label: "Feedback", icon: "chat", sub: "/feedback" },
 ];
 
 export const PROJECT_ITEMS: ProjItem[] = PROJECT_MENU.flatMap((e) => (isProjGroup(e) ? e.items : [e]));
