@@ -14,6 +14,7 @@ import {
   type RevisionState,
   requirementBaselines,
   requirementCriteria,
+  requirementDeferrals,
   requirementDelivery,
   requirementReturns,
   requirementRevisions,
@@ -228,6 +229,7 @@ function statusMoveOf(payload: unknown): { from: string; to: string } | null {
 type RevisionRow = typeof requirementRevisions.$inferSelect;
 type BaselineRow = typeof requirementBaselines.$inferSelect;
 type ReturnRow = typeof requirementReturns.$inferSelect;
+type DeferralRow = typeof requirementDeferrals.$inferSelect;
 type ActivityRow = typeof activityLog.$inferSelect;
 interface SuggestionRow {
   id: string;
@@ -300,6 +302,19 @@ const returnEntry = (r: ReturnRow, n: Namer) =>
     text: `Returned r${r.revision}: ${r.reason}`,
   });
 
+const deferralEntry = (d: DeferralRow, n: Namer) =>
+  entry({
+    id: `deferral-${d.id}`,
+    at: d.decidedAt.toISOString(),
+    source: 'person',
+    who: n.who(d.decidedBy, 'A signer'),
+    kind: 'Decision',
+    text:
+      d.act === 'defer'
+        ? `Deferred out of the current release${d.targetPhase ? ` (for ${d.targetPhase})` : ''}: ${d.reason ?? ''}`
+        : `Undeferred${d.reason ? `: ${d.reason}` : ''}`,
+  });
+
 const baselineEntry = (b: BaselineRow, n: Namer) =>
   entry({
     id: `baseline-${b.revision}`,
@@ -370,7 +385,7 @@ function activityEntry(
 }
 
 async function historyRows(requirementId: string, projectId: string) {
-  const [revisions, baselines, returns, suggested, linked, prefix] = await Promise.all([
+  const [revisions, baselines, returns, deferrals, suggested, linked, prefix] = await Promise.all([
     db
       .select()
       .from(requirementRevisions)
@@ -380,6 +395,10 @@ async function historyRows(requirementId: string, projectId: string) {
       .from(requirementBaselines)
       .where(eq(requirementBaselines.requirementId, requirementId)),
     db.select().from(requirementReturns).where(eq(requirementReturns.requirementId, requirementId)),
+    db
+      .select()
+      .from(requirementDeferrals)
+      .where(eq(requirementDeferrals.requirementId, requirementId)),
     db
       .select({
         id: suggestions.id,
@@ -417,7 +436,7 @@ async function historyRows(requirementId: string, projectId: string) {
         .limit(HISTORY_LIMIT * 2)
     : [];
   const keyOf = new Map(linked.map((i) => [i.id, formatIssueRef(prefix, i.issSeq)]));
-  return { revisions, baselines, returns, suggested, activity, keyOf };
+  return { revisions, baselines, returns, deferrals, suggested, activity, keyOf };
 }
 
 // cm:why the history is assembled from the rows that already record each act — revisions (written,
@@ -428,14 +447,13 @@ export async function historyOf(
   requirementId: string,
   projectId: string,
 ): Promise<RequirementHistoryEntry[]> {
-  const { revisions, baselines, returns, suggested, activity, keyOf } = await historyRows(
-    requirementId,
-    projectId,
-  );
+  const { revisions, baselines, returns, deferrals, suggested, activity, keyOf } =
+    await historyRows(requirementId, projectId);
   const people = await peopleOf([
     ...revisions.flatMap((r) => [r.authorId, r.proposedBy, r.decidedBy]),
     ...baselines.map((b) => b.agreedBy),
     ...returns.map((r) => r.returnedBy),
+    ...deferrals.map((d) => d.decidedBy),
     ...suggested.flatMap((s) => [s.producerId, s.decidedBy]),
     ...activity.filter((a) => a.actorType === 'user').map((a) => a.actorId),
   ]);
@@ -447,6 +465,7 @@ export async function historyOf(
     ...revisions.flatMap((r) => revisionEntries(r, n)),
     ...baselines.map((b) => baselineEntry(b, n)),
     ...returns.map((r) => returnEntry(r, n)),
+    ...deferrals.map((d) => deferralEntry(d, n)),
     ...suggested.flatMap((s) => suggestionEntries(s, n)),
     ...activity.flatMap((a) => activityEntry(a, keyOf.get(a.issueId) ?? null, n) ?? []),
   ];

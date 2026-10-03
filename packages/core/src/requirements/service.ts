@@ -50,6 +50,7 @@ import {
 } from './read.js';
 import {
   agreeRefusals,
+  deferredRefusal,
   type LinkedDesign,
   type RequirementRefusal,
   reasonRefusal,
@@ -328,6 +329,7 @@ export async function acceptRevision(input: {
     const current = await rowIn(tx, projectId, row.id);
     const target = await revisionIn(tx, current, input.revision);
     const refusal =
+      deferredRefusal(current.status as RequirementStatus, 'accepting a revision', '/revision') ??
       stateRefusal(target.revision, target.state as RevisionState, 'proposed') ??
       staleBaseRefusal(target.baseRevision, current.currentRevision);
     if (refusal) return [refusal];
@@ -394,6 +396,12 @@ export async function agreeRequirement(input: {
       current.currentRevision === null
         ? null
         : await revisionIn(tx, current, current.currentRevision);
+    const deferred = deferredRefusal(
+      current.status as RequirementStatus,
+      'agreeing it',
+      '/revision',
+    );
+    if (deferred) return [deferred];
     const designs = await linkedDesigns(tx, row.id);
     const guards = agreeRefusals({
       status: current.status as RequirementStatus,

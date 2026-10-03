@@ -1,7 +1,8 @@
 /**
  * The person acts on a requirement the HOP end-to-end trial (2026-10-04) found missing, against a
  * real database: an accept carries the signer's reason onto the act and the baseline it writes
- * (ISS-84, FB-16).
+ * (ISS-84, FB-16); a requirement is deferred out of the current release and undeferred back
+ * (ISS-85, FB-17).
  */
 
 import { sql } from 'drizzle-orm';
@@ -136,5 +137,62 @@ describe('an accept carries the signer’s reason (ISS-84)', () => {
         JOIN requirement_baselines b ON b.requirement_id = rv.requirement_id AND b.revision = rv.revision
        WHERE r.project_id = ${projectId} AND r.title = 'No reason' AND rv.revision = 2`)) as unknown as Doc[];
     expect([...rows]).toEqual([{ accept_reason: null, baseline_reason: null }]);
+  });
+});
+
+describe('a requirement is deferred out of the current release and undeferred (ISS-85)', () => {
+  it('a deferred draft waits on nobody, refuses a sign-off and a breakdown, and undefers back to draft', async () => {
+    const created = await ok(person, 'POST', '/requirements', {
+      title: 'Later scope',
+      reason: 'planted',
+      criteria: [{ body: 'Someday' }],
+    });
+    const key = created.key as string;
+    await ok(agent, 'POST', `/requirements/${key}/revisions/1/propose`, {});
+    const deferred = await ok(person, 'POST', `/requirements/${key}/defer`, {
+      reason: 'out of the pilot release',
+      targetPhase: 'phase 2',
+    });
+    expect(deferred).toMatchObject({
+      status: 'deferred',
+      deferral: { from: 'draft', reason: 'out of the pilot release', targetPhase: 'phase 2' },
+      standing: { state: 'deferred', attentionGroup: 'deferred', waitingOn: { kind: 'none' } },
+    });
+    const accept = await call(person, 'POST', `/requirements/${key}/revisions/1/accept`, {});
+    expect(accept.status).toBe(422);
+    expect(accept.body.error.code).toBe('REQUIREMENT_DEFERRED');
+    const again = await call(person, 'POST', `/requirements/${key}/defer`, { reason: 'again' });
+    expect(again.body.error.code).toBe('REQUIREMENT_DEFERRED');
+    const undeferred = await ok(person, 'POST', `/requirements/${key}/undefer`, {});
+    expect(undeferred).toMatchObject({ status: 'draft', deferral: null });
+    expect(undeferred.standing.attentionGroup).not.toBe('deferred');
+    const twice = await call(person, 'POST', `/requirements/${key}/undefer`, {});
+    expect(twice.body.error.code).toBe('REQUIREMENT_NOT_DEFERRED');
+    const texts = undeferred.history.map((h: Doc) => h.text);
+    expect(texts).toContain(
+      'Deferred out of the current release (for phase 2): out of the pilot release',
+    );
+    expect(texts).toContain('Undeferred');
+  });
+
+  it('an agreed requirement is not deferred while a linked issue is in work, and a deferred one takes no breakdown', async () => {
+    const key = await agreedRequirement('Agreed then deferred');
+    const issue = await ok(person, 'POST', '/issues', { title: 'In work', status: 'open' });
+    await ok(person, 'POST', `/requirements/${key}/issues`, { issue: issue.id });
+    const refused = await call(person, 'POST', `/requirements/${key}/defer`, { reason: 'later' });
+    expect(refused.status).toBe(422);
+    expect(refused.body.error.refusals[0]).toMatchObject({ code: 'REQUIREMENT_HAS_LIVE_ISSUES' });
+    expect(refused.body.error.refusals[0].detail).toContain(issue.displayId);
+    await ok(person, 'DELETE', `/requirements/${key}/issues/${issue.id}`);
+    await ok(person, 'POST', `/requirements/${key}/defer`, { reason: 'later' });
+    const breakdown = await call(agent, 'POST', '/suggestions', {
+      kind: 'breakdown',
+      requirement: key,
+      baseRevision: 1,
+      payload: { issues: [{ title: 'Should not be proposed' }] },
+    });
+    expect(breakdown.status).toBe(422);
+    expect(breakdown.body.error.refusals[0]).toMatchObject({ code: 'REQUIREMENT_DEFERRED' });
+    expect((await ok(person, 'POST', `/requirements/${key}/undefer`, {})).status).toBe('agreed');
   });
 });

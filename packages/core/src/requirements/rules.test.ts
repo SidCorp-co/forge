@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   agreeRefusals,
   changedSincePlan,
+  deferRefusals,
+  deferredRefusal,
   linkIssueRefusal,
   openRevisionRefusal,
   planCriteria,
@@ -10,6 +12,7 @@ import {
   signoffRefusal,
   staleBaseRefusal,
   stateRefusal,
+  undeferRefusal,
 } from './rules.js';
 
 const PROJECT = 'p-1';
@@ -207,5 +210,52 @@ describe('changedSincePlan (REQUIREMENT_CHANGED_SINCE_PLAN)', () => {
   it('does not flag a plan at the current revision, or an issue with no plan', () => {
     expect(changedSincePlan({ plan: 'p', plannedRevision: 4, currentRevision: 4 })).toBe(false);
     expect(changedSincePlan({ plan: null, plannedRevision: null, currentRevision: 4 })).toBe(false);
+  });
+});
+
+describe('defer and undefer (ISS-85)', () => {
+  const ok = { reason: 'not in the pilot', workingIssues: [] as string[] };
+
+  it('a draft or agreed requirement with a reason and no issue in work is deferred', () => {
+    expect(deferRefusals({ status: 'draft', ...ok })).toEqual([]);
+    expect(deferRefusals({ status: 'agreed', ...ok })).toEqual([]);
+  });
+
+  it('a deferred one is REQUIREMENT_DEFERRED, for a defer as for every act it waits on', () => {
+    expect(deferRefusals({ status: 'deferred', ...ok }).map((r) => r.code)).toEqual([
+      'REQUIREMENT_DEFERRED',
+    ]);
+    expect(codeOf(deferredRefusal('deferred', 'agreeing it'))).toBe('REQUIREMENT_DEFERRED');
+    expect(codeOf(linkIssueRefusal('deferred'))).toBe('REQUIREMENT_DEFERRED');
+    expect(deferredRefusal('agreed', 'agreeing it')).toBeNull();
+  });
+
+  it('accepted or dropped is REQUIREMENT_NOT_DEFERRABLE', () => {
+    for (const status of ['accepted', 'dropped'] as const) {
+      expect(deferRefusals({ status, ...ok }).map((r) => r.code)).toEqual([
+        'REQUIREMENT_NOT_DEFERRABLE',
+      ]);
+    }
+  });
+
+  it('no reason is REQUIREMENT_DEFER_REASON_REQUIRED', () => {
+    expect(deferRefusals({ status: 'draft', reason: '  ', workingIssues: [] })[0]?.code).toBe(
+      'REQUIREMENT_DEFER_REASON_REQUIRED',
+    );
+  });
+
+  it('a linked issue in work is REQUIREMENT_HAS_LIVE_ISSUES, naming each', () => {
+    const [r] = deferRefusals({
+      status: 'agreed',
+      reason: 'later',
+      workingIssues: ['ISS-4', 'ISS-7'],
+    });
+    expect(r?.code).toBe('REQUIREMENT_HAS_LIVE_ISSUES');
+    expect(r?.detail).toContain('ISS-4, ISS-7');
+  });
+
+  it('an undefer of a requirement that is not deferred is REQUIREMENT_NOT_DEFERRED', () => {
+    expect(undeferRefusal('deferred')).toBeNull();
+    expect(codeOf(undeferRefusal('agreed'))).toBe('REQUIREMENT_NOT_DEFERRED');
   });
 });

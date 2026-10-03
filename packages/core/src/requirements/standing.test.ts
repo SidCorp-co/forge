@@ -126,6 +126,23 @@ describe('whose turn it is', () => {
     }
   });
 
+  it('rule 1: deferred waits on nobody, never reads stuck, and offers no breakdown, even with a proposal open (ISS-85)', () => {
+    const s = deriveStanding(
+      base({
+        status: 'deferred',
+        phase: null,
+        owner: null,
+        issues: [],
+        openSuggestionKinds: ['breakdown'],
+        revisions: [rev(3, 'proposed', { proposedAt: daysAgo(1) }), rev(2, 'current')],
+        updatedAt: daysAgo(90),
+      }),
+    );
+    expect(s.state).toBe('deferred');
+    expect(s.attentionGroup).toBe('deferred');
+    expect(s.waitingOn).toMatchObject({ kind: 'none', act: '' });
+  });
+
   it('rule 2: a proposed revision needs a viewer who may sign off, and is someone else’s turn otherwise', () => {
     const revisions = [rev(3, 'proposed', { proposedAt: daysAgo(1) }), rev(2, 'current')];
     const mine = deriveStanding(base({ revisions }));

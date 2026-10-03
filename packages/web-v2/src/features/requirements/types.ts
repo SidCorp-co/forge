@@ -1,6 +1,11 @@
-import type { RequirementHistoryEntry, RequirementStanding } from '@forge/contracts/requirements';
+import type {
+  RequirementDeferral,
+  RequirementHistoryEntry,
+  RequirementStanding,
+  RequirementStatus,
+} from '@forge/contracts/requirements';
 
-export type RequirementStatus = 'draft' | 'agreed' | 'accepted' | 'dropped';
+export type { RequirementStatus };
 export type RevisionState = 'draft' | 'proposed' | 'current' | 'superseded';
 export type DeliveryPhase = 'agreed' | 'in_delivery' | 'delivered';
 export interface RequirementSpec { goal?: string; personas?: string[]; scopeIn?: string[]; scopeOut?: string[] }
@@ -37,6 +42,7 @@ export interface RequirementDetail extends RequirementSummary {
   canSignOff: boolean;                // the viewer is a person allowed to accept / return / agree
   history: RequirementHistoryEntry[];  // newest first
   readiness: { revision: number; ready: boolean; failed: string[]; suggestionId: string; decidedAt: string | null } | null;
+  deferral: RequirementDeferral | null; // the defer it stands on, while deferred
 }
 
 export interface RequirementList { requirements: RequirementSummary[]; returned: number }
@@ -54,4 +60,5 @@ export type RequirementAction =
   | { kind: 'propose'; revision: number }
   | { kind: 'accept'; revision: number }
   | { kind: 'return'; revision: number; reason: string }
-  | { kind: 'agree'; revision: number };
+  | { kind: 'agree'; revision: number }
+  | { kind: 'undefer' };

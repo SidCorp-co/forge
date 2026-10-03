@@ -153,7 +153,8 @@ interface Turn {
   waitingOn: RequirementWaitingOn;
 }
 
-// cm:why whose turn it is, first rule that holds wins: 1. accepted or dropped → done; 2. a proposed
+// cm:why whose turn it is, first rule that holds wins: 1. accepted or dropped → done, deferred →
+// deferred, waiting on nobody, so no queue and no master pass offers it (ISS-85); 2. a proposed
 // revision → a signer; 3. a draft revision → its author; 4. a draft requirement, head current → a
 // signer agrees it; 5. every issue closed and every BC proven → a signer accepts the delivery, a BC
 // unproven → the master proves it; 6. an open breakdown → a signer; 7. an issue planned against an
@@ -168,6 +169,12 @@ function turnOf(
   const { status, viewer } = input;
   if (status === 'accepted' || status === 'dropped') {
     return { group: 'done', waitingOn: wait('none', '—', '', `the requirement is ${status}`) };
+  }
+  if (status === 'deferred') {
+    return {
+      group: 'deferred',
+      waitingOn: wait('none', '—', '', 'deferred out of the current release; it waits on nobody'),
+    };
   }
   const proposed = input.revisions.find((r) => r.state === 'proposed');
   if (proposed) {
@@ -283,7 +290,7 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
   const input = { ...raw, phase: provenPhase(raw.phase, coverage) };
   const touched = touchedAt(input);
   let { group, waitingOn } = turnOf(input, live, coverage);
-  if (group !== 'needs_you' && group !== 'done') {
+  if (group !== 'needs_you' && group !== 'done' && group !== 'deferred') {
     if (input.owner === null) {
       group = 'stuck';
       waitingOn = wait('none', 'No owner', 'assign one', 'no owner is set');

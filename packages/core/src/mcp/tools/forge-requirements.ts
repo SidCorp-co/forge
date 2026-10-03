@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import type { NamedRefusal } from '../../project-config/respond.js';
+import { deferRequirement, undeferRequirement } from '../../requirements/deferral.js';
 import {
   linkIssue,
   linkWorkflow,
@@ -47,6 +48,8 @@ const ACTIONS = [
   'accept',
   'return',
   'agree',
+  'defer',
+  'undefer',
   'link_issue',
   'unlink_issue',
   'link_workflow',
@@ -72,6 +75,8 @@ const inputSchema = z
     issue: z.string().trim().min(1).max(200).optional(),
     adoptPlan: z.boolean().optional(),
     workflowId: z.uuid().optional(),
+    /** defer: the phase or release the requirement is meant for instead. */
+    targetPhase: z.string().trim().min(1).max(200).optional(),
   })
   .strict();
 
@@ -89,6 +94,8 @@ const GRANTS = {
     accept: write,
     return: write,
     agree: write,
+    defer: write,
+    undefer: write,
     link_issue: write,
     unlink_issue: write,
     link_workflow: write,
@@ -111,6 +118,10 @@ const DESCRIPTION =
   'signs the head off and writes a baseline pinning every linked design, refused REQUIREMENT_DESIGN_UNAPPROVED ' +
   'naming each unapproved design and REQUIREMENT_REVISION_NOT_CURRENT unless the head is current. accept, return ' +
   'and agree are a person’s acts: an agent is refused REQUIREMENT_SIGNOFF_FORBIDDEN. ' +
+  'defer: { requirement, reason, targetPhase? } takes a draft or agreed requirement out of the current release ' +
+  '(REQUIREMENT_DEFER_REASON_REQUIRED, REQUIREMENT_NOT_DEFERRABLE, REQUIREMENT_HAS_LIVE_ISSUES naming each linked issue past draft); ' +
+  'a deferred requirement waits on nobody and is not broken down, and accept, agree and link_issue on it are REQUIREMENT_DEFERRED. ' +
+  'undefer: { requirement, reason? } puts back the status it was deferred from (REQUIREMENT_NOT_DEFERRED otherwise). Both are a person’s acts. ' +
   'link_issue: { requirement, issue } once the requirement is agreed (REQUIREMENT_NOT_AGREED); the issue’s plan ' +
   'then records the revision it was written against, and forge_issues get shows `requirement.changedSincePlan`. ' +
   'A plan written before the link reads changed-since-plan unless a person passes adoptPlan: true, attesting it ' +
@@ -205,6 +216,16 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
           reason: input.reason,
         }),
       );
+    case 'defer':
+      return settle(
+        await deferRequirement({
+          ...on(),
+          reason: need(input, 'reason'),
+          targetPhase: input.targetPhase,
+        }),
+      );
+    case 'undefer':
+      return settle(await undeferRequirement({ ...on(), reason: input.reason }));
     case 'link_issue':
       return settle(
         await linkIssue({

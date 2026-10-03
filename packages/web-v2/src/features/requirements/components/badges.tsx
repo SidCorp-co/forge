@@ -39,6 +39,7 @@ const STATUS: Record<RequirementStatus, [Hue, string, string]> = {
   agreed: ["blue", "Agreed", "A person agreed a revision; work may be planned against it"],
   accepted: ["green", "Accepted", "Delivered and accepted"],
   dropped: ["muted", "Dropped", "No longer wanted"],
+  deferred: ["muted", "Deferred", "Out of the current release; a person undefers it"],
 };
 
 const REVISION: Record<RevisionState, [Hue, string, string]> = {

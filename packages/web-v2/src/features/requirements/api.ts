@@ -11,7 +11,7 @@ const one = (projectId: string, req: string) => `${base(projectId)}/${encodeURIC
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 
 function actionPath(projectId: string, req: string, a: RequirementAction): string {
-  if (a.kind === "agree") return `${one(projectId, req)}/agree`;
+  if (a.kind === "agree" || a.kind === "undefer") return `${one(projectId, req)}/${a.kind}`;
   return `${one(projectId, req)}/revisions/${a.revision}/${a.kind}`;
 }
 

@@ -28,6 +28,7 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
+import { deferralOf } from './deferral-read.js';
 import { changedSincePlan, type LinkedDesign, signoffRefusal } from './rules.js';
 import { provenPhase } from './standing.js';
 import { historyOf, standingsOf } from './standing-read.js';
@@ -208,6 +209,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
     standing,
     history,
     readiness,
+    deferral,
   ] = await Promise.all([
     db
       .select()
@@ -264,6 +266,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
       .then((m) => m.get(row.id) as RequirementStanding),
     historyOf(row.id, row.projectId),
     readinessOf(row),
+    deferralOf(row.id, row.status),
   ]);
   const people = await peopleOf([
     ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
@@ -319,6 +322,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null) {
     standing,
     history,
     readiness,
+    deferral,
   };
 }
 

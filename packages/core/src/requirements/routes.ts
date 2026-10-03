@@ -1,10 +1,18 @@
-import { ACCEPT_REVISION_SHAPE, acceptRevisionRequestSchema } from '@forge/contracts/requirements';
+import {
+  ACCEPT_REVISION_SHAPE,
+  acceptRevisionRequestSchema,
+  DEFER_REQUIREMENT_SHAPE,
+  deferRequirementRequestSchema,
+  UNDEFER_REQUIREMENT_SHAPE,
+  undeferRequirementRequestSchema,
+} from '@forge/contracts/requirements';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { refused } from '../project-config/respond.js';
+import { deferRequirement, undeferRequirement } from './deferral.js';
 import { linkIssue, linkWorkflow, unlinkIssue, unlinkWorkflow } from './issue-links.js';
 import { listRequirementsAs, type RequirementActor, readRequirementAs } from './read.js';
 import { criterionSchema, specSchema } from './schemas.js';
@@ -215,6 +223,44 @@ requirementRoutes.post(
         actor: actorOf(c),
         revision: body.revision,
         reason: body.reason,
+      }),
+    );
+  },
+);
+
+requirementRoutes.post(
+  '/:id/requirements/:req/defer',
+  reqParam,
+  strictBody(deferRequirementRequestSchema, DEFER_REQUIREMENT_SHAPE),
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    const body = c.req.valid('json');
+    return answer(
+      c,
+      await deferRequirement({
+        projectId: id,
+        ref: req,
+        actor: actorOf(c),
+        reason: body.reason,
+        targetPhase: body.targetPhase,
+      }),
+    );
+  },
+);
+
+requirementRoutes.post(
+  '/:id/requirements/:req/undefer',
+  reqParam,
+  strictBody(undeferRequirementRequestSchema, UNDEFER_REQUIREMENT_SHAPE),
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    return answer(
+      c,
+      await undeferRequirement({
+        projectId: id,
+        ref: req,
+        actor: actorOf(c),
+        reason: c.req.valid('json').reason,
       }),
     );
   },
