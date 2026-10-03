@@ -39,6 +39,10 @@ import { useProjectRuns, useStepDurations } from "@/features/pipeline/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
+import { useProjectDocument } from "@/features/project-settings/config-hooks";
+import { sensitivityOf } from "@/features/workflows/catalogue";
+import { SystemOverviewRegion } from "@/features/workflows/components/system-overview";
+import { useWorkflowTemplates, useWorkflows } from "@/features/workflows/hooks";
 import { useSchedules } from "@/features/schedules/hooks";
 import { useQueueStats } from "@/features/sessions/hooks";
 import { formatApiError } from "@/lib/api/error";
@@ -68,6 +72,9 @@ export default function ProjectOverviewPage() {
   const projectRunnersQ = useProjectRunners(projectId ?? null);
   const activeRunnersQ = useActiveRunners(projectId ?? null);
   const schedulesQ = useSchedules(projectId);
+  const workflowsQ = useWorkflows(projectId);
+  const templatesQ = useWorkflowTemplates(projectId);
+  const projectDocumentQ = useProjectDocument(projectId);
 
   // Tick once a second while some runner is limited (live reset countdown);
   // the active-runner card's busy state refreshes via its own 10s poll + WS,
@@ -190,6 +197,18 @@ export default function ProjectOverviewPage() {
         />
 
         <AttentionQueue items={attention} now={now} />
+
+        {workflowsQ.data && workflowsQ.data.workflows.length > 0 ? (
+          <SystemOverviewRegion
+            records={workflowsQ.data.workflows}
+            projectId={project.id}
+            templates={(templatesQ.data?.templates ?? []).map((t) => t.template)}
+            slug={project.slug}
+            projectName={project.name}
+            sensitivity={sensitivityOf(projectDocumentQ.data?.document)}
+            variant="compact"
+          />
+        ) : null}
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
           <LiveRunsCard runs={runsActive} slug={project.slug} idle={runsIdle} />

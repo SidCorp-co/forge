@@ -16,7 +16,7 @@ export interface Placed {
 let engine: Promise<ELK> | null = null;
 
 /** elkjs loads on first layout, off the page's first paint, and lays out asynchronously from then on. */
-function elk(): Promise<ELK> {
+export function elk(): Promise<ELK> {
   engine ??= import("elkjs/lib/elk.bundled.js").then((m) => new m.default());
   return engine;
 }
