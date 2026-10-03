@@ -3259,6 +3259,9 @@
 
 ### Fixed
 
+- **forge-runner no longer retires a resident master mid-turn.** It retires one only after an
+  hour in which its pane reported no turn and no input, nothing was claimable and no child run
+  was open; the log line names each.
 - **Accepting a suggestion now writes what it proposes.** A breakdown files its issues at draft,
   linked to the requirement and traced to its criteria; readiness, issue triage and duplicate take
   effect too. An agent's feedback triage proposal no longer fails.

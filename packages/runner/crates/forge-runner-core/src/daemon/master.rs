@@ -1347,6 +1347,7 @@ async fn sweep(
             if retire_if_idle(
                 client,
                 masters,
+                activity,
                 ledger,
                 tokens,
                 &runner.project_id,
@@ -4178,6 +4179,7 @@ fn record_exit(
 async fn retire_if_idle(
     client: &CoreClient,
     masters: &Arc<Masters>,
+    activity: &agent_activity::Activities,
     ledger: &mut Option<Ledger>,
     tokens: Option<&session_tokens::SessionTokens>,
     project_id: &str,
@@ -4197,12 +4199,17 @@ async fn retire_if_idle(
             return false;
         }
     };
-    match master_exit::verdict(idle, &kids) {
-        Verdict::Stay(_) => false,
-        Verdict::Exit => {
+    let pane = activity.get(&session_id).map(|a| master_exit::Pane::of(&a));
+    let now_ms = agent_activity::now_ms();
+    match master_exit::verdict(idle, pane, &kids, now_ms) {
+        Verdict::Stay(why) => {
+            tracing::debug!("[master] {slug}: keeping {name}: {why:?}");
+            false
+        }
+        Verdict::Exit(quiet) => {
             tracing::info!(
-                "[master] {slug}: nothing for {}m and every child run closed — retiring {name}",
-                idle.as_secs() / 60
+                "[master] {slug}: idle — {} — retiring {name}",
+                quiet.reason(now_ms)
             );
             // Said, not swallowed. `terminal::kill` answers for the session
             // being gone (ISS-1208), and the row is closed either way — so a
@@ -4442,6 +4449,10 @@ mod tests {
         assert!(
             body.contains("master_exit::children("),
             "the wiring must read the children out of the ledger — a caller that passed an empty slice would satisfy `verdict` and retire a master over live runs, which is criterion 19's failure arriving through the call site rather than the decision (ISS-933 criteria 19 and 20)"
+        );
+        assert!(
+            body.contains("activity.get(&session_id).map(|a| master_exit::Pane::of(&a))"),
+            "the wiring must read the pane's own hooks under the session this box serves it as — a caller that handed `verdict` no pane would keep every master for ever, and one that handed it a stale pane is the retirement mid-turn this guards (ISS-95)"
         );
     }
 
