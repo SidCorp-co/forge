@@ -12,6 +12,7 @@ export type AnyAuthVars = {
   userId: string;
   agency?: ActorAgency;
   principal?: 'user' | 'device' | 'pat';
+  patDeviceId?: string;
 };
 
 const unauth = (message: string) =>
@@ -26,6 +27,7 @@ export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> 
       c.set('userId', principal.userId);
       c.set('principal', 'pat');
       c.set('agency', principal.agency);
+      if (principal.deviceId) c.set('patDeviceId', principal.deviceId);
       return runWithPatScope(scope, () => next());
     }
 

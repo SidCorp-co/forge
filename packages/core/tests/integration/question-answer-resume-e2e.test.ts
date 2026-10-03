@@ -75,7 +75,7 @@ async function load(id: string): Promise<IssueRow> {
 }
 
 const statusOf = async (id: string) => (await load(id)).status;
-const person = () => ({ type: 'user' as const, id: ownerId });
+const person = () => ({ type: 'user' as const, id: ownerId, agency: 'human' as const });
 
 async function openQuestion(issueId: string): Promise<string> {
   const id = randomUUID();

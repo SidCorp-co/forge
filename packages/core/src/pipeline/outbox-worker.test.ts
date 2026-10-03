@@ -11,6 +11,7 @@ interface FakeRow {
   to_status: string;
   actor_id: string | null;
   actor_type: string | null;
+  actor_agency: string | null;
   reason: string | null;
   attempts: number;
   created_at: Date;
@@ -67,13 +68,8 @@ const dbExecute = vi.fn(async (q: unknown) => {
 });
 
 const transactionMock = vi.fn();
-/** The accounts `users` holds for the kind lookup. */
-const userKinds = new Map<string, string>();
-const selectMock = vi.fn(() => ({
-  from: () => ({
-    where: async () => [...userKinds].map(([id, kind]) => ({ id, kind })),
-  }),
-}));
+/** The worker reads no account: who acted rides the outbox row. */
+const selectMock = vi.fn();
 
 vi.mock('../db/client.js', () => ({
   db: { execute: dbExecute, transaction: transactionMock, select: selectMock },
@@ -113,6 +109,7 @@ function row(overrides: Partial<FakeRow> = {}): FakeRow {
     to_status: 'confirmed',
     actor_id: 'u-1',
     actor_type: 'user',
+    actor_agency: 'human',
     reason: null,
     attempts: 0,
     created_at: new Date(),
@@ -131,7 +128,6 @@ beforeEach(() => {
   });
   transactionMock.mockClear();
   wedgeMock.mockClear();
-  userKinds.clear();
   selectMock.mockClear();
 });
 
@@ -139,10 +135,12 @@ describe('outbox-worker: who moved it and when (ISS-1317)', () => {
   const AGENT = 'a9e17000-0000-4000-8000-000000000001';
   const PERSON = 'b0b00000-0000-4000-8000-000000000002';
 
-  it("reads a user actor's agency off its account kind", async () => {
-    userKinds.set(AGENT, 'agent');
-    userKinds.set(PERSON, 'human');
-    claimQueue.push([row({ actor_id: AGENT }), row({ actor_id: PERSON })]);
+  it('carries the agency the transition recorded, a box acting as its holder included', async () => {
+    claimQueue.push([
+      row({ actor_id: PERSON, actor_agency: 'agent' }),
+      row({ actor_id: PERSON, actor_agency: 'human' }),
+      row({ actor_type: 'device', actor_id: AGENT, actor_agency: null }),
+    ]);
 
     await drainOutboxOnce();
 
@@ -150,34 +148,22 @@ describe('outbox-worker: who moved it and when (ISS-1317)', () => {
       (c) => (c as unknown as [string, { actor: unknown }])[1].actor,
     );
     expect(actors).toEqual([
-      { type: 'user', id: AGENT, agency: 'agent' },
+      { type: 'user', id: PERSON, agency: 'agent' },
       { type: 'user', id: PERSON, agency: 'human' },
+      { type: 'device', id: AGENT, agency: 'agent' },
     ]);
-  });
-
-  it('asks nothing of users for an actor id that is not an account id', async () => {
-    claimQueue.push([row({ actor_id: 'u-1' }), row({ actor_type: 'device', actor_id: AGENT })]);
-
-    await drainOutboxOnce();
-
     expect(selectMock).not.toHaveBeenCalled();
   });
 
-  it('fails each row through its own retry path when the account lookup fails', async () => {
-    selectMock.mockImplementationOnce(() => ({
-      from: () => ({
-        where: async () => {
-          throw new Error('connection reset');
-        },
-      }),
-    }));
-    claimQueue.push([row({ actor_id: AGENT }), row({ actor_id: PERSON })]);
+  it('refuses a user row that recorded no agency through its own retry path, naming it', async () => {
+    claimQueue.push([row({ actor_id: PERSON, actor_agency: null }), row({ actor_id: AGENT })]);
 
     const result = await drainOutboxOnce();
 
-    expect(result).toEqual({ processed: 0, failed: 2 });
-    expect(emitMock).not.toHaveBeenCalled();
-    expect(updateCalls.map((c) => c.kind)).toEqual(['failed', 'failed']);
+    expect(result).toEqual({ processed: 1, failed: 1 });
+    expect(emitMock).toHaveBeenCalledTimes(1);
+    const failure = updateCalls.find((c) => c.kind === 'failed');
+    expect(JSON.stringify(failure?.chunks)).toContain('OUTBOX_ACTOR_UNRECORDED');
   });
 
   it('carries the time the status changed, not the time of the drain', async () => {

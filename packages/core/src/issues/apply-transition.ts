@@ -480,7 +480,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
       const result = await withActorContext(
         tx,
-        { type: actor.type, id: actor.id },
+        { type: actor.type, id: actor.id, agency: actorAgency(actor) },
         options.reason ?? null,
         async (t) => {
           const [row] = await t

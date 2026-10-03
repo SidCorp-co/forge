@@ -61,8 +61,8 @@ async function insertActivity(
 ) {
   const created = args.createdAt ? sql`${args.createdAt}::timestamptz` : sql`now()`;
   await harness.db.execute(sql`
-    INSERT INTO activity_log (id, issue_id, actor_type, actor_id, action, payload, created_at)
-    VALUES (${randomUUID()}, ${args.issueId}, ${'user'}, ${args.actorId}, ${args.action}, ${JSON.stringify(args.payload)}::jsonb, ${created})
+    INSERT INTO activity_log (id, issue_id, actor_type, actor_id, actor_agency, action, payload, created_at)
+    VALUES (${randomUUID()}, ${args.issueId}, ${'user'}, ${args.actorId}, 'human', ${args.action}, ${JSON.stringify(args.payload)}::jsonb, ${created})
   `);
 }
 

@@ -52,10 +52,10 @@ const MCP_DECLARES_RECORD_ROUTE = false;
  *
  * `documentId` is the comment UUID; `filters.issue` is the issue UUID.
  *
- * Authorship follows the credential: `authorId` is the person whose token it
- * is, and `authorDeviceId` marks the comment as an agent's — resolved from the
- * `job:`/`session:` name a machine token carries, so a person's PAT leaves it
- * null. A comment carries no self-declared "an agent wrote this" marker.
+ * Authorship follows the credential: `authorId` is the account holding the
+ * token, and `authorDeviceId` marks the comment as an agent's — the paired box
+ * the token is bound to, so a person's own unbound PAT leaves it null. A
+ * comment carries no self-declared "an agent wrote this" marker.
  */
 
 const filtersSchema = z.object({ issue: z.uuid() }).strict().optional();

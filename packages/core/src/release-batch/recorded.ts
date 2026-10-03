@@ -14,6 +14,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues, pipelineRuns } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
+import { accountActor } from '../issues/account-actor.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
@@ -186,7 +187,7 @@ export async function recordPerformedRelease(
       await transitionIssueStatus(
         { id: issue.id, projectId, status: gateStatus, reopenCount: 0 },
         'closed',
-        { type: 'user', id: userId },
+        await accountActor(userId),
         { viaReleasePath: true, reason: account },
       );
       closed.push(issue.id);

@@ -1,10 +1,11 @@
 "use client";
 
 // Activity timeline for the issue detail. Renders the reverse-chron activity
-// log: status transitions (from → to), dependency edges, label changes,
-// assignment, creation. Comment lifecycle is NOT in the activity log (the
-// Comments tab is the source for that).
+// log: status transitions (from → to), field edits (the paths each write
+// moved), dependency edges, label changes, assignment, creation. Comment rows
+// show by action only; the Comments tab is the source for those.
 
+import { formatFieldPath, isIssueUpdatedPayload } from "@forge/contracts/field-changes";
 import { Badge, EmptyState, Icon, MonoTag, type IconName } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import type { ActivityItem } from "../types";
@@ -31,6 +32,8 @@ function describe(item: ActivityItem): Node {
       };
     case "issue.created":
       return { icon: "plus", text: "Issue created" };
+    case "issue.updated":
+      return { icon: "rename", text: describeUpdate(p) };
     case "issue.dependency.added":
       return { icon: "link", text: "Dependency added" };
     case "issue.dependency.removed":
@@ -54,6 +57,26 @@ function describe(item: ActivityItem): Node {
     default:
       return { icon: "dot", text: item.action };
   }
+}
+
+/** Up to this many changed paths are named; the rest are counted. */
+const NAMED_PATHS = 3;
+
+// An `issue.updated` row records the paths a write moved (`@forge/contracts` field-changes), so
+// the line names those paths rather than repeating the fields' values.
+function describeUpdate(payload: Record<string, unknown>): React.ReactNode {
+  if (!isIssueUpdatedPayload(payload) || payload.changes.length === 0) return "Updated (no change recorded)";
+  const paths = payload.changes.map((c) => formatFieldPath(c.path));
+  const rest = paths.length - NAMED_PATHS;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      Updated{" "}
+      {paths.slice(0, NAMED_PATHS).map((path) => (
+        <MonoTag key={path}>{path}</MonoTag>
+      ))}
+      {rest > 0 && <span>+{rest} more</span>}
+    </span>
+  );
 }
 
 export function ActivityFeed({ items }: { items: ActivityItem[] }) {

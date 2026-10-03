@@ -218,7 +218,7 @@ describe('the unverified note, once per issue per release run', () => {
       '11111111-1111-4111-8111-111111111111',
       '22222222-2222-4222-8222-222222222222',
     ];
-    const actor = { type: 'user', id: ownerId } as const;
+    const actor = { type: 'user', id: ownerId, agency: 'human' } as const;
 
     const written = [
       await noteUnverifiedCloses({ runId: first, issueIds: [a], actor, commit: RELEASED }),
@@ -236,7 +236,7 @@ describe('the unverified note, once per issue per release run', () => {
     await harness.db.execute(sql`UPDATE issues SET archived_at = now() WHERE id = ${a}`);
     const { noteUnverifiedCloses } = await import('../../src/release-batch/unverified-close.js');
     const runId = '44444444-4444-4444-8444-444444444444';
-    const actor = { type: 'user', id: ownerId } as const;
+    const actor = { type: 'user', id: ownerId, agency: 'human' } as const;
 
     const written = await noteUnverifiedCloses({ runId, issueIds: [a], actor, commit: null });
 
@@ -248,7 +248,7 @@ describe('the unverified note, once per issue per release run', () => {
     const a = await fx.insertIssue();
     const { noteUnverifiedCloses } = await import('../../src/release-batch/unverified-close.js');
     const runId = '33333333-3333-4333-8333-333333333333';
-    const actor = { type: 'user', id: ownerId } as const;
+    const actor = { type: 'user', id: ownerId, agency: 'human' } as const;
     const pass = () => noteUnverifiedCloses({ runId, issueIds: [a], actor, commit: null });
 
     const written = await Promise.all([pass(), pass(), pass()]);

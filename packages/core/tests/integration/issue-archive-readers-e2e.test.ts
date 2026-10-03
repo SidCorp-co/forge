@@ -125,8 +125,8 @@ describe('the discovery reads outside the plan inventory', () => {
     const live = await seed(2, 'closed');
     for (const issue of [archived, live]) {
       await harness.db.execute(sql`
-        INSERT INTO activity_log (issue_id, actor_type, actor_id, action)
-        VALUES (${issue}, 'user', ${userId}, 'issue.commented')`);
+        INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action)
+        VALUES (${issue}, 'user', ${userId}, 'human', 'issue.commented')`);
     }
     await archive(['ISS-1']);
     const { projectActivityRoutes } = await import('../../src/issues/activity-routes.js');

@@ -92,7 +92,11 @@ const { transitionIssueStatus } = await import('./apply-transition.js');
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const AGENT = { type: 'device', id: 'dev-1', ownerId: 'owner-1' } as const;
-const HUMAN = { type: 'user', id: '33333333-3333-4333-8333-333333333333' } as const;
+const HUMAN = {
+  type: 'user',
+  id: '33333333-3333-4333-8333-333333333333',
+  agency: 'human',
+} as const;
 
 const PROMOTES = projectDoc({
   defaultBranch: 'dev',

@@ -119,7 +119,11 @@ export async function resumePipelineRun(runId: string): Promise<PipelineRunRow> 
  * Runs AFTER the cancel commits (the transition opens its own transaction) and
  * is best-effort: a failure here must not fail the cancel.
  */
-async function parkIssueOnCancel(run: PipelineRunRow, actorUserId?: string): Promise<boolean> {
+async function parkIssueOnCancel(
+  run: PipelineRunRow,
+  agency: ActorAgency,
+  actorUserId?: string,
+): Promise<boolean> {
   if (run.kind !== 'issue' || !run.issueId) return false;
   try {
     const [row] = await db
@@ -139,7 +143,7 @@ async function parkIssueOnCancel(run: PipelineRunRow, actorUserId?: string): Pro
 
     const fallbackId = row.createdBy ?? run.projectId;
     const actor: TransitionActor = actorUserId
-      ? { type: 'user', id: actorUserId }
+      ? { type: 'user', id: actorUserId, agency }
       : { type: 'device', id: fallbackId, ownerId: fallbackId };
     await transitionIssueStatus(
       { id: row.id, projectId: row.projectId, status: row.status, reopenCount: row.reopenCount },
@@ -226,7 +230,7 @@ export async function cancelPipelineRun(
     });
     await requestKillsForCascade(result.killableJobs, FAILURE_REASON_PIPELINE_CANCELLED);
     if (opts.parkIssue ?? true) {
-      issueParked = await parkIssueOnCancel(result.run, opts.actorUserId);
+      issueParked = await parkIssueOnCancel(result.run, opts.actorAgency, opts.actorUserId);
     }
   }
 

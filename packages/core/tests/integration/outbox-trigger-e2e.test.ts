@@ -70,12 +70,13 @@ describe('ISS-196 pipeline_outbox trigger', () => {
       to_status: string;
       actor_id: string | null;
       actor_type: string | null;
+      actor_agency: string | null;
       reason: string | null;
       processed_at: Date | null;
       attempts: number;
     }>(sql`
       SELECT id, issue_id, project_id, from_status, to_status,
-             actor_id, actor_type, reason, processed_at, attempts
+             actor_id, actor_type, actor_agency, reason, processed_at, attempts
       FROM pipeline_outbox
       WHERE issue_id = ${issueId}
       ORDER BY created_at ASC
@@ -127,7 +128,7 @@ describe('ISS-196 pipeline_outbox trigger', () => {
     expect(rows[0]).toMatchObject({ actor_id: null, actor_type: 'system' });
   });
 
-  it('reads actor_id/actor_type/reason from SET LOCAL pipeline.* settings', async () => {
+  it('reads actor_id/actor_type/actor_agency/reason from SET LOCAL pipeline.* settings', async () => {
     const { issueId } = await seedIssue('open');
 
     await harness.db.transaction(async (tx) => {
@@ -135,6 +136,7 @@ describe('ISS-196 pipeline_outbox trigger', () => {
         SELECT
           set_config('pipeline.actor_id', 'u-99', true),
           set_config('pipeline.actor_type', 'user', true),
+          set_config('pipeline.actor_agency', 'agent', true),
           set_config('pipeline.reason', 'manual override', true)
       `);
       await tx.execute(sql`
@@ -146,6 +148,7 @@ describe('ISS-196 pipeline_outbox trigger', () => {
     expect(rows[0]).toMatchObject({
       actor_id: 'u-99',
       actor_type: 'user',
+      actor_agency: 'agent',
       reason: 'manual override',
     });
   });

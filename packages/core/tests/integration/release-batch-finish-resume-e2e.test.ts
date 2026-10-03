@@ -102,7 +102,7 @@ async function plant(
     requestId: 'r-planted',
     state: 'accepted',
     commit: PUSHED,
-    requestedBy: { type: 'user', id: ownerId },
+    requestedBy: { type: 'user', id: ownerId, agency: 'human' as const },
     acceptedAt: iso(-600_000),
     updatedAt: iso(-600_000),
     version: 3,
@@ -367,7 +367,7 @@ describe('a worker that loses its hold mid-close, and a run close that fails', (
     serving = PUSHED;
     const again = await job.acceptReleaseBatchFinish(
       runId,
-      { type: 'user', id: ownerId },
+      { type: 'user', id: ownerId, agency: 'human' as const },
       { commit: PUSHED },
       async () => {},
     );

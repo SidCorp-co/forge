@@ -120,7 +120,7 @@ describe('reopen on an autonomous project', () => {
     const result = await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'closed', reopenCount: 0 },
       'reopen',
-      { type: 'user', id: ACTOR_ID },
+      { type: 'user', id: ACTOR_ID, agency: 'human' as const },
       REOPEN_OPTS,
     );
 
@@ -137,7 +137,7 @@ describe('reopen on an autonomous project', () => {
     await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'closed', reopenCount: 0 },
       'reopen',
-      { type: 'user', id: ACTOR_ID },
+      { type: 'user', id: ACTOR_ID, agency: 'human' as const },
       REOPEN_OPTS,
     );
 
@@ -154,7 +154,7 @@ describe('reopen on an autonomous project', () => {
       transitionIssueStatus(
         { id: ISSUE_ID, projectId: PROJECT_ID, status: 'closed', reopenCount: 0 },
         'reopen',
-        { type: 'user', id: ACTOR_ID },
+        { type: 'user', id: ACTOR_ID, agency: 'human' as const },
       ),
     ).rejects.toThrow('TRANSITION_REASON_REQUIRED');
     expect(updateSet).not.toHaveBeenCalled();
@@ -167,7 +167,7 @@ describe('reopen on an autonomous project', () => {
     await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'closed', reopenCount: 0 },
       'reopen',
-      { type: 'user', id: ACTOR_ID },
+      { type: 'user', id: ACTOR_ID, agency: 'human' as const },
       REOPEN_OPTS,
     );
 
@@ -183,7 +183,7 @@ describe('every other transition is untouched', () => {
     const result = await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'closed', reopenCount: 0 },
       'reopen',
-      { type: 'user', id: ACTOR_ID },
+      { type: 'user', id: ACTOR_ID, agency: 'human' as const },
       REOPEN_OPTS,
     );
 
@@ -197,7 +197,7 @@ describe('every other transition is untouched', () => {
     await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'open', reopenCount: 0 },
       'in_progress',
-      { type: 'user', id: ACTOR_ID },
+      { type: 'user', id: ACTOR_ID, agency: 'human' as const },
       { skip: true },
     );
 
@@ -212,7 +212,7 @@ describe('every other transition is untouched', () => {
     await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'open', reopenCount: 0 },
       'in_progress',
-      { type: 'user', id: ACTOR_ID },
+      { type: 'user', id: ACTOR_ID, agency: 'human' as const },
     );
 
     expect(readEffectivePolicy).not.toHaveBeenCalled();
@@ -281,7 +281,7 @@ describe('waiting on an autonomous project', () => {
     const result = await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress', reopenCount: 0 },
       'waiting',
-      { type: 'user', id: ACTOR_ID },
+      { type: 'user', id: ACTOR_ID, agency: 'human' as const },
       WAITING_OPTS,
     );
 

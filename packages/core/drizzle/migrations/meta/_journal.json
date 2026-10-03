@@ -2220,6 +2220,20 @@
       "when": 1812585600000,
       "tag": "0343_a_design_names_the_issue_it_is_drawn_under",
       "breakpoints": true
+    },
+    {
+      "idx": 344,
+      "version": "7",
+      "when": 1812672000000,
+      "tag": "0344_an_issue_update_records_what_changed",
+      "breakpoints": true
+    },
+    {
+      "idx": 345,
+      "version": "7",
+      "when": 1812758400000,
+      "tag": "0345_a_box_write_is_an_agents",
+      "breakpoints": true
     }
   ]
 }

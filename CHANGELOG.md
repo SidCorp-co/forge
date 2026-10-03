@@ -3230,6 +3230,16 @@
 
 ### Fixed
 
+- **A write made with a paired box's token is recorded as an agent's, with the person who paired
+  it kept behind it.** It used to read as that person on the issue's creator, its activity, its
+  status history and its comments, so a person's box looked like the person typing and its comments
+  sat in the reply-owed inbox. A person's own token and browser session stay the person. A record
+  that does not say who acted is now refused instead of being written as a person.
+- **An issue's history records what each edit changed, not a copy of the fields it touched.** A
+  lease renewal used to copy the whole session context twice into every row; it now records the
+  one key it moved, and an edit that changes nothing records nothing. Existing history is
+  converted in place. Edits made over MCP now appear in the history too.
+
 - **`forge-runner bind --path` installs the git credential helper**, as `--clone` always did, so
   an existing checkout authenticates over HTTPS with the credential Forge mints for its host. A
   checkout whose `origin` is on another host than the project declares is refused by name.

@@ -1,9 +1,6 @@
 /**
  * Loopback MCP client for integration tests: a PAT-authed server and client
- * joined by `InMemoryTransport`, plus the tool-result decoder.
- *
- * Lifted out of `mcp-tools.test.ts` so a new MCP test does not have to grow
- * that file's single 390-line `describe` body to reuse them.
+ * joined by `InMemoryTransport`, its principal built as the HTTP door builds it.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -12,25 +9,12 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 /** ISS-1179 — `projectSlug` stands in for the `X-Forge-Project-Slug` header. */
 export async function connectClientAsPat(patPlaintext: string, projectSlug: string | null = null) {
   const { verifyPat } = await import('../../src/auth/pat.js');
+  const { patPrincipalOf } = await import('../../src/auth/pat-principal.js');
   const { createMcpServer } = await import('../../src/mcp/server.js');
   const verified = await verifyPat(patPlaintext);
   if (!verified) throw new Error('test PAT did not verify');
-  const { row } = verified;
-  const ctx = {
-    principal: {
-      kind: 'pat' as const,
-      agency: verified.ownerKind,
-      agentUserId: verified.ownerKind === 'agent' ? row.userId : null,
-      userId: row.userId,
-      tokenId: row.id,
-      scopes: row.scopes,
-      projectIds: row.projectIds ?? null,
-      boundProjectId: row.boundProjectId ?? null,
-      deviceId: row.deviceId ?? null,
-    },
-    projectSlug,
-    boundProjectId: row.boundProjectId ?? null,
-  };
+  const principal = patPrincipalOf(verified);
+  const ctx = { principal, projectSlug, boundProjectId: principal.boundProjectId };
   const server = createMcpServer(ctx);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

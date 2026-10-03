@@ -796,7 +796,7 @@ export const kernelTransitions = pgTable(
     toStatus: text('to_status').notNull(),
     reason: text('reason'),
     actorType: text('actor_type', { enum: kernelTransitionActorTypes }).notNull(),
-    actorAgency: text('actor_agency', { enum: actorAgencies }).notNull().default('human'),
+    actorAgency: text('actor_agency', { enum: actorAgencies }).notNull(),
     actorId: uuid('actor_id'),
     source: text('source').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1006,6 +1006,10 @@ export const issues = pgTable(
     createdById: uuid('created_by_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    /** The paired box whose credential filed it, `createdById` its holder; NULL for an account's own write. */
+    createdByDeviceId: uuid('created_by_device_id').references(() => devices.id, {
+      onDelete: 'set null',
+    }),
     mergedAt: timestamp('merged_at', { withTimezone: true }),
     mergedCommitSha: text('merged_commit_sha'),
     mergedLanding: text('merged_landing'),
@@ -2333,6 +2337,8 @@ export const pipelineOutbox = pgTable('pipeline_outbox', {
   toStatus: text('to_status').notNull(),
   actorId: text('actor_id'),
   actorType: text('actor_type'),
+  /** Who acted, carried from `pipeline.actor_agency`; a `user` row always holds one. */
+  actorAgency: text('actor_agency', { enum: actorAgencies }),
   reason: text('reason'),
   payload: jsonb('payload').notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

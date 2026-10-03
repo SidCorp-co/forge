@@ -1,6 +1,6 @@
-import { inArray, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, users } from '../db/schema.js';
+import type { IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
@@ -33,6 +33,7 @@ interface OutboxRow extends Record<string, unknown> {
   to_status: string;
   actor_id: string | null;
   actor_type: string | null;
+  actor_agency: string | null;
   reason: string | null;
   attempts: number;
   created_at: Date;
@@ -68,36 +69,24 @@ async function claimBatch(): Promise<OutboxRow[]> {
       ) picked
      WHERE o.id = picked.id
     RETURNING o.id, o.issue_id, o.project_id, o.from_status, o.to_status,
-              o.actor_id, o.actor_type, o.reason, o.attempts, o.created_at
+              o.actor_id, o.actor_type, o.actor_agency, o.reason, o.attempts, o.created_at
   `);
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** A user actor's agency is its account's `users.kind`, the one place that answers it; the
- *  outbox row carries only the id, so an agent account acting reads `human` without this. */
-async function agentUserIds(rows: readonly OutboxRow[]): Promise<Set<string>> {
-  const ids = [
-    ...new Set(
-      rows
-        .filter((r) => r.actor_type === 'user' && r.actor_id !== null && UUID.test(r.actor_id))
-        .map((r) => r.actor_id as string),
-    ),
-  ];
-  if (ids.length === 0) return new Set();
-  const found = await db
-    .select({ id: users.id, kind: users.kind })
-    .from(users)
-    .where(inArray(users.id, ids));
-  return new Set(found.filter((u) => u.kind === 'agent').map((u) => u.id));
-}
-
-function actorOf(row: OutboxRow, agents: ReadonlySet<string>): Actor {
+/** A row's actor, read as the transition wrote it: a box or the system is an agent, and a user
+ *  carries the agency its door established. A user row holding none is refused by name. */
+function actorOf(row: OutboxRow): Actor {
   if (row.actor_type === 'device' || row.actor_type === 'system') {
     return { type: 'device', id: row.actor_id ?? '<system>', agency: 'agent' };
   }
-  const agent = row.actor_id !== null && agents.has(row.actor_id);
-  return { type: 'user', id: row.actor_id ?? '<system>', agency: agent ? 'agent' : 'human' };
+  if (row.actor_type === 'user' && row.actor_id !== null) {
+    if (row.actor_agency === 'human' || row.actor_agency === 'agent') {
+      return { type: 'user', id: row.actor_id, agency: row.actor_agency };
+    }
+  }
+  throw new Error(
+    `OUTBOX_ACTOR_UNRECORDED: outbox row ${row.id} names actor ${row.actor_type ?? 'NULL'}:${row.actor_id ?? 'NULL'} with agency ${row.actor_agency ?? 'NULL'}; a transition records who acted through pipeline.actor_agency and this one did not`,
+  );
 }
 
 // cm:flow dispatch/outbox after:transition — claims the row the trigger wrote and re-emits it on the hooks bus, out of band from the transaction that produced it
@@ -106,13 +95,11 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
   let failed = 0;
   const rows = await claimBatch();
   const delivered: string[] = [];
-  let agents: Promise<Set<string>> | null = null;
 
   for (const row of rows) {
     try {
-      // Inside the row's failure path: a lookup that fails is each row's retry, not a lost batch.
-      agents ??= agentUserIds(rows);
-      const actor = actorOf(row, await agents);
+      // Inside the row's failure path: an unreadable actor is this row's retry, not a lost batch.
+      const actor = actorOf(row);
       const result = await hooks.emit('transition', {
         issueId: row.issue_id,
         projectId: row.project_id,

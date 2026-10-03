@@ -65,29 +65,6 @@ describe('registerActivitySubscribers', () => {
     });
   });
 
-  it('issueUpdated with non-assignee fields → records issue.updated only', async () => {
-    const bus = newBus();
-    await bus.emit('issueUpdated', {
-      issueId: ISSUE_ID,
-      projectId: PROJECT_ID,
-      actor: ACTOR,
-      fields: ['title', 'priority'],
-      before: { title: 'a', priority: 'low' },
-      after: { title: 'b', priority: 'high' },
-    });
-    expect(safeRecordActivity).toHaveBeenCalledTimes(1);
-    expect(safeRecordActivity).toHaveBeenCalledWith({
-      issueId: ISSUE_ID,
-      actor: ACTOR,
-      action: 'issue.updated',
-      payload: {
-        fields: ['title', 'priority'],
-        before: { title: 'a', priority: 'low' },
-        after: { title: 'b', priority: 'high' },
-      },
-    });
-  });
-
   it('issueUpdated with assigneeId → records issue.assigned only (no issue.updated for assignee)', async () => {
     const bus = newBus();
     await bus.emit('issueUpdated', {
@@ -286,5 +263,68 @@ describe('the time a transition is recorded at (ISS-1317)', () => {
       at,
     });
     expect(safeRecordActivity.mock.calls[0]?.[0]).toMatchObject({ at });
+  });
+});
+
+describe('issue.updated records the changes a write made', () => {
+  it('issueUpdated records the changes the write made, and only the fields that moved', async () => {
+    const bus = newBus();
+    await bus.emit('issueUpdated', {
+      issueId: ISSUE_ID,
+      projectId: PROJECT_ID,
+      actor: ACTOR,
+      fields: ['title', 'priority', 'category'],
+      before: { title: 'a', priority: 'low', category: 'bug' },
+      after: { title: 'b', priority: 'high', category: 'bug' },
+    });
+    expect(safeRecordActivity).toHaveBeenCalledTimes(1);
+    expect(safeRecordActivity).toHaveBeenCalledWith({
+      issueId: ISSUE_ID,
+      actor: ACTOR,
+      action: 'issue.updated',
+      payload: {
+        fields: ['title', 'priority'],
+        changes: [
+          { path: ['title'], op: 'set', before: 'a', after: 'b' },
+          { path: ['priority'], op: 'set', before: 'low', after: 'high' },
+        ],
+      },
+    });
+  });
+
+  it('issueUpdated on sessionContext records the keys that changed, never the document', async () => {
+    const bus = newBus();
+    const worklog = { head: 'abc', notes: 'n'.repeat(5000) };
+    await bus.emit('issueUpdated', {
+      issueId: ISSUE_ID,
+      projectId: PROJECT_ID,
+      actor: ACTOR,
+      fields: ['sessionContext'],
+      before: { sessionContext: { lease: { renewedAt: 't1', minutes: 10 }, worklog } },
+      after: { sessionContext: { lease: { renewedAt: 't2', minutes: 10 }, worklog, strand: 's' } },
+    });
+    const written = safeRecordActivity.mock.calls[0]?.[0] as { payload: unknown };
+    expect(written.payload).toEqual({
+      fields: ['sessionContext'],
+      changes: [
+        { path: ['sessionContext', 'lease', 'renewedAt'], op: 'set', before: 't1', after: 't2' },
+        { path: ['sessionContext', 'strand'], op: 'add', after: 's' },
+      ],
+    });
+    expect(JSON.stringify(written.payload).length).toBeLessThan(400);
+  });
+
+  it('issueUpdated that moved nothing records nothing, a re-sent identical document included', async () => {
+    const bus = newBus();
+    const doc = { lease: { renewedAt: 't1', history: [{ how: 'claim' }] } };
+    await bus.emit('issueUpdated', {
+      issueId: ISSUE_ID,
+      projectId: PROJECT_ID,
+      actor: ACTOR,
+      fields: ['sessionContext', 'title'],
+      before: { sessionContext: doc, title: 'same' },
+      after: { sessionContext: structuredClone(doc), title: 'same' },
+    });
+    expect(safeRecordActivity).not.toHaveBeenCalled();
   });
 });

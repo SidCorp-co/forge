@@ -60,7 +60,11 @@ describe('release batch finish on a website project', () => {
     `);
     const { runId } = await fx.claim([landed, bare]);
 
-    const result = await finishReleaseBatch(runId, { type: 'user', id: ownerId });
+    const result = await finishReleaseBatch(runId, {
+      type: 'user',
+      id: ownerId,
+      agency: 'human' as const,
+    });
 
     expect(result.closed).toEqual([landed]);
     expect(result.failed.map((f) => f.id)).toEqual([bare]);

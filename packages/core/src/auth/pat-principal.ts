@@ -1,3 +1,5 @@
+import type { UserKind } from '../db/schema.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
 import type { VerifiedPat } from './pat.js';
 
@@ -8,7 +10,7 @@ import type { VerifiedPat } from './pat.js';
 export function patPrincipalOf({ row, ownerKind }: VerifiedPat): PatPrincipal {
   return {
     kind: 'pat',
-    agency: ownerKind,
+    agency: credentialAgency({ ownerKind, deviceId: row.deviceId ?? null }),
     agentUserId: ownerKind === 'agent' ? row.userId : null,
     userId: row.userId,
     tokenId: row.id,
@@ -19,4 +21,13 @@ export function patPrincipalOf({ row, ownerKind }: VerifiedPat): PatPrincipal {
     boundProjectId: row.boundProjectId ?? null,
     deviceId: row.deviceId ?? null,
   };
+}
+
+// cm:guard a token bound to a paired box is the box's, an agent's, whoever holds it (the holder stays `userId`); an unbound token carries its holder's `users.kind`
+export function credentialAgency(input: {
+  ownerKind: UserKind;
+  deviceId: string | null;
+}): ActorAgency {
+  if (input.deviceId !== null) return 'agent';
+  return input.ownerKind;
 }

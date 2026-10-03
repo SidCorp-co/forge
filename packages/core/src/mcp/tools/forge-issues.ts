@@ -39,6 +39,7 @@ import { findIssueById, findIssueProjectId, type IssueRow } from '../../issues/r
 import { applyIssueRelations, issueRelationInputSchema } from '../../issues/relations-service.js';
 import { ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { sessionContextExpectSchema, sessionContextSchema } from '../../issues/session-context.js';
+import { emitIssueFieldUpdate } from '../../issues/update-hook.js';
 import { updateIssueFields } from '../../issues/update-service.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
@@ -640,6 +641,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             { ...input.data, projectId, title: input.data.title },
             {
               createdById: principal.userId,
+              createdByDeviceId: principal.deviceId,
               createdVia: 'mcp',
               actor: principalHookActor(principal),
             },
@@ -714,8 +716,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         if (willWriteFields) {
           updates.updatedAt = sql`now()`;
+          let written: IssueRow;
           try {
-            await updateIssueFields({
+            written = await updateIssueFields({
               issueId: issue.id,
               updates,
               labelIds,
@@ -725,6 +728,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           } catch (err) {
             throw toMcpIssueError(err);
           }
+          await emitIssueFieldUpdate({
+            before: issue,
+            after: written,
+            written: Object.keys(updates).filter((f) => f !== 'updatedAt'),
+            actor: principalHookActor(principal),
+          });
         }
 
         const r = await applyIssueRelations(

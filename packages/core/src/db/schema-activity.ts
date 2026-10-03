@@ -16,7 +16,7 @@ export const activityLog = pgTable(
       .references(() => issues.id, { onDelete: 'cascade' }),
     actorType: text('actor_type', { enum: actorTypes }).notNull(),
     actorId: uuid('actor_id').notNull(),
-    actorAgency: text('actor_agency', { enum: actorAgencies }).notNull().default('human'),
+    actorAgency: text('actor_agency', { enum: actorAgencies }).notNull(),
     action: text('action').notNull(),
     payload: jsonb('payload').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

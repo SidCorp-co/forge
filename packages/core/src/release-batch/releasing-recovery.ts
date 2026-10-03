@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { comments, type IssueStatus, issues, projects } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
+import { accountActor } from '../issues/account-actor.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
@@ -126,7 +127,7 @@ export async function recoverStrandedReleasing(
 
     const fallbackId = issue.projectCreatedBy ?? issue.projectId;
     const actor: TransitionActor = options.actorUserId
-      ? { type: 'user', id: options.actorUserId }
+      ? await accountActor(options.actorUserId)
       : { type: 'device', id: fallbackId, ownerId: fallbackId };
 
     try {

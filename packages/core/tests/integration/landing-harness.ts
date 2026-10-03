@@ -128,7 +128,7 @@ export async function close(w: World, id: string) {
   return mods.transitionIssueStatus(
     { id, projectId: w.projectId, status: 'awaiting_release', reopenCount: 0 },
     'closed',
-    { type: 'user', id: w.userId },
+    { type: 'user', id: w.userId, agency: 'human' as const },
   );
 }
 

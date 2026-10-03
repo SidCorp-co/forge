@@ -70,7 +70,7 @@ beforeEach(async () => {
   token = await jwt.signUserToken(ownerId);
 });
 
-const person = () => ({ type: 'user' as const, id: ownerId });
+const person = () => ({ type: 'user' as const, id: ownerId, agency: 'human' as const });
 const agent = () => ({ type: 'user' as const, id: ownerId, agency: 'agent' as const });
 
 async function insertIssue(status: string, waitingKind: string | null = null): Promise<string> {
@@ -101,8 +101,8 @@ const rowOf = async (id: string) =>
 /** A status move as the transition records it inside its own write, `minutesAgo` before now. */
 async function moved(issueId: string, from: string, to: string, minutesAgo: number) {
   await harness.db.execute(sql`
-    INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_id, source, created_at)
-    VALUES ('issue', ${issueId}, ${from}, ${to}, 'user', ${ownerId}, 'issues',
+    INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_agency, actor_id, source, created_at)
+    VALUES ('issue', ${issueId}, ${from}, ${to}, 'user', 'human', ${ownerId}, 'issues',
             now() - ${`${minutesAgo} minutes`}::interval)
   `);
 }
@@ -110,8 +110,8 @@ async function moved(issueId: string, from: string, to: string, minutesAgo: numb
 /** A status move as the bus subscriber's history row records it, `secondsAgo` before now — negative is later. */
 async function historyRow(issueId: string, from: string, to: string, secondsAgo: number) {
   await harness.db.execute(sql`
-    INSERT INTO activity_log (issue_id, actor_type, actor_id, action, payload, created_at)
-    VALUES (${issueId}, 'user', ${ownerId}, 'issue.statusChanged',
+    INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action, payload, created_at)
+    VALUES (${issueId}, 'user', ${ownerId}, 'human', 'issue.statusChanged',
             ${JSON.stringify({ from, to })}::jsonb, now() - ${`${secondsAgo} seconds`}::interval)
   `);
 }

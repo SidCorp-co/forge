@@ -17,7 +17,7 @@ const { mintParkQuestion, parkQuestionNotMinted } = await import('./park-questio
 
 const ISSUE = { id: 'i1', projectId: 'p1' };
 const AGENT = { type: 'device' as const, id: 'd1', ownerId: 'u1' };
-const PERSON = { type: 'user' as const, id: 'u1' };
+const PERSON = { type: 'user' as const, id: 'u1', agency: 'human' as const };
 
 const asked = (actor: typeof AGENT | typeof PERSON, toStatus: string, needs?: string) =>
   parkQuestionNotMinted({

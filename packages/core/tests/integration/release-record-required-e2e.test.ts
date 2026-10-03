@@ -99,7 +99,7 @@ describe('release record required E2E', () => {
   }
 
   const device = () => ({ id: ownerId, ownerId }) as const;
-  const human = () => ({ type: 'user', id: ownerId }) as const;
+  const human = () => ({ type: 'user', id: ownerId, agency: 'human' as const }) as const;
   const SKIP_NOTE = { section: 'Skip', userFacing: '-' };
 
   it('refuses an agent close with nothing written, and leaves the row exactly as it was', async () => {

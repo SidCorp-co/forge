@@ -71,7 +71,7 @@ beforeEach(async () => {
   forwarded = true;
 });
 
-const actor = () => ({ type: 'user' as const, id: ownerId });
+const actor = () => ({ type: 'user' as const, id: ownerId, agency: 'human' as const });
 
 async function twoIssueBatch() {
   const first = await fx.insertIssue();

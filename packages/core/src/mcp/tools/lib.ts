@@ -142,10 +142,16 @@ export function principalUserId(principal: McpPrincipal): string {
   return principal.userId;
 }
 
+/**
+ * Who a call's writes are recorded as: the paired box a token is bound to, with its holder kept as
+ * the owner, or else the account holding the token, carrying that account's agency. A box names its
+ * own `devices` row, so the audit resolves to the box and the person behind it.
+ */
 export function principalActor(principal: McpPrincipal): TransitionActor {
-  return principal.agency === 'agent'
-    ? { type: 'device', id: principal.tokenId, ownerId: principal.userId }
-    : { type: 'user', id: principal.userId, agency: principal.agency };
+  if (principal.deviceId) {
+    return { type: 'device', id: principal.deviceId, ownerId: principal.userId };
+  }
+  return { type: 'user', id: principal.userId, agency: principal.agency };
 }
 
 /**
@@ -156,12 +162,7 @@ export function principalAuthorDeviceId(principal: McpPrincipal): string | null 
   return principal.deviceId;
 }
 
-/**
- * Who was at the keyboard for this MCP call, as the kernel audit records it.
- *
- * Distinct from {@link principalActor}, which answers who OWNS the write. The
- * token's `job:`/`session:` name prefix already decided this.
- */
+/** Who was at the keyboard for this MCP call, as the kernel audit records it. */
 export function principalAgency(principal: McpPrincipal): ActorAgency {
   return actorAgency(principalActor(principal));
 }

@@ -17,12 +17,14 @@ export type AuthVars = {
   deviceId?: string;
   principal?: 'user' | 'device' | 'pat';
   /**
-   * Whether the credential this request arrived on belongs to a person or to
-   * an agent, set by every branch of every door below (ISS-1137). A session
-   * JWT is a person at a keyboard; a token carries its owner's `users.kind`; a
-   * device is a machine.
+   * Whether the credential this request arrived on is a person's or an
+   * agent's, set by every branch of every door below. A session JWT is a
+   * person at a keyboard; a token bound to a paired box is that box's, so an
+   * agent's; any other token carries its holder's `users.kind`.
    */
   agency?: ActorAgency;
+  /** The paired box a token is bound to, which marks a write made with it as that box's. */
+  patDeviceId?: string;
   agentUserId?: string;
   patTokenId?: string;
 };
@@ -85,6 +87,7 @@ async function admitPat(
   c.set('agency', principal.agency);
   if (principal.agentUserId) c.set('agentUserId', principal.agentUserId);
   c.set('patTokenId', principal.tokenId);
+  if (principal.deviceId) c.set('patDeviceId', principal.deviceId);
   return runWithPatScope(scope, () => next());
 }
 

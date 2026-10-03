@@ -27,11 +27,13 @@ const UNKNOWN_CREATOR_LABEL = 'Unknown user';
 
 /**
  * Who filed each issue on this page, one grouped query (ISS-756, ISS-1137). A
- * writer is a named account: `users.kind` is its kind and `display_name` its
- * label, so no class label stands in for a group of writers. Never a raw id.
+ * writer is a named account and `display_name` its label, so no class label
+ * stands in for a group of writers. Never a raw id. An agent filed it where a
+ * paired box's credential did (`created_by_device_id`) or the account is an
+ * agent's — `comments/service.ts:writtenByAnAgent`'s rule for a comment.
  */
 export async function hydrateCreatorsForIssues(
-  rows: { id: string; createdById: string }[],
+  rows: { id: string; createdById: string; createdByDeviceId: string | null }[],
 ): Promise<Map<string, IssueCreator>> {
   if (rows.length === 0) return new Map();
   const createdByIds = [...new Set(rows.map((r) => r.createdById))];
@@ -52,7 +54,7 @@ export async function hydrateCreatorsForIssues(
         r.id,
         {
           creatorEmail: writer?.email ?? null,
-          creatorIsAgent: writer?.kind === 'agent',
+          creatorIsAgent: r.createdByDeviceId !== null || writer?.kind === 'agent',
           creatorLabel: writer?.displayName ?? writer?.email ?? UNKNOWN_CREATOR_LABEL,
         },
       ];
@@ -60,9 +62,9 @@ export async function hydrateCreatorsForIssues(
   );
 }
 
-/** The same question in SQL: is this issue's creator an account of kind `agent`? */
+/** The same question in SQL: did a paired box or an agent account file this issue? */
 export function creatorIsAgentCondition(): SQL {
-  return sql`EXISTS (SELECT 1 FROM ${users} WHERE ${users.id} = ${issues.createdById} AND ${users.kind} = 'agent')`;
+  return sql`(${issues.createdByDeviceId} IS NOT NULL OR EXISTS (SELECT 1 FROM ${users} WHERE ${users.id} = ${issues.createdById} AND ${users.kind} = 'agent'))`;
 }
 
 /** `agent` selects every agent's issues; anything else is one writer's id. */

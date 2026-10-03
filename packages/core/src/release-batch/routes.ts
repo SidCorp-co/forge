@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RELEASE_ATTEMPT_STAGES } from '../db/schema-release-ledger.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, conflict, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
@@ -273,11 +273,7 @@ releaseBatchRoutes.post(
     await loadRunForProject(runId, projectId, userId);
 
     try {
-      const accepted = await acceptReleaseBatchFinish(
-        runId,
-        { type: 'user', id: userId },
-        c.req.valid('json'),
-      );
+      const accepted = await acceptReleaseBatchFinish(runId, restActor(c), c.req.valid('json'));
       return c.json(
         { runId, finish: accepted.finish },
         accepted.finish.state === 'finished' ? 200 : 202,

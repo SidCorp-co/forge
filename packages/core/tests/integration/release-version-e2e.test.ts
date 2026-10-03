@@ -454,9 +454,9 @@ describe('the release path itself', () => {
     const { finishReleaseBatch, ReleaseVersionMissingError } = await import(
       '../../src/release-batch/service.js'
     );
-    await expect(finishReleaseBatch(runId, { type: 'user', id: ownerId })).rejects.toBeInstanceOf(
-      ReleaseVersionMissingError,
-    );
+    await expect(
+      finishReleaseBatch(runId, { type: 'user', id: ownerId, agency: 'human' as const }),
+    ).rejects.toBeInstanceOf(ReleaseVersionMissingError);
 
     // And it refused BEFORE closing anything, which is what makes the refusal worth having.
     expect((await fx.stored(issue)).status).toBe('releasing');
@@ -467,7 +467,7 @@ describe('the release path itself', () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
 
     expect(await currentReleaseVersion(projectId)).toBeNull();
-    await finishReleaseBatch(runId, { type: 'user', id: ownerId });
+    await finishReleaseBatch(runId, { type: 'user', id: ownerId, agency: 'human' as const });
     expect(await currentReleaseVersion(projectId)).toBe('0.1.0');
   });
 
@@ -476,7 +476,7 @@ describe('the release path itself', () => {
     const { abortReleaseBatch, finishReleaseBatch } = await import(
       '../../src/release-batch/service.js'
     );
-    await finishReleaseBatch(runId, { type: 'user', id: ownerId });
+    await finishReleaseBatch(runId, { type: 'user', id: ownerId, agency: 'human' as const });
 
     // `abortReleaseBatch` on a completed run reaches `cancelConcludedRun`, which takes nothing off
     // the deploy — so only the stamp still answers what is live.

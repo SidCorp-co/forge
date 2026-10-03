@@ -127,6 +127,8 @@ export async function applyMergeMarker(args: {
   markDetail: string;
 }> {
   const before = args.issue;
+  const prior = await findIssueById(before.id);
+  if (!prior) throw new MergeMarkerError('ISSUE_NOT_FOUND', 'issue not found');
 
   let stampResult: MergeRecord = { wrote: true, mergedAt: null, commitSha: null, landing: null };
   /** The commit the caller claimed, where Forge has no merge of its own to put in the column. */
@@ -280,7 +282,11 @@ export async function applyMergeMarker(args: {
     projectId: before.projectId,
     actor: args.actor.hookActor,
     fields: ['mergedAt', 'mergedCommitSha', 'mergedLanding'],
-    before: { mergedAt: before.mergedAt },
+    before: {
+      mergedAt: prior.mergedAt,
+      mergedCommitSha: prior.mergedCommitSha,
+      mergedLanding: prior.mergedLanding,
+    },
     after: {
       mergedAt: issue.mergedAt,
       mergedCommitSha: issue.mergedCommitSha,

@@ -65,7 +65,7 @@ describe('transitionIssueStatus — run-closing decoupled from terminal-for-disp
     const result = await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'tested', reopenCount: 0 },
       'awaiting_release',
-      { type: 'user', id: ACTOR_ID },
+      { type: 'user', id: ACTOR_ID, agency: 'human' as const },
     );
 
     expect(result.terminal).toBe(true);
@@ -88,7 +88,7 @@ describe('transitionIssueStatus — run-closing decoupled from terminal-for-disp
     const result = await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'awaiting_release', reopenCount: 0 },
       'closed',
-      { type: 'user', id: ACTOR_ID },
+      { type: 'user', id: ACTOR_ID, agency: 'human' as const },
     );
 
     expect(result.terminal).toBe(true);

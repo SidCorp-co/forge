@@ -1,3 +1,4 @@
+import { issueUpdatedPayload } from '@forge/contracts/field-changes';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog } from '../db/schema.js';
@@ -51,20 +52,18 @@ export function registerActivitySubscribers(bus: HooksBus): void {
     });
   });
 
+  // cm:guard an `issue.updated` row records the changes a write made (`@forge/contracts`
+  // `issueUpdatedPayload`), never a snapshot of the fields it touched, and a write that moved
+  // nothing records nothing
   bus.on('issueUpdated', async (p) => {
     const nonAssignee = p.fields.filter((f) => f !== 'assigneeId');
-    if (nonAssignee.length > 0) {
-      const before: Record<string, unknown> = {};
-      const after: Record<string, unknown> = {};
-      for (const f of nonAssignee) {
-        before[f] = p.before[f];
-        after[f] = p.after[f];
-      }
+    const payload = issueUpdatedPayload(nonAssignee, p.before, p.after);
+    if (payload) {
       await safeRecordActivity({
         issueId: p.issueId,
         actor: p.actor,
         action: 'issue.updated',
-        payload: { fields: nonAssignee, before, after },
+        payload: { ...payload },
       });
     }
     if (p.fields.includes('assigneeId')) {

@@ -352,7 +352,7 @@ describe('POST /:projectId/release-batches/:runId/finish — the door answers th
     expect(await res.json()).toEqual({ runId: RUN_ID, finish: record('accepted') });
     expect(acceptFinishMock).toHaveBeenCalledWith(
       RUN_ID,
-      { type: 'user', id: USER_ID },
+      { type: 'user', id: USER_ID, agency: 'human' },
       { commit: 'a'.repeat(40) },
     );
   });

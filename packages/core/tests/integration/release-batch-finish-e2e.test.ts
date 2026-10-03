@@ -63,7 +63,7 @@ describe('release batch finish E2E', () => {
   };
   beforeEach(freshProject);
 
-  const actor = () => ({ type: 'user', id: ownerId }) as const;
+  const actor = () => ({ type: 'user', id: ownerId, agency: 'human' as const }) as const;
 
   describe('finish', () => {
     it('closes every claimed issue out of the gate status, on the claim it already carried', async () => {

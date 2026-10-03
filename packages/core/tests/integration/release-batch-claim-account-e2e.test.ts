@@ -81,7 +81,7 @@ async function batchOf(n: number) {
 }
 
 async function accept(runId: string) {
-  const actor = { type: 'user' as const, id: ownerId };
+  const actor = { type: 'user' as const, id: ownerId, agency: 'human' as const };
   return job.acceptReleaseBatchFinish(runId, actor, { commit: PUSHED }, async () => {});
 }
 

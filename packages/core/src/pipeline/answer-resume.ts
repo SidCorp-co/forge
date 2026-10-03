@@ -10,6 +10,7 @@ import {
 } from '../db/schema.js';
 import { agentQuestions, questionWaiters } from '../db/schema-questions.js';
 import { sessionInbox } from '../db/schema-session-inbox.js';
+import { accountActor } from '../issues/account-actor.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import type { LoopScope } from '../jobs/loop-monitor.js';
 import { logger } from '../logger.js';
@@ -42,12 +43,9 @@ async function resumeUnasked(
   answeredBy: string,
 ): Promise<boolean> {
   try {
-    await transitionIssueStatus(
-      issue,
-      ANSWERED_TARGET,
-      { type: 'user', id: answeredBy },
-      { requireNoOpenQuestions: true },
-    );
+    await transitionIssueStatus(issue, ANSWERED_TARGET, await accountActor(answeredBy), {
+      requireNoOpenQuestions: true,
+    });
     return true;
   } catch (err) {
     if (!(err instanceof TransitionError) || err.code !== 'OPEN_QUESTIONS') throw err;

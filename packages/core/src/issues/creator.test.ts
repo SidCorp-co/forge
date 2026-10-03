@@ -30,11 +30,10 @@ const person = (over: Partial<WriterRow> = {}): WriterRow => ({
 });
 
 /**
- * ISS-1137 — the writer's own account answers, and nothing else does.
- *
- * Each case below is a row whose `users.kind` is the ONLY thing that decides
- * it. `created_via` is not an input to this function any more, so a case that
- * carried one would be asserting against a column nothing reads.
+ * The writer is an agent where a paired box's credential filed the issue or the
+ * account is an agent's; otherwise the account is a person's. `created_via` is
+ * not an input to this function, so a case carrying one would assert against a
+ * column nothing reads.
  */
 describe('hydrateCreatorsForIssues', () => {
   it('empty input skips the query', async () => {
@@ -45,7 +44,9 @@ describe('hydrateCreatorsForIssues', () => {
 
   it('a person with no display name is labelled by their address', async () => {
     selectWhere.mockReturnValueOnce([person()]);
-    const map = await hydrateCreatorsForIssues([{ id: 'i1', createdById: 'u1' }]);
+    const map = await hydrateCreatorsForIssues([
+      { id: 'i1', createdById: 'u1', createdByDeviceId: null },
+    ]);
     expect(map.get('i1')).toEqual({
       creatorEmail: 'owner@example.com',
       creatorIsAgent: false,
@@ -53,9 +54,23 @@ describe('hydrateCreatorsForIssues', () => {
     });
   });
 
+  it("a person's paired box filing is an agent's, labelled by the person behind it", async () => {
+    selectWhere.mockReturnValueOnce([person({ displayName: 'Ada Lovelace' })]);
+    const map = await hydrateCreatorsForIssues([
+      { id: 'i1', createdById: 'u1', createdByDeviceId: 'd1' },
+    ]);
+    expect(map.get('i1')).toEqual({
+      creatorEmail: 'owner@example.com',
+      creatorIsAgent: true,
+      creatorLabel: 'Ada Lovelace',
+    });
+  });
+
   it('a person with a display name is labelled by it', async () => {
     selectWhere.mockReturnValueOnce([person({ displayName: 'Ada Lovelace' })]);
-    const map = await hydrateCreatorsForIssues([{ id: 'i1', createdById: 'u1' }]);
+    const map = await hydrateCreatorsForIssues([
+      { id: 'i1', createdById: 'u1', createdByDeviceId: null },
+    ]);
     expect(map.get('i1')?.creatorLabel).toBe('Ada Lovelace');
     expect(map.get('i1')?.creatorIsAgent).toBe(false);
   });
@@ -64,7 +79,9 @@ describe('hydrateCreatorsForIssues', () => {
     selectWhere.mockReturnValueOnce([
       person({ id: 'a1', email: 'master@agents.local', displayName: 'master', kind: 'agent' }),
     ]);
-    const map = await hydrateCreatorsForIssues([{ id: 'i1', createdById: 'a1' }]);
+    const map = await hydrateCreatorsForIssues([
+      { id: 'i1', createdById: 'a1', createdByDeviceId: null },
+    ]);
     expect(map.get('i1')).toEqual({
       creatorEmail: 'master@agents.local',
       creatorIsAgent: true,
@@ -79,8 +96,8 @@ describe('hydrateCreatorsForIssues', () => {
       person({ id: 'a2', email: 'two@agents.local', displayName: 'reviewer', kind: 'agent' }),
     ]);
     const map = await hydrateCreatorsForIssues([
-      { id: 'i1', createdById: 'a1' },
-      { id: 'i2', createdById: 'a2' },
+      { id: 'i1', createdById: 'a1', createdByDeviceId: null },
+      { id: 'i2', createdById: 'a2', createdByDeviceId: null },
     ]);
     expect(map.get('i1')?.creatorLabel).toBe('master');
     expect(map.get('i2')?.creatorLabel).toBe('reviewer');
@@ -92,7 +109,11 @@ describe('hydrateCreatorsForIssues', () => {
     selectWhere.mockReturnValueOnce([
       person({ id: 'a1', email: 'nameless@agents.local', kind: 'agent' }),
     ]);
-    expect((await hydrateCreatorsForIssues([{ id: 'i1', createdById: 'a1' }])).get('i1')).toEqual({
+    expect(
+      (
+        await hydrateCreatorsForIssues([{ id: 'i1', createdById: 'a1', createdByDeviceId: null }])
+      ).get('i1'),
+    ).toEqual({
       creatorEmail: 'nameless@agents.local',
       creatorIsAgent: true,
       creatorLabel: 'nameless@agents.local',
@@ -101,7 +122,9 @@ describe('hydrateCreatorsForIssues', () => {
 
   it('creator not found in users never falls back to a raw id', async () => {
     selectWhere.mockReturnValueOnce([]);
-    const map = await hydrateCreatorsForIssues([{ id: 'i1', createdById: 'deleted-user' }]);
+    const map = await hydrateCreatorsForIssues([
+      { id: 'i1', createdById: 'deleted-user', createdByDeviceId: null },
+    ]);
     expect(map.get('i1')).toEqual({
       creatorEmail: null,
       creatorIsAgent: false,

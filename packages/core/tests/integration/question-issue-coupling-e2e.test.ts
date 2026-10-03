@@ -114,7 +114,7 @@ const openQuestion = (issueId: string, blockerKind = 'human') =>
   question(issueId, 'open', blockerKind, ASKED);
 const answeredQuestion = (issueId: string) => question(issueId, 'answered', 'human', ANSWERED);
 
-const person = () => ({ type: 'user' as const, id: ownerId });
+const person = () => ({ type: 'user' as const, id: ownerId, agency: 'human' as const });
 
 async function refusalOf(p: Promise<unknown>) {
   try {

@@ -14,7 +14,7 @@ import {
 import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import type { AuthVars } from '../middleware/auth.js';
+import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';
@@ -123,7 +123,7 @@ agentSessionLifecycleRoutes.post(
       where: and(eq(agentSessions.id, id), inArray(agentSessions.status, LIVE_SESSION_STATUSES)),
       fromStatus: session.status,
       reason: 'user_cancelled',
-      actor: { type: 'user', id: userId, agency: c.get('agency') ?? 'human' },
+      actor: restActor(c),
       source: 'session-cancel',
     });
     if (!updated) {

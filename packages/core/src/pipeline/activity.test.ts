@@ -165,12 +165,21 @@ describe('resolveActor', () => {
     return { get: (k: string) => vars[k] } as unknown as Context;
   }
 
-  it('returns user principal when userId is set', () => {
-    expect(resolveActor(ctx({ userId: USER_ID }))).toEqual({
+  it('returns the user principal with the agency its door set', () => {
+    expect(resolveActor(ctx({ userId: USER_ID, agency: 'human' }))).toEqual({
       type: 'user',
       id: USER_ID,
       agency: 'human',
     });
+    expect(resolveActor(ctx({ userId: USER_ID, agency: 'agent' }))).toEqual({
+      type: 'user',
+      id: USER_ID,
+      agency: 'agent',
+    });
+  });
+
+  it('refuses a user principal no door gave an agency, rather than writing it as a person', () => {
+    expect(() => resolveActor(ctx({ userId: USER_ID }))).toThrow(/ACTOR_AGENCY_UNDETERMINED/);
   });
 
   it('returns device principal when only device is set', () => {
@@ -182,7 +191,9 @@ describe('resolveActor', () => {
   });
 
   it('prefers user when both are set', () => {
-    expect(resolveActor(ctx({ userId: USER_ID, device: { id: DEVICE_ID } }))).toEqual({
+    expect(
+      resolveActor(ctx({ userId: USER_ID, agency: 'human', device: { id: DEVICE_ID } })),
+    ).toEqual({
       type: 'user',
       id: USER_ID,
       agency: 'human',

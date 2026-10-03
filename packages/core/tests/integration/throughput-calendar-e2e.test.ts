@@ -43,8 +43,8 @@ describe('ISS-1149 · shippedPerDay is one calendar window', () => {
       VALUES (${issueId}, ${projectId}, ${seq}, 'shipped', 'open', 'medium', ${ownerId})
     `);
     await harness.db.execute(sql`
-      INSERT INTO activity_log (id, issue_id, actor_type, actor_id, action, payload, created_at)
-      VALUES (${randomUUID()}, ${issueId}, 'user', ${ownerId}, 'issue.statusChanged',
+      INSERT INTO activity_log (id, issue_id, actor_type, actor_id, actor_agency, action, payload, created_at)
+      VALUES (${randomUUID()}, ${issueId}, 'user', ${ownerId}, 'human', 'issue.statusChanged',
               ${JSON.stringify({ from: 'testing', to })}::jsonb, ${at.toISOString()}::timestamptz)
     `);
   }

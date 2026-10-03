@@ -112,6 +112,7 @@ const { createIssue, CREATE_ENTRY_STATUSES, IssueCreateError } = await import(
 
 const writer = {
   createdById: '33333333-3333-4333-8333-333333333333',
+  createdByDeviceId: null,
   createdVia: 'mcp' as const,
   actor: {
     type: 'device' as const,

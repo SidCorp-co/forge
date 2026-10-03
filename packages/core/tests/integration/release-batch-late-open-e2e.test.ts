@@ -59,7 +59,7 @@ describe('a release batch opened after its own release', () => {
   const { declareProduction, seedReleaseRunner, insertIssue, stored } = fx;
   const { runStatus, claim, serve } = fx;
 
-  const actor = () => ({ type: 'user', id: ownerId }) as const;
+  const actor = () => ({ type: 'user', id: ownerId, agency: 'human' as const }) as const;
 
   /** The commit this was found on: cut, deployed, and only then batched. */
   const RELEASED = '30bc56b16af665118ddcbd2e32bbc8b2bc0e5c0c';

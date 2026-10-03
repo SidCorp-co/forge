@@ -176,8 +176,8 @@ export async function createRetentionFixture(): Promise<RetentionFixture> {
       const id = randomUUID();
       await harness.db.execute(sql`
         INSERT INTO kernel_transitions (id, entity, entity_id, from_status, to_status, actor_type,
-                                        source, created_at)
-        VALUES (${id}, ${entity}, ${entityId}, 'running', 'done', 'system', 'fixture',
+                                        actor_agency, source, created_at)
+        VALUES (${id}, ${entity}, ${entityId}, 'running', 'done', 'system', 'agent', 'fixture',
                 ${ago(daysAgo)})
       `);
       return id;

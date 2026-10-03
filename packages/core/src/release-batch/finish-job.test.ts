@@ -14,7 +14,7 @@ function record(over: Record<string, unknown> = {}) {
     requestId: 'r-1',
     state: 'accepted',
     commit: null,
-    requestedBy: { type: 'user', id: 'u-1' },
+    requestedBy: { type: 'user', id: 'u-1', agency: 'human' },
     acceptedAt: iso(-1_000),
     updatedAt: iso(-1_000),
     version: 1,

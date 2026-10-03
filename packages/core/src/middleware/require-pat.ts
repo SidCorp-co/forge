@@ -15,8 +15,8 @@ import { getClientIp } from './rate-limit.js';
 export type PatPrincipal = {
   kind: 'pat';
   /**
-   * The `users.kind` of the account this token belongs to — the agency of every
-   * write made with it, with no third answer (ISS-1137).
+   * Who acts with this token: `agent` for one bound to a paired box, else the
+   * `users.kind` of the account holding it (`auth/pat-principal.ts:credentialAgency`).
    */
   agency: ActorAgency;
   agentUserId: string | null;

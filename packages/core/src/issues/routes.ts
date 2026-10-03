@@ -1,3 +1,4 @@
+import { diffFieldValue } from '@forge/contracts/field-changes';
 import { and, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -209,7 +210,12 @@ issueProjectRoutes.post(
     try {
       result = await createIssue(
         { ...input, projectId },
-        { createdById: userId, createdVia: 'web', actor: restActor(c) },
+        {
+          createdById: userId,
+          createdByDeviceId: c.get('patDeviceId') ?? null,
+          createdVia: 'web',
+          actor: restActor(c),
+        },
       );
     } catch (err) {
       throw toHttpCreateError(err);
@@ -285,9 +291,7 @@ issueProjectRoutes.get(
       await readLandingShape(db, projectId),
     );
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, [issue.id]);
-    const creatorMap = await hydrateCreatorsForIssues([
-      { id: issue.id, createdById: issue.createdById },
-    ]);
+    const creatorMap = await hydrateCreatorsForIssues([issue]);
     return c.json({
       ...serialized,
       ...creatorMap.get(issue.id),
@@ -353,9 +357,7 @@ issueProjectRoutes.get(
 
     const ids = serialized.map((r) => r.id);
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, ids);
-    const creatorMap = await hydrateCreatorsForIssues(
-      serialized.map((r) => ({ id: r.id, createdById: r.createdById })),
-    );
+    const creatorMap = await hydrateCreatorsForIssues(serialized);
 
     if (!q.withAgentSessions) {
       return c.json(
@@ -431,9 +433,7 @@ issueRoutes.get(
     );
     const agentMap = await hydrateAgentSessionsForIssues(issue.projectId, [issue.id]);
     const agentBucket = agentMap.get(issue.id);
-    const creatorMap = await hydrateCreatorsForIssues([
-      { id: issue.id, createdById: issue.createdById },
-    ]);
+    const creatorMap = await hydrateCreatorsForIssues([issue]);
     return c.json({
       ...serialized,
       ...creatorMap.get(issue.id),
@@ -508,7 +508,7 @@ issueRoutes.patch(
     const after: Record<string, unknown> = {};
     const track = (field: keyof IssueRow, next: unknown) => {
       const prev = issue[field];
-      if (prev !== next) {
+      if (diffFieldValue(field, prev, next).length > 0) {
         changedFields.push(field);
         before[field] = prev;
         after[field] = next;

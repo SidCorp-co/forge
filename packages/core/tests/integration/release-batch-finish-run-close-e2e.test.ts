@@ -35,7 +35,7 @@ const fx = releaseBatchFixture(
 const { declareProduction, seedReleaseRunner, insertIssue, stored } = fx;
 const { runStatus, storedJob, claim } = fx;
 
-const actor = () => ({ type: 'user', id: ownerId }) as const;
+const actor = () => ({ type: 'user', id: ownerId, agency: 'human' as const }) as const;
 
 beforeEach(async () => {
   await truncateAll(harness.db);

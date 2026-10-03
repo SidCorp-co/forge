@@ -42,6 +42,10 @@
       "types": "./dist/wireframe.d.ts",
       "default": "./dist/wireframe.js"
     },
+    "./field-changes": {
+      "types": "./dist/field-changes.d.ts",
+      "default": "./dist/field-changes.js"
+    },
     "./ui-actions": {
       "types": "./dist/ui-actions.d.ts",
       "default": "./dist/ui-actions.js"

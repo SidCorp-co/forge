@@ -199,7 +199,7 @@ export async function createReleaseBatch(
       await transitionIssueStatus(
         { id, projectId, status: gateStatus, reopenCount: 0 },
         'releasing',
-        { type: 'user', id: userId },
+        await accountActor(userId),
         { viaReleasePath: true },
       );
     } catch (err) {
@@ -522,3 +522,5 @@ export {
   type ReleaseRoster,
   type ReleaseRosterEntry,
 } from './queries.js';
+
+import { accountActor } from '../issues/account-actor.js';

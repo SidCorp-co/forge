@@ -24,6 +24,7 @@ export const REST_ISSUE_LIST_COLUMNS = {
   complexity: issues.complexity,
   assigneeId: issues.assigneeId,
   createdById: issues.createdById,
+  createdByDeviceId: issues.createdByDeviceId,
   createdVia: issues.createdVia,
   reportedBy: issues.reportedBy,
   detectorKey: issues.detectorKey,

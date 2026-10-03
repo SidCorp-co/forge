@@ -390,7 +390,11 @@ searchRoutes.get(
 
     if (serialized.length > 0) {
       const creatorMap = await hydrateCreatorsForIssues(
-        serialized.map((r) => ({ id: r.id as string, createdById: r.createdById as string })),
+        serialized.map((r) => ({
+          id: r.id as string,
+          createdById: r.createdById as string,
+          createdByDeviceId: r.createdByDeviceId as string | null,
+        })),
       );
       serialized = serialized.map((r) => ({
         ...r,

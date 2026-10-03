@@ -78,6 +78,8 @@ export type CreateIssueInput = {
  */
 export type IssueCreateWriter = {
   createdById: string;
+  /** The paired box whose credential files it, or null for an account's own write. */
+  createdByDeviceId: string | null;
   createdVia: IssueCreatedVia;
   actor: Actor;
 };
@@ -169,6 +171,7 @@ export async function createIssue(
         reportedBy: input.reportedBy ?? null,
         assigneeId: input.assigneeId ?? null,
         createdById: writer.createdById,
+        createdByDeviceId: writer.createdByDeviceId,
         createdVia: writer.createdVia,
         detectorKey,
         plan: input.plan ?? null,

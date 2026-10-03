@@ -130,7 +130,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         written = await insertComment({
           issueId,
           authorId: userId,
-          authorDeviceId: null,
+          authorDeviceId: c.get('patDeviceId') ?? null,
           body,
           format,
           parentId: parentId ?? null,

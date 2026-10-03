@@ -279,7 +279,7 @@ describe('cancelPipelineRun', () => {
       string,
       { type: string; id: string },
     ];
-    expect(actorArg).toEqual({ type: 'user', id: 'human-7' });
+    expect(actorArg).toEqual({ type: 'user', id: 'human-7', agency: 'human' });
   });
 
   it('leaves the issue alone when the caller asks for a clean restart', async () => {
