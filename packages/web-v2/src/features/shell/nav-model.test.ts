@@ -53,7 +53,7 @@ describe("the Ecosystem group", () => {
 });
 
 describe("the project menu", () => {
-  it("is Dashboard, Requirements, Workflows, Issues, Agents, Automation and Releases, in that order", () => {
+  it("is Dashboard, Requirements, Workflows, Issues, Agents, Automation, Releases and Feedback, in that order", () => {
     expect(PROJECT_MENU.map((e) => e.label)).toEqual([
       "Dashboard",
       "Requirements",
@@ -62,6 +62,7 @@ describe("the project menu", () => {
       "Agents",
       "Automation",
       "Releases",
+      "Feedback",
     ]);
   });
 
@@ -77,7 +78,7 @@ describe("the project menu", () => {
 
   it("names no Library, Board, Insights, Modules or PM destination", () => {
     const labels = PROJECT_ITEMS.map((it) => it.label);
-    for (const gone of ["Library", "Board", "Insights", "Modules", "PM", "Improve", "Feedback"]) {
+    for (const gone of ["Library", "Board", "Insights", "Modules", "PM", "Improve"]) {
       expect(labels).not.toContain(gone);
     }
     expect(existsSync(join(PROJECT_ROUTES, "library"))).toBe(false);
@@ -92,6 +93,8 @@ describe("the project menu", () => {
     expect(at("/workflows")).toBe("proj-workflows");
     expect(at("/requirements")).toBe("proj-requirements");
     expect(at("/requirements/REQ-3")).toBe("proj-requirements");
+    expect(at("/feedback")).toBe("proj-feedback");
+    expect(at("/feedback/FB-3")).toBe("proj-feedback");
   });
 
   it("badges Issues with open issues and Releases with versions awaiting approval", () => {
