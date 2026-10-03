@@ -208,6 +208,16 @@ export type CreateSuggestionRequest = z.infer<
 >;
 export const CREATE_SUGGESTION_SHAPE = `{ kind: ${SUGGESTION_KINDS.join(" | ")}, requirement | issue | feedback, baseRevision, payload, model? }`;
 
+/** `POST /api/projects/:id/suggestions/:sid/accept` — the person's reason, kept on the row. */
+export const acceptSuggestionRequestSchema = z.strictObject({
+	reason: z.string().max(4_000).nullable().optional(),
+});
+export type AcceptSuggestionRequest = z.infer<
+	typeof acceptSuggestionRequestSchema
+>;
+export const ACCEPT_SUGGESTION_SHAPE =
+	"{ reason? } — why it is accepted, and on whose authority";
+
 /** `POST /api/projects/:id/suggestions/:sid/reject`. */
 export const rejectSuggestionRequestSchema = z.strictObject({
 	reason: z.string().max(4_000),

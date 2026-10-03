@@ -263,7 +263,9 @@ export const requirementDeferrals = pgTable(
       .notNull()
       .references((): AnyPgColumn => requirements.id, { onDelete: 'cascade' }),
     act: text('act', { enum: REQUIREMENT_DEFERRAL_ACTS }).notNull(),
-    fromStatus: text('from_status', { enum: [...DEFERRABLE_STATUSES, 'deferred'] as const }).notNull(),
+    fromStatus: text('from_status', {
+      enum: [...DEFERRABLE_STATUSES, 'deferred'] as const,
+    }).notNull(),
     targetPhase: text('target_phase'),
     reason: text('reason'),
     decidedBy: uuid('decided_by')
@@ -288,10 +290,7 @@ export const requirementDeferrals = pgTable(
       'requirement_deferrals_phase_chk',
       sql`${t.act} = 'defer' OR ${t.targetPhase} IS NULL`,
     ),
-    requirementIdx: index('requirement_deferrals_requirement_idx').on(
-      t.requirementId,
-      t.decidedAt,
-    ),
+    requirementIdx: index('requirement_deferrals_requirement_idx').on(t.requirementId, t.decidedAt),
   }),
 );
 

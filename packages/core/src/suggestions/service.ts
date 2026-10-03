@@ -227,6 +227,7 @@ async function acceptDuplicateOfIssue(
   projectId: string,
   first: Row,
   actor: SuggestionActor,
+  reason: string | null,
 ): Promise<SuggestionOutcome> {
   const target = targetOfRow(first);
   const p = SUGGESTION_PAYLOADS.duplicate.schema.parse(first.payload);
@@ -293,9 +294,9 @@ async function acceptDuplicateOfIssue(
           );
           await tx
             .update(suggestions)
-            .set({ status: 'accepted', decidedBy: actor.userId, decidedAt: new Date() })
+            .set({ status: 'accepted', decidedBy: actor.userId, decidedAt: new Date(), reason })
             .where(eq(suggestions.id, row.id));
-          await recordDecision(tx, row, actor, 'accepted');
+          await recordDecision(tx, row, actor, 'accepted', reason);
         },
       },
     );
@@ -323,8 +324,11 @@ export async function acceptSuggestion(input: {
   id: string;
   actor: SuggestionActor;
   channel?: AcceptChannel | undefined;
+  /** The person's reason, and the authority it is accepted under; kept on the row (ISS-84). */
+  reason?: string | null | undefined;
 }): Promise<SuggestionOutcome> {
   const { projectId, actor } = input;
+  const reason = input.reason?.trim() || null;
   const first = await rowOf(db, projectId, input.id);
   const forbidden =
     (await personActRefusalFor(
@@ -336,7 +340,7 @@ export async function acceptSuggestion(input: {
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const target = targetOfRow(first);
   if (first.kind === 'duplicate' && target.type === 'issue' && first.status === 'proposed') {
-    return acceptDuplicateOfIssue(projectId, first, actor);
+    return acceptDuplicateOfIssue(projectId, first, actor, reason);
   }
   let written: EffectWritten = { refusals: null };
   const stale: { reason: string | null } = { reason: null };
@@ -357,9 +361,9 @@ export async function acceptSuggestion(input: {
     if (written.refusals) return written.refusals;
     await tx
       .update(suggestions)
-      .set({ status: 'accepted', decidedBy: actor.userId, decidedAt: new Date() })
+      .set({ status: 'accepted', decidedBy: actor.userId, decidedAt: new Date(), reason })
       .where(eq(suggestions.id, row.id));
-    await recordDecision(tx, row, actor, 'accepted');
+    await recordDecision(tx, row, actor, 'accepted', reason);
     return null;
   });
   if (stale.reason) {

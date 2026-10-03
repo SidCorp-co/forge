@@ -350,9 +350,10 @@ export async function acceptRevision(input: {
         .set({ state: 'superseded' })
         .where(revisionWhere(row.id, current.currentRevision));
     }
+    const acceptReason = input.reason?.trim() || null;
     await tx
       .update(requirementRevisions)
-      .set({ state: 'current', decidedBy: actor.userId, decidedAt: new Date() })
+      .set({ state: 'current', decidedBy: actor.userId, decidedAt: new Date(), acceptReason })
       .where(revisionWhere(row.id, target.revision));
     await tx
       .update(requirements)
@@ -365,14 +366,7 @@ export async function acceptRevision(input: {
     if (rebaseline) {
       // cm:why the baseline records who re-agreed and in their own words; the revision's reason is
       // its author's, already on the revision row
-      await writeBaseline(
-        tx,
-        row.id,
-        target.revision,
-        designs,
-        actor,
-        input.reason?.trim() || null,
-      );
+      await writeBaseline(tx, row.id, target.revision, designs, actor, acceptReason);
     }
     await staleOnTargetRevised(tx, row.id, target.revision);
     return null;

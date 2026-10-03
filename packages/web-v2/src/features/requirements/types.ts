@@ -20,6 +20,7 @@ export interface RequirementRevision {
   spec: RequirementSpec; tldr: string | null; changeSummary: string | null; reason: string;
   authorId: string; authorName: string | null; authorKind: 'human' | 'agent'; createdAt: string;
   proposedAt: string | null; decidedBy: string | null; decidedByName: string | null; decidedAt: string | null; returnReason: string | null;
+  acceptReason: string | null;
   fromSuggestionId: string | null;
   criteria: RequirementCriterion[];
 }

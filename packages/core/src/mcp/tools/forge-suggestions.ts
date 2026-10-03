@@ -74,7 +74,8 @@ const DESCRIPTION =
   'breakdown { issues: [{ title, description?, criteria?: [{ body, tracesTo? }] }], uncovered? }; ' +
   'triage { note, priority?, category?, route? } on an issue; duplicate { duplicateOf, similarity?, note? }; ' +
   'feedback_triage on `feedback` (FB-n), baseRevision null: { route: issue | revision | new_requirement | answer | duplicate, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }; accepting it writes the route (forge_feedback_items). ' +
-  'accept / reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); ' +
+  'accept { suggestionId, reason? } and reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); ' +
+  'an accept’s reason is kept on the suggestion, and is where the authority behind it is named. ' +
   'accepting a revision_diff writes a new DRAFT revision, never a current one. withdraw: the producer retracts its own. ' +
   'list: { requirement | issue, status? }.';
 
@@ -144,6 +145,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
           id: need(input, 'suggestionId'),
           actor,
           channel: 'mcp',
+          reason: input.reason,
         }),
       );
     case 'reject':

@@ -281,7 +281,7 @@ function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEntry[] {
         source: 'person',
         who: n.who(r.decidedBy, 'A signer'),
         kind: 'Decision',
-        text: `Accepted r${r.revision}`,
+        text: `Accepted r${r.revision}${r.acceptReason ? `: ${r.acceptReason}` : ''}`,
       }),
     );
   }

@@ -345,6 +345,7 @@ function revisionView(
     decidedByName: name(r.decidedBy),
     decidedAt: r.decidedAt?.toISOString() ?? null,
     returnReason: r.returnReason,
+    acceptReason: r.acceptReason,
     fromSuggestionId: r.fromSuggestionId,
     criteria: rowsOfRevision(criteria, r.revision).map(criterionView),
   };

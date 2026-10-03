@@ -1,3 +1,4 @@
+import { ACCEPT_REVISION_SHAPE, acceptRevisionRequestSchema } from '@forge/contracts/requirements';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -158,10 +159,7 @@ requirementRoutes.post(
 requirementRoutes.post(
   '/:id/requirements/:req/revisions/:n/accept',
   revisionParam,
-  strictBody(
-    z.strictObject({ reason: z.string().max(4_000).nullable().optional() }),
-    "{ reason? } — on an agreed requirement, the signer's reason for the re-baseline",
-  ),
+  strictBody(acceptRevisionRequestSchema, ACCEPT_REVISION_SHAPE),
   async (c) => {
     const { id, req, n } = c.req.valid('param');
     return answer(
