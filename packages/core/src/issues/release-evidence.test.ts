@@ -41,6 +41,7 @@ describe('evaluateCriteria (ISS-55: the awaiting_release gate off criterion_verd
       kind: 'criteria',
       unpassed: [],
       unidentified: [],
+      predateReopen: [],
     });
   });
 
@@ -61,6 +62,7 @@ describe('evaluateCriteria (ISS-55: the awaiting_release gate off criterion_verd
         { criterion: 3, verdict: null },
       ],
       unidentified: [],
+      predateReopen: [],
     });
   });
 
@@ -71,6 +73,30 @@ describe('evaluateCriteria (ISS-55: the awaiting_release gate off criterion_verd
         verdict({ identityKind: 'commit_unresolved', commitSha: '1810f84', backfilled: true }),
       ),
     ]);
-    expect(found).toEqual({ kind: 'criteria', unpassed: [], unidentified: [1] });
+    expect(found).toEqual({ kind: 'criteria', unpassed: [], unidentified: [1], predateReopen: [] });
+  });
+
+  it('a passing verdict at or before the latest reopen is not current; one after it is', () => {
+    const reopenedAt = new Date('2026-10-03T12:00:00.000Z');
+    const found = evaluateCriteria(
+      [
+        criterion(1, verdict({ createdAt: '2026-10-03T11:59:59.999Z' })),
+        criterion(2, verdict({ createdAt: '2026-10-03T12:00:00.000Z' })),
+        criterion(3, verdict({ createdAt: '2026-10-03T12:00:00.001Z' })),
+        criterion(4, verdict({ verdict: 'fail', createdAt: '2026-10-03T11:00:00.000Z' })),
+      ],
+      reopenedAt,
+    );
+    expect(found).toEqual({
+      kind: 'criteria',
+      unpassed: [{ criterion: 4, verdict: 'fail' }],
+      unidentified: [],
+      predateReopen: [1, 2],
+    });
+  });
+
+  it('an issue never reopened reads every verdict as current', () => {
+    const found = evaluateCriteria([criterion(1, verdict({ createdAt: '2020-01-01T00:00:00Z' }))]);
+    expect(found).toEqual({ kind: 'criteria', unpassed: [], unidentified: [], predateReopen: [] });
   });
 });
