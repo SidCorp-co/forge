@@ -26,7 +26,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture, SKIP_NOTE } from '../helpers/release-batch-fixture.js';
+import { AT_RELEASE, releaseBatchFixture, SKIP_NOTE } from '../helpers/release-batch-fixture.js';
 
 describe('release batch finish E2E', () => {
   let harness: TestDatabase;
@@ -100,7 +100,7 @@ describe('release batch finish E2E', () => {
       expect((await stored(unshipped)).status).not.toBe('closed');
     });
 
-    it('marks every claimed issue `releasing`, so a batch in flight is readable from the status', async () => {
+    it('marks every claimed issue at step `release`, so a batch in flight is readable from the work state', async () => {
       const a = await insertIssue();
       const b = await insertIssue();
 
@@ -108,7 +108,7 @@ describe('release batch finish E2E', () => {
 
       for (const id of [a, b]) {
         const after = await stored(id);
-        expect(after.status).toBe('releasing');
+        expect(after).toMatchObject(AT_RELEASE);
         expect(after.claim).toBe(runId);
       }
     });
@@ -118,7 +118,7 @@ describe('release batch finish E2E', () => {
       const a = await insertIssue();
       const before = await stored(a);
       const { runId } = await claim([a]);
-      expect((await stored(a)).status).toBe('releasing');
+      expect(await stored(a)).toMatchObject(AT_RELEASE);
 
       const touched = await abortReleaseBatch(runId, 'deploy never reported', ownerId);
 
@@ -180,7 +180,7 @@ describe('release batch finish E2E', () => {
       expect(await runStatus(runId)).toBe('running');
       for (const id of [a, b]) {
         const after = await stored(id);
-        expect(after.status).toBe('releasing');
+        expect(after).toMatchObject(AT_RELEASE);
         expect(after.mergedAt).toEqual(before.get(id));
         expect(after.claim).toBe(runId);
       }

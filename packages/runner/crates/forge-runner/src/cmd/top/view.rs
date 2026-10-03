@@ -516,7 +516,7 @@ mod tests {
         for said in [
             "ASKS   ISS-4 run run-park is parked on a person, waiting on the owner ←",
             "NOPATH 1 at awaiting_release (ISS-7) with no release path: NO_RELEASE_GATE ← GET /api/projects/aaaaaaaa-1111/release-readiness",
-            "MOV   1 — in_progress 1, testing 0, releasing 0 ← GET /api/projects/aaaaaaaa-1111/issues/search?limit=1&withBuckets=true",
+            "MOV   1 — in_progress 1 ← GET /api/projects/aaaaaaaa-1111/issues/search?limit=1&withBuckets=true",
             "closed 5 — in no lane",
             "CHANGE —, no earlier reading",
             "alpha  [aaaaaaaa]  /repo/a",

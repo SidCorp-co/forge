@@ -17,7 +17,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { AT_RELEASE, PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
 
@@ -375,7 +375,7 @@ describe('a hold does not outlive the wait it describes', () => {
     const result = await sweep();
 
     expect(result.issuesCut).toBe(1);
-    expect((await stored(id)).status).toBe('releasing');
+    expect(await stored(id)).toMatchObject(AT_RELEASE);
     expect(await holdOf(id)).toBeNull();
   }, 30_000);
 

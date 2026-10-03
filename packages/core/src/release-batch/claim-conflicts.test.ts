@@ -17,7 +17,8 @@ const held = (key: string, runId = 'run-ended'): ClaimConflict => ({
   runId,
   runEnded: true,
   claimer: 'batch',
-  status: 'releasing',
+  status: 'awaiting_release',
+  releasing: true,
 });
 const running = (key: string, runId = 'run-open'): ClaimConflict => ({
   id: `id-${key}`,
@@ -26,7 +27,8 @@ const running = (key: string, runId = 'run-open'): ClaimConflict => ({
   runId,
   runEnded: false,
   claimer: 'batch',
-  status: 'releasing',
+  status: 'awaiting_release',
+  releasing: true,
 });
 const staleAt = (
   key: string,
@@ -40,6 +42,7 @@ const staleAt = (
   runEnded: true,
   claimer,
   status: 'awaiting_release',
+  releasing: false,
 });
 const recording = (key: string, runId = 'run-rec'): ClaimConflict => ({
   id: `id-${key}`,
@@ -49,8 +52,9 @@ const recording = (key: string, runId = 'run-rec'): ClaimConflict => ({
   runEnded: false,
   claimer: 'record',
   status: 'awaiting_release',
+  releasing: false,
 });
-const at = (key: string, status: 'testing' | 'closed' | 'dropped'): ClaimConflict => ({
+const at = (key: string, status: 'in_progress' | 'closed' | 'dropped'): ClaimConflict => ({
   id: `id-${key}`,
   key,
   standing: 'status',
@@ -63,7 +67,7 @@ describe('claimConflictSentence', () => {
     const s = claimConflictSentence(P, GATE, [held('ISS-11'), held('ISS-12')]);
     expect(s).toMatch(/^2 issues named here cannot be claimed for a release\./);
     expect(s).toContain(
-      'ISS-11, ISS-12 are at `releasing`, still claimed by release batch run-ended',
+      'ISS-11, ISS-12 are at `awaiting_release` held at the release step, still claimed by release batch run-ended',
     );
     expect(s).toContain(
       'POST /api/projects/p-1/release-batches/run-ended/abort and a body of {"promotedRoster":"return-to-gate"}',
@@ -87,9 +91,11 @@ describe('claimConflictSentence', () => {
     expect(s).not.toMatch(/abort/i);
   });
 
-  it('splits one ended batch into the abort for `releasing` and the sweep for the gate', () => {
+  it('splits one ended batch into the abort for a roster held at the release step and the sweep for the gate', () => {
     const s = claimConflictSentence(P, GATE, [held('ISS-8'), staleAt('ISS-9')]);
-    expect(s).toContain('ISS-8 is at `releasing`, still claimed by release batch run-ended');
+    expect(s).toContain(
+      'ISS-8 is at `awaiting_release` held at the release step, still claimed by release batch run-ended',
+    );
     expect(s).toContain('puts it back at the release gate, then send it again.');
     expect(s).toContain(
       'ISS-9 is still claimed by release batch run-ended, which has ended: the pipeline sweep',
@@ -115,11 +121,11 @@ describe('claimConflictSentence', () => {
 
   it('groups statuses apart and names each against the gate', () => {
     const s = claimConflictSentence(P, GATE, [
-      at('ISS-4', 'testing'),
+      at('ISS-4', 'in_progress'),
       at('ISS-5', 'closed'),
-      at('ISS-6', 'testing'),
+      at('ISS-6', 'in_progress'),
     ]);
-    expect(s).toContain('ISS-4, ISS-6 are at `testing`, not `awaiting_release`');
+    expect(s).toContain('ISS-4, ISS-6 are at `in_progress`, not `awaiting_release`');
     expect(s).toContain('ISS-5 is at `closed`: already shipped');
   });
 
@@ -157,13 +163,15 @@ describe('claimConflictSentence', () => {
     const s = claimConflictSentence(P, GATE, [
       held('ISS-1', 'run-a'),
       running('ISS-2', 'run-b'),
-      at('ISS-3', 'testing'),
+      at('ISS-3', 'in_progress'),
       absent('x-9'),
     ]);
     expect(s).toMatch(/^4 issues named here/);
-    expect(s).toContain('ISS-1 is at `releasing`, still claimed by release batch run-a');
+    expect(s).toContain(
+      'ISS-1 is at `awaiting_release` held at the release step, still claimed by release batch run-a',
+    );
     expect(s).toContain('ISS-2 is claimed by release batch run-b');
-    expect(s).toContain('ISS-3 is at `testing`');
+    expect(s).toContain('ISS-3 is at `in_progress`');
     expect(s).toContain('x-9 is no issue on this project.');
   });
 });

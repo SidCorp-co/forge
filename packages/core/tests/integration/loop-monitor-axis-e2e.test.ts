@@ -2,7 +2,7 @@
  * ISS-1273 — the loop monitor declares the axis it sweeps, and counts what that leaves out.
  *
  * Against real Postgres rather than the unit file's mocks: the claim count is a `jsonb` predicate
- * over `issues.session_context`, and a mocked `db.execute` would prove the filter rather than the
+ * over `issue_work_state.lease` (ISS-54), and a mocked `db.execute` would prove the filter rather than the
  * query. `jobs/loop-monitor.test.ts` keeps the hop contracts.
  */
 
@@ -55,20 +55,21 @@ describe('ISS-1273 loop-monitor axis declaration', () => {
     projectId: string,
     args: { issSeq: number; status: string; holder: string | null; ageHours: number },
   ): Promise<void> {
-    const lease =
-      args.holder === null
-        ? sql`'{}'::jsonb`
-        : sql`jsonb_build_object('lease', jsonb_build_object(
-              'holder', ${args.holder}::text,
-              'renewedAt', to_jsonb(now() - make_interval(hours => ${args.ageHours}::int)),
-              'minutes', 60))`;
+    const id = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id,
-                          session_context, merged_at)
-      VALUES (${randomUUID()}, ${projectId}, ${args.issSeq}, ${`Issue ${args.issSeq}`},
+      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, merged_at)
+      VALUES (${id}, ${projectId}, ${args.issSeq}, ${`Issue ${args.issSeq}`},
               ${args.status}, 'medium',
-              (SELECT created_by FROM projects WHERE id = ${projectId}), ${lease},
+              (SELECT created_by FROM projects WHERE id = ${projectId}),
               CASE WHEN ${args.status} = 'closed' THEN now() END)
+    `);
+    if (args.holder === null) return;
+    await harness.db.execute(sql`
+      INSERT INTO issue_work_state (issue_id, lease)
+      VALUES (${id}, jsonb_build_object(
+        'holder', ${args.holder}::text,
+        'renewedAt', to_jsonb(now() - make_interval(hours => ${args.ageHours}::int)),
+        'minutes', 60))
     `);
   }
 

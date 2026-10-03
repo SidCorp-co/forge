@@ -7,6 +7,7 @@ import type { Audience, MessageRefusal, MessageVerdict } from './contract.js';
 /** Which reading a project's own members are screened and drawn under. */
 export type RecordLens = 'product' | 'technical';
 
+import { RECORD_EVENT_KINDS } from '../issues/record-events/kinds.js';
 import { verdictEvidenceRefusals } from './evidence-citation.js';
 import {
   FORGE_RECORD_FIELD_BUDGET,
@@ -38,16 +39,15 @@ export const RECORD_RULE_IDS: readonly string[] = [
 export const RECORD_GUIDE_SLUG = 'records-and-comments';
 
 /**
- * Where a record goes when it is not a comment, by the kind that names it — and ONLY where a store
- * holds the whole of that kind. `issue_step_contexts` types a verdict on `(issue, step, attempt)`;
- * nothing holds a baseline or a decision, so those go to the guide rather than to a route that
- * would refuse them UNREGISTERED_KEY. A `Map` because the kind is caller-supplied: `constructor`
- * on an object literal answers off the prototype instead of taking the unsupported-kind path.
+ * Where a record goes when it is not a comment, by the kind that names it. Since ISS-56 every kind
+ * in the closed set has a whole store: `POST /api/issues/:id/events`, whose rows the gates read. A
+ * `Map` because the kind is caller-supplied: `constructor` on an object literal answers off the
+ * prototype instead of taking the unsupported-kind path.
  */
-export const RECORD_DESTINATIONS: ReadonlyMap<string, string> = new Map([
-  ['verdict', 'POST /api/issue-step-contexts'],
-  ['review', 'POST /api/issue-step-contexts'],
-]);
+export const RECORD_EVENTS_ROUTE = 'POST /api/issues/:id/events';
+export const RECORD_DESTINATIONS: ReadonlyMap<string, string> = new Map(
+  RECORD_EVENT_KINDS.map((kind) => [kind, RECORD_EVENTS_ROUTE]),
+);
 
 export const ISSUE_ASSERTION_ROUTE = 'POST /api/issues/:id/attributes';
 

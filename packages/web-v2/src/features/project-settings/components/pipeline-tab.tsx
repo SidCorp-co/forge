@@ -19,8 +19,9 @@ export function PipelineTab({
       <CardContent>
         <SectionTitle className="fg-h3 mb-1">Pipeline</SectionTitle>
         <p className="fg-body-sm mb-1 text-muted">
-          An issue is picked up at <b>Queued</b>, runs as one session, and ends either at{" "}
-          <b>Needs a human</b>, <b>Awaiting release</b> or closed. The session is driven by the{" "}
+          An issue is picked up at <b>Open</b>, runs <b>In progress</b> as one session through its
+          steps, and ends either at <b>Needs info</b>, <b>Awaiting release</b> or closed. The
+          session is driven by the{" "}
           <code>issue-flow</code> skill, which this project gets from a plugin — see Plugins below.
           Which model runs each status, with which tools denied, is the policy on the Configuration
           tab.

@@ -1,11 +1,8 @@
 /**
- * What the identity a verdict names is worth once it is stored. A verdict resolves against a
- * READING of what a project is serving — `release-batch/serving-reading.ts` — taken when the
- * verdict is weighed; `sessionContext.landing.deployment` gates nothing, a commit stored on a row
- * being unable to say what a host serves now (ISS-1286). Where that reading names what is running,
- * it decides a verdict written in either field, the observation being Forge's (ISS-1346); where it
- * names nothing, a source verdict resolves against the issue's own source. The shapes an identity
- * may be written in: `messaging/verdict-identity.ts`. Its report says the reading, once (ISS-1346).
+ * What a stored verdict's identity is worth: it resolves against a READING of what the project serves
+ * (`release-batch/serving-reading.ts`), taken when weighed — a commit stored on a row cannot say what
+ * a host serves now (ISS-1286). A reading that names what runs decides either field (ISS-1346); one
+ * naming nothing leaves a source verdict to the issue's own source. Shapes: `messaging/verdict-identity.ts`.
  */
 
 import {

@@ -56,6 +56,7 @@ export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
+import { COMMENT_INTENTS } from '../issues/record-events/kinds.js';
 import type { ReleaseNotes } from '../issues/release-notes.js';
 import { activityLog, actorAgencies } from './schema-activity.js';
 
@@ -936,26 +937,27 @@ export const runnersRelations = relations(runners, ({ one, many }) => ({
   jobs: many(jobs),
 }));
 
-export const waitingKinds = ['needs_decision', 'needs_resource'] as const;
+/**
+ * What a `needs_info` park is stopped on. `needs_answer` is a question; the other two are the old
+ * `waiting` park's kinds, which folded into `needs_info` with their kind kept (ISS-54).
+ */
+export const waitingKinds = ['needs_answer', 'needs_decision', 'needs_resource'] as const;
 export type WaitingKind = (typeof waitingKinds)[number];
 
+/**
+ * The ten statuses of workflow `issue-lifecycle` (approved revision 2). A status answers only
+ * "who is it waiting on"; a run's step is progress inside `in_progress`, in `issue_work_state`.
+ */
 export const issueStatuses = [
-  'open',
-  'confirmed',
-  'clarified',
-  'waiting',
-  'approved',
-  'in_progress',
-  'developed',
-  'testing',
-  'tested',
-  'awaiting_release',
-  'releasing',
-  'closed',
-  'reopen',
-  'on_hold',
-  'needs_info',
   'draft',
+  'open',
+  'reopen',
+  'in_progress',
+  'approved',
+  'needs_info',
+  'on_hold',
+  'awaiting_release',
+  'closed',
   'dropped',
 ] as const;
 export type IssueStatus = (typeof issueStatuses)[number];
@@ -1124,11 +1126,18 @@ export const comments = pgTable(
     format: text('format', { enum: BODY_FORMATS }).notNull().default('markdown'),
     stage: text('stage'),
     parentId: uuid('parent_id'),
+    /**
+     * ISS-56 — what the comment means to do: `question` is owed a reply, `decision` is pinned,
+     * `note` is neither. The REST and MCP doors decide it by name; the default is what a system
+     * write that declares nothing means.
+     */
+    intent: text('intent', { enum: COMMENT_INTENTS }).notNull().default('note'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     formatChk: check('comments_format_chk', sql`${t.format} IN ('markdown', 'html')`),
+    intentChk: check('comments_intent_chk', sql`${t.intent} IN ('question', 'decision', 'note')`),
     issueIdx: index('comments_issue_id_idx').on(t.issueId),
     issueCreatedIdx: index('comments_issue_created_idx').on(t.issueId, t.createdAt, t.id),
     parentIdx: index('comments_parent_id_idx').on(t.parentId),
@@ -2737,7 +2746,7 @@ export const runnerEvents = pgTable(
   }),
 );
 
-export const feedbackKinds = [
+export const agentReportKinds = [
   'friction',
   'bug',
   'skill_gap',
@@ -2746,12 +2755,12 @@ export const feedbackKinds = [
   'learning',
   'suggestion',
 ] as const;
-export type FeedbackKind = (typeof feedbackKinds)[number];
+export type AgentReportKind = (typeof agentReportKinds)[number];
 
-export const feedbackSeverities = ['low', 'medium', 'high'] as const;
-export type FeedbackSeverity = (typeof feedbackSeverities)[number];
+export const agentReportSeverities = ['low', 'medium', 'high'] as const;
+export type AgentReportSeverity = (typeof agentReportSeverities)[number];
 
-export const feedbackTargets = [
+export const agentReportTargets = [
   'skill',
   'prompt',
   'tool',
@@ -2760,10 +2769,14 @@ export const feedbackTargets = [
   'pipeline',
   'other',
 ] as const;
-export type FeedbackTarget = (typeof feedbackTargets)[number];
+export type AgentReportTarget = (typeof agentReportTargets)[number];
 
-export const feedbackReports = pgTable(
-  'feedback_reports',
+/**
+ * What an agent reports about the harness it ran under — friction, a skill gap, a learning. Not a
+ * person's product feedback, which owns the word `feedback`.
+ */
+export const agentReports = pgTable(
+  'agent_reports',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     projectId: uuid('project_id')
@@ -2775,9 +2788,9 @@ export const feedbackReports = pgTable(
     stage: text('stage'),
     skillName: text('skill_name'),
     skillVersion: integer('skill_version'),
-    kind: text('kind', { enum: feedbackKinds }).notNull(),
-    severity: text('severity', { enum: feedbackSeverities }).notNull().default('low'),
-    target: text('target', { enum: feedbackTargets }).notNull(),
+    kind: text('kind', { enum: agentReportKinds }).notNull(),
+    severity: text('severity', { enum: agentReportSeverities }).notNull().default('low'),
+    target: text('target', { enum: agentReportTargets }).notNull(),
     targetRef: text('target_ref'),
     summary: text('summary').notNull(),
     detail: text('detail'),
@@ -2798,29 +2811,29 @@ export const feedbackReports = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    projectIdIdx: index('feedback_reports_project_id_idx').on(t.projectId),
-    projectKindIdx: index('feedback_reports_project_kind_idx').on(t.projectId, t.kind),
-    projectTargetIdx: index('feedback_reports_project_target_idx').on(
+    projectIdIdx: index('agent_reports_project_id_idx').on(t.projectId),
+    projectKindIdx: index('agent_reports_project_kind_idx').on(t.projectId, t.kind),
+    projectTargetIdx: index('agent_reports_project_target_idx').on(
       t.projectId,
       t.target,
       t.targetRef,
     ),
-    signalKeyIdx: index('feedback_reports_signal_key_idx').on(t.signalKey),
-    createdAtIdx: index('feedback_reports_created_at_idx').on(t.createdAt),
-    sessionIdx: index('feedback_reports_session_id_idx').on(t.sessionId),
-    linkedIssueIdIdx: index('feedback_reports_linked_issue_id_idx').on(t.linkedIssueId),
+    signalKeyIdx: index('agent_reports_signal_key_idx').on(t.signalKey),
+    createdAtIdx: index('agent_reports_created_at_idx').on(t.createdAt),
+    sessionIdx: index('agent_reports_session_id_idx').on(t.sessionId),
+    linkedIssueIdIdx: index('agent_reports_linked_issue_id_idx').on(t.linkedIssueId),
   }),
 );
 
-export const feedbackReportsRelations = relations(feedbackReports, ({ one }) => ({
-  project: one(projects, { fields: [feedbackReports.projectId], references: [projects.id] }),
-  issue: one(issues, { fields: [feedbackReports.issueId], references: [issues.id] }),
+export const agentReportsRelations = relations(agentReports, ({ one }) => ({
+  project: one(projects, { fields: [agentReports.projectId], references: [projects.id] }),
+  issue: one(issues, { fields: [agentReports.issueId], references: [issues.id] }),
   linkedIssue: one(issues, {
-    fields: [feedbackReports.linkedIssueId],
+    fields: [agentReports.linkedIssueId],
     references: [issues.id],
   }),
-  run: one(pipelineRuns, { fields: [feedbackReports.runId], references: [pipelineRuns.id] }),
-  job: one(jobs, { fields: [feedbackReports.jobId], references: [jobs.id] }),
+  run: one(pipelineRuns, { fields: [agentReports.runId], references: [pipelineRuns.id] }),
+  job: one(jobs, { fields: [agentReports.jobId], references: [jobs.id] }),
 }));
 
 export const integrationGuides = pgTable(

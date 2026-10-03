@@ -19,7 +19,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("../registry-api", () => ({
-  registryApi: { get: () => ({ version: 1, runnerCapabilities: {}, statusExits: { open: ["confirmed"] } }) },
+  registryApi: { get: () => ({ version: 1, runnerCapabilities: {}, statusExits: { open: ["in_progress"] } }) },
 }));
 
 afterEach(cleanup);

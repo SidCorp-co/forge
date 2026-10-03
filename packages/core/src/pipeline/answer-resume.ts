@@ -12,9 +12,10 @@ import { agentQuestions, questionWaiters } from '../db/schema-questions.js';
 import { sessionInbox } from '../db/schema-session-inbox.js';
 import { accountActor } from '../issues/account-actor.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
+import { readWorkState } from '../issues/work-state.js';
 import type { LoopScope } from '../jobs/loop-monitor.js';
 import { logger } from '../logger.js';
-import { AUTONOMOUS_ENTRY_STATUS, AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
+import { AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
 import { isAutonomousProject } from './autonomous-project.js';
 import type { HooksBus } from './hooks.js';
 
@@ -34,16 +35,30 @@ async function resumableIssue(issueId: string) {
   return issue;
 }
 
-/** Where an answered park goes: back to the driver's entry, the one status a master admits. */
-const ANSWERED_TARGET: IssueStatus = AUTONOMOUS_ENTRY_STATUS;
+/**
+ * Where an answered park goes: back to the status it left (`issue_work_state.left_status`), never
+ * guessed (workflow `issue-lifecycle`). A park that recorded none waits for a person to move it.
+ */
+async function answeredTarget(issueId: string): Promise<IssueStatus | null> {
+  const work = await readWorkState(db, issueId);
+  return (work?.leftStatus ?? null) as IssueStatus | null;
+}
 
 /** Resume, unless a question on the issue is still open once the transition has the row locked. */
 async function resumeUnasked(
   issue: NonNullable<Awaited<ReturnType<typeof resumableIssue>>>,
   answeredBy: string,
 ): Promise<boolean> {
+  const target = await answeredTarget(issue.id);
+  if (target === null) {
+    logger.info(
+      { issueId: issue.id },
+      'answer-resume: this park recorded no status it left, so a person moves it on',
+    );
+    return false;
+  }
   try {
-    await transitionIssueStatus(issue, ANSWERED_TARGET, await accountActor(answeredBy), {
+    await transitionIssueStatus(issue, target, await accountActor(answeredBy), {
       requireNoOpenQuestions: true,
     });
     return true;
@@ -137,8 +152,8 @@ export function registerAnswerResume(bus: HooksBus): void {
         }
         if (!(await resumeUnasked(issue, p.answeredBy))) return;
         logger.info(
-          { issueId, questionId: p.questionId, to: ANSWERED_TARGET },
-          'answer-resume: the last open question was answered, and the park moved on',
+          { issueId, questionId: p.questionId },
+          'answer-resume: the last open question was answered, and the park went back to the status it left',
         );
       } catch (err) {
         logger.error({ err, issueId }, 'answer-resume: resuming on an answer failed');
@@ -190,7 +205,7 @@ export async function resumeLapsedAnswers(
     if (!(await resumeUnasked(issue, authorId))) continue;
     resumed += 1;
     logger.info(
-      { issueId, agentSessionId: inbox.agentSessionId, seq: inbox.seq, to: ANSWERED_TARGET },
+      { issueId, agentSessionId: inbox.agentSessionId, seq: inbox.seq },
       'answer-resume: the session that asked is gone, so the park moved on',
     );
   }

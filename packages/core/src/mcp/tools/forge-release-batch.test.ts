@@ -63,12 +63,14 @@ describe('forge_release_batch refusals', () => {
     );
   });
 
-  it('says a promoted roster the abort held stays at releasing, claimed', async () => {
+  it('says a promoted roster the abort held stays at its release step, claimed', async () => {
     acceptFinish.mockRejectedValue(new ReleaseBatchAbortedError('held', 'p-1'));
 
     const refused = tool().handler({ action: 'finish', runId: RUN_ID });
 
-    await expect(refused).rejects.toThrow(/the abort kept its claims.*stay at `releasing`/);
+    await expect(refused).rejects.toThrow(
+      /the abort kept its claims.*stay at `awaiting_release` at their `release` step/,
+    );
     await expect(refused).rejects.not.toThrow(/claims were released/);
   });
 

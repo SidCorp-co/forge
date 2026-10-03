@@ -87,7 +87,7 @@ describe('ISS-196 pipeline_outbox trigger', () => {
     const { issueId, projectId } = await seedIssue('open');
 
     await harness.db.execute(sql`
-      UPDATE issues SET status = 'confirmed' WHERE id = ${issueId}
+      UPDATE issues SET status = 'in_progress' WHERE id = ${issueId}
     `);
 
     const rows = await selectOutbox(issueId);
@@ -96,7 +96,7 @@ describe('ISS-196 pipeline_outbox trigger', () => {
       issue_id: issueId,
       project_id: projectId,
       from_status: 'open',
-      to_status: 'confirmed',
+      to_status: 'in_progress',
       processed_at: null,
       attempts: 0,
     });
@@ -121,7 +121,7 @@ describe('ISS-196 pipeline_outbox trigger', () => {
     // Raw UPDATE on its own — no set_config, no app code. Matches
     // acceptance criteria: psql / external scripts must still fire.
     await harness.db.execute(sql`
-      UPDATE issues SET status = 'confirmed' WHERE id = ${issueId}
+      UPDATE issues SET status = 'in_progress' WHERE id = ${issueId}
     `);
 
     const rows = await selectOutbox(issueId);
@@ -140,7 +140,7 @@ describe('ISS-196 pipeline_outbox trigger', () => {
           set_config('pipeline.reason', 'manual override', true)
       `);
       await tx.execute(sql`
-        UPDATE issues SET status = 'confirmed' WHERE id = ${issueId}
+        UPDATE issues SET status = 'in_progress' WHERE id = ${issueId}
       `);
     });
 
@@ -156,7 +156,7 @@ describe('ISS-196 pipeline_outbox trigger', () => {
   it('drainOutboxOnce stamps processed_at on dispatched rows', async () => {
     const { issueId } = await seedIssue('open');
     await harness.db.execute(sql`
-      UPDATE issues SET status = 'confirmed' WHERE id = ${issueId}
+      UPDATE issues SET status = 'in_progress' WHERE id = ${issueId}
     `);
 
     // Import lazily — the worker module reads from `db/client.js` which

@@ -2,6 +2,7 @@ import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
 import { TRANSCRIPT_FINALIZED_KEY } from '../../db/transcript-marker.js';
+import { type CollapseResult, collapseNarration } from '../../issues/record-events/collapse.js';
 import { deriveSessionFinal } from '../../jobs/session-transcript.js';
 import { logger } from '../../logger.js';
 import { boss } from '../../queue/boss.js';
@@ -77,6 +78,8 @@ export interface RetentionSweepResult {
   deleted: number;
   tables: TableSweepResult[];
   repair: RepairSweepResult;
+  /** Narration record events collapsed into per-issue digests this tick (ISS-56). */
+  narration: CollapseResult;
 }
 
 async function countRows(statement: ReturnType<typeof sql>): Promise<number> {
@@ -219,11 +222,17 @@ export async function runRetentionSweep(
     );
   }
 
+  const narration = await collapseNarration();
+  if (narration.collapsed > 0) {
+    logger.info(narration, 'retention: narration record events collapsed into digests');
+  }
+
   return {
     durationMs: Date.now() - t0,
     deleted: tables.reduce((sum, t) => sum + t.deleted, 0),
     tables,
     repair,
+    narration,
   };
 }
 

@@ -17,7 +17,7 @@ export interface ProjectProgress {
   computedAt: Date;
 }
 
-const REMAINING_STATUSES = new Set<IssueStatus>(['draft', 'waiting', 'needs_info', 'on_hold']);
+const REMAINING_STATUSES = new Set<IssueStatus>(['draft', 'needs_info', 'on_hold']);
 
 /**
  * ISS-1108 — `closed` without shipped evidence is HISTORICAL from 0304 onward. A `closed` row

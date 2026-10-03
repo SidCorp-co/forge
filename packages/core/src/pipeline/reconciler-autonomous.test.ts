@@ -79,7 +79,7 @@ describe('autonomous driver wedge reset (ISS-890)', () => {
       expect.objectContaining({ id: 'iss-a1', status: 'in_progress', reopenCount: 2 }),
       'open',
       { type: 'user', id: 'agent-of-proj-a', agency: 'agent' },
-      expect.objectContaining({ reason: 'reconciler_autonomous_wedge_reset', skip: true }),
+      expect.objectContaining({ reason: 'reconciler_autonomous_wedge_reset', recovery: true }),
     );
     expect(sentryAddBreadcrumb).toHaveBeenCalledWith(
       expect.objectContaining({

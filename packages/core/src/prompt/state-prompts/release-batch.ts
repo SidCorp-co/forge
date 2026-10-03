@@ -45,9 +45,9 @@ On a failure you cannot repair forward inside this run — a conflict, a deploy 
 a step you could not complete, a procedure that does not fit what you actually found:
 → \`forge_release_batch\` action \`abort\` with \`reason\`. The abort closes nothing, and an issue a
   finish already closed stays closed (\`alreadyClosed\`). Where this run recorded no promotion, it
-  releases every claim and moves the issues still at \`releasing\` back to the release gate for
+  releases every claim and takes the issues still at their \`release\` step back to the release gate for
   a later batch (\`recovered\`). Where this run recorded a promotion, the code may already be on
-  production, so the roster keeps its claims and stays at \`releasing\` for a person to settle.
+  production, so the roster keeps its claims and stays at its \`release\` step for a person to settle.
   Report each issue where the abort's answer says it is.
 → Then fail the turn honestly so the job records 'failed'.
 

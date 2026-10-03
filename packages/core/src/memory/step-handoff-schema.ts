@@ -285,10 +285,8 @@ export interface HandoffScope {
  * driver needs its own because the staged text is wrong for it in three ways
  * that all point the same direction: it names MCP tools on a lane that reaches
  * Forge over the CLI, it sends the agent to "the next state in the Pipeline
- * Rules ladder" on a lane that has no ladder, and it offers `waiting` and
- * `reopen` — the two parks `issues/autonomous-park.ts` then silently rewrites,
- * so instructing them makes that net fire on every session it was built to
- * catch once.
+ * Rules ladder" on a lane that has no ladder, and it offers `reopen`, which a
+ * run does not enter from `in_progress` in the issue lifecycle.
  */
 export function renderDriveTerminationBlock(scope: HandoffScope): string {
   return [
@@ -355,8 +353,8 @@ export function renderTerminationBlock(opts: { step: HandoffStep; scope: Handoff
     '   `forge_issues.update` to move the issue `status` to the next state in the',
     '   Pipeline Rules ladder, even if your skill instructions did not mention a',
     '   transition. On success move forward; on a blocking problem branch to',
-    '   `reopen` / `needs_info` / `waiting` / `on_hold` instead. Entering `waiting`',
-    '   requires a non-empty `reason` and the applicable `waitingKind`; follow any',
+    '   `needs_info` / `on_hold` instead. Entering `needs_info` requires a non-empty',
+    '   `reason` (the question) and its `waitingKind`; follow any',
     '   stage-specific exit instruction for the exact values. An issue left in its',
     '   current status stalls the pipeline forever — never skip this step.',
     '',

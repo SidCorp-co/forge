@@ -1,8 +1,7 @@
 /**
  * Which non-terminal statuses are watched for a stranded row, on what clock, and who owes the next
- * move. `Record<IssueStatus, StrandRule>`, so a status added to `issueStatuses` and left
- * unclassified is a typecheck failure rather than a row that falls out of the sweep — the hole
- * ISS-1122 was filed about, where `waiting` and three others were enumerated and the rest unread.
+ * move. A `Record<IssueStatus, StrandRule>`, so an unclassified new status is a typecheck failure
+ * rather than a row falling out of the sweep — the hole ISS-1122 was filed about.
  */
 
 import type { IssueStatus } from '../db/schema.js';
@@ -34,11 +33,11 @@ export const STRAND_RULES: Record<IssueStatus, StrandRule> = {
     watch: false,
     atRest: 'filed and never started: a person decides whether it becomes work',
   },
-  waiting: { watch: false, atRest: 'detectStrandedIssues in stranded-issues.ts owns this status' },
   on_hold: { watch: false, atRest: 'a deliberate pause, whose reason the row already carries' },
   needs_info: {
     watch: false,
-    atRest: 'the status names what it waits for: a person owes an answer',
+    atRest:
+      'the status names what it waits for: a person owes an answer (a park over merged code is detectStrandedIssues in stranded-issues.ts)',
   },
   closed: { watch: false, atRest: 'terminal: the work is over and nothing is owed' },
   dropped: { watch: false, atRest: 'terminal: the work was abandoned and nothing is owed' },
@@ -49,8 +48,6 @@ export const STRAND_RULES: Record<IssueStatus, StrandRule> = {
     owes: 'agent',
     waitingFor: 'a run to be dispatched onto it',
   },
-  confirmed: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'a plan' },
-  clarified: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'a plan' },
   approved: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'a run to build it' },
   in_progress: {
     watch: true,
@@ -58,21 +55,12 @@ export const STRAND_RULES: Record<IssueStatus, StrandRule> = {
     owes: 'agent',
     waitingFor: 'the run that claimed it',
   },
-  developed: {
-    watch: true,
-    graceMs: 6 * HOUR,
-    owes: 'agent',
-    waitingFor: 'a run to judge it',
-  },
-  testing: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'verdicts' },
-  tested: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'a release' },
   awaiting_release: {
     watch: true,
     graceMs: 48 * HOUR,
     owes: 'human',
     waitingFor: 'a person to release it',
   },
-  releasing: { watch: true, graceMs: 2 * HOUR, owes: 'agent', waitingFor: 'the release run' },
   reopen: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'a run to build it again' },
 };
 

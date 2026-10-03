@@ -1,6 +1,7 @@
 import { and, desc, eq, exists, gte, inArray, lt, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issueLabels, issues, type WaitingKind } from '../db/schema.js';
+import type { WorkStep } from '../db/schema-issue-work-state.js';
 import { issueArchiveSide } from './archive.js';
 import { resolveLabelIdsTolerant, resolveModuleIdsTolerant } from './label-service.js';
 import {
@@ -35,8 +36,10 @@ export type IssueListRow = {
   issSeq: number;
   title: string;
   status: IssueStatus;
-  /** Which answer a `waiting` park wants — `null` on every other status. */
+  /** What a `needs_info` park is stopped on — `null` on every other status. */
   waitingKind: WaitingKind | null;
+  /** ISS-54 — the run's step inside the status, or null where no run has a step. */
+  step: WorkStep | null;
   priority: string;
   category: string | null;
   complexity: string | null;
@@ -95,6 +98,7 @@ export async function listIssueRows(
     title: issues.title,
     status: issues.status,
     waitingKind: issues.waitingKind,
+    step: sql<WorkStep | null>`(SELECT w.step FROM issue_work_state w WHERE w.issue_id = ${issues.id})`,
     priority: issues.priority,
     category: issues.category,
     complexity: issues.complexity,

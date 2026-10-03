@@ -42,7 +42,13 @@ beforeEach(() => {
 describe('autonomousStepFor', () => {
   it('produces the drive step only at the entry status', () => {
     expect(autonomousStepFor('open')).toEqual({ type: 'drive', skillName: 'issue-flow' });
-    for (const status of ['confirmed', 'approved', 'developed', 'testing', 'closed'] as const) {
+    for (const status of [
+      'reopen',
+      'approved',
+      'in_progress',
+      'awaiting_release',
+      'closed',
+    ] as const) {
       expect(autonomousStepFor(status)).toBeNull();
     }
   });
@@ -77,7 +83,7 @@ describe('dispatchAutonomous', () => {
   });
 
   it('owns the decision at every other status, and enqueues nothing there', async () => {
-    for (const status of ['confirmed', 'developed', 'testing', 'closed'] as const) {
+    for (const status of ['approved', 'in_progress', 'awaiting_release', 'closed'] as const) {
       expect(await dispatchAutonomous({ ...BASE, status, policy: POLICY })).toBe(true);
     }
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
@@ -100,7 +106,7 @@ describe('dispatchDriveManual', () => {
   });
 
   it('says where the driver actually starts instead of silently doing nothing', async () => {
-    await expect(dispatchDriveManual({ ...BASE, status: 'developed' })).rejects.toThrow(
+    await expect(dispatchDriveManual({ ...BASE, status: 'in_progress' })).rejects.toThrow(
       'AUTONOMOUS_NOT_AT_ENTRY',
     );
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();

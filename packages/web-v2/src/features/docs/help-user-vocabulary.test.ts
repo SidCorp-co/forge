@@ -6,17 +6,16 @@
  * docs/modules/guides/where-a-page-lives.md.
  */
 
+import { REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
 import { describe, expect, it } from "vitest";
 import { HELP_DOCS } from "./help-content.generated";
 
 const PERSON_PAGES = ["file-a-request", "what-done-means"] as const;
 const USER_PAGES = HELP_DOCS.filter((d) => d.audience === "user").map((d) => d.slug);
 
-const STORED_STATUSES = [
-  "open", "confirmed", "clarified", "waiting", "approved", "in_progress", "developed", "testing",
-  "tested", "awaiting_release", "releasing", "closed", "reopen", "on_hold", "needs_info", "draft",
-  "dropped",
-];
+/** The seven statuses ISS-54 retired: no screen shows them either, so a page naming one is as wrong. */
+const RETIRED_STATUSES = ["confirmed", "clarified", "developed", "testing", "tested", "releasing", "waiting"];
+const STORED_STATUSES = [...REGISTRY_ISSUE_STATUSES, ...RETIRED_STATUSES];
 
 const RULES: Array<{ rule: string; offends: RegExp }> = [
   { rule: "a file path", offends: /(?:^|[\s(`])(?:packages|src|docs|content)\/|\.(?:ts|tsx|mjs|json)\b/ },

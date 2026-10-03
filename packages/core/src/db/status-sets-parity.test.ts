@@ -1,10 +1,12 @@
+import { DONE_ISSUE_STATUSES, PARKED_ISSUE_STATUSES } from '@forge/contracts/issue-vocabulary';
 import * as CONTRACT from '@forge/contracts/status-sets';
 import { describe, expect, it } from 'vitest';
 import { REGISTER_STATUSES } from '../ecosystem/channel-register.js';
 import { BLOCKER_SETTLED_STATUSES } from '../issues/dependency-effects.js';
-import { NON_OPEN_STATUSES } from '../issues/status-sets.js';
+import { ISSUE_TERMINAL_STATUSES, NON_OPEN_STATUSES } from '../issues/status-sets.js';
 import { REASON_REQUIRED_STATUSES } from '../issues/transition-reason.js';
 import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
+import { PARK_STATUSES } from '../pipeline/state-machine.js';
 import { memoryReindexStates } from './schema-memory-chunks.js';
 import { terminalAgentSessionStatuses } from './session-vocabulary.js';
 
@@ -40,8 +42,14 @@ const MIRRORS: Record<string, { core: readonly string[]; contract: readonly stri
   REGISTER_STATUSES: { core: REGISTER_STATUSES, contract: CONTRACT.REGISTER_STATUSES },
 };
 
+/** The issue-vocabulary module's copies of core answers (ISS-54); PARKABLE is bound in state-machine.test.ts. */
+const VOCABULARY_MIRRORS: typeof MIRRORS = {
+  DONE_ISSUE_STATUSES: { core: ISSUE_TERMINAL_STATUSES, contract: DONE_ISSUE_STATUSES },
+  PARKED_ISSUE_STATUSES: { core: PARK_STATUSES, contract: PARKED_ISSUE_STATUSES },
+};
+
 describe('the core and contracts copies of one status answer', () => {
-  for (const [name, { core, contract }] of Object.entries(MIRRORS)) {
+  for (const [name, { core, contract }] of Object.entries({ ...MIRRORS, ...VOCABULARY_MIRRORS })) {
     it(`${name} holds what core holds, member for member`, () => {
       expect([...contract]).toEqual([...core]);
     });

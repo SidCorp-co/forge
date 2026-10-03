@@ -60,8 +60,9 @@ async function insertIssue(status: string): Promise<string> {
   const id = randomUUID();
   seq += 1;
   await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${ownerId})
+    INSERT INTO issues (id, project_id, iss_seq, title, status, waiting_kind, created_by_id)
+    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status},
+            ${status === 'needs_info' ? 'needs_answer' : null}, ${ownerId})
   `);
   return id;
 }
@@ -172,10 +173,20 @@ describe('answering returns the issue only when nothing is left to answer', () =
     expect(await statusOf(issueId)).toBe('needs_info');
   });
 
-  it('returns it to open when the last open question is answered on a project that admits nothing at confirmed', async () => {
+  it('returns it to the status it left when the last open question is answered', async () => {
+    const issueId = await insertIssue('needs_info');
+    await harness.db.execute(sql`
+      INSERT INTO issue_work_state (issue_id, left_status) VALUES (${issueId}, 'approved')
+    `);
+    const only = await openQuestion(issueId);
+    await answer(only);
+    expect(await statusOf(issueId)).toBe('approved');
+  });
+
+  it('leaves a park that recorded no status it left for a person to move, never guessing one', async () => {
     const issueId = await insertIssue('needs_info');
     const only = await openQuestion(issueId);
     await answer(only);
-    expect(await statusOf(issueId)).toBe('open');
+    expect(await statusOf(issueId)).toBe('needs_info');
   });
 });

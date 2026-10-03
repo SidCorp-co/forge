@@ -32,7 +32,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
 import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
-import { priorityLabel, runStatusChip, statusLabel, statusToChip } from "@/features/issues/derive";
+import { issueStatusChip, priorityLabel, runStatusChip, workStepOf } from "@/features/issues/derive";
 import type { IssuePriority, IssueStatus } from "@/features/issues/types";
 import { drawerRunChip, formatDurationMs, formatUsd } from "../derive";
 import { useCancelRun, useIssueTasks, usePauseRun, useResumeRun, useRun } from "../hooks";
@@ -116,7 +116,6 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   const issueRun = issue ? runStatusChip(issue) : null;
   const chipStatus = run ? drawerRunChip(run.status, issueRun) : issueRun;
   const issueStatus = issue ? (issue.status as IssueStatus) : null;
-  const isActive = run?.status === "running" || run?.status === "paused";
   // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
   // the running agent — only Cancel does). So a paused run with a step still
   // `running` is transitional ("Pausing…"); once that step clears it is fully
@@ -182,7 +181,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
           <MonoTag>{label}</MonoTag>
           {/* Writers read the issue's status off the quick-actions row; a viewer has no such row. */}
           {issueStatus && !canWrite && (
-            <StatusChip status={statusToChip(issueStatus)} label={statusLabel(issueStatus)} size="sm" />
+            <StatusChip {...issueStatusChip(issueStatus, workStepOf(issue ?? {}))} size="sm" />
           )}
           {/* The session vocabulary reads `paused` as an idle session; a pipeline run that is paused says so. */}
           {chipStatus && (
@@ -212,6 +211,8 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
               <IssueQuickActions
                 issueId={issue.id}
                 status={issue.status as IssueStatus}
+                step={workStepOf(issue)}
+                leftStatus={issue.workState?.leftStatus ?? null}
                 agentStatus={issue.agentStatus ?? null}
                 pipelineHealth={issue.pipelineHealth}
                 priority={issue.priority as IssuePriority}
@@ -374,7 +375,7 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
         const state = stepDot(step.status);
         const isLast = i === run.steps.length - 1;
         return (
-          <div key={`${step.jobType}-${i}`} className="flex gap-3">
+          <div key={step.jobType} className="flex gap-3">
             <div className="flex w-[18px] flex-none flex-col items-center">
               <span
                 className="mt-0.5 size-3.5 flex-none rounded-full"
@@ -505,8 +506,8 @@ function CostTab({ run, loading }: { run: PipelineRunSummary | undefined; loadin
       {steps.length > 0 && (
         <div className="flex flex-col gap-2.5">
           <p className="fg-overline">Step durations</p>
-          {steps.map((s, i) => (
-            <div key={`${s.jobType}-${i}`} className="flex items-center gap-2.5">
+          {steps.map((s) => (
+            <div key={s.jobType} className="flex items-center gap-2.5">
               <span className="w-14 flex-none font-mono text-12 text-muted">{s.jobType}</span>
               <ProgressBar
                 className="flex-1"

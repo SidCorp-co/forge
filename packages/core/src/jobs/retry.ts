@@ -36,7 +36,7 @@ export const RETRY_COOLDOWN_MS = 60_000;
 export const RETRY_TRIES_PER_DEVICE = 3;
 
 /** Full device sweeps before the chain gives up and the caller parks the
- *  issue at `waiting`. */
+ *  issue at `needs_info`. */
 export const RETRY_MAX_ROUNDS = 10;
 
 /**
@@ -308,7 +308,7 @@ async function persistClassification(
 
 /**
  * Schedule the next retry under the per-class policy (see module header), or
- * return `{ scheduled: false }` so the caller parks the issue at `waiting`.
+ * return `{ scheduled: false }` once the budget is spent.
  *
  * Idempotent: cancellation + class policy + verify-first + round budget all
  * guard the insert.

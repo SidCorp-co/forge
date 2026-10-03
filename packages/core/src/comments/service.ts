@@ -3,6 +3,18 @@ import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
 import { comments, issues, users } from '../db/schema.js';
+import {
+  COMMENT_INTENTS,
+  type CommentIntent,
+  isCommentIntent,
+} from '../issues/record-events/kinds.js';
+import {
+  dropCommentMirror,
+  mirrorCommentRecord,
+  remirrorCommentRecord,
+} from '../issues/record-events/mirror.js';
+import { parseForgeRecord } from '../messaging/forge-record.js';
+import type { Actor } from '../pipeline/activity.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
 import { screenAgentComment, screenRecordFence } from './screen.js';
 
@@ -15,6 +27,7 @@ export type CommentThreadRow = {
   format: BodyFormat;
   stage: string | null;
   parentId: string | null;
+  intent: CommentIntent;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -29,6 +42,7 @@ export const commentThreadColumns = {
   format: comments.format,
   stage: comments.stage,
   parentId: comments.parentId,
+  intent: comments.intent,
   createdAt: comments.createdAt,
   updatedAt: comments.updatedAt,
 } as const;
@@ -67,10 +81,11 @@ const cursorKeyExpr = sql<string>`to_char(${comments.createdAt} AT TIME ZONE 'UT
 
 export async function listIssueCommentPage(
   issueId: string,
-  opts: { after?: CommentCursor | undefined; limit: number },
+  opts: { after?: CommentCursor | undefined; limit: number; intent?: CommentIntent | undefined },
 ): Promise<CommentPage> {
   const { after, limit } = opts;
   const rootFilters = [eq(comments.issueId, issueId), isNull(comments.parentId)];
+  if (opts.intent) rootFilters.push(eq(comments.intent, opts.intent));
   if (after) {
     const at = sql`${after.createdAtKey}::timestamptz`;
     rootFilters.push(
@@ -161,10 +176,66 @@ export type NewComment = {
    * is the dormancy: a door that cannot read the declaration warns rather than refuses.
    */
   declaresRecordRoute?: boolean | undefined;
+  /**
+   * What the comment means to do, as the caller sent it. Validated here, so every door refuses the
+   * same way; absent is decided by `defaultIntent` and the caller is warned.
+   */
+  intent?: string | null | undefined;
 };
 
 /** A written comment plus whatever the sanitizer removed on the way in. */
 export type WrittenComment = { row: CommentThreadRow; warnings: string[] };
+
+/** A comment intent outside the closed set, refused by name with the valid set. */
+export class CommentIntentRefused extends Error {
+  readonly code = 'COMMENT_INTENT_UNKNOWN' as const;
+  constructor(readonly intent: unknown) {
+    super(
+      `\`${String(intent)}\` is not a comment intent — send one of: ${COMMENT_INTENTS.join(', ')} (question is owed a reply, decision is pinned, note is neither)`,
+    );
+    this.name = 'CommentIntentRefused';
+  }
+}
+
+/**
+ * The intent a comment that declared none is stored under. A person's comment is `question`, so
+ * it stays owed a reply exactly as every person's comment was before intents existed; an agent's,
+ * or any comment carrying a record, is `note`.
+ *
+ * cm:hack — the default exists because forge-plugin's `forge comment` and older web builds send
+ * no intent. Ends when the pinned plugin sends `intent` on every comment
+ * (forge-local-docs/plugin-followups.md); then an absent intent is refused COMMENT_INTENT_REQUIRED.
+ */
+export function defaultIntent(byAnAgent: boolean, body: string): CommentIntent {
+  if (byAnAgent || parseForgeRecord(body)) return 'note';
+  return 'question';
+}
+
+/** The intent sent, checked; or the default with the warning that says it was taken. */
+export function resolveIntent(
+  sent: unknown,
+  byAnAgent: boolean,
+  body: string,
+): { intent: CommentIntent; warning: string | null } {
+  if (sent !== undefined && sent !== null) {
+    if (!isCommentIntent(sent)) throw new CommentIntentRefused(sent);
+    return { intent: sent, warning: null };
+  }
+  const intent = defaultIntent(byAnAgent, body);
+  return {
+    intent,
+    warning: `COMMENT_INTENT_DEFAULTED: no \`intent\` was sent, so this comment is stored as \`${intent}\` — send intent: ${COMMENT_INTENTS.join(' | ')}`,
+  };
+}
+
+/** The record actor a comment's author is: the box where a device wrote it, else the account. */
+function commentActor(
+  input: { authorId: string; authorDeviceId: string | null },
+  byAnAgent: boolean,
+): Actor {
+  if (input.authorDeviceId) return { type: 'device', id: input.authorDeviceId, agency: 'agent' };
+  return { type: 'user', id: input.authorId, agency: byAnAgent ? 'agent' : 'human' };
+}
 
 /**
  * The stage a body write happens at: `issues.status` IS the stage name.
@@ -206,22 +277,29 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
   const prepared = prepareBody({ raw: input.body, format: input.format });
   const fence = screenRecordFence(input.body, input.declaresRecordRoute === true);
   const context = await loadStageContext(input.issueId, tx);
-  if (context && (await writtenByAnAgent(input, tx))) {
+  const byAnAgent = await writtenByAnAgent(input, tx);
+  const { intent, warning } = resolveIntent(input.intent, byAnAgent, input.body);
+  if (context && byAnAgent) {
     await screenAgentComment(context.projectId, input.body, tx);
   }
 
-  const { format: _ignored, declaresRecordRoute: _declared, ...rest } = input;
-  const [row] = await tx
-    .insert(comments)
-    .values({
-      ...rest,
-      body: prepared.body,
-      format: prepared.format,
-      stage: context?.stage ?? null,
-    })
-    .returning(commentThreadColumns);
-  if (!row) throw new Error('comment insert returned no row');
-  return { row, warnings: [...prepared.warnings, ...fence] };
+  const { format: _ignored, declaresRecordRoute: _declared, intent: _intent, ...rest } = input;
+  return tx.transaction(async (t) => {
+    const [row] = await t
+      .insert(comments)
+      .values({
+        ...rest,
+        body: prepared.body,
+        format: prepared.format,
+        stage: context?.stage ?? null,
+        intent,
+      })
+      .returning(commentThreadColumns);
+    if (!row) throw new Error('comment insert returned no row');
+    const untyped = await mirrorCommentRecord(row, commentActor(input, byAnAgent), t);
+    const warnings = [...prepared.warnings, ...fence, ...untyped, ...(warning ? [warning] : [])];
+    return { row, warnings };
+  });
 }
 
 /**
@@ -252,24 +330,32 @@ export async function updateCommentBody(
     .where(eq(comments.id, commentId))
     .limit(1);
   if (!existing) return null;
-  if (await writtenByAnAgent(existing, db)) {
+  const byAnAgent = await writtenByAnAgent(existing, db);
+  if (byAnAgent) {
     const context = await loadStageContext(existing.issueId);
     if (context) await screenAgentComment(context.projectId, input.body, db);
   }
 
-  const [row] = await db
-    .update(comments)
-    .set({
-      body: prepared.body,
-      format: prepared.format,
-      updatedAt: new Date(),
-    })
-    .where(eq(comments.id, commentId))
-    .returning(commentThreadColumns);
-  return row ? { row, warnings: [...prepared.warnings, ...fence] } : null;
+  return db.transaction(async (t) => {
+    const [row] = await t
+      .update(comments)
+      .set({
+        body: prepared.body,
+        format: prepared.format,
+        updatedAt: new Date(),
+      })
+      .where(eq(comments.id, commentId))
+      .returning(commentThreadColumns);
+    if (!row) return null;
+    const untyped = await remirrorCommentRecord(row, commentActor(existing, byAnAgent), t);
+    return { row, warnings: [...prepared.warnings, ...fence, ...untyped] };
+  });
 }
 
-/** Remove one comment. Emitting `commentDeleted` belongs to the caller. */
+/** Remove one comment, and the event its record was mirrored into. Emitting `commentDeleted` belongs to the caller. */
 export async function deleteComment(commentId: string): Promise<void> {
-  await db.delete(comments).where(eq(comments.id, commentId));
+  await db.transaction(async (t) => {
+    await dropCommentMirror(commentId, t);
+    await t.delete(comments).where(eq(comments.id, commentId));
+  });
 }

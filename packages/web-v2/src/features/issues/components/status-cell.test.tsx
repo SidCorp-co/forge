@@ -4,21 +4,21 @@
 //
 // The oracle below is spelled out HERE and never imported from `STATUS_LABELS`.
 // A test that read its expected words out of the production map would follow
-// that map wherever it went: swap "Testing" and "Tested" in `derive.ts` and an
-// importing test stays green while two rows report the wrong status. The
+// that map wherever it went: swap "Approved" and "Awaiting release" in the map
+// and an importing test stays green while two rows report the wrong status. The
 // fixture is the second opinion, so a wrong word in the map fails here.
 //
-// The lane vocabulary folds seven statuses onto "Running" and two onto "Needs a
-// human", so the two collapse cases assert the SHAPE — n statuses, n distinct
-// words, the lane word absent — which no hardcoded entry satisfies by accident.
+// ISS-54: the ten statuses are what the lane's labels were, so there is no second
+// vocabulary to fold onto. The run's step is the one addition — "In progress ·
+// Test" — and only on in_progress, only where the work state names one.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LABEL_VIEW, statusLabel } from "../derive";
-import { toAutonomousLabel } from "@forge/contracts/issue-vocabulary";
+import { WORK_STEPS, type WorkStep } from "@forge/contracts/issue-vocabulary";
+import { statusLabel } from "../derive";
 import { ISSUE_STATUSES } from "../types";
 import type { IssueRow, IssueStatus } from "../types";
 import { StatusCell } from "./issue-row-actions";
@@ -33,24 +33,27 @@ afterEach(cleanup);
 const EXPECTED: Record<IssueStatus, string> = {
   draft: "Draft",
   open: "Open",
-  confirmed: "Confirmed",
-  clarified: "Clarified",
-  approved: "Approved",
-  in_progress: "In progress",
-  developed: "Developed",
-  testing: "Testing",
-  tested: "Tested",
-  awaiting_release: "Awaiting release",
-  releasing: "Releasing",
   reopen: "Reopened",
-  waiting: "Waiting",
-  on_hold: "On hold",
+  in_progress: "In progress",
+  approved: "Approved",
   needs_info: "Needs info",
+  on_hold: "On hold",
+  awaiting_release: "Awaiting release",
   closed: "Closed",
   dropped: "Dropped",
 };
 
-const row = (status: IssueStatus): IssueRow =>
+/** The step words, written here for the same reason. */
+const STEP_WORD: Record<WorkStep, string> = {
+  triage: "Triage",
+  clarify: "Clarify",
+  plan: "Plan",
+  build: "Build",
+  test: "Test",
+  release: "Release",
+};
+
+const row = (status: IssueStatus, step: WorkStep | null = null): IssueRow =>
   ({
     id: "i",
     projectId: "p",
@@ -71,11 +74,14 @@ const row = (status: IssueStatus): IssueRow =>
     createdAt: "2026-09-18T10:00:00.000Z",
     updatedAt: "2026-09-18T10:00:00.000Z",
     agentStatus: null,
+    workState: step
+      ? { step, stepStartedAt: null, leaseHolder: null, branch: null, headSha: null, leftStatus: null, legacyStatus: null }
+      : null,
   }) as IssueRow;
 
-/** The word the STATUS column prints for a row at this status. */
-function printed(status: IssueStatus): string {
-  const { container, unmount } = render(<StatusCell row={row(status)} />);
+/** The word the STATUS column prints for a row at this status (and step). */
+function printed(status: IssueStatus, step: WorkStep | null = null): string {
+  const { container, unmount } = render(<StatusCell row={row(status, step)} />);
   const text = container.textContent ?? "";
   unmount();
   return text.trim();
@@ -93,33 +99,32 @@ describe("the column headed STATUS prints the kernel status", () => {
     expect(Object.keys(EXPECTED).sort()).toEqual([...ISSUE_STATUSES].sort());
   });
 
-  it("tells apart every status the lane folds onto Running", () => {
-    const folded = ISSUE_STATUSES.filter((s) => LABEL_VIEW[toAutonomousLabel(s, true)].label === "Running");
-    expect(folded.length).toBeGreaterThan(1);
-    const words = folded.map(printed);
-    expect(new Set(words).size).toBe(folded.length);
+  it("tells every status apart, so no two print the same word", () => {
+    const words = ISSUE_STATUSES.map((s) => printed(s));
+    expect(new Set(words).size).toBe(ISSUE_STATUSES.length);
     expect(words).not.toContain("Running");
-  });
-
-  it("tells apart every status the lane folds onto Needs a human", () => {
-    const folded = ISSUE_STATUSES.filter((s) => LABEL_VIEW[toAutonomousLabel(s, true)].label === "Needs a human");
-    expect(folded.length).toBeGreaterThan(1);
-    const words = folded.map(printed);
-    expect(new Set(words).size).toBe(folded.length);
     expect(words).not.toContain("Needs a human");
   });
 
-  it("tells releasing from approved", () => {
-    expect(printed("releasing")).not.toBe(printed("approved"));
-  });
-
-  it("tells needs_info from waiting", () => {
-    expect(printed("needs_info")).not.toBe(printed("waiting"));
+  it("tells needs_info from on_hold", () => {
+    expect(printed("needs_info")).not.toBe(printed("on_hold"));
   });
 
   it("prints the row's OWN status and not a fixed word", () => {
-    expect(printed("releasing")).toBe("Releasing");
+    expect(printed("awaiting_release")).toBe("Awaiting release");
     expect(printed("approved")).toBe("Approved");
+  });
+
+  it("prints the run's step after In progress where the work state names one", () => {
+    for (const step of WORK_STEPS) {
+      expect(printed("in_progress", step), step).toBe(`In progress · ${STEP_WORD[step]}`);
+    }
+  });
+
+  it("prints no step beside any other status, whatever the work state says", () => {
+    for (const s of ISSUE_STATUSES.filter((x) => x !== "in_progress")) {
+      expect(printed(s, "test"), s).toBe(EXPECTED[s]);
+    }
   });
 });
 
@@ -133,15 +138,15 @@ describe("the word the detail header prints", () => {
   );
   const chip = header
     .split("\n")
-    .find((l) => l.includes("<StatusChip") && l.includes("statusToChip(issue.status)"));
+    .find((l) => l.includes("<StatusChip") && l.includes("issueStatusChip(issue.status"));
 
   it("reads a call site that is actually there", () => {
     expect(chip, "the detail header's StatusChip line was not found").toBeDefined();
   });
 
-  it("labels the header chip with the kernel status and not the lane word", () => {
-    expect(chip).toMatch(/label=\{statusLabel\(issue\.status\)\}/u);
-    expect(chip).not.toMatch(/LABEL_VIEW|toAutonomousLabel/u);
+  it("labels the header chip through the one chip reading, with the issue's own step", () => {
+    expect(chip).toMatch(/\{\.\.\.issueStatusChip\(issue\.status, workStepOf\(issue\)\)\}/u);
+    expect(chip).not.toMatch(/label=/u);
   });
 
   // And the two surfaces then agree because one function answers for both.

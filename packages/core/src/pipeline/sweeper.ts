@@ -110,7 +110,7 @@ export interface SweepResult {
   orphanedRunAssertions: IssueRunInvariantResult;
   /** ISS-1122 — non-terminal issues with nothing working them, named on the row itself. */
   idleIssues: IdleIssuesResult;
-  /** ISS-762 — issues parked at `waiting` with merged code, surfaced to project admins. */
+  /** ISS-762 — issues parked on a decision or a resource, surfaced to project admins. */
   strandedIssues: StrandedIssuesResult;
   owedCloses: StrandedIssuesResult;
   orphanedPauses: OrphanedPauseResult;

@@ -105,13 +105,14 @@ describe('ISS-1273 pipelineHealth across the three worker lanes', () => {
   }
 
   async function stampClaim(issueId: string, holder: string, ageHours: number): Promise<void> {
+    // ISS-54: the claim lives on the issue's work state, not in session_context.
     await harness.db.execute(sql`
-      UPDATE issues
-         SET session_context = jsonb_build_object('lease', jsonb_build_object(
+      INSERT INTO issue_work_state (issue_id, lease)
+      VALUES (${issueId}, jsonb_build_object(
                'holder', ${holder}::text,
                'renewedAt', to_jsonb(now() - make_interval(hours => ${ageHours}::int)),
                'minutes', 60))
-       WHERE id = ${issueId}
+      ON CONFLICT (issue_id) DO UPDATE SET lease = EXCLUDED.lease
     `);
   }
 

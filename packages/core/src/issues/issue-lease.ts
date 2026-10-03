@@ -50,14 +50,20 @@ const livePipelineRunList = sql.join(
 );
 
 /** Held-ness is the row AND a non-terminal session. `docs/modules/issues/issue-lease.md`. */
-export function issueLeaseHeldSql(projectId: SQL | string, issueKey: SQL | string): SQL {
+export function issueLeaseHeldSql(
+  projectId: SQL | string,
+  issueKey: SQL | string,
+  exceptRunId: string | null = null,
+): SQL {
+  const notThatRun =
+    exceptRunId === null ? sql`` : sql` AND l.run_id IS DISTINCT FROM ${exceptRunId}`;
   return sql`EXISTS (
     SELECT 1
       FROM issue_leases l
       JOIN agent_sessions ls ON ls.id = l.session_id
      WHERE l.project_id = ${projectId}
        AND l.issue_key = ${issueKey}
-       AND ls.status NOT IN (${terminalSessionList})
+       AND ls.status NOT IN (${terminalSessionList})${notThatRun}
   )`;
 }
 
@@ -66,19 +72,24 @@ export function issueWorkInFlightSql(args: {
   issueId: SQL | string;
   projectId: SQL | string;
   issueKey: SQL | string;
+  /** A run whose own job, run row and fleet lease are not counted: the one handing the issue back. */
+  exceptRunId?: string | null;
 }): SQL {
+  const run = args.exceptRunId ?? null;
+  const jobOfOther = run === null ? sql`` : sql` AND wj.pipeline_run_id IS DISTINCT FROM ${run}`;
+  const otherRun = run === null ? sql`` : sql` AND wr.id <> ${run}`;
   return sql`(
     EXISTS (
       SELECT 1 FROM jobs wj
        WHERE wj.issue_id = ${args.issueId}
-         AND wj.status NOT IN (${terminalJobList})
+         AND wj.status NOT IN (${terminalJobList})${jobOfOther}
     )
     OR EXISTS (
       SELECT 1 FROM pipeline_runs wr
        WHERE wr.issue_id = ${args.issueId}
-         AND wr.status IN (${livePipelineRunList})
+         AND wr.status IN (${livePipelineRunList})${otherRun}
     )
-    OR ${issueLeaseHeldSql(args.projectId, args.issueKey)}
+    OR ${issueLeaseHeldSql(args.projectId, args.issueKey, run)}
   )`;
 }
 

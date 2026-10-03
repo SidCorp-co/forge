@@ -1,67 +1,38 @@
 import { type Db, db } from '../db/client.js';
 import { findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
-import type { TransitionErrorCode, TransitionIssueRow } from './apply-transition.js';
+import type { TransitionIssueRow } from './apply-transition.js';
+import type { LegacyRung } from './legacy-status.js';
 
 export interface TransitionEvidenceViolation {
-  code: TransitionErrorCode;
+  code: 'NO_WORK_EVIDENCE';
   detail: string;
   details: Record<string, unknown>;
 }
 
-type EvidenceExecutor = Pick<Db, 'select'>;
-
-export interface TransitionEvidenceContext {
-  issue: Pick<TransitionIssueRow, 'id' | 'projectId'>;
-  toStatus: string;
-  agency: ActorAgency;
-  skip: boolean;
-  executor?: EvidenceExecutor;
-}
-
-type EvidenceRule = {
-  /** `true` exempts a human hand-advance; `false` holds every actor to the rule. */
-  agentOnly: boolean;
-  check: (ctx: TransitionEvidenceContext) => Promise<TransitionEvidenceViolation | null>;
-};
-
 export const isBlankPlan = (plan: string | null | undefined): boolean =>
   !plan || plan.trim().length === 0;
 
-const NO_WORK_EVIDENCE_STATUSES: ReadonlySet<string> = new Set(['developed', 'testing']);
+const CLAIMS_CODE: ReadonlySet<LegacyRung> = new Set(['developed', 'testing']);
 
 /**
- * Requirement 1 (ISS-786 child B) — `developed`/`testing` must not be
- * reachable with zero recorded evidence that code exists (ISS-105 / ISS-75-78
- * shape: a status advance with no branch, commit or handoff behind it).
+ * cm:hack ISS-786 child B, carried onto the retired rungs a 17-status caller still names
+ * (`legacy-status.ts`): an agent naming `developed` or `testing` with no branch, commit or handoff
+ * recorded is refused NO_WORK_EVIDENCE, as it was when those were statuses. A person's hand-advance
+ * is exempt, as before. Exit: until forge-plugin moves to the 10-status model (plugin-followups.md).
  */
-const noWorkEvidenceRule: EvidenceRule = {
-  agentOnly: true,
-  check: async (ctx) => {
-    if (!NO_WORK_EVIDENCE_STATUSES.has(ctx.toStatus)) return null;
-    const detail = await findMissingWorkEvidence(ctx.issue.id, ctx.executor ?? db);
-    if (!detail) return null;
-    return {
-      code: 'NO_WORK_EVIDENCE',
-      detail,
-      details: { issueId: ctx.issue.id, toStatus: ctx.toStatus },
-    };
-  },
-};
-
-const RULES: readonly EvidenceRule[] = [noWorkEvidenceRule];
-
-export async function checkTransitionEvidence(
-  ctx: TransitionEvidenceContext,
-): Promise<TransitionEvidenceViolation | null> {
-  if (ctx.skip) return null;
-  // cm:guard a rule that cannot be read refuses the transition by throwing, never allows it: this
-  // runs inside the transition's transaction, which a failed read has already aborted, and a
-  // kernel transition that skips its evidence rule on an error is the silence it exists to stop.
-  for (const rule of RULES) {
-    if (rule.agentOnly && ctx.agency !== 'agent') continue;
-    const violation = await rule.check(ctx);
-    if (violation) return violation;
-  }
-  return null;
+export async function legacyRungEvidenceFault(args: {
+  issue: Pick<TransitionIssueRow, 'id'>;
+  rung: LegacyRung | null;
+  agency: ActorAgency;
+  executor?: Pick<Db, 'select'>;
+}): Promise<TransitionEvidenceViolation | null> {
+  if (args.rung === null || !CLAIMS_CODE.has(args.rung) || args.agency !== 'agent') return null;
+  const detail = await findMissingWorkEvidence(args.issue.id, args.executor ?? db);
+  if (!detail) return null;
+  return {
+    code: 'NO_WORK_EVIDENCE',
+    detail,
+    details: { issueId: args.issue.id, rung: args.rung },
+  };
 }

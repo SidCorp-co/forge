@@ -4,6 +4,7 @@ import { issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type MergeMarkColumns, type MergeMarkKind, mergeMarkKindOf } from './merge-record.js';
 import type { IssueSearchField } from './search-predicate.js';
+import { workStateListSql } from './work-state.js';
 
 /**
  * The columns both REST issue lists select. Heavy TOAST columns
@@ -46,6 +47,7 @@ export const REST_ISSUE_LIST_COLUMNS = {
   )`
     .mapWith(issues.createdAt)
     .as('waiting_on_person_since'),
+  workState: workStateListSql.as('work_state'),
 } as const;
 
 /** The names this projection deliberately does not select, so a test asserts on the set. */

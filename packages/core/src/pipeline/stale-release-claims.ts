@@ -9,7 +9,7 @@ export interface StaleReleaseBatchClaimsResult {
 /**
  * Clear the claims of release runs that ended, so their issues can join another batch.
  *
- * A roster whose run recorded a promotion and is still at `releasing` is left claimed: that is
+ * A roster whose run recorded a promotion and is still held at its release step is left claimed: that is
  * the roster `recoverStrandedReleasing` holds on purpose, for a person, and its claims are the
  * only index a `return-to-gate` abort can read it back by.
  */
@@ -25,7 +25,8 @@ export async function reapStaleReleaseBatchClaims(): Promise<StaleReleaseBatchCl
             AND r.status NOT IN ('running', 'paused')
         )
         AND NOT (
-          issues.status = 'releasing'
+          issues.status = 'awaiting_release'
+          AND EXISTS (SELECT 1 FROM issue_work_state w WHERE w.issue_id = issues.id AND w.step = 'release')
           AND EXISTS (
             SELECT 1 FROM release_attempts a
             WHERE a.run_id = issues.release_batch_run_id AND a.stage = 'promote'

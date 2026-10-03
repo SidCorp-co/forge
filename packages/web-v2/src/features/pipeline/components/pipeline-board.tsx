@@ -2,11 +2,10 @@
 
 // Pipeline kanban screen (`/projects/[slug]/pipeline`, ISS-295), and the Issues screen's Board tab.
 //
-// One column per LANE LABEL — the same word the issue's own status chip says — with the live run
-// status overlaid by issueId. Until ISS-999 the columns were the seven stages of a pipeline the
-// kernel deleted in ISS-897, filled from a 15-key status→stage map that answered `triage` for
-// `releasing` and `dropped`. Live via WS (the project room invalidates `['issues','search']` +
-// `['pipeline-runs','list']`).
+// One column per STATUS — the same word the issue's own status chip says — plus "No check-in" for
+// the in_progress rows nothing holds, with the live run status overlaid by issueId. A run's step is
+// not a column: an in_progress card names it ("In progress · Test"). Live via WS (the project room
+// invalidates `['issues','search']` + `['pipeline-runs','list']`).
 
 import { useMemo, useState } from "react";
 import {
@@ -23,7 +22,7 @@ import {
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { formatApiError } from "@/lib/api/error";
-import { boardColumns, cardStatus, formatUsd, groupIssuesByLabel, runsByIssue } from "../derive";
+import { boardColumns, cardStatus, formatUsd, groupIssuesByColumn, runsByIssue } from "../derive";
 import { useProjectIssues, useProjectRuns } from "../hooks";
 import type { PipelineIssueRow } from "../types";
 import { RunDetail } from "./run-detail";
@@ -58,7 +57,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
   const runsQ = useProjectRuns(projectId);
 
   const runIndex = useMemo(() => runsByIssue(runsQ.data?.items), [runsQ.data]);
-  const groups = useMemo(() => groupIssuesByLabel(issuesQ.data?.items), [issuesQ.data]);
+  const groups = useMemo(() => groupIssuesByColumn(issuesQ.data?.items), [issuesQ.data]);
 
   // Keep the open drawer's issue snapshot in sync with the live list: editing
   // status/priority/assignee from the quick-action bar invalidates `['issues']`,
@@ -104,8 +103,8 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
         />
       ) : issuesQ.isLoading ? (
         <KanbanBoard>
-          {boardColumns().map((label) => (
-            <div key={label} className="w-[248px] flex-none">
+          {boardColumns().map((key) => (
+            <div key={key} className="w-[248px] flex-none">
               <KanbanColumnSkeleton />
             </div>
           ))}
@@ -114,7 +113,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
         <KanbanBoard>
           {groups.map((group) => (
             <KanbanColumn
-              key={group.label}
+              key={group.key}
               title={group.title}
               color={group.color}
               count={group.issues.length}

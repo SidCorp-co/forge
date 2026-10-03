@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import {
   type BranchConfig,
   extractIssueBranchOverride,
@@ -28,7 +28,8 @@ export async function loadIssueSnapshot(
       descriptionFormat: issues.descriptionFormat,
       plan: issues.plan,
       acceptanceCriteria: issues.acceptanceCriteria,
-      sessionContext: issues.sessionContext,
+      // ISS-54 cm:hack — composed with the lease `issue_work_state` holds.
+      sessionContext: sql<unknown>`issue_session_context(${issues.id}, ${issues.sessionContext})`,
       metadata: issues.metadata,
       projectId: issues.projectId,
     })

@@ -15,8 +15,19 @@ export const commentBodyField = z
 
 const formatField = z.enum(BODY_FORMATS).optional();
 
+/**
+ * Any string: the closed set is checked by `comments/service.ts:resolveIntent`, so a wrong intent is
+ * refused by name (COMMENT_INTENT_UNKNOWN) with the valid set rather than as a generic shape error.
+ */
+const intentField = z.string().max(64).optional();
+
 export const commentCreateSchema = z
-  .object({ body: commentBodyField, format: formatField, parentId: z.uuid().optional() })
+  .object({
+    body: commentBodyField,
+    format: formatField,
+    parentId: z.uuid().optional(),
+    intent: intentField,
+  })
   .strict();
 
 export const commentBodySchema = z.object({ body: commentBodyField, format: formatField }).strict();

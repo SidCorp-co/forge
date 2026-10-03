@@ -2,12 +2,13 @@
  * The REST half of the agency axis.
  *
  * `PATCH /api/issues/batch` transitions, and it is reachable with a personal
- * access token (`/api/issues` is on the PAT allowlist). The ISS-786 evidence
- * gate runs on an agent and not on a person, so the question every case here
- * asks is which of the two a credential names.
+ * access token (`/api/issues` is on the PAT allowlist). Where the project document
+ * sets `plan.approval.required` the move to `approved` is a person's (ISS-54), and
+ * the ISS-786 merge-claim evidence gate runs on an agent and not on a person, so the
+ * question every case here asks is which of the two a credential names.
  *
- * Each pair is one falsification set: same request, same issue, same absent
- * evidence — only the credential differs. Three credentials appear, and the
+ * Each pair is one falsification set: same request, same issue, same rule — only
+ * the credential differs. Three credentials appear, and the
  * third carries the rule this file exists for (ISS-1137): a token a PERSON
  * owns is that person, because `users.kind` of the account it belongs to says
  * so. Nothing about a token's name, its transport or its absence of a device
@@ -28,6 +29,7 @@ import type { RequestIdVars } from '../../src/middleware/request-id.js';
 import {
   createTestProject,
   createTestUser,
+  seedProjectDocument,
   seedProjectSource,
   setupTestDatabase,
   type TestDatabase,
@@ -97,6 +99,24 @@ async function seedEvidenceLessIssue() {
   return { user, project, issueId };
 }
 
+/** An `in_progress` issue with plan and criteria, on a project whose plans a person approves. */
+async function seedPlannedIssue() {
+  const { user, project } = await seedEvidenceLessIssue();
+  await seedProjectDocument(harness.db, project.id, user.id, { environments: {} });
+  await harness.db.execute(sql`
+    UPDATE project_config_documents
+       SET document = jsonb_set(document, '{plan}', '{"approval":{"required":true}}'::jsonb)
+     WHERE project_id = ${project.id}
+  `);
+  const issueId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, title, created_by_id, status, plan, acceptance_criteria)
+    VALUES (${issueId}::uuid, ${project.id}::uuid, 'a plan waiting for its approval',
+            ${user.id}::uuid, 'in_progress', 'the plan', '1. it works')
+  `);
+  return { user, project, issueId };
+}
+
 /**
  * A credential an unattended agent holds: an ordinary PAT whose OWNER is a
  * `kind:'agent'` user. Since ISS-932 wave 4 that ownership is the whole of what
@@ -120,34 +140,34 @@ const advance = (token: string, issueId: string) =>
   app.request('/api/issues/batch', {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ ids: [issueId], data: { status: 'developed' } }),
+    body: JSON.stringify({ ids: [issueId], data: { status: 'approved' } }),
   });
 
 describe('PATCH /api/issues/batch honours agency, not just device-ness', () => {
-  it('refuses an agent-held token the evidence-less advance', async () => {
-    const { project, issueId } = await seedEvidenceLessIssue();
+  it('refuses an agent-held token the plan approval a person owes', async () => {
+    const { project, issueId } = await seedPlannedIssue();
     const res = await advance(await agentPatFor(project), issueId);
 
-    expect(JSON.stringify(await res.json())).toContain('no_work_evidence');
+    expect(JSON.stringify(await res.json())).toContain('plan_required');
+    const [row] = await harness.db.execute<{ status: string }>(
+      sql`SELECT status FROM issues WHERE id = ${issueId}::uuid`,
+    );
+    expect(row?.status).toBe('in_progress');
+  });
+
+  it('lets a person in a session through the same request', async () => {
+    const { user, issueId } = await seedPlannedIssue();
+    const res = await advance(await signUserToken(user.id), issueId);
+
+    expect(JSON.stringify(await res.json())).not.toContain('plan_required');
     const [row] = await harness.db.execute<{ status: string }>(
       sql`SELECT status FROM issues WHERE id = ${issueId}::uuid`,
     );
     expect(row?.status).toBe('approved');
   });
 
-  it('lets a person in a session through the same request', async () => {
-    const { user, issueId } = await seedEvidenceLessIssue();
-    const res = await advance(await signUserToken(user.id), issueId);
-
-    expect(JSON.stringify(await res.json())).not.toContain('no_work_evidence');
-    const [row] = await harness.db.execute<{ status: string }>(
-      sql`SELECT status FROM issues WHERE id = ${issueId}::uuid`,
-    );
-    expect(row?.status).toBe('developed');
-  });
-
   it('lets a token a person owns through, because it is that person', async () => {
-    const { user, project, issueId } = await seedEvidenceLessIssue();
+    const { user, project, issueId } = await seedPlannedIssue();
     const { plaintext } = await mintPat({
       userId: user.id,
       name: 'my laptop',
@@ -155,11 +175,11 @@ describe('PATCH /api/issues/batch honours agency, not just device-ness', () => {
     });
     const res = await advance(plaintext, issueId);
 
-    expect(JSON.stringify(await res.json())).not.toContain('no_work_evidence');
+    expect(JSON.stringify(await res.json())).not.toContain('plan_required');
     const [row] = await harness.db.execute<{ status: string }>(
       sql`SELECT status FROM issues WHERE id = ${issueId}::uuid`,
     );
-    expect(row?.status).toBe('developed');
+    expect(row?.status).toBe('approved');
   });
 });
 

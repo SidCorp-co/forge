@@ -8,15 +8,17 @@ type JobRow = typeof jobs.$inferSelect;
 
 export type RecoveryVerdict = 'advanced' | 'pending' | 'reverted';
 
+// A job's step is progress inside `in_progress` (ISS-54), so what a job leaves behind is read off
+// the statuses a run hands an issue on to: the plan checkpoint, the release gate, a park, a close.
 export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus[]> = {
-  triage: ['needs_info', 'confirmed'],
-  clarify: ['clarified', 'needs_info'],
+  triage: ['needs_info', 'approved'],
+  clarify: ['approved', 'needs_info'],
   plan: ['approved'],
-  code: ['developed'],
-  review: ['testing', 'reopen'],
-  test: ['awaiting_release', 'reopen', 'tested'],
+  code: ['awaiting_release', 'closed'],
+  review: ['awaiting_release', 'reopen'],
+  test: ['awaiting_release', 'reopen'],
   staging: ['reopen'],
-  fix: ['developed'],
+  fix: ['awaiting_release', 'closed'],
   release: ['awaiting_release', 'closed'],
   custom: [],
   pm: [],
@@ -30,17 +32,21 @@ export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus
 
 export const JOB_TYPE_ENTRY_STATUS: Partial<Record<JobType, IssueStatus>> = {
   triage: 'open',
-  clarify: 'confirmed',
-  plan: 'clarified',
+  clarify: 'open',
+  plan: 'open',
   code: 'approved',
-  review: 'developed',
-  test: 'testing',
   fix: 'reopen',
   release: 'awaiting_release',
 };
 
+// Where a step job's work stands while it runs: inside `in_progress`, whatever the step.
 const JOB_TYPE_INFLIGHT_STATUS: Partial<Record<JobType, IssueStatus>> = {
+  triage: 'in_progress',
+  clarify: 'in_progress',
+  plan: 'in_progress',
   code: 'in_progress',
+  review: 'in_progress',
+  test: 'in_progress',
   fix: 'in_progress',
 };
 
@@ -66,8 +72,8 @@ export function classifyVerdict(currentStatus: IssueStatus, jobType: JobType): R
   const entry = JOB_TYPE_ENTRY_STATUS[jobType];
   if (entry && currentStatus === entry) return 'pending';
 
-  // The job is still mid-flight at its in-flight marker (code/fix →
-  // in_progress) — not advanced, not stale; the retry path stays live.
+  // The job is still mid-flight inside `in_progress` — not advanced, not stale; the retry path
+  // stays live.
   if (JOB_TYPE_INFLIGHT_STATUS[jobType] === currentStatus) return 'pending';
 
   const exits = JOB_TYPE_EXPECTED_EXIT_STATUS[jobType] ?? [];

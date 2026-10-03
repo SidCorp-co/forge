@@ -35,7 +35,7 @@ const WATCHED = { watch: true, graceMs: 1, owes: 'agent', waitingFor: 'a run' } 
 
 describe('STRAND_RULES covers every status (ISS-1122)', () => {
   /**
-   * The hole this issue was filed about: `stranded-issues.ts` enumerates `waiting` and
+   * The hole this issue was filed about: `stranded-issues.ts` enumerated one park status and
    * `issue-run-invariant.ts` enumerates three statuses, so a status neither named was read by
    * nothing at all. A `Record<IssueStatus, …>` makes the same omission a typecheck failure; this
    * proves the table has not been widened with an index signature that would let one back in.
@@ -62,8 +62,8 @@ describe('STRAND_RULES covers every status (ISS-1122)', () => {
     expect(WATCHED_STATUSES.some(isTerminalPlacement)).toBe(false);
   });
 
-  it('leaves `waiting` to the pass that already owns it', () => {
-    const rule = STRAND_RULES.waiting;
+  it('leaves `needs_info` to the pass that already owns it', () => {
+    const rule = STRAND_RULES.needs_info;
     expect(rule.watch).toBe(false);
     if (!rule.watch) expect(rule.atRest).toContain('stranded-issues');
   });
@@ -171,14 +171,14 @@ describe('strandReason draws on evidence, never on the status alone (ISS-1122)',
    * The consult's F5: two rows at one status can be stuck for different causes, so the sentence
    * must come from what was observed. These two differ only in the merge mark.
    */
-  it('separates a `developed` row with no merge mark from one that has one', () => {
+  it('separates an `in_progress` row with no merge mark from one that has one', () => {
     const unmerged = strandReason({
-      status: 'developed',
+      status: 'in_progress',
       rule: WATCHED,
       evidence: evidence({ merged: false }),
     }).reason;
     const merged = strandReason({
-      status: 'developed',
+      status: 'in_progress',
       rule: WATCHED,
       evidence: evidence({ merged: true }),
     }).reason;
@@ -190,7 +190,7 @@ describe('strandReason draws on evidence, never on the status alone (ISS-1122)',
   /** The refusal by name, turned on the pass's own uncertainty rather than only on the row's. */
   it('says the cause is not decidable where nothing observed decides it', () => {
     const { reason } = strandReason({
-      status: 'testing',
+      status: 'reopen',
       rule: WATCHED,
       evidence: evidence({ everRan: false, merged: false }),
     });
@@ -320,10 +320,12 @@ describe('an automatic release hold outranks the person-owned awaiting_release r
   });
 
   it('reads a hold on no other status', () => {
-    expect(heldReleaseWait('releasing', HOLD)).toBeNull();
+    for (const status of issueStatuses.filter((s) => s !== 'awaiting_release')) {
+      expect(heldReleaseWait(status, HOLD), status).toBeNull();
+    }
     const out = strandReason({
-      status: 'testing',
-      rule: STRAND_RULES.testing,
+      status: 'in_progress',
+      rule: STRAND_RULES.in_progress,
       evidence: evidence({ releaseHold: HOLD }),
     });
     expect(out.reason).not.toContain('RELEASE_CRITERIA_UNEARNED');

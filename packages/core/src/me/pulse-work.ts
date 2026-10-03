@@ -1,9 +1,9 @@
 import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
 import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { PARK_STATUSES } from '../pipeline/state-machine.js';
 import { ageSeconds, emptyBuckets, foldBuckets } from './pulse-folds.js';
 import { readPulseLive } from './pulse-live.js';
 import { idList } from './pulse-sql.js';
@@ -111,7 +111,7 @@ async function selectReleaseWaiting(
              p.slug AS project_slug, p.issue_prefix
       FROM issues i JOIN projects p ON p.id = i.project_id
       WHERE i.project_id IN (${idList(projectIds)})
-        AND i.status IN ('awaiting_release', 'releasing')
+        AND i.status = 'awaiting_release'
         AND i.updated_at < ${now.toISOString()}::timestamptz
                            - (${thresholds.releaseWaitingSeconds}::int * interval '1 second')
     )
@@ -152,9 +152,7 @@ async function selectHumanBlockedAges(
   const rows = await db
     .select({ updatedAt: issues.updatedAt })
     .from(issues)
-    .where(
-      and(inArray(issues.projectId, projectIds), inArray(issues.status, [...HUMAN_PARK_STATUSES])),
-    )
+    .where(and(inArray(issues.projectId, projectIds), inArray(issues.status, [...PARK_STATUSES])))
     .orderBy(sql`${issues.updatedAt} ASC`)
     .limit(cap * 10);
   return rows.map((r) => ageSeconds(r.updatedAt, now) ?? 0);

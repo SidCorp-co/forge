@@ -10,10 +10,11 @@
  *
  * So a failed run returns each issue to the status it held when the run
  * opened. That floor bounds what this module can do, in both directions: it
- * can never put an issue behind the rung it was standing on at claim time,
- * and it can never lift one off a rung that was already stuck — a master may
- * open a run over an issue at `testing`, and the floor is then the defect.
- * That case is counted here and healed where run sessions are admitted.
+ * can never put an issue behind the status it was standing on at claim time,
+ * and it can never lift one off a status that was already stuck — a master may
+ * open a run over an issue already `in_progress`, and the floor is then the defect.
+ * That case is counted here and healed where run sessions are admitted. The move is the kernel's
+ * recovery edge (`pipeline/state-machine.ts:RECOVERY_EDGES`), refused while anything holds it.
  */
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -21,9 +22,11 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues, terminalAgentSessionStatuses } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { ASSERTS_WORK_IN_PROGRESS, HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
+import { isLegacyStatus, MIGRATED_AS } from '../issues/legacy-status.js';
+import { ASSERTS_WORK_IN_PROGRESS } from '../issues/status-sets.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
+import { PARK_STATUSES } from '../pipeline/state-machine.js';
 import {
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_ISSUES_METADATA_KEY,
@@ -125,8 +128,10 @@ export async function returnIssuesForRun(
   const returned: ReturnedIssue[] = [];
   for (const issue of rows) {
     const key = canonicalIssueKey(issue.issSeq);
-    const target = run.statuses[key] as IssueStatus | undefined;
-    if (!target) continue;
+    const named = run.statuses[key];
+    if (!named) continue;
+    // A run opened before ISS-54 stored its floor in the seventeen statuses.
+    const target: IssueStatus = isLegacyStatus(named) ? MIGRATED_AS[named] : (named as IssueStatus);
     if (heldElsewhere.has(key)) {
       logger.info(
         { runId, issueKey: key, status: issue.status },
@@ -157,7 +162,7 @@ export async function returnIssuesForRun(
       );
       continue;
     }
-    if (HUMAN_PARK_STATUSES.includes(issue.status as IssueStatus)) {
+    if (PARK_STATUSES.includes(issue.status as IssueStatus)) {
       logger.info(
         { runId, issueKey: key, status: issue.status },
         'run-issue-return: left a human park alone',
@@ -174,7 +179,12 @@ export async function returnIssuesForRun(
         },
         target,
         actor,
-        { transitionReason: opts.reason, skip: true },
+        {
+          transitionReason: opts.reason,
+          reason: opts.reason,
+          recovery: true,
+          recoveringRunId: runId,
+        },
       );
       returned.push({ issueKey: key, from: issue.status as IssueStatus, to: target });
     } catch (err) {

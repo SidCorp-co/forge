@@ -78,12 +78,8 @@ async function strandOf(issueId: string): Promise<Record<string, unknown> | null
   return rows[0]?.strand ?? null;
 }
 
-async function leaseOf(issueId: string): Promise<Record<string, unknown> | null> {
-  const rows = (await fx.db.execute(sql`
-    SELECT session_context -> 'lease' AS lease FROM issues WHERE id = ${issueId}
-  `)) as unknown as Array<{ lease: Record<string, unknown> | null }>;
-  return rows[0]?.lease ?? null;
-}
+// The lease lives on the issue's work state (ISS-54), not in `session_context`.
+const leaseOf = (issueId: string) => fx.leaseOf(issueId);
 
 describe('The three instances recorded on ISS-1122, 2026-09-20', () => {
   /**
@@ -204,7 +200,7 @@ describe('The inverses: a detector that flags everything is the same defect', ()
   );
 
   it('says nothing is working it only where the lease establishes that', async () => {
-    await seedIssue({ status: 'developed' });
+    await seedIssue({ status: 'in_progress' });
 
     await mods.reconcileIdleIssues(NOW);
 
@@ -235,7 +231,7 @@ describe('The inverses: a detector that flags everything is the same defect', ()
   });
 
   it('leaves a row alone that has a live run on it', async () => {
-    const issueId = await seedIssue({ status: 'developed' });
+    const issueId = await seedIssue({ status: 'in_progress' });
     await addRun(issueId, 'running');
 
     expect((await mods.reconcileIdleIssues(NOW)).detected).toBe(0);
@@ -243,7 +239,7 @@ describe('The inverses: a detector that flags everything is the same defect', ()
   });
 
   it('leaves a row alone that a live session holds a lease on', async () => {
-    const issueId = await seedIssue({ status: 'testing' });
+    const issueId = await seedIssue({ status: 'in_progress' });
     await fx.seedIssueLease(fx.lastSeq, 'running');
 
     expect((await mods.reconcileIdleIssues(NOW)).detected).toBe(0);
@@ -251,7 +247,7 @@ describe('The inverses: a detector that flags everything is the same defect', ()
   });
 
   it('reads a row as stranded once the session holding its lease is terminal', async () => {
-    const issueId = await seedIssue({ status: 'testing' });
+    const issueId = await seedIssue({ status: 'in_progress' });
     await fx.seedIssueLease(fx.lastSeq, 'completed');
 
     expect((await mods.reconcileIdleIssues(NOW)).detected).toBe(1);
@@ -268,14 +264,15 @@ describe('The inverses: a detector that flags everything is the same defect', ()
     expect(await strandOf(issueId)).toBeNull();
   });
 
-  it.each(['draft', 'waiting', 'on_hold', 'needs_info', 'closed', 'dropped'])(
+  // `needs_info:needs_decision` is what a retired `waiting` row became (ISS-54).
+  const AT_REST = ['draft', 'on_hold', 'needs_info:needs_answer', 'needs_info:needs_decision'];
+  it.each([...AT_REST, 'closed', 'dropped'])(
     'leaves a `%s` row alone, which the rule table declares at rest',
-    async (status) => {
+    async (named) => {
+      const [status = named, waitingKind = null] = named.split(':');
       // A `closed` row carries a merge mark or it cannot exist (ISS-1108).
-      const issueId = await seedIssue({
-        status,
-        ...(status === 'closed' ? { mergedAt: LONG_AGO_TS } : {}),
-      });
+      const merged = status === 'closed' ? { mergedAt: LONG_AGO_TS } : {};
+      const issueId = await seedIssue({ status, waitingKind, ...merged });
 
       expect((await mods.reconcileIdleIssues(NOW)).detected).toBe(0);
       expect(await strandOf(issueId)).toBeNull();
@@ -284,7 +281,7 @@ describe('The inverses: a detector that flags everything is the same defect', ()
 });
 
 describe('Coverage the three existing passes do not have', () => {
-  it.each(['confirmed', 'approved', 'developed', 'tested', 'reopen', 'awaiting_release'])(
+  it.each(['approved', 'in_progress', 'reopen', 'awaiting_release'])(
     'reaches a `%s` row with no merge mark, which no existing pass reads',
     async (status) => {
       const issueId = await seedIssue({ status });
@@ -297,10 +294,10 @@ describe('Coverage the three existing passes do not have', () => {
   );
 
   it('does not require a merge mark, and says which of the two it saw', async () => {
-    const unmerged = await seedIssue({ status: 'developed' });
+    const unmerged = await seedIssue({ status: 'in_progress' });
     await addRun(unmerged, 'completed');
     const merged = await seedIssue({
-      status: 'developed',
+      status: 'in_progress',
       mergedAt: '2026-09-14T00:00:00.000Z',
     });
     await addRun(merged, 'completed');
@@ -341,9 +338,8 @@ describe('Refusing by name rather than dropping the row', () => {
       await fx.db.execute(sql`UPDATE issues SET status = 'on_hold' WHERE status = 'quarantined'`);
       await fx.db.execute(sql`
           ALTER TABLE issues ADD CONSTRAINT issues_status_chk
-          CHECK (status IN ('open','confirmed','clarified','waiting','approved','in_progress',
-                            'developed','testing','tested','awaiting_release','releasing','closed',
-                            'reopen','on_hold','needs_info','draft','dropped'))
+          CHECK (status IN ('draft','open','reopen','in_progress','approved','needs_info',
+                            'on_hold','awaiting_release','closed','dropped'))
         `);
     }
   });
@@ -367,7 +363,7 @@ describe('Refusing by name rather than dropping the row', () => {
 
 describe('What the write must not disturb', () => {
   it('leaves `updated_at` at the value it had, so a swept row does not read as freshly worked', async () => {
-    const issueId = await seedIssue({ status: 'developed' });
+    const issueId = await seedIssue({ status: 'in_progress' });
     const read = async () => {
       const rows = (await fx.db.execute(sql`
           SELECT updated_at::text AS at FROM issues WHERE id = ${issueId}
@@ -392,10 +388,9 @@ describe('What the write must not disturb', () => {
     betweenReadAndWrite = async () => {
       renewed = true;
       await fx.db.execute(sql`
-          UPDATE issues
-             SET session_context = jsonb_set(session_context, '{lease,renewedAt}',
-                                             to_jsonb('2026-09-20T15:59:00.000Z'::text))
-           WHERE id = ${issueId}
+          UPDATE issue_work_state
+             SET lease = jsonb_set(lease, '{renewedAt}', to_jsonb('2026-09-20T15:59:00.000Z'::text))
+           WHERE issue_id = ${issueId}
         `);
     };
 
@@ -409,7 +404,7 @@ describe('What the write must not disturb', () => {
     expect(await strandOf(issueId)).toBeNull();
   });
 
-  it('writes the lease keys only, so another key of session_context survives', async () => {
+  it('writes the finding key only, so another key of session_context survives', async () => {
     const issueId = await seedIssue({
       status: 'in_progress',
       sessionContext: {
@@ -471,7 +466,7 @@ describe('The finding does not outlive what it claims', () => {
   });
 
   it('does not rewrite an unchanged finding, so `at` says when it was first recorded', async () => {
-    const issueId = await seedIssue({ status: 'developed' });
+    const issueId = await seedIssue({ status: 'in_progress' });
 
     await mods.reconcileIdleIssues(NOW);
     const first = await strandOf(issueId);
@@ -492,7 +487,7 @@ describe('The finding does not outlive what it claims', () => {
     expect((await strandOf(issueId))?.status).toBe('in_progress');
 
     await fx.db.execute(sql`
-      UPDATE issues SET status='testing', updated_at=${NOW.toISOString()}::timestamptz
+      UPDATE issues SET status='awaiting_release', updated_at=${NOW.toISOString()}::timestamptz
        WHERE id=${issueId}
     `);
     const result = await mods.reconcileIdleIssues(new Date('2026-09-20T16:05:00.000Z'));

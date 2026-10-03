@@ -26,12 +26,16 @@ const txInsert = vi.fn(() => ({ values: txInsertValues }));
 const txDeleteWhere = vi.fn(async () => undefined);
 const txDelete = vi.fn(() => ({ where: txDeleteWhere }));
 
+/** The locked row's composed `sessionContext`; `null` holds no row at all (it was deleted). */
+let locked: { session_context: unknown } | null = { session_context: null };
+const txExecute = vi.fn(async (_query: unknown) => undefined as unknown);
+
 const tx = {
   update: txUpdate,
   select: txSelect,
   insert: txInsert,
   delete: txDelete,
-  execute: vi.fn(async () => undefined),
+  execute: txExecute,
 };
 
 vi.mock('../db/client.js', () => ({
@@ -69,10 +73,13 @@ function labeledIds(action: string): string[] {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  txUpdateReturning.mockResolvedValue([ROW]);
-  // No stored `sessionContext` by default: the drop guard reads the row before
-  // every write that carries the field, and has nothing to protect here.
-  txSelectLimit.mockResolvedValue([]);
+  txUpdateReturning.mockResolvedValue([{ id: ISSUE_ID }]);
+  // The written row, read back with its composed sessionContext and work state.
+  txSelectLimit.mockResolvedValue([ROW]);
+  // The row is locked first and its composed `sessionContext` read; none stored by default.
+  locked = { session_context: null };
+  txExecute.mockImplementation(async () => []);
+  txExecute.mockImplementationOnce(async () => (locked ? [locked] : []));
   existingLabels = [];
 });
 
@@ -89,7 +96,7 @@ describe('updateIssueFields', () => {
   });
 
   it('throws IssueUpdateNotFound when the row is gone, so the caller can map its own 404', async () => {
-    txUpdateReturning.mockResolvedValue([]);
+    locked = null;
 
     await expect(
       updateIssueFields({ issueId: ISSUE_ID, updates: { title: 't' }, actor: ACTOR }),
@@ -149,8 +156,9 @@ describe('updateIssueFields', () => {
       txSelectLimit,
       'the existing-label read is capped again. Past the cap the delta is computed against a ' +
         'truncated oldSet, so a kept label is reported as newly added and a dropped one is ' +
-        'never reported as removed — the drift this service was extracted to end.',
-    ).not.toHaveBeenCalled();
+        'never reported as removed — the drift this service was extracted to end. (The one ' +
+        'limited read is the written row read back.)',
+    ).toHaveBeenCalledTimes(1);
     expect(activityActions()).toEqual([]);
   });
 });
@@ -162,8 +170,7 @@ describe('updateIssueFields — a sessionContext write may not drop what it neve
   const held = { landing: { head: 'a3b04356' }, lease: { holder: 'x' }, worklog: {} };
 
   beforeEach(() => {
-    txSelectLimit.mockResolvedValue([{ sessionContext: held }]);
-    txUpdateReturning.mockResolvedValue([ROW]);
+    locked = { session_context: held };
   });
 
   it('refuses the write, naming every key it would have removed', async () => {
@@ -193,6 +200,49 @@ describe('updateIssueFields — a sessionContext write may not drop what it neve
         issueId: ISSUE_ID,
         updates: { sessionContext: { probe: 1 } },
         expect: { sessionContext: held },
+        actor: ACTOR,
+      }),
+    ).resolves.toMatchObject({ id: ISSUE_ID });
+  });
+});
+
+// ISS-54 cm:hack — the lease lives on `issue_work_state`; a whole `sessionContext` write is split.
+describe('updateIssueFields — the lease and the worklog leave the blob', () => {
+  it('writes the blob without its lease, and hands the lease to the work state', async () => {
+    const lease = { holder: 'run-1', renewedAt: '2026-10-03T00:00:00Z', minutes: 30 };
+    await updateIssueFields({
+      issueId: ISSUE_ID,
+      updates: { sessionContext: { lease, note: 'kept' } },
+      expect: { sessionContext: null },
+      actor: ACTOR,
+    });
+    expect(txUpdateSet).toHaveBeenCalledWith({ sessionContext: { note: 'kept' } });
+    // The lock, then the work-state upsert carrying the lease.
+    expect(txExecute).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(txExecute.mock.calls[1]?.[0])).toContain('issue_work_state');
+  });
+
+  it('refuses a stale `expect` with the composed value it moved to, writing nothing', async () => {
+    const current = { lease: { holder: 'run-a' } };
+    locked = { session_context: current };
+    await expect(
+      updateIssueFields({
+        issueId: ISSUE_ID,
+        updates: { sessionContext: { lease: { holder: 'run-b' } } },
+        expect: { sessionContext: null },
+        actor: ACTOR,
+      }),
+    ).rejects.toMatchObject({ name: 'SessionContextExpectMismatch', current });
+    expect(txUpdate).not.toHaveBeenCalled();
+  });
+
+  it('compares `expect` as JSON does: key order is not part of the value', async () => {
+    locked = { session_context: { a: 1, b: { c: 2, d: 3 } } };
+    await expect(
+      updateIssueFields({
+        issueId: ISSUE_ID,
+        updates: { sessionContext: {} },
+        expect: { sessionContext: { b: { d: 3, c: 2 }, a: 1 } },
         actor: ACTOR,
       }),
     ).resolves.toMatchObject({ id: ISSUE_ID });

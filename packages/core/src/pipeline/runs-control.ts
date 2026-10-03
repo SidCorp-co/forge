@@ -21,16 +21,20 @@ import { cascadeCancelChildJobs, type JobRow, requestKillsForCascade } from './r
 
 /**
  * ISS-411 — issue statuses an operator cancel must NOT disturb. `on_hold` is
- * already parked; `closed`/`awaiting_release` are terminal (parking them would re-open
- * a finished issue). Everything else is "actionable" and would be re-picked by
- * the orchestrator the moment the run dies, so cancel parks it at `on_hold`.
+ * already parked; `closed`/`dropped`/`awaiting_release` are done with the run (parking them would
+ * re-open a finished issue), and `draft` was never admitted. Everything else is "actionable" and
+ * would be re-picked the moment the run dies, so cancel parks it at `on_hold`.
  */
 const CANCEL_PARK_SKIP_STATUSES = new Set<IssueStatus>([
   'on_hold',
   'closed',
+  'dropped',
   'awaiting_release',
-  'releasing',
+  'draft',
 ]);
+
+const CANCEL_PARK_REASON =
+  'The run working this issue was cancelled, so the issue is paused here rather than taken up again on its own. Lift the hold to send it back where it was.';
 
 export type PipelineRunRow = typeof pipelineRuns.$inferSelect;
 
@@ -149,7 +153,7 @@ async function parkIssueOnCancel(
       { id: row.id, projectId: row.projectId, status: row.status, reopenCount: row.reopenCount },
       'on_hold',
       actor,
-      { skip: true },
+      { transitionReason: CANCEL_PARK_REASON, reason: 'run_cancelled' },
     );
     return true;
   } catch (err) {

@@ -1,10 +1,10 @@
-// web-v2 feature module: feedback — types for feedback_reports REST surface.
-// Shape verified against `GET /api/feedback-reports` in
-// `packages/core/src/feedback/routes.ts`.
+// web-v2 feature module: agent reports — types for the agent_reports REST surface.
+// Shape verified against `GET /api/agent-reports` in
+// `packages/core/src/agent-reports/routes.ts`.
 
 type BadgeTone = "neutral" | "accent" | "cobalt" | "green" | "red" | "amber";
 
-export type FeedbackKind =
+export type AgentReportKind =
   | "friction"
   | "bug"
   | "skill_gap"
@@ -13,9 +13,9 @@ export type FeedbackKind =
   | "learning"
   | "suggestion";
 
-export type FeedbackSeverity = "low" | "medium" | "high";
+export type AgentReportSeverity = "low" | "medium" | "high";
 
-export type FeedbackTarget =
+export type AgentReportTarget =
   | "skill"
   | "prompt"
   | "tool"
@@ -24,11 +24,11 @@ export type FeedbackTarget =
   | "pipeline"
   | "other";
 
-export interface FeedbackReport {
+export interface AgentReport {
   id: string;
-  kind: FeedbackKind;
-  severity: FeedbackSeverity;
-  target: FeedbackTarget;
+  kind: AgentReportKind;
+  severity: AgentReportSeverity;
+  target: AgentReportTarget;
   targetRef: string | null;
   summary: string;
   detail: string | null;
@@ -40,13 +40,13 @@ export interface FeedbackReport {
   createdAt: string;
 }
 
-export interface FeedbackFilters {
-  kind?: FeedbackKind;
-  severity?: FeedbackSeverity;
-  target?: FeedbackTarget;
+export interface AgentReportFilters {
+  kind?: AgentReportKind;
+  severity?: AgentReportSeverity;
+  target?: AgentReportTarget;
 }
 
-export function kindToBadgeTone(kind: FeedbackKind): BadgeTone {
+export function kindToBadgeTone(kind: AgentReportKind): BadgeTone {
   switch (kind) {
     case "bug":
     case "skill_gap":
@@ -63,7 +63,7 @@ export function kindToBadgeTone(kind: FeedbackKind): BadgeTone {
   }
 }
 
-export function severityToBadgeTone(severity: FeedbackSeverity): BadgeTone {
+export function severityToBadgeTone(severity: AgentReportSeverity): BadgeTone {
   switch (severity) {
     case "high":
       return "amber";

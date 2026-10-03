@@ -42,7 +42,7 @@ function rail(
   const issue = {
     id: "i1",
     displayId: "ISS-1126",
-    status: "developed",
+    status: "awaiting_release",
     agentStatus: "idle",
     priority: "critical",
     complexity: "m",

@@ -78,24 +78,27 @@ vi.mock('../pipeline/wedge.js', () => ({
 
 const JOB_TYPE_ENTRY_STATUS: Record<string, string> = {
   triage: 'open',
-  clarify: 'confirmed',
-  plan: 'clarified',
+  clarify: 'open',
+  plan: 'open',
   code: 'approved',
-  review: 'developed',
-  test: 'testing',
   fix: 'reopen',
   release: 'awaiting_release',
 };
 const JOB_TYPE_INFLIGHT_STATUS: Record<string, string> = {
+  triage: 'in_progress',
+  clarify: 'in_progress',
+  plan: 'in_progress',
   code: 'in_progress',
+  review: 'in_progress',
+  test: 'in_progress',
   fix: 'in_progress',
 };
 const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<string, string[]> = {
-  code: ['developed'],
-  fix: ['developed'],
+  code: ['awaiting_release', 'closed'],
+  fix: ['awaiting_release', 'closed'],
   plan: ['approved'],
-  review: ['testing', 'reopen'],
-  test: ['awaiting_release', 'reopen', 'tested'],
+  review: ['awaiting_release', 'reopen'],
+  test: ['awaiting_release', 'reopen'],
 };
 // ISS-702 — real classifyVerdict semantics, mirrored here so this suite stays
 // a pure unit test of finalize-failure.ts without importing recovery-verifier.js.
@@ -211,7 +214,7 @@ describe('finalizeFailedJob', () => {
       expect.objectContaining({ id: 'i1' }),
       'reopen',
       expect.objectContaining({ id: 'owner1' }),
-      { skip: true },
+      { recovery: true, reason: 'job_failed_entry_revert' },
     );
     expect(closeRunMock).not.toHaveBeenCalled();
     expect(syncSessionMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'j1' }), 'failed', {
@@ -235,12 +238,12 @@ describe('finalizeFailedJob', () => {
       expect.objectContaining({ id: 'i1' }),
       'approved',
       expect.any(Object),
-      { skip: true },
+      { recovery: true, reason: 'job_failed_entry_revert' },
     );
     expect(closeRunMock).not.toHaveBeenCalled();
   });
 
-  it('holds the job and reverts the issue to entry-status when retry is NOT scheduled — never `waiting`', async () => {
+  it('holds the job and reverts the issue to entry-status when retry is NOT scheduled — never a park', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'retry_rounds_exhausted' });
     holdJobMock.mockResolvedValueOnce('held-job-1');
     const retry = await finalizeFailedJob(makeJob({ type: 'code' }), {
@@ -255,7 +258,7 @@ describe('finalizeFailedJob', () => {
 
     const statusesWritten = applyTransitionMock.mock.calls.map((c) => c[1]);
     expect(statusesWritten).toEqual(['approved']);
-    expect(statusesWritten).not.toContain('waiting');
+    expect(statusesWritten).not.toContain('needs_info');
 
     const wedge = emitWedgeMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(wedge.issueId).toBe('i1');
@@ -294,7 +297,7 @@ describe('finalizeFailedJob', () => {
       const retry = await finalizeFailedJob(makeJob(), { error: 'session_lost' });
 
       expect(retry.scheduled).toBe(false);
-      // The issue already recovered — no revert, no waiting, no run close.
+      // The issue already recovered — no revert, no park, no run close.
       expect(applyTransitionMock).not.toHaveBeenCalled();
       expect(closeRunMock).not.toHaveBeenCalled();
       expect(syncSessionMock).toHaveBeenCalledWith(expect.any(Object), 'failed', {
@@ -313,10 +316,16 @@ describe('finalizeFailedJob', () => {
     expect(applyTransitionMock).not.toHaveBeenCalled();
   });
 
-  it('ISS-702: does NOT revert a stale code job onto `waiting` when a retry is scheduled (parked by a later step)', async () => {
+  it('ISS-702: does NOT revert a stale code job off `needs_info` when a retry is scheduled (parked by a later step)', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: true });
     issueRowMock.mockReturnValueOnce([
-      { id: 'i1', projectId: 'p1', status: 'waiting', reopenCount: 0, projectCreatedBy: 'owner1' },
+      {
+        id: 'i1',
+        projectId: 'p1',
+        status: 'needs_info',
+        reopenCount: 0,
+        projectCreatedBy: 'owner1',
+      },
     ]);
     await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
     expect(applyTransitionMock).not.toHaveBeenCalled();
@@ -334,7 +343,7 @@ describe('finalizeFailedJob', () => {
       expect.objectContaining({ id: 'i1' }),
       'approved',
       expect.any(Object),
-      { skip: true },
+      { recovery: true, reason: 'job_failed_entry_revert' },
     );
     expect(closeRunMock).toHaveBeenCalledWith('i1', 'failed');
   });

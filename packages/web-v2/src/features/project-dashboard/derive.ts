@@ -19,7 +19,7 @@ import type { QueueStats } from "@/features/sessions/types";
  * Open-issues-by-status donut (AC#4)
  * ------------------------------------------------------------------ */
 
-export type StatusBucketKey = "active" | "attention" | "queued" | "blocked" | "ready";
+export type StatusBucketKey = "active" | "attention" | "queued" | "blocked";
 
 const NON_OPEN_STATUSES = new Set<string>(NON_OPEN_ISSUE_STATUSES);
 
@@ -29,11 +29,10 @@ const STATUS_BUCKETS: ReadonlyArray<{
   tone: SemanticTone;
   statuses: readonly string[];
 }> = [
-  { key: "active", label: "In progress", tone: "active", statuses: ["in_progress", "reopen", "developed", "testing"] },
-  { key: "attention", label: "Awaiting input", tone: "attention", statuses: ["waiting", "needs_info"] },
-  { key: "queued", label: "Queued", tone: "neutral", statuses: ["open", "confirmed", "clarified", "approved"] },
+  { key: "active", label: "In progress", tone: "active", statuses: ["in_progress", "reopen"] },
+  { key: "attention", label: "Awaiting input", tone: "attention", statuses: ["needs_info"] },
+  { key: "queued", label: "Queued", tone: "neutral", statuses: ["open", "approved"] },
   { key: "blocked", label: "On hold", tone: "blocked", statuses: ["on_hold"] },
-  { key: "ready", label: "Awaiting release", tone: "success", statuses: ["tested"] },
 ];
 
 export interface DonutSegment {
@@ -135,7 +134,8 @@ export function spendByStage(rows: StepDurationRow[] | undefined): SpendByStageD
 
 const LIVE_RUN_STATUSES = new Set(["running", "paused"]);
 
-const AWAITING_RELEASE_STEP = "tested";
+/** The step core stamps on an issue's open run is the status it moved to (`apply-transition.ts`). */
+const AWAITING_RELEASE_STEP = "awaiting_release";
 
 /** Currently-live runs (running or paused), most recent first (the list arrives
  *  ordered by `startedAt` desc). Includes runs parked at the manual release

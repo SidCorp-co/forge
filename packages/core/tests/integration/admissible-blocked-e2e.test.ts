@@ -59,11 +59,14 @@ beforeEach(async () => {
   `);
 });
 
+// A needs_info park says what it is stopped on (issues_waiting_kind_chk, ISS-54).
+const kindOf = (status: string) => (status === 'needs_info' ? 'needs_answer' : null);
+
 async function issue(seq: number, status = 'open'): Promise<string> {
   const id = randomUUID();
   await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at)
-    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${userId},
+    INSERT INTO issues (id, project_id, iss_seq, title, status, waiting_kind, created_by_id, merged_at)
+    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${kindOf(status)}, ${userId},
             CASE WHEN ${status} = 'closed' THEN now() END)
   `);
   return id;
@@ -97,7 +100,9 @@ async function admissible(): Promise<{ keys: string[]; count: number }> {
 }
 
 async function setStatus(id: string, status: string): Promise<void> {
-  await harness.db.execute(sql`UPDATE issues SET status = ${status} WHERE id = ${id}`);
+  await harness.db.execute(
+    sql`UPDATE issues SET status = ${status}, waiting_kind = ${kindOf(status)} WHERE id = ${id}`,
+  );
 }
 
 /**
@@ -111,7 +116,7 @@ async function control(): Promise<void> {
 }
 
 describe('ISS-1100 the blocks clause (real Postgres, through the route)', () => {
-  it('omits an issue held behind a blocker below developed', async () => {
+  it('omits an issue held behind a blocker below awaiting_release', async () => {
     await control();
     const blocker = await issue(1, 'needs_info');
     const held = await issue(2);
@@ -120,13 +125,13 @@ describe('ISS-1100 the blocks clause (real Postgres, through the route)', () => 
     await expect(admissible()).resolves.toEqual({ keys: ['ISS-99'], count: 1 });
   });
 
-  it('returns that same issue once its blocker reaches developed', async () => {
+  it('returns that same issue once its blocker reaches awaiting_release', async () => {
     const blocker = await issue(1, 'needs_info');
     const held = await issue(2);
     await edge(blocker, held);
     expect((await admissible()).keys).toEqual([]);
 
-    await setStatus(blocker, 'developed');
+    await setStatus(blocker, 'awaiting_release');
 
     await expect(admissible()).resolves.toEqual({ keys: ['ISS-2'], count: 1 });
   });
@@ -142,17 +147,7 @@ describe('ISS-1100 the blocks clause (real Postgres, through the route)', () => 
     },
   );
 
-  it.each([
-    'draft',
-    'open',
-    'confirmed',
-    'approved',
-    'in_progress',
-    'waiting',
-    'needs_info',
-    'on_hold',
-    'reopen',
-  ])(
+  it.each(['draft', 'open', 'approved', 'in_progress', 'needs_info', 'on_hold', 'reopen'])(
     'still holds the dependent when the blocker is %s, even carrying a merge stamp',
     async (status) => {
       await control();
@@ -208,7 +203,7 @@ describe('ISS-1100 the blocks clause (real Postgres, through the route)', () => 
   it('keeps holding an issue where one of two blockers is still unsettled', async () => {
     await control();
     const settled = await issue(1, 'closed');
-    const unsettled = await issue(2, 'waiting');
+    const unsettled = await issue(2, 'needs_info');
     const held = await issue(3);
     await edge(settled, held);
     await edge(unsettled, held);
@@ -229,10 +224,10 @@ describe('ISS-1100 the measurement, and the shape the box reads', () => {
   it('admits nothing for codemaps five real candidates and their real blockers', async () => {
     const pairs: Array<[number, number, string]> = [
       [34, 64, 'needs_info'],
-      [60, 65, 'waiting'],
-      [60, 66, 'waiting'],
-      [67, 68, 'waiting'],
-      [69, 70, 'waiting'],
+      [60, 65, 'needs_info'],
+      [60, 66, 'needs_info'],
+      [67, 68, 'needs_info'],
+      [69, 70, 'needs_info'],
     ];
     const blockers = new Map<number, string>();
     for (const [blockerSeq, , status] of pairs) {
@@ -249,12 +244,12 @@ describe('ISS-1100 the measurement, and the shape the box reads', () => {
 
     // The same fixture with one blocker answered: the set is no longer empty, so
     // the zero above is this filter's doing and not the fixture's.
-    await setStatus(blockers.get(34) as string, 'developed');
+    await setStatus(blockers.get(34) as string, 'awaiting_release');
     expect((await admissible()).keys).toEqual(['ISS-64']);
   });
 
   it('answers 200 with an empty items array rather than an error', async () => {
-    const blocker = await issue(1, 'waiting');
+    const blocker = await issue(1, 'needs_info');
     const held = await issue(2);
     await edge(blocker, held);
 

@@ -4,24 +4,34 @@ import { comments } from '../db/schema.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
 import { AWAITING_INPUT_STATUSES } from './status-sets.js';
 
-export const REASON_REQUIRED_STATUSES = new Set<IssueStatus>(['reopen', 'waiting', 'needs_info']);
+/** The moves that carry the actor's reason, posted as a comment (`transition-guards.ts:reasonFault`). */
+export const REASON_REQUIRED_STATUSES = new Set<IssueStatus>([
+  'reopen',
+  'needs_info',
+  'on_hold',
+  'dropped',
+]);
 
 /**
  * Does this transition need an authored reason?
  */
 export function requiresAuthoredReason(from: IssueStatus, to: IssueStatus): boolean {
-  if (!REASON_REQUIRED_STATUSES.has(to) || from === to) return false;
-  if (to === 'reopen' && from === 'in_progress') return false;
-  return true;
+  return REASON_REQUIRED_STATUSES.has(to) && from !== to;
 }
 
+const NEEDS_INFO_HEADINGS: Record<WaitingKind, string> = {
+  needs_answer: '❓ **Needs info**',
+  needs_decision: '⏸ **Waiting on a human decision**',
+  needs_resource: '⏸ **Waiting on a person to supply something**',
+};
+
 const HEADINGS: Record<string, (from: IssueStatus, kind?: WaitingKind | null) => string> = {
-  reopen: (from) => `🔁 **Reopened from \`${from}\`**`,
-  needs_info: (from) => `❓ **Needs info** — moved from \`${from}\``,
-  waiting: (from, kind) =>
-    kind === 'needs_resource'
-      ? `⏸ **Waiting on a person to supply something** — moved from \`${from}\``
-      : `⏸ **Waiting on a human decision** — moved from \`${from}\``,
+  // One shape for every announcement, so `announcesAMove` never reads a reopen as a person's reply.
+  reopen: (from) => `🔁 **Reopened** — moved from \`${from}\``,
+  needs_info: (from, kind) =>
+    `${NEEDS_INFO_HEADINGS[kind ?? 'needs_answer']} — moved from \`${from}\``,
+  on_hold: (from) => `⏸ **On hold** — moved from \`${from}\``,
+  dropped: (from) => `🗑 **Dropped** — moved from \`${from}\``,
 };
 
 /** The first line of every announcement this module writes: a move into a park, or a person leaving one. */
@@ -78,6 +88,8 @@ export async function postLeaveComment(
     authorId: args.actor.type === 'user' ? args.actor.id : args.actor.ownerId,
     body: buildLeaveBody(args.fromStatus, args.toStatus, reason),
     parentId: null,
+    // A person's word on leaving a park is owed a reply, as every person's comment was (ISS-56).
+    intent: actorAgency(args.actor) === 'human' ? 'question' : 'note',
   });
 }
 
@@ -109,32 +121,4 @@ export async function postTransitionReasonComment(
     ),
     parentId: null,
   });
-}
-
-/**
- * What is missing from a park's own account of itself, or `null`.
- */
-export function parkReasonFault(
-  fromStatus: IssueStatus,
-  requestedStatus: IssueStatus,
-  options: {
-    transitionReason?: string | undefined;
-    waitingKind?: WaitingKind | undefined;
-    skip?: boolean | undefined;
-  },
-): { code: 'TRANSITION_REASON_REQUIRED' | 'WAITING_KIND_REQUIRED'; detail: string } | null {
-  if (!requiresAuthoredReason(fromStatus, requestedStatus) || options.skip === true) return null;
-  if (!options.transitionReason?.trim()) {
-    return {
-      code: 'TRANSITION_REASON_REQUIRED',
-      detail: `a transition to \`${requestedStatus}\` must carry a reason saying what is needed or what is wrong`,
-    };
-  }
-  if (requestedStatus === 'waiting' && !options.waitingKind) {
-    return {
-      code: 'WAITING_KIND_REQUIRED',
-      detail: 'a `waiting` park must say which kind it is: `needs_decision` or `needs_resource`',
-    };
-  }
-  return null;
 }

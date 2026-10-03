@@ -65,7 +65,7 @@ export async function hydrateHeldForIssues(
   });
   // A session behind the issue's lease, or under one of its runs, beat last at this time.
   const rows = (await db.execute(sql`
-    SELECT i.id, i.session_context -> 'lease' AS lease, ${moving} AS moving,
+    SELECT i.id, (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id) AS lease, ${moving} AS moving,
            GREATEST(
              (SELECT MAX(ls.last_heartbeat_at)
                 FROM issue_leases l

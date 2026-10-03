@@ -812,7 +812,7 @@ mod tests {
         };
         let r3 = change(&t, 6);
         assert!(
-            r3.starts_with("prog+13 test+13 rlsg+13") && r3.ends_with('…'),
+            r3.starts_with("prog+13 await+13 open+13") && r3.ends_with('…'),
             "{r3}"
         );
         assert_eq!(change(&t, 1), "—", "alpha had no earlier reading");
@@ -904,10 +904,10 @@ mod tests {
         let foot = words(&t);
         for said in [
             "! wanting attention",
-            "MOV in_progress testing releasing",
-            "HAND developed tested awaiting_release",
-            "QUE open confirmed clarified approved",
-            "BLK needs_info waiting on_hold reopen",
+            "MOV in_progress",
+            "HAND awaiting_release",
+            "QUE open approved",
+            "BLK needs_info on_hold reopen",
             "DRF draft",
             "? could not be read",
             "Enter opens",

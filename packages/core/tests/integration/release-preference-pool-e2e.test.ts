@@ -26,7 +26,11 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { RELEASE_LABEL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import {
+  AT_RELEASE,
+  RELEASE_LABEL,
+  releaseBatchFixture,
+} from '../helpers/release-batch-fixture.js';
 
 describe('a release runner label ranks the pool it does not filter', () => {
   let harness: TestDatabase;
@@ -108,7 +112,7 @@ describe('a release runner label ranks the pool it does not filter', () => {
     const { runId } = await claim([a]);
 
     expect(runId).toBeTruthy();
-    expect((await stored(a)).status).toBe('releasing');
+    expect(await stored(a)).toMatchObject(AT_RELEASE);
   });
 
   it('records the declared label and the unmet preference on the run', async () => {
@@ -146,7 +150,7 @@ describe('a release runner label ranks the pool it does not filter', () => {
 
     const { runId } = await claim([a]);
 
-    expect((await stored(a)).status).toBe('releasing');
+    expect(await stored(a)).toMatchObject(AT_RELEASE);
     expect(await releaseRunnerOf(runId)).toMatchObject({ preferenceMet: false });
   });
 
@@ -158,7 +162,7 @@ describe('a release runner label ranks the pool it does not filter', () => {
 
     const { runId } = await claim([a]);
 
-    expect((await stored(a)).status).toBe('releasing');
+    expect(await stored(a)).toMatchObject(AT_RELEASE);
     expect(await releaseRunnerOf(runId)).toMatchObject({ preferenceMet: false });
   });
 
@@ -195,7 +199,7 @@ describe('a release runner label ranks the pool it does not filter', () => {
     const { runId } = await claim([a]);
 
     expect(runId).toBeTruthy();
-    expect((await stored(a)).status).toBe('releasing');
+    expect(await stored(a)).toMatchObject(AT_RELEASE);
   });
 
   // Nothing was preferred, so nothing went unhonoured: `preferenceMet` reads

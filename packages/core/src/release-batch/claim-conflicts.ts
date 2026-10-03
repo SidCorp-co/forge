@@ -6,7 +6,22 @@ import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { TERMINAL_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
-import { ClaimConflictError } from './errors.js';
+import { ClaimConflictError, ReleaseClaimLostError } from './errors.js';
+
+/**
+ * Inside the close's own transaction: refuses unless `runId` still claims the issue, holding the
+ * row so an abort's release of the claim waits for this close or lands before it is read.
+ */
+export async function refuseLostReleaseClaim(
+  tx: Tx,
+  issueId: string,
+  runId: string,
+): Promise<void> {
+  const held = await tx.execute(
+    sql`SELECT 1 FROM issues WHERE id = ${issueId} AND release_batch_run_id = ${runId} FOR UPDATE`,
+  );
+  if (held.length === 0) throw new ReleaseClaimLostError(issueId, runId);
+}
 
 /** What `metadata.source` reads on the run a recorded release writes. */
 export const RELEASE_RECORD_SOURCE = 'release-record';
@@ -21,15 +36,17 @@ export type ClaimConflict =
       runEnded: boolean;
       claimer: 'batch' | 'record';
       status: IssueStatus;
+      /** At the gate with its run's step at `release`: held mid-release (it was `releasing`). */
+      releasing: boolean;
     }
   | { id: string; key: string; standing: 'status'; status: IssueStatus }
   | { id: string; key: string; standing: 'absent' };
 
 /**
  * The standing of each of `issueIds` that a release on `projectId` cannot claim. A claim is the
- * standing only where releasing it could leave the issue claimable — at the gate, or at
- * `releasing`, which a `return-to-gate` abort puts back there. At any other status the status bars
- * it, whatever run claims it.
+ * standing only where releasing it could leave the issue claimable — at the gate, whether or not a
+ * release still holds it at its `release` step (the old `releasing`, ISS-54). At any other status
+ * the status bars it, whatever run claims it.
  */
 export async function readClaimConflicts(
   projectId: string,
@@ -47,6 +64,9 @@ export async function readClaimConflicts(
       issuePrefix: projects.issuePrefix,
       runStatus: pipelineRuns.status,
       runSource: sql<string | null>`${pipelineRuns.metadata} ->> 'source'`,
+      step: sql<
+        string | null
+      >`(SELECT w.step FROM issue_work_state w WHERE w.issue_id = ${issues.id})`,
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -67,8 +87,7 @@ export async function readClaimConflicts(
     }
     const id = row.id;
     const key = formatIssueRef(row.issuePrefix, row.issSeq);
-    const freeable = row.status === gateStatus || row.status === 'releasing';
-    if (row.claimed !== null && freeable) {
+    if (row.claimed !== null && row.status === gateStatus) {
       out.push({
         id,
         key,
@@ -77,6 +96,7 @@ export async function readClaimConflicts(
         runEnded: row.runStatus === null || ended.has(row.runStatus),
         claimer: row.runSource === RELEASE_RECORD_SOURCE ? 'record' : 'batch',
         status: row.status,
+        releasing: row.step === 'release',
       });
     } else if (row.status !== gateStatus) {
       out.push({ id, key, standing: 'status', status: row.status });
@@ -119,12 +139,12 @@ function running(projectId: string, runId: string, list: Standing<'claimed'>[]):
 function claimedSentences(projectId: string, runId: string, list: Standing<'claimed'>[]): string[] {
   if (!list.some((c) => c.runEnded)) return [running(projectId, runId, list)];
   const out: string[] = [];
-  const held = list.filter((c) => c.status === 'releasing');
-  const stale = list.filter((c) => c.status !== 'releasing');
+  const held = list.filter((c) => c.releasing);
+  const stale = list.filter((c) => !c.releasing);
   if (held.length > 0) {
     const them = held.length === 1 ? 'it' : 'them';
     out.push(
-      `${keys(held)} ${isAre(held)} at \`releasing\`, still claimed by release batch ${runId}, which has ended: abort it with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which releases the claim and puts ${them} back at the release gate, then send ${them} again.`,
+      `${keys(held)} ${isAre(held)} at \`awaiting_release\` held at the release step, still claimed by release batch ${runId}, which has ended: abort it with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which releases the claim and puts ${them} back at the release gate, then send ${them} again.`,
     );
   }
   if (stale.length > 0) {

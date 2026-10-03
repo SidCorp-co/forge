@@ -20,8 +20,9 @@ export const REASON_REQUIRED = new Set<string>(REASON_REQUIRED_ISSUE_STATUSES);
 
 const REASON_TOAST: Record<ReasonStatus, string> = {
   reopen: "Issue reopened",
-  waiting: "Issue parked for a human",
   needs_info: "Information requested",
+  on_hold: "Issue put on hold",
+  dropped: "Issue dropped",
 };
 
 interface RequestOptions {
@@ -43,7 +44,7 @@ export interface GuardedTransition {
 }
 
 /**
- * Routes the three reason-required statuses through {@link TransitionReasonDialog}
+ * Routes the reason-required statuses through {@link TransitionReasonDialog}
  * and fires every other status straight at the endpoint — both paths confirm
  * with a toast on success.
  */
@@ -59,6 +60,9 @@ export function useGuardedTransition(): GuardedTransition {
     onSuccess?: () => void;
     openQuestions?: number;
     targets?: IssueStatus[];
+    /** The reason (and kind) already given for a reason-required move the questions then held up,
+     *  re-sent with the withdrawal so the second attempt is not refused for the reason it lacks. */
+    carried?: { reason: string; waitingKind?: WaitingCause };
   } | null>(null);
 
   const succeed = (title: string, extra?: () => void) => () => {
@@ -113,19 +117,31 @@ export function useGuardedTransition(): GuardedTransition {
     const { id, status, successMessage, onSuccess } = prompt;
     const target = status === "move_anyway" ? (picked ?? prompt.target) : prompt.target;
     const kind = waitingKind ? { waitingKind } : {};
+    const carried = prompt.carried
+      ? { reason: prompt.carried.reason, ...(prompt.carried.waitingKind ? { waitingKind: prompt.carried.waitingKind } : {}) }
+      : {};
     const body =
       status === "void_questions"
-        ? { id, toStatus: target, voidQuestions: reason }
+        ? { id, toStatus: target, voidQuestions: reason, ...carried }
         : status === "not_needed"
           ? { id, toStatus: target, reason, voidQuestions: reason }
           : { id, toStatus: target, reason, ...kind };
+    const given = status === "void_questions" ? prompt.carried : { reason, ...kind };
     transition.mutate(body, {
       onSuccess: succeed(successMessage, () => {
         setPrompt(null);
         onSuccess?.();
       }),
       onOpenQuestions: (ids) =>
-        setPrompt({ id, status: "void_questions", target, successMessage, onSuccess, openQuestions: ids.length }),
+        setPrompt({
+          id,
+          status: "void_questions",
+          target,
+          successMessage,
+          onSuccess,
+          openQuestions: ids.length,
+          ...(given ? { carried: given } : {}),
+        }),
     });
   };
 

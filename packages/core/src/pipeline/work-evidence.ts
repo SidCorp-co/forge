@@ -44,7 +44,9 @@ export async function collectWorkEvidence(
       .limit(HANDOFF_SCAN_LIMIT),
     executor
       .select({
-        sessionContext: issues.sessionContext,
+        branch: sql<
+          string | null
+        >`(SELECT w.branch FROM issue_work_state w WHERE w.issue_id = ${issues.id})`,
         mergedAt: issues.mergedAt,
         mergedCommitSha: issues.mergedCommitSha,
         projectId: issues.projectId,
@@ -72,11 +74,9 @@ export async function collectWorkEvidence(
     }
   }
 
-  const sessionContext = issueRows[0]?.sessionContext as Record<string, unknown> | null | undefined;
-  const worklog = sessionContext?.worklog as Record<string, unknown> | null | undefined;
-  const named = [sessionContext?.branch, worklog?.branch].find(
-    (v): v is string => typeof v === 'string' && v.length > 0,
-  );
+  // ISS-54 — the branch is the work state's typed column; a forge-plugin `sessionContext` write
+  // naming `branch` or `worklog.branch` lands there (`work-state.ts:splitSessionContext`).
+  const named = issueRows[0]?.branch?.trim() || undefined;
   const projectRow = issueRows[0];
   const { defaultBranch, promoted: excludedLive } = projectRow
     ? await readLandingBranches(projectRow.projectId)
@@ -122,7 +122,8 @@ export async function hasChildIssues(
 
 export const NO_WORK_EVIDENCE_DETAIL =
   'no branch, commit or code handoff is recorded for this issue — record the branch in ' +
-  'sessionContext.branch or sessionContext.worklog.branch, write the implementation step ' +
+  '`workState.branch` (a `sessionContext` naming `branch` or `worklog.branch` records it ' +
+  'there too), write the implementation step ' +
   'handoff with commitSha/filesModified, or, where the work landed on the base branch itself, ' +
   'mark it merged with `mark_merged` carrying `data.commit`, the commit it landed at, which ' +
   "Forge checks against the project's repository, before advancing. A branch equal to the " +

@@ -15,7 +15,7 @@ export type PipelineWaitingReason =
   | 'runner_stale'
   | 'runner_too_old';
 
-export type WaitingCause = 'needs_decision' | 'needs_resource';
+export type WaitingCause = 'needs_answer' | 'needs_decision' | 'needs_resource';
 
 export interface PipelineHealth {
   stage: schema.IssueStatus;
@@ -26,7 +26,7 @@ export interface PipelineHealth {
     details: Record<string, unknown>;
   };
   queuedAt?: string;
-  /** Only set when `stage === 'waiting'`. */
+  /** Only set when `stage === 'needs_info'`: what the park is stopped on. */
   waitingCause?: { kind: WaitingCause };
 }
 

@@ -16,9 +16,9 @@ const SESSION_TERMINAL = sql`('completed', 'failed', 'completed_via_recovery', '
 /** Terminal `pipeline_runs.status`. */
 const RUN_TERMINAL = sql`('completed', 'failed', 'cancelled')`;
 /**
- * Terminal `issues.status` (ISS-1107). `awaiting_release` and `releasing` are
- * NOT here: the issue is still moving at both, and an audit row is kept while
- * the thing it records can still change.
+ * Terminal `issues.status` (ISS-1107). `awaiting_release` is NOT here: the issue
+ * is still moving there, and an audit row is kept while the thing it records can
+ * still change.
  */
 const ISSUE_TERMINAL = sql`('closed', 'dropped')`;
 

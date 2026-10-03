@@ -191,7 +191,7 @@ async function resolveKillGateDecision(
 }
 
 const UNCONFIRMED_WEDGE_ACTION =
-  'NO retry was scheduled and the issue is parked at `waiting`. Before resuming it, check the assigned device and kill any agent process still running for this job — resuming while it lives puts two agents on the same worktree.';
+  'NO retry was scheduled and the job is held. Before resuming it, check the assigned device and kill any agent process still running for this job — resuming while it lives puts two agents on the same worktree.';
 
 async function finalizeKillGateReap(
   updated: JobRow,

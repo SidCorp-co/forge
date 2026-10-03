@@ -20,7 +20,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 import { stubProbe } from '../helpers/production.js';
-import { PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { AT_RELEASE, PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 const BEFORE = '1111111111111111111111111111111111111111';
 const PUSHED = '2222222222222222222222222222222222222222';
@@ -275,7 +275,7 @@ describe('two aborts overlapping on one promoted batch', () => {
 
     const said = await refusalMessage(() => accept(runId, PUSHED));
     expect(said).toMatch(/its claims were released/);
-    expect(said).not.toMatch(/stay at `releasing`/);
+    expect(said).not.toMatch(/at their `release` step/);
     for (const id of issueIds) expect((await fx.stored(id)).status).toBe('awaiting_release');
   }, 30_000);
 });
@@ -290,7 +290,7 @@ describe('a batch whose abort has begun and not yet cancelled its run', () => {
     const said = await refusalMessage(() => accept(runId, PUSHED));
     expect(said).toMatch(/had not finished putting its roster back/);
     expect(said).not.toMatch(/claims were released/);
-    for (const id of issueIds) expect((await fx.stored(id)).status).toBe('releasing');
+    for (const id of issueIds) expect(await fx.stored(id)).toMatchObject(AT_RELEASE);
 
     await abort(runId);
     expect(await refusalMessage(() => accept(runId, PUSHED))).toMatch(/its claims were released/);
@@ -321,10 +321,10 @@ describe('a batch whose abort has begun and not yet cancelled its run', () => {
     for (const id of issueIds) expect(await closesOf(id)).toBe(0);
   }, 40_000);
   it.each([
-    ['a roster the abort moves back', false, 'awaiting_release'],
-    // Held by the abort, so still `releasing` and claimed: only the close fence stands between
-    // the worker and closing it.
-    ['a promoted roster the abort holds', true, 'releasing'],
+    ['a roster the abort moves back', false, { status: 'awaiting_release', step: null }],
+    // Held by the abort, so still at its `release` step and claimed: only the close fence stands
+    // between the worker and closing it.
+    ['a promoted roster the abort holds', true, AT_RELEASE],
   ])(
     'closes nothing of %s and stamps no release when the worker is already closing as the abort begins',
     async (_shape, promoted, rests) => {
@@ -366,7 +366,7 @@ describe('a batch whose abort has begun and not yet cancelled its run', () => {
       expect(await fx.runStatus(runId)).toBe('cancelled');
       for (const id of issueIds) {
         expect(await closesOf(id)).toBe(0);
-        expect((await fx.stored(id)).status).toBe(rests);
+        expect(await fx.stored(id)).toMatchObject(rests);
       }
     },
     40_000,
@@ -397,11 +397,13 @@ describe('a batch aborted after its verification went green', () => {
     });
     expect(await shipped(runId)).toBeNull();
     const reason = await storedReason(runId);
-    expect(reason).toMatch(/the abort kept its claims\. Its issues stay at `releasing`/);
+    expect(reason).toMatch(
+      /the abort kept its claims\. Its issues stay at `awaiting_release` at their `release` step/,
+    );
     expect(reason).not.toMatch(/claims were released/);
     expect(await refusalMessage(() => accept(runId, PUSHED))).toBe(reason);
     for (const [i, id] of issueIds.entries()) {
-      expect((await fx.stored(id)).status).toBe('releasing');
+      expect(await fx.stored(id)).toMatchObject(AT_RELEASE);
       expect(await closesOf(id)).toBe(0);
       // The abort's own note is the roster's last word: the worker adds no recovery note after it.
       expect(await fx.commentCount(id)).toBe(notesAfterAbort[i]);
@@ -486,7 +488,7 @@ describe('a batch aborted while the door is taking its finish', () => {
     // Cancelled by a write that was not an abort, so nothing records where the roster went.
     const said = await refusalMessage(() => accept(runId, PUSHED));
     expect(said).toMatch(/each issue’s own status and notes are the account/);
-    expect(said).not.toMatch(/released|`releasing`|closed|gate/);
+    expect(said).not.toMatch(/released|`release` step|closed|gate/);
   }, 30_000);
 });
 

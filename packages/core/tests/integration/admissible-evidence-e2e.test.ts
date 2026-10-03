@@ -5,7 +5,7 @@
  * pipeline mints a job, so it never appears here — but an issue built BY HAND
  * mints none, and that is the row this file is about: without the evidence
  * fields it is byte-identical to one nobody has touched. Both facts are read
- * out of columns (`merged_at`, `session_context->>'branch'`) that only a real
+ * out of columns (`merged_at`, `issue_work_state.branch`, ISS-54) that only a real
  * planner resolves, so a mocked suite cannot fail on either.
  */
 
@@ -58,13 +58,15 @@ describe('ISS-940 backlog rows carry the evidence fields (real Postgres)', () =>
   ): Promise<string> {
     const id = randomUUID();
     const merged = opts.merged ? sql`now() - interval '2 days'` : sql`NULL`;
-    const ctx = opts.branch ? JSON.stringify({ branch: opts.branch }) : JSON.stringify({});
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id,
-                          merged_at, session_context)
-      VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, 'open',
-              ${userId}, ${merged}, ${ctx}::jsonb)
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at)
+      VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, 'open', ${userId}, ${merged})
     `);
+    if (opts.branch) {
+      await harness.db.execute(
+        sql`INSERT INTO issue_work_state (issue_id, branch) VALUES (${id}, ${opts.branch})`,
+      );
+    }
     return id;
   }
 
@@ -103,6 +105,16 @@ describe('ISS-940 backlog rows carry the evidence fields (real Postgres)', () =>
 
   it('reads a missing branch key as null rather than the string "undefined"', async () => {
     await insertIssue(5);
+
+    const [row] = await rows();
+    expect(row?.branch).toBeNull();
+  });
+
+  it('reads the branch off the work state, not a `branch` key left in session_context', async () => {
+    const id = await insertIssue(8);
+    await harness.db.execute(
+      sql`UPDATE issues SET session_context = '{"branch":"stale"}'::jsonb WHERE id = ${id}`,
+    );
 
     const [row] = await rows();
     expect(row?.branch).toBeNull();

@@ -3,8 +3,7 @@
 import { cn } from "@/lib/utils/cn";
 import { useForgeVersion } from "../hooks";
 
-/** The product's own version, for the footer of the shell navigation on screen. `short` drops
- *  the product name for the 88px rail; the tooltip still carries it. */
+/** The product's version for the shell navigation footer; `short` drops the name for the 88px rail. */
 export function ForgeVersion({ className, short = false }: { className?: string; short?: boolean }) {
 	const query = useForgeVersion();
 

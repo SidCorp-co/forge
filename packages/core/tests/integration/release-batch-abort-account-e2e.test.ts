@@ -17,7 +17,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 import { stubProbe } from '../helpers/production.js';
-import { PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { AT_RELEASE, PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 const BEFORE = '1111111111111111111111111111111111111111';
 const PUSHED = '2222222222222222222222222222222222222222';
@@ -245,14 +245,14 @@ describe('a batch aborted after its finish closed part of the roster', () => {
     expect(aborted.recovered).toEqual([returned]);
   }, 40_000);
 
-  it('says the closed issues stay closed beside a held roster that stays at releasing', async () => {
+  it('says the closed issues stay closed beside a held roster that stays at its release step', async () => {
     const { runId, ids } = await batchOf(3);
     await promoted(runId);
     const aborted = await abortInsideSecondClose(runId);
     const { closed, open } = await split(ids);
     expect(closed).toHaveLength(2);
     const [held] = open as [string];
-    expect((await fx.stored(held)).status).toBe('releasing');
+    expect(await fx.stored(held)).toMatchObject(AT_RELEASE);
 
     expect([...aborted.alreadyClosed].sort()).toEqual(closed);
     expect(aborted.recovered).toEqual([]);
@@ -263,7 +263,9 @@ describe('a batch aborted after its finish closed part of the roster', () => {
       expect(answer.message).toMatch(named(await keyOf(id)));
       expect(answer.message).not.toContain(id);
     }
-    expect(answer.message).toMatch(/they stay closed\. Every other issue stays at `releasing`/);
+    expect(answer.message).toMatch(
+      /they stay closed\. Every other issue stays at `awaiting_release` at their `release` step/,
+    );
   }, 40_000);
 
   it('still names the closed issues after a second abort, whose recovery finds no claim', async () => {
@@ -417,7 +419,7 @@ describe('the route a held promoted roster is told to take, followed in its orde
     const { runId, ids } = await batchOf(2);
     await promoted(runId);
     await abort(runId);
-    for (const id of ids) expect(await fx.stored(id)).toMatchObject({ status: 'releasing' });
+    for (const id of ids) expect(await fx.stored(id)).toMatchObject(AT_RELEASE);
     return { runId, ids };
   }
 
@@ -522,6 +524,6 @@ describe('a finish naming no commit on a batch that recorded nothing serving whe
       state: 'failed',
       refusal: { code: 'RELEASE_NOT_VERIFIED' },
     });
-    expect((await fx.stored(ids[0] as string)).status).toBe('releasing');
+    expect(await fx.stored(ids[0] as string)).toMatchObject(AT_RELEASE);
   }, 30_000);
 });

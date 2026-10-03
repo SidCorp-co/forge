@@ -142,12 +142,13 @@ export interface PulseResponse {
   quality: PulseQuality;
 }
 
-/** The statuses each work bucket is drawn from — a bucket cell's destination. */
+/** The statuses each work bucket is drawn from — a bucket cell's destination. Core's
+ *  `me/pulse-types.ts` PULSE_*_STATUSES and `PARK_STATUSES` decide the buckets; this is their copy. */
 export const PULSE_BUCKET_STATUSES: Record<keyof PulseWorkBuckets, readonly string[]> = {
-  open: ["open", "confirmed", "clarified", "approved"],
-  inProgress: ["in_progress", "developed", "testing", "tested", "reopen"],
-  awaitingRelease: ["awaiting_release", "releasing"],
-  humanBlocked: ["waiting", "needs_info", "on_hold"],
+  open: ["open", "approved"],
+  inProgress: ["in_progress", "reopen"],
+  awaitingRelease: ["awaiting_release"],
+  humanBlocked: ["needs_info", "on_hold"],
 };
 
 export const PULSE_BUCKET_LABELS: Record<keyof PulseWorkBuckets, string> = {

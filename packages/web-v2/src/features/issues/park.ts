@@ -3,7 +3,6 @@
 // The status control at a park: the decision the person has, then the transitions map behind one
 // more click (ISS-1310). The park view is read once and every surface below takes it from here.
 
-import { statusesForLabels } from "@forge/contracts/issue-vocabulary";
 import type { StatusExits } from "@forge/contracts/pipeline-registry";
 import { useQuery } from "@tanstack/react-query";
 import type { MenuItem } from "@/design";
@@ -46,33 +45,36 @@ export const PARK_ERROR_LABEL = "Couldn't read what this issue is waiting on, so
 
 export interface ParkMenuActions {
 	answer: () => void;
-	/** A move that asks nothing: the recorded rung, `on_hold`, `dropped`. */
+	/** A move straight from the menu: the status the park left, `on_hold`, `dropped`. */
 	move: (to: IssueStatus) => void;
 	notNeeded: (resumeAt: IssueStatus) => void;
 	/** Every target the map holds, behind one reason. */
 	moveAnyway: (targets: IssueStatus[]) => void;
 }
 
-/** The statuses the Needs human label reads: where a person is stopping the issue. */
-const PARKED: ReadonlySet<IssueStatus> = new Set<IssueStatus>(statusesForLabels("needs_human"));
+/* Core's AWAITING_INPUT_STATUSES: the park view reads a record and a question only here; `on_hold`
+   owes nothing, so its own exits are its whole menu. */
+const PARKED: ReadonlySet<IssueStatus> = new Set<IssueStatus>(["needs_info"]);
 const SET_DOWN: IssueStatus[] = ["on_hold", "dropped"];
 
 /**
  * The menu for an issue a person owes something, or `null` where the ordinary map is the whole
- * answer. At a park: answer, resume at the recorded rung, not needed, set down, then the map.
- * At a working rung holding a question: answer, above that rung's own moves.
+ * answer. At a park: answer, resume at the status it left, not needed, set down, then the map.
+ * At a working status holding a question: answer, above that status's own moves.
  */
 export function parkMenuItems(args: {
 	status: IssueStatus;
+	/** The status the park left (`workState.leftStatus`): what the map returns it to. */
+	leftStatus?: IssueStatus | null;
 	reading: ParkReading;
 	/** `undefined` while the map is unread: `ordinary` then says why, in Move anyway's place. */
 	exits: StatusExits | undefined;
 	ordinary: MenuItem[];
 	actions: ParkMenuActions;
 }): MenuItem[] | null {
-	const { status, reading, exits, ordinary, actions } = args;
+	const { status, leftStatus = null, reading, exits, ordinary, actions } = args;
 	const parked = PARKED.has(status);
-	const map = allowedTransitions(exits, status);
+	const map = allowedTransitions(exits, status, leftStatus);
 	const anyway: MenuItem[] = exits
 		? [
 				{

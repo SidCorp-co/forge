@@ -1,65 +1,58 @@
-import { and, count, eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { stampKernelTxn } from '../db/kernel-marker.js';
-import {
-  comments,
-  type IssueStatus,
-  issues,
-  jobs,
-  pipelineRuns,
-  type WaitingKind,
-} from '../db/schema.js';
+import { comments, type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
+import type { WorkStep } from '../db/schema-issue-work-state.js';
 import { type KernelActor, recordKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
-import { canTransitionFree, DRAFT_EXIT_TARGETS, isReopenEntry } from '../pipeline/state-machine.js';
+import { isRecoveryEdge, PARK_STATUSES } from '../pipeline/state-machine.js';
 import { settleOpenQuestions } from '../questions/issue-coupling.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
-import { resolveAutonomousParkTarget, storedWaitingKind } from './autonomous-park.js';
 import { noOpSentence } from './close-substitution.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
+import { heldRung, type LegacyRung, type LegacyTarget } from './legacy-status.js';
 import { refuseUnshippedClose } from './merged-at.js';
 import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
 import { refuseUnrecordedClose } from './release-record-required.js';
 import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
-import { checkTransitionEvidence } from './transition-evidence.js';
+import { legacyRungEvidenceFault } from './transition-evidence.js';
+import { edgeFault, type GuardCode, guardFault, reasonFault } from './transition-guards.js';
 import {
-  parkReasonFault,
   postLeaveComment,
   postTransitionReasonComment,
   requiresAuthoredReason,
 } from './transition-reason.js';
+import {
+  issueHolder,
+  readWorkState,
+  setLeftStatus,
+  setLegacyStatus,
+  setWorkStep,
+} from './work-state.js';
 
 export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
   'awaiting_release',
-  'releasing',
   'closed',
   'dropped',
 ]);
 
-/** Who is performing the transition. `id` feeds the outbox actor context (ISS-196 trigger
- *  attribution); the WS `actorId` is the user id, or the device owner for a device actor. */
-
 export type TransitionErrorCode =
+  | GuardCode
   | 'NO_OP'
-  | 'ILLEGAL_TRANSITION'
-  | 'TRANSITION_REASON_REQUIRED'
-  | 'WAITING_KIND_REQUIRED'
   | 'STALE_TRANSITION'
-  | 'NO_WORK_EVIDENCE'
   | 'RELEASE_RECORD_REQUIRED'
   | 'CLOSE_REQUIRES_SHIPPED'
   | 'WAITING_KIND_NOT_APPLICABLE'
   | 'ISSUE_ARCHIVED'
-  | 'OPEN_QUESTIONS'
-  | 'VOID_REASON_REQUIRED';
+  | 'OPEN_QUESTIONS';
 
 /**
  * Typed transition failure. `message` keeps the legacy `CODE: detail` shape
@@ -85,30 +78,38 @@ export type TransitionIssueRow = {
 
 type TransitionTx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
+/**
+ * cm:hack a move named in forge-plugin 3.36.542's seventeen statuses (`legacy-status.ts`). `target`
+ * is the retired name's mapping, or null where the name is one of the ten; `client17` is a caller
+ * reading replies in the old words, for whom naming the status the row already holds while it
+ * stands at a retired rung is a step forward, not a no-op. Exit: until forge-plugin moves to the
+ * 10-status model (plugin-followups.md).
+ */
+export interface LegacyMove {
+  named: string;
+  target: (LegacyTarget & { named: string }) | null;
+  client17: boolean;
+}
+
 export interface ApplyStatusTransitionOptions {
   beforeStatusWrite?: (tx: TransitionTx) => Promise<void>;
   /**
-   * Bypass `canTransitionFree`. In practice that guard only forbids `draft`
-   * as a target and restricts `draft`'s own exits, so this flag buys exactly
-   * two things: entering `draft` (nothing does) and moving a `draft` issue to
-   * a status outside {open, closed, developed}.
-   *
-   * It is NOT a general safety override: NO_OP, stale-transition detection and
-   * every content guard still run. The orchestrator is its caller.
+   * A kernel recovery move rather than a lifecycle move: a run that ended, or a wedge nothing holds,
+   * handing an `in_progress` issue back (`state-machine.ts:RECOVERY_EDGES`). Refused while anything
+   * still holds the issue. Every other guard runs.
    */
-  skip?: boolean;
+  recovery?: boolean;
+  /** The run a recovery move hands the issue back from: its own hold is the one ending, not a holder. */
+  recoveringRunId?: string;
   /**
    * ISS-596 — operator/tooling unblock sentinel or human-supplied reason.
-   * Carried as the `pipeline.reason` outbox session setting (so the
-   * orchestrator can allow an `on_hold → *` transition from a non-user
-   * actor without breaching the ISS-411 hard-stop) AND echoed on the WS
+   * Carried as the `pipeline.reason` outbox session setting AND echoed on the WS
    * `issue.statusChanged` payload.
    */
   reason?: string | undefined;
   /**
-   * Why the pipeline is being stopped, in the actor's own words. REQUIRED
-   * entering `reopen`, `waiting` or `needs_info`; posted as a comment before
-   * the status write.
+   * Why, in the actor's own words: the question at `needs_info`, the pause at `on_hold`, what was
+   * wrong at `reopen`, why it is not work at `dropped`. Posted as a comment before the status write.
    */
   transitionReason?: string | undefined;
   /**
@@ -120,15 +121,14 @@ export interface ApplyStatusTransitionOptions {
   voidQuestions?: string | undefined;
   /** Refuse OPEN_QUESTIONS if one is open once the row is locked — the answer resume's guard. */
   requireNoOpenQuestions?: boolean;
-  /**
-   * Which flavour of "a human is needed" this park is. REQUIRED entering
-   * `waiting`.
-   */
+  /** What a `needs_info` park is stopped on. REQUIRED entering `needs_info`. */
   waitingKind?: WaitingKind | undefined;
   /**
    * This close is the release itself, so it may write `closed` past the gate.
    */
   viaReleasePath?: boolean;
+  /** cm:hack see `LegacyMove`. */
+  legacy?: LegacyMove | undefined;
 }
 
 export interface StatusTransitionResult {
@@ -144,6 +144,12 @@ export interface StatusTransitionResult {
    * dependent query filters expired edges out.
    */
   unblockedDependents: UnblockedDependent[];
+  /** The step the run is at inside the status after this move, or null. */
+  step: WorkStep | null;
+  /** cm:hack the retired rung a 17-status caller wrote and reads back, or null. */
+  legacyRung: LegacyRung | null;
+  /** True where the move changed only the step inside the status (a 17-status rung). */
+  stepOnly: boolean;
 }
 
 /** WS `issue.statusChanged` publish. The bus subscriber for `transition` deliberately does NOT
@@ -166,103 +172,35 @@ export function publishIssueStatusChange(
   });
 }
 
+const authorOf = (actor: TransitionActor) => (actor.type === 'user' ? actor.id : actor.ownerId);
+
 /**
- * ISS-787 — `draft` is the safe entry status you get only by asking for it, and
- * `open` auto-triages and spawns a run, which left three agents no way back. So
- * `draft` is reachable, but only while nothing has run: a run or a job means
- * work exists, and demoting would make the status claim it never started.
+ * The step a move leaves the run at. A retired rung names its own; a claim from the backlog starts
+ * at triage, from the plan checkpoint or a reopen at build; a park keeps the step it paused, and
+ * its return finds it there; every other status holds no step.
  */
-/** `null` when the counts could not be read — callers must treat that as "refuse". */
-async function countRunsAndJobs(
-  issueId: string,
-): Promise<{ runCount: number; jobCount: number } | null> {
-  try {
-    const [[runRow], [jobRow]] = await Promise.all([
-      db
-        .select({ n: count() })
-        .from(pipelineRuns)
-        .where(eq(pipelineRuns.issueId, issueId))
-        .limit(1),
-      db.select({ n: count() }).from(jobs).where(eq(jobs.issueId, issueId)).limit(1),
-    ]);
-    return { runCount: Number(runRow?.n ?? 0), jobCount: Number(jobRow?.n ?? 0) };
-  } catch (err) {
-    logger.warn({ err, issueId }, 'draft-exemption check failed; refusing the transition');
-    return null;
+function stepAfter(
+  from: IssueStatus,
+  to: IssueStatus,
+  held: WorkStep | null,
+  legacy: LegacyMove | undefined,
+): WorkStep | null {
+  if (legacy?.target && legacy.target.status === to) return legacy.target.step ?? held;
+  if (PARK_STATUSES.includes(to)) return held;
+  if (to === 'in_progress') {
+    if (PARK_STATUSES.includes(from)) return held;
+    return from === 'open' ? 'triage' : 'build';
   }
-}
-
-async function assertIssueNeverEnteredPipeline(
-  issueId: string,
-  fromStatus: IssueStatus,
-): Promise<void> {
-  const refuse = (detail: string, details: Record<string, unknown>): never => {
-    throw new TransitionError('ILLEGAL_TRANSITION', detail, {
-      from: fromStatus,
-      to: 'draft',
-      ...details,
-    });
-  };
-
-  const counts = await countRunsAndJobs(issueId);
-  if (!counts) {
-    return refuse(
-      '`draft` is reachable only while the issue has never entered the pipeline, and that could not be checked just now. Retry, or use `on_hold` to pause active work.',
-      { checkFailed: true },
-    );
-  }
-
-  const { runCount, jobCount } = counts;
-  if (runCount === 0 && jobCount === 0) return;
-  return refuse(
-    `\`draft\` is reachable only while the issue has never entered the pipeline; this one has ${runCount} pipeline run(s) and ${jobCount} job(s). Use \`on_hold\` to pause active work, or \`dropped\` to abandon it.`,
-    { runCount, jobCount },
-  );
-}
-
-/** Two conditions share the `draft` UPDATE's WHERE — the status still `fromStatus`, the never-ran
- *  counts still zero — so a zero-row result does not say which bit. Re-read both and name it. */
-async function explainDraftRace(
-  issueId: string,
-  fromStatus: IssueStatus,
-  toStatus: IssueStatus,
-): Promise<TransitionError> {
-  const details = { from: fromStatus, to: toStatus, raced: true };
-  const [[row], counts] = await Promise.all([
-    db.select({ status: issues.status }).from(issues).where(eq(issues.id, issueId)).limit(1),
-    countRunsAndJobs(issueId),
-  ]);
-  if (row && row.status !== fromStatus) {
-    return new TransitionError(
-      'STALE_TRANSITION',
-      `issue status changed concurrently — it left \`${fromStatus}\` for \`${row.status}\` while this transition was being applied`,
-      { ...details, observedStatus: row.status },
-    );
-  }
-  if (counts && (counts.runCount > 0 || counts.jobCount > 0)) {
-    return new TransitionError(
-      'ILLEGAL_TRANSITION',
-      `\`draft\` is reachable only while the issue has never entered the pipeline, and it acquired ${counts.runCount} pipeline run(s) and ${counts.jobCount} job(s) while this transition was being applied. Use \`on_hold\` to pause active work.`,
-      { ...details, runCount: counts.runCount, jobCount: counts.jobCount },
-    );
-  }
-  return new TransitionError(
-    'ILLEGAL_TRANSITION',
-    `the \`draft\` transition from \`${fromStatus}\` did not apply, and re-reading found neither a status change nor a pipeline run/job to attribute it to. Retry; if it refuses again, use \`on_hold\` to pause active work.`,
-    { ...details, attributable: false },
-  );
+  return null;
 }
 
 /**
  * THE issue state-machine writer. Every surface — REST `/transition`,
- * REST `PATCH /batch`, MCP `forge_issues`, orchestrator soft-skip,
- * reconciler, finalize-failure — routes through here so
- * guard semantics, the conditional UPDATE, the shipped-work rule on `closed`,
+ * REST `PATCH /batch`, MCP `forge_issues`, the reconciler, the release batch — routes through here so
+ * the lifecycle's edges and guards (`transition-guards.ts`), the conditional UPDATE, the work state,
  * WS broadcast, pipeline-health refresh and run close cannot drift apart.
  *
- * Throws `TransitionError` (NO_OP / ILLEGAL_TRANSITION /
- * REOPEN_REASON_REQUIRED / STALE_TRANSITION / PLAN_REQUIRED /
- * CLOSE_REQUIRES_SHIPPED); callers map it onto their own error surface.
+ * Throws `TransitionError`; callers map it onto their own error surface.
  */
 export async function transitionIssueStatus(
   issue: TransitionIssueRow,
@@ -273,62 +211,55 @@ export async function transitionIssueStatus(
   const fromStatus = issue.status;
   const [archived] = await archivedAmong(db, [issue.id]);
   if (archived) throw new TransitionError('ISSUE_ARCHIVED', archived.message, { from: fromStatus });
+  const work = await readWorkState(db, issue.id);
+  const leftStatus = (work?.leftStatus ?? null) as IssueStatus | null;
+  const rungHeld = heldRung(fromStatus, work?.legacyStatus ?? null);
+
   if (fromStatus === requestedStatus) {
+    const asked = options.legacy?.target?.rung ?? null;
+    if (options.legacy?.client17 && asked !== rungHeld) {
+      return moveStepOnly({ issue, actor, options, rung: asked, held: work?.step ?? null });
+    }
     throw new TransitionError('NO_OP', `issue already in status ${requestedStatus}`, {
       status: fromStatus,
     });
   }
 
-  if (!options.skip && !canTransitionFree(fromStatus, requestedStatus)) {
-    if (requestedStatus === 'draft') {
-      await assertIssueNeverEnteredPipeline(issue.id, fromStatus);
-    } else {
-      throw new TransitionError(
-        'ILLEGAL_TRANSITION',
-        `a \`draft\` issue may only move to ${DRAFT_EXIT_TARGETS.map((s) => `\`${s}\``).join(', ')}. \`${requestedStatus}\` is a legal target from every other status, but not from \`draft\` — promote it to \`open\` first, or use \`dropped\` to discard it.`,
-        { from: fromStatus, to: requestedStatus, allowedFromDraft: [...DRAFT_EXIT_TARGETS] },
-      );
-    }
+  const recovering = options.recovery === true && isRecoveryEdge(fromStatus, requestedStatus);
+  if (!recovering) {
+    const edge = edgeFault({ from: fromStatus, to: requestedStatus, leftStatus });
+    if (edge) throw new TransitionError(edge.code, edge.detail, edge.details);
   }
 
-  if (options.waitingKind && requestedStatus !== 'waiting') {
+  if (options.waitingKind && requestedStatus !== 'needs_info') {
     throw new TransitionError(
       'WAITING_KIND_NOT_APPLICABLE',
-      `\`waitingKind\` is stored only for a \`waiting\` park, and \`${requestedStatus}\` cannot hold it. Say what the issue is waiting for in \`reason\` instead — that is posted as a comment before the status flips and is kept.`,
+      `\`waitingKind\` is stored only for a \`needs_info\` park, and \`${requestedStatus}\` cannot hold it. Say what the issue is waiting for in \`reason\` instead — that is posted as a comment before the status flips and is kept.`,
       { from: fromStatus, to: requestedStatus, waitingKind: options.waitingKind },
     );
   }
 
-  const parkFault = parkReasonFault(fromStatus, requestedStatus, options);
-  if (parkFault) {
-    throw new TransitionError(parkFault.code, parkFault.detail, {
-      from: fromStatus,
-      to: requestedStatus,
-    });
+  const reasonMissing = reasonFault({
+    from: fromStatus,
+    to: requestedStatus,
+    agency: actorAgency(actor),
+    transitionReason: options.transitionReason,
+    waitingKind: options.waitingKind,
+  });
+  if (reasonMissing) {
+    throw new TransitionError(reasonMissing.code, reasonMissing.detail, reasonMissing.details);
   }
 
-  const reopening = isReopenEntry(fromStatus, requestedStatus);
-
-  const parkTarget = await resolveAutonomousParkTarget({
-    projectId: issue.projectId,
-    requested: requestedStatus,
-    agency: actorAgency(actor),
-  });
   const { status: toStatus, held } = await resolveAgentCloseTarget({
     projectId: issue.projectId,
-    requested: parkTarget,
+    requested: requestedStatus,
     agency: actorAgency(actor),
     viaReleasePath: options.viaReleasePath === true,
   });
   if (fromStatus === toStatus) {
     throw new TransitionError(
       'NO_OP',
-      noOpSentence({
-        projectId: issue.projectId,
-        requested: requestedStatus,
-        parked: parkTarget,
-        final: toStatus,
-      }),
+      noOpSentence({ projectId: issue.projectId, requested: requestedStatus, final: toStatus }),
       { status: fromStatus, requested: requestedStatus, substituted: toStatus },
     );
   }
@@ -338,6 +269,8 @@ export async function transitionIssueStatus(
     throw new TransitionError('RELEASE_RECORD_REQUIRED', unrecorded.detail, unrecorded.details);
   }
 
+  const step = stepAfter(fromStatus, toStatus, work?.step ?? null, options.legacy);
+  const rungAfter = options.legacy?.client17 ? (options.legacy.target?.rung ?? null) : null;
   const txResult = await executeTransitionWrite({
     issue,
     fromStatus,
@@ -345,7 +278,10 @@ export async function transitionIssueStatus(
     toStatus,
     actor,
     options,
-    reopening,
+    recovering,
+    step,
+    rungAfter,
+    leftStatus,
   });
   const updated = txResult.row;
 
@@ -354,7 +290,7 @@ export async function transitionIssueStatus(
     from: fromStatus,
     to: toStatus,
     reopenCount: updated.reopenCount,
-    actorId: actor.type === 'user' ? actor.id : actor.ownerId,
+    actorId: authorOf(actor),
     reason: options.reason ?? null,
     at: updated.updatedAt,
   });
@@ -363,7 +299,7 @@ export async function transitionIssueStatus(
     try {
       await db.insert(comments).values({
         issueId: issue.id,
-        authorId: actor.type === 'user' ? actor.id : actor.ownerId,
+        authorId: authorOf(actor),
         body: `Held at the release gate — merged, not shipped. Every \`blocks\`-dependent can dispatch now, because a dependent is held by this issue's STATUS and \`awaiting_release\` is one that releases it; nothing here writes \`merged_at\`. The issue closes when a release ships it, and that close is refused until the shipped-work claim is on the row — \`forge_issues\` \`mark_merged\` naming where it landed.`,
         parentId: null,
       });
@@ -375,7 +311,7 @@ export async function transitionIssueStatus(
     }
   }
 
-  if (txResult && txResult.unblockedDependents.length > 0) {
+  if (txResult.unblockedDependents.length > 0) {
     await recordDropUnblock(issue, txResult.unblockedDependents, actor);
   }
 
@@ -393,7 +329,64 @@ export async function transitionIssueStatus(
     reopenCount: updated.reopenCount,
     updatedAt: updated.updatedAt,
     terminal,
-    unblockedDependents: txResult?.unblockedDependents ?? [],
+    unblockedDependents: txResult.unblockedDependents,
+    step,
+    legacyRung: PARK_STATUSES.includes(toStatus) ? null : rungAfter,
+    stepOnly: false,
+  };
+}
+
+/**
+ * A 17-status caller moving between rungs one stored status holds (`LegacyMove`) — `confirmed` →
+ * `in_progress` → `developed` → `testing` are all `in_progress` now. The status does not move, so
+ * nothing is written to `kernel_transitions`; the step and the rung move on the work state. The
+ * evidence rule the old `developed`/`testing` carried still holds an agent to it.
+ */
+async function moveStepOnly(args: {
+  issue: TransitionIssueRow;
+  actor: TransitionActor;
+  options: ApplyStatusTransitionOptions;
+  rung: LegacyRung | null;
+  held: WorkStep | null;
+}): Promise<StatusTransitionResult> {
+  const { issue, actor, options, rung } = args;
+  const step: WorkStep | null =
+    options.legacy?.target?.step ?? (issue.status === 'in_progress' ? 'build' : args.held);
+  const row = await db.transaction(async (tx) => {
+    await tx.execute(sql`select 1 from issues where id = ${issue.id} for update`);
+    const fault = await legacyRungEvidenceFault({
+      issue,
+      rung,
+      agency: actorAgency(actor),
+      executor: tx,
+    });
+    if (fault) throw new TransitionError(fault.code, fault.detail, fault.details);
+    await setWorkStep(tx, issue.id, step);
+    await setLegacyStatus(tx, issue.id, rung);
+    const [current] = await tx
+      .update(issues)
+      .set({ updatedAt: sql`now()` })
+      .where(and(eq(issues.id, issue.id), eq(issues.status, issue.status)))
+      .returning({ id: issues.id, reopenCount: issues.reopenCount, updatedAt: issues.updatedAt });
+    if (!current) {
+      throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
+        from: issue.status,
+        to: issue.status,
+      });
+    }
+    return current;
+  });
+  await publishPipelineHealthChanged(issue.projectId, [issue.id]);
+  return {
+    id: row.id,
+    status: issue.status,
+    reopenCount: row.reopenCount,
+    updatedAt: row.updatedAt,
+    terminal: false,
+    unblockedDependents: [],
+    step,
+    legacyRung: rung,
+    stepOnly: true,
   };
 }
 
@@ -404,7 +397,11 @@ type TransitionWriteInput = {
   toStatus: IssueStatus;
   actor: TransitionActor;
   options: ApplyStatusTransitionOptions;
-  reopening: boolean;
+  recovering: boolean;
+  step: WorkStep | null;
+  rungAfter: LegacyRung | null;
+  /** The status the park being left was entered from, or null (`issue_work_state.left_status`). */
+  leftStatus: IssueStatus | null;
 };
 
 type TransitionWriteResult = {
@@ -427,109 +424,121 @@ function kernelActorFor(actor: TransitionActor): KernelActor {
   return { type: 'runner', id: actor.id };
 }
 
+/** The work state a move leaves: the park's left status, the step, and the 17-status rung. */
+async function writeWorkStateOfMove(tx: TransitionTx, input: TransitionWriteInput): Promise<void> {
+  const { issue, fromStatus, toStatus, step, rungAfter } = input;
+  const enteringPark = PARK_STATUSES.includes(toStatus);
+  const leavingPark = PARK_STATUSES.includes(fromStatus);
+  if (enteringPark && !leavingPark) await setLeftStatus(tx, issue.id, fromStatus);
+  if (!enteringPark && leavingPark) await setLeftStatus(tx, issue.id, null);
+  await setWorkStep(tx, issue.id, step);
+  if (!enteringPark) await setLegacyStatus(tx, issue.id, rungAfter);
+}
+
 async function executeTransitionWrite(input: TransitionWriteInput): Promise<TransitionWriteResult> {
-  const { issue, fromStatus, requestedStatus, toStatus, actor, options, reopening } = input;
-  const draftGate =
-    toStatus === 'draft' && !options.skip
-      ? [
-          sql`not exists (select 1 from pipeline_runs pr where pr.issue_id = ${issue.id}) and not exists (select 1 from jobs j where j.issue_id = ${issue.id})`,
-        ]
-      : [];
-  try {
-    return await db.transaction(async (tx) => {
-      // ISS-1107 — stamped before any write, so the trigger reads this transaction's marker
-      // whichever statement moves the status.
-      await stampKernelTxn(tx);
-      const archiveRefusal = await archiveRefusalForTransition(tx, issue.id, toStatus);
-      if (archiveRefusal)
-        throw new TransitionError('ISSUE_ARCHIVED', archiveRefusal, { to: toStatus });
-      await options.beforeStatusWrite?.(tx);
-      if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
-        await postTransitionReasonComment(
-          {
-            issueId: issue.id,
-            authorId: actor.type === 'user' ? actor.id : actor.ownerId,
-            fromStatus,
-            toStatus: requestedStatus,
-            reason: options.transitionReason?.trim() ?? '',
-            waitingKind: options.waitingKind ?? null,
-          },
-          tx,
+  const { issue, fromStatus, requestedStatus, toStatus, actor, options, recovering } = input;
+  return db.transaction(async (tx) => {
+    // ISS-1107 — stamped before any write, so the trigger reads this transaction's marker
+    // whichever statement moves the status.
+    await stampKernelTxn(tx);
+    const archiveRefusal = await archiveRefusalForTransition(tx, issue.id, toStatus);
+    if (archiveRefusal)
+      throw new TransitionError('ISSUE_ARCHIVED', archiveRefusal, { to: toStatus });
+    await options.beforeStatusWrite?.(tx);
+    if (recovering) {
+      const holder = await issueHolder(tx, issue, new Date(), options.recoveringRunId ?? null);
+      if (holder) {
+        throw new TransitionError(
+          'ILLEGAL_TRANSITION',
+          `a recovery move hands back an \`in_progress\` issue nothing holds, and ${holder} holds this one — it stays with its holder`,
+          { from: fromStatus, to: toStatus, holder },
         );
       }
-      if (options.skip !== true)
-        await postLeaveComment({ issue, fromStatus, toStatus, actor, options }, tx);
-      if (fromStatus !== toStatus) await mintParkQuestion({ issue, toStatus, actor, options }, tx);
-      const violation = await checkTransitionEvidence({
-        issue: { id: issue.id, projectId: issue.projectId },
-        toStatus: requestedStatus,
-        agency: actorAgency(actor),
-        skip: options.skip === true,
-        executor: tx,
-      });
-      if (violation) throw new TransitionError(violation.code, violation.detail, violation.details);
-      // Judged on the status the issue LANDS at, and asked BEFORE the UPDATE: a close diverted to
-      // the release gate lands at `awaiting_release` and is no close, and a refusal after the
-      // conditional UPDATE is indistinguishable from the lost race it reports as STALE_TRANSITION.
-      const unshipped = await refuseUnshippedClose(tx, { issueId: issue.id, toStatus });
-      if (unshipped)
-        throw new TransitionError('CLOSE_REQUIRES_SHIPPED', unshipped.detail, unshipped.details);
-      const by = actor.type === 'user' ? actor.id : actor.ownerId;
-      const asked = await settleOpenQuestions(tx, { ...options, issueId: issue.id, toStatus, by });
-      if (asked) throw new TransitionError(asked.code, asked.detail, asked.details);
-      // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
-      const result = await withActorContext(
-        tx,
-        { type: actor.type, id: actor.id, agency: actorAgency(actor) },
-        options.reason ?? null,
-        async (t) => {
-          const [row] = await t
-            .update(issues)
-            .set({
-              status: toStatus,
-              reopenCount: reopening ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
-              waitingKind: storedWaitingKind(requestedStatus, toStatus, options.waitingKind),
-              updatedAt: sql`now()`,
-            })
-            .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus), ...draftGate))
-            .returning({
-              id: issues.id,
-              status: issues.status,
-              reopenCount: issues.reopenCount,
-              updatedAt: issues.updatedAt,
-            });
-          if (!row) return null;
-          await recordKernelTransition(t, [
-            {
-              entity: 'issue',
-              entityId: row.id,
-              fromStatus,
-              toStatus,
-              reason: options.transitionReason?.trim() || options.reason || null,
-              actor: kernelActorFor(actor),
-              source: 'issues',
-            },
-          ]);
-          const unblockedDependents =
-            toStatus === 'dropped'
-              ? await expireBlocksEdgesOnDrop(t, issue.projectId, issue.id)
-              : [];
-          return { row, unblockedDependents };
-        },
-      );
-      if (!result)
-        throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
-          from: fromStatus,
-          to: toStatus,
-        });
-      return result;
-    });
-  } catch (error) {
-    if (error instanceof TransitionError && error.code === 'STALE_TRANSITION' && draftGate.length) {
-      throw await explainDraftRace(issue.id, fromStatus, toStatus);
     }
-    throw error;
-  }
+    // cm:guard a guard that cannot be read refuses the move by throwing, never allows it: this runs
+    // inside the transition's transaction, which a failed read has already aborted.
+    const guard = await guardFault({
+      issue: { id: issue.id, projectId: issue.projectId },
+      from: fromStatus,
+      to: toStatus,
+      leftStatus: input.leftStatus,
+      agency: actorAgency(actor),
+      transitionReason: options.transitionReason,
+      waitingKind: options.waitingKind,
+      executor: tx,
+    });
+    if (guard) throw new TransitionError(guard.code, guard.detail, guard.details);
+    if (requiresAuthoredReason(fromStatus, requestedStatus)) {
+      await postTransitionReasonComment(
+        {
+          issueId: issue.id,
+          authorId: authorOf(actor),
+          fromStatus,
+          toStatus: requestedStatus,
+          reason: options.transitionReason?.trim() ?? '',
+          waitingKind: options.waitingKind ?? null,
+        },
+        tx,
+      );
+    }
+    await postLeaveComment({ issue, fromStatus, toStatus, actor, options }, tx);
+    await mintParkQuestion({ issue, toStatus, actor, options }, tx);
+    // Judged on the status the issue LANDS at, and asked BEFORE the UPDATE: a close diverted to
+    // the release gate lands at `awaiting_release` and is no close, and a refusal after the
+    // conditional UPDATE is indistinguishable from the lost race it reports as STALE_TRANSITION.
+    const unshipped = await refuseUnshippedClose(tx, { issueId: issue.id, toStatus });
+    if (unshipped)
+      throw new TransitionError('CLOSE_REQUIRES_SHIPPED', unshipped.detail, unshipped.details);
+    const by = authorOf(actor);
+    const asked = await settleOpenQuestions(tx, { ...options, issueId: issue.id, toStatus, by });
+    if (asked) throw new TransitionError(asked.code, asked.detail, asked.details);
+    // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
+    const result = await withActorContext(
+      tx,
+      { type: actor.type, id: actor.id, agency: actorAgency(actor) },
+      options.reason ?? null,
+      async (t) => {
+        const [row] = await t
+          .update(issues)
+          .set({
+            status: toStatus,
+            reopenCount:
+              toStatus === 'reopen' ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
+            waitingKind: toStatus === 'needs_info' ? (options.waitingKind ?? null) : null,
+            updatedAt: sql`now()`,
+          })
+          .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus)))
+          .returning({
+            id: issues.id,
+            status: issues.status,
+            reopenCount: issues.reopenCount,
+            updatedAt: issues.updatedAt,
+          });
+        if (!row) return null;
+        await recordKernelTransition(t, [
+          {
+            entity: 'issue',
+            entityId: row.id,
+            fromStatus,
+            toStatus,
+            reason: options.transitionReason?.trim() || options.reason || null,
+            actor: kernelActorFor(actor),
+            source: 'issues',
+          },
+        ]);
+        await writeWorkStateOfMove(t, input);
+        const unblockedDependents =
+          toStatus === 'dropped' ? await expireBlocksEdgesOnDrop(t, issue.projectId, issue.id) : [];
+        return { row, unblockedDependents };
+      },
+    );
+    if (!result)
+      throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
+        from: fromStatus,
+        to: toStatus,
+      });
+    return result;
+  });
 }
 
 /** Device-actor wrapper for MCP tools and pipeline internals. Same semantics as

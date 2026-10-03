@@ -32,7 +32,9 @@ import { AWAITING_INPUT_STATUSES, ISSUE_RESOLVED_STATUSES } from '../issues/stat
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 
-export const NEEDS_REVIEW_STATUSES = ['developed', 'reopen'] as const;
+/** What an assignee reviews: a reopen, and a built change at its test step (the old `developed`). */
+const NEEDS_REVIEW = sql`(${issues.status} = 'reopen' OR (${issues.status} = 'in_progress' AND EXISTS (
+  SELECT 1 FROM issue_work_state w WHERE w.issue_id = ${issues.id} AND w.step = 'test')))`;
 const PER_BUCKET = 5;
 const PENDING_SKILL_UPDATES_CAP = 20;
 
@@ -118,7 +120,7 @@ export function selectNeedsReview(userId: string): Promise<AttentionIssueRow[]> 
     .where(
       and(
         eq(issues.assigneeId, userId),
-        inArray(issues.status, [...NEEDS_REVIEW_STATUSES]),
+        NEEDS_REVIEW,
         // A person owes it an answer, so it is counted once, as awaiting input.
         sql`not ${holdsOpenHumanQuestion(issues.id)}`,
       ),

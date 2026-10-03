@@ -155,7 +155,7 @@ export function registerCiFixPatternLearner(bus: HooksBus): () => void {
     });
 
   const unsub = bus.on('transition', (payload) => {
-    if (payload.to !== 'developed') return;
+    if (payload.to !== 'awaiting_release') return;
     if (payload.reopenCount <= 0) return;
 
     detach(async () => {

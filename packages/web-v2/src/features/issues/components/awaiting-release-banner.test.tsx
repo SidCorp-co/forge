@@ -23,7 +23,7 @@ const NOW = new Date("2026-08-26T12:00:00.000Z");
 function state(over: Partial<ReleaseRoster>, claimed: string | null = null) {
   roster.mockReturnValue({
     data: {
-      gateStatus: "tested",
+      gateStatus: "awaiting_release",
       nextCutAt: null,
       channels: ["coolify"],
       releaseRunnerLabel: null,

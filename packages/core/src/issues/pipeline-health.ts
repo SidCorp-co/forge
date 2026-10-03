@@ -12,8 +12,8 @@
  *
  * ISS-1273 — the session bind is TWO binds, not one. `metadata->>'issueId'` is the job lane's
  * link and reaches nothing else; a run session opened by `devices/run-session.ts` carries a GROUP
- * of issues and links to each through its `issue_leases` row. Beside both, `issues.session_context
- * .lease` is the only record a driver lane leaves, and `worker` is where all three are answered —
+ * of issues and links to each through its `issue_leases` row. Beside both, `issue_work_state.lease`
+ * is the only record a driver lane leaves, and `worker` is where all three are answered —
  * including the arm that says no lane can.
  *
  * WS event `issue.pipelineHealth.changed` is published directly (NOT routed
@@ -94,7 +94,7 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     };
   }
 
-  if (issue.status === 'waiting' && issue.waitingKind) {
+  if (issue.status === 'needs_info' && issue.waitingKind) {
     out.waitingCause = { kind: issue.waitingKind };
   }
 
@@ -192,7 +192,7 @@ export async function hydratePipelineHealthForIssues(
 
   const issueRows = (await db.execute(sql`
     SELECT i.id, i.status, i.project_id, i.merged_at, i.waiting_kind,
-           i.session_context -> 'lease' AS lease
+           (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id) AS lease
       FROM issues i
      WHERE i.id IN ${idList}
   `)) as unknown as IssueRow[];

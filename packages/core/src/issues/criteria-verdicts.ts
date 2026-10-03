@@ -1,17 +1,16 @@
-// ISS-1117 — no per-criterion verdict table exists; this reads the `forge-record: verdict`
-// fence convention already used in issue comments (parseForgeRecord), the same shape ISS-1114
-// and ISS-1139 carry live today.
+// ISS-1117 — no per-criterion verdict table exists; verdicts are `verdict` record events
+// (ISS-56), with the records posted as comment fences before events existed read for history.
 
 import { and, eq, inArray } from 'drizzle-orm';
-import { listIssueComments } from '../comments/service.js';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issueAttachments, issues, projects } from '../db/schema.js';
 import { contractVersions } from '../db/schema-ecosystem.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import { parseForgeRecord } from '../messaging/forge-record.js';
+import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
 import { criterionBlocksIn, longestSpelling } from '../messaging/verdict-identity.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
+import { recordHistory } from './record-events/history.js';
 import {
   type IssueIdentities,
   issueIdentities,
@@ -49,8 +48,13 @@ export interface CriterionVerdict {
 
 /** The (criterion, verdict, identity) triples one `verdict`-kind `forge-record` fence names. */
 export function verdictPairsIn(body: string): CriterionVerdict[] {
+  return verdictPairsOf(parseForgeRecord(body));
+}
+
+/** The same triples, read off a record whichever store it came from. */
+export function verdictPairsOf(record: ForgeRecord | null): CriterionVerdict[] {
   const out: CriterionVerdict[] = [];
-  for (const block of criterionBlocksIn(parseForgeRecord(body))) {
+  for (const block of criterionBlocksIn(record)) {
     if (block.verdict === null) continue;
     const at: VerdictIdentity | null =
       block.runtime !== null
@@ -71,10 +75,10 @@ export function verdictPairsIn(body: string): CriterionVerdict[] {
 export async function latestCriterionVerdicts(
   issueId: string,
 ): Promise<Map<number, CriterionVerdict>> {
-  const rows = await listIssueComments(issueId);
+  const entries = await recordHistory(issueId, { kinds: ['verdict'] });
   const latest = new Map<number, CriterionVerdict>();
-  for (const row of rows) {
-    for (const pair of verdictPairsIn(row.body)) {
+  for (const entry of entries) {
+    for (const pair of verdictPairsOf(entry.record)) {
       latest.set(pair.criterion, pair);
     }
   }

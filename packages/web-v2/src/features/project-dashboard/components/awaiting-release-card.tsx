@@ -1,7 +1,7 @@
 "use client";
 
-// Awaiting-release card — pipeline runs parked at the manual `tested` gate:
-// done and verified, just waiting on a human to advance tested→released. These
+// Awaiting-release card — pipeline runs parked at `awaiting_release`: every
+// criterion passed, just waiting for the release to close them. These
 // are NOT live/executing work (see `LiveRunsCard`), so they get their own
 // list with a calm "Verified" chip instead of the pulsing "running" one, and a
 // collapsed default so a large backlog can't push the rest of the dashboard

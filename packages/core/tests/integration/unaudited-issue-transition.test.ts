@@ -79,7 +79,7 @@ describe('an issue transition the application made', () => {
     // whole transaction — audit row included — is rolled back.
     await expect(
       fx.mods.transitionIssueStatus(
-        { id: fx.ids.issueId, projectId: fx.ids.projectId, status: 'testing', reopenCount: 0 },
+        { id: fx.ids.issueId, projectId: fx.ids.projectId, status: 'approved', reopenCount: 0 },
         'in_progress',
         USER(fx.ids.ownerId),
       ),

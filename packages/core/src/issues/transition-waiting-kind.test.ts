@@ -11,6 +11,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
 // The archived-issue guard reads the row itself; these tests script every select, so it answers none.
+// The lifecycle guards and the work state have suites of their own (issue-lifecycle-guards-e2e);
+// this one is about the REST door, so both stand aside.
+vi.mock('./transition-guards.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./transition-guards.js')>()),
+  guardFault: vi.fn(async () => null),
+}));
+vi.mock('./work-state.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./work-state.js')>()),
+  readWorkState: vi.fn(async () => null),
+  setWorkStep: vi.fn(async () => undefined),
+  setLeftStatus: vi.fn(async () => undefined),
+  setLegacyStatus: vi.fn(async () => undefined),
+}));
 vi.mock('./archive.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./archive.js')>()),
   archivedAmong: vi.fn(async () => []),
@@ -102,14 +115,14 @@ function queueAuthAndIssue(status: string) {
   });
 }
 
-describe('a waitingKind the target cannot store', () => {
-  it('422 WAITING_KIND_NOT_APPLICABLE on a `needs_info` park', async () => {
+describe('a waitingKind only a needs_info park stores (ISS-54)', () => {
+  it('422 WAITING_KIND_NOT_APPLICABLE on an `on_hold` park', async () => {
     const token = await signUserToken(USER_ID);
-    queueAuthAndIssue('tested');
+    queueAuthAndIssue('in_progress');
 
     const res = await req(
       {
-        toStatus: 'needs_info',
+        toStatus: 'on_hold',
         reason: 'the deploy fixture is missing',
         waitingKind: 'needs_decision',
       },
@@ -123,7 +136,7 @@ describe('a waitingKind the target cannot store', () => {
 
   it('422 on a target that demands no reason at all', async () => {
     const token = await signUserToken(USER_ID);
-    queueAuthAndIssue('tested');
+    queueAuthAndIssue('approved');
 
     const res = await req({ toStatus: 'in_progress', waitingKind: 'needs_resource' }, token);
 
@@ -132,19 +145,37 @@ describe('a waitingKind the target cannot store', () => {
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 
-  it('200 when the same park carries no kind', async () => {
+  it('422 WAITING_KIND_REQUIRED when a needs_info park carries no kind', async () => {
     const token = await signUserToken(USER_ID);
-    queueAuthAndIssue('tested');
-    updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, status: 'needs_info', reopenCount: 0, updatedAt: new Date() },
-    ]);
+    queueAuthAndIssue('in_progress');
 
     const res = await req(
       { toStatus: 'needs_info', reason: 'the deploy fixture is missing' },
       token,
     );
 
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { code: string }).code).toBe('WAITING_KIND_REQUIRED');
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it('200 when the needs_info park carries its kind, which is stored', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue('in_progress');
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'needs_info', reopenCount: 0, updatedAt: new Date() },
+    ]);
+
+    const res = await req(
+      {
+        toStatus: 'needs_info',
+        reason: 'the deploy fixture is missing',
+        waitingKind: 'needs_resource',
+      },
+      token,
+    );
+
     expect(res.status).toBe(200);
-    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ waitingKind: null });
+    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ waitingKind: 'needs_resource' });
   });
 });

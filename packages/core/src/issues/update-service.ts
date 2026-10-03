@@ -1,10 +1,16 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues } from '../db/schema.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
 import type { ResolvedLabelAttach } from './label-service.js';
-import type { IssueRow } from './read-service.js';
+import { ISSUE_READ_COLUMNS, type IssueRow } from './read-service.js';
 import type { SessionContextExpect } from './session-context.js';
+import {
+  splitSessionContext,
+  type WorkStateWrite,
+  writeSplitSessionContext,
+  writeWorkStateFields,
+} from './work-state.js';
 
 export type IssueUpdateInput = {
   issueId: string;
@@ -21,6 +27,8 @@ export type IssueUpdateInput = {
    * precondition. `undefined` writes unconditionally, exactly as before.
    */
   expect?: SessionContextExpect | undefined;
+  /** ISS-54 — the step, branch and head of the work, written to `issue_work_state`. */
+  workState?: WorkStateWrite | undefined;
   actor: Actor;
 };
 
@@ -29,23 +37,43 @@ export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueR
   return row;
 }
 
+type UpdateTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * One write of an issue's fields. The row is locked first, so the `sessionContext` the
+ * precondition and the unread-drop rule compare against is the value this write replaces.
+ *
+ * ISS-54 cm:hack — that value is the COMPOSED one (`issue_session_context`): the blob with the
+ * lease `issue_work_state` holds put back, because that is what every reader was handed and so
+ * what a caller sends back as `expect`. A whole `sessionContext` write is split the same way: the
+ * lease and the worklog's branch and head go to the work state, the rest to the column. Exit: until
+ * forge-plugin moves to the 10-status model (plugin-followups.md).
+ */
 async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
-  const { issueId, updates, labelIds, expect, actor } = input;
-  const guard = expect ? [sessionContextGuard(expect.sessionContext)] : [];
+  const { issueId, updates, labelIds, expect, workState, actor } = input;
 
   return db.transaction(async (tx) => {
-    if (updates.sessionContext !== undefined && !expect) {
-      await refuseUnreadSessionContextDrop(tx, issueId, updates.sessionContext);
+    const current = await lockComposedSessionContext(tx, issueId);
+    if (!current) throw new IssueUpdateNotFound(issueId);
+    if (expect && !sameJson(current.sessionContext, expect.sessionContext)) {
+      throw new SessionContextExpectMismatch(current.sessionContext ?? null);
     }
+
+    const columns = { ...updates };
+    if (updates.sessionContext !== undefined) {
+      if (!expect) refuseUnreadSessionContextDrop(current.sessionContext, updates.sessionContext);
+      const split = splitSessionContext(updates.sessionContext);
+      columns.sessionContext = split.rest;
+      await writeSplitSessionContext(tx, issueId, split);
+    }
+    if (workState) await writeWorkStateFields(tx, issueId, workState);
+
     const [row] = await tx
       .update(issues)
-      .set(updates)
-      .where(and(eq(issues.id, issueId), ...guard))
-      .returning();
-    if (!row) {
-      if (expect) await refuseMovedSessionContext(tx, issueId);
-      throw new IssueUpdateNotFound(issueId);
-    }
+      .set(columns)
+      .where(eq(issues.id, issueId))
+      .returning({ id: issues.id });
+    if (!row) throw new IssueUpdateNotFound(issueId);
 
     if (labelIds !== undefined) {
       const existing = await tx
@@ -80,8 +108,43 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       }
     }
 
-    return row;
+    const [written] = await tx
+      .select(ISSUE_READ_COLUMNS)
+      .from(issues)
+      .where(eq(issues.id, issueId))
+      .limit(1);
+    if (!written) throw new IssueUpdateNotFound(issueId);
+    return written;
   });
+}
+
+async function lockComposedSessionContext(
+  tx: UpdateTx,
+  issueId: string,
+): Promise<{ sessionContext: unknown } | null> {
+  const rows = (await tx.execute(sql`
+    SELECT issue_session_context(i.id, i.session_context) AS session_context
+      FROM issues i WHERE i.id = ${issueId} FOR UPDATE
+  `)) as unknown as Array<{ session_context: unknown }>;
+  const row = rows[0];
+  return row ? { sessionContext: row.session_context ?? null } : null;
+}
+
+/** JSON equality as `jsonb` compares it: key order is not part of the value. */
+function sameJson(a: unknown, b: unknown): boolean {
+  return JSON.stringify(canonical(a ?? null)) === JSON.stringify(canonical(b ?? null));
+}
+
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value as Record<string, unknown>)
+        .sort()
+        .map((k) => [k, canonical((value as Record<string, unknown>)[k])]),
+    );
+  }
+  return value;
 }
 
 /**
@@ -90,19 +153,8 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
  * A caller that sent `expect` read the current value and means the removal, so
  * it passes. One that did not is refused by name, naming the keys it would drop.
  */
-async function refuseUnreadSessionContextDrop(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  issueId: string,
-  next: unknown,
-): Promise<void> {
-  const [current] = await tx
-    .select({ sessionContext: issues.sessionContext })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  const held = current?.sessionContext;
+function refuseUnreadSessionContextDrop(held: unknown, next: unknown): void {
   if (!held || typeof held !== 'object' || Array.isArray(held)) return;
-
   const kept = next && typeof next === 'object' && !Array.isArray(next) ? next : {};
   const dropped = Object.keys(held).filter((k) => !(k in (kept as Record<string, unknown>)));
   if (dropped.length === 0) return;
@@ -114,31 +166,6 @@ export class SessionContextDropsUnreadKeys extends Error {
     super('SESSION_CONTEXT_DROPS_UNREAD_KEYS');
     this.name = 'SessionContextDropsUnreadKeys';
   }
-}
-
-function sessionContextGuard(expected: Record<string, unknown> | null) {
-  const expr = expected === null ? sql`null::jsonb` : sql`${JSON.stringify(expected)}::jsonb`;
-  return sql`${issues.sessionContext} is not distinct from ${expr}`;
-}
-
-/**
- * Zero rows updated under a precondition means one of two things, and a caller
- * told the wrong one retries forever or gives up wrongly. Re-read inside the
- * doomed transaction: the row is gone, or the field moved — and when it moved,
- * hand back the value it moved TO, which is what the loser needs to rebase its
- * lease and try again.
- */
-async function refuseMovedSessionContext(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  issueId: string,
-): Promise<void> {
-  const [current] = await tx
-    .select({ sessionContext: issues.sessionContext })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  if (!current) return;
-  throw new SessionContextExpectMismatch(current.sessionContext ?? null);
 }
 
 /** The write carried an `expect` the field no longer holds. `current` is what it holds now. */

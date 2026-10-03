@@ -5,9 +5,9 @@ import { requireHeld } from "./api";
 import type { PipelineIssueRow } from "./types";
 
 const row = (displayId: string, held?: unknown, lastCheckInAt: unknown = null) =>
-  ({ id: displayId, displayId, status: "testing", held, lastCheckInAt }) as unknown as PipelineIssueRow;
+  ({ id: displayId, displayId, status: "in_progress", held, lastCheckInAt }) as unknown as PipelineIssueRow;
 const noCheckIn = (displayId: string) =>
-  ({ id: displayId, displayId, status: "testing", held: false }) as unknown as PipelineIssueRow;
+  ({ id: displayId, displayId, status: "in_progress", held: false }) as unknown as PipelineIssueRow;
 
 describe("requireHeld", () => {
   it("passes a page whose every row says whether it is held and when it last checked in", () => {
