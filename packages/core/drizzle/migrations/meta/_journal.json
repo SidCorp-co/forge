@@ -2297,6 +2297,13 @@
       "when": 1813622400000,
       "tag": "0355_a_requirement_return_is_a_row",
       "breakpoints": true
+    },
+    {
+      "idx": 358,
+      "version": "7",
+      "when": 1813881600000,
+      "tag": "0358_a_requirement_is_deferred_repinned_and_accepted_with_its_reason",
+      "breakpoints": true
     }
   ]
 }

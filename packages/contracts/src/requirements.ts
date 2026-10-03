@@ -3,10 +3,34 @@
 // decide it, and the coverage of each business criterion. Core writes the shapes; web-v2 reads the
 // labels, so one value keeps one badge on every screen.
 
+import { z } from "zod";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 
+/** The stored status, set only by a person's act (workflow requirement-lifecycle). `deferred` is out
+ *  of the current release, by a person's defer, until an undefer puts back the status it left. */
+export const REQUIREMENT_STATUSES = [
+	"draft",
+	"agreed",
+	"accepted",
+	"dropped",
+	"deferred",
+] as const;
+export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
+
+/** The statuses a defer may leave; an undefer returns to the one the defer left. */
+export const DEFERRABLE_STATUSES = ["draft", "agreed"] as const;
+
+/** One row per defer or undefer, insert-only, so a requirement deferred twice keeps both. */
+export const REQUIREMENT_DEFERRAL_ACTS = ["defer", "undefer"] as const;
+export type RequirementDeferralAct = (typeof REQUIREMENT_DEFERRAL_ACTS)[number];
+
+/** What wrote a baseline: an agree (or the re-baseline a revision accept writes), or a re-pin of
+ *  the same revision onto newly approved designs, with no text revision. */
+export const BASELINE_ACTS = ["agree", "repin"] as const;
+export type BaselineAct = (typeof BASELINE_ACTS)[number];
+
 /** The lifecycle a person reads: the stored status (draft, agreed, accepted, dropped) with agreed
- *  split by the derived delivery phase. `dropped` is off the line. */
+ *  split by the derived delivery phase. `dropped` and `deferred` are off the line. */
 export const REQUIREMENT_LIFECYCLE = [
 	"draft",
 	"agreed",
@@ -16,6 +40,7 @@ export const REQUIREMENT_LIFECYCLE = [
 ] as const;
 export const REQUIREMENT_STATES = [
 	...REQUIREMENT_LIFECYCLE,
+	"deferred",
 	"dropped",
 ] as const;
 export type RequirementState = (typeof REQUIREMENT_STATES)[number];
@@ -29,6 +54,7 @@ export const REQUIREMENT_STATE_LABELS: Record<RequirementState, string> = {
 	in_delivery: "In delivery",
 	delivered: "Delivered",
 	accepted: "Accepted",
+	deferred: "Deferred",
 	dropped: "Dropped",
 };
 
@@ -38,6 +64,7 @@ export const REQUIREMENT_STATE_TONES: Record<RequirementState, StandingTone> = {
 	in_delivery: "run",
 	delivered: "you",
 	accepted: "done",
+	deferred: "neutral",
 	dropped: "done",
 };
 
@@ -47,6 +74,7 @@ export const REQUIREMENT_STATE_GLYPHS: Record<RequirementState, string> = {
 	in_delivery: "●",
 	delivered: "✓",
 	accepted: "✓",
+	deferred: "‖",
 	dropped: "×",
 };
 
@@ -57,6 +85,8 @@ export const REQUIREMENT_STATE_HINTS: Record<RequirementState, string> = {
 	delivered:
 		"delivered: every linked issue is closed; a person accepts the delivery",
 	accepted: "accepted: delivered and accepted",
+	deferred:
+		"deferred: out of the current release; nothing is planned or built against it until a person undefers it",
 	dropped: "dropped: no longer wanted",
 };
 
@@ -66,6 +96,7 @@ export const REQUIREMENT_ATTENTION_GROUPS = [
 	"moving",
 	"others",
 	"stuck",
+	"deferred",
 	"done",
 ] as const;
 export type RequirementAttentionGroup =
@@ -98,6 +129,12 @@ export const REQUIREMENT_ATTENTION_LABELS: Record<
 		hint: "No owner, or untouched for weeks",
 		tone: "neutral",
 		collapsed: false,
+	},
+	deferred: {
+		label: "Deferred",
+		hint: "Out of the current release",
+		tone: "neutral",
+		collapsed: true,
 	},
 	done: { label: "Done", hint: null, tone: "done", collapsed: true },
 };
@@ -225,4 +262,44 @@ export interface RequirementHistoryEntry {
 	issue: string | null;
 	/** A linked issue's status move, as raw statuses the reader labels; else null. */
 	move: { from: string | null; to: string } | null;
+}
+
+/** `POST …/requirements/:req/revisions/:n/accept`: the signer's own words, stored on the revision
+ *  and, on an agreed requirement, on the baseline the accept writes. */
+export const acceptRevisionRequestSchema = z.strictObject({
+	reason: z.string().max(4_000).nullable().optional(),
+});
+export const ACCEPT_REVISION_SHAPE =
+	"{ reason? } — the signer's reason, kept on the revision and on the re-baseline it writes";
+
+/** `POST …/requirements/:req/defer`: out of the current release, with why and, optionally, when. */
+export const deferRequirementRequestSchema = z.strictObject({
+	reason: z.string().max(4_000),
+	targetPhase: z.string().trim().min(1).max(200).nullable().optional(),
+});
+export const DEFER_REQUIREMENT_SHAPE =
+	"{ reason, targetPhase? } — why it leaves the current release, and the phase or release it is meant for";
+
+/** `POST …/requirements/:req/undefer`: back to the status the defer left. */
+export const undeferRequirementRequestSchema = z.strictObject({
+	reason: z.string().max(4_000).nullable().optional(),
+});
+export const UNDEFER_REQUIREMENT_SHAPE =
+	"{ reason? } — puts it back at the status it was deferred from";
+
+/** `POST …/requirements/:req/repin`: a new baseline of the head onto the designs approved now. */
+export const repinRequirementRequestSchema = z.strictObject({
+	revision: z.number().int().min(1),
+	reason: z.string().max(4_000).nullable().optional(),
+});
+export const REPIN_REQUIREMENT_SHAPE =
+	"{ revision, reason? } — names the head revision; writes a baseline pinning each linked design's approved revision";
+
+/** A deferred requirement's latest defer, as the detail reads it. */
+export interface RequirementDeferral {
+	from: (typeof DEFERRABLE_STATUSES)[number];
+	reason: string;
+	targetPhase: string | null;
+	deferredBy: string;
+	deferredAt: string;
 }
