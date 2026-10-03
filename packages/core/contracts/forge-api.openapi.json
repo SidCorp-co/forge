@@ -12166,6 +12166,37 @@
                               "version"
                             ],
                             "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "draftVersion": {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "environment": {
+                                "maxLength": 100,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "storefront_draft",
+                                "type": "string"
+                              },
+                              "workflowId": {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "workflowId",
+                              "draftVersion",
+                              "environment"
+                            ],
+                            "type": "object"
                           }
                         ]
                       },

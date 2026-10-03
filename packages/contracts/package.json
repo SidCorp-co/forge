@@ -58,6 +58,10 @@
       "types": "./dist/suggestions.d.ts",
       "default": "./dist/suggestions.js"
     },
+    "./verdict-identity": {
+      "types": "./dist/verdict-identity.d.ts",
+      "default": "./dist/verdict-identity.js"
+    },
     "./onboarding": {
       "types": "./dist/onboarding.d.ts",
       "default": "./dist/onboarding.js"

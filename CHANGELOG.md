@@ -137,6 +137,10 @@
 
 ### Added
 
+- **A storefront project's work can be judged on an unpublished draft.** A verdict names an Autoflow
+  workflow, its draft version and a preview environment; Forge reads the draft back, and only a
+  confirmed draft counts toward `awaiting_release`, never on a git project.
+
 - **Workflows opens on what the system is.** On the left, a one-line description, key facts with
   detail on hover, and the system-context design on a pannable canvas; on the right, every design
   grouped by purpose. The dashboard shows it too.

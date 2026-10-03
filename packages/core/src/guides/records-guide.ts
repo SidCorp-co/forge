@@ -125,8 +125,16 @@ block names what that criterion was judged against before the next \`criterion\`
   It stands while that version is the contract's current one (the newest approved), is superseded
   once a later version is approved, and reads as unanchored where the project recorded no such
   version.
+- \`runtime: <workflow id>@draft:<draft version>\` with \`environment: <key>\` — an unpublished
+  storefront draft (an Autoflow workflow), judged on a non-production environment the project
+  document declares. The id and version are the ones \`forge_storefront_target\` reports in
+  \`workflows[]\`; \`forge_criteria\` takes the same as \`{ kind: storefront_draft, workflowId,
+  draftVersion, environment }\`. Forge reads the draft back from the project's storefront source when
+  the verdict is written and stores it corroborated, or uncorroborated with the reason. Only a
+  corroborated draft on a project whose \`source.type\` is \`storefront\` counts toward
+  \`awaiting_release\` (\`VERDICT_UNCORROBORATED\`, \`VERDICT_IDENTITY_NOT_ADMISSIBLE\`).
 
-A block carrying a verdict and naming none of the four is refused at the write door under
+A block carrying a verdict and naming none of the five is refused at the write door under
 \`verdict-identity\`, as is an identity not written as one and a \`runtime\` written as an
 abbreviation. A \`design\` naming a workflow this issue's project does not hold, a revision that
 workflow never held, or a workflow of another project is refused under \`verdict-design\`, which

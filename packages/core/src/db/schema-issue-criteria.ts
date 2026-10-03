@@ -4,6 +4,7 @@
 // `criterion_verdicts` is insert-only: the latest row per criterion is what the
 // `awaiting_release` gate reads (`issues/criteria/store.ts:listCriteria`).
 
+import { VERDICT_CORROBORATIONS } from '@forge/contracts/verdict-identity';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -62,6 +63,7 @@ export const verdictIdentityKinds = [
   'runtime',
   'design',
   'contract',
+  'storefront_draft',
   'commit_unresolved',
 ] as const;
 export type VerdictIdentityKind = (typeof verdictIdentityKinds)[number];
@@ -87,6 +89,11 @@ export const criterionVerdicts = pgTable(
     designRevision: integer('design_revision'),
     contractRef: text('contract_ref'),
     contractVersion: text('contract_version'),
+    storefrontWorkflowId: text('storefront_workflow_id'),
+    storefrontDraftVersion: text('storefront_draft_version'),
+    storefrontEnvironment: text('storefront_environment'),
+    corroboration: text('corroboration', { enum: VERDICT_CORROBORATIONS }),
+    corroborationNote: text('corroboration_note'),
     evidence: text('evidence').array().notNull().default(sql`'{}'::text[]`),
     authorUserId: uuid('author_user_id').references(() => users.id, { onDelete: 'set null' }),
     authorDeviceId: uuid('author_device_id'),
@@ -116,7 +123,13 @@ export const criterionVerdicts = pgTable(
         OR (${t.identityKind} = 'commit_unresolved' AND ${t.backfilled} AND ${t.commitSha} ~ '^[0-9a-f]{7,39}$' AND ${t.runtimeRef} IS NULL AND ${t.designWorkflowId} IS NULL AND ${t.designRevision} IS NULL AND ${t.contractRef} IS NULL AND ${t.contractVersion} IS NULL)
         OR (${t.identityKind} = 'runtime' AND ${t.runtimeRef} ~ '^[0-9a-f]{40,64}$' AND ${t.commitSha} IS NULL AND ${t.designWorkflowId} IS NULL AND ${t.designRevision} IS NULL AND ${t.contractRef} IS NULL AND ${t.contractVersion} IS NULL)
         OR (${t.identityKind} = 'design' AND ${t.designWorkflowId} IS NOT NULL AND ${t.designRevision} >= 1 AND ${t.commitSha} IS NULL AND ${t.runtimeRef} IS NULL AND ${t.contractRef} IS NULL AND ${t.contractVersion} IS NULL)
-        OR (${t.identityKind} = 'contract' AND ${t.contractRef} ~ '[^[:space:]]' AND ${t.contractVersion} ~ '[^[:space:]]' AND ${t.commitSha} IS NULL AND ${t.runtimeRef} IS NULL AND ${t.designWorkflowId} IS NULL AND ${t.designRevision} IS NULL)`,
+        OR (${t.identityKind} = 'contract' AND ${t.contractRef} ~ '[^[:space:]]' AND ${t.contractVersion} ~ '[^[:space:]]' AND ${t.commitSha} IS NULL AND ${t.runtimeRef} IS NULL AND ${t.designWorkflowId} IS NULL AND ${t.designRevision} IS NULL)
+        OR (${t.identityKind} = 'storefront_draft' AND ${t.commitSha} IS NULL AND ${t.runtimeRef} IS NULL AND ${t.designWorkflowId} IS NULL AND ${t.designRevision} IS NULL AND ${t.contractRef} IS NULL AND ${t.contractVersion} IS NULL)`,
+    ),
+    storefrontChk: check(
+      'criterion_verdicts_storefront_chk',
+      sql`(${t.identityKind} = 'storefront_draft' AND ${t.storefrontWorkflowId} ~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$' AND ${t.storefrontDraftVersion} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' AND ${t.storefrontEnvironment} ~ '^[a-z][a-z0-9-]{0,62}$' AND ${t.corroboration} IN ('corroborated', 'uncorroborated') AND (${t.corroboration} = 'corroborated' OR coalesce(${t.corroborationNote}, '') ~ '[^[:space:]]'))
+        OR (${t.identityKind} IS DISTINCT FROM 'storefront_draft' AND ${t.storefrontWorkflowId} IS NULL AND ${t.storefrontDraftVersion} IS NULL AND ${t.storefrontEnvironment} IS NULL AND ${t.corroboration} IS NULL AND ${t.corroborationNote} IS NULL)`,
     ),
     latestIdx: index('criterion_verdicts_latest_idx').on(t.criterionId, t.createdAt),
     issueIdx: index('criterion_verdicts_issue_idx').on(t.issueId),

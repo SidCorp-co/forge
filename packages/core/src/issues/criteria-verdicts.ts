@@ -8,7 +8,11 @@ import { commentAttachments, comments, issueAttachments, issues, projects } from
 import { contractVersions } from '../db/schema-ecosystem.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
-import { criterionBlocksIn, longestSpelling } from '../messaging/verdict-identity.js';
+import {
+  criterionBlocksIn,
+  longestSpelling,
+  parseStorefrontDraftRuntime,
+} from '../messaging/verdict-identity.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
 import { type CriterionWithVerdict, type LatestVerdict, listCriteria } from './criteria/store.js';
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
@@ -46,8 +50,14 @@ export function verdictPairsOf(record: ForgeRecord | null): CriterionVerdict[] {
   const out: CriterionVerdict[] = [];
   for (const block of criterionBlocksIn(record)) {
     if (block.verdict === null) continue;
-    const at: VerdictIdentity | null =
-      block.runtime !== null
+    const draft = parseStorefrontDraftRuntime(block.runtime);
+    const at: VerdictIdentity | null = draft
+      ? {
+          kind: 'storefront_draft',
+          value: `${draft.workflowId}@draft:${draft.draftVersion} on \`${block.environment}\``,
+          corroborationNote: 'read from a comment, which records no reading',
+        }
+      : block.runtime !== null
         ? { kind: 'runtime', value: block.runtime }
         : block.source !== null
           ? { kind: 'source', value: block.source }
@@ -81,6 +91,17 @@ function identityOfRow(row: LatestVerdict): VerdictIdentity | null {
     case 'contract':
       return row.contractRef && row.contractVersion
         ? { kind: 'contract', value: `${row.contractRef}@${row.contractVersion}` }
+        : null;
+    case 'storefront_draft':
+      return row.storefrontWorkflowId && row.storefrontDraftVersion
+        ? {
+            kind: 'storefront_draft',
+            value: `${row.storefrontWorkflowId}@draft:${row.storefrontDraftVersion} on \`${row.storefrontEnvironment}\``,
+            corroborationNote:
+              row.corroboration === 'corroborated'
+                ? null
+                : (row.corroborationNote ?? 'no reading recorded'),
+          }
         : null;
     default:
       return null;
