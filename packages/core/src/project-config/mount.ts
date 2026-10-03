@@ -1,6 +1,8 @@
 import type { Hono } from 'hono';
 import { baDoorRoutes } from '../assistant/ba-door-routes.js';
 import type { RequestIdVars } from '../middleware/request-id.js';
+import { onboardingRoutes } from '../onboarding/routes.js';
+import { questionnaireRoutes } from '../questionnaires/routes.js';
 import { requirementRoutes } from '../requirements/routes.js';
 import { suggestionRoutes } from '../suggestions/routes.js';
 import { workflowRoutes } from '../workflows/routes.js';
@@ -18,4 +20,6 @@ export function mountProjectConfig(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/projects', requirementRoutes);
   app.route('/api/projects', suggestionRoutes);
   app.route('/api/projects', baDoorRoutes);
+  app.route('/api/projects', onboardingRoutes);
+  app.route('/api/projects', questionnaireRoutes);
 }

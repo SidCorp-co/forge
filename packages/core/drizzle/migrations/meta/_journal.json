@@ -2276,6 +2276,13 @@
       "when": 1813276800000,
       "tag": "0351_assistant_output_waits_as_a_suggestion",
       "breakpoints": true
+    },
+    {
+      "idx": 353,
+      "version": "7",
+      "when": 1813449600000,
+      "tag": "0353_onboarding_is_a_conversation",
+      "breakpoints": true
     }
   ]
 }

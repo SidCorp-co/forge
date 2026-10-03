@@ -1,15 +1,23 @@
 import type { AgentMessage, ContentBlock, ToolCall } from '../lib/agent-stream-parser.js';
 import type { StoredConversationMessage } from './store.js';
 
+const BLOCK_TYPES: ReadonlySet<unknown> = new Set<ContentBlock['type']>([
+  'text',
+  'tool',
+  'todos',
+  'thinking',
+  'questionnaire',
+  'questionnaire_answers',
+  'designs',
+]);
+
 /** The blocks column, read back as blocks or as nothing. */
 export function asBlocks(value: unknown): ContentBlock[] | null {
   if (!Array.isArray(value)) return null;
   const out: ContentBlock[] = [];
   for (const b of value) {
     if (!b || typeof b !== 'object') continue;
-    const type = (b as { type?: unknown }).type;
-    if (type === 'text' || type === 'tool' || type === 'todos' || type === 'thinking')
-      out.push(b as ContentBlock);
+    if (BLOCK_TYPES.has((b as { type?: unknown }).type)) out.push(b as ContentBlock);
   }
   return out.length > 0 ? out : null;
 }

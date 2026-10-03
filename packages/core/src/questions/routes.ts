@@ -153,6 +153,7 @@ const REFUSAL_STATUS: Record<QuestionRefusalCode, ContentfulStatusCode> = {
   QUESTION_MESSAGE_REFUSED: 400,
   QUESTION_CURSOR_INVALID: 400,
   QUESTION_NOTE_NOT_TAKEN: 400,
+  QUESTION_IN_QUESTIONNAIRE: 409,
 };
 
 const sessionOnly = (verb: string) =>

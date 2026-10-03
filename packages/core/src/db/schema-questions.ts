@@ -11,6 +11,7 @@
 // Split out of `schema.ts` for size, like `schema-session-inbox.ts`, and
 // registered in `drizzle.config.ts` and the client's schema map beside it.
 
+import type { QuestionnaireItem } from '@forge/contracts/onboarding';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -25,6 +26,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { agentSessions, issues, projects } from './schema.js';
 import type { ConversationAdapter } from './schema-conversations.js';
+import { questionnaireBatches } from './schema-onboarding.js';
 import { requirements } from './schema-requirements.js';
 
 export const questionStatuses = ['open', 'answered', 'void', 'expired', 'needs_info'] as const;
@@ -95,7 +97,8 @@ export type QuestionOrigin =
       /** The venue's own id, in that adapter's vocabulary — `ports.ts`'s `externalId`. */
       venueId: string;
       conversationId: string;
-      windowId: string;
+      /** The window an agent-mode turn asked in; null for a questionnaire item, posted outside any window. */
+      windowId: string | null;
       /** The transport's id for the message this question was raised against; null where it named none. */
       anchorId: string | null;
       askedByUserId: string | null;
@@ -121,6 +124,10 @@ export const agentQuestions = pgTable(
     agentSessionId: uuid('agent_session_id').references(() => agentSessions.id, {
       onDelete: 'set null',
     }),
+    /** The questionnaire batch this item was asked in (ISS-63); null on every other question. */
+    batchId: uuid('batch_id').references(() => questionnaireBatches.id, { onDelete: 'cascade' }),
+    /** The item as posted: group, control, options, inferred default, evidence, the designs it shapes. */
+    item: jsonb('item').$type<QuestionnaireItem>(),
     status: text('status', { enum: questionStatuses }).notNull().default('open'),
     blockerKind: text('blocker_kind', { enum: questionBlockerKinds }).notNull(),
     steps: jsonb('steps').$type<QuestionStep[]>().notNull(),
@@ -141,6 +148,8 @@ export const agentQuestions = pgTable(
     index('agent_questions_project_status_idx').on(t.projectId, t.status),
     index('agent_questions_session_idx').on(t.agentSessionId),
     index('agent_questions_issue_idx').on(t.issueId),
+    index('agent_questions_batch_idx').on(t.batchId),
+    check('agent_questions_batch_item_chk', sql`(${t.batchId} IS NULL) = (${t.item} IS NULL)`),
     // cm:guard the BA assistant asks the reporter at most one open question per item (Q5)
     uniqueIndex('agent_questions_requirement_open_uq')
       .on(t.requirementId)

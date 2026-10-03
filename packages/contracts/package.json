@@ -54,6 +54,10 @@
       "types": "./dist/suggestions.d.ts",
       "default": "./dist/suggestions.js"
     },
+    "./onboarding": {
+      "types": "./dist/onboarding.d.ts",
+      "default": "./dist/onboarding.js"
+    },
     "./ui-actions": {
       "types": "./dist/ui-actions.d.ts",
       "default": "./dist/ui-actions.js"

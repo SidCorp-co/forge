@@ -4,6 +4,7 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { isOnboardingDesign } from '../onboarding/read.js';
 import type { DesignApprover } from '../project-config/schema.js';
 import { readProjectDocument } from '../project-config/service.js';
 import {
@@ -39,8 +40,33 @@ export type DesignOutcome =
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-export async function designApproverOf(projectId: string): Promise<DesignApprover> {
+// cm:guard a design onboarding drafted takes only a person's approval (approve-guard): it ignores
+// `workflows.designApprover: master`, so the master never approves the picture it drew of the code
+export async function designApproverOf(
+  projectId: string,
+  workflowId?: string,
+): Promise<DesignApprover> {
+  if (workflowId && (await isOnboardingDesign(projectId, workflowId))) return 'owner';
   return (await readProjectDocument(projectId))?.document.workflows?.designApprover ?? 'owner';
+}
+
+/** The approver refusal, worded for an onboarding design where the project's policy is not why. */
+async function decideRefusalFor(actor: WorkflowWriter, projectId: string, workflowId: string) {
+  const refusal = await approverRefusalFor(
+    actor,
+    projectId,
+    await designApproverOf(projectId, workflowId),
+  );
+  if (
+    refusal?.code === 'WORKFLOW_DESIGN_APPROVER_NOT_PERSON' &&
+    (await isOnboardingDesign(projectId, workflowId))
+  ) {
+    return {
+      ...refusal,
+      detail: `agent ${actor.userId} acts as an agent; workflow ${workflowId} was drafted by onboarding, and an onboarding design is approved only by a person (an org owner or admin), whatever workflows.designApprover says.`,
+    };
+  }
+  return refusal;
 }
 
 async function approverRefusalFor(
@@ -73,7 +99,7 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
   const [designs, builds, approver, prefix] = await Promise.all([
     designsOf(db, row.id),
     buildsOf(db, [row.id]),
-    designApproverOf(row.projectId),
+    designApproverOf(row.projectId, row.id),
     activeIssuePrefix(row.projectId),
   ]);
   const names = await userNames([
@@ -184,7 +210,7 @@ export async function decideDesignAs(input: {
   const { projectId, id, decider, revision, decision } = input;
   const reason = input.reason?.trim() || null;
   await rowIn(projectId, id);
-  const refusal = await approverRefusalFor(decider, projectId, await designApproverOf(projectId));
+  const refusal = await decideRefusalFor(decider, projectId, id);
   if (refusal) return { ok: false, refusals: [refusal] };
   type Decided = { refusals: DesignRefusal[] } | { flow: string; designIssueId: string | null };
   const outcome = await db.transaction(async (tx): Promise<Decided> => {

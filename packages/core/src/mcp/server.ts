@@ -58,6 +58,7 @@ import {
   forgeMetricsProjectTimeseriesTool,
   forgeMetricsSessionFailuresTool,
 } from './tools/forge-metrics.js';
+import { forgeOnboardingTool } from './tools/forge-onboarding.js';
 import { forgeOrgsListTool, forgeOrgsMembersTool } from './tools/forge-orgs.js';
 import { forgePhaseTool } from './tools/forge-phase.js';
 import { forgePipelineRunsGetTool } from './tools/forge-pipeline-runs.js';
@@ -183,6 +184,7 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     forgeWorkflowsTool(ctx),
     forgeRequirementsTool(ctx),
     forgeSuggestionsTool(ctx),
+    forgeOnboardingTool(ctx),
     forgeJobsListTool(ctx),
     forgeJobsGetTool(ctx),
     forgeJobsEventsTool(ctx),

@@ -79,6 +79,7 @@ export const questionRefusalCodes = [
   'QUESTION_MESSAGE_REFUSED',
   'QUESTION_CURSOR_INVALID',
   'QUESTION_NOTE_NOT_TAKEN',
+  'QUESTION_IN_QUESTIONNAIRE',
 ] as const;
 export type QuestionRefusalCode = (typeof questionRefusalCodes)[number];
 
@@ -299,6 +300,12 @@ export async function answerQuestion(args: AnswerInput) {
       .limit(1)
       .for('update');
     if (!row) throw new QuestionRefused(`no question ${args.questionId}`, 'QUESTION_NOT_FOUND');
+    // cm:guard a questionnaire item is answered with its whole batch, through the one submit
+    if (row.batchId)
+      throw new QuestionRefused(
+        `question ${row.id} is an item of questionnaire ${row.batchId}; answer it with its batch (POST …/questionnaires/${row.batchId}/answers)`,
+        'QUESTION_IN_QUESTIONNAIRE',
+      );
     const now = new Date();
     if (row.status !== 'open') {
       throw new QuestionRefused(

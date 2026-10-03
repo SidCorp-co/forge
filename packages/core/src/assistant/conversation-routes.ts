@@ -52,6 +52,8 @@ import { assertProjectRole, effectiveProjectRole, loadProjectAccess } from '../l
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { threadMarks } from '../onboarding/read.js';
+import { batchesOfConversation } from '../questionnaires/read.js';
 import {
   mayChangeMembership,
   readableConversation,
@@ -229,10 +231,12 @@ conversationRoutes.get(
     }
 
     const offset = (page - 1) * pageSize;
+    const pageRows = visible.slice(offset, offset + pageSize);
+    const marks = await threadMarks(pageRows);
     return c.json(
       listResponse(
         c,
-        visible.slice(offset, offset + pageSize),
+        pageRows.map((r) => ({ ...r, ...(marks.get(r.id) ?? { kind: null, threadStatus: null }) })),
         visible.length,
         fromPage(page, pageSize),
       ),
@@ -316,13 +320,16 @@ conversationRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
     const conversation = await readableConversation(id, userId);
-    const [participants, messages, scope, windows, agentTurns] = await Promise.all([
-      listParticipants(id),
-      readMessages(id, READ_WINDOW),
-      derivedScope(id),
-      listWindowsForConversation(id, WINDOW_PAGE),
-      readConversationAgentTurns(id),
-    ]);
+    const [participants, messages, scope, windows, agentTurns, questionnaires, marks] =
+      await Promise.all([
+        listParticipants(id),
+        readMessages(id, READ_WINDOW),
+        derivedScope(id),
+        listWindowsForConversation(id, WINDOW_PAGE),
+        readConversationAgentTurns(id),
+        batchesOfConversation(id),
+        threadMarks([conversation]),
+      ]);
     const scopeProjects = await projectsNamed(scope);
     return c.json({
       ...conversation,
@@ -334,6 +341,10 @@ conversationRoutes.get(
       participants: await withDisplayNames(participants),
       messages,
       windows,
+      // cm:why a questionnaire block names its batch; the batches ride the detail read so the card
+      // shows its live state and answers with the same socket invalidation as the messages
+      questionnaires,
+      ...(marks.get(id) ?? { kind: null, threadStatus: null }),
     });
   },
 );
