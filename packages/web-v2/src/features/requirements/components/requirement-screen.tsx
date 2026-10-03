@@ -2,21 +2,24 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { PageTitle } from "@/design";
+import { PageTitle, TopBarActions } from "@/design";
 import { useChatDockDoor } from "@/features/conversations/dock";
 import { useRequirement } from "../hooks";
 import { listOrigin, requirementsHref } from "../routes";
-import { RequirementPage } from "./requirement-detail";
-import { useAssistantDoor } from "./requirement-actions";
+import { useAssistantDoor, PrimaryActions } from "./requirement-actions";
+import { RequirementPage, useRequirementTab } from "./requirement-detail";
+import { StateBadge } from "./standing-bits";
 
-// cm:why the back control returns to the list view the page was opened from (its group, search and
-// peek ride the URL); there is no breadcrumb, and the top bar's Ask Agent opens this requirement's
-// BA assistant room through the ISS-58 door
+// cm:why the shell's top bar is the page's sticky header: the named back control (no breadcrumb), key,
+// title and state, and the one primary act; the bar's Ask Agent opens this requirement's BA
+// assistant room through the ISS-58 door
 export function RequirementScreen({ projectId, slug, reqKey }: { projectId: string; slug: string; reqKey: string }) {
   const q = useRequirement(projectId, reqKey);
+  const [tab, setTab] = useRequirementTab();
   const [back, setBack] = useState(requirementsHref(slug));
   useEffect(() => setBack(listOrigin(slug)), [slug]);
   useChatDockDoor(useAssistantDoor(projectId, reqKey));
+  const d = q.data;
   return (
     <div className="min-h-full bg-surface" data-testid="requirement-screen">
       <PageTitle
@@ -32,10 +35,25 @@ export function RequirementScreen({ projectId, slug, reqKey }: { projectId: stri
             Requirements
           </Link>
         }
+        after={
+          d ? (
+            <span className="flex flex-none items-center gap-2 max-md:hidden">
+              <span className="font-mono text-12 font-semibold text-muted" title={d.id}>
+                {d.key}
+              </span>
+              <StateBadge state={d.standing.state} />
+            </span>
+          ) : null
+        }
       >
-        {q.data?.title ?? reqKey}
+        {d?.title ?? reqKey}
       </PageTitle>
-      <RequirementPage projectId={projectId} slug={slug} reqKey={reqKey} />
+      {d ? (
+        <TopBarActions>
+          <PrimaryActions projectId={projectId} slug={slug} d={d} onReview={() => setTab("revisions")} />
+        </TopBarActions>
+      ) : null}
+      <RequirementPage projectId={projectId} slug={slug} reqKey={reqKey} tab={tab} onTab={setTab} />
     </div>
   );
 }

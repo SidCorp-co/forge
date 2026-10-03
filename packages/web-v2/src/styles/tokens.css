@@ -32,6 +32,7 @@
   --ink-900: #181B22;
   --ink-700: #3A404B;
   --ink-600: #5A616E;
+  --ink-550: #666D7A; /* --fg-subtle: 4.7:1 on --paper-100, the darkest ground small text sits on */
   --ink-500: #767D8A;
   --ink-400: #9AA0AB;
 
@@ -77,7 +78,7 @@
 
   --fg-default:    var(--ink-900);
   --fg-muted:      var(--ink-600);
-  --fg-subtle:     var(--ink-500);
+  --fg-subtle:     var(--ink-550);
   --fg-disabled:   var(--ink-400);
   --fg-on-accent:  #FFFFFF;
 
