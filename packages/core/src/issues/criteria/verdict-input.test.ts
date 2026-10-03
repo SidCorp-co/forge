@@ -74,6 +74,7 @@ describe('draftFromBlock (the comment fence dual path)', () => {
     runtime: null,
     source: null,
     design: null,
+    contract: null,
     why: 'not reachable from this box',
     cited: ['log.txt'],
   };
@@ -92,6 +93,12 @@ describe('draftFromBlock (the comment fence dual path)', () => {
     const d = draftFromBlock({ ...block, verdict: 'pass', source: '1810f84' });
     expect(d.identity).toEqual({ kind: 'commit', sha: '1810f84' });
     expect(verdictDraftFault(d)?.code).toBe('VERDICT_COMMIT_NOT_FULL');
+  });
+
+  it('reads a contract line as `<project>/<contract>` at its version', () => {
+    const d = draftFromBlock({ ...block, verdict: 'pass', contract: 'hop/postcare-api@1.1.0' });
+    expect(d.identity).toEqual({ kind: 'contract', ref: 'hop/postcare-api', version: '1.1.0' });
+    expect(verdictDraftFault(d)).toBeNull();
   });
 
   it('keeps a malformed design so its refusal names it', () => {

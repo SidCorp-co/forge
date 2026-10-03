@@ -64,6 +64,7 @@ ALTER TABLE "criterion_verdicts" ADD CONSTRAINT "criterion_verdicts_design_workf
 ALTER TABLE "criterion_verdicts" ADD CONSTRAINT "criterion_verdicts_author_user_id_users_id_fk" FOREIGN KEY ("author_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "criterion_verdicts" ADD CONSTRAINT "criterion_verdicts_comment_id_comments_id_fk" FOREIGN KEY ("comment_id") REFERENCES "public"."comments"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "issue_criteria" ADD CONSTRAINT "issue_criteria_issue_id_issues_id_fk" FOREIGN KEY ("issue_id") REFERENCES "public"."issues"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "issue_criteria" ADD CONSTRAINT "issue_criteria_requirement_criterion_fk" FOREIGN KEY ("requirement_criterion_id") REFERENCES "public"."requirement_criteria"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "criterion_verdicts_latest_idx" ON "criterion_verdicts" USING btree ("criterion_id","created_at");--> statement-breakpoint
 CREATE INDEX "criterion_verdicts_issue_idx" ON "criterion_verdicts" USING btree ("issue_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "issue_criteria_live_n_uq" ON "issue_criteria" USING btree ("issue_id","n") WHERE retired_at IS NULL;--> statement-breakpoint

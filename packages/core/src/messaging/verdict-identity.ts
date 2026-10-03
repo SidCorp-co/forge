@@ -16,6 +16,9 @@ export const SOURCE_FIELD = 'commit';
 /** The field a criterion block names the stored workflow design revision it was judged against:
  *  the identity of work that lands as a design rather than as commits (an issue outside git). */
 export const DESIGN_FIELD = 'design';
+/** The field a criterion block names the contract version it was judged against:
+ *  `<project slug>/<contract slug>@<version>`, a version the issue's project recorded. */
+export const CONTRACT_FIELD = 'contract';
 
 /** The field a criterion block cites what its verdict was taken from in. */
 export const EVIDENCE_FIELD = 'evidence';
@@ -29,7 +32,7 @@ const HEXADECIMAL = /^[0-9a-f]+$/iu;
 const RULE = 'verdict-identity';
 
 const SHAPE =
-  "a criterion block of a `verdict` record names what it was judged against: `runtime: <a whole object id>` for an identity something was observed serving, `commit: <at least seven hex characters>` for a source that was read, or `design: <workflow flow or id> rev <n>` for a workflow design revision this issue's project holds";
+  "a criterion block of a `verdict` record names what it was judged against: `runtime: <a whole object id>` for an identity something was observed serving, `commit: <at least seven hex characters>` for a source that was read, `design: <workflow flow or id> rev <n>` for a workflow design revision this issue's project holds, or `contract: <project>/<contract>@<version>` for a contract version this issue's project recorded";
 
 /** `<workflow flow or id> rev <n>`: the flow slug or the workflow's id, then its revision. */
 const DESIGN_SHAPE = /^(\S+)\s+rev\s+(\d+)$/u;
@@ -47,6 +50,26 @@ export function parseDesignIdentity(value: string | null | undefined): DesignIde
   const revision = Number.parseInt(match[2] as string, 10);
   if (!Number.isSafeInteger(revision) || revision < 1) return null;
   return { workflow: match[1] as string, revision };
+}
+
+/** `<project slug>/<contract slug>@<version>`: the reference the interface names a contract by, then a version. */
+const CONTRACT_SHAPE = /^([a-z][a-z0-9-]{0,62})\/([a-z][a-z0-9-]{0,62})@(\S{1,40})$/u;
+
+export interface ContractIdentity {
+  readonly project: string;
+  readonly contract: string;
+  readonly version: string;
+}
+
+/** The contract version a `contract:` value names, or null where it is not `<project>/<contract>@<version>`. */
+export function parseContractIdentity(value: string | null | undefined): ContractIdentity | null {
+  const match = CONTRACT_SHAPE.exec(String(value ?? '').trim());
+  if (!match) return null;
+  return {
+    project: match[1] as string,
+    contract: match[2] as string,
+    version: match[3] as string,
+  };
 }
 
 const EXAMPLE = [
@@ -119,6 +142,7 @@ export interface CriterionBlock {
   readonly design: string | null;
   /** The block's `why` line: the reason a `skipped` verdict must carry (ISS-55). */
   readonly why: string | null;
+  readonly contract: string | null;
   /** Everything this block cites, in the order written. An empty value cites nothing. */
   readonly cited: readonly string[];
 }
@@ -130,6 +154,7 @@ interface OpenBlock {
   source: string | null;
   design: string | null;
   why: string | null;
+  contract: string | null;
   cited: string[];
 }
 
@@ -160,6 +185,7 @@ export function criterionBlocksIn(record: ForgeRecord | null): CriterionBlock[] 
           source: null,
           design: null,
           why: null,
+          contract: null,
           cited: [],
         };
       }
@@ -171,6 +197,7 @@ export function criterionBlocksIn(record: ForgeRecord | null): CriterionBlock[] 
     else if (field.key === SOURCE_FIELD && block.source === null) block.source = value;
     else if (field.key === DESIGN_FIELD && block.design === null) block.design = value;
     else if (field.key === 'why' && block.why === null && value !== '') block.why = value;
+    else if (field.key === CONTRACT_FIELD && block.contract === null) block.contract = value;
     else if (field.key === EVIDENCE_FIELD && value !== '') block.cited.push(value);
   }
   close();
@@ -183,7 +210,12 @@ function refusal(why: string, quote: string): MessageRefusal {
 
 function refusalsForBlock(block: CriterionBlock): MessageRefusal[] {
   const out: MessageRefusal[] = [];
-  if (block.runtime === null && block.source === null && block.design === null) {
+  if (
+    block.runtime === null &&
+    block.source === null &&
+    block.design === null &&
+    block.contract === null
+  ) {
     out.push(
       refusal(
         `criterion ${block.criterion} carries a verdict and names nothing it was judged against — a verdict that keeps its claim and drops the moment cannot be told later from one taken against what is running`,
@@ -197,6 +229,14 @@ function refusalsForBlock(block: CriterionBlock): MessageRefusal[] {
       refusal(
         `criterion ${block.criterion}'s \`${DESIGN_FIELD}\` field holds \`${block.design}\`, which is not written as a design identity: it is the workflow's flow or id, the word \`rev\`, and a revision number of 1 or more`,
         `${DESIGN_FIELD}: ${block.design}`,
+      ),
+    );
+  }
+  if (block.contract !== null && parseContractIdentity(block.contract) === null) {
+    out.push(
+      refusal(
+        `criterion ${block.criterion}'s \`${CONTRACT_FIELD}\` field holds \`${block.contract}\`, which is not written as a contract identity: it is \`<project slug>/<contract slug>@<version>\`, the reference the interface names the contract by and a version recorded for it`,
+        `${CONTRACT_FIELD}: ${block.contract}`,
       ),
     );
   }

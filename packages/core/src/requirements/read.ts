@@ -1,0 +1,331 @@
+/**
+ * The reads of requirements: the list, the detail a person or an agent opens, and the helpers
+ * every write resolves a requirement and its signer with.
+ */
+
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
+import { db, type Tx } from '../db/client.js';
+import { issues } from '../db/schema.js';
+import {
+  type CriterionForm,
+  type DeliveryPhase,
+  type RequirementStatus,
+  type RevisionState,
+  requirementBaselinePins,
+  requirementBaselines,
+  requirementCriteria,
+  requirementDelivery,
+  requirementRevisions,
+  requirements,
+  requirementWorkflows,
+} from '../db/schema-requirements.js';
+import { projectWorkflows } from '../db/schema-workflows.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
+import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
+import { userNames } from '../workflows/service.js';
+import {
+  changedSincePlan,
+  type LinkedDesign,
+  type RequirementRefusal,
+  signoffRefusal,
+} from './rules.js';
+
+export interface RequirementActor {
+  userId: string;
+  agency: ActorAgency;
+}
+
+export interface RequirementSpec {
+  goal?: string | undefined;
+  personas?: string[] | undefined;
+  scopeIn?: string[] | undefined;
+  scopeOut?: string[] | undefined;
+}
+
+export type Row = typeof requirements.$inferSelect;
+export type RevisionRow = typeof requirementRevisions.$inferSelect;
+export type CriterionRow = typeof requirementCriteria.$inferSelect;
+
+export const notFound = (message: string) =>
+  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
+
+export const forbidden = (refusal: RequirementRefusal) =>
+  new HTTPException(403, {
+    message: refusal.detail,
+    cause: { code: refusal.code, details: { refusals: [refusal] } },
+  });
+
+export const requirementKey = (seq: number) => `REQ-${seq}`;
+
+/** A requirement of `projectId` by uuid, `REQ-n` or `n`; 404 otherwise. */
+export async function rowIn(tx: Tx, projectId: string, ref: string): Promise<Row> {
+  const seq = /^(?:REQ-)?(\d{1,9})$/i.exec(ref.trim())?.[1];
+  const uuid = /^[0-9a-f-]{36}$/i.test(ref) ? ref : null;
+  if (!seq && !uuid) throw notFound(`"${ref}" is neither a requirement uuid nor a key like REQ-12`);
+  const [row] = await tx
+    .select()
+    .from(requirements)
+    .where(
+      and(
+        eq(requirements.projectId, projectId),
+        seq ? eq(requirements.reqSeq, Number(seq)) : eq(requirements.id, uuid as string),
+      ),
+    );
+  if (!row) throw notFound(`project ${projectId} holds no requirement ${ref}`);
+  return row;
+}
+
+export async function signerRefusal(actor: RequirementActor, projectId: string, act: string) {
+  const access = await effectiveProjectRole(actor.userId, projectId);
+  return signoffRefusal(
+    { userId: actor.userId, agency: actor.agency, role: access?.role ?? null },
+    projectId,
+    act,
+  );
+}
+
+const rowsOfRevision = (rows: readonly CriterionRow[], revision: number) =>
+  rows
+    .filter(
+      (c) =>
+        c.sinceRevision <= revision && (c.retiredRevision === null || c.retiredRevision > revision),
+    )
+    .sort((a, b) => Number(a.code.slice(3)) - Number(b.code.slice(3)));
+
+const criterionView = (c: CriterionRow) => ({
+  id: c.id,
+  code: c.code,
+  body: c.body,
+  form: c.form as CriterionForm,
+  sinceRevision: c.sinceRevision,
+  retiredRevision: c.retiredRevision,
+});
+
+export async function linkedDesigns(tx: Tx, requirementId: string): Promise<LinkedDesign[]> {
+  const rows = await tx
+    .select({
+      workflowId: projectWorkflows.id,
+      flow: projectWorkflows.flow,
+      designStatus: projectWorkflows.designStatus,
+      approvedRevision: projectWorkflows.approvedRevision,
+    })
+    .from(requirementWorkflows)
+    .innerJoin(projectWorkflows, eq(projectWorkflows.id, requirementWorkflows.workflowId))
+    .where(eq(requirementWorkflows.requirementId, requirementId))
+    .orderBy(asc(projectWorkflows.flow));
+  return rows;
+}
+
+const deliveryOf = (
+  d:
+    | { phase: string | null; liveIssues: number; startedIssues: number; closedIssues: number }
+    | undefined,
+) => ({
+  phase: (d?.phase ?? null) as DeliveryPhase | null,
+  liveIssues: d?.liveIssues ?? 0,
+  startedIssues: d?.startedIssues ?? 0,
+  closedIssues: d?.closedIssues ?? 0,
+  // cm:why BC coverage needs issue criteria and verdicts (ISS-55); until they exist the phase reads
+  // issue statuses only, and says so rather than implying every BC was proven
+  criteriaCoverage: 'unmeasured' as const,
+});
+
+function summaryOf(
+  row: Row,
+  latest: { revision: number; state: RevisionState } | null,
+  delivery: ReturnType<typeof deliveryOf>,
+) {
+  return {
+    id: row.id,
+    key: requirementKey(row.reqSeq),
+    title: row.title,
+    status: row.status as RequirementStatus,
+    currentRevision: row.currentRevision,
+    latestRevision: latest,
+    delivery,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export type RequirementSummary = ReturnType<typeof summaryOf>;
+
+export async function listRequirementsAs(userId: string, projectId: string) {
+  await assertProjectAccess(projectId, userId, 'viewer');
+  const rows = await db
+    .select()
+    .from(requirements)
+    .where(eq(requirements.projectId, projectId))
+    .orderBy(desc(requirements.reqSeq));
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.id);
+  const [latest, delivery] = await Promise.all([
+    db
+      .selectDistinctOn([requirementRevisions.requirementId], {
+        requirementId: requirementRevisions.requirementId,
+        revision: requirementRevisions.revision,
+        state: requirementRevisions.state,
+      })
+      .from(requirementRevisions)
+      .where(inArray(requirementRevisions.requirementId, ids))
+      .orderBy(requirementRevisions.requirementId, desc(requirementRevisions.revision)),
+    db.select().from(requirementDelivery).where(inArray(requirementDelivery.requirementId, ids)),
+  ]);
+  const latestBy = new Map(latest.map((l) => [l.requirementId, l]));
+  const deliveryBy = new Map(delivery.map((d) => [d.requirementId, d]));
+  return rows.map((r) => {
+    const l = latestBy.get(r.id);
+    return summaryOf(
+      r,
+      l ? { revision: l.revision, state: l.state as RevisionState } : null,
+      deliveryOf(deliveryBy.get(r.id)),
+    );
+  });
+}
+
+export async function detailOf(row: Row, viewer: RequirementActor | null) {
+  const [revisions, criteria, designs, baselines, pins, linked, delivery, prefix] =
+    await Promise.all([
+      db
+        .select()
+        .from(requirementRevisions)
+        .where(eq(requirementRevisions.requirementId, row.id))
+        .orderBy(desc(requirementRevisions.revision)),
+      db.select().from(requirementCriteria).where(eq(requirementCriteria.requirementId, row.id)),
+      db
+        .select({
+          workflowId: projectWorkflows.id,
+          flow: projectWorkflows.flow,
+          title: sql<string | null>`${projectWorkflows.document}->>'title'`,
+          designStatus: projectWorkflows.designStatus,
+          approvedRevision: projectWorkflows.approvedRevision,
+        })
+        .from(requirementWorkflows)
+        .innerJoin(projectWorkflows, eq(projectWorkflows.id, requirementWorkflows.workflowId))
+        .where(eq(requirementWorkflows.requirementId, row.id))
+        .orderBy(asc(projectWorkflows.flow)),
+      db
+        .select()
+        .from(requirementBaselines)
+        .where(eq(requirementBaselines.requirementId, row.id))
+        .orderBy(desc(requirementBaselines.revision)),
+      db
+        .select({
+          revision: requirementBaselinePins.revision,
+          workflowId: requirementBaselinePins.workflowId,
+          flow: projectWorkflows.flow,
+          designRevision: requirementBaselinePins.designRevision,
+          providerProjectId: requirementBaselinePins.providerProjectId,
+          contractSlug: requirementBaselinePins.contractSlug,
+          contractVersion: requirementBaselinePins.contractVersion,
+        })
+        .from(requirementBaselinePins)
+        .leftJoin(projectWorkflows, eq(projectWorkflows.id, requirementBaselinePins.workflowId))
+        .where(eq(requirementBaselinePins.requirementId, row.id)),
+      db
+        .select({
+          id: issues.id,
+          issSeq: issues.issSeq,
+          title: issues.title,
+          status: issues.status,
+          plan: issues.plan,
+          plannedRevision: issues.plannedRevision,
+        })
+        .from(issues)
+        .where(eq(issues.requirementId, row.id))
+        .orderBy(asc(issues.issSeq)),
+      db.select().from(requirementDelivery).where(eq(requirementDelivery.requirementId, row.id)),
+      activeIssuePrefix(row.projectId),
+    ]);
+  const names = await userNames([
+    ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
+    ...baselines.map((b) => b.agreedBy),
+  ]);
+  const name = (id: string | null) => (id === null ? null : (names.get(id) ?? null));
+  const latest = revisions[0];
+  return {
+    ...summaryOf(
+      row,
+      latest ? { revision: latest.revision, state: latest.state as RevisionState } : null,
+      deliveryOf(delivery[0]),
+    ),
+    revisions: revisions.map((r) => revisionView(r, criteria, name)),
+    criteria:
+      row.currentRevision === null
+        ? []
+        : rowsOfRevision(criteria, row.currentRevision).map(criterionView),
+    workflows: designs.map((d) => ({ ...d, title: d.title ?? d.flow })),
+    baselines: baselines.map((b) => ({
+      revision: b.revision,
+      agreedBy: b.agreedBy,
+      agreedByName: name(b.agreedBy),
+      agreedAt: b.agreedAt.toISOString(),
+      reason: b.reason,
+      pins: pins
+        .filter((p) => p.revision === b.revision)
+        .map((p) => ({
+          kind: p.workflowId ? ('workflow-design' as const) : ('contract-version' as const),
+          workflowId: p.workflowId,
+          flow: p.flow,
+          designRevision: p.designRevision,
+          providerProjectId: p.providerProjectId,
+          contractSlug: p.contractSlug,
+          contractVersion: p.contractVersion,
+        })),
+    })),
+    issues: linked.map((i) => ({
+      issueId: i.id,
+      displayId: formatIssueRef(prefix, i.issSeq),
+      title: i.title,
+      status: i.status,
+      plannedRevision: i.plannedRevision,
+      changedSincePlan: changedSincePlan({
+        plan: i.plan,
+        plannedRevision: i.plannedRevision,
+        currentRevision: row.currentRevision,
+      }),
+    })),
+    canSignOff: viewer
+      ? (await signerRefusal(viewer, row.projectId, 'a sign-off')) === null
+      : false,
+  };
+}
+
+function revisionView(
+  r: RevisionRow,
+  criteria: readonly CriterionRow[],
+  name: (id: string | null) => string | null,
+) {
+  return {
+    revision: r.revision,
+    state: r.state as RevisionState,
+    baseRevision: r.baseRevision,
+    spec: r.spec as RequirementSpec,
+    tldr: r.tldr,
+    changeSummary: r.changeSummary,
+    reason: r.reason,
+    authorId: r.authorId,
+    authorName: name(r.authorId),
+    createdAt: r.createdAt.toISOString(),
+    proposedAt: r.proposedAt?.toISOString() ?? null,
+    decidedBy: r.decidedBy,
+    decidedByName: name(r.decidedBy),
+    decidedAt: r.decidedAt?.toISOString() ?? null,
+    returnReason: r.returnReason,
+    criteria: rowsOfRevision(criteria, r.revision).map(criterionView),
+  };
+}
+
+export type RequirementDetail = Awaited<ReturnType<typeof detailOf>>;
+
+export async function readRequirementAs(
+  viewer: RequirementActor,
+  projectId: string,
+  ref: string,
+): Promise<RequirementDetail> {
+  await assertProjectAccess(projectId, viewer.userId, 'viewer');
+  return detailOf(await rowIn(db, projectId, ref), viewer);
+}

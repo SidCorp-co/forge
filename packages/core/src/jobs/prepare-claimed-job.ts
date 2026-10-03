@@ -16,6 +16,14 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, issueLabels, issues, jobs, labels, runners } from '../db/schema.js';
 import {
+  contractsNamedIn,
+  type LoadedNamedContract,
+  loadNamedContracts,
+  NamedContractError,
+  recordNamedContracts,
+  renderNamedContracts,
+} from '../ecosystem/contract/named-context.js';
+import {
   type LoadedContract,
   pathsNamedIn,
   renderContractContext,
@@ -35,9 +43,15 @@ import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from '../runners/device-cap.j
 import {
   ArtifactContextError,
   type LoadedArtifact,
+  type LoadedRequirement,
+  RequirementContextError,
   renderArtifactContext,
 } from '../workflows/run-context.js';
-import { loadArtifactContext, recordArtifactContext } from '../workflows/run-context-service.js';
+import {
+  loadArtifactContext,
+  loadRequirementContext,
+  recordArtifactContext,
+} from '../workflows/run-context-service.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
 import { SKILL_MAINTENANCE_LABEL, withSkillMaintenanceCarveout } from './job-policy.js';
 import { loadPriorAttempts, renderPriorAttemptsBlock } from './prior-attempts.js';
@@ -187,6 +201,27 @@ async function contractsNamedBy(
   }
 }
 
+// cm:why a job is given the contract versions its issue names, the provider's and the in-project consumer's view alike, where path matching reaches only a link's call sites
+async function contractVersionsNamedBy(
+  job: typeof jobs.$inferSelect,
+  issue:
+    | { description: string | null; plan: string | null; acceptanceCriteria: string | null }
+    | undefined,
+): Promise<LoadedNamedContract[]> {
+  if (!issue) return [];
+  const text = [issue.description, issue.plan, issue.acceptanceCriteria].filter(Boolean).join('\n');
+  try {
+    return await loadNamedContracts(job.projectId, contractsNamedIn(text));
+  } catch (err) {
+    // cm:guard a named contract version that cannot be given, or is not approved, refuses the job by name: it would build against a contract nobody agreed
+    const code = err instanceof NamedContractError ? err.code : 'CONTRACT_CONTEXT_UNLOADABLE';
+    throw new Error(
+      `${code}: prepare refused job ${job.id}: the contract versions its issue names could not be given (${err instanceof Error ? err.message : String(err)})`,
+      { cause: err },
+    );
+  }
+}
+
 // cm:why a build job is given the design revision its approver approved, so it builds the journey it was held for rather than one it guesses at; an issue that builds no workflow is given nothing
 async function designsBuiltBy(job: typeof jobs.$inferSelect): Promise<LoadedArtifact[]> {
   if (!job.issueId) return [];
@@ -197,6 +232,23 @@ async function designsBuiltBy(job: typeof jobs.$inferSelect): Promise<LoadedArti
     const code = err instanceof ArtifactContextError ? err.code : 'ARTIFACT_CONTEXT_UNLOADABLE';
     throw new Error(
       `${code}: prepare refused job ${job.id}: the approved design its issue builds could not be given (${err instanceof Error ? err.message : String(err)})`,
+      { cause: err },
+    );
+  }
+}
+
+// cm:why a job on an issue that delivers a requirement is given its current revision's business criteria and the design revisions its baseline pins, so it builds what was agreed rather than what the description paraphrased
+async function requirementServedBy(
+  job: typeof jobs.$inferSelect,
+): Promise<LoadedRequirement | null> {
+  if (!job.issueId) return null;
+  try {
+    return await loadRequirementContext(job.issueId);
+  } catch (err) {
+    // cm:guard a requirement that cannot be given at its current revision stops the job by name: a run given a superseded or unagreed revision would build the wrong intent
+    const code = err instanceof RequirementContextError ? err.code : 'ARTIFACT_CONTEXT_UNLOADABLE';
+    throw new Error(
+      `${code}: prepare refused job ${job.id}: the requirement its issue delivers could not be given (${err instanceof Error ? err.message : String(err)})`,
       { cause: err },
     );
   }
@@ -258,15 +310,23 @@ export async function prepareClaimedJob(args: {
     activeIssuePrefix(job.projectId),
   ]);
   const designs = await designsBuiltBy(job);
+  const requirement = await requirementServedBy(job);
   const contracts = await contractsNamedBy(job, issueRow[0]);
+  const namedContracts = await contractVersionsNamedBy(job, issueRow[0]);
+  const artifactBlock =
+    [requirement?.text, renderArtifactContext(designs)].filter(Boolean).join('\n\n') || null;
   const { systemPrompt, blocks } = withContextBlock(
     withContextBlock(
-      { systemPrompt: preamble.content, blocks: preamble.blocks },
-      'artifact-context',
-      renderArtifactContext(designs),
+      withContextBlock(
+        { systemPrompt: preamble.content, blocks: preamble.blocks },
+        'artifact-context',
+        artifactBlock,
+      ),
+      'contract-context',
+      renderContractContext(contracts),
     ),
-    'contract-context',
-    renderContractContext(contracts),
+    'named-contract-context',
+    renderNamedContracts(job.projectId, namedContracts),
   );
 
   const payloadIn = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
@@ -305,8 +365,16 @@ export async function prepareClaimedJob(args: {
   if (!agentSessionId) {
     throw new Error(`prepare: no agent session could be created for job ${job.id}`);
   }
-  if (designs.length) await recordArtifactContext(agentSessionId, designs, 'workflow-builds');
+  if (designs.length || requirement) {
+    await recordArtifactContext(
+      agentSessionId,
+      designs,
+      requirement ? 'workflow-builds+requirement' : 'workflow-builds',
+      requirement,
+    );
+  }
   if (contracts.length) await recordContractContext(agentSessionId, contracts, 'issue-paths');
+  if (namedContracts.length) await recordNamedContracts(agentSessionId, namedContracts);
 
   return {
     jobId: job.id,

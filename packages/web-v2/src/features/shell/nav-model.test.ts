@@ -53,8 +53,16 @@ describe("the Ecosystem group", () => {
 });
 
 describe("the project menu", () => {
-  it("is Dashboard, Issues, Agents, Workflows, Automation and Releases, in that order", () => {
-    expect(PROJECT_MENU.map((e) => e.label)).toEqual(["Dashboard", "Issues", "Agents", "Workflows", "Automation", "Releases"]);
+  it("is Dashboard, Requirements, Workflows, Issues, Agents, Automation and Releases, in that order", () => {
+    expect(PROJECT_MENU.map((e) => e.label)).toEqual([
+      "Dashboard",
+      "Requirements",
+      "Workflows",
+      "Issues",
+      "Agents",
+      "Automation",
+      "Releases",
+    ]);
   });
 
   it("holds Schedules and Improvements under Automation, and nothing else there", () => {
@@ -75,13 +83,15 @@ describe("the project menu", () => {
     expect(existsSync(join(PROJECT_ROUTES, "library"))).toBe(false);
   });
 
-  it("lights each Automation page and Releases, a version address included", () => {
+  it("lights each Automation page, Releases, a version address included, Workflows and Requirements", () => {
     const at = (sub: string) => buildActiveKey(`/projects/forge-dev${sub}`, "forge-dev");
     expect(at("/automation/schedules")).toBe("proj-schedules");
     expect(at("/automation/improvements")).toBe("proj-improvements");
     expect(at("/releases")).toBe("proj-releases");
     expect(at("/releases/0.42.1")).toBe("proj-releases");
     expect(at("/workflows")).toBe("proj-workflows");
+    expect(at("/requirements")).toBe("proj-requirements");
+    expect(at("/requirements/REQ-3")).toBe("proj-requirements");
   });
 
   it("badges Issues with open issues and Releases with versions awaiting approval", () => {

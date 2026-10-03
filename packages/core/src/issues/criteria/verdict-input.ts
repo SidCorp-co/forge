@@ -8,13 +8,17 @@
  *   a commit is a whole 40-hex sha               VERDICT_COMMIT_NOT_FULL
  *   a runtime is a whole object id               VERDICT_RUNTIME_NOT_FULL
  *   a design is `<flow or id> rev <n>`           VERDICT_DESIGN_SHAPE
- *   a contract is `<ref>@<version>`              VERDICT_CONTRACT_SHAPE
+ *   a contract is `<project>/<contract>@<version>`  VERDICT_CONTRACT_SHAPE
  *
  * `commit_unresolved` is not an identity a writer can name: it exists only on backfilled rows.
  */
 
 import { verdictValues } from '../../db/schema-issue-criteria.js';
-import { type CriterionBlock, parseDesignIdentity } from '../../messaging/verdict-identity.js';
+import {
+  type CriterionBlock,
+  parseContractIdentity,
+  parseDesignIdentity,
+} from '../../messaging/verdict-identity.js';
 
 export type VerdictIdentity =
   | { readonly kind: 'commit'; readonly sha: string }
@@ -39,7 +43,8 @@ export type VerdictRefusalCode =
   | 'VERDICT_DESIGN_SHAPE'
   | 'VERDICT_CONTRACT_SHAPE'
   | 'VERDICT_CRITERION_UNKNOWN'
-  | 'VERDICT_DESIGN_UNKNOWN';
+  | 'VERDICT_DESIGN_UNKNOWN'
+  | 'VERDICT_CONTRACT_UNKNOWN';
 
 export interface VerdictRefusal {
   readonly code: VerdictRefusalCode;
@@ -85,12 +90,12 @@ function identityFault(criterion: number, identity: VerdictIdentity): VerdictRef
             `criterion ${criterion} names a design identity that is not \`<workflow flow or id> rev <n>\` with a revision of 1 or more.`,
           );
     case 'contract':
-      return !blank(identity.ref) && !blank(identity.version)
+      return parseContractIdentity(`${identity.ref.trim()}@${identity.version.trim()}`)
         ? null
         : refuse(
             'VERDICT_CONTRACT_SHAPE',
             criterion,
-            `criterion ${criterion} names a contract identity that is not \`<ref>@<version>\`.`,
+            `criterion ${criterion} names a contract identity that is not \`<project>/<contract>@<version>\`.`,
           );
   }
 }
@@ -117,7 +122,7 @@ export function verdictDraftFault(draft: VerdictDraft): VerdictRefusal | null {
     return refuse(
       'VERDICT_IDENTITY_REQUIRED',
       criterion,
-      `criterion ${criterion}'s \`${verdict}\` names nothing it was judged against: a whole commit sha, a runtime, a design (\`<flow> rev <n>\`) or a contract (\`<ref>@<version>\`).`,
+      `criterion ${criterion}'s \`${verdict}\` names nothing it was judged against: a whole commit sha, a runtime, a design (\`<flow> rev <n>\`) or a contract (\`<project>/<contract>@<version>\`).`,
     );
   }
   return identityFault(criterion, draft.identity);
@@ -125,11 +130,9 @@ export function verdictDraftFault(draft: VerdictDraft): VerdictRefusal | null {
 
 /**
  * The identity a comment fence's criterion block names, in the order the release hold prefers it
- * (`criteria-verdicts.ts:verdictPairsIn`): runtime, then commit, then design. A design written in
+ * (`criteria-verdicts.ts:verdictPairsIn`): runtime, then commit, then design, then contract. A design written in
  * the wrong shape is kept as a malformed draft so its refusal names it.
  *
- * cm:seam ISS-60 — `contract: <ref>@<version>` on a fence is ISS-60's block field; once
- * `criterionBlocksIn` carries it, it maps here to `{ kind: 'contract', ref, version }`.
  */
 export function identityFromBlock(block: CriterionBlock): VerdictIdentity | null {
   if (block.runtime !== null) return { kind: 'runtime', ref: block.runtime };
@@ -139,6 +142,16 @@ export function identityFromBlock(block: CriterionBlock): VerdictIdentity | null
     return design
       ? { kind: 'design', workflow: design.workflow, revision: design.revision }
       : { kind: 'design', workflow: '', revision: 0 };
+  }
+  if (block.contract !== null) {
+    const contract = parseContractIdentity(block.contract);
+    return contract
+      ? {
+          kind: 'contract',
+          ref: `${contract.project}/${contract.contract}`,
+          version: contract.version,
+        }
+      : { kind: 'contract', ref: block.contract, version: '' };
   }
   return null;
 }

@@ -332,9 +332,14 @@ export function renderArtifactContext(loaded: readonly LoadedArtifact[]): string
 }
 
 /** What the job's record keeps of the load: which revision of which design, how much, what was cut. */
-export function artifactContextRecord(loaded: readonly LoadedArtifact[], source: string) {
+export function artifactContextRecord(
+  loaded: readonly LoadedArtifact[],
+  source: string,
+  requirement: LoadedRequirement | null = null,
+) {
   return {
     source,
+    ...(requirement ? { requirement: requirementContextRecord(requirement) } : {}),
     loadedAt: new Date().toISOString(),
     capChars: ARTIFACT_CONTEXT_CAP_CHARS,
     artifacts: loaded.map((a) => ({
@@ -350,5 +355,162 @@ export function artifactContextRecord(loaded: readonly LoadedArtifact[], source:
       estTokens: a.estTokens,
       cut: a.cut,
     })),
+  };
+}
+
+export interface RequirementPinRow {
+  workflowId: string | null;
+  flow: string | null;
+  designRevision: number | null;
+  contractSlug: string | null;
+  contractVersion: string | null;
+  providerProjectId: string | null;
+}
+
+/** The requirement an issue delivers, read at its current revision with the baseline that pins it. */
+export interface RequirementContextRow {
+  requirementId: string;
+  key: string;
+  title: string;
+  status: string;
+  currentRevision: number | null;
+  /** The state the head revision's row holds; anything but `current` is refused. */
+  headState: string | null;
+  tldr: string | null;
+  goal: string | null;
+  criteria: { id: string; code: string; body: string; form: string }[];
+  baseline: {
+    revision: number;
+    agreedAt: string;
+    pins: RequirementPinRow[];
+  } | null;
+  plannedRevision: number | null;
+  plan: string | null;
+}
+
+export interface LoadedRequirement {
+  requirementId: string;
+  key: string;
+  revision: number;
+  baselineRevision: number;
+  plannedRevision: number | null;
+  changedSincePlan: boolean;
+  criteria: { id: string; code: string }[];
+  pins: RequirementPinRow[];
+  text: string;
+  chars: number;
+  estTokens: number;
+}
+
+// cm:why one requirement's revision, criteria and pins; a requirement past it is refused whole, never cut, since a criterion left out is one the run would not build to
+export const REQUIREMENT_CONTEXT_CAP_CHARS = 12_000;
+
+/** A requirement the job cannot be given at its current revision, refused by name. */
+export class RequirementContextError extends Error {
+  readonly code:
+    | 'REQUIREMENT_REVISION_NOT_CURRENT'
+    | 'REQUIREMENT_NOT_AGREED'
+    | 'ARTIFACT_CONTEXT_OVER_BUDGET';
+  constructor(code: RequirementContextError['code'], key: string, reason: string) {
+    super(`${code}: requirement ${key}: ${reason}`);
+    this.name = 'RequirementContextError';
+    this.code = code;
+  }
+}
+
+// cm:guard a job loads only the current revision and the baseline agreed at it: a head that is not current, or a latest baseline pinning another revision, is refused REQUIREMENT_REVISION_NOT_CURRENT
+export function requirementContext(row: RequirementContextRow | null): LoadedRequirement | null {
+  if (!row) return null;
+  if (row.currentRevision === null || row.headState !== 'current') {
+    throw new RequirementContextError(
+      'REQUIREMENT_REVISION_NOT_CURRENT',
+      row.key,
+      `its head is ${row.currentRevision === null ? 'not set' : `revision ${row.currentRevision} in state ${row.headState ?? 'unknown'}`}; a job is given only a current revision`,
+    );
+  }
+  if (!row.baseline) {
+    throw new RequirementContextError(
+      'REQUIREMENT_NOT_AGREED',
+      row.key,
+      `it is ${row.status} with no baseline; a job builds an agreed requirement`,
+    );
+  }
+  if (row.baseline.revision !== row.currentRevision) {
+    throw new RequirementContextError(
+      'REQUIREMENT_REVISION_NOT_CURRENT',
+      row.key,
+      `its latest baseline pins revision ${row.baseline.revision}, but the current revision is ${row.currentRevision}; the current revision is re-agreed before a job is given it`,
+    );
+  }
+  const changed = !!row.plan?.trim() && row.plannedRevision !== row.currentRevision;
+  const lines = [
+    `## The requirement this issue delivers`,
+    `${row.key} · ${row.title} — current revision ${row.currentRevision}, agreed (baseline r${row.baseline.revision}, ${row.baseline.agreedAt}).`,
+  ];
+  if (row.tldr) lines.push(row.tldr);
+  if (row.goal) lines.push(`Goal: ${row.goal}`);
+  lines.push(
+    changed
+      ? `REQUIREMENT_CHANGED_SINCE_PLAN: this issue's plan was written against ${row.plannedRevision === null ? 'no revision' : `revision ${row.plannedRevision}`}; re-plan against revision ${row.currentRevision} before building.`
+      : row.plannedRevision !== null
+        ? `This issue's plan was written against revision ${row.plannedRevision}, the current one.`
+        : 'No plan has been written against it yet; a plan written now records revision ' +
+          `${row.currentRevision}.`,
+  );
+  lines.push(
+    '',
+    'Business criteria (each issue criterion traces to one of these codes):',
+    ...row.criteria.map(
+      (c) =>
+        `- ${c.code}${c.form === 'scenario' ? ' (scenario)' : ''}: ${c.body.replace(/\n/g, '\n  ')}`,
+    ),
+  );
+  if (row.baseline.pins.length) {
+    lines.push(
+      '',
+      'Pinned at the agree (build to these revisions):',
+      ...row.baseline.pins.map((p) =>
+        p.workflowId
+          ? `- design \`${p.flow ?? p.workflowId}\` at revision ${p.designRevision} — ${fetchLine(p.workflowId)}`
+          : `- contract \`${p.contractSlug}\`@${p.contractVersion} (provider ${p.providerProjectId})`,
+      ),
+    );
+  }
+  const text = lines.join('\n');
+  if (text.length > REQUIREMENT_CONTEXT_CAP_CHARS) {
+    throw new RequirementContextError(
+      'ARTIFACT_CONTEXT_OVER_BUDGET',
+      row.key,
+      `its revision, criteria and pins take ${text.length} chars, over the ${REQUIREMENT_CONTEXT_CAP_CHARS}-char requirement budget`,
+    );
+  }
+  return {
+    requirementId: row.requirementId,
+    key: row.key,
+    revision: row.currentRevision,
+    baselineRevision: row.baseline.revision,
+    plannedRevision: row.plannedRevision,
+    changedSincePlan: changed,
+    criteria: row.criteria.map((c) => ({ id: c.id, code: c.code })),
+    pins: row.baseline.pins,
+    text,
+    chars: text.length,
+    estTokens: estimateTokens(text),
+  };
+}
+
+/** What the job's record keeps of the requirement it was given. */
+export function requirementContextRecord(loaded: LoadedRequirement) {
+  return {
+    requirementId: loaded.requirementId,
+    key: loaded.key,
+    revision: loaded.revision,
+    baselineRevision: loaded.baselineRevision,
+    plannedRevision: loaded.plannedRevision,
+    changedSincePlan: loaded.changedSincePlan,
+    criteria: loaded.criteria,
+    pins: loaded.pins,
+    chars: loaded.chars,
+    estTokens: loaded.estTokens,
   };
 }

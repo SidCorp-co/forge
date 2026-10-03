@@ -45,9 +45,10 @@ export const AUTOMATION_GROUP_KEY = "automation";
 
 export const PROJECT_MENU: ProjEntry[] = [
   { key: "proj-overview", label: "Dashboard", icon: "grid", sub: "" },
+  { key: "proj-requirements", label: "Requirements", icon: "book", sub: "/requirements" },
+  { key: "proj-workflows", label: "Workflows", icon: "flow", sub: "/workflows" },
   { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
   { key: "proj-agents", label: "Agents", icon: "agent", sub: "/agents" },
-  { key: "proj-workflows", label: "Workflows", icon: "flow", sub: "/workflows" },
   {
     key: AUTOMATION_GROUP_KEY,
     label: "Automation",

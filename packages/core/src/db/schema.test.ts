@@ -360,9 +360,15 @@ describe('db/schema — issues', () => {
     expect(p.enumValues).toEqual([...issuePriorities]);
   });
 
-  it('FKs: project cascade, assignee set null, created_by restrict, created_by_device and release batch run set null', () => {
+  it('FKs: project cascade, assignee set null, created_by restrict, created_by_device and release batch run set null, requirement and planned revision refuse a delete', () => {
     const cfg = getTableConfig(issues);
-    expect(cfg.foreignKeys).toHaveLength(5);
+    expect(cfg.foreignKeys).toHaveLength(7);
+    const planned = cfg.foreignKeys.find((fk) => fk.getName() === 'issues_planned_revision_fk');
+    expect(planned?.reference().columns.map((c) => c.name)).toEqual([
+      'requirement_id',
+      'planned_revision',
+    ]);
+    expect(planned?.onDelete ?? 'no action').toBe('no action');
     const byCol = new Map(
       cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
     );
@@ -371,6 +377,7 @@ describe('db/schema — issues', () => {
     expect(byCol.get('created_by_id')?.onDelete).toBe('restrict');
     expect(byCol.get('release_batch_run_id')?.onDelete).toBe('set null');
     expect(byCol.get('created_by_device_id')?.onDelete).toBe('set null');
+    expect(byCol.get('requirement_id')?.onDelete ?? 'no action').toBe('no action');
   });
 
   it('has unique index on (project_id, iss_seq) and named indexes', () => {

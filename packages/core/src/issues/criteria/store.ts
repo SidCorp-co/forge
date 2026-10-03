@@ -17,6 +17,7 @@ import {
   type VerdictIdentityKind,
   type VerdictValue,
 } from '../../db/schema-issue-criteria.js';
+import { dbContractLookup } from '../../messaging/verdict-contract.js';
 import { dbDesignLookup } from '../../messaging/verdict-design.js';
 import type { ActorAgency } from '../actor-agency.js';
 import {
@@ -328,13 +329,26 @@ async function identityColumns(
       return { identityKind: 'commit', commitSha: identity.sha.trim().toLowerCase() };
     case 'runtime':
       return { identityKind: 'runtime', runtimeRef: identity.ref.trim().toLowerCase() };
-    case 'contract':
-      // cm:seam ISS-60 — shape only here; ISS-60's contract reader checks the version exists.
+    case 'contract': {
+      const [project = '', contract = ''] = identity.ref.trim().split('/');
+      const held = await dbContractLookup(tx)(projectId, {
+        project,
+        contract,
+        version: identity.version.trim(),
+      });
+      if (!held.named) {
+        throw new VerdictRefused({
+          code: 'VERDICT_CONTRACT_UNKNOWN',
+          criterion: draft.criterion,
+          detail: `criterion ${draft.criterion} names contract \`${identity.ref}@${identity.version}\`, which this issue's project (\`${held.projectSlug}\`) has not recorded; versions recorded: ${held.versions.join(', ') || 'none'}.`,
+        });
+      }
       return {
         identityKind: 'contract',
         contractRef: identity.ref.trim(),
         contractVersion: identity.version.trim(),
       };
+    }
     case 'design': {
       const found = await dbDesignLookup(tx)(projectId, identity.workflow);
       if (

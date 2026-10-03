@@ -59,6 +59,7 @@ import type { IssueBranchOverride } from '../branches/resolve.js';
 import { COMMENT_INTENTS } from '../issues/record-events/kinds.js';
 import type { ReleaseNotes } from '../issues/release-notes.js';
 import { activityLog, actorAgencies } from './schema-activity.js';
+import { requirementRevisions, requirements } from './schema-requirements.js';
 
 export {
   type ActorType,
@@ -1043,6 +1044,10 @@ export const issues = pgTable(
     releaseBatchRunId: uuid('release_batch_run_id').references(() => pipelineRuns.id, {
       onDelete: 'set null',
     }),
+    // cm:why optional: a maintenance issue serves no requirement. planned_revision is the requirement
+    // revision the plan was written against, set when the plan is written (ISS-57)
+    requirementId: uuid('requirement_id').references(() => requirements.id),
+    plannedRevision: integer('planned_revision'),
     identSearch: identSearchColumn(
       (): SQL =>
         sql`left(${issues.title} || ' ' || coalesce(${issues.description}, '') || ' ' || coalesce(${issues.plan}, '') || ' ' || coalesce(${issues.acceptanceCriteria}, ''), 100000)`,
@@ -1084,6 +1089,18 @@ export const issues = pgTable(
       .on(t.releaseBatchRunId)
       .where(sql`release_batch_run_id IS NOT NULL`),
     archivedAtIdx: index('issues_archived_at_idx').on(t.archivedAt),
+    requirementIdx: index('issues_requirement_idx')
+      .on(t.requirementId)
+      .where(sql`requirement_id IS NOT NULL`),
+    plannedRevisionFk: foreignKey({
+      name: 'issues_planned_revision_fk',
+      columns: [t.requirementId, t.plannedRevision],
+      foreignColumns: [requirementRevisions.requirementId, requirementRevisions.revision],
+    }),
+    plannedRevisionChk: check(
+      'issues_planned_revision_chk',
+      sql`${t.plannedRevision} IS NULL OR ${t.requirementId} IS NOT NULL`,
+    ),
   }),
 );
 

@@ -4,7 +4,9 @@ import {
   ARTIFACT_CONTEXT_CAP_CHARS,
   artifactContext,
   artifactContextRecord,
+  type RequirementContextRow,
   renderArtifactContext,
+  requirementContext,
   type TracedDesignRow,
 } from './run-context.js';
 
@@ -180,5 +182,96 @@ describe('a design over the budget is trimmed by rule, and every cut is named', 
     expect(() => artifactContext([traced()], 200)).toThrow(
       /^ARTIFACT_CONTEXT_OVER_BUDGET: workflow-design post-discharge@1 .*200-char share/,
     );
+  });
+});
+
+describe('requirementContext (ISS-57)', () => {
+  const row = (over: Partial<RequirementContextRow> = {}): RequirementContextRow => ({
+    requirementId: 'r1',
+    key: 'REQ-12',
+    title: 'Follow-up reminders',
+    status: 'agreed',
+    currentRevision: 4,
+    headState: 'current',
+    tldr: 'Patients get reminded before a follow-up visit.',
+    goal: null,
+    criteria: [
+      { id: 'c1', code: 'BC-1', body: 'An SMS is sent 3 days before', form: 'statement' },
+      {
+        id: 'c2',
+        code: 'BC-3',
+        body: 'Given a visit\nWhen 3 days remain\nThen an SMS',
+        form: 'scenario',
+      },
+    ],
+    baseline: {
+      revision: 4,
+      agreedAt: '2026-10-03T00:00:00.000Z',
+      pins: [
+        {
+          workflowId: 'w1',
+          flow: 'discharge',
+          designRevision: 3,
+          contractSlug: null,
+          contractVersion: null,
+          providerProjectId: null,
+        },
+      ],
+    },
+    plannedRevision: 4,
+    plan: 'the plan',
+    ...over,
+  });
+
+  it('gives nothing for an issue that delivers no requirement', () => {
+    expect(requirementContext(null)).toBeNull();
+  });
+
+  it('gives the current revision, its criteria and the pinned design revisions, and records them', () => {
+    const loaded = requirementContext(row());
+    expect(loaded?.revision).toBe(4);
+    expect(loaded?.text).toContain('BC-1: An SMS is sent 3 days before');
+    expect(loaded?.text).toContain('BC-3 (scenario)');
+    expect(loaded?.text).toContain('design `discharge` at revision 3');
+    expect(loaded?.changedSincePlan).toBe(false);
+    const record = artifactContextRecord([], 'workflow-builds+requirement', loaded ?? null);
+    expect(record.requirement).toMatchObject({
+      key: 'REQ-12',
+      revision: 4,
+      baselineRevision: 4,
+      criteria: [
+        { id: 'c1', code: 'BC-1' },
+        { id: 'c2', code: 'BC-3' },
+      ],
+    });
+  });
+
+  it('refuses a head that is not current (REQUIREMENT_REVISION_NOT_CURRENT)', () => {
+    expect(() => requirementContext(row({ headState: 'superseded' }))).toThrow(
+      /REQUIREMENT_REVISION_NOT_CURRENT/,
+    );
+    expect(() => requirementContext(row({ currentRevision: null, headState: null }))).toThrow(
+      /REQUIREMENT_REVISION_NOT_CURRENT/,
+    );
+  });
+
+  it('refuses a latest baseline that pins another revision than the current one', () => {
+    expect(() =>
+      requirementContext(
+        row({ baseline: { revision: 3, agreedAt: '2026-10-01T00:00:00.000Z', pins: [] } }),
+      ),
+    ).toThrow(
+      /REQUIREMENT_REVISION_NOT_CURRENT: requirement REQ-12: its latest baseline pins revision 3/,
+    );
+  });
+
+  it('refuses a requirement with no baseline (REQUIREMENT_NOT_AGREED)', () => {
+    expect(() => requirementContext(row({ baseline: null }))).toThrow(/REQUIREMENT_NOT_AGREED/);
+  });
+
+  it('tells the run when the requirement changed since its plan', () => {
+    const loaded = requirementContext(row({ plannedRevision: 3 }));
+    expect(loaded?.changedSincePlan).toBe(true);
+    expect(loaded?.text).toContain('REQUIREMENT_CHANGED_SINCE_PLAN');
   });
 });

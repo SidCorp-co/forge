@@ -8,6 +8,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   pgTable,
@@ -17,6 +18,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { comments, issues, users } from './schema.js';
+import { requirementCriteria } from './schema-requirements.js';
 import { projectWorkflows } from './schema-workflows.js';
 
 export const issueCriteria = pgTable(
@@ -30,13 +32,17 @@ export const issueCriteria = pgTable(
     n: integer('n').notNull(),
     statement: text('statement').notNull(),
     position: integer('position').notNull(),
-    // cm:seam ISS-57 — the requirement criterion (BC-n) this issue criterion proves. The FK to
-    // `requirement_criteria` lands with ISS-57's table; until then it is a bare nullable uuid.
+    /** The requirement criterion (BC-n wording, ISS-57) this issue criterion proves, if any. */
     requirementCriterionId: uuid('requirement_criterion_id'),
     retiredAt: timestamp('retired_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    requirementFk: foreignKey({
+      name: 'issue_criteria_requirement_criterion_fk',
+      columns: [t.requirementCriterionId],
+      foreignColumns: [requirementCriteria.id],
+    }).onDelete('restrict'),
     nChk: check('issue_criteria_n_chk', sql`${t.n} >= 1`),
     statementChk: check('issue_criteria_statement_chk', sql`${t.statement} ~ '[^[:space:]]'`),
     liveNUq: uniqueIndex('issue_criteria_live_n_uq')

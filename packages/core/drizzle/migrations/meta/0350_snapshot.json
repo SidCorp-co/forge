@@ -1,6 +1,6 @@
 {
-  "id": "ffc1ec70-ba36-4994-833a-59367b2e76de",
-  "prevId": "085a2f57-f59e-40b5-8915-c74eb84a46fe",
+  "id": "1e3dfd9d-0ecc-47ff-a21a-e218853ada49",
+  "prevId": "dd21b9f8-a61b-4c61-abe0-e7466002acac",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4626,6 +4626,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "requirement_id": {
+          "name": "requirement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "planned_revision": {
+          "name": "planned_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "ident_search": {
           "name": "ident_search",
           "type": "tsvector",
@@ -4890,6 +4902,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "issues_requirement_idx": {
+          "name": "issues_requirement_idx",
+          "columns": [
+            {
+              "expression": "requirement_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "requirement_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -4957,6 +4985,34 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "issues_requirement_id_requirements_id_fk": {
+          "name": "issues_requirement_id_requirements_id_fk",
+          "tableFrom": "issues",
+          "tableTo": "requirements",
+          "columnsFrom": [
+            "requirement_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "issues_planned_revision_fk": {
+          "name": "issues_planned_revision_fk",
+          "tableFrom": "issues",
+          "tableTo": "requirement_revisions",
+          "columnsFrom": [
+            "requirement_id",
+            "planned_revision"
+          ],
+          "columnsTo": [
+            "requirement_id",
+            "revision"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -4970,6 +5026,10 @@
         "issues_merged_landing_chk": {
           "name": "issues_merged_landing_chk",
           "value": "\"issues\".\"merged_landing\" IS NULL OR (\"issues\".\"merged_at\" IS NOT NULL AND \"issues\".\"merged_landing\" ~ '[^[:space:]]' AND char_length(\"issues\".\"merged_landing\") <= 2000)"
+        },
+        "issues_planned_revision_chk": {
+          "name": "issues_planned_revision_chk",
+          "value": "\"issues\".\"planned_revision\" IS NULL OR \"issues\".\"requirement_id\" IS NOT NULL"
         }
       },
       "isRLSEnabled": false
@@ -14675,6 +14735,37 @@
           "type": "text[]",
           "primaryKey": false,
           "notNull": false
+        },
+        "approval": {
+          "name": "approval",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'proposed'"
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_as": {
+          "name": "decided_as",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decision_reason": {
+          "name": "decision_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -14732,6 +14823,19 @@
           ],
           "onDelete": "restrict",
           "onUpdate": "no action"
+        },
+        "contract_versions_decided_by_users_id_fk": {
+          "name": "contract_versions_decided_by_users_id_fk",
+          "tableFrom": "contract_versions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "decided_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -14747,6 +14851,22 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "contract_versions_approval_chk": {
+          "name": "contract_versions_approval_chk",
+          "value": "\"contract_versions\".\"approval\" IN ('proposed', 'approved', 'returned')"
+        },
+        "contract_versions_decided_chk": {
+          "name": "contract_versions_decided_chk",
+          "value": "(\"contract_versions\".\"approval\" = 'proposed') = (\"contract_versions\".\"decided_at\" IS NULL AND \"contract_versions\".\"decided_as\" IS NULL)"
+        },
+        "contract_versions_decided_as_chk": {
+          "name": "contract_versions_decided_as_chk",
+          "value": "\"contract_versions\".\"decided_as\" IS NULL OR (\"contract_versions\".\"decided_as\" IN ('person', 'agent') AND \"contract_versions\".\"decided_by\" IS NOT NULL) OR (\"contract_versions\".\"decided_as\" = 'before-approval' AND \"contract_versions\".\"decided_by\" IS NULL)"
+        },
+        "contract_versions_returned_chk": {
+          "name": "contract_versions_returned_chk",
+          "value": "\"contract_versions\".\"approval\" <> 'returned' OR (\"contract_versions\".\"decision_reason\" IS NOT NULL AND length(\"contract_versions\".\"decision_reason\") BETWEEN 1 AND 2000)"
+        },
         "contract_versions_classification_chk": {
           "name": "contract_versions_classification_chk",
           "value": "\"contract_versions\".\"classification\" IN ('breaking', 'non-breaking', 'unknown', 'initial')"
@@ -15724,7 +15844,7 @@
           "name": "ecosystem_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "consumer_project_id": {
           "name": "consumer_project_id",
@@ -15941,9 +16061,9 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "ecosystem_links_not_self_chk": {
-          "name": "ecosystem_links_not_self_chk",
-          "value": "\"ecosystem_links\".\"consumer_project_id\" <> \"ecosystem_links\".\"provider_project_id\""
+        "ecosystem_links_scope_chk": {
+          "name": "ecosystem_links_scope_chk",
+          "value": "(\"ecosystem_links\".\"consumer_project_id\" <> \"ecosystem_links\".\"provider_project_id\") = (\"ecosystem_links\".\"ecosystem_id\" IS NOT NULL)"
         },
         "ecosystem_links_state_chk": {
           "name": "ecosystem_links_state_chk",
@@ -16410,6 +16530,888 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.requirement_baseline_pins": {
+      "name": "requirement_baseline_pins",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "requirement_id": {
+          "name": "requirement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workflow_id": {
+          "name": "workflow_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "design_revision": {
+          "name": "design_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_project_id": {
+          "name": "provider_project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contract_slug": {
+          "name": "contract_slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contract_version": {
+          "name": "contract_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "requirement_baseline_pins_baseline_idx": {
+          "name": "requirement_baseline_pins_baseline_idx",
+          "columns": [
+            {
+              "expression": "requirement_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "revision",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "requirement_baseline_pins_baseline_fk": {
+          "name": "requirement_baseline_pins_baseline_fk",
+          "tableFrom": "requirement_baseline_pins",
+          "tableTo": "requirement_baselines",
+          "columnsFrom": [
+            "requirement_id",
+            "revision"
+          ],
+          "columnsTo": [
+            "requirement_id",
+            "revision"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "requirement_baseline_pins_design_fk": {
+          "name": "requirement_baseline_pins_design_fk",
+          "tableFrom": "requirement_baseline_pins",
+          "tableTo": "project_workflow_designs",
+          "columnsFrom": [
+            "workflow_id",
+            "design_revision"
+          ],
+          "columnsTo": [
+            "workflow_id",
+            "revision"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "requirement_baseline_pins_contract_fk": {
+          "name": "requirement_baseline_pins_contract_fk",
+          "tableFrom": "requirement_baseline_pins",
+          "tableTo": "contract_versions",
+          "columnsFrom": [
+            "provider_project_id",
+            "contract_slug",
+            "contract_version"
+          ],
+          "columnsTo": [
+            "provider_project_id",
+            "contract_slug",
+            "version"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "requirement_baseline_pins_arc_chk": {
+          "name": "requirement_baseline_pins_arc_chk",
+          "value": "(num_nonnulls(\"requirement_baseline_pins\".\"workflow_id\", \"requirement_baseline_pins\".\"design_revision\") = 2 AND num_nonnulls(\"requirement_baseline_pins\".\"provider_project_id\", \"requirement_baseline_pins\".\"contract_slug\", \"requirement_baseline_pins\".\"contract_version\") = 0) OR (num_nonnulls(\"requirement_baseline_pins\".\"workflow_id\", \"requirement_baseline_pins\".\"design_revision\") = 0 AND num_nonnulls(\"requirement_baseline_pins\".\"provider_project_id\", \"requirement_baseline_pins\".\"contract_slug\", \"requirement_baseline_pins\".\"contract_version\") = 3)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.requirement_baselines": {
+      "name": "requirement_baselines",
+      "schema": "",
+      "columns": {
+        "requirement_id": {
+          "name": "requirement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agreed_by": {
+          "name": "agreed_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agreed_at": {
+          "name": "agreed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "requirement_baselines_agreed_by_users_id_fk": {
+          "name": "requirement_baselines_agreed_by_users_id_fk",
+          "tableFrom": "requirement_baselines",
+          "tableTo": "users",
+          "columnsFrom": [
+            "agreed_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "requirement_baselines_revision_fk": {
+          "name": "requirement_baselines_revision_fk",
+          "tableFrom": "requirement_baselines",
+          "tableTo": "requirement_revisions",
+          "columnsFrom": [
+            "requirement_id",
+            "revision"
+          ],
+          "columnsTo": [
+            "requirement_id",
+            "revision"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "requirement_baselines_requirement_id_revision_pk": {
+          "name": "requirement_baselines_requirement_id_revision_pk",
+          "columns": [
+            "requirement_id",
+            "revision"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.requirement_criteria": {
+      "name": "requirement_criteria",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "requirement_id": {
+          "name": "requirement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "form": {
+          "name": "form",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'statement'"
+        },
+        "since_revision": {
+          "name": "since_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "retired_revision": {
+          "name": "retired_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "requirement_criteria_live_code_uq": {
+          "name": "requirement_criteria_live_code_uq",
+          "columns": [
+            {
+              "expression": "requirement_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "retired_revision IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "requirement_criteria_wording_uq": {
+          "name": "requirement_criteria_wording_uq",
+          "columns": [
+            {
+              "expression": "requirement_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "since_revision",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "requirement_criteria_requirement_id_requirements_id_fk": {
+          "name": "requirement_criteria_requirement_id_requirements_id_fk",
+          "tableFrom": "requirement_criteria",
+          "tableTo": "requirements",
+          "columnsFrom": [
+            "requirement_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "requirement_criteria_since_fk": {
+          "name": "requirement_criteria_since_fk",
+          "tableFrom": "requirement_criteria",
+          "tableTo": "requirement_revisions",
+          "columnsFrom": [
+            "requirement_id",
+            "since_revision"
+          ],
+          "columnsTo": [
+            "requirement_id",
+            "revision"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "requirement_criteria_code_chk": {
+          "name": "requirement_criteria_code_chk",
+          "value": "\"requirement_criteria\".\"code\" ~ '^BC-[1-9][0-9]*$'"
+        },
+        "requirement_criteria_form_chk": {
+          "name": "requirement_criteria_form_chk",
+          "value": "\"requirement_criteria\".\"form\" IN ('statement', 'scenario')"
+        },
+        "requirement_criteria_body_chk": {
+          "name": "requirement_criteria_body_chk",
+          "value": "\"requirement_criteria\".\"body\" ~ '[^[:space:]]'"
+        },
+        "requirement_criteria_retired_chk": {
+          "name": "requirement_criteria_retired_chk",
+          "value": "\"requirement_criteria\".\"retired_revision\" IS NULL OR \"requirement_criteria\".\"retired_revision\" > \"requirement_criteria\".\"since_revision\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.requirement_revisions": {
+      "name": "requirement_revisions",
+      "schema": "",
+      "columns": {
+        "requirement_id": {
+          "name": "requirement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "base_revision": {
+          "name": "base_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "spec": {
+          "name": "spec",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "spec_version": {
+          "name": "spec_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "tldr": {
+          "name": "tldr",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "change_summary": {
+          "name": "change_summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "author_id": {
+          "name": "author_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "proposed_at": {
+          "name": "proposed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "proposed_by": {
+          "name": "proposed_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "return_reason": {
+          "name": "return_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "requirement_revisions_one_current_uq": {
+          "name": "requirement_revisions_one_current_uq",
+          "columns": [
+            {
+              "expression": "requirement_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "state = 'current'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "requirement_revisions_one_open_uq": {
+          "name": "requirement_revisions_one_open_uq",
+          "columns": [
+            {
+              "expression": "requirement_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "state IN ('draft', 'proposed')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "requirement_revisions_requirement_id_requirements_id_fk": {
+          "name": "requirement_revisions_requirement_id_requirements_id_fk",
+          "tableFrom": "requirement_revisions",
+          "tableTo": "requirements",
+          "columnsFrom": [
+            "requirement_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "requirement_revisions_author_id_users_id_fk": {
+          "name": "requirement_revisions_author_id_users_id_fk",
+          "tableFrom": "requirement_revisions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "author_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "requirement_revisions_proposed_by_users_id_fk": {
+          "name": "requirement_revisions_proposed_by_users_id_fk",
+          "tableFrom": "requirement_revisions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "proposed_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "requirement_revisions_decided_by_users_id_fk": {
+          "name": "requirement_revisions_decided_by_users_id_fk",
+          "tableFrom": "requirement_revisions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "decided_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "requirement_revisions_requirement_id_revision_pk": {
+          "name": "requirement_revisions_requirement_id_revision_pk",
+          "columns": [
+            "requirement_id",
+            "revision"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "requirement_revisions_state_chk": {
+          "name": "requirement_revisions_state_chk",
+          "value": "\"requirement_revisions\".\"state\" IN ('draft', 'proposed', 'current', 'superseded')"
+        },
+        "requirement_revisions_revision_chk": {
+          "name": "requirement_revisions_revision_chk",
+          "value": "\"requirement_revisions\".\"revision\" >= 1"
+        },
+        "requirement_revisions_reason_chk": {
+          "name": "requirement_revisions_reason_chk",
+          "value": "\"requirement_revisions\".\"reason\" ~ '[^[:space:]]'"
+        },
+        "requirement_revisions_decided_chk": {
+          "name": "requirement_revisions_decided_chk",
+          "value": "\"requirement_revisions\".\"state\" NOT IN ('current', 'superseded') OR (\"requirement_revisions\".\"decided_by\" IS NOT NULL AND \"requirement_revisions\".\"decided_at\" IS NOT NULL)"
+        },
+        "requirement_revisions_base_chk": {
+          "name": "requirement_revisions_base_chk",
+          "value": "\"requirement_revisions\".\"base_revision\" IS NULL OR \"requirement_revisions\".\"base_revision\" < \"requirement_revisions\".\"revision\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.requirement_workflows": {
+      "name": "requirement_workflows",
+      "schema": "",
+      "columns": {
+        "requirement_id": {
+          "name": "requirement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workflow_id": {
+          "name": "workflow_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "linked_by": {
+          "name": "linked_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "linked_at": {
+          "name": "linked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "requirement_workflows_workflow_idx": {
+          "name": "requirement_workflows_workflow_idx",
+          "columns": [
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "requirement_workflows_requirement_id_requirements_id_fk": {
+          "name": "requirement_workflows_requirement_id_requirements_id_fk",
+          "tableFrom": "requirement_workflows",
+          "tableTo": "requirements",
+          "columnsFrom": [
+            "requirement_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "requirement_workflows_workflow_id_project_workflows_id_fk": {
+          "name": "requirement_workflows_workflow_id_project_workflows_id_fk",
+          "tableFrom": "requirement_workflows",
+          "tableTo": "project_workflows",
+          "columnsFrom": [
+            "workflow_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "requirement_workflows_linked_by_users_id_fk": {
+          "name": "requirement_workflows_linked_by_users_id_fk",
+          "tableFrom": "requirement_workflows",
+          "tableTo": "users",
+          "columnsFrom": [
+            "linked_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "requirement_workflows_requirement_id_workflow_id_pk": {
+          "name": "requirement_workflows_requirement_id_workflow_id_pk",
+          "columns": [
+            "requirement_id",
+            "workflow_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.requirements": {
+      "name": "requirements",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "req_seq": {
+          "name": "req_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "current_revision": {
+          "name": "current_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "requirements_project_seq_uq": {
+          "name": "requirements_project_seq_uq",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "req_seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "requirements_project_status_idx": {
+          "name": "requirements_project_status_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "requirements_project_id_projects_id_fk": {
+          "name": "requirements_project_id_projects_id_fk",
+          "tableFrom": "requirements",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "requirements_owner_id_users_id_fk": {
+          "name": "requirements_owner_id_users_id_fk",
+          "tableFrom": "requirements",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "requirements_head_fk": {
+          "name": "requirements_head_fk",
+          "tableFrom": "requirements",
+          "tableTo": "requirement_revisions",
+          "columnsFrom": [
+            "id",
+            "current_revision"
+          ],
+          "columnsTo": [
+            "requirement_id",
+            "revision"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "requirements_status_chk": {
+          "name": "requirements_status_chk",
+          "value": "\"requirements\".\"status\" IN ('draft', 'agreed', 'accepted', 'dropped')"
+        },
+        "requirements_seq_chk": {
+          "name": "requirements_seq_chk",
+          "value": "\"requirements\".\"req_seq\" >= 1"
+        },
+        "requirements_agreed_head_chk": {
+          "name": "requirements_agreed_head_chk",
+          "value": "\"requirements\".\"status\" NOT IN ('agreed', 'accepted') OR \"requirements\".\"current_revision\" IS NOT NULL"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.agent_questions": {
@@ -18783,6 +19785,19 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "issue_criteria_requirement_criterion_fk": {
+          "name": "issue_criteria_requirement_criterion_fk",
+          "tableFrom": "issue_criteria",
+          "tableTo": "requirement_criteria",
+          "columnsFrom": [
+            "requirement_criterion_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },
@@ -21725,7 +22740,46 @@
   "sequences": {},
   "roles": {},
   "policies": {},
-  "views": {},
+  "views": {
+    "public.requirement_delivery": {
+      "columns": {
+        "requirement_id": {
+          "name": "requirement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "phase": {
+          "name": "phase",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "live_issues": {
+          "name": "live_issues",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_issues": {
+          "name": "started_issues",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "closed_issues": {
+          "name": "closed_issues",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "name": "requirement_delivery",
+      "schema": "public",
+      "isExisting": true,
+      "materialized": false
+    }
+  },
   "_meta": {
     "columns": {},
     "schemas": {},

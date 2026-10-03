@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues } from '../db/schema.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
+import { plannedRevisionFor } from '../requirements/issue-links.js';
 import { syncCriteriaFromText } from './criteria/store.js';
 import type { ResolvedLabelAttach } from './label-service.js';
 import { ISSUE_READ_COLUMNS, type IssueRow } from './read-service.js';
@@ -61,6 +62,10 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
     }
 
     const columns = { ...updates };
+    if (updates.plan !== undefined) {
+      const planned = await plannedRevisionFor(tx, issueId, updates.plan as string | null);
+      if (planned) Object.assign(columns, planned);
+    }
     if (updates.sessionContext !== undefined) {
       if (!expect) refuseUnreadSessionContextDrop(current.sessionContext, updates.sessionContext);
       const split = splitSessionContext(updates.sessionContext);

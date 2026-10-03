@@ -133,6 +133,7 @@ describe('criterionBlocksIn', () => {
         source: null,
         design: null,
         why: null,
+        contract: null,
         cited: [],
       },
       {
@@ -142,6 +143,7 @@ describe('criterionBlocksIn', () => {
         source: null,
         design: null,
         why: null,
+        contract: null,
         cited: [],
       },
     ]);

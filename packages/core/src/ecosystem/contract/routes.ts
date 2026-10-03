@@ -12,10 +12,12 @@ import {
 import { zValidator } from '../../middleware/zod-validator.js';
 import { refused } from '../../project-config/respond.js';
 import { slug } from '../../project-config/schema.js';
+import { CONTRACT_DECISION_REASON_MAX, CONTRACT_DECISIONS } from './approval.js';
+import { decideContractVersion } from './decide.js';
 import { MAX_ARTIFACT_BYTES } from './measure.js';
 import { consumedContract, consumedMeasurements, consumedVersions } from './party-read.js';
 import { publishContractVersion } from './publish.js';
-import { measurementsOf, versionsOf } from './store.js';
+import { approvalView, currentOf, measurementsOf, readArtifact, versionsOf } from './store.js';
 import { SOURCE_REF } from './version-schema.js';
 
 export const contractRoutes = new Hono<{ Variables: AuthVars }>();
@@ -95,16 +97,101 @@ contractRoutes.get('/:id/contracts/:contract/versions', contractParam, async (c)
   const { id, contract } = c.req.valid('param');
   await assertProjectAccess(id, c.get('userId'), 'viewer');
   const versions = await versionsOf(db, [id], contract);
-  return c.json({ versions: versions.map((v) => v.document) });
+  return c.json({
+    versions: versions.map((v) => v.document),
+    current: currentOf(versions)?.version ?? null,
+    approvals: Object.fromEntries(versions.map((v) => [v.version, approvalView(v)])),
+  });
 });
 
 contractRoutes.get('/:id/contracts/:contract/versions/:version', versionParam, async (c) => {
   const { id, contract, version } = c.req.valid('param');
   await assertProjectAccess(id, c.get('userId'), 'viewer');
-  const hit = (await versionsOf(db, [id], contract)).find((v) => v.version === version);
+  const versions = await versionsOf(db, [id], contract);
+  const hit = versions.find((v) => v.version === version);
   if (!hit) throw notFound(`${contract} of project ${id} has no recorded version "${version}"`);
-  return c.json({ version: hit.document, elements: hit.elements });
+  return c.json({
+    version: hit.document,
+    elements: hit.elements,
+    approval: approvalView(hit),
+    current: currentOf(versions)?.version ?? null,
+  });
 });
+
+const ARTIFACT_MEDIA: Record<string, string> = {
+  openapi: 'application/json',
+  'json-schema': 'application/json',
+  'mcp-tools': 'application/json',
+  graphql: 'text/plain; charset=utf-8',
+};
+
+// cm:why a mock is generated where it is used, from the stored bytes of one version, never stored itself (data-model review: mocks are a function of the artifact's sha256): this hands a mock server (Prism for OpenAPI, graphql-tools for SDL) exactly those bytes, and says whether the version is current
+contractRoutes.get(
+  '/:id/contracts/:contract/versions/:version/artifact',
+  versionParam,
+  async (c) => {
+    const { id, contract, version } = c.req.valid('param');
+    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    const hit = (await versionsOf(db, [id], contract)).find((v) => v.version === version);
+    if (!hit) throw notFound(`${contract} of project ${id} has no recorded version "${version}"`);
+    const text = hit.artifactSha256 ? await readArtifact(db, hit.artifactSha256) : null;
+    const media = ARTIFACT_MEDIA[hit.contractType];
+    if (text === null || !media) {
+      return refused(c, [
+        {
+          code: 'CONTRACT_ARTIFACT_NOT_MOCKABLE',
+          path: '/',
+          detail: `${hit.document.contract}@${version} is ${hit.contractType}${text === null ? ' and holds no stored artifact' : ''}; a mock is generated from the stored artifact of an openapi, json-schema, mcp-tools or graphql version.`,
+        },
+      ]);
+    }
+    c.header('Content-Type', media);
+    c.header('X-Forge-Contract-Approval', hit.approval);
+    c.header('X-Forge-Contract-Sha256', hit.artifactSha256 ?? '');
+    return c.body(text);
+  },
+);
+
+const decisionBody = zValidator(
+  'json',
+  z.strictObject({
+    decision: z.enum(CONTRACT_DECISIONS),
+    reason: z.string().trim().max(CONTRACT_DECISION_REASON_MAX).optional(),
+  }),
+  (r, c) => {
+    if (!r.success) {
+      return refused(
+        c,
+        r.error.issues.map((i) => ({
+          code: 'SCHEMA_VIOLATION' as const,
+          path: `/${i.path.map(String).join('/')}`,
+          detail: `${i.message}; the body is { decision: approve | return, reason?: why, required to return }`,
+        })),
+      );
+    }
+  },
+);
+
+contractRoutes.post(
+  '/:id/contracts/:contract/versions/:version/decision',
+  versionParam,
+  decisionBody,
+  async (c) => {
+    const { id, contract, version } = c.req.valid('param');
+    const { decision, reason } = c.req.valid('json');
+    const actor = restActor(c);
+    const out = await decideContractVersion({
+      projectId: id,
+      contract,
+      version,
+      decision,
+      reason: reason ?? null,
+      actor: { userId: actor.id, agency: actor.agency },
+    });
+    if (!out.ok) return refused(c, out.refusals);
+    return c.json({ version: out.version.document, approval: approvalView(out.version) });
+  },
+);
 
 contractRoutes.get('/:id/contracts/:contract/measurements', contractParam, async (c) => {
   const { id, contract } = c.req.valid('param');

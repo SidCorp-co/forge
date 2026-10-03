@@ -5,7 +5,11 @@
  * naming nothing leaves a source verdict to the issue's own source. Shapes: `messaging/verdict-identity.ts`.
  */
 
-import { parseDesignIdentity, sameIdentity } from '../messaging/verdict-identity.js';
+import {
+  parseContractIdentity,
+  parseDesignIdentity,
+  sameIdentity,
+} from '../messaging/verdict-identity.js';
 import { type ServingReading, servedCommits } from '../release-batch/serving-reading.js';
 
 /** `source` is a commit that was read, which cannot say the code was ever running. `design` is a
@@ -20,6 +24,8 @@ export interface IssueIdentities {
   readonly source: string | null;
   /** The current revision of each workflow of the issue's project, keyed by its flow AND its id. */
   readonly designs?: ReadonlyMap<string, number>;
+  /** The current (newest approved) version of each contract of the issue's project, keyed `<project>/<contract>`. */
+  readonly contracts?: ReadonlyMap<string, string>;
 }
 
 /** How a verdict's identity resolves; `stands` and `uncorroborated` are the two a criterion is
@@ -85,15 +91,25 @@ function designStanding(value: string, identities: IssueIdentities): VerdictStan
   return current === named.revision ? 'stands' : 'superseded';
 }
 
+/** A contract verdict stands on the version that is current, and a later approved version
+ *  supersedes it; a contract with no current version anchors none. No serving reading enters. */
+function contractStanding(value: string, identities: IssueIdentities): VerdictStanding {
+  const named = parseContractIdentity(value);
+  const current = named
+    ? identities.contracts?.get(`${named.project}/${named.contract}`)
+    : undefined;
+  if (!named || current === undefined) return 'unanchored';
+  return current === named.version ? 'stands' : 'superseded';
+}
+
 export function verdictStanding(
   at: VerdictIdentity | null,
   serving: ServingReading,
   identities: IssueIdentities,
 ): VerdictStanding {
   if (!at) return 'unanchored';
-  // cm:seam ISS-60 — a contract version is earned and weaker until ISS-60's reader checks it exists.
-  if (at.kind === 'contract') return 'uncorroborated';
   if (at.kind === 'design') return designStanding(at.value, identities);
+  if (at.kind === 'contract') return contractStanding(at.value, identities);
   if (at.kind === 'runtime') return runtimeStanding(at.value, serving);
   const observed = servedSource(at.value, serving);
   if (observed) return observed;
@@ -151,6 +167,18 @@ function designSentence(standing: VerdictStanding, value: string, identities: Is
   return `judged against design ${value}, which this issue's project no longer holds`;
 }
 
+function contractSentence(standing: VerdictStanding, value: string, identities: IssueIdentities) {
+  const named = parseContractIdentity(value);
+  const current = named
+    ? identities.contracts?.get(`${named.project}/${named.contract}`)
+    : undefined;
+  if (standing === 'stands') return `judged against contract ${value}, the version that is current`;
+  if (standing === 'superseded') {
+    return `judged against contract ${value}, and that contract's current version is now ${current}`;
+  }
+  return `judged against contract ${value}, which has no current version in this issue's project`;
+}
+
 export function standingSentence(
   standing: VerdictStanding,
   at: VerdictIdentity | null,
@@ -158,9 +186,7 @@ export function standingSentence(
   identities: IssueIdentities,
 ): string {
   if (at?.kind === 'design') return designSentence(standing, at.value, identities);
-  if (at?.kind === 'contract') {
-    return `judged against contract ${at.value}, which nothing here re-reads yet`;
-  }
+  if (at?.kind === 'contract') return contractSentence(standing, at.value, identities);
   if (standing === 'stands') {
     return `judged at ${named(at?.value ?? null)}, which this project is serving`;
   }
