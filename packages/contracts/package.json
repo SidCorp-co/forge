@@ -50,6 +50,10 @@
       "types": "./dist/ui-vocabulary.d.ts",
       "default": "./dist/ui-vocabulary.js"
     },
+    "./development-overview": {
+      "types": "./dist/development-overview.d.ts",
+      "default": "./dist/development-overview.js"
+    },
     "./issue-standing": {
       "types": "./dist/issue-standing.d.ts",
       "default": "./dist/issue-standing.js"

@@ -137,6 +137,10 @@
 
 ### Added
 
+- **Development has an Overview page.** It shows what is running, what is stuck and what waits on
+  you, from one read, `GET /api/projects/:id/development/overview`. CI and post-merge say "Not
+  available": core stores no branch-head check.
+
 - **A storefront project's work can be judged on an unpublished draft.** A verdict names an Autoflow
   workflow, its draft version and a preview environment; Forge reads the draft back, and only a
   confirmed draft counts toward `awaiting_release`, never on a git project.
