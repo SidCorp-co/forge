@@ -2,7 +2,7 @@
 // `issue_criteria` holds one row per criterion (its number is what a verdict names); a reworded or
 // removed criterion is retired, never deleted, so the verdicts on it stay readable.
 // `criterion_verdicts` is insert-only: the latest row per criterion is what the
-// `awaiting_release` gate reads (`issues/criteria/store.ts:latestVerdictsByNumber`).
+// `awaiting_release` gate reads (`issues/criteria/store.ts:listCriteria`).
 
 import { sql } from 'drizzle-orm';
 import {

@@ -16,8 +16,7 @@ export const SOURCE_FIELD = 'commit';
 /** The field a criterion block names the stored workflow design revision it was judged against:
  *  the identity of work that lands as a design rather than as commits (an issue outside git). */
 export const DESIGN_FIELD = 'design';
-/** The field a criterion block names the contract version it was judged against:
- *  `<project slug>/<contract slug>@<version>`, a version the issue's project recorded. */
+/** `contract: <project slug>/<contract slug>@<version>`, a version the issue's project recorded. */
 export const CONTRACT_FIELD = 'contract';
 
 /** The field a criterion block cites what its verdict was taken from in. */
