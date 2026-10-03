@@ -13,6 +13,7 @@
  */
 
 import { and, eq } from 'drizzle-orm';
+import { recordContentLanguage } from '../content-language/read.js';
 import { db } from '../db/client.js';
 import { devices, issueLabels, issues, jobs, labels, runners } from '../db/schema.js';
 import {
@@ -372,6 +373,11 @@ export async function prepareClaimedJob(args: {
       requirement ? 'workflow-builds+requirement' : 'workflow-builds',
       requirement,
     );
+  }
+  // cm:why the language the preamble told this job is on its session beside `artifactContext`, so a
+  // reader sees what it was asked to write in without replaying the prompt
+  if (preamble.contentLanguage) {
+    await recordContentLanguage(agentSessionId, preamble.contentLanguage);
   }
   if (contracts.length) await recordContractContext(agentSessionId, contracts, 'issue-paths');
   if (namedContracts.length) await recordNamedContracts(agentSessionId, namedContracts);

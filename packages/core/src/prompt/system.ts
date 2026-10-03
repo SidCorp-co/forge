@@ -1,4 +1,11 @@
+import type { ContentLanguageRecord } from '@forge/contracts/content-language';
 import { and, eq } from 'drizzle-orm';
+import {
+  contentLanguageBlock,
+  contentLanguageRecord,
+  jobContentContext,
+} from '../content-language/block.js';
+import { readContentLanguage } from '../content-language/read.js';
 import { db } from '../db/client.js';
 import {
   type JobType,
@@ -32,7 +39,8 @@ export type PreambleBlockId =
   | 'state-block'
   | 'contract-context'
   | 'artifact-context'
-  | 'named-contract-context';
+  | 'named-contract-context'
+  | 'content-language';
 
 export interface PreambleBlock {
   id: PreambleBlockId;
@@ -44,6 +52,8 @@ export interface PreambleBlock {
 export interface BuiltPreamble {
   content: string;
   blocks: PreambleBlock[];
+  /** The content language a step's preamble told it; absent where no step was named. */
+  contentLanguage?: ContentLanguageRecord;
 }
 
 const BRANCH_SENTINEL = '<detect-from-git>';
@@ -299,6 +309,13 @@ export async function buildPipelinePreambleStructured(
   if (stateBlock) {
     sections.push({ id: 'state-block', body: stateBlock });
   }
+  let contentLanguage: ContentLanguageRecord | undefined;
+  if (step) {
+    const setting = await readContentLanguage(projectId);
+    const context = jobContentContext(step);
+    contentLanguage = contentLanguageRecord(setting, context, setting.revision);
+    sections.push({ id: 'content-language', body: contentLanguageBlock(setting, context) });
+  }
   const content = sections.map((s) => s.body).join('\n\n');
   const blocks: PreambleBlock[] = sections.map((s) => ({
     id: s.id,
@@ -306,7 +323,7 @@ export async function buildPipelinePreambleStructured(
     chars: s.body.length,
     estTokens: estimateTokens(s.body),
   }));
-  return { content, blocks };
+  return contentLanguage ? { content, blocks, contentLanguage } : { content, blocks };
 }
 
 /** Joined string form of buildPipelinePreambleStructured. */

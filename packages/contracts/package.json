@@ -58,6 +58,10 @@
       "types": "./dist/suggestions.d.ts",
       "default": "./dist/suggestions.js"
     },
+    "./content-language": {
+      "types": "./dist/content-language.d.ts",
+      "default": "./dist/content-language.js"
+    },
     "./data-policy": {
       "types": "./dist/data-policy.d.ts",
       "default": "./dist/data-policy.js"

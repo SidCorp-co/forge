@@ -42,3 +42,26 @@ describe('the assistant prompt with the project keys deleted', () => {
     buildSystemPrompt({ project: { name: 'Mowment', agentConfig: { personaStyle: 'x' } } });
   });
 });
+
+describe('the content language block', () => {
+  const block = "## Content language\nThis project's content language is Vietnamese (`vi`).";
+
+  it('closes the prompt, after the progress facts', () => {
+    const out = buildSystemPrompt({
+      project: { name: 'Mowment' },
+      progressFacts: 'Progress: 3 shipped.',
+      contentLanguage: block,
+    });
+    expect(out.endsWith(block)).toBe(true);
+    expect(out.indexOf('Progress: 3 shipped.')).toBeLessThan(out.indexOf(block));
+  });
+
+  it('survives a system prompt override, which replaces the persona and nothing else', () => {
+    const out = buildSystemPrompt({
+      project: { name: 'Mowment' },
+      appConfig: { systemPromptOverride: 'You are Bob.' },
+      contentLanguage: block,
+    });
+    expect(out).toBe(`You are Bob.\n\n${block}`);
+  });
+});

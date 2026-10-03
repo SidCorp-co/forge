@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import {
   deriveStanding,
   STUCK_AFTER_DAYS,
@@ -31,7 +32,7 @@ const rev = (
 
 const issue = (id: string, status: string, extra: Partial<StandingIssue> = {}): StandingIssue => ({
   id,
-  displayId: `ISS-${id}`,
+  displayId: formatIssueRef(null, Number(id)),
   title: `Issue ${id}`,
   status,
   updatedAt: daysAgo(1),

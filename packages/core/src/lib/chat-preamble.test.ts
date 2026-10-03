@@ -90,7 +90,7 @@ describe('buildPipelinePreambleStructured', () => {
     expect(built.content.length).toBe(totalChars + 2 * (built.blocks.length - 1));
   });
 
-  it('inserts a state-block (after project-context) when a step is supplied', async () => {
+  it('inserts a state-block (after project-context) and the content language when a step is supplied', async () => {
     mockBranchSelect([{ baseBranch: 'main' }]);
 
     const built = await buildPipelinePreambleStructured('p1', { step: 'release_batch' });
@@ -101,8 +101,24 @@ describe('buildPipelinePreambleStructured', () => {
       'project-context',
       'forge-facts',
       'state-block',
+      'content-language',
     ]);
     expect(built.content).toContain('REPAIR FORWARD');
+    expect(built.content).toContain("This project's content language is English (`en`).");
+    expect(built.contentLanguage).toEqual({
+      contentLanguage: 'en',
+      keepTermsInEnglish: [],
+      source: 'default',
+      context: 'code',
+      revision: null,
+    });
+  });
+
+  it('tells no content language where no step runs', async () => {
+    mockBranchSelect([{ baseBranch: 'main' }]);
+    const built = await buildPipelinePreambleStructured('p1');
+    expect(built.blocks.map((b) => b.id)).not.toContain('content-language');
+    expect(built.contentLanguage).toBeUndefined();
   });
 
   it('omits the state-block for a claimable step with no default, and when no step given', async () => {

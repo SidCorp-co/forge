@@ -1,4 +1,8 @@
 import {
+  CONTENT_LANGUAGE_REFUSAL_CODES,
+  contentLanguageProblem,
+} from '@forge/contracts/content-language';
+import {
   resolveProjectTemplates,
   TEMPLATE_REFUSAL_CODES,
 } from '@forge/contracts/workflow-templates';
@@ -55,10 +59,13 @@ export const STORED_REFUSAL_CODES = [
   'SECRET_NOT_FOUND',
 ] as const;
 
+// cm:why the content language's own vocabulary (`@forge/contracts/content-language`), planted in
+// `content-language.test.ts`.
 export const CONFIG_REFUSAL_CODES = [
   ...PURE_REFUSAL_CODES,
   ...STORED_REFUSAL_CODES,
   ...WORKFLOW_TEMPLATE_CONFIG_CODES,
+  ...CONTENT_LANGUAGE_REFUSAL_CODES,
 ] as const;
 
 export type ConfigRefusalCode = (typeof CONFIG_REFUSAL_CODES)[number];
@@ -421,6 +428,7 @@ export function checkProjectConfig(
   out.push(...checkEnvironments(doc, ctx));
   out.push(...checkGitlessBindings(doc, ctx));
   out.push(...checkWorkflowTemplates(doc, ctx));
+  out.push(...checkContentLanguage(doc));
   if (ctx.policy) out.push(...checkPolicy(ctx.policy));
   return out;
 }
@@ -444,4 +452,16 @@ export function checkWorkflowTemplates(
     });
   }
   return out;
+}
+
+// cm:guard a tag that names no language is refused by name: a prompt told to write in it could only
+// guess. The language of what is written is never checked (VISION: kernel-hard-policy-soft).
+export function checkContentLanguage(
+  doc: Pick<ProjectDocument, 'contentLanguage'>,
+): ConfigRefusal[] {
+  if (doc.contentLanguage === undefined) return [];
+  const problem = contentLanguageProblem(doc.contentLanguage);
+  return problem === null
+    ? []
+    : [{ code: 'CONTENT_LANGUAGE_INVALID', path: pointer('contentLanguage'), detail: problem }];
 }

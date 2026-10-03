@@ -19,6 +19,10 @@ vi.mock("../config-hooks", () => ({
 const patch = vi.fn();
 vi.mock("../hooks", () => ({ useUpdateProject: () => ({ mutate: patch, isPending: false }) }));
 
+vi.mock("@/features/content-language/components/content-language-field", () => ({
+  ContentLanguageField: () => null,
+}));
+
 const { BasicsTab } = await import("./basics-tab");
 
 const project = { id: "p1", slug: "p-one", name: "Old name" } as ProjectDetail;

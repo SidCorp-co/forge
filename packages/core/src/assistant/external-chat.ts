@@ -11,6 +11,8 @@
 
 import { eq } from 'drizzle-orm';
 import { env } from '../config/env.js';
+import { contentLanguageBlock } from '../content-language/block.js';
+import { readContentLanguage } from '../content-language/read.js';
 import { db as defaultDb } from '../db/client.js';
 import { appConfig, chatLogs, projects } from '../db/schema.js';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
@@ -157,6 +159,7 @@ export async function runExternalChatTurn(
     .limit(1);
 
   const progress = await computeProjectProgress(args.projectId, dbi);
+  const language = await readContentLanguage(args.projectId);
 
   const resolved = await resolveForProject(args.projectId, {
     fallbackProviderId: defaultChatProviderId(),
@@ -203,6 +206,7 @@ export async function runExternalChatTurn(
     appConfig: appCfg ?? null,
     persona: args.persona ?? null,
     progressFacts: progress ? buildProgressFactsBlock(progress) : null,
+    contentLanguage: contentLanguageBlock(language, 'chat'),
   });
   const historyWindow = turn
     ? [...turn.history, ...turn.pending]
