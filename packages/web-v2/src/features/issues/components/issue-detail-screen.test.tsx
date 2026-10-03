@@ -88,6 +88,7 @@ vi.mock("../park", () => ({ useIssuePark: () => park }));
 vi.mock("../hooks", () => ({
   useIssueCost: () => ok(undefined),
   useIssueDeps: () => ok(undefined),
+  useIssueStandingOf: () => ok(undefined),
   usePatchIssue: () => ({ mutate: vi.fn(), isPending: false }),
   useProjectMembers: () => ok([]),
   useSaveDescription: () => ({ mutate: vi.fn(), isPending: false }),
@@ -104,7 +105,8 @@ const EXITS = {
   on_hold: ["needs_info", "dropped"],
 };
 
-function renderScreen() {
+function renderScreen(tab?: string) {
+  window.history.replaceState(null, "", `/projects/forge-dev/issues/ISS-7${tab ? `?tab=${tab}` : ""}`);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
@@ -134,31 +136,32 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("the issue detail's main column", () => {
-  it("draws an empty Steps panel as one line, not a card with an empty state", () => {
-    renderScreen();
+  it("draws an empty Steps panel on the Runs tab as one line, not a card with an empty state", () => {
+    renderScreen("runs");
     const steps = screen.getByRole("region", { name: "Steps" });
     expect(steps).toHaveTextContent("None yet");
     expect(steps.className).toContain("h-10");
     expect(screen.queryByText("No steps yet")).toBeNull();
   });
 
-  it("puts the description ahead of the Steps panel", () => {
+  it("opens on the description, with the Steps panel kept to its own tab", () => {
     renderScreen();
-    const description = screen.getByText("What the issue says.");
-    expect(precedes(description, screen.getByRole("region", { name: "Steps" }))).toBe(true);
+    expect(screen.getByText("What the issue says.")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Steps" })).toBeNull();
+    expect(screen.getByRole("tab", { name: /Overview/ })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("keeps a populated Steps card after the description too", () => {
+  it("lists recorded steps on the Runs tab", () => {
     durations = ok([
       { step: "code", runId: "r1", durationSeconds: 12, costUsd: 0, startedAt: "2026-09-21T11:00:00Z", finishedAt: "2026-09-21T11:00:12Z" },
     ]);
-    renderScreen();
-    expect(precedes(screen.getByText("What the issue says."), screen.getByText("step code"))).toBe(true);
+    renderScreen("runs");
+    expect(screen.getByText("step code")).toBeInTheDocument();
   });
 
   it("says the steps could not be loaded rather than that there are none", () => {
     handoffs = { data: undefined, isLoading: false, isError: true, error: new Error("boom"), refetch: vi.fn() };
-    renderScreen();
+    renderScreen("runs");
     const steps = screen.getByRole("region", { name: "Steps" });
     expect(steps).toHaveTextContent("Couldn't load");
     expect(steps).not.toHaveTextContent("None yet");
@@ -166,7 +169,7 @@ describe("the issue detail's main column", () => {
 
   it("says the steps could not be loaded when only the durations read failed", () => {
     durations = { data: undefined, isLoading: false, isError: true, error: new Error("boom"), refetch: vi.fn() } as never;
-    renderScreen();
+    renderScreen("runs");
     const steps = screen.getByRole("region", { name: "Steps" });
     expect(steps).toHaveTextContent("Couldn't load");
     expect(steps).not.toHaveTextContent("None yet");
@@ -187,34 +190,38 @@ describe("the issue detail's main column", () => {
     expect(screen.queryByText("No attachments.")).toBeNull();
   });
 
-  it("lets the header title wrap rather than truncate", () => {
+  it("lets the narrow-screen title wrap rather than truncate", () => {
     renderScreen();
-    const title = screen.getByRole("heading", { name: ISSUE.title });
+    const title = within(screen.getByTestId("detail-mobile-title")).getByText(ISSUE.title);
     expect(title.className).not.toMatch(/\btruncate\b/);
     expect(title.className).toContain("break-words");
   });
 
-  it("keeps the header's actions on screen at phone width, on a row of their own", () => {
+  it("names the back control after the list it returns to", () => {
     renderScreen();
-    const actions = screen.getByRole("button", { name: "Open session" }).parentElement;
-    for (let el: Element | null = actions; el && el !== document.body; el = el.parentElement) {
-      expect(el.className.split(/\s+/), "a bare `hidden` removes it below sm").not.toContain("hidden");
-    }
-    expect(actions?.className.split(/\s+/)).toContain("basis-full");
-    expect(actions?.parentElement?.className.split(/\s+/)).toContain("flex-wrap");
+    const back = screen.getByTestId("detail-back");
+    expect(back).toHaveTextContent("Issues");
+    expect(back.getAttribute("href")).toBe("/projects/forge-dev/issues");
   });
 
-  it("sizes the rail as a clamped share of the grid rather than a fixed column", () => {
+  it("keeps the session and pipeline jumps in the actions menu beside the one primary action", () => {
     renderScreen();
-    const grid = screen.getByText("What the issue says.").closest(".grid");
-    expect(grid?.className).toContain("lg:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,22.5rem)]");
-    expect(grid?.className).not.toContain("_360px]");
+    expect(screen.queryByRole("button", { name: "Open session" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Issue actions" }));
+    expect(screen.getAllByRole("menuitem").map((el) => el.textContent)).toContain("Open session");
+  });
+
+  it("puts the facts in a rail beside the tabs, the properties inside it", () => {
+    renderScreen();
+    const rail = screen.getByRole("complementary", { name: "Facts" });
+    expect(within(rail).getByText("rail")).toBeInTheDocument();
   });
 });
 
 // ISS-1277 — a job no runner has claimed yet has no session, and the header still reads it as a queued run.
 describe("the issue header's run", () => {
-  const headerChips = () => screen.getByText("ISS-7").parentElement as HTMLElement;
+  // The top bar's key and badges; the narrow-screen title repeats them under it.
+  const headerChips = () => screen.getAllByText("ISS-7")[0]?.parentElement as HTMLElement;
 
   it("shows a queued job with no session as a Queued run chip and offers Pause", () => {
     pipelineHealth = {

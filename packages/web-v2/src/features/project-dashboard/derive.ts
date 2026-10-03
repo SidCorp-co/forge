@@ -1,6 +1,7 @@
 
 import { type StageKey, stageColor } from "@/design/stages";
 import { TONE_META, type SemanticTone } from "@/design/status";
+import { statusReading } from "@/design/vocabulary";
 import type { AttentionView } from "@/features/attention/types";
 import { jobTypeToStage } from "@/features/pipeline/derive";
 import type { PipelineRunListItem, StepDurationRow } from "@/features/pipeline/types";
@@ -234,7 +235,7 @@ export function projectAttention(
       key: `chain-${b.documentId}`,
       actionKind: "chain",
       actionLabel: "View chain",
-      title: `Blocked — waiting at ${b.status}`,
+      title: `Blocked — waiting at ${statusReading("issue", b.status).label}`,
       issueRef: b.issueId,
       link: `/projects/${slug}/issues/${b.documentId}`,
       status: b.status,

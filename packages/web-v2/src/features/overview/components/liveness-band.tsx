@@ -7,6 +7,7 @@ import {
   CardContent,
   Heartbeat,
   SectionTitle,
+  enumLabel,
 } from "@/design";
 import { formatElapsed, silenceMark } from "../derive";
 import type { PulseLiveness, PulseThresholds } from "../types";
@@ -107,8 +108,8 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
             total={liveness.liveJobs.total}
             records={liveness.liveJobs.shown.map((j) => ({
               key: j.jobId,
-              label: j.issueRef ?? j.type,
-              detail: `${j.type} · ${j.projectSlug}`,
+              label: j.issueRef ?? enumLabel("jobType", j.type),
+              detail: `${enumLabel("jobType", j.type)} · ${j.projectSlug}`,
               href: j.issueDocId
                 ? `/projects/${j.projectSlug}/issues/${j.issueDocId}`
                 : `/ops?run=${j.runId}`,

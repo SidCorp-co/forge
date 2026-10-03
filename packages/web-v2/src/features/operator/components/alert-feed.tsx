@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import {
-  Badge,
+  StatusBadge,
   Button,
   Card,
   CardContent,
@@ -12,7 +12,6 @@ import {
   MonoTag,
   Skeleton,
 } from "@/design";
-import { TONE_META } from "@/design/status";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
 import { useReapJob } from "../hooks";
@@ -25,18 +24,6 @@ const ALERT_TITLE: Record<string, string> = {
   A3: "Runner-starved projects",
   A4: "Spend spike",
   A5: "Automation failing",
-};
-
-const STATUS_TONE: Record<AdminAlertStatus, "green" | "amber" | "red"> = {
-  ok: "green",
-  warn: "amber",
-  crit: "red",
-};
-
-const STATUS_DOT: Record<AdminAlertStatus, string> = {
-  ok: TONE_META.success.dot,
-  warn: TONE_META.attention.dot,
-  crit: TONE_META.failure.dot,
 };
 
 const STATUS_RANK: Record<AdminAlertStatus, number> = { crit: 0, warn: 1, ok: 2 };
@@ -115,13 +102,8 @@ function AlertRow({ alert }: { alert: AdminAlert }) {
   return (
     <li className="flex flex-col gap-2 border-b border-line-subtle py-3 last:border-0 first:pt-0">
       <div className="flex flex-wrap items-center gap-2">
-        <span
-          aria-hidden
-          className="h-2 w-2 shrink-0 rounded-pill"
-          style={{ background: STATUS_DOT[alert.status] }}
-        />
         <span className="fg-label">{ALERT_TITLE[alert.id] ?? alert.key}</span>
-        <Badge tone={STATUS_TONE[alert.status]}>{alert.status}</Badge>
+        <StatusBadge family="alert" value={alert.status} />
         {alert.count > 0 && <span className="fg-caption font-mono">{alert.count}</span>}
         {since && <span className="fg-caption ml-auto">oldest {since}</span>}
       </div>

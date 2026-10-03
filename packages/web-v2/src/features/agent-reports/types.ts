@@ -2,8 +2,6 @@
 // Shape verified against `GET /api/agent-reports` in
 // `packages/core/src/agent-reports/routes.ts`.
 
-type BadgeTone = "neutral" | "accent" | "cobalt" | "green" | "red" | "amber";
-
 export type AgentReportKind =
   | "friction"
   | "bug"
@@ -44,32 +42,4 @@ export interface AgentReportFilters {
   kind?: AgentReportKind;
   severity?: AgentReportSeverity;
   target?: AgentReportTarget;
-}
-
-export function kindToBadgeTone(kind: AgentReportKind): BadgeTone {
-  switch (kind) {
-    case "bug":
-    case "skill_gap":
-    case "friction":
-    case "redundant_step":
-      return "amber";
-    case "learning":
-    case "suggestion":
-      return "green";
-    case "unclear_step":
-      return "cobalt";
-    default:
-      return "neutral";
-  }
-}
-
-export function severityToBadgeTone(severity: AgentReportSeverity): BadgeTone {
-  switch (severity) {
-    case "high":
-      return "amber";
-    case "medium":
-      return "cobalt";
-    default:
-      return "neutral";
-  }
 }

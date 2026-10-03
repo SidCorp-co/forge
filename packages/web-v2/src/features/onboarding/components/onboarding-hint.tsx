@@ -5,6 +5,7 @@
 // Its link opens the onboarding thread in the chat panel, starting onboarding first when asked.
 
 import type { OnboardingHint as Hint } from "@forge/contracts/onboarding";
+import { LEGEND } from "@/design";
 import { useChatDock } from "@/features/conversations/dock";
 import { refusalsOf } from "@/lib/api/refusals";
 import { formatApiError } from "@/lib/api/error";
@@ -12,13 +13,8 @@ import { onboardingApi } from "../api";
 import { useOnboardingState, useStartOnboarding } from "../hooks";
 
 const TONE: Record<Hint["tone"], { bg: string; dot: string }> = {
-  you: { bg: "var(--amberw-50)", dot: "var(--amberw-500)" },
-  attention: { bg: "var(--amberw-50)", dot: "var(--red-500)" },
-  run: { bg: "var(--cobalt-50)", dot: "var(--cobalt-500)" },
-  ready: { bg: "var(--green-50)", dot: "var(--green-500)" },
-  done: { bg: "var(--bg-sunken)", dot: "var(--ink-400)" },
-  neutral: { bg: "var(--bg-sunken)", dot: "var(--ink-400)" },
-  err: { bg: "var(--red-50)", dot: "var(--red-500)" },
+  ...LEGEND,
+  attention: { bg: LEGEND.you.bg, dot: LEGEND.err.dot },
 };
 
 /** Opens the project's onboarding thread in the panel: start it, or join it, then show the room. */

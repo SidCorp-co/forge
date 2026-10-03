@@ -29,11 +29,13 @@ export interface SelectProps {
   "aria-label"?: string;
   "aria-describedby"?: string;
   className?: string;
+  /** An edit in place (a facts rail, a table cell): the value reads as text, the control shows on hover and focus. */
+  quiet?: boolean;
 }
 
 export function Select({
   options, value, onChange, placeholder = "Select…", disabled, id, invalid,
-  className, ...aria
+  className, quiet, ...aria
 }: SelectProps) {
   const selected = options.find((o) => o.value === value);
   const isInvalid = invalid || (aria as Record<string, unknown>)["aria-invalid"] === true;
@@ -53,11 +55,15 @@ export function Select({
           aria-describedby={aria["aria-describedby"]}
           aria-invalid={isInvalid || undefined}
           className={cn(
-            "h-auto! w-full gap-2 rounded-md bg-surface py-2 pl-3 pr-2.5 text-left text-sm transition-shadow",
+            quiet
+              ? "h-auto! w-full gap-1.5 rounded-sm border-transparent bg-transparent py-1 pl-1.5 pr-1 text-left text-13 transition-colors hover:bg-hover"
+              : "h-auto! w-full gap-2 rounded-md bg-surface py-2 pl-3 pr-2.5 text-left text-sm transition-shadow",
             "focus-visible:ring-0 focus-visible:shadow-[var(--shadow-focus)]",
             isInvalid
               ? "border-[color:var(--red-500)] focus-visible:border-[color:var(--red-500)]"
-              : "border-line-strong focus-visible:border-[color:var(--link)]",
+              : quiet
+                ? "focus-visible:border-[color:var(--link)]"
+                : "border-line-strong focus-visible:border-[color:var(--link)]",
           )}
         >
           {selected?.icon && <Icon name={selected.icon} size={16} className="text-subtle" />}

@@ -1,20 +1,16 @@
 "use client";
 
-import { Badge, Tooltip } from "@/design";
+import { Badge, StatusBadge, Tooltip } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { shortSha, stampOf } from "../format";
-import { type FlowStage, type ReleaseFlow, type StepState, stepStates, stepTip } from "../flow";
+import { type FlowStage, type ReleaseFlow, type StepState, stepStates, stepTip, triggerLabel } from "../flow";
 import type { ReleaseApproval, ReleaseVersionDetail } from "../versions-types";
 import { ApprovalBlock } from "./approval-block";
 import { DeploymentRows } from "./deployment-rows";
-import { STEP_COLOR } from "./flow-strip";
+import { stepColor } from "./flow-strip";
 
-const STATE_BADGE: Partial<Record<StepState, { label: string; tone: "green" | "cobalt" | "amber" | "red" | "neutral" }>> = {
-  current: { label: "in progress", tone: "cobalt" },
-  waiting: { label: "waiting", tone: "amber" },
-  failed: { label: "failed", tone: "red" },
-  aborted: { label: "aborted", tone: "neutral" },
-};
+/** The stage states a timeline row names in a badge; the others read from the dot and the stamp. */
+const BADGED: readonly StepState[] = ["current", "waiting", "failed", "aborted"];
 
 function ApprovalLine({ a }: { a: ReleaseApproval }) {
   return (
@@ -29,8 +25,8 @@ function ApprovalLine({ a }: { a: ReleaseApproval }) {
         </Tooltip>
       </span>
       {a.decision ? (
-        <span className={a.decision === "approved" ? "text-green" : "text-amber"}>
-          {a.decision} by {a.decidedBy?.name ?? "someone"}
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <StatusBadge family="release" value={a.decision} /> by {a.decidedBy?.name ?? "someone"}
           {a.decidedAt ? ` · ${stampOf(a.decidedAt)}` : ""}
           {a.reason ? <span className="text-muted"> · {a.reason}</span> : null}
         </span>
@@ -112,7 +108,6 @@ export function ReleaseTimeline({ v, flow, projectId, canDecide, open, onToggle 
     <ol className="grid" data-testid="release-timeline">
       {stages.map((stage, i) => {
         const st = states[flow.stages.indexOf(stage)];
-        const badge = STATE_BADGE[st];
         const stamp = stampFor(v, stage, flow);
         const quiet = st === "pending" || st === "untracked" || st === "skipped";
         return (
@@ -124,7 +119,7 @@ export function ReleaseTimeline({ v, flow, projectId, canDecide, open, onToggle 
                   quiet && "border border-line-strong",
                   st === "untracked" && "border-dashed",
                 )}
-                style={{ background: STEP_COLOR[st] }}
+                style={{ background: stepColor(st) }}
                 aria-hidden
               />
               {i < stages.length - 1 ? <span className="absolute bottom-0 top-4 w-px bg-line" aria-hidden /> : null}
@@ -133,9 +128,9 @@ export function ReleaseTimeline({ v, flow, projectId, canDecide, open, onToggle 
               <Tooltip label={stepTip(v, stage, st, flow.deployKey)} multiline>
                 <span className={cn("flex flex-wrap items-center gap-2 text-13", quiet && "text-subtle")}>
                   <b className="font-semibold">{stage.label}</b>
-                  {stage.env ? <span className="font-mono text-11 text-subtle">{stage.env.trigger}</span> : null}
-                  {badge ? <Badge tone={badge.tone}>{badge.label}</Badge> : null}
-                  {stage.kind === "live" && v.releasedAt && !v.current ? <Badge>superseded</Badge> : null}
+                  {stage.env ? <span className="text-11 text-subtle">{triggerLabel(stage.env.trigger)}</span> : null}
+                  {BADGED.includes(st) ? <StatusBadge family="releaseStep" value={st} /> : null}
+                  {stage.kind === "live" && v.releasedAt && !v.current ? <Badge>Superseded</Badge> : null}
                   {stamp ? <span className="text-12 text-subtle">{stamp}</span> : null}
                 </span>
               </Tooltip>

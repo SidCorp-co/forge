@@ -1,5 +1,6 @@
 
 import { parseReleaseRoster } from "@/features/releases/roster";
+import type { IssueStandingDetail, IssueStandingList, IssueStandingScope } from "@forge/contracts/issue-standing";
 import { apiClient, apiClientList } from "@/lib/api/client";
 import { filterToQueryParams } from "./derive";
 import type {
@@ -40,6 +41,13 @@ export interface CreateIssueInput {
 }
 
 export const issuesApi = {
+  /** Where each issue stands (core `issues/standing.ts`): the read model the grouped views draw. */
+  standing: (projectId: string, scope: IssueStandingScope) =>
+    apiClient<IssueStandingList>(`/projects/${projectId}/issues/standing?scope=${scope}`),
+
+  standingOf: (projectId: string, key: string) =>
+    apiClient<IssueStandingDetail>(`/projects/${projectId}/issues/standing/${encodeURIComponent(key)}`),
+
   create: (projectId: string, body: CreateIssueInput) =>
     apiClient<CreatedIssue>(`/projects/${projectId}/issues`, {
       method: "POST",

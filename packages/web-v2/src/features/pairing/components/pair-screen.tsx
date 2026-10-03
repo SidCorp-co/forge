@@ -16,6 +16,7 @@ import {
   MonoTag,
   PageTitle,
   Select,
+  enumLabel,
 } from "@/design";
 import { useAgentAccounts } from "@/features/agent-accounts/hooks";
 import { agentAddress, agentLabel } from "@/features/agent-accounts/label";
@@ -106,7 +107,7 @@ export function PairScreen() {
                   <dt className="text-muted">Label</dt>
                   <dd className="text-fg">{approve.data.device.label}</dd>
                   <dt className="text-muted">Platform</dt>
-                  <dd className="text-fg">{approve.data.device.platform}</dd>
+                  <dd className="text-fg">{enumLabel("platform", approve.data.device.platform)}</dd>
                   {approve.data.device.hostname && (
                     <>
                       <dt className="text-muted">Hostname</dt>

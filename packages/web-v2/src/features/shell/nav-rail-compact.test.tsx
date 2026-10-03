@@ -12,9 +12,9 @@
 // not something jsdom can answer — the deployed walk is this project's
 // instrument for that, and the browser measurement is attached to the issue.
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import { NavRailCompact, type RailItem } from "./nav-rail-compact";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { NavRailCompact, type RailEntry, type RailItem } from "./nav-rail-compact";
 
 afterEach(cleanup);
 
@@ -170,5 +170,67 @@ describe("a nav label and its button", () => {
 
 		const bar = screen.getByRole("button", { name: "Issues" }).querySelector("span[aria-hidden]");
 		expect(bar?.className).toContain("left-[-6px]");
+	});
+});
+
+// The owner's IA (ISS-65): the build machinery sits under one Development head in the compact rail
+// as it does in the expanded one, open while it holds the current page, and its counts surface on
+// the head while it is folded.
+describe("a group in the compact rail", () => {
+	const GROUPED: RailEntry[] = [
+		{ key: "proj-overview", label: "Dashboard", icon: "grid" },
+		{
+			key: "development",
+			label: "Development",
+			icon: "code",
+			items: [
+				{ key: "proj-issues", label: "Issues", icon: "list", badge: 4 },
+				{ key: "proj-contracts", label: "Contracts", icon: "link", badge: 2 },
+			],
+		},
+	];
+
+	function renderGrouped(activeKey: string, groupOpen: Record<string, boolean> = {}, onToggleGroup = vi.fn()) {
+		render(
+			<NavRailCompact
+				workspaceItems={WORKSPACE}
+				projectItems={GROUPED}
+				groupOpen={groupOpen}
+				onToggleGroup={onToggleGroup}
+				activeKey={activeKey}
+				activeProject={ACTIVE}
+				switcherProjects={[]}
+				onNavigate={() => {}}
+				onSelectProject={() => {}}
+				onTogglePin={() => {}}
+				onAllProjects={() => {}}
+				onNewProject={() => {}}
+			/>,
+		);
+		return onToggleGroup;
+	}
+
+	it("is open, its rows listed, while it holds the current page", () => {
+		renderGrouped("proj-issues");
+
+		expect(screen.getByRole("button", { name: "Development" }).getAttribute("aria-expanded")).toBe("true");
+		expect(screen.getByRole("button", { name: "Issues" }).getAttribute("aria-current")).toBe("page");
+		expect(screen.getByRole("button", { name: "Contracts" })).toBeTruthy();
+	});
+
+	it("folds its rows away elsewhere and carries their counts on the head", () => {
+		renderGrouped("proj-overview");
+
+		const head = screen.getByRole("button", { name: "Development" });
+		expect(head.getAttribute("aria-expanded")).toBe("false");
+		expect(screen.queryByRole("button", { name: "Issues" })).toBeNull();
+		expect(head.textContent).toContain("6");
+	});
+
+	it("asks to open when its head is pressed", () => {
+		const toggle = renderGrouped("proj-overview");
+
+		fireEvent.click(screen.getByRole("button", { name: "Development" }));
+		expect(toggle).toHaveBeenCalledWith("development", true);
 	});
 });

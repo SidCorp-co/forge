@@ -3,6 +3,7 @@ import {
   DEFERRABLE_STATUSES,
   REQUIREMENT_DEFERRAL_ACTS,
   REQUIREMENT_STATUSES,
+  REVISION_STATES,
 } from '@forge/contracts/requirements';
 import { REQUIREMENT_CRITERION_FORMS } from '@forge/contracts/suggestions';
 import { sql } from 'drizzle-orm';
@@ -30,8 +31,7 @@ export { REQUIREMENT_STATUSES, type RequirementStatus } from '@forge/contracts/r
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
-export const REVISION_STATES = ['draft', 'proposed', 'current', 'superseded'] as const;
-export type RevisionState = (typeof REVISION_STATES)[number];
+export { REVISION_STATES, type RevisionState } from '@forge/contracts/requirements';
 
 export const CRITERION_FORMS = REQUIREMENT_CRITERION_FORMS;
 export type CriterionForm = (typeof CRITERION_FORMS)[number];

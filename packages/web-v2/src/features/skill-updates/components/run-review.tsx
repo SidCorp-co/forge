@@ -4,15 +4,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-  Badge,
-  Button,
-  CardTitle,
-  ErrorState,
-  Field,
-  Skeleton,
-  Textarea,
-} from "@/design";
+import { Badge, Button, CardTitle, ErrorState, Field, Skeleton, Textarea, EnumBadge, StatusBadge, enumLabel } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { diffLines, diffStat, withContext } from "../diff";
 import {
@@ -71,8 +63,8 @@ export function RunReview({ projectId, runId, canManage }: RunReviewProps) {
     <div className="flex min-h-0 flex-col gap-4 p-4">
       <header className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge>{run.verdict ?? run.status}</Badge>
-          {run.gate ? <Badge tone={run.gate === "human" ? "amber" : "neutral"}>{run.gate} gate</Badge> : null}
+          {run.verdict ? <StatusBadge family="reconcileVerdict" value={run.verdict} /> : <StatusBadge family="reconcileRun" value={run.status} />}
+          {run.gate ? <EnumBadge family="gate" value={run.gate} label={`${enumLabel("gate", run.gate)} gate`} /> : null}
           {votes.length > 0 ? (
             <Badge tone={passes === votes.length ? "green" : "red"}>
               {passes}/{votes.length} verifiers passed
@@ -100,7 +92,7 @@ export function RunReview({ projectId, runId, canManage }: RunReviewProps) {
           <ul className="space-y-2">
             {votes.map((v) => (
               <li key={v.jobId} className="border-line rounded-r border-l-2 pl-3 text-sm">
-                <Badge tone={v.vote === "pass" ? "green" : "red"}>{v.vote}</Badge>
+                <StatusBadge family="vote" value={v.vote} />
                 <p className="text-muted mt-1">{v.reason}</p>
               </li>
             ))}

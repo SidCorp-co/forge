@@ -6,22 +6,7 @@
 // invitations, list the org's projects, and (owner only) rename/delete the org.
 // Behavior is unchanged from the original Settings embedding.
 import { useState } from "react";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardTitle,
-  ErrorState,
-  Field,
-  IconButton,
-  Input,
-  SectionTitle,
-  Select,
-  Skeleton,
-  SlideOver,
-  type SelectOption,
-} from "@/design";
+import { Badge, Button, Card, CardContent, CardTitle, ErrorState, Field, IconButton, Input, SectionTitle, Select, Skeleton, SlideOver, type SelectOption, EnumBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { useAuth } from "@/providers/auth-provider";
@@ -321,9 +306,7 @@ export function OrgMembersCard({
                       }
                     />
                   ) : (
-                    <Badge tone={m.role === "owner" ? "accent" : "neutral"}>
-                      {m.role}
-                    </Badge>
+                    <EnumBadge family="role" value={m.role} />
                   )}
                   {canManage && (
                     <IconButton
@@ -395,7 +378,7 @@ export function OrgMembersCard({
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
                       {inv.expired && <Badge tone="amber">Expired</Badge>}
-                      <Badge tone="neutral">{inv.role}</Badge>
+                      <EnumBadge family="role" value={inv.role} />
                       <IconButton
                         icon="trash"
                         aria-label={`Revoke invitation for ${inv.email}`}

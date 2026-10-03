@@ -4,6 +4,7 @@
  * questions and status moves recorded on its linked issues.
  */
 
+import { issueStatusToneOn, type KernelIssueStatus } from '@forge/contracts/issue-vocabulary';
 import type { RequirementHistoryEntry, RequirementStanding } from '@forge/contracts/requirements';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -24,6 +25,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { approvalRequired } from '../release-batch/approvals.js';
 import { changedSincePlan, stalePinsOf } from './rules.js';
 import { deriveStanding } from './standing.js';
 import { issueCriteriaOf, latestPinsOf } from './standing-facts.js';
@@ -61,7 +63,7 @@ export async function standingsOf(
 ): Promise<Map<string, RequirementStanding>> {
   if (rows.length === 0) return new Map();
   const ids = rows.map((r) => r.id);
-  const [revisions, criteria, delivery, linked, open, prefix, pins, baselineSeqs] =
+  const [revisions, criteria, delivery, linked, open, prefix, pins, baselineSeqs, releaseApproval] =
     await Promise.all([
       db
         .select({
@@ -117,6 +119,7 @@ export async function standingsOf(
         })
         .from(requirementBaselines)
         .where(inArray(requirementBaselines.requirementId, ids)),
+      approvalRequired(projectId),
     ]);
   const [people, issueCriteria] = await Promise.all([
     peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
@@ -132,6 +135,7 @@ export async function standingsOf(
       displayId: formatIssueRef(prefix, i.issSeq),
       title: i.title,
       status: i.status,
+      tone: issueStatusToneOn(i.status as KernelIssueStatus, releaseApproval),
       updatedAt: i.updatedAt,
       changedSincePlan: changedSincePlan({
         ...i,

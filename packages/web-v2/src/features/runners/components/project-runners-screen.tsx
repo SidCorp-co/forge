@@ -28,6 +28,11 @@ import {
   PageTitle,
   Select,
   Skeleton,
+  EnumBadge,
+  StatusBadge,
+  enumLabel,
+  sentenceCase,
+  statusReading,
   useNow,
 } from "@/design";
 import { useProjectDocument } from "@/features/project-settings/config-hooks";
@@ -409,20 +414,8 @@ function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 								</span>
 							</div>
 							<div className="flex items-center gap-1.5">
-								<Badge
-									tone={
-										s.status === "failed"
-											? "red"
-											: s.status === "completed"
-												? "green"
-												: "neutral"
-									}
-								>
-									{s.status}
-								</Badge>
-								{s.failureReason && (
-									<MonoTag>{s.failureReason}</MonoTag>
-								)}
+								<StatusBadge family="session" value={s.status} />
+								{s.failureReason && <EnumBadge family="failureCause" value={s.failureReason} />}
 							</div>
 							{s.errorExcerpt && (
 								<code className="whitespace-pre-wrap break-words font-mono text-11 text-[color:var(--red-600)]">
@@ -443,10 +436,10 @@ function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 							className="flex items-center justify-between gap-2 text-12"
 						>
 							<span className="text-fg">
-								{e.oldStatus ? `${e.oldStatus} → ` : ""}
-								<span className="font-semibold">{e.newStatus}</span>
+								{e.oldStatus ? `${statusReading("device", e.oldStatus).label} → ` : ""}
+								<span className="font-semibold">{statusReading("device", e.newStatus).label}</span>
 								{e.reason && (
-									<span className="text-subtle"> · {e.reason}</span>
+									<span className="text-subtle"> · {sentenceCase(e.reason)}</span>
 								)}
 							</span>
 							<span className="fg-caption flex-none text-subtle">
@@ -527,7 +520,7 @@ function RunnerRow({
 							</span>
 						</Badge>
 					)}
-					{runner.platform && <MonoTag>{runner.platform}</MonoTag>}
+					{runner.platform && <EnumBadge family="platform" value={runner.platform} />}
 					{/* This runner's own version, never Forge's — the two move on
 					    different clocks and a reader with one number on screen
 					    cannot tell which software a bug belongs to (ISS-1119). */}
@@ -622,7 +615,7 @@ function RunnerRow({
 							<span className="font-semibold">a job</span>
 						)}
 						{current.stage && (
-							<span className="text-subtle"> · {current.stage}</span>
+							<span className="text-subtle"> · {enumLabel("jobType", current.stage)}</span>
 						)}
 						{current.issueTitle && (
 							<span className="text-subtle"> — {current.issueTitle}</span>
@@ -750,7 +743,7 @@ function AssignDevice({
 			value: d.id,
 			// Online-ness decides whether provisioning starts now or on the
 			// device's next reconnect, so it belongs in the choice, not after it.
-			label: `${d.name} (${d.platform}) — ${d.status === "online" ? "online" : "offline"}`,
+			label: `${d.name} (${enumLabel("platform", d.platform)}) — ${d.status === "online" ? "online" : "offline"}`,
 		})),
 	];
 	const picked = available.find((d) => d.id === deviceId) ?? null;

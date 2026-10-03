@@ -1,6 +1,8 @@
 
 import {
 	DONE_ISSUE_STATUSES,
+	ISSUE_PRIORITY_LABELS,
+	ISSUE_STATUS_GLYPHS,
 	ISSUE_STATUS_HINTS,
 	PARKABLE_ISSUE_STATUSES,
 	PARKED_ISSUE_STATUSES,
@@ -23,7 +25,6 @@ import {
 	STATUS_KEY_TONE,
 	type StatusKey,
 } from "@/design/status";
-import { statusGlyph } from "./status-glyphs";
 import { gateView, pausedRunView } from "./waiting";
 import type {
 	CommentKind,
@@ -48,13 +49,7 @@ import type {
 
 export const STATUS_LABELS: Record<IssueStatus, string> = ISSUE_STATUS_LABELS;
 
-export const PRIORITY_LABELS: Record<IssuePriority, string> = {
-	critical: "Critical",
-	high: "High",
-	medium: "Medium",
-	low: "Low",
-	none: "None",
-};
+export const PRIORITY_LABELS: Record<IssuePriority, string> = ISSUE_PRIORITY_LABELS;
 
 export const COMPLEXITY_LABELS: Record<IssueComplexity, string> = {
 	xs: "XS",
@@ -87,17 +82,16 @@ export const workStepOf = (row: {
 	workState?: Pick<IssueWorkStateRow, "step"> | null;
 }): WorkStep | null => row.workState?.step ?? null;
 
-/** Which design-kit chip draws each of contracts' `ISSUE_STATUS_TONES`. */
 export const TONE_CHIP: Record<IssueStatusTone, StatusKey> = {
 	neutral: "queued",
 	ready: "passed",
 	run: "running",
 	you: "waiting",
+	blocked: "blocked",
 	done: "archived",
 	err: "failed",
 };
 
-/** A tone of the badge legend as a design-kit chip; every contracts tone map is drawn through it. */
 export function toneChip(tone: IssueStatusTone): StatusKey {
 	return TONE_CHIP[tone];
 }
@@ -105,26 +99,6 @@ export function toneChip(tone: IssueStatusTone): StatusKey {
 /** The issue's lifecycle status as a design-kit `StatusKey`. The agent run's state is a different fact with its own chip: `runStatusChip`. */
 export function statusToChip(status: IssueStatus): StatusKey {
 	return TONE_CHIP[ISSUE_STATUS_TONES[status]] ?? "queued";
-}
-
-export interface IssueStatusChipView {
-	status: StatusKey;
-	label: string;
-	glyph: string;
-	title: string;
-}
-
-/** The one reading every issue-status chip takes. */
-export function issueStatusChip(
-	status: IssueStatus,
-	step?: WorkStep | null,
-): IssueStatusChipView {
-	return {
-		status: statusToChip(status),
-		label: statusStepLabel(status, step),
-		glyph: statusGlyph(status),
-		title: statusHint(status),
-	};
 }
 
 /** What an issue carries about its run: the sessions' verdict and the pipeline's queued job. */
@@ -505,8 +479,7 @@ export function parseChecklist(
 /** Heartbeat staleness threshold. Mirrors core's sweeper
  *  `HEARTBEAT_TIMEOUT_MS_DEFAULT = 3*60_000` (`pipeline/sweeper.ts`, env
  *  `PIPELINE_HEARTBEAT_TIMEOUT_MS`). Not env-readable from the FE, so kept in
- *  lockstep here; a session whose last heartbeat is older than this is the same
- *  "stale" the server uses before marking it failed. */
+ *  lockstep: a session older than this is the "stale" the server uses. */
 export const HEARTBEAT_STALE_MS = 3 * 60_000;
 
 export type HeartbeatState = "alive" | "stale" | "unknown";

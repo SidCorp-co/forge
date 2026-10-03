@@ -66,7 +66,7 @@ export const PostmanConnectionConfig: ConnectionSection = ({ connection, canMana
               ]}
             />
           ) : (
-            <span className="fg-body-sm text-muted">{form.mode}</span>
+            <span className="fg-body-sm text-muted">{form.mode === "full" ? "Full" : "Minimal"}</span>
           )}
         </div>
       </div>

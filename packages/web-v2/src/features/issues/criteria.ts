@@ -1,6 +1,7 @@
 // ISS-55 — an issue's criteria as rows (`GET /api/issues/:id/criteria`), each with its latest
-// verdict, and the one badge each verdict state reads as on every screen.
+// verdict, folded to the criterion standing whose badge reads the same on every screen.
 
+import type { CriterionStanding } from "@forge/contracts/issue-vocabulary";
 import type { StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
@@ -31,7 +32,8 @@ export interface CriterionRow {
   latest: CriterionVerdict | null;
 }
 
-export type CriterionBadge = "pass" | "fail" | "skipped" | "unresolved" | "unjudged";
+/** The one reading each state takes on every screen is contracts' `CRITERION_STANDINGS`. */
+export type CriterionBadge = CriterionStanding;
 
 /** `short` is a judged pass; a backfilled abbreviated commit reads Unresolved, whatever it said. */
 export function criterionBadge(latest: CriterionVerdict | null): CriterionBadge {
@@ -40,14 +42,6 @@ export function criterionBadge(latest: CriterionVerdict | null): CriterionBadge 
   if (latest.verdict === "pass" || latest.verdict === "short") return "pass";
   return latest.verdict;
 }
-
-export const BADGE: Record<CriterionBadge, { label: string; tone: "green" | "red" | "neutral" | "amber" }> = {
-  pass: { label: "Pass", tone: "green" },
-  fail: { label: "Fail", tone: "red" },
-  skipped: { label: "Skipped", tone: "neutral" },
-  unresolved: { label: "Unresolved", tone: "amber" },
-  unjudged: { label: "Not judged", tone: "neutral" },
-};
 
 /** What the verdict was judged against, as one phrase for the tooltip. */
 export function identityPhrase(v: CriterionVerdict): string {

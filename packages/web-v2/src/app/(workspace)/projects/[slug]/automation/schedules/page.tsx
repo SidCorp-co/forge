@@ -1,12 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { SchedulesScreen } from "@/features/schedules/components/schedules-screen";
-import { ProjectGate } from "../project-gate";
-
-export default function ProjectSchedulesPage() {
-  return (
-    <ProjectGate label="loading schedules…">
-      {(p) => <SchedulesScreen scope={{ projectId: p.id, canManage: p.role === "admin" }} />}
-    </ProjectGate>
-  );
+export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  redirect(`/projects/${encodeURIComponent(slug)}/automation?tab=schedules`);
 }

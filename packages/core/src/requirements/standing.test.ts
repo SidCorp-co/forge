@@ -1,3 +1,4 @@
+import { issueStatusToneOn, type KernelIssueStatus } from '@forge/contracts/issue-vocabulary';
 import { describe, expect, it } from 'vitest';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import {
@@ -35,6 +36,7 @@ const issue = (id: string, status: string, extra: Partial<StandingIssue> = {}): 
   displayId: formatIssueRef(null, Number(id)),
   title: `Issue ${id}`,
   status,
+  tone: issueStatusToneOn(status as KernelIssueStatus, false),
   updatedAt: daysAgo(1),
   changedSincePlan: false,
   ...extra,
@@ -413,6 +415,19 @@ describe('coverage by business criterion', () => {
     );
     expect(s.coverage.map((c) => c.verdict)).toEqual(['passing', 'gap', 'failing']);
     expect(s.facts).toMatchObject({ passing: 1, judged: 2, criteria: 3 });
+  });
+
+  it("carries each issue's project tone, so an awaiting release is amber only where approval is required", () => {
+    const s = deriveStanding(
+      base({
+        issues: [issue('1', 'awaiting_release'), issue('2', 'awaiting_release', { tone: 'you' })],
+        issueCriteria: [link('1', 'bc1-r1', 'pass'), link('2', 'bc1-r1', 'pass', 2)],
+      }),
+    );
+    expect(s.coverage[0]?.issues.map((i) => [i.displayId, i.tone])).toEqual([
+      [formatIssueRef(null, 1), 'ready'],
+      [formatIssueRef(null, 2), 'you'],
+    ]);
   });
 
   it('a link with no verdict yet, or skipped, is not judged', () => {

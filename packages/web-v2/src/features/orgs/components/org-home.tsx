@@ -9,15 +9,7 @@
 // projects-only view so single-org users never hit an empty dead-end.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  Badge,
-  Card,
-  CardContent,
-  EmptyState,
-  ErrorState,
-  PageContainer,
-  Skeleton,
-} from "@/design";
+import { Badge, Card, CardContent, EmptyState, ErrorState, PageContainer, Skeleton, EnumBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useActiveOrg } from "../active-org";
 import { useOrgProjects } from "../hooks";
@@ -48,9 +40,9 @@ export function OrgHome() {
       <PageTitle>{label}</PageTitle>
       <TopBarActions>
         {activeOrg.isPersonal ? (
-          <Badge tone="neutral">personal</Badge>
+          <Badge tone="neutral">Personal</Badge>
         ) : (
-          <Badge tone={activeOrg.role === "owner" ? "accent" : "neutral"}>{activeOrg.role}</Badge>
+          <EnumBadge family="role" value={activeOrg.role} />
         )}
       </TopBarActions>
 

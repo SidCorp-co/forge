@@ -1,3 +1,4 @@
+import type { IssueStatusTone } from "@forge/contracts/issue-vocabulary";
 import type {
   RequirementDeferral,
   RequirementHistoryEntry,
@@ -32,7 +33,16 @@ export interface RequirementRevision {
 export interface RequirementPin { kind: 'workflow-design' | 'contract-version'; workflowId: string | null; flow: string | null; designRevision: number | null; providerProjectId: string | null; contractSlug: string | null; contractVersion: string | null }
 export interface RequirementBaseline { revision: number; seq: number; act: 'agree' | 'repin'; agreedBy: string; agreedByName: string | null; agreedAt: string; reason: string | null; pins: RequirementPin[] }
 export interface RequirementWorkflowLink { workflowId: string; flow: string; title: string; designStatus: 'draft'|'proposed'|'approved'|'returned'|null; approvedRevision: number | null }
-export interface RequirementIssueLink { issueId: string; displayId: string; title: string; status: string; plannedRevision: number | null; changedSincePlan: boolean }
+export interface RequirementIssueLink {
+  issueId: string;
+  displayId: string;
+  title: string;
+  status: string;
+  /** The status's tone on this project (core `issues/standing.ts:toneOf`): awaiting_release is amber only where a release needs approval. */
+  tone: IssueStatusTone;
+  plannedRevision: number | null;
+  changedSincePlan: boolean;
+}
 export interface RequirementDetail extends RequirementSummary {
   revisions: RequirementRevision[];   // newest first
   criteria: RequirementCriterion[];   // of the current revision; [] when none is current

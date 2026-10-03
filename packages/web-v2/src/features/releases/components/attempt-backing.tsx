@@ -2,9 +2,9 @@
 
 
 import {
-  Badge,
   CardTitle,
   MonoTag,
+  StatusBadge,
 } from "@/design";
 import type { ReleaseAttempt } from "../types";
 
@@ -86,9 +86,7 @@ export function AttemptBacking({ attempt }: { attempt: ReleaseAttempt }) {
 				<div className="mt-1 grid gap-3 sm:grid-cols-3">
 					<Backing label="Health">
 						{attempt.health ? (
-							<Badge tone={attempt.health === "up" ? "green" : "red"}>
-								{attempt.health}
-							</Badge>
+							<StatusBadge family="health" value={attempt.health} />
 						) : (
 							<Unrecorded />
 						)}
@@ -98,9 +96,7 @@ export function AttemptBacking({ attempt }: { attempt: ReleaseAttempt }) {
 					</Backing>
 					<Backing label="Verdict">
 						{attempt.verdict ? (
-							<Badge tone={attempt.verdict === "ok" ? "green" : "red"}>
-								{attempt.verdict}
-							</Badge>
+							<StatusBadge family="attemptVerdict" value={attempt.verdict} />
 						) : (
 							<Unrecorded />
 						)}

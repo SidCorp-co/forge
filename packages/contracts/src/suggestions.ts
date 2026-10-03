@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import { type FeedbackTriageEffect, feedbackTriageSchema } from "./feedback.js";
+import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { ANSWER_VIEWS, pickFields } from "./projection.js";
 
 /** The six kinds rev 2 names, and feedback_triage (workflow feedback-triage, ISS-59); cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
@@ -28,6 +29,34 @@ export const SUGGESTION_STATUSES = [
 ] as const;
 export type SuggestionStatus = (typeof SUGGESTION_STATUSES)[number];
 
+/** How a person reads a suggestion's status: a proposal waits on a person; the rest are settled. */
+export const SUGGESTION_STATUS_LABELS: Record<SuggestionStatus, string> = {
+	proposed: "Awaiting a decision",
+	accepted: "Accepted",
+	rejected: "Rejected",
+	stale: "Stale",
+	withdrawn: "Withdrawn",
+};
+
+export const SUGGESTION_STATUS_TONES: Record<
+	SuggestionStatus,
+	IssueStatusTone
+> = {
+	proposed: "you",
+	accepted: "ready",
+	rejected: "done",
+	stale: "done",
+	withdrawn: "done",
+};
+
+export const SUGGESTION_STATUS_GLYPHS: Record<SuggestionStatus, string> = {
+	proposed: "●",
+	accepted: "✓",
+	rejected: "×",
+	stale: "↻",
+	withdrawn: "–",
+};
+
 /** Who wrote it: the BA assistant door, an agent credential, or a person through REST. */
 export const SUGGESTION_PRODUCERS = [
 	"ba_assistant",
@@ -37,7 +66,11 @@ export const SUGGESTION_PRODUCERS = [
 export type SuggestionProducer = (typeof SUGGESTION_PRODUCERS)[number];
 
 /** What a suggestion is about: one arm of its exclusive arc. */
-export const SUGGESTION_TARGET_TYPES = ["requirement", "issue", "feedback"] as const;
+export const SUGGESTION_TARGET_TYPES = [
+	"requirement",
+	"issue",
+	"feedback",
+] as const;
 export type SuggestionTargetType = (typeof SUGGESTION_TARGET_TYPES)[number];
 
 /** An item embedding row's state: a write never skips in silence (Q7), a no_egress project's included (Q8). */

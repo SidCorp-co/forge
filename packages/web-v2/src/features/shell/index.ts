@@ -18,7 +18,7 @@ export {
   PROJECT_ITEMS_BY_SPECIFICITY, activeSlug, matchesSub,
   buildActiveKey, buildBottomActiveKey, workspaceNavItems,
   compactWorkspaceRailItems, projectRailItems, bottomTabItems,
-  resolveRailSlug, projectMenu, PROJECT_MENU, isProjGroup, AUTOMATION_GROUP_KEY,
+  resolveRailSlug, projectMenu, PROJECT_MENU, isProjGroup, DEVELOPMENT_GROUP_KEY,
   type ProjItem, type ProjGroup, type ProjEntry, type ProjectBadges,
 } from './nav-model';
 export { buildWorkspaceCommands, type WorkspaceCommandDeps } from './commands';

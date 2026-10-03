@@ -7,7 +7,7 @@
 // to the related issue — ISS-331).
 
 import type { ComponentProps } from "react";
-import { Avatar, Badge, Button, MonoTag, Stat, StatusChip } from "@/design";
+import { Avatar, Button, EnumBadge, MonoTag, Stat, StatusBadge, StatusChip } from "@/design";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
 import { LiveReachValue } from "./live-reach-row";
@@ -48,11 +48,6 @@ function fmtTokens(n: number): string {
   return String(n);
 }
 
-/** Title-case a free-text category (`improvement` → `Improvement`). */
-function titleCase(s: string): string {
-  return s.replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 py-2">
@@ -89,7 +84,7 @@ function MergeMarkBadge({
     // that keyboard, touch and screen-reader users never reach.
     return (
       <>
-        <Badge tone="cobalt">landed</Badge>
+        <StatusBadge family="mergeMark" value="landed" />
         {landing && (
           <span className="fg-body-sm min-w-0 break-all font-mono text-muted" data-testid="merged-landing">
             {landing}
@@ -101,7 +96,7 @@ function MergeMarkBadge({
   if (mark === "observed") {
     return (
       <span title={`Forge observed this merge at ${commitSha ?? "a commit it recorded"}`}>
-        <Badge tone="green">observed</Badge>
+        <StatusBadge family="mergeMark" value="observed" />
       </span>
     );
   }
@@ -115,7 +110,7 @@ function MergeMarkBadge({
             : "Forge holds no merged change request for this issue — this mark is a claim it recorded, not a merge it witnessed"
         }
       >
-        <Badge tone="amber">claimed</Badge>
+        <StatusBadge family="mergeMark" value="asserted" />
       </span>
     );
   }
@@ -287,7 +282,7 @@ export function PropertiesRail({
       </Row>
       {issue.category && (
         <Row label="Category">
-          <Badge tone="neutral">{titleCase(issue.category)}</Badge>
+          <EnumBadge family="category" value={issue.category} />
         </Row>
       )}
       {hasModule && (

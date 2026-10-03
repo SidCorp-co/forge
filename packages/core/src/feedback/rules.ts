@@ -15,6 +15,7 @@ import type {
   FeedbackStatus,
   FeedbackTargetType,
   FeedbackTriage,
+  FeedbackWaiting,
 } from '@forge/contracts/feedback';
 import type { SuggestionKind, SuggestionStatus } from '@forge/contracts/suggestions';
 import {
@@ -97,31 +98,54 @@ export function attentionOf(phase: FeedbackPhase, viewerIsReporter: boolean): Fe
   return 'done';
 }
 
+/** Who or what an item waits on, whoever reads it: the "Waiting on" cell's name and act. */
+export function waitingOf(
+  phase: FeedbackPhase,
+  route: FeedbackRoute | null,
+  carrier: string | null,
+  reporter: string,
+): FeedbackWaiting {
+  switch (phase) {
+    case 'new':
+    case 'reopened':
+      return { kind: 'person', who: 'A person', act: 'triage it' };
+    case 'triaged':
+      return { kind: 'person', who: 'A person', act: 'route it again: its route carries nothing' };
+    case 'planned':
+      if (route === 'issue')
+        return { kind: 'issue', who: carrier ?? 'The linked issue', act: 'ship' };
+      if (route === 'revision')
+        return { kind: 'person', who: 'The revision proposal', act: 'be accepted and delivered' };
+      if (route === 'new_requirement')
+        return {
+          kind: 'issue',
+          who: carrier ?? 'The new requirement',
+          act: 'be agreed and delivered',
+        };
+      if (route === 'duplicate')
+        return { kind: 'issue', who: `Its root ${carrier ?? ''}`.trim(), act: 'be resolved' };
+      return { kind: 'issue', who: 'The linked work', act: '' };
+    case 'resolved':
+      return { kind: 'person', who: reporter, act: 'verify the fix' };
+    default:
+      return { kind: 'none', who: 'Nothing', act: '' };
+  }
+}
+
+/** The same fact as one sentence, for a reader without the cell: "ISS-12 to ship". */
 export function waitingOnOf(
   phase: FeedbackPhase,
   route: FeedbackRoute | null,
   carrier: string | null,
   reporter: string,
 ): string {
-  switch (phase) {
-    case 'new':
-    case 'reopened':
-      return 'A person to triage it';
-    case 'triaged':
-      return 'A person to route it again: its route carries nothing';
-    case 'planned':
-      if (route === 'issue') return `${carrier ?? 'The linked issue'} to ship`;
-      if (route === 'revision') return 'The revision proposal to be accepted and delivered';
-      if (route === 'new_requirement') {
-        return `${carrier ?? 'The new requirement'} to be agreed and delivered`;
-      }
-      if (route === 'duplicate') return `Its root ${carrier ?? ''} to be resolved`.trim();
-      return 'The linked work';
-    case 'resolved':
-      return `${reporter} to verify the fix`;
-    default:
-      return 'Nothing';
-  }
+  const w = waitingOf(phase, route, carrier, reporter);
+  return w.act ? `${w.who} to ${w.act}` : w.who;
+}
+
+/** The cell for one viewer: when it is their turn it names them. */
+export function waitingFor(w: FeedbackWaiting, attention: FeedbackAttention): FeedbackWaiting {
+  return attention === 'you' ? { kind: 'you', who: 'You', act: w.act } : w;
 }
 
 export interface TargetFields {

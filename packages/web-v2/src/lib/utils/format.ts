@@ -41,3 +41,16 @@ export function formatCountdown(iso: string | null | undefined): string {
   if (hours < 48) return `in ${hours}h`;
   return `in ${Math.ceil(ms / 86_400_000)} days`;
 }
+
+/** "now", "12m", "3h", "5d", "6w": the compact age a list cell carries; `formatStamp` rides its tooltip. */
+export function formatAge(iso: string, now: number = Date.now()): string {
+  const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
+  if (s < 60) return "now";
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86_400) return `${Math.floor(s / 3600)}h`;
+  if (s < 86_400 * 14) return `${Math.floor(s / 86_400)}d`;
+  return `${Math.floor(s / (86_400 * 7))}w`;
+}
+
+/** The absolute time, in the reader's locale, for a tooltip beside a relative one. */
+export const formatStamp = (iso: string) => new Date(iso).toLocaleString();

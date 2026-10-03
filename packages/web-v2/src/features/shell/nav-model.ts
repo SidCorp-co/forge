@@ -2,7 +2,7 @@ import type { BottomTabItem, NavItem } from "@/design";
 import { joinedEcosystems, needsMe } from "@/features/ecosystem/inbox";
 import { ecosystemRoutes } from "@/features/ecosystem/routes";
 import type { WorkspaceRead } from "@/features/ecosystem/types";
-import type { RailItem } from "./nav-rail-compact";
+import type { RailEntry, RailItem } from "./nav-rail-compact";
 
 export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   // Overview = the all-projects home; the Attention queue is folded in here
@@ -41,25 +41,27 @@ export type ProjEntry = ProjItem | ProjGroup;
 
 export const isProjGroup = (e: ProjEntry): e is ProjGroup => "items" in e;
 
-export const AUTOMATION_GROUP_KEY = "automation";
+export const DEVELOPMENT_GROUP_KEY = "development";
 
+// cm:why the owner's IA ruling (ISS-65, FB-6): what a project is for comes first, and the
+// machinery that builds it sits under one Development group; Overview and Modules have no page yet.
 export const PROJECT_MENU: ProjEntry[] = [
   { key: "proj-overview", label: "Dashboard", icon: "grid", sub: "" },
   { key: "proj-requirements", label: "Requirements", icon: "book", sub: "/requirements" },
   { key: "proj-workflows", label: "Workflows", icon: "flow", sub: "/workflows" },
-  { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
-  { key: "proj-agents", label: "Agents", icon: "agent", sub: "/agents" },
-  {
-    key: AUTOMATION_GROUP_KEY,
-    label: "Automation",
-    icon: "calendar",
-    items: [
-      { key: "proj-schedules", label: "Schedules", icon: "clock", sub: "/automation/schedules" },
-      { key: "proj-improvements", label: "Improvements", icon: "star", sub: "/automation/improvements" },
-    ],
-  },
   { key: "proj-releases", label: "Releases", icon: "rocket", sub: "/releases" },
   { key: "proj-feedback", label: "Feedback", icon: "chat", sub: "/feedback" },
+  {
+    key: DEVELOPMENT_GROUP_KEY,
+    label: "Development",
+    icon: "code",
+    items: [
+      { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
+      { key: "proj-agents", label: "Agents", icon: "agent", sub: "/agents" },
+      { key: "proj-contracts", label: "Contracts", icon: "link", sub: "/ecosystem/contracts" },
+      { key: "proj-automation", label: "Automation", icon: "calendar", sub: "/automation" },
+    ],
+  },
 ];
 
 export const PROJECT_ITEMS: ProjItem[] = PROJECT_MENU.flatMap((e) => (isProjGroup(e) ? e.items : [e]));
@@ -189,9 +191,6 @@ export function workspaceNavItems(attentionCount: number): NavItem[] {
   );
 }
 
-/** Compact-rail workspace rows. Derived from WORKSPACE_ITEMS so the compact
- *  and expanded rails can never drift (ISS-433 live-E2E caught this list as a
- *  stale hardcoded duplicate — it was missing the promoted Integrations row). */
 export function compactWorkspaceRailItems(attentionCount: number): RailItem[] {
   return WORKSPACE_ITEMS.map((it) => ({
     key: it.key,
@@ -201,13 +200,10 @@ export function compactWorkspaceRailItems(attentionCount: number): RailItem[] {
   }));
 }
 
-export function projectRailItems(badges: ProjectBadges): RailItem[] {
-  return PROJECT_ITEMS.map((it) => ({
-    key: it.key,
-    label: it.label,
-    icon: it.icon,
-    badge: badgeOf(it.key, badges),
-  }));
+/** The compact rail's project tier: the same menu, Development folded under its head. */
+export function projectRailItems(badges: ProjectBadges): RailEntry[] {
+  const row = (it: ProjItem): RailItem => ({ key: it.key, label: it.label, icon: it.icon, badge: badgeOf(it.key, badges) });
+  return PROJECT_MENU.map((e) => (isProjGroup(e) ? { key: e.key, label: e.label, icon: e.icon, items: e.items.map(row) } : row(e)));
 }
 
 export function bottomTabItems(attentionCount: number): BottomTabItem[] {

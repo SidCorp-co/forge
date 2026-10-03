@@ -42,6 +42,8 @@ import {
   type PhaseFacts,
   phaseOf,
   searchWithheldRefusal,
+  waitingFor,
+  waitingOf,
   waitingOnOf,
 } from './rules.js';
 
@@ -318,6 +320,8 @@ function summaryOf(r: Row, l: Linked, viewer: FeedbackActor, withhold: boolean):
   const phase = phaseIn(r, l);
   const route = routeView(r, l);
   const reporterName = l.names.get(r.reportedBy) ?? null;
+  const attention = attentionOf(phase, viewer.userId === r.reportedBy);
+  const waiting = waitingOf(phase, r.route, route?.key ?? null, reporterName ?? 'The reporter');
   return {
     id: r.id,
     key: feedbackKey(r.fbSeq),
@@ -326,8 +330,9 @@ function summaryOf(r: Row, l: Linked, viewer: FeedbackActor, withhold: boolean):
     severity: r.severity,
     status: r.status,
     phase,
-    attention: attentionOf(phase, viewer.userId === r.reportedBy),
+    attention,
     waitingOn: waitingOnOf(phase, r.route, route?.key ?? null, reporterName ?? 'The reporter'),
+    waiting: waitingFor(waiting, attention),
     target: targetView(r, l),
     route: withhold && route?.answer ? { ...route, answer: null } : route,
     reporter: { id: r.reportedBy, name: reporterName, agency: r.reporterAgency },

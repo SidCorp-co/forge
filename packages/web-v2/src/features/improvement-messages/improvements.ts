@@ -1,3 +1,4 @@
+import { enumLabel } from "@/design/vocabulary";
 import type { AgentReport } from "@/features/agent-reports/types";
 import type { ScheduleRun } from "@/features/schedules/types";
 
@@ -36,7 +37,7 @@ function reportRow(r: AgentReport): ImprovementRow {
     id: `report:${r.id}`,
     source: "report",
     title: r.summary,
-    from: `${r.kind.replace(/_/g, " ")} · ${r.target}${r.targetRef ? ` ${r.targetRef}` : ""}`,
+    from: `${enumLabel("agentReportKind", r.kind)} · ${enumLabel("agentReportTarget", r.target)}${r.targetRef ? ` ${r.targetRef}` : ""}`,
     state: r.reviewedAt ? "done" : "report",
     at: r.createdAt,
     report: r,

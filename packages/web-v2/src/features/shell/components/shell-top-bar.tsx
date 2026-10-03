@@ -5,6 +5,7 @@ import { DOCK_TITLE } from "@/features/conversations/components/chat-dock";
 
 // cm:why the page's title and primary actions are portalled in by the page itself (PageTitle, TopBarActions), so the bar has no per-route knowledge
 // cm:why Ask Agent is desktop-only: below md the bottom tabs carry it, and a second entry there would be the same control twice
+// cm:why open, it reads as pressed rather than turning primary: the page's one primary action keeps that colour (prototype-gap-audit)
 export function ShellTopBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onToggleChat: () => void }) {
   const { titleRef, actionsRef } = useTopBarSlotTargets();
   return (
@@ -13,12 +14,12 @@ export function ShellTopBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onT
       <div ref={actionsRef} className="flex flex-none items-center gap-2" />
       <Button
         type="button"
-        variant={chatOpen ? "primary" : "secondary"}
+        variant="secondary"
         size="sm"
         icon="chat"
         aria-pressed={chatOpen}
         onClick={onToggleChat}
-        className="hidden md:inline-flex"
+        className="hidden md:inline-flex aria-pressed:bg-active aria-pressed:text-fg"
       >
         {DOCK_TITLE}
       </Button>

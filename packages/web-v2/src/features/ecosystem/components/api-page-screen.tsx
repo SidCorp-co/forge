@@ -1,7 +1,8 @@
 "use client";
 
-import { Badge } from "@/design";
+import { Badge, EnumBadge, enumLabel, sentenceCase } from "@/design";
 import { useApiPage } from "../hooks";
+import { TYPE_LABEL } from "../types";
 import { readingOf } from "@/lib/api/refusals";
 import { Loading, UnreadNotice } from "./notices";
 
@@ -22,7 +23,7 @@ export function ApiPageScreen({ projectId, slug }: { projectId: string; slug: st
             {page.ecosystems.map((e) => (
               <li key={e.id}>
                 <Badge>
-                  {e.name} · members see {e.visibility}
+                  {e.name} · members see {enumLabel("visibility", e.visibility)}
                 </Badge>
               </li>
             ))}
@@ -42,9 +43,9 @@ export function ApiPageScreen({ projectId, slug }: { projectId: string; slug: st
               <li key={p.slug} className="min-w-0 rounded-md border border-line px-3 py-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-13 font-semibold">{p.contract}</span>
-                  <Badge>{p.type}</Badge>
-                  <Badge tone={p.lifecycle === "deprecated" ? "amber" : "neutral"}>{p.lifecycle}</Badge>
-                  <Badge tone="neutral">artifact: {p.artifact}</Badge>
+                  <EnumBadge family="interfaceType" value={p.type} />
+                  <EnumBadge family="lifecycle" value={p.lifecycle} />
+                  <EnumBadge family="artifact" value={p.artifact} />
                 </div>
                 <p className="mt-1 break-words text-13-5">{p.title}</p>
                 {p.summary ? <p className="fg-caption mt-1 break-words">{p.summary}</p> : null}
@@ -86,12 +87,12 @@ export function ApiPageScreen({ projectId, slug }: { projectId: string; slug: st
         {page.commitments ? (
           <dl className="grid grid-cols-1 gap-1 text-13 sm:grid-cols-2">
             <dt className="fg-caption">Versioning</dt>
-            <dd>{page.commitments.versioning}</dd>
+            <dd>{enumLabel("versioning", page.commitments.versioning)}</dd>
             <dt className="fg-caption">Deprecation notice</dt>
             <dd>{page.commitments.deprecationNoticeDays} days</dd>
             {Object.entries(page.commitments.responseDays).map(([type, days]) => (
               <div key={type} className="contents">
-                <dt className="fg-caption">Answers a {type} within</dt>
+                <dt className="fg-caption">Answers a {(TYPE_LABEL[type] ?? sentenceCase(type)).toLowerCase()} within</dt>
                 <dd>{days} days</dd>
               </div>
             ))}

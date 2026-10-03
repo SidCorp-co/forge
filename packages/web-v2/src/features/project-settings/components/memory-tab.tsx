@@ -6,19 +6,7 @@
 // GET .../memory-model/estimate; the tab never derives a state of its own.
 // The endpoints and the job are ISS-906 (core memory-model-routes.ts).
 
-import {
-  Badge,
-  Banner,
-  Button,
-  Card,
-  CardContent,
-  ErrorState,
-  Field,
-  Input,
-  ProgressBar,
-  SectionTitle,
-  Skeleton,
-} from "@/design";
+import { Badge, Banner, Button, Card, CardContent, ErrorState, Field, Input, ProgressBar, SectionTitle, Skeleton, StatusBadge } from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
 import { formatApiError } from "@/lib/api/error";
 import { useState } from "react";
@@ -181,9 +169,7 @@ function ChunkedState(props: {
 				<span className="fg-caption text-subtle">Current model</span>
 				<Badge tone="accent">chunked</Badge>
 				<span className="fg-caption text-subtle">Reindex</span>
-				<Badge tone={state === "failed" ? "red" : state === "completed" ? "green" : "neutral"}>
-					{state}
-				</Badge>
+				<StatusBadge family="reindex" value={state} />
 			</div>
 			{r && (state === "queued" || state === "running") && (
 				<Progress reindex={r} canEdit={props.canEdit} pending={props.cancelPending} onCancel={props.onCancel} />

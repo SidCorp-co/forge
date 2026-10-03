@@ -1,34 +1,24 @@
 "use client";
 
-import { SENSITIVE_DATA_BADGES, type SensitiveDataLevel } from "@forge/contracts/data-policy";
-import { Tooltip } from "@/design";
+import type { SensitiveDataLevel } from "@forge/contracts/data-policy";
+import { StatusBadge, statusReading, Tooltip } from "@/design";
 import { TONE_META } from "@/design/status";
 import type { IntegrationState } from "../c4/geometry";
 import type { DesignStatus, WorkflowRecord } from "../types";
 
-const DESIGN_PILL: Record<DesignStatus, { label: string; tone: keyof typeof TONE_META; tip: string }> = {
-  draft: { label: "Draft", tone: "infra", tip: "The master is still drawing it; nobody has been asked to approve it" },
-  proposed: { label: "Awaiting approval", tone: "attention", tip: "Nothing that builds it is dispatched until it is approved" },
-  approved: { label: "Approved", tone: "success", tip: "Work that builds it may start" },
-  returned: { label: "Returned", tone: "failure", tip: "Sent back to the master to revise" },
-};
-
-/** A design's approval state as a colour badge: a dot and a sentence-case label, the meaning in its tooltip. */
+/** A design's approval state: the shared design badge, the return reason in its tooltip. */
 export function DesignPill({ status, reason }: { status: DesignStatus; reason?: string | null }) {
-  const p = DESIGN_PILL[status];
-  const c = TONE_META[p.tone];
-  return (
-    <Tooltip label={reason ? `${p.tip}: ${reason}` : p.tip} side="bottom" multiline>
-      <span
-        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-0.5 text-11 font-semibold"
-        style={{ color: c.fg, background: c.bg }}
-        data-testid="design-pill"
-        data-status={status}
-      >
-        <span aria-hidden className="size-1.5 rounded-full" style={{ background: c.dot }} />
-        {p.label}
+  const badge = <StatusBadge family="design" value={status} />;
+  return reason ? (
+    <Tooltip label={`${statusReading("design", status).hint ?? ""}: ${reason}`} side="bottom" multiline>
+      <span data-testid="design-pill" data-status={status}>
+        {badge}
       </span>
     </Tooltip>
+  ) : (
+    <span data-testid="design-pill" data-status={status}>
+      {badge}
+    </span>
   );
 }
 
@@ -45,45 +35,27 @@ export function ProposedMarker({ r }: { r: WorkflowRecord }) {
   );
 }
 
-/** A project's data policy as a colour badge; the raw level sits in its tooltip. */
+/** A project's data policy as the shared badge; the level's meaning and the raw level in its tooltip. */
 export function SensitivityBadge({ level }: { level: SensitiveDataLevel }) {
-  const b = SENSITIVE_DATA_BADGES[level];
-  const c = TONE_META[b.tone];
   return (
-    <Tooltip label={`${b.tip} (sensitiveData: ${level})`} side="bottom" multiline>
-      <span
-        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-0.5 text-12 font-semibold"
-        style={{ color: c.fg, background: c.bg }}
-        data-testid="sensitivity-badge"
-        data-level={level}
-      >
-        <span aria-hidden className="size-1.5 rounded-full" style={{ background: c.dot }} />
-        {b.label}
-      </span>
-    </Tooltip>
+    <span data-testid="sensitivity-badge" data-level={level}>
+      <StatusBadge family="dataPolicy" value={level} />
+    </span>
   );
 }
 
-const INTEGRATION: Record<IntegrationState, { label: string; tone: keyof typeof TONE_META; tip: string }> = {
-  confirmed: { label: "Confirmed", tone: "success", tip: "The design names this integration without an open question" },
-  unconfirmed: { label: "Unconfirmed", tone: "attention", tip: "The design marks this integration as not yet confirmed" },
-};
-
-/** Whether an outside system's integration is settled, as a colour badge; the design's own words sit in its tooltip. */
+/** Whether an outside system's integration is settled, as the shared badge; the design's own words sit in its tooltip. */
 export function IntegrationBadge({ state, mark }: { state: IntegrationState; mark?: string | null }) {
-  const b = INTEGRATION[state];
-  const c = TONE_META[b.tone];
-  return (
-    <Tooltip label={mark ? `${b.tip}: “${mark}”` : b.tip} side="bottom" multiline>
-      <span
-        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-0.5 text-11 font-semibold"
-        style={{ color: c.fg, background: c.bg }}
-        data-testid="integration-badge"
-        data-state={state}
-      >
-        <span aria-hidden className="size-1.5 rounded-full" style={{ background: c.dot }} />
-        {b.label}
-      </span>
+  const badge = (
+    <span data-testid="integration-badge" data-state={state}>
+      <StatusBadge family="integration" value={state} />
+    </span>
+  );
+  return mark ? (
+    <Tooltip label={`${statusReading("integration", state).label}: “${mark}”`} side="bottom" multiline>
+      {badge}
     </Tooltip>
+  ) : (
+    badge
   );
 }

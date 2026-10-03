@@ -6,12 +6,15 @@ import {
   Avatar,
   Badge,
   Checkbox,
+  EnumBadge,
+  enumLabel,
   Icon,
   IconButton,
   Menu,
   type MenuItem,
   MonoTag,
   Spinner,
+  StatusBadge,
   StatusChip,
   TD,
   Tooltip,
@@ -23,10 +26,10 @@ import { useCallback, useState } from "react";
 import {
   complexityLabel,
   initials,
-  issueStatusChip,
   priorityLabel,
   workStepOf,
 } from "../derive";
+import { useStatusTone } from "../release-approval";
 import {
   deriveQueuedStep,
   hasLiveAgentSession,
@@ -115,9 +118,10 @@ export function StatusCell({ row }: { row: IssueRow }) {
     row.pipelineHealth,
     hasLiveAgentSession(row.agentStatus),
   );
+  const tone = useStatusTone(row.status);
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <StatusChip {...issueStatusChip(row.status, workStepOf(row))} size="sm" />
+      <StatusBadge family="issue" value={row.status} step={workStepOf(row)} tone={tone} size="sm" />
       <AgentChip agentStatus={row.agentStatus} failureInfo={row.failureInfo} />
       {queuedStep && <QueuedChip step={queuedStep} />}
     </div>
@@ -138,7 +142,7 @@ function QueuedChip({ step }: { step: QueuedStepView }) {
   );
   if (!step.gate) return chip;
   return (
-    <Tooltip label={`${step.jobType} · ${step.gate.detail}`} multiline>
+    <Tooltip label={`${enumLabel("jobType", step.jobType)} · ${step.gate.detail}`} multiline>
       {chip}
     </Tooltip>
   );
@@ -342,7 +346,7 @@ export function IssueTableRow({
             </span>
           </button>
           <span className="flex flex-none items-center gap-1.5">
-            {row.category && <MonoTag>{row.category}</MonoTag>}
+            {row.category && <EnumBadge family="category" value={row.category} />}
             <WaitingOnPersonChip since={row.waitingOnPersonSince} now={now} />
             <DepBadges deps={row.dependencies} slug={slug} />
           </span>

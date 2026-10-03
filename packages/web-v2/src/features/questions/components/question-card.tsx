@@ -16,7 +16,8 @@ import {
   CardHeader,
   CardTitle,
   Field,
-  MonoTag,
+  EnumBadge,
+  StatusBadge,
   Textarea,
 } from "@/design";
 import {
@@ -264,8 +265,8 @@ export function QuestionCard({
         >
           {answerable ? "Decision waiting" : "Decision"}
         </CardTitle>
-        <MonoTag>{question.blockerKind}</MonoTag>
-        <MonoTag>{question.status}</MonoTag>
+        <EnumBadge family="blockerKind" value={question.blockerKind} />
+        <StatusBadge family="question" value={question.status} />
         {context}
       </CardHeader>
       <CardContent className="space-y-3">

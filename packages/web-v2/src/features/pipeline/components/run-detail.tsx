@@ -23,16 +23,18 @@ import {
   SlideOver,
   Spinner,
   Stat,
+  StatusBadge,
   StatusChip,
   Tabs,
   Tooltip,
+  enumLabel,
   type MenuItem,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
 import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
-import { issueStatusChip, priorityLabel, runStatusChip, workStepOf } from "@/features/issues/derive";
+import { priorityLabel, runStatusChip, workStepOf } from "@/features/issues/derive";
 import type { IssuePriority, IssueStatus } from "@/features/issues/types";
 import { drawerRunChip, formatDurationMs, formatUsd } from "../derive";
 import { useCancelRun, useIssueTasks, usePauseRun, useResumeRun, useRun } from "../hooks";
@@ -181,7 +183,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
           <MonoTag>{label}</MonoTag>
           {/* Writers read the issue's status off the quick-actions row; a viewer has no such row. */}
           {issueStatus && !canWrite && (
-            <StatusChip {...issueStatusChip(issueStatus, workStepOf(issue ?? {}))} size="sm" />
+            <StatusBadge family="issue" value={issueStatus} step={workStepOf(issue ?? {})} size="sm" />
           )}
           {/* The session vocabulary reads `paused` as an idle session; a pipeline run that is paused says so. */}
           {chipStatus && (
@@ -409,9 +411,9 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
                             : "var(--fg-subtle)",
                   }}
                 >
-                  {step.jobType}
+                  {enumLabel("jobType", step.jobType)}
                 </span>
-                <span className="fg-body-sm capitalize text-muted">{step.status}</span>
+                <StatusBadge family="runStep" value={step.status} />
                 {step.durationMs != null && (
                   <span className="ml-auto">
                     <Stat icon="clock">{formatDurationMs(step.durationMs)}</Stat>
@@ -508,7 +510,9 @@ function CostTab({ run, loading }: { run: PipelineRunSummary | undefined; loadin
           <p className="fg-overline">Step durations</p>
           {steps.map((s) => (
             <div key={s.jobType} className="flex items-center gap-2.5">
-              <span className="w-14 flex-none font-mono text-12 text-muted">{s.jobType}</span>
+              <span className="w-14 flex-none text-12 text-muted" title={`step: ${s.jobType}`}>
+                {enumLabel("jobType", s.jobType)}
+              </span>
               <ProgressBar
                 className="flex-1"
                 value={((s.durationMs ?? 0) / maxDur) * 100}

@@ -271,13 +271,13 @@ describe("environment state", () => {
 		});
 		draw(<EnvironmentStateSection projectId="p1" />);
 		const live = await screen.findByLabelText("Environment live");
-		expect(within(live).getByText("deployed")).toBeInTheDocument();
-		expect(within(live).getByText("evidence: runtime-mismatch")).toBeInTheDocument();
+		expect(within(live).getByText("Deployed")).toBeInTheDocument();
+		expect(within(live).getByText("Evidence: Runtime mismatch")).toBeInTheDocument();
 		expect(within(live).getByText("0123456789ab")).toBeInTheDocument();
-		expect(within(live).getByText("mismatch")).toBeInTheDocument();
+		expect(within(live).getByText("Mismatch")).toBeInTheDocument();
 		expect(live).toHaveTextContent("serves aaaaaaa, expected 0123456");
 		const preview = screen.getByLabelText("Environment preview");
-		expect(preview).toHaveTextContent("external: deployment mode is external");
+		expect(preview).toHaveTextContent("Deployed outside Forge: deployment mode is external");
 	});
 
 	it("says a project with no document names no environment", async () => {

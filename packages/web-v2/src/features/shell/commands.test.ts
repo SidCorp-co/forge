@@ -34,8 +34,10 @@ describe("⌘K", () => {
     for (const page of ["Dashboard", "Requirements", "Workflows", "Issues", "Agents", "Schedules", "Improvements", "Releases"]) {
       expect(labels).toContain(`Forge · ${page}`);
     }
-    expect(routeOf("Forge · Schedules")).toBe("/projects/forge-dev/automation/schedules");
-    expect(routeOf("Forge · Improvements")).toBe("/projects/forge-dev/automation/improvements");
+    expect(routeOf("Forge · Schedules")).toBe("/projects/forge-dev/automation?tab=schedules");
+    expect(routeOf("Forge · Improvements")).toBe("/projects/forge-dev/automation?tab=improvements");
+    expect(routeOf("Forge · Automation")).toBe("/projects/forge-dev/automation");
+    expect(routeOf("Forge · Contracts")).toBe("/projects/forge-dev/ecosystem/contracts");
     expect(routeOf("Forge · Requirements")).toBe("/projects/forge-dev/requirements");
   });
 

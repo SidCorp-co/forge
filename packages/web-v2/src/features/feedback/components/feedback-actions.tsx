@@ -1,15 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Input, Radio, RadioGroup, Textarea } from "@/design";
-import { TONE_META } from "@/design/status";
+import { Button, enumLabel, Input, LEGEND, Radio, RadioGroup, Textarea } from "@/design";
 import type { SuggestionView } from "@/features/suggestions/types";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { namedRefusals } from "@/lib/api/refusals";
 import { useDecideProposal, useFeedbackAction, useFeedbackProposals } from "../hooks";
 import type { FeedbackTriage, FeedbackView } from "../types";
-import { sentence } from "./badges";
 
 /** A refusal is one tinted line: the code core named, then what was wrong. */
 export function RefusalLine({ error }: { error: unknown }) {
@@ -21,7 +19,7 @@ export function RefusalLine({ error }: { error: unknown }) {
     <p
       role="alert"
       className="flex min-w-0 items-baseline gap-2 px-3 py-1.5 text-12"
-      style={{ color: TONE_META.failure.fg, background: TONE_META.failure.bg }}
+      style={{ color: LEGEND.err.fg, background: LEGEND.err.bg }}
       data-testid="feedback-refusal"
     >
       {code ? <span className="shrink-0 font-mono font-semibold">{code}</span> : null}
@@ -178,7 +176,7 @@ export function FeedbackActions({ projectId, f }: { projectId: string; f: Feedba
 function routeLine(s: SuggestionView): string {
   const t = (s.payload ?? {}) as Partial<FeedbackTriage>;
   const carrier = t.issue ?? t.duplicateOf ?? t.requirement ?? t.title ?? (t.createIssue ? "a draft issue" : "");
-  return [t.route ? sentence(t.route) : "Route", carrier].filter(Boolean).join(" → ");
+  return [t.route ? enumLabel("feedbackRoute", t.route) : "Route", carrier].filter(Boolean).join(" → ");
 }
 
 /** An assistant's triage suggestion is an accent bar a person accepts or rejects, never an edit. */
@@ -194,8 +192,8 @@ export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView
       {rows.map((s) => {
         const note = (s.payload as { note?: string } | null)?.note;
         return (
-          <div key={s.id} className="grid gap-1.5 py-1 pl-3" style={{ borderLeft: `3px solid ${TONE_META.active.dot}` }}>
-            <span className="text-12 font-semibold" style={{ color: TONE_META.active.fg }}>
+          <div key={s.id} className="grid gap-1.5 py-1 pl-3" style={{ borderLeft: `3px solid ${LEGEND.run.dot}` }}>
+            <span className="text-12 font-semibold" style={{ color: LEGEND.run.fg }}>
               Suggested triage · {s.producerKind === "person" ? "a person" : "an agent"}
             </span>
             <span className="text-13">{routeLine(s)}</span>

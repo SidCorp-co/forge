@@ -51,6 +51,13 @@ function detail(over: Partial<ConversationDetail> = {}): ConversationDetail {
   };
 }
 
+// the pane mounts the assistant's UI actions, which navigate with the app router
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
+  usePathname: () => "/projects/p1",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => (
     <a href={href}>{children}</a>
