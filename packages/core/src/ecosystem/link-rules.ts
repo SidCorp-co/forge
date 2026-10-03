@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import type { ProjectMemberRole } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { agencyMiss, PROJECT_AGENT_WRITE } from '../lib/agency-gate.js';
+import { actMiss, PROJECT_AGENT_WRITE } from '../lib/person-act.js';
 import {
   type ApiRefusal,
   isRecord,
@@ -112,7 +112,7 @@ export function writerRefusal(
   projectId: string,
   code: 'LINK_WRITER_NOT_CONSUMER' | 'BUILDER_RUN_WRITER_NOT_PROJECT',
 ): EcosystemRefusal | null {
-  const miss = agencyMiss(facts, PROJECT_AGENT_WRITE);
+  const miss = actMiss(facts, PROJECT_AGENT_WRITE);
   if (!miss) return null;
   const held =
     miss.kind === 'person-not-allowed'

@@ -1,5 +1,4 @@
 import { HTTPException } from 'hono/http-exception';
-import { RefusalException } from '../lib/refusal.js';
 import { db } from '../db/client.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
@@ -186,8 +185,7 @@ export async function decideDesignAs(input: {
   const reason = input.reason?.trim() || null;
   await rowIn(projectId, id);
   const refusal = await approverRefusalFor(decider, projectId, await designApproverOf(projectId));
-  // cm:why an approver code predates the `_FORBIDDEN` suffix, so its 403 is named here rather than read off the code
-  if (refusal) throw new RefusalException(403, [refusal], 'WORKFLOW_DESIGN_REFUSED');
+  if (refusal) return { ok: false, refusals: [refusal] };
   type Decided = { refusals: DesignRefusal[] } | { flow: string; designIssueId: string | null };
   const outcome = await db.transaction(async (tx): Promise<Decided> => {
     await lockWorkflows(tx, projectId);
@@ -289,8 +287,7 @@ export async function unlinkBuildAs(input: {
   const { projectId, id, actor } = input;
   await rowIn(projectId, id);
   const refusal = await approverRefusalFor(actor, projectId, await designApproverOf(projectId));
-  // cm:why an approver code predates the `_FORBIDDEN` suffix, so its 403 is named here rather than read off the code
-  if (refusal) throw new RefusalException(403, [refusal], 'WORKFLOW_DESIGN_REFUSED');
+  if (refusal) return { ok: false, refusals: [refusal] };
   const issue = await resolveIssueRouteRef(input.issue, projectId, actor.userId);
   const missing = await db.transaction(async (tx): Promise<DesignRefusal | null> => {
     await lockWorkflows(tx, projectId);

@@ -6,7 +6,6 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { HTTPException } from 'hono/http-exception';
-import { RefusalException } from '../lib/refusal.js';
 import pkg from '../../package.json' with { type: 'json' };
 import { forgeChannelTool } from '../assistant/tools/forge-channel-tool.js';
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
@@ -322,10 +321,6 @@ export function createMcpServer(ctx: McpContext): Server {
         writeMcpAudit({ ...auditBase, resultCode: 'ok' });
         return toToolCallContent(result);
       } catch (err) {
-        if (err instanceof RefusalException) {
-          writeMcpAudit({ ...auditBase, resultCode: err.status === 403 ? 'forbidden' : 'error' });
-          return toToolCallContent({ _mcpIsError: true, ...err.envelope });
-        }
         const { code, message } = classifyError(err);
         writeMcpAudit({ ...auditBase, resultCode: code });
         const text = message.replace(/^(?:FORBIDDEN|NOT_FOUND|BAD_REQUEST):\s*/, '');

@@ -1,11 +1,9 @@
 import { ApiError } from "./client";
 
-/** One named refusal: what was refused, where, and why, exactly as core named it. */
-export interface Refusal {
-  code: string;
-  path: string;
-  detail: string;
-}
+import type { Refusal } from "@forge/contracts";
+
+/** One named refusal, exactly as core named it: declared once in `@forge/contracts`. */
+export type { Refusal };
 
 const isRefusal = (r: unknown): r is Refusal => {
   if (!r || typeof r !== "object") return false;
@@ -25,6 +23,14 @@ export function documentRefusals(err: unknown): Refusal[] {
   return listed(envelopeOf(err)?.refusals);
 }
 
+/** Only the refusals core listed, in either shape; nothing for a failure that named none. */
+export function namedRefusals(err: unknown): Refusal[] {
+  if (!(err instanceof ApiError)) return [];
+  const fromEnvelope = listed(envelopeOf(err)?.refusals);
+  if (fromEnvelope.length > 0) return fromEnvelope;
+  return listed((err.details as { refusals?: unknown } | undefined)?.refusals);
+}
+
 /**
  * Every refusal a failed request carries, whichever of core's two shapes it came in: the
  * `{ error: { code, refusals } }` envelope a document refusal answers with, or the
@@ -33,11 +39,9 @@ export function documentRefusals(err: unknown): Refusal[] {
  */
 export function refusalsOf(err: unknown): Refusal[] {
   if (err instanceof ApiError) {
+    const named = namedRefusals(err);
+    if (named.length > 0) return named;
     const envelope = envelopeOf(err);
-    const fromEnvelope = listed(envelope?.refusals);
-    if (fromEnvelope.length > 0) return fromEnvelope;
-    const fromDetails = listed((err.details as { refusals?: unknown } | undefined)?.refusals);
-    if (fromDetails.length > 0) return fromDetails;
     const code =
       err.code ?? (typeof envelope?.code === "string" ? envelope.code : `HTTP_${err.status}`);
     const detail =

@@ -129,7 +129,8 @@ function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]
   return value as NonNullable<Input[K]>;
 }
 
-const refusedBy = (refusals: readonly NamedRefusal[]) => refusedAnswer(refusals, 'WORKFLOW_REFUSED');
+const refusedBy = (refusals: readonly NamedRefusal[]) =>
+  refusedAnswer(refusals, 'WORKFLOW_REFUSED');
 
 async function run(args: unknown, ctx: McpContext): Promise<unknown> {
   const input = inputSchema.parse(args);

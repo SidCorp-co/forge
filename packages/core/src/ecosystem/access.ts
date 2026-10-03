@@ -1,7 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import type { OrgMemberRole } from '../db/schema.js';
-import { RefusalException } from '../lib/refusal.js';
 import { loadOrgRole, loadVisibleProjectIds, orgRoleAtLeast } from '../lib/authz.js';
 import type { EcosystemRefusal } from './refusals.js';
 import { activeMembersOf } from './store.js';
@@ -12,9 +11,11 @@ export const notFound = (message: string) =>
 export const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
-/** A who-may-act refusal decided before the write, answered 403 in the one refusal envelope. */
 export const refusedBy = (refusal: EcosystemRefusal) =>
-  new RefusalException(403, [refusal], 'ECOSYSTEM_REFUSED');
+  new HTTPException(403, {
+    message: refusal.detail,
+    cause: { code: refusal.code, details: { refusals: [refusal] } },
+  });
 
 export async function stewardRole(
   stewardOrgId: string,

@@ -6,12 +6,13 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { SUGGESTION_KINDS } from '@forge/contracts/suggestions';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { conversationMessages } from '../../db/schema-conversations.js';
+import { itemEmbeddings } from '../../db/schema-item-embeddings.js';
 import { agentQuestions } from '../../db/schema-questions.js';
-import { itemEmbeddings, SUGGESTION_KINDS } from '../../db/schema-suggestions.js';
 import { resolveIssueRouteRef } from '../../issues/issue-route-ref.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import {
@@ -22,7 +23,8 @@ import {
 import { askQuestion } from '../../questions/write.js';
 import { similarRequirements } from '../../requirements/embeddings.js';
 import { readRequirementAs } from '../../requirements/read.js';
-import { createSuggestion, listSuggestions } from '../../suggestions/service.js';
+import { listSuggestions } from '../../suggestions/read.js';
+import { createSuggestion } from '../../suggestions/service.js';
 import { defaultChatProviderId } from '../providers/bootstrap.js';
 import { resolveForProject } from '../providers/registry.js';
 import { buildToolset, type ChatToolset } from './mcp-adapter.js';

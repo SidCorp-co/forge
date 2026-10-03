@@ -6,7 +6,7 @@ import {
 } from '@forge/contracts/workflow-templates';
 import type { OrgMemberRole, ProjectMemberRole } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { agencyMiss, approverRule } from '../lib/agency-gate.js';
+import { actMiss, approverRule } from '../lib/person-act.js';
 import type { DesignApprover } from '../project-config/schema.js';
 import { impliedKind } from './edges.js';
 import { stepsOf, type WorkflowWrite } from './schema.js';
@@ -143,7 +143,7 @@ export function designApproverRefusal(
   projectId: string,
   approver: DesignApprover,
 ): DesignRefusal | null {
-  const miss = agencyMiss(facts, approverRule(approver === 'master'));
+  const miss = actMiss(facts, approverRule(approver === 'master'));
   if (!miss) return null;
   switch (miss.kind) {
     case 'agent-not-allowed':

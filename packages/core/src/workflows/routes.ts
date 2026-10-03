@@ -3,7 +3,6 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { answerRefusal } from '../lib/refusal.js';
 import { envelopeOf, refused } from '../project-config/respond.js';
 import { DESIGN_DECISIONS, DESIGN_REASON_MAX } from './design.js';
 import {
@@ -98,7 +97,7 @@ workflowRoutes.put('/:id/workflows/:workflow', workflowParam, envelope, async (c
 });
 
 function answerDesign(c: Context, outcome: DesignOutcome) {
-  if (!outcome.ok) return answerRefusal(c, outcome.refusals, { fallbackCode: 'WORKFLOW_DESIGN_REFUSED' });
+  if (!outcome.ok) return refused(c, outcome.refusals);
   return c.json(outcome.design);
 }
 

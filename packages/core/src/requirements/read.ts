@@ -26,11 +26,7 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../workflows/service.js';
-import {
-  changedSincePlan,
-  type LinkedDesign,
-  signoffRefusal,
-} from './rules.js';
+import { changedSincePlan, type LinkedDesign, signoffRefusal } from './rules.js';
 
 export interface RequirementActor {
   userId: string;

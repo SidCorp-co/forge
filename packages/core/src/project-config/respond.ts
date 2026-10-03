@@ -1,13 +1,13 @@
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { answerRefusal, type Refusal } from '../lib/refusal.js';
+import { type Refusal, refusalEnvelope } from '../lib/refusal.js';
 import { parseWriteEnvelope, type WriteEnvelope } from './documents.js';
 
 export type { Refusal as NamedRefusal } from '../lib/refusal.js';
 
-/** A document write (`{ baseRevision, document }`) is refused 422 whatever the code; web reads it so (`documentRefusals`). */
+/** Every write refused by name answers 422 in the one envelope (domain-entities.md "Refusals"). */
 export function refused(c: Context, refusals: readonly Refusal[]) {
-  return answerRefusal(c, refusals, { fallbackCode: 'CONFIG_REFUSED', status: 422 });
+  return c.json(refusalEnvelope(refusals, 'CONFIG_REFUSED'), 422);
 }
 
 export function envelopeOf(raw: unknown): WriteEnvelope {

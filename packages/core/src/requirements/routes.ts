@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { answerRefusal } from '../lib/refusal.js';
+import { refused } from '../project-config/respond.js';
 import { linkIssue, linkWorkflow, unlinkIssue, unlinkWorkflow } from './issue-links.js';
 import { listRequirementsAs, type RequirementActor, readRequirementAs } from './read.js';
 import { criterionSchema, specSchema } from './schemas.js';
@@ -66,8 +66,7 @@ function actorOf(c: Context<{ Variables: AuthVars }>): RequirementActor {
 }
 
 function answer(c: Context, outcome: RequirementOutcome) {
-  if (!outcome.ok)
-    return answerRefusal(c, outcome.refusals, { fallbackCode: 'REQUIREMENT_REFUSED' });
+  if (!outcome.ok) return refused(c, outcome.refusals);
   return c.json(outcome.requirement, outcome.created ? 201 : 200);
 }
 

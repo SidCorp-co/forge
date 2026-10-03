@@ -9,7 +9,7 @@
 
 import type { OrgMemberRole, ProjectMemberRole } from '../../db/schema.js';
 import type { ActorAgency } from '../../issues/actor-agency.js';
-import { agencyMiss, approverRule } from '../../lib/agency-gate.js';
+import { actMiss, approverRule } from '../../lib/person-act.js';
 import type { DesignApprover } from '../../project-config/schema.js';
 
 export const CONTRACT_APPROVALS = ['proposed', 'approved', 'returned'] as const;
@@ -55,7 +55,7 @@ export function approverRefusal(
   projectId: string,
 ): ApprovalRefusal | null {
   const decidable = AGENT_DECIDABLE.has(version.classification);
-  const miss = agencyMiss(facts, approverRule(decidable && approver === 'master'));
+  const miss = actMiss(facts, approverRule(decidable && approver === 'master'));
   if (!miss) return null;
   if (miss.kind === 'agent-not-allowed' && !decidable) {
     return {

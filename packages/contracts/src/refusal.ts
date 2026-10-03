@@ -3,9 +3,9 @@
 
 /** One named refusal: what was refused, where in the input (a JSON pointer, '' for the whole act), and why. */
 export type Refusal = {
-  code: string;
-  path: string;
-  detail: string;
+	code: string;
+	path: string;
+	detail: string;
 };
 
 /**
@@ -13,11 +13,11 @@ export type Refusal = {
  * domain's fallback (`SUGGESTION_REFUSED`, `CONFIG_REFUSED`, …); `refusals` is never empty.
  */
 export type RefusalEnvelope = {
-  error: {
-    code: string;
-    message: string;
-    refusals: Refusal[];
-  };
+	error: {
+		code: string;
+		message: string;
+		refusals: Refusal[];
+	};
 };
 
 /** 403: who may act. 409: the head or row moved since it was read. 422: every other rule. */

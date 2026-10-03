@@ -127,7 +127,8 @@ function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]
   return value as NonNullable<Input[K]>;
 }
 
-const refusedBy = (refusals: readonly NamedRefusal[]) => refusedAnswer(refusals, 'REQUIREMENT_REFUSED');
+const refusedBy = (refusals: readonly NamedRefusal[]) =>
+  refusedAnswer(refusals, 'REQUIREMENT_REFUSED');
 
 const settle = (outcome: RequirementOutcome) =>
   outcome.ok ? outcome.requirement : refusedBy(outcome.refusals);
