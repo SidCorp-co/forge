@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues } from '../db/schema.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
+import { plannedRevisionFor } from '../requirements/issue-links.js';
 import type { ResolvedLabelAttach } from './label-service.js';
 import type { IssueRow } from './read-service.js';
 import type { SessionContextExpect } from './session-context.js';
@@ -37,9 +38,13 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
     if (updates.sessionContext !== undefined && !expect) {
       await refuseUnreadSessionContextDrop(tx, issueId, updates.sessionContext);
     }
+    const planned =
+      updates.plan === undefined
+        ? null
+        : await plannedRevisionFor(tx, issueId, updates.plan as string | null);
     const [row] = await tx
       .update(issues)
-      .set(updates)
+      .set(planned ? { ...updates, ...planned } : updates)
       .where(and(eq(issues.id, issueId), ...guard))
       .returning();
     if (!row) {

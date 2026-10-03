@@ -41,6 +41,7 @@ vi.mock("@/features/orgs/components/org-switcher", () => ({
   OrgSwitcher: ({ variant }: { variant: string }) => <button type="button" data-testid={`org-switcher-${variant}`}>Org</button>,
 }));
 vi.mock("@/features/releases/versions-hooks", () => ({ useAwaitingApprovalCount: () => 2 }));
+vi.mock("@/features/workflows/hooks", () => ({ useDesignsAwaitingCount: () => undefined }));
 vi.mock("@/features/conversations/components/conversation-chat", () => ({
   ConversationChat: ({ projectId, initialDraft }: { projectId: string; initialDraft?: string }) => (
     <div data-testid="dock-chat" data-project={projectId} data-draft={initialDraft ?? ""} />
@@ -171,11 +172,11 @@ describe("the top bar", () => {
 });
 
 describe("the project menu", () => {
-  it("lists Dashboard, Issues, Agents, Workflows, Automation and Releases, and no Library", () => {
+  it("lists Dashboard, Requirements, Workflows, Issues, Agents, Automation and Releases, and no Library", () => {
     rail(false);
     at("/projects/forge-dev");
     mount();
-    for (const name of ["Dashboard", "Issues", "Agents", "Workflows", "Automation", "Releases"]) {
+    for (const name of ["Dashboard", "Requirements", "Workflows", "Issues", "Agents", "Automation", "Releases"]) {
       expect(side().getByRole("button", { name: new RegExp(`^${name}`) })).toBeInTheDocument();
     }
     expect(side().queryByRole("button", { name: /^Library/ })).toBeNull();

@@ -1,0 +1,190 @@
+/**
+ * The links a requirement holds: the issues that deliver it and the designs it is drawn with, and
+ * what an issue reads back — whether its requirement changed since its plan was written.
+ */
+
+import { and, eq } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
+import { db, type Tx } from '../db/client.js';
+import { issues } from '../db/schema.js';
+import {
+  type RequirementStatus,
+  requirements,
+  requirementWorkflows,
+} from '../db/schema-requirements.js';
+import { projectWorkflows } from '../db/schema-workflows.js';
+import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
+import { assertProjectAccess } from '../lib/authz.js';
+import { notFound, type RequirementActor, requirementKey, rowIn } from './read.js';
+import { changedSincePlan, linkIssueRefusal } from './rules.js';
+import { answer, inTx, lockRequirements, type RequirementOutcome } from './service.js';
+
+async function issueIn(projectId: string, ref: string, userId: string) {
+  const issue = await resolveIssueRouteRef(ref, projectId, userId);
+  if (issue.projectId !== projectId) {
+    throw notFound(`issue ${ref} is not an issue of project ${projectId}`);
+  }
+  return issue;
+}
+
+/** An issue names the agreed requirement it delivers; its plan then records which revision it read. */
+export async function linkIssue(input: {
+  projectId: string;
+  ref: string;
+  actor: RequirementActor;
+  issue: string;
+}): Promise<RequirementOutcome> {
+  const { projectId, actor } = input;
+  await assertProjectAccess(projectId, actor.userId, 'member');
+  const row = await rowIn(db, projectId, input.ref);
+  const issue = await issueIn(projectId, input.issue, actor.userId);
+  const refusals = await inTx(async (tx) => {
+    await lockRequirements(tx, projectId);
+    const current = await rowIn(tx, projectId, row.id);
+    const refusal = linkIssueRefusal(current.status as RequirementStatus);
+    if (refusal) return [refusal];
+    const [held] = await tx
+      .select({ requirementId: issues.requirementId })
+      .from(issues)
+      .where(eq(issues.id, issue.id));
+    if (held?.requirementId === row.id) return null;
+    if (held?.requirementId) {
+      return [
+        {
+          code: 'REQUIREMENT_ISSUE_LINKED_ELSEWHERE',
+          path: '/issue',
+          detail: `${input.issue} already delivers requirement ${held.requirementId}; an issue serves one requirement, so unlink it there first.`,
+        },
+      ];
+    }
+    await tx
+      .update(issues)
+      .set({ requirementId: row.id, plannedRevision: null, updatedAt: new Date() })
+      .where(eq(issues.id, issue.id));
+    return null;
+  });
+  return answer(projectId, row.id, actor, refusals);
+}
+
+export async function unlinkIssue(input: {
+  projectId: string;
+  ref: string;
+  actor: RequirementActor;
+  issue: string;
+}): Promise<RequirementOutcome> {
+  const { projectId, actor } = input;
+  await assertProjectAccess(projectId, actor.userId, 'member');
+  const row = await rowIn(db, projectId, input.ref);
+  const issue = await issueIn(projectId, input.issue, actor.userId);
+  await db
+    .update(issues)
+    .set({ requirementId: null, plannedRevision: null, updatedAt: new Date() })
+    .where(and(eq(issues.id, issue.id), eq(issues.requirementId, row.id)));
+  return answer(projectId, row.id, actor, null);
+}
+
+/** A design the requirement is drawn with; the next agree pins its approved revision. */
+export async function linkWorkflow(input: {
+  projectId: string;
+  ref: string;
+  actor: RequirementActor;
+  workflowId: string;
+}): Promise<RequirementOutcome> {
+  const { projectId, actor } = input;
+  await assertProjectAccess(projectId, actor.userId, 'member');
+  const row = await rowIn(db, projectId, input.ref);
+  const [wf] = await db
+    .select({ projectId: projectWorkflows.projectId })
+    .from(projectWorkflows)
+    .where(eq(projectWorkflows.id, input.workflowId));
+  if (!wf || wf.projectId !== projectId) {
+    throw notFound(`project ${projectId} holds no workflow ${input.workflowId}`);
+  }
+  await db
+    .insert(requirementWorkflows)
+    .values({ requirementId: row.id, workflowId: input.workflowId, linkedBy: actor.userId })
+    .onConflictDoNothing();
+  return answer(projectId, row.id, actor, null);
+}
+
+export async function unlinkWorkflow(input: {
+  projectId: string;
+  ref: string;
+  actor: RequirementActor;
+  workflowId: string;
+}): Promise<RequirementOutcome> {
+  const { projectId, actor } = input;
+  await assertProjectAccess(projectId, actor.userId, 'member');
+  const row = await rowIn(db, projectId, input.ref);
+  await db
+    .delete(requirementWorkflows)
+    .where(
+      and(
+        eq(requirementWorkflows.requirementId, row.id),
+        eq(requirementWorkflows.workflowId, input.workflowId),
+      ),
+    );
+  return answer(projectId, row.id, actor, null);
+}
+
+/** The issue read's answer: which requirement it delivers, and whether it changed since the plan. */
+export async function requirementOfIssue(issueId: string) {
+  const [r] = await db
+    .select({
+      id: requirements.id,
+      reqSeq: requirements.reqSeq,
+      title: requirements.title,
+      status: requirements.status,
+      currentRevision: requirements.currentRevision,
+      plannedRevision: issues.plannedRevision,
+      plan: issues.plan,
+    })
+    .from(issues)
+    .innerJoin(requirements, eq(requirements.id, issues.requirementId))
+    .where(eq(issues.id, issueId));
+  if (!r) return null;
+  const changed = changedSincePlan(r);
+  const key = requirementKey(r.reqSeq);
+  return {
+    requirementId: r.id,
+    key,
+    title: r.title,
+    status: r.status as RequirementStatus,
+    currentRevision: r.currentRevision,
+    plannedRevision: r.plannedRevision,
+    changedSincePlan: changed,
+    refusal: changed
+      ? {
+          code: 'REQUIREMENT_CHANGED_SINCE_PLAN' as const,
+          detail: `${key} stands at revision ${r.currentRevision ?? 'none'}, but this issue's plan was written against ${r.plannedRevision === null ? 'no revision' : `revision ${r.plannedRevision}`}; re-plan against the current revision.`,
+        }
+      : null,
+  };
+}
+
+// cm:guard a plan is written against the requirement's current revision and records it as
+// planned_revision; a requirement with no current revision refuses it (REQUIREMENT_REVISION_NOT_CURRENT)
+export async function plannedRevisionFor(
+  tx: Tx,
+  issueId: string,
+  plan: string | null,
+): Promise<{ plannedRevision: number | null } | null> {
+  const [r] = await tx
+    .select({
+      requirementId: issues.requirementId,
+      reqSeq: requirements.reqSeq,
+      currentRevision: requirements.currentRevision,
+    })
+    .from(issues)
+    .leftJoin(requirements, eq(requirements.id, issues.requirementId))
+    .where(eq(issues.id, issueId));
+  if (!r?.requirementId) return null;
+  if (!plan?.trim()) return { plannedRevision: null };
+  if (r.currentRevision === null) {
+    throw new HTTPException(422, {
+      message: `REQUIREMENT_REVISION_NOT_CURRENT: ${requirementKey(r.reqSeq ?? 0)} has no current revision, so there is nothing for this plan to be written against; a person accepts a revision first.`,
+      cause: { code: 'REQUIREMENT_REVISION_NOT_CURRENT' },
+    });
+  }
+  return { plannedRevision: r.currentRevision };
+}

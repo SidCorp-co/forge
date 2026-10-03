@@ -18,6 +18,7 @@ vi.mock('../workflows/build-gate.js', async (importOriginal) => ({
   buildsWorkflowOf: async () => null,
 }));
 vi.mock('../workflows/design-issue.js', () => ({ proposesWorkflowOf: async () => null }));
+vi.mock('../requirements/issue-links.js', () => ({ requirementOfIssue: async () => null }));
 vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));

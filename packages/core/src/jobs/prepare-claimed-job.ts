@@ -35,9 +35,15 @@ import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from '../runners/device-cap.j
 import {
   ArtifactContextError,
   type LoadedArtifact,
+  type LoadedRequirement,
+  RequirementContextError,
   renderArtifactContext,
 } from '../workflows/run-context.js';
-import { loadArtifactContext, recordArtifactContext } from '../workflows/run-context-service.js';
+import {
+  loadArtifactContext,
+  loadRequirementContext,
+  recordArtifactContext,
+} from '../workflows/run-context-service.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
 import { SKILL_MAINTENANCE_LABEL, withSkillMaintenanceCarveout } from './job-policy.js';
 import { loadPriorAttempts, renderPriorAttemptsBlock } from './prior-attempts.js';
@@ -202,6 +208,23 @@ async function designsBuiltBy(job: typeof jobs.$inferSelect): Promise<LoadedArti
   }
 }
 
+// cm:why a job on an issue that delivers a requirement is given its current revision's business criteria and the design revisions its baseline pins, so it builds what was agreed rather than what the description paraphrased
+async function requirementServedBy(
+  job: typeof jobs.$inferSelect,
+): Promise<LoadedRequirement | null> {
+  if (!job.issueId) return null;
+  try {
+    return await loadRequirementContext(job.issueId);
+  } catch (err) {
+    // cm:guard a requirement that cannot be given at its current revision stops the job by name: a run given a superseded or unagreed revision would build the wrong intent
+    const code = err instanceof RequirementContextError ? err.code : 'ARTIFACT_CONTEXT_UNLOADABLE';
+    throw new Error(
+      `${code}: prepare refused job ${job.id}: the requirement its issue delivers could not be given (${err instanceof Error ? err.message : String(err)})`,
+      { cause: err },
+    );
+  }
+}
+
 function withContextBlock(
   prior: { systemPrompt: string; blocks: PreambleBlock[] },
   id: PreambleBlock['id'],
@@ -258,12 +281,15 @@ export async function prepareClaimedJob(args: {
     activeIssuePrefix(job.projectId),
   ]);
   const designs = await designsBuiltBy(job);
+  const requirement = await requirementServedBy(job);
   const contracts = await contractsNamedBy(job, issueRow[0]);
+  const artifactBlock =
+    [requirement?.text, renderArtifactContext(designs)].filter(Boolean).join('\n\n') || null;
   const { systemPrompt, blocks } = withContextBlock(
     withContextBlock(
       { systemPrompt: preamble.content, blocks: preamble.blocks },
       'artifact-context',
-      renderArtifactContext(designs),
+      artifactBlock,
     ),
     'contract-context',
     renderContractContext(contracts),
@@ -305,7 +331,14 @@ export async function prepareClaimedJob(args: {
   if (!agentSessionId) {
     throw new Error(`prepare: no agent session could be created for job ${job.id}`);
   }
-  if (designs.length) await recordArtifactContext(agentSessionId, designs, 'workflow-builds');
+  if (designs.length || requirement) {
+    await recordArtifactContext(
+      agentSessionId,
+      designs,
+      requirement ? 'workflow-builds+requirement' : 'workflow-builds',
+      requirement,
+    );
+  }
   if (contracts.length) await recordContractContext(agentSessionId, contracts, 'issue-paths');
 
   return {

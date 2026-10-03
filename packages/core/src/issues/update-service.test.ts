@@ -40,6 +40,7 @@ vi.mock('../db/client.js', () => ({
 
 type ActivityEntry = { action: string; payload: { labelId: string } };
 const recordActivityTx = vi.fn(async (_tx: unknown, _entry: ActivityEntry) => undefined);
+vi.mock('../requirements/issue-links.js', () => ({ plannedRevisionFor: async () => null }));
 vi.mock('../pipeline/activity.js', () => ({
   recordActivityTx: (tx: unknown, entry: ActivityEntry) => recordActivityTx(tx, entry),
 }));
