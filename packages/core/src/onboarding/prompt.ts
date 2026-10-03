@@ -33,7 +33,9 @@ const FINDINGS = `What the hand-run trials found — follow it:
 5. A project with no code cites Forge records as evidence (requirement criteria REQ-n BC-n, design steps, issue comments, knowledge slugs). Such a step stays \`designed\` with evidence null; the citation goes in the item's evidence, never a guessed file:symbol.
 6. A step labelled as-built cites a file:symbol that writes it. An enum value or a status with no writer, or no reader, is NOT as-built: draw it as designed and ask about it. Grep for the writer and the reader of every status before drawing a state.
 7. The central entity is rarely named: pick the one most modules reference, say why with the counts, and ask (a question with the inferred default) when two compete.
-8. \`does\` is at most 600 characters, a label 60, a summary 400. At most 40 steps per design.`;
+8. \`does\` is at most 600 characters, a label 60, a summary 400. At most 40 steps per design.
+9. Draw the product's own runtime: its users, its parts, the systems it talks to. Never draw Forge, its agents, its LLM, or the development pipeline as part of the product. A project policy such as sensitive-data handling is a Forge project setting. If it is also a product rule, write it as a requirement or a design note, never as a node.
+10. A summary states what the design shows, not how it was drawn: no "drawn from Forge records", "no source code", "read from the code at <sha>" or "revision N translates revision M".`;
 
 const CODE_MAP = `The code map (knowledge entries, one per section, slug onboarding/code-map/<section>, each fact with its file:symbol):
 1. Entry points: each binary or app, what it does, the env keys it needs (names only, never values).
@@ -61,7 +63,7 @@ export function analysePrompt(ctx: OnboardingPromptContext): string {
     `Do, in order, then stop:
 1. Analyse ${ctx.hasRepository ? 'the checkout you are in (stack, entry points, routes, data models, integrations, docs, personal-data signals)' : 'the project through Forge — it names no repository: its config, policy, knowledge, workflows, requirements and their criteria, issues and comments'}. Read before you write.
 2. Write the code map as knowledge entries (below).
-3. Draft the key designs as-built and propose each: system context, the core business journey, the central entity state machine — always; an integration sequence when the code calls an outside system (webhook, API client, queue); a data flow ${ctx.sensitiveData ? '— MANDATORY: this project holds sensitive data (its data policy is on), so draw it with trust boundaries and where redaction runs; mark_done is refused ONBOARDING_DATA_FLOW_MISSING without it' : 'when the code holds personal or health data (mandatory then, with trust boundaries and where redaction runs)'}. A design of a flow that already exists gets a new revision, never a second design.
+3. Draft the key designs as-built and propose each: system context, the core business journey, the central entity state machine — always; an integration sequence when the code calls an outside system (webhook, API client, queue); a data flow ${ctx.sensitiveData ? "— MANDATORY: this project holds sensitive data (its data policy is on), so draw the product's own trust boundaries and where the product redacts; mark_done is refused ONBOARDING_DATA_FLOW_MISSING without it" : "when the code holds personal or health data (mandatory then, with the product's own trust boundaries and where the product redacts)"}. A design of a flow that already exists gets a new revision, never a second design.
 4. forge_onboarding post_update { text, designs: { heading: "Designs drafted", workflowIds } }: a short summary of what you read (stack, modules, routes, models, integrations with counts) — this registers the designs with the onboarding.
 5. forge_onboarding post_questionnaire with everything you could not settle.
 6. Stop. The person answers in the chat; a new job reads the answers.`,
