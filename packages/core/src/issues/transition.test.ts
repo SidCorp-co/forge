@@ -3,6 +3,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
+// The lifecycle guards and the work state have suites of their own (issue-lifecycle-guards-e2e);
+// this one is about the REST door, so both stand aside.
+vi.mock('./transition-guards.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./transition-guards.js')>()),
+  guardFault: vi.fn(async () => null),
+}));
+vi.mock('./work-state.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./work-state.js')>()),
+  readWorkState: vi.fn(async () => null),
+  setWorkStep: vi.fn(async () => undefined),
+  setLeftStatus: vi.fn(async () => undefined),
+  setLegacyStatus: vi.fn(async () => undefined),
+}));
 vi.mock('../questions/issue-coupling.js', () => ({ settleOpenQuestions: async () => null }));
 vi.mock('./archive.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./archive.js')>()),
@@ -87,15 +100,6 @@ beforeEach(() => {
   dependentsAwait.mockReset();
   dependentsAwait.mockResolvedValue([]);
 });
-
-/** The literal SQL a drizzle condition would render, with its params dropped. */
-function sqlText(node: unknown): string {
-  if (node === null || typeof node !== 'object') return '';
-  const chunks = (node as { queryChunks?: unknown[] }).queryChunks;
-  if (Array.isArray(chunks)) return chunks.map(sqlText).join('');
-  const value = (node as { value?: unknown }).value;
-  return Array.isArray(value) && value.every((v) => typeof v === 'string') ? value.join('') : '';
-}
 
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -193,25 +197,28 @@ describe('POST /api/issues/:id/transition', () => {
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 
-  it('422 WAITING_KIND_REQUIRED when a `waiting` park states a reason but no kind', async () => {
+  it('422 WAITING_KIND_REQUIRED when a `needs_info` park states a reason but no kind', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'in_progress', reopenCount: 0 });
-    const res = await req({ toStatus: 'waiting', reason: 'need the staging DB password' }, token);
+    const res = await req(
+      { toStatus: 'needs_info', reason: 'need the staging DB password' },
+      token,
+    );
     expect(res.status).toBe(422);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('WAITING_KIND_REQUIRED');
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 
-  it('200 when a `waiting` park carries both a reason and a kind', async () => {
+  it('200 when a `needs_info` park carries both a reason and a kind', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'in_progress', reopenCount: 0 });
     updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, status: 'waiting', reopenCount: 0, updatedAt: new Date() },
+      { id: ISSUE_ID, status: 'needs_info', reopenCount: 0, updatedAt: new Date() },
     ]);
     const res = await req(
       {
-        toStatus: 'waiting',
+        toStatus: 'needs_info',
         reason: 'need the staging DB password',
         waitingKind: 'needs_resource',
       },
@@ -236,9 +243,9 @@ describe('POST /api/issues/:id/transition', () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'reopen', reopenCount: 2 });
     updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, status: 'developed', reopenCount: 2, updatedAt: new Date() },
+      { id: ISSUE_ID, status: 'in_progress', reopenCount: 2, updatedAt: new Date() },
     ]);
-    const res = await req({ toStatus: 'developed', reason: 'fix pushed' }, token);
+    const res = await req({ toStatus: 'in_progress' }, token);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { reopenCount: number };
     expect(body.reopenCount).toBe(2);
@@ -250,7 +257,7 @@ describe('POST /api/issues/:id/transition', () => {
 
   it('terminal transition with outgoing blocks edges publishes issue.unblockCascade', async () => {
     const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'tested', issSeq: 7 });
+    queueAuthAndIssue({ status: 'in_progress', issSeq: 7 });
     updateReturning.mockResolvedValueOnce([
       { id: ISSUE_ID, status: 'awaiting_release', reopenCount: 0, updatedAt: new Date() },
     ]);
@@ -283,7 +290,7 @@ describe('POST /api/issues/:id/transition', () => {
 
   it('terminal transition with NO outgoing blocks edges does not publish cascade', async () => {
     const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'tested' });
+    queueAuthAndIssue({ status: 'in_progress' });
     updateReturning.mockResolvedValueOnce([
       { id: ISSUE_ID, status: 'awaiting_release', reopenCount: 0, updatedAt: new Date() },
     ]);
@@ -327,7 +334,7 @@ describe('POST /api/issues/:id/transition', () => {
   it('409 ILLEGAL_TRANSITION when draft attempts to skip into the pipeline', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'draft' });
-    const res = await req({ toStatus: 'testing' }, token);
+    const res = await req({ toStatus: 'in_progress' }, token);
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('ILLEGAL_TRANSITION');
@@ -338,7 +345,7 @@ describe('POST /api/issues/:id/transition', () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'open' });
     updateReturning.mockResolvedValueOnce([]);
-    const res = await req({ toStatus: 'confirmed' }, token);
+    const res = await req({ toStatus: 'in_progress' }, token);
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('STALE_TRANSITION');
@@ -357,7 +364,7 @@ describe('POST /api/issues/:id/transition — dropping a blocker', () => {
       { issueId: '44444444-4444-4444-8444-444444444444', issSeq: 12, projectId: PROJECT_ID },
     ]);
 
-    const res = await req({ toStatus: 'dropped' }, token);
+    const res = await req({ toStatus: 'dropped', reason: 'superseded by another' }, token);
     expect(res.status).toBe(200);
     expect(dependentsAwait).toHaveBeenCalledTimes(1);
 
@@ -378,101 +385,31 @@ describe('POST /api/issues/:id/transition — dropping a blocker', () => {
   });
 });
 
-describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () => {
-  it('409 ILLEGAL_TRANSITION naming the run/job counts when draft would demote real work', async () => {
+describe('POST /api/issues/:id/transition — draft is never entered again (ISS-54)', () => {
+  it('409 ILLEGAL_TRANSITION, whatever the issue has run, saying what to use instead', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'open' });
-    selectLimit.mockResolvedValueOnce([{ n: 2 }]);
-    selectLimit.mockResolvedValueOnce([{ n: 7 }]);
     const res = await req({ toStatus: 'draft' }, token);
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('ILLEGAL_TRANSITION');
-    expect(body.message).toContain('2 pipeline run(s)');
-    expect(body.message).toContain('7 job(s)');
+    expect(body.message).toContain('never entered again');
+    expect(body.message).toContain('`on_hold`');
     expect(dbUpdate).not.toHaveBeenCalled();
-  });
-
-  it('allows draft while the issue has never entered the pipeline (ISS-787)', async () => {
-    const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'open' });
-    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
-    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
-    updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, status: 'draft', reopenCount: 0, updatedAt: new Date() },
-    ]);
-    const res = await req({ toStatus: 'draft' }, token);
-    expect(res.status).toBe(200);
-    expect(
-      updateSet.mock.calls.some(([values]) => (values as { status?: string }).status === 'draft'),
-    ).toBe(true);
-  });
-
-  it('blames the status race, not a phantom run, when the conditional UPDATE loses', async () => {
-    const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'open' });
-    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
-    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
-    updateReturning.mockResolvedValueOnce([]);
-    selectLimit.mockResolvedValueOnce([{ status: 'confirmed' }]);
-    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
-    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
-
-    const res = await req({ toStatus: 'draft' }, token);
-    const body = (await res.json()) as { code: string; message: string };
-    expect(body.code).toBe('STALE_TRANSITION');
-    expect(body.message).toContain('confirmed');
-    expect(body.message).not.toMatch(/run or job appeared/i);
-  });
-
-  it('refuses draft when the run/job check itself fails — fails CLOSED', async () => {
-    const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'open' });
-    selectLimit.mockRejectedValueOnce(new Error('connection reset'));
-    selectLimit.mockRejectedValueOnce(new Error('connection reset'));
-    const res = await req({ toStatus: 'draft' }, token);
-    expect(res.status).toBe(409);
-    const body = (await res.json()) as { code: string; message: string };
-    expect(body.code).toBe('ILLEGAL_TRANSITION');
-    expect(body.message).toMatch(/could not be checked/i);
-    expect(dbUpdate).not.toHaveBeenCalled();
-  });
-
-  it('carries the never-ran predicate INTO the UPDATE, not just the pre-check', async () => {
-    const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'open' });
-    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
-    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
-    updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, status: 'draft', reopenCount: 0, updatedAt: new Date() },
-    ]);
-
-    expect((await req({ toStatus: 'draft' }, token)).status).toBe(200);
-    const where = sqlText((updateWhere.mock.calls[0] as unknown[])?.[0]);
-    expect(where).toContain('not exists (select 1 from pipeline_runs pr where pr.issue_id = )');
-    expect(where).toContain('not exists (select 1 from jobs j where j.issue_id = )');
-  });
-
-  it('leaves the never-ran predicate off a transition that is not to draft', async () => {
-    const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'open' });
-    updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, status: 'confirmed', reopenCount: 0, updatedAt: new Date() },
-    ]);
-
-    expect((await req({ toStatus: 'confirmed' }, token)).status).toBe(200);
-    expect(sqlText((updateWhere.mock.calls[0] as unknown[])?.[0])).not.toContain('not exists');
   });
 
   it('blames the draft source, not the target, when a draft may not go there', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'draft' });
 
-    const res = await req({ toStatus: 'needs_info' }, token);
+    const res = await req(
+      { toStatus: 'needs_info', reason: 'q', waitingKind: 'needs_answer' },
+      token,
+    );
     expect(res.status).toBe(409);
     const body = (await res.json()) as { message: string };
     expect(body.message).toContain('`draft`');
-    expect(body.message).not.toMatch(/not a valid runtime status target/);
+    expect(body.message).toContain('`open`, `dropped`');
     expect(updateWhere).not.toHaveBeenCalled();
   });
 });
@@ -490,8 +427,8 @@ describe('POST /api/issues/:id/transition — a refusal answers in its own words
 
   it('422 CLOSE_REQUIRES_SHIPPED for a close on an issue with no merged_at (ISS-1108)', async () => {
     const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'draft' });
-    const res = await req({ toStatus: 'closed', reason: 'draft discarded' }, token);
+    queueAuthAndIssue({ status: 'in_progress' });
+    const res = await req({ toStatus: 'closed', reason: 'done by hand' }, token);
     expect(res.status).toBe(422);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('CLOSE_REQUIRES_SHIPPED');

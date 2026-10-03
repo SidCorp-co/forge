@@ -20,11 +20,9 @@ for yourself, and what to do if it is not what you meant.
 
 | Status | What it means |
 |---|---|
-| **Developed**, **Testing** | The change is built and is still being checked. |
-| **Tested** | Built and checked, and waiting for someone to review it for release. |
+| **In progress** | An agent is still working on it. The step after the status says how far it has got — at *In progress · Test* the change is built and is being checked. |
 | **Awaiting release** | Built and checked, and not yet released. The issue page says when it will be: *"The next release cut runs …"*, or *"No release is scheduled, so this ships when a person cuts one"*. People who can release see a **Release now** button there. |
-| **Releasing** | A release carrying it is running now. It is done only if that release goes out and the status reads **Closed**. |
-| **Reopened** | Someone said it was not right. It is back with a person. |
+| **Reopened** | Someone said it was not right, and an agent takes it up again. |
 | **Dropped** | Decided against. No further work is planned on this issue, and it shows no release note. |
 
 Every status, and who holds the issue at each one: [Read an issue's status](?path=issue-statuses).
@@ -35,7 +33,8 @@ Open the issue. Near the top of its page, a card says in a sentence or two what
 you will now see:
 
 - **What changed** — on a closed issue.
-- **What will change once it ships** — on one that is built and not yet released.
+- **What will change once it ships** — on one that is built and not yet released:
+  at *Awaiting release*, or *In progress · Test*.
 - **Release note** — on an issue at any other status, such as one reopened after
   it shipped.
 
@@ -61,8 +60,8 @@ A closed issue with no such card has no release note. Read its comments instead.
 - **It is broken, or it does not do what the issue asked.** Choose **Reopen** at
   the top of the issue page and say what is still wrong. What you write is posted
   as a comment, where whoever picks the work back up reads it.
-  A reopened issue is back in a person's hands — see
-  [Read an issue's status](?path=issue-statuses) for what moves it on.
+  A reopened issue is taken up again by an agent — see
+  [Read an issue's status](?path=issue-statuses) for how it moves from there.
 - **It works, and you meant something different.** File a new issue that
   describes the difference, and name the first one in it. See
   [Ask for a change](?path=file-a-request).

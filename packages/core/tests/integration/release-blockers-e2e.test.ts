@@ -158,14 +158,18 @@ async function shownAs(issueId: string): Promise<string> {
   return `${rows[0]?.prefix ?? 'ISS'}-${Number(rows[0]?.seq)}`;
 }
 
-/** One issue at a status one move short of the gate, which nothing claims. */
-async function seedNearGate(w: World, status: 'testing' | 'tested'): Promise<string> {
+/** One `in_progress` issue at `step`, which nothing claims; at `test` it is one move short of
+ *  the gate (ISS-54). */
+async function seedNearGate(w: World, step: 'build' | 'test'): Promise<string> {
   const id = randomUUID();
   seq += 1;
   await harness.db.execute(sql`
     INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at)
-    VALUES (${id}, ${w.projectId}, ${seq}, ${`near ${seq}`}, ${status}, ${w.userId}, now())
+    VALUES (${id}, ${w.projectId}, ${seq}, ${`near ${seq}`}, 'in_progress', ${w.userId}, now())
   `);
+  await harness.db.execute(
+    sql`INSERT INTO issue_work_state (issue_id, step, step_started_at) VALUES (${id}, ${step}, now())`,
+  );
   return id;
 }
 
@@ -463,11 +467,12 @@ describe('a reason names the state it was read from and the act that clears it',
     expect(held?.message).toContain('sid-xeon-1 (CLI runner)');
   });
 
-  it('counts the issues standing one move short of the gate', async () => {
+  it('counts the issues standing one move short of the gate, and not one still building', async () => {
     const w = await seed();
     await seedRunner(w);
-    await seedNearGate(w, 'testing');
-    await seedNearGate(w, 'tested');
+    await seedNearGate(w, 'test');
+    await seedNearGate(w, 'test');
+    await seedNearGate(w, 'build');
 
     const empty = (await readiness(w)).body.blockers.find((b) => b.code === 'RELEASE_ROSTER_EMPTY');
 

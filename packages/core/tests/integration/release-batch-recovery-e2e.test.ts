@@ -1,10 +1,11 @@
 /**
- * `releasing` is a status a batch can DIE inside.
+ * The `release` step at `awaiting_release` is a place a batch can DIE inside
+ * (the seventeen-status `releasing`, ISS-54).
  *
- * `finishReleaseBatch` and `abortReleaseBatch` are the only writers that leave
+ * `finishReleaseBatch` and `abortReleaseBatch` are the only writers that end
  * it. Every other way a batch run can end — a failed release job, an operator
  * cancelling the run, `reapOrphanedOneShotRuns`, a claim that never got a job —
- * cleared `issues.release_batch_run_id` and said nothing about the status,
+ * cleared `issues.release_batch_run_id` and said nothing about the step,
  * which was harmless while the issue stood at the `released` gate. With a
  * middle status it strands the row, and the claim column that could have found
  * it again is already gone: the shape `approved` has on sidpeak, where five
@@ -25,7 +26,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture, SKIP_NOTE } from '../helpers/release-batch-fixture.js';
+import { AT_RELEASE, releaseBatchFixture, SKIP_NOTE } from '../helpers/release-batch-fixture.js';
 
 let harness: TestDatabase;
 let projectId: string;
@@ -85,7 +86,7 @@ beforeEach(async () => {
 });
 
 describe('a release batch that ends without an outcome', () => {
-  it('rescues its issues from `releasing` when the run dies with neither finish nor abort', async () => {
+  it('rescues its issues from the `release` step when the run dies with neither finish nor abort', async () => {
     const { registerReleaseBatchClaimSubscriber } = await import(
       '../../src/release-batch/claim-subscriber.js'
     );
@@ -101,7 +102,7 @@ describe('a release batch that ends without an outcome', () => {
     ]);
     expect(before.get(b)).toBeNull();
     const { runId } = await claim([a, b]);
-    expect((await stored(a)).status).toBe('releasing');
+    expect(await stored(a)).toMatchObject(AT_RELEASE);
 
     const bus = new HooksBus();
     registerReleaseBatchClaimSubscriber(bus);
@@ -158,7 +159,7 @@ describe('where an unfinished batch leaves its roster', () => {
     expect(await stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
   });
 
-  it('leaves a roster that promoted at `releasing`, still claimed', async () => {
+  it('leaves a roster that promoted at its `release` step, still claimed', async () => {
     const a = await insertIssue();
     const { runId } = await claim([a]);
     await recordPromotion(runId);
@@ -166,7 +167,7 @@ describe('where an unfinished batch leaves its roster', () => {
     const result = await abort(runId, 'the deploy half landed');
 
     expect(result).toMatchObject({ promoted: true, destination: null, claimsCleared: [] });
-    expect(await stored(a)).toMatchObject({ status: 'releasing', claim: runId });
+    expect(await stored(a)).toMatchObject({ ...AT_RELEASE, claim: runId });
   });
 
   it('says on each issue why it was left where it is', async () => {
@@ -179,7 +180,7 @@ describe('where an unfinished batch leaves its roster', () => {
     expect(await commentCount(a)).toBe(1);
   });
 
-  it('leaves a promoted roster at `releasing` on a later stranded-releasing recovery too', async () => {
+  it('leaves a promoted roster at its `release` step on a later stranded-releasing recovery too', async () => {
     const { recoverStrandedReleasing } = await import(
       '../../src/release-batch/releasing-recovery.js'
     );
@@ -190,7 +191,7 @@ describe('where an unfinished batch leaves its roster', () => {
     const result = await recoverStrandedReleasing(runId, { reason: 'the batch died' });
 
     expect(result).toMatchObject({ promoted: true, recovered: [] });
-    expect(await stored(a)).toMatchObject({ status: 'releasing', claim: runId });
+    expect(await stored(a)).toMatchObject({ ...AT_RELEASE, claim: runId });
   });
 
   it('counts a promotion whose act never reported back', async () => {
@@ -203,7 +204,7 @@ describe('where an unfinished batch leaves its roster', () => {
     );
     expect(row?.settled_at).toBeNull();
     await abort(runId, 'the agent was killed');
-    expect((await stored(a)).status).toBe('releasing');
+    expect(await stored(a)).toMatchObject(AT_RELEASE);
   });
 
   // ISS-1199 — holding is right by default and was the only thing on offer, so
@@ -248,7 +249,7 @@ describe('where an unfinished batch leaves its roster', () => {
     const result = await abort(runId, 'the deploy half landed', { promotedRoster: 'hold' });
 
     expect(result).toMatchObject({ promoted: true, destination: null, claimsCleared: [] });
-    expect(await stored(a)).toMatchObject({ status: 'releasing', claim: runId });
+    expect(await stored(a)).toMatchObject({ ...AT_RELEASE, claim: runId });
   });
 
   it('settles nothing extra on a run that never promoted', async () => {

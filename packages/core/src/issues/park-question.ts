@@ -20,24 +20,19 @@ export interface MintParkQuestionInput {
   };
 }
 
-/** A `waiting` park asks a person for a decision or a resource; it is answered the same way when it says what would settle it (ISS-1310). */
-const ASKS_WITH_NEEDS: IssueStatus = 'waiting';
-
-/** Whether a park at this status takes a question from what `needs` says. */
-function mintsAt(toStatus: IssueStatus, needs: string | undefined): boolean {
-  return (
-    toStatus === AUTONOMOUS_QUESTION_STATUS || (toStatus === ASKS_WITH_NEEDS && Boolean(needs))
-  );
+/** Whether a park at this status is answered through a question: `needs_info`, whatever its kind
+ *  (the old `waiting` park folded in with its kind, ISS-54). */
+function mintsAt(toStatus: IssueStatus): boolean {
+  return toStatus === AUTONOMOUS_QUESTION_STATUS;
 }
 
 /**
  * Mint the question this park is answered through — unless the park names no need
  * and a person already owes the issue an answer, which is the question it waits on.
- * A `needs_info` park always asks; a `waiting` park asks when it names what it needs.
  */
 export async function mintParkQuestion(input: MintParkQuestionInput, tx: DrizzleTx): Promise<void> {
   const needs = input.options.needs?.trim();
-  if (!mintsAt(input.toStatus, needs)) return;
+  if (!mintsAt(input.toStatus)) return;
   if (actorAgency(input.actor) !== 'agent') return;
   if (!needs && (await personOwesAnAnswer(tx, input.issue.id))) return;
   await askParkQuestion(tx, {
@@ -54,8 +49,8 @@ export async function mintParkQuestion(input: MintParkQuestionInput, tx: Drizzle
  */
 export function parkQuestionNotMinted(input: MintParkQuestionInput): string | null {
   if (!input.options.needs?.trim()) return null;
-  if (!mintsAt(input.toStatus, input.options.needs.trim())) {
-    return `\`needs\` was sent with \`${input.toStatus}\`, which mints no question — only \`${AUTONOMOUS_QUESTION_STATUS}\` and \`${ASKS_WITH_NEEDS}\` do. What you sent is on no record; put it in \`reason\`, or park at one of those instead.`;
+  if (!mintsAt(input.toStatus)) {
+    return `\`needs\` was sent with \`${input.toStatus}\`, which mints no question — only \`${AUTONOMOUS_QUESTION_STATUS}\` does. What you sent is on no record; put it in \`reason\`, or park at \`${AUTONOMOUS_QUESTION_STATUS}\` instead.`;
   }
   if (actorAgency(input.actor) !== 'agent') {
     return `\`needs\` was sent on a credential owned by a person, which mints no question — a person parking their own work owns their own resume. Nobody has been asked anything. If an agent made this call, it is running on the wrong credential: it wants an agent account or a paired device.`;

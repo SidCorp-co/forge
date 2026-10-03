@@ -9,8 +9,7 @@ interface BlockerBannerProps {
   blocker: BlockerState;
   slug: string;
   pending: boolean;
-  onResume: () => void;
-  /** Move the issue to the rung its park recorded (ISS-1310). */
+  /** Move the issue back to the status its park left — `needs_info` or `on_hold` (ISS-1310, ISS-54). */
   onResumePark: (to: IssueStatus) => void;
   onResumeRun: (runId: string) => void;
   onProvideInfo: () => void;
@@ -20,7 +19,6 @@ export function BlockerBanner({
   blocker,
   slug,
   pending,
-  onResume,
   onResumePark,
   onResumeRun,
   onProvideInfo,
@@ -37,12 +35,6 @@ export function BlockerBanner({
         loading={pending}
         onClick={() => onResumePark(resumeAt)}
       >
-        {cta.label}
-      </Button>
-    );
-  } else if (cta.kind === "resume") {
-    action = (
-      <Button variant="secondary" size="sm" icon="rerun" loading={pending} onClick={onResume}>
         {cta.label}
       </Button>
     );

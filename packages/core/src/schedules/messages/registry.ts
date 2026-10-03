@@ -55,7 +55,7 @@ export const RETIRED_STRATEGY_INPUTS = {
     appliesWhen:
       'The project uses blocks issue relations AND the base-merge ' +
       'state is a manual gate (a pipeline status the system does not ' +
-      'auto-advance, such as "awaiting_release" or "tested"), meaning merged_at is ' +
+      'auto-advance, such as "awaiting_release"), meaning merged_at is ' +
       'not stamped automatically on status transition.',
     appliesToSkills: ['forge-test'],
   },

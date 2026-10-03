@@ -44,8 +44,10 @@ describe('a `needs` that mints nothing says so', () => {
     expect(said).toContain('on no record');
   });
 
-  it('says nothing for an agent parking at `waiting` with a need, which now mints (ISS-1310)', () => {
-    expect(asked(AGENT, 'waiting', 'a Search Console login')).toBeNull();
+  it('names on_hold, a pause that asks nobody anything (ISS-54: only needs_info mints)', () => {
+    const said = asked(AGENT, 'on_hold', 'a Search Console login');
+    expect(said).toContain('`on_hold`');
+    expect(said).toContain('on no record');
   });
 
   it('names the credential when a person parks with a need stated', () => {
@@ -60,16 +62,16 @@ describe('a `needs` that mints nothing says so', () => {
   });
 });
 
-describe('which parks mint the question a person answers (ISS-1310)', () => {
+describe('which parks mint the question a person answers (ISS-1310, ISS-54)', () => {
   const mint = (actor: typeof AGENT | typeof PERSON, toStatus: string, needs?: string) =>
     mintParkQuestion(
       { issue: ISSUE, toStatus: toStatus as never, actor, options: { needs, reason: 'why' } },
       {} as never,
     );
 
-  it('mints for an agent at `waiting` that names what it needs', async () => {
+  it('mints for an agent at `needs_info` that names what it needs', async () => {
     askParkQuestion.mockClear();
-    await mint(AGENT, 'waiting', 'a Search Console login');
+    await mint(AGENT, 'needs_info', 'a Search Console login');
     expect(askParkQuestion).toHaveBeenCalledTimes(1);
     expect(askParkQuestion.mock.calls[0]?.[1]).toMatchObject({
       issueId: 'i1',
@@ -77,10 +79,10 @@ describe('which parks mint the question a person answers (ISS-1310)', () => {
     });
   });
 
-  it('mints nothing for an agent at `waiting` that names no need', async () => {
+  it('mints nothing at `on_hold`, need or not: a pause is not a question', async () => {
     askParkQuestion.mockClear();
-    await mint(AGENT, 'waiting');
-    await mint(AGENT, 'waiting', '   ');
+    await mint(AGENT, 'on_hold');
+    await mint(AGENT, 'on_hold', 'a login');
     expect(askParkQuestion).not.toHaveBeenCalled();
   });
 
@@ -92,7 +94,7 @@ describe('which parks mint the question a person answers (ISS-1310)', () => {
 
   it('mints nothing for a person, nor at a working rung', async () => {
     askParkQuestion.mockClear();
-    await mint(PERSON, 'waiting', 'a login');
+    await mint(PERSON, 'needs_info', 'a login');
     await mint(AGENT, 'in_progress', 'a login');
     expect(askParkQuestion).not.toHaveBeenCalled();
   });

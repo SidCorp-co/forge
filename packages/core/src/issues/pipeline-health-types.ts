@@ -30,7 +30,7 @@ export interface PipelineHealth {
   };
   queuedAt?: string;
   queuedStep?: PipelineHealthQueuedStep;
-  /** Only set when `stage === 'waiting'`. */
+  /** Only set when `stage === 'needs_info'`: what the park is stopped on. */
   waitingCause?: { kind: WaitingCause };
   pausedRun?: PipelineHealthPausedRun;
 }

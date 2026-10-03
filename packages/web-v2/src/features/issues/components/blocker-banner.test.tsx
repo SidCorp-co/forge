@@ -47,7 +47,6 @@ function renderPaused(
       slug="forge-dev"
       pending={false}
       onResumePark={vi.fn()}
-      onResume={vi.fn()}
       onResumeRun={onResumeRun}
       onProvideInfo={vi.fn()}
     />,
@@ -94,7 +93,6 @@ describe("BlockerBanner — an issue parked for information", () => {
         slug="forge-dev"
         pending={false}
         onResumePark={vi.fn()}
-        onResume={vi.fn()}
         onResumeRun={vi.fn()}
         onProvideInfo={vi.fn()}
       />,
@@ -114,7 +112,6 @@ describe("BlockerBanner — an issue parked for information", () => {
         slug="forge-dev"
         pending={false}
         onResumePark={vi.fn()}
-        onResume={vi.fn()}
         onResumeRun={vi.fn()}
         onProvideInfo={onProvideInfo}
       />,
@@ -148,22 +145,21 @@ function askedInfo() {
   return parked({ reason: "Which tenant is this for?" });
 }
 
-describe("BlockerBanner — a park resumes where its record says (ISS-1310)", () => {
-  it("resumes sid-desk ISS-529's shape at developed, and offers no Approve", () => {
+describe("BlockerBanner — a park resumes where it stopped (ISS-1310, ISS-54)", () => {
+  it("resumes sid-desk ISS-529's shape at the status the park left, and offers no Approve", () => {
     const onResumePark = vi.fn();
     const blocker = deriveBlockerState(
-      { status: "waiting" },
+      { status: "needs_info" },
       undefined,
       undefined,
-      parked({ status: "waiting", owes: "decision", resume: { at: "developed", recordId: "c1" } }),
+      parked({ owes: "decision", resume: { at: "awaiting_release", recordId: null } }),
     );
-    if (!blocker) throw new Error("a waiting park must produce a blocker state");
+    if (!blocker) throw new Error("a needs_info park must produce a blocker state");
     render(
       <BlockerBanner
         blocker={blocker}
         slug="sid-desk"
         pending={false}
-        onResume={vi.fn()}
         onResumePark={onResumePark}
         onResumeRun={vi.fn()}
         onProvideInfo={vi.fn()}
@@ -171,7 +167,47 @@ describe("BlockerBanner — a park resumes where its record says (ISS-1310)", ()
     );
     expect(screen.getByText(/waiting for a decision/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /approve/i })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Resume at Developed" }));
-    expect(onResumePark).toHaveBeenCalledWith("developed");
+    fireEvent.click(screen.getByRole("button", { name: "Resume at Awaiting release" }));
+    expect(onResumePark).toHaveBeenCalledWith("awaiting_release");
+  });
+
+  it("resumes a hold at the status it left, never by reopening it", () => {
+    const onResumePark = vi.fn();
+    const blocker = deriveBlockerState(
+      { status: "on_hold", workState: { leftStatus: "approved" } },
+      undefined,
+      undefined,
+    );
+    if (!blocker) throw new Error("on_hold must produce a blocker state");
+    render(
+      <BlockerBanner
+        blocker={blocker}
+        slug="forge-dev"
+        pending={false}
+        onResumePark={onResumePark}
+        onResumeRun={vi.fn()}
+        onProvideInfo={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /reopen/i })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Resume at Approved" }));
+    expect(onResumePark).toHaveBeenCalledWith("approved");
+  });
+
+  it("offers no button on a hold that recorded no status it left", () => {
+    const blocker = deriveBlockerState({ status: "on_hold", workState: null }, undefined, undefined);
+    if (!blocker) throw new Error("on_hold must produce a blocker state");
+    render(
+      <BlockerBanner
+        blocker={blocker}
+        slug="forge-dev"
+        pending={false}
+        onResumePark={vi.fn()}
+        onResumeRun={vi.fn()}
+        onProvideInfo={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByText(/status menu/i)).toBeInTheDocument();
   });
 });

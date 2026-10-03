@@ -234,9 +234,9 @@ describe('classifyPipelineHealthForIssue — the two gates that never clear them
 
 describe('waitingCause is a pass-through of issues.waiting_kind (RFC 0002 INV-5)', () => {
   it('reports the authored kind verbatim', () => {
-    for (const kind of ['needs_decision', 'needs_resource'] as const) {
+    for (const kind of ['needs_answer', 'needs_decision', 'needs_resource'] as const) {
       const out = classifyPipelineHealthForIssue(
-        baseInput({ issue: { id: 'i', status: 'waiting', mergedAt: null, waitingKind: kind } }),
+        baseInput({ issue: { id: 'i', status: 'needs_info', mergedAt: null, waitingKind: kind } }),
       );
       expect(out.waitingCause).toEqual({ kind });
     }
@@ -247,7 +247,7 @@ describe('waitingCause is a pass-through of issues.waiting_kind (RFC 0002 INV-5)
       baseInput({
         issue: {
           id: 'i',
-          status: 'waiting',
+          status: 'needs_info',
           mergedAt: new Date('2026-08-11T00:00:00.000Z'),
           waitingKind: null,
         },
@@ -256,7 +256,7 @@ describe('waitingCause is a pass-through of issues.waiting_kind (RFC 0002 INV-5)
     expect(out.waitingCause).toBeUndefined();
   });
 
-  it('drops a stale kind on an issue that is no longer waiting', () => {
+  it('drops a stale kind on an issue that is no longer parked at needs_info', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
         issue: { id: 'i', status: 'in_progress', mergedAt: null, waitingKind: 'needs_decision' },
@@ -283,7 +283,7 @@ describe('ISS-853 — a paused run reaches the payload with nothing queued behin
   });
 
   it('carries pausedRun at every status, including the ones that show no banner today', () => {
-    for (const status of ['approved', 'in_progress', 'needs_info', 'waiting', 'developed']) {
+    for (const status of ['approved', 'in_progress', 'needs_info', 'on_hold', 'awaiting_release']) {
       const out = classifyPipelineHealthForIssue(
         baseInput({ issue: { id: 'iss-1', status, mergedAt: null, waitingKind: null }, pausedRun }),
       );

@@ -1,6 +1,4 @@
-// cm:why the snapshot rides from the send route to the turn through process memory rather than a column:
-// it is per-turn-volatile view state that is never persisted (turn-context.ts's rule), and a turn that
-// finds none — another replica, a restart — answers without it rather than with a stale page.
+// cm:why process memory, never a column: per-turn view state is not persisted (turn-context.ts's rule).
 
 import type { UiSnapshot } from '@forge/contracts/ui-actions';
 import { describeUiSnapshot } from '@forge/contracts/ui-actions';

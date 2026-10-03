@@ -1,12 +1,13 @@
-import {
-  AUTONOMOUS_LABELS,
-  type AutonomousLabel,
-  toAutonomousLabel,
-} from "@forge/contracts/issue-vocabulary";
 import { REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
 import { deriveQueuedStep, hasLiveAgentSession, queuedChipStatus } from "@/features/issues/waiting";
-import { LABEL_VIEW, statusToChip } from "@/features/issues/derive";
-import { type SemanticTone, type StatusKey, TONE_META } from "@/design/status";
+import {
+  statusLabel,
+  statusStepLabel,
+  statusToChip,
+  statusToTone,
+  workStepOf,
+} from "@/features/issues/derive";
+import { type SemanticTone, STATUS_KEY_TONE, type StatusKey, TONE_META } from "@/design/status";
 import type { IssueStatus } from "@/features/issues/types";
 import { type StageKey, stageColor } from "@/design/stages";
 import { gateReasonLine } from "@/features/runners/types";
@@ -54,9 +55,8 @@ export function runStatusToStatusKey(status: PipelineRunStatus): StatusKey {
 }
 
 /**
- * The board drawer header's chip. A running pipeline run is as live as its step, so while the
- * issue's run reading (`runStatusChip`) is `running` or `queued` the header shows that reading; a
- * paused, finished or cancelled run keeps its own status.
+ * The board drawer header's chip: while the issue's run reading (`runStatusChip`) is `running` or
+ * `queued` it shows that; a paused, finished or cancelled run keeps its own status.
  */
 export function drawerRunChip(runStatus: PipelineRunStatus, issueRun: StatusKey | null): StatusKey {
   if (runStatus === "running" && (issueRun === "running" || issueRun === "queued")) return issueRun;
@@ -104,58 +104,73 @@ export function runsByIssue(
   return map;
 }
 
-/** One column of the board: a lane label, the word and colour it reads in, and its issues. */
-export interface LabelGroup {
-  label: AutonomousLabel;
+/**
+ * A board column's key: one of the statuses, or `unheld` — the `in_progress` rows nothing holds.
+ * `in_progress` says a run holds the issue; where nothing has checked in for it the board files the
+ * row beside the held ones rather than calling it in progress (ISS-1213).
+ */
+export type BoardColumnKey = IssueStatus | "unheld";
+
+/** One column of the board: its key, the word and colour it reads in, and its issues. */
+export interface BoardColumnGroup {
+  key: BoardColumnKey;
   title: string;
   color: string;
   issues: PipelineIssueRow[];
 }
 
+/** How the `unheld` column and card read: its word, and the chip of work nothing is moving. */
+export const UNHELD_VIEW: { title: string; status: StatusKey } = {
+  title: "No check-in",
+  status: "paused",
+};
+
 /**
- * The board's columns: every lane label that a status the board's own query CAN RETURN maps to,
- * kept in `AUTONOMOUS_LABELS`' order.
- *
- * Derived forward from the returnable statuses, never by subtracting the excluded ones' labels.
- * The two are different relations: `toAutonomousLabel` is many-to-one, so the moment an excluded
- * status shares a label with an included one, subtraction deletes a column full of live issues.
+ * The board's columns: one per status the board's own query CAN RETURN, in the registry's order,
+ * with `unheld` right after `in_progress` while `in_progress` is one of them.
  */
 export function boardColumns(
   excluded: readonly string[] = BOARD_EXCLUDED_STATUSES,
-): AutonomousLabel[] {
-  const reachable = new Set<AutonomousLabel>();
+): BoardColumnKey[] {
+  const out: BoardColumnKey[] = [];
   for (const status of REGISTRY_ISSUE_STATUSES) {
     if (excluded.includes(status)) continue;
-    reachable.add(toAutonomousLabel(status, true));
-    reachable.add(toAutonomousLabel(status, false));
+    out.push(status);
+    if (status === "in_progress") out.push("unheld");
   }
-  return AUTONOMOUS_LABELS.filter((l) => reachable.has(l));
+  return out;
 }
 
-/** The colour a lane label reads in — the same `SemanticTone` its status chip resolves through. */
-export function labelTone(label: AutonomousLabel): SemanticTone {
-  return LABEL_VIEW[label].tone;
+/** The colour a column reads in — the same `SemanticTone` its status chip resolves through. */
+export function columnTone(key: BoardColumnKey): SemanticTone {
+  return key === "unheld" ? STATUS_KEY_TONE[UNHELD_VIEW.status] : statusToTone(key);
 }
 
-/** The lane label a board row reads: its status, and whether anything is on it now. */
-export function rowLabel(issue: PipelineIssueRow): AutonomousLabel {
-  return toAutonomousLabel(issue.status as (typeof REGISTRY_ISSUE_STATUSES)[number], issue.held);
+/** The column's heading: the status's own word, or `No check-in`. */
+export function columnTitle(key: BoardColumnKey): string {
+  return key === "unheld" ? UNHELD_VIEW.title : statusLabel(key);
 }
 
-/** Group issues into the board's columns by the label each row reads as. */
-export function groupIssuesByLabel(issues: PipelineIssueRow[] | undefined): LabelGroup[] {
+/** The column a board row files under: its status, or `unheld` for an `in_progress` row nothing holds. */
+export function rowColumn(issue: PipelineIssueRow): BoardColumnKey {
+  const status = issue.status as IssueStatus;
+  return status === "in_progress" && !issue.held ? "unheld" : status;
+}
+
+/** Group issues into the board's columns by the column each row files under. */
+export function groupIssuesByColumn(issues: PipelineIssueRow[] | undefined): BoardColumnGroup[] {
   const columns = boardColumns();
-  const buckets = new Map<AutonomousLabel, PipelineIssueRow[]>(columns.map((l) => [l, []]));
+  const buckets = new Map<BoardColumnKey, PipelineIssueRow[]>(columns.map((k) => [k, []]));
   for (const issue of issues ?? []) {
-    const label = rowLabel(issue);
-    const bucket = buckets.get(label);
+    const key = rowColumn(issue);
+    const bucket = buckets.get(key);
     if (bucket) bucket.push(issue);
-    else buckets.set(label, [issue]);
+    else buckets.set(key, [issue]);
   }
-  return [...buckets.entries()].map(([label, list]) => ({
-    label,
-    title: LABEL_VIEW[label].label,
-    color: TONE_META[LABEL_VIEW[label].tone].dot,
+  return [...buckets.entries()].map(([key, list]) => ({
+    key,
+    title: columnTitle(key),
+    color: TONE_META[columnTone(key)].dot,
     issues: list,
   }));
 }
@@ -292,13 +307,12 @@ export function cardStatus(
   run: { status: PipelineRunStatus } | undefined,
   now: number = Date.now(),
 ): CardStatusView {
-  const label = rowLabel(issue);
   // Nothing holds the row, so a run or a queued step the board kept for it is history, not what
   // the card is now: a queued job would have made the row held.
-  if (label === "unheld") {
+  if (rowColumn(issue) === "unheld") {
     return {
-      status: LABEL_VIEW.unheld.status,
-      label: LABEL_VIEW.unheld.label,
+      status: UNHELD_VIEW.status,
+      label: UNHELD_VIEW.title,
       domain: "issue",
       waitingReason: "",
       note: checkInLine(issue.lastCheckInAt, now),
@@ -323,9 +337,10 @@ export function cardStatus(
       note: "",
     };
   }
+  const status = issue.status as IssueStatus;
   return {
-    status: statusToChip(issue.status as IssueStatus),
-    label: LABEL_VIEW[label].label,
+    status: statusToChip(status),
+    label: statusStepLabel(status, workStepOf(issue)),
     domain: "issue",
     waitingReason: "",
     note: "",

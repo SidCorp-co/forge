@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach } from 'vitest';
+import { splitSessionContext, writeSplitSessionContext } from '../../src/issues/work-state.js';
 import { setupTestDatabase, type TestDatabase } from './db.js';
 import { createTestDevice, createTestProject, createTestUser } from './factories.js';
 import { truncateAll } from './truncate.js';
@@ -22,12 +23,23 @@ export interface IdleFixture {
   readonly ownerId: string;
   /** The `iss_seq` the last seeded issue was given. */
   readonly lastSeq: number;
+  /**
+   * An issue row. `sessionContext` is split the way every write path splits it (ISS-54): its
+   * `lease`, and the branch and head its worklog names, land on `issue_work_state`.
+   */
   seedIssue(args: {
     status: string;
     sessionContext?: unknown;
     mergedAt?: string | null;
     updatedAt?: string;
+    /** Required at `needs_info`; defaulted to `needs_answer` there. */
+    waitingKind?: string | null;
+    leftStatus?: string | null;
+    legacyStatus?: string | null;
   }): Promise<string>;
+  /** Replace the work state's lease, as a holder's write does. */
+  setLease(issueId: string, lease: unknown): Promise<void>;
+  leaseOf(issueId: string): Promise<Record<string, unknown> | null>;
   seedRun(issueId: string | null, status: string): Promise<string>;
   /** A job under a live run: the INV-1 trigger cancels one inserted under a terminal run. */
   seedLiveJob(issueId: string): Promise<string>;
@@ -88,15 +100,46 @@ export function registerIdleFixture(seqFrom: number): IdleFixture {
     },
     async seedIssue(args) {
       const id = randomUUID();
-      const ctx = args.sessionContext === undefined ? null : JSON.stringify(args.sessionContext);
+      const split = splitSessionContext(args.sessionContext);
+      const ctx = split.rest === null ? null : JSON.stringify(split.rest);
+      const kind =
+        args.waitingKind !== undefined
+          ? args.waitingKind
+          : args.status === 'needs_info'
+            ? 'needs_answer'
+            : null;
       await harness.db.execute(sql`
         INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id,
-                            session_context, merged_at, created_at, updated_at)
+                            session_context, merged_at, waiting_kind, created_at, updated_at)
         VALUES (${id}, ${projectId}, ${seq++}, 'idle row', ${args.status}, 'medium', ${ownerId},
-                ${ctx}::jsonb, ${args.mergedAt ?? null}::timestamptz,
+                ${ctx}::text::jsonb, ${args.mergedAt ?? null}::timestamptz, ${kind},
                 ${LONG_AGO}::timestamptz, ${args.updatedAt ?? LONG_AGO}::timestamptz)
       `);
+      const parked = (args.leftStatus ?? null) !== null || (args.legacyStatus ?? null) !== null;
+      if (split.lease.present || split.branch || split.headSha || parked) {
+        await writeSplitSessionContext(harness.db, id, split);
+      }
+      if (parked) {
+        await harness.db.execute(sql`
+          UPDATE issue_work_state
+             SET left_status = ${args.leftStatus ?? null}, legacy_status = ${args.legacyStatus ?? null}
+           WHERE issue_id = ${id}
+        `);
+      }
       return id;
+    },
+    async setLease(issueId, lease) {
+      await harness.db.execute(sql`
+        INSERT INTO issue_work_state (issue_id, lease)
+        VALUES (${issueId}, ${JSON.stringify(lease)}::text::jsonb)
+        ON CONFLICT (issue_id) DO UPDATE SET lease = EXCLUDED.lease, updated_at = now()
+      `);
+    },
+    async leaseOf(issueId) {
+      const rows = (await harness.db.execute(sql`
+        SELECT lease FROM issue_work_state WHERE issue_id = ${issueId}
+      `)) as unknown as Array<{ lease: Record<string, unknown> | null }>;
+      return rows[0]?.lease ?? null;
     },
     async seedRun(issueId, status) {
       const runId = randomUUID();

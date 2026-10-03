@@ -37,12 +37,11 @@ const UNSHIPPED = mark('git');
 
 describe('refuseUnshippedClose — the statuses it does not judge', () => {
   it.each([
-    'waiting',
     'reopen',
     'on_hold',
     'needs_info',
     'in_progress',
-    'releasing',
+    'approved',
     'dropped',
     BASE_MERGE_STATE,
   ] as const)('%s is not a close, so nothing is read and nothing is refused', async (toStatus) => {

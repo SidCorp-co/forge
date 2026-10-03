@@ -216,8 +216,7 @@ export async function openRunSession(args: {
     );
   }
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
-  // cm:guard work that builds a flow starts only once its design is approved; refused before any
-  // run, session or lease is written, by the name the job claim uses too
+  // cm:guard a flow's build waits for its approved design (ISS-53), refused as the job claim refuses it
   await assertDesignsApprovedForSeqs(args.projectId, canonical.seqs);
   const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
   const spec: OneShotRunSpec = {

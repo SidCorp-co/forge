@@ -936,26 +936,27 @@ export const runnersRelations = relations(runners, ({ one, many }) => ({
   jobs: many(jobs),
 }));
 
-export const waitingKinds = ['needs_decision', 'needs_resource'] as const;
+/**
+ * What a `needs_info` park is stopped on. `needs_answer` is a question; the other two are the old
+ * `waiting` park's kinds, which folded into `needs_info` with their kind kept (ISS-54).
+ */
+export const waitingKinds = ['needs_answer', 'needs_decision', 'needs_resource'] as const;
 export type WaitingKind = (typeof waitingKinds)[number];
 
+/**
+ * The ten statuses of workflow `issue-lifecycle` (approved revision 2). A status answers only
+ * "who is it waiting on"; a run's step is progress inside `in_progress`, in `issue_work_state`.
+ */
 export const issueStatuses = [
-  'open',
-  'confirmed',
-  'clarified',
-  'waiting',
-  'approved',
-  'in_progress',
-  'developed',
-  'testing',
-  'tested',
-  'awaiting_release',
-  'releasing',
-  'closed',
-  'reopen',
-  'on_hold',
-  'needs_info',
   'draft',
+  'open',
+  'reopen',
+  'in_progress',
+  'approved',
+  'needs_info',
+  'on_hold',
+  'awaiting_release',
+  'closed',
   'dropped',
 ] as const;
 export type IssueStatus = (typeof issueStatuses)[number];

@@ -28,6 +28,7 @@ import {
   type PendingIssueRelation,
   writeIssueRelations,
 } from './relations-service.js';
+import { splitSessionContext, writeSplitSessionContext } from './work-state.js';
 
 export type IssueCreateErrorCode = 'INVALID_STATUS' | 'INVALID_DETECTOR_KEY';
 
@@ -156,6 +157,8 @@ export async function createIssue(
     }
   }
 
+  const split =
+    input.sessionContext === undefined ? null : splitSessionContext(input.sessionContext);
   const { created, pendingRelations } = await db.transaction(async (tx) => {
     const [inserted] = await tx
       .insert(issues)
@@ -176,11 +179,17 @@ export async function createIssue(
         detectorKey,
         plan: input.plan ?? null,
         acceptanceCriteria: input.acceptanceCriteria ?? null,
-        sessionContext: (input.sessionContext ?? null) as IssueCreateRow['sessionContext'],
+        sessionContext: (split?.rest ?? null) as IssueCreateRow['sessionContext'],
         releaseNotes: (input.releaseNotes ?? null) as IssueCreateRow['releaseNotes'],
       })
       .returning();
     if (!inserted) throw new Error('issues: insert returned no row');
+    // ISS-54 cm:hack — the lease, branch and head a `sessionContext` names belong to the work
+    // state (`work-state.ts:splitSessionContext`). Exit: until forge-plugin moves to the 10-status
+    // model (plugin-followups.md).
+    if (split && (split.lease.present || split.branch !== null || split.headSha !== null)) {
+      await writeSplitSessionContext(tx, inserted.id, split);
+    }
 
     if (labelIds.length > 0) {
       await tx.insert(issueLabels).values(

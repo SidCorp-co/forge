@@ -150,8 +150,10 @@ describe('finishRefusal — what the abort did to this batch', () => {
     }
   });
 
-  it('says a held promoted roster stays at releasing, claimed, with the routes to settle it', () => {
-    expect(said('held')).toMatch(/kept its claims\. Its issues stay at `releasing`, still claimed/);
+  it('says a held promoted roster stays at its release step, claimed, with the routes to settle it', () => {
+    expect(said('held')).toMatch(
+      /kept its claims\. Its issues stay at `awaiting_release` at their `release` step, still claimed/,
+    );
     expect(said('held')).toContain('POST /api/projects/proj-7/release-records');
     expect(said('held')).toContain('"return-to-gate"');
     expect(said('held')).not.toMatch(/claims were released/);
@@ -212,11 +214,14 @@ describe('finishRefusal — what the abort did to this batch', () => {
     expect(message).toMatch(/already closed ISS-1, u-gone before the abort/);
   });
 
-  it('names the one issue a finish closed beside a held roster, and the rest at releasing', () => {
+  it('names the one issue a finish closed beside a held roster, and the rest at their release step', () => {
     const message =
       finishRefusal(new ReleaseBatchAbortedError('held', 'proj-7', ['iss-a']))?.message ?? '';
     expect(message).toMatch(/closed iss-a before the abort, and it stays closed/);
     expect(message).toMatch(/closed iss-a before the abort, and it stays closed\. Every other/);
+    expect(message).toMatch(
+      /Every other issue stays at `awaiting_release` at their `release` step/,
+    );
   });
 
   // release-records takes only unclaimed issues at the gate, so offering it beside the

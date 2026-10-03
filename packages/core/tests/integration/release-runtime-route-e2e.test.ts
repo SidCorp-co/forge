@@ -19,7 +19,11 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 import { seedProduction } from '../helpers/production.js';
-import { RELEASE_LABEL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import {
+  AT_RELEASE,
+  RELEASE_LABEL,
+  releaseBatchFixture,
+} from '../helpers/release-batch-fixture.js';
 
 const SERVED = '33637c612ef15be6f924520c0d201a0889d8ed7e';
 const OLDER = '0d98a6be6d9680b967d3f16542eadd25d02602cb';
@@ -164,7 +168,7 @@ describe('a row held before the route existed is carried by the next sweep', () 
     const result = await sweep();
 
     expect(result.issuesCut).toBe(1);
-    expect((await fx.stored(id)).status).toBe('releasing');
+    expect(await fx.stored(id)).toMatchObject(AT_RELEASE);
     expect(await holdOf(id)).toBeNull();
   }, 30_000);
 
@@ -241,7 +245,7 @@ describe('a project nothing can read is told once', () => {
     const next = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
     const last = await waitingRow(SERVED, '2026-09-29T09:00:00Z');
     await sweep();
-    await harness.db.execute(sql`UPDATE issues SET status = 'developed' WHERE id = ${oldest}`);
+    await harness.db.execute(sql`UPDATE issues SET status = 'reopen' WHERE id = ${oldest}`);
 
     await sweep();
     await sweep();

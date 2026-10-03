@@ -23,17 +23,10 @@ export interface StatusAssertion {
 export const STATUS_ASSERTIONS: Record<IssueStatus, StatusAssertion> = {
   draft: { gate: 'intake', nextActor: 'human' },
   open: { gate: 'queue', nextActor: 'agent' },
-  confirmed: { gate: 'plan', nextActor: 'human' },
-  clarified: { gate: 'plan', nextActor: 'human' },
   approved: { gate: 'build', nextActor: 'human' },
   in_progress: { gate: 'build', nextActor: 'human' },
-  developed: { gate: 'review', nextActor: 'human' },
-  testing: { gate: 'qa', nextActor: 'human' },
-  tested: { gate: 'release', nextActor: 'human' },
   awaiting_release: { gate: 'release', nextActor: 'human' },
-  releasing: { gate: 'release', nextActor: 'human' },
   reopen: { gate: 'build', nextActor: 'human' },
-  waiting: { gate: 'paused', nextActor: 'human' },
   on_hold: { gate: 'paused', nextActor: 'human' },
   needs_info: { gate: 'paused', nextActor: 'human' },
   closed: { gate: 'terminal', nextActor: 'none' },
@@ -42,7 +35,7 @@ export const STATUS_ASSERTIONS: Record<IssueStatus, StatusAssertion> = {
 
 export const EVIDENCE_FIELDS = {
   landed: 'issues.merged_at',
-  branch: 'issues.session_context.branch',
+  branch: 'issue_work_state.branch',
   commit: "issue_step_contexts kind='handoff' payload.commitSha",
 } as const;
 

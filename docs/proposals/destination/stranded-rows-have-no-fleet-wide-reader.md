@@ -20,7 +20,7 @@ was not a person; 797 of them for over three days. The reason for each was alrea
 already on the row. Nothing could read them together.
 
 The same comment recorded the half no per-row field expresses: a rung filling faster than it drains.
-Twelve `sid-desk` rows sat at `testing`, every one judged and passed, each one short of a single
+Twelve `sid-desk` rows sat at `testing` (a status then; `in_progress` at step `test` since ISS-54), every one judged and passed, each one short of a single
 verification record, and not one of them was twelve hours old. An age threshold at any value reports
 that project clean, because rows arrived faster than the threshold could age them. What was wrong was
 the ratio — twelve at one rung, two past it, in a day — and a row cannot see it, because every

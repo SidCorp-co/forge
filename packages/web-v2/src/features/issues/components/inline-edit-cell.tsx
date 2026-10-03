@@ -5,8 +5,9 @@
 // StatusChip and opens a status menu (transition — 409 surfaces as a toast via
 // the mutation factory, the row value snaps back since nothing is invalidated).
 
+import type { WorkStep } from "@forge/contracts/issue-vocabulary";
 import { Menu, NativeSelect, Select, StatusChip, type MenuItem, type SelectOption } from "@/design";
-import { groupedTransitions, statusLabel, statusToChip, transitionLabels } from "../derive";
+import { groupedTransitions, issueStatusChip, statusLabel, transitionLabels } from "../derive";
 import { AGENT_HOLDS_MOVE, heldByAgent } from "../edit-lock";
 import { useStatusExits } from "../hooks";
 import type { ParkReading } from "../derive";
@@ -88,6 +89,10 @@ function ordinaryItems(args: {
 
 interface StatusEditProps {
   status: IssueStatus;
+  /** The run's step inside `in_progress` (`workState.step`), which the chip names where it has one. */
+  step?: WorkStep | null;
+  /** The status a park left (`workState.leftStatus`), which the menu offers to return to. */
+  leftStatus?: IssueStatus | null;
   agentStatus?: IssueAgentStatus;
   onTransition: (toStatus: IssueStatus) => void;
   disabled?: boolean;
@@ -102,9 +107,18 @@ interface StatusEditProps {
  * registry — forward move first, then the bounces, then the discards. A rung
  * with no exit says so rather than opening empty (ISS-982).
  */
-export function StatusEdit({ status, agentStatus, onTransition, disabled, size, park }: StatusEditProps) {
+export function StatusEdit({
+  status,
+  step,
+  leftStatus = null,
+  agentStatus,
+  onTransition,
+  disabled,
+  size,
+  park,
+}: StatusEditProps) {
   const { exits, isPending, isError } = useStatusExits();
-  const grouped = groupedTransitions(exits, status);
+  const grouped = groupedTransitions(exits, status, leftStatus);
   const held = heldByAgent(status, agentStatus);
   let items: MenuItem[];
   if (held) {
@@ -115,6 +129,7 @@ export function StatusEdit({ status, agentStatus, onTransition, disabled, size, 
     const parkItems = park
       ? parkMenuItems({
           status,
+          leftStatus,
           reading: park.reading,
           exits: mapRead ? (exits ?? {}) : undefined,
           ordinary: items,
@@ -123,7 +138,7 @@ export function StatusEdit({ status, agentStatus, onTransition, disabled, size, 
       : null;
     if (parkItems) items = parkItems;
   }
-  const chip = <StatusChip status={statusToChip(status)} label={statusLabel(status)} size={size} />;
+  const chip = <StatusChip {...issueStatusChip(status, step)} size={size} />;
   if (disabled) return chip;
   return (
     <Menu

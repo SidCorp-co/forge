@@ -68,7 +68,7 @@ describe('ISS-868 issue relations writer', () => {
   }
 
   it('persists update-style direction mapping and retraction for a PAT principal', async () => {
-    const blocker = await insertIssue(91, 'developed');
+    const blocker = await insertIssue(91, 'in_progress');
     const dependent = await insertIssue(92);
     const writer = makePatWriter();
 
@@ -108,7 +108,7 @@ describe('ISS-868 issue relations writer', () => {
   });
 
   it('commits every edge of a multi-entry relations array, both directions, in one call', async () => {
-    const blockerA = await insertIssue(93, 'developed');
+    const blockerA = await insertIssue(93, 'in_progress');
     const blockerB = await insertIssue(94);
     const dependent = await insertIssue(95);
     const downstream = await insertIssue(96);

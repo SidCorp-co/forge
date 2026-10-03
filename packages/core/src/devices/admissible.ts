@@ -146,7 +146,7 @@ export async function readAdmissibleIssues(args: {
     const rows = (await db.execute(sql`
       SELECT i.id, i.iss_seq, i.project_id, i.title, i.description, i.priority,
              i.category, i.status, i.merged_at,
-             i.session_context->>'branch' AS branch,
+             (SELECT w.branch FROM issue_work_state w WHERE w.issue_id = i.id) AS branch,
              EXTRACT(EPOCH FROM (now() - i.created_at)) / 60 AS age_minutes,
              ip.issue_prefix,
              ${RELATIONS}

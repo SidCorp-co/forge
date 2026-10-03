@@ -1,5 +1,5 @@
-// create: opens a system run, atomically claims N gate-status issues, moves each
-// to `releasing`, enqueues one release_batch job. finish: closes every claimed
+// create: opens a system run, atomically claims N gate-status issues, marks each
+// at its `release` step, enqueues one release_batch job. finish: closes every claimed
 // issue and completes the run. abort: cancels the run and every job under it
 // and closes no issue.
 //
@@ -8,7 +8,7 @@
 // `getActiveReleaseBatch` answering a batch whose work is over, and what
 // keeps a finish from reading like an abort.
 //
-// finish and abort are the only writers that leave `releasing`. Both hand the
+// finish and abort are the only writers that end the release step. Both hand the
 // claim release to `releasing-recovery.ts`, which is also what a batch that
 // died without either outcome goes through.
 
@@ -18,6 +18,7 @@ import { type IssueStatus, issues, type PipelineRunStatus, pipelineRuns } from '
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { setWorkStep } from '../issues/work-state.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
@@ -43,7 +44,7 @@ import {
   resolveReleaseChannels,
   resolveReleasePlan,
 } from './channel.js';
-import { claimConflictAt } from './claim-conflicts.js';
+import { claimConflictAt, refuseLostReleaseClaim } from './claim-conflicts.js';
 import {
   BatchInFlightError,
   NoReleaseGateError,
@@ -194,18 +195,15 @@ export async function createReleaseBatch(
     throw await claimConflictAt(projectId, gateStatus, issueIds, claimed);
   }
 
+  // ISS-54: a release run holding the issue is a step inside `awaiting_release`, not a status.
   for (const id of claimed.map((r) => r.id)) {
     try {
-      await transitionIssueStatus(
-        { id, projectId, status: gateStatus, reopenCount: 0 },
-        'releasing',
-        await accountActor(userId),
-        { viaReleasePath: true },
-      );
+      await setWorkStep(db, id, 'release');
     } catch (err) {
-      if (!(err instanceof TransitionError && err.code === 'NO_OP')) {
-        logger.warn({ err, issueId: id, runId: run.id }, 'release-batch: could not mark releasing');
-      }
+      logger.warn(
+        { err, issueId: id, runId: run.id },
+        'release-batch: could not mark the release step',
+      );
     }
   }
 
@@ -325,11 +323,9 @@ export async function assertFinishable(
   run: ReleaseRunRow,
 ): Promise<CloseVerification> {
   if (batchAborted(run)) throw await abortedError(runId);
-  // A release closes its roster claiming a ship. Without a version nothing afterwards can name
-  // WHICH release carried these issues, which is the one thing this path exists to make true, so
-  // it is refused by name rather than closed anyway. `createReleaseBatch` cuts the number inside
-  // the transaction that inserts the row, so a release row reaching here without one was not
-  // opened by it.
+  // A release closes its roster claiming a ship; without a version nothing can name WHICH release
+  // carried these issues, so it is refused by name. `createReleaseBatch` cuts the number in the
+  // transaction that inserts the row, so a row reaching here without one was not opened by it.
   if (!run.releaseVersion) throw new ReleaseVersionMissingError(runId);
 
   return closeVerification(await resolveReleaseChannels(run.projectId));
@@ -403,7 +399,13 @@ export async function finishReleaseBatch(
         },
         'closed',
         actor,
-        { viaReleasePath: true, ...(fence ? { beforeStatusWrite: fence } : {}) },
+        {
+          viaReleasePath: true,
+          beforeStatusWrite: async (tx) => {
+            await fence?.(tx);
+            await refuseLostReleaseClaim(tx, issue.id, runId);
+          },
+        },
       );
       closed.push(issue.id);
     } catch (err) {
@@ -457,8 +459,8 @@ export interface AbortReleaseBatchResult extends RecoverStrandedReleasingResult 
 /**
  * What an abort does with a roster whose run already promoted.
  *
- * `hold` is the default: the code is on production and no status here is true
- * except `releasing`. `return-to-gate` is the operator's route to terminal for
+ * `hold` is the default: the code is on production, and the roster stays held at
+ * `awaiting_release` at its `release` step. `return-to-gate` is the operator's route to terminal for
  * a batch that promoted and cannot verify, putting the roster back where
  * `POST /release-records` closes it against what production serves, with an
  * account (ISS-1199).
@@ -522,5 +524,3 @@ export {
   type ReleaseRoster,
   type ReleaseRosterEntry,
 } from './queries.js';
-
-import { accountActor } from '../issues/account-actor.js';

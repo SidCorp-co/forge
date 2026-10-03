@@ -439,7 +439,7 @@ describe('an archived issue still answers by key, and refuses becoming load-bear
   it('refuses a transition with ISSUE_ARCHIVED naming the unarchive route, and the status stays', async () => {
     const res = await api(`/api/issues/${id.old}/transition`, {
       method: 'POST',
-      body: JSON.stringify({ toStatus: 'open', reason: 'try to reopen an archived one' }),
+      body: JSON.stringify({ toStatus: 'reopen', reason: 'try to reopen an archived one' }),
     });
     expect(res.status).toBe(409);
     expect(res.body).toMatchObject({ code: 'ISSUE_ARCHIVED' });
@@ -453,7 +453,8 @@ describe('an archived issue still answers by key, and refuses becoming load-bear
   it('refuses reopening a live issue a live edge ties to it, naming it', async () => {
     const res = await api(`/api/issues/${id.neighbour}/transition`, {
       method: 'POST',
-      body: JSON.stringify({ toStatus: 'open', reason: 'reopen the neighbour' }),
+      // ISS-54: a closed issue leaves only through `reopen`.
+      body: JSON.stringify({ toStatus: 'reopen', reason: 'reopen the neighbour' }),
     });
     expect(res.status).toBe(409);
     expect(res.body.message).toMatch(/live `relates` edge ties it to ISS-1, which is archived/);

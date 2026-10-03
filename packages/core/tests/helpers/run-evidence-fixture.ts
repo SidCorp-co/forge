@@ -17,16 +17,21 @@ async function anIssue(
   db: TestDb,
   args: { projectId: string; createdById: string; issSeq: number; next?: string | null },
 ): Promise<string> {
-  const lease =
-    args.next === undefined ? null : JSON.stringify({ lease: { next: args.next, clock: 1 } });
   const rows = (await db.execute(sql`
-    INSERT INTO issues (project_id, created_by_id, iss_seq, title, status, session_context)
+    INSERT INTO issues (project_id, created_by_id, iss_seq, title, status)
     VALUES (${args.projectId}, ${args.createdById}, ${args.issSeq}, ${`issue ${args.issSeq}`},
-            'in_progress', ${lease}::jsonb)
+            'in_progress')
     RETURNING id
   `)) as unknown as { id: string }[];
   const id = rows[0]?.id;
   if (!id) throw new Error('anIssue: insert returned no row');
+  if (args.next !== undefined) {
+    // The lease lives on the issue's work state (ISS-54), where the run's `next` is read from.
+    const lease = JSON.stringify({ next: args.next, clock: 1 });
+    await db.execute(
+      sql`INSERT INTO issue_work_state (issue_id, lease) VALUES (${id}, ${lease}::text::jsonb)`,
+    );
+  }
   return id;
 }
 

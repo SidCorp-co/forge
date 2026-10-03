@@ -1,6 +1,4 @@
-// Which Issues-list URL params the assistant last set, and to what (ISS-47). The list's toolbar reads
-// it to show those filters in the assistant's orange; a param the person has since changed no longer
-// matches its mark, so it reads as the person's own without anything having to clear the mark.
+// The Issues-list URL params the assistant last set (ISS-47), orange until the person changes one.
 
 import { useSyncExternalStore } from "react";
 

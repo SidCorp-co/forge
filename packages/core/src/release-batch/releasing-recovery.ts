@@ -5,6 +5,7 @@ import { releaseAttempts } from '../db/schema-release-ledger.js';
 import { accountActor } from '../issues/account-actor.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
+import { readWorkState, setWorkStep } from '../issues/work-state.js';
 import { logger } from '../logger.js';
 import { ReleaseFinishFenceLostError } from './errors.js';
 import { resolveReleaseGate } from './gate.js';
@@ -14,7 +15,7 @@ export interface RecoverStrandedReleasingResult {
   claimsCleared: string[];
   /** Claimed issues already `closed` when the roster was read: a finish closed them, and they stay. */
   alreadyClosed: string[];
-  /** Issues that were still at `releasing` and were moved off it. */
+  /** Issues a release still held at its `release` step (the old `releasing`), taken off it. */
   recovered: string[];
   /** Where the recovered issues went, or `null` when nothing moved. */
   destination: IssueStatus | null;
@@ -49,6 +50,11 @@ export async function closedOnRoster(runId: string, executor: Tx = db): Promise<
   return rows.map((r) => r.id);
 }
 
+/** A release holds it mid-release: at the gate, its run at the `release` step (ISS-54). */
+function heldMidRelease(issue: { status: string; step?: string | null }): boolean {
+  return issue.status === 'awaiting_release' && issue.step === 'release';
+}
+
 export interface RecoverStrandedReleasingOptions {
   /** Written onto the issue as the reason, and into a comment when an author is known. */
   reason: string;
@@ -81,6 +87,9 @@ export async function recoverStrandedReleasing(
       status: issues.status,
       reopenCount: issues.reopenCount,
       projectCreatedBy: projects.createdBy,
+      step: sql<
+        string | null
+      >`(SELECT w.step FROM issue_work_state w WHERE w.issue_id = ${issues.id})`,
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -91,7 +100,7 @@ export async function recoverStrandedReleasing(
   if (promoted && options.settlePromotedRoster !== true) {
     logger.warn(
       { runId, claimed: claimed.length, reason: options.reason },
-      'release-batch: this run promoted, so its roster stays at `releasing` for a person to settle',
+      'release-batch: this run promoted, so its roster stays held at its release step for a person to settle',
     );
     await noteOnRoster(claimed, options, promotedNote(runId));
     return {
@@ -109,7 +118,7 @@ export async function recoverStrandedReleasing(
   const recovered: string[] = [];
 
   for (const issue of claimed) {
-    if (issue.status !== 'releasing') continue;
+    if (!heldMidRelease(issue)) continue;
 
     if (options.comment && options.actorUserId) {
       try {
@@ -123,6 +132,12 @@ export async function recoverStrandedReleasing(
       } catch (err) {
         logger.warn({ err, issueId: issue.id, runId }, 'release-batch: recovery comment failed');
       }
+    }
+
+    // Back at the gate is where it already stands: releasing the claim and the step is the move.
+    if (destination === issue.status) {
+      recovered.push(issue.id);
+      continue;
     }
 
     const fallbackId = issue.projectCreatedBy ?? issue.projectId;
@@ -167,7 +182,7 @@ export async function recoverStrandedReleasing(
   if (recovered.length > 0) {
     logger.warn(
       { runId, recovered: recovered.length, reason: options.reason },
-      'release-batch: issues rescued from `releasing` by a batch that wrote no outcome',
+      'release-batch: issues rescued from their release step by a batch that wrote no outcome',
     );
   }
 
@@ -193,6 +208,11 @@ async function releaseClaims(
     WHERE release_batch_run_id = ${runId}
     RETURNING id, status
   `);
+  // The claim held the release step; without the claim nothing is releasing it.
+  for (const row of rows) {
+    const work = await readWorkState(tx, row.id);
+    if (work?.step === 'release') await setWorkStep(tx, row.id, null);
+  }
   const closed = rows.filter((r) => r.status === 'closed').map((r) => r.id);
   if (closed.length > 0) {
     await tx.execute(sql`
@@ -212,7 +232,7 @@ async function releaseClaims(
 function settledNote(projectId: string, destination: IssueStatus): string {
   return (
     `This batch recorded a promotion, so the code it carried may be on production, and an operator ` +
-    `settled the roster rather than leave it at \`releasing\` — the issue is back at ` +
+    `settled the roster rather than leave it held at its release step — the issue is back at ` +
     `\`${destination}\`. If the release did land, record it with ` +
     `POST /api/projects/${projectId}/release-records, naming the commit production is serving and ` +
     `how it was released; that closes it against evidence instead of by hand.`
@@ -221,20 +241,20 @@ function settledNote(projectId: string, destination: IssueStatus): string {
 
 function promotedNote(runId: string): (projectId: string) => string {
   return (projectId) =>
-    `This batch recorded a promotion, so its issues stay at \`releasing\` and stay claimed: the code may be on production, and no other status here would be safe to claim. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`. To settle the issues, abort the batch with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which puts them back at the release gate, and then, if the release did land, record it with POST /api/projects/${projectId}/release-records; or settle each issue by hand.`;
+    `This batch recorded a promotion, so its issues stay held at \`awaiting_release\` at their release step and stay claimed: the code may be on production, and no other status here would be safe to claim. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`. To settle the issues, abort the batch with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which puts them back at the release gate, and then, if the release did land, record it with POST /api/projects/${projectId}/release-records; or settle each issue by hand.`;
 }
 
 /**
  * Say on each issue what happened, without moving it.
  */
 async function noteOnRoster(
-  claimed: Array<{ id: string; status: string; projectId: string }>,
+  claimed: Array<{ id: string; status: string; projectId: string; step: string | null }>,
   options: RecoverStrandedReleasingOptions,
   note: (projectId: string) => string,
 ): Promise<void> {
   if (!options.comment || !options.actorUserId) return;
   for (const issue of claimed) {
-    if (issue.status !== 'releasing') continue;
+    if (!heldMidRelease(issue)) continue;
     try {
       await db.insert(comments).values({
         issueId: issue.id,

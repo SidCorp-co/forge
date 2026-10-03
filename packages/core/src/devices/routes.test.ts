@@ -460,42 +460,25 @@ describe('GET /api/me/devices', () => {
 
 describe('PATCH /api/devices/:id', () => {
   const ID = '11111111-1111-4111-8111-111111111111';
+  const rename = (path: string) =>
+    buildApp().fetch(
+      req(path, { method: 'PATCH', token: 'user-jwt', body: JSON.stringify({ name: 'new' }) }),
+    );
 
   it('400 BAD_REQUEST on invalid uuid', async () => {
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/devices/not-a-uuid', {
-        method: 'PATCH',
-        token: 'user-jwt',
-        body: JSON.stringify({ name: 'new' }),
-      }),
-    );
+    const res = await rename('/api/devices/not-a-uuid');
     expect(res.status).toBe(400);
   });
 
   it('404 NOT_FOUND when device missing', async () => {
     selectLimit.mockResolvedValueOnce([]);
-    const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/devices/${ID}`, {
-        method: 'PATCH',
-        token: 'user-jwt',
-        body: JSON.stringify({ name: 'new' }),
-      }),
-    );
+    const res = await rename(`/api/devices/${ID}`);
     expect(res.status).toBe(404);
   });
 
   it('403 FORBIDDEN when caller is not device owner', async () => {
     selectLimit.mockResolvedValueOnce([{ ownerId: 'someone-else' }]);
-    const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/devices/${ID}`, {
-        method: 'PATCH',
-        token: 'user-jwt',
-        body: JSON.stringify({ name: 'new' }),
-      }),
-    );
+    const res = await rename(`/api/devices/${ID}`);
     expect(res.status).toBe(403);
     expect(updateSet).not.toHaveBeenCalled();
   });

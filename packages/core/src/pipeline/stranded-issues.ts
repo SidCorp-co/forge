@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -21,7 +21,7 @@ export const STRANDED_SCAN_LIMIT = 200;
 type AdminsByProject = ReadonlyMap<string, string[]>;
 
 /**
- * How long an issue may sit `waiting` with merged code before it is stranded.
+ * How long an issue may sit parked on a decision or a resource before it is stranded.
  *
  * A legitimate merge → verify → close pass takes minutes, so this is not a race
  * with the happy path. It is deliberately far below the daily sweep that found
@@ -91,7 +91,7 @@ async function surfaceOnce(args: {
 }
 
 /**
- * Surface every `waiting` park that is past {@link STRANDED_GRACE_MS} and has
+ * Surface every decision or resource park (`needs_info`) past {@link STRANDED_GRACE_MS} that has
  * nothing coming for it. Best-effort: never throws — a failure here must not
  * abort the sweep.
  */
@@ -124,7 +124,10 @@ export async function detectStrandedIssues(
       .innerJoin(projects, eq(projects.id, issues.projectId))
       .where(
         and(
-          eq(issues.status, 'waiting'),
+          eq(issues.status, 'needs_info'),
+          // The decision and resource parks — what `waiting` held before it folded into
+          // `needs_info` (ISS-54); a question park is answered through its question.
+          inArray(issues.waitingKind, ['needs_decision', 'needs_resource']),
           sql`"issues"."updated_at" < ${window.until}::timestamptz`,
           ...(scope.projectId ? [eq(issues.projectId, scope.projectId)] : []),
           ...(window.after

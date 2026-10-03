@@ -100,7 +100,7 @@ were out at once with three of them labelled `Rerunning` or `Rechecking`, two of
 hours.
 
 The train is not primarily a way to share gate minutes between members. **It is a role split**: the
-builder ends at `developed` and hands the slot back; proving over the whole product is another
+builder ends when the change is built (`in_progress` at its `test` step, ISS-54) and hands the slot back; proving over the whole product is another
 role's. A window of one member still delivers that, which is why "a window of one saves nothing" is
 the wrong test — it measures gate minutes and misses the slot.
 
@@ -173,7 +173,7 @@ without touching what is proved, and their result should be measured before anyt
 |---|---|
 | Higher concurrency surfaces order dependence | A suite that has only ever run one file at a time has never been asked whether its tests are independent. Raising workers will find the ones that are not, and each is a real defect to fix rather than a reason to lower the number back. Budget for finding some. |
 | A parallel run is harder to read when it fails | Interleaved output from several workers costs more to diagnose than a serial log, every time a run goes red, for as long as the suite is parallel. |
-| The role split makes one change slower end to end | A builder that stops at `developed` hands its change to a queue, so that change waits longer before it lands than it does today. What improves is slot turnover and cost per landed issue; anyone judging by how fast one issue felt will read this as a regression. |
+| The role split makes one change slower end to end | A builder that stops once the change is built hands it to a queue, so that change waits longer before it lands than it does today. What improves is slot turnover and cost per landed issue; anyone judging by how fast one issue felt will read this as a regression. |
 | Measuring orientation costs a pass nobody has budgeted | Cut 4 is the biggest share and the least understood. Putting a number on it means instrumenting what a run reads and why, which is work that produces no landed change. |
 | Selection needs an index, and an index needs upkeep | Cut 5 has the largest published ratio behind it and brings a second artefact that can be stale, wrong, or silently incomplete. A stale index is worse than no selection, because it is trusted. |
 | Fixing `proved` stops `main` re-proving merges | A merge taken past red is not the risk: the step reads the second parent's `ci-passed` and keeps the full gate unless it concluded `success`. What remains is that a flaky or environment-dependent failure the pull_request run happened to pass loses the second draw a merge push used to give it, for as long as merges skip the suites. |

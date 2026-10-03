@@ -661,7 +661,12 @@ it('releaseSweep (ISS-1117) runs after reapStaleReleaseBatchClaims and reports i
   const result = await runPipelineSweep();
   const calls = dbExecute.mock.calls.map((c) => sqlText(c[0]));
   const claims = calls.findIndex((s) => s.includes('SET release_batch_run_id = NULL'));
-  const scan = calls.findIndex((s) => s.includes('awaiting_release'));
+  // The claim reap names `awaiting_release` too (a roster held at its release step is kept), so
+  // the scan is told apart by the unclaimed-candidate read only the release sweep makes.
+  const scan = calls.findIndex(
+    (s) =>
+      s.includes("i.status = 'awaiting_release'") && s.includes('release_batch_run_id IS NULL'),
+  );
   expect(claims).toBeGreaterThanOrEqual(0);
   expect(scan).toBeGreaterThan(claims);
   expect(Object.values(result.releaseSweep ?? {})).toEqual([0, 0, 0, 0]);

@@ -36,6 +36,7 @@ import {
   refreshTokens,
   tasks,
   type users,
+  waitingKinds,
 } from './schema.js';
 import { activityLog, actorTypes } from './schema-activity.js';
 
@@ -314,24 +315,18 @@ describe('db/schema — job_events', () => {
 describe('db/schema — issues', () => {
   it('exports the status and priority enum values', () => {
     expect(issueStatuses).toEqual([
-      'open',
-      'confirmed',
-      'clarified',
-      'waiting',
-      'approved',
-      'in_progress',
-      'developed',
-      'testing',
-      'tested',
-      'awaiting_release',
-      'releasing',
-      'closed',
-      'reopen',
-      'on_hold',
-      'needs_info',
       'draft',
+      'open',
+      'reopen',
+      'in_progress',
+      'approved',
+      'needs_info',
+      'on_hold',
+      'awaiting_release',
+      'closed',
       'dropped',
     ]);
+    expect(waitingKinds).toEqual(['needs_answer', 'needs_decision', 'needs_resource']);
     expect(issuePriorities).toEqual(['critical', 'high', 'medium', 'low', 'none']);
   });
 

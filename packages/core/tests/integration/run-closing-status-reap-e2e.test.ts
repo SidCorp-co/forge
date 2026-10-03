@@ -67,9 +67,11 @@ describe('reapOrphanedIssueRuns status coverage E2E (ISS-879)', () => {
   async function runUnderIssueAt(status: string): Promise<string> {
     const issueId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, merged_at)
+      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, merged_at,
+                          waiting_kind)
       VALUES (${issueId}, ${projectId}, ${s++}, 'terminal issue', ${status}, 'medium', ${ownerId},
-              CASE WHEN ${status} = 'closed' THEN now() END)
+              CASE WHEN ${status} = 'closed' THEN now() END,
+              CASE WHEN ${status} = 'needs_info' THEN 'needs_decision' END)
     `);
     const runId = randomUUID();
     await harness.db.execute(sql`
@@ -95,7 +97,7 @@ describe('reapOrphanedIssueRuns status coverage E2E (ISS-879)', () => {
     expect(await runStatus(runId)).toBe('completed');
   });
 
-  it.each(['awaiting_release', 'waiting', 'in_progress'])(
+  it.each(['awaiting_release', 'needs_info', 'in_progress'])(
     'leaves a run under a non-run-closing `%s` issue alone',
     async (status) => {
       const runId = await runUnderIssueAt(status);

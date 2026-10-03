@@ -20,7 +20,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { AT_RELEASE, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 type AppVars = { Variables: import('../../src/middleware/request-id.js').RequestIdVars };
 
@@ -167,7 +167,7 @@ describe('forge_release_batch over /mcp on the workspace credential', () => {
   it('aborts a batch, releasing every claim and closing nothing', async () => {
     const a = await fx.insertIssue();
     const { runId } = await fx.claim([a]);
-    expect((await fx.stored(a)).status).toBe('releasing');
+    expect(await fx.stored(a)).toMatchObject(AT_RELEASE);
 
     const answer = await call(workspaceToken, { action: 'abort', runId, reason: 'deploy failed' });
 
@@ -251,7 +251,7 @@ describe('forge_release_batch over /mcp on the workspace credential', () => {
     expect(answer.isError).toBe(true);
     expect(answer.text).toMatch(/^Error: RELEASE_NOT_VERIFIED: /);
     expect(answer.text).toContain('"live"');
-    expect((await fx.stored(a)).status).toBe('releasing');
+    expect(await fx.stored(a)).toMatchObject(AT_RELEASE);
   });
 
   it('refuses a token without the write scope at get, before returning anything', async () => {
@@ -295,7 +295,7 @@ describe('refuses on every action', () => {
       expect(answer.isError, args.action).toBe(true);
       expect(answer.text, args.action).toMatch(/not found or not accessible/);
     }
-    expect((await fx.stored(a)).status).toBe('releasing');
+    expect(await fx.stored(a)).toMatchObject(AT_RELEASE);
   });
 
   it('a caller whose role on the project is viewer', async () => {
@@ -312,7 +312,7 @@ describe('refuses on every action', () => {
       expect(answer.isError, args.action).toBe(true);
       expect(answer.text, args.action).toMatch(/requires project member access/);
     }
-    expect((await fx.stored(a)).status).toBe('releasing');
+    expect(await fx.stored(a)).toMatchObject(AT_RELEASE);
   });
 
   it('a runId that is not a release-batch run of this project, as not found', async () => {

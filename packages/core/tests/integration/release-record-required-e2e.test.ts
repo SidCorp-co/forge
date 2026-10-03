@@ -142,21 +142,13 @@ describe('release record required E2E', () => {
     expect((await stored(id)).status).toBe('closed');
   });
 
-  it('refuses a bare `skip`, which is what the orchestrator auto-skip chain carries', async () => {
-    const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
-    const id = await insertIssue('awaiting_release');
-
-    await expect(
-      applyStatusTransition(await load(id), 'closed', device(), { skip: true }),
-    ).rejects.toThrow('RELEASE_RECORD_REQUIRED');
-    expect(await stored(id)).toEqual({ status: 'awaiting_release', mergedAt: null });
-  });
-
   it('leaves `dropped` alone, which is terminal without claiming a ship', async () => {
     const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
     const id = await insertIssue('in_progress');
 
-    await applyStatusTransition(await load(id), 'dropped', device());
+    await applyStatusTransition(await load(id), 'dropped', device(), {
+      transitionReason: 'a duplicate of the issue that carries this work',
+    });
 
     expect(await stored(id)).toEqual({ status: 'dropped', mergedAt: null });
   });

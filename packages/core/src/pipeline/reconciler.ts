@@ -154,7 +154,7 @@ async function selectWedgeCandidates(after: string | null): Promise<WedgeCandida
   const past = after === null ? sql`` : sql`AND i.id > ${after}::uuid`;
   return (await db.execute<WedgeCandidate>(sql`
     SELECT i.id, i.project_id, i.status, i.reopen_count,
-           i.session_context -> 'lease' AS lease
+           (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id) AS lease
     FROM issues i
     CROSS JOIN LATERAL (
       SELECT j.type, j.status
@@ -244,7 +244,7 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
       actor,
       {
         reason: 'reconciler_autonomous_wedge_reset',
-        skip: true,
+        recovery: true,
         beforeStatusWrite: async (tx) => {
           if (await personOwesAnAnswer(tx, row.id)) throw new AskedSinceSelected();
           const reading = readWedgeLease(await wedgeLeaseUnderLock(tx, row.id), new Date());

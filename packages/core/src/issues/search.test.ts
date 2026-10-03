@@ -175,9 +175,8 @@ describe('GET /api/projects/:id/issues/search', () => {
     expect(res.status).toBe(400);
   });
 
-  // ISS-236 — statusNot mirrors the status enum and supports array form so the
-  // web list page can hide drafts by default while a Draft chip can still
-  // include them on demand.
+  // ISS-236 — statusNot takes the status filter's names, array form too, so the list page can
+  // hide drafts by default while a Draft chip still includes them on demand.
   it('400 on invalid statusNot enum', async () => {
     queueAuthSelect();
     const t = await token();
@@ -433,9 +432,10 @@ describe('createdBy filter + creator hydration (ISS-756)', () => {
 });
 
 function namesStatusColumn(node: unknown, depth = 0): boolean {
-  if (depth > 8 || node === null || typeof node !== 'object') return false;
+  if (depth > 12 || node === null || typeof node !== 'object') return false;
   const o = node as Record<string, unknown>;
   if (o.name === 'status' && typeof o.table === 'object') return true;
+  if (String(o.value).includes('"issues"."status"')) return true; // statusFilterSql writes it raw
   for (const [k, v] of Object.entries(o)) {
     if (k === 'table') continue;
     if (Array.isArray(v)) {

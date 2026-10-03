@@ -149,7 +149,7 @@ export function formatProjectConfig(
   step: JobType | null = null,
 ): string {
   const b = baseBranch ?? BRANCH_SENTINEL;
-  const park = step === 'drive' ? 'needs_info' : 'waiting';
+  const park = 'needs_info';
   const liveLine =
     deploysFrom !== null
       ? `\n- production deploysFrom: ${deploysFrom} — a change landed on ${b} reaches it by the project document's promotions`

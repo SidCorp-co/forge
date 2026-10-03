@@ -269,10 +269,10 @@ const NEAR_GATE_ACT =
 
 function nearGateSentence(nearGate: number): string {
   if (nearGate === 0) {
-    return `Nothing is waiting at the release gate, and nothing stands one move short of it: no issue on this project is at \`testing\` or at \`tested\`. An issue reaches the gate at \`awaiting_release\`. ${NEAR_GATE_ACT}`;
+    return `Nothing is waiting at the release gate, and nothing stands one move short of it: no issue on this project is \`in_progress\` at its test step. An issue reaches the gate at \`awaiting_release\`, once every criterion holds a passing verdict. ${NEAR_GATE_ACT}`;
   }
   const issues = `${nearGate} issue${nearGate === 1 ? '' : 's'}`;
-  return `Nothing is waiting at the release gate, so there is no release to cut. ${issues} on this project stand one move short of it, at \`testing\` or at \`tested\`: a release carries an issue only once its status is \`awaiting_release\`. ${NEAR_GATE_ACT}`;
+  return `Nothing is waiting at the release gate, so there is no release to cut. ${issues} on this project stand one move short of it, \`in_progress\` at their test step: a release carries an issue only once its status is \`awaiting_release\`. ${NEAR_GATE_ACT}`;
 }
 
 /**

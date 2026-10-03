@@ -1,4 +1,4 @@
-/** What the autonomous wedge pass reads off a candidate's `session_context.lease`, and the comment a
+/** What the autonomous wedge pass reads off a candidate's lease (`issue_work_state.lease`), and the comment a
  *  reset leaves. The pass decides "nothing is working this issue" from the job table; a run holding
  *  a live lease is working it whatever the job table says (ISS-1317). */
 
@@ -23,7 +23,7 @@ export async function wedgeLeaseUnderLock(
   issueId: string,
 ): Promise<unknown> {
   const rows = await executor.execute(
-    sql`SELECT session_context -> 'lease' AS lease FROM issues WHERE id = ${issueId}::uuid`,
+    sql`SELECT lease FROM issue_work_state WHERE issue_id = ${issueId}::uuid`,
   );
   return (rows[0] as { lease?: unknown } | undefined)?.lease ?? null;
 }

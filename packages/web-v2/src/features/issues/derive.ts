@@ -1,10 +1,14 @@
 
 import {
-	type AutonomousLabel,
+	DONE_ISSUE_STATUSES,
+	ISSUE_STATUS_HINTS,
+	PARKABLE_ISSUE_STATUSES,
+	PARKED_ISSUE_STATUSES,
 	ISSUE_STATUS_LABELS,
-	LABEL_TO_KERNEL,
-	statusesForLabels,
-	type WritableLabel,
+	ISSUE_STATUS_TONES,
+	type IssueStatusTone,
+	WORK_STEP_LABELS,
+	type WorkStep,
 } from "@forge/contracts/issue-vocabulary";
 import {
 	REGISTRY_ISSUE_STATUSES,
@@ -19,6 +23,7 @@ import {
 	STATUS_KEY_TONE,
 	type StatusKey,
 } from "@/design/status";
+import { statusGlyph } from "./status-glyphs";
 import { gateView, pausedRunView } from "./waiting";
 import type {
 	CommentKind,
@@ -34,6 +39,7 @@ import type {
 	IssuePriority,
 	IssueRow,
 	IssueStatus,
+	IssueWorkStateRow,
 	ParkOwes,
 	PipelineHealth,
 	StepDurationRow,
@@ -41,46 +47,6 @@ import type {
 } from "./types";
 
 export const STATUS_LABELS: Record<IssueStatus, string> = ISSUE_STATUS_LABELS;
-
-/**
- * The lane vocabulary's own words. A label is not its kernel status renamed: `running` is written
- * "Running" where `in_progress` is written "In progress", and `needs_human` is written "Needs a
- * human" where `needs_info` is written "Needs info". Only the WORD is written here.
- */
-const LABEL_WORDS: Record<AutonomousLabel, string> = {
-	draft: "Draft",
-	open: "Open",
-	running: "Running",
-	unheld: "No check-in",
-	needs_human: "Needs a human",
-	reopened: "Reopened",
-	paused: "Paused",
-	awaiting_release: "Awaiting release",
-	done: "Done",
-	dropped: "Dropped",
-};
-
-const PAUSED_CHIP = statusToChip(LABEL_TO_KERNEL.paused);
-
-/**
- * How each lane label is shown: its word, `StatusKey` and colour. The status→label map and the
- * order live in `@forge/contracts`. `unheld` is written as no status, so it takes paused's colour.
- */
-export const LABEL_VIEW: Record<
-	AutonomousLabel,
-	{ label: string; status: StatusKey; tone: SemanticTone }
-> = {
-	...(Object.fromEntries(
-		(Object.keys(LABEL_TO_KERNEL) as WritableLabel[]).map((label) => {
-			const status = statusToChip(LABEL_TO_KERNEL[label]);
-			return [
-				label,
-				{ label: LABEL_WORDS[label], status, tone: STATUS_KEY_TONE[status] },
-			];
-		}),
-	) as Record<WritableLabel, { label: string; status: StatusKey; tone: SemanticTone }>),
-	unheld: { label: LABEL_WORDS.unheld, status: PAUSED_CHIP, tone: STATUS_KEY_TONE[PAUSED_CHIP] },
-};
 
 export const PRIORITY_LABELS: Record<IssuePriority, string> = {
 	critical: "Critical",
@@ -98,7 +64,7 @@ export const COMPLEXITY_LABELS: Record<IssueComplexity, string> = {
 	xl: "XL",
 };
 
-/** The issue's own status, written out: one word per kernel status, all 17 distinct. Every surface that REPORTS a status takes this one. */
+/** The issue's own status, written out: one word per status, all ten distinct. Every surface that REPORTS a status takes this one. */
 export const statusLabel = (s: IssueStatus): string => STATUS_LABELS[s] ?? s;
 export const priorityLabel = (p: IssuePriority): string =>
 	PRIORITY_LABELS[p] ?? p;
@@ -106,38 +72,54 @@ export const complexityLabel = (
 	c: IssueComplexity | null | undefined,
 ): string => (c ? (COMPLEXITY_LABELS[c] ?? c) : "—");
 
+export const statusHint = (s: IssueStatus): string => ISSUE_STATUS_HINTS[s] ?? s;
+
+/** `in_progress` at step `test` reads "In progress · Test"; a step is never guessed from a status. */
+export function statusStepLabel(
+	status: IssueStatus,
+	step: WorkStep | null | undefined,
+): string {
+	const word = statusLabel(status);
+	return status === "in_progress" && step ? `${word} · ${WORK_STEP_LABELS[step]}` : word;
+}
+
+export const workStepOf = (row: {
+	workState?: Pick<IssueWorkStateRow, "step"> | null;
+}): WorkStep | null => row.workState?.step ?? null;
+
+/** Which design-kit chip draws each of contracts' `ISSUE_STATUS_TONES`. */
+const TONE_CHIP: Record<IssueStatusTone, StatusKey> = {
+	neutral: "queued",
+	ready: "passed",
+	run: "running",
+	you: "waiting",
+	done: "archived",
+	err: "failed",
+};
+
 /** The issue's lifecycle status as a design-kit `StatusKey`. The agent run's state is a different fact with its own chip: `runStatusChip`. */
 export function statusToChip(status: IssueStatus): StatusKey {
-	switch (status) {
-		case "in_progress":
-		case "reopen":
-			return "running";
-		case "open":
-		case "confirmed":
-		case "clarified":
-		case "approved":
-		case "draft":
-			return "queued";
-		case "waiting":
-		case "needs_info":
-			return "waiting";
-		case "developed":
-		case "testing":
-			return "review";
-		case "tested":
-			return "passed";
-		case "awaiting_release":
-			return "shipped";
-		case "releasing":
-			return "review";
-		case "closed":
-		case "dropped":
-			return "archived";
-		case "on_hold":
-			return "paused";
-		default:
-			return "queued";
-	}
+	return TONE_CHIP[ISSUE_STATUS_TONES[status]] ?? "queued";
+}
+
+export interface IssueStatusChipView {
+	status: StatusKey;
+	label: string;
+	glyph: string;
+	title: string;
+}
+
+/** The one reading every issue-status chip takes. */
+export function issueStatusChip(
+	status: IssueStatus,
+	step?: WorkStep | null,
+): IssueStatusChipView {
+	return {
+		status: statusToChip(status),
+		label: statusStepLabel(status, step),
+		glyph: statusGlyph(status),
+		title: statusHint(status),
+	};
 }
 
 /** What an issue carries about its run: the sessions' verdict and the pipeline's queued job. */
@@ -172,16 +154,26 @@ export function statusToTone(status: IssueStatus): SemanticTone {
  * registry served it (`useStatusExits`). The row arrives in its declared
  * order and is returned in it: the first entry is the rung's forward move.
  *
- * An absent map — the read is in flight, or it failed, or the server predates
- * `statusExits` — yields NO targets. It is never widened back to the enum:
- * offering fifteen moves from a terminal issue, three of them statuses
- * nothing dispatches at, is what ISS-982 removed.
+ * An absent map (in flight, failed, or an older server) yields NO targets — never the whole enum
+ * (ISS-982). A park's return to the status it left comes first, from `parkReturnTargets`.
  */
 export function allowedTransitions(
 	exits: StatusExits | undefined,
 	from: IssueStatus,
+	leftStatus: IssueStatus | null = null,
 ): IssueStatus[] {
-	return [...(exits?.[from] ?? [])];
+	const row = exits?.[from];
+	if (!row) return [];
+	return [...parkReturnTargets(from, leftStatus), ...row];
+}
+
+/** Core's `parkExitTargets` less the table's row: the left status, or any parkable one where none is recorded. */
+export function parkReturnTargets(
+	from: IssueStatus,
+	leftStatus: IssueStatus | null | undefined,
+): IssueStatus[] {
+	if (!PARKED_ISSUE_STATUSES.includes(from)) return [];
+	return leftStatus ? [leftStatus] : [...PARKABLE_ISSUE_STATUSES];
 }
 
 /** How a target reads against the rung it is offered from. */
@@ -197,7 +189,7 @@ export interface GroupedTransition {
 const BOUNCE_TARGETS = new Set<IssueStatus>(["needs_info", "on_hold", "reopen"]);
 /* status-tuple: differs — this is the transition MENU's discard group, not core's
    ISSUE_TERMINAL_STATUSES. It answers which exits the menu draws under one rule, and its sibling
-   BOUNCE_TARGETS is deliberately not core's HUMAN_PARK_STATUSES for the same reason: the grouping
+   BOUNCE_TARGETS is deliberately not core's PARK_STATUSES for the same reason: the grouping
    follows what the menu offers from a rung, which core's terminal set does not decide. */
 const DISCARD_TARGETS = new Set<IssueStatus>(["closed", "dropped"]);
 
@@ -207,15 +199,17 @@ const KIND_ORDER: TransitionKind[] = ["forward", "bounce", "discard"];
  * The rung's targets as the menu draws them: forward first, then the bounces,
  * then the discards, each group in the order core declared it. A row's FIRST
  * exit is its forward move whatever set it belongs to, which is what keeps
- * `releasing → closed` out of the discard group.
+ * `awaiting_release → closed` out of the discard group.
  */
 export function groupedTransitions(
 	exits: StatusExits | undefined,
 	from: IssueStatus,
+	leftStatus: IssueStatus | null = null,
 ): GroupedTransition[] {
-	const row = allowedTransitions(exits, from);
+	const row = allowedTransitions(exits, from, leftStatus);
+	const back = new Set(parkReturnTargets(from, leftStatus));
 	const kindOf = (to: IssueStatus, i: number): TransitionKind => {
-		if (i === 0) return "forward";
+		if (i === 0 || back.has(to)) return "forward";
 		if (BOUNCE_TARGETS.has(to)) return "bounce";
 		if (DISCARD_TARGETS.has(to)) return "discard";
 		return "forward";
@@ -245,7 +239,7 @@ export function bulkAllowedStatuses(
 	if (rows.length === 0) return [];
 	let common: IssueStatus[] | null = null;
 	for (const r of rows) {
-		const allowed = allowedTransitions(exits, r.status);
+		const allowed = allowedTransitions(exits, r.status, r.workState?.leftStatus ?? null);
 		if (common === null) {
 			common = allowed;
 		} else {
@@ -291,9 +285,9 @@ export function depCounts(deps: IssueDependencies | undefined): DepCounts {
 	return { blockedBy, blocks, subtasks, hasParent };
 }
 
-/* status-tuple: differs — the toolbar's Closed segment, not core's ISSUE_TERMINAL_STATUSES: the
-   release gate (`awaiting_release`) is still open work to the person reading the list. */
-const CLOSED_STATUSES = statusesForLabels("done", "dropped");
+/* The toolbar's Closed segment is the two statuses an issue is over at: the release gate
+   (`awaiting_release`) is still open work to the person reading the list. */
+const CLOSED_STATUSES: IssueStatus[] = [...DONE_ISSUE_STATUSES];
 
 /** The search params one status segment of the toolbar stands for. */
 export function filterToQueryParams(filter: IssueFilter): {
@@ -527,7 +521,6 @@ export function heartbeatState(
 
 export type BlockerCtaKind =
 	| "provide-info"
-	| "resume"
 	| "resume-park"
 	| "resume-run"
 	| "open-blocker"
@@ -553,7 +546,7 @@ export interface BlockerState {
 	/** The paused `pipeline_runs.id` the `resume-run` CTA acts on. Set only
 	 *  alongside that kind. */
 	runId?: string;
-	/** The rung the park recorded, which the `resume-park` CTA moves to. Set only alongside that kind. */
+	/** The status the park left (`workState.leftStatus`), which the `resume-park` CTA moves to. Set only alongside that kind. */
 	resumeAt?: IssueStatus;
 	/** Open `blocks` issues this one is waiting on. */
 	blockingRefs?: BlockingRef[];
@@ -610,7 +603,7 @@ export function threadQuestionOf(park: IssuePark): ThreadQuestionView | null {
 }
 
 /** What the person owes, in their words rather than the enum's. */
-export const PARK_OWES_COPY: Record<ParkOwes | "unstated", { reason: string; who: string }> = {
+export const PARK_OWES_COPY: Record<ParkOwes, { reason: string; who: string }> = {
 	information: {
 		reason: "This issue is waiting for information — an answer to a question.",
 		who: "Anyone on the project can answer it; the question is below.",
@@ -624,10 +617,6 @@ export const PARK_OWES_COPY: Record<ParkOwes | "unstated", { reason: string; who
 			"This issue is waiting for something only a person can supply — an account, a credential, or data.",
 		who: "Supply it, then resume it where it stopped.",
 	},
-	unstated: {
-		reason: "This issue is stopped until a person acts, and it did not say for what.",
-		who: "Read what it waits on in the thread, then resume it or move it on.",
-	},
 };
 
 /** The banner once a question asked in the thread has a person's answer on it. */
@@ -639,9 +628,13 @@ export const ANSWERED_COPY = {
 export const NOTHING_TO_RESUME_AT =
 	"Nothing says where this issue picks up again — Move anyway… in the status menu lists every move.";
 
+/** An `on_hold` issue whose work state names no status it left: its own exits are the whole answer. */
+export const NOTHING_TO_RESUME_FROM_HOLD =
+	"Nothing says where this issue picks up again — the status menu lists every status it may return to.";
+
 function parkBlocker(park: IssuePark, blockingRefs: BlockingRef[]): BlockerState {
 	const answered = threadQuestionOf(park)?.answer ? ANSWERED_COPY : null;
-	const copy = answered ?? PARK_OWES_COPY[park.owes ?? "unstated"];
+	const copy = answered ?? PARK_OWES_COPY[park.owes];
 	const refs = blockingRefs.length ? { blockingRefs } : {};
 	if (parkAsksAQuestion(park)) {
 		return {
@@ -696,18 +689,40 @@ export function openBlockingRefs(
 		}));
 }
 
+function onHoldBlocker(
+	leftStatus: IssueStatus | null | undefined,
+	blockingRefs: BlockingRef[],
+): BlockerState {
+	const refs = blockingRefs.length ? { blockingRefs } : {};
+	const base = {
+		tone: "info" as const,
+		reason: "The issue is paused.",
+		whoMustAct: "An operator can resume it when the work is wanted again.",
+	};
+	if (leftStatus) {
+		return {
+			...base,
+			cta: { label: `Resume at ${statusLabel(leftStatus)}`, kind: "resume-park" },
+			resumeAt: leftStatus,
+			...refs,
+		};
+	}
+	return { ...base, cta: { label: "", kind: "none" }, detail: NOTHING_TO_RESUME_FROM_HOLD, ...refs };
+}
+
 /**
  * Derive the single blocker verdict for an issue, or `null` when it is actively
  * progressing. Precedence (richest signal first): a paused run → the park view
- * (every park shape, and an open question at any rung) → on_hold →
+ * (every park shape, and an open question at any status) → on_hold →
  * pipelineHealth capacity/dep waits → open `blocks` edges.
  *
- * ISS-393 removed the manual-hold failure card: a mechanically-failed job now
- * reverts the issue to its stage entry-status (auto re-dispatch) or parks it at
- * `waiting` for human review — both already covered by the branches below.
+ * A mechanically-failed job has no card of its own (ISS-393): it re-dispatches or parks at
+ * `needs_info`, both covered below.
  */
 export function deriveBlockerState(
-	issue: Pick<IssueDetail, "status">,
+	issue: Pick<IssueDetail, "status"> & {
+		workState?: Pick<IssueWorkStateRow, "leftStatus"> | null;
+	},
 	pipelineHealth: PipelineHealth | undefined,
 	deps: IssueDependencies | undefined,
 	/** The park view: what a person owes this issue, read once for the banner and the status control. */
@@ -731,7 +746,7 @@ export function deriveBlockerState(
 
 	if (park.state === "ready" && park.park) return parkBlocker(park.park, blockingRefs);
 
-	if (statusesForLabels("needs_human").includes(issue.status)) {
+	if (issue.status === "needs_info") {
 		return {
 			tone: "attention",
 			reason: "This issue is stopped until a person acts.",
@@ -745,13 +760,7 @@ export function deriveBlockerState(
 	}
 
 	if (issue.status === "on_hold") {
-		return {
-			tone: "info",
-			reason: "The issue is paused.",
-			whoMustAct: "An operator can resume it when the work is wanted again.",
-			cta: { label: "Resume", kind: "resume" },
-			...(blockingRefs.length ? { blockingRefs } : {}),
-		};
+		return onHoldBlocker(issue.workState?.leftStatus, blockingRefs);
 	}
 
 	const waitingOn = pipelineHealth?.waitingOn;

@@ -60,17 +60,24 @@ describe('awaiting input reaches only a caller with a role on the project (real 
 
   /** An issue of that project the caller is owed an answer on. */
   async function blockedIssue(
-    args: { assignee?: string | null; createdBy?: string; status?: string } = {},
+    args: { assignee?: string | null; createdBy?: string; status?: string; step?: string } = {},
   ): Promise<string> {
     seq += 1;
+    const status = args.status ?? 'needs_info';
     const id = randomUUID();
     const assignee = args.assignee === undefined ? outsider : args.assignee;
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, assignee_id,
-                          created_at, updated_at)
-      VALUES (${id}, ${projectId}, ${seq}, ${`ISS-${seq}`}, ${args.status ?? 'needs_info'},
+      INSERT INTO issues (id, project_id, iss_seq, title, status, waiting_kind, created_by_id,
+                          assignee_id, created_at, updated_at)
+      VALUES (${id}, ${projectId}, ${seq}, ${`ISS-${seq}`}, ${status},
+              ${status === 'needs_info' ? 'needs_answer' : null},
               ${args.createdBy ?? outsider}, ${assignee}, now(), now())
     `);
+    if (args.step) {
+      await harness.db.execute(sql`
+        INSERT INTO issue_work_state (issue_id, step, step_started_at) VALUES (${id}, ${args.step}, now())
+      `);
+    }
     return id;
   }
 
@@ -182,10 +189,10 @@ describe('awaiting input reaches only a caller with a role on the project (real 
     for (let i = 0; i < AWAITING_INPUT_CAP; i += 1) {
       seq += 1;
       await harness.db.execute(sql`
-        INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, assignee_id,
-                            created_at, updated_at)
+        INSERT INTO issues (id, project_id, iss_seq, title, status, waiting_kind, created_by_id,
+                            assignee_id, created_at, updated_at)
         VALUES (${randomUUID()}, ${hiddenProject.id}, ${seq}, ${`HIDDEN-${seq}`}, 'needs_info',
-                ${outsider}, ${outsider}, now(), now())
+                'needs_answer', ${outsider}, ${outsider}, now(), now())
       `);
     }
     const visible: string[] = [];
@@ -199,7 +206,7 @@ describe('awaiting input reaches only a caller with a role on the project (real 
   it('leaves the needs-review bucket answering exactly as it did', async () => {
     const { selectNeedsReview } = await import('../../src/me/attention-buckets.js');
     await createTestProjectMember(harness.db, { projectId, userId: outsider });
-    const reviewable = await blockedIssue({ status: 'developed' });
+    const reviewable = await blockedIssue({ status: 'in_progress', step: 'test' });
 
     expect((await selectNeedsReview(outsider)).map((r) => r.id)).toEqual([reviewable]);
   });

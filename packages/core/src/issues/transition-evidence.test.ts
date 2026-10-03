@@ -1,9 +1,7 @@
 /**
- * The rules on the state-machine writer, and WHO each one applies to.
- *
- * `no_work_evidence` holds against an agent only — a human hand-advance is a
- * recorded human decision. `skip:true` exempts the whole checker: that is the
- * orchestrator's curated soft-skip/failover chain.
+ * cm:hack the ISS-786 evidence rule, carried onto the retired rungs forge-plugin 3.36.542 still
+ * names (ISS-54): an agent naming `developed` or `testing` with nothing recorded is refused, a
+ * person is not. Exit: until forge-plugin moves to the 10-status model (plugin-followups.md).
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,7 +13,7 @@ vi.mock('../pipeline/work-evidence.js', () => ({
   findMissingWorkEvidence: (...args: unknown[]) => findMissingWorkEvidenceMock(...(args as [])),
 }));
 
-const { checkTransitionEvidence, isBlankPlan } = await import('./transition-evidence.js');
+const { legacyRungEvidenceFault, isBlankPlan } = await import('./transition-evidence.js');
 
 const ISSUE = { id: 'iss-1', projectId: 'proj-1' };
 
@@ -29,101 +27,54 @@ describe('isBlankPlan', () => {
   });
 });
 
-describe('checkTransitionEvidence — no_work_evidence rule', () => {
+describe('legacyRungEvidenceFault — the retired code-claiming rungs', () => {
   beforeEach(() => {
     findMissingWorkEvidenceMock.mockReset();
     findMissingWorkEvidenceMock.mockResolvedValue(null);
   });
 
-  it('blocks a device transition to developed with no recorded evidence', async () => {
-    findMissingWorkEvidenceMock.mockResolvedValueOnce(
-      'no branch, commit or code handoff is recorded',
-    );
-    const violation = await checkTransitionEvidence({
-      issue: ISSUE,
-      toStatus: 'developed',
-      agency: 'agent',
-      skip: false,
-    });
-    expect(violation).toEqual({
-      code: 'NO_WORK_EVIDENCE',
-      detail: 'no branch, commit or code handoff is recorded',
-      details: { issueId: 'iss-1', toStatus: 'developed' },
-    });
+  it.each(['developed', 'testing'] as const)(
+    'refuses an agent naming %s with no recorded evidence',
+    async (rung) => {
+      findMissingWorkEvidenceMock.mockResolvedValueOnce(
+        'no branch, commit or code handoff is recorded',
+      );
+      const violation = await legacyRungEvidenceFault({ issue: ISSUE, rung, agency: 'agent' });
+      expect(violation).toEqual({
+        code: 'NO_WORK_EVIDENCE',
+        detail: 'no branch, commit or code handoff is recorded',
+        details: { issueId: 'iss-1', rung },
+      });
+    },
+  );
+
+  it('allows an agent naming developed when evidence exists', async () => {
+    expect(
+      await legacyRungEvidenceFault({ issue: ISSUE, rung: 'developed', agency: 'agent' }),
+    ).toBeNull();
   });
 
-  it('blocks a device transition to testing with no recorded evidence', async () => {
+  it.each(['confirmed', 'clarified', 'tested', 'releasing', null] as const)(
+    'never reads evidence for %s — it claims no code',
+    async (rung) => {
+      findMissingWorkEvidenceMock.mockResolvedValueOnce('missing');
+      expect(await legacyRungEvidenceFault({ issue: ISSUE, rung, agency: 'agent' })).toBeNull();
+      expect(findMissingWorkEvidenceMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows a person even with no evidence', async () => {
     findMissingWorkEvidenceMock.mockResolvedValueOnce('missing');
-    const violation = await checkTransitionEvidence({
-      issue: ISSUE,
-      toStatus: 'testing',
-      agency: 'agent',
-      skip: false,
-    });
-    expect(violation?.code).toBe('NO_WORK_EVIDENCE');
-  });
-
-  it('allows a device transition to developed when evidence exists', async () => {
-    const violation = await checkTransitionEvidence({
-      issue: ISSUE,
-      toStatus: 'developed',
-      agency: 'agent',
-      skip: false,
-    });
-    expect(violation).toBeNull();
-  });
-
-  it('never checks evidence for closed/released — not claiming statuses', async () => {
-    findMissingWorkEvidenceMock.mockResolvedValueOnce('missing');
-    const violation = await checkTransitionEvidence({
-      issue: ISSUE,
-      toStatus: 'closed',
-      agency: 'agent',
-      skip: false,
-    });
-    expect(violation).toBeNull();
+    expect(
+      await legacyRungEvidenceFault({ issue: ISSUE, rung: 'developed', agency: 'human' }),
+    ).toBeNull();
     expect(findMissingWorkEvidenceMock).not.toHaveBeenCalled();
   });
 
-  it('allows a user actor even with no evidence (device-only enforcement)', async () => {
-    findMissingWorkEvidenceMock.mockResolvedValueOnce('missing');
-    const violation = await checkTransitionEvidence({
-      issue: ISSUE,
-      toStatus: 'developed',
-      agency: 'human',
-      skip: false,
-    });
-    expect(violation).toBeNull();
-    expect(findMissingWorkEvidenceMock).not.toHaveBeenCalled();
-  });
-
-  it('allows options.skip:true (auto-skip/failover chain unaffected)', async () => {
-    findMissingWorkEvidenceMock.mockResolvedValueOnce('missing');
-    const violation = await checkTransitionEvidence({
-      issue: ISSUE,
-      toStatus: 'developed',
-      agency: 'agent',
-      skip: true,
-    });
-    expect(violation).toBeNull();
-    expect(findMissingWorkEvidenceMock).not.toHaveBeenCalled();
-  });
-});
-
-describe('checkTransitionEvidence — a rule that cannot be read', () => {
-  beforeEach(() => {
-    findMissingWorkEvidenceMock.mockReset();
-  });
-
-  it('refuses the transition by throwing, never allows it', async () => {
+  it('refuses the move by throwing when the rule cannot be read, never allows it', async () => {
     findMissingWorkEvidenceMock.mockRejectedValueOnce(new Error('current transaction is aborted'));
     await expect(
-      checkTransitionEvidence({
-        issue: ISSUE,
-        toStatus: 'developed',
-        agency: 'agent',
-        skip: false,
-      }),
+      legacyRungEvidenceFault({ issue: ISSUE, rung: 'developed', agency: 'agent' }),
     ).rejects.toThrow('current transaction is aborted');
   });
 });

@@ -290,7 +290,9 @@ async function runIssuesWithTestimony(
   return db
     .select({
       id: issues.id,
-      next: sql<string | null>`${issues.sessionContext} #>> '{lease,next}'`,
+      next: sql<
+        string | null
+      >`(SELECT w.lease #>> '{next}' FROM issue_work_state w WHERE w.issue_id = ${issues.id})`,
     })
     .from(issues)
     .where(and(eq(issues.projectId, projectId), inArray(issues.issSeq, seqs)));

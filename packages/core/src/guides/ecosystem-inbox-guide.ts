@@ -11,7 +11,7 @@ export const ECOSYSTEM_INBOX_GUIDE: ForgeGuide = {
   title: "Working a project's ecosystem inbox",
   summary:
     'What a channel document or an open builder run owes a master, how the box tells it, and the order to read, reply, submit, map the links this project uses and keep them true, and publish the interface and contract versions this project provides — on /mcp, with the author taken from the token.',
-  version: 4,
+  version: 5,
   body: `## Working a project's ecosystem inbox
 
 A project in an ecosystem is written to by the projects it shares that ecosystem with: a change notice
@@ -145,7 +145,7 @@ project's agent is refused \`INTERFACE_WRITER_NOT_PROJECT\` for the interface an
 ### Issue comments
 A comment a person writes on one of this project's issues is owed a reply until an agent comments on
 that issue after it — a master's reply, or a run's. It is owed at every status but \`closed\` and
-\`dropped\`, so it reaches you on an issue at \`developed\` or \`awaiting_release\` that no admissible
+\`dropped\`, so it reaches you on an issue at \`in_progress\` or \`awaiting_release\` that no admissible
 read lists. The nudge names those issues. Read each thread (\`forge_comments action=list\`), answer
 on the issue, and move the issue when the comment asks for it. Your reply is what takes it off the
 list: a comment read and left unanswered is still owed on the next pass. An agent's own comment is

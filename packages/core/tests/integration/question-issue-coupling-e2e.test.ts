@@ -62,8 +62,10 @@ async function insertIssue(status: string, merged = true): Promise<string> {
   const id = randomUUID();
   seq += 1;
   await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, assignee_id, merged_at)
-    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${ownerId}, ${ownerId},
+    INSERT INTO issues (id, project_id, iss_seq, title, status, waiting_kind, created_by_id,
+                        assignee_id, merged_at)
+    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status},
+            ${status === 'needs_info' ? 'needs_answer' : null}, ${ownerId}, ${ownerId},
             ${merged ? sql`now()` : null})
   `);
   return id;
@@ -115,6 +117,8 @@ const openQuestion = (issueId: string, blockerKind = 'human') =>
 const answeredQuestion = (issueId: string) => question(issueId, 'answered', 'human', ANSWERED);
 
 const person = () => ({ type: 'user' as const, id: ownerId, agency: 'human' as const });
+// A move to `dropped` says why on its own (VOID_REASON_REQUIRED), so the question check is reached.
+const DROP_REASON = { transitionReason: 'a duplicate of the tenant issue' };
 
 async function refusalOf(p: Promise<unknown>) {
   try {
@@ -133,7 +137,12 @@ describe('an issue cannot reach a terminal status while it holds an open questio
       const b = await openQuestion(issueId, 'master_or_peer');
 
       const err = await refusalOf(
-        transition.transitionIssueStatus(await load(issueId), terminal, person()),
+        transition.transitionIssueStatus(
+          await load(issueId),
+          terminal,
+          person(),
+          terminal === 'dropped' ? DROP_REASON : {},
+        ),
       );
 
       expect(err).toBeInstanceOf(transition.TransitionError);
@@ -176,6 +185,7 @@ describe('an issue cannot reach a terminal status while it holds an open questio
     await openQuestion(issueId);
 
     await transition.transitionIssueStatus(await load(issueId), 'dropped', person(), {
+      ...DROP_REASON,
       voidQuestions: 'this turned out to be a duplicate of the tenant issue',
     });
 
@@ -374,7 +384,7 @@ describe('forge_questions — an agent on the MCP server can ask', () => {
 });
 
 describe('every agent entry to needs_info leaves a question', () => {
-  it('mints one on a skip park, which is how the rescue cap parks', async () => {
+  it('mints one on the park the rescue cap makes', async () => {
     const issueId = await insertIssue('in_progress');
     await transition.applyStatusTransition(
       await load(issueId),
@@ -383,7 +393,8 @@ describe('every agent entry to needs_info leaves a question', () => {
       {
         reason: 'autonomous_rescue_cap_reached',
         transitionReason: 'The driver spent its three rescues on this run.',
-        skip: true,
+        needs: 'Whether to send it back to the driver as it stands.',
+        waitingKind: 'needs_decision',
       },
     );
     expect(await statusOf(issueId)).toBe('needs_info');

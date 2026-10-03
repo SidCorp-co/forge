@@ -1,5 +1,5 @@
 /**
- * ISS-1310 — a park shows the decision the person has. Real Postgres: the park view is read off
+ * ISS-1310 — a park shows the decision the person has; where it resumes is `issue_work_state.left_status` (ISS-54). Real Postgres: the park view is read off
  * the rows the page reads, and every move it offers is taken through the transition that would
  * take it from the page.
  */
@@ -73,7 +73,8 @@ beforeEach(async () => {
 const person = () => ({ type: 'user' as const, id: ownerId, agency: 'human' as const });
 const agent = () => ({ type: 'user' as const, id: ownerId, agency: 'agent' as const });
 
-async function insertIssue(status: string, waitingKind: string | null = null): Promise<string> {
+async function insertIssue(status: string, kind: string | null = null): Promise<string> {
+  const waitingKind = kind ?? (status === 'needs_info' ? 'needs_answer' : null);
   const id = randomUUID();
   seq += 1;
   await harness.db.execute(sql`
@@ -81,6 +82,14 @@ async function insertIssue(status: string, waitingKind: string | null = null): P
     VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${waitingKind}, ${ownerId}, ${ownerId})
   `);
   return id;
+}
+
+/** The status a park was set down from, as the transition into it records it. */
+async function leftFrom(issueId: string, status: string) {
+  await harness.db.execute(sql`
+    INSERT INTO issue_work_state (issue_id, left_status) VALUES (${issueId}, ${status})
+    ON CONFLICT (issue_id) DO UPDATE SET left_status = excluded.left_status
+  `);
 }
 
 async function load(id: string): Promise<IssueRow> {
@@ -171,63 +180,81 @@ async function getPark(issueId: string) {
   };
 }
 
-describe('GET /api/issues/:id/park reads the resume rung off the park record', () => {
-  it('answers ISS-529’s shape: waiting, parked after developed, resumes at developed', async () => {
-    const issueId = await insertIssue('waiting', 'needs_decision');
-    await moved(issueId, 'in_progress', 'developed', 30);
-    await moved(issueId, 'developed', 'waiting', 20);
-    const recordId = await commented(issueId, parkRecord('screen-review', 'developed'), 19);
+describe('GET /api/issues/:id/park reads the resume status off the work state', () => {
+  it('answers ISS-529’s shape: a decision park set down from in_progress resumes there', async () => {
+    const issueId = await insertIssue('needs_info', 'needs_decision');
+    await leftFrom(issueId, 'in_progress');
+    await moved(issueId, 'open', 'in_progress', 30);
+    await moved(issueId, 'in_progress', 'needs_info', 20);
+    const recordId = await commented(issueId, parkRecord('screen-review', 'in_progress'), 19);
     const { status, body } = await getPark(issueId);
     expect(status).toBe(200);
     expect(body.park).toMatchObject({
       shape: 'park',
-      status: 'waiting',
+      status: 'needs_info',
       owes: 'decision',
-      resume: { at: 'developed', recordId },
+      resume: { at: 'in_progress', recordId },
     });
+  });
+
+  it('resumes where the work state says, whatever the park record’s `left` line claims', async () => {
+    const issueId = await insertIssue('needs_info');
+    await leftFrom(issueId, 'approved');
+    await moved(issueId, 'approved', 'needs_info', 20);
+    const recordId = await commented(issueId, parkRecord('question', 'awaiting_release'), 19);
+    const { body } = await getPark(issueId);
+    expect(body.park?.resume).toEqual({ at: 'approved', recordId });
   });
 
   it('pairs a needs_info record written before the move and drops one from an earlier park', async () => {
     const issueId = await insertIssue('needs_info');
-    await commented(issueId, parkRecord('screen-review', 'testing'), 60);
-    await moved(issueId, 'waiting', 'approved', 40);
+    await leftFrom(issueId, 'approved');
+    await commented(issueId, parkRecord('screen-review', 'in_progress'), 60);
+    await moved(issueId, 'on_hold', 'approved', 40);
     const recordId = await commented(issueId, parkRecord('question', 'approved'), 21);
     await moved(issueId, 'approved', 'needs_info', 20);
     const { body } = await getPark(issueId);
     expect(body.park?.resume).toEqual({ at: 'approved', recordId });
   });
 
-  it('says no rung was recorded rather than defaulting one', async () => {
+  it('says no status was recorded rather than guessing one from the history', async () => {
     const issueId = await insertIssue('needs_info');
-    await moved(issueId, 'in_progress', 'developed', 30);
-    await moved(issueId, 'developed', 'needs_info', 20);
+    await moved(issueId, 'open', 'in_progress', 30);
+    await moved(issueId, 'in_progress', 'needs_info', 20);
     const { body } = await getPark(issueId);
     expect(body.park).toMatchObject({ resume: { at: null } });
+    expect(body.park?.resume).toHaveProperty(
+      'why',
+      expect.stringContaining('before Forge kept the status a park leaves'),
+    );
     expect(body.park?.record).toBeNull();
   });
 
   it('keeps its own boundary after more park-to-park moves than a page of history holds', async () => {
     const issueId = await insertIssue('needs_info');
-    await commented(issueId, parkRecord('screen-review', 'testing'), 200);
-    await moved(issueId, 'waiting', 'developed', 180);
-    await moved(issueId, 'developed', 'needs_info', 170);
+    await leftFrom(issueId, 'in_progress');
+    await commented(issueId, parkRecord('screen-review', 'in_progress'), 200);
+    await moved(issueId, 'on_hold', 'in_progress', 180);
+    await moved(issueId, 'in_progress', 'needs_info', 170);
     for (let i = 0; i < 51; i += 1) {
-      const [from, to] = i % 2 === 0 ? ['needs_info', 'waiting'] : ['waiting', 'needs_info'];
+      const [from, to] = i % 2 === 0 ? ['needs_info', 'on_hold'] : ['on_hold', 'needs_info'];
       await moved(issueId, from, to, 160 - i);
     }
-    await moved(issueId, 'waiting', 'needs_info', 100);
+    await moved(issueId, 'on_hold', 'needs_info', 100);
     const { body } = await getPark(issueId);
-    expect(body.park).toMatchObject({ resume: { at: null } });
+    expect(body.park?.resume).toEqual({ at: 'in_progress', recordId: null });
     expect(body.park?.record).toBeNull();
   });
 
   it('pairs the record whatever time the history row lands at (judge j1, scratch ISS-5)', async () => {
     const issueId = await insertIssue('on_hold');
+    await leftFrom(issueId, 'in_progress');
     await transition.transitionIssueStatus(await load(issueId), 'in_progress', person());
     const recordId = await commented(issueId, parkRecord('question', 'in_progress'), 0);
     await transition.transitionIssueStatus(await load(issueId), 'needs_info', person(), {
       reason: 'the export order is not stated',
       transitionReason: 'the export order is not stated',
+      waitingKind: 'needs_answer',
     });
     await historyRow(issueId, 'on_hold', 'in_progress', -10);
     await historyRow(issueId, 'in_progress', 'needs_info', -10);
@@ -237,40 +264,37 @@ describe('GET /api/issues/:id/park reads the resume rung off the park record', (
 
   it('does not pair a record from an earlier park while the boundary’s history row is still unwritten', async () => {
     const issueId = await insertIssue('on_hold');
-    await commented(issueId, parkRecord('screen-review', 'testing'), 1);
+    await leftFrom(issueId, 'in_progress');
+    await commented(issueId, parkRecord('screen-review', 'in_progress'), 1);
     await transition.transitionIssueStatus(await load(issueId), 'in_progress', person());
     await transition.transitionIssueStatus(await load(issueId), 'needs_info', person(), {
       reason: 'stopped again',
       transitionReason: 'stopped again',
+      waitingKind: 'needs_answer',
     });
     const { body } = await getPark(issueId);
-    expect(body.park).toMatchObject({ resume: { at: null }, record: null });
+    expect(body.park).toMatchObject({
+      resume: { at: 'in_progress', recordId: null },
+      record: null,
+    });
   });
 
-  it('offers no resume status, and says why, where the park began before moves were recorded in their own write', async () => {
+  it('offers no resume status where the park began before Forge kept one, though its record says one', async () => {
     const issueId = await insertIssue('needs_info');
     await historyRow(issueId, 'open', 'in_progress', 3600);
     await commented(issueId, parkRecord('question', 'in_progress'), 30);
     await historyRow(issueId, 'in_progress', 'needs_info', 1200);
     const { body } = await getPark(issueId);
-    expect(body.park).toMatchObject({ shape: 'park', resume: { at: null }, record: null });
+    expect(body.park).toMatchObject({ shape: 'park', resume: { at: null } });
     expect(body.park?.resume).toHaveProperty(
       'why',
-      expect.stringContaining('before Forge recorded'),
+      expect.stringContaining('before Forge kept the status a park leaves'),
     );
-  });
-
-  it('refuses the same where only the move before the park predates that record', async () => {
-    const issueId = await insertIssue('needs_info');
-    await historyRow(issueId, 'open', 'in_progress', 3600);
-    await commented(issueId, parkRecord('question', 'in_progress'), 30);
-    await moved(issueId, 'in_progress', 'needs_info', 20);
-    const { body } = await getPark(issueId);
-    expect(body.park).toMatchObject({ resume: { at: null }, record: null });
   });
 
   it('pairs any record where the issue went into its park without an earlier move', async () => {
     const issueId = await insertIssue('needs_info');
+    await leftFrom(issueId, 'open');
     const recordId = await commented(issueId, parkRecord('question', 'open'), 30);
     await moved(issueId, 'open', 'needs_info', 20);
     const { body } = await getPark(issueId);
@@ -287,11 +311,13 @@ describe('GET /api/issues/:id/park reads the resume rung off the park record', (
 describe('the answer a question asked in the thread has', () => {
   it('is a person’s comment later than the park record, and never the move’s announcement', async () => {
     const issueId = await insertIssue('on_hold');
+    await leftFrom(issueId, 'in_progress');
     await transition.transitionIssueStatus(await load(issueId), 'in_progress', person());
     await commented(issueId, parkRecord('question', 'in_progress'), 0);
     await transition.transitionIssueStatus(await load(issueId), 'needs_info', person(), {
       reason: 'should the export keep the legacy column order?',
       transitionReason: 'should the export keep the legacy column order?',
+      waitingKind: 'needs_answer',
     });
     expect((await getPark(issueId)).body.park?.answer).toBeNull();
     const [reply] = (
@@ -332,16 +358,16 @@ describe('the park view exists for exactly the issues Needs you lists', () => {
   it('agrees with the search Needs you reads, row for row', async () => {
     const ids = {
       needsInfo: await insertIssue('needs_info'),
-      waiting: await insertIssue('waiting', 'needs_resource'),
-      marked: await insertIssue('testing'),
-      peerOnly: await insertIssue('testing'),
+      resource: await insertIssue('needs_info', 'needs_resource'),
+      marked: await insertIssue('in_progress'),
+      peerOnly: await insertIssue('in_progress'),
       working: await insertIssue('in_progress'),
       held: await insertIssue('on_hold'),
     };
     await openQuestion(ids.marked);
     await openQuestion(ids.peerOnly, 'master_or_peer');
     const res = await app.request(
-      `/api/projects/${projectId}/issues/search?status=needs_info&status=waiting&orWaitingOnPerson=true`,
+      `/api/projects/${projectId}/issues/search?status=needs_info&orWaitingOnPerson=true`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
     const listed = ((await res.json()) as { items: Array<{ id: string }> }).items.map((i) => i.id);
@@ -350,19 +376,30 @@ describe('the park view exists for exactly the issues Needs you lists', () => {
       if (await parkView.loadIssuePark(id)) viewed.push(id);
     }
     expect(viewed.sort()).toEqual(listed.sort());
-    expect(viewed.sort()).toEqual([ids.needsInfo, ids.waiting, ids.marked].sort());
+    expect(viewed.sort()).toEqual([ids.needsInfo, ids.resource, ids.marked].sort());
   });
 });
 
 describe('the moves the park menu sends', () => {
-  it('resumes a waiting park at developed, a target the map does not list at waiting', async () => {
-    const issueId = await insertIssue('waiting', 'needs_decision');
-    await transition.transitionIssueStatus(await load(issueId), 'developed', person());
-    expect((await rowOf(issueId)).status).toBe('developed');
+  it('resumes a decision park at the status it left, without asking that status’s evidence again', async () => {
+    const issueId = await insertIssue('needs_info', 'needs_decision');
+    await leftFrom(issueId, 'awaiting_release');
+    await transition.transitionIssueStatus(await load(issueId), 'awaiting_release', person());
+    expect((await rowOf(issueId)).status).toBe('awaiting_release');
+  });
+
+  it('refuses a resume at a working status the park did not leave, by name, and moves nothing', async () => {
+    const issueId = await insertIssue('needs_info', 'needs_decision');
+    await leftFrom(issueId, 'awaiting_release');
+    await expect(
+      transition.transitionIssueStatus(await load(issueId), 'approved', person()),
+    ).rejects.toMatchObject({ code: 'ILLEGAL_TRANSITION' });
+    expect((await rowOf(issueId)).status).toBe('needs_info');
   });
 
   it('posts a person’s reason for leaving a park on the thread', async () => {
     const issueId = await insertIssue('needs_info');
+    await leftFrom(issueId, 'in_progress');
     await transition.transitionIssueStatus(await load(issueId), 'in_progress', person(), {
       reason: 'answered on a call',
       transitionReason: 'answered on a call',
@@ -374,23 +411,26 @@ describe('the moves the park menu sends', () => {
   });
 
   it('names both statuses once, in the park announcement, where the move enters another park', async () => {
-    const issueId = await insertIssue('needs_info');
-    await transition.transitionIssueStatus(await load(issueId), 'waiting', person(), {
+    const issueId = await insertIssue('on_hold');
+    await leftFrom(issueId, 'in_progress');
+    await transition.transitionIssueStatus(await load(issueId), 'needs_info', person(), {
       reason: 'needs a login, not an answer',
       transitionReason: 'needs a login, not an answer',
       waitingKind: 'needs_resource',
     });
     const posted = await bodies(issueId);
     expect(posted).toHaveLength(1);
-    expect(posted[0]).toContain('moved from `needs_info`');
+    expect(posted[0]).toContain('moved from `on_hold`');
     expect(posted[0]).toContain('supply something');
     expect(posted[0]).toContain('needs a login, not an answer');
   });
 
   it('posts nothing for a move out of a park that carries no reason, or an agent’s', async () => {
-    const quiet = await insertIssue('waiting', 'needs_decision');
+    const quiet = await insertIssue('needs_info', 'needs_decision');
+    await leftFrom(quiet, 'in_progress');
     await transition.transitionIssueStatus(await load(quiet), 'in_progress', person());
     const byAgent = await insertIssue('needs_info');
+    await leftFrom(byAgent, 'in_progress');
     await transition.transitionIssueStatus(await load(byAgent), 'in_progress', agent(), {
       transitionReason: 'resuming',
     });
@@ -400,6 +440,7 @@ describe('the moves the park menu sends', () => {
 
   it('voids the open questions and resumes in one write when the question is not needed', async () => {
     const issueId = await insertIssue('needs_info');
+    await leftFrom(issueId, 'approved');
     await openQuestion(issueId);
     await openQuestion(issueId);
     await transition.transitionIssueStatus(await load(issueId), 'approved', person(), {
@@ -416,6 +457,7 @@ describe('the moves the park menu sends', () => {
 
   it('refuses a blank reason and moves nothing, voiding nothing', async () => {
     const issueId = await insertIssue('needs_info');
+    await leftFrom(issueId, 'approved');
     await openQuestion(issueId);
     await expect(
       transition.transitionIssueStatus(await load(issueId), 'approved', person(), {
@@ -428,9 +470,9 @@ describe('the moves the park menu sends', () => {
 });
 
 describe('a park asking for a decision or a resource keeps what it asks for', () => {
-  it('keeps the kind and mints the question when the agent’s waiting park is rewritten to needs_info', async () => {
+  it('keeps the kind and mints the question on an agent’s resource park', async () => {
     const issueId = await insertIssue('in_progress');
-    await transition.transitionIssueStatus(await load(issueId), 'waiting', agent(), {
+    await transition.transitionIssueStatus(await load(issueId), 'needs_info', agent(), {
       transitionReason: 'No Search Console login on this box.',
       waitingKind: 'needs_resource',
       needs: 'a Search Console login for the property',
@@ -441,18 +483,31 @@ describe('a park asking for a decision or a resource keeps what it asks for', ()
     expect(park?.openQuestionIds).toHaveLength(1);
   });
 
-  it('stores no kind on a park that asked for none, which reads as information', async () => {
+  it('refuses a park that names no kind, by name, and moves nothing', async () => {
+    const issueId = await insertIssue('in_progress');
+    await expect(
+      transition.transitionIssueStatus(await load(issueId), 'needs_info', agent(), {
+        transitionReason: 'Which tenant?',
+        needs: 'the tenant slug',
+      }),
+    ).rejects.toMatchObject({ code: 'WAITING_KIND_REQUIRED' });
+    expect(await rowOf(issueId)).toEqual({ status: 'in_progress', waitingKind: null });
+  });
+
+  it('reads a park stopped on an answer as owing information', async () => {
     const issueId = await insertIssue('in_progress');
     await transition.transitionIssueStatus(await load(issueId), 'needs_info', agent(), {
       transitionReason: 'Which tenant?',
       needs: 'the tenant slug',
+      waitingKind: 'needs_answer',
     });
-    expect(await rowOf(issueId)).toEqual({ status: 'needs_info', waitingKind: null });
+    expect(await rowOf(issueId)).toEqual({ status: 'needs_info', waitingKind: 'needs_answer' });
     expect((await parkView.loadIssuePark(issueId))?.owes).toBe('information');
   });
 
   it('clears the kind once the issue leaves the park', async () => {
     const issueId = await insertIssue('needs_info', 'needs_decision');
+    await leftFrom(issueId, 'approved');
     await transition.transitionIssueStatus(await load(issueId), 'approved', person());
     expect(await rowOf(issueId)).toEqual({ status: 'approved', waitingKind: null });
   });

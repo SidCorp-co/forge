@@ -162,15 +162,9 @@ export const PULSE_THRESHOLDS: PulseThresholds = {
   identityCap: 50,
 };
 
-export const PULSE_OPEN_STATUSES = ['open', 'confirmed', 'clarified', 'approved'] as const;
-export const PULSE_IN_PROGRESS_STATUSES = [
-  'in_progress',
-  'developed',
-  'testing',
-  'tested',
-  'reopen',
-] as const;
-export const PULSE_AWAITING_RELEASE_STATUSES = ['awaiting_release', 'releasing'] as const;
+export const PULSE_OPEN_STATUSES = ['open', 'approved'] as const;
+export const PULSE_IN_PROGRESS_STATUSES = ['in_progress', 'reopen'] as const;
+export const PULSE_AWAITING_RELEASE_STATUSES = ['awaiting_release'] as const;
 
 export const PULSE_HEARTBEAT_DAYS = 30;
 export const PULSE_FLOW_WEEKS = 12;

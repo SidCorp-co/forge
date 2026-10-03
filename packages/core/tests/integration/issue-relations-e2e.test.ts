@@ -82,7 +82,7 @@ describe('ISS-868 issue relations read', () => {
   }
 
   it('puts the blocker in blocks.incoming and the dependent in blocks.outgoing, from each side', async () => {
-    const blocker = await insertIssue(101, 'developed');
+    const blocker = await insertIssue(101, 'in_progress');
     const dependent = await insertIssue(102);
     await insertEdge(blocker, dependent, 'blocks');
 
@@ -95,7 +95,7 @@ describe('ISS-868 issue relations read', () => {
       toIssueId: dependent,
       otherIssueId: blocker,
       otherDisplayId: 'ISS-101',
-      otherStatus: 'developed',
+      otherStatus: 'in_progress',
       kind: 'blocks',
       expired: false,
       blocking: true,

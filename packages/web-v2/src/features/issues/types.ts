@@ -1,5 +1,6 @@
 
 import type { BodyNode, ForgeRecordView, RecordLens, ReleaseNotes } from "@forge/contracts";
+import type { NeedsInfoKind, WorkStep } from "@forge/contracts/issue-vocabulary";
 import {
   REGISTRY_ISSUE_COMPLEXITIES,
   REGISTRY_ISSUE_PRIORITIES,
@@ -62,6 +63,35 @@ export type LabelKind = "label" | "module";
 
 export type { IssuePark, IssueParkResponse, ParkOwes, ParkResume } from "@forge/contracts";
 
+/** One step a run entered inside its status, as core's `issue_work_state.steps` log holds it. */
+export interface WorkStepEntry {
+  step: WorkStep;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+/**
+ * ISS-54 — where an issue's work stands inside its status, as a list row carries it (core
+ * `issues/work-state.ts` `WorkStateListView`). The status says who the issue waits on; this says
+ * the run's step, who holds it, what it built, and the status a park (`needs_info`, `on_hold`) left
+ * and returns to. `null` on the row where the issue has no work state at all.
+ */
+export interface IssueWorkStateRow {
+  step: WorkStep | null;
+  stepStartedAt: string | null;
+  leaseHolder: string | null;
+  branch: string | null;
+  headSha: string | null;
+  leftStatus: IssueStatus | null;
+  /** The retired status a 17-status client last wrote; shown nowhere, carried for the wire's sake. */
+  legacyStatus: string | null;
+}
+
+/** The detail read's work state: the list row's, plus the step log. */
+export interface IssueWorkState extends IssueWorkStateRow {
+  steps: WorkStepEntry[];
+}
+
 
 export interface IssueRow {
   id: string;
@@ -104,6 +134,8 @@ export interface IssueRow {
   releaseBatchRunId?: string | null;
   pipelineHealth?: PipelineHealth;
   dependencies?: IssueDependencies;
+  /** ISS-54 — the run's step and the status a park left; absent from a server older than ISS-54. */
+  workState?: IssueWorkStateRow | null;
 }
 
 /** Project member row from `GET /api/projects/:projectId/members`. */
@@ -231,6 +263,7 @@ export interface IssueDetail extends IssueRow {
   sessionContext?: Record<string, unknown> | null;
   /** ISS-1176 — the release note, whose `userFacing` line is the one sentence written for the person who filed. */
   releaseNotes?: ReleaseNotes | null;
+  workState?: IssueWorkState | null;
 }
 
 /** Why the dispatcher hasn't picked up the issue's next step. Mirrors core
@@ -243,7 +276,8 @@ export type WaitingReason =
   | "runner_stale"
   | "runner_too_old";
 
-export type WaitingCause = "needs_decision" | "needs_resource";
+/** What a `needs_info` park is stopped on — required by the server at `needs_info`, null elsewhere. */
+export type WaitingCause = NeedsInfoKind;
 
 /** ISS-903 — the queued candidate, as core projects it. */
 export interface PipelineHealthQueuedStep {
@@ -263,7 +297,7 @@ export interface PipelineHealth {
   waitingOn?: { reason: WaitingReason; since: string; details: Record<string, unknown> };
   queuedAt?: string;
   queuedStep?: PipelineHealthQueuedStep;
-  /** Only set when `stage === "waiting"`. */
+  /** Only set when `stage === "needs_info"`: what the park is stopped on. */
   waitingCause?: { kind: WaitingCause };
   /** ISS-853 — the issue's paused pipeline run. Present whatever the issue's own
    *  status says and whether or not a step is queued behind it, which is the

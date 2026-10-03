@@ -18,7 +18,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 import { stubProbe } from '../helpers/production.js';
-import { PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { AT_RELEASE, PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 const PUSHED = '2222222222222222222222222222222222222222';
 
@@ -189,7 +189,8 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
             runId,
             runEnded: true,
             claimer: 'batch',
-            status: 'releasing',
+            status: 'awaiting_release',
+            releasing: true,
           }),
         ),
       ),
@@ -258,9 +259,10 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
   it('tells an issue at the gate that an ended run still claims the sweep clears it, not an abort', async () => {
     const { runId, ids } = await batchOf(1);
     const [stale] = ids as [string];
-    // PLANTED: a run that ended leaving its claim on an issue back at the gate, before the sweep.
+    // PLANTED: a run that ended leaving its claim on an issue back at the gate, its `release` step
+    // already ended, before the sweep.
     await harness.db.execute(
-      sql`UPDATE issues SET status = 'awaiting_release' WHERE id = ${stale}`,
+      sql`UPDATE issue_work_state SET step = NULL, step_started_at = NULL WHERE issue_id = ${stale}`,
     );
     await harness.db.execute(sql`UPDATE pipeline_runs SET status = 'failed' WHERE id = ${runId}`);
     const answer = await recordRefused([stale]);
@@ -275,6 +277,7 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
         runEnded: true,
         claimer: 'batch',
         status: 'awaiting_release',
+        releasing: false,
       }),
     ]);
   }, 30_000);
@@ -305,26 +308,26 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
   }, 30_000);
 
   it('names a status short of the gate, and an id that is no issue here as it was sent', async () => {
-    const testing = await fx.insertIssue('testing');
+    const building = await fx.insertIssue('in_progress');
     const stranger = randomUUID();
-    const answer = await recordRefused([testing, stranger]);
+    const answer = await recordRefused([building, stranger]);
     expect(answer.code).toBe('CLAIM_CONFLICT');
     expect(answer.message).toMatch(
-      new RegExp(`\\b${await keyOf(testing)} is at \`testing\`, not \`awaiting_release\``),
+      new RegExp(`\\b${await keyOf(building)} is at \`in_progress\`, not \`awaiting_release\``),
     );
     expect(answer.message).toContain(`${stranger} is no issue on this project`);
     expect(answer.details.conflicts).toEqual([
-      expect.objectContaining({ id: testing, standing: 'status', status: 'testing' }),
+      expect.objectContaining({ id: building, standing: 'status', status: 'in_progress' }),
       { id: stranger, key: stranger, standing: 'absent' },
     ]);
   }, 30_000);
 
   it('answers a new batch in the same words as the record door', async () => {
-    const testing = await fx.insertIssue('testing');
-    const fromRecord = await recordRefused([testing]);
+    const building = await fx.insertIssue('in_progress');
+    const fromRecord = await recordRefused([building]);
     let fromBatch: Refusal | null = null;
     try {
-      await service.createReleaseBatch({ projectId, issueIds: [testing], userId: ownerId });
+      await service.createReleaseBatch({ projectId, issueIds: [building], userId: ownerId });
     } catch (err) {
       const http = refusals.reportedRefusal(err);
       if (!http) throw err;
@@ -337,15 +340,15 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
 
 describe('an issue id is the same id in either case', () => {
   it('names a project issue sent with an upper-case id by its key, under its reason', async () => {
-    const testing = await fx.insertIssue('testing');
-    const answer = await recordRefused([testing.toUpperCase()]);
+    const building = await fx.insertIssue('in_progress');
+    const answer = await recordRefused([building.toUpperCase()]);
     expect(answer.code).toBe('CLAIM_CONFLICT');
     expect(answer.message).toMatch(
-      new RegExp(`\\b${await keyOf(testing)} is at \`testing\`, not \`awaiting_release\``),
+      new RegExp(`\\b${await keyOf(building)} is at \`in_progress\`, not \`awaiting_release\``),
     );
     expect(answer.message).not.toMatch(/no issues? on this project/);
     expect(answer.details.conflicts).toEqual([
-      expect.objectContaining({ id: testing, standing: 'status', status: 'testing' }),
+      expect.objectContaining({ id: building, standing: 'status', status: 'in_progress' }),
     ]);
   }, 30_000);
 
@@ -381,7 +384,7 @@ describe('an issue id is the same id in either case', () => {
       userId: ownerId,
     });
     expect(result.issueIds).toEqual([gate]);
-    expect(await fx.stored(gate)).toMatchObject({ status: 'releasing', claim: result.runId });
+    expect(await fx.stored(gate)).toMatchObject({ ...AT_RELEASE, claim: result.runId });
   }, 30_000);
 });
 

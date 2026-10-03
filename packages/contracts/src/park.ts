@@ -2,9 +2,9 @@ import type { KernelIssueStatus } from "./issue-vocabulary.js";
 
 export type ParkOwes = "information" | "decision" | "resource";
 
-/** Read off the park record's `left` stamp alone — never the history, never a default. */
+/** Read off `issue_work_state.left_status` — the status the park left — never guessed. */
 export type ParkResume =
-  | { at: KernelIssueStatus; recordId: string }
+  | { at: KernelIssueStatus; recordId: string | null }
   | { at: null; why: string };
 
 export interface ParkRecordView {
@@ -21,11 +21,10 @@ export interface ParkAnswerView {
 }
 
 export interface IssuePark {
-  /** `park` at `needs_info` or `waiting`; `question` at a working rung holding an open human question. */
+  /** `park` at `needs_info`; `question` at a working status holding an open human question. */
   shape: "park" | "question";
   status: KernelIssueStatus;
-  /** `null` only for a `waiting` park that stored no kind. */
-  owes: ParkOwes | null;
+  owes: ParkOwes;
   since: string | null;
   reason: string | null;
   resume: ParkResume;

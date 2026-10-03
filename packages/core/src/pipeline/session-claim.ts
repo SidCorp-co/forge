@@ -1,4 +1,4 @@
-/** Which run may write one issue's record, from `issues.session_context.lease` — NOT who holds the
+/** Which run may write one issue's record, from `issue_work_state.lease` — NOT who holds the
  *  fleet's key (`issue_leases`). A wall clock, or the holder's heartbeat where it declared one. */
 
 // cm:edge naming -> packages/core/src/issues/issue-lease.ts — different questions, once the same
