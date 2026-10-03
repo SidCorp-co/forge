@@ -137,6 +137,14 @@
 
 ### Added
 
+- **A new project can be onboarded in a chat thread.** The dashboard says a project has no
+  system context yet; Start onboarding opens a thread in the chat panel where the project agent
+  reads the code, drafts the key designs as-built and asks what it cannot tell in one questionnaire
+  card: questions, clarifications and recommendations, each with why it asks and its evidence,
+  answered inline and sent once, partial allowed, at most three rounds. Every design it drafts waits
+  for a person's approval. `/api/projects/:id/onboarding` and `forge_onboarding`; the BA assistant
+  asks through the same card (`ba_send_questionnaire`). A project with sensitive data cannot finish
+  onboarding without a data-flow design (`ONBOARDING_DATA_FLOW_MISSING`).
 - **Assistant output waits for a person as a suggestion.** `/api/projects/:id/suggestions` and
   `forge_suggestions` hold six kinds of proposed change against a base revision; a person accepts or
   rejects it, a moved base makes it stale (`SUGGESTION_BASE_STALE`), at most 5 wait per target, and
