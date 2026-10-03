@@ -1,5 +1,8 @@
+import { contentLanguageWriteSchema } from '@forge/contracts/content-language';
 import { z } from 'zod';
 import { extractIssueBranchOverride, resolveIssueBranches } from '../../branches/resolve.js';
+import { readContentLanguage } from '../../content-language/read.js';
+import { writeContentLanguage } from '../../content-language/service.js';
 import {
   mergePluginDesignations,
   pluginDesignationsPatchSchema,
@@ -22,6 +25,7 @@ import {
   assertPrincipalIsAdmin,
   assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
+  refusedAnswer,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
@@ -32,6 +36,7 @@ const inputSchema = z
     projectId: z.uuid().optional(),
     issueId: z.uuid().optional(),
     plugins: pluginDesignationsPatchSchema.optional(),
+    contentLanguage: contentLanguageWriteSchema.optional(),
   })
   .strict();
 
@@ -50,9 +55,10 @@ async function readProjectConfig(projectId: string) {
 
 async function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) {
   const ac = (row.agentConfig as Record<string, unknown> | null) ?? {};
-  const [policy, document] = await Promise.all([
+  const [policy, document, contentLanguage] = await Promise.all([
     readEffectivePolicy(row.id),
     readProjectDocument(row.id),
+    readContentLanguage(row.id),
   ]);
   return {
     project: {
@@ -69,6 +75,7 @@ async function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConf
         ? { declared: true, revision: document.revision, document: document.document }
         : { declared: false, revision: null, document: null },
       plugins: readPluginDesignations(ac, row.slug),
+      contentLanguage,
     },
   };
 }
@@ -78,7 +85,7 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   grant: { byAction: { get: 'projects:read', update: 'projects:write' }, defaultAction: 'get' },
   description:
-    "Read or write project configuration. Action `get` returns `config` with `baseBranch`, the project document's `source.git.defaultBranch`. A checkout path is not here: each device binding names its own. `baseBranch` is where an ISS-* branch is cut from and is NOT a release fact; it may be `null` when not configured and callers MUST NOT silently default it to 'main'. Where a landed change goes is `config.projectDocument` — the project-v1 document with its `revision`, or `declared: false`: its `source.git.defaultBranch` is where work lands, its `environments` each name a `tier`, the branch they deploy from (`deploysFrom`), their deployment (a binding and a `trigger` of `on-land`, `on-request` or `provider`, or `mode: external`) and their runtime probes, the one `tier: production` environment is where a release lands, and its `promotions` are the branch crossings (`merge` or `cherry-pick`) a change takes to reach it. No production environment means this project ships nothing — `closed` means closed. The document is read-only here; write it with `PUT /api/projects/:id/config` ({ baseRevision, document }), and read what an environment runs now with `GET /api/projects/:id/environments/state`. Also `plugins` from `agent_config` JSON, and `policy` — the project's policy-v1 document (`qa`, `intake`, `permissions`, `states`) with its `revision`, or `declared: false` where the project has none, in which case nothing dispatches there. The policy is read-only here; write it with `PUT /api/projects/:id/policy` ({ baseRevision, document }). When `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project defaults. This tool NO LONGER carries project prose: `projectFacts` and `projectFactsConfig` were removed in ISS-1048 and a request naming either is refused by name. A project's guides, rules and overviews are `knowledge_entries` rows — read and write them with `forge_knowledge`, whose `injection` field (`always`, `on_demand`, `none`) is what the always-inject flag became. Action `update` (admin-gated) takes a `plugins` list designating the Claude Code plugins this project's runners must install (`[{marketplace, name, pinnedRef?}]`; marketplace is an `owner/repo`, name is kebab-case, pinnedRef is a commit SHA the device holds the plugin at, and a plugin with none follows its marketplace's tip). UNLIKE a patch, `plugins` REPLACES the whole list — GET first, send the complete list, `null` clears it. Designation is per-project but install is per-DEVICE: a device resolves the union of every project it is bound to via `GET /api/devices/me/plugins`, so a plugin designated by one project is installed for all of them; per-project opt-out belongs in that repo's own `.claude/settings.json` `enabledPlugins`. Errors surface as `BAD_REQUEST: <code>: <message>`. An always-inject knowledge entry is injected verbatim into every agent system prompt for this project, under a char budget that warns on overflow rather than truncating. " +
+    "Read or write project configuration. Action `get` returns `config` with `baseBranch`, the project document's `source.git.defaultBranch`. A checkout path is not here: each device binding names its own. `baseBranch` is where an ISS-* branch is cut from and is NOT a release fact; it may be `null` when not configured and callers MUST NOT silently default it to 'main'. Where a landed change goes is `config.projectDocument` — the project-v1 document with its `revision`, or `declared: false`: its `source.git.defaultBranch` is where work lands, its `environments` each name a `tier`, the branch they deploy from (`deploysFrom`), their deployment (a binding and a `trigger` of `on-land`, `on-request` or `provider`, or `mode: external`) and their runtime probes, the one `tier: production` environment is where a release lands, and its `promotions` are the branch crossings (`merge` or `cherry-pick`) a change takes to reach it. No production environment means this project ships nothing — `closed` means closed. The document is read-only here; write it with `PUT /api/projects/:id/config` ({ baseRevision, document }), and read what an environment runs now with `GET /api/projects/:id/environments/state`. Also `plugins` from `agent_config` JSON, and `policy` — the project's policy-v1 document (`qa`, `intake`, `permissions`, `states`) with its `revision`, or `declared: false` where the project has none, in which case nothing dispatches there. The policy is read-only here; write it with `PUT /api/projects/:id/policy` ({ baseRevision, document }). When `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project defaults. This tool NO LONGER carries project prose: `projectFacts` and `projectFactsConfig` were removed in ISS-1048 and a request naming either is refused by name. A project's guides, rules and overviews are `knowledge_entries` rows — read and write them with `forge_knowledge`, whose `injection` field (`always`, `on_demand`, `none`) is what the always-inject flag became. Action `update` (admin-gated) takes a `plugins` list designating the Claude Code plugins this project's runners must install (`[{marketplace, name, pinnedRef?}]`; marketplace is an `owner/repo`, name is kebab-case, pinnedRef is a commit SHA the device holds the plugin at, and a plugin with none follows its marketplace's tip). UNLIKE a patch, `plugins` REPLACES the whole list — GET first, send the complete list, `null` clears it. Designation is per-project but install is per-DEVICE: a device resolves the union of every project it is bound to via `GET /api/devices/me/plugins`, so a plugin designated by one project is installed for all of them; per-project opt-out belongs in that repo's own `.claude/settings.json` `enabledPlugins`. `config.contentLanguage` is the language agents write this project's prose in (`contentLanguage`, a BCP-47 tag, default `en`; `keepTermsInEnglish`; `source` says whether the project document declared it; `revision` is the document revision read). It covers prose stored in or shown by Forge — requirements and criteria, workflow design text, comments, notes, questionnaires, onboarding, feedback triage, suggestions, plan and summary prose, release notes, assistant replies — never code, identifiers, commits, branch names, PR titles, machine-read fields or Forge UI chrome. Action `update` takes `contentLanguage: { baseRevision, contentLanguage, keepTermsInEnglish? }` (the project document revision you read; `null` terms clears them) and is refused by name: `CONTENT_LANGUAGE_INVALID` for a tag that is not canonical BCP-47, `STALE_BASE` for a moved document. Errors surface as `BAD_REQUEST: <code>: <message>`. An always-inject knowledge entry is injected verbatim into every agent system prompt for this project, under a char budget that warns on overflow rather than truncating. " +
     ALWAYS_INJECT_GUARANTEE_NOTE +
     ' ' +
     ALWAYS_INJECT_ENFORCEMENT_NOTE,
@@ -108,6 +115,14 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
         throw new Error('BAD_REQUEST: projectId is required for action=update');
       }
       await assertPrincipalIsAdmin(ctx.principal, input.projectId);
+      if (input.contentLanguage !== undefined) {
+        const written = await writeContentLanguage({
+          projectId: input.projectId,
+          userId: ctx.principal.userId,
+          write: input.contentLanguage,
+        });
+        if (!written.ok) return refusedAnswer(written.refusals, 'CONFIG_REFUSED');
+      }
       if (input.plugins !== undefined) {
         await patchAgentConfigKeys(input.projectId, {
           plugins: mergePluginDesignations(input.plugins),

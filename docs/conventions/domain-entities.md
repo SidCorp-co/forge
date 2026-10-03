@@ -164,6 +164,21 @@ no writer gets a fourth state.
 - **ISS-n** keeps its counter row and trigger (`packages/core/src/db/schema.ts:projectIssCounters`). There is
   no shared `project_counters` table, and FB-n (ISS-59) does not need one.
 
+## Language of stored text
+
+- **Prose follows the project.** A column an agent writes for people to read (a title, body,
+  reason, summary, criterion, label, release note) is written in the project's content language,
+  the project document's `contentLanguage` (`packages/contracts/src/content-language.ts:contentLanguageOf`,
+  absent is `en`). Technical terms stay English inside it.
+- **Machine-read text never does.** Enum values, refusal codes, keys, field names, status names,
+  step types, `file:symbol` citations and the `detail` Forge itself writes are English, and so are
+  code, commits, branch names and PR titles. A client switches on them; Forge's UI chrome is English.
+- **Told, not checked.** Nothing refuses a write for its language (`VISION: kernel-hard-policy-soft`).
+  Every prompt that writes prose appends `packages/core/src/content-language/block.ts:contentLanguageBlock`,
+  and the session records what it was told under `metadata.contentLanguage` beside `artifactContext`
+  (`packages/core/src/content-language/read.ts:recordContentLanguage`). Only a tag that is not
+  canonical BCP-47 is refused, `CONTENT_LANGUAGE_INVALID`.
+
 ## Records and audit
 
 - **Issue-scoped facts.** A fact about an issue that a gate or reader relies on is a typed event,

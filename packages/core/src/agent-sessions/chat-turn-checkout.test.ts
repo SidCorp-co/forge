@@ -39,6 +39,15 @@ vi.mock('../lib/device-pool.js', () => ({
     resolveSessionRepoPathForDevice(projectId, deviceId),
 }));
 
+vi.mock('../content-language/read.js', () => ({
+  readContentLanguage: vi.fn(async () => ({
+    contentLanguage: 'vi',
+    keepTermsInEnglish: [],
+    source: 'document',
+    revision: 4,
+  })),
+}));
+
 vi.mock('../lib/chat-preamble.js', () => ({
   buildChatPreamble: vi.fn(async () => '[Preamble]\n'),
   TOOL_REFERENCE: '<tool-reference>',

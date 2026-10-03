@@ -44,6 +44,15 @@ vi.mock('../lib/device-pool.js', () => ({
     resolveSessionRepoPathForDevice(projectId, deviceId),
 }));
 
+vi.mock('../content-language/read.js', () => ({
+  readContentLanguage: vi.fn(async () => ({
+    contentLanguage: 'vi',
+    keepTermsInEnglish: [],
+    source: 'document',
+    revision: 4,
+  })),
+}));
+
 vi.mock('../lib/chat-preamble.js', () => ({
   buildChatPreamble: vi.fn(async () => '[Preamble]\n'),
   TOOL_REFERENCE: '<tool-reference>',
@@ -255,6 +264,33 @@ describe('dispatchChatTurn', () => {
     expect(data.mcpServersOverride).toEqual({ playwright: { type: 'stdio' } });
   });
 
+  it('a cold start is told the content language in chat context and records it beside artifactContext', async () => {
+    updateReturning.mockResolvedValueOnce([baseSession({ status: 'running', deviceId: DEVICE })]);
+    await dispatchChatTurn({
+      session: baseSession(),
+      project: PROJECT,
+      client: { deviceId: DEVICE, isLocal: false },
+      message: 'hello',
+    });
+    const call = publishSpy.mock.calls.find(
+      ([, env]) => (env as { event: string }).event === 'agent:start',
+    );
+    const sent = call?.[1] as { data: Record<string, unknown> } | undefined;
+    const prompt = String(sent?.data.prompt);
+    expect(prompt).toContain("This project's content language is Vietnamese (`vi`).");
+    expect(prompt).toContain('Answer the person in the language they wrote in');
+    expect(prompt.indexOf('[Preamble]')).toBeLessThan(prompt.indexOf('## Content language'));
+    expect(prompt.indexOf('## Content language')).toBeLessThan(prompt.indexOf('hello'));
+    const meta = updateSet.mock.calls.at(-1)?.[0]?.metadata as Record<string, unknown>;
+    expect(meta.contentLanguage).toEqual({
+      contentLanguage: 'vi',
+      keepTermsInEnglish: [],
+      source: 'document',
+      context: 'chat',
+      revision: 4,
+    });
+  });
+
   it('warm session (claudeSessionId set) → agent:send, no system prompt', async () => {
     updateReturning.mockResolvedValueOnce([
       baseSession({ status: 'running', deviceId: DEVICE, claudeSessionId: 'c-1' }),
@@ -274,6 +310,10 @@ describe('dispatchChatTurn', () => {
     expect(data.message).toBe('again');
     expect(data.claudeSessionId).toBe('c-1');
     expect(data.systemPrompt).toBeUndefined();
+    // A resumed turn keeps what its cold start was told: no second block, no new record.
+    expect(String(data.message)).not.toContain('## Content language');
+    const meta = updateSet.mock.calls.at(-1)?.[0]?.metadata as Record<string, unknown>;
+    expect(meta.contentLanguage).toBeUndefined();
     // Each follow-up re-spawns `claude` with a fresh `--mcp-config`, so the project-default MCP servers must ride on `agent:send` too.
     expect(data.mcpServersOverride).toEqual({ playwright: { type: 'stdio' } });
   });

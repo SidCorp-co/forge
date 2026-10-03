@@ -1,4 +1,8 @@
 import {
+  CONTENT_LANGUAGE_LIMITS,
+  keepTermsInEnglishSchema,
+} from '@forge/contracts/content-language';
+import {
   projectWorkflowTemplateSchema,
   TEMPLATE_LIMITS,
 } from '@forge/contracts/workflow-templates';
@@ -179,6 +183,14 @@ export const projectDocumentSchema = z.strictObject({
       approver: z.enum(DESIGN_APPROVERS).optional(),
     })
     .optional(),
+  // cm:why the language agents write this project's prose in (owner, 2026-10-04): a BCP-47 tag,
+  // absent is `en`. Policy over the kernel: no write is refused for its language, only a tag that
+  // is not one (`rules.ts:checkContentLanguage`, CONTENT_LANGUAGE_INVALID). Code, identifiers,
+  // commits, PR text, machine-read fields and Forge's UI chrome are English whatever it says.
+  contentLanguage: z.string().min(1).max(CONTENT_LANGUAGE_LIMITS.tagMax).optional(),
+  // cm:why terms the prose keeps in English beyond the built-in technical ones
+  // (`@forge/contracts/content-language:TECHNICAL_TERMS_KEPT_IN_ENGLISH`); absent is none.
+  keepTermsInEnglish: unique(keepTermsInEnglishSchema).optional(),
   execution: z.strictObject({
     plugin: z.strictObject({
       source: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),

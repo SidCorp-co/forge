@@ -137,6 +137,10 @@
 
 ### Added
 
+- **A project sets the language agents write its prose in.** Project settings → Basics, or
+  `PUT /api/projects/:id/content-language`: requirements, comments, suggestions, plans and assistant
+  replies follow it; code, commits and PR titles stay English. Each session records what it was
+  told.
 - **Assistant output waits for a person as a suggestion.** `/api/projects/:id/suggestions` and
   `forge_suggestions` hold six kinds of proposed change against a base revision; a person accepts or
   rejects it, a moved base makes it stale (`SUGGESTION_BASE_STALE`), at most 5 wait per target, and

@@ -58,6 +58,10 @@
       "types": "./dist/suggestions.d.ts",
       "default": "./dist/suggestions.js"
     },
+    "./content-language": {
+      "types": "./dist/content-language.d.ts",
+      "default": "./dist/content-language.js"
+    },
     "./ui-actions": {
       "types": "./dist/ui-actions.d.ts",
       "default": "./dist/ui-actions.js"
