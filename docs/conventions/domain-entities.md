@@ -215,16 +215,24 @@ A project's document carries `sensitiveData`, one of
 `packages/contracts/src/data-policy.ts:SENSITIVE_DATA_LEVELS` (`off`, `redact`, `no_egress`; absent
 means `off`).
 
-- **One guard.** Every path that sends item text to a provider (an embedding, an LLM tool, a prompt)
-  passes it through `packages/core/src/lib/data-egress.ts:egressOf` (or `egressFor` /
-  `egressDeep`). At `redact` only scrubbed text leaves; at `no_egress` nothing does and the guard
-  refuses `CONTENT_EGRESS_FORBIDDEN` naming the item. A slice never checks the level itself.
-- **One exemption.** Onboarding questionnaire answers are product information, not patient data
-  (owner, 2026-10-04): read through `egressDeep` as the `onboarding_answers` class
-  (`packages/core/src/lib/data-egress.ts:EgressDataClass`), they leave scrubbed at `no_egress` as at
-  `redact`. Only batches of an onboarding conversation qualify; a BA requirement clarification batch
-  can quote feedback and is refused like any other content. The questionnaire card warns on a
-  `redact` or `no_egress` project that answers must not include patient data.
+- **One rule.** Every read that hands content to an agent or a provider (an embedding, an LLM tool,
+  a prompt, an MCP or API answer to an agent) passes
+  `packages/core/src/lib/data-egress.ts:egressDeep(project, surface)` (or `egressAt` at a level
+  already read), and each surface declares its class once, in
+  `packages/core/src/lib/data-egress.ts:EGRESS_SURFACES`. A slice never checks the level itself and
+  never carries an exemption of its own; a surface that is not in the table is refused
+  `EGRESS_SURFACE_UNDECLARED`, so a new surface cannot leak.
+  - **product** (requirements, designs, issues and their criteria, comments and questions,
+    suggestions, onboarding answers) is written to build the product: an agent reads it at every
+    level, scrubbed at `redact` and `no_egress`, as written at `off`.
+  - **operational** (feedback and its attachments and comments, assistant conversations with people,
+    BA clarifications) is what people send in, where patient text arrives: scrubbed at `redact`,
+    withheld at `no_egress`, refused `CONTENT_EGRESS_FORBIDDEN` naming the item while the caller
+    answers metadata only.
+  - A questionnaire takes its class from its own arc
+    (`packages/core/src/questionnaires/read.ts:questionnaireSurface`), never from the caller. The
+    questionnaire card warns on a `redact` or `no_egress` project that answers must not include
+    patient data.
 - **On write.** At `redact` and `no_egress`, free text an entity stores is scrubbed first
   (`packages/core/src/lib/data-egress.ts:storedText`, over the observability scrubber). Feedback
   scrubs its title, body, where-seen, answer and every decision reason, and a questionnaire scrubs

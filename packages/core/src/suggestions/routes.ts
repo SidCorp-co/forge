@@ -1,4 +1,6 @@
 import {
+  ACCEPT_SUGGESTION_SHAPE,
+  acceptSuggestionRequestSchema,
   CREATE_SUGGESTION_SHAPE,
   createSuggestionRequestSchema,
   listSuggestionsQuerySchema,
@@ -118,10 +120,23 @@ suggestionRoutes.post(
 
 const emptyBody = strictBody(z.strictObject({}), 'this action takes an empty object');
 
-suggestionRoutes.post('/:id/suggestions/:sid/accept', suggestionParam, emptyBody, async (c) => {
-  const { id, sid } = c.req.valid('param');
-  return answer(c, await acceptSuggestion({ projectId: id, id: sid, actor: actorOf(c) }));
-});
+suggestionRoutes.post(
+  '/:id/suggestions/:sid/accept',
+  suggestionParam,
+  strictBody(acceptSuggestionRequestSchema, ACCEPT_SUGGESTION_SHAPE),
+  async (c) => {
+    const { id, sid } = c.req.valid('param');
+    return answer(
+      c,
+      await acceptSuggestion({
+        projectId: id,
+        id: sid,
+        actor: actorOf(c),
+        reason: c.req.valid('json').reason,
+      }),
+    );
+  },
+);
 
 suggestionRoutes.post(
   '/:id/suggestions/:sid/reject',

@@ -157,13 +157,14 @@ interface Turn {
   waitingOn: RequirementWaitingOn;
 }
 
-// cm:why whose turn it is, first rule that holds wins: 1. accepted or dropped → done; 2. a proposed
-// revision → a signer; 3. a draft revision → its author; 4. a draft requirement, head current → a
-// signer agrees it; 5. every issue closed and every BC proven → a signer accepts the delivery, a BC
-// unproven → the master proves it; 6. an open breakdown → a signer; 7. an issue planned against an
-// earlier revision → the master re-plans it; 8. no issue → the master breaks it down; 9. only
-// drafts → a person promotes them; 10. otherwise moving. Then, unless it needs you: no owner, or
-// untouched for STUCK_AFTER_DAYS → stuck.
+// cm:why whose turn it is, first rule wins: 1. accepted, dropped or deferred → done or waiting on
+// nobody (ISS-85); 2. a proposed revision → a signer; 3. a draft revision → its author; 4. a draft
+// requirement, head current → a signer agrees it; 5. a design approved past the baseline's pin → a
+// signer re-pins it (ISS-86); 6. every issue closed → a signer accepts the delivery, a BC unproven →
+// the master proves it; 7. an open breakdown → a signer; 8. an issue planned against an earlier
+// revision or baseline → the master re-plans it; 9. no issue → the master breaks it down; 10. only
+// drafts → a person promotes them; 11. else moving. Unless it needs you: no owner, or untouched
+// for STUCK_AFTER_DAYS → stuck.
 function turnOf(
   input: StandingInput,
   live: readonly StandingIssue[],
@@ -172,6 +173,12 @@ function turnOf(
   const { status, viewer } = input;
   if (status === 'accepted' || status === 'dropped') {
     return { group: 'done', waitingOn: wait('none', '—', '', `the requirement is ${status}`) };
+  }
+  if (status === 'deferred') {
+    return {
+      group: 'deferred',
+      waitingOn: wait('none', '—', '', 'deferred out of the current release; it waits on nobody'),
+    };
   }
   const proposed = input.revisions.find((r) => r.state === 'proposed');
   if (proposed) {
@@ -203,6 +210,13 @@ function turnOf(
       head === null ? 'agree it' : `agree r${head}`,
       'a current revision not yet agreed waits on a sign-off',
     );
+  }
+  if (input.stalePins.length > 0) {
+    const act = `re-pin ${input.stalePins.map((p) => `${p.flow} r${p.approved}`).join(', ')}`;
+    const rule = 'a linked design was approved past the revision the agreed baseline pins';
+    if (viewer?.canSignOff) return { group: 'needs_you', waitingOn: wait('you', 'You', act, rule) };
+    const owner = input.owner?.kind === 'human' ? input.owner.name : null;
+    return { group: 'others', waitingOn: wait('person', owner ?? SIGNER, act, rule) };
   }
   if (input.phase === 'delivered' && live.length > 0) {
     return signerWait(viewer, 'accept delivery', 'every linked issue is closed');
@@ -287,7 +301,7 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
   const input = { ...raw, phase: provenPhase(raw.phase, coverage) };
   const touched = touchedAt(input);
   let { group, waitingOn } = turnOf(input, live, coverage);
-  if (group !== 'needs_you' && group !== 'done') {
+  if (group !== 'needs_you' && group !== 'done' && group !== 'deferred') {
     if (input.owner === null) {
       group = 'stuck';
       waitingOn = wait('none', 'No owner', 'assign one', 'no owner is set');

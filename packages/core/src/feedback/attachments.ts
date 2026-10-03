@@ -9,9 +9,10 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedbackAttachments } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
 import { allowedSetForTarget, resolveAttachmentMime, safeName } from '../lib/attachment-mime.js';
 import { assertProjectAccess } from '../lib/authz.js';
-import { dataPolicyOf } from '../lib/data-egress.js';
+import { dataPolicyOf, egressAs } from '../lib/data-egress.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { askQuestion } from '../questions/write.js';
@@ -146,6 +147,7 @@ export async function attachmentBytes(input: {
   ref: string;
   attachmentId: string;
   userId: string;
+  agency: ActorAgency;
 }) {
   await assertProjectAccess(input.projectId, input.userId, 'viewer');
   const row = await rowIn(db, input.projectId, input.ref);
@@ -159,5 +161,18 @@ export async function attachmentBytes(input: {
       ),
     );
   if (!a) return null;
-  return { name: a.name, mime: a.mime, bytes: await getStorage().get(a.storagePath) };
+  const gate = await egressAs(
+    { agency: input.agency },
+    input.projectId,
+    'feedback.attachments',
+    null,
+    `attachment ${a.id} of ${feedbackKey(row.fbSeq)}`,
+  );
+  if (!gate.ok) return { ok: false as const, refusal: gate.refusal };
+  return {
+    ok: true as const,
+    name: a.name,
+    mime: a.mime,
+    bytes: await getStorage().get(a.storagePath),
+  };
 }

@@ -17,7 +17,14 @@ import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionStep } from '../db/schema-questions.js';
-import { dataPolicyOf } from '../lib/data-egress.js';
+import {
+  dataPolicyOf,
+  type EgressDeep,
+  type EgressReader,
+  type EgressSurface,
+  egressAt,
+  isProviderBound,
+} from '../lib/data-egress.js';
 
 export type Executor = typeof db | Tx;
 export type BatchRow = typeof questionnaireBatches.$inferSelect;
@@ -152,6 +159,33 @@ export async function batchesOfConversation(
       levels.get(b.projectId) ?? 'off',
     ),
   );
+}
+
+// cm:why a questionnaire's surface is read off its own arc, never off the caller's claim: an
+// onboarding round is product (`onboarding.answers`), a BA clarification about a requirement is
+// operational (`requirement.clarification`), and a batch with neither belongs to its conversation
+export function questionnaireSurface(b: {
+  onboardingId: string | null;
+  requirementId: string | null;
+}): EgressSurface {
+  if (b.requirementId !== null) return 'requirement.clarification';
+  return b.onboardingId !== null ? 'onboarding.answers' : 'conversation';
+}
+
+export async function questionnairesAs(
+  reader: EgressReader,
+  projectId: string,
+  views: QuestionnaireView[],
+): Promise<EgressDeep<QuestionnaireView[]>> {
+  if (!isProviderBound(reader)) return { ok: true, value: views };
+  const level = await dataPolicyOf(projectId);
+  const out: QuestionnaireView[] = [];
+  for (const v of views) {
+    const one = egressAt(level, questionnaireSurface(v), v, `questionnaire ${v.id}`);
+    if (!one.ok) return one;
+    out.push(one.value);
+  }
+  return { ok: true, value: out };
 }
 
 export async function openBatchOf(tx: Executor, conversationId: string) {

@@ -14,17 +14,12 @@ import { comments, issues } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { requirements } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import {
-  feedbackKey,
-  rowIn as feedbackRowIn,
-  type ReadDoor,
-  withholdsFrom,
-} from '../feedback/read.js';
+import { feedbackKey, rowIn as feedbackRowIn, type ReadDoor } from '../feedback/read.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { isUuid } from '../issues/issue-route-ref.js';
 import { assertProjectAccess } from '../lib/authz.js';
-import { dataPolicyOf } from '../lib/data-egress.js';
+import { dataPolicyOf, type EgressSurface, egressReading } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { requirementKey, rowIn as requirementRowIn } from '../requirements/read.js';
@@ -128,15 +123,18 @@ export async function commentRowIn(tx: Tx, commentId: string): Promise<EntityCom
 
 type Authors = Awaited<ReturnType<typeof peopleOf>>;
 
+export type CommentEgress = ReturnType<typeof egressReading>;
+
 export function entityCommentView(
   row: EntityCommentRow,
   target: Omit<CommentTarget, 'projectId'>,
   authors: Authors,
-  withhold: boolean,
+  egress: CommentEgress,
 ): EntityCommentView {
+  const { withhold } = egress;
   const person = authors.get(row.authorId);
   const agency = row.authorDeviceId ? 'agent' : (person?.kind ?? 'human');
-  return {
+  const view: EntityCommentView = {
     id: row.id,
     target: {
       scope: target.scope,
@@ -155,6 +153,7 @@ export function entityCommentView(
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+  return withhold ? view : egress.shown(view, `comment ${row.id}`);
 }
 
 const ARC_COLUMN = {
@@ -164,16 +163,26 @@ const ARC_COLUMN = {
   issue: comments.issueId,
 } as const;
 
-// cm:guard a feedback item's comment follows the item's own egress: on a no_egress project an agent
-// or a provider-bound door reads it as metadata only; a requirement's or design's is product information
-export async function withholdFor(
+// cm:why a comment takes the class of what it sits on, declared once in the egress table: a
+// requirement's and a design's are product, an issue's too, a feedback item's is operational
+const COMMENT_SURFACE = {
+  requirement: 'requirement',
+  workflow: 'design',
+  feedback: 'feedback.comments',
+  issue: 'issue.comments',
+} as const satisfies Record<CommentScope, EgressSurface>;
+
+export async function commentEgress(
   projectId: string,
   scope: CommentScope,
   actor: EntityCommentActor,
   door: ReadDoor,
-) {
-  if (scope !== 'feedback') return false;
-  return withholdsFrom(await dataPolicyOf(projectId), actor.agency, door);
+): Promise<CommentEgress> {
+  return egressReading(
+    await dataPolicyOf(projectId),
+    { agency: actor.agency, providerBound: door.providerBound },
+    COMMENT_SURFACE[scope],
+  );
 }
 
 export async function listEntityCommentsAs(
@@ -196,12 +205,23 @@ export async function listEntityCommentsAs(
       ),
     )
     .orderBy(asc(comments.createdAt), asc(comments.id));
-  const [authors, withhold] = await Promise.all([
+  const [authors, egress] = await Promise.all([
     peopleOf(rows.map((r) => r.authorId)),
-    withholdFor(projectId, scope, actor, door),
+    commentEgress(projectId, scope, actor, door),
   ]);
-  const shown = rows.map((r) => entityCommentView(r, target, authors, withhold));
+  const shown = rows.map((r) => entityCommentView(r, target, authors, egress));
   return { comments: shown, returned: shown.length };
+}
+
+async function egressOfScopes(projectId: string, actor: EntityCommentActor, door: ReadDoor) {
+  const level = await dataPolicyOf(projectId);
+  const reader = { agency: actor.agency, providerBound: door.providerBound };
+  return {
+    requirement: egressReading(level, reader, COMMENT_SURFACE.requirement),
+    workflow: egressReading(level, reader, COMMENT_SURFACE.workflow),
+    feedback: egressReading(level, reader, COMMENT_SURFACE.feedback),
+    issue: egressReading(level, reader, COMMENT_SURFACE.issue),
+  } satisfies Record<CommentScope, CommentEgress>;
 }
 
 export const DECISIONS_DEFAULT_LIMIT = 100;
@@ -246,17 +266,17 @@ export async function listDecisionsAs(
     )
     .orderBy(desc(comments.createdAt), desc(comments.id))
     .limit(limit);
-  const [authors, prefix, feedbackWithheld] = await Promise.all([
+  const [authors, prefix, egress] = await Promise.all([
     peopleOf(rows.map((r) => r.authorId)),
     activeIssuePrefix(projectId),
-    withholdFor(projectId, 'feedback', actor, door),
+    egressOfScopes(projectId, actor, door),
   ]);
   const decisions = rows.map((r) => {
     const scope = scopeOfArc(r);
     if (!scope)
       throw new Error(`comment ${r.id} breaks comments_scope_chk: it names no single target`);
     const target = targetOfRow(scope, r, prefix);
-    return entityCommentView(r, target, authors, scope === 'feedback' && feedbackWithheld);
+    return entityCommentView(r, target, authors, egress[scope]);
   });
   return { decisions, returned: decisions.length, limit };
 }

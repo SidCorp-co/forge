@@ -74,7 +74,15 @@ export function PrimaryActions({
   const s = d.standing;
   const busy = act.isPending;
   let primary: React.ReactNode = null;
-  if (proposed) {
+  if (d.status === "deferred") {
+    primary = d.canSignOff ? (
+      <Tooltip label={`Deferred: ${d.deferral?.reason ?? ""}. Undeferring puts it back at ${d.deferral?.from ?? "its status"}.`} multiline>
+        <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "undefer" })}>
+          Undefer
+        </Button>
+      </Tooltip>
+    ) : null;
+  } else if (proposed) {
     primary = inPeek ? (
       <Link
         href={`${requirementHref(slug, d.key)}?tab=revisions`}
@@ -93,6 +101,14 @@ export function PrimaryActions({
       <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "propose", revision: draft.revision })}>
         Propose r{draft.revision}
       </Button>
+    );
+  } else if (d.canSignOff && d.status === "agreed" && head && s.facts.stalePins.length > 0) {
+    primary = (
+      <Tooltip label={`Pins ${s.facts.stalePins.map((p) => `${p.flow} r${p.approved} (was r${p.pinned})`).join(", ")} in a new baseline of r${head.revision}`} multiline>
+        <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "repin", revision: head.revision })}>
+          Re-pin r{head.revision}
+        </Button>
+      </Tooltip>
     );
   } else if (d.canSignOff && d.status === "draft" && head && !draft) {
     primary = (

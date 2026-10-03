@@ -33,6 +33,7 @@ const DECIDES_A_REVISION: ReadonlySet<RequirementAct> = new Set([
   'return',
   'agree',
 ]);
+const WRITES_A_BASELINE: ReadonlySet<RequirementAct> = new Set(['agree', 'repin']);
 
 function revisionIn(detail: RequirementDetail, act: RequirementAct, revision: number | undefined) {
   const wanted = revision ?? detail.latestRevision?.revision;
@@ -68,11 +69,12 @@ export function requirementActAnswerOf(
       REQUIREMENT_REVISION_HEAD_FIELDS,
     );
   }
-  if (act === 'agree') {
+  if (WRITES_A_BASELINE.has(act)) {
     const baseline = detail.baselines[0];
     if (baseline) {
       answer.baseline = {
         revision: baseline.revision,
+        seq: baseline.seq,
         agreedAt: baseline.agreedAt,
         pins: baseline.pins.length,
       };

@@ -14,7 +14,9 @@
  */
 
 import { estimateTokens } from '../lib/token-estimator.js';
+import { changedSincePlan } from '../requirements/rules.js';
 import type { DesignStatus } from './design.js';
+import { planLine } from './run-context-plan.js';
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
 
 // cm:why a placeholder priced against the schema's own ceiling (40 steps, one design's header and cut manifest stay under 10k chars), until the record's chars/estTokens of the first twenty build jobs give a measured p90 to set it from — the design note asks for that measurement before a number
@@ -381,10 +383,12 @@ export interface RequirementContextRow {
   criteria: { id: string; code: string; body: string; form: string }[];
   baseline: {
     revision: number;
+    seq: number;
     agreedAt: string;
     pins: RequirementPinRow[];
   } | null;
   plannedRevision: number | null;
+  plannedBaselineSeq: number | null;
   plan: string | null;
 }
 
@@ -442,21 +446,14 @@ export function requirementContext(row: RequirementContextRow | null): LoadedReq
       `its latest baseline pins revision ${row.baseline.revision}, but the current revision is ${row.currentRevision}; the current revision is re-agreed before a job is given it`,
     );
   }
-  const changed = !!row.plan?.trim() && row.plannedRevision !== row.currentRevision;
+  const changed = changedSincePlan({ ...row, latestBaselineSeq: row.baseline.seq });
   const lines = [
     `## The requirement this issue delivers`,
     `${row.key} · ${row.title} — current revision ${row.currentRevision}, agreed (baseline r${row.baseline.revision}, ${row.baseline.agreedAt}).`,
   ];
   if (row.tldr) lines.push(row.tldr);
   if (row.goal) lines.push(`Goal: ${row.goal}`);
-  lines.push(
-    changed
-      ? `REQUIREMENT_CHANGED_SINCE_PLAN: this issue's plan was written against ${row.plannedRevision === null ? 'no revision' : `revision ${row.plannedRevision}`}; re-plan against revision ${row.currentRevision} before building.`
-      : row.plannedRevision !== null
-        ? `This issue's plan was written against revision ${row.plannedRevision}, the current one.`
-        : 'No plan has been written against it yet; a plan written now records revision ' +
-          `${row.currentRevision}.`,
-  );
+  lines.push(planLine(changed, row.plannedRevision, row.currentRevision));
   lines.push(
     '',
     'Business criteria (each issue criterion traces to one of these codes):',
@@ -468,7 +465,7 @@ export function requirementContext(row: RequirementContextRow | null): LoadedReq
   if (row.baseline.pins.length) {
     lines.push(
       '',
-      'Pinned at the agree (build to these revisions):',
+      'Pinned in the latest baseline (build to these revisions):',
       ...row.baseline.pins.map((p) =>
         p.workflowId
           ? `- design \`${p.flow ?? p.workflowId}\` at revision ${p.designRevision} — ${fetchLine(p.workflowId, p.designRevision)}`

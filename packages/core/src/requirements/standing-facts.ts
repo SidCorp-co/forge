@@ -65,12 +65,16 @@ export async function latestPinsOf(ids: readonly string[]) {
     SELECT p.requirement_id, w.flow, p.design_revision AS pinned, w.approved_revision AS approved
       FROM requirement_baseline_pins p
       JOIN project_workflows w ON w.id = p.workflow_id
+      JOIN requirement_workflows rw
+        ON rw.requirement_id = p.requirement_id AND rw.workflow_id = p.workflow_id
      WHERE p.requirement_id IN (${sql.join(
        ids.map((id) => sql`${id}`),
        sql`, `,
      )})
-       AND p.revision = (SELECT max(b.revision) FROM requirement_baselines b
-                          WHERE b.requirement_id = p.requirement_id)`)) as unknown as PinRow[];
+       AND (p.revision, p.baseline_seq) = (
+             SELECT b.revision, b.seq FROM requirement_baselines b
+              WHERE b.requirement_id = p.requirement_id
+              ORDER BY b.revision DESC, b.seq DESC LIMIT 1)`)) as unknown as PinRow[];
   return [...rows].map((r) => ({
     requirementId: r.requirement_id,
     flow: r.flow,

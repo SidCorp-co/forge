@@ -23,6 +23,7 @@ import {
 } from '../ecosystem/contract/run-context.js';
 import { loadContractContext } from '../ecosystem/contract/run-context-service.js';
 import { buildPipelinePreambleStructured, type PreambleBlock } from '../lib/chat-preamble.js';
+import { dataPolicyOf, type EgressSurface, egressText } from '../lib/data-egress.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import { logger } from '../logger.js';
 import type { DispatchState } from '../project-config/dispatch-policy.js';
@@ -185,6 +186,25 @@ async function requirementServedBy(
   }
 }
 
+// cm:guard the artifact block reaches the job's agent through the one egress rule, the requirement
+// as surface `requirement` and the designs as `design`; a refusal stops the job by name
+async function givenToAgent(
+  projectId: string,
+  surface: EgressSurface,
+  text: string | null,
+  subject: string,
+): Promise<string | null> {
+  if (!text) return null;
+  const out = egressText(await dataPolicyOf(projectId), surface, text, subject);
+  if (!out.ok) {
+    throw new JobContextRefused(
+      out.refusal.code,
+      `${out.refusal.code}: ${subject}: ${out.refusal.detail}`,
+    );
+  }
+  return out.text;
+}
+
 function withContextBlock(
   prior: { systemPrompt: string; blocks: PreambleBlock[] },
   id: PreambleBlock['id'],
@@ -233,7 +253,12 @@ export async function buildJobSystemPrompt(input: {
   const contracts = await contractsNamedBy(projectId, issueRow, subject);
   const namedContracts = await contractVersionsNamedBy(projectId, issueRow, subject);
   const artifactBlock =
-    [requirement?.text, renderArtifactContext(designs)].filter(Boolean).join('\n\n') || null;
+    [
+      await givenToAgent(projectId, 'requirement', requirement?.text ?? null, subject),
+      await givenToAgent(projectId, 'design', renderArtifactContext(designs) || null, subject),
+    ]
+      .filter(Boolean)
+      .join('\n\n') || null;
   const { systemPrompt, blocks } = withContextBlock(
     withContextBlock(
       withContextBlock(

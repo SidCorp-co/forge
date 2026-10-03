@@ -1,4 +1,11 @@
-import { REVISION_STATES } from '@forge/contracts/requirements';
+import {
+  BASELINE_ACTS,
+  type BaselineReadiness,
+  DEFERRABLE_STATUSES,
+  REQUIREMENT_DEFERRAL_ACTS,
+  REQUIREMENT_STATUSES,
+  REVISION_STATES,
+} from '@forge/contracts/requirements';
 import { REQUIREMENT_CRITERION_FORMS } from '@forge/contracts/suggestions';
 import { sql } from 'drizzle-orm';
 import {
@@ -21,8 +28,9 @@ import { contractVersions } from './schema-ecosystem.js';
 import { suggestions } from './schema-suggestions.js';
 import { projectWorkflowDesigns, projectWorkflows } from './schema-workflows.js';
 
-export const REQUIREMENT_STATUSES = ['draft', 'agreed', 'accepted', 'dropped'] as const;
-export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
+export { REQUIREMENT_STATUSES, type RequirementStatus } from '@forge/contracts/requirements';
+
+const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
 export { REVISION_STATES, type RevisionState } from '@forge/contracts/requirements';
 
@@ -53,7 +61,7 @@ export const requirements = pgTable(
     statusIdx: index('requirements_project_status_idx').on(t.projectId, t.status),
     statusChk: check(
       'requirements_status_chk',
-      sql`${t.status} IN ('draft', 'agreed', 'accepted', 'dropped')`,
+      sql`${t.status} IN (${inList(REQUIREMENT_STATUSES)})`,
     ),
     seqChk: check('requirements_seq_chk', sql`${t.reqSeq} >= 1`),
     headFk: foreignKey({
@@ -93,6 +101,9 @@ export const requirementRevisions = pgTable(
     decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'restrict' }),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     returnReason: text('return_reason'),
+    // cm:why the accepting signer's own words, kept on the act itself; the reason column above is
+    // the author's, and a re-baseline copies this one, never that one (ISS-84)
+    acceptReason: text('accept_reason'),
     // cm:why an accepted suggestion's effect points back at it (suggestion-lifecycle step accepted)
     fromSuggestionId: uuid('from_suggestion_id').references((): AnyPgColumn => suggestions.id, {
       onDelete: 'no action',
@@ -185,20 +196,30 @@ export const requirementWorkflows = pgTable(
 );
 
 // cm:why the agree is a row, not a column: re-agreeing writes a new baseline and the earlier one
-// stays, so "what was agreed at r4" is a read after r5 is agreed
+// stays, so "what was agreed at r4" is a read after r5 is agreed; a re-pin onto newly approved
+// designs is a further row at the same revision (seq 2, 3, …), so the latest is the highest
+// (revision, seq) and an earlier pin set stays readable (ISS-86)
 export const requirementBaselines = pgTable(
   'requirement_baselines',
   {
     requirementId: uuid('requirement_id').notNull(),
     revision: integer('revision').notNull(),
+    seq: integer('seq').notNull().default(1),
+    act: text('act', { enum: BASELINE_ACTS }).notNull().default('agree'),
     agreedBy: uuid('agreed_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     agreedAt: timestamp('agreed_at', { withTimezone: true }).notNull().defaultNow(),
     reason: text('reason'),
+    readiness: jsonb('readiness').$type<BaselineReadiness>(),
   },
   (t) => ({
-    pk: primaryKey({ columns: [t.requirementId, t.revision] }),
+    pk: primaryKey({ columns: [t.requirementId, t.revision, t.seq] }),
+    seqChk: check('requirement_baselines_seq_chk', sql`${t.seq} >= 1`),
+    actChk: check(
+      'requirement_baselines_act_chk',
+      sql`${t.act} IN (${inList(BASELINE_ACTS)}) AND (${t.act} = 'agree') = (${t.seq} = 1)`,
+    ),
     revisionFk: foreignKey({
       name: 'requirement_baselines_revision_fk',
       columns: [t.requirementId, t.revision],
@@ -233,6 +254,48 @@ export const requirementReturns = pgTable(
   }),
 );
 
+// cm:why a defer and an undefer are decisions a requirement can take more than once, so each is
+// its own insert-only row (`requirement_deferral_guard()`, migration 0362); the head's status says
+// `deferred`, and the latest defer row says from where, why and until when (ISS-85)
+export const requirementDeferrals = pgTable(
+  'requirement_deferrals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    requirementId: uuid('requirement_id')
+      .notNull()
+      .references((): AnyPgColumn => requirements.id, { onDelete: 'cascade' }),
+    act: text('act', { enum: REQUIREMENT_DEFERRAL_ACTS }).notNull(),
+    fromStatus: text('from_status', {
+      enum: [...DEFERRABLE_STATUSES, 'deferred'] as const,
+    }).notNull(),
+    targetPhase: text('target_phase'),
+    reason: text('reason'),
+    decidedBy: uuid('decided_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    actChk: check(
+      'requirement_deferrals_act_chk',
+      sql`${t.act} IN (${inList(REQUIREMENT_DEFERRAL_ACTS)})`,
+    ),
+    fromChk: check(
+      'requirement_deferrals_from_chk',
+      sql`(${t.act} = 'defer' AND ${t.fromStatus} IN (${inList(DEFERRABLE_STATUSES)})) OR (${t.act} = 'undefer' AND ${t.fromStatus} = 'deferred')`,
+    ),
+    reasonChk: check(
+      'requirement_deferrals_reason_chk',
+      sql`${t.act} <> 'defer' OR ${t.reason} ~ '[^[:space:]]'`,
+    ),
+    phaseChk: check(
+      'requirement_deferrals_phase_chk',
+      sql`${t.act} = 'defer' OR ${t.targetPhase} IS NULL`,
+    ),
+    requirementIdx: index('requirement_deferrals_requirement_idx').on(t.requirementId, t.decidedAt),
+  }),
+);
+
 // cm:why one pin per linked design revision or contract version at the agree: an exclusive arc over
 // two composite keys, each a real foreign key, so a pinned revision or version cannot be deleted
 export const requirementBaselinePins = pgTable(
@@ -241,6 +304,7 @@ export const requirementBaselinePins = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     requirementId: uuid('requirement_id').notNull(),
     revision: integer('revision').notNull(),
+    baselineSeq: integer('baseline_seq').notNull().default(1),
     workflowId: uuid('workflow_id'),
     designRevision: integer('design_revision'),
     providerProjectId: uuid('provider_project_id'),
@@ -250,8 +314,12 @@ export const requirementBaselinePins = pgTable(
   (t) => ({
     baselineFk: foreignKey({
       name: 'requirement_baseline_pins_baseline_fk',
-      columns: [t.requirementId, t.revision],
-      foreignColumns: [requirementBaselines.requirementId, requirementBaselines.revision],
+      columns: [t.requirementId, t.revision, t.baselineSeq],
+      foreignColumns: [
+        requirementBaselines.requirementId,
+        requirementBaselines.revision,
+        requirementBaselines.seq,
+      ],
     }).onDelete('cascade'),
     designFk: foreignKey({
       name: 'requirement_baseline_pins_design_fk',
@@ -267,7 +335,11 @@ export const requirementBaselinePins = pgTable(
         contractVersions.version,
       ],
     }),
-    baselineIdx: index('requirement_baseline_pins_baseline_idx').on(t.requirementId, t.revision),
+    baselineIdx: index('requirement_baseline_pins_baseline_idx').on(
+      t.requirementId,
+      t.revision,
+      t.baselineSeq,
+    ),
     arcChk: check(
       'requirement_baseline_pins_arc_chk',
       sql`(num_nonnulls(${t.workflowId}, ${t.designRevision}) = 2 AND num_nonnulls(${t.providerProjectId}, ${t.contractSlug}, ${t.contractVersion}) = 0) OR (num_nonnulls(${t.workflowId}, ${t.designRevision}) = 0 AND num_nonnulls(${t.providerProjectId}, ${t.contractSlug}, ${t.contractVersion}) = 3)`,

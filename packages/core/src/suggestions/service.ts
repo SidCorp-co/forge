@@ -34,9 +34,16 @@ import { emitIssueFieldUpdate } from '../issues/update-hook.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { personActRefusalFor } from '../lib/person-act.js';
+import { hooks } from '../pipeline/hooks.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { lockRequirements } from '../requirements/service.js';
-import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
+import {
+  type AcceptChannel,
+  breakdownGuardIn,
+  type Effect,
+  type EffectWritten,
+  writeEffect,
+} from './effects.js';
 import {
   headOf,
   onTarget,
@@ -152,8 +159,19 @@ export async function createSuggestion(input: {
   let id = '';
   const refusals = await inTx(async (tx) => {
     await lockTarget(tx, projectId, target);
-    const stale = baseStaleRefusal(input.baseRevision, await headOf(tx, projectId, target));
+    const head = await headOf(tx, projectId, target);
+    const stale = baseStaleRefusal(input.baseRevision, head);
     if (stale) return [stale];
+    if (kind === 'breakdown' && target.type === 'requirement') {
+      const guard = await breakdownGuardIn(
+        tx,
+        projectId,
+        target.id,
+        head,
+        SUGGESTION_PAYLOADS.breakdown.schema.parse(payload),
+      );
+      if (guard.refusals.length) return guard.refusals;
+    }
     const open = await tx
       .select({ id: suggestions.id, kind: suggestions.kind, fingerprint: suggestions.fingerprint })
       .from(suggestions)
@@ -201,6 +219,18 @@ async function announceEffect(written: EffectWritten, projectId: string, actor: 
       written.relations,
     );
   }
+  if (written.routeComment) {
+    const { issueId, row, authored } = written.routeComment;
+    await hooks.emit('commentCreated', {
+      issueId,
+      projectId,
+      actor: who,
+      authored,
+      commentId: row.id,
+      body: row.body,
+      parentId: null,
+    });
+  }
   if (written.updatedIssue?.written.length) {
     const { before } = written.updatedIssue;
     const [after] = await db.select().from(issues).where(eq(issues.id, before.id));
@@ -227,6 +257,7 @@ async function acceptDuplicateOfIssue(
   projectId: string,
   first: Row,
   actor: SuggestionActor,
+  reason: string | null,
 ): Promise<SuggestionOutcome> {
   const target = targetOfRow(first);
   const p = SUGGESTION_PAYLOADS.duplicate.schema.parse(first.payload);
@@ -293,9 +324,9 @@ async function acceptDuplicateOfIssue(
           );
           await tx
             .update(suggestions)
-            .set({ status: 'accepted', decidedBy: actor.userId, decidedAt: new Date() })
+            .set({ status: 'accepted', decidedBy: actor.userId, decidedAt: new Date(), reason })
             .where(eq(suggestions.id, row.id));
-          await recordDecision(tx, row, actor, 'accepted');
+          await recordDecision(tx, row, actor, 'accepted', reason);
         },
       },
     );
@@ -323,8 +354,11 @@ export async function acceptSuggestion(input: {
   id: string;
   actor: SuggestionActor;
   channel?: AcceptChannel | undefined;
+  /** The person's reason, and the authority it is accepted under; kept on the row (ISS-84). */
+  reason?: string | null | undefined;
 }): Promise<SuggestionOutcome> {
   const { projectId, actor } = input;
+  const reason = input.reason?.trim() || null;
   const first = await rowOf(db, projectId, input.id);
   const forbidden =
     (await personActRefusalFor(
@@ -336,7 +370,7 @@ export async function acceptSuggestion(input: {
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const target = targetOfRow(first);
   if (first.kind === 'duplicate' && target.type === 'issue' && first.status === 'proposed') {
-    return acceptDuplicateOfIssue(projectId, first, actor);
+    return acceptDuplicateOfIssue(projectId, first, actor, reason);
   }
   let written: EffectWritten = { refusals: null };
   const stale: { reason: string | null } = { reason: null };
@@ -357,9 +391,9 @@ export async function acceptSuggestion(input: {
     if (written.refusals) return written.refusals;
     await tx
       .update(suggestions)
-      .set({ status: 'accepted', decidedBy: actor.userId, decidedAt: new Date() })
+      .set({ status: 'accepted', decidedBy: actor.userId, decidedAt: new Date(), reason })
       .where(eq(suggestions.id, row.id));
-    await recordDecision(tx, row, actor, 'accepted');
+    await recordDecision(tx, row, actor, 'accepted', reason);
     return null;
   });
   if (stale.reason) {

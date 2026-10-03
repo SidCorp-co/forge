@@ -9,6 +9,7 @@
 import type { FeedbackTriageEffect } from '@forge/contracts/feedback';
 import { SUGGESTION_PAYLOADS, type SuggestionEffect } from '@forge/contracts/suggestions';
 import { and, eq, sql } from 'drizzle-orm';
+import { insertComment, type WrittenComment } from '../comments/service.js';
 import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { requirementCriteria, requirementRevisions } from '../db/schema-requirements.js';
@@ -17,10 +18,12 @@ import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import { type TriageWritten, triageIn } from '../feedback/triage.js';
 import { insertIssueRow } from '../issues/create-service.js';
 import { putCriteria } from '../issues/criteria/store.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { activeIssuePrefix, heldIssuePrefixes } from '../issues/issue-prefix-read.js';
+import { isUuid } from '../issues/issue-route-ref.js';
 import { type PendingIssueRelation, writeIssueRelations } from '../issues/relations-service.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
+import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import type { NamedRefusal } from '../project-config/respond.js';
+import { plannedBaselineSeqIn } from '../requirements/baselines.js';
 import { requirementKey, rowIn } from '../requirements/read.js';
 import { linkIssueRefusal } from '../requirements/rules.js';
 import {
@@ -30,6 +33,7 @@ import {
   type RevisionWrite,
 } from '../requirements/service.js';
 import { type Row, type SuggestionActor, targetOfRow } from './read.js';
+import { blockerRefusal, breakdownFaults } from './rules.js';
 
 export type Effect = SuggestionEffect | FeedbackTriageEffect;
 export type AcceptChannel = 'web' | 'mcp';
@@ -44,11 +48,8 @@ export interface EffectWritten {
   relations?: PendingIssueRelation[];
   /** An issue whose fields the accept moved, announced after the commit. */
   updatedIssue?: { before: typeof issues.$inferSelect; written: string[] };
+  routeComment?: { issueId: string; row: WrittenComment['row']; authored: 'human' | 'agent' };
 }
-
-const refuse = (code: string, path: string, detail: string): EffectWritten => ({
-  refusals: [{ code, path, detail }],
-});
 
 export const undecided = (kind: string, path: string, what: string): NamedRefusal => ({
   code: 'SUGGESTION_EFFECT_UNDECIDED',
@@ -78,59 +79,96 @@ async function liveCodes(tx: Tx, requirementId: string, revision: number) {
 
 type Breakdown = ReturnType<(typeof SUGGESTION_PAYLOADS)['breakdown']['schema']['parse']>;
 
-/** The first blockedBy entry that closes a cycle among the proposed issues, as [issue, entry]. */
-function cycleAt(p: Breakdown): [number, number] | null {
-  const state = new Map<number, 'open' | 'done'>();
-  const visit = (i: number): [number, number] | null => {
-    state.set(i, 'open');
-    for (const [j, k] of (p.issues[i]?.blockedBy ?? []).entries()) {
-      if (k >= p.issues.length || k === i) continue;
-      if (state.get(k) === 'open') return [i, j];
-      const found = state.has(k) ? null : visit(k);
-      if (found) return found;
-    }
-    state.set(i, 'done');
-    return null;
+/** What a breakdown is checked against, at propose and again at accept: the requirement is agreed,
+ *  and the payload's traces and blockers hold at `head`. */
+/** Each blockedBy entry that names an existing issue, read in the caller's transaction. */
+async function namedBlockersIn(tx: Tx, projectId: string, p: Breakdown) {
+  const refusals: NamedRefusal[] = [];
+  const ids = new Map<string, string>();
+  const prefix = await activeIssuePrefix(projectId);
+  let held: string[] = [];
+  const cols = {
+    id: issues.id,
+    projectId: issues.projectId,
+    issSeq: issues.issSeq,
+    status: issues.status,
+    archivedAt: issues.archivedAt,
   };
-  for (let i = 0; i < p.issues.length; i++) {
-    const found = state.has(i) ? null : visit(i);
-    if (found) return found;
+  for (const [i, item] of p.issues.entries()) {
+    for (const [j, ref] of (item.blockedBy ?? []).entries()) {
+      if (typeof ref !== 'string') continue;
+      let unreadable: string | null = null;
+      let rows: {
+        id: string;
+        projectId: string;
+        issSeq: number;
+        status: string;
+        archivedAt: Date | null;
+      }[] = [];
+      if (isUuid(ref)) {
+        rows = await tx.select(cols).from(issues).where(eq(issues.id, ref));
+      } else {
+        if (issueRefNeedsHeldPrefixes(ref) && !held.length)
+          held = await heldIssuePrefixes(projectId);
+        const parsed = parseIssueRef(ref, held);
+        if (parsed.ok) {
+          rows = await tx
+            .select(cols)
+            .from(issues)
+            .where(and(eq(issues.projectId, projectId), eq(issues.issSeq, parsed.issSeq)));
+        } else unreadable = parsed.message;
+      }
+      const row = rows[0];
+      const found = row
+        ? {
+            key: formatIssueRef(prefix, row.issSeq),
+            projectId: row.projectId,
+            status: row.status,
+            archived: row.archivedAt !== null,
+          }
+        : null;
+      const path = `/payload/issues/${i}/blockedBy/${j}`;
+      const refusal = blockerRefusal(path, ref, projectId, found, unreadable);
+      if (refusal) refusals.push(refusal);
+      else if (row) ids.set(ref, row.id);
+    }
   }
-  return null;
+  return { refusals, ids };
 }
 
-function breakdownFaults(p: Breakdown, codes: ReadonlyMap<string, string>, revision: number) {
-  const out: NamedRefusal[] = [];
-  const cycle = cycleAt(p);
-  if (cycle) {
-    out.push({
-      code: 'SUGGESTION_PAYLOAD_INVALID',
-      path: `/payload/issues/${cycle[0]}/blockedBy/${cycle[1]}`,
-      detail:
-        'the blockedBy edges among the proposed issues form a cycle, so none of them could ever start.',
-    });
+export async function breakdownGuardIn(
+  tx: Tx,
+  projectId: string,
+  requirementId: string,
+  head: number | null,
+  p: Breakdown,
+): Promise<{
+  refusals: NamedRefusal[];
+  codes: ReadonlyMap<string, string>;
+  blockers: ReadonlyMap<string, string>;
+}> {
+  const req = await rowIn(tx, projectId, requirementId);
+  const notAgreed = linkIssueRefusal(req.status as Parameters<typeof linkIssueRefusal>[0]);
+  if (notAgreed || head === null) {
+    return {
+      refusals: [
+        {
+          code: notAgreed?.code ?? 'REQUIREMENT_NOT_AGREED',
+          path: '/target',
+          detail: `${requirementKey(req.reqSeq)} is ${req.status}; a breakdown files issues against an agreed requirement.`,
+        },
+      ],
+      codes: new Map(),
+      blockers: new Map(),
+    };
   }
-  p.issues.forEach((issue, i) => {
-    (issue.criteria ?? []).forEach((c, j) => {
-      if (c.tracesTo && !codes.has(c.tracesTo)) {
-        out.push({
-          code: 'SUGGESTION_PAYLOAD_INVALID',
-          path: `/payload/issues/${i}/criteria/${j}/tracesTo`,
-          detail: `${c.tracesTo} is not a business criterion of revision ${revision}; it holds ${[...codes.keys()].join(', ') || 'none'}.`,
-        });
-      }
-    });
-    (issue.blockedBy ?? []).forEach((k, j) => {
-      if (k >= p.issues.length || k === i) {
-        out.push({
-          code: 'SUGGESTION_PAYLOAD_INVALID',
-          path: `/payload/issues/${i}/blockedBy/${j}`,
-          detail: `blockedBy names issue index ${k}, which is ${k === i ? 'this issue itself' : `outside the ${p.issues.length} proposed issues`}.`,
-        });
-      }
-    });
-  });
-  return out;
+  const codes = await liveCodes(tx, req.id, head);
+  const named = await namedBlockersIn(tx, projectId, p);
+  return {
+    refusals: [...breakdownFaults(p, codes, head), ...named.refusals],
+    codes,
+    blockers: named.ids,
+  };
 }
 
 // cm:why workflow requirement-to-delivery step `approve`: core creates every issue with
@@ -145,19 +183,12 @@ async function breakdownEffect(
   channel: AcceptChannel,
 ): Promise<EffectWritten> {
   const target = targetOfRow(row);
-  const req = await rowIn(tx, projectId, target.id);
-  const notAgreed = linkIssueRefusal(req.status as Parameters<typeof linkIssueRefusal>[0]);
-  if (notAgreed || head === null) {
-    return refuse(
-      'REQUIREMENT_NOT_AGREED',
-      '/target',
-      `${requirementKey(req.reqSeq)} is ${req.status}; a breakdown files issues against an agreed requirement.`,
-    );
-  }
   const p = SUGGESTION_PAYLOADS.breakdown.schema.parse(row.payload);
-  const codes = await liveCodes(tx, req.id, head);
-  const faults = breakdownFaults(p, codes, head);
-  if (faults.length) return { refusals: faults };
+  const guard = await breakdownGuardIn(tx, projectId, target.id, head, p);
+  if (guard.refusals.length || head === null) return { refusals: guard.refusals };
+  const { codes, blockers } = guard;
+  const req = await rowIn(tx, projectId, target.id);
+  const plannedBaselineSeq = await plannedBaselineSeqIn(tx, req.id, head);
   const ids: string[] = [];
   for (const item of p.issues) {
     const issue = await insertIssueRow(tx, {
@@ -171,6 +202,8 @@ async function breakdownEffect(
       createdVia: channel,
       requirementId: req.id,
       plannedRevision: head,
+      plannedBaselineSeq,
+      fromSuggestionId: row.id,
     });
     ids.push(issue.id);
     const criteria = (item.criteria ?? []).map((c, j) => ({
@@ -188,7 +221,7 @@ async function breakdownEffect(
   for (const [i, item] of p.issues.entries()) {
     const edges = (item.blockedBy ?? []).map((k) => ({
       kind: 'blocks' as const,
-      dependsOnId: ids[k] as string,
+      dependsOnId: (typeof k === 'number' ? ids[k] : blockers.get(k)) as string,
       reason: `breakdown of ${requirementKey(req.reqSeq)} (suggestion ${row.id})`,
     }));
     relations.push(...(await writeIssueRelations(writer, projectId, ids[i] as string, edges, tx)));
@@ -248,31 +281,73 @@ async function issueRowOf(tx: Tx, projectId: string, issueId: string) {
   return issue;
 }
 
-// cm:why a triage suggestion on an issue carries priority and category, which an accept sets; its
-// free-text `route` names nothing the issue lifecycle defines, so it is refused, never dropped
-async function issueTriageEffect(tx: Tx, projectId: string, row: Row): Promise<EffectWritten> {
-  const p = SUGGESTION_PAYLOADS.triage.schema.parse(row.payload);
-  if (p.route !== undefined) {
-    return { refusals: [undecided('triage', '/payload/route', 'a triage route on an issue')] };
-  }
-  const before = await issueRowOf(tx, projectId, targetOfRow(row).id);
-  const set: Partial<typeof issues.$inferInsert> = {};
+type IssueTriage = ReturnType<(typeof SUGGESTION_PAYLOADS)['triage']['schema']['parse']>;
+
+// cm:why decision on ISS-58 (2026-10-04): a triage suggestion on an issue applies only the fields the
+// feedback-triage design names, priority, category and complexity; its free-text `route` is not an
+// effect, so it is kept as a note comment on the issue rather than refused or dropped
+export function issueTriageOf(p: IssueTriage, suggestionId: string) {
+  const set: Partial<Pick<typeof issues.$inferInsert, 'priority' | 'category' | 'complexity'>> = {};
   if (p.priority) set.priority = p.priority;
   if (p.category !== undefined) set.category = p.category;
+  if (p.complexity) set.complexity = p.complexity;
+  const routeNote =
+    p.route === undefined
+      ? null
+      : `Triage route (suggestion ${suggestionId}): ${p.route}\n\n${p.note}`;
+  return { set, routeNote };
+}
+
+async function issueTriageEffect(
+  tx: Tx,
+  projectId: string,
+  row: Row,
+  actor: SuggestionActor,
+): Promise<EffectWritten> {
+  const { set, routeNote } = issueTriageOf(
+    SUGGESTION_PAYLOADS.triage.schema.parse(row.payload),
+    row.id,
+  );
+  const before = await issueRowOf(tx, projectId, targetOfRow(row).id);
   if (Object.keys(set).length) {
     await tx
       .update(issues)
       .set({ ...set, updatedAt: new Date() })
       .where(eq(issues.id, before.id));
   }
+  const note = routeNote
+    ? await insertComment(
+        {
+          issueId: before.id,
+          authorId: authorOf(row, actor).userId,
+          authorDeviceId: null,
+          body: routeNote,
+          format: 'markdown',
+          parentId: null,
+          intent: 'note',
+        },
+        tx,
+      )
+    : null;
   return {
     refusals: null,
     updatedIssue: { before, written: Object.keys(set) },
+    ...(note
+      ? {
+          routeComment: {
+            issueId: before.id,
+            row: note.row,
+            authored: row.producerKind === 'person' ? ('human' as const) : ('agent' as const),
+          },
+        }
+      : {}),
     effect: {
       issueId: before.id,
       issue: formatIssueRef(await activeIssuePrefix(projectId), before.issSeq),
-      priority: p.priority ?? null,
-      category: p.category ?? null,
+      priority: set.priority ?? null,
+      category: set.category ?? null,
+      complexity: set.complexity ?? null,
+      routeCommentId: note?.row.id ?? null,
     },
   };
 }
@@ -364,7 +439,7 @@ export async function writeEffect(
     return readinessEffect(tx, projectId, row);
   }
   if (row.kind === 'triage' && target.type === 'issue') {
-    return issueTriageEffect(tx, projectId, row);
+    return issueTriageEffect(tx, projectId, row, actor);
   }
   if (row.kind === 'duplicate' && target.type === 'requirement') {
     return {

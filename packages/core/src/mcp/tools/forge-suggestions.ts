@@ -10,6 +10,7 @@ import {
   suggestionSummaryOf,
 } from '@forge/contracts/suggestions';
 import { z } from 'zod';
+import { dataPolicyOf, egressAt, egressOr } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
 import {
   listSuggestions,
@@ -77,10 +78,15 @@ const DESCRIPTION =
   'target SUGGESTION_QUEUE_FULL, a payload that does not parse for its kind SUGGESTION_PAYLOAD_INVALID. ' +
   'revision_diff takes { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } on a ' +
   'requirement; requirement_draft takes { title, reason, … } on an issue; readiness { checks: [{ check, passed, detail? }] }; ' +
-  'breakdown { issues: [{ title, description?, criteria?: [{ body, tracesTo? }] }], uncovered? }; ' +
+  'breakdown { issues: [{ title, description?, criteria?: [{ body, tracesTo? }], blockedBy?: [index | issue key] }], uncovered? } — ' +
+  'a blockedBy number is another issue of this breakdown, a string an existing live issue of the project (ISS-12 or uuid), ' +
+  'so the order can run after another requirement’s work; checked at create and at accept (SUGGESTION_PAYLOAD_INVALID for a BC ' +
+  'the base revision lacks or a blocker cycle, SUGGESTION_BLOCKER_UNKNOWN, SUGGESTION_BLOCKER_TERMINAL), and accepting it files ' +
+  'every issue at draft, linked, traced and edged, in one transaction; ' +
   'triage { note, priority?, category?, route? } on an issue; duplicate { duplicateOf, similarity?, note? }; ' +
   'feedback_triage on `feedback` (FB-n), baseRevision null: { route: issue | revision | new_requirement | answer | duplicate, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }; accepting it writes the route (forge_feedback_items). ' +
-  'accept / reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); ' +
+  'accept { suggestionId, reason? } and reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); ' +
+  'an accept’s reason is kept on the suggestion, and is where the authority behind it is named. ' +
   'accepting a revision_diff writes a new DRAFT revision, never a current one. withdraw: the producer retracts its own. ' +
   'list: { requirement | issue, status? } answers each suggestion as { id, kind, status, target, baseRevision, ' +
   'producerKind, producerId, model, decidedBy, decidedAt, createdAt, payloadPurgedAt }, without its payload, ' +
@@ -131,8 +137,23 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         target: targetOf(input),
         statuses: input.status,
       });
+      const level = await dataPolicyOf(projectId);
+      const rows =
+        input.view === 'full'
+          ? listed.suggestions.map((v) =>
+              egressOr(
+                egressAt(
+                  level,
+                  v.target.type === 'feedback' ? 'feedback' : 'suggestion',
+                  v,
+                  `suggestion ${v.id}`,
+                ),
+                { id: v.id, kind: v.kind, status: v.status, target: v.target },
+              ),
+            )
+          : projectMany(input.view, listed.suggestions, suggestionSummaryOf);
       return {
-        suggestions: projectMany(input.view, listed.suggestions, suggestionSummaryOf),
+        suggestions: rows,
         open: listed.open,
         ...summaryNotice(input.view, "view: 'full' for each suggestion's payload and reason"),
       };
@@ -164,6 +185,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
           id: need(input, 'suggestionId'),
           actor,
           channel: 'mcp',
+          reason: input.reason,
         }),
       );
     case 'reject':
