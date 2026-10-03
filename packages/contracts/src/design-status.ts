@@ -4,7 +4,12 @@
 
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 
-export const DESIGN_STATUSES = ["draft", "proposed", "approved", "returned"] as const;
+export const DESIGN_STATUSES = [
+	"draft",
+	"proposed",
+	"approved",
+	"returned",
+] as const;
 export type DesignStatus = (typeof DESIGN_STATUSES)[number];
 
 export const DESIGN_STATUS_LABELS: Record<DesignStatus, string> = {
@@ -30,7 +35,8 @@ export const DESIGN_STATUS_GLYPHS: Record<DesignStatus, string> = {
 
 export const DESIGN_STATUS_HINTS: Record<DesignStatus, string> = {
 	draft: "draft: the master is still drawing it",
-	proposed: "proposed: nothing that builds it is dispatched until a person approves it",
+	proposed:
+		"proposed: nothing that builds it is dispatched until a person approves it",
 	approved: "approved: work that builds it may start",
 	returned: "returned: sent back to the master to revise",
 };

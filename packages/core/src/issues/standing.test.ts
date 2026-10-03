@@ -28,7 +28,12 @@ const base = (over: Partial<IssueStandingInput> = {}): IssueStandingInput => ({
 });
 
 const live = { holder: 'run-4', verdict: 'live' as const, expiresAt: '2026-10-04T10:30:00Z' };
-const edge = (status: IssueStandingInput['status'], key = 'ISS-9') => ({ id: key, key, title: 't', status });
+const edge = (status: IssueStandingInput['status'], key = 'ISS-9') => ({
+  id: key,
+  key,
+  title: 't',
+  status,
+});
 
 describe('whose turn an issue is', () => {
   it('closed and dropped are done, waiting on nobody', () => {
@@ -53,7 +58,9 @@ describe('whose turn an issue is', () => {
   });
 
   it('a reader who cannot write sees a person owed, not themselves', () => {
-    const s = deriveIssueStanding(base({ status: 'needs_info', viewer: { userId: 'u2', canWrite: false } }));
+    const s = deriveIssueStanding(
+      base({ status: 'needs_info', viewer: { userId: 'u2', canWrite: false } }),
+    );
     expect(s.waitingOn).toMatchObject({ kind: 'person', who: 'A project writer' });
   });
 
@@ -79,14 +86,21 @@ describe('whose turn an issue is', () => {
 
   it('a live lease is moving, naming the step and how long it has run', () => {
     const s = deriveIssueStanding(
-      base({ status: 'in_progress', lease: live, step: 'test', stepStartedAt: new Date('2026-10-04T09:48:00Z') }),
+      base({
+        status: 'in_progress',
+        lease: live,
+        step: 'test',
+        stepStartedAt: new Date('2026-10-04T09:48:00Z'),
+      }),
     );
     expect(s.attentionGroup).toBe('moving');
     expect(s.waitingOn).toMatchObject({ kind: 'run', who: 'Run', act: 'Test · 12 min' });
   });
 
   it('an expired lease holds nothing: in_progress with no holder is stuck', () => {
-    const s = deriveIssueStanding(base({ status: 'in_progress', lease: { ...live, verdict: 'expired' } }));
+    const s = deriveIssueStanding(
+      base({ status: 'in_progress', lease: { ...live, verdict: 'expired' } }),
+    );
     expect(s.attentionGroup).toBe('stuck');
     expect(s.waitingOn.who).toBe('No holder');
   });
@@ -94,7 +108,12 @@ describe('whose turn an issue is', () => {
   it('a live unsettled blocker makes an open issue stuck on that blocker', () => {
     const s = deriveIssueStanding(base({ blockedBy: [edge('in_progress', 'ISS-1402')] }));
     expect(s.attentionGroup).toBe('stuck');
-    expect(s.waitingOn).toMatchObject({ kind: 'issue', who: 'ISS-1402', act: 'running', ref: 'ISS-1402' });
+    expect(s.waitingOn).toMatchObject({
+      kind: 'issue',
+      who: 'ISS-1402',
+      act: 'running',
+      ref: 'ISS-1402',
+    });
     expect(s.blockedBy.map((b) => b.key)).toEqual(['ISS-1402']);
   });
 
@@ -107,14 +126,19 @@ describe('whose turn an issue is', () => {
   });
 
   it('reopen is stuck on the master; open and approved are queued for one', () => {
-    expect(deriveIssueStanding(base({ status: 'reopen' })).waitingOn).toMatchObject({ kind: 'master', act: 're-run after reopen' });
+    expect(deriveIssueStanding(base({ status: 'reopen' })).waitingOn).toMatchObject({
+      kind: 'master',
+      act: 're-run after reopen',
+    });
     expect(deriveIssueStanding(base({ status: 'reopen' })).attentionGroup).toBe('stuck');
     expect(deriveIssueStanding(base({ status: 'open' })).waitingOn.act).toBe('free slot');
     expect(deriveIssueStanding(base({ status: 'approved' })).waitingOn.act).toBe('build next');
   });
 
   it('a done issue blocks nothing', () => {
-    expect(deriveIssueStanding(base({ status: 'closed', blocks: [edge('open')] })).blocks).toEqual([]);
+    expect(deriveIssueStanding(base({ status: 'closed', blocks: [edge('open')] })).blocks).toEqual(
+      [],
+    );
   });
 });
 

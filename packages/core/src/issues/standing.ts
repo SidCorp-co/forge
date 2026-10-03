@@ -15,7 +15,12 @@ import type {
   IssueStanding,
   IssueWaitingOn,
 } from '@forge/contracts/issue-standing';
-import type { IssueStatusTone, KernelIssueStatus, WorkStep } from '@forge/contracts/issue-vocabulary';
+import {
+  type IssueStatusTone,
+  issueStatusToneOn,
+  type KernelIssueStatus,
+  type WorkStep,
+} from '@forge/contracts/issue-vocabulary';
 
 /** Settled blockers release their dependents (`dependency-effects.ts:BLOCKER_SETTLED`). */
 const SETTLED: readonly string[] = ['awaiting_release', 'closed'];
@@ -80,28 +85,9 @@ const wait = (
   ref: string | null = null,
 ): IssueWaitingOn => ({ kind, who, act, rule, ref });
 
-/** The badge tone of a status on this project: amber for awaiting_release only where a person
- *  approves releases; elsewhere the release takes it, which is a ready, not a person's, turn. */
+/** The badge tone of a status on this project (contracts `issueStatusToneOn`). */
 export function toneOf(status: KernelIssueStatus, releaseApproval: boolean): IssueStatusTone {
-  switch (status) {
-    case 'draft':
-    case 'open':
-    case 'on_hold':
-      return 'neutral';
-    case 'reopen':
-      return 'err';
-    case 'in_progress':
-      return 'run';
-    case 'approved':
-      return 'ready';
-    case 'needs_info':
-      return 'you';
-    case 'awaiting_release':
-      return releaseApproval ? 'you' : 'ready';
-    case 'closed':
-    case 'dropped':
-      return 'done';
-  }
+  return issueStatusToneOn(status, releaseApproval);
 }
 
 const minutesSince = (from: Date | null, now: Date) =>
@@ -130,10 +116,21 @@ const held = (lease: IssueLeaseView | null) =>
 // 8. a live blocker not yet settled → stuck, on the first such blocker;
 // 9. in_progress with no holder → stuck: the status claims work nothing is doing;
 // 10. reopen → stuck, the master re-runs it; 11. open or approved → queued for a master slot.
-function turnOf(input: IssueStandingInput): { group: IssueAttentionGroup; waitingOn: IssueWaitingOn } {
+function turnOf(input: IssueStandingInput): {
+  group: IssueAttentionGroup;
+  waitingOn: IssueWaitingOn;
+} {
   const { status, viewer } = input;
   if (status === 'closed' || status === 'dropped') {
-    return { group: 'done', waitingOn: wait('none', 'Nobody', status === 'closed' ? 'shipped' : 'dropped', `the issue is ${status}`) };
+    return {
+      group: 'done',
+      waitingOn: wait(
+        'none',
+        'Nobody',
+        status === 'closed' ? 'shipped' : 'dropped',
+        `the issue is ${status}`,
+      ),
+    };
   }
   if (status === 'on_hold') {
     const r = forPerson(viewer, 'resume it', 'a person paused it; a person resumes it');
@@ -147,7 +144,11 @@ function turnOf(input: IssueStandingInput): { group: IssueAttentionGroup; waitin
     );
   }
   if (input.owesAnswer) {
-    return forPerson(viewer, 'answer a question', 'a run asked a question only a person can answer');
+    return forPerson(
+      viewer,
+      'answer a question',
+      'a run asked a question only a person can answer',
+    );
   }
   if (status === 'draft') {
     return forPerson(viewer, 'take on or drop', 'a draft is not work until a person accepts it');
@@ -155,11 +156,23 @@ function turnOf(input: IssueStandingInput): { group: IssueAttentionGroup; waitin
   const running = held(input.lease) || input.inFlight;
   if (status === 'awaiting_release') {
     if (input.releaseApproval) {
-      return forPerson(viewer, 'approve the release', 'every criterion passed; this project requires a person to approve a release');
+      return forPerson(
+        viewer,
+        'approve the release',
+        'every criterion passed; this project requires a person to approve a release',
+      );
     }
     return running
       ? { group: 'moving', waitingOn: wait('run', 'Release', 'running', 'a release run holds it') }
-      : { group: 'queued', waitingOn: wait('release', 'Release', 'next release', 'every criterion passed; the project releases without an approval') };
+      : {
+          group: 'queued',
+          waitingOn: wait(
+            'release',
+            'Release',
+            'next release',
+            'every criterion passed; the project releases without an approval',
+          ),
+        };
   }
   if (running) {
     const step = input.step ? STEP_WORD[input.step] : null;
@@ -171,25 +184,48 @@ function turnOf(input: IssueStandingInput): { group: IssueAttentionGroup; waitin
         'run',
         held(input.lease) ? 'Run' : 'Queued run',
         act || (held(input.lease) ? 'working' : 'starting'),
-        held(input.lease) ? `lease held by ${input.lease?.holder ?? 'a run'}` : 'a job or run is queued or running on it',
+        held(input.lease)
+          ? `lease held by ${input.lease?.holder ?? 'a run'}`
+          : 'a job or run is queued or running on it',
       ),
     };
   }
-  const blocker = input.blockedBy.find((b) => !SETTLED.includes(b.status) && !DONE.includes(b.status));
+  const blocker = input.blockedBy.find(
+    (b) => !SETTLED.includes(b.status) && !DONE.includes(b.status),
+  );
   if (blocker) {
     return {
       group: 'stuck',
-      waitingOn: wait('issue', blocker.key, blockerAct(blocker.status), `a live blocks edge from ${blocker.key}, not yet settled`, blocker.key),
+      waitingOn: wait(
+        'issue',
+        blocker.key,
+        blockerAct(blocker.status),
+        `a live blocks edge from ${blocker.key}, not yet settled`,
+        blocker.key,
+      ),
     };
   }
   if (status === 'in_progress') {
     return {
       group: 'stuck',
-      waitingOn: wait('none', 'No holder', 'in progress with no live run', 'in_progress, but no lease is live and no job or run is in flight'),
+      waitingOn: wait(
+        'none',
+        'No holder',
+        'in progress with no live run',
+        'in_progress, but no lease is live and no job or run is in flight',
+      ),
     };
   }
   if (status === 'reopen') {
-    return { group: 'stuck', waitingOn: wait('master', 'Master', 're-run after reopen', 'sent back with a reason; a master takes it again') };
+    return {
+      group: 'stuck',
+      waitingOn: wait(
+        'master',
+        'Master',
+        're-run after reopen',
+        'sent back with a reason; a master takes it again',
+      ),
+    };
   }
   return {
     group: 'queued',
@@ -197,7 +233,9 @@ function turnOf(input: IssueStandingInput): { group: IssueAttentionGroup; waitin
       'master',
       'Master',
       status === 'approved' ? 'build next' : 'free slot',
-      status === 'approved' ? 'the plan checkpoint holds; the next run goes straight to build' : 'accepted, nothing blocks it; a master takes it',
+      status === 'approved'
+        ? 'the plan checkpoint holds; the next run goes straight to build'
+        : 'accepted, nothing blocks it; a master takes it',
     ),
   };
 }
@@ -233,8 +271,13 @@ export function deriveIssueStanding(
     requirement: input.requirement,
     module: input.module,
     feedback: [...input.feedback],
-    blockedBy: input.blockedBy.filter((b) => !SETTLED.includes(b.status) && !DONE.includes(b.status)).map(ref),
-    blocks: DONE.includes(input.status) || SETTLED.includes(input.status) ? [] : input.blocks.filter((b) => !DONE.includes(b.status)).map(ref),
+    blockedBy: input.blockedBy
+      .filter((b) => !SETTLED.includes(b.status) && !DONE.includes(b.status))
+      .map(ref),
+    blocks:
+      DONE.includes(input.status) || SETTLED.includes(input.status)
+        ? []
+        : input.blocks.filter((b) => !DONE.includes(b.status)).map(ref),
     lease: input.lease,
     inFlight: input.inFlight,
     branch: input.branch,

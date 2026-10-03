@@ -1,4 +1,7 @@
-import type { REGISTRY_ISSUE_PRIORITIES, REGISTRY_ISSUE_STATUSES } from "./pipeline-registry.js";
+import type {
+	REGISTRY_ISSUE_PRIORITIES,
+	REGISTRY_ISSUE_STATUSES,
+} from "./pipeline-registry.js";
 
 /** The ten statuses of workflow `issue-lifecycle` (ISS-54), named the same on every surface. */
 export type KernelIssueStatus = (typeof REGISTRY_ISSUE_STATUSES)[number];
@@ -62,6 +65,17 @@ export const ISSUE_STATUS_TONES: Record<KernelIssueStatus, IssueStatusTone> = {
 	closed: "done",
 	dropped: "done",
 };
+
+/** A status's tone on one project. awaiting_release is a person's turn (amber) only where the
+ *  project requires a release approval (`release.approval.required`); elsewhere the release takes
+ *  it, which is ready. Every other status wears `ISSUE_STATUS_TONES`. */
+export function issueStatusToneOn(
+	status: KernelIssueStatus,
+	releaseApproval: boolean,
+): IssueStatusTone {
+	if (status === "awaiting_release" && !releaseApproval) return "ready";
+	return ISSUE_STATUS_TONES[status];
+}
 
 /** The legend glyph per status: a mark drawn in the dot's place, so a status is never told by colour alone. */
 export const ISSUE_STATUS_GLYPHS: Record<KernelIssueStatus, string> = {
@@ -176,7 +190,13 @@ export const ISSUE_CATEGORY_LABELS: Record<string, string> = {
 
 /** What one issue criterion reads as on every screen: its latest verdict, folded the way the gate
  *  reads it (`short` is a judged pass; an abbreviated backfilled commit is unresolved). */
-export const CRITERION_STANDINGS = ["pass", "fail", "skipped", "unresolved", "unjudged"] as const;
+export const CRITERION_STANDINGS = [
+	"pass",
+	"fail",
+	"skipped",
+	"unresolved",
+	"unjudged",
+] as const;
 export type CriterionStanding = (typeof CRITERION_STANDINGS)[number];
 
 export const CRITERION_STANDING_LABELS: Record<CriterionStanding, string> = {
@@ -187,7 +207,10 @@ export const CRITERION_STANDING_LABELS: Record<CriterionStanding, string> = {
 	unjudged: "Not judged",
 };
 
-export const CRITERION_STANDING_TONES: Record<CriterionStanding, IssueStatusTone> = {
+export const CRITERION_STANDING_TONES: Record<
+	CriterionStanding,
+	IssueStatusTone
+> = {
 	pass: "ready",
 	fail: "err",
 	skipped: "neutral",
@@ -207,6 +230,7 @@ export const CRITERION_STANDING_HINTS: Record<CriterionStanding, string> = {
 	pass: "pass: the latest verdict passed (or passed short of the wording, judged not to block)",
 	fail: "fail: the latest verdict failed",
 	skipped: "skipped: judged and skipped with a reason; never counts as a pass",
-	unresolved: "unresolved: a backfilled verdict named an abbreviated commit that never resolved",
+	unresolved:
+		"unresolved: a backfilled verdict named an abbreviated commit that never resolved",
 	unjudged: "unjudged: no verdict yet",
 };

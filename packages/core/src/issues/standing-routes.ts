@@ -5,7 +5,7 @@ import { ISSUE_STANDING_SCOPES } from '@forge/contracts/issue-standing';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
-import { parseIssueRef, issueRefNeedsHeldPrefixes } from '../lib/issue-ref.js';
+import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
@@ -14,7 +14,10 @@ import { heldIssuePrefixes } from './issue-prefix-read.js';
 import { listIssueStanding, readIssueStanding } from './standing-read.js';
 
 const projectParam = z.object({ id: z.uuid() });
-const keyParam = z.object({ id: z.uuid(), key: z.string().regex(/^[A-Za-z][A-Za-z0-9]{1,5}-\d+$/) });
+const keyParam = z.object({
+  id: z.uuid(),
+  key: z.string().regex(/^[A-Za-z][A-Za-z0-9]{1,5}-\d+$/),
+});
 const scopeQuery = z.strictObject({ scope: z.enum(ISSUE_STANDING_SCOPES).default('open') });
 
 export const issueStandingRoutes = new Hono<{ Variables: AuthVars }>();
@@ -48,7 +51,10 @@ issueStandingRoutes.get(
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
     if (!access.role) throw forbidden('not a project member');
-    const parsed = parseIssueRef(key, issueRefNeedsHeldPrefixes(key) ? await heldIssuePrefixes(projectId) : []);
+    const parsed = parseIssueRef(
+      key,
+      issueRefNeedsHeldPrefixes(key) ? await heldIssuePrefixes(projectId) : [],
+    );
     if (!parsed.ok) throw badRequest({ formErrors: [parsed.message], fieldErrors: {} });
     const row = await readIssueStanding(projectId, parsed.issSeq, userId ? { userId } : null);
     if (!row) throw notFound(`issue ${key} not found in this project`);

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { DesignStatus } from '@forge/contracts/design-status';
 import {
   bandOfNode,
   LEGACY_V2_TEMPLATE,
@@ -10,8 +11,6 @@ import { actMiss, approverRule } from '../lib/person-act.js';
 import type { DesignApprover } from '../project-config/schema.js';
 import { impliedKind } from './edges.js';
 import { stepsOf, type WorkflowWrite } from './schema.js';
-
-import type { DesignStatus } from '@forge/contracts/design-status';
 
 export { DESIGN_STATUSES, type DesignStatus } from '@forge/contracts/design-status';
 

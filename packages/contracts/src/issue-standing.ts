@@ -4,7 +4,11 @@
 // and the wave it sits in. Core writes the shapes; web-v2 reads the labels, so one value keeps one
 // badge on every screen.
 
-import type { IssueStatusTone, KernelIssueStatus, WorkStep } from "./issue-vocabulary.js";
+import type {
+	IssueStatusTone,
+	KernelIssueStatus,
+	WorkStep,
+} from "./issue-vocabulary.js";
 
 /** The list's attention groups, in the order they are drawn. */
 export const ISSUE_ATTENTION_GROUPS = [
@@ -21,22 +25,55 @@ export const ISSUE_ATTENTION_LABELS: Record<
 	IssueAttentionGroup,
 	{ label: string; hint: string; tone: IssueStatusTone; collapsed: boolean }
 > = {
-	needs_you: { label: "Needs you", hint: "Answer, decide or approve", tone: "you", collapsed: false },
-	moving: { label: "Moving", hint: "A run holds a live lease", tone: "run", collapsed: false },
+	needs_you: {
+		label: "Needs you",
+		hint: "Answer, decide or approve",
+		tone: "you",
+		collapsed: false,
+	},
+	moving: {
+		label: "Moving",
+		hint: "A run holds a live lease",
+		tone: "run",
+		collapsed: false,
+	},
 	stuck: {
 		label: "Stuck",
 		hint: "Waits on another issue, has no live holder, or came back",
 		tone: "blocked",
 		collapsed: false,
 	},
-	queued: { label: "Queued", hint: "Nothing blocks it; waits for a master slot or a release", tone: "ready", collapsed: false },
-	paused: { label: "Paused", hint: "Deliberately on hold", tone: "neutral", collapsed: true },
-	done: { label: "Done", hint: "Shipped or dropped", tone: "done", collapsed: true },
+	queued: {
+		label: "Queued",
+		hint: "Nothing blocks it; waits for a master slot or a release",
+		tone: "ready",
+		collapsed: false,
+	},
+	paused: {
+		label: "Paused",
+		hint: "Deliberately on hold",
+		tone: "neutral",
+		collapsed: true,
+	},
+	done: {
+		label: "Done",
+		hint: "Shipped or dropped",
+		tone: "done",
+		collapsed: true,
+	},
 };
 
 /** Whom an issue waits on: the viewer, another person, a run that holds it, the master that takes
  *  it next, another issue that blocks it, the release, or nobody. */
-export const ISSUE_WAITING_KINDS = ["you", "person", "run", "master", "issue", "release", "none"] as const;
+export const ISSUE_WAITING_KINDS = [
+	"you",
+	"person",
+	"run",
+	"master",
+	"issue",
+	"release",
+	"none",
+] as const;
 export type IssueWaitingKind = (typeof ISSUE_WAITING_KINDS)[number];
 
 export interface IssueWaitingOn {
@@ -88,7 +125,13 @@ export interface IssueModuleRef {
 }
 
 /** `issue_work_state.lease` as `classifyLease` reads it; `live` and `shared` hold the issue. */
-export const ISSUE_LEASE_VERDICTS = ["live", "shared", "expired", "abandoned", "malformed"] as const;
+export const ISSUE_LEASE_VERDICTS = [
+	"live",
+	"shared",
+	"expired",
+	"abandoned",
+	"malformed",
+] as const;
 export type IssueLeaseVerdict = (typeof ISSUE_LEASE_VERDICTS)[number];
 
 /** A lease as a person reads it: live and shared hold the issue; the rest no longer do. */
@@ -100,7 +143,10 @@ export const ISSUE_LEASE_VERDICT_LABELS: Record<IssueLeaseVerdict, string> = {
 	malformed: "Unreadable",
 };
 
-export const ISSUE_LEASE_VERDICT_TONES: Record<IssueLeaseVerdict, IssueStatusTone> = {
+export const ISSUE_LEASE_VERDICT_TONES: Record<
+	IssueLeaseVerdict,
+	IssueStatusTone
+> = {
 	live: "run",
 	shared: "run",
 	expired: "blocked",
@@ -171,7 +217,11 @@ export type IssueStandingScope = (typeof ISSUE_STANDING_SCOPES)[number];
 export interface IssueStandingList {
 	issues: IssueStandingRow[];
 	/** Rows in each scope, so the scope switch can count without a second read. */
-	counts: Record<IssueStandingScope, number> & { needsYou: number; blocked: number; blocking: number };
+	counts: Record<IssueStandingScope, number> & {
+		needsYou: number;
+		blocked: number;
+		blocking: number;
+	};
 	/** Rows answered; below the scope's count when the read hit its limit. */
 	returned: number;
 	limit: number;
@@ -182,4 +232,6 @@ export interface IssueStandingList {
 export interface IssueStandingDetail extends IssueStandingRow {
 	/** The run's step log, oldest first. */
 	steps: IssueStepEntry[];
+	/** Whether this project requires a person to approve a release (`release.approval.required`). */
+	releaseApproval: boolean;
 }

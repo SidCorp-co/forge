@@ -15,7 +15,12 @@ export const FEEDBACK_KINDS = [
 ] as const;
 export type FeedbackKind = (typeof FEEDBACK_KINDS)[number];
 
-export const FEEDBACK_SEVERITIES = ["low", "medium", "high", "critical"] as const;
+export const FEEDBACK_SEVERITIES = [
+	"low",
+	"medium",
+	"high",
+	"critical",
+] as const;
 export type FeedbackSeverity = (typeof FEEDBACK_SEVERITIES)[number];
 
 /** The stored statuses: each is a person's decision. `planned` and `resolved` are read, never stored (Q1). */
@@ -127,10 +132,30 @@ export const FEEDBACK_ATTENTION_LABELS: Record<
 	FeedbackAttention,
 	{ label: string; hint: string; tone: IssueStatusTone; collapsed: boolean }
 > = {
-	you: { label: "Needs you", hint: "Triage it, or confirm the fix you reported", tone: "you", collapsed: false },
-	moving: { label: "Moving", hint: "An issue, revision or requirement carries it", tone: "run", collapsed: false },
-	others: { label: "Someone else’s turn", hint: "The reporter confirms the fix", tone: "neutral", collapsed: false },
-	done: { label: "Done", hint: "Verified or declined", tone: "done", collapsed: true },
+	you: {
+		label: "Needs you",
+		hint: "Triage it, or confirm the fix you reported",
+		tone: "you",
+		collapsed: false,
+	},
+	moving: {
+		label: "Moving",
+		hint: "An issue, revision or requirement carries it",
+		tone: "run",
+		collapsed: false,
+	},
+	others: {
+		label: "Someone else’s turn",
+		hint: "The reporter confirms the fix",
+		tone: "neutral",
+		collapsed: false,
+	},
+	done: {
+		label: "Done",
+		hint: "Verified or declined",
+		tone: "done",
+		collapsed: true,
+	},
 };
 
 export const FEEDBACK_PHASE_TONES: Record<FeedbackPhase, IssueStatusTone> = {
@@ -156,15 +181,20 @@ export const FEEDBACK_PHASE_GLYPHS: Record<FeedbackPhase, string> = {
 
 export const FEEDBACK_PHASE_HINTS: Record<FeedbackPhase, string> = {
 	new: "new: not triaged; a person picks a route",
-	triaged: "triaged: routed, but the route carries nothing yet; a person routes it again",
+	triaged:
+		"triaged: routed, but the route carries nothing yet; a person routes it again",
 	planned: "planned: an issue, revision or requirement carries it",
-	resolved: "resolved: the linked work shipped; waiting on the reporter to verify",
+	resolved:
+		"resolved: the linked work shipped; waiting on the reporter to verify",
 	reopened: "reopened: the reporter says it is not fixed; back to triage",
 	verified: "verified: a person confirmed the fix; never automatic",
 	declined: "declined: not doing it, with a reason the reporter sees",
 };
 
-export const FEEDBACK_SEVERITY_TONES: Record<FeedbackSeverity, IssueStatusTone> = {
+export const FEEDBACK_SEVERITY_TONES: Record<
+	FeedbackSeverity,
+	IssueStatusTone
+> = {
 	low: "neutral",
 	medium: "neutral",
 	high: "you",
@@ -352,7 +382,12 @@ export interface FeedbackAttachmentView {
 /** One item as a list row reads it; the derived facts are the server's, never the client's. */
 /** Whose turn a row is, as the shared "Waiting on" cell draws it: `you` is the viewer, `issue` a
  *  carrier (an issue, a requirement, a root item), `none` nothing is owed. */
-export const FEEDBACK_WAITING_KINDS = ["you", "person", "issue", "none"] as const;
+export const FEEDBACK_WAITING_KINDS = [
+	"you",
+	"person",
+	"issue",
+	"none",
+] as const;
 export type FeedbackWaitingKind = (typeof FEEDBACK_WAITING_KINDS)[number];
 
 export interface FeedbackWaiting {
@@ -418,7 +453,12 @@ export interface SimilarFeedbackResponse {
 	status: "ok" | "not_embedded" | "provider_not_configured";
 	message?: string;
 	model?: string;
-	hits: { key: string; title: string; phase: FeedbackPhase; similarity: number }[];
+	hits: {
+		key: string;
+		title: string;
+		phase: FeedbackPhase;
+		similarity: number;
+	}[];
 }
 
 /** What a triage accept wrote, read back for the caller. */

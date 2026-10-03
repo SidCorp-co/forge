@@ -37,7 +37,10 @@ export const SUGGESTION_STATUS_LABELS: Record<SuggestionStatus, string> = {
 	withdrawn: "Withdrawn",
 };
 
-export const SUGGESTION_STATUS_TONES: Record<SuggestionStatus, IssueStatusTone> = {
+export const SUGGESTION_STATUS_TONES: Record<
+	SuggestionStatus,
+	IssueStatusTone
+> = {
 	proposed: "you",
 	accepted: "ready",
 	rejected: "done",
@@ -62,7 +65,11 @@ export const SUGGESTION_PRODUCERS = [
 export type SuggestionProducer = (typeof SUGGESTION_PRODUCERS)[number];
 
 /** What a suggestion is about: one arm of its exclusive arc. */
-export const SUGGESTION_TARGET_TYPES = ["requirement", "issue", "feedback"] as const;
+export const SUGGESTION_TARGET_TYPES = [
+	"requirement",
+	"issue",
+	"feedback",
+] as const;
 export type SuggestionTargetType = (typeof SUGGESTION_TARGET_TYPES)[number];
 
 /** An item embedding row's state: a write never skips in silence (Q7), a no_egress project's included (Q8). */

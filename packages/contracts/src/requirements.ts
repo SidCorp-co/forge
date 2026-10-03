@@ -61,7 +61,12 @@ export const REQUIREMENT_STATE_HINTS: Record<RequirementState, string> = {
 };
 
 /** A revision's one state (domain-entities.md "Revisions: one vocabulary"). */
-export const REVISION_STATES = ["draft", "proposed", "current", "superseded"] as const;
+export const REVISION_STATES = [
+	"draft",
+	"proposed",
+	"current",
+	"superseded",
+] as const;
 export type RevisionState = (typeof REVISION_STATES)[number];
 
 export const REVISION_STATE_LABELS: Record<RevisionState, string> = {
@@ -212,6 +217,8 @@ export interface CoverageIssue {
 	displayId: string;
 	title: string;
 	status: string;
+	/** The status's tone on this project (`issue-vocabulary.ts:issueStatusToneOn`). */
+	tone: IssueStatusTone;
 	/** The issue criterion number that traces here, its latest verdict, and whether it traces to an
 	 *  earlier wording of the business criterion. */
 	criterion: number;

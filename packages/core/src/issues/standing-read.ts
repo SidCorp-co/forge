@@ -23,8 +23,8 @@ import { peopleOf } from '../lib/people.js';
 import { classifyLease } from '../pipeline/session-claim.js';
 import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 import { approvalRequired } from '../release-batch/approvals.js';
-import { activeIssuePrefix } from './issue-prefix-read.js';
 import { issueWorkMovingSql } from './issue-lease.js';
+import { activeIssuePrefix } from './issue-prefix-read.js';
 import {
   deriveIssueStanding,
   type IssueStandingInput,
@@ -219,7 +219,8 @@ async function feedbackOf(ids: readonly string[]): Promise<Map<string, string[]>
       SELECT routed_issue_id, fb_seq FROM feedback
        WHERE routed_issue_id IN (${idList(ids)}) ORDER BY fb_seq`),
   );
-  for (const r of rows) out.set(r.routed_issue_id, [...(out.get(r.routed_issue_id) ?? []), `FB-${r.fb_seq}`]);
+  for (const r of rows)
+    out.set(r.routed_issue_id, [...(out.get(r.routed_issue_id) ?? []), `FB-${r.fb_seq}`]);
   return out;
 }
 
@@ -227,11 +228,17 @@ function leaseOf(raw: unknown, now: Date): IssueLeaseView | null {
   if (raw === null || raw === undefined) return null;
   const read = classifyLease({ lease: raw, now, fanout: 1 });
   if (read.verdict === 'none') return null;
-  return { holder: read.holder, verdict: read.verdict, expiresAt: read.expiresAt?.toISOString() ?? null };
+  return {
+    holder: read.holder,
+    verdict: read.verdict,
+    expiresAt: read.expiresAt?.toISOString() ?? null,
+  };
 }
 
 const latest = (...times: (string | null)[]) =>
-  new Date(Math.max(...times.filter((t): t is string => t !== null).map((t) => new Date(t).getTime())));
+  new Date(
+    Math.max(...times.filter((t): t is string => t !== null).map((t) => new Date(t).getTime())),
+  );
 
 export interface StandingViewer {
   userId: string;
@@ -256,22 +263,26 @@ async function standingRows(
 ): Promise<IssueStandingRow[]> {
   if (raws.length === 0) return [];
   const ids = raws.map((r) => r.id);
-  const [prefix, edges, criteria, modules, feedback, releaseApproval, who] =
-    await Promise.all([
-      activeIssuePrefix(projectId),
-      edgesOf(projectId, ids),
-      criteriaOf(ids),
-      modulesOf(projectId, ids),
-      feedbackOf(ids),
-      approvalRequired(projectId),
-      viewerOf(viewer, projectId),
-    ]);
+  const [prefix, edges, criteria, modules, feedback, releaseApproval, who] = await Promise.all([
+    activeIssuePrefix(projectId),
+    edgesOf(projectId, ids),
+    criteriaOf(ids),
+    modulesOf(projectId, ids),
+    feedbackOf(ids),
+    approvalRequired(projectId),
+    viewerOf(viewer, projectId),
+  ]);
   const [requirements, people] = await Promise.all([
     requirementsOf([...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))]),
     peopleOf(raws.flatMap((r) => [r.assignee_id, r.created_by_id])),
   ]);
   const key = (seq: number) => formatIssueRef(prefix, seq);
-  const edge = (id: string, seq: number, title: string, status: KernelIssueStatus): StandingEdge => ({
+  const edge = (
+    id: string,
+    seq: number,
+    title: string,
+    status: KernelIssueStatus,
+  ): StandingEdge => ({
     id,
     key: key(seq),
     title,
@@ -293,8 +304,12 @@ async function standingRows(
         lease: leaseOf(r.lease, now),
         inFlight: r.moving,
         owesAnswer: r.owes_answer,
-        blockedBy: edges.filter((e) => e.to_id === r.id).map((e) => edge(e.from_id, e.from_seq, e.from_title, e.from_status)),
-        blocks: edges.filter((e) => e.from_id === r.id).map((e) => edge(e.to_id, e.to_seq, e.to_title, e.to_status)),
+        blockedBy: edges
+          .filter((e) => e.to_id === r.id)
+          .map((e) => edge(e.from_id, e.from_seq, e.from_title, e.from_status)),
+        blocks: edges
+          .filter((e) => e.from_id === r.id)
+          .map((e) => edge(e.to_id, e.to_seq, e.to_title, e.to_status)),
         criteria: {
           total: mine.length,
           passing: mine.filter((c) => c.verdict === 'pass' || c.verdict === 'short').length,
@@ -305,9 +320,9 @@ async function standingRows(
           ? {
               key: `REQ-${req.req_seq}`,
               title: req.title,
-              criteria: [...new Set(mine.map((c) => c.bc_code).filter((c): c is string => !!c))].sort(
-                (a, b) => Number(a.slice(3)) - Number(b.slice(3)),
-              ),
+              criteria: [
+                ...new Set(mine.map((c) => c.bc_code).filter((c): c is string => !!c)),
+              ].sort((a, b) => Number(a.slice(3)) - Number(b.slice(3))),
               plannedRevision: r.planned_revision,
               currentRevision: req.current_revision,
               changedSincePlan:
@@ -320,7 +335,9 @@ async function standingRows(
         feedback: feedback.get(r.id) ?? [],
         branch: r.branch,
         headSha: r.head_sha,
-        owner: ownerId ? { id: ownerId, name: owner?.name ?? null, kind: owner?.kind ?? 'human' } : null,
+        owner: ownerId
+          ? { id: ownerId, name: owner?.name ?? null, kind: owner?.kind ?? 'human' }
+          : null,
         touchedAt: latest(r.updated_at, r.ws_updated_at, r.last_activity),
         releaseApproval,
         viewer: who,
@@ -332,7 +349,11 @@ async function standingRows(
     inputs.map(([r, input]) => [r.id, deriveIssueStanding(input).attentionGroup]),
   );
   const waves = wavesOf([
-    ...inputs.map(([r, input]) => ({ id: r.id, status: r.status, blockedBy: input.blockedBy.map((b) => b.id) })),
+    ...inputs.map(([r, input]) => ({
+      id: r.id,
+      status: r.status,
+      blockedBy: input.blockedBy.map((b) => b.id),
+    })),
     // a blocker outside the page still decides its dependents' wave by its status
     ...edges
       .filter((e) => !groups.has(e.from_id))
@@ -404,7 +425,10 @@ export async function readIssueStanding(
   const raws = await issueRows(projectId, scopeSql('one', issSeq), 1);
   const raw = raws[0];
   if (!raw) return null;
-  const [row] = await standingRows(projectId, raws, viewer, now);
+  const [[row], releaseApproval] = await Promise.all([
+    standingRows(projectId, raws, viewer, now),
+    approvalRequired(projectId),
+  ]);
   if (!row) return null;
-  return { ...row, steps: raw.steps ?? [] };
+  return { ...row, steps: raw.steps ?? [], releaseApproval };
 }

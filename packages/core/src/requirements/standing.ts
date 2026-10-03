@@ -5,6 +5,7 @@
  * test; `standing-read.ts` gathers the facts.
  */
 
+import type { IssueStatusTone } from '@forge/contracts/issue-vocabulary';
 import type {
   BcVerdict,
   CoverageIssue,
@@ -44,6 +45,8 @@ export interface StandingIssue {
   displayId: string;
   title: string;
   status: string;
+  /** The status's tone on this project; awaiting_release is amber only where a release needs approval. */
+  tone: IssueStatusTone;
   updatedAt: Date;
 }
 
@@ -113,6 +116,7 @@ export function coverageOf(
           displayId: issue.displayId,
           title: issue.title,
           status: issue.status,
+          tone: issue.tone,
           criterion: ic.n,
           verdict: ic.verdict,
           stale: wording.id !== bc.id,

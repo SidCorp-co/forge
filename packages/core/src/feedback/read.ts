@@ -39,7 +39,14 @@ import { actMiss, PERSON_ACT, PERSON_ADMIN_ACT } from '../lib/person-act.js';
 import { requirementKey } from '../requirements/read.js';
 import { userNames } from '../workflows/service.js';
 import { targetTypeOf } from './refs.js';
-import { attentionOf, type PhaseFacts, phaseOf, waitingFor, waitingOf, waitingOnOf } from './rules.js';
+import {
+  attentionOf,
+  type PhaseFacts,
+  phaseOf,
+  waitingFor,
+  waitingOf,
+  waitingOnOf,
+} from './rules.js';
 
 export interface FeedbackActor {
   userId: string;

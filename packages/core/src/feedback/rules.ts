@@ -96,10 +96,14 @@ export function waitingOf(
     case 'triaged':
       return { kind: 'person', who: 'A person', act: 'route it again: its route carries nothing' };
     case 'planned':
-      if (route === 'issue') return { kind: 'issue', who: carrier ?? 'The linked issue', act: 'ship' };
-      if (route === 'revision') return { kind: 'person', who: 'The revision proposal', act: 'be accepted and delivered' };
-      if (route === 'new_requirement') return { kind: 'issue', who: carrier ?? 'The new requirement', act: 'be agreed' };
-      if (route === 'duplicate') return { kind: 'issue', who: `Its root ${carrier ?? ''}`.trim(), act: 'be resolved' };
+      if (route === 'issue')
+        return { kind: 'issue', who: carrier ?? 'The linked issue', act: 'ship' };
+      if (route === 'revision')
+        return { kind: 'person', who: 'The revision proposal', act: 'be accepted and delivered' };
+      if (route === 'new_requirement')
+        return { kind: 'issue', who: carrier ?? 'The new requirement', act: 'be agreed' };
+      if (route === 'duplicate')
+        return { kind: 'issue', who: `Its root ${carrier ?? ''}`.trim(), act: 'be resolved' };
       return { kind: 'issue', who: 'The linked work', act: '' };
     case 'resolved':
       return { kind: 'person', who: reporter, act: 'verify the fix' };

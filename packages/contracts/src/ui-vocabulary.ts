@@ -6,7 +6,11 @@
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 
 /** A state value's reading: sentence-case label, legend tone, and the glyph drawn for its dot. */
-export type Reading = readonly [label: string, tone: IssueStatusTone, glyph?: string];
+export type Reading = readonly [
+	label: string,
+	tone: IssueStatusTone,
+	glyph?: string,
+];
 
 /** Each state family keyed by its stored values. */
 export const STATE_READINGS = {
@@ -252,7 +256,12 @@ export const ENUM_LABELS = {
 		drive: "Drive",
 	},
 	/** A contract change's kind (core `ecosystem/contract/diff.ts:CHANGE_KINDS`). */
-	changeKind: { added: "Added", removed: "Removed", changed: "Changed", deprecated: "Deprecated" },
+	changeKind: {
+		added: "Added",
+		removed: "Removed",
+		changed: "Changed",
+		deprecated: "Deprecated",
+	},
 	/** An interface's document type (core `ecosystem/schema.ts`). */
 	interfaceType: {
 		openapi: "OpenAPI",
@@ -263,21 +272,50 @@ export const ENUM_LABELS = {
 		protobuf: "Protobuf",
 		opaque: "Opaque",
 	},
-	lifecycle: { experimental: "Experimental", production: "Production", deprecated: "Deprecated" },
+	lifecycle: {
+		experimental: "Experimental",
+		production: "Production",
+		deprecated: "Deprecated",
+	},
 	versioning: { dated: "Dated", semver: "SemVer" },
 	visibility: { counterparties: "counterparties", all: "everyone" },
 	platform: { macos: "macOS", linux: "Linux", windows: "Windows" },
 	role: { viewer: "Viewer", member: "Member", admin: "Admin", owner: "Owner" },
-	trigger: { manual: "Manual", scheduled: "Scheduled", joined: "Joined", push: "Push" },
-	sessionKind: { master: "Master", run_session: "Run session", pipeline: "Pipeline", pm: "PM", chat: "Chat" },
-	blockerKind: { machine: "Machine", master_or_peer: "Master or peer", human: "Person" },
-	dependencyKind: { blocks: "Blocks", relates: "Relates to", duplicates: "Duplicates", parent: "Parent of", decomposes: "Decomposes" },
+	trigger: {
+		manual: "Manual",
+		scheduled: "Scheduled",
+		joined: "Joined",
+		push: "Push",
+	},
+	sessionKind: {
+		master: "Master",
+		run_session: "Run session",
+		pipeline: "Pipeline",
+		pm: "PM",
+		chat: "Chat",
+	},
+	blockerKind: {
+		machine: "Machine",
+		master_or_peer: "Master or peer",
+		human: "Person",
+	},
+	dependencyKind: {
+		blocks: "Blocks",
+		relates: "Relates to",
+		duplicates: "Duplicates",
+		parent: "Parent of",
+		decomposes: "Decomposes",
+	},
 	mode: { propose: "Propose", auto: "Automatic" },
 	direction: { outbound: "Outbound", inbound: "Inbound" },
 	gate: { auto: "Automatic", human: "Person" },
 	pauseKind: { stage_stalled: "a stalled stage" },
 	/** Where a published contract's document comes from (core `ecosystem/schema.ts` `artifact`). */
-	artifact: { none: "No artifact", repository: "From the repository", upload: "Uploaded" },
+	artifact: {
+		none: "No artifact",
+		repository: "From the repository",
+		upload: "Uploaded",
+	},
 	/** What a document event did (core `ecosystem/channel-*.ts` event `verb`), past tense on the timeline. */
 	documentVerb: {
 		draft: "Drafted",
@@ -291,7 +329,12 @@ export const ENUM_LABELS = {
 		invite: "Invited",
 	},
 	/** One act of a release run (web `releases/types.ts:ReleaseAttemptStage`). */
-	attemptStage: { promote: "Promote", deploy: "Deploy", verify: "Verify", repair: "Repair" },
+	attemptStage: {
+		promote: "Promote",
+		deploy: "Deploy",
+		verify: "Verify",
+		repair: "Repair",
+	},
 	/** Why an agent session failed (contracts `failure-causes.ts:FAILURE_CAUSES`). */
 	failureCause: {
 		provider_spend_cap: "Provider spend cap",
@@ -349,7 +392,11 @@ export const ENUM_LABELS = {
 		"binding-refused": "Binding refused",
 	},
 	/** What a deployment delivered (web `project-settings/config-types.ts`). */
-	artifactKind: { "container-image": "Container image", theme: "Theme", bundle: "Bundle" },
+	artifactKind: {
+		"container-image": "Container image",
+		theme: "Theme",
+		bundle: "Bundle",
+	},
 	/** A connection binding's role (core `project-config/schema.ts:BINDING_ROLES`). */
 	bindingRole: { deploy: "Deploy", source: "Source", service: "Service" },
 	/** What woke the PM (core `pm/decisions-service.ts:PM_DECISION_CAUSES`). */
@@ -387,7 +434,12 @@ export const ENUM_LABELS = {
 	/** The model tier a run used (core `db/schema.ts:modelTiers`). */
 	modelTier: { haiku: "Haiku", sonnet: "Sonnet", opus: "Opus" },
 	/** What a schedule runs (web `schedules/types.ts:ScheduleKind`, plus the PM and improve rows). */
-	scheduleKind: { prompt: "Prompt", script: "Script", pm: "PM", improve: "Improve" },
+	scheduleKind: {
+		prompt: "Prompt",
+		script: "Script",
+		pm: "PM",
+		improve: "Improve",
+	},
 } as const satisfies Record<string, Record<string, string>>;
 
 export type EnumLabelFamily = keyof typeof ENUM_LABELS;
