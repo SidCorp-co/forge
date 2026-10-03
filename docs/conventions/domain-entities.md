@@ -192,7 +192,10 @@ no writer gets a fourth state.
   (requirements walkthrough D6). Feedback is the reference: every triage, decline, verify, reopen and
   redaction inserts a `packages/core/src/db/schema-feedback.ts:feedbackDecisions` row, insert-only by
   `feedback_decision_guard()` in `packages/core/drizzle/migrations/0352_product_feedback_is_an_item.sql`.
-  Requirement returns are still a **target** (item 10).
+  A requirement return is a row each (`packages/core/src/db/schema-requirements.ts:requirementReturns`,
+  insert-only by `requirement_return_guard()` in
+  `packages/core/drizzle/migrations/0355_a_requirement_return_is_a_row.sql`); a re-proposal is still a
+  **target** (item 10).
 
 ## Data policy (sensitive projects)
 
@@ -313,7 +316,7 @@ slice to touch that code. Nothing below is migrated in this change.
 | 7 | Workflow design state is one head status, not per-revision `REVISION_STATES`; `decided_by_user` / `proposed_by_user` naming | review (migration) |
 | 8 | `contract_versions.decided_as` says `person` (and carries `before-approval`); `actor_agency` and `author_agency` have no CHECK | review (migration) |
 | 9 | Criteria and verdict rows are insert-only by comment, with no trigger | review (migration) |
-| 10 | A requirement return overwrites `proposed_at` / `return_reason`, with no row per decision (walkthrough D6) | review |
+| 10 | A re-proposal of a returned requirement revision overwrites `proposed_at` / `proposed_by`, with no row per proposal; returns have their own rows (walkthrough D6) | review |
 | 11 | Refusals name another requirement by uuid (`REQUIREMENT_ISSUE_LINKED_ELSEWHERE`, walkthrough D10) | review |
 | 12 | Who-may-act codes predating the suffix: `WORKFLOW_DESIGN_APPROVER_NOT_*`, `CONTRACT_APPROVER_NOT_*`, `CONTRACT_BREAKING_NEEDS_PERSON`, `WORKFLOW_WRITER_NOT_PROJECT`, `LINK_WRITER_NOT_CONSUMER` | review (a rename touches guides and MCP descriptions) |
 | 13 | `packages/core/src/ecosystem/builder-supersede-rules.ts:supersederRefusal` decides agency on its own (an org admin of either side may act, whatever the agency) | ISS-61 |

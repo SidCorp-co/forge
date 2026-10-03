@@ -158,12 +158,21 @@ requirementRoutes.post(
 requirementRoutes.post(
   '/:id/requirements/:req/revisions/:n/accept',
   revisionParam,
-  emptyBody,
+  strictBody(
+    z.strictObject({ reason: z.string().max(4_000).nullable().optional() }),
+    "{ reason? } — on an agreed requirement, the signer's reason for the re-baseline",
+  ),
   async (c) => {
     const { id, req, n } = c.req.valid('param');
     return answer(
       c,
-      await acceptRevision({ projectId: id, ref: req, actor: actorOf(c), revision: n }),
+      await acceptRevision({
+        projectId: id,
+        ref: req,
+        actor: actorOf(c),
+        revision: n,
+        reason: c.req.valid('json').reason,
+      }),
     );
   },
 );

@@ -45,6 +45,8 @@ export interface StandingIssue {
   title: string;
   status: string;
   updatedAt: Date;
+  /** Its plan was written against another revision than the current one. */
+  changedSincePlan: boolean;
 }
 
 export interface StandingIssueCriterion {
@@ -67,6 +69,8 @@ export interface StandingInput {
   issueCriteria: readonly StandingIssueCriterion[];
   /** Kinds of the suggestions still `proposed` on this requirement. */
   openSuggestionKinds: readonly string[];
+  /** The latest baseline's design pins whose design is now approved at a newer revision. */
+  stalePins: readonly { flow: string; pinned: number; approved: number }[];
   updatedAt: Date;
   now: Date;
 }
@@ -153,11 +157,17 @@ interface Turn {
 // 2. a proposed revision → a signer accepts or returns it (you, if you may sign off);
 // 3. a draft revision → its author finishes and proposes it (you, if you wrote it);
 // 4. a draft requirement whose head is current → a signer agrees it;
-// 5. agreed and every linked issue closed → a signer accepts the delivery;
-// 6. a breakdown suggestion open → a signer approves it; 7. no linked issue → the master breaks
-// it down; 8. otherwise its issues are being worked → moving. Then, unless it needs you: no owner,
-// or untouched for STUCK_AFTER_DAYS → stuck.
-function turnOf(input: StandingInput, live: readonly StandingIssue[]): Turn {
+// 5. agreed, every linked issue closed and every BC proven → a signer accepts the delivery; every
+// issue closed with a BC unproven → the master proves it (a traced criterion and its verdict);
+// 6. a breakdown suggestion open → a signer approves it; 7. a live issue planned against an
+// earlier revision → the master re-plans it; 8. no linked issue → the master breaks it down;
+// 9. only draft issues → a person promotes or drops them; 10. otherwise its issues are being
+// worked → moving. Then, unless it needs you: no owner, or untouched for STUCK_AFTER_DAYS → stuck.
+function turnOf(
+  input: StandingInput,
+  live: readonly StandingIssue[],
+  coverage: readonly RequirementCoverage[],
+): Turn {
   const { status, viewer } = input;
   if (status === 'accepted' || status === 'dropped') {
     return { group: 'done', waitingOn: wait('none', '—', '', `the requirement is ${status}`) };
@@ -196,14 +206,45 @@ function turnOf(input: StandingInput, live: readonly StandingIssue[]): Turn {
   if (input.phase === 'delivered' && live.length > 0) {
     return signerWait(viewer, 'accept delivery', 'every linked issue is closed');
   }
+  const unproven = coverage.filter((c) => c.verdict !== 'passing').map((c) => c.code);
+  if (live.length > 0 && live.every((i) => i.status === 'closed') && unproven.length > 0) {
+    return {
+      group: 'others',
+      waitingOn: wait(
+        'agent',
+        'Master',
+        `prove ${unproven.join(', ')}`,
+        'every linked issue is closed, but these BCs hold no passing traced verdict, so it is not delivered',
+      ),
+    };
+  }
   if (input.openSuggestionKinds.includes('breakdown')) {
     return signerWait(viewer, 'approve breakdown', 'a breakdown suggestion waits on a person');
+  }
+  const replan = live.filter((i) => i.changedSincePlan);
+  if (replan.length > 0) {
+    return {
+      group: 'others',
+      waitingOn: wait(
+        'agent',
+        'Master',
+        `re-plan ${replan.map((i) => i.displayId).join(', ')}`,
+        `planned against an earlier revision than r${input.currentRevision ?? '?'} (REQUIREMENT_CHANGED_SINCE_PLAN)`,
+      ),
+    };
   }
   if (live.length === 0) {
     return {
       group: 'others',
       waitingOn: wait('agent', 'Master', 'break down', 'agreed with no linked issue'),
     };
+  }
+  if (live.every((i) => i.status === 'draft')) {
+    return signerWait(
+      viewer,
+      `promote ${live.length} draft issue${live.length === 1 ? '' : 's'}`,
+      'its only live issues are drafts, which nothing works until a person promotes them',
+    );
   }
   const running = live.filter((i) => i.status === 'in_progress').length;
   const done = live.filter((i) => i.status === 'closed').length;
@@ -227,12 +268,24 @@ export function touchedAt(input: StandingInput): Date {
   return new Date(Math.max(...times.map((t) => t.getTime())));
 }
 
-export function deriveStanding(input: StandingInput): RequirementStanding {
-  const live = input.issues.filter((i) => i.status !== 'dropped');
-  const shownRevision = input.currentRevision ?? input.revisions[0]?.revision ?? null;
-  const coverage = coverageOf(input, shownRevision);
+// cm:guard workflow requirement-to-delivery step `rollup`: delivered needs every live issue closed
+// AND every current BC covered by a passing verdict; the view counts issue statuses only, so a
+// closed set with an unproven BC reads in_delivery here
+export function provenPhase(
+  phase: DeliveryPhase | null,
+  coverage: readonly RequirementCoverage[],
+): DeliveryPhase | null {
+  if (phase !== 'delivered') return phase;
+  return coverage.every((c) => c.verdict === 'passing') ? 'delivered' : 'in_delivery';
+}
+
+export function deriveStanding(raw: StandingInput): RequirementStanding {
+  const live = raw.issues.filter((i) => i.status !== 'dropped');
+  const shownRevision = raw.currentRevision ?? raw.revisions[0]?.revision ?? null;
+  const coverage = coverageOf(raw, shownRevision);
+  const input = { ...raw, phase: provenPhase(raw.phase, coverage) };
   const touched = touchedAt(input);
-  let { group, waitingOn } = turnOf(input, live);
+  let { group, waitingOn } = turnOf(input, live, coverage);
   if (group !== 'needs_you' && group !== 'done') {
     if (input.owner === null) {
       group = 'stuck';
@@ -255,6 +308,7 @@ export function deriveStanding(input: StandingInput): RequirementStanding {
       issuesTotal: live.length,
       proposedRevision: input.revisions.find((r) => r.state === 'proposed')?.revision ?? null,
       draftRevision: input.revisions.find((r) => r.state === 'draft')?.revision ?? null,
+      stalePins: [...input.stalePins],
     },
     shownRevision,
     coverage,
