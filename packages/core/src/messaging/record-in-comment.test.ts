@@ -44,20 +44,22 @@ describe('record-in-comment', () => {
     expect(refusal?.rule).toBe('record-in-comment');
   });
 
-  it('sends a verdict to the step-context route', () => {
-    expect(destinationFor('verdict')).toBe('POST /api/issue-step-contexts');
-    const refusal = recordInCommentRefusal(parseForgeRecord(bodyOf('verdict')));
-    expect(refusal?.why).toContain('POST /api/issue-step-contexts');
-    expect(refusal?.why).not.toContain('/attributes');
+  it('sends every closed record kind to the events route (ISS-56)', () => {
+    for (const kind of ['verdict', 'baseline', 'decision', 'park']) {
+      expect(destinationFor(kind)).toBe('POST /api/issues/:id/events');
+      const refusal = recordInCommentRefusal(parseForgeRecord(bodyOf(kind)));
+      expect(refusal?.why).toContain('POST /api/issues/:id/events');
+      expect(refusal?.why).not.toContain('/attributes');
+    }
   });
 
-  it('names no route for a kind no store holds whole, and says so', () => {
-    for (const kind of ['baseline', 'decision', 'merged', 'somethingelse']) {
+  it('names no route for a kind outside the closed set, and says so', () => {
+    for (const kind of ['merged', 'somethingelse']) {
       expect(destinationFor(kind)).toBeNull();
       const why = recordInCommentRefusal(parseForgeRecord(bodyOf(kind)))?.why ?? '';
       expect(why).toContain('no store here holds');
       expect(why).toContain(ISSUE_ASSERTION_ROUTE);
-      expect(why).not.toContain('issue-step-contexts');
+      expect(why).not.toContain('/events');
     }
   });
 

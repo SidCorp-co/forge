@@ -113,8 +113,8 @@ Identify stages with p95 > 3× the median or cost outliers. Token-bloated prompt
 Call forge_issues.list with status=closed, reopenCount≥1 (use filter if available), limit=20.
 A recurring reopen in the same stage/category is the highest-signal weakness.
 
-**d) Forge feedback reports**
-Call forge_feedback with action=list.
+**d) Forge agent reports**
+Call forge_agent_report with action=list.
 Filter for kind=skill_gap, friction, unclear_step, redundant_step. These are direct agent reports of skill defects.
 
 **e) Project skills catalog**
@@ -153,7 +153,7 @@ Using the evidence from Steps 1–2, for each assessed skill decide ONE of:
 - **raise-accept-standard**: tighten the pass/fail bar for a specific check (subject to the bound below)
 - **add-project-convention**: add a project-specific rule the skill should know
 - **prune-bloat**: remove verbose/redundant instructions that do not change agent behavior
-- **forge-level-issue**: the defect is in Forge platform tooling/workflow, not the skill itself → use forge_feedback
+- **forge-level-issue**: the defect is in Forge platform tooling/workflow, not the skill itself → use forge_agent_report
 
 ${ACCEPT_STANDARD_BOUND}
 
@@ -193,12 +193,12 @@ Report the exact change and why it fits this project.
 
 **Forge-level issues (routing):**
 When the defect is in Forge platform tooling, workflow, or cross-project policy (NOT this project's skill body):
-→ Call forge_feedback with action=submit
+→ Call forge_agent_report with action=submit
   - target: 'skill' | 'pipeline' | 'tool' (whichever fits)
   - kind: 'skill_gap' | 'friction' | 'suggestion' | 'unclear_step' (as appropriate)
   - severity: 'critical' | 'high' | 'medium' | 'low'
   - body: concise description of the platform-level issue
-Do NOT propose a skill edit for platform-level issues — use forge_feedback.
+Do NOT propose a skill edit for platform-level issues — use forge_agent_report.
 
 **Skipped actions:**
 If you decide to skip a skill (no actionable improvement found this run, or idempotency check says already done), record it as a skip with a brief reason in the run report.
@@ -266,7 +266,7 @@ Field meanings:
 - **Idempotency** — never re-apply a change already recorded in per-skill memory.
 - **No parallel audit mechanism** — you replace forge-skill-audit. Do not create a separate audit issue.
 - **Accept-standard bound** — at most 1 tightening per run; skip when reopen rate is high.
-- **Forge-level issues go to forge_feedback** — not to skill edits.
+- **Forge-level issues go to forge_agent_report** — not to skill edits.
 `;
 }
 

@@ -15,6 +15,7 @@ import {
 import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
 import { messageRefused } from '../../comments/screen.js';
 import {
+  CommentIntentRefused,
   type CommentThreadRow,
   deleteComment,
   insertComment,
@@ -25,6 +26,7 @@ import {
 } from '../../comments/service.js';
 import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
+import { isCommentIntent } from '../../issues/record-events/kinds.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
@@ -58,7 +60,10 @@ const MCP_DECLARES_RECORD_ROUTE = false;
  * comment carries no self-declared "an agent wrote this" marker.
  */
 
-const filtersSchema = z.object({ issue: z.uuid() }).strict().optional();
+const filtersSchema = z
+  .object({ issue: z.uuid(), intent: z.string().max(64).optional() })
+  .strict()
+  .optional();
 
 const attachmentInputSchema = z
   .object({
@@ -74,6 +79,8 @@ export const commentCreateDataSchema = z
     format: z.enum(BODY_FORMATS).optional(),
     issue: z.uuid().optional(),
     parentId: z.uuid().optional(),
+    /** question | decision | note — checked by name in `comments/service.ts:resolveIntent`. */
+    intent: z.string().max(64).optional(),
     attachments: z.array(attachmentInputSchema).max(10).optional(),
   })
   .strict()
@@ -108,6 +115,8 @@ function serialize(
         ? markUntrusted(bodyText(row.body, row.format), { source: 'comment.text' })
         : null,
     parentId: row.parentId,
+    intent: row.intent,
+    scope: 'issue',
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     attachments,
@@ -137,7 +146,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
     'List, create, update or delete issue comments. List requires filters.issue (issue UUID). ' +
     'EVERY list response carries `returned`, `limit`, `hasMore` and `nextCursor` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
     'To read a whole thread: call list, then pass the `nextCursor` you got back as `cursor`, and repeat until `nextCursor` is null. Each page carries the next top-level comments with their replies, so no comment is returned twice and none is skipped. The cursor is the SAME token the REST route `GET /api/issues/:id/comments` mints and accepts. ' +
-    'Create requires data.issue + data.body. Update requires documentId + data.body (use it to ' +
+    "Create requires data.issue + data.body, and takes data.intent: question (owed a reply), decision (pinned) or note; omitted, a person's comment is stored as question and an agent's as note, with a COMMENT_INTENT_DEFAULTED warning. List takes filters.intent. A structured record goes to forge_issue_events, not into a comment. Update requires documentId + data.body (use it to " +
     'place a <forge-artifact id="…"> once the attachment exists, or to correct a refused body). ' +
     'Delete requires documentId. All actions ' +
     'enforce project membership via the calling principal. Body shape — see guide writing-an-issue: outcome first, trace underneath; mermaid fences render, and an attached .html renders inline. ' +
@@ -157,7 +166,10 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
     try {
       return await run(principal, input);
     } catch (err) {
-      const refusal = err instanceof BodyInvalidError ? err : messageRefused(err);
+      const refusal =
+        err instanceof BodyInvalidError || err instanceof CommentIntentRefused
+          ? err
+          : messageRefused(err);
       if (refusal) {
         throw new Error(`BAD_REQUEST: ${refusal.code}: ${refusal.message}`);
       }
@@ -217,6 +229,7 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
           format: input.data?.format,
           parentId: input.data?.parentId ?? null,
           declaresRecordRoute: MCP_DECLARES_RECORD_ROUTE,
+          intent: input.data?.intent,
         });
         inserted = written.row;
         bodyWarnings = written.warnings;
@@ -302,8 +315,10 @@ async function listAction(principal: Principal, input: ToolInput): Promise<unkno
     }
   }
 
+  const intent = input.filters?.intent;
+  if (intent !== undefined && !isCommentIntent(intent)) throw new CommentIntentRefused(intent);
   const commentsLimit = input.limit ?? 50;
-  const page = await listIssueCommentPage(issueId, { after, limit: commentsLimit });
+  const page = await listIssueCommentPage(issueId, { after, limit: commentsLimit, intent });
   const attachmentsByCommentId = await listCommentAttachmentsForIssue(issueId);
 
   const subtrees = groupBySubtree(page.rows, page.roots).map((rows) => ({

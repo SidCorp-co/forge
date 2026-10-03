@@ -88,7 +88,7 @@ describe("what counts as a question to answer", () => {
       threadQuestionOf(
         park({
           reason: "Should the export keep the legacy column order?",
-          record: { commentId: "c", kind: "question", why: "the export order is not stated", postedAt: "x" },
+          record: { commentId: "c", eventId: null, kind: "question", why: "the export order is not stated", postedAt: "x" },
           readings: ["keep -> the legacy order stays", "B"],
         }),
       ),
@@ -102,7 +102,7 @@ describe("what counts as a question to answer", () => {
       answer: null,
     });
     expect(
-      threadQuestionOf(park({ record: { commentId: "c", kind: "question", why: "Pick one", postedAt: "x" } }))
+      threadQuestionOf(park({ record: { commentId: "c", eventId: null, kind: "question", why: "Pick one", postedAt: "x" } }))
         ?.prompt,
     ).toBe("Pick one");
   });

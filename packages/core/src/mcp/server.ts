@@ -21,6 +21,7 @@ import {
   toolGrantRefusal,
 } from './tool-grant.js';
 import { toToolCallContent } from './tool-result.js';
+import { forgeAgentReportTool, forgeFeedbackAliasTool } from './tools/forge-agent-report.js';
 import {
   forgeAgentSessionsGetTool,
   forgeAgentSessionsListTool,
@@ -30,10 +31,10 @@ import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
 import { forgeEcosystemTool } from './tools/forge-ecosystem.js';
-import { forgeFeedbackTool } from './tools/forge-feedback.js';
 import { forgeGoogleSheetsTool } from './tools/forge-google-sheets.js';
 import { forgeGuideTool } from './tools/forge-guide.js';
 import { forgeHealthTool } from './tools/forge-health.js';
+import { forgeIssueEventsTool } from './tools/forge-issue-events.js';
 import { forgeIssuesTool } from './tools/forge-issues.js';
 import {
   forgeJobsCancelTool,
@@ -164,8 +165,10 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     forgePhaseTool(ctx),
     forgeStepStartTool(ctx),
     forgeCommentsTool(ctx),
+    forgeIssueEventsTool(ctx),
     forgeQuestionsTool(ctx),
-    forgeFeedbackTool(ctx),
+    forgeAgentReportTool(ctx),
+    forgeFeedbackAliasTool(ctx),
     forgeUploadsTool(ctx),
     forgeConfigTool(ctx),
     forgeKnowledgeTool(ctx),

@@ -2243,6 +2243,13 @@
       "breakpoints": true
     },
     {
+      "idx": 347,
+      "version": "7",
+      "when": 1812931200000,
+      "tag": "0347_an_issue_record_is_an_event",
+      "breakpoints": true
+    },
+    {
       "idx": 350,
       "version": "7",
       "when": 1813190400000,

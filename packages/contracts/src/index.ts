@@ -16,6 +16,7 @@ export * from "./notifications.js";
 export * from "./park.js";
 export * from "./pipeline-registry.js";
 export * from "./reconcile.js";
+export * from "./record-events.js";
 export * from "./requests.js";
 export * from "./responses.js";
 export * from "./rows.js";

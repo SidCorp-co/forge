@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { FeedbackReport } from "@/features/feedback/types";
+import type { AgentReport } from "@/features/agent-reports/types";
 import type { ScheduleRun } from "@/features/schedules/types";
-import { improvementRows, issueFromFeedback, matchesFilter } from "./improvements";
+import { improvementRows, issueFromReport, matchesFilter } from "./improvements";
 
-const report = (over: Partial<FeedbackReport> = {}): FeedbackReport => ({
+const report = (over: Partial<AgentReport> = {}): AgentReport => ({
   id: "f1",
   kind: "friction",
   severity: "medium",
@@ -36,18 +36,18 @@ const run = (actions: NonNullable<ScheduleRun["stewardReport"]>["actions"]): Sch
 });
 
 describe("the Improvements list", () => {
-  it("puts feedback in and the loop's proposals out on one list, newest first", () => {
+  it("puts agent reports in and the loop's proposals out on one list, newest first", () => {
     const rows = improvementRows(
       [report()],
       [{ title: "Review", runs: [run([{ skill: "forge-test", kind: "proposed", summary: "Tighten the checklist" }])] }],
     );
     expect(rows.map((r) => [r.source, r.state, r.title])).toEqual([
       ["proposal", "proposal", "Tighten the checklist"],
-      ["feedback", "feedback", "The boundary axis is missed"],
+      ["report", "report", "The boundary axis is missed"],
     ]);
   });
 
-  it("counts reviewed feedback and applied changes as done, and leaves skipped actions out", () => {
+  it("counts reviewed reports and applied changes as done, and leaves skipped actions out", () => {
     const rows = improvementRows(
       [report({ reviewedAt: "2026-10-01T11:00:00.000Z" })],
       [
@@ -65,14 +65,14 @@ describe("the Improvements list", () => {
     );
     expect(rows.map((r) => r.state)).toEqual(["done", "done"]);
     expect(rows.filter((r) => matchesFilter(r, "done"))).toHaveLength(2);
-    expect(rows.filter((r) => matchesFilter(r, "feedback"))).toHaveLength(0);
+    expect(rows.filter((r) => matchesFilter(r, "reports"))).toHaveLength(0);
     expect(rows.filter((r) => matchesFilter(r, "proposals"))).toHaveLength(0);
   });
 
-  it("files an issue from feedback that names the report it came from", () => {
-    const body = issueFromFeedback(report());
+  it("files an issue from an agent report that names the report it came from", () => {
+    const body = issueFromReport(report());
     expect(body.title).toBe("The boundary axis is missed");
     expect(body.description).toContain("Suggested: Add the boundary case");
-    expect(body.description).toContain("Feedback f1");
+    expect(body.description).toContain("Agent report f1");
   });
 });

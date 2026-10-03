@@ -1,6 +1,6 @@
 {
-  "id": "c2c64172-716b-49d2-9e3b-7893534379c9",
-  "prevId": "8e338a3c-e962-4d37-a50a-f43420521672",
+  "id": "ffc1ec70-ba36-4994-833a-59367b2e76de",
+  "prevId": "085a2f57-f59e-40b5-8915-c74eb84a46fe",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -117,6 +117,50 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "activity_log_record_issue_idx": {
+          "name": "activity_log_record_issue_idx",
+          "columns": [
+            {
+              "expression": "issue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "action",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"activity_log\".\"action\" LIKE 'record.%'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "activity_log_record_comment_uq": {
+          "name": "activity_log_record_comment_uq",
+          "columns": [
+            {
+              "expression": "dedupe_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"activity_log\".\"dedupe_key\" LIKE 'record-comment:%'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -131,6 +175,337 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "activity_log_record_kind_chk": {
+          "name": "activity_log_record_kind_chk",
+          "value": "\"activity_log\".\"action\" NOT LIKE 'record.%' OR \"activity_log\".\"action\" IN ('record.verdict', 'record.transition', 'record.landing', 'record.park', 'record.correction', 'record.fold', 'record.routed', 'record.gap', 'record.baseline', 'record.decision', 'record.question', 'record.answer', 'record.confirmation', 'record.superseded', 'record.review', 'record.finding', 'record.triage', 'record.folded', 'record.declined', 'record.wave', 'record.verification', 'record.digest')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.agent_reports": {
+      "name": "agent_reports",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issue_id": {
+          "name": "issue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stage": {
+          "name": "stage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "skill_name": {
+          "name": "skill_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "skill_version": {
+          "name": "skill_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "severity": {
+          "name": "severity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'low'"
+        },
+        "target": {
+          "name": "target",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_ref": {
+          "name": "target_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "detail": {
+          "name": "detail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "suggestion": {
+          "name": "suggestion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "signal_key": {
+          "name": "signal_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "linked_issue_id": {
+          "name": "linked_issue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "agent_reports_project_id_idx": {
+          "name": "agent_reports_project_id_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_reports_project_kind_idx": {
+          "name": "agent_reports_project_kind_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_reports_project_target_idx": {
+          "name": "agent_reports_project_target_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "target",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "target_ref",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_reports_signal_key_idx": {
+          "name": "agent_reports_signal_key_idx",
+          "columns": [
+            {
+              "expression": "signal_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_reports_created_at_idx": {
+          "name": "agent_reports_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_reports_session_id_idx": {
+          "name": "agent_reports_session_id_idx",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_reports_linked_issue_id_idx": {
+          "name": "agent_reports_linked_issue_id_idx",
+          "columns": [
+            {
+              "expression": "linked_issue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "agent_reports_project_id_projects_id_fk": {
+          "name": "agent_reports_project_id_projects_id_fk",
+          "tableFrom": "agent_reports",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "agent_reports_issue_id_issues_id_fk": {
+          "name": "agent_reports_issue_id_issues_id_fk",
+          "tableFrom": "agent_reports",
+          "tableTo": "issues",
+          "columnsFrom": [
+            "issue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "agent_reports_run_id_pipeline_runs_id_fk": {
+          "name": "agent_reports_run_id_pipeline_runs_id_fk",
+          "tableFrom": "agent_reports",
+          "tableTo": "pipeline_runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "agent_reports_job_id_jobs_id_fk": {
+          "name": "agent_reports_job_id_jobs_id_fk",
+          "tableFrom": "agent_reports",
+          "tableTo": "jobs",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "agent_reports_linked_issue_id_issues_id_fk": {
+          "name": "agent_reports_linked_issue_id_issues_id_fk",
+          "tableFrom": "agent_reports",
+          "tableTo": "issues",
+          "columnsFrom": [
+            "linked_issue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -1442,6 +1817,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "intent": {
+          "name": "intent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'note'"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1577,6 +1959,10 @@
         "comments_format_chk": {
           "name": "comments_format_chk",
           "value": "\"comments\".\"format\" IN ('markdown', 'html')"
+        },
+        "comments_intent_chk": {
+          "name": "comments_intent_chk",
+          "value": "\"comments\".\"intent\" IN ('question', 'decision', 'note')"
         }
       },
       "isRLSEnabled": false
@@ -2458,332 +2844,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.feedback_reports": {
-      "name": "feedback_reports",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "issue_id": {
-          "name": "issue_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "job_id": {
-          "name": "job_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "stage": {
-          "name": "stage",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "skill_name": {
-          "name": "skill_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "skill_version": {
-          "name": "skill_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "severity": {
-          "name": "severity",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'low'"
-        },
-        "target": {
-          "name": "target",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "target_ref": {
-          "name": "target_ref",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "summary": {
-          "name": "summary",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "detail": {
-          "name": "detail",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "suggestion": {
-          "name": "suggestion",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "signal_key": {
-          "name": "signal_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "session_id": {
-          "name": "session_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reviewed_at": {
-          "name": "reviewed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "linked_issue_id": {
-          "name": "linked_issue_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "feedback_reports_project_id_idx": {
-          "name": "feedback_reports_project_id_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "feedback_reports_project_kind_idx": {
-          "name": "feedback_reports_project_kind_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "feedback_reports_project_target_idx": {
-          "name": "feedback_reports_project_target_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "target",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "target_ref",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "feedback_reports_signal_key_idx": {
-          "name": "feedback_reports_signal_key_idx",
-          "columns": [
-            {
-              "expression": "signal_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "feedback_reports_created_at_idx": {
-          "name": "feedback_reports_created_at_idx",
-          "columns": [
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "feedback_reports_session_id_idx": {
-          "name": "feedback_reports_session_id_idx",
-          "columns": [
-            {
-              "expression": "session_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "feedback_reports_linked_issue_id_idx": {
-          "name": "feedback_reports_linked_issue_id_idx",
-          "columns": [
-            {
-              "expression": "linked_issue_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "feedback_reports_project_id_projects_id_fk": {
-          "name": "feedback_reports_project_id_projects_id_fk",
-          "tableFrom": "feedback_reports",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "feedback_reports_issue_id_issues_id_fk": {
-          "name": "feedback_reports_issue_id_issues_id_fk",
-          "tableFrom": "feedback_reports",
-          "tableTo": "issues",
-          "columnsFrom": [
-            "issue_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "feedback_reports_run_id_pipeline_runs_id_fk": {
-          "name": "feedback_reports_run_id_pipeline_runs_id_fk",
-          "tableFrom": "feedback_reports",
-          "tableTo": "pipeline_runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "feedback_reports_job_id_jobs_id_fk": {
-          "name": "feedback_reports_job_id_jobs_id_fk",
-          "tableFrom": "feedback_reports",
-          "tableTo": "jobs",
-          "columnsFrom": [
-            "job_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "feedback_reports_linked_issue_id_issues_id_fk": {
-          "name": "feedback_reports_linked_issue_id_issues_id_fk",
-          "tableFrom": "feedback_reports",
-          "tableTo": "issues",
-          "columnsFrom": [
-            "linked_issue_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

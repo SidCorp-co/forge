@@ -1,5 +1,15 @@
-import { relations } from 'drizzle-orm';
-import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { relations, sql } from 'drizzle-orm';
+import {
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
+import { RECORD_ACTIONS } from '../issues/record-events/kinds.js';
 import { issues } from './schema.js';
 
 export const actorTypes = ['user', 'device'] as const;
@@ -32,6 +42,24 @@ export const activityLog = pgTable(
     issueCreatedIdx: index('activity_log_issue_created_idx').on(t.issueId, t.createdAt),
     dedupeKeyIdx: index('activity_log_dedupe_key_idx').on(t.dedupeKey),
     createdAtIdx: index('activity_log_created_at_idx').on(t.createdAt),
+    /**
+     * ISS-56 — a record event (`record.<kind>`) carries one of the closed kinds, whatever door
+     * wrote it. Every other action is untouched by this check.
+     */
+    recordKindChk: check(
+      'activity_log_record_kind_chk',
+      sql`${t.action} NOT LIKE 'record.%' OR ${t.action} IN (${sql.raw(
+        RECORD_ACTIONS.map((a) => `'${a}'`).join(', '),
+      )})`,
+    ),
+    /** The readers that replaced comment parsing walk one issue's records of a kind, in order. */
+    recordIssueIdx: index('activity_log_record_issue_idx')
+      .on(t.issueId, t.action, t.createdAt)
+      .where(sql`${t.action} LIKE 'record.%'`),
+    /** One event per mirrored comment, so a redelivered or edited comment cannot fork the record. */
+    recordCommentUq: uniqueIndex('activity_log_record_comment_uq')
+      .on(t.dedupeKey)
+      .where(sql`${t.dedupeKey} LIKE 'record-comment:%'`),
   }),
 );
 

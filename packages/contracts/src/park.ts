@@ -8,7 +8,10 @@ export type ParkResume =
   | { at: null; why: string };
 
 export interface ParkRecordView {
-  commentId: string;
+  /** The comment that carried the record, or null where it was written only as an event (ISS-56). */
+  commentId: string | null;
+  /** The record event it is stored as, or null for a record posted before events existed. */
+  eventId: string | null;
   kind: string | null;
   why: string | null;
   postedAt: string;
