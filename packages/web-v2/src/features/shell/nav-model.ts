@@ -41,25 +41,29 @@ export type ProjEntry = ProjItem | ProjGroup;
 
 export const isProjGroup = (e: ProjEntry): e is ProjGroup => "items" in e;
 
-export const AUTOMATION_GROUP_KEY = "automation";
+export const DEVELOPMENT_GROUP_KEY = "development";
 
+// cm:why the owner's IA ruling (ISS-65, FB-6): what a project is for comes first — Requirements,
+// Workflows, Releases, Feedback — and the machinery that builds it sits under one Development
+// group. Its Overview and Modules screens are prototype-only and have no page yet, so they are not
+// listed; a row that leads nowhere is worse than one missing.
 export const PROJECT_MENU: ProjEntry[] = [
   { key: "proj-overview", label: "Dashboard", icon: "grid", sub: "" },
   { key: "proj-requirements", label: "Requirements", icon: "book", sub: "/requirements" },
   { key: "proj-workflows", label: "Workflows", icon: "flow", sub: "/workflows" },
-  { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
-  { key: "proj-agents", label: "Agents", icon: "agent", sub: "/agents" },
-  {
-    key: AUTOMATION_GROUP_KEY,
-    label: "Automation",
-    icon: "calendar",
-    items: [
-      { key: "proj-schedules", label: "Schedules", icon: "clock", sub: "/automation/schedules" },
-      { key: "proj-improvements", label: "Improvements", icon: "star", sub: "/automation/improvements" },
-    ],
-  },
   { key: "proj-releases", label: "Releases", icon: "rocket", sub: "/releases" },
   { key: "proj-feedback", label: "Feedback", icon: "chat", sub: "/feedback" },
+  {
+    key: DEVELOPMENT_GROUP_KEY,
+    label: "Development",
+    icon: "code",
+    items: [
+      { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
+      { key: "proj-agents", label: "Agents", icon: "agent", sub: "/agents" },
+      { key: "proj-contracts", label: "Contracts", icon: "link", sub: "/ecosystem/contracts" },
+      { key: "proj-automation", label: "Automation", icon: "calendar", sub: "/automation" },
+    ],
+  },
 ];
 
 export const PROJECT_ITEMS: ProjItem[] = PROJECT_MENU.flatMap((e) => (isProjGroup(e) ? e.items : [e]));

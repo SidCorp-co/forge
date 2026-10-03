@@ -56,6 +56,8 @@ function ScheduleKindBadge({ kind }: { kind: ScheduleKind | "pm" | "improve" }) 
 
 interface SchedulesScreenProps {
   scope: { projectId: string; canManage: boolean };
+  /** The page's title when it hosts this screen as a tab (Automation); the screen's own otherwise. */
+  header?: React.ReactNode;
 }
 
 /** Absolute local timestamp, or em dash. */
@@ -273,7 +275,7 @@ interface RowActions {
   slug: string | undefined;
 }
 
-export function SchedulesScreen({ scope }: SchedulesScreenProps) {
+export function SchedulesScreen({ scope, header }: SchedulesScreenProps) {
   const { projectId, canManage } = scope;
   const params = useParams<{ slug: string }>();
   const slug = params?.slug;
@@ -293,11 +295,11 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
 
   return (
     <PageContainer className="min-h-dvh">
-      <PageTitle
-          hint="Recurring runs for this project, the PM sweep among them. Expand a row to see its history or settings."
-        >
+      {header ?? (
+        <PageTitle hint="Recurring runs for this project, the PM sweep among them. Expand a row to see its history or settings.">
           Schedules
-      </PageTitle>
+        </PageTitle>
+      )}
 
       {schedulesQ.isLoading && (
         <div className="space-y-2.5">
