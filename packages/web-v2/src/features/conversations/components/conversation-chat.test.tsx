@@ -63,6 +63,12 @@ vi.mock("@/features/projects/hooks", () => ({
 }));
 
 vi.mock("./conversation-members", () => ({ ConversationMembers: () => null }));
+// the UI actions (ISS-47) read the app router, which a unit render does not mount
+vi.mock("../ui-actions/use-ui-actions", () => ({
+  useUiActions: () => ({ cardsFor: () => null }),
+  useUiSnapshot: () => ({ sees: null, snapshot: {} }),
+  seesDetail: () => "",
+}));
 
 vi.mock("../hooks", () => ({
   useConversation: () => ({ data: room, isLoading: false, isError: false, isSuccess: true }),

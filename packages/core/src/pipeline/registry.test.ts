@@ -81,7 +81,7 @@ describe('getPipelineRegistry()', () => {
   it('returns the three-key payload at version 7', () => {
     const payload = getPipelineRegistry();
     expect(payload.version).toBe(PIPELINE_REGISTRY_VERSION);
-    expect(payload.version).toBe(7);
+    expect(payload.version).toBe(8);
     expect(payload.runnerCapabilities).toBe(RUNNER_CAPABILITIES);
     expect(Object.keys(payload).sort()).toEqual(['runnerCapabilities', 'statusExits', 'version']);
   });
@@ -89,7 +89,7 @@ describe('getPipelineRegistry()', () => {
   it('parses cleanly against the @forge/contracts schema', () => {
     const json = JSON.parse(JSON.stringify(getPipelineRegistry()));
     const parsed = pipelineRegistryResponseSchema.parse(json);
-    expect(parsed.version).toBe(7);
+    expect(parsed.version).toBe(8);
   });
 
   it('serves an exits row for every issue status and no other key', () => {
@@ -135,7 +135,7 @@ describe('getPipelineRegistry()', () => {
     });
     const json = JSON.parse(JSON.stringify(getPipelineRegistry()));
     const parsed = beforeThisChange.parse(json);
-    expect(parsed.version).toBe(7);
+    expect(parsed.version).toBe(8);
     expect('statusExits' in parsed).toBe(false);
   });
 });
@@ -152,7 +152,7 @@ describe('GET /api/pipeline/registry', () => {
     expect(res.status).toBe(200);
 
     const parsed = pipelineRegistryResponseSchema.parse(await res.json());
-    expect(parsed.version).toBe(7);
+    expect(parsed.version).toBe(8);
     expect(parsed.statusExits?.closed).toEqual(['reopen']);
     expect(parsed.statusExits?.dropped).toEqual([]);
     expect(parsed.runnerCapabilities['claude-code']).toEqual([
@@ -161,6 +161,7 @@ describe('GET /api/pipeline/registry', () => {
       'release_batch',
       'reconcile',
       'verify_skill',
+      'onboarding',
     ]);
   });
 });

@@ -137,6 +137,9 @@
 
 ### Added
 
+- **A new project can be onboarded in a chat thread.** The agent reads the code, drafts the key
+  designs for your approval and asks what it cannot tell in one questionnaire card,
+  at most three rounds. The BA assistant asks through the same card.
 - **A project sets the language agents write its prose in.** Project settings → Basics, or
   `PUT /api/projects/:id/content-language`: requirements, comments, suggestions, plans and assistant
   replies follow it; code, commits and PR titles stay English. Each session records what it was

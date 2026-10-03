@@ -3,6 +3,8 @@ import { baDoorRoutes } from '../assistant/ba-door-routes.js';
 import { contentLanguageRoutes } from '../content-language/routes.js';
 import { feedbackRoutes } from '../feedback/routes.js';
 import type { RequestIdVars } from '../middleware/request-id.js';
+import { onboardingRoutes } from '../onboarding/routes.js';
+import { questionnaireRoutes } from '../questionnaires/routes.js';
 import { requirementRoutes } from '../requirements/routes.js';
 import { suggestionRoutes } from '../suggestions/routes.js';
 import { workflowRoutes } from '../workflows/routes.js';
@@ -21,5 +23,7 @@ export function mountProjectConfig(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/projects', suggestionRoutes);
   app.route('/api/projects', feedbackRoutes);
   app.route('/api/projects', baDoorRoutes);
+  app.route('/api/projects', onboardingRoutes);
+  app.route('/api/projects', questionnaireRoutes);
   app.route('/api/projects', contentLanguageRoutes);
 }

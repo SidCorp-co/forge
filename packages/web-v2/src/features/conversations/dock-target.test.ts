@@ -36,7 +36,7 @@ describe("the dock's width", () => {
     [500, 500],
     [DOCK_MAX_WIDTH, DOCK_MAX_WIDTH],
     [5000, DOCK_MAX_WIDTH],
-    [Number.NaN, 440],
+    [Number.NaN, 400],
   ])("holds %s at %s", (w, expected) => {
     expect(clampDockWidth(w)).toBe(expected);
   });

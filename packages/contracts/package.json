@@ -58,6 +58,10 @@
       "types": "./dist/suggestions.d.ts",
       "default": "./dist/suggestions.js"
     },
+    "./onboarding": {
+      "types": "./dist/onboarding.d.ts",
+      "default": "./dist/onboarding.js"
+    },
     "./content-language": {
       "types": "./dist/content-language.d.ts",
       "default": "./dist/content-language.js"

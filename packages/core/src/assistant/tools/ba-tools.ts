@@ -6,12 +6,18 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import {
+  POST_QUESTIONNAIRE_SHAPE,
+  postQuestionnaireRequestSchema,
+  QUESTIONNAIRE_MAX_ROUNDS,
+} from '@forge/contracts/onboarding';
 import { SUGGESTION_KINDS } from '@forge/contracts/suggestions';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { conversationMessages } from '../../db/schema-conversations.js';
 import { itemEmbeddings } from '../../db/schema-item-embeddings.js';
+import { questionnaireBatches } from '../../db/schema-onboarding.js';
 import { agentQuestions } from '../../db/schema-questions.js';
 import { resolveIssueRouteRef } from '../../issues/issue-route-ref.js';
 import { dataPolicyOf, egressDeep } from '../../lib/data-egress.js';
@@ -21,6 +27,9 @@ import {
   type McpContext,
   principalAgency,
 } from '../../mcp/tools/lib.js';
+import { roundsInConversation } from '../../questionnaires/read.js';
+import { roundsRefusal } from '../../questionnaires/rules.js';
+import { announce, inTx, postQuestionnaireIn } from '../../questionnaires/service.js';
 import { askQuestion } from '../../questions/write.js';
 import { similarRequirements } from '../../requirements/embeddings.js';
 import { readRequirementAs } from '../../requirements/read.js';
@@ -241,6 +250,75 @@ const suggest =
     },
   });
 
+// cm:why the BA door asks through the same questionnaire card and submit as onboarding (BC-10): one
+// batch is the one open ask a requirement holds (Q5), so it is refused over an open single question
+// and a single question is refused over an open batch
+const sendQuestionnaire =
+  (room: BaRoom): ContextScopedMcpToolFactory =>
+  (ctx) => ({
+    name: 'ba_send_questionnaire',
+    grant: 'projects:write',
+    description: `Ask the requirement owner several things at once as ONE questionnaire card they answer inline and send once (partial allowed). Shape: ${POST_QUESTIONNAIRE_SHAPE}. Use group "clarification" for vague criteria, "question" for missing facts, "recommendation" (control accept_reject) for a change you propose. At most one ask is open per requirement: a batch over an open clarification is CLARIFICATION_ALREADY_OPEN, a second batch QUESTIONNAIRE_ALREADY_OPEN; at most ${QUESTIONNAIRE_MAX_ROUNDS} rounds. Their answers arrive as their next message.`,
+    inputSchema: schema(postQuestionnaireRequestSchema),
+    handler: async (args) => {
+      const body = postQuestionnaireRequestSchema.parse(args);
+      const conversationId = ctx.turn?.conversationId;
+      if (!conversationId) throw new Error('ba_send_questionnaire runs inside a requirement room');
+      const actor = actorOf(ctx);
+      let batchId = '';
+      let messageId: string | null = null;
+      const refused = await inTx(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${`questionnaire:${conversationId}`}, 0))`,
+        );
+        const sent = await roundsInConversation(tx, conversationId);
+        const exhausted = roundsRefusal(sent);
+        if (exhausted) return [exhausted];
+        const posted = await postQuestionnaireIn(tx, {
+          projectId: room.projectId,
+          conversationId,
+          onboardingId: null,
+          requirementId: room.requirementId,
+          round: sent + 1,
+          seriesSince: new Date(0),
+          actor,
+          authorLabel: 'BA assistant',
+          title: body.title,
+          intro: body.intro,
+          items: body.items,
+        });
+        if (Array.isArray(posted)) return posted;
+        batchId = posted.batchId;
+        messageId = posted.messageId;
+        return null;
+      });
+      if (refused) {
+        throw new Error(
+          `${refused.map((r) => `${r.code} at ${r.path || '/'}: ${r.detail}`).join(' | ')} — nothing was written`,
+        );
+      }
+      await announce(conversationId, messageId, 'assistant');
+      return {
+        questionnaire: { id: batchId, status: 'open' },
+        note: 'The card is in the room; the person answers it inline and sends once.',
+      };
+    },
+  });
+
+async function openBatchOnRequirement(requirementId: string) {
+  const [b] = await db
+    .select({ id: questionnaireBatches.id })
+    .from(questionnaireBatches)
+    .where(
+      and(
+        eq(questionnaireBatches.requirementId, requirementId),
+        inArray(questionnaireBatches.status, ['open', 'skipped']),
+      ),
+    )
+    .limit(1);
+  return b?.id ?? null;
+}
+
 const clarifyInput = z.strictObject({
   prompt: z.string().trim().min(5).max(2_000),
   needed: z.string().trim().min(3).max(1_000),
@@ -256,6 +334,12 @@ const askClarification =
     inputSchema: schema(clarifyInput),
     handler: async (args) => {
       const input = clarifyInput.parse(args);
+      const batch = await openBatchOnRequirement(room.requirementId);
+      if (batch) {
+        throw new Error(
+          `CLARIFICATION_ALREADY_OPEN: questionnaire ${batch} is still open on this requirement; at most one ask is open per item — wait for its answers.`,
+        );
+      }
       try {
         const q = await askQuestion({
           id: randomUUID(),
@@ -284,6 +368,7 @@ export function buildBaToolset(ctx: McpContext, room: BaRoom): ChatToolset {
     { factory: findSimilar(room) },
     { factory: suggest(room) },
     { factory: askClarification(room) },
+    { factory: sendQuestionnaire(room) },
   ]);
 }
 
@@ -293,4 +378,5 @@ export const BA_TOOL_NAMES = [
   'ba_find_similar',
   'ba_suggest',
   'ba_ask_clarification',
+  'ba_send_questionnaire',
 ] as const;

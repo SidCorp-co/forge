@@ -102,6 +102,13 @@
   --link:          var(--cobalt-500);
   --focus-ring:    var(--cobalt-500);
 
+  /* What an agent or the assistant says or proposes (ISS-63): its name, its avatar, the bar on a
+     questionnaire card and the Inferred / New marks. Never a status. */
+  --ai-fg:         #6247B3;
+  --ai-bg:         #F1ECFB;
+  --ai-bar:        #8A6BD1;
+  --sel-bg:        var(--cobalt-50);
+
   /* ===== SHADCN BRIDGE ===== */
   --background:           var(--bg-app);
   --foreground:           var(--fg-default);
@@ -228,6 +235,9 @@
   --wf-indigo: var(--hue-indigo-300);
   --wf-neutral: var(--ink-400);
   --wf-edge: var(--ink-500);
+  --ai-fg: #C4B2F2;
+  --ai-bg: #2A2340;
+  --ai-bar: #9F86E0;
 }
 
 /* ============================================================
