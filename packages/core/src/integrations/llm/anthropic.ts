@@ -305,3 +305,38 @@ export function createAnthropicProvider(cfg: AnthropicConfig): ChatProvider {
     },
   };
 }
+
+export interface CountTokensRequest {
+  model: string;
+  tools?: unknown[] | undefined;
+  apiKey: string;
+  baseUrl?: string | undefined;
+  fetchImpl?: typeof fetch | undefined;
+}
+
+/** Input tokens one request would bill, by the Messages `count_tokens` endpoint; null when it does not answer a count. */
+export async function countAnthropicInputTokens(req: CountTokensRequest): Promise<number | null> {
+  const fetchImpl = req.fetchImpl ?? fetch;
+  const url = `${openAiCompatUrl(req.baseUrl ?? process.env.ANTHROPIC_API_URL ?? 'https://api.anthropic.com', 'messages')}/count_tokens`;
+  const res = await fetchImpl(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': req.apiKey,
+      'anthropic-version': ANTHROPIC_VERSION,
+    },
+    body: JSON.stringify({
+      model: req.model,
+      messages: [{ role: 'user', content: 'x' }],
+      ...(req.tools ? { tools: req.tools } : {}),
+    }),
+  });
+  if (!res.ok) return null;
+  let json: { input_tokens?: number };
+  try {
+    json = (await res.json()) as { input_tokens?: number };
+  } catch {
+    return null;
+  }
+  return typeof json.input_tokens === 'number' ? json.input_tokens : null;
+}

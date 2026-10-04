@@ -19,6 +19,8 @@ import { conversationMessages } from '../../db/schema-conversations.js';
 import { itemEmbeddings } from '../../db/schema-item-embeddings.js';
 import { questionnaireBatches } from '../../db/schema-onboarding.js';
 import { agentQuestions } from '../../db/schema-questions.js';
+import { defaultChatProviderId } from '../../integrations/llm/bootstrap.js';
+import { resolveForProject } from '../../integrations/llm/registry.js';
 import { resolveIssueRouteRef } from '../../issues/issue-route-ref.js';
 import { dataPolicyOf, egressAt, egressDeep, egressOr, MCP_DOOR } from '../../lib/data-egress.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
@@ -35,8 +37,6 @@ import { similarRequirements } from '../../requirements/embeddings.js';
 import { readRequirementAs } from '../../requirements/read.js';
 import { listSuggestions } from '../../suggestions/read.js';
 import { createSuggestion } from '../../suggestions/service.js';
-import { defaultChatProviderId } from '../providers/bootstrap.js';
-import { resolveForProject } from '../providers/registry.js';
 import { drawMockup } from './ba-mockup-tool.js';
 import { buildToolset, type ChatToolset } from './mcp-adapter.js';
 

@@ -214,7 +214,7 @@ export function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projec
   const act = (a: Parameters<typeof triage.mutate>[0]["act"]) => triage.mutate({ id: r.id, act: a }, { onSuccess: () => setForm(null) });
   return (
     <section id="report-act" data-testid="report-triage">
-      <ViewHeading>Triage</ViewHeading>
+      <ViewHeading>What is this report?</ViewHeading>
       {r.triage === "new" ? (
         <div className="flex flex-wrap gap-2">
           <Button type="button" size="sm" disabled={triage.isPending} onClick={() => act({ act: "file", createIssue: {} })}>

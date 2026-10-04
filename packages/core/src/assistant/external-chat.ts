@@ -17,6 +17,9 @@ import { readContentLanguage } from '../content-language/read.js';
 import { db as defaultDb } from '../db/client.js';
 import { appConfig, chatLogs, projects } from '../db/schema.js';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
+import { defaultChatProviderId } from '../integrations/llm/bootstrap.js';
+import { type ChatTurnKind, resolveForProject } from '../integrations/llm/registry.js';
+import type { ChatResponseFormat, ChatStreamEvent } from '../integrations/llm/types.js';
 import {
   buildProgressFactsBlock,
   computeProjectProgress,
@@ -36,9 +39,6 @@ import {
   persistMessages,
   toProviderMessages,
 } from './conversation-turn.js';
-import { defaultChatProviderId } from './providers/bootstrap.js';
-import { type ChatTurnKind, resolveForProject } from './providers/registry.js';
-import type { ChatResponseFormat, ChatStreamEvent } from './providers/types.js';
 import { runTurnEvents, usageForLog } from './run-turn-core.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';

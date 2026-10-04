@@ -129,8 +129,11 @@ export async function upsertKnowledgeEntries(
   let vectors: Array<number[] | null> = entries.map(() => null);
   let degraded = false;
   try {
-    const { embedBatch } = await import('../embeddings/index.js');
-    const embedded = await embedBatch(entries.map((e) => knowledgeEmbedInput(e.title, e.body)));
+    const { embedBatch } = await import('../integrations/embeddings/index.js');
+    const embedded = await embedBatch(
+      { surface: 'knowledge' },
+      entries.map((e) => knowledgeEmbedInput(e.title, e.body)),
+    );
     if (embedded.length !== embedTexts.length) {
       throw new Error(
         `knowledge.service: embeddings returned ${embedded.length} vectors for ${embedTexts.length} texts`,
@@ -138,7 +141,7 @@ export async function upsertKnowledgeEntries(
     }
     vectors = embedded;
   } catch (err) {
-    const { EmbeddingUnavailableError } = await import('../embeddings/index.js');
+    const { EmbeddingUnavailableError } = await import('../integrations/embeddings/index.js');
     if (!(err instanceof EmbeddingUnavailableError)) throw err;
     degraded = true;
     logger.warn(

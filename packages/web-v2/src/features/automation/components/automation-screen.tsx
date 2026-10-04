@@ -27,7 +27,6 @@ import {
   usePeekKeys,
   useUrlParams,
   useUrlTab,
-  ViewHeading,
   visibleRows,
 } from "@/design";
 import { ImproveCatalog } from "@/features/improvement-messages/components/improve-catalog";
@@ -68,15 +67,24 @@ const NOUN: Record<AutomationTab, string> = { schedules: "schedules", fires: "fi
 
 function Configure({ access }: { access: AutomationAccess }) {
   return (
-    <div className="grid gap-8 border-t border-line-subtle px-5 py-8 max-md:px-3" data-testid="automation-configure">
-      <section>
-        <ViewHeading hint="Whether the PM sweeps this project, how often and on which events">PM sweep</ViewHeading>
-        <PmSettings projectId={access.projectId} canManage={access.canManage} />
-      </section>
-      <section>
-        <ViewHeading hint="Which improvement messages run here, how often, and whether they propose or apply">Improvement loop</ViewHeading>
-        <ImproveCatalog scope={{ projectId: access.projectId, canManage: access.canManage }} />
-      </section>
+    <div className="grid gap-4 border-t border-line-subtle px-5 py-6 max-md:px-3" data-testid="automation-configure">
+      <details>
+        <summary className="cursor-pointer text-14 font-bold text-accent-text">
+          PM sweep <span className="text-12-5 font-medium text-muted">Whether the PM sweeps this project, how often and on which events</span>
+        </summary>
+        <div className="mt-3">
+          <PmSettings projectId={access.projectId} canManage={access.canManage} />
+        </div>
+      </details>
+      <details>
+        <summary className="cursor-pointer text-14 font-bold text-accent-text">
+          Improvement loop{" "}
+          <span className="text-12-5 font-medium text-muted">Which improvement messages run here, how often, and whether they propose or apply</span>
+        </summary>
+        <div className="mt-3">
+          <ImproveCatalog scope={{ projectId: access.projectId, canManage: access.canManage }} />
+        </div>
+      </details>
     </div>
   );
 }

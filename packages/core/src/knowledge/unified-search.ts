@@ -1,4 +1,4 @@
-import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
+import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
 import { logger } from '../logger.js';
 import type { MemoryHit } from '../memory/search.js';
 import { runMemorySearch } from '../memory/search-service.js';
@@ -63,7 +63,7 @@ export async function runUnifiedSearch(input: {
 
   let queryVec: number[] | null = null;
   try {
-    queryVec = await embed(query);
+    queryVec = await embed({ surface: 'knowledge' }, query);
   } catch (err) {
     if (!(err instanceof EmbeddingUnavailableError)) throw err;
     logger.warn(

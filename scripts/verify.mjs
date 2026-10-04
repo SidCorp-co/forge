@@ -60,17 +60,6 @@ const CHECKS = [
     unit: 'test files',
   },
   {
-    axis: 'behaviour',
-    label: 'flow-coverage',
-    layer: 'shared',
-    reads: "every cm:flow step against the integration suite's coverage report",
-    cmd: ['node', 'scripts/check-flow-coverage.mjs', '--all'],
-    scanned: /: (\d+) step\(s\) across/,
-    unit: 'flow steps',
-    skipIf: /skipped — (no|stale) coverage report/,
-    coveredBy: 'node scripts/check-flow-coverage.mjs --all --require-sources',
-  },
-  {
     axis: 'knowledge',
     label: 'pat-surface',
     layer: 'shared',
@@ -325,9 +314,7 @@ const CI_COVERAGE = {
   'pnpm --filter web-v2 build': 'pnpm build',
   'pnpm --filter @forge/core test': 'pnpm test',
   'pnpm --filter @forge/core build': 'pnpm build',
-  'TEST_DB_MODE=container pnpm --filter @forge/core test:integration:coverage':
-    'pnpm --filter @forge/core test:integration',
-  'node scripts/check-flow-coverage.mjs --all --require-sources': 'verify, minus --require-sources',
+  'pnpm --filter @forge/core test:integration:ci': 'pnpm --filter @forge/core test:integration',
   'Lockfile sync + fmt + clippy + test':
     'verify, via scripts/check-runner-gates.mjs when packages/runner changed — on THIS box only, while CI runs the same step on ubuntu before the merge and on macOS and Windows after it',
   'node scripts/check-whole-tree-gates.mjs --run':

@@ -51,7 +51,7 @@ let expandIssueRelations: typeof import('../../src/memory/expand-relations.js').
 let runMemoryGet: typeof import('../../src/memory/get-service.js').runMemoryGet;
 type GetMemoryInput = import('../../src/memory/get-service.js').GetMemoryInput;
 let readPmGraph: typeof import('../../src/pm/graph-service.js').readPmGraph;
-let parseSseStream: typeof import('../../src/assistant/providers/sse.js').parseSseStream;
+let parseSseStream: typeof import('../../src/integrations/llm/sse.js').parseSseStream;
 
 async function api(path: string, init: RequestInit & { token?: string } = {}) {
   const res = await fetch(`${server.baseUrl}${path}`, {
@@ -159,12 +159,12 @@ beforeAll(async () => {
   process.env.EMBEDDINGS_API_KEY ??= 'test-key';
   const { signUserToken } = await import('../../src/auth/jwt.js');
   const { mintPat } = await import('../../src/auth/pat.js');
-  const embeddings = await import('../../src/embeddings/index.js');
+  const embeddings = await import('../../src/integrations/embeddings/index.js');
   search = await import('../../src/memory/search.js');
   ({ expandIssueRelations } = await import('../../src/memory/expand-relations.js'));
   ({ runMemoryGet } = await import('../../src/memory/get-service.js'));
   ({ readPmGraph } = await import('../../src/pm/graph-service.js'));
-  ({ parseSseStream } = await import('../../src/assistant/providers/sse.js'));
+  ({ parseSseStream } = await import('../../src/integrations/llm/sse.js'));
   server = await startTestServer();
   await truncateAll(harness.db);
 
