@@ -26,7 +26,8 @@ that is badly off is deleted and rebuilt to its design, not patched.
       marker, carried like a non-conforming workflow node; `node scripts/check-module-shape.mjs
       --markers <file>` writes those markers as JSON in the shape the pilot's marks file uses
       (`nodes.<module>.{kind, mark, aspects, rewriteDue, evidence}`), for the REQ-17/18 observation
-      store to import. It is run on demand by the orchestrator or QA. See
+      store to import. It is run on demand by the orchestrator or QA, and covers the semantic
+      rules; the import rules are `scripts/check-module-boundaries.mjs`'s blocking baseline. See
       [Phase 0 — pattern v2 order](#phase-0--pattern-v2-order).
 - [ ] A component-level design of core draws the six kinds, so module boundaries have a design
       root, and system-context's moved evidence and table count are fixed (ISS-171).

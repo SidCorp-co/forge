@@ -1,29 +1,11 @@
-// Pattern v2's module rules (docs/conventions/domain-entities.md, ADR 0008), measured over
-// packages/core/src. Pure functions: the CLI hands in the declaration, the file texts and the import
-// graph archmap built, and gets findings back. Nothing here reads the disk.
+// Pattern v2's declaration checks and semantic module rules (docs/conventions/domain-entities.md,
+// ADR 0008), measured over packages/core/src. The import rules are dependency-cruiser's
+// (module-boundaries.mjs). Pure functions: the CLI hands in the declaration and the file texts, and
+// gets findings back. Nothing here reads the disk.
 
 export const KINDS = ['kernel', 'domain', 'read-model', 'adapter', 'door', 'platform'];
 
-/** What each kind may import, besides itself. The order is the dependency direction. */
-export const MAY_IMPORT = {
-  door: ['door', 'read-model', 'domain', 'kernel', 'adapter', 'platform'],
-  'read-model': ['read-model', 'domain', 'kernel', 'platform'],
-  domain: ['domain', 'kernel', 'adapter', 'platform'],
-  kernel: ['kernel', 'platform'],
-  adapter: ['adapter', 'platform'],
-  platform: ['platform'],
-};
-
-export const RULES = [
-  'kind',
-  'direction',
-  'public-face',
-  'cycle',
-  'table-writer',
-  'route-query',
-  'refusal',
-  'status-write',
-];
+export const RULES = ['kind', 'table-writer', 'route-query', 'refusal', 'status-write'];
 
 export const ROOT_MODULE = '(root)';
 const SRC = 'packages/core/src/';
@@ -138,113 +120,6 @@ export function kindFindings(dirs, modules) {
       file: `${SRC}${d}`,
       detail: `${d} declares no kind in modules.json`,
     }));
-}
-
-function crossEdges(edges, modules) {
-  const out = [];
-  for (const e of edges) {
-    if (!e.fromFile || !e.toFile || isTestFile(e.fromFile) || isTestFile(e.toFile)) continue;
-    const from = moduleOf(e.fromFile, modules);
-    const to = moduleOf(e.toFile, modules);
-    if (!from || !to || from === to) continue;
-    out.push({ ...e, from, to });
-  }
-  return out;
-}
-
-/** An import from a kind to a kind it may not reach. */
-export function directionFindings(edges, modules) {
-  const out = [];
-  for (const e of crossEdges(edges, modules)) {
-    const fk = kindOf(e.from, modules);
-    const tk = kindOf(e.to, modules);
-    if (!fk || !tk || MAY_IMPORT[fk].includes(tk)) continue;
-    out.push({
-      rule: 'direction',
-      module: e.from,
-      file: e.fromFile,
-      detail: `${fk} ${e.from} imports ${tk} ${e.to} (${e.toFile.slice(SRC.length)})`,
-    });
-  }
-  return out;
-}
-
-/** An import that lands anywhere in a non-platform module but its index.ts. */
-export function publicFaceFindings(edges, modules) {
-  const out = [];
-  for (const e of crossEdges(edges, modules)) {
-    const tk = kindOf(e.to, modules);
-    if (!tk || tk === 'platform') continue;
-    const face = e.to === ROOT_MODULE ? `${SRC}index.ts` : `${SRC}${e.to}/index.ts`;
-    if (e.toFile === face) continue;
-    out.push({
-      rule: 'public-face',
-      module: e.from,
-      file: e.fromFile,
-      detail: `imports ${e.toFile.slice(SRC.length)}, an internal of ${e.to}`,
-    });
-  }
-  return out;
-}
-
-/** Strongly connected components of a directed graph, largest first. */
-export function components(graph) {
-  const index = new Map();
-  const low = new Map();
-  const stack = [];
-  const on = new Set();
-  const out = [];
-  let i = 0;
-  const visit = (v) => {
-    index.set(v, i);
-    low.set(v, i);
-    i += 1;
-    stack.push(v);
-    on.add(v);
-    for (const w of graph.get(v) ?? []) {
-      if (!index.has(w)) {
-        visit(w);
-        low.set(v, Math.min(low.get(v), low.get(w)));
-      } else if (on.has(w)) {
-        low.set(v, Math.min(low.get(v), index.get(w)));
-      }
-    }
-    if (low.get(v) === index.get(v)) {
-      const comp = [];
-      let w;
-      do {
-        w = stack.pop();
-        on.delete(w);
-        comp.push(w);
-      } while (w !== v);
-      out.push(comp.sort());
-    }
-  };
-  for (const v of graph.keys()) if (!index.has(v)) visit(v);
-  return out.sort((a, b) => b.length - a.length);
-}
-
-/** Each module inside an import cycle, with the cycle it sits in. */
-export function cycleFindings(edges, modules) {
-  const graph = new Map();
-  for (const e of crossEdges(edges, modules)) {
-    if (!graph.has(e.from)) graph.set(e.from, new Set());
-    if (!graph.has(e.to)) graph.set(e.to, new Set());
-    graph.get(e.from).add(e.to);
-  }
-  const cycles = components(graph).filter((c) => c.length > 1);
-  const findings = [];
-  for (const c of cycles) {
-    for (const m of c) {
-      findings.push({
-        rule: 'cycle',
-        module: m,
-        file: m === ROOT_MODULE ? `${SRC}index.ts` : `${SRC}${m}`,
-        detail: `sits in an import cycle of ${c.length} modules`,
-      });
-    }
-  }
-  return { findings, cycles };
 }
 
 function lineAt(text, offset) {
@@ -428,7 +303,7 @@ export function totals(byModule) {
 }
 
 /** The reconciliation markers: one node per module, Wrong while any rule fails. */
-export function markers(byModule, { atSha, cycles, multiWriter, rewriteAt = 2 }) {
+export function markers(byModule, { atSha, multiWriter, rewriteAt = 2 }) {
   const nodes = {};
   for (const [m, row] of Object.entries(byModule)) {
     const aspects = RULES.filter((r) => row.counts[r] > 0);
@@ -457,7 +332,6 @@ export function markers(byModule, { atSha, cycles, multiWriter, rewriteAt = 2 })
     atSha: atSha ?? null,
     rules: RULES,
     totals: totals(byModule),
-    cycles,
     multiWriterTables: multiWriter,
     nodes,
   };

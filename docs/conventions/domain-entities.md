@@ -12,10 +12,18 @@ requirements and workflow designs.
   so a verdict or a Wrong marker can name the rule it judges.
 - **Why each rule exists** is in [ADR 0008](../adr/0008-module-kinds-and-dependency-direction.md).
   This page says only what to build.
-- **Code that breaks a rule is Wrong**, and is rebuilt to the rule rather than patched.
-  `scripts/check-module-shape.mjs` measures the rules a script can read, and `--markers` writes its
-  findings as Wrong markers. The orchestrator or QA runs it on demand; nothing runs it before a
-  push. There is no hand-kept list of divergences on this page.
+- **Code that breaks a rule is Wrong**, and is rebuilt to the rule rather than patched. There is
+  no hand-kept list of divergences on this page.
+- **The import rules block.** `scripts/check-module-boundaries.mjs` runs dependency-cruiser over
+  `packages/core/src` with rules generated from `packages/core/src/modules.json`: context direction,
+  kind direction, runtime cycles between modules, face-only access and adapters through their port.
+  Today's violations are frozen in `.forge/module-boundaries-baseline.json`; a new violation, an
+  entry that no longer occurs, or a rule whose frozen count rose fails, so the baseline only
+  shrinks. It runs in `pnpm verify` and CI.
+- **The semantic rules are reported on demand.** `scripts/check-module-shape.mjs` refuses a
+  declaration that contradicts itself and reports table writers, database calls in routes, the
+  refusal shape and status writes; `--markers` writes its findings as Wrong markers. The
+  orchestrator or QA runs it; nothing runs it before a push.
 - **The API comes first.** The CLI wraps the routes, and MCP keeps only what neither covers
   ([api-first.md](../proposals/destination/api-first.md)), so every rule below is stated for the
   route first.
@@ -468,4 +476,5 @@ web-v2/src/features/feedback/     api.ts, hooks.ts, types.ts, routes.ts, compone
 | The machine as data and one kernel transition | Every status write in core moves into one engine, and a slice can no longer set its own status in a one-line update |
 | One durable outbox | Every reaction is asynchronous and survives a crash, at the price of a table write per event and a consumer that must be idempotent |
 | One 422 for every rule refusal | A client reads `error.code` and never branches on 403 or 409 |
-| The checker runs on demand, not before a push | New code can break a rule and land; the break shows only when the orchestrator or QA next runs the checker |
+| The semantic rules run on demand, not before a push | New code can break a table-writer, route-query, refusal or status-write rule and land; the break shows only when the orchestrator or QA next runs the script |
+| A shrink-only baseline for the import rules | A file move rewrites its baseline keys, so the move carries `--update-baseline` with it; a violation can never be admitted by re-freezing, only fixed |

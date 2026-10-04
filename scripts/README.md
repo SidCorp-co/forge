@@ -65,7 +65,7 @@ passed, because the external record of what shipped belonged to none of them.
 | doc citations | `check-doc-citations` — `lang-check` | whether a document's citation of a file in this repo is still true: a path no tracked file carries and an anchor whose file does not hold that symbol each fail, a line-number citation fails because `CLAUDE.md` already forbids one, and a live citation whose target was changed after the document was comes back on the worklist without failing. Resolves in two scopes and no third — the document's own directory and its package — with a root-written path resolved exactly or not at all, so no namesake can stand in for a deleted file and no part of resolution reads whether the target is present. An excusal names the tokens it excuses | a document's PROSE, which no machine can check; a count or a number in a document; whether a symbol that still exists still means what the sentence says; `CHANGELOG.md` and `docs/proposals/`, each excluded with its reason in `.forge/conformance.json` |
 | API contracts | `check-api-contracts` — `conformance` | whether `packages/core/contracts/forge-api.openapi.json` and `forge-mcp.tools.json` are byte for byte what the generator writes from the running app, naming each route (`METHOD /path`) or tool that was added, removed or changed and the JSON pointer where it differs; and whether every mounted route and served tool is describable at all — one the generator cannot describe is its refusal, never an omission | whether a route's contract is GOOD — a response schema, a missing validator, a description; and whether a change is breaking, which is the differ's (oasdiff, and a JSON Schema differ for the tools) |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs; and whether every file directly under `docs/proposals/` opens with a `**Removed when:**` line naming at least one issue key, the issue whose landing change deletes the file (`docs/proposals/destination/` is exempt) | whether the price stated is honest, or whether the named issue really carries the condition — that is review's |
-| relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
+| relations | `archmap check` + `check-module-boundaries` — `archmap` | which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles between modules, face-only access and adapter ports over `packages/core/src`, generated from `packages/core/src/modules.json` | how a file is written; table writers, database calls in routes, refusal shape and status writes, which `check-module-shape` reports on demand |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | selection | `check-whole-tree-gates` — `whole-tree`, after the merge | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
@@ -203,6 +203,26 @@ three contracts over it sat `locked` and passed on nothing. With the map: 5,206 
 unresolvable of 5,376 possible (3.2%) — all of them node_modules subpath exports, which belong to no
 module. Audit rule R7 holds the ceiling, because `.forge/archmap/` is vendored and a re-vendor could
 drop the support without a single test going red.
+
+### check-module-boundaries
+
+Pattern v2's import rules (ISS-184, ADR 0008). The rule set is generated from
+`packages/core/src/modules.json` on every run, so a kind or a context is declared once and never
+restated in a config file. Two dependency-cruiser cruises over `packages/core/src`, tests excluded:
+one over every import for `context-direction`, `kind-direction`, `face-only` and `adapter-port`, and
+one over the imports that evaluate at load (no type-only, no dynamic) for `runtime-cycle`.
+dependency-cruiser keeps a single cycle per import, so filtering that cycle by type in one cruise
+would hide a runtime cycle behind a found one through a type edge; the second cruise is what
+prevents that.
+
+`.forge/module-boundaries-baseline.json` holds one `<importing file> -> <imported file>` per frozen
+violation, under its rule. Exit `1` on a declaration fault, a violation the baseline does not hold, a
+frozen entry that no longer occurs, or a rule whose frozen count rose over the base revision
+(`lib/baseline-ratchet.mjs:baseRev`); exit `2` when it cannot run, including on a checkout with no
+base revision. `--update-baseline` rewrites the file and refuses when any rule's count would rise —
+it is for after a fix or a file move, never to admit a violation. The ratchet lives in the checker
+rather than in `conformance.json`, whose `relations` axis already declares its two baseline slots
+for archmap.
 
 ### Vendored checkers
 

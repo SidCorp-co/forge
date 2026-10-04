@@ -33,6 +33,9 @@ importers:
       '@typescript/native-preview':
         specifier: 7.0.0-dev.20260707.2
         version: 7.0.0-dev.20260707.2
+      dependency-cruiser:
+        specifier: ^18.2.0
+        version: 18.2.0
       eslint:
         specifier: ^10.11.0
         version: 10.11.0(jiti@2.7.0)

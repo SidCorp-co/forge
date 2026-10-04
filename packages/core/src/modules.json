@@ -1,5 +1,5 @@
 {
-  "$comment": "Pattern v2 (docs/conventions/domain-entities.md, ADR 0008): every directory under packages/core/src is exactly one kind and sits in one business context, and every table has exactly one owning module, the only one that writes it. A nested path (integrations/<port>) is a module of its own. `contexts` lists the contexts in dependency order: a module imports only its own context or one listed before it, a door excepted. Each context's label is its root module label on the Forge project. scripts/check-module-shape.mjs reads this file.",
+  "$comment": "Pattern v2 (docs/conventions/domain-entities.md, ADR 0008): every directory under packages/core/src is exactly one kind and sits in one business context, and every table has exactly one owning module, the only one that writes it. A nested path (integrations/<port>) is a module of its own. `contexts` lists the contexts in dependency order: a module imports only its own context or one listed before it, a door excepted. Each context's label is its root module label on the Forge project. scripts/check-module-boundaries.mjs generates its dependency-cruiser rules from this file, and scripts/check-module-shape.mjs reads it for the declaration checks and the semantic rules.",
   "contexts": [
     {
       "name": "platform",

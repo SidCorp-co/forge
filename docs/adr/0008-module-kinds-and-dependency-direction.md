@@ -77,16 +77,17 @@ The choices inside that, and why:
 - **Permission is [ADR 0007](0007-approval-is-a-permission.md)'s**, not restated here: approval
   became a permission, and one `can()` replaces the agency rule table for every other act.
 
-**The rules are measured by a script, on demand.** `scripts/check-module-shape.mjs` reads the kind declaration and archmap's import graph
-(`archmap graph --json`, so one resolver answers for both checks) and reports per module: kind,
-direction, public face, cycles, table writers, database calls in routes, refusal shape and status
-writes outside the kernel transition; `--markers` writes its findings as the Wrong markers of the
+**The rules are measured by two scripts.** The import rules (direction, public face, cycles)
+are `scripts/check-module-boundaries.mjs`'s, a blocking check with a shrink-only baseline, as
+ISS-184's amendment below records. `scripts/check-module-shape.mjs` refuses a declaration that
+contradicts itself and reports per module, on demand, the rules an import graph cannot show:
+undeclared directories, table writers, database calls in routes, refusal shape and status writes
+outside the kernel transition; `--markers` writes those findings as the Wrong markers of the
 reconciliation checklist, a JSON document the REQ-17/18 observation store can import. The owner
 ruled on 2026-10-04 that dev is code only and QA comes later ("build trước đi đã test gọi QA test
-sau"), so the orchestrator or QA runs it; it is wired into neither `pnpm verify` nor a hook, ships
-without unit tests, and the only check before a push on dev is `pnpm tc:changed`
-(`scripts/tc-changed.mjs`), a typecheck of the touched packages and their importers.
-Whether a rule later becomes a gate is a QA-phase decision.
+sau"), so neither ships with unit tests, and the only check before a push on dev is
+`pnpm tc:changed` (`scripts/tc-changed.mjs`), a typecheck of the touched packages and their
+importers.
 
 Two rules have no script yet: read models (web derivations) and permission. They are judged by the
 reconciliation decision on each module until a check exists.
@@ -111,7 +112,8 @@ reconciliation decision on each module until a check exists.
 - **Two adapter shapes remain legal** (registry-bound and deployment-bound, ADR 0006); a caller
   imports the port's **index.ts** either way.
 - **The cost** is in pattern v2's Honest costs: most of core fails on day one, and because the
-  checker runs on demand, a change can break a rule and land until someone next runs it.
+  semantic rules run on demand, a change can break one of them and land until someone next runs
+  the script.
 
 ## Amendment (2026-10-04)
 

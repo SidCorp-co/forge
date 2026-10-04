@@ -1,31 +1,29 @@
 #!/usr/bin/env node
-// Pattern v2's module checker (docs/conventions/domain-entities.md, ADR 0008). Reports, per core
-// module: its kind, imports against the dependency direction, imports of another module's
-// internals, import cycles, writes to a table another module owns, database calls in route files,
-// refusals outside the envelope, and status writes outside the kernel transition.
+// Pattern v2's small module script (docs/conventions/domain-entities.md, ADR 0008). It refuses a
+// declaration that contradicts itself (packages/core/src/modules.json: a table owned twice, `owns`
+// on a kind that owns nothing, a module with no known context) and reports, per core module, the
+// semantic rules no import graph shows: undeclared directories, writes to a table another module
+// owns, database calls in route files, refusals outside the envelope, and status writes outside
+// the kernel transition. The import rules are scripts/check-module-boundaries.mjs's.
 //
-// The import graph is archmap's (`archmap graph --json`), so one resolver answers for both. It is
-// run on demand by the orchestrator or QA, never by verify or a hook (owner, 2026-10-04: code
-// only, checking comes later). It exits 0 with its findings, 2 when it cannot run; --markers
-// writes them as the reconciliation Wrong markers.
+// The semantic report is regex over source and runs on demand for the orchestrator or QA. It exits
+// 0 with its findings, 1 on a refused declaration, 2 when it cannot run; --markers writes the
+// findings as the reconciliation Wrong markers.
 //
-//   node scripts/check-module-shape.mjs [--graph <file>] [--markers <file>]
+//   node scripts/check-module-shape.mjs [--markers <file>]
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  cycleFindings,
   declaredTables,
-  directionFindings,
   isTestFile,
   kindFindings,
   kindOf,
   markers,
   moduleOf,
   parseDeclaration,
-  publicFaceFindings,
   RULES,
   refusalFindings,
   routeQueryFindings,
@@ -52,12 +50,11 @@ const flag = (name) => {
   if (!v || v.startsWith('--')) die(`${name} needs a path`);
   return v;
 };
-const known = new Set(['--graph', '--markers']);
+const known = new Set(['--markers']);
 for (const [i, a] of args.entries()) {
   if (a.startsWith('--') && !known.has(a))
     die(`unknown flag ${a} — one of ${[...known].join(', ')}`);
-  if (!a.startsWith('--') && !['--graph', '--markers'].includes(args[i - 1]))
-    die(`unexpected argument ${a}`);
+  if (!a.startsWith('--') && args[i - 1] !== '--markers') die(`unexpected argument ${a}`);
 }
 
 const DECLARATION = 'packages/core/src/modules.json';
@@ -68,7 +65,10 @@ try {
   die(`${DECLARATION} is unreadable: ${err.message}`);
 }
 const { faults, modules, owners } = parseDeclaration(declaration);
-if (faults.length) die(`the declaration is refused:\n  ${faults.join('\n  ')}`);
+if (faults.length) {
+  console.error(`module-shape: ${DECLARATION} is refused:\n  ${faults.join('\n  ')}`);
+  process.exit(1);
+}
 for (const path of Object.keys(modules)) {
   if (path === '(root)') continue;
   if (!existsSync(join(SRC, path)))
@@ -88,52 +88,11 @@ function sourceFiles(dir) {
 const files = sourceFiles(SRC).filter((f) => !isTestFile(f));
 const dirs = readdirSync(SRC).filter((d) => statSync(join(SRC, d)).isDirectory());
 
-function graph() {
-  const path = flag('--graph');
-  if (path) {
-    try {
-      return JSON.parse(readFileSync(path, 'utf8'));
-    } catch (err) {
-      die(`--graph ${path} is unreadable: ${err.message}`);
-    }
-  }
-  const r = spawnSync(join(ROOT, '.forge/archmap/archmap'), ['graph', '--json', '--compact'], {
-    cwd: ROOT,
-    encoding: 'utf8',
-    maxBuffer: 256 * 1024 * 1024,
-  });
-  if (r.error || r.status !== 0) {
-    die(
-      `archmap graph could not run (${r.error?.message ?? `exit ${r.status}`}): ${(r.stderr ?? '').trim().split('\n').pop()}`,
-    );
-  }
-  try {
-    return JSON.parse(r.stdout);
-  } catch {
-    die('archmap graph printed no JSON document');
-  }
-}
-
-const g = graph();
-if (g.formatVersion !== 1)
-  die(`archmap graph formatVersion ${g.formatVersion}; this checker reads 1`);
-if (!g.complete)
-  die(
-    'archmap graph is incomplete — a provider did not run, so an absent edge would read as a clean one',
-  );
-const edges = g.edges.filter((e) => e.resolved && e.fromFile?.startsWith('packages/core/src/'));
-
 const texts = new Map(files.map((f) => [f, readFileSync(join(ROOT, f), 'utf8')]));
 const schema = files.filter((f) => /packages\/core\/src\/db\/schema[^/]*\.ts$/.test(f));
 const tables = declaredTables(schema.map((f) => texts.get(f)));
 
-const findings = [
-  ...kindFindings(dirs, modules),
-  ...directionFindings(edges, modules),
-  ...publicFaceFindings(edges, modules),
-];
-const { findings: cycleHits, cycles } = cycleFindings(edges, modules);
-findings.push(...cycleHits);
+const findings = [...kindFindings(dirs, modules)];
 
 const writes = [];
 for (const [file, text] of texts) {
@@ -158,17 +117,17 @@ const markersPath = flag('--markers');
 if (markersPath) {
   writeFileSync(
     markersPath,
-    `${JSON.stringify(markers(byModule, { atSha: sha, cycles, multiWriter }), null, 1)}\n`,
+    `${JSON.stringify(markers(byModule, { atSha: sha, multiWriter }), null, 1)}\n`,
   );
 }
 
 const wrong = Object.entries(byModule).filter(([, r]) => RULES.some((k) => r.counts[k] > 0));
 console.log(
-  `module-shape: ${files.length} file(s) scanned across ${Object.keys(byModule).length} module(s), ${edges.length} import edge(s), ${tables.size} table(s)`,
+  `module-shape: ${files.length} file(s) scanned across ${Object.keys(byModule).length} module(s), ${tables.size} table(s)`,
 );
 console.log(`module-shape: ${RULES.map((r) => `${r} ${sum[r]}`).join(' · ')}`);
 console.log(
-  `module-shape: ${wrong.length} module(s) Wrong, ${wrong.filter(([, r]) => RULES.filter((k) => r.counts[k] > 0).length >= 2).length} due for rewrite (two or more rules); ${cycles.length} cycle(s), the largest ${cycles[0]?.length ?? 0} modules; ${Object.keys(multiWriter).length} table(s) written from more than one module`,
+  `module-shape: ${wrong.length} module(s) Wrong, ${wrong.filter(([, r]) => RULES.filter((k) => r.counts[k] > 0).length >= 2).length} due for rewrite (two or more rules); ${Object.keys(multiWriter).length} table(s) written from more than one module`,
 );
 if (undeclared.length)
   console.log(
