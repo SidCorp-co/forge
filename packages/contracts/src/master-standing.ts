@@ -36,6 +36,8 @@ export const MASTER_PASS_LIST_MAX = 200;
 export const MASTER_PASS_ITEM_MAX = 200;
 export const MASTER_PASS_REFUSAL_MAX = 1000;
 export const MASTER_ISSUE_KEY_MAX = 64;
+export const MASTER_PASS_PAGE_DEFAULT = 20;
+export const MASTER_PASS_PAGE_MAX = 100;
 
 export const masterSessionRequestSchema = z.strictObject({
 	projectId: z.uuid(),
@@ -124,4 +126,13 @@ export interface MasterStanding {
 	slots: MasterSlots | null;
 	lastBeatAt: string | null;
 	silentAfterSeconds: number;
+}
+
+export interface MasterPassList {
+	generatedAt: string;
+	projectId: string;
+	items: MasterPassView[];
+	limit: number;
+	hasMore: boolean;
+	next: string | null;
 }

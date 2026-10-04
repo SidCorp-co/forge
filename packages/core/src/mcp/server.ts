@@ -39,6 +39,7 @@ import {
   forgeJobsResumeTool,
 } from './tools/forge-jobs.js';
 import { forgeKnowledgeTool } from './tools/forge-knowledge.js';
+import { forgeMastersTool } from './tools/forge-masters.js';
 import {
   forgeMemoryDeleteTool,
   forgeMemoryFeedbackTool,
@@ -70,6 +71,7 @@ import { forgeReconcileTool } from './tools/forge-reconcile.js';
 import { forgeReleaseBatchTool } from './tools/forge-release-batch.js';
 import { forgeRequirementsTool } from './tools/forge-requirements.js';
 import { forgeRunnersTool } from './tools/forge-runners.js';
+import { forgeRunsTool } from './tools/forge-runs.js';
 import { forgeSchedulesTool } from './tools/forge-schedules.js';
 import { forgeSentryTool } from './tools/forge-sentry.js';
 import { forgeSkillFactsGetTool, forgeSkillFactsListTool } from './tools/forge-skill-facts.js';
@@ -166,6 +168,8 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     forgeWorkflowsTool(ctx),
     forgeRequirementsTool(ctx),
     forgeSuggestionsTool(ctx),
+    forgeRunsTool(ctx),
+    forgeMastersTool(ctx),
     forgeOnboardingTool(ctx),
     forgeFeedbackItemsTool(ctx),
     forgeJobsListTool(ctx),

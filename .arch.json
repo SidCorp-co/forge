@@ -50,6 +50,9 @@
     "core-masters": [
       "packages/core/src/masters/**"
     ],
+    "core-runs": [
+      "packages/core/src/runs/**"
+    ],
     "core-domain-templates": [
       "packages/core/src/domain-templates/**"
     ],
