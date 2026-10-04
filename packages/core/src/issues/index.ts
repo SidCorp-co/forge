@@ -4,6 +4,7 @@ export { TransitionError, transitionIssueStatus } from './apply-transition.js';
 export { closeBacklogStreams } from './backlog/open-streams.js';
 export { runCriteriaBackfillOnce } from './criteria/backfill.js';
 export { isValidDetectorKey } from './detector-key.js';
+export { issueDisplayIds } from './display-ids.js';
 export {
   fileDetectedIssue,
   type IssueTriage,
