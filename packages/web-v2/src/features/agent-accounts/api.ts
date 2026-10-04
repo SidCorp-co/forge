@@ -20,13 +20,6 @@ export const agentAccountsApi = {
       body: JSON.stringify(input),
     }),
 
-  /** `PUT /api/orgs/:orgId/agents/:agentUserId/projects` — the whole set, sent whole. */
-  setProjects: (orgId: string, agentUserId: string, projectIds: string[]) =>
-    apiClient<{ projects: string[]; refenced: number }>(
-      `/orgs/${orgId}/agents/${agentUserId}/projects`,
-      { method: "PUT", body: JSON.stringify({ projectIds }) },
-    ),
-
   /** `POST /api/orgs/:orgId/agents/:agentUserId/tokens` — the plaintext, once. */
   mintCredential: (orgId: string, agentUserId: string) =>
     apiClient<AgentCredentialMinted>(`/orgs/${orgId}/agents/${agentUserId}/tokens`, {

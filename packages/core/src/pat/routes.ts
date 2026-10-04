@@ -1,10 +1,9 @@
 import type { PatRefusalCode } from '@forge/contracts/pat';
-import { SET_PAT_FENCE_SHAPE, setPatFenceRequestSchema } from '@forge/contracts/pat-fence';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../config/env.js';
-import { countActivePatsForUser, mintPat, revokePat, rotatePat } from '../credentials/pat.js';
+import { countActivePatsForUser, mintPat, revokePat } from '../credentials/pat.js';
 import { coreTokenNamePrefixOf } from '../credentials/pat-format.js';
 import {
   PAT_ACCOUNT_ONLY_PERMISSIONS,
@@ -17,15 +16,13 @@ import {
 } from '../credentials/pat-permissions.js';
 import type { personalAccessTokens } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
-import { RefusalError, refused, refuser } from '../lib/refusal.js';
+import { refuser } from '../lib/refusal.js';
 import { roomManager, userRoom } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
-import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { fenceEditorRefusal, fenceOf } from './fence-rules.js';
-import { listPatFenceChanges, setPatFence } from './fence-service.js';
-import { hasLivePatNamed, listPatsOf, ownsPat, patAuditOf } from './read.js';
+import { zValidator } from '../middleware/zod-validator.js';
+import { hasLivePatNamed, listPatsOf } from './read.js';
 
 const refuse = refuser<PatRefusalCode>('PAT_REFUSED');
 
@@ -44,18 +41,7 @@ const createBodySchema = z
     expiresAt: z.iso.datetime().optional(),
   })
   .strict();
-
-const rotateBodySchema = z
-  .object({
-    expiresAt: z.iso.datetime().optional(),
-  })
-  .strict();
-
 const idParamSchema = z.object({ id: z.uuid() }).strict();
-const auditQuerySchema = z
-  .object({ limit: z.coerce.number().int().positive().max(200).default(50) })
-  .strict();
-
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
@@ -251,112 +237,6 @@ patRoutes.delete(
       data: { tokenId: row.id, userId, ts: new Date().toISOString() },
     });
     return c.json(publicShape(row));
-  },
-);
-
-patRoutes.get(
-  '/pat/:id/audit',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', auditQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const { id } = c.req.valid('param');
-    const { limit } = c.req.valid('query');
-    if (!(await ownsPat(id, userId))) throw notFound();
-    const rows = await patAuditOf(id, limit);
-    return c.json({ entries: rows });
-  },
-);
-
-patRoutes.post(
-  '/pat/:id/rotate',
-  requireFreshAuth(5),
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', rotateBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const { id } = c.req.valid('param');
-    const body = c.req.valid('json');
-    const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
-    const minted = await rotatePat({ id, userId, expiresAt });
-    if (!minted) throw notFound();
-    forgetPatThrottle(id);
-    roomManager.publish(userRoom(userId), {
-      event: 'pat.created',
-      data: { tokenId: minted.row.id, userId, rotatedFrom: id, ts: new Date().toISOString() },
-    });
-    roomManager.publish(userRoom(userId), {
-      event: 'pat.revoked',
-      data: { tokenId: id, userId, ts: new Date().toISOString() },
-    });
-    return c.json({ ...publicShape(minted.row), plaintext: minted.plaintext });
-  },
-);
-
-patRoutes.put(
-  '/pat/:id/fence',
-  async (c, next) => {
-    const refusal = fenceEditorRefusal(c.get('principal'));
-    if (refusal) throw new RefusalError([refusal], refusal.code);
-    await next();
-  },
-  requireFreshAuth(5),
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  strictBody(setPatFenceRequestSchema, SET_PAT_FENCE_SHAPE),
-  async (c) => {
-    const userId = c.get('userId');
-    const { id } = c.req.valid('param');
-    const body = c.req.valid('json');
-    const outcome = await setPatFence({
-      tokenId: id,
-      ownerId: userId,
-      fence: fenceOf(body),
-      reason: body.reason,
-    });
-    if (!outcome) {
-      throw new HTTPException(404, {
-        message: `no token ${id} of yours`,
-        cause: { code: 'NOT_FOUND' },
-      });
-    }
-    if (!outcome.ok) return refused(c, outcome.refusals, 'PAT_REFUSED');
-    roomManager.publish(userRoom(userId), {
-      event: 'pat.fence_changed',
-      data: { tokenId: id, userId, changeId: outcome.change.id, ts: outcome.change.changedAt },
-    });
-    return c.json({ token: publicShape(outcome.token), change: outcome.change });
-  },
-);
-
-patRoutes.get(
-  '/pat/:id/fence-changes',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', auditQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const { limit } = c.req.valid('query');
-    const changes = await listPatFenceChanges(id, c.get('userId'), limit);
-    if (!changes) {
-      throw new HTTPException(404, {
-        message: `no token ${id} of yours`,
-        cause: { code: 'NOT_FOUND' },
-      });
-    }
-    return c.json({ changes });
   },
 );
 

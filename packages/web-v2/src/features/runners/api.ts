@@ -6,10 +6,8 @@ import type {
 	DeviceRunnerAssignment,
 	OrgDeviceRow,
 	PairingCode,
-	ProjectGitAccessView,
 	ProjectRunner,
 	RunnerActivity,
-	SshConnTestResult,
 } from "./types";
 
 export const runnersApi = {
@@ -110,33 +108,4 @@ export const runnersApi = {
 			{ method: "PATCH", body: JSON.stringify({ status }) },
 		),
 
-	/** `GET /api/projects/:id/git-credential` — resolved org-pool key reference. */
-	getGitCredential: (projectId: string) =>
-		apiClient<ProjectGitAccessView>(`/projects/${projectId}/git-credential`),
-
-	/**
-	 * `PUT /api/projects/:id/git-credential` — pick a key from the project's org
-	 * pool. Server rejects a key from a different org (400 `WRONG_ORG`).
-	 */
-	setGitCredential: (projectId: string, sshKeyId: string) =>
-		apiClient<ProjectGitAccessView>(`/projects/${projectId}/git-credential`, {
-			method: "PUT",
-			body: JSON.stringify({ sshKeyId }),
-		}),
-
-	/**
-	 * `POST /api/projects/:id/git-credential/test` — probe the referenced pool
-	 * key against the project's SSH repo URL (git ls-remote). Non-mutating.
-	 */
-	testGitCredential: (projectId: string) =>
-		apiClient<SshConnTestResult>(
-			`/projects/${projectId}/git-credential/test`,
-			{ method: "POST" },
-		),
-
-	/** `DELETE /api/projects/:id/git-credential` — remove the deploy key. */
-	deleteGitCredential: (projectId: string) =>
-		apiClient<void>(`/projects/${projectId}/git-credential`, {
-			method: "DELETE",
-		}),
 };

@@ -3,9 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { OperatorWhoamiResult } from "../types";
 import { AUTH_COOKIE_NAME, fetchOperatorWhoami } from "./whoami-fetch";
 
-export type OperatorGateDecision = { kind: "redirect"; to: string } | { kind: "render" };
+type OperatorGateDecision = { kind: "redirect"; to: string } | { kind: "render" };
 
-export function operatorGateDecision(result: OperatorWhoamiResult): OperatorGateDecision {
+function operatorGateDecision(result: OperatorWhoamiResult): OperatorGateDecision {
   if (result.kind === "unauthenticated") return { kind: "redirect", to: "/login" };
   if (result.kind === "not-admin") return { kind: "redirect", to: "/" };
   return { kind: "render" };

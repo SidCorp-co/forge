@@ -20,12 +20,9 @@ import { tallyDeadDeliveries } from '../outbox/index.js';
 import { runnerMayTakeJob } from '../runners/index.js';
 import { readScheduleStreaks, type ScheduleStreak, streakFails } from '../schedules/index.js';
 import type { AdminAlert, AdminAlertId, AdminAlertStatus, AdminThresholds } from './types.js';
-import { ADMIN_THRESHOLD_DEFAULTS } from './types.js';
 
 export const ENTITY_LIMIT = 20;
-export const DEFAULT_STALE_SECONDS = ADMIN_THRESHOLD_DEFAULTS.stuckJobSeconds;
-
-export interface AlertQueryOptions {
+interface AlertQueryOptions {
   /** Overrides the configured `stuckJobSeconds` for one call — the `?staleSeconds=` query param. */
   staleSeconds?: number;
   now?: Date;
@@ -61,12 +58,12 @@ const STATUS_RANK: Record<AdminAlertStatus, number> = {
 };
 
 /** crit beats warn beats ok — for combining several contributors into one alert's overall status. */
-export function worstStatus(a: AdminAlertStatus, b: AdminAlertStatus): AdminAlertStatus {
+function worstStatus(a: AdminAlertStatus, b: AdminAlertStatus): AdminAlertStatus {
   return STATUS_RANK[a] >= STATUS_RANK[b] ? a : b;
 }
 
 /** A2 classification: 'ok' when nothing is stuck; 'crit' at CRIT_STUCK_JOBS or when the oldest offender has waited 4x the stale threshold; 'warn' otherwise. */
-export function classifyStuck(
+function classifyStuck(
   count: number,
   oldestAgeSeconds: number,
   staleSeconds: number,
@@ -77,11 +74,7 @@ export function classifyStuck(
 }
 
 /** A4 classification: ratio of current window vs the preceding window, gated by an absolute floor so a near-zero baseline can't fire on noise. */
-export function classifySpend(
-  current: number,
-  baseline: number,
-  spikeMultiple: number,
-): AdminAlertStatus {
+function classifySpend(current: number, baseline: number, spikeMultiple: number): AdminAlertStatus {
   if (current < SPEND_MIN_USD) return 'ok';
   if (baseline <= 0) return 'warn';
   const ratio = current / baseline;
@@ -98,12 +91,9 @@ export function classifySpend(
  * the gap ISS-654's ceiling fills, so the two arms are combined with
  * `worstStatus`, never substituted for one another.
  */
-export const SPEND_CEILING_WARN_FRACTION = 0.8;
+const SPEND_CEILING_WARN_FRACTION = 0.8;
 
-export function classifySpendCeiling(
-  spendUsdDay: number,
-  ceilingUsdDay: number | null,
-): AdminAlertStatus {
+function classifySpendCeiling(spendUsdDay: number, ceilingUsdDay: number | null): AdminAlertStatus {
   if (ceilingUsdDay === null || ceilingUsdDay <= 0) return 'ok';
   if (spendUsdDay >= ceilingUsdDay) return 'crit';
   if (spendUsdDay >= ceilingUsdDay * SPEND_CEILING_WARN_FRACTION) return 'warn';
@@ -111,14 +101,14 @@ export function classifySpendCeiling(
 }
 
 /** A5 schedule contributor classification: consecutive trailing failures. */
-export function classifyScheduleStreak(streak: number, warnStreak: number): AdminAlertStatus {
+function classifyScheduleStreak(streak: number, warnStreak: number): AdminAlertStatus {
   if (streak >= warnStreak + SCHEDULE_CRIT_MARGIN) return 'crit';
   if (streak >= warnStreak) return 'warn';
   return 'ok';
 }
 
 /** A5 integration-delivery contributor classification: fail-rate over the minimum sample. */
-export function classifyDeliveryFailRate(
+function classifyDeliveryFailRate(
   failed: number,
   total: number,
   warnRatePct: number,

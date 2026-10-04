@@ -1,7 +1,7 @@
-export type OutboxPermission = 'project.read' | 'outbox.replay';
+type OutboxPermission = 'project.read' | 'outbox.replay';
 
 /** Refuses an actor that does not hold `permission` on the project, by name; resolves otherwise. */
-export type OutboxGate = (
+type OutboxGate = (
   userId: string | null | undefined,
   permission: OutboxPermission,
   projectId: string,

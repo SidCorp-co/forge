@@ -89,5 +89,3 @@ export async function stopBoss(): Promise<void> {
 export function isBossStarted(): boolean {
   return started;
 }
-
-export type Boss = typeof boss;

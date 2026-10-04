@@ -2,7 +2,7 @@ import { env } from '../../config/env.js';
 import type { ProviderConfig, ProviderId } from '../../integrations/identity/index.js';
 
 /** Resolve `OAUTH_REDIRECT_BASE` once; fall back to `APP_BASE_URL`. */
-export function getRedirectBase(): string {
+function getRedirectBase(): string {
   return env.OAUTH_REDIRECT_BASE ?? env.APP_BASE_URL;
 }
 
@@ -57,7 +57,7 @@ export function getEnabledProviders(): ProviderConfig[] {
 }
 
 /** Public DTO for the `/providers` endpoint — never leaks client secrets. */
-export interface PublicProvider {
+interface PublicProvider {
   id: ProviderId;
   label: string;
 }

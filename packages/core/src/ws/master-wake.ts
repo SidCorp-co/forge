@@ -9,7 +9,7 @@ import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 
 /** Every status a master can take work from, plus the two it reads to decide (promote, release). */
-export const MASTER_WAKE_STATUSES: readonly IssueStatus[] = [
+const MASTER_WAKE_STATUSES: readonly IssueStatus[] = [
   ...TAKEABLE_STATUSES,
   'draft',
   'awaiting_release',
@@ -24,9 +24,9 @@ export const MASTER_WAKE_SOURCES = [
   'workflow_design',
   'comment',
 ] as const;
-export type MasterWakeSource = (typeof MASTER_WAKE_SOURCES)[number];
+type MasterWakeSource = (typeof MASTER_WAKE_SOURCES)[number];
 
-export function isMasterWakeStatus(status: IssueStatus): boolean {
+function isMasterWakeStatus(status: IssueStatus): boolean {
   return MASTER_WAKE_STATUSES.includes(status);
 }
 
@@ -90,7 +90,7 @@ export async function wakeMastersForBuild(
 }
 
 /** The approver decided a design this project proposed: an approve unblocks its builds, a return owes a revision. */
-export async function wakeMastersForDesign(args: {
+async function wakeMastersForDesign(args: {
   projectId: string;
   workflowId: string;
   decision: 'approve' | 'return';
@@ -106,7 +106,7 @@ export async function wakeMastersForDesign(args: {
 }
 
 /** A person commented on one of this project's issues, and its master owes the thread a reply. */
-export async function wakeMastersForComment(args: {
+async function wakeMastersForComment(args: {
   projectId: string;
   issueId: string;
   commentId: string;

@@ -1,10 +1,10 @@
 import { type JWTPayload, jwtVerify, SignJWT } from 'jose';
 import { env } from '../config/env.js';
 
-export const USER_JWT_TYPE = 'user' as const;
+const USER_JWT_TYPE = 'user' as const;
 export const USER_JWT_TTL_SECONDS = 7 * 24 * 60 * 60;
 
-export type UserJwtClaims = JWTPayload & {
+type UserJwtClaims = JWTPayload & {
   sub: string;
   typ: typeof USER_JWT_TYPE;
 };

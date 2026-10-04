@@ -61,7 +61,7 @@ function oauthErrorRedirect(c: Context, code: string): Response {
 
 export const startQuery = z.object({ redirect: z.string().optional() });
 
-export type StartQuery = z.infer<typeof startQuery>;
+type StartQuery = z.infer<typeof startQuery>;
 
 export const refuseStartQuery = (result: { success: boolean }) => {
   if (!result.success) {
@@ -78,13 +78,13 @@ export const callbackQuery = z.object({
   error: z.string().optional(),
 });
 
-export type CallbackQuery = z.infer<typeof callbackQuery>;
+type CallbackQuery = z.infer<typeof callbackQuery>;
 
 export const refuseCallbackQuery = (result: { success: boolean }, c: Context) => {
   if (!result.success) return oauthErrorRedirect(c, 'provider_error');
 };
 
-export interface StartOptions {
+interface StartOptions {
   /** `login` (default) or `reauth`. Persisted on the state cookie. */
   mode?: 'login' | 'reauth';
   /** Authenticated user id — required when `mode === 'reauth'`. */

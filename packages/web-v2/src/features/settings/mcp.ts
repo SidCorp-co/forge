@@ -21,7 +21,7 @@ export const CLIENTS: ReadonlyArray<{ kind: ClientKind; label: string }> = [
   { kind: "generic", label: "Generic" },
 ];
 
-export interface SnippetInput {
+interface SnippetInput {
   projectSlug: string;
   mcpUrl: string;
 }

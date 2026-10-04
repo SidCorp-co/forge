@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { answerInGroupModes, type PresenceConfig } from '../db/schema-agent-selves.js';
 
 /** Inclusive bounds, named in every refusal. */
-export const PRESENCE_BOUNDS = {
+const PRESENCE_BOUNDS = {
   dormantMs: [60_000, 30 * 24 * 60 * 60 * 1000],
   backoffAfter: [1, 20],
   loopBounceMs: [10_000, 60 * 60 * 1000],
@@ -21,7 +21,7 @@ export const boundedPresence = (key: keyof typeof PRESENCE_BOUNDS) => {
     .max(hi, { error: `presence.${key} must be between ${lo} and ${hi}` });
 };
 
-export const PRESENCE_KEYS = [
+const PRESENCE_KEYS = [
   'dormantMs',
   'backoffAfter',
   'loopBounceMs',
@@ -31,7 +31,7 @@ export const PRESENCE_KEYS = [
 ] as const;
 const HEARTBEAT_KEYS = ['enabled', 'intervalMs'] as const;
 
-export const presenceConfigSchema = z
+const presenceConfigSchema = z
   .object({
     dormantMs: boundedPresence('dormantMs').optional(),
     backoffAfter: boundedPresence('backoffAfter').optional(),

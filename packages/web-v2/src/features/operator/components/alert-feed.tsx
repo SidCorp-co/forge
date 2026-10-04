@@ -29,7 +29,7 @@ const ALERT_TITLE: Record<string, string> = {
 
 const STATUS_RANK: Record<AdminAlertStatus, number> = { crit: 0, warn: 1, ok: 2 };
 
-export function sortAlerts(alerts: readonly AdminAlert[]): AdminAlert[] {
+function sortAlerts(alerts: readonly AdminAlert[]): AdminAlert[] {
   return [...alerts].sort(
     (a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status] || a.id.localeCompare(b.id),
   );

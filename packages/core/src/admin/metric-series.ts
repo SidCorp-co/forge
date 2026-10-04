@@ -24,7 +24,7 @@ import type {
 
 export type BucketUnit = 'hour' | 'day' | 'week';
 
-export interface WindowSpec {
+interface WindowSpec {
   hours: number;
   unit: BucketUnit;
   bucketCount: number;
@@ -170,14 +170,14 @@ async function bucketedRunOutcomes(
 
 /** The numerator, the optional denominator, and the factor applied to a ratio.
  *  `den: null` is a plain count — no bucket of it is ever null. */
-export interface MetricInput {
+interface MetricInput {
   num: Map<string, number>;
   den: Map<string, number> | null;
   scale: number;
 }
 
 /** The bucketed readers, each run at most once per request. */
-export interface RawLoaders {
+interface RawLoaders {
   signups: () => Promise<Map<string, number>>;
   leadTime: () => Promise<{ num: Map<string, number>; den: Map<string, number> }>;
   resolved: () => Promise<Map<string, number>>;
@@ -231,7 +231,7 @@ export const METRIC_SOURCES: Record<
   signupsWindow: async (raw) => ({ num: await raw.signups(), den: null, scale: 1 }),
 };
 
-export interface MetricSeries {
+interface MetricSeries {
   points: AdminMetricSeriesPoint[];
   value: number | null;
   baseline: number | null;
