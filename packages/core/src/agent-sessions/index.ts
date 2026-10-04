@@ -1,5 +1,6 @@
 export { persistSessionAttachment } from './attachment-service.js';
-export { createChatSessionRow, dispatchChatTurn, noClaudeClient } from './chat-turn.js';
+export { dispatchChatTurn } from './chat-dispatch.js';
+export { createChatSessionRow, noClaudeClient } from './chat-turn.js';
 export {
   authorizeInteractiveTurn,
   dispatchInteractiveTurn,
@@ -50,3 +51,10 @@ export {
   setSessionRuntimeState,
   stampSessionMarker,
 } from './writes.js';
+export { materializeJobUsage } from './usage-materialize.js';
+export {
+  canonicalSessionId,
+  EMPTY_USAGE_TOTALS,
+  usageSessionMatch,
+  usageTotalsSelection,
+} from './usage-rollup.js';

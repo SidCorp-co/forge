@@ -167,9 +167,6 @@
     "core-uploads": [
       "packages/core/src/uploads/**"
     ],
-    "core-usage-records": [
-      "packages/core/src/usage-records/**"
-    ],
     "core-webhooks": [
       "packages/core/src/webhooks/**"
     ],

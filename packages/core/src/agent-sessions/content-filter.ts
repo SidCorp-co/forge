@@ -1,7 +1,7 @@
 const SYSTEM_NOISE_PREFIXES: RegExp[] = [
   /^\[RESULT_[A-Z_]+\]/,
   /^\[Context:/,
-  // Rehydration transcript markers from `buildRehydrationBlock` (chat-turn.ts).
+  // Rehydration transcript markers from `buildRehydrationBlock` (chat-dispatch.ts).
   /^\[This is a cold start/,
   /^\[End of prior/,
 ];

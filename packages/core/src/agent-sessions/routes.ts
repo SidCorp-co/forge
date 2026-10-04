@@ -425,7 +425,7 @@ agentSessionRoutes.patch(
         : null;
     if (pendingSkillName && (patch.status === 'completed' || patch.status === 'failed')) {
       if (patch.status === 'completed') {
-        // Prefer the pre-turn baseline stamped in chat-turn.ts (the message
+        // Prefer the pre-turn baseline stamped in chat-dispatch.ts (the message
         // count right after the user turn, before any assistant reply) over
         // `existing.messages.length` — an interim `running` PATCH may have
         // already persisted this turn's assistant messages before this

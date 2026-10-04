@@ -115,7 +115,7 @@ import {
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,
   usageTotalsSelection,
-} from './usage-records/index.js';
+} from './agent-sessions/index.js';
 import {
   assertDesignApprovedForIssue,
   assertDesignsApprovedForSeqs,

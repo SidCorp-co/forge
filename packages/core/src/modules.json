@@ -98,13 +98,15 @@
         "agentSessionTurns",
         "agentSessions",
         "sessionAttachments",
-        "sessionInbox"
+        "sessionInbox",
+        "usageRecords"
       ],
       "serves": [
         "REQ-15",
         "agent-run-standing#handed_back",
         "issue-delivery#ev-run-ended",
-        "personal-data-flow#ds-transcripts"
+        "personal-data-flow#ds-transcripts",
+        "REQ-24"
       ]
     },
     "api-contract": {
@@ -968,12 +970,6 @@
       "context": "work",
       "owns": ["downloadTickets", "uploadTickets"],
       "serves": ["personal-data-flow#ds-uploads", "feedback-triage#ask"]
-    },
-    "usage-records": {
-      "kind": "kernel",
-      "context": "execution",
-      "owns": ["usageRecords"],
-      "serves": ["REQ-24"]
     },
     "webhooks": {
       "kind": "door",

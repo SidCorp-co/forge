@@ -1,10 +1,6 @@
 {
   "generatedAt": "2026-10-04T22:54:16.297Z",
   "files": {
-    "packages/core/src/agent-sessions/chat-turn.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 152
-    },
     "packages/core/src/agent-sessions/routes.ts": {
       "fileLines": 612,
       "maxFunctionLines": 153
