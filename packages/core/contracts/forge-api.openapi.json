@@ -20750,6 +20750,55 @@
                     ],
                     "type": "string"
                   },
+                  "node": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "step": {
+                            "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "step"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "edge": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "from": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              },
+                              "label": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "to": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "from",
+                              "to"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "edge"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
                   "release": {
                     "maxLength": 200,
                     "minLength": 1,
@@ -20857,6 +20906,55 @@
                       "contract_change"
                     ],
                     "type": "string"
+                  },
+                  "node": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "step": {
+                            "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "step"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "edge": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "from": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              },
+                              "label": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "to": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "from",
+                              "to"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "edge"
+                        ],
+                        "type": "object"
+                      }
+                    ]
                   },
                   "release": {
                     "maxLength": 200,
@@ -21243,6 +21341,73 @@
                         "minLength": 1,
                         "type": "string"
                       },
+                      "node": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "step": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              },
+                              "verdict": {
+                                "enum": [
+                                  "keep",
+                                  "rewrite",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "step",
+                              "verdict"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "edge": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "from": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "maxLength": 120,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "to": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "from",
+                                  "to"
+                                ],
+                                "type": "object"
+                              },
+                              "verdict": {
+                                "enum": [
+                                  "keep",
+                                  "rewrite",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "edge",
+                              "verdict"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
                       "options": {
                         "items": {
                           "maxLength": 1000,
@@ -21370,6 +21535,73 @@
                         "maxLength": 4000,
                         "minLength": 1,
                         "type": "string"
+                      },
+                      "node": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "step": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              },
+                              "verdict": {
+                                "enum": [
+                                  "keep",
+                                  "rewrite",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "step",
+                              "verdict"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "edge": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "from": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "maxLength": 120,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "to": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "from",
+                                  "to"
+                                ],
+                                "type": "object"
+                              },
+                              "verdict": {
+                                "enum": [
+                                  "keep",
+                                  "rewrite",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "edge",
+                              "verdict"
+                            ],
+                            "type": "object"
+                          }
+                        ]
                       },
                       "options": {
                         "items": {
@@ -24530,6 +24762,452 @@
         ]
       }
     },
+    "/api/projects/{id}/mockups": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "requirement",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "feedback",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "issue",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "param",
+          "query"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "caption": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "contentBase64": {
+                    "minLength": 4,
+                    "type": "string"
+                  },
+                  "document": {},
+                  "kind": {
+                    "enum": [
+                      "wireframe",
+                      "sketch",
+                      "image",
+                      "html",
+                      "api_example"
+                    ],
+                    "type": "string"
+                  },
+                  "mime": {
+                    "maxLength": 200,
+                    "minLength": 3,
+                    "type": "string"
+                  },
+                  "name": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attachmentId": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "from": {
+                        "enum": [
+                          "issue",
+                          "comment"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "attachmentId"
+                    ],
+                    "type": "object"
+                  },
+                  "target": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "requirement": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "requirement",
+                          "revision"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "feedback": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "feedback"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "issue": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "issue"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "target",
+                  "kind"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/mockups/{mk}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mk",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/mockups/{mk}/accept": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mk",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/mockups/{mk}/content": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mk",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/mockups/{mk}/return": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mk",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/mockups/{mk}/withdraw": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mk",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {},
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
     "/api/projects/{id}/module-diagrams/{kind}": {
       "get": {
         "parameters": [
@@ -26205,6 +26883,73 @@
                         "minLength": 1,
                         "type": "string"
                       },
+                      "node": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "step": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              },
+                              "verdict": {
+                                "enum": [
+                                  "keep",
+                                  "rewrite",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "step",
+                              "verdict"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "edge": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "from": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "maxLength": 120,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "to": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "from",
+                                  "to"
+                                ],
+                                "type": "object"
+                              },
+                              "verdict": {
+                                "enum": [
+                                  "keep",
+                                  "rewrite",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "edge",
+                              "verdict"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
                       "options": {
                         "items": {
                           "maxLength": 1000,
@@ -26333,6 +27078,73 @@
                         "minLength": 1,
                         "type": "string"
                       },
+                      "node": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "step": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              },
+                              "verdict": {
+                                "enum": [
+                                  "keep",
+                                  "rewrite",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "step",
+                              "verdict"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "edge": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "from": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "maxLength": 120,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "to": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "from",
+                                  "to"
+                                ],
+                                "type": "object"
+                              },
+                              "verdict": {
+                                "enum": [
+                                  "keep",
+                                  "rewrite",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "edge",
+                              "verdict"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
                       "options": {
                         "items": {
                           "maxLength": 1000,
@@ -26367,6 +27179,110 @@
                     "type": "string"
                   }
                 },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/requirements/{req}/criteria/{code}/steps": {
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "req",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "pattern": "^BC-[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "edges": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "from": {
+                          "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                          "type": "string"
+                        },
+                        "label": {
+                          "maxLength": 120,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "to": {
+                          "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "to"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 120,
+                    "type": "array"
+                  },
+                  "steps": {
+                    "items": {
+                      "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                      "type": "string"
+                    },
+                    "maxItems": 40,
+                    "type": "array"
+                  },
+                  "workflow": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "workflow"
+                ],
                 "type": "object"
               }
             }
@@ -27872,6 +28788,16 @@
           },
           {
             "in": "query",
+            "name": "workflow",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "status",
             "required": false,
             "schema": {
@@ -27955,7 +28881,8 @@
                       "breakdown",
                       "triage",
                       "duplicate",
-                      "feedback_triage"
+                      "feedback_triage",
+                      "design_change"
                     ],
                     "type": "string"
                   },
@@ -27973,6 +28900,11 @@
                   "payload": {},
                   "requirement": {
                     "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "workflow": {
+                    "maxLength": 200,
                     "minLength": 1,
                     "type": "string"
                   }
@@ -28102,6 +29034,67 @@
                   }
                 },
                 "required": [
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/suggestions/{sid}/revise": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "payload": {},
+                  "reason": {
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "payload",
                   "reason"
                 ],
                 "type": "object"
@@ -28610,6 +29603,14 @@
                     "maxLength": 200,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "steps": {
+                    "items": {
+                      "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                      "type": "string"
+                    },
+                    "maxItems": 40,
+                    "type": "array"
                   }
                 },
                 "required": [
@@ -28774,6 +29775,73 @@
                         "minLength": 1,
                         "type": "string"
                       },
+                      "node": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "step": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              },
+                              "verdict": {
+                                "enum": [
+                                  "keep",
+                                  "rewrite",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "step",
+                              "verdict"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "edge": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "from": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "maxLength": 120,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "to": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "from",
+                                  "to"
+                                ],
+                                "type": "object"
+                              },
+                              "verdict": {
+                                "enum": [
+                                  "keep",
+                                  "rewrite",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "edge",
+                              "verdict"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
                       "options": {
                         "items": {
                           "maxLength": 1000,
@@ -28901,6 +29969,73 @@
                         "maxLength": 4000,
                         "minLength": 1,
                         "type": "string"
+                      },
+                      "node": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "step": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              },
+                              "verdict": {
+                                "enum": [
+                                  "keep",
+                                  "rewrite",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "step",
+                              "verdict"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "edge": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "from": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "maxLength": 120,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "to": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "from",
+                                  "to"
+                                ],
+                                "type": "object"
+                              },
+                              "verdict": {
+                                "enum": [
+                                  "keep",
+                                  "rewrite",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "edge",
+                              "verdict"
+                            ],
+                            "type": "object"
+                          }
+                        ]
                       },
                       "options": {
                         "items": {
@@ -29181,6 +30316,66 @@
         "x-forge-validated": [
           "json",
           "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/workflows/{workflow}/system-graph": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workflow",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": false,
+            "schema": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "against",
+            "required": false,
+            "schema": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "param",
+          "query"
         ]
       }
     },

@@ -6,16 +6,19 @@
  */
 
 import type { IssueStatusTone } from '@forge/contracts/issue-vocabulary';
-import type {
-  BcVerdict,
-  CoverageIssue,
-  RequirementAttentionGroup,
-  RequirementCoverage,
-  RequirementStanding,
-  RequirementState,
-  RequirementWaitingOn,
+import {
+  type BcVerdict,
+  BREAKDOWN_SLA_WORKING_DAYS,
+  type CoverageIssue,
+  type RequirementAttentionGroup,
+  type RequirementCoverage,
+  type RequirementStanding,
+  type RequirementState,
+  type RequirementTask,
+  type RequirementWaitingOn,
 } from '@forge/contracts/requirements';
 import type { DeliveryPhase, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
+import { addWorkingDays } from '../lib/working-days.js';
 
 /** Untouched this long, an open requirement is listed as stuck. */
 export const STUCK_AFTER_DAYS = 21;
@@ -76,6 +79,8 @@ export interface StandingInput {
   stalePins: readonly { flow: string; pinned: number; approved: number }[];
   staleContractPins: readonly { contract: string; pinned: string | null; current: string }[];
   feedback: { open: number; untriaged: readonly string[] };
+  /** When the current revision was first agreed: its first baseline. */
+  agreedAt: Date | null;
   updatedAt: Date;
   now: Date;
 }
@@ -273,9 +278,20 @@ function turnOf(
     };
   }
   if (live.length === 0) {
+    const task = breakdownTaskOf(input, live);
     return {
       group: 'others',
-      waitingOn: wait('agent', 'Master', 'break down', 'agreed with no linked issue'),
+      waitingOn: {
+        ...wait(
+          'agent',
+          'Master',
+          'break down',
+          task
+            ? `agreed with no linked issue; the breakdown is due ${task.dueAt.slice(0, 10)}, ${BREAKDOWN_SLA_WORKING_DAYS} working days after the agree`
+            : 'agreed with no linked issue',
+        ),
+        ...(task ? { dueAt: task.dueAt } : {}),
+      },
     };
   }
   if (live.every((i) => i.status === 'draft')) {
@@ -296,6 +312,44 @@ function turnOf(
       'agreed and its issues are being worked',
     ),
   };
+}
+
+const taskOf = (
+  kind: RequirementTask['kind'],
+  owner: RequirementTask['owner'],
+  revision: number,
+  openedAt: Date,
+  days: number,
+  now: Date,
+): RequirementTask => {
+  const due = addWorkingDays(openedAt, days);
+  return {
+    kind,
+    owner,
+    revision,
+    openedAt: openedAt.toISOString(),
+    dueAt: due.toISOString(),
+    overdue: now.getTime() > due.getTime(),
+  };
+};
+
+// workflow requirement-to-delivery step `breakdown`: the project master proposes the breakdown of
+// an agreed revision within 2 working days; the task is open while the revision has no live issue
+// and no open breakdown suggestion
+export function breakdownTaskOf(
+  input: StandingInput,
+  live: readonly StandingIssue[],
+): RequirementTask | null {
+  if (input.status !== 'agreed' || input.currentRevision === null || !input.agreedAt) return null;
+  if (live.length > 0 || input.openSuggestionKinds.includes('breakdown')) return null;
+  return taskOf(
+    'breakdown',
+    'Project master',
+    input.currentRevision,
+    input.agreedAt,
+    BREAKDOWN_SLA_WORKING_DAYS,
+    input.now,
+  );
 }
 
 export function touchedAt(input: StandingInput): Date {
@@ -352,6 +406,7 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
       feedbackOpen: input.feedback.open,
       feedbackUntriaged: input.feedback.untriaged.length,
     },
+    tasks: [breakdownTaskOf(input, live)].filter((t): t is RequirementTask => t !== null),
     shownRevision,
     coverage,
     owner: input.owner,

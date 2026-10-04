@@ -529,6 +529,73 @@
                     "minLength": 1,
                     "type": "string"
                   },
+                  "node": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "step": {
+                            "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                            "type": "string"
+                          },
+                          "verdict": {
+                            "enum": [
+                              "keep",
+                              "rewrite",
+                              "delete"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "step",
+                          "verdict"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "edge": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "from": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              },
+                              "label": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "to": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "from",
+                              "to"
+                            ],
+                            "type": "object"
+                          },
+                          "verdict": {
+                            "enum": [
+                              "keep",
+                              "rewrite",
+                              "delete"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "edge",
+                          "verdict"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
                   "options": {
                     "items": {
                       "maxLength": 1000,
@@ -3326,6 +3393,164 @@
       "name": "forge_metrics.session_failures"
     },
     {
+      "description": "Mockups MK-n: what a screen or a call should look like, proposed about exactly one target. Actions: list | get | content | propose | accept | return | withdraw. propose: { target: { requirement, revision } | { feedback } | { issue }, kind: wireframe | sketch | image | html | api_example, caption?, and exactly one of document (a wireframe-v1 board { v: \"wireframe-v1\", title?, shapes }, kind wireframe: draw one from the requirement text), contentBase64 + name (+ mime?), or source { from: issue | comment, attachmentId } (a file uploaded first with forge_uploads request) }. Refused by name: MOCKUP_TYPE_INVALID (a type the kind does not take, or a board that is not wireframe-v1), MOCKUP_TOO_LARGE, MOCKUP_SOURCE_OTHER_PROJECT (another project's upload), MOCKUP_REVISION_SUPERSEDED (propose against the head instead), MOCKUP_TARGET_INVALID, MOCKUP_QUEUE_FULL. accept { reason? } and return { reason } are a person’s acts (MOCKUP_DECIDE_FORBIDDEN for an agent), and its author never accepts it (MOCKUP_ACCEPT_OWN_FORBIDDEN); withdraw is its author’s. An accepted requirement mockup is pinned by the next agree, re-baseline or re-pin, beside the designs, and every job on an issue of that requirement is given it. list: exactly one of requirement | feedback | issue. get / content: { ref: MK-n }; content returns an image as an image block and text inline, framed as data, and is CONTENT_EGRESS_FORBIDDEN on a no_egress project.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "get",
+              "content",
+              "propose",
+              "accept",
+              "return",
+              "withdraw"
+            ],
+            "type": "string"
+          },
+          "caption": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "contentBase64": {
+            "minLength": 4,
+            "type": "string"
+          },
+          "document": {},
+          "feedback": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "issue": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "wireframe",
+              "sketch",
+              "image",
+              "html",
+              "api_example"
+            ],
+            "type": "string"
+          },
+          "mime": {
+            "maxLength": 200,
+            "minLength": 3,
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "ref": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "requirement": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "additionalProperties": false,
+            "properties": {
+              "attachmentId": {
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "type": "string"
+              },
+              "from": {
+                "enum": [
+                  "issue",
+                  "comment"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "attachmentId"
+            ],
+            "type": "object"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "requirement": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "requirement",
+                  "revision"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "feedback": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "feedback"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "issue": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "issue"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "forge_mockups"
+    },
+    {
       "description": "Onboarding: the thread in the chat panel where the project agent agrees the key designs with a person. Actions: post_questionnaire | read_answers | post_update | mark_done. post_questionnaire: { questionnaire: { title, intro?, items: [{ id, group: question | clarification | recommendation, control: choice | multi | text | accept_reject, prompt, options?: [{ id, label }], inferredDefault?, placeholder?, why, evidence: [file:symbol | record], affects?, isNew? }] } (1-15 items) } — one batch answered once; a second open batch is QUESTIONNAIRE_ALREADY_OPEN, a 4th round QUESTIONNAIRE_ROUNDS_EXHAUSTED, an item answered before QUESTIONNAIRE_ITEM_ANSWERED_BEFORE, a rejected recommendation QUESTIONNAIRE_RECOMMENDATION_REJECTED, a malformed item QUESTIONNAIRE_ITEM_INVALID. read_answers: every batch of the thread with each item’s state (open / answered / void) and answer. post_update: { update: { text, designs?: { heading, workflowIds: [uuid], approve? } } } — a message in the thread; designs it names are registered with the onboarding and take only a person’s approval. mark_done: { text? } — refused ONBOARDING_DATA_FLOW_MISSING on a sensitive-data project with no data-flow design. Start, re-analysis and answering are a person’s acts (REST). Drawing and proposing a design: forge_guide get workflow-design.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4501,7 +4726,7 @@
       "name": "forge_runners"
     },
     {
-      "description": "Runs and the project master, as core derives them (forge_guide get runs-and-masters). Actions: list | get. list: every run of the project (pipeline runs, not chats or a master’s own run) with state queued | claimed | running | waiting_person | waiting_gate | stuck | done | failed | cancelled | handed_back, its holder (expiresAt + expirySource claim | silence_reap | deploy_lock), what it waits on (a person {who, act, ref, since} or a gate {gate, resumesAt or null}), its outcome, attempt {n, retryOf} and master; scope live (default) | finished | all, limit (default 20), offset. Read hasMore before calling a count complete. stuck {source: stuck, rule silent | lease_expired | lease_abandoned | disagreement | stranded | overdue, since, evidence {table, id, column, value, at}, failsAt, failsBy} once a live run stands still past 3 min (the reapers fail at their own clocks, 10 min for a run session); clear while it moves, none once finished. get: one run by runId, with every attempt over the same issue. What the project master is doing: forge_masters. view: 'summary' (the default) answers a list as summaries and a write as what it changed; view: 'full' answers the whole document, which get answers by default (get with view: 'summary' answers the summary).",
+      "description": "Runs and the project master, as core derives them (forge_guide get runs-and-masters). Actions: list | get. list: every run of the project (pipeline runs, not chats or a master’s own run) with state queued | claimed | running | waiting_person | waiting_gate | stuck | done | failed | cancelled | handed_back, its holder (expiresAt + expirySource claim | silence_reap | deploy_lock), what it waits on (a person {who, act, ref, since} or a gate {gate, resumesAt or null}), its outcome, attempt {n, retryOf}, master and attentionGroup needs_you | waiting | stuck | running | waiting_gate | queued | finished; scope live (default) | finished | all, limit (default 20), offset. Read hasMore before calling a count complete. stuck {source: stuck, rule silent | lease_expired | lease_abandoned | disagreement | stranded | overdue, since, evidence {table, id, column, value, at}, failsAt, failsBy} once a live run stands still past 3 min (the reapers fail at their own clocks, 10 min for a run session); clear while it moves, none once finished. get: one run by runId, with every attempt over the same issue and its kernel transitions (events). What the project master is doing: forge_masters. view: 'summary' (the default) answers a list as summaries and a write as what it changed; view: 'full' answers the whole document, which get answers by default (get with view: 'summary' answers the summary).",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -6105,7 +6330,7 @@
       "name": "forge_storefront_target"
     },
     {
-      "description": "Suggestions (forge_guide get suggestions): a proposed change that waits on a person instead of changing anything. Actions: list | create | accept | reject | withdraw. create: { kind: requirement_draft | revision_diff | readiness | breakdown | triage | duplicate | feedback_triage, requirement | issue, baseRevision, payload } — baseRevision is the requirement head you read (null for an issue, or a requirement with no current revision); a moved head is SUGGESTION_BASE_STALE, an open twin SUGGESTION_DUPLICATE, a 6th open on one target SUGGESTION_QUEUE_FULL, a payload that does not parse for its kind SUGGESTION_PAYLOAD_INVALID. revision_diff takes { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } on a requirement; requirement_draft takes { title, reason, … } on an issue; readiness { checks: [{ check, passed, detail? }] }; breakdown { issues: [{ title, description?, criteria?: [{ body, tracesTo? }], blockedBy?: [index | issue key] }], uncovered? } — a blockedBy number is another issue of this breakdown, a string an existing live issue of the project (ISS-12 or uuid), so the order can run after another requirement’s work; checked at create and at accept (SUGGESTION_PAYLOAD_INVALID for a BC the base revision lacks or a blocker cycle, SUGGESTION_BLOCKER_UNKNOWN, SUGGESTION_BLOCKER_TERMINAL), and accepting it files every issue at draft, linked, traced and edged, in one transaction; triage { note, priority?, category?, route? } on an issue; duplicate { duplicateOf, similarity?, note? }; feedback_triage on `feedback` (FB-n), baseRevision null: { route: issue | revision | new_requirement | answer | duplicate, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }; accepting it writes the route (forge_feedback_items). accept { suggestionId, reason? } and reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); an accept’s reason is kept on the suggestion, and is where the authority behind it is named. accepting a revision_diff writes a new DRAFT revision, never a current one. withdraw: the producer retracts its own. list: { requirement | issue, status? } answers each suggestion as { id, kind, status, target, baseRevision, producerKind, producerId, model, decidedBy, decidedAt, createdAt, payloadPurgedAt }, without its payload, fingerprint or decision reason; a write answers the same summary of the suggestion it wrote, and the effect. view: 'summary' (the default) answers a list as summaries and a write as what it changed; view: 'full' answers the whole document, which get answers by default (get with view: 'summary' answers the summary).",
+      "description": "Suggestions (forge_guide get suggestions): a proposed change that waits on a person instead of changing anything. Actions: list | create | accept | reject | revise | withdraw. create: { kind: requirement_draft | revision_diff | readiness | breakdown | triage | duplicate | feedback_triage | design_change, requirement | issue, baseRevision, payload } — baseRevision is the requirement head you read (null for an issue, or a requirement with no current revision); a moved head is SUGGESTION_BASE_STALE, an open twin SUGGESTION_DUPLICATE, a 6th open on one target SUGGESTION_QUEUE_FULL, a payload that does not parse for its kind SUGGESTION_PAYLOAD_INVALID. revision_diff takes { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } on a requirement; requirement_draft takes { title, reason, … } on an issue; readiness { checks: [{ check, passed, detail? }] }; breakdown { issues: [{ title, description?, complexity: xs | s | m | l | xl, priority?, category?, builds?: flow | null, criteria?: [{ body, tracesTo? }], blockedBy?: [index | issue key] }], uncovered? } — priority defaults to medium and category to feature, and the accept effect names each issue it defaulted; builds names the pinned design the issue builds (left out: the one design the latest baseline pins; several pinned is SUGGESTION_BUILD_UNNAMED, a flow it does not pin SUGGESTION_BUILD_UNPINNED), linked as the issue’s build so the build gate holds it; a blockedBy number is another issue of this breakdown, a string an existing live issue of the project (ISS-12 or uuid), so the order can run after another requirement’s work; checked at create and at accept (SUGGESTION_PAYLOAD_INVALID for a BC the base revision lacks or a blocker cycle, SUGGESTION_BLOCKER_UNKNOWN, SUGGESTION_BLOCKER_TERMINAL), and accepting it files every issue at draft, linked, traced and edged, in one transaction; triage { note, priority?, category?, route? } on an issue; duplicate { duplicateOf, similarity?, note? }; design_change on `workflow` (uuid or flow), baseRevision null: { steps?, edges?: [{ from, to, label? }], change: change | remove | rewire, reason }; a node the latest revision does not hold is WORKFLOW_NODE_UNKNOWN, and accepting it writes nothing into the design. feedback_triage on `feedback` (FB-n), baseRevision null: { route: issue | revision | new_requirement | answer | duplicate, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }; accepting it writes the route (forge_feedback_items). accept { suggestionId, reason? } and reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); an accept’s reason is kept on the suggestion, and is where the authority behind it is named. revise { suggestionId, payload, reason } is a reviewer’s edit: the original is rejected with the reason and a new suggestion carrying the whole new payload is proposed by the reviewer, naming the original (revises); the reviewer then cannot accept it (SUGGESTION_ACCEPT_FORBIDDEN), and its producer cannot revise its own (SUGGESTION_REVISE_FORBIDDEN, withdraw instead); an unchanged payload is SUGGESTION_REVISION_UNCHANGED. accepting a revision_diff writes a new DRAFT revision, never a current one. withdraw: the producer retracts its own. list: { requirement | issue, status? } answers each suggestion as { id, kind, status, target, baseRevision, revises, producerKind, producerId, model, decidedBy, decidedAt, createdAt, payloadPurgedAt }, without its payload, fingerprint or decision reason; a write answers the same summary of the suggestion it wrote, and the effect. view: 'summary' (the default) answers a list as summaries and a write as what it changed; view: 'full' answers the whole document, which get answers by default (get with view: 'summary' answers the summary).",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -6116,6 +6341,7 @@
               "create",
               "accept",
               "reject",
+              "revise",
               "withdraw"
             ],
             "type": "string"
@@ -6150,7 +6376,8 @@
               "breakdown",
               "triage",
               "duplicate",
-              "feedback_triage"
+              "feedback_triage",
+              "design_change"
             ],
             "type": "string"
           },
@@ -6196,6 +6423,11 @@
               "summary",
               "full"
             ],
+            "type": "string"
+          },
+          "workflow": {
+            "maxLength": 200,
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -6266,7 +6498,7 @@
       "name": "forge_uploads"
     },
     {
-      "description": "Draw this project's workflows and take a design to its approver before anything is built from it. Actions: list | get | design | write | propose | decide | link | unlink | templates | template. templates: the diagram templates this project may draw in (the built-ins operational-flow, service-blueprint, ux-flow, state-machine, integration-sequence, decision-model, data-flow, system-context and their presets, then its own); template: { templateId, templateVersion } — one template with its bands, node types (and the fields each requires), edge kinds and rules, plus a tiny example design that passes. Every workflow-v2 document names its template, `template: { id, version }`, and is checked against it: WORKFLOW_TEMPLATE_UNKNOWN, WORKFLOW_NODE_TYPE_NOT_IN_TEMPLATE, WORKFLOW_BAND_MISMATCH, WORKFLOW_NODE_FIELD_MISSING, WORKFLOW_EDGE_KIND_NOT_IN_TEMPLATE, WORKFLOW_EDGE_FIELD_MISSING, WORKFLOW_EDGE_ENDPOINT_NOT_IN_KIND, WORKFLOW_EDGE_KIND_NONE, WORKFLOW_NODE_LINES, WORKFLOW_REF_DANGLING, WORKFLOW_TEMPLATE_RULE and the rest each name the fix. write: { workflowId?, baseRevision, document } — no workflowId and baseRevision null creates; the document is workflow-v1 (a flow the code already has) or workflow-v2 (a design: steps may be `designed` with no evidence and carry `node` { type, label, band, purpose, inputs, outputs, owner, sla, conditions, refs, … } whose type and required fields come from the template, and whose `refs` [{ template, flow, step }] link steps of the project's other designs; `basedOn` [{ workflow, revision }] names the designs it builds on, each a flow this project holds at a revision it held (WORKFLOW_BASE_SELF, WORKFLOW_BASE_UNKNOWN, WORKFLOW_BASE_DUPLICATE); `edges` carry the contract of a line — a forward kind is a line `after` draws (its kind read from its endpoint types unless named), a return kind (operational-flow `feeds-back`, state-machine `back`) goes back to an earlier step, is never drawn in `after` (WORKFLOW_AFTER_CYCLE) and carries what its kind requires). Schemas: GET /api/schemas/workflow-v1.json, workflow-v2.json and workflow-template-v1.json. A v2 workflow starts as a draft. Evidence matches the project source: a storefront project cites { kind: \"storefront\", provider, ref: workflow|route|node, id }, a repository project { kind: \"repo\", file, coverage } — the other is WORKFLOW_EVIDENCE_KIND_MISMATCH. propose: { workflowId, revision, issue } puts a draft in front of its approver; `issue` names the issue the design is drawn under (later revisions inherit it), and a decision wakes this project's master — a return reopens that issue with the reason on it, shown by forge_issues get under `proposesWorkflow`. A write that changes the design (its template, steps, order, nodes, edge contracts, return edges) of a proposed, approved or returned workflow proposes that revision again; a write that only refreshes status or evidence does not. design: { workflowId } — the status (draft | proposed | approved | returned), every proposed revision with its decision, reason and step count (no document), the approved revision, and the issues that build it; view: 'steps' adds one revision's steps ({ revision? (the newest by default), stepFrom?, stepTo? } numbered from 1, with the edges that touch them); view: 'full' answers every revision with its whole document. list answers each workflow as { workflowId, flow, title, kind, template, status, revision, approvedRevision, stepCount, edgeCount, returnReason, writerName, updatedAt }; get answers the whole current document. write answers { workflowId, flow, revision, created, status, approvedRevision, stepCount, edgeCount, updatedAt }; propose and decide answer the design head and the revision acted on, link and unlink the head and the issues that build it. view: 'summary' (the default) answers a list as summaries and a write as what it changed; view: 'full' answers the whole document, which get answers by default (get with view: 'summary' answers the summary). decide: { workflowId, revision, decision: approve|return, reason } — only the approver the project's `workflows.designApprover` names: `owner` (default) is an org admin person, and an agent is refused WORKFLOW_DESIGN_APPROVER_NOT_PERSON; `master` lets this project's own master decide too. A return carries its reason. Approving is refused WORKFLOW_DESIGN_BASE_UNAPPROVED while a design the revision declares in `basedOn` is not approved at the revision it names, naming each base and its state. link: { workflowId, issue } names the issue that builds the workflow; dispatching that issue is then refused WORKFLOW_DESIGN_NOT_APPROVED until the design is approved, and forge_issues get shows why under `buildsWorkflow`. unlink lifts the gate, so only the approver may. Guides: forge_guide get workflow-templates (which template to pick) and forge_guide get workflow-design.",
+      "description": "Draw this project's workflows and take a design to its approver before anything is built from it. Actions: list | get | design | write | propose | decide | link | unlink | templates | template | system_graph. templates: the diagram templates this project may draw in (the built-ins operational-flow, service-blueprint, ux-flow, state-machine, integration-sequence, decision-model, data-flow, system-context and their presets, then its own); template: { templateId, templateVersion } — one template with its bands, node types (and the fields each requires), edge kinds and rules, plus a tiny example design that passes. Every workflow-v2 document names its template, `template: { id, version }`, and is checked against it: WORKFLOW_TEMPLATE_UNKNOWN, WORKFLOW_NODE_TYPE_NOT_IN_TEMPLATE, WORKFLOW_BAND_MISMATCH, WORKFLOW_NODE_FIELD_MISSING, WORKFLOW_EDGE_KIND_NOT_IN_TEMPLATE, WORKFLOW_EDGE_FIELD_MISSING, WORKFLOW_EDGE_ENDPOINT_NOT_IN_KIND, WORKFLOW_EDGE_KIND_NONE, WORKFLOW_NODE_LINES, WORKFLOW_REF_DANGLING, WORKFLOW_TEMPLATE_RULE and the rest each name the fix. write: { workflowId?, baseRevision, document } — no workflowId and baseRevision null creates; the document is workflow-v1 (a flow the code already has) or workflow-v2 (a design: steps may be `designed` with no evidence and carry `node` { type, label, band, purpose, inputs, outputs, owner, sla, conditions, refs, … } whose type and required fields come from the template, and whose `refs` [{ template, flow, step }] link steps of the project's other designs; `basedOn` [{ workflow, revision }] names the designs it builds on, each a flow this project holds at a revision it held (WORKFLOW_BASE_SELF, WORKFLOW_BASE_UNKNOWN, WORKFLOW_BASE_DUPLICATE); `edges` carry the contract of a line — a forward kind is a line `after` draws (its kind read from its endpoint types unless named), a return kind (operational-flow `feeds-back`, state-machine `back`) goes back to an earlier step, is never drawn in `after` (WORKFLOW_AFTER_CYCLE) and carries what its kind requires). Schemas: GET /api/schemas/workflow-v1.json, workflow-v2.json and workflow-template-v1.json. A v2 workflow starts as a draft. Evidence matches the project source: a storefront project cites { kind: \"storefront\", provider, ref: workflow|route|node, id }, a repository project { kind: \"repo\", file, coverage } — the other is WORKFLOW_EVIDENCE_KIND_MISMATCH. propose: { workflowId, revision, issue } puts a draft in front of its approver; `issue` names the issue the design is drawn under (later revisions inherit it), and a decision wakes this project's master — a return reopens that issue with the reason on it, shown by forge_issues get under `proposesWorkflow`. A write that changes the design (its template, steps, order, nodes, edge contracts, return edges) of a proposed, approved or returned workflow proposes that revision again; a write that only refreshes status or evidence does not. design: { workflowId } — the status (draft | proposed | approved | returned), every proposed revision with its decision, reason and step count (no document), the approved revision, and the issues that build it; view: 'steps' adds one revision's steps ({ revision? (the newest by default), stepFrom?, stepTo? } numbered from 1, with the edges that touch them); view: 'full' answers every revision with its whole document. system_graph: { workflowId, revision?, against? } — a system-context design read as its C4 graph: nodes (person, system, container, external, with the integration state an external label states), relationships with their own label and technology, boundaries per lane and side, and the header facts; `against` draws the steps that revision held and this one removed, marked removed (SYSTEM_GRAPH_NOT_SYSTEM_CONTEXT, SYSTEM_GRAPH_REVISION_UNKNOWN). list answers each workflow as { workflowId, flow, title, kind, template, status, revision, approvedRevision, stepCount, edgeCount, returnReason, writerName, updatedAt }; get answers the whole current document. write answers { workflowId, flow, revision, created, status, approvedRevision, stepCount, edgeCount, updatedAt }; propose and decide answer the design head and the revision acted on, link and unlink the head and the issues that build it. view: 'summary' (the default) answers a list as summaries and a write as what it changed; view: 'full' answers the whole document, which get answers by default (get with view: 'summary' answers the summary). decide: { workflowId, revision, decision: approve|return, reason } — only the approver the project's `workflows.designApprover` names: `owner` (default) is an org admin person, and an agent is refused WORKFLOW_DESIGN_APPROVER_NOT_PERSON; `master` lets this project's own master decide too. A return carries its reason. Approving is refused WORKFLOW_DESIGN_BASE_UNAPPROVED while a design the revision declares in `basedOn` is not approved at the revision it names, naming each base and its state. link: { workflowId, issue } names the issue that builds the workflow; dispatching that issue is then refused WORKFLOW_DESIGN_NOT_APPROVED until the design is approved, and forge_issues get shows why under `buildsWorkflow`. unlink lifts the gate, so only the approver may. Guides: forge_guide get workflow-templates (which template to pick) and forge_guide get workflow-design.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -6282,9 +6514,15 @@
               "link",
               "unlink",
               "templates",
-              "template"
+              "template",
+              "system_graph"
             ],
             "type": "string"
+          },
+          "against": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
           },
           "baseRevision": {
             "anyOf": [

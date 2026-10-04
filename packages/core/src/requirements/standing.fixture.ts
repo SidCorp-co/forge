@@ -82,6 +82,7 @@ export const base = (over: Partial<StandingInput> = {}): StandingInput => ({
   staleContractPins: [],
   feedback: { open: 0, untriaged: [] },
   updatedAt: daysAgo(3),
+  agreedAt: null,
   now: NOW,
   ...over,
 });

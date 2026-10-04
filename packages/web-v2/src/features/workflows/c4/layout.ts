@@ -2,7 +2,7 @@ import type { TemplateEdgeKind } from "@forge/contracts/workflow-templates";
 import type { ElkExtendedEdge, ElkLabel, ElkNode, ElkPoint } from "elkjs/lib/elk-api";
 import { elk, rounded } from "../canvas/layout";
 import { DASH, edgeHue } from "../canvas/style";
-import type { Relationship } from "./graph";
+import type { Relationship } from "../types";
 import type { SystemView, ViewEdge, ViewFrame, ViewNode } from "./view";
 
 export interface Pt {

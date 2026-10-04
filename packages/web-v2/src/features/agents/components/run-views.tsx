@@ -426,7 +426,7 @@ function Events({ d }: { d: RunStandingDetail }) {
               </TD>
               <TD>{e.actor.name ?? enumLabel("runActorType", e.actor.type)}</TD>
               <TD>
-                <span className="text-12-5 text-muted">{e.reason ? enumLabel("failureCause", e.reason) : "—"}</span>
+                <span className="text-12-5 text-muted">{e.reason ? (/^[a-z_]+$/.test(e.reason) ? enumLabel("failureCause", e.reason) : e.reason) : "—"}</span>
               </TD>
             </TR>
           ))}

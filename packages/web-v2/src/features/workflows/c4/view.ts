@@ -1,4 +1,4 @@
-import type { Boundary, GraphNode, NodeKind, Relationship, SystemGraph } from "./graph";
+import type { Boundary, GraphNode, NodeKind, Relationship, SystemGraph } from "../types";
 
 /** C4 level 1 draws the system as one box; level 2 opens it into its boundary of parts. */
 export type Level = "context" | "containers";
@@ -92,7 +92,8 @@ export function viewOf(g: SystemGraph, level: Level, detail: Detail, open: Reado
   const nodes: ViewNode[] = [];
   const frames: ViewFrame[] = [];
   const box = new Map<string, string>();
-  const parts = focal.parts.map((id) => g.node.get(id)).filter((n): n is GraphNode => Boolean(n));
+  const node = new Map(g.nodes.map((n) => [n.id, n]));
+  const parts = focal.parts.map((id) => node.get(id)).filter((n): n is GraphNode => Boolean(n));
 
   if (level === "context") {
     nodes.push({ id: FOCAL, kind: "focal", column: 1, name: focal.title, tip: [focal.title, focal.tip].filter(Boolean).join("\n"), steps: focal.parts, frame: null, members: parts, count: parts.length, node: null });
@@ -117,7 +118,7 @@ export function viewOf(g: SystemGraph, level: Level, detail: Detail, open: Reado
     }
     if (placed.has(b.id)) continue;
     placed.add(b.id);
-    const members = b.members.map((id) => g.node.get(id)).filter((m): m is GraphNode => Boolean(m));
+    const members = b.members.map((id) => node.get(id)).filter((m): m is GraphNode => Boolean(m));
     const column = COLUMN[n.kind];
     if (detail === "boundaries" && folds(b, g) && !open.has(b.id)) {
       nodes.push({ id: b.id, kind: "group", column, name: b.label, tip: [b.label, b.tip].filter(Boolean).join("\n"), steps: b.members, frame: null, members, count: members.length, node: null });
@@ -156,3 +157,9 @@ export function viewOf(g: SystemGraph, level: Level, detail: Detail, open: Reado
 
 /** Whether a Boundaries view of this graph folds anything, so the toggle has something to do. */
 export const foldable = (g: SystemGraph) => g.boundaries.some((b) => folds(b, g));
+
+/** A relationship in one line, for a tooltip: its ends, its words and what it runs over. */
+export function relationshipText(r: Relationship, g: SystemGraph): string {
+  const name = (id: string) => g.nodes.find((n) => n.id === id)?.name ?? id;
+  return `${name(r.from)} → ${name(r.to)}: ${r.label}${r.technology ? ` [${r.technology}]` : ""}`;
+}

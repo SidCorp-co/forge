@@ -1,3 +1,4 @@
+import { BREAKDOWN_SLA_WORKING_DAYS } from '@forge/contracts/requirements';
 import {
   BREAKDOWN_ISSUE_DEFAULTS,
   SUGGESTION_MAX_OPEN_PER_TARGET,
@@ -49,6 +50,14 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
   \`SUGGESTION_DUPLICATE\`, naming it: the comparison ignores key order.
 - At most ${SUGGESTION_MAX_OPEN_PER_TARGET} proposed suggestions wait on one target; another is
   \`SUGGESTION_QUEUE_FULL\` until a person decides one.
+- A \`breakdown\` is the project master's to propose (workflow requirement-to-delivery step
+  \`breakdown\`): only the project's own agent writes one, and a person, the BA assistant or another
+  project's agent is \`SUGGESTION_BREAKDOWN_PROPOSE_FORBIDDEN\`, a reviewer's revise included (reject it
+  with a reason and the master proposes again). A requirement revision holds one open breakdown; a
+  second is \`SUGGESTION_BREAKDOWN_OPEN\`. Every issue carries at least one criterion and every
+  criterion names the BC it traces to (\`tracesTo\`). The master owes it within
+  ${BREAKDOWN_SLA_WORKING_DAYS} working days of the agree; the requirement's standing serves the task
+  with its due time.
 - A \`breakdown\` is checked at write and at accept: a \`tracesTo\` naming a BC the base revision lacks, a
   \`blockedBy\` index outside the breakdown or a cycle among them is \`SUGGESTION_PAYLOAD_INVALID\`; a
   string \`blockedBy\` names an existing issue of this project by key or uuid, and one that resolves to

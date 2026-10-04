@@ -14,9 +14,10 @@ import { refusalsOf } from "@/lib/api/refusals";
 import { cn } from "@/lib/utils/cn";
 import { templateFor } from "../canvas/model";
 import { WorkflowCanvas } from "../canvas/workflow-canvas";
-import { describeSystem, type OverviewFact, type SystemDescription, type SystemOverview, sensitivityOf, systemOverview } from "../catalogue";
+import { describeSystem, type OverviewFact, overviewFacts, type SystemDescription, type SystemOverview, sensitivityOf, systemOverview } from "../catalogue";
+import { useSystemGraph } from "../hooks";
 import { WORKFLOWS_LIST, workflowHref } from "../routes";
-import type { WorkflowRecord } from "../types";
+import type { SystemGraph, WorkflowRecord } from "../types";
 import { DesignPill, SensitivityBadge } from "./workflow-parts";
 
 const SOURCE: Record<SystemDescription["source"], string> = {
@@ -73,9 +74,9 @@ function DescriptionEditor({ projectId, held, initial, onDone }: { projectId: st
  * What the system is, in one line, the rest behind hover or focus. A design's summary records how the
  * design was drawn, so it is never the headline for someone who can write the line instead.
  */
-function Description({ o, projectId, projectDocument, canEdit }: { o: SystemOverview; projectId: string; projectDocument: V1Read | undefined; canEdit: boolean }) {
+function Description({ o, graph, projectId, projectDocument, canEdit }: { o: SystemOverview; graph: SystemGraph | null; projectId: string; projectDocument: V1Read | undefined; canEdit: boolean }) {
   const [editing, setEditing] = useState(false);
-  const described = describeSystem(projectDocument?.document, o);
+  const described = describeSystem(projectDocument?.document, o, graph);
   const held = projectDocument?.declared ? projectDocument : null;
   const writable = canEdit && held !== null;
   if (editing && held) return <DescriptionEditor projectId={projectId} held={held} initial={described?.source === "project" ? described.text : ""} onDone={() => setEditing(false)} />;
@@ -139,11 +140,11 @@ function FactDetail({ f }: { f: OverviewFact }) {
 }
 
 /** The facts as label and value pairs on one line; what each counts opens on hover or focus. */
-function Facts({ o, slug, projectDocument }: { o: SystemOverview; slug: string; projectDocument: V1Read | undefined }) {
+function Facts({ o, graph, slug, projectDocument }: { o: SystemOverview; graph: SystemGraph | null; slug: string; projectDocument: V1Read | undefined }) {
   const sensitivity = sensitivityOf(projectDocument?.document);
   return (
     <dl className="m-0 flex flex-wrap items-center gap-x-7 gap-y-1.5" data-testid="overview-facts">
-      {o.facts.map((f) => (
+      {(graph ? overviewFacts(graph) : []).map((f) => (
         <div key={f.label} className="flex items-baseline gap-2">
           <dt className="text-12-5 text-muted">{f.label}</dt>
           <dd className="m-0 text-13-5 font-semibold">
@@ -236,7 +237,9 @@ export interface SystemOverviewRegionProps {
  * the shared canvas in its compact mode, folded by boundary until it reads at 12px.
  */
 export function SystemOverviewRegion({ records, templates, projectId, slug, projectName, projectDocument, canEdit = false, variant = "page", className }: SystemOverviewRegionProps) {
-  const o = useMemo(() => systemOverview(records, templates), [records, templates]);
+  const o = useMemo(() => systemOverview(records), [records]);
+  const graphRef = useMemo(() => (o ? { projectId, workflowId: o.record.document.id, revision: o.record.revision } : null), [o, projectId]);
+  const graph = useSystemGraph(graphRef);
   const compact = variant === "compact";
   const workflows = `/projects/${encodeURIComponent(slug)}/workflows`;
 
@@ -278,11 +281,11 @@ export function SystemOverviewRegion({ records, templates, projectId, slug, proj
             </Link>
           </span>
         </div>
-        <Description o={o} projectId={projectId} projectDocument={projectDocument} canEdit={canEdit} />
-        <Facts o={o} slug={slug} projectDocument={projectDocument} />
+        {graph.isPending ? null : <Description o={o} graph={graph.data ?? null} projectId={projectId} projectDocument={projectDocument} canEdit={canEdit} />}
+        <Facts o={o} graph={graph.data ?? null} slug={slug} projectDocument={projectDocument} />
       </div>
       <div className={cn("flex min-h-0 flex-1", compact ? "h-[620px] flex-none max-md:h-[64vh]" : "min-h-[420px] max-lg:h-[64vh] max-lg:flex-none")} data-testid="overview-diagram">
-        <WorkflowCanvas doc={design.document} template={template} compact />
+        <WorkflowCanvas doc={design.document} template={template} graph={graphRef} compact />
       </div>
     </section>
   );

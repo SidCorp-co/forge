@@ -1,19 +1,41 @@
 import { BUILTIN_WORKFLOW_TEMPLATES } from "@forge/contracts/workflow-templates";
 import { describe, expect, it } from "vitest";
-import hop from "./c4/hop-system-context.fixture.json";
-import hopNow from "./c4/hop-system-context-current.fixture.json";
+import hopJson from "./c4/hop.graph.fixture.json";
+import hopNowJson from "./c4/hop-now.graph.fixture.json";
 import {
   catalogue,
   describeSystem,
   firstSentence,
   mainJourneyOf,
+  overviewFacts,
   purposeOf,
   sensitivityOf,
   systemContextOf,
   systemOverview,
   templateTitle,
 } from "./catalogue";
-import type { DesignStatus, WorkflowBody, WorkflowRecord } from "./types";
+import type { DesignStatus, SystemGraph, WorkflowBody, WorkflowRecord, WorkflowStep } from "./types";
+
+// Core's read model of HOP's system context at rev 4 and as dev held it on 2026-10-04.
+const hop = hopJson as SystemGraph;
+const hopNow = hopNowJson as SystemGraph;
+
+const stepsOf = (n: number): WorkflowStep[] =>
+  Array.from({ length: n }, (_, i) => ({ id: `s${i}`, does: `step ${i}`, status: "designed", after: [], evidence: null }));
+
+const body: WorkflowBody = {
+  version: 2,
+  project: "p",
+  flow: "f",
+  kind: "flow",
+  title: "f",
+  summary: "A design.",
+  status: "designed",
+  steps: [],
+  drift: null,
+  writtenBy: {},
+  refreshedAtSha: null,
+};
 
 const record = (flow: string, template: string | null, status: DesignStatus | null, updatedAt: string, steps = 3, kind: "flow" | "state" = "flow"): WorkflowRecord => ({
   revision: 1,
@@ -21,12 +43,12 @@ const record = (flow: string, template: string | null, status: DesignStatus | nu
   writerName: "BA assistant",
   design: { status, approvedRevision: status === "approved" ? 1 : null },
   document: {
-    ...(hop as unknown as WorkflowBody),
+    ...body,
     ...(template ? { version: 2 as const, template: { id: template, version: 1 } } : { version: 1 as const, template: undefined }),
     kind,
     flow,
     title: flow,
-    steps: (hop as unknown as WorkflowBody).steps.slice(0, steps),
+    steps: stepsOf(steps),
     id: flow,
     createdAt: updatedAt,
     updatedAt,
@@ -78,64 +100,58 @@ describe("the system overview", () => {
     expect(mainJourneyOf([big])?.document.flow).toBe("big");
   });
 
-  it("states HOP's facts from its context design: four roles, six outside systems in three boundaries", () => {
-    const o = systemOverview([record("hop-system-context", "system-context", "proposed", "2026-10-03", 17)], BUILTIN_WORKFLOW_TEMPLATES);
-    expect(o?.facts.map((f) => [f.label, f.value])).toEqual([
+  it("states HOP's facts as core counted them: four roles, six outside systems in three boundaries", () => {
+    const facts = overviewFacts(hop);
+    expect(facts.map((f) => [f.label, f.value])).toEqual([
       ["Users", "4 roles"],
       ["External systems", "6 in 3 boundaries"],
     ]);
-    expect(o?.facts[0]?.rows.map((r) => r.name)).toHaveLength(4);
-    expect(o?.journey).toBeNull();
+    expect(facts[0]?.rows).toHaveLength(4);
+    expect(systemOverview([record("hop-system-context", "system-context", "proposed", "2026-10-03", 17)])?.journey).toBeNull();
   });
 
-  it("breaks HOP's seventeen outside systems down by boundary, in lane order, with how many are unconfirmed", () => {
-    const r = record("hop-system-context", "system-context", "approved", "2026-10-04", 31);
-    const doc = hopNow as unknown as WorkflowBody;
-    const o = systemOverview([{ ...r, document: { ...r.document, ...doc, id: "hop-system-context" } }], BUILTIN_WORKFLOW_TEMPLATES);
-    expect(o?.facts[1]?.value).toBe("17 in 4 boundaries");
-    const lane = (id: string) => doc.lanes?.find((l) => l.id === id)?.label;
-    expect(o?.facts[1]?.rows).toEqual([
-      { name: lane("hospital"), count: 9, unconfirmed: 6 },
-      { name: lane("partners"), count: 3, unconfirmed: 3 },
-      { name: lane("channels"), count: 2, unconfirmed: 0 },
-      { name: lane("outside"), count: 3, unconfirmed: 0 },
-    ]);
-    const role = (id: string) => doc.steps.find((s) => s.id === id)?.node?.label;
-    expect(o?.facts[0]?.rows.map((x) => x.name)).toEqual(["staff", "leads", "hospital-it", "patient", "caregiver"].map(role));
+  it("shows HOP's seventeen outside systems by boundary, as core broke them down", () => {
+    const facts = overviewFacts(hopNow);
+    expect(facts[1]?.value).toBe("17 in 4 boundaries");
+    expect(facts[1]?.rows).toEqual(hopNow.facts.boundaries);
+  });
+
+  it("says one role, and no boundary count for one boundary", () => {
+    const facts = overviewFacts({ ...hop, facts: { people: [{ name: "Nurse" }], externals: 2, boundaries: [], namedBoundaries: 1 } });
+    expect(facts.map((f) => f.value)).toEqual(["1 role", "2"]);
   });
 });
 
 describe("what the overview says the system is", () => {
-  const overview = (summary: string, purpose?: string) => {
+  const overview = (summary: string) => {
     const r = record("hop-system-context", "system-context", "approved", "2026-10-04", 17);
-    const steps = r.document.steps.map((s) => (s.id === "hop" && purpose ? { ...s, node: { ...s.node, type: "SYSTEM", purpose } } : s));
-    const o = systemOverview([{ ...r, document: { ...r.document, summary, steps } }], BUILTIN_WORKFLOW_TEMPLATES);
+    const o = systemOverview([{ ...r, document: { ...r.document, summary } }]);
     if (!o) throw new Error("no overview");
     return o;
   };
+  const graph = (purpose = "") => ({ ...hop, focal: hop.focal && { ...hop.focal, purpose } });
   const provenance = "A Forge record, no source code. Who uses HOP at the hospital and the systems around it.";
   const described = { project: { name: "HOP", description: "HOP is the hospital's operations platform." } };
 
   it("takes the project's description first", () => {
-    expect(describeSystem(described, overview(provenance, "The staff site"))).toEqual({ text: "HOP is the hospital's operations platform.", source: "project" });
+    expect(describeSystem(described, overview(provenance), graph("The staff site"))).toEqual({ text: "HOP is the hospital's operations platform.", source: "project" });
   });
 
   it("takes the in-scope system's stated purpose when the project states no description", () => {
-    expect(describeSystem({ project: { name: "HOP" } }, overview(provenance, "The staff site"))).toEqual({ text: "The staff site", source: "purpose" });
+    expect(describeSystem({ project: { name: "HOP" } }, overview(provenance), graph("The staff site"))).toEqual({ text: "The staff site", source: "purpose" });
   });
 
   it("falls back to the design summary's first sentence, marked as such, never the whole summary", () => {
-    const d = describeSystem(undefined, overview(provenance));
+    const d = describeSystem(undefined, overview(provenance), graph());
     expect(d).toEqual({ text: "A Forge record, no source code.", source: "summary" });
   });
 
-  it("does not read a step's `does` as the system's purpose", () => {
-    const o = overview(provenance);
-    expect(o.graph.focal?.purpose).toBe("");
+  it("falls back to the summary while the graph is not read yet", () => {
+    expect(describeSystem(undefined, overview(provenance), null)?.source).toBe("summary");
   });
 
   it("ignores a blank description", () => {
-    expect(describeSystem({ project: { description: "   " } }, overview(provenance))?.source).toBe("summary");
+    expect(describeSystem({ project: { description: "   " } }, overview(provenance), graph())?.source).toBe("summary");
   });
 
   it.each([
