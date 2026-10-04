@@ -27,7 +27,12 @@ import { linkedContractsOf } from './baselines.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
 import { changedSincePlan, staleContractPinsOf, stalePinsOf } from './rules.js';
 import { deriveStanding } from './standing.js';
-import { issueCriteriaOf, latestContractPinsOf, latestPinsOf } from './standing-facts.js';
+import {
+  closedAtOf,
+  issueCriteriaOf,
+  latestContractPinsOf,
+  latestPinsOf,
+} from './standing-facts.js';
 
 export interface StandingRow {
   id: string;
@@ -145,10 +150,11 @@ export async function standingsOf(
     linkedContractsOf(db, ids),
     latestContractPinsOf(ids),
   ]);
-  const [people, issueCriteria, feedbackLinks] = await Promise.all([
+  const [people, issueCriteria, feedbackLinks, closedAt] = await Promise.all([
     peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
     issueCriteriaOf(linked.map((i) => i.id)),
     feedbackLinksOf(projectId, ids),
+    closedAtOf(linked.filter((i) => i.status === 'closed').map((i) => i.id)),
   ]);
   const feedbackBy = feedbackCountsOf(feedbackLinks);
   const by = <T extends { requirementId: string | null }>(list: readonly T[], id: string) =>
@@ -163,6 +169,7 @@ export async function standingsOf(
       status: i.status,
       tone: issueStatusToneOn(i.status as KernelIssueStatus, releaseApproval),
       updatedAt: i.updatedAt,
+      closedAt: i.status === 'closed' ? (closedAt.get(i.id) ?? null) : null,
       changedSincePlan: changedSincePlan({
         ...i,
         currentRevision: row.currentRevision,
