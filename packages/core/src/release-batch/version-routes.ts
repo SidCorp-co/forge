@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, notFound } from '../middleware/route-errors.js';
+import { notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import {
@@ -11,10 +11,10 @@ import {
   parseDecision,
   requestApproval,
 } from './approvals.js';
+import { findReleaseBatchRun } from './queries.js';
 import { refuseRelease } from './refuse.js';
 import { listReleases, readRelease } from './release-read.js';
 import type { ViewerFacts } from './release-view.js';
-import { findReleaseBatchRun } from './queries.js';
 
 export const releaseVersionRoutes = new Hono<{ Variables: AuthVars }>();
 releaseVersionRoutes.use('/:projectId/releases', requireAuth(), assertEmailVerified());
@@ -30,25 +30,15 @@ releaseVersionRoutes.use(
   assertEmailVerified(),
 );
 
-const projectParam = zValidator('param', z.object({ projectId: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest(r.error);
-});
+const projectParam = zValidator('param', z.object({ projectId: z.uuid() }));
 const versionParam = zValidator(
   'param',
   z.object({ projectId: z.uuid(), version: z.string().min(1).max(40) }),
-  (r) => {
-    if (!r.success) throw badRequest(r.error);
-  },
 );
-const runParam = zValidator('param', z.object({ projectId: z.uuid(), runId: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest(r.error);
-});
+const runParam = zValidator('param', z.object({ projectId: z.uuid(), runId: z.uuid() }));
 const approvalParam = zValidator(
   'param',
   z.object({ projectId: z.uuid(), runId: z.uuid(), approvalId: z.uuid() }),
-  (r) => {
-    if (!r.success) throw badRequest(r.error);
-  },
 );
 const requestBody = zValidator('json', approvalRequestSchema, (r) => {
   if (!r.success) {

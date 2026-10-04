@@ -38,9 +38,6 @@ const patchBodySchema = z
 
 const changeParamSchema = z.object({ id: z.uuid() });
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
 export const preferenceRoutes = new Hono<{ Variables: AuthVars }>();
 
 preferenceRoutes.use('/preferences', requireAuth());
@@ -55,9 +52,7 @@ preferenceRoutes.get('/preferences/changes', async (c) =>
 
 preferenceRoutes.post(
   '/preferences/changes/:id/restore',
-  zValidator('param', changeParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', changeParamSchema),
   async (c) => {
     const userId = c.get('userId');
     const restored = await restorePreferenceChange({
@@ -75,27 +70,21 @@ preferenceRoutes.post(
   },
 );
 
-preferenceRoutes.patch(
-  '/preferences',
-  zValidator('json', patchBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { theme, language, answerStyle, assistantInstructions } = c.req.valid('json');
-    const userId = c.get('userId');
+preferenceRoutes.patch('/preferences', zValidator('json', patchBodySchema), async (c) => {
+  const { theme, language, answerStyle, assistantInstructions } = c.req.valid('json');
+  const userId = c.get('userId');
 
-    if (answerStyle !== undefined || assistantInstructions !== undefined) {
-      await writeAssistantPreferences({
-        userId,
-        patch: { answerStyle, assistantInstructions },
-        actor: { kind: 'person', userId },
-      });
-    }
-    if (theme === undefined && language === undefined) return c.json(await readPreferences(userId));
+  if (answerStyle !== undefined || assistantInstructions !== undefined) {
+    await writeAssistantPreferences({
+      userId,
+      patch: { answerStyle, assistantInstructions },
+      actor: { kind: 'person', userId },
+    });
+  }
+  if (theme === undefined && language === undefined) return c.json(await readPreferences(userId));
 
-    return c.json(await writeDisplayPreferences(userId, { theme, language }));
-  },
-);
+  return c.json(await writeDisplayPreferences(userId, { theme, language }));
+});
 
 const preferencesSchema = z
   .object({
@@ -114,30 +103,19 @@ preferenceRoutes.get('/me/preferences', async (c) => {
   return c.json(await readMePreferences(userId));
 });
 
-preferenceRoutes.patch(
-  '/me/preferences',
-  zValidator('json', preferencesSchema, (r) => {
-    if (!r.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: r.error },
-      });
-    }
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const patch = c.req.valid('json');
-    if (Object.keys(patch).length === 0) {
-      throw new HTTPException(400, {
-        message: 'no fields to update',
-        cause: { code: 'BAD_REQUEST' },
-      });
-    }
+preferenceRoutes.patch('/me/preferences', zValidator('json', preferencesSchema), async (c) => {
+  const userId = c.get('userId');
+  const patch = c.req.valid('json');
+  if (Object.keys(patch).length === 0) {
+    throw new HTTPException(400, {
+      message: 'no fields to update',
+      cause: { code: 'BAD_REQUEST' },
+    });
+  }
 
-    if (patch.activeOrgId != null) {
-      await requireOrgCan(actorFor(userId), 'org.read', orgResource(patch.activeOrgId));
-    }
+  if (patch.activeOrgId != null) {
+    await requireOrgCan(actorFor(userId), 'org.read', orgResource(patch.activeOrgId));
+  }
 
-    return c.json(await writeMePreferences(userId, patch));
-  },
-);
+  return c.json(await writeMePreferences(userId, patch));
+});
