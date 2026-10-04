@@ -62,7 +62,7 @@ const proposedYou: WorkflowDesign = {
   revision: 4,
   proposedRevision: 4,
   approvedRevision: 3,
-  approver: "owner",
+  approver: "workflow-designs.approve",
   canDecide: true,
   waitingOn: { kind: "you", who: "You", act: "approve or return revision 4", rule: "revision 4 is proposed and you may decide it" },
   revisions: [revision(4, { state: "proposed", document: doc({ steps: [...doc().steps, { id: "s3", title: "Roll back", does: "d", status: "designed", after: ["s2"], evidence: null }] }) }), revision(3, { state: "current", decision: "approve", decidedByName: "Lan", decidedAt: "2026-10-03T00:00:00.000Z" })],

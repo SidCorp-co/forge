@@ -11,7 +11,6 @@ const input = (over: Partial<DesignStandingInput>): DesignStandingInput => ({
   proposedRevision: null,
   approvedRevision: 6,
   latest: { revision: 6, author: 'hop master' },
-  approver: 'owner',
   canDecide: false,
   ...over,
 });
@@ -31,22 +30,14 @@ describe('designWaitingOn: whose turn a design is', () => {
     expect(w.rule).toContain('you may decide');
   });
 
-  it('a proposed revision waits on an org owner or admin when the policy is owner and you may not decide', () => {
-    expect(designWaitingOn(proposed())).toMatchObject({
+  it('a proposed revision waits on a holder of workflow-designs.approve when you may not decide', () => {
+    const w = designWaitingOn(proposed());
+    expect(w).toMatchObject({
       kind: 'person',
-      who: 'An org owner or admin',
+      who: 'A holder of workflow-designs.approve',
       act: 'approve or return revision 7',
     });
-  });
-
-  it('a proposed revision waits on the master when the policy hands decisions to it', () => {
-    const w = designWaitingOn(proposed({ approver: 'master' }));
-    expect(w).toMatchObject({ kind: 'agent', who: 'Master' });
-    expect(w.rule).toContain('"master"');
-  });
-
-  it('you beat the policy: an approver viewing reads its own turn under either policy', () => {
-    expect(designWaitingOn(proposed({ approver: 'master', canDecide: true })).kind).toBe('you');
+    expect(w.rule).toContain('person or agent');
   });
 
   it('a returned design waits on the agent that wrote its latest revision, to revise it', () => {

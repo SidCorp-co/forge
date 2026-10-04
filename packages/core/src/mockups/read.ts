@@ -18,11 +18,11 @@ import {
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { isUuid } from '../issues/issue-route-ref.js';
+import { mayApprove } from '../lib/approval.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf, egressReading } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { actMiss, PERSON_ACT } from '../lib/person-act.js';
 
 export type MockupRow = typeof mockups.$inferSelect;
 
@@ -149,7 +149,7 @@ export async function mockupViews(
     effectiveProjectRole(viewer.userId, projectId),
     dataPolicyOf(projectId),
   ]);
-  const person = !actMiss({ ...viewer, role: access?.role ?? null }, PERSON_ACT);
+  const approver = mayApprove({ userId: viewer.userId, role: access?.role ?? null }, 'mockups');
   const fbReading = egressReading(level, { agency: viewer.agency, ...door }, 'feedback');
   return rows.map((m) => {
     const type = targetTypeOf(m);
@@ -179,8 +179,8 @@ export async function mockupViews(
       pinned: pin?.mockupIds.has(m.id) ? { revision: pin.revision, seq: pin.seq } : null,
       url: `/api/projects/${projectId}/mockups/${key}/content`,
       can: {
-        accept: open && person && m.proposedBy !== viewer.userId,
-        return: open && person,
+        accept: open && approver,
+        return: open && approver,
         withdraw: open && m.proposedBy === viewer.userId,
       },
     };

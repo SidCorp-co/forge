@@ -8,11 +8,6 @@ import { requirementHref } from "@/features/requirements/routes";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import type { WorkflowBody, WorkflowDesign, WorkflowRecord } from "../types";
 
-const APPROVER: Record<WorkflowDesign["approver"], { label: string; hint: string }> = {
-  owner: { label: "A person", hint: "workflows.designApprover owner: an org owner or admin decides each design" },
-  master: { label: "The master", hint: "workflows.designApprover master: the project's own master decides its designs" },
-};
-
 function Requirements({ d, slug }: { d: WorkflowDesign; slug: string }) {
   return (
     <FactsGroup title="Requirement" count={d.requirements.length > 1 ? `Linked ${d.requirements.length}` : undefined} testId="facts-requirement">
@@ -117,7 +112,9 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
           )}
         </Fact>
         <Fact label="Approver">
-          <span title={APPROVER[d.approver].hint}>{APPROVER[d.approver].label}</span>
+          <span title={`Whoever holds ${d.approver} on the project: a project admin, or an org owner or admin, person or agent`}>
+            Holders of <span className="font-mono">{d.approver}</span>
+          </span>
         </Fact>
         <Fact label="Template">
           <span title={template ? `${template.id}@${template.version}` : "No template: drawn before templates"}>{template?.title ?? "None"}</span>

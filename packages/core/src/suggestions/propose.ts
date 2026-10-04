@@ -11,8 +11,8 @@ import {
 import { and, eq, ne } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
+import { approvalRefusalFor } from '../lib/approval.js';
 import { assertProjectAccess } from '../lib/authz.js';
-import { personActRefusalFor } from '../lib/person-act.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { breakdownGuardIn } from './breakdown.js';
 import {
@@ -33,7 +33,6 @@ import {
   payloadRefusal,
   queueFullRefusal,
   rejectReasonRefusal,
-  reviseProducerRefusal,
   unchangedRevisionRefusal,
 } from './rules.js';
 import {
@@ -163,8 +162,8 @@ export async function createSuggestion(input: {
 
 // cm:why decision on design suggestion-lifecycle (ISS-117): a reviewer's edit is a new suggestion
 // the reviewer produced, naming the original, which is rejected with the reviewer's reason in the
-// same transaction; no state is added, and the two-party rule then holds for the revision as it
-// does for any suggestion, so the editor never accepts their own edit
+// same transaction; no state is added. Revising rejects the original, so it takes
+// suggestions.approve like any decision (ADR 0007)
 export async function reviseSuggestion(input: {
   projectId: string;
   id: string;
@@ -174,13 +173,12 @@ export async function reviseSuggestion(input: {
 }): Promise<SuggestionOutcome> {
   const { projectId, actor } = input;
   const first = await rowOf(db, projectId, input.id);
-  const forbidden =
-    (await personActRefusalFor(
-      actor,
-      projectId,
-      'revising a suggestion',
-      'SUGGESTION_REVISE_FORBIDDEN',
-    )) ?? reviseProducerRefusal(actor.userId, first.producerId);
+  const forbidden = await approvalRefusalFor(
+    actor,
+    projectId,
+    'suggestions',
+    'revising a suggestion',
+  );
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const target = targetOfRow(first);
   const early =

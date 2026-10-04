@@ -86,25 +86,45 @@ A write a rule refuses answers **422** with one body, and nothing is written:
 - **Unknown input is refused.** A body field outside the schema gets the 400 above. A row the
   caller cannot see gets a 404 naming the ref.
 
+## Who may approve: a permission
+
+Every approve-type act (accept, return, agree, sign off, decide, verify, approve) asks one helper
+whether the actor holds `<resource>.approve` on the project, and nothing else: no agency, no
+authorship ([ADR 0007](../adr/0007-approval-is-a-permission.md)).
+
+- **The helper.** `packages/core/src/lib/approval.ts:mayApprove` for a read flag,
+  `:approvalRefusal` / `:approvalRefusalFor` for a write. The resources and their default grants are
+  declared once in `packages/contracts/src/approval.ts:APPROVAL_RESOURCES` and `:APPROVAL_GRANTS`
+  (project `admin`, which an org owner or admin holds on every project of the org).
+- **The refusal.** `APPROVE_PERMISSION_REQUIRED`, carrying `permission` and `resource`; a slice's code
+  array spreads `APPROVAL_REFUSAL_CODES` rather than declaring a code of its own.
+- **Used by** requirement sign-off (`packages/core/src/requirements/rules.ts:signoffRefusal`), mockup
+  decide (`packages/core/src/mockups/rules.ts:deciderRefusal`), suggestion accept, reject and revise
+  (`packages/core/src/suggestions/service.ts`, `packages/core/src/suggestions/propose.ts`), workflow
+  design decide (`packages/core/src/workflows/design.ts:designApproverRefusal`), contract version decide
+  (`packages/core/src/ecosystem/contract/approval.ts:approverRefusal`), feedback triage and verify
+  (`packages/core/src/feedback/rules.ts:decideActRefusal`), release approval
+  (`packages/core/src/release-batch/approvals.ts:decideApproval`) and plan approval
+  (`packages/core/src/issues/transition-guards.ts:planGuard`).
+
 ## Who may act (S0 agency)
 
-`packages/core/src/lib/person-act.ts:actMiss` is the one decision. A slice declares a rule and words the
-refusal under its own code. It never compares `agency` itself.
+For the writes that are not approvals, `packages/core/src/lib/person-act.ts:actMiss` is the one
+decision. A slice declares a rule and words the refusal under its own code. It never compares
+`agency` itself.
 
 | Rule | Person | Agent | Used by |
 |---|---|---|---|
-| `PERSON_ACT` | member or above | never | `packages/core/src/lib/person-act.ts:personActRefusal`, which requirement sign-off and suggestion decide both call |
-| `approverRule(agentMay)` | org owner or admin | member or above, only when the project's policy says `master` | `packages/core/src/workflows/design.ts:designApproverRefusal`, `packages/core/src/ecosystem/contract/approval.ts:approverRefusal` |
+| `PERSON_ACT` | member or above | never | `packages/core/src/questionnaires/rules.ts` (submitting answers), `packages/core/src/onboarding/rules.ts:personActRefusal` (starting and re-analysing onboarding) |
 | `PROJECT_AGENT_WRITE` | never | member or above | `packages/core/src/workflows/rules.ts:workflowWriterRefusal`, `packages/core/src/ecosystem/link-rules.ts:writerRefusal` |
 | `PROJECT_MEMBER_WRITE` | member or above | member or above | `packages/core/src/ecosystem/waits/rules.ts:writerRefusal` (adding or retracting a contract wait); `packages/core/src/comments/entity-rules.ts:posterRefusal` (a comment on a requirement, design or feedback item; its author edits it, else a project admin person, `:editorRefusal`) |
 | `SUPERSEDE` | org owner or admin (of the steward org when it is one there, else of the project's org) | member or above | `packages/core/src/ecosystem/builder-supersede-rules.ts:supersederRefusal` |
 | `PERSON_ADMIN_ACT` | project owner or admin | never | `packages/core/src/feedback/rules.ts:redactActRefusal` (deleting a reporter's data) |
 
-- **Before this page:** seven separate implementations across the slices: requirement sign-off,
-  suggestion decide, design approver, contract approver, workflow writer, link writer and builder
-  supersede. ISS-58 folded the first two into `personActRefusal`, the conventions change put five
-  more on `actMiss`, and ISS-61 the last, builder supersede.
-- **Still outside it:** five agency checks older than the redesign (item 14).
+- **Before this page:** seven separate implementations across the slices. Requirement sign-off,
+  suggestion decide, design approver and contract approver are approvals and moved to
+  `lib/approval.ts` (ADR 0007); workflow writer, link writer and builder supersede stay on `actMiss`.
+- **Still outside it:** three agency checks older than the redesign (item 14).
 - **Recording the agency.** A table records it in `<role>_agency text`, CHECK `('human','agent')`,
   the values of `packages/core/src/issues/actor-agency.ts:ActorAgency`. The word is `human`, never `person`.
 
@@ -347,7 +367,7 @@ Read at `origin/dev` `0b3a1069a`.
 | Refusal status and body | Three shapes. (1) `refused`, 422 `{error}`: requirements, workflows, ecosystem documents, and suggestions after the ISS-58 rework. (2) A thrown 403 in the error handler's `{code, details.refusals}`: requirement sign-off and design approver (both unified here), ecosystem `refusedBy`, workflow writer. (3) A thrown `HTTPException` in the error handler's `{code, message}`: record events at 422, criteria and verdicts at 400 or 409 | `packages/core/src/ecosystem/access.ts:refusedBy`, `packages/core/src/workflows/service.ts:assertWriter`, `packages/core/src/issues/record-events/routes.ts:refusalHttp`, `packages/core/src/issues/criteria/store.ts:CriteriaRefused` |
 | MCP refusal | Thrown text in requirements, suggestions and workflows (a thrown 403 even lost its code); a structured `isError` envelope in ecosystem | now `packages/core/src/mcp/tools/lib.ts:refusedAnswer` in all four |
 | Body validation | Three styles: local `strictBody` naming only the shape (×3); `zValidator` + `flattenError` naming only fields; ecosystem `SCHEMA_VIOLATION` refusals | now `packages/core/src/middleware/zod-validator.ts:strictBody`; `packages/core/src/issues/criteria/input-schemas.ts:verdictPostSchema` |
-| Who may act | Seven implementations of `agency !== 'human'` / `agency === 'agent'` | now `packages/core/src/lib/person-act.ts:actMiss` |
+| Who may act | Seven implementations of `agency !== 'human'` / `agency === 'agent'` | now `packages/core/src/lib/person-act.ts:actMiss`, and for approvals `packages/core/src/lib/approval.ts` |
 | Enum home | Contracts for ISS-54 and suggestions; core only for requirements, criteria, agent reports and designs, each redeclared in web; two copies plus a parity test for record events | `packages/core/src/db/schema-requirements.ts:REVISION_STATES`, `packages/core/src/workflows/design.ts:DESIGN_STATUSES` |
 | Agency word in tables | `human` in `activity_log` and verdicts; `person` in `contract_versions.decided_as` and `suggestions.producer_kind`; no CHECK on `actor_agency` or `author_agency` | `packages/core/src/db/schema-ecosystem.ts:contractVersions`, `packages/core/src/db/schema-activity.ts:actorAgencies` |
 | Actor columns | `decided_by` (requirements, suggestions, contracts) against `decided_by_user` (workflow designs); FK `restrict` against `set null` (suggestions) | `packages/core/src/db/schema-workflows.ts:projectWorkflowDesigns` |
@@ -377,8 +397,8 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, 18 and 29 by the
 | 9 | Criteria and verdict rows are insert-only by comment, with no trigger | review (migration) |
 | 10 | A re-proposal of a returned requirement revision overwrites `proposed_at` / `proposed_by`, with no row per proposal; returns have their own rows (walkthrough D6) | review |
 | 11 | Refusals name another requirement by uuid (`REQUIREMENT_ISSUE_LINKED_ELSEWHERE`, walkthrough D10) | review |
-| 12 | Who-may-act codes predating the suffix: `WORKFLOW_DESIGN_APPROVER_NOT_*`, `CONTRACT_APPROVER_NOT_*`, `CONTRACT_BREAKING_NEEDS_PERSON`, `WORKFLOW_WRITER_NOT_PROJECT`, `LINK_WRITER_NOT_CONSUMER` | review (a rename touches guides and MCP descriptions) |
-| 14 | Agency checks older than the redesign: `packages/core/src/issues/transition-guards.ts`, `packages/core/src/issues/merge-marker.ts`, `packages/core/src/release-batch/approvals.ts`, `packages/core/src/issues/release-gate-hold.ts`, `packages/core/src/projects/master-charter-routes.ts` | review |
+| 12 | Who-may-act codes predating the suffix: `WORKFLOW_WRITER_NOT_PROJECT`, `LINK_WRITER_NOT_CONSUMER` | review (a rename touches guides and MCP descriptions) |
+| 14 | Agency checks older than the redesign, none of them an approval: `packages/core/src/issues/merge-marker.ts`, `packages/core/src/issues/release-gate-hold.ts`, `packages/core/src/projects/master-charter-routes.ts` | review |
 | 15 | Body validation outside `strictBody`: criteria and record events use `zValidator` + `flattenError` with no shape hint; agent-report triage bodies take `strictBody` since ISS-113 | review |
 | 16 | `forge_agent_report` is a singular name; its `submit` inserts through `packages/core/src/agent-reports/service.ts:insertReport` but checks its input inline, and the REST door has no submit | review |
 | 17 | The ISS-54/55/56 `cm:hack` annotations carry no `ISS-n until:` (`packages/core/src/issues/legacy-status.ts`, `packages/core/src/issues/criteria/event-verdicts.ts`, `packages/core/src/issues/record-events/mirror.ts`, `packages/core/src/issues/record-events/history.ts:legacyCommentRecords`, `packages/core/src/comments/tree.ts:recordOf`, `packages/core/src/agent-reports/routes.ts:feedbackReportsAliasRoutes`, `packages/core/src/mcp/tools/forge-agent-report.ts:forgeFeedbackAliasTool`) | review |
@@ -414,5 +434,6 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, 18 and 29 by the
 | One 422 for every rule refusal | A client can no longer branch on 403 for who-may-act, and has to read `error.code`; the requirement sign-off and design approval moved from 403 to 422 in this change |
 | One declaration in contracts, compiled | Core's start depends on `@forge/contracts` being built first; a contracts edit rebuilds before core typechecks |
 | Agency in one module | A slice that needs a new standing (for example a steward org admin) extends `ActRule` for everyone, rather than writing its own `if` |
+| Approval as a role-held permission | An agent given `admin` to approve also holds every other admin power on the project, until a finer grant exists (ADR 0007) |
 | `max+1` keys under the entity lock | A keyed row can never be hard-deleted, or its number is reissued |
 | Forty listed divergences left in place | Until the review pass, two patterns are live for each of them, and a new slice must copy the reference, not the nearest file |

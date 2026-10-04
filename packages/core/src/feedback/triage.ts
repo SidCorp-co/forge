@@ -278,7 +278,7 @@ export async function announceTriage(written: TriageWritten, actor: FeedbackActo
   await announceIssueCreated(issue, { type: 'user', id: actor.userId, agency: actor.agency });
 }
 
-/** A person picks the route; an agent is FEEDBACK_DECIDE_FORBIDDEN and proposes it instead. */
+/** A holder of feedback.approve picks the route, an agent included (ADR 0007). */
 export async function triageFeedback(input: {
   projectId: string;
   ref: string;
@@ -288,7 +288,11 @@ export async function triageFeedback(input: {
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
   await assertProjectAccess(projectId, actor.userId, 'viewer');
-  const forbidden = decideActRefusal(await roleFacts(actor, projectId), 'picking a feedback route');
+  const forbidden = decideActRefusal(
+    await roleFacts(actor, projectId),
+    projectId,
+    'picking a feedback route',
+  );
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const first = await rowIn(db, projectId, input.ref);
   let written: TriageWritten = { refusals: null };

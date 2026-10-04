@@ -464,6 +464,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       to: toStatus,
       leftStatus: input.leftStatus,
       agency: actorAgency(actor),
+      actorUserId: authorOf(actor),
       transitionReason: options.transitionReason,
       waitingKind: options.waitingKind,
       executor: tx,

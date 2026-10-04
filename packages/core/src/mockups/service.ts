@@ -14,7 +14,8 @@ import { mockups } from '../db/schema-mockups.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import { issueRefIn, requirementRefIn } from '../feedback/refs.js';
-import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
+import { approverFactsOf } from '../lib/approval.js';
+import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
 import { getStorage } from '../storage/index.js';
@@ -230,13 +231,11 @@ async function deciderFor(
   projectId: string,
   key: string,
   act: 'accept' | 'return',
-  proposedBy: string,
 ) {
-  const access = await effectiveProjectRole(actor.userId, projectId);
-  return deciderRefusal({ ...actor, role: access?.role ?? null }, projectId, key, act, proposedBy);
+  return deciderRefusal(await approverFactsOf(actor.userId, projectId), projectId, key, act);
 }
 
-/** A person other than its author accepts a proposed mockup. */
+/** A holder of mockups.approve accepts a proposed mockup, its author included. */
 export function acceptMockup(input: {
   projectId: string;
   ref: string;
@@ -247,12 +246,12 @@ export function acceptMockup(input: {
     input.projectId,
     input.ref,
     input.actor,
-    (row, key) => deciderFor(input.actor, input.projectId, key, 'accept', row.proposedBy),
+    (_row, key) => deciderFor(input.actor, input.projectId, key, 'accept'),
     { status: 'accepted', reason: input.reason?.trim() || null },
   );
 }
 
-/** A person returns a proposed mockup, saying why. */
+/** A holder of mockups.approve returns a proposed mockup, saying why. */
 export async function returnMockup(input: {
   projectId: string;
   ref: string;
@@ -265,7 +264,7 @@ export async function returnMockup(input: {
     input.projectId,
     input.ref,
     input.actor,
-    (row, key) => deciderFor(input.actor, input.projectId, key, 'return', row.proposedBy),
+    (_row, key) => deciderFor(input.actor, input.projectId, key, 'return'),
     { status: 'returned', reason: input.reason?.trim() ?? null },
   );
 }

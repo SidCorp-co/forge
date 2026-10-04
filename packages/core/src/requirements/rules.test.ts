@@ -22,22 +22,19 @@ import {
 const PROJECT = 'p-1';
 const codeOf = (r: { code: string } | null | undefined) => r?.code ?? null;
 
-describe('signoffRefusal (REQUIREMENT_SIGNOFF_FORBIDDEN)', () => {
-  it('lets a person of the project sign off', () => {
+describe('signoffRefusal (requirements.approve, ADR 0007)', () => {
+  it('lets a holder of requirements.approve sign off, an agent token included', () => {
     expect(
-      signoffRefusal({ userId: 'u', agency: 'human', role: 'member' }, PROJECT, 'x'),
+      signoffRefusal({ userId: 'agent', role: 'admin' }, PROJECT, 'agreeing REQ-1'),
     ).toBeNull();
   });
-  it('refuses an agent even with admin on the project', () => {
-    expect(
-      codeOf(signoffRefusal({ userId: 'm', agency: 'agent', role: 'admin' }, PROJECT, 'x')),
-    ).toBe('REQUIREMENT_SIGNOFF_FORBIDDEN');
-  });
-  it('refuses a person who is only a viewer, or outside the project', () => {
-    for (const role of ['viewer', null] as const) {
-      expect(codeOf(signoffRefusal({ userId: 'u', agency: 'human', role }, PROJECT, 'x'))).toBe(
-        'REQUIREMENT_SIGNOFF_FORBIDDEN',
-      );
+  it('refuses a member, a viewer or an outsider by the one permission code', () => {
+    for (const role of ['member', 'viewer', null] as const) {
+      expect(signoffRefusal({ userId: 'u', role }, PROJECT, 'agreeing REQ-1')).toMatchObject({
+        code: 'APPROVE_PERMISSION_REQUIRED',
+        permission: 'requirements.approve',
+        resource: 'requirements',
+      });
     }
   });
 });

@@ -1,6 +1,6 @@
 import { SUGGESTION_MAX_OPEN_PER_TARGET as MAX_OPEN_PER_TARGET } from '@forge/contracts/suggestions';
 import { describe, expect, it } from 'vitest';
-import { type PersonActFacts, personActRefusal } from '../lib/person-act.js';
+import { approvalRefusal } from '../lib/approval.js';
 import {
   baseStaleRefusal,
   blockerRefusal,
@@ -10,15 +10,11 @@ import {
   duplicateRefusal,
   fingerprintOf,
   payloadRefusal,
-  producerRefusal,
   queueFullRefusal,
   rejectReasonRefusal,
-  reviseProducerRefusal,
   unchangedRevisionRefusal,
   withdrawRefusal,
 } from './rules.js';
-
-const person: PersonActFacts = { userId: 'u1', agency: 'human', role: 'member' };
 
 describe('suggestion-lifecycle guards', () => {
   it('start → proposed: a payload that does not parse for its kind is SUGGESTION_PAYLOAD_INVALID', () => {
@@ -57,19 +53,16 @@ describe('suggestion-lifecycle guards', () => {
     expect(queueFullRefusal(MAX_OPEN_PER_TARGET)?.code).toBe('SUGGESTION_QUEUE_FULL');
   });
 
-  it('proposed → accepted: an agent or a non-member is SUGGESTION_ACCEPT_FORBIDDEN, by the shared person-act check', () => {
-    const accept = (f: PersonActFacts) =>
-      personActRefusal(f, 'p', 'accepting a suggestion', 'SUGGESTION_ACCEPT_FORBIDDEN')?.code ??
-      null;
-    expect(accept(person)).toBeNull();
-    expect(accept({ ...person, agency: 'agent' })).toBe('SUGGESTION_ACCEPT_FORBIDDEN');
-    expect(accept({ ...person, role: 'viewer' })).toBe('SUGGESTION_ACCEPT_FORBIDDEN');
-  });
-
-  it('proposed → accepted: the producer is SUGGESTION_ACCEPT_FORBIDDEN', () => {
-    expect(producerRefusal('u1', 'p1')).toBeNull();
-    expect(producerRefusal('u1', null)).toBeNull();
-    expect(producerRefusal('u1', 'u1')?.code).toBe('SUGGESTION_ACCEPT_FORBIDDEN');
+  it('proposed → accepted or rejected: a holder of suggestions.approve decides, an agent or its producer included (ADR 0007)', () => {
+    const decide = (role: 'admin' | 'member' | 'viewer' | null) =>
+      approvalRefusal({ userId: 'u1', role }, 'suggestions', 'p', 'accepting a suggestion');
+    expect(decide('admin')).toBeNull();
+    for (const role of ['member', 'viewer', null] as const) {
+      expect(decide(role)).toMatchObject({
+        code: 'APPROVE_PERMISSION_REQUIRED',
+        permission: 'suggestions.approve',
+      });
+    }
   });
 
   it('proposed → rejected: a rejection without a reason is SUGGESTION_REJECT_REASON_REQUIRED', () => {
@@ -195,20 +188,11 @@ describe('a breakdown blocker named by key or uuid (ISS-89)', () => {
 });
 
 describe('a reviewer revises a proposed suggestion (ISS-117, FB-62)', () => {
-  it('an agent or a non-member is SUGGESTION_REVISE_FORBIDDEN, by the shared person-act check', () => {
-    const revise = (f: PersonActFacts) =>
-      personActRefusal(f, 'p', 'revising a suggestion', 'SUGGESTION_REVISE_FORBIDDEN')?.code ??
-      null;
-    expect(revise(person)).toBeNull();
-    expect(revise({ ...person, agency: 'agent' })).toBe('SUGGESTION_REVISE_FORBIDDEN');
-    expect(revise({ ...person, role: 'viewer' })).toBe('SUGGESTION_REVISE_FORBIDDEN');
-  });
-
-  it('its producer is SUGGESTION_REVISE_FORBIDDEN, and the reviewer then produced the revision', () => {
-    expect(reviseProducerRefusal('u1', 'p1')).toBeNull();
-    expect(reviseProducerRefusal('u1', null)).toBeNull();
-    expect(reviseProducerRefusal('p1', 'p1')?.code).toBe('SUGGESTION_REVISE_FORBIDDEN');
-    expect(producerRefusal('u1', 'u1')?.code).toBe('SUGGESTION_ACCEPT_FORBIDDEN');
+  it('revising takes suggestions.approve, whoever produced the original (ADR 0007)', () => {
+    const revise = (role: 'admin' | 'member') =>
+      approvalRefusal({ userId: 'p1', role }, 'suggestions', 'p', 'revising a suggestion');
+    expect(revise('admin')).toBeNull();
+    expect(revise('member')?.code).toBe('APPROVE_PERMISSION_REQUIRED');
   });
 
   it('a payload that proposes the same change is SUGGESTION_REVISION_UNCHANGED', () => {

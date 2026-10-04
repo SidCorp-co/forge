@@ -5,15 +5,7 @@ import type {
 } from '@forge/contracts/issue-standing';
 import type { KernelIssueStatus } from '@forge/contracts/issue-vocabulary';
 import { describe, expect, it } from 'vitest';
-import {
-  flowOf,
-  type LaneFacts,
-  modulesOf,
-  movingOf,
-  needsOf,
-  releaseDecidableBy,
-  stuckOf,
-} from './overview.js';
+import { flowOf, type LaneFacts, modulesOf, movingOf, needsOf, stuckOf } from './overview.js';
 
 const NOW = new Date('2026-10-04T12:00:00Z');
 const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000).toISOString();
@@ -382,13 +374,5 @@ describe('what waits on the viewer', () => {
       count: 0,
       rows: [],
     });
-  });
-
-  it('lets only a person with admin, other than the asker, decide a release', () => {
-    const v = { userId: 'u1', isPerson: true, isAdmin: true };
-    expect(releaseDecidableBy(v, 'u2')).toBe(true);
-    expect(releaseDecidableBy(v, 'u1')).toBe(false);
-    expect(releaseDecidableBy({ ...v, isAdmin: false }, 'u2')).toBe(false);
-    expect(releaseDecidableBy({ ...v, isPerson: false }, 'u2')).toBe(false);
   });
 });

@@ -3,12 +3,8 @@ import type { KernelIssueStatus } from '@forge/contracts/issue-vocabulary';
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
-import { effectiveProjectRole } from '../../lib/authz.js';
+import { approverFactsOf, mayApprove } from '../../lib/approval.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
-import { peopleOf } from '../../lib/people.js';
-import { actMiss, PERSON_ACT } from '../../lib/person-act.js';
-import { readProjectDocument } from '../../project-config/service.js';
-import { approverRefusal } from '../contract/approval.js';
 import { versionsOf } from '../contract/store.js';
 import type { StandingViewer, VersionFact } from './standing.js';
 
@@ -18,24 +14,9 @@ export const refOf = (providerSlug: string, slug: string) => `${providerSlug}/${
 
 export async function viewerOf(projectId: string, userId: string | null): Promise<StandingViewer> {
   if (!userId) return { decides: () => false, acts: false };
-  const [access, people, doc] = await Promise.all([
-    effectiveProjectRole(userId, projectId),
-    peopleOf([userId]),
-    readProjectDocument(projectId),
-  ]);
-  const agency = people.get(userId)?.kind === 'agent' ? ('agent' as const) : ('human' as const);
-  const role = access?.role ?? null;
-  const approver = doc?.document.contracts?.approver ?? 'owner';
-  return {
-    decides: (classification) =>
-      approverRefusal(
-        { userId, agency, role, orgRole: access?.orgRole ?? null },
-        { ref: projectId, classification },
-        approver,
-        projectId,
-      ) === null,
-    acts: actMiss({ userId, agency, role }, PERSON_ACT) === null,
-  };
+  const facts = await approverFactsOf(userId, projectId);
+  const decides = mayApprove(facts, 'contracts');
+  return { decides: () => decides, acts: mayApprove(facts, 'feedback') };
 }
 
 export async function versionFacts(

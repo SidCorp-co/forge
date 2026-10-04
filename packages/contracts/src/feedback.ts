@@ -8,6 +8,7 @@ import type {
 	AgentReportSeverity,
 	AgentReportTarget,
 } from "./agent-reports.js";
+import { APPROVAL_REFUSAL_CODES } from "./approval.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 
 /** What the reporter says it is; `contract_change` is filed by core for a breaking version (E3). */
@@ -245,8 +246,7 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_CLARIFICATION_ALREADY_OPEN",
 	"FEEDBACK_CLARIFICATION_CLOSED",
 	"FEEDBACK_ATTACHMENT_INVALID",
-	"FEEDBACK_DECIDE_FORBIDDEN",
-	"FEEDBACK_VERIFY_FORBIDDEN",
+	...APPROVAL_REFUSAL_CODES,
 	"FEEDBACK_REDACT_FORBIDDEN",
 	"FEEDBACK_SEARCH_WITHHELD",
 	"FEEDBACK_SOURCE_ALREADY_PROMOTED",

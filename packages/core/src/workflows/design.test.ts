@@ -31,49 +31,20 @@ const parsed = (d: Doc): WorkflowWrite => {
   return r.value;
 };
 
-const agent = (role: 'member' | 'viewer' | null) => ({
-  userId: 'a',
-  agency: 'agent' as const,
-  role,
-  orgRole: null,
-});
-const person = (orgRole: 'owner' | 'admin' | 'member' | null) => ({
-  userId: 'p',
-  agency: 'human' as const,
-  role: 'member' as const,
-  orgRole,
-});
-
-describe('who decides a workflow design', () => {
-  it('refuses an agent while the approver is the owner, even the project master', () => {
-    expect(designApproverRefusal(agent('member'), PROJECT, 'owner')?.code).toBe(
-      'WORKFLOW_DESIGN_APPROVER_NOT_PERSON',
-    );
+describe('who decides a workflow design (workflow-designs.approve, ADR 0007)', () => {
+  it('admits any holder of the permission, the project master included', () => {
+    expect(designApproverRefusal({ userId: 'master', role: 'admin' }, PROJECT)).toBeNull();
   });
 
-  it("lets the project's own master decide once the approver is master", () => {
-    expect(designApproverRefusal(agent('member'), PROJECT, 'master')).toBeNull();
+  it('refuses a member, a viewer or another project by the one permission code', () => {
+    for (const role of ['member', 'viewer', null] as const) {
+      expect(designApproverRefusal({ userId: 'a', role }, PROJECT)).toMatchObject({
+        code: 'APPROVE_PERMISSION_REQUIRED',
+        permission: 'workflow-designs.approve',
+        resource: 'workflow-designs',
+      });
+    }
   });
-
-  it("refuses another project's agent, and this project's viewer agent, with approver master", () => {
-    expect(designApproverRefusal(agent(null), PROJECT, 'master')?.code).toBe(
-      'WORKFLOW_DESIGN_APPROVER_NOT_PROJECT',
-    );
-    expect(designApproverRefusal(agent('viewer'), PROJECT, 'master')?.code).toBe(
-      'WORKFLOW_DESIGN_APPROVER_NOT_PROJECT',
-    );
-  });
-
-  it.each(['owner', 'master'] as const)(
-    'admits an org owner or admin person under %s, and refuses an org member',
-    (approver) => {
-      expect(designApproverRefusal(person('owner'), PROJECT, approver)).toBeNull();
-      expect(designApproverRefusal(person('admin'), PROJECT, approver)).toBeNull();
-      expect(designApproverRefusal(person('member'), PROJECT, approver)?.code).toBe(
-        'WORKFLOW_DESIGN_APPROVER_NOT_ADMIN',
-      );
-    },
-  );
 });
 
 describe('the design lifecycle', () => {

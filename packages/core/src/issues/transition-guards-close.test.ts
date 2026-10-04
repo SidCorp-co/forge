@@ -53,6 +53,7 @@ const close = (exec: ReturnType<typeof executor>, from = 'in_progress') =>
     from: from as 'in_progress',
     to: 'closed',
     agency: 'human',
+    actorUserId: 'u-1',
     executor: exec as never,
   });
 

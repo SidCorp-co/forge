@@ -82,10 +82,11 @@ linking an issue on it are \`REQUIREMENT_DEFERRED\`. **undefer** puts back the s
 from.
 
 ### Who may act
-An agent creates, revises, edits and proposes revisions, and links issues and designs. Accept, return,
-agree, repin, defer, undefer and \`adoptPlan\` are a **person's** acts, by a member of the project or
-above: an agent is refused \`REQUIREMENT_SIGNOFF_FORBIDDEN\`. An agent that wants a change signed off
-proposes it and stops; the requirement's \`waitingOn\` names whose turn it is. A change an agent
+Anyone on the project creates, revises, edits and proposes revisions, and links designs. Accept,
+return, agree, repin, defer, undefer, linking an issue and \`adoptPlan\` take \`requirements.approve\`
+on the project (project admin, or an org owner or admin), person or agent alike, the revision's author
+included; without it the call is refused \`APPROVE_PERMISSION_REQUIRED\` naming the permission. Whoever
+lacks it proposes and stops; the requirement's \`waitingOn\` names whose turn it is. A change an agent
 proposes without writing the revision itself is a \`revision_diff\` suggestion (${guideRef('suggestions')}),
 and accepting one writes a new **draft** revision, never a current one.`,
 };

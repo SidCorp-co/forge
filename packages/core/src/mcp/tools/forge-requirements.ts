@@ -1,7 +1,6 @@
 /**
- * `forge_requirements` — the agent's face of this project's requirements (REQ-n). An agent drafts
- * and proposes revisions and links issues and designs; accepting a revision, returning one and
- * agreeing a requirement are a person's acts and refuse an agent (REQUIREMENT_SIGNOFF_FORBIDDEN).
+ * `forge_requirements` — the agent's face of this project's requirements (REQ-n). Accepting a
+ * revision, returning one and agreeing a requirement take requirements.approve (ADR 0007).
  * The REST routes in `requirements/routes.ts` are the same services.
  */
 
@@ -126,7 +125,7 @@ const DESCRIPTION =
   'one (reason is the re-baseline sign-off on an agreed requirement); return: { requirement, revision, reason } sends it back to draft; agree: { requirement, revision } ' +
   'signs the head off and writes a baseline pinning every linked design, refused REQUIREMENT_DESIGN_UNAPPROVED ' +
   'naming each unapproved design and REQUIREMENT_REVISION_NOT_CURRENT unless the head is current. accept, return ' +
-  'and agree are a person’s acts: an agent is refused REQUIREMENT_SIGNOFF_FORBIDDEN. ' +
+  'and agree take requirements.approve (project admin, or an org owner or admin), person or agent alike, the author included; without it APPROVE_PERMISSION_REQUIRED. ' +
   'repin: { requirement, revision, reason? } writes a new baseline of the head pinning each linked design’s approved ' +
   'revision, with no text revision, once a design is approved past what the agreed baseline pins (the standing waits on ' +
   '"re-pin"); REQUIREMENT_PINS_CURRENT when nothing moved, and the agree’s own guards otherwise. Issues planned before it ' +

@@ -1,3 +1,4 @@
+import type { ApprovalPermission } from "@forge/contracts/approval";
 import type { DesignRevisionState } from "@forge/contracts/design-status";
 import type { DesignBuildGate, DesignRequirementLink, DesignWaitingOn } from "@forge/contracts/workflows";
 
@@ -162,7 +163,8 @@ export interface WorkflowDesign {
   revision: number;
   proposedRevision: number | null;
   approvedRevision: number | null;
-  approver: "owner" | "master";
+  /** The permission that decides this design (`workflow-designs.approve`, ADR 0007). */
+  approver: ApprovalPermission;
   canDecide: boolean;
   waitingOn: DesignWaitingOn;
   revisions: DesignRevision[];

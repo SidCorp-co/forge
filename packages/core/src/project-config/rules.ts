@@ -36,6 +36,7 @@ export const PURE_REFUSAL_CODES = [
   'TESTING_PROFILE_NOT_FOUND',
   'PERMISSION_PROFILE_UNDEFINED',
   'TOOL_PATTERN_INVALID',
+  'APPROVER_POLICY_RETIRED',
 ] as const;
 
 // cm:why a project's own diagram templates (`workflows.templates`) are refused in this vocabulary;
@@ -429,6 +430,7 @@ export function checkProjectConfig(
   out.push(...checkGitlessBindings(doc, ctx));
   out.push(...checkWorkflowTemplates(doc, ctx));
   out.push(...checkContentLanguage(doc));
+  out.push(...checkRetiredApprovers(doc));
   if (ctx.policy) out.push(...checkPolicy(ctx.policy));
   return out;
 }
@@ -452,6 +454,29 @@ export function checkWorkflowTemplates(
     });
   }
   return out;
+}
+
+const RETIRED_APPROVERS = [
+  ['workflows', 'designApprover', 'workflow-designs.approve'],
+  ['contracts', 'approver', 'contracts.approve'],
+] as const;
+
+// Approval is a permission (ADR 0007): a write naming the person-or-master knob is refused by name,
+// so nobody sets a policy that no longer decides anything.
+export function checkRetiredApprovers(
+  doc: Pick<ProjectDocument, 'workflows' | 'contracts'>,
+): ConfigRefusal[] {
+  return RETIRED_APPROVERS.flatMap(([section, key, permission]) => {
+    const held = (doc[section] as Record<string, unknown> | undefined)?.[key];
+    if (held === undefined) return [];
+    return [
+      {
+        code: 'APPROVER_POLICY_RETIRED' as const,
+        path: pointer(section, key),
+        detail: `${section}.${key} is retired: who decides is whoever holds ${permission} on the project (project admin, or an org owner or admin), person or agent alike. Remove the key.`,
+      },
+    ];
+  });
 }
 
 // cm:guard a tag that names no language is refused by name: a prompt told to write in it could only

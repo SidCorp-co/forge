@@ -220,7 +220,11 @@ export async function declineFeedback(input: {
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
   await assertProjectAccess(projectId, actor.userId, 'viewer');
-  const forbidden = decideActRefusal(await roleFacts(actor, projectId), 'declining feedback');
+  const forbidden = decideActRefusal(
+    await roleFacts(actor, projectId),
+    projectId,
+    'declining feedback',
+  );
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const first = await rowIn(db, projectId, input.ref);
   const refusals = await inTx(async (tx) => {
@@ -248,6 +252,7 @@ async function personalAct(
   await assertProjectAccess(projectId, actor.userId, 'viewer');
   const forbidden = verifyActRefusal(
     await roleFacts(actor, projectId),
+    projectId,
     act === 'verified' ? 'verifying feedback' : 'reopening feedback',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };

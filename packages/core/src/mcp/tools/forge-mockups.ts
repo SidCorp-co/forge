@@ -78,8 +78,8 @@ const DESCRIPTION =
   `source { from: ${MOCKUP_SOURCES.join(' | ')}, attachmentId } (a file uploaded first with forge_uploads request) }. ` +
   'Refused by name: MOCKUP_TYPE_INVALID (a type the kind does not take, or a board that is not wireframe-v1), MOCKUP_TOO_LARGE, ' +
   "MOCKUP_SOURCE_OTHER_PROJECT (another project's upload), MOCKUP_REVISION_SUPERSEDED (propose against the head instead), " +
-  'MOCKUP_TARGET_INVALID, MOCKUP_QUEUE_FULL. accept { reason? } and return { reason } are a person’s acts (MOCKUP_DECIDE_FORBIDDEN for an agent), ' +
-  'and its author never accepts it (MOCKUP_ACCEPT_OWN_FORBIDDEN); withdraw is its author’s. An accepted requirement mockup is pinned by the ' +
+  'MOCKUP_TARGET_INVALID, MOCKUP_QUEUE_FULL. accept { reason? } and return { reason } take mockups.approve (project admin, or an org owner or admin), person or agent alike, ' +
+  'its author included (APPROVE_PERMISSION_REQUIRED without it); withdraw is its author’s. An accepted requirement mockup is pinned by the ' +
   'next agree, re-baseline or re-pin, beside the designs, and every job on an issue of that requirement is given it. ' +
   'list: exactly one of requirement | feedback | issue. get / content: { ref: MK-n }; content returns an image as an image block and text ' +
   'inline, framed as data, and is CONTENT_EGRESS_FORBIDDEN on a no_egress project.';
