@@ -4,7 +4,9 @@ import type {
   CreateFeedbackRequest,
   FeedbackAction,
   FeedbackListResponse,
+  FeedbackPromoteEffect,
   FeedbackResponse,
+  PromoteAgentReportRequest,
   SimilarFeedbackResponse,
 } from "./types";
 
@@ -24,6 +26,8 @@ export const feedbackApi = {
   get: (projectId: string, key: string) => apiClient<FeedbackResponse>(one(projectId, key)),
   similar: (projectId: string, key: string) => apiClient<SimilarFeedbackResponse>(`${one(projectId, key)}/similar`),
   create: (projectId: string, body: CreateFeedbackRequest) => apiClient<FeedbackResponse>(base(projectId), post(body)),
+  promote: (projectId: string, body: PromoteAgentReportRequest) =>
+    apiClient<FeedbackResponse & { effect: FeedbackPromoteEffect }>(`${base(projectId)}/promote`, post(body)),
   act: (projectId: string, key: string, a: FeedbackAction) => {
     const [path, init] = actionRequest(projectId, key, a);
     return apiClient<FeedbackResponse>(path, init);

@@ -15,14 +15,8 @@ import { writeItemEmbedding } from '../embeddings/item-writer.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
-import {
-  type FeedbackActor,
-  feedbackEgress,
-  feedbackKey,
-  phaseOfRow,
-  type ReadDoor,
-  rowIn,
-} from './read.js';
+import { feedbackEgress, type ReadDoor } from './egress.js';
+import { type FeedbackActor, feedbackKey, phaseOfRow, rowIn } from './read.js';
 
 /** Embeds the item's text, replacing whatever row it held; a redacted item holds none. */
 export async function embedFeedback(feedbackId: string) {

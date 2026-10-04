@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { AgentReport } from "@/features/agent-reports/types";
 import type { ScheduleRun } from "@/features/schedules/types";
-import { improvementRows, issueFromReport, matchesFilter } from "./improvements";
+import { feedbackDraftOf, improvementRows, issueFromReport, matchesFilter } from "./improvements";
 
 const report = (over: Partial<AgentReport> = {}): AgentReport => ({
   id: "f1",
+  projectId: "p1",
+  projectSlug: "eco-a",
+  issueId: null,
+  runId: null,
+  jobId: null,
+  stage: null,
   kind: "friction",
   severity: "medium",
   target: "skill",
@@ -16,6 +22,7 @@ const report = (over: Partial<AgentReport> = {}): AgentReport => ({
   sessionId: null,
   reviewedAt: null,
   linkedIssueId: null,
+  feedback: null,
   createdAt: "2026-10-01T09:00:00.000Z",
   ...over,
 });
@@ -74,5 +81,29 @@ describe("the Improvements list", () => {
     expect(body.title).toBe("The boundary axis is missed");
     expect(body.description).toContain("Suggested: Add the boundary case");
     expect(body.description).toContain("Agent report f1");
+  });
+});
+
+describe("promoting a report into feedback (ISS-93)", () => {
+  it("prefills the form from what the report said, as a screen named by its target", () => {
+    expect(feedbackDraftOf(report())).toEqual({
+      kind: "change_request",
+      severity: "medium",
+      targetType: "screen",
+      target: "Skill forge-test",
+      title: "The boundary axis is missed",
+      body: "Seen twice in review\n\nSuggested: Add the boundary case",
+    });
+  });
+
+  it("reads a bug as a bug, a suggestion or learning as an idea, and high severity as high", () => {
+    expect(feedbackDraftOf(report({ kind: "bug", severity: "high" }))).toMatchObject({ kind: "bug", severity: "high" });
+    expect(feedbackDraftOf(report({ kind: "suggestion" })).kind).toBe("idea");
+    expect(feedbackDraftOf(report({ kind: "learning", targetRef: null })).target).toBe("Skill");
+  });
+
+  it("lists a promoted report as done", () => {
+    const promoted = report({ reviewedAt: "2026-10-04T09:00:00.000Z", feedback: { id: "fb", key: "FB-7", phase: "new", route: null } });
+    expect(improvementRows([promoted], [])[0]?.state).toBe("done");
   });
 });

@@ -20,7 +20,7 @@ import { itemEmbeddings } from '../../db/schema-item-embeddings.js';
 import { questionnaireBatches } from '../../db/schema-onboarding.js';
 import { agentQuestions } from '../../db/schema-questions.js';
 import { resolveIssueRouteRef } from '../../issues/issue-route-ref.js';
-import { dataPolicyOf, egressAt, egressDeep, egressOr } from '../../lib/data-egress.js';
+import { dataPolicyOf, egressAt, egressDeep, egressOr, MCP_DOOR } from '../../lib/data-egress.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -78,7 +78,12 @@ const readRequirement =
       'Read the requirement this room is about: its revisions (newest first) with criteria, the head (currentRevision), the suggestions waiting on it, the latest clarification question and its answer, and whether its head is embedded for dedup.',
     inputSchema: schema(z.strictObject({})),
     handler: async () => {
-      const detail = await readRequirementAs(actorOf(ctx), room.projectId, room.requirementId);
+      const detail = await readRequirementAs(
+        actorOf(ctx),
+        room.projectId,
+        room.requirementId,
+        MCP_DOOR,
+      );
       const [waiting, clarification, embedding] = await Promise.all([
         listSuggestions({
           projectId: room.projectId,

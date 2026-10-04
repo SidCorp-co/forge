@@ -74,6 +74,7 @@ export interface StandingInput {
   openSuggestionKinds: readonly string[];
   /** The latest baseline's design pins whose design is now approved at a newer revision. */
   stalePins: readonly { flow: string; pinned: number; approved: number }[];
+  feedback: { open: number; untriaged: readonly string[] };
   updatedAt: Date;
   now: Date;
 }
@@ -157,14 +158,24 @@ interface Turn {
   waitingOn: RequirementWaitingOn;
 }
 
-// cm:why whose turn it is, first rule wins: 1. accepted, dropped or deferred → done or waiting on
-// nobody (ISS-85); 2. a proposed revision → a signer; 3. a draft revision → its author; 4. a draft
-// requirement, head current → a signer agrees it; 5. a design approved past the baseline's pin → a
-// signer re-pins it (ISS-86); 6. every issue closed → a signer accepts the delivery, a BC unproven →
-// the master proves it; 7. an open breakdown → a signer; 8. an issue planned against an earlier
-// revision or baseline → the master re-plans it; 9. no issue → the master breaks it down; 10. only
-// drafts → a person promotes them; 11. else moving. Unless it needs you: no owner, or untouched
-// for STUCK_AFTER_DAYS → stuck.
+function feedbackTurn(input: StandingInput): Turn | null {
+  const untriaged = input.feedback.untriaged;
+  if (untriaged.length === 0) return null;
+  return signerWait(
+    input.viewer,
+    untriaged.length === 1 ? `triage ${untriaged[0]}` : `triage ${untriaged.length} feedback items`,
+    `feedback about it waits on a person to pick its route: ${untriaged.join(', ')}`,
+  );
+}
+
+// cm:why whose turn it is, first rule wins: 1. dropped or deferred → nobody (ISS-85), accepted →
+// done unless feedback waits on triage; 2. a proposed revision → a signer; 3. a draft revision →
+// its author; 4. a draft requirement → a signer agrees it; 4b. untriaged feedback → a signer
+// triages it (ISS-79); 5. a design approved past the pin → a signer re-pins it (ISS-86); 6. every
+// issue closed → a signer accepts the delivery, a BC unproven → the master proves it; 7. an open
+// breakdown → a signer; 8. an issue planned on an earlier revision or baseline → the master
+// re-plans it; 9. no issue → the master breaks it down; 10. only drafts → a person promotes them;
+// 11. else moving. Unless it needs you: no owner, or untouched STUCK_AFTER_DAYS → stuck.
 function turnOf(
   input: StandingInput,
   live: readonly StandingIssue[],
@@ -172,7 +183,13 @@ function turnOf(
 ): Turn {
   const { status, viewer } = input;
   if (status === 'accepted' || status === 'dropped') {
-    return { group: 'done', waitingOn: wait('none', '—', '', `the requirement is ${status}`) };
+    const triage = status === 'accepted' ? feedbackTurn(input) : null;
+    return (
+      triage ?? {
+        group: 'done',
+        waitingOn: wait('none', '—', '', `the requirement is ${status}`),
+      }
+    );
   }
   if (status === 'deferred') {
     return {
@@ -211,6 +228,8 @@ function turnOf(
       'a current revision not yet agreed waits on a sign-off',
     );
   }
+  const triage = feedbackTurn(input);
+  if (triage) return triage;
   if (input.stalePins.length > 0) {
     const act = `re-pin ${input.stalePins.map((p) => `${p.flow} r${p.approved}`).join(', ')}`;
     const rule = 'a linked design was approved past the revision the agreed baseline pins';
@@ -324,6 +343,8 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
       proposedRevision: input.revisions.find((r) => r.state === 'proposed')?.revision ?? null,
       draftRevision: input.revisions.find((r) => r.state === 'draft')?.revision ?? null,
       stalePins: [...input.stalePins],
+      feedbackOpen: input.feedback.open,
+      feedbackUntriaged: input.feedback.untriaged.length,
     },
     shownRevision,
     coverage,

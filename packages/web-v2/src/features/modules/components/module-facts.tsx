@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Fact, FactsEmpty, FactsGroup, NotAvailable, StatusBadge } from "@/design";
-import { feedbackHref } from "@/features/feedback/routes";
+import { FeedbackRailItem } from "@/features/feedback/components/feedback-rail-item";
 import { issueHref } from "@/features/issues/routes";
 import { requirementHref } from "@/features/requirements/routes";
 import { moduleHref } from "../routes";
@@ -91,15 +91,7 @@ export function ModuleFacts({ d, slug }: { d: ModuleDetail; slug: string }) {
         ) : (
           <ul className="grid gap-1">
             {d.feedback.map((f) => (
-              <li key={f.key} className="flex min-w-0 items-center gap-1.5 text-13" data-testid="rail-feedback">
-                <Link href={feedbackHref(slug, f.key)} className="flex-none font-mono text-12 font-semibold text-link hover:underline">
-                  {f.key}
-                </Link>
-                <span className="min-w-0 flex-1 truncate" title={f.title}>
-                  {f.title}
-                </span>
-                <StatusBadge family="feedbackPhase" value={f.phase} />
-              </li>
+              <FeedbackRailItem key={f.key} slug={slug} itemKey={f.key} title={f.title} phase={f.phase} />
             ))}
           </ul>
         )}

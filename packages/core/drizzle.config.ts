@@ -16,6 +16,7 @@ export default defineConfig({
     './src/db/schema-suggestions.ts',
     './src/db/schema-onboarding.ts',
     './src/db/schema-feedback.ts',
+    './src/db/schema-agent-reports.ts',
     './src/db/schema-comments.ts',
     './src/db/schema-contract-waits.ts',
     './src/db/schema-item-embeddings.ts',

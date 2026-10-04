@@ -217,7 +217,7 @@ export function RequirementPage({
       dataKey={d.key}
       rail={
         <FactsRail testId="relations-rail">
-          <RequirementFacts d={d} projectId={projectId} slug={slug} onOpenRevisions={() => onTab("revisions")} />
+          <RequirementFacts d={d} slug={slug} onOpenRevisions={() => onTab("revisions")} />
         </FactsRail>
       }
     >

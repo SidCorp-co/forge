@@ -4,7 +4,6 @@
  * target or a carrier with. Phases come from `rules.ts:phaseOf`; nothing here stores one.
  */
 
-import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import type {
   FeedbackAttention,
   FeedbackDecisionView,
@@ -29,13 +28,15 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { isUuid } from '../issues/issue-route-ref.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
-import { dataPolicyOf, type EgressReader, egressReading } from '../lib/data-egress.js';
+import { dataPolicyOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { actMiss, PERSON_ACT, PERSON_ADMIN_ACT } from '../lib/person-act.js';
 import { requirementKey } from '../requirements/read.js';
 import { deliveredAmong } from '../requirements/standing-read.js';
 import { userNames } from '../workflows/service.js';
+import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { targetTypeOf } from './refs.js';
+import { feedbackIdsOfRequirement, NO_FEEDBACK, sourceOf } from './relations.js';
 import {
   attentionOf,
   type FeedbackRefusal,
@@ -79,7 +80,7 @@ export async function rowIn(tx: Tx, projectId: string, ref: string, lock = false
 }
 
 /** Everything the rows point at, loaded once for a page of rows. */
-interface Linked {
+export interface Linked {
   prefix: string | null;
   issues: Map<string, { key: string; title: string; status: string }>;
   requirements: Map<string, { key: string; title: string; status: string; delivered: boolean }>;
@@ -93,7 +94,7 @@ interface Linked {
 
 const ids = (values: (string | null)[]) => [...new Set(values.filter((v): v is string => !!v))];
 
-async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
+export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
   const issueIds = ids(rows.flatMap((r) => [r.issueId, r.routedIssueId]));
   const reqIds = ids(rows.flatMap((r) => [r.requirementId, r.routedRequirementId]));
   const releaseIds = ids(rows.map((r) => r.releaseRunId));
@@ -273,7 +274,7 @@ function targetView(r: Row, l: Linked): FeedbackTargetView {
   return { type, key: r.whereSeen ?? '', title: null };
 }
 
-function routeView(r: Row, l: Linked): FeedbackRouteView | null {
+export function routeView(r: Row, l: Linked): FeedbackRouteView | null {
   if (!r.route) return null;
   switch (r.route) {
     case 'issue': {
@@ -302,22 +303,12 @@ function routeView(r: Row, l: Linked): FeedbackRouteView | null {
   }
 }
 
-const WITHHELD = 'content withheld: this project keeps its data out of every provider (no_egress)';
-
-export type ReadDoor = Pick<EgressReader, 'providerBound'>;
-
-// cm:guard a provider-bound reader (an agent, or any reader on the MCP door) reads feedback through
-// the one egress rule (`lib/data-egress.ts:egressReading`, surface `feedback`, operational): withheld to
-// metadata at no_egress, scrubbed at redact; a person off every such door reads it as stored
-export function feedbackEgress(
-  level: SensitiveDataLevel,
-  agency: ActorAgency,
-  door: ReadDoor = {},
-) {
-  return egressReading(level, { agency, providerBound: door.providerBound }, 'feedback');
-}
-
-function summaryOf(r: Row, l: Linked, viewer: FeedbackActor, withhold: boolean): FeedbackSummary {
+export function summaryOf(
+  r: Row,
+  l: Linked,
+  viewer: FeedbackActor,
+  withhold: boolean,
+): FeedbackSummary {
   const phase = phaseIn(r, l);
   const route = routeView(r, l);
   const reporterName = l.names.get(r.reportedBy) ?? null;
@@ -348,7 +339,11 @@ function summaryOf(r: Row, l: Linked, viewer: FeedbackActor, withhold: boolean):
 export async function listFeedbackAs(
   viewer: FeedbackActor,
   projectId: string,
-  query: { phases?: readonly FeedbackPhase[] | undefined; q?: string | undefined } = {},
+  query: {
+    phases?: readonly FeedbackPhase[] | undefined;
+    q?: string | undefined;
+    requirement?: string | undefined;
+  } = {},
   door: ReadDoor = {},
 ): Promise<{ ok: true; list: FeedbackListResponse } | { ok: false; refusals: FeedbackRefusal[] }> {
   await assertProjectAccess(projectId, viewer.userId, 'viewer');
@@ -356,6 +351,9 @@ export async function listFeedbackAs(
   const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
   const searchRefused = searchWithheldRefusal(query.q, withhold);
   if (searchRefused) return { ok: false, refusals: [searchRefused] };
+  const about = query.requirement
+    ? await feedbackIdsOfRequirement(projectId, query.requirement)
+    : null;
   const rows = await db
     .select()
     .from(feedback)
@@ -363,6 +361,7 @@ export async function listFeedbackAs(
       and(
         eq(feedback.projectId, projectId),
         query.q ? ilike(feedback.title, `%${query.q}%`) : undefined,
+        about ? inArray(feedback.id, about.length ? about : [NO_FEEDBACK]) : undefined,
       ),
     )
     .orderBy(desc(feedback.createdAt))
@@ -391,7 +390,7 @@ export async function detailAs(
 ): Promise<FeedbackView> {
   await assertProjectAccess(projectId, viewer.userId, 'viewer');
   const row = await rowIn(db, projectId, ref);
-  const [level, access, linked, decisions, attachments, questions, pointing, [open]] =
+  const [level, access, linked, decisions, attachments, questions, pointing, [open], source] =
     await Promise.all([
       dataPolicyOf(projectId),
       effectiveProjectRole(viewer.userId, projectId),
@@ -425,6 +424,7 @@ export async function detailAs(
         .select({ n: count() })
         .from(suggestions)
         .where(and(eq(suggestions.feedbackId, row.id), eq(suggestions.status, 'proposed'))),
+      sourceOf(row.id),
     ]);
   const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
   const summary = summaryOf(row, linked, viewer, withhold);
@@ -440,6 +440,8 @@ export async function detailAs(
       whereSeen: withhold ? null : row.whereSeen,
       duplicateOf: root ? feedbackKey(root.fbSeq) : null,
       duplicates: pointing.map((p) => feedbackKey(p.seq)),
+      source:
+        source && withhold ? { agentReport: { ...source.agentReport, targetRef: null } } : source,
       decisions: decisions.map(
         (d): FeedbackDecisionView => ({
           decision: d.decision,

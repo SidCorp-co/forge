@@ -29,6 +29,9 @@ vi.mock('../../requirements/read.js', () => ({
   listRequirementsAs: async () => requirementList(),
   readRequirementAs: async () => requirementDetail(),
 }));
+vi.mock('../../requirements/feedback-read.js', () => ({
+  requirementFeedbackAs: async () => [],
+}));
 vi.mock('../../requirements/issue-links.js', () => ({
   linkIssue: requirementOutcome,
   unlinkIssue: requirementOutcome,

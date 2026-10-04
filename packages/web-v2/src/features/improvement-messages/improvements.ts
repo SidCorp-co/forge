@@ -1,5 +1,6 @@
 import { enumLabel } from "@/design/vocabulary";
 import type { AgentReport } from "@/features/agent-reports/types";
+import type { FeedbackDraft } from "@/features/feedback/components/feedback-form";
 import type { ScheduleRun } from "@/features/schedules/types";
 
 export const IMPROVEMENT_FILTERS = ["all", "reports", "proposals", "done"] as const;
@@ -77,4 +78,25 @@ export function matchesFilter(row: ImprovementRow, f: ImprovementFilter): boolea
 export function issueFromReport(r: AgentReport): { title: string; description: string } {
   const parts = [r.detail, r.suggestion ? `Suggested: ${r.suggestion}` : null, `Agent report ${r.id} (${r.kind}, ${r.severity}).`];
   return { title: r.summary.slice(0, 200), description: parts.filter(Boolean).join("\n\n") };
+}
+
+const FEEDBACK_KIND_OF: Record<AgentReport["kind"], FeedbackDraft["kind"]> = {
+  bug: "bug",
+  suggestion: "idea",
+  learning: "idea",
+  friction: "change_request",
+  skill_gap: "change_request",
+  unclear_step: "change_request",
+  redundant_step: "change_request",
+};
+
+export function feedbackDraftOf(r: AgentReport): FeedbackDraft {
+  return {
+    kind: FEEDBACK_KIND_OF[r.kind],
+    severity: r.severity,
+    targetType: "screen",
+    target: [enumLabel("agentReportTarget", r.target), r.targetRef].filter(Boolean).join(" "),
+    title: r.summary.slice(0, 300),
+    body: [r.detail, r.suggestion ? `Suggested: ${r.suggestion}` : null].filter(Boolean).join("\n\n"),
+  };
 }
