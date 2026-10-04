@@ -6,6 +6,7 @@ import { groupSections, HELP_SECTION_ORDER, searchDocs } from "@/features/docs/r
 import { coreFileUrl } from "@/lib/utils/core-url";
 import type { Guide } from "./api";
 import { AGENT_SECTION, AUDIENCES, type Audience, SEARCH_EXAMPLES } from "./audience";
+import { INDEX_HREF } from "./missing";
 
 export interface PublicDoc {
   slug: string;
@@ -20,14 +21,12 @@ export interface PublicDoc {
   markdownUrl: string | null;
 }
 
-export const INDEX_PATH = "/guides";
-
 export function helpPageHref(slug: string): string {
-  return `${INDEX_PATH}?path=${encodeURIComponent(slug)}`;
+  return `${INDEX_HREF}?path=${encodeURIComponent(slug)}`;
 }
 
 export function doorHref(audience: Audience): string {
-  return `${INDEX_PATH}?for=${audience}`;
+  return `${INDEX_HREF}?for=${audience}`;
 }
 
 function guideMarkdownUrl(slug: string): string {
@@ -60,7 +59,7 @@ export function fromGuide(guide: Guide, order: number): PublicDoc {
     section: AGENT_SECTION,
     order,
     body: guide.body,
-    href: `${INDEX_PATH}/${guide.slug}`,
+    href: `${INDEX_HREF}/${guide.slug}`,
     markdownUrl: guideMarkdownUrl(guide.slug),
   };
 }
@@ -96,7 +95,7 @@ export function doorSections(corpus: readonly PublicDoc[], audience: Audience) {
 }
 
 /** The examples whose term finds a page behind its own door. */
-export function workingExamples(corpus: readonly PublicDoc[]) {
+function workingExamples(corpus: readonly PublicDoc[]) {
   return SEARCH_EXAMPLES.filter(({ audience, term }) =>
     (searchDocs(corpus, term) ?? []).some((d) => d.audience === audience),
   );

@@ -9,8 +9,9 @@ const DAY = 86_400_000;
 const toneOf = (v: ContractVersionView) =>
   v.approval === "proposed" ? LEGEND.you.dot : v.approval === "returned" ? LEGEND.err.dot : v.classification === "breaking" ? LEGEND.err.dot : LEGEND.done.dot;
 
-export function VersionTimeline({ row, versions, now = Date.now() }: { row: ContractStandingRow; versions: ContractVersionView[]; now?: number }) {
+export function VersionTimeline({ row, versions }: { row: ContractStandingRow; versions: ContractVersionView[] }) {
   if (versions.length === 0) return <p className="text-13 text-subtle">No version has been recorded.</p>;
+  const now = Date.now();
   const due = row.window ? new Date(row.window.dueAt).getTime() : null;
   const times = [...versions.map((v) => new Date(v.recordedAt).getTime()), now, ...(due ? [due] : [])];
   const lo = Math.min(...times);
