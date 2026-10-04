@@ -15,9 +15,14 @@ import {
 import { getIntegration } from '../registry.js';
 import { SourceHostCallError } from '../source-host/errors.js';
 import { type BindingWithConnection, effectiveConfig, listBindingsForProject } from '../store.js';
-import { GitHubAuthError, installationToken } from './app-auth.js';
 import { buildRepoClient } from './client.js';
-import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
+import {
+  GitHubAuthError,
+  installationOctokit,
+  mintInstallationToken,
+  responseOf,
+} from './octokit.js';
+import type { GitHubConfig, GitHubSecrets } from './types.js';
 
 const AGENT_TIMEOUT_MS = 12_000;
 
@@ -150,13 +155,10 @@ export async function githubAgentBindings(projectId: string): Promise<GitHubAgen
   );
 }
 
-async function githubMessage(res: Response): Promise<string | null> {
-  try {
-    const parsed = (await res.json()) as { message?: unknown };
-    return typeof parsed.message === 'string' ? parsed.message.slice(0, 500) : null;
-  } catch {
-    return null;
-  }
+/** GitHub's own `message` on a refusal, where it sent one. */
+function githubMessage(data: unknown): string | null {
+  const message = (data as { message?: unknown } | null)?.message;
+  return typeof message === 'string' ? message.slice(0, 500) : null;
 }
 
 /**
@@ -175,14 +177,14 @@ export function buildGitHubAgentClient(args: {
   const { config, secrets } = args;
   const validated = buildRepoClient(args);
 
-  const base = (config.apiBaseUrl ?? GITHUB_API_BASE).replace(/\/+$/, '');
-  const mint = () =>
-    installationToken({
-      appId: secrets.appId as string,
-      privateKey: secrets.privateKey as string,
-      installationId: config.installationId as number,
-      ...(config.apiBaseUrl ? { apiBaseUrl: config.apiBaseUrl } : {}),
-    });
+  const cred = {
+    appId: secrets.appId as string,
+    privateKey: secrets.privateKey as string,
+    installationId: config.installationId as number,
+    ...(config.apiBaseUrl ? { apiBaseUrl: config.apiBaseUrl } : {}),
+  };
+  const octokit = installationOctokit(cred);
+  const mint = async () => (await mintInstallationToken(cred)).token;
 
   const token = async (): Promise<string> => {
     try {
@@ -191,6 +193,16 @@ export function buildGitHubAgentClient(args: {
       if (err instanceof GitHubAuthError) throw new GitHubAgentCallError(err.status, err.message);
       throw err;
     }
+  };
+
+  const refused = (err: unknown, what: string): never => {
+    const answered = responseOf(err);
+    if (!answered) throw err;
+    throw new GitHubAgentCallError(
+      answered.status,
+      `${what} on ${validated.fullName} returned HTTP ${answered.status}`,
+      githubMessage(answered.data),
+    );
   };
 
   const scrubText = async (text: string, using?: string): Promise<string> => {
@@ -215,25 +227,21 @@ export function buildGitHubAgentClient(args: {
       path: string;
       body?: unknown;
     }): Promise<T> {
-      const res = await fetch(`${base}${args.path}`, {
-        method: args.method,
-        headers: {
-          Authorization: `Bearer ${await token()}`,
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28',
-          ...(args.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-        },
-        ...(args.body === undefined ? {} : { body: JSON.stringify(args.body) }),
-        signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
-      });
-      if (!res.ok) {
-        throw new GitHubAgentCallError(
-          res.status,
-          `${args.method} ${args.path} on ${validated.fullName} returned HTTP ${res.status}`,
-          await githubMessage(res),
-        );
+      await token();
+      try {
+        const res = await octokit.request({
+          method: args.method,
+          url: args.path,
+          ...(args.body === undefined ? {} : { data: args.body }),
+          request: {
+            signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
+            ...(args.method === 'GET' ? {} : { retries: 0 }),
+          },
+        });
+        return res.data as T;
+      } catch (err) {
+        return refused(err, `${args.method} ${args.path}`);
       }
-      return (await res.json()) as T;
     },
 
     async text(args: {
@@ -243,22 +251,24 @@ export function buildGitHubAgentClient(args: {
       keep?: 'head' | 'tail';
     }): Promise<{ body: string; bytes: number; truncated: boolean }> {
       const bearer = await token();
-      const res = await fetch(`${base}${args.path}`, {
-        headers: {
-          Authorization: `Bearer ${bearer}`,
-          Accept: args.accept,
-          'X-GitHub-Api-Version': '2022-11-28',
-        },
-        signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
-      });
-      if (!res.ok) {
-        throw new GitHubAgentCallError(
-          res.status,
-          `GET ${args.path} on ${validated.fullName} returned HTTP ${res.status}`,
-          await githubMessage(res),
-        );
+      let raw: string;
+      try {
+        const res = await octokit.request({
+          method: 'GET',
+          url: args.path,
+          headers: { accept: args.accept },
+          request: { signal: AbortSignal.timeout(AGENT_TIMEOUT_MS) },
+        });
+        raw =
+          res.data instanceof ArrayBuffer
+            ? Buffer.from(res.data).toString('utf8')
+            : typeof res.data === 'string'
+              ? res.data
+              : JSON.stringify(res.data);
+      } catch (err) {
+        return refused(err, `GET ${args.path}`);
       }
-      const redacted = await scrubText(await res.text(), bearer);
+      const redacted = await scrubText(raw, bearer);
       const buf = Buffer.from(redacted, 'utf8');
       const bytes = buf.byteLength;
       if (bytes <= args.maxBytes) return { body: redacted, bytes, truncated: false };
