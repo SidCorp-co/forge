@@ -1,5 +1,5 @@
 import { type SQL, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import type { Tx } from '../db/client.js';
 
 export interface DesignHold {
   readonly workflowId: string;
@@ -49,6 +49,7 @@ export function designHeldSql(issueId: SQL): SQL {
 }
 
 export async function designHoldsOf(
+  executor: Pick<Tx, 'execute'>,
   issueIds: readonly string[],
 ): Promise<Map<string, DesignHold[]>> {
   const out = new Map<string, DesignHold[]>();
@@ -57,19 +58,10 @@ export async function designHoldsOf(
     [...new Set(issueIds)].map((id) => sql`${id}::uuid`),
     sql`, `,
   );
-  const rows = (await db.execute(sql`
-    WITH dl AS (
-      SELECT d.design_issue_id AS issue_id, d.workflow_id, max(d.revision) AS revision
-        FROM project_workflow_designs d
-       WHERE d.design_issue_id IN (${ids})
-       GROUP BY d.design_issue_id, d.workflow_id
-      UNION
-      SELECT c.issue_id, v.design_workflow_id, v.design_revision
-        FROM issue_criteria c ${latestVerdictDesign}
-       WHERE c.issue_id IN (${ids}) AND c.retired_at IS NULL
-    )
-    SELECT dl.issue_id, dl.workflow_id, w.flow, dl.revision, d.decision
-      FROM dl
+  const rows = (await executor.execute(sql`
+    SELECT x.id AS issue_id, dl.workflow_id, w.flow, dl.revision, d.decision
+      FROM unnest(ARRAY[${ids}]) AS x(id)
+      CROSS JOIN LATERAL ${deliveredBy(sql`x.id`)} dl
       JOIN project_workflows w ON w.id = dl.workflow_id
       LEFT JOIN project_workflow_designs d ON d.workflow_id = dl.workflow_id AND d.revision = dl.revision
      WHERE ${unapproved(sql`dl`)}

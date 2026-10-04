@@ -16,9 +16,9 @@ import {
 } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { DISPATCH_GATING_KIND } from './dependency-effects.js';
-import { designHoldPhrase, designHoldsOf } from './design-delivery.js';
+import { blockingEdgesIn } from './blocked-by.js';
+import { designHoldPhrase } from './design-delivery.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
-import { holdsBack } from './standing.js';
 
 export type IssueDependencyEdge = {
   id: string;
@@ -32,7 +32,7 @@ export type IssueDependencyEdge = {
   validUntil: Date | null;
   /** `valid_until` has passed: the edge is retracted, shown as such and counted as nothing. */
   expired: boolean;
-  /** A live `blocks` edge whose blocker still holds this issue back (`standing.ts:holdsBack`). */
+  /** A live `blocks` edge whose blocker still holds this issue back (`blocked-by.ts:blockingEdgesIn`). */
   holds: boolean;
   fromTitle: string | null;
   fromStatus: string | null;
@@ -118,17 +118,14 @@ export async function loadIssueDependencyEdgesForIssues(
       ),
     );
 
-  const [prefixOf, holds] = await Promise.all([
+  const [prefixOf, live] = await Promise.all([
     readPrefixes(rows.flatMap((r) => [r.fromProjectId, r.toProjectId]).concat(projectId)),
-    designHoldsOf(rows.filter((r) => r.kind === DISPATCH_GATING_KIND).map((r) => r.fromIssueId)),
+    blockingEdgesIn(db, projectId, ids).then((edges) => new Map(edges.map((e) => [e.edgeId, e]))),
   ]);
-  const holdOf = (id: string) => {
-    const held = holds.get(id);
-    return held ? designHoldPhrase(held) : null;
-  };
   const now = Date.now();
   const enrich = <
     T extends {
+      id: string;
       validUntil: Date | null;
       fromIssueId: string;
       fromStatus: string | null;
@@ -143,15 +140,12 @@ export async function loadIssueDependencyEdgesForIssues(
   ) => {
     const { fromIssSeq, toIssSeq, fromProjectId, toProjectId, ...rest } = edge;
     const expired = rest.validUntil != null && rest.validUntil.getTime() <= now;
-    const fromDesignHold = rest.kind === DISPATCH_GATING_KIND ? holdOf(rest.fromIssueId) : null;
+    const blocking = live.get(rest.id);
     return {
       ...rest,
       expired,
-      holds:
-        !expired &&
-        rest.kind === DISPATCH_GATING_KIND &&
-        holdsBack(rest.fromStatus ?? '', fromDesignHold !== null),
-      fromDesignHold,
+      holds: blocking?.holds === true,
+      fromDesignHold: blocking?.fromDesign.length ? designHoldPhrase(blocking.fromDesign) : null,
       fromDisplayId:
         fromIssSeq != null
           ? formatIssueRef(prefixOf.get(fromProjectId ?? '') ?? null, fromIssSeq)

@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Pattern v2's import rules over packages/core/src (docs/conventions/domain-entities.md, ADR 0008):
-// context direction, kind direction, runtime cycles between modules, face-only access and adapters
-// reached through their port. dependency-cruiser checks them with a rule set generated from
-// packages/core/src/modules.json, and every violation that already existed is frozen in a
-// shrink-only baseline.
+// context direction, kind direction, runtime cycles between modules, face-only access, adapters
+// reached through their port, and read models SELECTing only the tables they declare under `reads`.
+// dependency-cruiser checks the imports with a rule set generated from packages/core/src/modules.json,
+// and every violation that already existed is frozen in a shrink-only baseline.
 //
-// Exits 1 on a declaration fault, a violation the baseline does not hold, a baseline entry that no
-// longer occurs, or a rule whose frozen count rose over the base revision; 2 when it cannot run.
+// Exits 1 on a declaration fault, a declared read nothing uses, a violation the baseline does not
+// hold, a baseline entry that no longer occurs, or a rule whose frozen count rose over the base
+// revision; 2 when it cannot run.
 // --update-baseline rewrites the baseline to today's violations and refuses to let any rule's
 // count rise.
 //
@@ -21,10 +22,11 @@ import {
   BOUNDARY_RULES,
   cruiseOptions,
   judge,
+  readFindings,
   SRC,
   violationKeys,
 } from './lib/module-boundaries.mjs';
-import { parseDeclaration } from './lib/module-shape.mjs';
+import { declaredTables, moduleOf, parseDeclaration } from './lib/module-shape.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DECLARATION = 'packages/core/src/modules.json';
@@ -84,6 +86,30 @@ const cycles = await run(options.cycles);
 const files = imports.modules.filter((m) => m.source.startsWith(SRC)).length;
 if (files === 0) die(`dependency-cruiser read no file under ${SRC}`);
 const current = violationKeys([imports.summary, cycles.summary]);
+
+const sources = imports.modules.filter((m) => m.source.startsWith(SRC));
+const text = (f) => readFileSync(join(ROOT, f), 'utf8');
+const tables = declaredTables(
+  sources.filter((m) => /^packages\/core\/src\/db\/schema[^/]*\.ts$/.test(m.source)).map((m) => text(m.source)),
+);
+const { undeclared, unused } = readFindings({
+  modules: parsed.modules,
+  tables,
+  moduleOf: (f) => moduleOf(f, parsed.modules),
+  files: new Map(
+    sources
+      .filter((m) => parsed.modules[moduleOf(m.source, parsed.modules)]?.kind === 'read-model')
+      .map((m) => [
+        m.source,
+        { text: text(m.source), imports: m.dependencies.map((d) => d.resolved) },
+      ]),
+  ),
+});
+current['undeclared-read'] = undeclared;
+if (unused.length) {
+  console.error(`module-boundaries: ${DECLARATION} is refused:\n  ${unused.join('\n  ')}`);
+  process.exit(1);
+}
 const rules = options.imports.ruleSet.forbidden.length + options.cycles.ruleSet.forbidden.length;
 
 function readJson(text, where) {

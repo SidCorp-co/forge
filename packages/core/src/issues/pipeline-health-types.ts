@@ -89,6 +89,8 @@ export interface PipelineHealthJob {
   agentSessionId: string | null;
   /** The hold reason when `status === 'held'` (`jobs/hold.ts`). */
   failureReason?: string | null;
+  /** The job's payload, which carries a held job's hold bookkeeping (`jobs/hold.ts:readHoldState`). */
+  payload?: unknown;
   /** Parent `pipeline_runs.status`. The picker requires `running`. */
   pipelineRunStatus?: string | null;
   /** `payload.stageStatus` — the trigger status the enqueuer declared this job

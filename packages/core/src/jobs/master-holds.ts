@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { jobs, terminalAgentSessionStatuses } from '../db/schema.js';
 
@@ -59,11 +59,14 @@ export async function releaseHoldsOf(sessionId: string): Promise<number> {
 }
 
 /**
- * Release the holds of master sessions that are terminal or silent for `staleSeconds`, with each
- * former holder. A silent master whose child is still beating keeps its holds; a terminal one
- * does not.
+ * Release the holds of master sessions that are terminal or silent, with each former holder.
+ * `silent` is the reaper's own predicate over a session alias (`devices/master-silence.ts`), so a
+ * silent master whose child is still beating keeps its holds exactly as the reaper keeps it, and
+ * the run standing's hold clock reads the same beat; a terminal one does not. A hold whose master
+ * has no row is released once it is `staleSeconds` old.
  */
 export async function releaseHoldsOfDeadMasters(
+  silent: (alias: string) => SQL,
   staleSeconds: number,
 ): Promise<Array<{ jobId: string; formerHolder: string; masterStatus: string }>> {
   const rows = (await db.execute(sql`
@@ -75,17 +78,7 @@ export async function releaseHoldsOfDeadMasters(
       WHERE j.held_by IS NOT NULL
         AND (
           s.status IN (${TERMINAL})
-          OR (
-            COALESCE(s.last_heartbeat_at, s.started_at)
-              < now() - make_interval(secs => ${staleSeconds})
-            AND NOT EXISTS (
-              SELECT 1 FROM agent_sessions c
-              WHERE c.parent_session_id = s.id
-                AND c.status NOT IN (${TERMINAL})
-                AND COALESCE(c.last_heartbeat_at, c.started_at)
-                    >= now() - make_interval(secs => ${staleSeconds})
-            )
-          )
+          OR (s.id IS NOT NULL AND ${silent('s')})
           OR (s.id IS NULL AND j.held_at < now() - make_interval(secs => ${staleSeconds}))
         )
     )

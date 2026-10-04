@@ -17,7 +17,7 @@ export const OWNING_KINDS = ['kernel', 'domain', 'adapter', 'platform'];
 export const LAYER_OF_KIND = { platform: 'platform', adapter: 'adapters' };
 
 const SHAPE =
-  'shape { contexts: [{ name, label }], modules: { "<dir>": { kind, context, owns? } } }';
+  'shape { contexts: [{ name, label }], modules: { "<dir>": { kind, context, owns?, reads?, projections? } } }';
 
 /** The declared contexts in dependency order, or the faults that stop them being read. */
 function parseContexts(list) {
@@ -77,7 +77,11 @@ export function parseDeclaration(doc) {
         `modules.json: ${path} is a ${spec.kind} and owns ${spec.owns.join(', ')}; only ${OWNING_KINDS.join(', ')} modules own tables`,
       );
     }
-    for (const table of spec?.owns ?? []) {
+    if (spec?.projections !== undefined && spec.kind !== 'read-model')
+      faults.push(
+        `modules.json: ${path} is a ${spec.kind} and declares projections; only a read model keeps a projection table`,
+      );
+    for (const table of [...(spec?.owns ?? []), ...(spec?.projections ?? [])]) {
       const prior = owners.get(table);
       if (prior)
         faults.push(
@@ -86,7 +90,30 @@ export function parseDeclaration(doc) {
       else owners.set(table, path);
     }
   }
+  for (const [path, spec] of Object.entries(modules)) faults.push(...readsFaults(path, spec, owners));
   return { faults, modules, owners, contexts: order };
+}
+
+/** A `reads` list is a read model's, and names each owned table or view once. */
+function readsFaults(path, spec, owners) {
+  if (spec?.reads === undefined) return [];
+  if (spec.kind !== 'read-model')
+    return [
+      `modules.json: ${path} is a ${spec.kind} and declares reads; only a read model declares the tables it SELECTs`,
+    ];
+  if (!Array.isArray(spec.reads) || spec.reads.some((t) => typeof t !== 'string'))
+    return [`modules.json: ${path} reads is not a list of table names — ${SHAPE}`];
+  const faults = [];
+  const seen = new Set();
+  for (const table of spec.reads) {
+    if (seen.has(table)) faults.push(`modules.json: ${path} reads ${table} twice`);
+    seen.add(table);
+    if (!owners.has(table))
+      faults.push(
+        `modules.json: ${path} reads ${table}, which no module owns; a read names an owner's table or view`,
+      );
+  }
+  return faults;
 }
 
 export function isTestFile(file) {
@@ -128,11 +155,35 @@ function lineAt(text, offset) {
   return n;
 }
 
-/** The tables the schema files declare: drizzle export name to SQL name. */
+/** The tables and views the schema files declare: drizzle export name to SQL name. */
 export function declaredTables(schemaTexts) {
   const out = new Map();
-  const re = /export\s+const\s+(\w+)\s*=\s*pgTable\(\s*['"](\w+)['"]/g;
+  const re = /export\s+const\s+(\w+)\s*=\s*pg(?:Table|View|MaterializedView)\(\s*['"](\w+)['"]/g;
   for (const text of schemaTexts) for (const m of text.matchAll(re)) out.set(m[1], m[2]);
+  return out;
+}
+
+/**
+ * Every declared table one file SELECTs: a raw SQL `FROM` or `JOIN` naming it, or a value import of
+ * it from a schema file (a type-only import reads nothing).
+ */
+export function tableReads(text, tables) {
+  const bySql = new Map([...tables].map(([name, sql]) => [sql, name]));
+  const out = [];
+  for (const m of text.matchAll(/(?<!\bDELETE\s+)\b(?:FROM|JOIN)\s+"?(\w+)"?/gi)) {
+    const name = bySql.get(m[1]);
+    if (name) out.push({ table: name, via: 'sql', line: lineAt(text, m.index) });
+  }
+  const imports = /import\s+(type\s+)?\{([^}]*)\}\s*from\s*['"][^'"]*\/db\/schema[^'"\/]*['"]/g;
+  for (const m of text.matchAll(imports)) {
+    if (m[1]) continue;
+    for (const part of m[2].split(',')) {
+      const spec = part.trim();
+      if (!spec || spec.startsWith('type ')) continue;
+      const name = spec.split(/\s+as\s+/)[0].trim();
+      if (tables.has(name)) out.push({ table: name, via: 'import', line: lineAt(text, m.index) });
+    }
+  }
   return out;
 }
 

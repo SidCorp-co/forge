@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { HOLD_PAYLOAD_KEY, holdResumesItself } from '../jobs/hold.js';
+import { HOLD_PAYLOAD_KEY, holdReleasesItself, readHoldState } from '../jobs/hold.js';
 import { RESULT_QUIET_MINUTES } from '../jobs/loop-monitor.js';
 import { gateReasonsForQueuedJobsIn } from '../jobs/queued-gates.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -35,6 +35,8 @@ interface AgedHoldRow extends Record<string, unknown> {
   job_type: string;
   hold_reason: string | null;
   held_at: string | null;
+  payload: unknown;
+  failure_reason: string | null;
   iss_seq: number | null;
   issue_prefix: string | null;
 }
@@ -52,6 +54,8 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
            j.type AS job_type,
            j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'reason' AS hold_reason,
            j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt' AS held_at,
+           j.payload,
+           j.failure_reason,
            i.iss_seq,
            p.issue_prefix
     FROM jobs j
@@ -77,7 +81,7 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
   for (const row of rows) {
     const label = row.iss_seq ? formatIssueRef(row.issue_prefix, row.iss_seq) : 'A step';
     const hours = Math.round(HOLD_AGE_ALARM_MS / 3_600_000);
-    const selfResuming = holdResumesItself(row.hold_reason);
+    const selfResuming = holdReleasesItself(readHoldState(row.payload), row.failure_reason);
     await emitPipelineWedge({
       projectId: row.project_id,
       issueId: row.issue_id,

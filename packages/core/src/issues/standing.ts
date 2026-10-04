@@ -39,11 +39,6 @@ import type { PipelineReading } from './pipeline-health-types.js';
 const SETTLED: readonly string[] = ISSUE_RESOLVED_STATUSES;
 const DONE: readonly string[] = ISSUE_TERMINAL_STATUSES;
 
-// cm:why a blocker holds its dependents until it settles, and a blocker that delivers a design
-// revision settles only once that revision is approved, whatever its status says (FB-57)
-export const holdsBack = (status: string, designHeld: boolean) =>
-  status !== 'dropped' && (!SETTLED.includes(status) || designHeld);
-const edgeHolds = (b: StandingEdge) => holdsBack(b.status, !!b.designHold);
 
 const STEP_WORD: Record<WorkStep, string> = {
   triage: 'Triage',
@@ -69,13 +64,16 @@ export interface StandingEdge {
   merged: boolean;
   step: WorkStep | null;
   designHold?: string | null | undefined;
+  /** The blocker of this edge still holds (`blocked-by.ts:blockerUnsettledSql`). */
+  holds: boolean;
 }
 
 export interface IssueStandingInput {
   status: IssueStatus;
   /** The status a park left (`issue_work_state.left_status`), which its return move goes to. */
   leftStatus: IssueStatus | null;
-  designHold?: string | null | undefined;
+  /** This issue holds its dependents (`blocked-by.ts:blockerUnsettledSql`). */
+  holdsDependents: boolean;
   waitingKind: string | null;
   merged: boolean;
   step: WorkStep | null;
@@ -228,7 +226,7 @@ function turnOf(input: IssueStandingInput): {
       ),
     };
   }
-  const blocker = input.blockedBy.find(edgeHolds);
+  const blocker = input.blockedBy.find((b) => b.holds);
   if (blocker) {
     const design = SETTLED.includes(blocker.status) ? blocker.designHold : null;
     return {
@@ -327,8 +325,8 @@ export function deriveIssueStanding(
     requirement: input.requirement,
     module: input.module,
     feedback: [...input.feedback],
-    blockedBy: input.blockedBy.filter(edgeHolds).map(ref),
-    blocks: !holdsBack(input.status, !!input.designHold)
+    blockedBy: input.blockedBy.filter((b) => b.holds).map(ref),
+    blocks: !input.holdsDependents
       ? []
       : input.blocks.filter((b) => !DONE.includes(b.status)).map(ref),
     lease: input.lease,
@@ -343,8 +341,8 @@ export function deriveIssueStanding(
 
 export interface WaveNode {
   id: string;
-  status: string;
-  designHeld?: boolean | undefined;
+  /** It holds its dependents (`blocked-by.ts:blockerUnsettledSql`). */
+  holds: boolean;
   /** Ids of the issues holding this one back over live `blocks` edges. */
   blockedBy: readonly string[];
 }
@@ -358,7 +356,7 @@ export function wavesOf(nodes: readonly WaveNode[]): Map<string, number | null> 
   const visiting = new Set<string>();
   const open = (id: string) => {
     const n = byId.get(id);
-    return n !== undefined && holdsBack(n.status, n.designHeld === true);
+    return n !== undefined && n.holds;
   };
   const visit = (id: string): number | null => {
     if (out.has(id)) return out.get(id) ?? null;

@@ -28,7 +28,8 @@ import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 import { approvalRequired } from '../release-batch/approvals.js';
 import { changedSincePlan } from '../requirements/rules.js';
 import { readCurrentDrafts } from './criteria/storefront-draft.js';
-import { designHoldPhrase, designHoldsOf } from './design-delivery.js';
+import { blockerUnsettledSql, type BlockingEdge, blockingEdgesIn } from './blocked-by.js';
+import { type DesignHold, designHoldPhrase } from './design-delivery.js';
 import { issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { loadIssuePark } from './park-view.js';
@@ -78,6 +79,7 @@ interface IssueRowRaw {
   last_activity: string | null;
   moving: boolean;
   owes_answer: boolean;
+  holds_dependents: boolean;
 }
 
 const rowsOf = <T>(r: unknown) => [...(r as Iterable<T>)];
@@ -106,6 +108,7 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
              w.updated_at AS ws_updated_at,
              (SELECT max(a.created_at) FROM activity_log a WHERE a.issue_id = i.id) AS last_activity,
              ${holdsOpenHumanQuestion(sql`i.id`)} AS owes_answer,
+             ${blockerUnsettledSql(sql`i`)} AS holds_dependents,
              ${issueWorkMovingSql({
                issueId: sql`i.id`,
                projectId: sql`i.project_id`,
@@ -116,42 +119,6 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
        WHERE i.project_id = ${projectId} AND i.archived_at IS NULL ${where}
        ORDER BY i.updated_at DESC
        LIMIT ${limit}`),
-  );
-}
-
-interface EdgeRaw {
-  from_id: string;
-  to_id: string;
-  from_seq: number;
-  to_seq: number;
-  from_title: string;
-  to_title: string;
-  from_status: IssueStatus;
-  to_status: IssueStatus;
-  from_merged: boolean;
-  to_merged: boolean;
-  from_step: WorkStep | null;
-  to_step: WorkStep | null;
-}
-
-/** Live `blocks` edges touching these issues: `from` holds `to` back. Expired edges count as nothing. */
-async function edgesOf(projectId: string, ids: readonly string[]): Promise<EdgeRaw[]> {
-  if (ids.length === 0) return [];
-  return rowsOf<EdgeRaw>(
-    await db.execute(sql`
-      SELECT d.from_issue_id AS from_id, d.to_issue_id AS to_id,
-             f.iss_seq AS from_seq, t.iss_seq AS to_seq, f.title AS from_title, t.title AS to_title,
-             f.status AS from_status, t.status AS to_status,
-             f.merged_at IS NOT NULL AS from_merged, t.merged_at IS NOT NULL AS to_merged,
-             fw.step AS from_step, tw.step AS to_step
-        FROM issue_dependencies d
-        JOIN issues f ON f.id = d.from_issue_id
-        JOIN issues t ON t.id = d.to_issue_id
-        LEFT JOIN issue_work_state fw ON fw.issue_id = f.id
-        LEFT JOIN issue_work_state tw ON tw.issue_id = t.id
-       WHERE d.project_id = ${projectId} AND d.kind = 'blocks'
-         AND (d.valid_until IS NULL OR d.valid_until > now())
-         AND (d.from_issue_id IN (${idList(ids)}) OR d.to_issue_id IN (${idList(ids)}))`),
   );
 }
 
@@ -324,38 +291,39 @@ async function standingRows(
   const ids = raws.map((r) => r.id);
   const [prefix, edges, criteria, modules, feedback, releaseApproval, who] = await Promise.all([
     activeIssuePrefix(projectId),
-    edgesOf(projectId, ids),
+    blockingEdgesIn(db, projectId, ids),
     criteriaOf(projectId, ids),
     modulesOf(projectId, ids),
     feedbackOf(ids),
     approvalRequired(projectId),
     viewerOf(viewer, projectId),
   ]);
-  const [requirements, people, designHolds] = await Promise.all([
+  const [requirements, people] = await Promise.all([
     requirementsOf([...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))]),
     peopleOf(raws.flatMap((r) => [r.assignee_id, r.created_by_id])),
-    designHoldsOf([...ids, ...edges.map((e) => e.from_id)]),
   ]);
-  const designHold = (id: string) => {
-    const holds = designHolds.get(id);
-    return holds ? designHoldPhrase(holds) : null;
-  };
+  const phrase = (holds: readonly DesignHold[] | undefined) =>
+    holds?.length ? designHoldPhrase(holds) : null;
   const key = (seq: number) => formatIssueRef(prefix, seq);
-  const edge = (
-    id: string,
-    seq: number,
-    title: string,
-    status: IssueStatus,
-    merged: boolean,
-    step: WorkStep | null,
-  ): StandingEdge => ({
-    id,
-    key: key(seq),
-    title,
-    status,
-    merged,
-    step,
-    designHold: designHold(id),
+  const blocker = (e: BlockingEdge): StandingEdge => ({
+    id: e.fromId,
+    key: key(e.fromSeq),
+    title: e.fromTitle,
+    status: e.fromStatus,
+    merged: e.fromMerged,
+    step: e.fromStep,
+    designHold: phrase(e.fromDesign),
+    holds: e.holds,
+  });
+  const dependent = (e: BlockingEdge): StandingEdge => ({
+    id: e.toId,
+    key: key(e.toSeq),
+    title: e.toTitle,
+    status: e.toStatus,
+    merged: e.toMerged,
+    step: e.toStep,
+    designHold: phrase(e.toDesign),
+    holds: e.holds,
   });
 
   const inputs = raws.map((r): [IssueRowRaw, IssueStandingInput] => {
@@ -368,7 +336,7 @@ async function standingRows(
       {
         status: r.status,
         leftStatus: r.left_status,
-        designHold: designHold(r.id),
+        holdsDependents: r.holds_dependents,
         waitingKind: r.waiting_kind,
         merged: r.merged_at !== null,
         step: r.step,
@@ -376,14 +344,8 @@ async function standingRows(
         lease: leaseOf(r.lease, now),
         inFlight: r.moving,
         owesAnswer: r.owes_answer,
-        blockedBy: edges
-          .filter((e) => e.to_id === r.id)
-          .map((e) =>
-            edge(e.from_id, e.from_seq, e.from_title, e.from_status, e.from_merged, e.from_step),
-          ),
-        blocks: edges
-          .filter((e) => e.from_id === r.id)
-          .map((e) => edge(e.to_id, e.to_seq, e.to_title, e.to_status, e.to_merged, e.to_step)),
+        blockedBy: edges.filter((e) => e.toId === r.id).map(blocker),
+        blocks: edges.filter((e) => e.fromId === r.id).map(dependent),
         criteria: {
           total: mine.length,
           passing: mine.filter((c) => c.stands && (c.verdict === 'pass' || c.verdict === 'short'))
@@ -429,19 +391,13 @@ async function standingRows(
   const waves = wavesOf([
     ...inputs.map(([r, input]) => ({
       id: r.id,
-      status: r.status,
-      designHeld: designHolds.has(r.id),
+      holds: r.holds_dependents,
       blockedBy: input.blockedBy.map((b) => b.id),
     })),
-    // a blocker outside the page still decides its dependents' wave by its status
+    // a blocker outside the page still decides its dependents' wave by whether it holds
     ...edges
-      .filter((e) => !groups.has(e.from_id))
-      .map((e) => ({
-        id: e.from_id,
-        status: e.from_status,
-        designHeld: designHolds.has(e.from_id),
-        blockedBy: [] as string[],
-      })),
+      .filter((e) => !groups.has(e.fromId))
+      .map((e) => ({ id: e.fromId, holds: e.holds, blockedBy: [] as string[] })),
   ]);
   return inputs.map(([r, input]) => ({
     id: r.id,

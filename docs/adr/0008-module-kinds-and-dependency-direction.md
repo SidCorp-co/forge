@@ -42,10 +42,8 @@ The choices inside that, and why:
   "routes" and "services". A kind says what a module may know: the kernel owns the machines every
   product module moves, a read model only derives, an adapter only speaks a vendor's protocol.
 - **Read models sit above domains.** A derived fact usually spans several domains (needs-you reads
-  issues, requirements and questions), so its read model imports their read functions. A domain
-  that must gate on the same fact applies the fact's predicate from contracts to its own rows. The
-  alternative, read models below domains, forces each read model to query other modules' tables
-  directly, which is the ownership breach this decision exists to end.
+  issues, requirements and questions). How a read model reaches their data is the ISS-188
+  amendment below: it SELECTs the owners' tables it declares, and writes none.
 - **The kernel imports no adapter.** An effect of a transition on the outside world (a chat
   message, a deploy) is a domain's reaction to the transition's outbox event. That keeps the kernel
   testable without a vendor and keeps `VISION: kernel-hard-policy-soft` structural.
@@ -98,7 +96,7 @@ sau"), so neither ships with unit tests, and the only check before a push on dev
 `pnpm tc:changed` (`scripts/tc-changed.mjs`), a typecheck of the touched packages and their
 importers.
 
-Two rules have no script yet: read models (web derivations) and permission. They are judged by the
+Two rules have no script yet: web derivations and permission. They are judged by the
 reconciliation decision on each module until a check exists.
 
 ## Consequences
@@ -236,3 +234,31 @@ excluded.
 - **Not taken:** a planted-violation test per rule. The owner ruled on 2026-10-04 that dev is code
   only and QA comes later, so each rule is trusted on its generated configuration until QA plants
   a violation per rule and watches it go red.
+
+## Amendment (2026-10-05, ISS-188): read models read the data directly
+
+The same research pass compared read models with the CQRS sources. Greg Young's thin read layer
+"reads directly from the database and projects DTOs" and names loading several aggregates to build
+one DTO as the cost; Dahan keeps the domain model out of queries; Grzybek's read side is raw SQL
+over views. Building a read model by calling several domains' read functions is that cost, an N+1
+read, and Forge's own reference read model (`packages/core/src/runs/facts-read.ts`, one statement
+per table over twelve tables) already broke the rule this ADR stated. The rule now matches it.
+
+- **A read model SELECTs the tables it declares.** Each read model lists under `reads` in
+  `packages/core/src/modules.json` the owners' tables or views it reads, and writes none. Ownership
+  is about writes: a SELECT skips no owner's rule, and the declaration keeps every cross-owner read
+  visible and reviewable.
+- **The boundary check enforces the list.** `scripts/check-module-boundaries.mjs` refuses a read
+  model file that SELECTs (raw SQL `FROM` or `JOIN`, or a value import from a schema file) a table
+  its `reads` does not name (`undeclared-read`), and a declared read nothing uses. A read model may
+  import an owner's read files (`read.ts`, `<x>-read.ts`, `read/`) for a table it declares, past the
+  face-only and context-direction rules; nothing else behind the face.
+- **One input-builder per derived fact.** The predicate was declared once, in contracts, but its
+  inputs were assembled twice, by the read model and by the gate, so the two could drift. Each fact
+  now has one function that builds the predicate's input from a `tx`, beside the table that owns
+  the fact's subject; the read model calls it with the database and the gate calls it inside its
+  own write transaction.
+- **A written path when a read gets slow:** an index, then a view, then a materialized view with
+  its staleness stated, then a projection table the read model declares under `projections` (the one
+  table a read model owns), written only by its outbox consumer and rebuildable from source. Application-maintained caches are "a complete mess of complicated
+  invalidation logic" (Kleppmann); each step is taken only when the one before cannot serve.
