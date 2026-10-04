@@ -1,5 +1,6 @@
 import { db } from '../db/client.js';
 import { effectiveProjectRole } from '../lib/authz.js';
+import { holds } from '../permissions/index.js';
 import { forbidden, notFound, readerProjects } from './access.js';
 import { heldEcosystem } from './ecosystem-service.js';
 import { loadGraph } from './graph.js';
@@ -14,10 +15,8 @@ import {
   readEcosystems,
   recordedVersions,
 } from './store.js';
-import { holds } from '../permissions/index.js';
 
-const artifactKind = (p: Publication) =>
-  p.artifact === null ? 'none' : 'path' in p.artifact ? 'repository' : 'upload';
+const artifactKind = (p: Publication) => (p.artifact === null ? 'none' : 'upload');
 
 function publicationsOf(
   target: ProjectRow,

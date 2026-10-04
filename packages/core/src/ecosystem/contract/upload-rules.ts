@@ -92,18 +92,11 @@ export function uploadRefusals(input: {
     ];
   }
   const out = semanticRefusals(body, latest, ref);
-  const fromGit = pub.artifact !== null && 'path' in pub.artifact;
   if (body.artifact !== undefined && pub.type === 'opaque') {
     out.push({
       code: 'ARTIFACT_FOR_OPAQUE',
       path: '/artifact',
       detail: `${ref} is opaque, so it has no artifact to upload.`,
-    });
-  } else if (body.artifact !== undefined && fromGit) {
-    out.push({
-      code: 'ARTIFACT_MEASURED_FROM_GIT',
-      path: '/artifact',
-      detail: `${ref} is read from ${pub.artifact && 'path' in pub.artifact ? pub.artifact.path : 'its path'} at each land on a deployed branch; core reads those bytes itself and takes none from a caller.`,
     });
   }
   if (
@@ -116,13 +109,6 @@ export function uploadRefusals(input: {
       code: 'ARTIFACT_MISSING',
       path: '/artifact',
       detail: `${ref} is uploaded; send its text as artifact, or a semantic change.`,
-    });
-  }
-  if (!body.semantic && fromGit && body.artifact === undefined) {
-    out.push({
-      code: 'NOTHING_TO_RECORD',
-      path: '/',
-      detail: `${ref} records a version when its artifact changes on a deployed branch; to declare a behaviour change its artifact does not show, send semantic.`,
     });
   }
   return out;

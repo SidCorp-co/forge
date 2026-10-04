@@ -131,11 +131,7 @@ const publicationSchema = z
     title: z.string().min(1).max(120),
     summary: z.string().min(1).max(1000).optional(),
     type: z.enum(CONTRACT_TYPES),
-    artifact: z.union([
-      z.strictObject({ path: z.string().regex(/^(?!\/)(?!.*\.\.)[A-Za-z0-9._/-]+$/) }),
-      z.strictObject({ upload: z.literal(true) }),
-      z.null(),
-    ]),
+    artifact: z.strictObject({ upload: z.literal(true) }).nullable(),
     lifecycle: z.enum(['experimental', 'production', 'deprecated']),
     // cm:why zero ecosystems is an in-project contract: the project's own modules consume it (Q11, 2026-10-03) and no other project can, since a cross-project consumption names an ecosystem the contract is published in
     ecosystems: unique(z.array(uuid()).max(10)),
