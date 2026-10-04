@@ -3,7 +3,7 @@
 import type { TriageAgentReportRequest } from "@forge/contracts/agent-reports";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { automationKey } from "@/features/automation/hooks";
-import { formatApiError } from "@/lib/api/error";
+import { formatRefusal } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { agentReportsApi } from "./api";
 
@@ -25,7 +25,7 @@ export function useTriageAgentReport(projectId: string | undefined) {
       toast({ title: effect.issue ? `${DONE[act.act]} as ${effect.issue.key}` : DONE[act.act], tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Triage refused", description: formatApiError(err), tone: "error" });
+      toast({ title: "Triage refused", description: formatRefusal(err), tone: "error" });
     },
   });
 }

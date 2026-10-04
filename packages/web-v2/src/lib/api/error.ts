@@ -80,3 +80,9 @@ export function formatApiError(err: unknown): string {
   return 'Unknown error';
 }
 
+
+/** A refusal said by its name: the code core refused with, then the sentence. */
+export function formatRefusal(err: unknown): string {
+  const sentence = formatApiError(err);
+  return err instanceof ApiError && err.code ? `${err.code}: ${sentence}` : sentence;
+}

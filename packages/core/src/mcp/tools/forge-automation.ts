@@ -1,5 +1,6 @@
 // cm:why the MCP door to the automation read model (ISS-114): the same read functions REST serves at
-// /api/projects/:id/automation/standing, /automation/schedules/:scheduleId and /automation/fires/:fireId
+// /api/projects/:id/automation/standing, /automation/schedules/:scheduleId, /automation/fires/:fireId and
+// /automation/reports/:reportId
 
 import {
   AUTOMATION_FIRES_DEFAULT,
@@ -11,6 +12,7 @@ import {
   automationViewerOf,
   readAutomationStanding,
   readFireDetail,
+  readReportDetail,
   readScheduleDetail,
 } from '../../automation/read.js';
 import { egressDeep, egressOr } from '../../lib/data-egress.js';
@@ -23,7 +25,7 @@ import {
 } from './lib.js';
 import { projectMany, summaryNotice, VIEW_RULE, viewInput } from './projection.js';
 
-const ACTIONS = ['standing', 'schedule', 'fire'] as const;
+const ACTIONS = ['standing', 'schedule', 'fire', 'report'] as const;
 
 const inputSchema = z
   .object({
@@ -31,6 +33,7 @@ const inputSchema = z
     projectId: z.uuid().optional(),
     scheduleId: z.uuid().optional(),
     fireId: z.uuid().optional(),
+    reportId: z.uuid().optional(),
     firesLimit: z.number().int().min(1).max(AUTOMATION_FIRES_MAX).optional(),
     view: viewInput,
   })
@@ -46,7 +49,8 @@ const DESCRIPTION =
   'Each schedule, fire and report carries attentionGroup and waitingOn {kind you | person | admins | writers | issue | feedback | none, who, act triage_report | fix_schedule | reassign_owner | null, rule}: ' +
   'a report a fire filed goes to its schedule owner first, otherwise to members with write access; a failing schedule to its owner; a schedule whose owner is gone to the admins. ' +
   'schedule: one schedule by scheduleId with its fires, the reports they filed and their proposals. ' +
-  `fire: one fire by fireId with each item it produced. To triage a report: forge_agent_report. ${VIEW_RULE}`;
+  'fire: one fire by fireId with each item it produced. report: one agent report by reportId with its fire, triage and whom it waits on. ' +
+  `To triage a report: forge_agent_report. ${VIEW_RULE}`;
 
 function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]> {
   const value = input[key];
@@ -113,6 +117,15 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       const read = await egressDeep(projectId, 'issue', detail, `fire ${fireId}`);
       return egressOr(read, { fireId });
     }
+    case 'report': {
+      const reportId = need(input, 'reportId');
+      const detail = await readReportDetail(projectId, reportId, viewer);
+      if (!detail) {
+        throw new Error(`NOT_FOUND: report ${reportId} is not an agent report of this project`);
+      }
+      const read = await egressDeep(projectId, 'issue', detail, `report ${reportId}`);
+      return egressOr(read, { reportId });
+    }
   }
 }
 
@@ -121,7 +134,12 @@ export const forgeAutomationTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects/:id/automation',
   grant: {
-    byAction: { standing: 'projects:read', schedule: 'projects:read', fire: 'projects:read' },
+    byAction: {
+      standing: 'projects:read',
+      schedule: 'projects:read',
+      fire: 'projects:read',
+      report: 'projects:read',
+    },
   },
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),

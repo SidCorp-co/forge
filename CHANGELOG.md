@@ -156,6 +156,10 @@
   these public guides instead of designs only Forge's own project could read, as do the issue
   status refusals.
 
+- **Automation is one area with Schedules, Fires and Reports (ISS-116).** Each tab lists what needs
+  you first and opens a peek and a page; members run schedules and triage reports there, and a
+  refusal shows its code.
+
 - **Every schedule kind and fire reads as words (ISS-115).** `forge_schedules` creates release
   batch and Sentry pull schedules, and schedule state, fire status, fire trigger and report triage
   each have one badge.
