@@ -51,6 +51,15 @@ export const EGRESS_SURFACES = {
     class: 'operational',
     holds: "the BA assistant's questions to a person about a requirement, and the answers",
   },
+  memory: {
+    class: 'product',
+    holds: 'project memory: entries and chunks drawn from issues, comments, jobs, notes, decisions',
+  },
+  knowledge: { class: 'product', holds: 'knowledge entries: title and body' },
+  'agent-session': {
+    class: 'product',
+    holds: "a person's messages to a coding agent in an agent session",
+  },
 } as const satisfies Record<string, { class: EgressClass; holds: string }>;
 
 export type EgressSurface = keyof typeof EGRESS_SURFACES;
@@ -249,4 +258,32 @@ export async function egressForRequest<T>(
     message: `${out.refusal.code}: ${out.refusal.detail}`,
     cause: { code: out.refusal.code },
   });
+}
+
+type ProductSurface = {
+  [K in EgressSurface]: (typeof EGRESS_SURFACES)[K]['class'] extends 'product' ? K : never;
+}[EgressSurface];
+
+/** What an LLM or embedding adapter needs to gate text: an operational surface must name its project or level. */
+export type EgressScope =
+  | { surface: ProductSurface; what?: string }
+  | { surface: EgressSurface; projectId: string; what?: string }
+  | { surface: EgressSurface; level: SensitiveDataLevel; what?: string };
+
+/** `egressText` for a provider-bound adapter; reads the project's level only when the surface needs it. */
+export async function egressScoped(
+  scope: EgressScope,
+  text: string,
+): Promise<{ ok: true; text: string; redactions: number } | { ok: false; refusal: EgressRefusal }> {
+  const what = scope.what ?? scope.surface;
+  if ('level' in scope) return egressText(scope.level, scope.surface, text, what);
+  if ('projectId' in scope) {
+    return egressText(await dataPolicyOf(scope.projectId), scope.surface, text, what);
+  }
+  if (classOf(scope.surface) !== 'product') {
+    throw new Error(
+      `data-egress: ${what} is ${scope.surface} content, which is not product, and reached a provider adapter with no projectId or level to read its policy`,
+    );
+  }
+  return { ok: true, text, redactions: 0 };
 }

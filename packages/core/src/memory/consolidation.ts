@@ -2,7 +2,8 @@ import crypto from 'node:crypto';
 import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, comments, issues, memories, projects } from '../db/schema.js';
-import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
+import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
+import { callFastModel, fastModelConfigured } from '../integrations/llm/fast-model.js';
 import { memoryOfLiveIssue } from '../issues/archive.js';
 import { canonicalIssueKey, issueRefFormatter } from '../issues/issue-prefix-read.js';
 import { BASE_MERGE_STATE } from '../issues/merged-at.js';
@@ -17,7 +18,6 @@ import {
   MAX_EMBED_CHARS,
   NEAR_DUPLICATE_THRESHOLD,
 } from './indexer.js';
-import { callFastModel, fastModelConfigured } from './llm.js';
 import { foreignScriptChars } from './script-guard.js';
 import { type MemoryHit, searchMemories } from './search.js';
 
@@ -196,7 +196,7 @@ async function applyCreates(
     const text = item.content.trim();
     const refHash = crypto.createHash('sha1').update(item.content).digest('hex').slice(0, 12);
     try {
-      const vector = await embed(text.slice(0, MAX_EMBED_CHARS));
+      const vector = await embed({ surface: 'memory' }, text.slice(0, MAX_EMBED_CHARS));
       const covered = await alreadyRecorded(projectId, vector);
       if (covered) {
         skipped.push(covered);
@@ -297,7 +297,7 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
     .replace('{status_changes}', statusStr)
     .replace('{reopen_cycles}', reopenStr);
 
-  const raw = await callFastModel(prompt, 2000);
+  const raw = await callFastModel({ surface: 'issue' }, prompt, 2000);
   if (!raw) return emptyResult('llm-failed', 'LLM call failed');
 
   let actions: ConsolidationActions;
@@ -592,7 +592,7 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
 
   let queryVec: number[];
   try {
-    queryVec = await embed(releaseText.slice(0, MAX_EMBED_CHARS));
+    queryVec = await embed({ surface: 'memory' }, releaseText.slice(0, MAX_EMBED_CHARS));
   } catch (err) {
     if (!(err instanceof EmbeddingUnavailableError)) throw err;
     return emptyReconcileResult('embeddings-unavailable', 'embeddings unavailable');
@@ -626,7 +626,7 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
     .replace('{release_text}', releaseText.slice(0, 4000))
     .replace('{candidates}', candidatesStr);
 
-  const raw = await callFastModel(prompt, 1500);
+  const raw = await callFastModel({ surface: 'memory' }, prompt, 1500);
   if (!raw) return emptyReconcileResult('llm-failed', 'LLM call failed');
 
   let actions: ReconcileActions;

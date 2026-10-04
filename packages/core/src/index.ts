@@ -24,7 +24,6 @@ import { registerWebConversationAdapter } from './assistant/conversation-drain.j
 import { registerTranscriptIndexSweeper } from './assistant/conversation-index-drain.js';
 import { conversationRoutes } from './assistant/conversation-routes.js';
 import { speakerLinkMeRoutes, speakerLinkProjectRoutes } from './assistant/identity/routes.js';
-import { bootstrapChatProviders } from './assistant/providers/bootstrap.js';
 import { registerAssistantWeekly, unregisterAssistantWeekly } from './assistant/weekly/register.js';
 import { assistantWeeklyRoutes } from './assistant/weekly/routes.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
@@ -70,6 +69,7 @@ import { installRoutes } from './install/routes.js';
 import { githubCallbackRoutes, githubConnectRoutes } from './integrations/github/connect-routes.js';
 import { runnerReleaseRoutes } from './integrations/github/runner-release-routes.js';
 import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js';
+import { bootstrapChatProviders } from './integrations/llm/bootstrap.js';
 import { integrationTargetRoutes } from './integrations/postman/target-routes.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
 import { registerAllIntegrations } from './integrations/register-all.js';

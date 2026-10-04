@@ -1,10 +1,10 @@
+import type { ChatStreamEvent } from '../integrations/llm/types.js';
 import type { AgentMessage, ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
 import {
   publishToConversationReaders,
   WEB_CONVERSATION_PROGRESS_EVENT,
 } from './conversation-adapter.js';
-import type { ChatStreamEvent } from './providers/types.js';
 import { createTranscriptAccumulator, ENTRY_FLUSH_MS } from './transcript-entry.js';
 
 /** What a watcher hands back to the turn that is being watched. */

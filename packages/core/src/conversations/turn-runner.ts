@@ -14,7 +14,6 @@
 import { correctFalseClaims } from '../assistant/confab.js';
 import { STOPPED_BY_A_PERSON } from '../assistant/conversation-stops.js';
 import { type ExternalChatTurnResult, runExternalChatTurn } from '../assistant/external-chat.js';
-import type { ChatStreamEvent } from '../assistant/providers/types.js';
 import { type ChatToolset, mergeToolsets } from '../assistant/tools/mcp-adapter.js';
 import type { ImageResolver, TurnImage } from '../assistant/vision.js';
 import {
@@ -24,6 +23,7 @@ import {
   TurnAuthorityRefused,
   type TurnCredential,
 } from '../auth/turn-credential.js';
+import type { ChatStreamEvent } from '../integrations/llm/types.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { egressDeep } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
