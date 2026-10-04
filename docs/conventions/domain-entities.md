@@ -401,6 +401,7 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, 18 and 29 by the
 | 40 | `forge_issues`, `forge_feedback_items` and `forge_knowledge` take no `view`: their lists were already summaries and their writes answer one item, at most 3.5 KB as measured on dev on 2026-10-04. `forge_feedback_items` `propose_triage` answers the whole suggestion | review |
 | 41 | A projection runs after the whole read: a write still reads the full detail (`packages/core/src/requirements/read.ts:detailOf`, `packages/core/src/workflows/design-service.ts:designView`) and the door drops most of it | review |
 | 42 | `forge_suggestions` has no `get`: a suggestion's payload is read by `list` with `view: 'full'`, narrowed by target | review |
+| 43 | Master passes (ISS-106) have no MCP door: `GET /api/projects/:id/masters/standing` is REST only, and the pass and slot writes are device routes (`packages/core/src/masters/device-routes.ts`) a runner calls with its device credential, which no MCP tool holds. A master pass also has no key; it is named by its verb and start time in refusals | ISS-108 (the runs read model) |
 
 ## Honest costs
 

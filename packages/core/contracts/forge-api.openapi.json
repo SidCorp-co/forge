@@ -6419,7 +6419,13 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
+                  "maxJobPanes": {
+                    "maximum": 64,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
                   "name": {
                     "maxLength": 120,
                     "minLength": 1,
@@ -6477,6 +6483,139 @@
                   "reason"
                 ],
                 "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireDevice"
+        ],
+        "x-forge-validated": [
+          "json"
+        ]
+      }
+    },
+    "/api/devices/me/master-session/pass": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "issueKey": {
+                        "anyOf": [
+                          {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "op": {
+                        "const": "open",
+                        "type": "string"
+                      },
+                      "sessionId": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "verb": {
+                        "enum": [
+                          "triage",
+                          "dispatch",
+                          "fold",
+                          "judge",
+                          "release",
+                          "park"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "sessionId",
+                      "verb"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "dispatched": {
+                        "items": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "maxItems": 200,
+                        "type": "array"
+                      },
+                      "op": {
+                        "const": "close",
+                        "type": "string"
+                      },
+                      "parked": {
+                        "items": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "maxItems": 200,
+                        "type": "array"
+                      },
+                      "sessionId": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "skipped": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "issueKey": {
+                              "maxLength": 64,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "refusal": {
+                              "maxLength": 1000,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "issueKey",
+                            "refusal"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 200,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "sessionId",
+                      "dispatched",
+                      "skipped",
+                      "parked"
+                    ],
+                    "type": "object"
+                  }
+                ]
               }
             }
           },
@@ -23302,6 +23441,36 @@
         ],
         "x-forge-validated": [
           "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/masters/standing": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "param",
+          "query"
         ]
       }
     },

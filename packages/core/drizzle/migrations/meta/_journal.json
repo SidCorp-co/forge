@@ -2339,6 +2339,13 @@
       "when": 1814486400000,
       "tag": "0365_an_agent_report_becomes_feedback",
       "breakpoints": true
+    },
+    {
+      "idx": 366,
+      "version": "7",
+      "when": 1814572800000,
+      "tag": "0366_a_master_pass_is_a_row",
+      "breakpoints": true
     }
   ]
 }

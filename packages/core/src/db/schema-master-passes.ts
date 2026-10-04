@@ -1,6 +1,15 @@
 import { MASTER_VERBS, type MasterPassSkip } from '@forge/contracts/master-standing';
 import { sql } from 'drizzle-orm';
-import { check, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { agentSessions, projects } from './schema.js';
 
 // cm:why a pass is evidence the board reads (design agent-run-standing decision: passes are stored, one row
@@ -37,7 +46,10 @@ export const masterPasses = pgTable(
       'master_passes_ended_after_start_chk',
       sql`${t.endedAt} IS NULL OR ${t.endedAt} >= ${t.startedAt}`,
     ),
-    skippedShapeChk: check('master_passes_skipped_shape_chk', sql`jsonb_typeof(${t.skipped}) = 'array'`),
+    skippedShapeChk: check(
+      'master_passes_skipped_shape_chk',
+      sql`jsonb_typeof(${t.skipped}) = 'array'`,
+    ),
     openPassReportsNothingChk: check(
       'master_passes_open_reports_nothing_chk',
       sql`${t.endedAt} IS NOT NULL OR (cardinality(${t.dispatched}) = 0 AND cardinality(${t.parked}) = 0 AND ${t.skipped} = '[]'::jsonb)`,

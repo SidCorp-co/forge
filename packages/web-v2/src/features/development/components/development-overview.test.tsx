@@ -60,7 +60,16 @@ const DATA = (over: Partial<DevelopmentOverview> = {}): DevelopmentOverview => (
     ci: { available: false, reason: "no check reading for a branch head" },
     postMerge: { available: false, reason: "no post-merge event" },
     contracts: { windows: [{ contract: "autoflow/api", version: "2.0.0", dueAt: "2099-01-01T00:00:00.000Z", feedback: "FB-1" }], openWindows: 1, awaitingApproval: 1 },
-    master: { masters: 1, runs: 3, capacity: null, capacityNote: "the runner keeps max_job_panes locally" },
+    master: {
+      masters: 1,
+      state: "idle",
+      slots: {
+        inUse: 3,
+        max: null,
+        undeclared: { code: "MASTER_SLOTS_UNDECLARED", path: "/slots/max", detail: "box-1 has not declared max_job_panes" },
+      },
+      slotsNote: "box-1 has not declared max_job_panes",
+    },
   },
   flow: {
     windowDays: 14,
@@ -163,11 +172,21 @@ describe("the signals strip", () => {
     expect(screen.getByTestId("signal-contracts")).toHaveTextContent("No window open");
   });
 
-  it("draws a cap when core one day reports it", () => {
+  it("draws the cap the box declared, read from masters/standing", () => {
     const d = DATA();
-    render(<SignalsStrip data={{ ...d, signals: { ...d.signals, master: { ...d.signals.master, capacity: 4 } } }} />);
+    const master = { ...d.signals.master, slots: { inUse: 2, max: 4, undeclared: null }, slotsNote: null };
+    render(<SignalsStrip data={{ ...d, signals: { ...d.signals, master } }} />);
     expect(screen.queryByTestId("capacity-unavailable")).toBeNull();
-    expect(screen.getByTestId("signal-master")).toHaveTextContent("of 4");
+    expect(screen.getByTestId("signal-master")).toHaveTextContent("Slots in use 2 of 4");
+  });
+
+  it("says no slot count at all while no master serves the project, never zero", () => {
+    const d = DATA();
+    const master = { ...d.signals.master, masters: 0, state: "none" as const, slots: null, slotsNote: "No live master serves this project" };
+    render(<SignalsStrip data={{ ...d, signals: { ...d.signals, master } }} />);
+    expect(screen.getByTestId("signal-master")).toHaveTextContent("Slots in use ?");
+    expect(screen.getByTestId("signal-master")).not.toHaveTextContent("Slots in use 0");
+    expect(screen.getByTestId("capacity-unavailable")).toHaveTextContent("of ?");
   });
 });
 

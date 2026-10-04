@@ -74,6 +74,7 @@ import {
   readDeviceIssueLease,
   resolveLeaseKey,
 } from '../issues/issue-lease.js';
+import { deviceMasterRoutes } from '../masters/device-routes.js';
 import { readAdmissibleIssues } from './admissible.js';
 import { deviceChannelInboxRoutes } from './channel-inbox-routes.js';
 import {
@@ -85,7 +86,7 @@ import {
 import { deviceCommentInboxRoutes } from './comment-inbox-routes.js';
 import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
-import { closeMasterSession, ensureMasterSession } from './master-session.js';
+import { closeMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
 import { readRunSessionTerminal, releaseIssueLease } from './run-session.js';
 import { deviceRunSessionRoutes } from './run-session-routes.js';
@@ -97,6 +98,7 @@ export const devicePoolRoutes = new Hono<{ Variables: DeviceVars }>();
 devicePoolRoutes.route('/', deviceRunSessionRoutes);
 devicePoolRoutes.route('/', deviceChannelInboxRoutes);
 devicePoolRoutes.route('/', deviceCommentInboxRoutes);
+devicePoolRoutes.route('/', deviceMasterRoutes);
 
 const poolQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -309,28 +311,6 @@ devicePoolRoutes.get(
     const fleet = projectId ? await readFleetLoad(projectId, livenessSeconds) : [];
 
     return c.json({ device, project, fleet });
-  },
-);
-
-const masterSessionBodySchema = z.object({
-  projectId: z.string().uuid(),
-  name: z.string().min(1).max(120),
-});
-
-/**
- * Register (or re-find) this box's resident master for one project — B1's
- * bound, in the one place both halves can see it.
- */
-devicePoolRoutes.post(
-  '/me/master-session',
-  requireDevice(),
-  zValidator('json', masterSessionBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const { projectId, name } = c.req.valid('json');
-    const session = await ensureMasterSession({ deviceId: c.get('device').id, projectId, name });
-    return c.json(session);
   },
 );
 
