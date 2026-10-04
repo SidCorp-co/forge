@@ -4,6 +4,7 @@ export { TransitionError, transitionIssueStatus } from './apply-transition.js';
 export { closeBacklogStreams } from './backlog/open-streams.js';
 export { insertIssueRow } from './create-service.js';
 export { runCriteriaBackfillOnce } from './criteria/backfill.js';
+export { putCriteria } from './criteria/store.js';
 export { isValidDetectorKey } from './detector-key.js';
 export {
   fileDetectedIssue,

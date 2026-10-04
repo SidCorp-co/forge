@@ -15,13 +15,13 @@ import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { requirementCriteria } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import { putCriteria } from '../issues/criteria/store.js';
 import {
   activeIssuePrefix,
   heldIssuePrefixes,
   insertIssueRow,
   isUuid,
   type PendingIssueRelation,
+  putCriteria,
 } from '../issues/index.js';
 import { writeIssueRelations } from '../issues/relations-service.js';
 import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
