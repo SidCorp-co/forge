@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { checkerConfig } from './lib/debt-ratchet.mjs';
-import { dieAs, ROOT } from './lib/gate.mjs';
+import { dieAs, globToRegExp, ROOT } from './lib/gate.mjs';
 import { TEST_FILE_RE } from './lib/test-reachability.mjs';
 
 const die = dieAs('check-doc-citations');
@@ -35,15 +35,6 @@ const DEFAULTS = {
   sourceExts: ['ts', 'tsx', 'mjs', 'cjs', 'js', 'jsx', 'rs', 'sql'],
   skipPrefixes: ['dist/', 'node_modules/', '.next/', 'coverage/', 'target/', '.turbo/'],
 };
-
-/** `**` crosses directories, `*` does not — the two are split apart before either is escaped. */
-const globRe = (glob) =>
-  new RegExp(
-    `^${glob
-      .split('**')
-      .map((part) => part.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*'))
-      .join('.*')}$`,
-  );
 
 /**
  * The document's home: the nearest ancestor holding a package manifest, or the
@@ -351,7 +342,7 @@ function main() {
   }
   const cfg = checkerConfig(ROOT, 'doc-citations', DEFAULTS, die);
   const w = world(cfg);
-  const skip = (cfg.skipDocs ?? []).map((d) => globRe(typeof d === 'string' ? d : d.glob));
+  const skip = (cfg.skipDocs ?? []).map((d) => globToRegExp(typeof d === 'string' ? d : d.glob));
   const docs = w.files
     .filter((p) => p.endsWith('.md'))
     .filter((p) => !skip.some((re) => re.test(p)));

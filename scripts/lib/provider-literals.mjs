@@ -1,3 +1,4 @@
+import { globToRegExp } from './gate.mjs';
 /**
  * Every quoted string literal in a TypeScript source, comments excluded.
  *
@@ -112,20 +113,6 @@ function readQuoted(text, start, quote) {
     j++;
   }
   return null;
-}
-
-/** A repo-relative glob supporting `*` and `**`, anchored at both ends. */
-export function globToRegExp(glob) {
-  const body = glob
-    .split('**')
-    .map((part) =>
-      part
-        .split('*')
-        .map((lit) => lit.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
-        .join('[^/]*'),
-    )
-    .join('.*');
-  return new RegExp(`^${body}$`);
 }
 
 /** True when `path` sits under one of the declared allowed locations. */

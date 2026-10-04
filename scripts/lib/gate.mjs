@@ -39,3 +39,17 @@ export function walkFiles(rel, { skipDirs, keep }, acc = []) {
   }
   return acc;
 }
+
+/** A repo-relative glob supporting `*` and `**`, anchored at both ends. */
+export function globToRegExp(glob) {
+  const body = glob
+    .split('**')
+    .map((part) =>
+      part
+        .split('*')
+        .map((lit) => lit.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+        .join('[^/]*'),
+    )
+    .join('.*');
+  return new RegExp(`^${body}$`);
+}
