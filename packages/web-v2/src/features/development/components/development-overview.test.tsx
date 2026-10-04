@@ -200,7 +200,7 @@ describe("the screen", () => {
     expect(rows.map((r) => r.getAttribute("href"))).toEqual([
       "/projects/hop/issues/ISS-7",
       "/projects/hop/releases",
-      "/projects/hop/ecosystem/contracts",
+      "/projects/hop/contracts/hop/dischargeSummary",
     ]);
     for (const r of rows) expect(within(r).getByTestId("waiting-on")).toHaveAttribute("data-kind", "you");
   });
@@ -307,12 +307,12 @@ describe("modules", () => {
 });
 
 describe("where a need leads", () => {
-  it("sends an issue to its page and, from a click, to its peek; a release and a contract to their lists", () => {
+  it("sends an issue to its page and, from a click, to its peek; a release to its list and a contract to its page", () => {
     expect(needHref("hop", NEED_ISSUE)).toBe("/projects/hop/issues/ISS-7");
     expect(needPeekHref("hop", NEED_ISSUE)).toBe("/projects/hop/issues?peek=ISS-7");
     expect(needHref("hop", NEED_RELEASE)).toBe("/projects/hop/releases");
     expect(needPeekHref("hop", NEED_RELEASE)).toBe("/projects/hop/releases");
-    expect(needHref("hop", NEED_CONTRACT)).toBe("/projects/hop/ecosystem/contracts");
+    expect(needHref("hop", NEED_CONTRACT)).toBe("/projects/hop/contracts/hop/dischargeSummary");
   });
 
   it("draws a row's state as the shared badge of its family, never the raw value", () => {

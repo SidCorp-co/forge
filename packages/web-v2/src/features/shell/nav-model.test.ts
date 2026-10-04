@@ -66,7 +66,7 @@ describe("the project menu", () => {
       ["Issues", "/issues"],
       ["Modules", "/modules"],
       ["Agents", "/agents"],
-      ["Contracts", "/ecosystem/contracts"],
+      ["Contracts", "/contracts"],
       ["Automation", "/automation"],
     ]);
   });
@@ -90,8 +90,8 @@ describe("the project menu", () => {
     expect(at("/automation")).toBe("proj-automation");
     expect(at("/automation/schedules")).toBe("proj-automation");
     expect(at("/automation/improvements")).toBe("proj-automation");
-    expect(at("/ecosystem/contracts")).toBe("proj-contracts");
-    expect(at("/ecosystem/contracts/bookFollowUp")).toBe("proj-contracts");
+    expect(at("/contracts")).toBe("proj-contracts");
+    expect(at("/contracts/autoflow/book-follow-up")).toBe("proj-contracts");
     expect(at("/releases")).toBe("proj-releases");
     expect(at("/releases/0.42.1")).toBe("proj-releases");
     expect(at("/workflows")).toBe("proj-workflows");

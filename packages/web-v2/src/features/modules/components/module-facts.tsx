@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Fact, FactsEmpty, FactsGroup, StatusBadge } from "@/design";
+import { Fact, FactsEmpty, FactsGroup, NotAvailable, StatusBadge } from "@/design";
 import { feedbackHref } from "@/features/feedback/routes";
 import { issueHref } from "@/features/issues/routes";
 import { requirementHref } from "@/features/requirements/routes";
 import { moduleHref } from "../routes";
 import type { ModuleActiveIssue, ModuleDetail } from "../types";
-import { NotAvailable } from "./module-bits";
 
 const SHOWN = 8;
 

@@ -8,7 +8,8 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { standing, needsYou } from "./module-fixtures";
-import { AttentionBadge, ModuleAction, ModuleBanner, moduleWaitingView, NotAvailable, OpenBar } from "./module-bits";
+import { NotAvailable } from "@/design";
+import { AttentionBadge, ModuleAction, ModuleBanner, moduleWaitingView, OpenBar } from "./module-bits";
 
 expect.extend(matchers);
 afterEach(cleanup);

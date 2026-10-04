@@ -11,14 +11,10 @@ describe("the route builders", () => {
     expect(ecosystemRoutes.threads({ view: "held", ecosystem: "e1" })).toBe("/ecosystems/threads?view=held&ecosystem=e1");
   });
 
-  it("keeps a project's own documents, contracts and API page under the project", () => {
+  it("keeps a project's own documents and API page under the project", () => {
     expect(ecosystemRoutes.document("forge", "FP-CN-1")).toBe("/projects/forge/ecosystem/channel/FP-CN-1");
     expect(ecosystemRoutes.compose("forge", { inReplyTo: "FP-CN-1" })).toBe(
       "/projects/forge/ecosystem/channel/new?inReplyTo=FP-CN-1",
-    );
-    expect(ecosystemRoutes.contracts("forge")).toBe("/projects/forge/ecosystem/contracts");
-    expect(ecosystemRoutes.contract("forge-plugin", "forge-api", "p1")).toBe(
-      "/projects/forge-plugin/ecosystem/contracts/forge-api?provider=p1",
     );
     expect(ecosystemRoutes.apiPage("forge")).toBe("/projects/forge/ecosystem/api");
   });

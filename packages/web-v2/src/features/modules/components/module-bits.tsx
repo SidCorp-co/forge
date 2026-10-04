@@ -26,8 +26,6 @@ export const openSegments = (s: ModuleStanding): CoverageSegment[] =>
     hint: ISSUE_ATTENTION_LABELS[k].hint,
   }));
 
-const sentence = (t: string) => `${t.charAt(0).toUpperCase()}${t.slice(1)}`;
-
 export function landingAge(l: ModuleLanding, now: number = Date.now()): number {
   return Math.max(0, Math.floor((now - new Date(l.landedAt).getTime()) / DAY_MS));
 }
@@ -85,17 +83,6 @@ export function ActivityBars({ days, height = 28, barWidth = 8 }: { days: Module
   );
 }
 
-export function NotAvailable({ reason, showReason = false }: { reason: string; showReason?: boolean }) {
-  return (
-    <span
-      className="cursor-help text-subtle underline decoration-dotted underline-offset-2"
-      title={sentence(reason)}
-      data-testid="not-available"
-    >
-      Not available{showReason ? `: ${reason}` : ""}
-    </span>
-  );
-}
 
 export function moduleWaitingView(w: ModuleWaitingOn): WaitingOnView {
   const v = issueWaitingView(w);
