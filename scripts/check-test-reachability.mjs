@@ -6,6 +6,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { absentPrerequisites, remedyLines } from './lib/prerequisite.mjs';
+import { suspendedWithoutTests } from './lib/suspended-without-tests.mjs';
 import {
   CONFIG_RE,
   isSuiteSkip,
@@ -59,6 +60,8 @@ if (!tracked) {
   console.error('test-reachability: could not list tracked files — not a git repository?');
   process.exit(2);
 }
+
+if (suspendedWithoutTests(ROOT, 'test-reachability: 0 tracked test file(s)')) process.exit(0);
 
 const testFiles = tracked.filter((f) => TEST_FILE_RE.test(f));
 const vanished = testFiles.filter((f) => !existsSync(join(ROOT, f)));
