@@ -57,7 +57,7 @@ async function currentValues(projectId: string, refs: ReadonlySet<string>): Prom
   // storing it unscrubbed.
   if (!isVaultConfigured()) {
     throw new Error(
-      'JOB_OUTPUT_UNSCRUBBABLE: this job resolved testing secrets and INTEGRATION_MASTER_KEY is not set, so their values cannot be read to scrub its output',
+      'job output unscrubbable: this job resolved testing secrets and INTEGRATION_MASTER_KEY is not set, so their values cannot be read to scrub its output',
     );
   }
   const rows = await db

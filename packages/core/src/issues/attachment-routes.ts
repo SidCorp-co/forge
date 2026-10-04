@@ -11,15 +11,15 @@ import { restActor } from '../middleware/auth.js';
 import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
+import { holds, requireHeld } from '../permissions/index.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage, isEnoent } from '../storage/index.js';
-import { AttachmentError, persistIssueAttachment } from './attachment-service.js';
+import { persistIssueAttachment } from './attachment-service.js';
 import {
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
-import { holds, requireHeld } from '../permissions/index.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
@@ -72,22 +72,15 @@ issueAttachmentRoutes.post(
     const file = body.file;
     if (!(file instanceof File)) throw badRequest('missing "file" field');
     const buffer = Buffer.from(await file.arrayBuffer());
-    try {
-      const row = await persistIssueAttachment({
-        issueId: issue.id,
-        name: file.name || 'file',
-        mime: file.type || 'application/octet-stream',
-        bytes: buffer,
-        uploaderId: userId,
-        uploaderAgency: restActor(c).agency,
-      });
-      return c.json(row, 201);
-    } catch (err) {
-      if (err instanceof AttachmentError) {
-        throw badRequest(err.message, err.code, err.details);
-      }
-      throw err;
-    }
+    const row = await persistIssueAttachment({
+      issueId: issue.id,
+      name: file.name || 'file',
+      mime: file.type || 'application/octet-stream',
+      bytes: buffer,
+      uploaderId: userId,
+      uploaderAgency: restActor(c).agency,
+    });
+    return c.json(row, 201);
   },
 );
 

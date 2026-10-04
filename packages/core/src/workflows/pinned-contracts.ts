@@ -4,11 +4,13 @@
  * nobody approved, refused by name when a pinned version cannot be given.
  */
 
+import type { ArtifactContextRefusalCode } from '@forge/contracts/workflows';
 import { and, desc, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { contractVersions } from '../db/schema-ecosystem.js';
 import { readArtifact } from '../ecosystem/contract/store.js';
+import { RefusalError } from '../lib/refusal.js';
 import type { RequirementPinRow } from './requirement-context.js';
 
 /** How much of one artifact a prompt carries; the rest is fetched from the artifact route. */
@@ -36,15 +38,8 @@ export interface LoadedPinnedContract {
   sha256: string | null;
 }
 
-export class PinnedContractError extends Error {
-  constructor(
-    readonly code: 'ARTIFACT_CONTEXT_UNLOADABLE' | 'REQUIREMENT_REVISION_NOT_CURRENT',
-    message: string,
-  ) {
-    super(`${code}: ${message}`);
-    this.name = 'PinnedContractError';
-  }
-}
+const pinnedRefusal = (code: ArtifactContextRefusalCode, detail: string) =>
+  new RefusalError([{ code, path: '', detail }], 'ARTIFACT_CONTEXT_UNLOADABLE');
 
 /**
  * Why one pinned version cannot be given, or null. `versions` are the contract's recorded versions,
@@ -55,23 +50,23 @@ export function pinnedContractProblem(
   at: string,
   version: string,
   versions: readonly Pick<PinnedVersionRow, 'version' | 'approval'>[],
-): PinnedContractError | null {
+): RefusalError | null {
   const hit = versions.find((v) => v.version === version);
   if (!hit) {
-    return new PinnedContractError(
+    return pinnedRefusal(
       'ARTIFACT_CONTEXT_UNLOADABLE',
       `contract-version ${at}@${version}: ${key}'s latest baseline pins it, and its provider holds no such version`,
     );
   }
   if (hit.approval !== 'approved') {
-    return new PinnedContractError(
+    return pinnedRefusal(
       'ARTIFACT_CONTEXT_UNLOADABLE',
       `contract-version ${at}@${version}: ${key}'s latest baseline pins it, and it is ${hit.approval}; a job is given approved versions only`,
     );
   }
   const current = versions.find((v) => v.approval === 'approved')?.version ?? null;
   if (current !== version) {
-    return new PinnedContractError(
+    return pinnedRefusal(
       'REQUIREMENT_REVISION_NOT_CURRENT',
       `contract-version ${at}@${version}: ${key}'s latest baseline pins it, and ${current} is the current version now; a superseded version is never given, so a person re-pins ${key} first`,
     );
@@ -79,7 +74,7 @@ export function pinnedContractProblem(
   return null;
 }
 
-/** Every contract version `key`'s latest baseline pins, in pin order; throws `PinnedContractError`. */
+/** Every contract version `key`'s latest baseline pins, in pin order; throws the refusal. */
 export async function loadPinnedContracts(
   key: string,
   pins: readonly RequirementPinRow[],

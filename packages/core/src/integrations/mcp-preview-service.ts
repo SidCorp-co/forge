@@ -1,11 +1,15 @@
+import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import type { BindingRole } from '../db/schema.js';
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
+import { refuser } from '../lib/refusal.js';
 import { grantHolds } from './agent-access.js';
 import { listAgentGrantedBindings } from './agent-access-store.js';
 import { directMcpIntegrations, mcpServerNameFor } from './registry.js';
 import { toIso } from './route-helpers.js';
 import { type BindingWithConnection, effectiveConfig, listBindingsForProject } from './store.js';
 import type { IntegrationDeclaration, IntegrationProvider } from './types.js';
+
+const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
 export type McpServerPreviewReason =
   | 'ok'
@@ -175,8 +179,9 @@ export async function buildMcpPreview(projectId: string): Promise<McpPreview> {
   const shown = new Set(servers.filter((row) => row.willInject).map((row) => row.serverName));
   const unshown = resolved.resolvedNames.filter((name) => !shown.has(name));
   if (unshown.length > 0) {
-    throw new Error(
-      `MCP_PREVIEW_UNCLAIMED: project ${projectId} resolves ${unshown.map((n) => `\`${n}\``).join(', ')} for its agents, but no granted binding in the preview claims ${unshown.length === 1 ? 'it' : 'them'}. Every server an agent receives comes from a granted integration binding, so the preview refuses to answer rather than show an agent's set it cannot account for.`,
+    throw refuse(
+      'MCP_PREVIEW_UNCLAIMED',
+      `project ${projectId} resolves ${unshown.map((n) => `\`${n}\``).join(', ')} for its agents, but no granted binding in the preview claims ${unshown.length === 1 ? 'it' : 'them'}. Every server an agent receives comes from a granted integration binding, so the preview refuses to answer rather than show an agent's set it cannot account for.`,
     );
   }
   return { servers };

@@ -6,25 +6,24 @@ import {
   CardContent,
   SectionTitle,
 } from "@/design";
-import { actionQueue, ageText } from "../derive";
-import type { ActionKey, ActionOwner } from "../derive";
+import type { PulseActionKey, PulseActionOwner } from "@forge/contracts/needs-you";
+import { ageText } from "../derive";
 import type { PulseResponse } from "../types";
 import { RecordPanel } from "./record-panel";
 
-const OWNER_TEXT: Record<ActionOwner, string> = {
+const OWNER_TEXT: Record<PulseActionOwner, string> = {
   person: "A person unblocks this",
   machine: "The machine unblocks this",
 };
 
 export interface ActionQueueProps {
   pulse: PulseResponse;
-  nowMs: number;
 }
 
 /** Section 3 — what needs a person? */
-export function ActionQueue({ pulse, nowMs }: ActionQueueProps) {
-  const [open, setOpen] = useState<ActionKey | null>(null);
-  const rows = actionQueue(pulse, nowMs);
+export function ActionQueue({ pulse }: ActionQueueProps) {
+  const [open, setOpen] = useState<PulseActionKey | null>(null);
+  const rows = pulse.actions;
 
   return (
     <Card>

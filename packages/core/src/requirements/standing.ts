@@ -11,14 +11,17 @@ import {
   BREAKDOWN_SLA_WORKING_DAYS,
   CHECK_SLA_WORKING_DAYS,
   type CoverageIssue,
+  type DeliveryPhase,
+  type RequirementDelivery,
   type RequirementAttentionGroup,
   type RequirementCoverage,
   type RequirementStanding,
   type RequirementState,
   type RequirementTask,
-  type RequirementWaitingOn,
+  type RequirementWaitingKind,
 } from '@forge/contracts/requirements';
-import type { DeliveryPhase, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
+import type { WaitingOn } from '@forge/contracts/standing';
+import type { RequirementStatus, RevisionState } from '../db/schema-requirements.js';
 import { addWorkingDays } from '../lib/working-days.js';
 
 /** Untouched this long, an open requirement is listed as stuck. */
@@ -68,7 +71,6 @@ export interface StandingIssueCriterion {
 
 export interface StandingInput {
   status: RequirementStatus;
-  phase: DeliveryPhase | null;
   owner: RequirementStanding['owner'];
   /** Null for a reader with no person behind it; nothing then reads as theirs. */
   viewer: { userId: string; canSignOff: boolean } | null;
@@ -88,6 +90,9 @@ export interface StandingInput {
   updatedAt: Date;
   now: Date;
 }
+
+/** The input with its delivery phase read (`deliveryOf`). */
+type Phased = StandingInput & { phase: DeliveryPhase | null };
 
 const SIGNER = 'BA or owner';
 
@@ -151,17 +156,19 @@ function verdictOf(links: readonly CoverageIssue[]): BcVerdict {
   return 'not_judged';
 }
 
+type RequirementWaitingOn = WaitingOn<RequirementWaitingKind>;
+
 const wait = (
-  kind: RequirementWaitingOn['kind'],
+  kind: RequirementWaitingKind,
   who: string,
   act: string,
   rule: string,
-): RequirementWaitingOn => ({ kind, who, act, rule });
+): RequirementWaitingOn => ({ kind, who, act, rule, ref: null, dueAt: null });
 
 const signerWait = (viewer: StandingInput['viewer'], act: string, rule: string) =>
   viewer?.canSignOff
     ? { group: 'needs_you' as const, waitingOn: wait('you', 'You', act, rule) }
-    : { group: 'others' as const, waitingOn: wait('person', SIGNER, act, rule) };
+    : { group: 'waiting' as const, waitingOn: wait('person', SIGNER, act, rule) };
 
 interface Turn {
   group: RequirementAttentionGroup;
@@ -187,7 +194,7 @@ function feedbackTurn(input: StandingInput): Turn | null {
 // re-plans it; 9. no issue → the master breaks it down; 10. only drafts → a person promotes them;
 // 11. else moving. Unless it needs you: no owner, or untouched STUCK_AFTER_DAYS → stuck.
 function turnOf(
-  input: StandingInput,
+  input: Phased,
   live: readonly StandingIssue[],
   coverage: readonly RequirementCoverage[],
 ): Turn {
@@ -226,7 +233,7 @@ function turnOf(
     }
     const kind = draft.authorKind === 'agent' ? 'agent' : 'person';
     return {
-      group: 'others',
+      group: 'waiting',
       waitingOn: wait(kind, draft.authorName ?? 'Its author', 'finish draft', rule),
     };
   }
@@ -249,7 +256,7 @@ function turnOf(
       'a linked design is unpinned or approved past the revision the agreed baseline pins, or a linked contract has a current version it does not pin';
     if (viewer?.canSignOff) return { group: 'needs_you', waitingOn: wait('you', 'You', act, rule) };
     const owner = input.owner?.kind === 'human' ? input.owner.name : null;
-    return { group: 'others', waitingOn: wait('person', owner ?? SIGNER, act, rule) };
+    return { group: 'waiting', waitingOn: wait('person', owner ?? SIGNER, act, rule) };
   }
   const check = checkTaskOf(input, live);
   if (check) {
@@ -257,12 +264,12 @@ function turnOf(
     const rule = `delivered at r${check.revision}; the BA checks the business criteria by ${check.dueAt.slice(0, 10)}, ${CHECK_SLA_WORKING_DAYS} working days after delivery${check.overdue ? ', and it is overdue' : ''}`;
     return viewer?.canSignOff
       ? { group: 'needs_you', waitingOn: { ...wait('you', 'You', act, rule), dueAt: check.dueAt } }
-      : { group: 'others', waitingOn: { ...wait('person', 'BA', act, rule), dueAt: check.dueAt } };
+      : { group: 'waiting', waitingOn: { ...wait('person', 'BA', act, rule), dueAt: check.dueAt } };
   }
   const unproven = coverage.filter((c) => c.verdict !== 'passing').map((c) => c.code);
   if (live.length > 0 && live.every((i) => i.status === 'closed') && unproven.length > 0) {
     return {
-      group: 'others',
+      group: 'waiting',
       waitingOn: wait(
         'agent',
         'Master',
@@ -277,7 +284,7 @@ function turnOf(
   const replan = live.filter((i) => i.changedSincePlan);
   if (replan.length > 0) {
     return {
-      group: 'others',
+      group: 'waiting',
       waitingOn: wait(
         'agent',
         'Master',
@@ -289,7 +296,7 @@ function turnOf(
   if (live.length === 0) {
     const task = breakdownTaskOf(input, live);
     return {
-      group: 'others',
+      group: 'waiting',
       waitingOn: {
         ...wait(
           'agent',
@@ -301,7 +308,7 @@ function turnOf(
             ? `agreed with no linked issue; the breakdown is due ${task.dueAt.slice(0, 10)}, ${BREAKDOWN_SLA_WORKING_DAYS} working days after the agree`
             : 'agreed with no linked issue',
         ),
-        ...(task ? { dueAt: task.dueAt } : {}),
+        dueAt: task?.dueAt ?? null,
       },
     };
   }
@@ -317,7 +324,7 @@ function turnOf(
   return {
     group: 'moving',
     waitingOn: wait(
-      'issues',
+      'issue',
       'Issues',
       running > 0 ? `Running ${running} of ${live.length}` : `Done ${done} of ${live.length}`,
       'agreed and its issues are being worked',
@@ -365,10 +372,10 @@ export function breakdownTaskOf(
 
 // workflow requirement-to-delivery step `check`: a requirement delivered at its current revision holds
 // one acceptance check for that revision, owned by the BA and due 5 working days after the evidence
-// completed (the last live issue closed, or the newest passing traced verdict). `input.phase` is the
-// proven phase, so the task is read from the same computation as delivered
+// completed (the last live issue closed, or the newest passing traced verdict). `input.phase` is
+// `deliveryOf`'s, so the task is read from the same computation as delivered
 export function checkTaskOf(
-  input: StandingInput,
+  input: Phased,
   live: readonly StandingIssue[],
 ): RequirementTask | null {
   if (input.status !== 'agreed' || input.phase !== 'delivered') return null;
@@ -393,22 +400,43 @@ export function touchedAt(input: StandingInput): Date {
   return new Date(Math.max(...times.map((t) => t.getTime())));
 }
 
-// cm:guard workflow requirement-to-delivery step `rollup`: delivered needs every live issue closed
-// AND every current BC covered by a passing verdict; the view counts issue statuses only, so a
-// closed set with an unproven BC reads in_delivery here
-export function provenPhase(
-  phase: DeliveryPhase | null,
+// workflow requirement-to-delivery step `rollup`, the one computation of the delivery phase: only an
+// agreed or accepted requirement has one; no live issue → agreed; every live issue closed AND every
+// current BC covered by a passing verdict → delivered, a closed set with an unproven BC → in_delivery;
+// a live issue past draft and open → in_delivery; else agreed
+export function deliveryOf(
+  status: RequirementStatus,
+  live: readonly StandingIssue[],
   coverage: readonly RequirementCoverage[],
-): DeliveryPhase | null {
-  if (phase !== 'delivered') return phase;
-  return coverage.every((c) => c.verdict === 'passing') ? 'delivered' : 'in_delivery';
+): RequirementDelivery {
+  const started = live.filter((i) => i.status !== 'draft' && i.status !== 'open').length;
+  const closed = live.filter((i) => i.status === 'closed').length;
+  const proven = coverage.every((c) => c.verdict === 'passing');
+  let phase: DeliveryPhase | null = null;
+  if (status === 'agreed' || status === 'accepted') {
+    if (live.length === 0) phase = 'agreed';
+    else if (closed === live.length) phase = proven ? 'delivered' : 'in_delivery';
+    else phase = started > 0 ? 'in_delivery' : 'agreed';
+  }
+  return {
+    phase,
+    liveIssues: live.length,
+    startedIssues: started,
+    closedIssues: closed,
+    criteriaCoverage: {
+      criteria: coverage.length,
+      passing: coverage.filter((c) => c.verdict === 'passing').length,
+      judged: coverage.filter((c) => c.verdict === 'passing' || c.verdict === 'failing').length,
+    },
+  };
 }
 
 export function deriveStanding(raw: StandingInput): RequirementStanding {
   const live = raw.issues.filter((i) => i.status !== 'dropped');
   const shownRevision = raw.currentRevision ?? raw.revisions[0]?.revision ?? null;
   const coverage = coverageOf(raw, shownRevision);
-  const input = { ...raw, phase: provenPhase(raw.phase, coverage) };
+  const delivery = deliveryOf(raw.status, live, coverage);
+  const input = { ...raw, phase: delivery.phase };
   const touched = touchedAt(input);
   let { group, waitingOn } = turnOf(input, live, coverage);
   if (group !== 'needs_you' && group !== 'done' && group !== 'deferred') {
@@ -422,6 +450,7 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
   }
   return {
     state: stateOf(input.status, input.phase),
+    delivery,
     attentionGroup: group,
     waitingOn,
     facts: {

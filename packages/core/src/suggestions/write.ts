@@ -9,6 +9,7 @@ import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { lockFeedback } from '../feedback/service.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
+import { RefusalError } from '../lib/refusal.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { lockRequirements } from '../requirements/service.js';
 import type { Effect } from './effects.js';
@@ -19,12 +20,6 @@ export type SuggestionOutcome =
   | { ok: true; suggestion: SuggestionView; effect?: Effect; created?: boolean }
   | { ok: false; refusals: NamedRefusal[] };
 
-export class Refused extends Error {
-  constructor(readonly refusals: NamedRefusal[]) {
-    super(refusals.map((r) => r.code).join(', '));
-  }
-}
-
 /** Runs `body` in a transaction; refusals it returns or throws roll everything back and come out. */
 export async function inTx(
   body: (tx: Tx) => Promise<NamedRefusal[] | null | undefined>,
@@ -32,11 +27,11 @@ export async function inTx(
   try {
     return await db.transaction(async (tx) => {
       const refusals = await body(tx);
-      if (refusals?.length) throw new Refused(refusals);
+      if (refusals?.length) throw new RefusalError(refusals, 'SUGGESTION_REFUSED');
       return null;
     });
   } catch (err) {
-    if (err instanceof Refused) return err.refusals;
+    if (err instanceof RefusalError) return [...err.refusals];
     throw err;
   }
 }

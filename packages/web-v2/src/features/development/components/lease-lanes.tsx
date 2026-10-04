@@ -3,7 +3,6 @@
 import { WORK_STEP_LABELS } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
 import { HoverCard, LEGEND, StatusBadge, Tooltip, WaitingOn } from "@/design";
-import { issueWaitingView } from "@/features/issues/components/issue-standing-bits";
 import { issueHref } from "@/features/issues/routes";
 import { formatStamp } from "@/lib/utils/format";
 import type { OverviewLane, OverviewMoving } from "../types";
@@ -114,7 +113,7 @@ export function LeaseLanes({ moving, slug }: { moving: OverviewMoving; slug: str
                 {lane.key}
               </Link>
               <HoverCard label={`Run on ${lane.key}`} content={<LaneDetail lane={lane} />} placement="bottom-start">
-                <WaitingOn w={issueWaitingView(lane.waitingOn)} />
+                <WaitingOn w={lane.waitingOn} />
               </HoverCard>
             </div>
             <Track lane={lane} from={from} to={to} now={now} />

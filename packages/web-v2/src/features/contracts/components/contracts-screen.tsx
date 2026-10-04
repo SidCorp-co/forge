@@ -28,7 +28,7 @@ import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useContractStanding } from "../hooks";
 import { CONTRACTS_LIST, contractHref } from "../routes";
 import type { ContractStandingRow } from "../types";
-import { ContractStateBadge, contractWaitingView, KindBadge, versionLine, WindowText } from "./contract-bits";
+import { ContractStateBadge, KindBadge, versionLine, WindowText } from "./contract-bits";
 import { ContractPeek } from "./contract-peek";
 
 const GROUP_MODES = [
@@ -77,7 +77,7 @@ const rowOf =
     title: r.title,
     facts: factsLine(r),
     state: <ContractStateBadge row={r} />,
-    waitingOn: <WaitingOn w={contractWaitingView(r.waitingOn)} />,
+    waitingOn: <WaitingOn w={r.waitingOn} />,
     owner: <WindowText row={r} />,
     age: r.touchedAt ? { text: formatAge(r.touchedAt), title: `Last version recorded ${formatStamp(r.touchedAt)}` } : null,
     dim: r.attentionGroup === "steady" && r.state === "deprecated",

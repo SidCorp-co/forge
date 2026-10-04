@@ -6,8 +6,13 @@ import {
   releaseAttempts,
 } from '../db/schema-release-ledger.js';
 
-import { type CloseVerification, closeVerification, type ReleaseChannel } from './channel.js';
-import { ReleaseProbesUnreadableError } from './errors.js';
+import {
+  type CloseVerification,
+  closeVerification,
+  type ReleaseChannel,
+  refusedVerifyBindings,
+} from './channel.js';
+import { isRefusal } from '../lib/refusal.js';
 import { readLiveState } from './verify.js';
 
 export type { ReleaseAttemptRow, ReleaseAttemptStage };
@@ -164,13 +169,13 @@ export async function attemptReading(
   try {
     verification = closeVerification(channels);
   } catch (err) {
-    if (!(err instanceof ReleaseProbesUnreadableError)) throw err;
+    if (!isRefusal(err, 'RELEASE_PROBES_UNREADABLE')) throw err;
     return {
       health: null,
       identity: null,
       readings: null,
       verdict: 'failed' as const,
-      verdictReason: `${err.bindings.join(', ')} declares no runtime probe that identifies the source, so nothing could be read`,
+      verdictReason: `${refusedVerifyBindings(channels).join(', ')} declares no runtime probe that identifies the source, so nothing could be read`,
     };
   }
   if (verification.kind === 'unverified') {

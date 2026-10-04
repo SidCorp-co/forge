@@ -11,6 +11,14 @@ import type {
 	FeedbackSeverity,
 } from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
+import type {
+	Standing,
+	StandingGroup,
+	StandingGroupLabels,
+	WaitingKind,
+	WaitingOn,
+} from "./standing.js";
 
 export const REQUIREMENT_STATUSES = [
 	"draft",
@@ -131,73 +139,59 @@ export const REVISION_STATE_HINTS: Record<RevisionState, string> = {
 export const REQUIREMENT_ATTENTION_GROUPS = [
 	"needs_you",
 	"moving",
-	"others",
+	"waiting",
 	"stuck",
 	"deferred",
 	"done",
-] as const;
+] as const satisfies readonly StandingGroup[];
 export type RequirementAttentionGroup =
 	(typeof REQUIREMENT_ATTENTION_GROUPS)[number];
 
-export const REQUIREMENT_ATTENTION_LABELS: Record<
-	RequirementAttentionGroup,
-	{ label: string; hint: string | null; tone: StandingTone; collapsed: boolean }
-> = {
-	needs_you: {
-		label: "Needs you",
-		hint: "Approve, accept or break down",
-		tone: "you",
-		collapsed: false,
-	},
-	moving: {
-		label: "Moving",
-		hint: "Issues are being worked",
-		tone: "run",
-		collapsed: false,
-	},
-	others: {
-		label: "Someone else’s turn",
-		hint: null,
-		tone: "neutral",
-		collapsed: false,
-	},
-	stuck: {
-		label: "Stuck",
-		hint: "No owner, or untouched for weeks",
-		tone: "neutral",
-		collapsed: false,
-	},
-	deferred: {
-		label: "Deferred",
-		hint: "Out of the current release",
-		tone: "neutral",
-		collapsed: true,
-	},
-	done: { label: "Done", hint: null, tone: "done", collapsed: true },
-};
+export const REQUIREMENT_ATTENTION_LABELS: StandingGroupLabels<RequirementAttentionGroup> =
+	{
+		needs_you: {
+			label: "Needs you",
+			hint: "Approve, accept or break down",
+			tone: "you",
+			collapsed: false,
+		},
+		moving: {
+			label: "Moving",
+			hint: "Issues are being worked",
+			tone: "run",
+			collapsed: false,
+		},
+		waiting: {
+			label: "Someone else’s turn",
+			hint: null,
+			tone: "neutral",
+			collapsed: false,
+		},
+		stuck: {
+			label: "Stuck",
+			hint: "No owner, or untouched for weeks",
+			tone: "neutral",
+			collapsed: false,
+		},
+		deferred: {
+			label: "Deferred",
+			hint: "Out of the current release",
+			tone: "neutral",
+			collapsed: true,
+		},
+		done: { label: "Done", hint: null, tone: "done", collapsed: true },
+	};
 
 /** Whom a requirement waits on: the viewer, another person, an agent (the master, a draft's agent
  *  author), its issues, or nobody (done, or no owner to act). */
-export const WAITING_ON_KINDS = [
+export const REQUIREMENT_WAITING_KINDS = [
 	"you",
 	"person",
 	"agent",
-	"issues",
+	"issue",
 	"none",
-] as const;
-export type WaitingOnKind = (typeof WAITING_ON_KINDS)[number];
-
-export interface RequirementWaitingOn {
-	kind: WaitingOnKind;
-	/** Sentence-case name: "You", "Minh", "Master", "BA or owner", "No owner". */
-	who: string;
-	/** What they owe, lower-case after the name: "accept r2", "break down", "Running 2 of 5". */
-	act: string;
-	/** Why, for the tooltip: the rule in `requirements/standing.ts` that put it there. */
-	rule: string;
-	/** When what they owe is a task with an SLA, its due time. */
-	dueAt?: string;
-}
+] as const satisfies readonly WaitingKind[];
+export type RequirementWaitingKind = (typeof REQUIREMENT_WAITING_KINDS)[number];
 
 /** The tasks of workflow requirement-to-delivery a requirement holds open, derived on read. */
 export const REQUIREMENT_TASK_KINDS = ["breakdown", "check"] as const;
@@ -272,7 +266,11 @@ export interface RequirementFacts {
 	/** Linked designs the latest baseline leaves unpinned (pinned null) or pins below their approved revision. */
 	stalePins: { flow: string; pinned: number | null; approved: number }[];
 	/** Linked contracts whose current version is not the one the latest baseline pins. */
-	staleContractPins: { contract: string; pinned: string | null; current: string }[];
+	staleContractPins: {
+		contract: string;
+		pinned: string | null;
+		current: string;
+	}[];
 	feedbackOpen: number;
 	feedbackUntriaged: number;
 }
@@ -319,10 +317,23 @@ export interface RequirementCoverage {
 	issues: CoverageIssue[];
 }
 
-export interface RequirementStanding {
+/** Where an agreed or accepted requirement is in delivery, read from its live issues and its BC
+ *  coverage (workflow requirement-to-delivery step `rollup`); null for any other status. */
+export const DELIVERY_PHASES = ["agreed", "in_delivery", "delivered"] as const;
+export type DeliveryPhase = (typeof DELIVERY_PHASES)[number];
+
+export interface RequirementDelivery {
+	phase: DeliveryPhase | null;
+	liveIssues: number;
+	startedIssues: number;
+	closedIssues: number;
+	criteriaCoverage: { criteria: number; passing: number; judged: number };
+}
+
+export interface RequirementStanding
+	extends Standing<RequirementAttentionGroup, RequirementWaitingKind> {
 	state: RequirementState;
-	attentionGroup: RequirementAttentionGroup;
-	waitingOn: RequirementWaitingOn;
+	delivery: RequirementDelivery;
 	facts: RequirementFacts;
 	/** The open tasks of the delivery journey, each with its owner and SLA. */
 	tasks: RequirementTask[];
@@ -391,7 +402,8 @@ export const repinRequirementRequestSchema = z.strictObject({
 export const REPIN_REQUIREMENT_SHAPE =
 	"{ revision, reason? } — names the head revision; writes a baseline pinning each linked design's approved revision and each linked contract's current version";
 
-export const REQUIREMENT_CONTRACT_REF = /^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/;
+export const REQUIREMENT_CONTRACT_REF =
+	/^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/;
 
 export const linkRequirementContractRequestSchema = z.strictObject({
 	contract: z.string().regex(REQUIREMENT_CONTRACT_REF),
@@ -429,7 +441,7 @@ export interface RequirementSummaryView {
 	currentRevision: number | null;
 	latestRevision: { revision: number; state: string } | null;
 	counts: RequirementFacts;
-	waitingOn: RequirementWaitingOn;
+	waitingOn: WaitingOn<RequirementWaitingKind>;
 	updatedAt: string;
 }
 
@@ -527,3 +539,34 @@ export interface RequirementActAnswer {
 	workflows?: RequirementLinkedDesign[];
 	contracts?: RequirementLinkedContract[];
 }
+
+export const REQUIREMENT_REFUSAL_CODES = [
+	"REQUIREMENT_REVISION_STALE",
+	"REQUIREMENT_REVISION_NOT_CURRENT",
+	"REQUIREMENT_REVISION_NOT_DRAFT",
+	"REQUIREMENT_REVISION_NOT_PROPOSED",
+	"REQUIREMENT_REVISION_OPEN",
+	"REQUIREMENT_DESIGN_UNAPPROVED",
+	"REQUIREMENT_NOT_AGREED",
+	"REQUIREMENT_ALREADY_AGREED",
+	"REQUIREMENT_NOT_READY",
+	"REQUIREMENT_ISSUE_LINKED_ELSEWHERE",
+	"REQUIREMENT_NO_PLAN_TO_ADOPT",
+	"REQUIREMENT_DEFERRED",
+	"REQUIREMENT_DEFER_REASON_REQUIRED",
+	"REQUIREMENT_NOT_DEFERRABLE",
+	"REQUIREMENT_NOT_DEFERRED",
+	"REQUIREMENT_HAS_LIVE_ISSUES",
+	"REQUIREMENT_PINS_CURRENT",
+	"REQUIREMENT_CONTRACT_UNKNOWN",
+	"REQUIREMENT_DESIGN_UNLINKED",
+	"WORKFLOW_NODE_UNKNOWN",
+	"WORKFLOW_NODE_AMBIGUOUS",
+	"REVISION_REASON_REQUIRED",
+	"CRITERION_CODE_UNKNOWN",
+	"CRITERION_CODE_DUPLICATE",
+	"CRITERION_SCENARIO_UNPARSEABLE",
+	"REQUIREMENT_REFUSED",
+	...PERMISSION_REFUSAL_CODES,
+] as const;
+export type RequirementRefusalCode = (typeof REQUIREMENT_REFUSAL_CODES)[number];

@@ -1,13 +1,19 @@
 // `POST /api/issues/:id/events` writes a typed record; `GET` reads an issue's records (ISS-56).
 
+import {
+  isRecordEventKind,
+  RECORD_DIGEST_KIND,
+  RECORD_EVENT_KINDS,
+  type RecordEventRefusalCode,
+} from '@forge/contracts/record-events';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { messageRefusalHttp } from '../../comments/screen.js';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
 import { loadProjectAccess } from '../../lib/authz.js';
+import { refuser } from '../../lib/refusal.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -16,15 +22,10 @@ import {
 } from '../../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
-import type { Actor } from '../../pipeline/activity.js';
-import {
-  isRecordEventKind,
-  RECORD_DIGEST_KIND,
-  RECORD_EVENT_KINDS,
-} from '@forge/contracts/record-events';
-import { listRecordEvents, type RecordEvent, RecordEventRefused } from './store.js';
-import { writeScreenedRecordEvent } from './write.js';
 import { requireHeld } from '../../permissions/index.js';
+import type { Actor } from '../../pipeline/activity.js';
+import { listRecordEvents, type RecordEvent } from './store.js';
+import { writeScreenedRecordEvent } from './write.js';
 
 /** Shape only: the kind, contract and fields are judged by `assertRecordEventDraft`, by name. */
 const eventBodySchema = z
@@ -47,13 +48,6 @@ export function serializeRecordEvent(event: RecordEvent) {
   return { ...event, createdAt: event.createdAt.toISOString() };
 }
 
-function refusalHttp(err: unknown): HTTPException | null {
-  if (err instanceof RecordEventRefused) {
-    return new HTTPException(422, { message: err.message, cause: { code: err.code } });
-  }
-  return messageRefusalHttp(err);
-}
-
 async function loadIssueForEvents(
   issueId: string,
   userId: string,
@@ -69,6 +63,8 @@ async function loadIssueForEvents(
   requireHeld(access, permission);
   return issue;
 }
+
+const refuseEvent = refuser<RecordEventRefusalCode>('EVENT_REFUSED');
 
 export const recordEventRoutes = new Hono<{ Variables: AuthVars }>();
 recordEventRoutes.use('/:id/events', requireAuth(), assertEmailVerified());
@@ -98,7 +94,7 @@ recordEventRoutes.post(
       });
       return c.json(serializeRecordEvent(event), 201);
     } catch (err) {
-      const refusal = refusalHttp(err);
+      const refusal = messageRefusalHttp(err);
       if (refusal) throw refusal;
       throw err;
     }
@@ -117,10 +113,11 @@ recordEventRoutes.get(
     const { id } = c.req.valid('param');
     const { kind, limit } = c.req.valid('query');
     if (kind !== undefined && kind !== RECORD_DIGEST_KIND && !isRecordEventKind(kind)) {
-      throw new HTTPException(422, {
-        message: `\`${kind}\` is not a record kind — filter by one of: ${[...RECORD_EVENT_KINDS, RECORD_DIGEST_KIND].join(', ')}`,
-        cause: { code: 'EVENT_KIND_UNKNOWN' },
-      });
+      throw refuseEvent(
+        'EVENT_KIND_UNKNOWN',
+        `\`${kind}\` is not a record kind — filter by one of: ${[...RECORD_EVENT_KINDS, RECORD_DIGEST_KIND].join(', ')}`,
+        '/kind',
+      );
     }
     const issue = await loadIssueForEvents(id, c.get('userId'), 'project.read');
     const events = await listRecordEvents(issue.id, {

@@ -33,11 +33,12 @@ import {
   closeRunIfOneShot,
   insertOneShotRun,
   type OneShotRunSpec,
+  stampRunMetadataTime,
 } from '../pipeline/runs.js';
 import { requirePolicy } from '../project-config/dispatch-policy.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
-import { projectAdmission, RunnerNotAdmittedError } from './pool-admission.js';
+import { projectAdmission, runnerNotAdmitted } from './pool-admission.js';
 import {
   RUN_GROUP_METADATA_KEY,
   RUN_ISSUE_STATUSES_METADATA_KEY,
@@ -150,12 +151,7 @@ async function announceOnce(
 ): Promise<void> {
   if (found.announced) return;
   await announceOneShotRun(found.runId, { projectId, kind: 'system' });
-  await db
-    .update(pipelineRuns)
-    .set({
-      metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object(${RUN_ANNOUNCED_METADATA_KEY}::text, to_jsonb(now()))`,
-    })
-    .where(eq(pipelineRuns.id, found.runId));
+  await stampRunMetadataTime(found.runId, RUN_ANNOUNCED_METADATA_KEY);
 }
 
 /**
@@ -193,7 +189,7 @@ export async function openRunSession(args: {
   // After the replay, so a committed open whose reply was lost is answered, not orphaned.
   const admission = await projectAdmission({ projectId: args.projectId, deviceId: args.deviceId });
   if (!admission.admitted) {
-    throw new RunnerNotAdmittedError({
+    throw runnerNotAdmitted({
       reason: admission.reason,
       projectId: args.projectId,
       deviceId: args.deviceId,

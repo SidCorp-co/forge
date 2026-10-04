@@ -1,13 +1,19 @@
+import {
+  KERNEL_RECORD_KINDS,
+  type RecordEventRefusalCode,
+  recordAction,
+} from '@forge/contracts/record-events';
 import { and, desc, eq, like, lt } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import type { ActorAgency } from './actor-agency.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 import { resolveActors } from './actor-resolution.js';
@@ -17,8 +23,6 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
-import { KERNEL_RECORD_KINDS, recordAction } from '@forge/contracts/record-events';
-import { requireHeld } from '../permissions/index.js';
 
 const ACTIVITY_TYPES = ['issue', 'comment', 'member'] as const;
 
@@ -150,16 +154,18 @@ async function loadActivity(activityId: string) {
   return row ?? null;
 }
 
+const refuseRecord = refuser<RecordEventRefusalCode>('EVENT_REFUSED');
+
 const KERNEL_RECORD_ACTIONS: ReadonlySet<string> = new Set(KERNEL_RECORD_KINDS.map(recordAction));
 
 // cm:guard ISS-96 — kernel evidence is kept as written for as long as its issue is: the activity
 // routes neither evaluate nor delete a verdict, transition, landing, park or correction row
 export function assertActivityMutable(action: string): void {
   if (!KERNEL_RECORD_ACTIONS.has(action)) return;
-  throw new HTTPException(409, {
-    message: `\`${action}\` is kernel evidence, kept as written for as long as its issue is, so it cannot be evaluated or deleted. Say what is wrong with it in a comment, or record a \`correction\` (\`POST /api/issues/:id/events\`).`,
-    cause: { code: 'KERNEL_RECORD_IMMUTABLE', details: { action } },
-  });
+  throw refuseRecord(
+    'KERNEL_RECORD_IMMUTABLE',
+    `\`${action}\` is kernel evidence, kept as written for as long as its issue is, so it cannot be evaluated or deleted. Say what is wrong with it in a comment, or record a \`correction\` (\`POST /api/issues/:id/events\`).`,
+  );
 }
 
 issueActivityRoutes.patch(

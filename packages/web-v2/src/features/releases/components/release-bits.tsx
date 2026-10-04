@@ -2,22 +2,15 @@
 
 import { RELEASE_STATE_LABELS } from "@forge/contracts/releases";
 import { useState } from "react";
-import { type BannerTone, Icon, LEGEND, Tooltip, WaitBanner, type WaitingOnView } from "@/design";
+import { type BannerTone, Icon, LEGEND, Tooltip, WaitBanner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { ApiError } from "@/lib/api/client";
-import type { ReleaseAttention, ReleaseDetail, ReleaseGateView, ReleaseWaiting } from "../types";
+import type { ReleaseAttentionGroup, ReleaseDetail, ReleaseGateView } from "../types";
 
-export const waitingView = (w: ReleaseWaiting): WaitingOnView => ({
-  kind: w.kind,
-  who: w.who,
-  act: w.act,
-  ...(w.rule ? { rule: w.rule } : {}),
-});
-
-const BANNER_TONE: Record<ReleaseAttention, BannerTone> = {
-  you: "you",
+const BANNER_TONE: Record<ReleaseAttentionGroup, BannerTone> = {
+  needs_you: "you",
   moving: "run",
-  others: "calm",
+  waiting: "calm",
   stuck: "err",
   done: "calm",
   stopped: "calm",
@@ -70,9 +63,9 @@ export function GateLine({ gate }: { gate: ReleaseGateView }) {
 }
 
 export function ReleaseBanner({ r, className }: { r: ReleaseDetail; className?: string }) {
-  const w = r.waiting;
-  const ended = r.attention === "done" || r.attention === "stopped";
-  const stuck = r.attention === "stuck";
+  const w = r.waitingOn;
+  const ended = r.attentionGroup === "done" || r.attentionGroup === "stopped";
+  const stuck = r.attentionGroup === "stuck";
   const head = ended
     ? `${RELEASE_STATE_LABELS[r.state]}.`
     : stuck
@@ -87,7 +80,7 @@ export function ReleaseBanner({ r, className }: { r: ReleaseDetail; className?: 
     : stuck
       ? `${w.who}: ${w.act}`
       : w.act;
-  return <WaitBanner tone={BANNER_TONE[r.attention]} head={head} body={body} rule={w.rule || undefined} className={className} />;
+  return <WaitBanner tone={BANNER_TONE[r.attentionGroup]} head={head} body={body} rule={w.rule || undefined} className={className} />;
 }
 
 export function RefusalText({ error }: { error: unknown }) {

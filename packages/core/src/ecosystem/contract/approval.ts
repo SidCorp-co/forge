@@ -3,6 +3,7 @@
  * whoever holds contracts.approve on the provider project (ADR 0007), a breaking version included.
  */
 
+import type { ContractApprovalRefusalCode } from '@forge/contracts/ecosystem';
 import { type PermissionFacts, permissionRefusal } from '../../permissions/index.js';
 
 export const CONTRACT_APPROVALS = ['proposed', 'approved', 'returned'] as const;
@@ -16,13 +17,8 @@ export const CONTRACT_DECISION_REASON_MAX = 2000;
 /** Who decided a version; `before-approval` marks the versions recorded before the gate existed. */
 export type DecidedAs = 'person' | 'agent' | 'before-approval';
 
-export type ApprovalRefusalCode =
-  | 'CONTRACT_VERSION_NOT_PROPOSED'
-  | 'CONTRACT_DECISION_REASON_MISSING'
-  | 'PERMISSION_FORBIDDEN';
-
 export interface ApprovalRefusal {
-  code: ApprovalRefusalCode;
+  code: ContractApprovalRefusalCode;
   path: string;
   detail: string;
 }

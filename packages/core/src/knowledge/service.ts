@@ -4,14 +4,9 @@ import { db } from '../db/client.js';
 import { type IssueStatus, knowledgeEntries, type knowledgeKinds } from '../db/schema.js';
 import type { MasterVerb } from '../db/schema-master-charter.js';
 import { logger } from '../logger.js';
-import { parseReadWhen, type ReadWhenCondition, ReadWhenShapeError } from './read-when.js';
+import { parseReadWhen, type ReadWhenCondition, readWhenRefusal } from './read-when.js';
 
-export {
-  parseReadWhen,
-  type ReadWhenCondition,
-  type ReadWhenRefusal,
-  ReadWhenShapeError,
-} from './read-when.js';
+export { parseReadWhen, type ReadWhenCondition, type ReadWhenRefusal } from './read-when.js';
 
 const MAX_EMBED_CHARS = 8192;
 
@@ -160,7 +155,7 @@ export async function upsertKnowledgeEntries(
   const readWhenPlans = entries.map((input) => {
     if (input.readWhen === undefined) return { touch: false as const, value: null };
     const parsed = parseReadWhen(input.readWhen);
-    if (!parsed.ok) throw new ReadWhenShapeError(parsed.refusal);
+    if (!parsed.ok) throw readWhenRefusal(parsed.refusal);
     return { touch: true as const, value: parsed.value };
   });
 

@@ -351,7 +351,7 @@ export function useMemoryEstimate(id: string | undefined, enabled: boolean) {
 
 /** True when the POST was refused because a reindex is already queued or running. */
 export function isReindexLiveError(err: unknown): boolean {
-	return err instanceof ApiError && (err.status === 409 || err.code === "REINDEX_LIVE");
+	return err instanceof ApiError && err.code === "REINDEX_LIVE";
 }
 
 export function useSetMemoryModel(id: string | undefined) {

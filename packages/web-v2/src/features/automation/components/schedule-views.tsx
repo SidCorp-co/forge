@@ -38,7 +38,7 @@ import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useScheduleDetail } from "../hooks";
 import { fireHref } from "../routes";
 import type { ScheduleDetailResponse, ScheduleStanding } from "../types";
-import { fmtTime, waitingView } from "../view";
+import { fmtTime } from "../view";
 import { FireLines } from "./fire-views";
 import { ReportLines } from "./report-views";
 
@@ -76,7 +76,7 @@ export const scheduleRow =
       s.waitingOn.kind === "none" ? (
         <span className="text-12-5 text-subtle">{s.nextFireAt ? `Next fire ${fmtTime(s.nextFireAt)}` : "Not scheduled"}</span>
       ) : (
-        <WaitingOn w={waitingView(s.waitingOn)} />
+        <WaitingOn w={s.waitingOn} />
       ),
     owner: s.owner?.name ?? "No owner",
     age: s.lastFire ? { text: formatAge(s.lastFire.startedAt), title: `Last fire ${formatStamp(s.lastFire.startedAt)}` } : null,
@@ -111,7 +111,7 @@ export function RunNow({ s, access }: { s: ScheduleStanding; access: AutomationA
 
 export function ScheduleBanner({ s, className }: { s: ScheduleStanding; className?: string }) {
   if (s.waitingOn.kind === "none") return null;
-  const w = waitingView(s.waitingOn);
+  const w = s.waitingOn;
   const head = w.kind === "you" ? "Waiting on you:" : `Waiting on ${w.who}:`;
   return (
     <WaitBanner

@@ -6,7 +6,6 @@ import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import {
-  approvalRefusal,
   approvalRequestSchema,
   decideApproval,
   parseDecision,
@@ -14,6 +13,7 @@ import {
 } from './approvals.js';
 import { listReleases, readRelease } from './release-read.js';
 import type { ViewerFacts } from './release-view.js';
+import { refuseRelease } from './refuse.js';
 import { findReleaseBatchRun } from './service.js';
 
 export const releaseVersionRoutes = new Hono<{ Variables: AuthVars }>();
@@ -52,13 +52,10 @@ const approvalParam = zValidator(
 );
 const requestBody = zValidator('json', approvalRequestSchema, (r) => {
   if (!r.success) {
-    throw approvalRefusal(
-      422,
-      'RELEASE_APPROVAL_SHAPE',
-      'the request is { evidence: { environment, commit, reading }, note? }',
-      {
-        issues: z.flattenError(r.error),
-      },
+    throw refuseRelease('RELEASE_APPROVAL_SHAPE',
+      `the request is { evidence: { environment, commit, reading }, note? }: ${r.error.issues
+        .map((i) => `${i.path.join('.') || '(body)'} ${i.message}`)
+        .join('; ')}`,
     );
   }
 });

@@ -1,6 +1,5 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, devices, projects, runners, schedules } from '../db/schema.js';
@@ -12,6 +11,7 @@ import {
 } from '../lib/device-pool.js';
 import { LIVE_SESSION_STATUSES, SESSION_MACHINE } from '@forge/contracts/session-machine';
 import { notAnEdgeError } from '../lifecycle/transition.js';
+import { refuseSession } from './refusals.js';
 import { transitionSessions } from './session-transition.js';
 import { logger } from '../logger.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
@@ -173,11 +173,7 @@ agentSessionLifecycleRoutes.post(
     const { session } = await ensureSessionOwnerOrAdmin(id, userId);
 
     if (session.status === 'running' || session.status === 'queued') {
-      throw new HTTPException(409, {
-        message:
-          'The agent is still working on this conversation. Wait for it to finish or stop it, then switch runner.',
-        cause: { code: 'SESSION_BUSY' },
-      });
+      throw refuseSession('SESSION_BUSY', 'The agent is still working on this conversation. Wait for it to finish or stop it, then switch runner.');
     }
 
     const prevMeta = (session.metadata ?? {}) as Record<string, unknown> & {

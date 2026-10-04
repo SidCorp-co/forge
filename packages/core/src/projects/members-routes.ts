@@ -1,3 +1,4 @@
+import { PROJECT_PERMISSIONS, type ProjectPermission } from '@forge/contracts/permissions';
 import { and, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -11,7 +12,6 @@ import {
   projects,
   users,
 } from '../db/schema.js';
-import { PROJECT_PERMISSIONS, type ProjectPermission } from '@forge/contracts/permissions';
 import { loadOrgRole, loadProjectAccess } from '../lib/authz.js';
 import { RefusalError } from '../lib/refusal.js';
 import { logger } from '../logger.js';
@@ -27,6 +27,7 @@ import {
 } from '../permissions/index.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';
+import { refuse } from './refuse.js';
 
 // Every project role is assignable (admin|member|viewer) — there is no
 // project 'owner' anymore; the org tier carries ownership.
@@ -170,21 +171,18 @@ memberRoutes.post(
     // safe for someone the org has already vetted.
     const targetOrgRole = await loadOrgRole(access.orgId, targetUserId);
     if (!targetOrgRole) {
-      throw new HTTPException(409, {
-        message: 'user is not a member of this org — use the email invite',
-        cause: { code: 'NOT_ORG_MEMBER' },
-      });
+      throw refuse(
+        'NOT_ORG_MEMBER',
+        'this user is not a member of the org, so they are added by email invitation, not directly',
+        '/userId',
+      );
     }
 
     const [inserted] = await addProjectMembers(db, [{ userId: targetUserId, projectId, role }], {
       ifAbsent: true,
     });
-    if (!inserted) {
-      throw new HTTPException(409, {
-        message: 'user is already a member',
-        cause: { code: 'ALREADY_MEMBER' },
-      });
-    }
+    if (!inserted)
+      throw refuse('ALREADY_MEMBER', 'this user is already a member of the project', '/userId');
 
     const [email] = await db
       .select({ email: users.email })
@@ -251,10 +249,11 @@ memberRoutes.post(
         )
         .limit(1);
       if (existingMember) {
-        throw new HTTPException(409, {
-          message: 'user is already a member',
-          cause: { code: 'ALREADY_MEMBER' },
-        });
+        throw refuse(
+          'ALREADY_MEMBER',
+          'a user with this email is already a member of the project',
+          '/email',
+        );
       }
     }
 

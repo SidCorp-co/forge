@@ -5,7 +5,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { zValidator } from '../middleware/zod-validator.js';
 import { refused } from '../project-config/respond.js';
 import { uuid } from '../project-config/schema.js';
-import { fencedBy, refusedBy } from './access.js';
+import { forbidden, refusedBy } from './access.js';
 import type { ChannelOutcome } from './channel-act.js';
 import { type ChannelNeed, channelRoleRefusal, writerOf } from './channel-author.js';
 import { supersede, withdraw } from './channel-ends.js';
@@ -112,9 +112,7 @@ function answer(c: Context, outcome: ChannelOutcome) {
 async function mayAct(c: Context<{ Variables: AuthVars }>, projectId: string, need: ChannelNeed) {
   const refusal = await channelRoleRefusal(c.get('userId'), projectId, need);
   if (!refusal) return;
-  throw need === 'write' && refusal.code !== 'CHANNEL_NO_ROLE'
-    ? refusedBy(refusal)
-    : fencedBy(refusal);
+  throw refusal.code === 'CHANNEL_NO_ROLE' ? forbidden(refusal.detail) : refusedBy(refusal);
 }
 
 async function writer(c: Context<{ Variables: AuthVars }>, projectId: string) {

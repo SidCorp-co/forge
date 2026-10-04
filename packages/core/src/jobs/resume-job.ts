@@ -4,20 +4,12 @@ import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import type { KernelActor } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
+import { notFound } from '../middleware/route-errors.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { dispatchRequeuedJob, readHoldState, requeueHeldJob } from './hold.js';
 import { insertInterventionEvent } from './intervention-event.js';
-
-export class JobResumeError extends Error {
-  constructor(
-    public readonly code: 'NOT_FOUND' | 'NOT_HELD',
-    message: string,
-  ) {
-    super(message);
-    this.name = 'JobResumeError';
-  }
-}
+import { refuseJob } from './refusals.js';
 
 export interface ResumeJobOptions {
   /** User id of the acting principal — recorded in the audit event. */
@@ -43,7 +35,7 @@ export interface ResumeJobResult {
  * Deliberately does NOT re-run the hold's condition check: a resume is the
  * operator overriding it. The audit row is what makes that override reviewable.
  *
- * @throws {JobResumeError} `NOT_FOUND` if the job does not exist; `NOT_HELD` if
+ * Answers 404 if the job does not exist; refuses `NOT_HELD` if
  *   it is in any other status (or the CAS lost a race).
  */
 export async function resumeHeldJob(
@@ -51,9 +43,9 @@ export async function resumeHeldJob(
   opts: ResumeJobOptions,
 ): Promise<ResumeJobResult> {
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
-  if (!job) throw new JobResumeError('NOT_FOUND', 'job not found');
+  if (!job) throw notFound('job not found');
   if (job.status !== 'held') {
-    throw new JobResumeError('NOT_HELD', `job is ${job.status}, not held`);
+    throw refuseJob('NOT_HELD', `job is ${job.status}, not held`);
   }
 
   const heldReason = readHoldState(job.payload)?.reason ?? job.failureReason ?? null;
@@ -76,7 +68,7 @@ export async function resumeHeldJob(
     });
     return row;
   });
-  if (!updated) throw new JobResumeError('NOT_HELD', 'job state changed mid-request');
+  if (!updated) throw refuseJob('NOT_HELD', 'job state changed mid-request');
 
   logger.info({ jobId, issueId: updated.issueId, heldReason }, 'resume: held job re-queued');
 

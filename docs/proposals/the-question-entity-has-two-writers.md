@@ -39,8 +39,8 @@ blocker kind `human` is the **marker** that a person owes the issue an answer. T
 stored — `questions/issue-coupling.ts:holdsOpenHumanQuestion` reads it from the question rows every
 time, so answering or voiding the last one clears it with no second write. The Issues list's
 `Needs you` (`orWaitingOnPerson` on the search, and `waitingOnPersonByStatus` in its buckets), the
-issue page's banner, the Attention count (`me/attention-buckets.ts`) and the row chip each read
-status OR marker.
+issue page's banner, the needs-you rows and counts (`development/needs-you.ts:readNeedsYou`, over the
+issue standing) and the row chip each read status OR marker.
 
 - **An ask moves nothing.** `askAs`, behind `POST /api/questions`, writes the
   question and leaves the issue at its rung, whatever the blocker kind.

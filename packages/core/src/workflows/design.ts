@@ -5,6 +5,7 @@ import {
   LEGACY_V2_TEMPLATE,
   type WorkflowTemplate,
 } from '@forge/contracts/workflow-templates';
+import type { DesignRefusalCode } from '@forge/contracts/workflows';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 import { impliedKind } from './edges.js';
 import { stepsOf, type WorkflowWrite } from './schema.js';
@@ -15,22 +16,6 @@ export const DESIGN_DECISIONS = ['approve', 'return'] as const;
 export type DesignDecision = (typeof DESIGN_DECISIONS)[number];
 
 export const DESIGN_REASON_MAX = 2000;
-
-export type DesignRefusalCode =
-  | 'PERMISSION_FORBIDDEN'
-  | 'WORKFLOW_DESIGN_NOT_PROPOSED'
-  | 'WORKFLOW_DESIGN_REVISION_STALE'
-  | 'WORKFLOW_DESIGN_REASON_MISSING'
-  | 'WORKFLOW_DESIGN_ALREADY_PROPOSED'
-  | 'WORKFLOW_DESIGN_ALREADY_APPROVED'
-  | 'WORKFLOW_DESIGN_UNCHANGED'
-  | 'WORKFLOW_DESIGN_NOT_APPROVED'
-  | 'WORKFLOW_DESIGN_BASE_UNAPPROVED'
-  | 'WORKFLOW_DESIGN_ISSUE_IS_BUILD'
-  | 'WORKFLOW_BUILD_ALREADY_LINKED'
-  | 'WORKFLOW_BUILD_NOT_LINKED'
-  | 'WORKFLOW_NODE_UNKNOWN'
-  | 'WORKFLOW_NODE_AMBIGUOUS';
 
 export interface DesignRefusal {
   code: DesignRefusalCode;

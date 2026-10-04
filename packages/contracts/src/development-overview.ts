@@ -3,11 +3,12 @@
 import type {
 	IssueAttentionGroup,
 	IssueLeaseVerdict,
-	IssueWaitingOn,
+	IssueWaitingKind,
 } from "./issue-standing.js";
 import type { IssueStatus } from "./issue-machine.js";
 import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
 import type { MasterSlots, MasterState } from "./master-standing.js";
+import type { WaitingOn } from "./standing.js";
 
 export const OVERVIEW_WINDOW_DAYS = 14;
 
@@ -112,7 +113,7 @@ export interface OverviewLane {
 	segments: OverviewLaneSegment[];
 	heldSince: string | null;
 	lease: { verdict: IssueLeaseVerdict; expiresAt: string | null } | null;
-	waitingOn: IssueWaitingOn;
+	waitingOn: WaitingOn<IssueWaitingKind>;
 }
 
 export interface OverviewMoving {
@@ -128,7 +129,7 @@ export interface OverviewChainNode {
 	status: IssueStatus | null;
 	step: WorkStep | null;
 	tone: IssueStatusTone | null;
-	waitingOn: IssueWaitingOn | null;
+	waitingOn: WaitingOn<IssueWaitingKind> | null;
 	held: boolean;
 }
 
@@ -159,36 +160,6 @@ export interface OverviewModules {
 	unassigned: OverviewModuleRow;
 }
 
-export const OVERVIEW_NEED_KINDS = ["issue", "release", "contract"] as const;
-export type OverviewNeedKind = (typeof OVERVIEW_NEED_KINDS)[number];
-
-export type OverviewNeedState =
-	| {
-			family: "issue";
-			value: IssueStatus;
-			step: WorkStep | null;
-			tone: IssueStatusTone;
-	  }
-	| { family: "release"; value: "pending" }
-	| { family: "classification"; value: string };
-
-export interface OverviewNeed {
-	kind: OverviewNeedKind;
-	key: string;
-	ref: string;
-	title: string;
-	facts: string[];
-	state: OverviewNeedState;
-	waitingOn: IssueWaitingOn;
-	owner: { name: string | null; kind: "human" | "agent" } | null;
-	touchedAt: string | null;
-}
-
-export interface OverviewNeeds {
-	count: number;
-	rows: OverviewNeed[];
-}
-
 export interface DevelopmentOverview {
 	generatedAt: string;
 	signals: OverviewSignals;
@@ -196,7 +167,6 @@ export interface DevelopmentOverview {
 	moving: OverviewMoving;
 	stuck: OverviewStuck;
 	modules: OverviewModules;
-	needsYou: OverviewNeeds;
 	coverage: {
 		open: number;
 		openRead: number;

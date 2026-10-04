@@ -55,10 +55,10 @@ arriving from the other side. It is not what says which row.
 So `releaseIssueLeaseRow` settles the identity before it removes anything: it
 reads the candidate rows `FOR UPDATE`, and answers `not_held` for none and
 `ambiguous` for more than one rather than picking. The route turns those into a
-`404` and a `409`, because a delete that matched nothing acknowledged as `200`
-is read by the box as the issue handed back.
+`404` and a `422` refusal `ISSUE_LEASE_AMBIGUOUS`, because a delete that matched
+nothing acknowledged as `200` is read by the box as the issue handed back.
 
-The `409` is the one answer a box cannot settle from the key alone: core holds
+The `ISSUE_LEASE_AMBIGUOUS` refusal is the one answer a box cannot settle from the key alone: core holds
 two rows and nothing in the request chooses between them, so the way out is
 `?projectId=`, which a runner sends off the ledger's `runs.project_id`. A box
 whose runner predates that parameter meets the refusal and keeps meeting it

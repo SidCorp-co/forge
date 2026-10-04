@@ -32,10 +32,16 @@ import { revokeDeviceCredentials } from './credential.js';
 import { DEVICE_LIST_COLUMNS } from './device-columns.js';
 import { heartbeatGate, withDeviceGate } from './gate-report.js';
 import { heartbeatPatch } from './heartbeat-patch.js';
-import { mirrorHeartbeatToRunners } from './heartbeat-runner-mirror.js';
+import {
+  deleteDeviceRunners,
+  mirrorHeartbeatToRunners,
+  patchDeviceRunnerCheckout,
+  setRunnerProvisionDetail,
+} from '../runners/index.js';
 import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { redeemPairingCode } from './pair.js';
+import { refuseDevice } from './refusals.js';
 import { heartbeatPool } from './pool-read-report.js';
 import { requireHeld, requireOrgCan } from '../permissions/index.js';
 
@@ -202,7 +208,7 @@ deviceOwnerRoutes.patch(
     // A revoked device is gone for good — its token is dead and its runners were
     // deleted; "turn on" can't bring it back (re-pair instead).
     if (disabled === false && device.status === 'revoked') {
-      throw forbidden('device is revoked — re-pair it instead of re-enabling');
+      throw refuseDevice('DEVICE_REVOKED', 'device is revoked — re-pair it instead of re-enabling', '/disabled');
     }
 
     const patch: { name?: string; disabledAt?: Date | null } = {};
@@ -259,7 +265,7 @@ deviceOwnerRoutes.delete(
         source: 'device-revoke',
         returning: ['id'],
       });
-      await tx.delete(runners).where(eq(runners.deviceId, id));
+      await deleteDeviceRunners(tx, [id]);
     });
     await revokeDeviceCredentials(id);
 
@@ -475,22 +481,7 @@ deviceAuthRoutes.patch(
     const { runnerId } = c.req.valid('param');
     const { repoPath, branch } = c.req.valid('json');
 
-    const [runner] = await db
-      .update(runners)
-      .set({
-        updatedAt: new Date(),
-        ...(repoPath !== undefined ? { repoPath } : {}),
-        ...(branch !== undefined ? { branch } : {}),
-      })
-      .where(and(eq(runners.id, runnerId), eq(runners.deviceId, device.id)))
-      .returning({
-        id: runners.id,
-        projectId: runners.projectId,
-        deviceId: runners.deviceId,
-        repoPath: runners.repoPath,
-        branch: runners.branch,
-        status: runners.status,
-      });
+    const runner = await patchDeviceRunnerCheckout(device.id, runnerId, { repoPath, branch });
 
     if (!runner) {
       throw new HTTPException(404, {
@@ -537,20 +528,7 @@ deviceAuthRoutes.post(
         source: 'provision-status',
         returning: ['id'],
       });
-      const [row] = await tx
-        .update(runners)
-        .set({
-          provisionDetail: detail ?? null,
-          updatedAt: new Date(),
-          ...(status === 'ready' ? { provisionedAt: new Date() } : {}),
-        })
-        .where(mine)
-        .returning({
-          id: runners.id,
-          projectId: runners.projectId,
-          deviceId: runners.deviceId,
-          provisionStatus: runners.provisionStatus,
-        });
+      const [row] = await setRunnerProvisionDetail(tx, mine, detail ?? null, status === 'ready');
       return row;
     });
 

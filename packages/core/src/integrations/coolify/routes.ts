@@ -22,7 +22,6 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { AuthVars } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
-import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
 import {
   broadcastIntegrationChanged,
   notFound,
@@ -31,6 +30,7 @@ import { buildContextFromBinding, findBindingWithConnectionById } from '../store
 import { CoolifyApiError, describeCoolifyForbidden } from './client.js';
 import {
   CoolifyCommandError,
+  refuseCoolify,
   coolifyDeliveryStatus,
   listCoolifyIntegrations,
   runCoolifyDeploy,
@@ -115,23 +115,6 @@ const asHttp = (err: unknown): never => {
         ? describeCoolifyForbidden(err)
         : `Coolify answered HTTP ${err.status} to ${err.route ?? 'the request Forge made'}`;
     throw new HTTPException(502, { message: said, cause: { code: 'COOLIFY_API_ERROR' } });
-  }
-  throw err;
-};
-
-/**
- * ISS-1279 — a resumed release refused its environment carries a holder, a
- * subject, a since and what ends the hold. `errorHandler` turns anything that
- * is not an `HTTPException` into a bare `INTERNAL_ERROR` in production, so
- * without this the refusal reaches the person pressing the button as nothing
- * at all.
- */
-const lockedAsHttp = (err: unknown): never => {
-  if (err instanceof DeployEnvironmentLockedError) {
-    throw new HTTPException(409, {
-      message: err.message,
-      cause: { code: err.code },
-    });
   }
   throw err;
 };
@@ -249,10 +232,10 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
         }
         const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(existing);
         if (!ctx.config?.baseUrl || !ctx.secrets?.apiToken) {
-          throw new HTTPException(409, {
-            message: 'coolify connection is missing baseUrl or apiToken',
-            cause: { code: 'MISSING_CREDENTIALS' },
-          });
+          throw refuseCoolify(
+            'MISSING_CREDENTIALS',
+            'this Coolify connection is missing its baseUrl or apiToken; reconnect it with both',
+          );
         }
         auth = credentialFromSecrets(ctx.config, ctx.secrets);
       } else {
@@ -300,7 +283,7 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
         cause: { code: 'NOT_LIVE_BINDING' },
       });
     }
-    const result = await confirmPendingProdDeploy(id).catch(lockedAsHttp);
+    const result = await confirmPendingProdDeploy(id);
     broadcastIntegrationChanged(projectId, {
       bindingId: id,
       connectionId: existing.connection.id,

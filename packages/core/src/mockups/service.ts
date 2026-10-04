@@ -285,3 +285,12 @@ export function withdrawMockup(input: {
     { status: 'withdrawn', reason: null },
   );
 }
+
+/** The mockups drawn on a feedback, removed with what the reporter gave (UC15); answers their bytes' paths. */
+export async function deleteFeedbackMockups(tx: Tx, feedbackId: string): Promise<string[]> {
+  const gone = await tx
+    .delete(mockups)
+    .where(eq(mockups.feedbackId, feedbackId))
+    .returning({ path: mockups.storagePath });
+  return gone.map((g) => g.path);
+}

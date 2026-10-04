@@ -14,6 +14,5 @@ export type {
   ContractStandingRow,
   ContractState,
   ContractVersionView,
-  ContractWaitingOn,
   ContractWindow,
 } from "@forge/contracts/contract-standing";

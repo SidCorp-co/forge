@@ -68,13 +68,6 @@ export interface TurnFacts {
   notesKept: number | null;
 }
 
-export class GradeError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'GradeError';
-  }
-}
-
 export interface IssueLink {
   raw: string;
   hash: boolean;
@@ -210,7 +203,7 @@ const checkers: Record<Check['kind'], Checker> = {
       .flatMap((link) => {
         const outcome = f.lookups[link.segment];
         if (outcome === undefined)
-          throw new GradeError(`no lookup outcome for linked issue ${link.segment}`);
+          throw new Error(`no lookup outcome for linked issue ${link.segment}`);
         return outcome === 'dead' ? [{ mode: 'dead_link', fact: `${link.raw} answered 404` }] : [];
       }),
   mustMatch: (c, f) => {

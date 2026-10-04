@@ -1,6 +1,9 @@
+import type { IssueUpdateRefusalCode } from '@forge/contracts/issues';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues } from '../db/schema.js';
+import { refuser } from '../lib/refusal.js';
+import { notFound } from '../middleware/route-errors.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
 import { leaseWriteTakes } from '../pipeline/session-claim.js';
 import { plannedRevisionFor } from '../requirements/issue-links.js';
@@ -15,6 +18,8 @@ import {
   writeSplitSessionContext,
   writeWorkStateFields,
 } from './work-state.js';
+
+const refuse = refuser<IssueUpdateRefusalCode>('ISSUE_UPDATE_REFUSED');
 
 export type IssueUpdateInput = {
   issueId: string;
@@ -58,9 +63,14 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
 
   return db.transaction(async (tx) => {
     const current = await lockComposedSessionContext(tx, issueId);
-    if (!current) throw new IssueUpdateNotFound(issueId);
+    if (!current) throw notFound('issue not found');
     if (expect && !sameJson(current.sessionContext, expect.sessionContext)) {
-      throw new SessionContextExpectMismatch(current.sessionContext ?? null);
+      throw refuse(
+        'SESSION_CONTEXT_MISMATCH',
+        '`sessionContext` no longer holds the value this write expected — another writer moved it. ' +
+          'Re-read the issue, decide whether your claim still stands, and send the write again with the new `expect`.',
+        '/expect/sessionContext',
+      );
     }
 
     const columns = { ...updates };
@@ -87,7 +97,7 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       .set(columns)
       .where(eq(issues.id, issueId))
       .returning({ id: issues.id });
-    if (!row) throw new IssueUpdateNotFound(issueId);
+    if (!row) throw notFound('issue not found');
     if (updates.acceptanceCriteria !== undefined) {
       await syncCriteriaFromText(
         tx,
@@ -134,7 +144,7 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       .from(issues)
       .where(eq(issues.id, issueId))
       .limit(1);
-    if (!written) throw new IssueUpdateNotFound(issueId);
+    if (!written) throw notFound('issue not found');
     return written;
   });
 }
@@ -184,27 +194,11 @@ function refuseUnreadSessionContextDrop(held: unknown, next: unknown): void {
   const kept = next && typeof next === 'object' && !Array.isArray(next) ? next : {};
   const dropped = Object.keys(held).filter((k) => !(k in (kept as Record<string, unknown>)));
   if (dropped.length === 0) return;
-  throw new SessionContextDropsUnreadKeys(dropped);
-}
-
-export class SessionContextDropsUnreadKeys extends Error {
-  constructor(readonly dropped: string[]) {
-    super('SESSION_CONTEXT_DROPS_UNREAD_KEYS');
-    this.name = 'SessionContextDropsUnreadKeys';
-  }
-}
-
-/** The write carried an `expect` the field no longer holds. `current` is what it holds now. */
-export class SessionContextExpectMismatch extends Error {
-  constructor(readonly current: unknown) {
-    super('SESSION_CONTEXT_MISMATCH');
-    this.name = 'SessionContextExpectMismatch';
-  }
-}
-
-export class IssueUpdateNotFound extends Error {
-  constructor(readonly issueId: string) {
-    super('ISSUE_NOT_FOUND');
-    this.name = 'IssueUpdateNotFound';
-  }
+  throw refuse(
+    'SESSION_CONTEXT_DROPS_UNREAD_KEYS',
+    `this write replaces \`sessionContext\` whole and would remove ${dropped.join(', ')}, ` +
+      'which it never read. Read the field, add your key to what is there, and send it back complete — ' +
+      'or send `expect: { sessionContext: <what you read> }` to say the removal is deliberate.',
+    '/sessionContext',
+  );
 }

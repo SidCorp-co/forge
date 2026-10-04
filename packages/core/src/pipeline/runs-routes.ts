@@ -7,7 +7,6 @@
  */
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -24,9 +23,6 @@ import { requireHeld } from '../permissions/index.js';
 
 const cancelBodySchema = z.object({ parkIssue: z.boolean().optional() });
 
-const runConflict = (message: string) =>
-  new HTTPException(409, { message, cause: { code: 'run_terminal' } });
-
 async function loadRunWithAccess(runId: string, userId: string): Promise<PipelineRunRow> {
   const row = await readPipelineRun(runId);
   if (!row) throw notFound('pipeline run not found');
@@ -39,9 +35,6 @@ function rethrowControlError(err: unknown): never {
   const message = err instanceof Error ? err.message : String(err);
   if (message.startsWith('NOT_FOUND:')) {
     throw notFound(message.slice('NOT_FOUND: '.length) || 'pipeline run not found');
-  }
-  if (message.startsWith('CONFLICT:')) {
-    throw runConflict(message.slice('CONFLICT: '.length) || 'run already terminal');
   }
   throw err;
 }

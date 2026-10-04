@@ -8,8 +8,6 @@ import {
   ISSUE_ATTENTION_LABELS,
   type IssueStanding,
   type IssueStandingRow,
-  type IssueWaitingKind,
-  type IssueWaitingOn,
 } from "@forge/contracts/issue-standing";
 import { WORK_STEP_LABELS, WORK_STEPS } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
@@ -29,26 +27,11 @@ import {
   StepBar,
   WaitBanner,
   WaitingOn,
-  type WaitingOnView,
-  type WhoKind,
 } from "@/design";
 import { feedbackHref } from "@/features/feedback/routes";
 import { requirementHref } from "@/features/requirements/routes";
 import { formatAge, formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import { issueHref } from "../routes";
-
-const WHO: Record<IssueWaitingKind, WhoKind | "none"> = {
-  you: "you",
-  person: "person",
-  run: "agent",
-  master: "agent",
-  judge: "agent",
-  issue: "issue",
-  release: "release",
-  none: "none",
-};
-
-export const issueWaitingView = (w: IssueWaitingOn): WaitingOnView => ({ kind: WHO[w.kind], who: w.who, act: w.act, rule: w.rule });
 
 export const issueBadge = (r: Pick<IssueStandingRow, "status" | "standing">) => (
   <StatusBadge family="issue" value={r.status} step={r.standing.step} tone={r.standing.tone} />
@@ -74,7 +57,7 @@ export const issueRowView =
     title: r.title,
     facts: factsLine(r),
     state: issueBadge(r),
-    waitingOn: <WaitingOn w={issueWaitingView(r.standing.waitingOn)} />,
+    waitingOn: <WaitingOn w={r.standing.waitingOn} />,
     owner: r.standing.owner ? (
       <ActorChip name={r.standing.owner.name ?? "Unknown"} kind={r.standing.owner.kind} size={20} />
     ) : (
@@ -190,7 +173,7 @@ export function IssuePeekFacts({ row, slug }: { row: IssueStandingRow; slug: str
       {s.attentionGroup !== "done" ? (
         <Fact label="Waits on">
           <span className="min-w-0">
-            <WaitingOn w={issueWaitingView(s.waitingOn)} />
+            <WaitingOn w={s.waitingOn} />
             {s.waitingOn.rule ? sub(s.waitingOn.rule.charAt(0).toUpperCase() + s.waitingOn.rule.slice(1)) : null}
           </span>
         </Fact>

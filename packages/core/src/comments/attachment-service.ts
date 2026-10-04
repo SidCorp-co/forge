@@ -1,3 +1,4 @@
+import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
@@ -12,27 +13,12 @@ import {
 } from '../lib/attachment-mime.js';
 import { lockAttachmentName, type NameCheckExecutor } from '../lib/attachment-name-lock.js';
 import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
+import { type RefusalError, refuser } from '../lib/refusal.js';
 import { getStorage } from '../storage/index.js';
 
 export { safeName };
 
-export type AttachmentErrorCode =
-  | 'MIME_NOT_ALLOWED'
-  | 'FILE_TOO_LARGE'
-  | 'EMPTY_FILE'
-  | 'INVALID_NAME'
-  | 'ATTACHMENT_NAME_TAKEN';
-
-export class AttachmentError extends Error {
-  readonly code: AttachmentErrorCode;
-  readonly details: unknown;
-  constructor(code: AttachmentErrorCode, message: string, details?: unknown) {
-    super(message);
-    this.code = code;
-    this.details = details;
-    this.name = 'AttachmentError';
-  }
-}
+const refuse = refuser<AttachmentRefusalCode>('ATTACHMENT_REFUSED');
 
 /**
  * Everything a comment attachment is refused for, decided without touching
@@ -44,15 +30,18 @@ export function validateCommentAttachment(input: {
   mime: string;
   bytes: Buffer;
 }): string {
-  if (!input.name) throw new AttachmentError('INVALID_NAME', 'name is empty after sanitisation');
+  if (!input.name) throw refuse('INVALID_NAME', 'name is empty after sanitisation');
   if (nameExceedsByteBudget(input.name))
-    throw new AttachmentError(
+    throw refuse(
       'INVALID_NAME',
       `name is longer than ${NAME_MAX_BYTES} bytes of UTF-8 — rename the file and upload it again`,
     );
-  if (input.bytes.byteLength <= 0) throw new AttachmentError('EMPTY_FILE', 'empty file');
+  if (input.bytes.byteLength <= 0) throw refuse('EMPTY_FILE', 'empty file');
   if (input.bytes.byteLength > env.UPLOADS_MAX_BYTES)
-    throw new AttachmentError('FILE_TOO_LARGE', 'file too large');
+    throw refuse(
+      'FILE_TOO_LARGE',
+      `file too large: ${input.bytes.byteLength} bytes, at most ${env.UPLOADS_MAX_BYTES}`,
+    );
 
   const resolved = resolveAttachmentMime({
     target: 'comment',
@@ -61,19 +50,21 @@ export function validateCommentAttachment(input: {
     bytes: input.bytes,
   });
   if (!resolved.ok) {
-    throw new AttachmentError('MIME_NOT_ALLOWED', mimeRefusalMessage(resolved), {
-      reason: resolved.reason,
-      allowed: allowedSetForTarget('comment'),
-    });
+    throw refuse(
+      'MIME_NOT_ALLOWED',
+      `${mimeRefusalMessage(resolved)}; a comment takes ${allowedSetForTarget('comment').mimes.join(
+        ', ',
+      )}`,
+    );
   }
   return resolved.mime;
 }
 
-function nameTakenError(existing: ExistingAttachmentRef, scope: string): AttachmentError {
-  return new AttachmentError(
+function nameTakenError(existing: ExistingAttachmentRef, scope: string): RefusalError {
+  return refuse(
     'ATTACHMENT_NAME_TAKEN',
     `an attachment named "${existing.name}" is already on this ${scope} (id ${existing.id}) — cite it or upload under a different name`,
-    { existing },
+    '/name',
   );
 }
 

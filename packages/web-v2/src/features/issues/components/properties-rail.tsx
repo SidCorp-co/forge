@@ -6,6 +6,7 @@
 // convention, and dependency edges (rendered as clickable `ISS-X` badges linking
 // to the related issue — ISS-331).
 
+import type { IssueMove } from "@forge/contracts/issue-machine";
 import type { ComponentProps } from "react";
 import { Avatar, Button, EnumBadge, MonoTag, Stat, StatusBadge, StatusChip } from "@/design";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
@@ -195,6 +196,8 @@ interface PropertiesRailProps {
   canMarkMerged?: boolean | undefined;
   /** What a person owes this issue, so the status control at a park offers that decision first. */
   park?: ComponentProps<typeof StatusEdit>["park"];
+  /** Core's moves from the issue's status (`IssueStanding.moves`). */
+  moves: readonly IssueMove[];
 }
 
 export function PropertiesRail({
@@ -208,6 +211,7 @@ export function PropertiesRail({
   onEditModules,
   canMarkMerged,
   park,
+  moves,
 }: PropertiesRailProps) {
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
   const plainLabels = (issue.labels ?? []).filter((l) => l.kind !== "module");
@@ -240,7 +244,7 @@ export function PropertiesRail({
         <StatusEdit
           status={issue.status}
           step={issue.workState?.step ?? null}
-          leftStatus={issue.workState?.leftStatus ?? null}
+          moves={moves}
           agentStatus={issue.agentStatus}
           disabled={pending}
           onTransition={onTransition}

@@ -1,7 +1,7 @@
 import { inArray } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import { comments } from '../../db/schema.js';
-import { AttributeRefusal, type AttributeWrite } from './write.js';
+import { type AttributeWrite, refuseAttribute } from './write.js';
 
 const caseFoldedUuid = (v: string): string => v.toLowerCase();
 
@@ -28,10 +28,10 @@ export async function assertSourceCommentsOnIssue(
 
   const missing = wanted.filter((id) => !found.has(caseFoldedUuid(id)));
   if (missing.length > 0) {
-    throw new AttributeRefusal(
+    throw refuseAttribute(
       'SOURCE_COMMENT_NOT_FOUND',
       `sourceCommentId ${missing.map((i) => `\`${i}\``).join(', ')} names no comment. It must be the id of a comment on this issue — the row exists to point back at the sentence that asserted it.`,
-      { missing },
+      '/attributes',
     );
   }
 
@@ -40,10 +40,10 @@ export async function assertSourceCommentsOnIssue(
   );
   if (offenders.length > 0) {
     const ids = [...new Set(offenders.map((o) => o.id))];
-    throw new AttributeRefusal(
+    throw refuseAttribute(
       'SOURCE_COMMENT_OFF_ISSUE',
       `sourceCommentId ${ids.map((i) => `\`${i}\``).join(', ')} names a comment on a different issue (${ids.map((i) => `\`${i}\` is on \`${found.get(caseFoldedUuid(i))}\``).join(', ')}). The pointer must stay on the issue the attribute is written to, or no reader can follow it back.`,
-      { ids, issueId: offenders[0]?.issueId },
+      '/attributes',
     );
   }
 }

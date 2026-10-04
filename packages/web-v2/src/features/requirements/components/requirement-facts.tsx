@@ -14,7 +14,7 @@ import { workflowHref } from "@/features/workflows/routes";
 import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
 import { requirementHref } from "../routes";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
-import { CoverageSummary, Stepper, waitingView } from "./standing-bits";
+import { CoverageSummary, Stepper } from "./standing-bits";
 
 const VIA_LABEL: Record<RequirementFeedbackItem["via"]["type"], string> = {
   requirement: "",
@@ -104,7 +104,7 @@ export function RequirementFacts({
         </Fact>
         {s.attentionGroup !== "done" ? (
           <Fact label="Waiting on">
-            <WaitingOn w={waitingView(s.waitingOn)} />
+            <WaitingOn w={s.waitingOn} />
           </Fact>
         ) : null}
         <Fact label="Owner">

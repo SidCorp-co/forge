@@ -5,8 +5,8 @@ import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { holds, requireHeld } from '../permissions/index.js';
-import { readNeedsYou } from './needs-you-read.js';
+import { requireHeld } from '../permissions/index.js';
+import { needsYouViewerOf, readNeedsYou } from './needs-you.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const noQuery = z.strictObject({});
@@ -29,13 +29,6 @@ needsYouRoutes.get(
     if (!agency) throw new Error('needs-you: a request reached its handler without an auth gate');
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
-    return c.json(
-      await readNeedsYou(projectId, {
-        userId,
-        agency,
-        isAdmin: holds(access, 'project.admin'),
-        mayApprove: holds(access, 'releases.approve'),
-      }),
-    );
+    return c.json(await readNeedsYou(projectId, needsYouViewerOf(access, userId, agency)));
   },
 );

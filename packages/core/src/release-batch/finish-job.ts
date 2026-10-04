@@ -16,16 +16,11 @@ import { eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
+import { isRefusal, refusalCodeOf } from '../lib/refusal.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { abortedError, batchAborted, rewordStoredAbort } from './abort-stamp.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
-import {
-  ReleaseFinishedForOtherCommitError,
-  ReleaseFinishFenceLostError,
-  ReleaseFinishInFlightError,
-  ReleaseNotVerifiedError,
-} from './errors.js';
 import {
   compareAndSet,
   type FinishRefusal,
@@ -35,7 +30,14 @@ import {
   readFinishRecord,
   stamp,
 } from './finish-record.js';
-import { finishRefusal } from './refusals.js';
+import {
+  FENCE_LOST,
+  fenceLost,
+  liveOf,
+  notVerifiedRefusal,
+  reasonOf,
+  refuseRelease,
+} from './refuse.js';
 import { assertFinishable, finishReleaseBatch, readReleaseRun } from './service.js';
 import { claimedCommit, NOTHING_TO_COMPARE, notAWholeCommit } from './verify.js';
 
@@ -83,7 +85,7 @@ export async function acceptReleaseBatchFinish(
 ): Promise<AcceptFinishResult> {
   const commit = options.commit === undefined ? null : claimedCommit(options.commit);
   if (options.commit !== undefined && commit === null) {
-    throw new ReleaseNotVerifiedError(notAWholeCommit(options.commit, null), null);
+    throw notVerifiedRefusal(notAWholeCommit(options.commit, null), null);
   }
 
   for (let round = 0; round < 3; round++) {
@@ -96,10 +98,10 @@ export async function acceptReleaseBatchFinish(
 
     if (current && isInFlight(current)) {
       if (current.commit !== commit) {
-        throw new ReleaseFinishInFlightError(current.requestId, current.commit, commit, {
-          projectId: run.projectId,
-          runId,
-        });
+        throw refuseRelease(
+          'RELEASE_FINISH_IN_FLIGHT',
+          `A finish for ${current.commit ?? 'no named commit'} is already running on this batch (request ${current.requestId}), and this call names ${commit ?? 'no commit'}. Read its outcome with GET /api/projects/${run.projectId}/release-batches/${runId}/state (\`finish\`); a new finish is taken once that one has failed.`,
+        );
       }
       return { runId, finish: current, started: false };
     }
@@ -107,10 +109,10 @@ export async function acceptReleaseBatchFinish(
       if (run.status === 'running' || run.status === 'paused') await enqueue(runId);
       // A named commit the record never verified is refused, not answered with its 200.
       if (commit !== null && current.commit !== commit) {
-        throw new ReleaseFinishedForOtherCommitError(current.requestId, current.commit, commit, {
-          projectId: run.projectId,
-          runId,
-        });
+        throw refuseRelease(
+          'RELEASE_FINISHED_FOR_OTHER_COMMIT',
+          `${finishedForSentence(current.commit, commit)} Read what it recorded with GET /api/projects/${run.projectId}/release-batches/${runId}/state (\`finish\`).`,
+        );
       }
       return { runId, finish: current, started: false };
     }
@@ -127,7 +129,7 @@ export async function acceptReleaseBatchFinish(
       const verification = await assertFinishable(runId, run);
       const before = (run.metadata as { commitBefore?: unknown } | null)?.commitBefore;
       if (verification.kind === 'probed' && commit === null && typeof before !== 'string') {
-        throw new ReleaseNotVerifiedError(NOTHING_TO_COMPARE, null);
+        throw notVerifiedRefusal(NOTHING_TO_COMPARE, null);
       }
     }
 
@@ -177,7 +179,7 @@ function holdAttempt(runId: string, start: ReleaseFinishRecord, hooks: FinishWor
   /** With `ifCancelled`, `patch` lands only on a run not aborted and `ifCancelled` on an aborted one. */
   function commit(patch: Patch, ifCancelled?: Patch) {
     const step = chain.then(async () => {
-      if (lost) throw new ReleaseFinishFenceLostError();
+      if (lost) throw fenceLost();
       let next = stamp(current, await patch(current));
       let landed = await compareAndSet(runId, current.version, next, { runOpen: !!ifCancelled });
       if (!landed && ifCancelled) {
@@ -186,7 +188,7 @@ function holdAttempt(runId: string, start: ReleaseFinishRecord, hooks: FinishWor
       }
       if (!landed) {
         lost = true;
-        throw new ReleaseFinishFenceLostError();
+        throw fenceLost();
       }
       current = next;
       return next;
@@ -200,7 +202,7 @@ function holdAttempt(runId: string, start: ReleaseFinishRecord, hooks: FinishWor
    * owns the attempt. A takeover rewrites the owner, and its compare-and-set waits on this lock.
    */
   async function fence(tx: Tx): Promise<void> {
-    if (lost) throw new ReleaseFinishFenceLostError();
+    if (lost) throw fenceLost();
     await hooks.beforeFence?.();
     const rows = await tx.execute<{ owner: string | null; status: string; metadata: unknown }>(sql`
       SELECT ${pipelineRuns.metadata} -> 'finish' ->> 'owner' AS owner, ${pipelineRuns.status} AS status,
@@ -211,7 +213,7 @@ function holdAttempt(runId: string, start: ReleaseFinishRecord, hooks: FinishWor
     const row = rows[0];
     if (row?.owner !== current.owner) {
       lost = true;
-      throw new ReleaseFinishFenceLostError();
+      throw fenceLost();
     }
     if (row && batchAborted(row)) throw await abortedError(runId, tx);
     await hooks.afterFence?.();
@@ -237,16 +239,18 @@ function leaseStands(record: ReleaseFinishRecord, now: number): boolean {
   return record.owner !== null && record.leaseUntil !== null && Date.parse(record.leaseUntil) > now;
 }
 
+/** Which commit a finished batch verified, against the one a later finish names. */
+function finishedForSentence(finishedCommit: string | null, askedCommit: string): string {
+  const verified =
+    finishedCommit === null
+      ? 'finished with no named commit, on a live build that had changed from what was serving when it opened'
+      : `finished for ${finishedCommit}`;
+  return `This batch already ${verified}, and this call names ${askedCommit}, which that finish never verified. A finished batch is not verified again, so its issues' closes say nothing about ${askedCommit}; a release of ${askedCommit} is a batch of its own.`;
+}
+
 function refusalOf(err: unknown): FinishRefusal {
-  const http = finishRefusal(err);
-  if (http) {
-    const cause = (http.cause ?? {}) as { code?: string; details?: { live?: unknown } };
-    return {
-      code: cause.code ?? 'RELEASE_FINISH_REFUSED',
-      reason: http.message,
-      live: typeof cause.details?.live === 'string' ? cause.details.live : null,
-    };
-  }
+  const code = refusalCodeOf(err);
+  if (code) return { code, reason: reasonOf(err), live: liveOf(err) };
   return {
     code: 'RELEASE_FINISH_ERRORED',
     reason: `the finish stopped on an error this code did not expect: ${err instanceof Error ? err.message : String(err)}. Nothing about the release is implied by it; call finish again to take a new attempt.`,
@@ -356,7 +360,7 @@ export async function runReleaseBatchFinish(
       },
     });
   } catch (err) {
-    if (err instanceof ReleaseFinishFenceLostError || hold.lost) return;
+    if (isRefusal(err, FENCE_LOST) || hold.lost) return;
     if (hold.state === 'finished') {
       // The roster is closed and recorded; only the run's close failed, which the sweep retries.
       logger.error({ err, runId }, 'release-batch: a finished release could not close its run');

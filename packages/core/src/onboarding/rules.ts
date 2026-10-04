@@ -3,7 +3,7 @@
  * `approve-guard`), as pure functions over what the service read. Who may act is a permission.
  */
 
-import type { OnboardingRefusal, OnboardingStatus } from '@forge/contracts/onboarding';
+import type { OnboardingRefusal } from '@forge/contracts/onboarding';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
@@ -24,7 +24,7 @@ const runningDetail = (job: LiveJob) =>
 // ONBOARDING_ALREADY_RUNNING naming the running job; a start over a finished onboarding is
 // ONBOARDING_ALREADY_STARTED, because a fresh analysis is a re-analysis a person asks for
 export function startRefusal(
-  existing: { id: string; status: OnboardingStatus } | null,
+  existing: { id: string; doneAt: Date | null } | null,
   live: LiveJob | null,
 ): OnboardingRefusal | null {
   if (live) return { code: 'ONBOARDING_ALREADY_RUNNING', path: '', detail: runningDetail(live) };
@@ -32,7 +32,7 @@ export function startRefusal(
   return {
     code: 'ONBOARDING_ALREADY_STARTED',
     path: '',
-    detail: `onboarding ${existing.id} already exists (${existing.status}); its thread holds the rounds so far. Ask for a re-analysis (POST …/onboarding/reanalyze) to read the code again.`,
+    detail: `onboarding ${existing.id} already exists${existing.doneAt ? ' and is done' : ''}; its thread holds the rounds so far. Ask for a re-analysis (POST …/onboarding/reanalyze) to read the code again.`,
   };
 }
 
@@ -56,8 +56,8 @@ export function notStarted(): OnboardingRefusal {
 
 // cm:guard a done onboarding takes no more batches or updates (ONBOARDING_DONE) until a person
 // asks for a re-analysis, which reopens it
-export function doneRefusal(status: OnboardingStatus): OnboardingRefusal | null {
-  if (status !== 'done') return null;
+export function doneRefusal(row: { doneAt: Date | null }): OnboardingRefusal | null {
+  if (!row.doneAt) return null;
   return {
     code: 'ONBOARDING_DONE',
     path: '',

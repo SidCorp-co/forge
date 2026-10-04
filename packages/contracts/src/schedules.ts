@@ -34,3 +34,6 @@ export const SCHEDULE_RUN_STREAK_SKIP_REASONS = [
 	"no-device",
 	"project-not-found",
 ] as const satisfies readonly ScheduleRunSkipReason[];
+
+export const SCHEDULE_REFUSAL_CODES = ["SCHEDULE_REFUSED", "SCHEDULE_DISPATCH_FAILED"] as const;
+export type ScheduleRefusalCode = (typeof SCHEDULE_REFUSAL_CODES)[number];

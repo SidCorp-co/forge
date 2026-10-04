@@ -6,6 +6,7 @@
  */
 
 import { decryptSecret } from '../integrations/vault.js';
+import { isRefusal } from '../lib/refusal.js';
 
 const REASON_MAX = 200;
 
@@ -100,6 +101,7 @@ export function integrityViolation(err: unknown): string | null {
 
 /** The innermost message: drizzle's outer one is the whole failed statement. */
 function messageOf(err: unknown): string {
+  if (isRefusal(err)) return err.refusals.map((r) => `${r.code}: ${r.detail}`).join('; ');
   let deepest: string | null = null;
   for (let cur: unknown = err, depth = 0; cur && depth < 5; depth++) {
     const message = (cur as { message?: unknown }).message;

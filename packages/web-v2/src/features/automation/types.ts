@@ -60,7 +60,6 @@ export const PM_MODEL_OPTIONS: { label: string; value: string }[] = [
 
 export type {
   AutomationStandingResponse,
-  AutomationWaitingOn,
   FireDetailResponse,
   FireProduced,
   FireProposal,
