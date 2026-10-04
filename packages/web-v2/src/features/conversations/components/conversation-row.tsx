@@ -1,19 +1,9 @@
 "use client";
 
-// One row of the conversation list — the template that fits both a 360px list
-// column and a 375px phone, with the project glyph carrying the "which project"
-// signal a bare title cannot (ISS-698).
-//
-// It reads a conversation now rather than a session (ISS-1004 step 5). What went
-// with the session row: the status chip and the awaiting-reply weight, both of
-// which described a RUN's lifecycle. A conversation has no status — it has what
-// was last said in it and when.
-//
-// Since ISS-1028 it also carries what a person does TO a room: rename, archive
-// and delete. They live here rather than on each list because the dock's list
-// and the full-page sidebar both render this row, and two copies of a
-// destructive control is two places for them to disagree about what a press
-// means.
+// One row of the conversation list, fitting both a 360px list column and a 375px phone; the project
+// glyph carries the "which project" signal a bare title cannot (ISS-698). Rename, archive and delete
+// live here rather than on each list, because the dock's list and the full-page sidebar both render
+// this row and two copies of a destructive control can disagree about what a press means (ISS-1028).
 
 import { useState } from "react";
 import { IconButton, Input, ProjectMark, StatusBadge } from "@/design";
@@ -55,36 +45,22 @@ export function ConversationRow({
 } & ConversationRowActions) {
   const glyph = projectGlyph(project?.slug ?? row.projectId);
   const initials = projectInitials(project?.name ?? "?");
+
+  const title = conversationTitle(row);
   const archived = row.archivedAt !== null;
+  const [editing, setEditing] = useState(false);
+  const mark = <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={initials} size={22} />;
 
-  const [editing, setEditing] = useState<string | null>(null);
-  const draft = editing ?? "";
-  const setDraft = (v: string) => setEditing(v);
-
-  const commit = () => {
-    const next = draft.trim();
-    setEditing(null);
-    if (next.length > 0 && next !== conversationTitle(row)) onRename?.(next);
-  };
-
-  if (editing !== null) {
+  if (editing) {
     return (
-      <div className="flex min-h-[44px] w-full items-center gap-2 border-b border-line-subtle bg-surface px-3 py-1.5">
-        <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={initials} size={22} />
-        <Input
-          autoFocus
-          value={draft}
-          aria-label="Conversation name"
-          onFocus={(e) => e.currentTarget.select()}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commit();
-            if (e.key === "Escape") setEditing(null);
-          }}
-          onBlur={commit}
-          className="min-w-0 flex-1"
-        />
-      </div>
+      <RenameRow
+        mark={mark}
+        title={title}
+        onDone={(next) => {
+          setEditing(false);
+          if (next) onRename?.(next);
+        }}
+      />
     );
   }
 
@@ -98,12 +74,12 @@ export function ConversationRow({
         type="button"
         onClick={onOpen}
         aria-current={open ? "true" : undefined}
-        aria-label={`Open ${conversationTitle(row)} in ${project?.name ?? "an unknown project"}`}
+        aria-label={`Open ${title} in ${project?.name ?? "an unknown project"}`}
         title={`${row.ecosystemId ? "Ecosystem" : "Project"} scope · ${project?.name ?? "Unknown project"}`}
         className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--link)]"
       >
-        <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={initials} size={22} />
-        <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{conversationTitle(row)}</span>
+        {mark}
+        <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{title}</span>
         {row.threadStatus && <StatusBadge family="thread" value={row.threadStatus} />}
       </button>
 
@@ -111,43 +87,45 @@ export function ConversationRow({
           actions in a 207px row left the title none. */}
       <div className="hidden flex-none items-center gap-0.5 group-focus-within:flex group-hover:flex">
         {onPin && (
-          <IconButton
-            icon="pin"
-            size="sm"
-            aria-pressed={row.pinned === true}
-            aria-label={`${row.pinned ? "Unpin" : "Pin"} ${conversationTitle(row)}`}
-            onClick={() => onPin(!row.pinned)}
-          />
+          <IconButton icon="pin" size="sm" aria-pressed={row.pinned === true} aria-label={`${row.pinned ? "Unpin" : "Pin"} ${title}`} onClick={() => onPin(!row.pinned)} />
         )}
-        {onRename && (
-          <IconButton
-            icon="rename"
-            size="sm"
-            aria-label={`Rename ${conversationTitle(row)}`}
-            onClick={() => setEditing(conversationTitle(row))}
-          />
-        )}
+        {onRename && <IconButton icon="rename" size="sm" aria-label={`Rename ${title}`} onClick={() => setEditing(true)} />}
         {onArchive && (
-          <IconButton
-            icon="archive"
-            size="sm"
-            aria-label={`${archived ? "Unarchive" : "Archive"} ${conversationTitle(row)}`}
-            onClick={() => onArchive(!archived)}
-          />
+          <IconButton icon="archive" size="sm" aria-label={`${archived ? "Unarchive" : "Archive"} ${title}`} onClick={() => onArchive(!archived)} />
         )}
-        {onDelete && (
-          <IconButton
-            icon="trash"
-            size="sm"
-            aria-label={`Delete ${conversationTitle(row)}`}
-            onClick={onDelete}
-          />
-        )}
+        {onDelete && <IconButton icon="trash" size="sm" aria-label={`Delete ${title}`} onClick={onDelete} />}
       </div>
 
       <span className="fg-caption flex-none whitespace-nowrap font-mono text-subtle group-focus-within:hidden group-hover:hidden">
         {formatRelativeTime(row.updatedAt)}
       </span>
+    </div>
+  );
+}
+
+/** The row as a name field; `onDone` gets the new title, or null when nothing changed. */
+function RenameRow({ mark, title, onDone }: { mark: React.ReactNode; title: string; onDone: (next: string | null) => void }) {
+  const [draft, setDraft] = useState(title);
+  const commit = () => {
+    const next = draft.trim();
+    onDone(next.length > 0 && next !== title ? next : null);
+  };
+  return (
+    <div className="flex min-h-[44px] w-full items-center gap-2 border-b border-line-subtle bg-surface px-3 py-1.5">
+      {mark}
+      <Input
+        autoFocus
+        value={draft}
+        aria-label="Conversation name"
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") onDone(null);
+        }}
+        onBlur={commit}
+        className="min-w-0 flex-1"
+      />
     </div>
   );
 }

@@ -107,7 +107,7 @@ export function renderRefusals(refusals: readonly MessageRefusal[]): string {
     .join('\n');
 }
 
-/** The legacy `problems` projection, for callers that still speak that shape. */
+/** The refusal reasons alone: a log line, a corrective prompt, a `problems` field. */
 export function problemsOf(verdict: MessageVerdict): string[] {
   return verdict.ok ? [] : verdict.refusals.map((r) => r.why);
 }

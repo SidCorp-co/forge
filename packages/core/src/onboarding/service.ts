@@ -1,174 +1,42 @@
 /**
  * Onboarding (workflow project-onboarding rev 1): a conversation in the chat panel, one per project,
  * held by an `onboardings` row. A person starts it or asks for a re-analysis; each runs one
- * analysis job (type `onboarding`, the method in its prompt). The agent posts updates and
- * questionnaire batches into the thread; a person answers a batch once, which hands the thread
- * back to the agent with a revise job. Each write runs in one transaction under the project's
- * onboarding lock and answers an outcome, refusals named and nothing written.
+ * analysis job (`job.ts`). The agent posts updates and questionnaire batches into the thread
+ * (`agent-writes.ts`); a person answers a batch once, which hands the thread back to the agent
+ * with a revise job.
  */
 
 import { randomUUID } from 'node:crypto';
-import type {
-  OnboardingJobPhase,
-  OnboardingView,
-  PostQuestionnaireRequest,
-  PostUpdateRequest,
-  QuestionnaireView,
-} from '@forge/contracts/onboarding';
-import type { ActorAgency } from '@forge/contracts/permissions';
-import { and, eq, inArray, sql } from 'drizzle-orm';
-import type { TxOnly } from '../conversations/index.js';
-import {
-  addPerson,
-  appendMessagesIn,
-  openConversationIn,
-  settleShape,
-} from '../conversations/index.js';
+import { and, eq, sql } from 'drizzle-orm';
+import { addPerson, openConversationIn, settleShape } from '../conversations/index.js';
 import { db } from '../db/client.js';
-import { jobs, projects } from '../db/schema.js';
+import { projects } from '../db/schema.js';
 import { conversationParticipants } from '../db/schema-conversations.js';
 import { onboardings } from '../db/schema-onboarding.js';
-import { projectWorkflows } from '../db/schema-workflows.js';
-import { finalizeJobDone } from '../jobs/index.js';
-import { lockXact } from '../lib/advisory-lock.js';
 import type { EgressReader } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
-import type { Refusal } from '../lib/refusal.js';
-import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
-import { insertAndEnqueueJob, openOneShotRun } from '../pipeline/index.js';
-import { readDeclaredSource } from '../project-config/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
   announce,
-  type BatchRow,
   batchesOfConversation,
-  batchView,
   inTx,
-  posterRefusal,
-  postQuestionnaireIn,
   questionnairesAs,
-  roundsRefusal,
   supersedeOpenIn,
 } from '../questionnaires/index.js';
-import { analysePrompt, type OnboardingPromptContext, revisePrompt } from './prompt.js';
 import {
-  designsOf,
-  liveJobOf,
-  type OnboardingRow,
-  onboardingOf,
-  onboardingView,
-  projectHoldsSensitiveData,
-} from './read.js';
-import {
-  agentWriteRefusal,
-  closeRefusal,
-  dataFlowRefusal,
-  designUnknownRefusals,
-  doneRefusal,
-  notStarted,
-  personActRefusal,
-  reanalyzeRefusal,
-  settlesPhaseJob,
-  startRefusal,
-} from './rules.js';
-
-export interface OnboardingActor {
-  userId: string;
-  agency: ActorAgency;
-}
-
-export type OnboardingOutcome =
-  | { ok: true; onboarding: OnboardingView; created?: boolean }
-  | { ok: false; refusals: Refusal[] };
-
-export type OnboardingQuestionnaireOutcome =
-  | { ok: true; questionnaire: QuestionnaireView; created: true }
-  | { ok: false; refusals: Refusal[] };
-
-/** Serialises every onboarding write on one project. */
-async function lockOnboarding(tx: TxOnly, projectId: string) {
-  await lockXact(tx, 'onboarding', projectId);
-}
-
-const factsOf = (actor: OnboardingActor, projectId: string) =>
-  permissionFactsOf(actor.userId, projectId);
+  lockOnboarding,
+  type OnboardingActor,
+  type OnboardingOutcome,
+  refusalFor,
+  settled,
+  systemLine,
+} from './act.js';
+import { enqueueJob } from './job.js';
+import { liveJobOf, onboardingOf, onboardingView } from './read.js';
+import { notStarted, personActRefusal, reanalyzeRefusal, startRefusal } from './rules.js';
 
 async function nameOf(userId: string) {
   return (await peopleOf([userId])).get(userId)?.name ?? 'Someone';
-}
-
-async function settled(
-  projectId: string,
-  extra: { created?: boolean } = {},
-): Promise<OnboardingOutcome> {
-  const row = await onboardingOf(db, projectId);
-  if (!row) throw new Error(`onboarding: project ${projectId} lost its onboarding after a write`);
-  return { ok: true, onboarding: await onboardingView(db, row), ...extra };
-}
-
-async function systemLine(tx: TxOnly, conversationId: string, content: string) {
-  const [m] = await appendMessagesIn(tx, {
-    conversationId,
-    messages: [{ role: 'system', content, authorLabel: 'Forge' }],
-  });
-  return m?.id ?? null;
-}
-
-/** The agent's last act of a phase settles the job that ran it. */
-async function settlePhaseJob(agency: ActorAgency, jobId: string | null) {
-  if (!jobId) return;
-  const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
-  if (job && settlesPhaseJob(agency, job.status))
-    await finalizeJobDone(job, 'onboarding_phase_settled');
-}
-
-/** The one job of an onboarding phase: an issue-less one-shot run whose prompt is the method. */
-async function enqueueJob(
-  row: OnboardingRow,
-  phase: OnboardingJobPhase,
-  createdBy: string,
-  extra: { batchId?: string; reason?: string | null } = {},
-): Promise<string> {
-  const [project] = await db
-    .select({ name: projects.name })
-    .from(projects)
-    .where(eq(projects.id, row.projectId));
-  const source = await readDeclaredSource(row.projectId);
-  const ctx: OnboardingPromptContext = {
-    projectId: row.projectId,
-    projectName: project?.name ?? row.projectId,
-    onboardingId: row.id,
-    conversationId: row.conversationId,
-    sensitiveData: await projectHoldsSensitiveData(row.projectId),
-    repository: source.repository,
-    defaultBranch: source.defaultBranch,
-    roundsSent: row.roundsSent,
-    reason: extra.reason ?? null,
-  };
-  const run = await openOneShotRun({
-    projectId: row.projectId,
-    kind: 'system',
-    metadata: { source: 'onboarding', onboardingId: row.id, phase },
-  });
-  const { jobId } = await insertAndEnqueueJob({
-    projectId: row.projectId,
-    issueId: null,
-    pipelineRunId: run.id,
-    createdBy,
-    type: 'onboarding',
-    skillName: `onboarding-${phase}`,
-    promptString:
-      phase === 'revise' && extra.batchId
-        ? revisePrompt({ ...ctx, batchId: extra.batchId })
-        : analysePrompt(ctx),
-    payloadExtras: {
-      onboardingId: row.id,
-      onboardingPhase: phase,
-      ...(extra.batchId ? { batchId: extra.batchId } : {}),
-      timeoutSeconds: 3600,
-    },
-  });
-  await db.update(onboardings).set({ lastJobId: jobId }).where(eq(onboardings.id, row.id));
-  return jobId;
 }
 
 // cm:why onboarding is offered, never required (BC-1): start only opens the thread and queues the
@@ -178,8 +46,7 @@ export async function startOnboarding(input: {
   actor: OnboardingActor;
 }): Promise<OnboardingOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
-  const who = personActRefusal(await factsOf(actor, projectId), 'starting onboarding');
+  const who = await refusalFor(actor, projectId, (f) => personActRefusal(f, 'starting onboarding'));
   if (who) return { ok: false, refusals: [who] };
   const [project] = await db
     .select({ name: projects.name })
@@ -233,8 +100,9 @@ export async function reanalyzeOnboarding(input: {
   reason?: string | undefined;
 }): Promise<OnboardingOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
-  const who = personActRefusal(await factsOf(actor, projectId), 'asking for a re-analysis');
+  const who = await refusalFor(actor, projectId, (f) =>
+    personActRefusal(f, 'asking for a re-analysis'),
+  );
   if (who) return { ok: false, refusals: [who] };
   const asker = await nameOf(actor.userId);
   let conversationId = '';
@@ -299,187 +167,6 @@ export async function joinOnboarding(input: { projectId: string; actor: Onboardi
     await settleShape(handle, row.conversationId);
   });
   return settled(input.projectId);
-}
-
-export async function postOnboardingQuestionnaire(input: {
-  projectId: string;
-  actor: OnboardingActor;
-  body: PostQuestionnaireRequest;
-}): Promise<OnboardingQuestionnaireOutcome> {
-  const { projectId, actor, body } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
-  const who = posterRefusal(await factsOf(actor, projectId));
-  if (who) return { ok: false, refusals: [who] };
-  let batchId = '';
-  let conversationId = '';
-  let messageId: string | null = null;
-  let jobId: string | null = null;
-  const refused = await inTx(async (tx) => {
-    await lockOnboarding(tx, projectId);
-    const row = await onboardingOf(tx, projectId, true);
-    if (!row) return [notStarted()];
-    const blocked = doneRefusal(row) ?? roundsRefusal(row.roundsSent);
-    if (blocked) return [blocked];
-    conversationId = row.conversationId;
-    jobId = row.lastJobId;
-    const posted = await postQuestionnaireIn(tx, {
-      projectId,
-      conversationId: row.conversationId,
-      onboardingId: row.id,
-      requirementId: null,
-      round: row.roundsSent + 1,
-      seriesSince: row.reanalyzedAt ?? row.startedAt,
-      actor,
-      authorLabel: 'Agent',
-      title: body.title,
-      intro: body.intro,
-      items: body.items,
-    });
-    if (Array.isArray(posted)) return posted;
-    batchId = posted.batchId;
-    messageId = posted.messageId;
-    await tx
-      .update(onboardings)
-      .set({ roundsSent: row.roundsSent + 1, updatedAt: new Date() })
-      .where(eq(onboardings.id, row.id));
-    return null;
-  });
-  if (refused) return { ok: false, refusals: refused };
-  await announce(conversationId, messageId, 'assistant');
-  await settlePhaseJob(actor.agency, jobId);
-  return { ok: true, questionnaire: await batchView(db, projectId, batchId), created: true };
-}
-
-// cm:why an update names its designs and registers them with the onboarding, so their status is read
-// live by the thread and the dashboard, and so they take only a person's approval
-export async function postOnboardingUpdate(input: {
-  projectId: string;
-  actor: OnboardingActor;
-  body: PostUpdateRequest;
-}): Promise<OnboardingOutcome> {
-  const { projectId, actor, body } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
-  const who = agentWriteRefusal(await factsOf(actor, projectId));
-  if (who) return { ok: false, refusals: [who] };
-  let conversationId = '';
-  let messageId: string | null = null;
-  const refused = await inTx(async (tx) => {
-    await lockOnboarding(tx, projectId);
-    const row = await onboardingOf(tx, projectId, true);
-    if (!row) return [notStarted()];
-    const done = doneRefusal(row);
-    if (done) return [done];
-    conversationId = row.conversationId;
-    const ids = body.designs?.workflowIds ?? [];
-    if (ids.length) {
-      const found = await tx
-        .select({ id: projectWorkflows.id })
-        .from(projectWorkflows)
-        .where(and(eq(projectWorkflows.projectId, projectId), inArray(projectWorkflows.id, ids)));
-      const have = new Set(found.map((f) => f.id));
-      const missing = designUnknownRefusals(ids.filter((id) => !have.has(id)));
-      if (missing.length) return missing;
-    }
-    const [message] = await appendMessagesIn(tx, {
-      conversationId: row.conversationId,
-      messages: [
-        {
-          role: 'assistant',
-          authorUserId: actor.userId,
-          authorLabel: 'Agent',
-          content: body.designs
-            ? `${body.text}\n\n${body.designs.heading}: ${ids.join(', ')}`
-            : body.text,
-          blocks: [
-            { type: 'text', text: body.text },
-            ...(body.designs ? [{ type: 'designs' as const, designs: body.designs }] : []),
-          ],
-        },
-      ],
-    });
-    messageId = message?.id ?? null;
-    await tx
-      .update(onboardings)
-      .set({ designs: [...new Set([...row.designs, ...ids])], updatedAt: new Date() })
-      .where(eq(onboardings.id, row.id));
-    return null;
-  });
-  if (refused) return { ok: false, refusals: refused };
-  await announce(conversationId, messageId, 'assistant');
-  return settled(projectId);
-}
-
-export async function markOnboardingDone(input: {
-  projectId: string;
-  actor: OnboardingActor;
-  text?: string | undefined;
-}): Promise<OnboardingOutcome> {
-  const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
-  const who = closeRefusal(await factsOf(actor, projectId));
-  if (who) return { ok: false, refusals: [who] };
-  const sensitive = await projectHoldsSensitiveData(projectId);
-  let conversationId = '';
-  let jobId: string | null = null;
-  const refused = await inTx(async (tx) => {
-    await lockOnboarding(tx, projectId);
-    const row = await onboardingOf(tx, projectId, true);
-    if (!row) return [notStarted()];
-    const done = doneRefusal(row);
-    if (done) return [done];
-    conversationId = row.conversationId;
-    jobId = row.lastJobId;
-    const designs = await designsOf(tx, projectId, row.designs);
-    const flow = dataFlowRefusal(
-      sensitive,
-      designs.map((d) => d.template),
-    );
-    if (flow) return [flow];
-    await tx
-      .update(onboardings)
-      .set({
-        doneBy: actor.userId,
-        doneAgency: actor.agency,
-        doneAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(onboardings.id, row.id));
-    if (input.text) {
-      await appendMessagesIn(tx, {
-        conversationId: row.conversationId,
-        messages: [
-          {
-            role: actor.agency === 'agent' ? 'assistant' : 'system',
-            authorUserId: actor.userId,
-            authorLabel: actor.agency === 'agent' ? 'Agent' : null,
-            content: input.text,
-          },
-        ],
-      });
-    }
-    return null;
-  });
-  if (refused) return { ok: false, refusals: refused };
-  await announce(conversationId, null, 'assistant');
-  await settlePhaseJob(actor.agency, jobId);
-  return settled(projectId);
-}
-
-/** Written in the submit's transaction; the batch's own status says whose turn the thread is. */
-export async function onboardingSubmittedIn(tx: TxOnly, batch: BatchRow) {
-  if (!batch.onboardingId) return;
-  await tx
-    .update(onboardings)
-    .set({ updatedAt: new Date() })
-    .where(eq(onboardings.id, batch.onboardingId));
-}
-
-/** After a submit commits: one revise job reads the answers, unless an onboarding job already runs. */
-export async function afterOnboardingSubmit(batch: BatchRow, submittedBy: string) {
-  if (!batch.onboardingId) return;
-  const row = await onboardingOf(db, batch.projectId);
-  if (!row || (await liveJobOf(db, batch.projectId))) return;
-  await enqueueJob(row, 'revise', submittedBy, { batchId: batch.id });
 }
 
 export async function readAnswers(projectId: string, actor: OnboardingActor & EgressReader) {

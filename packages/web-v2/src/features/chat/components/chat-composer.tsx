@@ -1,36 +1,15 @@
 "use client";
 
-// The one composer. Both surfaces that host one render this: the conversations
-// pane and the run thread.
-//
-// Its shape is a single bordered frame of two rows — staged files and the box
-// on top, the controls underneath — so every control the composer offers sits
-// on the same column as the text it acts on. What each surface brings is its
-// own attachment policy, its own control for the footer slot, and its own
-// answer to whether a running turn can be stopped.
+// The one composer, for the conversations pane and the run thread: one bordered frame, staged
+// files and the box on top, the controls underneath. Each surface brings its attachment policy,
+// its footer control, and whether a running turn can be stopped.
 
-import {
-  type ClipboardEvent,
-  createContext,
-  type KeyboardEvent,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import { useDropzone } from "react-dropzone";
+import { createContext, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { Banner, Button, Icon, IconButton } from "@/design";
-import {
-  acceptAttribute,
-  type AttachmentPolicy,
-  formatSize,
-  refusalSentence,
-  stageFiles,
-  type StagingRefusal,
-} from "../attachments";
+import { acceptAttribute, type AttachmentPolicy, formatSize, refusalSentence } from "../attachments";
 import { SketchPad } from "./sketch/sketch-pad";
+import { type StagedFile, useStagedFiles } from "./use-staged-files";
 
 /** How tall the box may grow before it scrolls instead. */
 const MAX_ROWS = 8;
@@ -47,11 +26,6 @@ export const ComposerWidthContext = createContext<number | null>(null);
 const KEY_HINT = "Enter sends · Shift+Enter for a new line";
 /** Narrower than this, the composer's footer has no room left for a hint line worth reading. */
 const HINT_ROW_MIN_WIDTH = 560;
-
-interface StagedFile {
-  id: string;
-  file: File;
-}
 
 export interface ChatComposerProps {
   /**
@@ -103,272 +77,106 @@ export function ReadOnlyComposerNote({ sticky = true }: { sticky?: boolean }) {
   );
 }
 
-export function ChatComposer({
-  onSend,
-  disabled,
-  busy,
-  queueWhileBusy,
-  placeholder = "Message the agent…",
-  attachments,
-  sticky = true,
-  footerControl,
-  onStop,
-  stopping,
-  initialValue = "",
-}: ChatComposerProps) {
-  const [value, setValue] = useState(initialValue);
-  const [files, setFiles] = useState<StagedFile[]>([]);
-  const [sketching, setSketching] = useState(false);
-  const [refusals, setRefusals] = useState<StagingRefusal[]>([]);
-  const nextFileId = useRef(0);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const rowRef = useRef<HTMLDivElement>(null);
-  const [frameWidth, setFrameWidth] = useState<number | null>(null);
+const FRAME =
+  "flex w-full flex-col rounded-2xl border bg-surface transition-shadow focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)]";
 
+// cm:why the hint is a line of its own under the box, never inside the footer row, where it ran over
+// the footer's own controls in a narrow dock (REQ-11 BC-8); a narrow composer keeps it on Send's tooltip
+function hintLine(files: StagedFile[], frameWidth: number | null): string | null {
+  if (files.length > 0) {
+    const bytes = files.reduce((n, { file }) => n + file.size, 0);
+    return `${files.length} file${files.length === 1 ? "" : "s"} · ${formatSize(bytes)}`;
+  }
+  return (frameWidth ?? 0) >= HINT_ROW_MIN_WIDTH ? KEY_HINT : null;
+}
+
+function useWidth(ref: RefObject<HTMLElement | null>): number | null {
+  const [width, setWidth] = useState<number | null>(null);
   useEffect(() => {
-    const node = rowRef.current;
+    const node = ref.current;
     if (!node || typeof ResizeObserver === "undefined") return;
-    setFrameWidth(node.getBoundingClientRect().width);
+    setWidth(node.getBoundingClientRect().width);
     const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width;
-      if (width !== undefined) setFrameWidth(width);
+      const w = entries[0]?.contentRect.width;
+      if (w !== undefined) setWidth(w);
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [ref]);
+  return width;
+}
+
+export function ChatComposer(props: ChatComposerProps) {
+  const { onSend, disabled, busy, queueWhileBusy, attachments } = props;
+  const [value, setValue] = useState(props.initialValue ?? "");
+  const [sketching, setSketching] = useState(false);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const frameWidth = useWidth(rowRef);
+  const staged = useStagedFiles(attachments, Boolean(disabled || busy));
+  const { files } = staged;
+  const { getRootProps, getInputProps, open: openPicker, isDragActive } = staged.dropzone;
 
   const canSend =
     !disabled && (queueWhileBusy || !busy) && (value.trim().length > 0 || files.length > 0);
-  // Stop is offered on the turn, not on this browser's own send: anyone in the
-  // room watching an answer arrive may end it, and `onStop` is given only while
-  // there is a turn to end, so its presence is the whole condition.
-  const showStop = Boolean(onStop);
-
-  /**
-   * Every route in — the dialog, a drop, a paste — lands here, so a file is
-   * judged by the same policy however it arrived and a refusal always names it.
-   */
-  const take = useCallback(
-    (picked: readonly File[]) => {
-      if (!attachments) return;
-      const outcome = stageFiles(picked, attachments, files.length);
-      setRefusals(outcome.refused);
-      if (outcome.accepted.length === 0) return;
-      setFiles((prev) => [
-        ...prev,
-        ...outcome.accepted.map((file) => ({ id: `file-${nextFileId.current++}`, file })),
-      ]);
-    },
-    [attachments, files.length],
-  );
-
-  const { getRootProps, getInputProps, open: openPicker, isDragActive } = useDropzone({
-    onDrop: take,
-    noClick: true,
-    noKeyboard: true,
-    multiple: true,
-    disabled: !attachments || disabled || busy,
-  });
-
-  /**
-   * A pasted screenshot. Only image blobs are pulled in; pasted text falls
-   * through to the box. Clipboard images often carry no name, so supply one.
-   */
-  const onPaste = useCallback(
-    (e: ClipboardEvent) => {
-      if (!attachments) return;
-      const blobs: File[] = [];
-      for (const item of Array.from(e.clipboardData.items)) {
-        if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
-        const file = item.getAsFile();
-        if (!file) continue;
-        if (file.name) {
-          blobs.push(file);
-          continue;
-        }
-        const ext = item.type.split("/")[1] ?? "png";
-        blobs.push(new File([file], `pasted-${blobs.length + 1}.${ext}`, { type: item.type }));
-      }
-      if (blobs.length === 0) return;
-      e.preventDefault();
-      take(blobs);
-    },
-    [attachments, take],
-  );
-
-  const removeFile = (id: string) => {
-    setFiles((prev) => prev.filter((file) => file.id !== id));
-    setRefusals([]);
-  };
 
   const submit = async () => {
     if (!canSend) return;
     const text = value.trim();
-    const staged = files.map(({ file }) => file);
+    const picked = files.map(({ file }) => file);
     const clear = () => {
       setValue("");
-      setFiles([]);
-      setRefusals([]);
+      staged.clear();
     };
     if (queueWhileBusy) {
       clear();
-      await onSend(text, staged);
-      return;
+      return onSend(text, picked);
     }
-    try {
-      await onSend(text, staged);
-      clear();
-    } catch {
-      // The text and the files stay; the caller surfaces the error.
-    }
+    // A failed send keeps the text and the files; the caller surfaces the error.
+    await onSend(text, picked).then(clear, () => {});
   };
-
-  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      submit();
-    }
-  };
-
-  const staged = files.reduce((bytes, { file }) => bytes + file.size, 0);
-  // cm:why the hint is a line of its own under the box, never inside the footer row, where it ran over
-  // the footer's own controls in a narrow dock (REQ-11 BC-8); a narrow composer keeps it on Send's tooltip
-  const hint =
-    files.length > 0
-      ? `${files.length} file${files.length === 1 ? "" : "s"} · ${formatSize(staged)}`
-      : (frameWidth ?? 0) >= HINT_ROW_MIN_WIDTH
-        ? KEY_HINT
-        : null;
+  const hint = hintLine(files, frameWidth);
 
   return (
     <ComposerWidthContext.Provider value={frameWidth}>
-      <div className={bandClass(sticky, "px-4 py-3 sm:px-6")} onPaste={attachments ? onPaste : undefined}>
+      <div className={bandClass(props.sticky ?? true, "px-4 py-3 sm:px-6")} onPaste={staged.onPaste}>
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 xl:max-w-4xl">
-          {refusals.length > 0 && (
-            <Banner tone="attention">
-              <ul className="space-y-0.5">
-                {refusals.map((refusal) => (
-                  <li key={`${refusal.name}-${refusal.reason}`}>{refusalSentence(refusal)}</li>
-                ))}
-              </ul>
-            </Banner>
-          )}
-
+          {staged.refusals.length > 0 && <RefusalBanner refusals={staged.refusals} />}
           <div
             {...getRootProps({
               ref: rowRef,
               "data-testid": "chat-composer",
-              // react-dropzone marks its root aria-disabled whenever dropping is
-              // off, and this root holds the footer: every control in it, Stop
-              // included, would be announced disabled for the whole of a turn.
-              // Each control states its own disabled state instead.
+              // react-dropzone marks its root aria-disabled whenever dropping is off, and this root
+              // holds the footer, Stop included; each control states its own disabled state instead.
               "aria-disabled": undefined,
-              className: [
-                "flex w-full flex-col rounded-2xl border bg-surface transition-shadow",
-                "focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)]",
-                isDragActive ? "border-dashed border-[color:var(--link)]" : "border-line-strong",
-              ].join(" "),
+              className: `${FRAME} ${isDragActive ? "border-dashed border-[color:var(--link)]" : "border-line-strong"}`,
             })}
           >
             {attachments && (
-              // The picker's own input, which "Attach files" opens: hidden from
-              // the accessibility tree so the one control is not announced twice.
+              // Hidden from the accessibility tree so "Attach files" is not announced twice.
               <input {...getInputProps({ accept: acceptAttribute(attachments), "aria-hidden": true })} />
             )}
+            {files.length > 0 && <StagedChips files={files} busy={busy} onRemove={staged.remove} />}
 
-            {files.length > 0 && (
-              <ul className="flex flex-wrap gap-1.5 px-2.5 pt-2.5" data-testid="composer-chips">
-                {files.map(({ id, file }) => (
-                  <li
-                    key={id}
-                    className="flex max-w-60 items-center gap-2 rounded-md border border-line-subtle bg-sunken py-1 pl-2 pr-1"
-                  >
-                    <Icon
-                      name={file.type.startsWith("image/") ? "grid" : "folder"}
-                      size={14}
-                      className="flex-none text-subtle"
-                    />
-                    <span className="fg-caption min-w-0 flex-1 truncate text-fg" title={file.name}>
-                      {file.name}
-                    </span>
-                    <span className="fg-caption flex-none">{formatSize(file.size)}</span>
-                    <IconButton
-                      type="button"
-                      icon="x"
-                      size="sm"
-                      aria-label={`Remove ${file.name}`}
-                      disabled={busy}
-                      onClick={() => removeFile(id)}
-                    />
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <TextareaAutosize
-              ref={textareaRef}
+            <MessageBox
               value={value}
-              onChange={(e) => setValue(e.target.value)}
-              onKeyDown={onKeyDown}
+              onChange={setValue}
+              onEnter={submit}
               disabled={disabled}
-              minRows={1}
-              maxRows={MAX_ROWS}
-              placeholder={disabled ? "No device online — start a runner to chat." : placeholder}
-              aria-label="Message"
-              className="w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3.5 text-base text-fg outline-none placeholder:text-disabled disabled:cursor-not-allowed md:text-sm"
+              placeholder={disabled ? "No device online — start a runner to chat." : (props.placeholder ?? "Message the agent…")}
             />
 
-            <div className="flex items-center gap-1 px-2 pb-2">
-              {attachments && (
-                <IconButton
-                  type="button"
-                  variant="ghost"
-                  icon="plus"
-                  aria-label="Attach files"
-                  className="h-11 w-11 flex-none"
-                  disabled={disabled || busy}
-                  onClick={openPicker}
-                />
-              )}
-              {attachments?.mimes.includes("image/png") && (
-                <IconButton
-                  type="button"
-                  variant="ghost"
-                  icon="sketch"
-                  aria-label="Sketch"
-                  title="Sketch something to send"
-                  className="h-11 w-11 flex-none"
-                  disabled={disabled || busy}
-                  onClick={() => setSketching(true)}
-                />
-              )}
-              {footerControl}
-              <div className="ml-auto flex flex-none items-center gap-2.5">
-                {showStop ? (
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    icon="stop"
-                    aria-label="Stop answering"
-                    className="h-11 w-11 flex-none rounded-full p-0"
-                    loading={stopping}
-                    onClick={onStop}
-                  />
-                ) : (
-                  <Button
-                    variant="primary"
-                    size="md"
-                    icon="arrowRight"
-                    aria-label="Send message"
-                    title={`Send · ${KEY_HINT}`}
-                    className="h-11 w-11 flex-none rounded-full p-0"
-                    loading={busy}
-                    disabled={!canSend}
-                    onClick={submit}
-                  />
-                )}
-              </div>
-            </div>
+            <ComposerFooter
+              attachments={attachments}
+              locked={Boolean(disabled || busy)}
+              busy={busy}
+              onAttach={openPicker}
+              onSketch={() => setSketching(true)}
+              control={props.footerControl}
+              onStop={props.onStop}
+              stopping={props.stopping}
+              canSend={canSend}
+              onSend={submit}
+            />
           </div>
 
           {hint && (
@@ -376,10 +184,96 @@ export function ChatComposer({
               {hint}
             </p>
           )}
-
         </div>
       </div>
-      {sketching && <SketchPad open onClose={() => setSketching(false)} onAttach={(file) => take([file])} />}
+      {sketching && <SketchPad open onClose={() => setSketching(false)} onAttach={(file) => staged.take([file])} />}
     </ComposerWidthContext.Provider>
+  );
+}
+
+/** The box itself: grows to `MAX_ROWS`, Enter sends, Shift+Enter breaks the line. */
+function MessageBox(p: {
+  value: string;
+  onChange: (value: string) => void;
+  onEnter: () => void;
+  disabled: boolean | undefined;
+  placeholder: string;
+}) {
+  return (
+    <TextareaAutosize
+      value={p.value}
+      onChange={(e) => p.onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" || e.shiftKey) return;
+        e.preventDefault();
+        p.onEnter();
+      }}
+      disabled={p.disabled}
+      minRows={1}
+      maxRows={MAX_ROWS}
+      placeholder={p.placeholder}
+      aria-label="Message"
+      className="w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3.5 text-base text-fg outline-none placeholder:text-disabled disabled:cursor-not-allowed md:text-sm"
+    />
+  );
+}
+
+/** Under the box: attach and sketch, the surface's own control, then Send — or Stop while a turn runs. */
+function ComposerFooter(p: {
+  attachments: AttachmentPolicy | undefined;
+  locked: boolean;
+  busy: boolean | undefined;
+  onAttach: () => void;
+  onSketch: () => void;
+  control: ReactNode;
+  onStop: (() => void) | undefined;
+  stopping: boolean | undefined;
+  canSend: boolean;
+  onSend: () => void;
+}) {
+  const ghost = "h-11 w-11 flex-none";
+  return (
+    <div className="flex items-center gap-1 px-2 pb-2">
+      {p.attachments && (
+        <IconButton type="button" variant="ghost" icon="plus" aria-label="Attach files" className={ghost} disabled={p.locked} onClick={p.onAttach} />
+      )}
+      {p.attachments?.mimes.includes("image/png") && (
+        <IconButton type="button" variant="ghost" icon="sketch" aria-label="Sketch" title="Sketch something to send" className={ghost} disabled={p.locked} onClick={p.onSketch} />
+      )}
+      {p.control}
+      <div className="ml-auto flex flex-none items-center gap-2.5">
+        {/* Stop is offered on the turn, not on this browser's send: `onStop` is given only while there is a turn to end. */}
+        {p.onStop ? (
+          <Button variant="secondary" size="md" icon="stop" aria-label="Stop answering" className="h-11 w-11 flex-none rounded-full p-0" loading={p.stopping} onClick={p.onStop} />
+        ) : (
+          <Button variant="primary" size="md" icon="arrowRight" aria-label="Send message" title={`Send · ${KEY_HINT}`} className="h-11 w-11 flex-none rounded-full p-0" loading={p.busy} disabled={!p.canSend} onClick={p.onSend} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RefusalBanner({ refusals }: { refusals: ReturnType<typeof useStagedFiles>["refusals"] }) {
+  return (
+    <Banner tone="attention">
+      <ul className="space-y-0.5">{refusals.map((r) => <li key={`${r.name}-${r.reason}`}>{refusalSentence(r)}</li>)}</ul>
+    </Banner>
+  );
+}
+
+function StagedChips({ files, busy, onRemove }: { files: StagedFile[]; busy: boolean | undefined; onRemove: (id: string) => void }) {
+  return (
+    <ul className="flex flex-wrap gap-1.5 px-2.5 pt-2.5" data-testid="composer-chips">
+      {files.map(({ id, file }) => (
+        <li key={id} className="flex max-w-60 items-center gap-2 rounded-md border border-line-subtle bg-sunken py-1 pl-2 pr-1">
+          <Icon name={file.type.startsWith("image/") ? "grid" : "folder"} size={14} className="flex-none text-subtle" />
+          <span className="fg-caption min-w-0 flex-1 truncate text-fg" title={file.name}>
+            {file.name}
+          </span>
+          <span className="fg-caption flex-none">{formatSize(file.size)}</span>
+          <IconButton type="button" icon="x" size="sm" aria-label={`Remove ${file.name}`} disabled={busy} onClick={() => onRemove(id)} />
+        </li>
+      ))}
+    </ul>
   );
 }

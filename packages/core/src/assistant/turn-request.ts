@@ -1,0 +1,136 @@
+// The shape of one conversation turn: what the transport hands the runner, the hooks it may
+// divert through, and how the turn ended.
+
+import type { ConversationVenue, ScreenedMessage } from '../conversations/index.js';
+import type { TurnAuthority, TurnCredential } from '../credentials/turn-credential.js';
+import type { ChatStreamEvent } from '../integrations/llm/index.js';
+import type { ContentBlock } from '../lib/agent-stream-parser.js';
+import type { DoorId } from '../messaging/contract.js';
+import type { ExternalChatTurnResult } from './external-chat.js';
+import type { ChatToolset } from './tools/mcp-adapter.js';
+import type { ImageResolver, TurnImage } from './vision.js';
+
+/** What the transport contributes to a turn beyond the message itself. */
+export interface TurnInputs {
+  tools?: ChatToolset | undefined;
+  persona?: string | null;
+  conversationContext?: string | null;
+  /** The page the person sees beside the chat, rendered above their newest message (ISS-47). */
+  pageContext?: Record<string, unknown> | null;
+  images?: readonly TurnImage[] | undefined;
+  resolveImage?: ImageResolver | undefined;
+}
+
+/** What a hook is given: the phase name the report will carry, the turn's abort, and whose authority it runs under. */
+export interface TurnHookContext {
+  setPhase: (phase: string) => void;
+  signal: AbortSignal;
+  /** The person this turn answers and acts as; `authority.userId` is who every tool runs as. */
+  authority: TurnAuthority;
+  principalUserId: string;
+  /**
+   * The token minted for that person for this turn, minted on first call and revoked when the
+   * turn ends; throws a turn-authority refusal where their grant leaves the tools nothing.
+   */
+  credential: () => Promise<TurnCredential>;
+  /** The linked author of the newest person message, or null when nobody Forge knows (ISS-1034). */
+  speakerUserId: string | null;
+  /** The room this turn answers in, for the tools that write on the speaker's behalf. */
+  conversationId: string;
+  /** The handle answering for the venue's project in this room, or null where none is in it. */
+  handleUserId: string | null;
+}
+
+export type TurnReply =
+  | { send: false; reason: string; declined?: boolean }
+  | { send: true; message: ScreenedMessage; screenReplaced: boolean };
+
+export interface ConversationTurnRequest {
+  venue: ConversationVenue;
+  /** The person whose message this turn answers: whose access it reads and runs its tools under. */
+  authority: TurnAuthority;
+  /** The transport's own id for the speaker, for the audit row. */
+  speakerKey: string;
+  speakerUserId?: string | null | undefined;
+  handleUserId?: string | null | undefined;
+  message: string;
+  /** The door the reply goes out of; its row carries the pair and the repair budget. */
+  door: DoorId;
+  /**
+   * The question is already a row, so this turn writes only its silence.
+   */
+  questionAlreadyRecorded?: boolean;
+  /**
+   * This turn is allowed to say nothing.
+   */
+  mayDecline?: boolean;
+  /**
+   * How the model's answer reaches the venue: as its reply, or only through `room_send`.
+   */
+  sendMode?: 'reply' | 'tool' | undefined;
+  /**
+   * What stands when the turn cannot post its answer: the code-authored apology, or nothing.
+   */
+  fallbacks?: 'post' | 'silence' | undefined;
+  /**
+   * The person this reply answers, by the label the transport shows for them.
+   */
+  addressee?: string | null | undefined;
+  /**
+   * The stable key this turn's delivery answers, so a retry of it delivers nothing.
+   */
+  deliveryKey?: string;
+  /**
+   * Called once, immediately before the text is handed to the transport.
+   */
+  onBeforeDeliver?: () => Promise<boolean>;
+  /**
+   * Called for each event of the FIRST attempt's turn loop, as it yields.
+   */
+  onTurnEvent?: ((event: ChatStreamEvent) => void) | undefined;
+  /**
+   * Called once with the text the screen admitted, before it is delivered.
+   */
+  onSettled?: ((settled: { text: string; screenReplaced: boolean }) => void) | undefined;
+  /**
+   * The identity and the blocks the delivered reply's row is written with.
+   */
+  replyEntry?:
+    | ((deliveredText: string) => { id: string; blocks: readonly ContentBlock[] | null })
+    | undefined;
+  /** The answering handle's own name — the code-authored fallbacks speak as it. */
+  handleName: string;
+  /**
+   * The transport's own inputs, built INSIDE the timeout.
+   */
+  prepare?: (ctx: TurnHookContext) => Promise<TurnInputs>;
+  /**
+   * The transport's chance to hand the turn elsewhere before the model runs.
+   */
+  divertBeforeTurn?: (ctx: TurnHookContext) => Promise<TurnReply | null>;
+  /** ...and after it, on what the model actually called. */
+  divertAfterTurn?: (
+    result: ExternalChatTurnResult,
+    ctx: TurnHookContext,
+  ) => Promise<TurnReply | null>;
+  /**
+   * A stop from outside the turn — a person ending it from the room it runs in.
+   * Aborting it ends the turn without an answer and without an apology in the
+   * thread, which is not what a timeout or a crash does (ISS-1146).
+   */
+  externalStop?: AbortSignal | undefined;
+  /** Released once the turn is over, however it ended. */
+  dispose?: () => Promise<void>;
+  log?: Record<string, unknown>;
+}
+
+/**
+ * How the turn ended, in terms a reader can tell apart.
+ */
+export type TurnOutcome =
+  | { kind: 'delivered'; messageId: string | null }
+  | { kind: 'stopped'; reason: string }
+  | { kind: 'superseded'; reason: string }
+  | { kind: 'diverted'; reason: string }
+  | { kind: 'declined'; reason: string }
+  | { kind: 'undeliverable'; reason: string };

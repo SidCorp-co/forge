@@ -16,18 +16,14 @@ import { z } from 'zod';
 import { type Refusal, refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { readOnboardingState } from './read.js';
+import type { OnboardingActor, OnboardingOutcome } from './act.js';
 import {
-  joinOnboarding,
   markOnboardingDone,
-  type OnboardingActor,
-  type OnboardingOutcome,
   postOnboardingQuestionnaire,
   postOnboardingUpdate,
-  readAnswers,
-  reanalyzeOnboarding,
-  startOnboarding,
-} from './service.js';
+} from './agent-writes.js';
+import { readOnboardingState } from './read.js';
+import { joinOnboarding, readAnswers, reanalyzeOnboarding, startOnboarding } from './service.js';
 
 export const onboardingRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -43,14 +39,14 @@ const projectParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
     });
 });
 
-export function actorOf(c: Context<{ Variables: AuthVars }>): OnboardingActor {
+function actorOf(c: Context<{ Variables: AuthVars }>): OnboardingActor {
   const agency = c.get('agency');
   if (!agency) throw new Error('onboarding: a request reached its handler without an auth gate');
   return { userId: c.get('userId'), agency };
 }
 
 /** The one envelope, `ONBOARDING_REFUSED` when the codes differ. */
-export function refusedOnboarding(c: Context, refusals: readonly Refusal[]) {
+function refusedOnboarding(c: Context, refusals: readonly Refusal[]) {
   return refused(c, refusals, 'ONBOARDING_REFUSED');
 }
 

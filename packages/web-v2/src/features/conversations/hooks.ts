@@ -1,6 +1,5 @@
 "use client";
 
-import type { UiSnapshot } from "@forge/contracts/ui-actions";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useSyncExternalStore } from "react";
 import { formatApiError } from "@/lib/api/error";
@@ -9,7 +8,6 @@ import { conversationsApi, type OpenConversationArgs } from "./api";
 import type {
   ConversationDetail,
   ConversationMembership,
-  ConversationMode,
   ConversationProgressEntry,
   ConversationRow,
 } from "./types";
@@ -162,25 +160,7 @@ export function useRemoveParticipant(conversationId: string | undefined) {
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      conversationId,
-      content,
-      mode,
-      clientToken,
-      attachmentIds,
-      uiSnapshot,
-    }: {
-      conversationId: string;
-      content: string;
-      /** Sent on the FIRST message of a room and never again; the server refuses it after that. */
-      mode?: ConversationMode | undefined;
-      /** This browser's own id for the message, echoed on `conversation.accepted` (ISS-1078). */
-      clientToken?: string | undefined;
-      /** Files already uploaded to this room, staged with this message (ISS-1146). */
-      attachmentIds?: string[] | undefined;
-      /** The page beside the chat, typed by the UI-action registry (ISS-47). */
-      uiSnapshot?: UiSnapshot | undefined;
-    }) => conversationsApi.send(conversationId, content, mode, clientToken, attachmentIds, uiSnapshot),
+    mutationFn: conversationsApi.send,
     onSuccess: async (result) => {
       await qc.cancelQueries({ queryKey: ["conversations", result.conversationId] });
       qc.setQueryData<ConversationDetail>(["conversations", result.conversationId], (prev) =>
@@ -225,56 +205,44 @@ export function useStopConversation() {
   });
 }
 
-export function useRenameConversation() {
+/** A write to one room from a list: refresh what it changed, and say so by toast where it fails. */
+function useRoomWrite<Args>(run: (args: Args) => Promise<unknown>, refresh: string[], failed: (args: Args) => string) {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (args: { id: string; title: string | null }) =>
-      conversationsApi.rename(args.id, args.title),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
-    onError: (err) =>
-      toast({ title: "Couldn't rename", description: formatApiError(err), tone: "error" }),
+    mutationFn: run,
+    onSuccess: () => qc.invalidateQueries({ queryKey: refresh }),
+    onError: (err, args) => toast({ title: failed(args), description: formatApiError(err), tone: "error" }),
   });
+}
+
+export function useRenameConversation() {
+  return useRoomWrite(
+    (a: { id: string; title: string | null }) => conversationsApi.rename(a.id, a.title),
+    ["conversations"],
+    () => "Couldn't rename",
+  );
 }
 
 export function usePinConversation() {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: (args: { id: string; pinned: boolean }) => conversationsApi.setPinned(args.id, args.pinned),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations", "list"] }),
-    onError: (err, args) =>
-      toast({ title: args.pinned ? "Couldn't pin" : "Couldn't unpin", description: formatApiError(err), tone: "error" }),
-  });
+  return useRoomWrite(
+    (a: { id: string; pinned: boolean }) => conversationsApi.setPinned(a.id, a.pinned),
+    ["conversations", "list"],
+    (a) => (a.pinned ? "Couldn't pin" : "Couldn't unpin"),
+  );
 }
 
 export function useDeleteConversation() {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: (id: string) => conversationsApi.remove(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
-    onError: (err) =>
-      toast({ title: "Couldn't delete", description: formatApiError(err), tone: "error" }),
-  });
+  return useRoomWrite((id: string) => conversationsApi.remove(id), ["conversations"], () => "Couldn't delete");
 }
 
 export function useArchiveConversation() {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: (args: { id: string; archived: boolean }) =>
-      conversationsApi.setArchived(args.id, args.archived),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
-    onError: (err, args) =>
-      toast({
-        title: args.archived ? "Couldn't archive" : "Couldn't unarchive",
-        description: formatApiError(err),
-        tone: "error",
-      }),
-  });
+  return useRoomWrite(
+    (a: { id: string; archived: boolean }) => conversationsApi.setArchived(a.id, a.archived),
+    ["conversations"],
+    (a) => (a.archived ? "Couldn't archive" : "Couldn't unarchive"),
+  );
 }
-
 
 /**
  * A key the socket writes and nothing fetches.
@@ -305,28 +273,19 @@ const NO_WITHDRAWN: Record<string, string> = {};
  * The turn running in this room right now, as the socket's frames have it.
  */
 export function useConversationProgress(id: string | undefined) {
-  return useSocketWrittenKey<ConversationProgressEntry | null>(
-    ["conversations", id, "progress"],
-    NO_PROGRESS,
-  );
+  return useSocketWrittenKey<ConversationProgressEntry | null>(["conversations", id, "progress"], NO_PROGRESS);
 }
 
 /**
  * Which of this tab's outbox messages the server has confirmed are rows.
  */
 export function useAcceptedMessages(id: string | undefined) {
-  return useSocketWrittenKey<Record<string, { messageId: string; seq: number }>>(
-    ["conversations", id, "accepted"],
-    NO_ACCEPTED,
-  );
+  return useSocketWrittenKey(["conversations", id, "accepted"], NO_ACCEPTED);
 }
 
 /**
  * The drafts the reply screen refused in this room, by the entry that replaced each.
  */
 export function useWithdrawnDrafts(id: string | undefined) {
-  return useSocketWrittenKey<Record<string, string>>(
-    ["conversations", id, "withdrawn"],
-    NO_WITHDRAWN,
-  );
+  return useSocketWrittenKey(["conversations", id, "withdrawn"], NO_WITHDRAWN);
 }

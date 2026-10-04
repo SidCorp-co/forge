@@ -11,7 +11,7 @@ import { agentSessions } from '../../db/schema.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
-export type RoomReplyMarker = 'escalation';
+type RoomReplyMarker = 'escalation';
 
 export interface RoomReplyMeta {
   connectionId: string;

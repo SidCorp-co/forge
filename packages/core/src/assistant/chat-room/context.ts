@@ -108,44 +108,30 @@ export async function buildConversationContext(
       excludeMessageIds: opts.excludeMessageIds,
     });
     const threadMessages = threadRoot ? [threadRoot, ...thread] : thread;
-    const threadBlock =
-      threadMessages.length > 0
-        ? formatConversationLines(threadMessages, {
-            botUserId: auth.userId,
-            excludeMessageIds: opts.excludeMessageIds,
-            // The bot's earlier replies in the thread are part of the dialogue.
-            includeBot: true,
-          })
-        : null;
-    const parts: string[] = [];
-    if (permalink) {
-      parts.push(
-        `Permalink to this conversation (cite it as the source when you file an issue): ${permalink}`,
-      );
-    }
+    // The bot's earlier replies in the thread are part of the dialogue.
+    const threadBlock = formatConversationLines(threadMessages, {
+      botUserId: auth.userId,
+      excludeMessageIds: opts.excludeMessageIds,
+      includeBot: true,
+    });
+    const quotedBlock = formatConversationLines(quoted, {
+      botUserId: auth.userId,
+      includeBot: true,
+    });
     // Thread first — it is what the user is talking about; the room stream is
     // background and often webhook noise.
-    if (threadBlock) {
-      parts.push(
+    const parts = [
+      permalink &&
+        `Permalink to this conversation (cite it as the source when you file an issue): ${permalink}`,
+      threadBlock &&
         `The message was posted INSIDE A THREAD — the thread below (root message first) is what the user is referring to:\n${threadBlock}`,
-      );
-    }
-    const quotedBlock =
-      quoted.length > 0
-        ? formatConversationLines(quoted, { botUserId: auth.userId, includeBot: true })
-        : null;
-    if (quotedBlock) {
-      parts.push(
+      quotedBlock &&
         `Full content of the message(s) QUOTED in the conversation (the quote itself only carries a snippet):\n${quotedBlock}`,
-      );
-    }
-    if (roomBlock) {
-      parts.push(
-        threadBlock
+      roomBlock &&
+        (threadBlock
           ? `Recent channel messages (background only — may be unrelated to the thread):\n${roomBlock}`
-          : `Recent channel messages (oldest first):\n${roomBlock}`,
-      );
-    }
+          : `Recent channel messages (oldest first):\n${roomBlock}`),
+    ].filter((part): part is string => Boolean(part));
     return parts.length > 0 ? parts.join('\n\n') : null;
   } catch {
     return null;
@@ -207,17 +193,6 @@ export function buildRocketChatHistoryToolset(auth: RocketChatRestAuth, rid: str
   return { tools: [tool], execute, ranAs: () => null };
 }
 
-/** The quote-neighbour tool's bounds, every one enforced here and none by the model (ISS-1087). */
-const QUOTE_CONTEXT_TOOL_NAME = 'rocketchat_quote_context';
-const QUOTE_TARGETS_PER_TURN = 2;
-const QUOTE_NEIGHBOURS_EACH_SIDE = 2;
-const QUOTE_MESSAGES_PER_TURN = 10;
-const QUOTE_TOKENS_PER_TURN = 2000;
-/** Replies fetched for a thread anchor; an anchor past this page is a stated limitation. */
-const QUOTE_THREAD_PAGE = 50;
-
-const estimateTokens = (text: string): number => Math.ceil(text.length / 4);
-
 /** A tool's JSON arguments as an object, or the refusal a caller is owed. */
 function readToolArgs<T extends object>(argsJson: string): { args: T } | { error: string } {
   if (!argsJson.trim()) return { args: {} as T };
@@ -231,6 +206,17 @@ function readToolArgs<T extends object>(argsJson: string): { args: T } | { error
     return { error: 'arguments were not a JSON object' };
   return { args: parsed as T };
 }
+
+/** The quote-neighbour tool's bounds, every one enforced here and none by the model (ISS-1087). */
+const QUOTE_CONTEXT_TOOL_NAME = 'rocketchat_quote_context';
+const QUOTE_TARGETS_PER_TURN = 2;
+const QUOTE_NEIGHBOURS_EACH_SIDE = 2;
+const QUOTE_MESSAGES_PER_TURN = 10;
+const QUOTE_TOKENS_PER_TURN = 2000;
+/** Replies fetched for a thread anchor; an anchor past this page is a stated limitation. */
+const QUOTE_THREAD_PAGE = 50;
+
+const estimateTokens = (text: string): number => Math.ceil(text.length / 4);
 
 interface QuoteNeighbourhood {
   before: RocketChatRestMessage[];
@@ -301,6 +287,62 @@ async function roomNeighbourhood(
   };
 }
 
+const shape = (m: RocketChatRestMessage) => ({
+  id: m.id,
+  user: m.username,
+  ts: m.ts,
+  text: clip(m.text, MESSAGE_CHAR_CAP),
+});
+
+/** The anchor, then its neighbours nearest first, kept while the turn's budget allows. */
+function fitToBudget(
+  anchor: RocketChatRestMessage,
+  hood: QuoteNeighbourhood,
+  messagesUsed: number,
+  tokensUsed: number,
+): { kept: RocketChatRestMessage[]; tokens: number; cut: boolean } {
+  const ranked = [
+    anchor,
+    ...[...hood.before].reverse().flatMap((b, i) => (hood.after[i] ? [b, hood.after[i]] : [b])),
+    ...hood.after.slice(hood.before.length),
+  ] as RocketChatRestMessage[];
+  const kept: RocketChatRestMessage[] = [];
+  let tokens = 0;
+  let cut = false;
+  for (const m of ranked) {
+    const cost = estimateTokens(clip(m.text, MESSAGE_CHAR_CAP));
+    if (
+      messagesUsed + kept.length >= QUOTE_MESSAGES_PER_TURN ||
+      tokensUsed + tokens + cost > QUOTE_TOKENS_PER_TURN
+    ) {
+      cut = true;
+      continue;
+    }
+    kept.push(m);
+    tokens += cost;
+  }
+  return { kept, tokens, cut };
+}
+
+const QUOTE_CONTEXT_TOOL: ChatTool = {
+  type: 'function',
+  function: {
+    name: QUOTE_CONTEXT_TOOL_NAME,
+    description: `Read the two messages before and after a QUOTED message in THIS room (the quote itself is already in your context). Use when a quote like "this is still wrong" only makes sense with what was said around it. At most ${QUOTE_TARGETS_PER_TURN} quoted messages per turn and ${QUOTE_MESSAGES_PER_TURN} messages in total; neighbours' own quotes are not expanded.`,
+    parameters: {
+      type: 'object',
+      properties: {
+        messageId: {
+          type: 'string',
+          description: 'The id of the quoted message — the `msg=` value of its quote link.',
+        },
+      },
+      required: ['messageId'],
+      additionalProperties: false,
+    },
+  },
+};
+
 /**
  * Expand a quoted message to the two messages either side of it, bounded per turn.
  */
@@ -308,25 +350,6 @@ export function buildRocketChatQuoteContextToolset(
   auth: RocketChatRestAuth,
   rid: string,
 ): ChatToolset {
-  const tool: ChatTool = {
-    type: 'function',
-    function: {
-      name: QUOTE_CONTEXT_TOOL_NAME,
-      description: `Read the two messages before and after a QUOTED message in THIS room (the quote itself is already in your context). Use when a quote like "this is still wrong" only makes sense with what was said around it. At most ${QUOTE_TARGETS_PER_TURN} quoted messages per turn and ${QUOTE_MESSAGES_PER_TURN} messages in total; neighbours' own quotes are not expanded.`,
-      parameters: {
-        type: 'object',
-        properties: {
-          messageId: {
-            type: 'string',
-            description: 'The id of the quoted message — the `msg=` value of its quote link.',
-          },
-        },
-        required: ['messageId'],
-        additionalProperties: false,
-      },
-    },
-  };
-
   const targets = new Set<string>();
   let messagesUsed = 0;
   let tokensUsed = 0;
@@ -364,55 +387,26 @@ export function buildRocketChatQuoteContextToolset(
       ? await threadNeighbourhood(auth, { ...anchor, tmid: anchor.tmid })
       : await roomNeighbourhood(auth, anchor, rid);
 
-    const shape = (m: RocketChatRestMessage) => ({
-      id: m.id,
-      user: m.username,
-      ts: m.ts,
-      text: clip(m.text, MESSAGE_CHAR_CAP),
-    });
-    const ranked = [
-      anchor,
-      ...[...hood.before].reverse().flatMap((b, i) => (hood.after[i] ? [b, hood.after[i]] : [b])),
-      ...hood.after.slice(hood.before.length),
-    ] as RocketChatRestMessage[];
-    const kept: RocketChatRestMessage[] = [];
-    let cut = false;
-    for (const m of ranked) {
-      const cost = estimateTokens(clip(m.text, MESSAGE_CHAR_CAP));
-      if (
-        messagesUsed + kept.length >= QUOTE_MESSAGES_PER_TURN ||
-        tokensUsed + cost > QUOTE_TOKENS_PER_TURN
-      ) {
-        cut = true;
-        continue;
-      }
-      kept.push(m);
-      tokensUsed += cost;
-    }
-    messagesUsed += kept.length;
-    const messages = kept.sort((a, b) => a.ts.localeCompare(b.ts)).map(shape);
+    const fit = fitToBudget(anchor, hood, messagesUsed, tokensUsed);
+    messagesUsed += fit.kept.length;
+    tokensUsed += fit.tokens;
+    const messages = fit.kept.sort((a, b) => a.ts.localeCompare(b.ts)).map(shape);
     const limitation =
       [
         hood.limitation,
-        cut
+        fit.cut
           ? `the neighbourhood was cut to fit this turn's budget of ${QUOTE_MESSAGES_PER_TURN} messages / ${QUOTE_TOKENS_PER_TURN} tokens`
           : null,
       ]
         .filter((l): l is string => l !== null)
         .join('; ') || null;
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({
-            anchor: anchor.id,
-            messages,
-            ...(limitation ? { limitation } : {}),
-          }),
-        },
-      ],
-    };
+    const text = JSON.stringify({
+      anchor: anchor.id,
+      messages,
+      ...(limitation ? { limitation } : {}),
+    });
+    return { content: [{ type: 'text', text }] };
   }
 
-  return { tools: [tool], execute, ranAs: () => null };
+  return { tools: [QUOTE_CONTEXT_TOOL], execute, ranAs: () => null };
 }

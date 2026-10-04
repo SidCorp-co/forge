@@ -27,15 +27,6 @@ import {
  */
 export const ENTRY_FLUSH_MS = 120;
 
-export interface TranscriptAccumulator {
-  /** Fold one loop event into the entry. */
-  apply(event: ChatStreamEvent): void;
-  /** The entry as it stands, or null while the turn has produced nothing. */
-  entry(): AgentMessage | null;
-  /** Just the blocks, for the column — null while nothing has accumulated. */
-  blocks(): ContentBlock[] | null;
-}
-
 /**
  * The model's `arguments` string as the canonical `input` object.
  */
@@ -52,92 +43,111 @@ function toInput(raw: string): Record<string, unknown> {
   return { arguments: raw };
 }
 
-export function createTranscriptAccumulator(
-  opts: { id?: string; now?: () => number } = {},
-): TranscriptAccumulator {
-  const now = opts.now ?? (() => Date.now());
-  const id = opts.id ?? 'pending';
-  let entry: AgentMessage | null = null;
+/** Folds one turn's loop events into its entry. */
+export class TranscriptAccumulator {
+  #entry: AgentMessage | null = null;
   /** Index of the text block still being appended to, or -1 when a tool closed it. */
-  let openText = -1;
-  let openThinking = -1;
+  #openText = -1;
+  #openThinking = -1;
   /** When the open thinking block took its first delta, for the duration stamped on the close. */
-  let thinkingOpenedAt = 0;
+  #thinkingOpenedAt = 0;
 
-  const ensure = (): AgentMessage => {
-    entry ??= { id, type: 'assistant', timestamp: now(), blocks: [], toolCalls: [] };
-    return entry;
-  };
+  constructor(private readonly id: string) {}
 
-  const closeThinking = (): void => {
-    if (openThinking < 0 || !entry) return;
-    const b = (entry.blocks as ContentBlock[])[openThinking] as ContentBlock;
-    b.durationMs = now() - thinkingOpenedAt;
-    openThinking = -1;
-  };
+  apply(event: ChatStreamEvent): void {
+    if (event.type === 'reasoning') {
+      this.#reasoning(event);
+      return;
+    }
+    this.#closeThinking();
+    if (event.type === 'chunk') this.#chunk(event.text);
+    else if (event.type === 'tool_call') this.#toolCall(event);
+    else if (event.type === 'tool_result') this.#toolResult(event);
+  }
 
-  const applyReasoning = (ev: { text: string; redacted?: true }): void => {
-    const e = ensure();
+  /** The entry as it stands, or null while the turn has produced nothing. */
+  entry(): AgentMessage | null {
+    return this.#entry;
+  }
+
+  /** Just the blocks, for the column — null while nothing has accumulated. */
+  blocks(): ContentBlock[] | null {
+    const b = this.#entry?.blocks;
+    return b && b.length > 0 ? b : null;
+  }
+
+  #blocks(): ContentBlock[] {
+    this.#entry ??= {
+      id: this.id,
+      type: 'assistant',
+      timestamp: Date.now(),
+      blocks: [],
+      toolCalls: [],
+    };
+    return this.#entry.blocks as ContentBlock[];
+  }
+
+  #closeThinking(): void {
+    if (this.#openThinking < 0 || !this.#entry) return;
+    const b = (this.#entry.blocks as ContentBlock[])[this.#openThinking] as ContentBlock;
+    b.durationMs = Date.now() - this.#thinkingOpenedAt;
+    this.#openThinking = -1;
+  }
+
+  #reasoning(ev: { text: string; redacted?: true }): void {
+    const blocks = this.#blocks();
     if (ev.redacted === true) {
-      closeThinking();
-      (e.blocks as ContentBlock[]).push({ type: 'thinking' });
-      openText = -1;
+      this.#closeThinking();
+      blocks.push({ type: 'thinking' });
+      this.#openText = -1;
       return;
     }
     if (ev.text.length === 0) return;
-    const blocks = e.blocks as ContentBlock[];
-    if (openThinking >= 0) {
-      const b = blocks[openThinking] as ContentBlock;
+    if (this.#openThinking >= 0) {
+      const b = blocks[this.#openThinking] as ContentBlock;
       b.thinking = (b.thinking ?? '') + ev.text;
       return;
     }
     blocks.push({ type: 'thinking', thinking: ev.text });
-    openThinking = blocks.length - 1;
-    thinkingOpenedAt = now();
-    openText = -1;
-  };
+    this.#openThinking = blocks.length - 1;
+    this.#thinkingOpenedAt = Date.now();
+    this.#openText = -1;
+  }
 
-  const applyChunk = (text: string): void => {
+  #chunk(text: string): void {
     if (text.length === 0) return;
-    const e = ensure();
-    const blocks = e.blocks as ContentBlock[];
-    if (openText >= 0) {
-      const b = blocks[openText] as { type: 'text'; text: string };
-      b.text += text;
+    const blocks = this.#blocks();
+    if (this.#openText >= 0) {
+      (blocks[this.#openText] as { type: 'text'; text: string }).text += text;
     } else {
       blocks.push({ type: 'text', text });
-      openText = blocks.length - 1;
+      this.#openText = blocks.length - 1;
     }
-    e.content = blocks
+    (this.#entry as AgentMessage).content = blocks
       .filter((b): b is ContentBlock & { text: string } => b.type === 'text' && !!b.text)
       .map((b) => b.text)
       .join('');
-  };
+  }
 
-  const applyToolCall = (ev: { id: string; name: string; arguments: unknown }): void => {
-    const e = ensure();
+  #toolCall(ev: { id: string; name: string; arguments: unknown }): void {
+    const blocks = this.#blocks();
     const call: ToolCall = {
       id: ev.id,
       name: ev.name,
       input: toInput(typeof ev.arguments === 'string' ? ev.arguments : ''),
     };
-    (e.blocks as ContentBlock[]).push({ type: 'tool', toolCall: call });
-    (e.toolCalls as ToolCall[]).push(call);
-    openText = -1;
-  };
+    blocks.push({ type: 'tool', toolCall: call });
+    ((this.#entry as AgentMessage).toolCalls as ToolCall[]).push(call);
+    this.#openText = -1;
+  }
 
-  const applyToolResult = (ev: {
-    id: string;
-    result: unknown;
-    isError?: boolean;
-    durationMs?: number;
-  }): void => {
-    const e = entry;
-    const known = (e?.toolCalls ?? []).some((t) => t.id === ev.id);
-    if (!e || !known) {
+  #toolResult(ev: { id: string; result: unknown; isError?: boolean; durationMs?: number }): void {
+    const e = this.#entry;
+    const calls = e?.toolCalls ?? [];
+    if (!e || !calls.some((t) => t.id === ev.id)) {
       throw new Error(
         `transcript: tool result for ${ev.id} names no tool call this turn made (calls: ${
-          (e?.toolCalls ?? []).map((t) => t.id).join(', ') || 'none'
+          calls.map((t) => t.id).join(', ') || 'none'
         })`,
       );
     }
@@ -146,31 +156,13 @@ export function createTranscriptAccumulator(
       {
         id: `${ev.id}-result`,
         type: 'tool_result',
-        timestamp: now(),
+        timestamp: Date.now(),
         toolName: ev.id,
         toolOutput: typeof ev.result === 'string' ? ev.result : JSON.stringify(ev.result ?? ''),
         ...(ev.isError === true ? { isError: true } : {}),
         ...(ev.durationMs !== undefined ? { durationMs: ev.durationMs } : {}),
       },
     ]);
-    entry = holder[holder.length - 1] as AgentMessage;
-  };
-
-  return {
-    apply(event: ChatStreamEvent): void {
-      if (event.type === 'reasoning') {
-        applyReasoning(event);
-        return;
-      }
-      closeThinking();
-      if (event.type === 'chunk') applyChunk(event.text);
-      else if (event.type === 'tool_call') applyToolCall(event);
-      else if (event.type === 'tool_result') applyToolResult(event);
-    },
-    entry: () => entry,
-    blocks: () => {
-      const b = entry?.blocks;
-      return b && b.length > 0 ? b : null;
-    },
-  };
+    this.#entry = holder[holder.length - 1] as AgentMessage;
+  }
 }

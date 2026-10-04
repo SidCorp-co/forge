@@ -12,7 +12,6 @@
 // person is looking hardest at what they just changed.
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
   addableHandles,
@@ -26,19 +25,16 @@ import {
 } from '../conversations/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { nameLostReaders, namePeople, withDisplayNames } from './conversation-people.js';
 import { addRoomHandle, addRoomPerson, removeRoomParticipant } from './service.js';
 
-const idParamSchema = z.object({ id: z.uuid() });
 const projectQuerySchema = z.object({ projectId: z.uuid() }).strict();
 const removeParamSchema = z.object({ id: z.uuid(), participantId: z.uuid() });
 const addPersonSchema = z.object({ userId: z.uuid() }).strict();
 const addHandleSchema = z.object({ projectId: z.uuid(), userId: z.uuid().optional() }).strict();
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 export const conversationMemberRoutes = new Hono<{ Variables: AuthVars }>();
 conversationMemberRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -73,57 +69,41 @@ async function membershipOf(
 /**
  * Who this caller could open a room WITH, before any room exists.
  */
-conversationMemberRoutes.get(
-  '/candidates',
-  zValidator('query', projectQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId } = c.req.valid('query');
-    const userId = c.get('userId');
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.write');
-    const scope = [projectId];
-    const [people, handles] = await Promise.all([
-      addablePeople(null, scope),
-      addableHandles(null, userId, scope),
-    ]);
-    return c.json({ people: await namePeople(people), handles: await nameLostReaders(handles) });
-  },
-);
+conversationMemberRoutes.get('/candidates', zValidator('query', projectQuerySchema), async (c) => {
+  const { projectId } = c.req.valid('query');
+  const userId = c.get('userId');
+  const access = await loadProjectAccess(projectId, userId);
+  requireHeld(access, 'project.write');
+  const scope = [projectId];
+  const [people, handles] = await Promise.all([
+    addablePeople(null, scope),
+    addableHandles(null, userId, scope),
+  ]);
+  return c.json({ people: await namePeople(people), handles: await nameLostReaders(handles) });
+});
 
 /**
  * Who this caller could still put in this room.
  */
-conversationMemberRoutes.get(
-  '/:id/candidates',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-    await readableConversation(id, userId);
-    const scope = await derivedScope(id);
-    const [people, handles] = await Promise.all([
-      addablePeople(id, scope),
-      addableHandles(id, userId, scope),
-    ]);
-    return c.json({ people: await namePeople(people), handles: await nameLostReaders(handles) });
-  },
-);
+conversationMemberRoutes.get('/:id/candidates', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
+  await readableConversation(id, userId);
+  const scope = await derivedScope(id);
+  const [people, handles] = await Promise.all([
+    addablePeople(id, scope),
+    addableHandles(id, userId, scope),
+  ]);
+  return c.json({ people: await namePeople(people), handles: await nameLostReaders(handles) });
+});
 
 /**
  * Add a person: who reads the room changes, and nothing about what it can see does.
  */
 conversationMemberRoutes.post(
   '/:id/people',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', addPersonSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', addPersonSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { userId: joining } = c.req.valid('json');
@@ -138,12 +118,8 @@ conversationMemberRoutes.post(
  */
 conversationMemberRoutes.post(
   '/:id/handles',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', addHandleSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', addHandleSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { userId, projectId } = c.req.valid('json');
@@ -158,9 +134,7 @@ conversationMemberRoutes.post(
  */
 conversationMemberRoutes.delete(
   '/:id/participants/:participantId',
-  zValidator('param', removeParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', removeParamSchema),
   async (c) => {
     const { id, participantId } = c.req.valid('param');
     const actor = c.get('userId');

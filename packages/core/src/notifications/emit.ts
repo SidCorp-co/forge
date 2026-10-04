@@ -23,7 +23,7 @@ function defaultSeverityForType(type: NotificationType): string {
   return DEFAULT_SEVERITY_BY_TYPE[type] ?? 'info';
 }
 
-export interface EmitNotificationInput {
+interface EmitNotificationInput {
   userId?: string;
   recipients?: string[];
   projectId?: string | null;
@@ -47,7 +47,7 @@ export interface EmitNotificationInput {
 
 export async function emitNotification(
   input: EmitNotificationInput,
-): Promise<{ id: string; delivered: number } | null> {
+): Promise<{ id: string; delivered: number }> {
   return createNotification({
     ...input,
     severity: input.severity ?? defaultSeverityForType(input.type),
