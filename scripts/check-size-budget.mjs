@@ -1,23 +1,4 @@
 #!/usr/bin/env node
-// File- and function-length budget — the baseline biome does not have.
-//
-// biome already OWNS this rule: noExcessiveLinesPerFile (500) and
-// noExcessiveLinesPerFunction (150) live in packages/core/biome.json. This adds
-// no rule of its own. What biome lacks is a baseline, so the only two settings
-// available were "warn" (143 violations, `biome check` exits 0, nothing gated)
-// and "error" (143 violations, every build red). The repo's other three axes all
-// solve that the same way: freeze today, block tomorrow.
-//
-// Frozen per FILE, not per line: a file records its length and the length of its
-// longest function, and may only improve. Moving a function or reflowing a file
-// therefore is not a violation — the same property that lets a frozen baseline
-// survive a refactor.
-//
-// Modes: --all (CI) · --staged (freeze-only; no hook runs it today) · --update-baseline
-// Exit: 0 clean · 1 a file got longer or a new one is over budget · 2 could not run.
-
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import {
   loadBaseline,
@@ -28,6 +9,7 @@ import {
   writeBaseline,
 } from './lib/debt-ratchet.mjs';
 import { ROOT } from './lib/gate.mjs';
+import { biomeReport } from './lib/lint-budget.mjs';
 import { absentPrerequisites, remedyLines } from './lib/prerequisite.mjs';
 
 const BASELINE_PATH = join(ROOT, '.forge', 'size-baseline.json');
@@ -43,32 +25,9 @@ function collect(scopes) {
   if (missing.length > 0) return { error: `could not run — ${remedyLines(missing)[0]}` };
 
   for (const scope of scopes) {
-    const cwd = join(ROOT, scope.cwd);
-    if (!existsSync(cwd)) return { error: `scope directory missing: ${scope.cwd}` };
+    const { cwd, report: parsed, error } = biomeReport(ROOT, scope);
+    if (error) return { error };
 
-    let stdout;
-    try {
-      stdout = execFileSync(
-        'npx',
-        ['biome', ...scope.args, '--reporter=json', '--max-diagnostics=5000'],
-        {
-          cwd,
-          encoding: 'utf8',
-          maxBuffer: 64 * 1024 * 1024,
-          stdio: ['ignore', 'pipe', 'ignore'],
-        },
-      );
-    } catch (err) {
-      stdout = err.stdout;
-      if (!stdout) return { error: `biome produced no output in ${scope.cwd}: ${err.message}` };
-    }
-
-    let parsed;
-    try {
-      parsed = JSON.parse(stdout);
-    } catch {
-      return { error: `biome output in ${scope.cwd} was not JSON` };
-    }
     const diags = parsed.diagnostics ?? [];
     if (diags.length > 0) sawAnyDiagnostic = true;
 

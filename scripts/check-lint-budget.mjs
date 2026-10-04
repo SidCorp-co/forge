@@ -1,24 +1,5 @@
 #!/usr/bin/env node
-// Per-file lint budget for packages biome cannot be gated on outright.
-//
-// biome OWNS the rules; this adds none. What it adds is the baseline biome has
-// no concept of, so a package carrying real debt has only two settings —
-// `error` (every build red) or `warn` (nothing holds). Same shape, and same
-// reasoning, as check-size-budget.mjs: freeze today per FILE per RULE, block
-// tomorrow. A file may keep its violations, may lose them, may never gain one.
-//
-// Frozen per (file, rule) rather than per line, so moving code inside a file
-// or reflowing it is not a violation.
-//
-// A scope may additionally declare `drain`, and then freezing is not the whole
-// contract: a changed file with debt must come back STRICTLY lower. Adding a
-// scope is a `.forge/conformance.json` entry plus one --update-baseline run.
-//
-// Modes: --all (CI) · --staged (freeze-only; no hook runs it today) · --update-baseline
-// Exit: 0 clean · 1 a file gained a violation or skipped its payment · 2 could not run.
-
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { baseRef } from './lib/base-branch.mjs';
 import {
@@ -33,6 +14,7 @@ import {
 } from './lib/debt-ratchet.mjs';
 import { gitOut, ROOT } from './lib/gate.mjs';
 import {
+  biomeReport,
   drainedLine,
   drainFaults,
   drainMatcher,
@@ -95,35 +77,12 @@ function collect(scopes) {
   if (missing.length > 0) return { error: `could not run — ${remedyLines(missing)[0]}` };
 
   for (const scope of scopes) {
-    const cwd = join(ROOT, scope.cwd);
-    if (!existsSync(cwd)) return { error: `scope directory missing: ${scope.cwd}` };
+    const { cwd, report: parsed, error } = biomeReport(ROOT, scope);
+    if (error) return { error };
 
     const disabled = linterFault(scope);
     if (disabled) return { error: disabled };
 
-    let stdout;
-    try {
-      stdout = execFileSync(
-        'npx',
-        ['biome', ...scope.args, '--reporter=json', '--max-diagnostics=5000'],
-        {
-          cwd,
-          encoding: 'utf8',
-          maxBuffer: 64 * 1024 * 1024,
-          stdio: ['ignore', 'pipe', 'ignore'],
-        },
-      );
-    } catch (err) {
-      stdout = err.stdout;
-      if (!stdout) return { error: `biome produced no output in ${scope.cwd}: ${err.message}` };
-    }
-
-    let parsed;
-    try {
-      parsed = JSON.parse(stdout);
-    } catch {
-      return { error: `biome output in ${scope.cwd} was not JSON` };
-    }
     const diags = parsed.diagnostics ?? [];
     const summary = parsed.summary ?? {};
     const scanned = (summary.changed ?? 0) + (summary.unchanged ?? 0);
