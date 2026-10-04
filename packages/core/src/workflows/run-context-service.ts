@@ -1,6 +1,6 @@
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
+import { mergeSessionMetadata } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
-import { agentSessions } from '../db/schema.js';
 import type { DesignStatus } from './design.js';
 import type { LoadedPinnedContract } from './pinned-contracts.js';
 import {
@@ -215,13 +215,7 @@ export async function recordArtifactContext(
   requirement: LoadedRequirement | null = null,
   contracts: readonly LoadedPinnedContract[] = [],
 ): Promise<void> {
-  const patch = {
+  await mergeSessionMetadata(agentSessionId, {
     [ARTIFACT_CONTEXT_KEY]: artifactContextRecord(loaded, source, requirement, contracts),
-  };
-  await db
-    .update(agentSessions)
-    .set({
-      metadata: sql`coalesce(${agentSessions.metadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
-    })
-    .where(eq(agentSessions.id, agentSessionId));
+  });
 }

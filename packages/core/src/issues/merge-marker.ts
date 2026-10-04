@@ -1,7 +1,7 @@
 import type { MergeRefusalCode } from '@forge/contracts/issues';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { comments } from '../db/schema.js';
+import { postIssueNotice } from '../comments/index.js';
 import {
   type DriftRefusal,
   landingDriftRefusal,
@@ -73,11 +73,8 @@ export async function writeAuditComment(
   authorId: string,
   body: string,
 ): Promise<AuditComment | null> {
-  const [row] = await db
-    .insert(comments)
-    .values({ issueId, authorId, body, parentId: null })
-    .returning({ id: comments.id, body: comments.body, parentId: comments.parentId });
-  return row ?? null;
+  const row = await postIssueNotice({ issueId, authorId, body });
+  return { id: row.id, body: row.body, parentId: row.parentId };
 }
 
 const refuse = refuser<MergeRefusalCode | DriftRefusal['code']>('MERGE_MARK_REFUSED');

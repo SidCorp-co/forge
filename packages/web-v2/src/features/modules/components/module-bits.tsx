@@ -5,10 +5,9 @@ import { MODULE_ATTENTION_LABELS, MODULE_OPEN_KINDS } from "@forge/contracts/mod
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type BannerTone, Button, type CoverageSegment, LEGEND, ToneBadge, WaitBanner, type WaitingOnView } from "@/design";
-import { issueWaitingView } from "@/features/issues/components/issue-standing-bits";
 import { issueHref } from "@/features/issues/routes";
 import { formatStamp } from "@/lib/utils/format";
-import type { ModuleAttentionGroup, ModuleActivityDay, ModuleLanding, ModuleStanding, ModuleWaitingOn } from "../types";
+import type { ModuleAttentionGroup, ModuleActivityDay, ModuleLanding, ModuleStanding } from "../types";
 
 const DAY_MS = 86_400_000;
 
@@ -23,7 +22,7 @@ export const openSegments = (s: ModuleStanding): CoverageSegment[] =>
     label: ISSUE_ATTENTION_LABELS[k].label,
     count: s.openByKind[k],
     tone: ISSUE_ATTENTION_LABELS[k].tone,
-    hint: ISSUE_ATTENTION_LABELS[k].hint,
+    hint: ISSUE_ATTENTION_LABELS[k].hint ?? undefined,
   }));
 
 export function landingAge(l: ModuleLanding, now: number = Date.now()): number {
@@ -84,12 +83,13 @@ export function ActivityBars({ days, height = 28, barWidth = 8 }: { days: Module
 }
 
 
-export function moduleWaitingView(w: ModuleWaitingOn): WaitingOnView {
-  const v = issueWaitingView(w);
+export function moduleWaitingView(s: ModuleStanding): WaitingOnView {
+  const w = s.waitingOn;
+  const lead = s.leadIssue;
   return {
-    ...v,
-    act: w.issueKey && w.kind !== "issue" ? `${w.issueKey} · ${w.act}` : w.act,
-    rule: w.issueKey ? `${w.issueKey}: ${w.rule}` : w.rule,
+    ...w,
+    act: lead && w.kind !== "issue" ? `${lead} · ${w.act}` : w.act,
+    rule: lead ? `${lead}: ${w.rule}` : w.rule,
   };
 }
 
@@ -101,7 +101,7 @@ const BANNER_HEAD: Record<ModuleAttentionGroup, string> = {
   quiet: "Quiet:",
 };
 
-function bannerText(group: ModuleAttentionGroup, w: ModuleWaitingOn): string {
+function bannerText(group: ModuleAttentionGroup, w: ModuleStanding["waitingOn"]): string {
   const tail = w.act ? ` · ${w.act}` : "";
   if (group === "needs_you" || group === "quiet") return w.act;
   if (group === "stuck" && w.kind === "issue") return `waits on ${w.who}${tail}`;
@@ -112,13 +112,14 @@ function bannerText(group: ModuleAttentionGroup, w: ModuleWaitingOn): string {
 export function ModuleBanner({ standing, slug, className }: { standing: ModuleStanding; slug: string; className?: string }) {
   const linked = standing.attentionGroup !== "needs_you";
   const w = standing.waitingOn;
-  const lead = w.issueKey ? (
+  const key = standing.leadIssue;
+  const lead = key ? (
     linked ? (
-    <Link href={issueHref(slug, w.issueKey)} className="font-mono text-12 font-semibold text-link hover:underline">
-      {w.issueKey}
+    <Link href={issueHref(slug, key)} className="font-mono text-12 font-semibold text-link hover:underline">
+      {key}
     </Link>
     ) : (
-      <span className="font-mono text-12 font-semibold">{w.issueKey}</span>
+      <span className="font-mono text-12 font-semibold">{key}</span>
     )
   ) : null;
   const act = bannerText(standing.attentionGroup, w);
@@ -141,7 +142,7 @@ export function ModuleBanner({ standing, slug, className }: { standing: ModuleSt
 /** The one primary act of a module that waits on you: open the issue that leads it. */
 export function ModuleAction({ standing, slug }: { standing: ModuleStanding; slug: string }) {
   const router = useRouter();
-  const key = standing.attentionGroup === "needs_you" ? standing.waitingOn.issueKey : null;
+  const key = standing.attentionGroup === "needs_you" ? standing.leadIssue : null;
   if (!key) return null;
   return (
     <Button type="button" variant="primary" size="sm" onClick={() => router.push(issueHref(slug, key))} data-testid="module-action">

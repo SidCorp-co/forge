@@ -4,6 +4,7 @@
 import type {
   RunAttempt,
   RunGroup,
+  RunHolder,
   RunLane,
   RunMasterRef,
   RunRelease,
@@ -16,7 +17,15 @@ import { finalOf } from './standing-final.js';
 import { holderOf } from './standing-holder.js';
 import { liveOf } from './standing-live.js';
 import { type StuckReading, stuckField, stuckOf } from './standing-stuck.js';
-import { type Derived, iso, none, type RunFacts, type StandingContext } from './standing-types.js';
+import {
+  type Derived,
+  iso,
+  none,
+  type RunFacts,
+  type RunWaitingOn,
+  runWait,
+  type StandingContext,
+} from './standing-types.js';
 
 export type { KernelFlip, RunFacts, StandingContext } from './standing-types.js';
 
@@ -87,14 +96,14 @@ function asStuck(f: RunFacts, base: Derived, reading: StuckReading): Derived {
     since: reading.since,
     rule: reading.detail,
     outcome: null,
-    waitingOn: {
-      kind: 'master',
-      who: f.master?.name ?? 'Master',
-      since: iso(reading.since),
-      rule: `stuck (${reading.rule}): the project master acts next, and a person may cancel the run or revoke its lease${
+    waitingOn: runWait(
+      'master',
+      f.master?.name ?? 'Master',
+      'acts next',
+      `stuck (${reading.rule}): the project master acts next, and a person may cancel the run or revoke its lease${
         base.outcome ? `; its root already ended: ${base.rule}` : ''
       }`,
-    },
+    ),
   };
 }
 
@@ -111,8 +120,16 @@ const GROUP_OF: Record<RunState, RunGroup> = {
   handed_back: 'finished',
 };
 
-export const runGroupOf = (state: RunState, needsViewer: boolean): RunGroup =>
-  needsViewer ? 'needs_you' : GROUP_OF[state];
+export const runGroupOf = (state: RunState, waitingOn: RunWaitingOn): RunGroup =>
+  waitingOn.kind === 'you' ? 'needs_you' : GROUP_OF[state];
+
+// A live run nobody waits on names its holder at work, with the lease's end as the deadline.
+function atWork(derived: Derived, holder: RunHolder, step: RunStep): RunWaitingOn {
+  if (derived.waitingOn.kind !== 'none' || derived.outcome !== null || holder.source !== 'held')
+    return derived.waitingOn;
+  const word = step.step ? `${step.step.charAt(0).toUpperCase()}${step.step.slice(1)}` : 'working';
+  return runWait('run', holder.name, word, derived.waitingOn.rule, { dueAt: holder.expiresAt });
+}
 
 function rootSessionOf(f: RunFacts): string | null {
   return f.session?.id ?? f.job?.agentSessionId ?? null;
@@ -125,7 +142,8 @@ export function runStandingOf(f: RunFacts, ctx: StandingContext): RunStanding {
   const lane = laneOfRun(f);
   const live = derived.outcome === null;
   const holder = holderOf(f, ctx, derived.state);
-  const needsViewer = derived.waitingOn.kind === 'person' && derived.waitingOn.isViewer;
+  const step = stepFor(f, live);
+  const waitingOn = atWork(derived, holder, step);
   return {
     id: f.run.id,
     projectId: f.run.projectId,
@@ -137,15 +155,14 @@ export function runStandingOf(f: RunFacts, ctx: StandingContext): RunStanding {
     issue: f.issue ? { key: f.issue.key, title: f.issue.title, status: f.issue.status } : null,
     issues: f.issues,
     sessionId: rootSessionOf(f),
-    step: stepFor(f, live),
+    step,
     attempt: attemptOf(f),
     lastBeatAt: iso(f.lastBeatAt),
     liveJobs: f.liveJobs,
     device: f.session?.device ?? f.job?.device ?? null,
     holder,
-    waitingOn: derived.waitingOn,
-    needsViewer,
-    attentionGroup: runGroupOf(derived.state, needsViewer),
+    waitingOn,
+    attentionGroup: runGroupOf(derived.state, waitingOn),
     outcome: derived.outcome,
     master: masterOf(f),
     stuck: stuckField(reading, derived, holder, ctx),

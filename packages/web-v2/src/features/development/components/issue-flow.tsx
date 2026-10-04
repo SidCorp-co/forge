@@ -11,7 +11,7 @@ export function AttentionLegend({ groups = ISSUE_ATTENTION_GROUPS }: { groups?: 
   return (
     <ul className="mt-2 flex flex-wrap gap-x-3.5 gap-y-1 text-12 text-muted" aria-label="Legend">
       {groups.map((g) => (
-        <li key={g} className="inline-flex items-center gap-1.5" title={ISSUE_ATTENTION_LABELS[g].hint}>
+        <li key={g} className="inline-flex items-center gap-1.5" title={ISSUE_ATTENTION_LABELS[g].hint ?? undefined}>
           <span aria-hidden className="size-2 rounded-[2px]" style={{ background: LEGEND[ISSUE_ATTENTION_LABELS[g].tone].dot }} />
           {ISSUE_ATTENTION_LABELS[g].label}
         </li>

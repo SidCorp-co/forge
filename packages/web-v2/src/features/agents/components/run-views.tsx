@@ -232,13 +232,13 @@ export function RunFacts({ r, slug }: { r: RunStanding; slug: string }) {
 export function RunActions({ r, slug, projectId, canWrite }: { r: RunStanding; slug: string; projectId: string; canWrite: boolean }) {
   const cancel = useCancelRun(projectId);
   const live = r.outcome === null;
-  const answer = r.waitingOn.kind === "person" && r.waitingOn.isViewer;
+  const answer = r.waitingOn.kind === "you";
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
       {answer && r.issue ? (
         <Link href={issueHref(slug, r.issue.key)} className="inline-flex">
           <Button type="button" variant="primary" size="sm" data-testid="run-answer">
-            {r.waitingOn.kind === "person" ? `${r.waitingOn.act.charAt(0).toUpperCase()}${r.waitingOn.act.slice(1)}` : "Open"}
+            {`${r.waitingOn.act.charAt(0).toUpperCase()}${r.waitingOn.act.slice(1)}`}
           </Button>
         </Link>
       ) : null}

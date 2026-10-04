@@ -10,7 +10,7 @@
  * the token and builds the work while the job stays `queued` and HELD;
  * `startJobForMaster` is the stamp, and the stamp is what ends the hold. A
  * master that prepares and never starts is covered by the release rule that
- * already existed — `releaseJobFromMaster`, or the three-minute reaper — which
+ * already existed — `jobs/master-holds.ts:releaseJobHold`, or the three-minute reaper — which
  * is the whole reason the split lands on this side of the stamp rather than
  * after it.
  */
@@ -26,6 +26,7 @@ import {
   type DispatchGateCode,
 } from '../issues/dispatch-gates.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { holdQueuedJob, releaseJobHold } from '../jobs/index.js';
 import { resolveJobPolicy } from '../jobs/job-policy.js';
 import { poolPrompt, settleNoPromptJob } from '../jobs/pool-served.js';
 import {
@@ -123,25 +124,7 @@ export async function prepareJobForMaster(args: {
   if (design) return design;
 
   const claimed = await db.transaction(async (tx) => {
-    const held = await tx
-      .update(jobs)
-      .set({ heldBy: args.sessionId, heldAt: sql`now()` })
-      .where(
-        and(
-          eq(jobs.id, args.jobId),
-          eq(jobs.status, 'queued'),
-          isNull(jobs.heldBy),
-          sql`NOT EXISTS (
-            SELECT 1 FROM jobs other
-            WHERE other.issue_id = jobs.issue_id
-              AND other.id <> jobs.id
-              AND other.status IN ('dispatched','running','held')
-          )`,
-        ),
-      )
-      .returning();
-
-    const row = held[0];
+    const row = await holdQueuedJob(tx, args.jobId, args.sessionId);
     if (!row) {
       const diag = (await tx.execute(sql`
         SELECT j.held_by IS NOT NULL OR j.status <> 'queued' AS taken,
@@ -178,7 +161,7 @@ export async function prepareJobForMaster(args: {
       policy: policy.state,
     });
   } catch (err) {
-    await releaseJobFromMaster({ jobId: claimed.job.id, sessionId: args.sessionId });
+    await releaseJobHold(claimed.job.id, args.sessionId);
     throw err;
   }
 
@@ -318,36 +301,9 @@ export async function startJobForMaster(args: {
     })
   ).rows;
   if (!stamped.length) {
-    await releaseJobFromMaster({ jobId: args.jobId, sessionId: args.sessionId });
+    await releaseJobHold(args.jobId, args.sessionId);
     return { ok: false, reason: 'hold_lost' };
   }
   return { ok: true };
 }
 
-/** Give a held job back to the pool. */
-export async function releaseJobFromMaster(args: {
-  jobId: string;
-  sessionId: string;
-}): Promise<boolean> {
-  const rows = await db
-    .update(jobs)
-    .set({ heldBy: null, heldAt: null })
-    .where(and(eq(jobs.id, args.jobId), eq(jobs.heldBy, args.sessionId)))
-    .returning({ id: jobs.id });
-  return rows.length > 0;
-}
-
-/**
- * Release every job a dead master was holding.
- *
- * Only the hold moves. Anything this master actually started is no longer
- * held at all, so a running job is not reachable from here.
- */
-export async function releaseAllHeldBySession(sessionId: string): Promise<number> {
-  const rows = await db
-    .update(jobs)
-    .set({ heldBy: null, heldAt: null })
-    .where(eq(jobs.heldBy, sessionId))
-    .returning({ id: jobs.id });
-  return rows.length;
-}

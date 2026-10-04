@@ -1,9 +1,9 @@
 import type { CommentRefusalCode } from '@forge/contracts/comments';
-import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
-import { comments, issues, users } from '../db/schema.js';
+import { commentMentions, comments, issues, users } from '../db/schema.js';
 import {
   COMMENT_INTENTS,
   type CommentIntent,
@@ -14,10 +14,13 @@ import {
   mirrorCommentRecord,
   remirrorCommentRecord,
 } from '../issues/record-events/mirror.js';
+import { logger } from '../logger.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
 import type { Actor } from '../pipeline/activity.js';
+import { hooks } from '../pipeline/hooks.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
+import { parseMentions, resolveMentions } from './mentions.js';
 import { screenAgentComment, screenRecordFence } from './screen.js';
 
 const refuse = refuser<CommentRefusalCode>('COMMENT_REFUSED');
@@ -154,8 +157,8 @@ export type NewComment = {
   intent?: string | null | undefined;
 };
 
-/** A written comment plus whatever the sanitizer removed on the way in. */
-export type WrittenComment = { row: CommentThreadRow; warnings: string[] };
+/** A written comment, whatever the sanitizer removed on the way in, and who it mentioned. */
+export type WrittenComment = { row: CommentThreadRow; warnings: string[]; mentioned: string[] };
 
 /** A comment intent outside the closed set, refused by name with the valid set. */
 export function intentRefusal(intent: unknown, path = '/intent'): RefusalError {
@@ -253,7 +256,8 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
   }
 
   const { format: _ignored, declaresRecordRoute: _declared, intent: _intent, ...rest } = input;
-  return tx.transaction(async (t) => {
+  const actor = commentActor(input, byAnAgent);
+  const result = await tx.transaction(async (t) => {
     const [row] = await t
       .insert(comments)
       .values({
@@ -266,10 +270,113 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
       .returning(commentThreadColumns);
     if (!row) throw new Error('comment insert returned no row');
     const written = onIssue(row);
-    const untyped = await mirrorCommentRecord(written, commentActor(input, byAnAgent), t);
+    const untyped = await mirrorCommentRecord(written, actor, t);
+    const mentioned = context ? await recordMentions(written, context.projectId, t) : [];
     const warnings = [...prepared.warnings, ...fence, ...untyped, ...(warning ? [warning] : [])];
-    return { row: written, warnings };
+    return { row: written, warnings, mentioned };
   });
+  if (context && result.mentioned.length > 0) {
+    await hooks.emit('commentMentioned', {
+      issueId: result.row.issueId,
+      projectId: context.projectId,
+      commentId: result.row.id,
+      actor,
+      mentionedUserIds: result.mentioned,
+    });
+  }
+  return result;
+}
+
+/** The project members a comment's body names by handle, its author excepted, recorded on it. */
+async function recordMentions(row: CommentThreadRow, projectId: string, t: Tx): Promise<string[]> {
+  const handles = parseMentions(row.body);
+  if (handles.length === 0) return [];
+  try {
+    const resolved = await resolveMentions(handles, projectId);
+    const targets = resolved.filter((r) => r.userId !== row.authorId).map((r) => r.userId);
+    if (targets.length === 0) return [];
+    await t
+      .insert(commentMentions)
+      .values(targets.map((userId) => ({ commentId: row.id, userId })))
+      .onConflictDoNothing();
+    return targets;
+  } catch (err) {
+    logger.error({ err, commentId: row.id }, 'comment mentions could not be recorded');
+    return [];
+  }
+}
+
+/** A comment Forge itself posts on an issue: a note unless it says otherwise. */
+export type IssueNotice = {
+  issueId: string;
+  authorId: string;
+  authorDeviceId?: string | null | undefined;
+  body: string;
+  intent?: CommentIntent | undefined;
+  parentId?: string | null | undefined;
+};
+
+/**
+ * Post a notice through the one writer, so it is screened, mirrored and its mentions recorded the
+ * way a comment through either door is.
+ */
+export async function postIssueNotice(notice: IssueNotice, tx: Tx = db): Promise<CommentThreadRow> {
+  const { row } = await insertComment(
+    {
+      issueId: notice.issueId,
+      authorId: notice.authorId,
+      authorDeviceId: notice.authorDeviceId ?? null,
+      body: notice.body,
+      parentId: notice.parentId ?? null,
+      intent: notice.intent ?? 'note',
+    },
+    tx,
+  );
+  return row;
+}
+
+/**
+ * Post a notice unless the issue's thread already carries `marker`, under a lock on the pair, so
+ * any number of racing callers post it once. Null when it was already there.
+ */
+export async function postIssueNoticeOnce(
+  notice: IssueNotice & { marker: string },
+  tx: Tx = db,
+): Promise<CommentThreadRow | null> {
+  const { marker, ...rest } = notice;
+  return tx.transaction(async (t) => {
+    await t.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`comment-once:${notice.issueId}:${marker}`}, 0))`,
+    );
+    const [existing] = await t
+      .select({ id: comments.id })
+      .from(comments)
+      .where(and(eq(comments.issueId, notice.issueId), sql`strpos(${comments.body}, ${marker}) > 0`))
+      .limit(1);
+    if (existing) return null;
+    return postIssueNotice(rest, t);
+  });
+}
+
+/** The body of the latest comment on an issue carrying any of `markers`, or null. */
+export async function latestIssueCommentWith(
+  issueId: string,
+  markers: readonly string[],
+  tx: Tx = db,
+): Promise<string | null> {
+  if (markers.length === 0) return null;
+  const [latest] = await tx
+    .select({ body: comments.body })
+    .from(comments)
+    .where(
+      and(
+        eq(comments.issueId, issueId),
+        or(...markers.map((m) => sql`strpos(${comments.body}, ${m}) > 0`)),
+      ),
+    )
+    .orderBy(desc(comments.createdAt), desc(comments.id))
+    .limit(1);
+  return latest?.body ?? null;
 }
 
 /**
@@ -322,7 +429,7 @@ export async function updateCommentBody(
     if (!row) return null;
     const edited = onIssue(row);
     const untyped = await remirrorCommentRecord(edited, commentActor(existing, byAnAgent), t);
-    return { row: edited, warnings: [...prepared.warnings, ...fence, ...untyped] };
+    return { row: edited, warnings: [...prepared.warnings, ...fence, ...untyped], mentioned: [] };
   });
 }
 

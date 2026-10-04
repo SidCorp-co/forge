@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { commentAttachments, commentMentions, comments, issues } from '../db/schema.js';
+import { commentAttachments, comments, issues } from '../db/schema.js';
 import type { ActorRef } from '../issues/actor-identity.js';
 import { resolveActors } from '../issues/actor-resolution.js';
 import {
@@ -18,7 +18,6 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
-import { logger } from '../logger.js';
 import { projectLens } from '../messaging/record-screen.js';
 import {
   type AuthVars,
@@ -45,7 +44,6 @@ import {
 import { type CommentCursor, decodeCommentCursor } from './cursor.js';
 import { commentRowIn, placeOfComment } from './entity-read.js';
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
-import { parseMentions, resolveMentions } from './mentions.js';
 import { messageRefusalHttp } from './screen.js';
 import {
   commentThreadColumns,
@@ -191,30 +189,6 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         body: inserted.body,
         parentId: inserted.parentId,
       });
-
-      const insertedId = inserted.id;
-      try {
-        const handles = parseMentions(inserted.body);
-        if (handles.length > 0) {
-          const resolved = await resolveMentions(handles, issue.projectId);
-          const targets = resolved.filter((r) => r.userId !== userId);
-          if (targets.length > 0) {
-            await db
-              .insert(commentMentions)
-              .values(targets.map((t) => ({ commentId: insertedId, userId: t.userId })))
-              .onConflictDoNothing();
-            await hooks.emit('commentMentioned', {
-              issueId,
-              projectId: issue.projectId,
-              commentId: insertedId,
-              actor: restActor(c),
-              mentionedUserIds: targets.map((t) => t.userId),
-            });
-          }
-        }
-      } catch (err) {
-        logger.error({ err, commentId: insertedId }, 'comment mention fan-out failed');
-      }
 
       return c.json(
         written.warnings.length > 0 ? { ...inserted, warnings: written.warnings } : inserted,

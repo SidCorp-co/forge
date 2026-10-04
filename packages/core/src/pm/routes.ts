@@ -3,7 +3,8 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { comments, issues, pmConfig, pmDecisions, pmPolicies } from '../db/schema.js';
+import { postIssueNotice } from '../comments/index.js';
+import { issues, pmConfig, pmDecisions, pmPolicies } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -181,11 +182,12 @@ pmRoutes.post(
         .limit(1);
       if (!issue || issue.projectId !== projectId) continue;
 
-      const [inserted] = await db
-        .insert(comments)
-        .values({ issueId, authorId: userId, body, parentId: null, intent: 'decision' })
-        .returning({ id: comments.id, body: comments.body, parentId: comments.parentId });
-      if (!inserted) continue;
+      const inserted = await postIssueNotice({
+        issueId,
+        authorId: userId,
+        body,
+        intent: 'decision',
+      });
       await hooks.emit('commentCreated', {
         issueId,
         projectId,

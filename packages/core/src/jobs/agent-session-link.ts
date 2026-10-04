@@ -8,6 +8,7 @@ import {
   jobs,
 } from '../db/schema.js';
 import { masterSessionIfOwned } from '../devices/master-owner.js';
+import { insertSessionRow } from '../agent-sessions/index.js';
 import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
 import type { FailureCause } from '../pipeline/failure-causes.js';
@@ -149,30 +150,23 @@ export async function ensureAgentSessionForJob(
     // from "actually streaming" so the sweeper can distinguish zombies.
     // ISS-101 — inherit the parent job's pipeline_run so issue-driven and
     // PM sessions share the same run lifecycle as their job.
-    const [inserted] = await db
-      .insert(agentSessions)
-      .values({
-        projectId: job.projectId,
-        userId: issueOwnerId,
-        deviceId: job.deviceId,
-        pipelineRunId: job.pipelineRunId,
-        title,
-        kind,
-        parentSessionId: await resolveHoldingMaster(job),
-        status: 'queued',
-        dispatchedAt: new Date(),
-        repoPath: context.repoPath,
-        metadata: metadata as never,
-        ...(parentSession?.pipelineHealth
-          ? { pipelineHealth: parentSession.pipelineHealth as never }
-          : {}),
-      })
-      .returning({ id: agentSessions.id });
-
-    if (!inserted) {
-      logger.warn({ jobId: job.id }, 'agent-session-link: insert returned no row');
-      return null;
-    }
+    const parentSessionId = await resolveHoldingMaster(job);
+    const inserted = await insertSessionRow(db, {
+      projectId: job.projectId,
+      userId: issueOwnerId,
+      deviceId: job.deviceId,
+      pipelineRunId: job.pipelineRunId,
+      title,
+      kind,
+      parentSessionId,
+      status: 'queued',
+      dispatchedAt: new Date(),
+      repoPath: context.repoPath,
+      metadata: metadata as never,
+      ...(parentSession?.pipelineHealth
+        ? { pipelineHealth: parentSession.pipelineHealth as never }
+        : {}),
+    });
 
     await db.update(jobs).set({ agentSessionId: inserted.id }).where(eq(jobs.id, job.id));
 

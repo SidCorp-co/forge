@@ -110,7 +110,7 @@ export {
 export { WhoMark, PersonChip, AgentChip, ActorChip, type WhoKind } from "./patterns/person-chip";
 export { WaitingOn, WaitBanner, type WaitingOnView, type BannerTone } from "./patterns/waiting-on";
 export {
-  GroupedList, useGroupFold, visibleRows, type ListGroup, type ListRowView, type GroupedListProps,
+  GroupedList, useGroupFold, visibleRows, standingGroups, type ListGroup, type ListRowView, type GroupedListProps,
 } from "./patterns/grouped-list";
 export { ListSearch, type ListSearchProps } from "./patterns/list-search";
 export { FilterChip, type FilterChipProps } from "./patterns/filter-chip";

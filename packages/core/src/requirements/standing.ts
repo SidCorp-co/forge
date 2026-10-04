@@ -16,8 +16,9 @@ import {
   type RequirementStanding,
   type RequirementState,
   type RequirementTask,
-  type RequirementWaitingOn,
+  type RequirementWaitingKind,
 } from '@forge/contracts/requirements';
+import type { WaitingOn } from '@forge/contracts/standing';
 import type { DeliveryPhase, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
 import { addWorkingDays } from '../lib/working-days.js';
 
@@ -151,17 +152,19 @@ function verdictOf(links: readonly CoverageIssue[]): BcVerdict {
   return 'not_judged';
 }
 
+type RequirementWaitingOn = WaitingOn<RequirementWaitingKind>;
+
 const wait = (
-  kind: RequirementWaitingOn['kind'],
+  kind: RequirementWaitingKind,
   who: string,
   act: string,
   rule: string,
-): RequirementWaitingOn => ({ kind, who, act, rule });
+): RequirementWaitingOn => ({ kind, who, act, rule, ref: null, dueAt: null });
 
 const signerWait = (viewer: StandingInput['viewer'], act: string, rule: string) =>
   viewer?.canSignOff
     ? { group: 'needs_you' as const, waitingOn: wait('you', 'You', act, rule) }
-    : { group: 'others' as const, waitingOn: wait('person', SIGNER, act, rule) };
+    : { group: 'waiting' as const, waitingOn: wait('person', SIGNER, act, rule) };
 
 interface Turn {
   group: RequirementAttentionGroup;
@@ -226,7 +229,7 @@ function turnOf(
     }
     const kind = draft.authorKind === 'agent' ? 'agent' : 'person';
     return {
-      group: 'others',
+      group: 'waiting',
       waitingOn: wait(kind, draft.authorName ?? 'Its author', 'finish draft', rule),
     };
   }
@@ -249,7 +252,7 @@ function turnOf(
       'a linked design is unpinned or approved past the revision the agreed baseline pins, or a linked contract has a current version it does not pin';
     if (viewer?.canSignOff) return { group: 'needs_you', waitingOn: wait('you', 'You', act, rule) };
     const owner = input.owner?.kind === 'human' ? input.owner.name : null;
-    return { group: 'others', waitingOn: wait('person', owner ?? SIGNER, act, rule) };
+    return { group: 'waiting', waitingOn: wait('person', owner ?? SIGNER, act, rule) };
   }
   const check = checkTaskOf(input, live);
   if (check) {
@@ -257,12 +260,12 @@ function turnOf(
     const rule = `delivered at r${check.revision}; the BA checks the business criteria by ${check.dueAt.slice(0, 10)}, ${CHECK_SLA_WORKING_DAYS} working days after delivery${check.overdue ? ', and it is overdue' : ''}`;
     return viewer?.canSignOff
       ? { group: 'needs_you', waitingOn: { ...wait('you', 'You', act, rule), dueAt: check.dueAt } }
-      : { group: 'others', waitingOn: { ...wait('person', 'BA', act, rule), dueAt: check.dueAt } };
+      : { group: 'waiting', waitingOn: { ...wait('person', 'BA', act, rule), dueAt: check.dueAt } };
   }
   const unproven = coverage.filter((c) => c.verdict !== 'passing').map((c) => c.code);
   if (live.length > 0 && live.every((i) => i.status === 'closed') && unproven.length > 0) {
     return {
-      group: 'others',
+      group: 'waiting',
       waitingOn: wait(
         'agent',
         'Master',
@@ -277,7 +280,7 @@ function turnOf(
   const replan = live.filter((i) => i.changedSincePlan);
   if (replan.length > 0) {
     return {
-      group: 'others',
+      group: 'waiting',
       waitingOn: wait(
         'agent',
         'Master',
@@ -289,7 +292,7 @@ function turnOf(
   if (live.length === 0) {
     const task = breakdownTaskOf(input, live);
     return {
-      group: 'others',
+      group: 'waiting',
       waitingOn: {
         ...wait(
           'agent',
@@ -301,7 +304,7 @@ function turnOf(
             ? `agreed with no linked issue; the breakdown is due ${task.dueAt.slice(0, 10)}, ${BREAKDOWN_SLA_WORKING_DAYS} working days after the agree`
             : 'agreed with no linked issue',
         ),
-        ...(task ? { dueAt: task.dueAt } : {}),
+        dueAt: task?.dueAt ?? null,
       },
     };
   }
@@ -317,7 +320,7 @@ function turnOf(
   return {
     group: 'moving',
     waitingOn: wait(
-      'issues',
+      'issue',
       'Issues',
       running > 0 ? `Running ${running} of ${live.length}` : `Done ${done} of ${live.length}`,
       'agreed and its issues are being worked',

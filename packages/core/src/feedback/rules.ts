@@ -6,12 +6,9 @@
  */
 
 import {
-  FEEDBACK_CASE_OWNER_LABELS,
   FEEDBACK_KIND_ROUTES,
   FEEDBACK_ROUTE_SLA_WORKING_DAYS,
-  type FeedbackAttention,
   type FeedbackCaseOwner,
-  type FeedbackCaseView,
   type FeedbackKind,
   type FeedbackPhase,
   type FeedbackRefusal,
@@ -22,7 +19,6 @@ import {
   type FeedbackStatus,
   type FeedbackTriage,
   type FeedbackTriageRoute,
-  type FeedbackWaiting,
 } from '@forge/contracts/feedback';
 import type { SuggestionKind, SuggestionStatus } from '@forge/contracts/suggestions';
 import type { NodeRef } from '@forge/contracts/workflow-health';
@@ -91,91 +87,6 @@ export function searchWithheldRefusal(
     '/q',
     "this project's no_egress policy withholds feedback content from this reader, so a text search over it cannot be answered; list without `q`, filtering by phase.",
   );
-}
-
-/** Who a row waits on for this viewer: a member triages, the reporter verifies. */
-export function attentionOf(phase: FeedbackPhase, viewerIsReporter: boolean): FeedbackAttention {
-  if (phase === 'new' || phase === 'triaged' || phase === 'reopened') return 'you';
-  if (phase === 'planned') return 'moving';
-  if (phase === 'resolved') return viewerIsReporter ? 'you' : 'others';
-  return 'done';
-}
-
-const ROUTE_ACTS: Record<FeedbackTriageRoute, string> = {
-  issue: 'create or link the issue',
-  revision: 'name the revision proposal',
-  new_requirement: 'start the draft requirement',
-  answer: 'write the answer',
-  duplicate: 'name the root',
-  decline: 'decline it',
-};
-
-// step fb-case: a triaged item waits on its case's owner by name and due while the route is not
-// written. A written route whose carrier died reads triaged again, and triage is the BA's
-function caseWaiting(c: FeedbackCaseView | null): FeedbackWaiting {
-  const ba = FEEDBACK_CASE_OWNER_LABELS.ba;
-  if (!c) return { kind: 'person', who: ba, act: 'triage it' };
-  if (c.routedAt !== null) {
-    return { kind: 'person', who: ba, act: `triage it again: what carried its ${c.route} route is gone` };
-  }
-  const due = `${c.overdue ? 'overdue since' : 'due'} ${c.dueAt.slice(0, 10)}`;
-  return {
-    kind: c.owner === 'master' ? 'agent' : 'person',
-    who: FEEDBACK_CASE_OWNER_LABELS[c.owner],
-    act: `${ROUTE_ACTS[c.route]}, ${due}`,
-  };
-}
-
-/** Who or what an item waits on, whoever reads it: the "Waiting on" cell's name and act. */
-export function waitingOf(
-  phase: FeedbackPhase,
-  route: FeedbackRoute | null,
-  carrier: string | null,
-  reporter: string,
-  kase: FeedbackCaseView | null = null,
-): FeedbackWaiting {
-  switch (phase) {
-    case 'new':
-    case 'reopened':
-      return { kind: 'person', who: 'A person', act: 'triage it' };
-    case 'triaged':
-      return caseWaiting(kase);
-    case 'planned':
-      if (route === 'issue')
-        return { kind: 'issue', who: carrier ?? 'The linked issue', act: 'ship' };
-      if (route === 'revision')
-        return { kind: 'person', who: 'The revision proposal', act: 'be accepted and delivered' };
-      if (route === 'new_requirement')
-        return {
-          kind: 'issue',
-          who: carrier ?? 'The new requirement',
-          act: 'be agreed and delivered',
-        };
-      if (route === 'duplicate')
-        return { kind: 'issue', who: `Its root ${carrier ?? ''}`.trim(), act: 'be resolved' };
-      return { kind: 'issue', who: 'The linked work', act: '' };
-    case 'resolved':
-      return { kind: 'person', who: reporter, act: 'verify the fix' };
-    default:
-      return { kind: 'none', who: 'Nothing', act: '' };
-  }
-}
-
-/** The same fact as one sentence, for a reader without the cell: "ISS-12 to ship". */
-export function waitingOnOf(
-  phase: FeedbackPhase,
-  route: FeedbackRoute | null,
-  carrier: string | null,
-  reporter: string,
-  kase: FeedbackCaseView | null = null,
-): string {
-  const w = waitingOf(phase, route, carrier, reporter, kase);
-  return w.act ? `${w.who} to ${w.act}` : w.who;
-}
-
-/** The cell for one viewer: when it is their turn it names them. */
-export function waitingFor(w: FeedbackWaiting, attention: FeedbackAttention): FeedbackWaiting {
-  return attention === 'you' ? { kind: 'you', who: 'You', act: w.act } : w;
 }
 
 export interface TargetFields {

@@ -314,6 +314,7 @@ const youOwe = (act: string, rule: string): OverviewNeed['waitingOn'] => ({
   act,
   rule,
   ref: null,
+  dueAt: null,
 });
 
 export function needsOf(

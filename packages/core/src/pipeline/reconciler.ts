@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, type IssueStatus } from '../db/schema.js';
+import { postIssueNotice } from '../comments/index.js';
+import type { IssueStatus } from '../db/schema.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
@@ -255,16 +256,19 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
           const reading = readWedgeLease(await wedgeLeaseUnderLock(tx, row.id), new Date());
           if (wedgeLeaseHoldsTheIssue(reading)) throw stop('lease');
           if (!(await mintReconcilerActor(tx, row.project_id, actor))) throw stop('minted');
-          await tx.insert(comments).values({
-            issueId: row.id,
-            authorId: actor.id,
-            body: buildWedgeResetBody({
-              from: row.status,
-              to: AUTONOMOUS_ENTRY_STATUS,
-              grace: WEDGE_GRACE,
-              reading,
-            }),
-          });
+          await postIssueNotice(
+            {
+              issueId: row.id,
+              authorId: actor.id,
+              body: buildWedgeResetBody({
+                from: row.status,
+                to: AUTONOMOUS_ENTRY_STATUS,
+                grace: WEDGE_GRACE,
+                reading,
+              }),
+            },
+            tx,
+          );
         },
       },
     );

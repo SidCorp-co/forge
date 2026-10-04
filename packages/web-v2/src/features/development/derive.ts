@@ -8,7 +8,7 @@ export const partSegments = (parts: readonly OverviewAttentionPart[]): CoverageS
     label: ISSUE_ATTENTION_LABELS[p.group].label,
     count: p.count,
     tone: ISSUE_ATTENTION_LABELS[p.group].tone,
-    hint: ISSUE_ATTENTION_LABELS[p.group].hint,
+    hint: ISSUE_ATTENTION_LABELS[p.group].hint ?? undefined,
   }));
 
 export const partsLine = (parts: readonly OverviewAttentionPart[]): string =>

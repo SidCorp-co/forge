@@ -1,5 +1,6 @@
 import type { DesignRevisionState } from "./design-status.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
+import type { WaitingKind, WaitingOn } from "./standing.js";
 
 // cm:why the answer shapes a workflow and its design are read in when the whole document is not
 // asked for (ISS-87)
@@ -84,24 +85,16 @@ export interface DesignHead {
 	approvedRevision: number | null;
 	approver: string;
 	canDecide: boolean;
-	waitingOn: DesignWaitingOn;
+	waitingOn: WaitingOn<DesignWaitingKind>;
 }
 
-export const DESIGN_WAITING_ON_KINDS = [
+export const DESIGN_WAITING_KINDS = [
 	"you",
 	"person",
 	"agent",
 	"none",
-] as const;
-export type DesignWaitingOnKind = (typeof DESIGN_WAITING_ON_KINDS)[number];
-
-// cm:why whose turn a design is, worded as a requirement's is (`requirements.ts:RequirementWaitingOn`), so every screen says it once from core (`workflows/design-standing.ts:designStandingOf`)
-export interface DesignWaitingOn {
-	kind: DesignWaitingOnKind;
-	who: string;
-	act: string;
-	rule: string;
-}
+] as const satisfies readonly WaitingKind[];
+export type DesignWaitingKind = (typeof DESIGN_WAITING_KINDS)[number];
 
 export interface DesignRequirementLink {
 	key: string;

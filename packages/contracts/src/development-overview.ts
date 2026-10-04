@@ -3,11 +3,12 @@
 import type {
 	IssueAttentionGroup,
 	IssueLeaseVerdict,
-	IssueWaitingOn,
+	IssueWaitingKind,
 } from "./issue-standing.js";
 import type { IssueStatus } from "./issue-machine.js";
 import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
 import type { MasterSlots, MasterState } from "./master-standing.js";
+import type { WaitingOn } from "./standing.js";
 
 export const OVERVIEW_WINDOW_DAYS = 14;
 
@@ -112,7 +113,7 @@ export interface OverviewLane {
 	segments: OverviewLaneSegment[];
 	heldSince: string | null;
 	lease: { verdict: IssueLeaseVerdict; expiresAt: string | null } | null;
-	waitingOn: IssueWaitingOn;
+	waitingOn: WaitingOn<IssueWaitingKind>;
 }
 
 export interface OverviewMoving {
@@ -128,7 +129,7 @@ export interface OverviewChainNode {
 	status: IssueStatus | null;
 	step: WorkStep | null;
 	tone: IssueStatusTone | null;
-	waitingOn: IssueWaitingOn | null;
+	waitingOn: WaitingOn<IssueWaitingKind> | null;
 	held: boolean;
 }
 
@@ -179,7 +180,7 @@ export interface OverviewNeed {
 	title: string;
 	facts: string[];
 	state: OverviewNeedState;
-	waitingOn: IssueWaitingOn;
+	waitingOn: WaitingOn;
 	owner: { name: string | null; kind: "human" | "agent" } | null;
 	touchedAt: string | null;
 }

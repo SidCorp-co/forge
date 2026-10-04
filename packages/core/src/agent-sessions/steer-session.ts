@@ -1,5 +1,5 @@
 import { and, eq, isNotNull, notInArray } from 'drizzle-orm';
-import { insertComment } from '../comments/service.js';
+import { insertComment } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, jobs, terminalAgentSessionStatuses } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';

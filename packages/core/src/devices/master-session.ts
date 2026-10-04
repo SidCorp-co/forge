@@ -12,6 +12,7 @@ import { db, type Tx } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
+import { beatSession, insertSessionRow } from '../agent-sessions/index.js';
 import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
 import { announceOneShotRun, insertOneShotRun, type OneShotRunSpec } from '../pipeline/runs.js';
@@ -70,10 +71,7 @@ export async function ensureMasterSession(args: {
 }): Promise<MasterSession> {
   const live = await liveMasterOn(db, args);
   if (live) {
-    await db
-      .update(agentSessions)
-      .set({ lastHeartbeatAt: new Date(), updatedAt: new Date() })
-      .where(eq(agentSessions.id, live.id));
+    await beatSession(live.id);
     return { sessionId: live.id, name: args.name, created: false };
   }
 
@@ -87,29 +85,22 @@ export async function ensureMasterSession(args: {
     const winner = await liveMasterOn(tx, args);
     if (winner) return { existing: winner.id };
     const run = await insertOneShotRun(tx, spec);
-    const [row] = await tx
-      .insert(agentSessions)
-      .values({
-        projectId: args.projectId,
-        deviceId: args.deviceId,
-        pipelineRunId: run.id,
-        title: `master: ${args.name}`,
-        kind: MASTER_SESSION_KIND,
-        status: 'running',
-        startedAt: new Date(),
-        lastHeartbeatAt: new Date(),
-        metadata: { terminalName: args.name, deviceId: args.deviceId },
-      })
-      .returning({ id: agentSessions.id });
-    if (!row) throw new Error('ensureMasterSession: insert returned no row');
+    const row = await insertSessionRow(tx, {
+      projectId: args.projectId,
+      deviceId: args.deviceId,
+      pipelineRunId: run.id,
+      title: `master: ${args.name}`,
+      kind: MASTER_SESSION_KIND,
+      status: 'running',
+      startedAt: new Date(),
+      lastHeartbeatAt: new Date(),
+      metadata: { terminalName: args.name, deviceId: args.deviceId },
+    });
     return { opened: { sessionId: row.id, runId: run.id } };
   });
 
   if (claimed.existing) {
-    await db
-      .update(agentSessions)
-      .set({ lastHeartbeatAt: new Date(), updatedAt: new Date() })
-      .where(eq(agentSessions.id, claimed.existing));
+    await beatSession(claimed.existing);
     logger.info(
       { masterSessionId: claimed.existing, deviceId: args.deviceId, projectId: args.projectId },
       'master-session: a second registration arrived while the first was inserting, and it read the row the first wrote',

@@ -5,6 +5,7 @@
 // full page per row, all read from GET /runs/standing; the band and the list read the same answer, so
 // they can never disagree about how many runs there are
 import { RUN_GROUP_LABELS, RUN_MASTER_GROUP, RUN_STANDING_SCOPES, type RunStandingScope } from "@forge/contracts/run-standing";
+import { needsViewer } from "@forge/contracts/standing";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo } from "react";
 import {
@@ -104,7 +105,7 @@ export function RunsList({ access }: { access: AgentsAccess }) {
   const groups = useMemo((): ListGroup<Item>[] => {
     if (!d) return [];
     const rows = d.items.filter(
-      (r) => matches(text, r) && (!on.has("you") || r.needsViewer) && (!on.has("stuck") || r.state === "stuck"),
+      (r) => matches(text, r) && (!on.has("you") || needsViewer(r)) && (!on.has("stuck") || r.state === "stuck"),
     );
     const showMaster = scope !== "finished" && on.size === 0 && !text;
     const master: ListGroup<Item> = { id: MASTER_KEY, ...RUN_MASTER_GROUP, rows: showMaster ? [d.master] : [] };

@@ -3,9 +3,7 @@ import {
   type ContentLanguageView,
   contentLanguageOf,
 } from '@forge/contracts/content-language';
-import { eq, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { agentSessions } from '../db/schema.js';
+import { mergeSessionMetadata } from '../agent-sessions/index.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { CONTENT_LANGUAGE_KEY } from './block.js';
 
@@ -20,11 +18,5 @@ export async function recordContentLanguage(
   agentSessionId: string,
   record: ContentLanguageRecord,
 ): Promise<void> {
-  const patch = { [CONTENT_LANGUAGE_KEY]: record };
-  await db
-    .update(agentSessions)
-    .set({
-      metadata: sql`coalesce(${agentSessions.metadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
-    })
-    .where(eq(agentSessions.id, agentSessionId));
+  await mergeSessionMetadata(agentSessionId, { [CONTENT_LANGUAGE_KEY]: record });
 }

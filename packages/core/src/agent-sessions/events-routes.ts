@@ -9,7 +9,7 @@
  * frame a chat turn ever produced was thrown away.
  *
  * The runner does not parse here. It numbers lines and posts them; core folds
- * them with `jobs/session-transcript.ts`, the same reducer the pipeline path
+ * them with `agent-sessions/session-transcript.ts`, the same reducer the pipeline path
  * uses.
  */
 
@@ -21,7 +21,7 @@ import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { agentSessionEvents } from '../db/schema-agent-session-events.js';
 import { jobsOfSession, scrubJobOutput } from '../jobs/job-secret-scrub.js';
-import { maybeDeriveIncrementalFor } from '../jobs/session-transcript.js';
+import { maybeDeriveIncrementalFor } from './session-transcript.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { forbidden } from '../middleware/route-errors.js';

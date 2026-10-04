@@ -1,7 +1,6 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { terminalAgentSessionStatuses } from '../../db/session-vocabulary.js';
 import {
-  attemptedMerge,
   TRANSCRIPT_ATTEMPTED_KEY,
   TRANSCRIPT_FINALIZED_KEY,
 } from '../../db/transcript-marker.js';
@@ -284,7 +283,3 @@ export function truncatedHistories(days: number, limit: number): SQL {
   `;
 }
 
-/** Stamp the attempt, before the derive runs, so a failure rotates to the back. */
-export function stampFinalizeAttempt(sessionId: string, at: Date): SQL {
-  return sql`UPDATE agent_sessions SET metadata = ${attemptedMerge(at)} WHERE id = ${sessionId}`;
-}

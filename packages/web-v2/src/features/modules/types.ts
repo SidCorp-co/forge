@@ -14,5 +14,4 @@ export type {
   ModuleRollupRow,
   ModuleStanding,
   ModuleUnavailable,
-  ModuleWaitingOn,
 } from "@forge/contracts/modules";
