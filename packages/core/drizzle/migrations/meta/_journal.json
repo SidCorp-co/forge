@@ -2407,7 +2407,14 @@
       "idx": 375,
       "version": "7",
       "when": 1815350400000,
-      "tag": "0375_the_code_reading_is_an_observation_apart_from_the_design",
+      "tag": "0375_a_requirement_links_the_contracts_it_is_built_on",
+      "breakpoints": true
+    },
+    {
+      "idx": 376,
+      "version": "7",
+      "when": 1815436800000,
+      "tag": "0376_the_code_reading_is_an_observation_apart_from_the_design",
       "breakpoints": true
     }
   ]

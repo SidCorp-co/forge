@@ -242,6 +242,29 @@ export const requirementWorkflows = pgTable(
   }),
 );
 
+// A requirement names the contracts it is built on before any version exists (contract-first), so
+// the link is to the contract, and the agree or re-pin pins whichever version is current then.
+export const requirementContracts = pgTable(
+  'requirement_contracts',
+  {
+    requirementId: uuid('requirement_id')
+      .notNull()
+      .references((): AnyPgColumn => requirements.id, { onDelete: 'cascade' }),
+    providerProjectId: uuid('provider_project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    contractSlug: text('contract_slug').notNull(),
+    linkedBy: uuid('linked_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.requirementId, t.providerProjectId, t.contractSlug] }),
+    contractIdx: index('requirement_contracts_contract_idx').on(t.providerProjectId, t.contractSlug),
+  }),
+);
+
 // cm:why the agree is a row, not a column: re-agreeing writes a new baseline and the earlier one
 // stays, so "what was agreed at r4" is a read after r5 is agreed; a re-pin onto newly approved
 // designs is a further row at the same revision (seq 2, 3, …), so the latest is the highest

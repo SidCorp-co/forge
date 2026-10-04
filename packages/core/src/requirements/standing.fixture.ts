@@ -79,8 +79,10 @@ export const base = (over: Partial<StandingInput> = {}): StandingInput => ({
   issueCriteria: [],
   openSuggestionKinds: [],
   stalePins: [],
+  staleContractPins: [],
   feedback: { open: 0, untriaged: [] },
   updatedAt: daysAgo(3),
+  agreedAt: null,
   now: NOW,
   ...over,
 });

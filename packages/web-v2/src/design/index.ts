@@ -113,6 +113,8 @@ export {
   GroupedList, useGroupFold, visibleRows, type ListGroup, type ListRowView, type GroupedListProps,
 } from "./patterns/grouped-list";
 export { ListSearch, type ListSearchProps } from "./patterns/list-search";
+export { FilterChip, type FilterChipProps } from "./patterns/filter-chip";
+export { SignalsStrip, Signal } from "./patterns/signals-strip";
 export { NotAvailable } from "./patterns/not-available";
 export { PeekPanel, PeekHead, usePeek, usePeekKeys, type PeekState, type PeekPanelProps } from "./patterns/peek-panel";
 export {

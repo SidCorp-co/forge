@@ -1,7 +1,27 @@
 import type { DesignRevisionState } from "@forge/contracts/design-status";
+import type {
+  Boundary,
+  FactRow,
+  FocalSystem,
+  GraphFacts,
+  GraphNode,
+  IntegrationState,
+  NodeKind,
+  Relationship,
+  SystemGraph,
+} from "@forge/contracts/system-graph";
 import type { DesignBuildGate, DesignRequirementLink, DesignWaitingOn } from "@forge/contracts/workflows";
 
 export type { DesignBuildGate, DesignRequirementLink, DesignRevisionState, DesignWaitingOn };
+export type { Boundary, FactRow, FocalSystem, GraphFacts, GraphNode, IntegrationState, NodeKind, Relationship, SystemGraph };
+
+/** Where core reads a system-context design's graph: one revision, and one whose removed steps it draws too. */
+export interface SystemGraphRef {
+  projectId: string;
+  workflowId: string;
+  revision: number;
+  against?: number | null;
+}
 
 export type WorkflowKind = "flow" | "state";
 export type DesignStatus = "draft" | "proposed" | "approved" | "returned";

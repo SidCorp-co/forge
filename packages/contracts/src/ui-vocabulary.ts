@@ -534,6 +534,19 @@ export const ENUM_LABELS = {
 		killed_idle: "Killed idle",
 		died: "Died",
 	} satisfies Record<RunHandbackClose, string>,
+	/** What a run waits on when no person does (core `runs/standing-live.ts` gate arms). */
+	runGate: {
+		all_devices_exhausted: "All devices busy",
+		verify_unavailable: "Verify unavailable",
+		retry_cooldown: "Retry cooldown",
+		issue_busy: "Issue busy",
+		runner_stale: "Runner stale",
+		runner_too_old: "Runner too old",
+		blocked_on_machine: "Blocked on a machine",
+		blocked_on_master_or_peer: "Blocked on another agent",
+		blocked_on_nobody: "Blocked on nobody",
+		paused: "Paused",
+	},
 	runEventEntity: {
 		run: "Run",
 		session: "Session",

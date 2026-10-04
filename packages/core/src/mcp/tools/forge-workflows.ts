@@ -32,6 +32,7 @@ import {
   type WorkflowWriter,
   workflowView,
 } from '../../workflows/service.js';
+import { readSystemGraphAs } from '../../workflows/system-graph-read.js';
 import { listProjectTemplatesAs, readProjectTemplateAs } from '../../workflows/template-service.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -56,14 +57,17 @@ const inputSchema = z
       'unlink',
       'templates',
       'template',
+      'system_graph',
     ]),
     projectId: z.uuid().optional(),
     workflowId: z.uuid().optional(),
     /** write: the revision the document is based on; null creates a workflow. */
     baseRevision: z.number().int().min(1).nullable().optional(),
     document: z.unknown().optional(),
-    /** propose / decide: the revision proposed, or the one being decided. */
+    /** propose / decide: the revision proposed, or the one being decided; system_graph: the one read. */
     revision: z.number().int().min(1).optional(),
+    /** system_graph: a revision whose removed steps are drawn too. */
+    against: z.number().int().min(1).optional(),
     decision: z.enum(DESIGN_DECISIONS).optional(),
     reason: z.string().max(DESIGN_REASON_MAX).optional(),
     /** link / unlink: the issue that builds the workflow; propose: the issue the design is drawn under. By key (ISS-12) or uuid. */
@@ -91,12 +95,13 @@ const GRANTS = {
     unlink: 'projects:write',
     templates: 'projects:read',
     template: 'projects:read',
+    system_graph: 'projects:read',
   },
 } as const;
 
 const DESCRIPTION =
   "Draw this project's workflows and take a design to its approver before anything is built from " +
-  'it. Actions: list | get | design | write | propose | decide | link | unlink | templates | template. ' +
+  'it. Actions: list | get | design | write | propose | decide | link | unlink | templates | template | system_graph. ' +
   'templates: the diagram templates this project may draw in (the built-ins operational-flow, ' +
   'service-blueprint, ux-flow, state-machine, integration-sequence, decision-model, data-flow, ' +
   'system-context and their presets, then its own); ' +
@@ -129,6 +134,11 @@ const DESCRIPTION =
   'revision with its decision, reason and step count (no document), the approved revision, and the issues ' +
   "that build it; view: 'steps' adds one revision's steps ({ revision? (the newest by default), stepFrom?, " +
   "stepTo? } numbered from 1, with the edges that touch them); view: 'full' answers every revision with its whole document. " +
+  'system_graph: { workflowId, revision?, against? } — a system-context design read as its C4 graph: nodes ' +
+  '(person, system, container, external, with the integration state an external label states), relationships ' +
+  'with their own label and technology, boundaries per lane and side, and the header facts; `against` draws the ' +
+  'steps that revision held and this one removed, marked removed (SYSTEM_GRAPH_NOT_SYSTEM_CONTEXT, ' +
+  'SYSTEM_GRAPH_REVISION_UNKNOWN). ' +
   'list answers each workflow as { workflowId, flow, title, kind, template, status, revision, approvedRevision, ' +
   'stepCount, edgeCount, returnReason, writerName, updatedAt }; get answers the whole current document. ' +
   'write answers { workflowId, flow, revision, created, status, approvedRevision, stepCount, edgeCount, ' +
@@ -265,6 +275,17 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
     }
     case 'templates':
       return { templates: await listProjectTemplatesAs(actor.userId, projectId) };
+    case 'system_graph': {
+      const outcome = await readSystemGraphAs({
+        userId: actor.userId,
+        projectId,
+        workflowId: need(input, 'workflowId'),
+        revision: input.revision,
+        against: input.against,
+      });
+      if (!outcome.ok) return refusedBy(outcome.refusals);
+      return shown(outcome.graph);
+    }
     case 'template':
       return readProjectTemplateAs(
         actor.userId,

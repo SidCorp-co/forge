@@ -1,5 +1,5 @@
 {
-  "id": "d47e3b74-76ae-4c56-a436-6432d18de852",
+  "id": "0b7728f2-23c3-4e08-b800-d8daaefb25f0",
   "prevId": "50ce6bfb-942c-4054-b167-98ff23022d1c",
   "version": "7",
   "dialect": "postgresql",
@@ -16950,187 +16950,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.project_workflow_observations": {
-      "name": "project_workflow_observations",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "workflow_id": {
-          "name": "workflow_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "at_sha": {
-          "name": "at_sha",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "document": {
-          "name": "document",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "written_by": {
-          "name": "written_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "written_by_agency": {
-          "name": "written_by_agency",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "project_workflow_observations_sha_uq": {
-          "name": "project_workflow_observations_sha_uq",
-          "columns": [
-            {
-              "expression": "workflow_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "at_sha",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "project_workflow_observations_project_idx": {
-          "name": "project_workflow_observations_project_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "workflow_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "project_workflow_observations_project_id_projects_id_fk": {
-          "name": "project_workflow_observations_project_id_projects_id_fk",
-          "tableFrom": "project_workflow_observations",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "project_workflow_observations_workflow_id_project_workflows_id_fk": {
-          "name": "project_workflow_observations_workflow_id_project_workflows_id_fk",
-          "tableFrom": "project_workflow_observations",
-          "tableTo": "project_workflows",
-          "columnsFrom": [
-            "workflow_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "project_workflow_observations_written_by_users_id_fk": {
-          "name": "project_workflow_observations_written_by_users_id_fk",
-          "tableFrom": "project_workflow_observations",
-          "tableTo": "users",
-          "columnsFrom": [
-            "written_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "project_workflow_observations_sha_chk": {
-          "name": "project_workflow_observations_sha_chk",
-          "value": "\"project_workflow_observations\".\"at_sha\" ~ '^[0-9a-f]{40}$'"
-        },
-        "project_workflow_observations_revision_chk": {
-          "name": "project_workflow_observations_revision_chk",
-          "value": "\"project_workflow_observations\".\"revision\" >= 1"
-        },
-        "project_workflow_observations_source_chk": {
-          "name": "project_workflow_observations_source_chk",
-          "value": "\"project_workflow_observations\".\"source\" IN ('observer', 'migrated')"
-        },
-        "project_workflow_observations_agency_chk": {
-          "name": "project_workflow_observations_agency_chk",
-          "value": "\"project_workflow_observations\".\"written_by_agency\" IN ('human', 'agent')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.project_workflows": {
       "name": "project_workflows",
       "schema": "",
@@ -17159,6 +16978,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refreshed_at_sha": {
+          "name": "refreshed_at_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "revision": {
           "name": "revision",
@@ -17290,6 +17121,14 @@
         "project_workflows_kind_chk": {
           "name": "project_workflows_kind_chk",
           "value": "\"project_workflows\".\"kind\" IN ('flow', 'state')"
+        },
+        "project_workflows_status_chk": {
+          "name": "project_workflows_status_chk",
+          "value": "\"project_workflows\".\"status\" IN ('writing', 'current', 'rechecking', 'designed')"
+        },
+        "project_workflows_sha_chk": {
+          "name": "project_workflows_sha_chk",
+          "value": "\"project_workflows\".\"refreshed_at_sha\" IS NULL OR \"project_workflows\".\"refreshed_at_sha\" ~ '^[0-9a-f]{40}$'"
         },
         "project_workflows_revision_chk": {
           "name": "project_workflows_revision_chk",
@@ -17705,6 +17544,121 @@
           "value": "\"requirement_baselines\".\"act\" IN ('agree', 'repin') AND (\"requirement_baselines\".\"act\" = 'agree') = (\"requirement_baselines\".\"seq\" = 1)"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.requirement_contracts": {
+      "name": "requirement_contracts",
+      "schema": "",
+      "columns": {
+        "requirement_id": {
+          "name": "requirement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_project_id": {
+          "name": "provider_project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contract_slug": {
+          "name": "contract_slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "linked_by": {
+          "name": "linked_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "linked_at": {
+          "name": "linked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "requirement_contracts_contract_idx": {
+          "name": "requirement_contracts_contract_idx",
+          "columns": [
+            {
+              "expression": "provider_project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "contract_slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "requirement_contracts_requirement_id_requirements_id_fk": {
+          "name": "requirement_contracts_requirement_id_requirements_id_fk",
+          "tableFrom": "requirement_contracts",
+          "tableTo": "requirements",
+          "columnsFrom": [
+            "requirement_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "requirement_contracts_provider_project_id_projects_id_fk": {
+          "name": "requirement_contracts_provider_project_id_projects_id_fk",
+          "tableFrom": "requirement_contracts",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "provider_project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "requirement_contracts_linked_by_users_id_fk": {
+          "name": "requirement_contracts_linked_by_users_id_fk",
+          "tableFrom": "requirement_contracts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "linked_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "requirement_contracts_requirement_id_provider_project_id_contract_slug_pk": {
+          "name": "requirement_contracts_requirement_id_provider_project_id_contract_slug_pk",
+          "columns": [
+            "requirement_id",
+            "provider_project_id",
+            "contract_slug"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.requirement_criteria": {

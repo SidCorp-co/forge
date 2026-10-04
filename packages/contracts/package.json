@@ -166,6 +166,10 @@
       "types": "./dist/workflows.d.ts",
       "default": "./dist/workflows.js"
     },
+    "./system-graph": {
+      "types": "./dist/system-graph.d.ts",
+      "default": "./dist/system-graph.js"
+    },
     "./projection": {
       "types": "./dist/projection.d.ts",
       "default": "./dist/projection.js"

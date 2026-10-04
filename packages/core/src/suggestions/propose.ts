@@ -11,7 +11,7 @@ import {
 import { and, eq, ne } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { assertProjectAccess } from '../lib/authz.js';
+import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { personActRefusalFor } from '../lib/person-act.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { designNodesIn, nodeSetRefusals } from '../workflows/node-refs.js';
@@ -28,6 +28,8 @@ import {
 } from './read.js';
 import {
   baseStaleRefusal,
+  breakdownOpenRefusal,
+  breakdownProposerRefusal,
   decidedRefusal,
   duplicateRefusal,
   fingerprintOf,
@@ -100,7 +102,12 @@ async function proposeIn(
       ),
     );
   const twin = open.find((s) => s.kind === p.kind && s.fingerprint === p.fingerprint);
-  const refusal = duplicateRefusal(twin?.id ?? null) ?? queueFullRefusal(open.length);
+  const openBreakdown =
+    p.kind === 'breakdown' ? open.find((s) => s.kind === 'breakdown') : undefined;
+  const refusal =
+    breakdownOpenRefusal(openBreakdown?.id ?? null, head) ??
+    duplicateRefusal(twin?.id ?? null) ??
+    queueFullRefusal(open.length);
   if (refusal) return { refusals: [refusal] };
   const [row] = await tx
     .insert(suggestions)
@@ -139,6 +146,14 @@ export async function createSuggestion(input: {
 }): Promise<SuggestionOutcome> {
   const { projectId, kind } = input;
   await assertProjectAccess(projectId, input.actor.userId, 'member');
+  if (kind === 'breakdown') {
+    const access = await effectiveProjectRole(input.actor.userId, projectId);
+    const forbidden = breakdownProposerRefusal(
+      { ...input.actor, role: access?.role ?? null },
+      input.producerKind,
+    );
+    if (forbidden) return { ok: false, refusals: [forbidden] };
+  }
   const target = await resolveTarget(projectId, input.target, input.actor.userId);
   const invalid = payloadRefusal(kind, target.type, input.payload);
   if (invalid) return { ok: false, refusals: [invalid] };
@@ -187,6 +202,11 @@ export async function reviseSuggestion(input: {
 }): Promise<SuggestionOutcome> {
   const { projectId, actor } = input;
   const first = await rowOf(db, projectId, input.id);
+  if (first.kind === 'breakdown') {
+    const access = await effectiveProjectRole(actor.userId, projectId);
+    const refusal = breakdownProposerRefusal({ ...actor, role: access?.role ?? null }, 'person');
+    if (refusal) return { ok: false, refusals: [refusal] };
+  }
   const forbidden =
     (await personActRefusalFor(
       actor,

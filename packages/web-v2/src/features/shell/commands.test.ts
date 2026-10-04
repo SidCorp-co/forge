@@ -31,7 +31,7 @@ describe("⌘K", () => {
   it("offers the project menu's destinations, Schedules and Improvements among them", () => {
     const { list, routeOf } = commands();
     const labels = list.map((c) => c.label);
-    for (const page of ["Dashboard", "Requirements", "Workflows", "Issues", "Modules", "Agents", "Schedules", "Improvements", "Releases"]) {
+    for (const page of ["Dashboard", "Requirements", "Workflows", "Issues", "Modules", "Agents / Runs", "Schedules", "Improvements", "Releases"]) {
       expect(labels).toContain(`Forge · ${page}`);
     }
     expect(routeOf("Forge · Schedules")).toBe("/projects/forge-dev/automation?tab=schedules");
