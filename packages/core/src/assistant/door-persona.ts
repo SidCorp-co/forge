@@ -27,23 +27,6 @@ function openingValues(door: DoorOpening): Record<string, string | null> {
     webBaseUrl: door.webBaseUrl ?? '',
   };
 }
-
-/**
- * The lines every door opens with: who the assistant is, the method, and how to link an issue.
- */
-export function assistantOpening(door: DoorOpening): string[] {
-  const opening = WEB_DOOR_LAYERS.filter((l) => l.id !== 'door-web');
-  return composeLayers(opening, openingValues(door)).split('\n');
-}
-
-/**
- * What is true of the Forge web app and of nowhere else.
- */
-export function webDoorLines(projectSlug: string, askedBy: string | null): string[] {
-  const web = WEB_DOOR_LAYERS.filter((l) => l.id === 'door-web');
-  return composeLayers(web, { projectSlug, askedBy }).split('\n');
-}
-
 /**
  * The assistant's voice in a Forge conversation.
  */
@@ -94,13 +77,6 @@ export function baDoorPersona(
     askedBy: askedBy ?? 'the person asking',
   });
 }
-
-/** Just Agent mode's own lines, for the ledger that accounts for each fragment separately. */
-export function webAgentDoorLines(askedBy: string | null): string[] {
-  const web = WEB_AGENT_DOOR_LAYERS.filter((l) => l.id === 'door-web-agent');
-  return composeLayers(web, { askedBy }).split('\n');
-}
-
 /**
  * The assistant's voice in a Rocket.Chat room.
  */
@@ -125,17 +101,4 @@ export function rocketChatDoorPersona(
     authorUsername: room.authorUsername ?? null,
     midConversation: room.midConversation ?? null,
   });
-}
-
-export function rocketChatDoorLines(
-  botName?: string | undefined,
-  authorUsername?: string | undefined,
-  midConversation?: string | null | undefined,
-): string[] {
-  const room = ROCKETCHAT_DOOR_LAYERS.filter((l) => l.id === 'door-rocketchat');
-  return composeLayers(room, {
-    botName: botName ?? null,
-    authorUsername: authorUsername ?? null,
-    midConversation: midConversation ?? null,
-  }).split('\n');
 }

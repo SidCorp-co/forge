@@ -13,7 +13,7 @@ export interface TurnContext {
   speakerContext?: string | null | undefined;
 }
 
-export function renderTurnContext(ctx: TurnContext): string | null {
+function renderTurnContext(ctx: TurnContext): string | null {
   const sections: string[] = [];
   const conversation = ctx.conversationContext?.trim();
   if (conversation) {

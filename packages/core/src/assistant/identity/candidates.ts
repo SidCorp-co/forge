@@ -12,7 +12,7 @@ export interface SpeakerCandidate {
   confirmable: boolean;
 }
 
-export function normalizeEmail(raw: string | null | undefined): string | null {
+function normalizeEmail(raw: string | null | undefined): string | null {
   const email = raw?.trim().toLowerCase();
   if (!email) return null;
   const at = email.indexOf('@');
@@ -27,7 +27,7 @@ function localPart(email: string): string {
  * The local-part tier's SQL pattern, exported so the escaping is testable
  * without reading a query apart.
  */
-export function likePattern(normalizedEmail: string): string {
+function likePattern(normalizedEmail: string): string {
   return `${localPart(normalizedEmail).replace(/([%_\\])/g, '\\$1')}@%`;
 }
 

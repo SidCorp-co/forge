@@ -12,12 +12,12 @@ export interface ImageBearingMessage {
 /**
  * How many image-bearing user turns, newest-first, are eligible to be re-sent. 1 would make every follow-up question ("so what should the layout be?") answer blind; the number is small because each turn's images are re-fetched and re-uploaded to the model on EVERY subsequent turn they stay eligible for.
  */
-export const VISION_LOOKBACK_TURNS = 2;
+const VISION_LOOKBACK_TURNS = 2;
 
 /**
  * Total raw image bytes a single request may carry, filled newest-first. base64 inflates by ~4/3, so this is ~8 MB on the wire — under the ~20 MB inline-request ceiling of the Gemini models the proxy fans out to, with room for the transcript and the tool catalog. Deliberately ONE budget rather than a per-image cap: two 3 MB screenshots and six small ones are the same cost to the request, and a per-image cap prices neither.
  */
-export const VISION_BUDGET_BYTES = 6_000_000;
+const VISION_BUDGET_BYTES = 6_000_000;
 
 export interface TurnImage extends ConversationImage {
   /** Raw bytes, base64-encoded — no `data:` prefix. */

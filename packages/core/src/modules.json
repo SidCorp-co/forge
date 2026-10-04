@@ -969,7 +969,7 @@
     },
     "onboarding": {
       "kind": "domain",
-      "context": "knowledge",
+      "context": "conversations",
       "owns": [
         "onboardings"
       ],

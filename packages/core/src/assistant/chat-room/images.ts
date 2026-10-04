@@ -21,9 +21,9 @@ import { buildRocketChatHistoryToolset, buildRocketChatQuoteContextToolset } fro
  * gains nothing from the tail, and each one costs a download plus its share of
  * the vision budget.
  */
-export const MAX_INBOUND_IMAGES = 4;
+const MAX_INBOUND_IMAGES = 4;
 
-export const MAX_IMAGE_BYTES = 4_000_000;
+const MAX_IMAGE_BYTES = 4_000_000;
 
 async function download(
   auth: RocketChatRestAuth,
@@ -38,7 +38,7 @@ async function download(
 }
 
 /** Download a message's images; a failure drops that image, never the turn. */
-export async function downloadTurnImages(
+async function downloadTurnImages(
   auth: RocketChatRestAuth,
   refs: readonly RocketChatImageRef[],
 ): Promise<TurnImage[]> {
@@ -54,7 +54,7 @@ export async function downloadTurnImages(
  * lookback — the room asks three questions about one screenshot, and only the
  * first of them carries it.
  */
-export function makeImageResolver(auth: RocketChatRestAuth): ImageResolver {
+function makeImageResolver(auth: RocketChatRestAuth): ImageResolver {
   return async (image) => {
     const bytes = await fetchAttachmentBytes(auth, image.ref, MAX_IMAGE_BYTES);
     return bytes ? bytes.toString('base64') : null;

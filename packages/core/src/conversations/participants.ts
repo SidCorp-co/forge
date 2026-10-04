@@ -17,9 +17,9 @@ import {
   conversations,
 } from '../db/schema-conversations.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import type { Executor, TxOnly } from './db-executor.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { requireHeld } from '../permissions/index.js';
+import type { Executor, TxOnly } from './db-executor.js';
 import { refuseConversation } from './refusals.js';
 
 export interface ParticipantRow {
@@ -87,10 +87,7 @@ export async function listParticipants(
 }
 
 /** The projects a handle's scope comes from. */
-export async function projectsOfHandle(
-  handleUserId: string,
-  tx: Executor = defaultDb,
-): Promise<string[]> {
+async function projectsOfHandle(handleUserId: string, tx: Executor = defaultDb): Promise<string[]> {
   const rows = await tx
     .select({ projectId: projectMembers.projectId })
     .from(projectMembers)
