@@ -8,6 +8,140 @@
 
 ## [Unreleased]
 
+### Added
+
+- **A business criterion, feedback item, design_change suggestion, build link or workflow decision
+  comment can name the design step or edge it is about (ISS-144).** An unknown or ambiguous node is
+  refused by name.
+
+### Changed
+
+- **Approving is a permission: a project admin or an org owner or admin, person or agent alike,
+  approves requirements, mockups, suggestions, designs, contract versions, feedback, releases and
+  plans (ISS-159).** Anyone else is refused APPROVE_PERMISSION_REQUIRED.
+
+- **Every permission is one check, and a project admin can grant a member specific permissions, such
+  as approving requirements, without making them admin (ISS-175).** A missing one is refused
+  PERMISSION_FORBIDDEN naming it and the project.
+
+- **Agents reach Forge through the REST API and the forge CLI; the MCP server now offers only the
+  nine tools neither covers (ISS-176).** Those are attachments, agent reports, the ecosystem channel
+  and connected integrations.
+
+- **Coolify deploys, cancels and rollbacks are decided by the deploys.run permission alone, on MCP
+  as on REST (ISS-179).** The per-binding "agents may use this" switch is gone, and a binding write
+  naming it is refused.
+
+- **A Coolify deploy, cancel or rollback naming the wrong integration or target is refused with a
+  named code instead of a bare 400 BAD_REQUEST (ISS-167).** Rocket.Chat rooms, Sentry intake and
+  GitHub merges behave as before.
+
+- **Every refused write answers one way from the API and agent tools alike: one error body naming
+  each reason by code, where it applies and what would be accepted (ISS-162).** Release blockers
+  come back together in one answer.
+
+- **A refused write carrying several different reasons answers under its own area's code, such as
+  WORKFLOW_REFUSED or ECOSYSTEM_REFUSED, instead of CONFIG_REFUSED (ISS-168).** No endpoint or agent
+  tool changed.
+
+- **Every status change goes through one checked path, so an issue moves only along the steps its
+  lifecycle allows (ISS-161).** Recording a merge no longer moves an issue, and an issue closes only
+  through a release.
+
+- **Issues speak only the ten statuses on every surface, whatever the credential (ISS-174).** A move
+  or filter naming a retired status, such as confirmed, waiting, developed or testing, is refused
+  ISSUE_STATUS_LEGACY instead of being mapped.
+
+- **Triage follows the feedback rule table: a bug routes to an issue, a question to an answer, a
+  change or idea to a revision or a new requirement (ISS-155).** Each item gets one case, owned and
+  due by severity.
+
+- **Only the project master proposes a requirement breakdown, one open per revision, and every
+  proposed issue's criteria trace to the business criteria (ISS-154).** The breakdown task is due
+  two working days after the agree.
+
+- **A delivered requirement shows the BA's acceptance check against the traceability matrix, due
+  five working days after delivery, one per requirement revision (ISS-156).**
+
+- **A build job delivering a requirement gets the design revisions and contract versions its latest
+  baseline pins, and is refused by name when a pin is out of date (ISS-150).** Contract versions
+  named in issue text are no longer loaded.
+
+- **A design or contract verdict on an issue delivering a requirement counts against the version its
+  baseline pins, so approving a newer version elsewhere no longer makes it stale (ISS-151).**
+
+- **An issue whose requirement changed or was re-pinned after its plan was written is refused
+  awaiting_release with REQUIREMENT_CHANGED_SINCE_PLAN until the plan is rewritten (ISS-152).** The
+  issue board shows the same flag.
+
+- **A project can choose whether issues need passing verdicts to reach awaiting release and to be
+  released; the default is unchanged (ISS-173).**
+
+- **What the code holds is an observation stored apart from the design, written and read per commit
+  (ISS-145).** A workflow design carries the plan only: no step status, evidence, drift or commit.
+
+- **Updating a workflow design accepts what reading it returned: server-owned fields are dropped and
+  listed in the answer, and a refused key names the document's real version (ISS-182).**
+
+- **The Modules screen opens on the business modules as a map and a list, and opening one shows its
+  child modules the same way, with a trail back (ISS-183).**
+
+- **The module map is drawn on the same canvas as workflow designs, wraps into as many columns as
+  the width allows and follows the dark theme (ISS-191).** Clicks, keyboard and line weights work as
+  before.
+
+- **Core modules are grouped into twelve business contexts with a dependency direction, and a
+  blocking boundary check stops new import violations from landing (ISS-184).**
+
+- **Every list reads where an item stands and whom it waits on from the server in one shape, so the
+  issue, release, feedback, workflow and dashboard screens agree (ISS-164).**
+
+- **The project issue list takes the same filters as issue search: several statuses or priorities,
+  statusNot, complexity, date windows, text, label, module, createdBy and origin (ISS-169).**
+  Search's label filter accepts names too.
+
+- **The automatic release's reason for holding an issue is its own record, no longer a comment in
+  the thread (ISS-163).** Every comment Forge posts, Sentry intake included, passes screening and
+  notifies whoever it mentions.
+
+- **Every reaction to a change (live updates, the activity feed, notifications, webhooks, master
+  wakes) goes through one durable outbox, so none is lost when the server restarts (ISS-166).**
+
+- **A reaction that keeps failing is retried for hours, then shown as dead with an alert for
+  platform admins and a replay for project admins, instead of dropped after three tries (ISS-185).**
+
+- **Every timed job runs through one scheduler; a PM run on a timer is now a prompt schedule on the
+  Schedules tab, not a cadence in PM settings (ISS-170).**
+
+- **GitHub, Google and SSO sign-in, Google Sheets and GitHub App calls run on maintained standard
+  libraries (ISS-193).** GitHub sign-in uses PKCE, an SSO issuer must match its discovery document
+  exactly, and an in-flight sign-in must restart.
+
+- **Docs, guides, agent prompts and help pages describe what dev does now: nine MCP tools, ten
+  statuses, close only through a release, and approval as a permission (ISS-180).**
+
+### Fixed
+
+- **Deploying, cancelling or rolling back a Coolify deployment over REST now needs deploys.run, as
+  the MCP tool did (ISS-177).** Project admins hold it, and a project admin can grant it to members
+  or agents.
+
+- **Design observations migrated from old design documents open again, and a requirement whose
+  baseline pins none of its linked designs can be re-pinned (ISS-178).**
+
+- **Stale release holds are cleared again; the sweep that clears them failed on every run
+  (ISS-195).** The admin activity log's 'since' filter and the record-events narration no longer
+  fail the same way.
+
+- **Rate limits no longer reset on every deploy, and webhooks a receiver refuses are retried then
+  dead-lettered instead of recorded as delivered (ISS-190).** Webhooks are signed per Standard
+  Webhooks; STORAGE_DRIVER=s3 is refused at startup.
+
+### Removed
+
+- **The help pages for connecting an AI assistant over MCP are gone; an assistant uses the REST API
+  or the CLI (ISS-181).** A dropped issue now releases its detector key.
+
 ## [0.4.0-dev.4] - 2026-10-04
 
 One adapter per external system, and a system graph read from the server
