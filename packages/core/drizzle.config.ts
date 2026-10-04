@@ -28,6 +28,7 @@ export default defineConfig({
     './src/db/schema-agent-session-events.ts',
     './src/db/schema-backfill-markers.ts',
     './src/db/schema-session-inbox.ts',
+    './src/db/schema-rate-limits.ts',
     './src/db/schema-speaker-links.ts',
     './src/db/schema-memory-chunks.ts',
     './src/db/schema-memory-revisions.ts',

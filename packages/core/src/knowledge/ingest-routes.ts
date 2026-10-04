@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { consumeRateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
@@ -44,44 +45,6 @@ const ingestSchema = z
 const badRequest = (message: string, details?: unknown) =>
   new HTTPException(400, { message, cause: { code: 'BAD_REQUEST', details } });
 
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
-
-const rateLimits = new Map<string, RateLimitEntry>();
-let lastSweep = Date.now();
-const SWEEP_INTERVAL_MS = 5 * 60_000;
-
-// Note: this limiter is in-memory and per-process. The deployment is
-// single-process today (see CLAUDE.md "Current state"); behind a load
-// balancer the effective limit becomes N × RATE_LIMIT_PER_MIN. Move into
-// Postgres or a shared cache before scaling out.
-function sweepExpired(now: number): void {
-  if (now - lastSweep < SWEEP_INTERVAL_MS) return;
-  lastSweep = now;
-  for (const [key, entry] of rateLimits) {
-    if (now > entry.resetAt) rateLimits.delete(key);
-  }
-}
-
-export function checkRateLimit(key: string, limit = RATE_LIMIT_PER_MIN, now = Date.now()): boolean {
-  sweepExpired(now);
-  const entry = rateLimits.get(key);
-  if (!entry || now > entry.resetAt) {
-    rateLimits.set(key, { count: 1, resetAt: now + 60_000 });
-    return true;
-  }
-  if (entry.count >= limit) return false;
-  entry.count++;
-  return true;
-}
-
-export function resetRateLimits(): void {
-  rateLimits.clear();
-  lastSweep = Date.now();
-}
-
 export const knowledgeIngestRoutes = new Hono<{ Variables: AuthVars }>();
 knowledgeIngestRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -97,7 +60,8 @@ knowledgeIngestRoutes.post(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.write');
 
-    if (!checkRateLimit(`ingest:${projectId}`)) {
+    const limit = await consumeRateLimit(`ingest:${projectId}`, RATE_LIMIT_PER_MIN, 60_000);
+    if (!limit.allowed) {
       throw new HTTPException(429, {
         message: 'Rate limit exceeded. Max 100 requests per minute.',
         cause: { code: 'RATE_LIMIT_EXCEEDED' },

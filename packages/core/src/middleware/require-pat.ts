@@ -10,7 +10,7 @@ import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { parseBearerHeader } from './bearer.js';
 import { declareGate } from './declared-gate.js';
-import { getClientIp } from './rate-limit.js';
+import { consumeRateLimit, getClientIp } from './rate-limit.js';
 
 export type PatPrincipal = {
   kind: 'pat';
@@ -60,12 +60,6 @@ const unauth = (message: string, options?: { invalidToken?: boolean; invalidRequ
     },
   });
 
-type PatBucket = {
-  minuteCount: number;
-  minuteResetAt: number;
-};
-const patBuckets = new Map<string, PatBucket>();
-
 const bucketKey = (tokenId: string, requestClass: PatRequestClass) => `${tokenId}:${requestClass}`;
 
 /**
@@ -75,65 +69,13 @@ const bucketKey = (tokenId: string, requestClass: PatRequestClass) => `${tokenId
 const patUsedLastEmit = new Map<string, number>();
 const PAT_USED_THROTTLE_MS = 60 * 1000;
 
-export function __resetPatBuckets(): void {
-  patBuckets.clear();
-  patUsedLastEmit.clear();
-}
-
 /**
  * Drop in-process throttle state for a token id. Called from PAT revoke /
  * rotate paths so the map stays bounded by active-PAT count rather than
- * lifetime-PAT count (the entry would otherwise live for the process
- * lifetime even after the token is unusable).
+ * lifetime-PAT count. The token's rate-limit rows live in Postgres and expire there.
  */
 export function forgetPatThrottle(tokenId: string): void {
   patUsedLastEmit.delete(tokenId);
-  patBuckets.delete(bucketKey(tokenId, 'read'));
-  patBuckets.delete(bucketKey(tokenId, 'write'));
-}
-
-interface RateLimitOutcome {
-  allowed: boolean;
-  max: number;
-  windowMs: number;
-  remaining: number;
-  resetMs: number;
-  firstRejectionInWindow: boolean;
-}
-
-function checkPatRateLimit(
-  tokenId: string,
-  requestClass: PatRequestClass,
-  maxOverride: number | null,
-): RateLimitOutcome {
-  const rule = patRuleFor(requestClass);
-  const max = maxOverride ?? rule.max;
-  const windowMs = rule.windowMs;
-
-  const key = bucketKey(tokenId, requestClass);
-  const now = Date.now();
-  let bucket = patBuckets.get(key);
-  if (!bucket || now >= bucket.minuteResetAt) {
-    bucket = { minuteCount: 0, minuteResetAt: now + windowMs };
-    patBuckets.set(key, bucket);
-  }
-
-  bucket.minuteCount += 1;
-  const base = { max, windowMs, resetMs: bucket.minuteResetAt - now };
-  if (bucket.minuteCount > max) {
-    return {
-      ...base,
-      allowed: false,
-      remaining: 0,
-      firstRejectionInWindow: bucket.minuteCount === max + 1,
-    };
-  }
-  return {
-    ...base,
-    allowed: true,
-    remaining: Math.max(0, max - bucket.minuteCount),
-    firstRejectionInWindow: false,
-  };
 }
 
 function maybeEmitPatUsed(tokenId: string, userId: string): void {
@@ -174,7 +116,12 @@ export async function authenticatePat(
   onVerified?.();
   const { row, ownerKind } = verified;
 
-  const outcome = checkPatRateLimit(row.id, requestClass, row.rateLimitMax);
+  const rule = patRuleFor(requestClass);
+  const outcome = await consumeRateLimit(
+    bucketKey(row.id, requestClass),
+    row.rateLimitMax ?? rule.max,
+    rule.windowMs,
+  );
   c.header('X-RateLimit-Limit', String(outcome.max));
   c.header('X-RateLimit-Remaining', String(outcome.remaining));
   c.header('X-RateLimit-Reset', String(Math.ceil((Date.now() + outcome.resetMs) / 1000)));

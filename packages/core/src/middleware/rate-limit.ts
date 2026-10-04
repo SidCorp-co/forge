@@ -1,17 +1,85 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import pg from 'pg';
+import { RateLimiterPostgres, RateLimiterRes } from 'rate-limiter-flexible';
+import { env } from '../config/env.js';
 import type { RateLimitRule } from '../config/rate-limits.js';
+import { RATE_LIMIT_POINTS_TABLE } from '../db/schema-rate-limits.js';
+import { logger } from '../observability/logger.js';
 
-type Bucket = { count: number; resetAt: number };
+let pool: pg.Pool | undefined;
 
-const store = new Map<string, Bucket>();
+function storePool(): pg.Pool {
+  if (!pool) {
+    pool = new pg.Pool({
+      connectionString: env.DATABASE_URL,
+      max: 3,
+      statement_timeout: env.DATABASE_STATEMENT_TIMEOUT_MS,
+    });
+    pool.on('error', (err) => logger.warn({ err }, 'rate-limit: idle store connection lost'));
+  }
+  return pool;
+}
+
+/** One limiter per (max, window) pair; every one writes the same table under the caller's key. */
+const limiters = new Map<string, RateLimiterPostgres>();
+
+function limiterFor(max: number, windowMs: number): RateLimiterPostgres {
+  const id = `${max}:${windowMs}`;
+  let limiter = limiters.get(id);
+  if (!limiter) {
+    limiter = new RateLimiterPostgres({
+      storeClient: storePool(),
+      tableName: RATE_LIMIT_POINTS_TABLE,
+      tableCreated: true,
+      keyPrefix: '',
+      points: max,
+      duration: windowMs / 1000,
+      // Each sweep deletes every expired row of the shared table, so one limiter runs it.
+      clearExpiredByTimeout: limiters.size === 0,
+    });
+    limiters.set(id, limiter);
+  }
+  return limiter;
+}
+
+export interface RateLimitOutcome {
+  allowed: boolean;
+  max: number;
+  windowMs: number;
+  remaining: number;
+  resetMs: number;
+  /** True for the one request that first crossed the ceiling in this window. */
+  firstRejectionInWindow: boolean;
+}
 
 /**
- * Internal test hook — clears the in-memory rate-limit store.
- * Call from `beforeEach` in tests to isolate suites.
+ * Charge one point to `key` in a fixed window held in Postgres, so the count survives a deploy
+ * and expired keys are swept. A store failure is thrown, never read as allowed.
  */
-export function __resetRateLimitStore(): void {
-  store.clear();
+export async function consumeRateLimit(
+  key: string,
+  max: number,
+  windowMs: number,
+): Promise<RateLimitOutcome> {
+  let res: RateLimiterRes;
+  let allowed: boolean;
+  try {
+    res = await limiterFor(max, windowMs).consume(key);
+    allowed = true;
+  } catch (rejection) {
+    if (!(rejection instanceof RateLimiterRes)) throw rejection;
+    res = rejection;
+    allowed = false;
+  }
+  return {
+    allowed,
+    max,
+    windowMs,
+    remaining: res.remainingPoints,
+    resetMs: Math.max(0, res.msBeforeNext),
+    firstRejectionInWindow: !allowed && res.consumedPoints === max + 1,
+  };
 }
 
 /**
@@ -98,23 +166,13 @@ export function rateLimit(
       return;
     }
 
-    const now = Date.now();
-    let bucket = store.get(derived.key);
-    if (!bucket || now >= bucket.resetAt) {
-      bucket = { count: 0, resetAt: now + rule.windowMs };
-      store.set(derived.key, bucket);
-    }
-
-    bucket.count += 1;
-
-    const remaining = Math.max(0, rule.max - bucket.count);
-    const resetSec = Math.ceil(bucket.resetAt / 1000);
+    const outcome = await consumeRateLimit(derived.key, rule.max, rule.windowMs);
     c.header('X-RateLimit-Limit', String(rule.max));
-    c.header('X-RateLimit-Remaining', String(remaining));
-    c.header('X-RateLimit-Reset', String(resetSec));
+    c.header('X-RateLimit-Remaining', String(outcome.remaining));
+    c.header('X-RateLimit-Reset', String(Math.ceil((Date.now() + outcome.resetMs) / 1000)));
 
-    if (bucket.count > rule.max) {
-      const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+    if (!outcome.allowed) {
+      const retryAfterSeconds = Math.max(1, Math.ceil(outcome.resetMs / 1000));
       c.header('Retry-After', String(retryAfterSeconds));
       throw new HTTPException(429, {
         message: 'rate limit exceeded',
