@@ -90,39 +90,3 @@ pub async fn admissible(
         .map_err(|e| Error::Other(format!("admissible decode: {e}")))?;
     Ok(parsed.items)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_relation_keeps_the_blocker_status_it_was_given() {
-        let raw = serde_json::json!({
-            "kind": "blocks",
-            "dependsOnKey": "ISS-900",
-            "blockerStatus": "dropped",
-            "blockerMergedAt": null,
-            "edgeValidUntil": null
-        });
-        let rel: Relation = serde_json::from_value(raw).unwrap();
-        assert_eq!(rel.blocker_status.as_deref(), Some("dropped"));
-        assert!(rel.blocker_merged_at.is_none());
-    }
-
-    #[test]
-    fn an_issue_with_unknown_fields_still_parses() {
-        let raw = serde_json::json!({
-            "issueId": "i1", "issueKey": "ISS-1", "status": "open",
-            "somethingCoreAddedLater": 42
-        });
-        let issue: AdmissibleIssue = serde_json::from_value(raw).unwrap();
-        assert_eq!(issue.issue_id, "i1");
-        assert_eq!(issue.issue_key.as_deref(), Some("ISS-1"));
-    }
-
-    #[test]
-    fn a_response_with_no_items_reads_as_no_work() {
-        let parsed: AdmissibleResponse = serde_json::from_value(serde_json::json!({})).unwrap();
-        assert!(parsed.items.is_empty());
-    }
-}

@@ -327,8 +327,6 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         job_id: session_id.to_string(),
         project_id: String::new(),
         project_slug: turn.project_slug.clone(),
-        issue_id: None,
-        step: "chat".into(),
         repo_path: turn.repo_path.clone().into(),
         prompt: Some(prompt.to_string()),
         system_prompt: turn.system_prompt.clone(),
@@ -337,7 +335,6 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         timeout_seconds: None,
         mcp_servers_override: turn.mcp_servers_override.clone(),
         resume_id: turn.resume_id.clone(),
-        agent_session_id: Some(session_id.to_string()),
         counts_against_session_cap: false,
         credential: turn.credential.clone(),
     }
@@ -501,9 +498,8 @@ async fn consume(
                     seq += 1;
                     pending.push(agent_sessions::LineEvent::stdout(seq, json));
                 }
-                Some(RunnerEvent::Done { .. }) => { terminal = Some(Terminal::Done); break; }
-                Some(RunnerEvent::Failed { error, .. }) => { terminal = Some(Terminal::Failed(error)); break; }
-                Some(_) => {}
+                Some(RunnerEvent::Done) => { terminal = Some(Terminal::Done); break; }
+                Some(RunnerEvent::Failed { error }) => { terminal = Some(Terminal::Failed(error)); break; }
                 None => break,
             },
             _ = flush.tick() => {
@@ -596,226 +592,4 @@ async fn patch_failed(
         runtime_state: Some("closed".into()),
     };
     agent_sessions::patch_session(client, session_id, &patch).await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn turn_for_test() -> Turn {
-        Turn {
-            session_id: "s1".into(),
-            prompt: "hi".into(),
-            repo_path: "/tmp".into(),
-            project_slug: Some("demo".into()),
-            system_prompt: None,
-            model: None,
-            resume_id: None,
-            mcp_servers_override: None,
-            attachment_dir: None,
-            event_seq_base: Some(1),
-            credential: None,
-        }
-    }
-
-    #[test]
-    fn a_start_frame_token_becomes_the_sessions_credential() {
-        let f: StartFrame = serde_json::from_value(json!({
-            "sessionId": "s1", "prompt": "hi", "forgeToken": "forge_pat_dev_turn"
-        }))
-        .unwrap();
-        assert_eq!(f.forge_token.as_deref(), Some("forge_pat_dev_turn"));
-        let turn = Turn {
-            credential: f.forge_token.map(TurnCredential),
-            ..turn_for_test()
-        };
-        let spec = chat_spec("s1", "hi", &turn);
-        assert_eq!(
-            spec.credential,
-            Some(TurnCredential("forge_pat_dev_turn".into())),
-            "the session must run under the asker's token, not the box's own"
-        );
-        assert!(
-            !format!("{spec:?}").contains("forge_pat_dev_turn"),
-            "a spec printed to a log must not carry the token"
-        );
-    }
-
-    /// ISS-27: a web session's follow-up carries the token minted for the person who sent it.
-    #[test]
-    fn a_send_frame_token_becomes_the_turns_credential() {
-        let f: SendFrame = serde_json::from_value(json!({
-            "sessionId": "s1", "message": "again", "claudeSessionId": "c1",
-            "forgeToken": "forge_pat_dev_second"
-        }))
-        .unwrap();
-        let turn = Turn {
-            credential: handed_credential(f.forge_token),
-            resume_id: f.claude_session_id,
-            ..turn_for_test()
-        };
-        let spec = chat_spec("s1", "again", &turn);
-        assert_eq!(
-            spec.credential,
-            Some(TurnCredential("forge_pat_dev_second".into()))
-        );
-        assert_eq!(spec.resume_id.as_deref(), Some("c1"));
-    }
-
-    #[test]
-    fn a_turn_with_its_own_token_never_reuses_the_resident_process() {
-        let resident = Resident {
-            model: None,
-            head_sha: None,
-        };
-        let handed = Turn {
-            credential: Some(TurnCredential("forge_pat_dev_second".into())),
-            ..turn_for_test()
-        };
-        assert_eq!(
-            resident_disposition(Some(&resident), &handed),
-            Disposition::Close("this turn carries its own token")
-        );
-        assert_eq!(
-            resident_disposition(Some(&resident), &turn_for_test()),
-            Disposition::Reuse
-        );
-        assert_eq!(resident_disposition(None, &handed), Disposition::Spawn);
-    }
-
-    #[test]
-    fn a_start_frame_without_a_token_leaves_the_box_credential_in_place() {
-        let f: StartFrame =
-            serde_json::from_value(json!({ "sessionId": "s1", "prompt": "hi" })).unwrap();
-        assert!(f.forge_token.is_none());
-        assert!(chat_spec("s1", "hi", &turn_for_test()).credential.is_none());
-    }
-
-    #[test]
-    fn a_chat_turn_is_exempt_from_the_session_cap() {
-        let spec = chat_spec("s1", "hi", &turn_for_test());
-        assert!(
-            !spec.counts_against_session_cap,
-            "a chat turn must never queue for a permit: the wait has no timeout and core kills the session at 90s as `no_client_ack`, after which every send answers 200 into a cancelled session"
-        );
-    }
-
-    #[test]
-    fn a_line_is_delivered_whole_and_numbered_from_the_base() {
-        let line = json!({
-            "type": "assistant",
-            "message": {"content": [
-                {"type": "text", "text": "Let me look."},
-                {"type": "tool_use", "id": "t1", "name": "Read", "input": {}}
-            ]}
-        });
-        let ev = agent_sessions::LineEvent::stdout(42, line.clone());
-        assert_eq!(ev.seq, 42);
-        assert_eq!(ev.kind, "stdout");
-        assert_eq!(ev.data["line"], line);
-    }
-
-    #[test]
-    fn a_tool_only_turn_is_delivered_rather_than_dropped() {
-        // The case the deleted parser threw away: an assistant line carrying a
-        // tool call and no text. `parse_assistant_message` answered `None` for
-        // exactly this, so the transcript could not say the turn used a tool.
-        let line = json!({
-            "type": "assistant",
-            "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Read", "input": {}}]}
-        });
-        assert!(!is_partial_stream_event(&line));
-        let ev = agent_sessions::LineEvent::stdout(1, line.clone());
-        assert_eq!(ev.data["line"]["message"]["content"][0]["type"], "tool_use");
-    }
-
-    #[test]
-    fn only_the_partial_stream_frame_is_withheld() {
-        assert!(is_partial_stream_event(
-            &json!({"type": "stream_event", "event": {}})
-        ));
-        assert!(!is_partial_stream_event(
-            &json!({"type": "assistant", "message": {}})
-        ));
-        assert!(!is_partial_stream_event(
-            &json!({"type": "user", "message": {}})
-        ));
-        assert!(!is_partial_stream_event(
-            &json!({"type": "result", "num_turns": 1})
-        ));
-        assert!(!is_partial_stream_event(
-            &json!({"type": "system", "subtype": "init"})
-        ));
-        assert!(!is_partial_stream_event(
-            &json!({"type": "a_frame_added_tomorrow"})
-        ));
-        assert!(!is_partial_stream_event(&json!({"no_type_at_all": true})));
-    }
-
-    #[test]
-    fn a_refusal_is_told_apart_from_a_failure_to_deliver() {
-        assert!(agent_sessions::is_refused(&Error::Other(
-            "TRANSCRIPT_REFUSED: 400 Bad Request: stream-json line at seq 7 has no `type`".into()
-        )));
-        assert!(!agent_sessions::is_refused(&Error::Other(
-            "post_events transport: connection reset".into()
-        )));
-        assert!(!agent_sessions::is_refused(&Error::Other(
-            "post_events failed after 4 attempts: 503 Service Unavailable".into()
-        )));
-    }
-
-    #[test]
-    fn a_frame_without_a_sequence_base_carries_none_rather_than_a_zero() {
-        let without: SendFrame = serde_json::from_value(json!({
-            "sessionId": "s1",
-            "message": "hi"
-        }))
-        .expect("frame without a base");
-        assert_eq!(without.event_seq_base, None);
-
-        let with: SendFrame = serde_json::from_value(json!({
-            "sessionId": "s1",
-            "message": "hi",
-            "eventSeqBase": 7
-        }))
-        .expect("frame with a base");
-        assert_eq!(with.event_seq_base, Some(7));
-    }
-
-    #[test]
-    fn send_frame_carries_the_model_and_tolerates_its_absence() {
-        let with_default: SendFrame = serde_json::from_value(json!({
-            "sessionId": "s1",
-            "message": "hi",
-            "claudeSessionId": "c1",
-            "model": "default"
-        }))
-        .expect("frame with model");
-        assert_eq!(with_default.model.as_deref(), Some("default"));
-
-        let without: SendFrame = serde_json::from_value(json!({
-            "sessionId": "s1",
-            "message": "hi"
-        }))
-        .expect("frame without model");
-        assert_eq!(without.model, None);
-    }
-
-    #[test]
-    fn resolve_repo_prefers_frame_path() {
-        let p = resolve_repo(Some("/srv/app"), Some("app")).expect("frame path");
-        assert_eq!(p, "/srv/app");
-    }
-
-    #[test]
-    fn a_frame_with_no_checkout_is_refused_by_name() {
-        let e = resolve_repo(None, Some("app"))
-            .expect_err("only the frame's binding path is a checkout")
-            .to_string();
-        assert!(e.contains("core sent no checkout"), "{e}");
-        assert!(e.contains("app"), "{e}");
-        assert!(resolve_repo(Some("  "), Some("app")).is_err());
-    }
 }

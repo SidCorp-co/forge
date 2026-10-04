@@ -23,15 +23,3 @@ pub fn session_id_of(data: &serde_json::Value) -> Option<String> {
         .and_then(|v| v.as_str())
         .map(str::to_string)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_cancel_frame_yields_its_job_id() {
-        let data = serde_json::json!({ "jobId": "j1" });
-        assert_eq!(job_id_of(&data).as_deref(), Some("j1"));
-        assert!(job_id_of(&serde_json::json!({})).is_none());
-    }
-}

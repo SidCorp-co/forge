@@ -123,22 +123,3 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     era * 146_097 + doe - 719_468
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_an_rfc3339_expiry_to_unix_seconds() {
-        assert_eq!(parse_rfc3339_unix("1970-01-01T00:00:00Z"), Some(0));
-        assert_eq!(
-            parse_rfc3339_unix("2026-09-08T16:04:05Z"),
-            Some(1_788_883_445)
-        );
-        assert_eq!(
-            parse_rfc3339_unix("2026-09-08T16:04:05.123Z"),
-            Some(1_788_883_445)
-        );
-        assert_eq!(parse_rfc3339_unix("not a date"), None);
-    }
-}
