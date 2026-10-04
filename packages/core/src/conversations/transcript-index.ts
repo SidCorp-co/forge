@@ -118,15 +118,13 @@ export async function indexConversationOnce(
 
 async function insertPassages(tx: IndexTx, conversationId: string, drafts: PassageDraft[]) {
   if (drafts.length === 0) return;
-  await tx
-    .insert(conversationPassages)
-    .values(
-      drafts.map(({ fragmentCount, ...d }) => ({
-        conversationId,
-        ...d,
-        messageCount: fragmentCount,
-      })),
-    );
+  await tx.insert(conversationPassages).values(
+    drafts.map(({ fragmentCount, ...d }) => ({
+      conversationId,
+      ...d,
+      messageCount: fragmentCount,
+    })),
+  );
 }
 
 async function writeState(
