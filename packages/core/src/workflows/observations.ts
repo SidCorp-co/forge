@@ -12,15 +12,14 @@ import { and, desc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { projectWorkflowObservations, projectWorkflows } from '../db/schema-workflows.js';
-import { effectiveProjectRole } from '../lib/authz.js';
 import { peopleOf } from '../lib/people.js';
+import { permissionRefusalFor } from '../permissions/index.js';
 import { type ObservationRefusal, observationRefusals } from './observation-rules.js';
 import {
   type ObservationDocument,
   observationDocumentSchema,
   type WriteObservation,
 } from './observation-schema.js';
-import { workflowWriterRefusal } from './rules.js';
 import { readStoredWorkflow } from './schema.js';
 import { projectFactsOf, type WorkflowWriter } from './service.js';
 import { designsOf, lockWorkflows } from './store.js';
@@ -116,9 +115,13 @@ export async function writeObservation(input: {
   source?: ObservationSource;
 }): Promise<ObservationOutcome> {
   const { projectId, writer, write } = input;
-  const role = (await effectiveProjectRole(writer.userId, projectId))?.role ?? null;
-  const who = workflowWriterRefusal({ ...writer, role }, projectId);
-  if (who) return { ok: false, refusals: [{ ...who, code: 'WORKFLOW_WRITER_NOT_PROJECT' }] };
+  const who = await permissionRefusalFor(
+    writer,
+    projectId,
+    'workflow-designs.write',
+    'writing an observation',
+  );
+  if (who) return { ok: false, refusals: [who] };
   const facts = await projectFactsOf(projectId);
   let written: Row | null = null;
   let created = true;

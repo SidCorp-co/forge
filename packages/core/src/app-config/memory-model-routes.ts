@@ -8,7 +8,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { appConfig, memoryModels } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import {
   countPending,
   enqueueChunkPurge,
@@ -20,6 +20,7 @@ import {
 } from '../memory/chunk-reindex.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 
 const paramSchema = z.object({ projectId: z.uuid() });
 const flipSchema = z.object({ model: z.enum(memoryModels) }).strict();
@@ -37,14 +38,14 @@ const validParam = zValidator('param', paramSchema, (r) => {
 memoryModelRoutes.get('/:projectId/memory-model/estimate', validParam, async (c) => {
   const { projectId } = c.req.valid('param');
   const access = await loadProjectAccess(projectId, c.get('userId'));
-  assertProjectRole(access, 'viewer', 'not a project member');
+  requireHeld(access, 'project.read');
   return c.json(await estimateReindex(projectId));
 });
 
 memoryModelRoutes.get('/:projectId/memory-model/reindex', validParam, async (c) => {
   const { projectId } = c.req.valid('param');
   const access = await loadProjectAccess(projectId, c.get('userId'));
-  assertProjectRole(access, 'viewer', 'not a project member');
+  requireHeld(access, 'project.read');
   const [cfg] = await db
     .select({ model: appConfig.memoryModel })
     .from(appConfig)
@@ -63,7 +64,7 @@ memoryModelRoutes.post(
     const { projectId } = c.req.valid('param');
     const { model } = c.req.valid('json');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'admin', 'insufficient permission');
+    requireHeld(access, 'project.admin');
 
     const current = await readReindex(projectId);
     if (model === 'chunked') {
@@ -110,7 +111,7 @@ memoryModelRoutes.post(
 memoryModelRoutes.delete('/:projectId/memory-model/reindex', validParam, async (c) => {
   const { projectId } = c.req.valid('param');
   const access = await loadProjectAccess(projectId, c.get('userId'));
-  assertProjectRole(access, 'admin', 'insufficient permission');
+  requireHeld(access, 'project.admin');
   const current = await readReindex(projectId);
   if (!isLive(current)) {
     throw new HTTPException(409, {

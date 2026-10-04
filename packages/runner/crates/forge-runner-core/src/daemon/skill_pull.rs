@@ -2,7 +2,7 @@
 //!
 //! `handle_skill_sync` (`daemon/dispatch.rs`) is the explicit-push path: a
 //! server `skill.sync` event, always operator-initiated (web Sync action or
-//! `forge_skills.push`). This module adds two device-initiated pull paths that
+//! `POST /api/skills/bulk-push`). This module adds two device-initiated pull paths that
 //! share one core routine, [`sync_bound_projects`]:
 //! - a background poller, on by default (`[skills] auto_pull`), that
 //!   periodically syncs every bound project so a device catches up on its own

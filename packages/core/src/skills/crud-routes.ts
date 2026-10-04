@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { skillRegistrations, skills, skillTargets } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { SkillContentBlockedError } from '../security/findings.js';
@@ -17,6 +17,7 @@ import {
   updateProjectSkill,
 } from './service.js';
 import { isSlashCommandSkillName } from './skill-name.js';
+import { requireHeld } from '../permissions/index.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -49,6 +50,8 @@ const skillUpdateSchema = z
     target: z.enum(skillTargets).optional(),
     files: z.array(fileSchema).optional(),
     localGuide: z.string().max(20_000).nullable().optional(),
+    /** Synced to runners without binding it to a pipeline stage: a manual or user-invocable skill. */
+    installOnly: z.boolean().optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
@@ -107,12 +110,12 @@ skillCrudRoutes.get(
     } else if (scope === 'project') {
       if (!projectId) throw badRequest({ projectId: 'required when scope=project' });
       const access = await loadProjectAccess(projectId, userId);
-      if (!access.role) throw forbidden('not a project member');
+      requireHeld(access, 'project.read');
       conditions.push(and(eq(skills.scope, 'project'), eq(skills.projectId, projectId)) as SQL);
     } else {
       if (projectId) {
         const access = await loadProjectAccess(projectId, userId);
-        if (!access.role) throw forbidden('not a project member');
+        requireHeld(access, 'project.read');
         const projectCond = and(
           eq(skills.scope, 'project'),
           eq(skills.projectId, projectId),
@@ -158,7 +161,7 @@ skillCrudRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const effective = await resolveRegisteredEffectiveSkills(projectId);
     const invokable = effective
@@ -184,7 +187,7 @@ skillCrudRoutes.get(
 
     if (row.scope === 'project' && row.projectId) {
       const access = await loadProjectAccess(row.projectId, userId);
-      if (!access.role) throw forbidden('not a project member');
+      requireHeld(access, 'project.read');
     }
 
     return c.json(row);
@@ -214,7 +217,7 @@ skillCrudRoutes.post(
     }
 
     const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can create skills');
+    requireHeld(access, 'project.admin');
 
     try {
       const inserted = await createProjectSkill({
@@ -263,7 +266,7 @@ skillCrudRoutes.put(
 
     if (row.projectId) {
       const access = await loadProjectAccess(row.projectId, userId);
-      assertProjectRole(access, 'admin', 'only a project admin can update skills');
+      requireHeld(access, 'project.admin');
     } else {
       // Global skills: only allow CEO/admin via existing admin route.
       throw forbidden('global skills cannot be updated via this endpoint');
@@ -308,7 +311,7 @@ skillCrudRoutes.delete(
 
     if (row.projectId) {
       const access = await loadProjectAccess(row.projectId, userId);
-      assertProjectRole(access, 'admin', 'only a project admin can delete skills');
+      requireHeld(access, 'project.admin');
     } else {
       throw forbidden('global skills cannot be deleted via this endpoint');
     }
@@ -328,7 +331,7 @@ skillCrudRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     // Project skills + global skills relevant to this project.
     const projectSkills = await db
@@ -392,7 +395,7 @@ skillCrudRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can push skills');
+    requireHeld(access, 'project.admin');
 
     // Explicit push: signal device-bound runners (or one `deviceId`) over WS;
     // each pulls its effective manifest and reports installed hashes back.

@@ -152,7 +152,9 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
     const hint = decl?.usage?.hint ?? GENERIC_USAGE;
     const health = r.lastHealthStatus ? ` (health: ${r.lastHealthStatus})` : '';
     const guideSlug = r.hasOrgGuide ? integrationGuideSlug(r.provider) : decl?.usage?.guideSlug;
-    const guidePointer = guideSlug ? ` Full guide: \`forge_guide get ${guideSlug}\`.` : '';
+    const guidePointer = guideSlug
+      ? ` Full guide: \`forge-runner api projects/$FORGE_PROJECT_ID/guides/${guideSlug}.md\`.`
+      : '';
     const scope = r.role === 'deploy' ? (r.environment ?? 'deploy') : r.role;
     const body = r.agentGranted === false ? ungrantedNote(r.provider) : `${hint}${guidePointer}`;
     const bullet = `- **${r.provider}** [${scope}]${health} — ${body}`;
@@ -197,7 +199,7 @@ export function makeProjectResolver(src: {
  * The project's module taxonomy, flattened to names — the one input `module-attribution` gates on.
  *
  * Parent comes back as a NAME because the only consumer writes it into a system prompt, where an
- * id is noise an agent cannot act on: `forge_issues` resolves a module by name as well as by uuid.
+ * id is noise an agent cannot act on: `PATCH /api/issues/:id` resolves a module by name as well as by uuid.
  */
 export async function loadProjectModules(projectId: string): Promise<ProjectModuleFact[]> {
   const parents = alias(labels, 'parent_labels');
@@ -290,7 +292,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
 }
 
 /** Demote `##` fact headers one level so they nest under `## Forge context`
- *  instead of rendering as its siblings. Standalone surfaces (REST/MCP
+ *  instead of rendering as its siblings. Standalone surfaces (the REST
  *  preview) keep the facts' own `##` headers. */
 function demoteHeadings(text: string): string {
   return text.replace(/^## /gm, '### ');
@@ -357,7 +359,7 @@ export function renderStageFactsText(
     projectParts.push(
       [
         '### Project guides (fetch on demand)',
-        "This project's knowledge store could not be read while this prompt was built, so this index is missing rather than empty. Do not conclude that this project has no guides: list them yourself with `forge_knowledge` (action `list`) before deciding anything rests on their absence.",
+        "This project's knowledge store could not be read while this prompt was built, so this index is missing rather than empty. Do not conclude that this project has no guides: list them yourself with `forge-runner api projects/<projectId>/knowledge` before deciding anything rests on their absence.",
       ].join('\n'),
     );
   } else {
@@ -366,7 +368,7 @@ export function renderStageFactsText(
       projectParts.push(
         [
           '### Project guides (fetch on demand)',
-          'Author-maintained guides exist for this project. When the task needs one, fetch its text via `forge_knowledge` (action `get` + slug) — do NOT guess its contents:',
+          'Author-maintained guides exist for this project. When the task needs one, fetch its text with `forge-runner api projects/<projectId>/knowledge/<slug>` — do NOT guess its contents:',
           ...indexKeys.map((key) => `- ${key}`),
         ].join('\n'),
       );

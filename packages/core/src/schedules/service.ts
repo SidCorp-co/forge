@@ -4,11 +4,12 @@ import { refusalError } from '../agent-sessions/interactive-credential.js';
 import type { SessionAsker } from '../agent-sessions/session-credential.js';
 import { db } from '../db/client.js';
 import { projects, type ScheduleKind, schedules } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
 import { type LastFire, lastFires } from './fires.js';
 import { getImprovementMessage } from './messages/registry.js';
+import { requireHeld } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -36,7 +37,7 @@ export async function assertTargetProjectAccess(
     });
   }
   const access = await loadProjectAccess(target.id, userId);
-  assertProjectRole(access, 'member', 'not a member of target project');
+  requireHeld(access, 'project.write');
   return target;
 }
 
@@ -57,7 +58,7 @@ async function withLastFires<T extends { id: string }>(projectId: string, rows: 
 
 export async function listSchedules(projectId: string, actorUserId: string, enabled?: boolean) {
   const access = await loadProjectAccess(projectId, actorUserId);
-  assertProjectRole(access, 'viewer', 'not a project member');
+  requireHeld(access, 'project.read');
 
   const conditions = [eq(schedules.projectId, projectId)];
   if (enabled !== undefined) conditions.push(eq(schedules.enabled, enabled));
@@ -70,48 +71,12 @@ export async function listSchedules(projectId: string, actorUserId: string, enab
   return withLastFires(projectId, rows);
 }
 
-export async function listSchedulesForMcp(projectId: string, enabled?: boolean) {
-  const conditions = [eq(schedules.projectId, projectId)];
-  if (enabled !== undefined) conditions.push(eq(schedules.enabled, enabled));
-
-  const rows = await db
-    .select({
-      id: schedules.id,
-      projectId: schedules.projectId,
-      name: schedules.name,
-      cron: schedules.cron,
-      enabled: schedules.enabled,
-      targetProjectSlug: schedules.targetProjectSlug,
-      nextRunAt: schedules.nextRunAt,
-      templateKey: schedules.templateKey,
-      mode: schedules.mode,
-      kind: schedules.kind,
-      createdAt: schedules.createdAt,
-      updatedAt: schedules.updatedAt,
-    })
-    .from(schedules)
-    .where(and(...conditions))
-    .orderBy(asc(schedules.createdAt));
-  return withLastFires(projectId, rows);
-}
-
-/** A schedule's project, for a gate that must fire before any row is returned. */
-export async function readScheduleProjectId(scheduleId: string): Promise<string> {
-  const [row] = await db
-    .select({ projectId: schedules.projectId })
-    .from(schedules)
-    .where(eq(schedules.id, scheduleId))
-    .limit(1);
-  if (!row) throw notFound('schedule not found');
-  return row.projectId;
-}
-
 export async function getSchedule(id: string, actorUserId: string) {
   const [row] = await db.select().from(schedules).where(eq(schedules.id, id)).limit(1);
   if (!row) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(row.projectId, actorUserId);
-  assertProjectRole(access, 'viewer', 'not a project member');
+  requireHeld(access, 'project.read');
 
   const last = await lastFires(row.projectId, [row.id]);
   return withLastFire(row, last.get(row.id));
@@ -135,7 +100,7 @@ export interface CreateScheduleInput {
 
 export async function createSchedule(input: CreateScheduleInput, actorUserId: string) {
   const access = await loadProjectAccess(input.projectId, actorUserId);
-  assertProjectRole(access, 'admin', 'not a project admin');
+  requireHeld(access, 'project.admin');
 
   const validation = validateCron(input.cron);
   if (!validation.ok) {
@@ -221,7 +186,7 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
   if (!row) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(row.projectId, actorUserId);
-  assertProjectRole(access, 'admin', 'not a project admin');
+  requireHeld(access, 'project.admin');
 
   if (patch.targetProjectSlug !== undefined && patch.targetProjectSlug !== null) {
     await assertTargetProjectAccess(patch.targetProjectSlug, actorUserId);
@@ -293,7 +258,7 @@ export async function deleteSchedule(id: string, actorUserId: string): Promise<v
   if (!row) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(row.projectId, actorUserId);
-  assertProjectRole(access, 'admin', 'not a project admin');
+  requireHeld(access, 'project.admin');
 
   await db.delete(schedules).where(eq(schedules.id, id));
 }
@@ -308,7 +273,7 @@ export async function runScheduleNow(
   if (!schedule) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(schedule.projectId, actorUserId);
-  assertProjectRole(access, 'member', 'not a project member');
+  requireHeld(access, 'project.write');
 
   // Defensive re-check: rows persisted before the create/update gate landed
   // could carry a `targetProjectSlug` the actor has no business triggering.

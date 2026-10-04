@@ -7,12 +7,10 @@ import { assertPlatformAdmin } from '../middleware/require-admin.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { checkSkillActivityChainIntegrity } from './activity-chain-integrity.js';
 import { listByDevice, listByPacket, listBySkill, summarizeByEventType } from './activity-views.js';
+import { requireHeld } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 /**
  * The history is capped rather than whole (ISS-1025): every one of these views
@@ -71,7 +69,7 @@ skillActivityRoutes.get('/', validQuery, async (c) => {
     throw badRequest('one of projectId, deviceId (with projectId), or packetId is required');
   }
   const access = await loadProjectAccess(projectId, c.get('userId'));
-  if (!access.role) throw forbidden('not a project member');
+  requireHeld(access, 'project.read');
 
   if (deviceId) {
     const { events, truncated } = await listByDevice({ projectId, deviceId, limit });

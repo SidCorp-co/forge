@@ -1,6 +1,6 @@
 import { fencedProjectIds } from '../auth/pat-scope.js';
 import { db } from '../db/client.js';
-import { assertProjectAccess, effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { forbidden, notFound, readerProjects } from './access.js';
 import { type LinkImpact, linkImpact } from './contract/impact.js';
 import { currentVersion, type StoredVersion, versionsOf } from './contract/store.js';
@@ -21,6 +21,7 @@ import { readableEcosystem } from './membership-service.js';
 import { edgeVisible, visibleMembers } from './party.js';
 import type { EdgeRow } from './store.js';
 import { projectsWhere, readInterfaces, recordedVersions } from './store.js';
+import { holds, requireCan } from '../permissions/index.js';
 
 const stamped = <W extends object>(held: Held<W>) => ({
   ...held.document,
@@ -43,8 +44,8 @@ const asEdge = (l: StoredLink, ecosystemId: string): EdgeRow => ({
 
 // cm:why a link is the consumer's record, read in full by the consumer's members and by the provider it points at; anyone else reads it only where the ecosystem shows every member everything, and an in-project link is in no ecosystem, so only the project's own members read it
 async function assertLinkReadable(userId: string, link: StoredLink): Promise<void> {
-  const role = (await effectiveProjectRole(userId, link.projectId))?.role ?? null;
-  if (projectRoleAtLeast(role, 'viewer')) return;
+  const access = await effectiveProjectRole(userId, link.projectId);
+  if (access && holds(access, 'project.read')) return;
   const ecosystemId = link.ecosystemId;
   if (ecosystemId !== null) {
     const graph = await loadGraph([ecosystemId]);
@@ -70,13 +71,13 @@ export async function readLinkAs(userId: string, projectId: string, linkId: stri
 }
 
 export async function listLinksAs(userId: string, projectId: string) {
-  await assertProjectAccess(projectId, userId, 'viewer');
+  await requireCan({ userId }, 'project.read', projectId);
   const rows = await linksWhere(db, { consumerId: projectId });
   return rows.map((row) => recordView({ row, document: storedLink(row) }));
 }
 
 export async function readBuilderRunAs(userId: string, projectId: string, runId: string) {
-  await assertProjectAccess(projectId, userId, 'viewer');
+  await requireCan({ userId }, 'project.read', projectId);
   const row = await readBuilderRun(db, runId);
   if (!row || row.projectId !== projectId) {
     throw notFound(`project ${projectId} holds no builder run ${runId}`);
@@ -85,7 +86,7 @@ export async function readBuilderRunAs(userId: string, projectId: string, runId:
 }
 
 export async function listBuilderRunsAs(userId: string, projectId: string) {
-  await assertProjectAccess(projectId, userId, 'viewer');
+  await requireCan({ userId }, 'project.read', projectId);
   const rows = await builderRunsOf(db, projectId);
   return rows.map((row) => recordView({ row, document: storedBuilderRun(row) }));
 }

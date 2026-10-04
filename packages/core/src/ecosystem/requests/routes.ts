@@ -2,10 +2,10 @@ import type { ContractRequestListResponse } from '@forge/contracts/contract-wait
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { listContractRequests } from './read.js';
+import { requireCan } from '../../permissions/index.js';
 
 export const contractRequestRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -22,7 +22,7 @@ const projectParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
 
 contractRequestRoutes.get('/:id/contract-requests', projectParam, async (c) => {
   const { id } = c.req.valid('param');
-  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  await requireCan({ userId: c.get('userId') }, 'project.read', id);
   const body: ContractRequestListResponse = { requests: await listContractRequests(id) };
   return c.json(body);
 });

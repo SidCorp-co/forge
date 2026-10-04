@@ -15,9 +15,9 @@ export const RUNS_AND_MASTERS_GUIDE: CoreGuide = {
 
 A run is one pipeline run of a project: an issue run, a release, a deploy or a job with no issue. A chat's
 one-shot run and a master's own run are not runs here; the list names how many it leaves out and why.
-\`forge_runs\` is the door (\`list\`, \`get\`), and \`GET /api/projects/:id/runs/standing\` and
-\`/runs/standing/:runId\` serve the same read. \`forge_masters\` (\`standing\`, \`passes\`) answers what the
-project master is doing. Every fact is derived by core from the rows it holds; no screen derives one.
+\`GET /api/projects/:id/runs/standing\` lists them and \`/runs/standing/:runId\` reads one.
+\`GET /api/projects/:id/masters/standing\` and \`/masters/passes\` answer what the project master is
+doing. Every fact is derived by core from the rows it holds; no screen derives one.
 
 ### States
 - \`queued\`: admitted, nothing has taken it. It waits on the master, or on the machine while every slot is in use.
@@ -49,7 +49,7 @@ says when, or \`failsBy\` says that no silence reaper times the run out. A run t
 running again. A person wait is never stuck.
 
 ### The project master
-\`forge_masters standing\` answers the master's state (\`in_pass\`, \`idle\`, \`silent\`, \`none\`), its open
-pass, its last closed pass (dispatched, skipped with each refusal, parked) and its slots. \`passes\` pages
+\`…/masters/standing\` answers the master's state (\`in_pass\`, \`idle\`, \`silent\`, \`none\`), its open
+pass, its last closed pass (dispatched, skipped with each refusal, parked) and its slots. \`…/masters/passes\` pages
 the stored passes newest first; read \`hasMore\` before calling a history complete.`,
 };

@@ -17,4 +17,4 @@ export function planLine(
 }
 
 export const fetchLine = (workflowId: string, revision: number | null) =>
-  `\`forge_workflows action=design workflowId=${workflowId} view=steps${revision === null ? '' : ` revision=${revision}`}\``;
+  `\`forge-runner api projects/$FORGE_PROJECT_ID/workflows/${workflowId}/design?view=steps${revision === null ? '' : `&revision=${revision}`}\``;

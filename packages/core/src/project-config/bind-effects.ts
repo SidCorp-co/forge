@@ -13,8 +13,9 @@ import {
   runInitialHealthcheck,
 } from '../integrations/route-helpers.js';
 import { findBindingWithConnectionById, findConnectionById } from '../integrations/store.js';
-import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import type { ApiRefusal } from './documents.js';
+import { holdsOrg } from '../permissions/index.js';
 
 export interface BindEffects {
   refusals(input: {
@@ -63,7 +64,7 @@ export const bindEffects: BindEffects = {
       });
     } else if (tier === 'org-admin') {
       const access = await effectiveProjectRole(userId, projectId);
-      if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) {
+      if (!holdsOrg(access?.orgRole ?? null, 'org.admin')) {
         out.push({
           code: 'AGENT_ACCESS_NEEDS_ORG_ADMIN',
           path: '/agentAccess',

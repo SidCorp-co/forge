@@ -99,7 +99,7 @@ function buildSynthesisMessage(
   ];
   if (payload.issueProposal) {
     lines.push(
-      `Also log this as a draft issue via forge_issues create — title "${payload.issueProposal.title}", description "${payload.issueProposal.description}" (reason: ${payload.issueProposal.reason}). If the tool reports a near-duplicate, comment on that existing issue instead. Then tell the user you've logged it.`,
+      `Also log this as a draft issue with forge new --status draft — title "${payload.issueProposal.title}", description "${payload.issueProposal.description}" (reason: ${payload.issueProposal.reason}). If the tool reports a near-duplicate, comment on that existing issue instead. Then tell the user you've logged it.`,
     );
   }
   return lines.join('\n');

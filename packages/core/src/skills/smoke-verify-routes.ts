@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { issueStatuses } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import {
@@ -10,6 +10,7 @@ import {
   dispatchSmokeCanaries,
   NoRunnerOnlineError,
 } from './smoke-verify.js';
+import { requireHeld } from '../permissions/index.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 
@@ -22,9 +23,6 @@ const postBodySchema = z
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 export const skillSmokeVerifyRoutes = new Hono<{ Variables: AuthVars }>();
 skillSmokeVerifyRoutes.use('/:projectId/skills/smoke-verify', requireAuth(), assertEmailVerified());
@@ -39,7 +37,7 @@ skillSmokeVerifyRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     return c.json(await buildSmokeVerifyReport(projectId));
   },
@@ -59,11 +57,7 @@ skillSmokeVerifyRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (tier === 2) {
-      assertProjectRole(access, 'admin', 'only a project admin can run a tier-2 canary');
-    } else if (!access.role) {
-      throw forbidden('not a project member');
-    }
+    requireHeld(access, tier === 2 ? 'project.admin' : 'project.read');
 
     let canary = null;
     if (tier === 2) {

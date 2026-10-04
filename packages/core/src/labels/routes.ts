@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issueLabels, labelKinds, labels } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { moduleDrift } from './module-drift.js';
@@ -25,6 +25,7 @@ import {
   moduleRollupWithStanding,
 } from './module-standing-read.js';
 import { labelUniqueConflict } from './unique-conflicts.js';
+import { requireHeld } from '../permissions/index.js';
 
 const colorRegex = /^#[0-9a-f]{6}$/i;
 
@@ -121,7 +122,7 @@ labelProjectRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
+    requireHeld(access, 'project.admin');
 
     const isModule = (kind ?? 'label') === 'module';
     try {
@@ -169,7 +170,7 @@ labelProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     const rows = await db.select(labelColumns).from(labels).where(eq(labels.projectId, projectId));
 
@@ -191,7 +192,7 @@ labelProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     return c.json(
       await moduleRollupWithStanding(
@@ -211,7 +212,7 @@ labelProjectRoutes.get(
   async (c) => {
     const { id: projectId, module } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
     try {
       return c.json(await moduleDetailOf(projectId, module, viewerOf(c)));
     } catch (err) {
@@ -239,7 +240,7 @@ labelProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     return c.json(await moduleDrift(projectId, { minCoOccurrence }));
   },
@@ -279,7 +280,7 @@ labelRoutes.patch(
 
     const label = await loadLabel(id);
     const access = await loadProjectAccess(label.projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
+    requireHeld(access, 'project.admin');
 
     const nextKind = patch.kind ?? label.kind;
     const nextParentId = patch.parentId !== undefined ? patch.parentId : label.parentId;
@@ -336,7 +337,7 @@ labelRoutes.delete(
 
     const label = await loadLabel(id);
     const access = await loadProjectAccess(label.projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
+    requireHeld(access, 'project.admin');
 
     const [attached] = await db
       .select({ n: count() })

@@ -122,60 +122,6 @@ const skillBodyProjection = {
   pinnedReason: skills.pinnedReason,
 } as const;
 
-/**
- * Dedup raw skill rows by NAME — a project-scoped skill shadows the same-name
- * global template (project wins, one row per name). Pure (no DB) so the dedup
- * rule is unit-testable in isolation. A project skill that shadows a global
- * carries `shadowsGlobal=true` + the shadowed global's id; a global that is
- * shadowed is dropped; everything else is unflagged.
- */
-export function dedupEffectiveSkills(rows: SkillBodyRow[]): EffectiveSkill[] {
-  const globalByName = new Map<string, SkillBodyRow>();
-  for (const r of rows) if (r.scope === 'global') globalByName.set(r.name, r);
-
-  const result: EffectiveSkill[] = [];
-  const shadowedNames = new Set<string>();
-
-  // Project skills win. Each marks the same-name global (if any) as shadowed.
-  for (const r of rows) {
-    if (r.scope !== 'project') continue;
-    shadowedNames.add(r.name);
-    const shadowed = globalByName.get(r.name);
-    const eff = computeEffectiveSkill(r);
-    eff.shadowsGlobal = shadowed != null;
-    eff.shadowedGlobalSkillId = shadowed?.id ?? null;
-    eff.basedOnGlobalVersion = r.basedOnGlobalVersion ?? null;
-    eff.templateVersion = shadowed?.version ?? null;
-    eff.pinned = r.pinned ?? false;
-    eff.pinnedReason = r.pinnedReason ?? null;
-    result.push(eff);
-  }
-
-  // Globals NOT shadowed by a same-name project skill.
-  for (const r of rows) {
-    if (r.scope !== 'global') continue;
-    if (shadowedNames.has(r.name)) continue;
-    result.push(computeEffectiveSkill(r));
-  }
-
-  return result;
-}
-
-async function resolveRawEffectiveSkillsForProject(projectId: string): Promise<EffectiveSkill[]> {
-  const rows = (await db
-    .select(skillBodyProjection)
-    .from(skills)
-    .where(or(eq(skills.scope, 'global'), eq(skills.projectId, projectId)))) as SkillBodyRow[];
-
-  return dedupEffectiveSkills(rows);
-}
-
-export async function resolveEffectiveSkillsForProject(
-  projectId: string,
-): Promise<EffectiveSkill[]> {
-  return resolveRawEffectiveSkillsForProject(projectId);
-}
-
 export async function resolveRegisteredEffectiveSkills(
   projectId: string,
 ): Promise<EffectiveSkill[]> {

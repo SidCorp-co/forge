@@ -5,9 +5,10 @@
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
-import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
+import { badRequest, notFound } from '../middleware/route-errors.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
+import { requireHeld } from '../permissions/index.js';
 
 const uuidSchema = z.uuid();
 
@@ -43,7 +44,7 @@ export async function resolveIssueRouteRef(
     const issue = await findIssueById(rawId);
     if (!issue) throw notFound('issue not found');
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
     return issue;
   }
 
@@ -60,7 +61,7 @@ export async function resolveIssueRouteRef(
   }
 
   const access = await loadProjectAccess(projectIdQuery, userId);
-  if (!access.role) throw forbidden('not a project member');
+  requireHeld(access, 'project.read');
 
   const parsed = parseIssueRef(
     rawId,

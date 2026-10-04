@@ -3,9 +3,10 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, forbidden } from '../middleware/route-errors.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { readDevelopmentOverview } from './overview-read.js';
+import { requireHeld } from '../permissions/index.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const noQuery = z.strictObject({});
@@ -25,7 +26,7 @@ developmentOverviewRoutes.get(
     const { id: projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
     return c.json(await readDevelopmentOverview(projectId, userId ? { userId } : null));
   },
 );

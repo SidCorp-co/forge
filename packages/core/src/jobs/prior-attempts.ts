@@ -153,8 +153,8 @@ export function renderPriorAttemptsBlock(attempts: PriorAttempt[], currentAttemp
   ];
   if (last.sessionId) {
     lines.push(
-      `- Its transcript: \`forge_agent_sessions.get({ sessionId: '${last.sessionId}' })\` — returns the last-20 message tail${
-        last.messageCount ? ` of ${last.messageCount} messages` : ''
+      `- Its transcript: \`GET /api/agent-sessions/${last.sessionId}\`${
+        last.messageCount ? ` (${last.messageCount} messages)` : ''
       }.`,
     );
   }

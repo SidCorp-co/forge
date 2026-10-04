@@ -58,17 +58,3 @@ export function messageRefusalHttp(err: unknown): HTTPException | null {
     cause: { code: err.code, details: { door: err.door, refusals: err.refusals } },
   });
 }
-
-/** Re-throw a refused message as a 400; anything else passes through untouched. */
-export function rethrowMessageRefused(err: unknown): never {
-  const mapped = messageRefusalHttp(err);
-  if (mapped) throw mapped;
-  throw err;
-}
-
-/**
- * The screen's refusal, as the `{ code, message }` a caller is told by name.
- */
-export function messageRefused(err: unknown): { code: string; message: string } | null {
-  return err instanceof MessageRefusedError ? { code: err.code, message: err.message } : null;
-}

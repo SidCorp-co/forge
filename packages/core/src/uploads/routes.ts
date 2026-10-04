@@ -24,7 +24,7 @@ const uploadIdParamSchema = z.object({ uploadId: z.uuid() });
  * Capability-authenticated upload endpoint (presigned-URL pattern).
  *
  * Mounted at `/api/uploads` with NO auth middleware: the ticket id minted by
- * `forge_uploads` is an unguessable, single-use, short-TTL capability — its
+ * `POST /api/conversations/:id/attachments` is an unguessable, single-use, short-TTL capability — its
  * possession IS the authorization, so this sidesteps the JWT/PAT/device-token
  * tangle on the bearer-guarded `/api/{issues,comments}/:id/attachments` routes.
  *

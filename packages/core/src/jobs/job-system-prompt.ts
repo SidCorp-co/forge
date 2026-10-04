@@ -6,9 +6,9 @@
  */
 
 import type { ContentLanguageRecord } from '@forge/contracts/content-language';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issueLabels, issues, type JobType, labels } from '../db/schema.js';
+import { issues, type JobType } from '../db/schema.js';
 import {
   type LoadedContract,
   pathsNamedIn,
@@ -18,7 +18,6 @@ import { loadContractContext } from '../ecosystem/contract/run-context-service.j
 import { buildPipelinePreambleStructured, type PreambleBlock } from '../lib/chat-preamble.js';
 import { dataPolicyOf, type EgressSurface, egressText, withheldAt } from '../lib/data-egress.js';
 import { estimateTokens } from '../lib/token-estimator.js';
-import { logger } from '../logger.js';
 import type { DispatchState } from '../project-config/dispatch-policy.js';
 import {
   type LoadedPinnedContract,
@@ -41,7 +40,6 @@ import {
   loadArtifactContext,
   loadRequirementContext,
 } from '../workflows/run-context-service.js';
-import { SKILL_MAINTENANCE_LABEL, withSkillMaintenanceCarveout } from './job-policy.js';
 
 /** A context the job's issue reaches that cannot be given; the job is refused, never built blind. */
 export class JobContextRefused extends Error {
@@ -72,49 +70,6 @@ type IssueText = {
 };
 
 const errText = (err: unknown) => (err instanceof Error ? err.message : String(err));
-
-/** Give a `code`/`fix` job on a skill-maintenance issue its skill-write tools back; best-effort. */
-async function carvedDeniedTools(
-  projectId: string,
-  issueId: string | null,
-  step: JobType,
-  deniedTools: string[],
-): Promise<string[]> {
-  if (!issueId || (step !== 'code' && step !== 'fix')) return deniedTools;
-  try {
-    const [labelRow] = await db
-      .select({ id: labels.id })
-      .from(labels)
-      .where(and(eq(labels.projectId, projectId), eq(labels.name, SKILL_MAINTENANCE_LABEL)))
-      .limit(1);
-    let hasSkillMaintenanceLabel = false;
-    if (labelRow) {
-      const [issueLabelRow] = await db
-        .select({ issueId: issueLabels.issueId })
-        .from(issueLabels)
-        .where(and(eq(issueLabels.issueId, issueId), eq(issueLabels.labelId, labelRow.id)))
-        .limit(1);
-      hasSkillMaintenanceLabel = Boolean(issueLabelRow);
-    }
-    const carved = withSkillMaintenanceCarveout(deniedTools, {
-      hasSkillMaintenanceLabel,
-      jobType: step,
-    });
-    if (carved.length < deniedTools.length) {
-      logger.info(
-        { issueId, jobType: step, removed: deniedTools.length - carved.length },
-        'job prompt: skill-maintenance carve-out unblocked skill-write tools',
-      );
-    }
-    return carved;
-  } catch (err) {
-    logger.warn(
-      { err, issueId, type: step },
-      'job prompt: skill-maintenance label lookup failed, building without carve-out',
-    );
-    return deniedTools;
-  }
-}
 
 // cm:why a run is given the contracts its issue's named paths reach before it starts, since the paths it will change are not known yet; it asks forge_ecosystem action=context for paths it finds later
 async function contractsNamedBy(
@@ -238,11 +193,8 @@ export async function buildJobSystemPrompt(input: {
   subject: string;
 }): Promise<JobSystemPrompt> {
   const { projectId, issueId, step, subject } = input;
-  const deniedTools = await carvedDeniedTools(projectId, issueId, step, input.policy.deniedTools);
-  const preamble = await buildPipelinePreambleStructured(projectId, {
-    step,
-    policy: { ...input.policy, deniedTools },
-  });
+  const { deniedTools } = input.policy;
+  const preamble = await buildPipelinePreambleStructured(projectId, { step, policy: input.policy });
   const [issueRow] = issueId
     ? await db
         .select({

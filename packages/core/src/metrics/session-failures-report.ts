@@ -1,10 +1,8 @@
 /**
  * The failure histogram and its resume-continuity block, shaped.
  *
- * ISS-894 — this shaping lived inside `forge_metrics.session_failures`'s
- * handler, which meant REST could only ever expose the raw query underneath
- * it. Moved here so both surfaces answer the same question the same way, and
- * so the tool can go without taking the rule with it.
+ * ISS-894 — shaped here, apart from any one door, so every surface that
+ * reads it answers the same question the same way.
  */
 
 import {

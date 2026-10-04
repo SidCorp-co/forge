@@ -4,12 +4,12 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories, memorySources } from '../db/schema.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { runMemoryGet } from './get-service.js';
 import { memoryRevisionsInputSchema, runMemoryRevisions } from './revisions-service.js';
+import { requireCan } from '../permissions/index.js';
 
 const listQuerySchema = paginationSchema.extend({
   projectId: z.uuid(),
@@ -45,7 +45,7 @@ memoryListRoutes.get(
   async (c) => {
     const { projectId, source, sourceRef, limit, offset, includeArchived } = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectAccess(projectId, userId, 'viewer');
+    await requireCan({ userId }, 'project.read', projectId);
 
     const { rows, total } = await runMemoryGet({
       projectId,
@@ -70,7 +70,7 @@ memoryListRoutes.get(
   async (c) => {
     const { projectId, memoryId, source, sourceRef, limit, offset } = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectAccess(projectId, userId, 'viewer');
+    await requireCan({ userId }, 'project.read', projectId);
 
     const { rows, total } = await runMemoryRevisions({
       projectId,
@@ -93,7 +93,7 @@ memoryListRoutes.delete(
   async (c) => {
     const { projectId, source, sourceRef } = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectAccess(projectId, userId);
+    await requireCan({ userId }, 'project.write', projectId);
 
     const result = await db
       .delete(memories)
@@ -132,7 +132,7 @@ memoryListRoutes.delete(
     if (!row) return c.body(null, 204);
 
     try {
-      await assertProjectAccess(row.projectId, userId);
+      await requireCan({ userId }, 'project.write', row.projectId);
     } catch {
       return c.body(null, 204);
     }

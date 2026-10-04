@@ -20,7 +20,6 @@ import { announceIssueCreated, insertIssueRow } from '../issues/create-service.j
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { findIssueById } from '../issues/read-service.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf, egressAt, storedText } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { NamedRefusal } from '../project-config/respond.js';
@@ -65,6 +64,7 @@ import {
   lockFeedback,
   roleFacts,
 } from './service.js';
+import { requireCan } from '../permissions/index.js';
 
 /** What a triage or a route write did, which its caller announces once the transaction committed. */
 export interface TriageWritten {
@@ -424,7 +424,7 @@ export async function triageFeedback(input: {
   channel: FeedbackChannel;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
+  await requireCan({ userId: actor.userId }, 'project.read', projectId);
   const forbidden = decideActRefusal(
     await roleFacts(actor, projectId),
     'picking a feedback route',
@@ -457,7 +457,7 @@ export async function routeFeedback(input: {
   channel: FeedbackChannel;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor, write } = input;
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
+  await requireCan({ userId: actor.userId }, 'project.read', projectId);
   const forbidden = decideActRefusal(
     await roleFacts(actor, projectId),
     "writing a feedback case's route",

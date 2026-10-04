@@ -3,9 +3,10 @@ import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { agentSessions, type ProjectMemberRole } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { agentSessions } from '../db/schema.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
+import { holds, type ProjectPermission, requireHeld } from '../permissions/index.js';
 
 export const idParamSchema = z.object({ id: z.uuid() });
 
@@ -32,21 +33,18 @@ export async function loadSessionOr404(sessionId: string) {
 export async function ensureSessionMember(sessionId: string, userId: string) {
   const session = await loadSessionOr404(sessionId);
   const access = await loadProjectAccess(session.projectId, userId);
-  // Reads are project-visible: any effective role (incl. viewer) may see the
-  // session. Mutating callers must additionally gate via assertProjectRole.
-  if (!access.role) throw forbidden('not a project member');
+  requireHeld(access, 'project.read');
   return { session, access };
 }
 
 export async function ensureSessionRole(
   sessionId: string,
   userId: string,
-  min: ProjectMemberRole,
-  message?: string,
+  permission: ProjectPermission,
 ) {
   const session = await loadSessionOr404(sessionId);
   const access = await loadProjectAccess(session.projectId, userId);
-  assertProjectRole(access, min, message);
+  requireHeld(access, permission);
   return { session, access };
 }
 
@@ -60,7 +58,7 @@ export function assertSessionOwnerOrAdmin(
   access: Awaited<ReturnType<typeof loadProjectAccess>>,
   userId: string,
 ) {
-  if (session.userId && session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
+  if (session.userId && session.userId !== userId && !holds(access, 'project.admin')) {
     throw forbidden('not the session owner');
   }
 }
@@ -70,7 +68,7 @@ export function assertSessionOwnerOrAdmin(
  * gate + session-owner-or-admin check on a freshly loaded session row.
  */
 export async function ensureSessionOwnerOrAdmin(sessionId: string, userId: string) {
-  const { session, access } = await ensureSessionRole(sessionId, userId, 'member');
+  const { session, access } = await ensureSessionRole(sessionId, userId, 'project.write');
   assertSessionOwnerOrAdmin(session, access, userId);
   return { session, access };
 }
@@ -82,7 +80,7 @@ export function assertAgentChatOwner(
 ) {
   const isAgentChat = (session.metadata as { type?: string } | null)?.type === 'agent';
   if (!isAgentChat) return;
-  if (session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
+  if (session.userId !== userId && !holds(access, 'project.admin')) {
     throw forbidden('not the conversation owner');
   }
 }

@@ -11,11 +11,11 @@ import {
   requirementCriterionSteps,
   requirementWorkflows,
 } from '../db/schema-requirements.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { designNodesIn, nodeSetRefusals } from '../workflows/node-refs.js';
 import { notFound, type RequirementActor, rowIn } from './read.js';
 import type { RequirementRefusal } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './service.js';
+import { requireCan } from '../permissions/index.js';
 
 export async function putCriterionSteps(input: {
   projectId: string;
@@ -25,7 +25,7 @@ export async function putCriterionSteps(input: {
   request: PutCriterionStepsRequest;
 }): Promise<RequirementOutcome> {
   const { projectId, ref, code, actor, request } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   let id = '';
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);

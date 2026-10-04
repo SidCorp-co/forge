@@ -16,11 +16,12 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from '../issues/issue-route-ref.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { createTask, deleteTask, findTaskById, updateTask } from './task-service.js';
+import { requireHeld } from '../permissions/index.js';
 
 const issueIdParamSchema = z.object({ id: z.uuid() });
 const taskIdParamSchema = z.object({ taskId: z.uuid() });
@@ -118,7 +119,7 @@ taskIssueRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
 
     if (input.assigneeId) await assertAssigneeIsMember(issue.projectId, input.assigneeId);
 
@@ -190,7 +191,7 @@ taskIssueRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
 
     const existing = await db
       .select({ id: tasks.id, sortOrder: tasks.sortOrder })
@@ -264,7 +265,7 @@ taskRoutes.get(
 
     const task = await loadTask(taskId);
     const access = await loadProjectAccess(task.projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     return c.json(task);
   },
@@ -285,7 +286,7 @@ taskRoutes.patch(
 
     const task = await loadTask(taskId);
     const access = await loadProjectAccess(task.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
 
     if (patch.assigneeId) await assertAssigneeIsMember(task.projectId, patch.assigneeId);
 
@@ -313,7 +314,7 @@ taskRoutes.delete(
 
     const task = await loadTask(taskId);
     const access = await loadProjectAccess(task.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
 
     await deleteTask(task, restActor(c));
 

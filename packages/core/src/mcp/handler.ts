@@ -1,7 +1,6 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import type { Context } from 'hono';
 import type { PrincipalVars } from '../middleware/require-pat.js';
-import { formatDeprecationHeader } from './deprecation.js';
 import { createMcpServer } from './server.js';
 
 export async function mcpHandler(c: Context<{ Variables: PrincipalVars }>): Promise<Response> {
@@ -13,7 +12,6 @@ export async function mcpHandler(c: Context<{ Variables: PrincipalVars }>): Prom
     c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? c.req.header('x-real-ip') ?? null;
   const userAgent = c.req.header('user-agent') ?? null;
 
-  const deprecations = new Set<string>();
   const server = createMcpServer({
     principal,
     projectSlug,
@@ -21,7 +19,6 @@ export async function mcpHandler(c: Context<{ Variables: PrincipalVars }>): Prom
     requestId,
     ip,
     userAgent,
-    deprecations,
   });
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,
@@ -37,15 +34,7 @@ export async function mcpHandler(c: Context<{ Variables: PrincipalVars }>): Prom
   await server.connect(transport);
 
   try {
-    const res = await transport.handleRequest(c.req.raw);
-    if (deprecations.size === 0) return res;
-    const headers = new Headers(res.headers);
-    headers.set('X-MCP-Deprecation', formatDeprecationHeader(deprecations));
-    return new Response(res.body, {
-      status: res.status,
-      statusText: res.statusText,
-      headers,
-    });
+    return await transport.handleRequest(c.req.raw);
   } finally {
     void transport.close();
     void server.close();

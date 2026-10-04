@@ -65,18 +65,17 @@ shortfall exists rather than trusting a number that looks whole.
 
 ## STEP 3 — File ONE draft digest issue (cap: ${MAX_DIGEST_ISSUES_PER_RUN} per run)
 
-If there is at least one untriaged report, create exactly ONE draft issue via \`forge_issues action=create\`:
+If there is at least one untriaged report, create exactly ONE draft issue via \`forge-runner api projects/${projectId}/issues -X POST\` with this body:
 
 \`\`\`
-forge_issues.create({
-  projectId: "${projectId}",
+{
   status: "draft",            // ALWAYS draft — never open
   detectorKey: "${DIGEST_DETECTOR_KEY}",
   title: "Fleet feedback digest: <N untriaged across M projects>",
   description: <see format below>,
   category: "feedback-digest",
   priority: "low",
-})
+}
 \`\`\`
 
 ### The create may come back deduped — that is the normal path, not an error
@@ -85,7 +84,7 @@ forge_issues.create({
 Once a digest is already open, your create writes nothing and returns
 \`{deduped:true, existingIssueId, existingIssueDisplayId}\`.
 
-**That is your signal to comment on \`existingIssueId\` instead** (\`forge_comments action=create\`),
+**That is your signal to comment on \`existingIssueId\` instead** (\`forge-runner api issues/<existingIssueId>/comments -X POST -d '{"body":"..."}'\`),
 with this run's counts and any cluster that is new or has grown since the last comment. The standing
 digest issue is a living rollup: one issue, one comment per run, closed by a human when the backlog
 is triaged.

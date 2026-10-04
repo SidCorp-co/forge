@@ -1,3 +1,4 @@
+import { TOKEN_EXPLICIT_PERMISSIONS } from '@forge/contracts/permissions';
 import type { scopeForMethod } from '../middleware/pat-rest-surface.js';
 
 /**
@@ -380,6 +381,13 @@ export function patPermissionWanted(path: string, level: PatPermissionLevel): Pa
   const resource = patResourceForPath(path);
   return resource ? `${resource}:${level}` : null;
 }
+
+/**
+ * Permissions a grant may name beside its route groups. They open no route; the permission check
+ * (`permissions/can.ts`) reads them, and a token holds them only where its grant names them, `*`
+ * included.
+ */
+export const PAT_EXPLICIT_PERMISSIONS = TOKEN_EXPLICIT_PERMISSIONS;
 
 /** Full access as a stated value: off the menu, so no named grant holds it. */
 export const PAT_PERMISSION_ALL = '*';

@@ -12,8 +12,8 @@ import {
   type WaitOutcome,
 } from '../../ecosystem/waits/service.js';
 import { resolveIssueRouteRef } from '../../issues/issue-route-ref.js';
-import { assertProjectAccess } from '../../lib/authz.js';
 import { type McpContext, refusedAnswer } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 export const WAIT_READS = ['contract_waits', 'contract_requests'] as const;
 export const WAIT_WRITES = ['contract_wait_add', 'contract_wait_retract'] as const;
@@ -86,7 +86,7 @@ export const WAIT_HANDLERS: Record<
     return { ...(await issueContractWaitsOf(found.id, side)) };
   },
   contract_requests: async (ctx, side) => {
-    await assertProjectAccess(side, ctx.principal.userId, 'viewer');
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', side);
     return { requests: await listContractRequests(side) };
   },
   contract_wait_add: async (ctx, side, a) => {
@@ -132,7 +132,7 @@ export const WAIT_HANDLERS: Record<
 };
 
 export const WAIT_DESCRIPTION =
-  "contract_waits ({ issue }, GET /api/issues/:id/contract-waits) reads what an issue waits on: another project's contract at or above a version, settled once the provider approves one, and whether that holds it out of dispatch (CONTRACT_WAIT_UNSETTLED at the run and claim doors). contract_wait_add ({ issue, contract: <provider>/<slug>, minVersion, reason?, request? }) adds one, by a member or the project's own agent; refused by name: CONTRACT_WAIT_CONTRACT_UNKNOWN, CONTRACT_WAIT_OWN_CONTRACT (use a blocks edge), CONTRACT_WAIT_NOT_SHARED, CONTRACT_WAIT_VERSION_NOT_IN_SCHEME, CONTRACT_WAIT_DUPLICATE, CONTRACT_WAIT_REQUEST_MISMATCH, CONTRACT_WAIT_WRITE_FORBIDDEN. contract_wait_retract ({ issue, wait, reason }) stops one (CONTRACT_WAIT_RETRACTED). A production release of the project is refused CONTRACT_PROVIDER_NOT_LIVE while a provider does not serve the version an issue in it waits on. contract_requests ({}) lists the change requests this project sent or received, each as the provider's draft requirement it landed as; a published change-request document is what files one (forge_channel).";
+  "contract_waits ({ issue }, GET /api/issues/:id/contract-waits) reads what an issue waits on: another project's contract at or above a version, settled once the provider approves one, and whether that holds it out of dispatch (CONTRACT_WAIT_UNSETTLED at the run and claim doors). contract_wait_add ({ issue, contract: <provider>/<slug>, minVersion, reason?, request? }) adds one, by a member or the project's own agent; refused by name: CONTRACT_WAIT_CONTRACT_UNKNOWN, CONTRACT_WAIT_OWN_CONTRACT (use a blocks edge), CONTRACT_WAIT_NOT_SHARED, CONTRACT_WAIT_VERSION_NOT_IN_SCHEME, CONTRACT_WAIT_DUPLICATE, CONTRACT_WAIT_REQUEST_MISMATCH, PERMISSION_FORBIDDEN. contract_wait_retract ({ issue, wait, reason }) stops one (CONTRACT_WAIT_RETRACTED). A production release of the project is refused CONTRACT_PROVIDER_NOT_LIVE while a provider does not serve the version an issue in it waits on. contract_requests ({}) lists the change requests this project sent or received, each as the provider's draft requirement it landed as; a published change-request document is what files one (forge_channel).";
 
 const prop = (description: string, schema: Record<string, unknown> = { type: 'string' }) => ({
   ...schema,

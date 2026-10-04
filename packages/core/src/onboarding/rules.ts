@@ -1,24 +1,14 @@
 /**
  * The guards of workflow project-onboarding rev 1 (rules `may-start`, `which-designs`,
- * `approve-guard`), as pure functions over what the service read. Who may act is
- * `lib/person-act.ts:actMiss` under the rules declared here, worded under this slice's codes.
+ * `approve-guard`), as pure functions over what the service read. Who may act is a permission.
  */
 
 import type { OnboardingRefusal, OnboardingStatus } from '@forge/contracts/onboarding';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { OCCUPYING_JOB_STATUSES } from '../jobs/status-sets.js';
-import {
-  type ActorFacts,
-  type ActRule,
-  actMiss,
-  PERSON_ACT,
-  PROJECT_AGENT_WRITE,
-} from '../lib/person-act.js';
+import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
 export type { OnboardingRefusal };
-
-/** Closing onboarding as done: the agent when it hands over, or a person of the project. */
-export const ONBOARDING_CLOSE: ActRule = { person: 'member', agent: 'member' };
 
 export interface LiveJob {
   id: string;
@@ -75,55 +65,23 @@ export function doneRefusal(status: OnboardingStatus): OnboardingRefusal | null 
   };
 }
 
-// cm:guard start and re-analysis are a person's acts (ONBOARDING_ACT_FORBIDDEN): the cost bound is
-// one job per run, spent only when a person asks
-export function personActRefusal(
-  facts: ActorFacts,
-  projectId: string,
-  act: string,
-): OnboardingRefusal | null {
-  const miss = actMiss(facts, PERSON_ACT);
-  if (!miss) return null;
-  return {
-    code: 'ONBOARDING_ACT_FORBIDDEN',
-    path: '',
-    detail:
-      miss.kind === 'agent-not-allowed'
-        ? `${facts.userId} acts as an agent; ${act} is a person's act on project ${projectId}, so a job is spent only when a person asks.`
-        : `${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}; ${act} takes member or above.`,
-  };
-}
+/** Start and re-analysis: each spends a job, so asking takes onboarding.request. */
+export const personActRefusal = (facts: PermissionFacts, act: string): OnboardingRefusal | null =>
+  permissionRefusal(facts, 'onboarding.request', act);
 
-// cm:guard the thread's agent messages are written by the project's own agent (ONBOARDING_WRITE_FORBIDDEN)
-export function agentWriteRefusal(facts: ActorFacts, projectId: string): OnboardingRefusal | null {
-  const miss = actMiss(facts, PROJECT_AGENT_WRITE);
-  if (!miss) return null;
-  return {
-    code: 'ONBOARDING_WRITE_FORBIDDEN',
-    path: '',
-    detail:
-      miss.kind === 'person-not-allowed'
-        ? `${facts.userId} acts as a person; onboarding updates are written by project ${projectId}'s own agent. A person answers the questionnaire or writes in the thread's composer.`
-        : `${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}; only that project's own agent writes its onboarding updates.`,
-  };
-}
+/** The thread's agent messages. */
+export const agentWriteRefusal = (facts: PermissionFacts): OnboardingRefusal | null =>
+  permissionRefusal(facts, 'onboarding.write', 'writing an onboarding update');
 
-export function closeRefusal(facts: ActorFacts, projectId: string): OnboardingRefusal | null {
-  const miss = actMiss(facts, ONBOARDING_CLOSE);
-  if (!miss) return null;
-  return {
-    code: 'ONBOARDING_ACT_FORBIDDEN',
-    path: '',
-    detail: `${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}; closing its onboarding takes member or above, person or the project's own agent.`,
-  };
-}
+export const closeRefusal = (facts: PermissionFacts): OnboardingRefusal | null =>
+  permissionRefusal(facts, 'project.write', 'closing onboarding');
 
 // cm:guard a design an update names is a workflow of this project (ONBOARDING_DESIGN_UNKNOWN)
 export function designUnknownRefusals(missing: readonly string[]): OnboardingRefusal[] {
   return missing.map((id) => ({
     code: 'ONBOARDING_DESIGN_UNKNOWN' as const,
     path: '/designs/workflowIds',
-    detail: `workflow ${id} is not a workflow of this project; write the design first (forge_workflows write), then name it.`,
+    detail: `workflow ${id} is not a workflow of this project; write the design first (POST /api/projects/:id/workflows), then name it.`,
   }));
 }
 

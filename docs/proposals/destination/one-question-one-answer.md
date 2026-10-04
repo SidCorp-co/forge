@@ -28,8 +28,8 @@ The lifecycle tools cost almost nothing to drop, because REST already covers the
 |---|---|---|
 | `forge_step_handoff.write` / `.get` / `.delete` | `/api/issue-step-contexts` — **1-to-1**, same service | none |
 | `forge_phase` | `/api/pipeline-runs` + `pipeline/phase-routes.ts` | none |
-| `forge_step_start` | **none — MCP-only** | a REST route first |
-| `forge_uploads` | n/a | keep: it returns an image content block, which a CLI cannot hand a multimodal model |
+| `forge_step_start` | none as one call: its bundle is `GET /api/issues/:id`, `/comments`, `/api/issue-step-contexts` and `GET /api/projects/:id` read separately | dropped |
+| `forge_uploads` | n/a | kept, fetch only: it returns an image content block, which a CLI cannot hand a multimodal model |
 
 ## The rule that outranks the keep-list
 
@@ -38,21 +38,15 @@ Not "similarly", not "close enough after a mapping" — the same answer to the s
 
 This is not aspirational. The tree already does it once, and says so in the source:
 
-> `pipeline/step-handoff-routes.ts` — *"REST surface for step-handoff persistence. 1-to-1 with the
-> `forge_step_handoff.*` MCP tools; both call the same service so behaviour is identical regardless
-> of caller."*
+> `pipeline/step-handoff-routes.ts` — one service behind the REST surface for step-handoff
+> persistence, whatever the caller.
 
-And the tree already breaks it, in the busiest capability there is. Listing one project's issues:
-
-| Surface | Code path | Filters |
-|---|---|---|
-| MCP `forge_issues` list | `issues/list-service.ts:listIssueRows` — MCP is its only caller | **11** |
-| REST `GET /:id/issues` | conditions built inline in `issues/routes.ts` | **6** |
-| CLI `forge issue` | goes to REST, inherits the 6 | 6 |
-
-Three shared (`status`, `priority`, `category`). MCP alone has `search`, `label`, `module`,
-`statusNot`, `complexity` and three date filters; REST alone has `assigneeId` and `key`. The CLI
-verb and the MCP tool carry the same name and give different answers.
+And the tree broke it, in the busiest capability there is. Listing one project's issues, the MCP
+`forge_issues` list ran `issues/list-service.ts:listIssueRows` with **11** filters while REST
+`GET /:id/issues` builds **6** inline in `issues/routes.ts`; the CLI `forge issue` goes to REST and
+inherits the 6. With the MCP tool gone REST is the one surface, and `listIssueRows` has no caller:
+`label`, `module`, `statusNot`, `complexity` and the three date filters reach no surface until
+REST takes them.
 
 ## The mechanism: make the keep-list data, not a decision
 
@@ -73,13 +67,15 @@ product moves. Decide the mechanism once and the keep-list becomes a field.
    from ISS-894 unchanged, and its wording there is the right wording: *"Xoá, không deprecate.
    Còn hai đường là còn hai đường."*
 
-## What the keep-list looks like under the new rule
+## What the keep-list is
 
-Not yet decided, and deliberately so — it is step 2's flag, not step 0's architecture. The shape
-that follows from "native and fast for an agent" is roughly: read and write the record
-(`forge_issues`, `forge_comments`), find things (`forge_memory_search`, `forge_knowledge`), read
-project settings (`forge_config`), and `forge_uploads` for the transport reason above. Each of
-those must pass the parity rule before it is exposed twice.
+Owner rule, 2026-10-04: the REST API is the primary door and the CLI sits on it; MCP keeps only
+the tools an agent needs that neither covers. The registry holds 9: `forge_agent_report` (its
+`submit` reads the caller's live job), `forge_uploads` (fetch, for the transport reason above),
+`forge_channel` and `forge_ecosystem` (reads REST serves only device-only or across the ecosystem
+fence), and the core-mediated integrations whose credential stays in core — `forge_source`,
+`forge_coolify_deploy`, `forge_sentry`, `forge_google_sheets`, `forge_storefront_target`. Reading
+and writing the record, memory, knowledge and project settings are REST.
 
 ## Carried over from ISS-894, still true
 
@@ -109,5 +105,5 @@ deleting them would rewrite history rather than correct it; this document is the
 | One registry is a refactor of every route and tool | Each capability's filters, projection, ordering and pagination leave its handler. Structural parity is the payoff; the bill is most of `mcp/tools/` and a large share of the route modules, with nothing user-visible to show |
 | MCP loses hand-tuning | Several tools shape output for an agent's context budget in ways a REST client does not want. Those differences become declared projections or are given up, and some will be given up |
 | The parity suite blocks merges | That is the point. A drifting pair stops a release until someone fixes it or removes the pair with a written reason. Teams who prefer the drift will feel this as friction, correctly |
-| Dropping the lifecycle tools moves work to the plugin | `forge_step_handoff.*` and `forge_phase` have 1-to-1 REST routes so core pays nothing — but the plugin must change its calls on its own clock, and nothing here can gate that half |
-| `forge_step_start` has no REST route | The one drop that needs a route built first. Until it exists the old surface stays |
+| Dropping the lifecycle tools moves work to the plugin | Step handoffs and phases have 1-to-1 REST routes so core pays nothing — but the plugin must change its calls on its own clock, and nothing here can gate that half |
+| The step-start bundle is four reads | An agent that called one tool now makes four REST reads; nothing marks the issue in-flight for it, so it moves the status itself |

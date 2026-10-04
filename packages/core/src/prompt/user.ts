@@ -67,7 +67,7 @@ function handoffHasOpenItems(h: PriorHandoff): boolean {
   return Array.isArray(v) && v.length > 0;
 }
 
-const ADDRESS_OPEN_ITEMS_BLOCK = `\n**Before you advance — address the open items above.** The handoff(s) above carry open items (clarify \`openQuestions\`, plan \`unknowns\`, code \`knownLimitations\`). For EACH item: resolve it in your work, or explicitly acknowledge it with a reason in your stage comment/handoff. Do not silently drop them.\nNeed context the handoff does not carry? Re-query the prior stage's session (max 3 calls this step): \`forge_agent_sessions.list({ projectId, issueId })\` → pick the prior stage's session (match \`pipelineRunId\`) → \`forge_agent_sessions.get({ sessionId })\` (returns the last-20 message tail only). This is prompt-layer guidance, not a status gate.`;
+const ADDRESS_OPEN_ITEMS_BLOCK = `\n**Before you advance — address the open items above.** The handoff(s) above carry open items (clarify \`openQuestions\`, plan \`unknowns\`, code \`knownLimitations\`). For EACH item: resolve it in your work, or explicitly acknowledge it with a reason in your stage comment/handoff. Do not silently drop them.\nNeed context the handoff does not carry? Re-query the prior stage's session (max 3 calls this step): \`forge-runner api projects/<projectId>/agent-sessions?issueId=<id>\` → pick the prior stage's session (match \`pipelineRunId\`) → \`forge-runner api projects/<projectId>/agent-sessions/<sessionId>\` (returns the last-20 message tail only). This is prompt-layer guidance, not a status gate.`;
 
 /**
  * Render the `## Prior step handoffs` block. Renders each handoff as a
@@ -108,7 +108,7 @@ function formatIssueSnapshot(snapshot: IssueSnapshot, jobType: JobType): string 
     '',
     jobType === 'drive'
       ? 'Full issue body, comments and attachments are NOT inlined here — read them with `forge-runner api issues/<id>` and `forge-runner api issues/<id>/comments`.'
-      : 'Full issue body, comments, attachments, and prior step handoffs are NOT inlined here — call `forge_step_start` first to load them. Read an attached image/file with `forge_uploads` action=fetch.',
+      : 'Full issue body, comments, attachments, and prior step handoffs are NOT inlined here — read them with `forge-runner api issues/<id>`, `forge-runner api issues/<id>/comments` and `forge-runner api issue-step-contexts?projectId=<projectId>&issueId=<id>`. Read an attached image/file with the `forge_uploads` MCP tool.',
   );
   return lines.join('\n');
 }
@@ -176,7 +176,7 @@ export function buildJobPromptString(args: {
    * Step-handoff scope literals for the `## Termination protocol` block.
    * Required when `jobType` is a handoff step
    * (triage/plan/code/review/test/fix) — without it the agent can't form
-   * the `forge_memory.write` call. Caller pre-fills these from the job +
+   * the handoff write. Caller pre-fills these from the job +
    * pipeline_run row so the agent does NOT have to guess identifiers.
    */
   handoffScope?: HandoffScope | null;

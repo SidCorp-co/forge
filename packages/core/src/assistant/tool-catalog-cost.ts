@@ -77,7 +77,7 @@ export function measureLiveCatalog(): CatalogMeasurement {
   };
 }
 
-/** The chat door's own allowlist with `DESCRIPTION_CAP` not applied — the shape the 28,343 figure was taken in, which is NOT what `/mcp` serves. The count is not written down here: it moved from nine to ten when `forge_guide` joined the allowlist (ISS-1007), and a number in this sentence would have gone stale in silence. */
+/** The chat door's own allowlist with `DESCRIPTION_CAP` not applied — the shape the 28,343 figure was taken in, which is NOT what `/mcp` serves. The count is not written down here, because a number in this sentence goes stale in silence. */
 export function uncappedCatalogChars(ctx: Parameters<typeof buildProjectToolset>[0]): number {
   const whole = CHAT_TOOL_ALLOWLIST.map((spec) => {
     const tool = spec.factory(ctx);

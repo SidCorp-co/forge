@@ -9,11 +9,12 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
-import { assertOrgAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { loadVisibleProjectIds } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { annotateDeviceBuilds } from './build-state.js';
+import { requireOrgCan } from '../permissions/index.js';
 
 const orgIdParamSchema = z.object({ orgId: z.uuid() });
 
@@ -27,7 +28,7 @@ deviceOrgRoutes.get(
   async (c) => {
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
-    await assertOrgAccess(orgId, userId, 'member');
+    await requireOrgCan({ userId }, 'org.read', orgId);
 
     const visibleIds = await loadVisibleProjectIds(userId);
     if (visibleIds.length === 0) return c.json([]);

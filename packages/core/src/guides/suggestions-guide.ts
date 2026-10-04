@@ -17,10 +17,11 @@ export const SUGGESTIONS_GUIDE: CoreGuide = {
   version: 1,
   body: `## Suggestions: propose, and let a person decide
 
-A suggestion is a proposed change that waits on a person instead of changing anything. An agent (or the
-BA assistant, or a person through REST) writes one; a person of the project accepts or rejects it; its
-effect is written in the accept's own transaction and points back at it. \`forge_suggestions\` is the
-door; the REST routes are the same services.
+A suggestion is a proposed change that waits on a person instead of changing anything. An agent, the
+BA assistant or a person writes one; a person of the project accepts or rejects it; its
+effect is written in the accept's own transaction and points back at it. The door is
+\`/api/projects/:id/suggestions\` (\`POST\` writes, \`GET\` lists) and
+\`…/suggestions/:sid/accept|reject|revise|withdraw\`.
 
 ### The kinds, and what each targets
 | Kind | Target | Accepting it writes |
@@ -51,9 +52,8 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
 - At most ${SUGGESTION_MAX_OPEN_PER_TARGET} proposed suggestions wait on one target; another is
   \`SUGGESTION_QUEUE_FULL\` until a person decides one.
 - A \`breakdown\` is the project master's to propose (workflow requirement-to-delivery step
-  \`breakdown\`): only the project's own agent writes one, and a person, the BA assistant or another
-  project's agent is \`SUGGESTION_BREAKDOWN_PROPOSE_FORBIDDEN\`, a reviewer's revise included (reject it
-  with a reason and the master proposes again). A requirement revision holds one open breakdown; a
+  \`breakdown\`): proposing or revising one takes \`suggestions.write\` (project member), and
+  without it the call is \`PERMISSION_FORBIDDEN\`. A requirement revision holds one open breakdown; a
   second is \`SUGGESTION_BREAKDOWN_OPEN\`. Every issue carries at least one criterion and every
   criterion names the BC it traces to (\`tracesTo\`). The master owes it within
   ${BREAKDOWN_SLA_WORKING_DAYS} working days of the agree; the requirement's standing serves the task

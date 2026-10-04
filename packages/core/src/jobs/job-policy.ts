@@ -7,26 +7,6 @@ import {
   requirePolicy,
 } from '../project-config/dispatch-policy.js';
 
-export const SKILL_MAINTENANCE_LABEL = 'skill-maintenance';
-
-export const SKILL_MAINTENANCE_TOOLS = [
-  'mcp__forge__forge_skills_update',
-  'mcp__forge__forge_skills_push',
-  'mcp__forge__forge_skills_sync_status',
-] as const;
-
-/** The deny list a skill-maintenance `code`/`fix` job runs with: its policy's, minus the skill-write tools. */
-export function withSkillMaintenanceCarveout(
-  deniedTools: readonly string[],
-  opts: { hasSkillMaintenanceLabel: boolean; jobType: string },
-): string[] {
-  if (!opts.hasSkillMaintenanceLabel) return [...deniedTools];
-  if (opts.jobType !== 'code' && opts.jobType !== 'fix') return [...deniedTools];
-  return deniedTools.filter(
-    (t) => !SKILL_MAINTENANCE_TOOLS.includes(t as (typeof SKILL_MAINTENANCE_TOOLS)[number]),
-  );
-}
-
 /** The status the job's creator stamped as the one it runs for, or null. */
 export function extractStageStatus(payload: unknown): string | null {
   if (!payload || typeof payload !== 'object') return null;

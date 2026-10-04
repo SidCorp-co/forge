@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { readEnvironmentState } from './environment-state-read.js';
 import { readProjectDocument } from './service.js';
+import { requireCan } from '../permissions/index.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const environmentParam = z.object({
@@ -41,7 +41,7 @@ environmentStateRoutes.get(
   zValidator('param', projectParam, refuseParam),
   async (c) => {
     const { id } = c.req.valid('param');
-    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    await requireCan({ userId: c.get('userId') }, 'project.read', id);
     const { revision, document } = await storedDocument(id);
     const environments = await Promise.all(
       Object.entries(document.environments).map(([name, declaration]) =>
@@ -57,7 +57,7 @@ environmentStateRoutes.get(
   zValidator('param', environmentParam, refuseParam),
   async (c) => {
     const { id, name } = c.req.valid('param');
-    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    await requireCan({ userId: c.get('userId') }, 'project.read', id);
     const { revision, document } = await storedDocument(id);
     const decl = Object.hasOwn(document.environments, name)
       ? document.environments[name]

@@ -12,10 +12,10 @@ You are one of multiple verifiers (typically 3). A majority of `pass` votes caus
 
 ## Step 1 — Load the run
 
-Call `forge_reconcile action=get` with the `runId` from your job payload (`jobs.payload.reconcileRunId`).
+Read `forge-runner api projects/$FORGE_PROJECT_ID/reconcile-runs/<runId>`, with the `runId` from your job payload (`jobs.payload.reconcileRunId`).
 
 Extract from the returned run:
-- `bundle` — the same context bundle the Master agent saw (field reference: `forge_guide get update-pipeline-reconcile`)
+- `bundle` — the same context bundle the Master agent saw (field reference: `GET /api/guides/update-pipeline-reconcile.md`)
 - `candidateBody` — the body the Master agent proposes
 - `verdict` — the Master agent's verdict (`apply` or `apply-with-adaptation`)
 - `rationale` — the Master agent's stated reasoning
@@ -54,8 +54,7 @@ the line. A wrong `auto` publishes to every runner with no automatic revert. Exc
 
 ## Step 3 — Vote
 
-Call `forge_reconcile action=record_vote` with:
-- `runId`: from your job payload
+Call `forge-runner api projects/$FORGE_PROJECT_ID/reconcile-runs/<runId>/votes -X POST -d '<json>'`, `runId` from your job payload, with:
 - `jobId`: YOUR job ID (from your job payload — NOT the Master agent's job ID)
 - `vote`: `pass` (candidate is safe) or `fail` (candidate has problems)
 - `reason`: 1–3 sentences explaining your decision. For `fail`, name the specific item that failed.

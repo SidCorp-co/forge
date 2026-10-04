@@ -12,11 +12,11 @@ import { cosineDistance } from '../db/pgvector.js';
 import { feedback } from '../db/schema-feedback.js';
 import { itemEmbeddings } from '../db/schema-item-embeddings.js';
 import { writeItemEmbedding } from '../embeddings/item-writer.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
 import { type FeedbackActor, feedbackKey, phaseOfRow, rowIn } from './read.js';
+import { requireCan } from '../permissions/index.js';
 
 /** Embeds the item's text, replacing whatever row it held; a redacted item holds none. */
 export async function embedFeedback(feedbackId: string) {
@@ -93,7 +93,7 @@ export async function similarFeedbackAs(
   door: ReadDoor = {},
   limit = 5,
 ): Promise<SimilarFeedbackResponse> {
-  await assertProjectAccess(projectId, viewer.userId, 'viewer');
+  await requireCan({ userId: viewer.userId }, 'project.read', projectId);
   const { withhold, shown } = feedbackEgress(await dataPolicyOf(projectId), viewer.agency, door);
   const row = await rowIn(db, projectId, ref);
   const [own] = await db.select().from(itemEmbeddings).where(eq(itemEmbeddings.feedbackId, row.id));

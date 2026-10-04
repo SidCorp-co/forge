@@ -32,6 +32,7 @@ import {
   notFound,
 } from './session-access.js';
 import { type AgentSessionPatch, finalizeScheduleSessionFailure } from './session-failure.js';
+import { holds } from '../permissions/index.js';
 
 export async function loadProjectBySlug(slug: string) {
   const [row] = await db
@@ -225,7 +226,7 @@ agentSessionLifecycleRoutes.post(
     const { sessionId, status, note } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { session: existing } = await ensureSessionRole(sessionId, userId, 'member');
+    const { session: existing } = await ensureSessionRole(sessionId, userId, 'project.write');
 
     const statusSet: AgentSessionPatch = { status, updatedAt: new Date() };
 
@@ -392,7 +393,7 @@ agentSessionLifecycleRoutes.get(
     // Gate membership before confirming the slug has a live device — otherwise
     // the response is a slug-existence + liveness oracle for other tenants.
     const access = await loadProjectAccess(project.id, userId).catch(() => null);
-    if (!access?.role) return notConnected();
+    if (!access || !holds(access, 'project.read')) return notConnected();
 
     const available = await findAvailableDeviceForProject(project.id);
     return c.json({ data: { connected: available !== null } });

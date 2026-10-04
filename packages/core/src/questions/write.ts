@@ -6,7 +6,7 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, type ProjectMemberRole } from '../db/schema.js';
+import { type IssueStatus, issues } from '../db/schema.js';
 import {
   type AnswerShape,
   agentQuestions,
@@ -21,6 +21,7 @@ import { decideChannelGate } from '../ecosystem/channel-gate.js';
 import type { PersonVia } from '../ecosystem/channel-schema.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
 import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
+import { holds, type PermissionFacts, requireHeld } from '../permissions/index.js';
 import { hooks } from '../pipeline/hooks.js';
 import { wakeMastersForAnswer } from '../ws/master-wake.js';
 import { batchItemRefusal } from './batch-item.js';
@@ -70,7 +71,6 @@ export const questionRefusalCodes = [
   'QUESTION_EXPIRED',
   'QUESTION_ROUND_STALE',
   'QUESTION_OPTION_UNKNOWN',
-  'QUESTION_AUTHORITY_REQUIRED',
   'QUESTION_REASON_REQUIRED',
   'QUESTION_ISSUE_ELSEWHERE',
   'QUESTION_ISSUE_TERMINAL',
@@ -86,10 +86,12 @@ export const questionRefusalCodes = [
 ] as const;
 export type QuestionRefusalCode = (typeof questionRefusalCodes)[number];
 
-export function mayChoose(option: QuestionOption, role: ProjectMemberRole | null): boolean {
-  if (role === 'admin') return true;
-  if (role === 'member') return option.authority === 'writer';
-  return false;
+/** An option's authority is the permission choosing it takes. */
+const optionPermission = (option: QuestionOption) =>
+  option.authority === 'admin' ? 'project.admin' : 'project.write';
+
+export function mayChoose(option: QuestionOption, facts: PermissionFacts | null): boolean {
+  return facts !== null && holds(facts, optionPermission(option));
 }
 
 function checkOptions(options: QuestionOption[], recommendedOptionId: string) {
@@ -282,14 +284,14 @@ export type AnswerInput = {
   /** The round the answerer was looking at. Never defaulted to the current one. */
   round: number;
   by: string;
-  role: ProjectMemberRole | null;
+  facts: PermissionFacts;
   note?: string;
   /** The door the answerer came through, which a channel gate records as the decider's via. */
   via: PersonVia;
 };
 
-export function mayAnswerFreeText(role: ProjectMemberRole | null): boolean {
-  return role !== null;
+export function mayAnswerFreeText(facts: PermissionFacts | null): boolean {
+  return facts !== null && holds(facts, 'project.write');
 }
 
 /**
@@ -353,12 +355,7 @@ export async function answerQuestion(args: AnswerInput) {
           'QUESTION_OPTION_UNKNOWN',
         );
       }
-      if (!mayChoose(option, args.role)) {
-        throw new QuestionRefused(
-          `option ${option.id} carries authority ${option.authority} and this caller may not choose it`,
-          'QUESTION_AUTHORITY_REQUIRED',
-        );
-      }
+      requireHeld(args.facts, optionPermission(option), `choosing option ${option.id}`);
       answered = {
         ...current,
         answeredAt: now.toISOString(),
@@ -384,12 +381,7 @@ export async function answerQuestion(args: AnswerInput) {
           'QUESTION_ANSWER_WRONG_SHAPE',
         );
       }
-      if (!mayAnswerFreeText(args.role)) {
-        throw new QuestionRefused(
-          'answering a free-text round writes into a running agent and needs a role that may write on this project',
-          'QUESTION_AUTHORITY_REQUIRED',
-        );
-      }
+      requireHeld(args.facts, 'project.write', 'answering a free-text round');
       answered = {
         ...current,
         answeredAt: now.toISOString(),

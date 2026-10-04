@@ -2647,8 +2647,8 @@ export const integrationBindingsRelations = relations(integrationBindings, ({ on
 
 /**
  * Short-lived, single-use capability tickets for out-of-band attachment uploads
- * (the presigned-URL pattern). `forge_uploads` mints a row; the holder PUTs file
- * bytes to /api/uploads/:id with no bearer — possession of the unguessable id +
+ * (the presigned-URL pattern). `POST /api/conversations/:id/attachments` mints
+ * a row; the holder PUTs file bytes to /api/uploads/:id with no bearer — possession of the unguessable id +
  * not-expired + not-consumed IS the authorization. All upload params are stored
  * server-side here so the URL cannot be tampered with.
  */

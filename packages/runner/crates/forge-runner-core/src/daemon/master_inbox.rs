@@ -104,7 +104,7 @@ pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
             })
             .collect();
         line.push_str(&format!(
-            " A person is owed a reply on {} issue{} ({}): read each thread (`forge_comments action=list`), reply to that comment in its thread (`forge_comments action=create` with `data.parentId` set to the comment id), and move the issue when the comment asks for it; only a threaded reply clears it, a top-level comment does not.",
+            " A person is owed a reply on {} issue{} ({}): read each thread (`forge-runner api issues/<id>/comments`), reply to that comment in its thread (`forge-runner api issues/<id>/comments -X POST` with `parentId` set to the comment id), and move the issue when the comment asks for it; only a threaded reply clears it, a top-level comment does not.",
             comments.len(),
             if comments.len() == 1 { "" } else { "s" },
             keys.join(", ")
@@ -116,7 +116,7 @@ pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
             .map(|d| d.number.as_deref().unwrap_or(d.id.as_str()))
             .collect();
         line.push_str(&format!(
-            " The ecosystem channel owes {} repl{} ({}): `forge_channel action=unanswered` lists them, and `forge_guide get ecosystem-inbox` is how to work them.",
+            " The ecosystem channel owes {} repl{} ({}): `forge_channel action=unanswered` lists them, and `forge-runner api guides/ecosystem-inbox.md` is how to work them.",
             docs.len(),
             if docs.len() == 1 { "y" } else { "ies" },
             numbers.join(", ")
@@ -125,7 +125,7 @@ pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
     if !runs.is_empty() {
         let ids: Vec<&str> = runs.iter().map(|d| d.id.as_str()).collect();
         line.push_str(&format!(
-            " {} ecosystem builder run{} open ({}): `forge_ecosystem action=builder_runs` lists them, and `forge_guide get ecosystem-inbox` is how to work one.",
+            " {} ecosystem builder run{} open ({}): `forge_ecosystem action=builder_runs` lists them, and `forge-runner api guides/ecosystem-inbox.md` is how to work one.",
             runs.len(),
             if runs.len() == 1 { " is" } else { "s are" },
             ids.join(", ")

@@ -47,7 +47,7 @@ export const ISSUE_REFERENCES_EXIST: MessageRule = {
     ) {
       breaks.push({
         quote: null,
-        why: 'reply claims an issue was created but no forge_issues create call was made',
+        why: 'reply claims an issue was created but no `forge new` call was made',
       });
     }
     return breaks;

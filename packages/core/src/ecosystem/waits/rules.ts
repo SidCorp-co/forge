@@ -1,5 +1,5 @@
 import type { ContractWaitRefusal, ProviderLiveMode } from '@forge/contracts/contract-waits';
-import { type ActorFacts, actMiss, PROJECT_MEMBER_WRITE } from '../../lib/person-act.js';
+import { type PermissionFacts, permissionRefusal } from '../../permissions/index.js';
 import {
   compareVersions,
   parseVersion,
@@ -9,22 +9,8 @@ import {
 
 export type { ContractWaitRefusal } from '@forge/contracts/contract-waits';
 
-export function writerRefusal(
-  facts: ActorFacts,
-  projectId: string,
-  act: string,
-): ContractWaitRefusal | null {
-  const miss = actMiss(facts, PROJECT_MEMBER_WRITE);
-  if (!miss) return null;
-  return {
-    code: 'CONTRACT_WAIT_WRITE_FORBIDDEN',
-    path: '',
-    detail:
-      miss.kind === 'agent-below-member'
-        ? `agent ${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}; ${act} is that project's own agent's or a member's, never another project's agent's.`
-        : `${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}; ${act} is a member's act (member or above).`,
-  };
-}
+export const writerRefusal = (facts: PermissionFacts, act: string): ContractWaitRefusal | null =>
+  permissionRefusal(facts, 'project.write', act);
 
 export interface RequestFacts {
   number: string;

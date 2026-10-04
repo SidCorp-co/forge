@@ -17,9 +17,8 @@
  * types (`set_dependency`, `flag_blocker`, `comment`) are out of scope
  * here — they are recorded as `skipped` so the parent decision is still
  * marked followed-up and a noisy escalation does not loop forever. The
- * memory indexer fires off the new decision row via the
- * `forge_pm.write_decision` codepath (we go direct here because the
- * sweeper is a system actor without a device principal).
+ * sweeper writes the new decision row and indexes it into memory itself,
+ * because it is a system actor without a device principal.
  */
 
 import { sql } from 'drizzle-orm';
@@ -172,8 +171,8 @@ async function executeDispatchFallback(
 
   const userPayload =
     fallback.payload && typeof fallback.payload === 'object' ? fallback.payload : {};
-  // Mirror forge_pm.dispatch payload shape so the runner sees an identical
-  // job whether it came from the live PM agent or the timeout sweeper.
+  // The same payload shape a PM agent's dispatch writes, so the runner sees an
+  // identical job whether it came from the live PM agent or the timeout sweeper.
   const payload: Record<string, unknown> = {
     ...(userPayload as Record<string, unknown>),
     skillName: `forge-${jobType}`,
@@ -254,8 +253,7 @@ async function recordTimeout(
     .returning({ id: pmDecisions.id });
   if (!inserted) return;
 
-  // Mirror forge_pm.write_decision: detached memory index so embed latency
-  // doesn't block the sweeper tick.
+  // Detached memory index so embed latency doesn't block the sweeper tick.
   const decisionId = inserted.id;
   queueMicrotask(() => {
     indexMemory({

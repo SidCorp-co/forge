@@ -34,15 +34,6 @@ export async function findIssueById(issueId: string): Promise<IssueRow | null> {
   return row ?? null;
 }
 
-export async function findIssueProjectId(issueId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ projectId: issues.projectId })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  return row?.projectId ?? null;
-}
-
 export async function findIssueByDisplaySeq(
   projectId: string,
   issSeq: number,

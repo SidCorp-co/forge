@@ -1,39 +1,13 @@
 /** Who writes a provider's own interface and contract versions, and who set the commitments it makes. */
 
 import { isDeepStrictEqual } from 'node:util';
-import type { ProjectMemberRole } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { projectRoleAtLeast } from '../lib/authz.js';
+import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 import type { EcosystemRefusal } from './refusals.js';
 
-export interface ProviderWriterFacts {
-  userId: string;
-  agency: ActorAgency;
-  /** The writer's role on the project, through the token's fence. */
-  role: ProjectMemberRole | null;
-}
-
-export type ProviderWriterCode = 'INTERFACE_WRITER_NOT_PROJECT' | 'CONTRACT_WRITER_NOT_PROVIDER';
-
-// cm:why the ecosystem is built by the agents that live in it: a project's own agent (member or above, through a token that reaches the project) writes the interface and contracts it publishes, a person needs admin, and another project's agent holds no role here and is refused by name
-export function providerWriterRefusal(
-  facts: ProviderWriterFacts,
-  projectId: string,
-  code: ProviderWriterCode,
-): EcosystemRefusal | null {
-  if (facts.agency === 'agent' && projectRoleAtLeast(facts.role, 'member')) return null;
-  if (facts.agency === 'human' && projectRoleAtLeast(facts.role, 'admin')) return null;
-  const held =
-    facts.agency === 'agent'
-      ? `agent ${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}, so it is not this project's own agent`
-      : `${facts.userId} acts as a person holding ${facts.role ?? 'no role'} on project ${projectId}`;
-  const what = code === 'INTERFACE_WRITER_NOT_PROJECT' ? 'interface' : 'contract versions';
-  return {
-    code,
-    path: '',
-    detail: `${held}; project ${projectId}'s ${what} is written by its own agent (its master or a run it dispatched, member or above) or by a person holding admin or above on it.`,
-  };
-}
+/** A provider's interface and contract versions are written by a holder of contracts.write on it. */
+export const providerWriterRefusal = (facts: PermissionFacts, what: string): EcosystemRefusal | null =>
+  permissionRefusal(facts, 'contracts.write', what);
 
 export interface RevisionBy {
   revision: number;
@@ -73,18 +47,13 @@ export function commitmentsSetterOf(newestFirst: readonly RevisionBy[]): Commitm
   };
 }
 
-// cm:why an agent proposes the commitment windows and a person may overrule them; once a person has set them, an agent's write that moves them would silently undo that person's decision, so it is refused and the person's numbers stand
+/** Moving commitments that are already set takes commitments.write; setting the first ones does not. */
 export function commitmentsRefusal(
-  writer: { agency: ActorAgency },
-  setter: CommitmentsSetter | null,
+  facts: PermissionFacts,
   current: unknown,
   next: unknown,
 ): EcosystemRefusal | null {
-  if (writer.agency !== 'agent' || setter?.agency !== 'human') return null;
-  if (isDeepStrictEqual(commitmentsOf(current), commitmentsOf(next))) return null;
-  return {
-    code: 'COMMITMENTS_SET_BY_PERSON',
-    path: '/commitments',
-    detail: `the commitments were set by a person (${setter.userId}, revision ${setter.revision}); an agent writes the interface with them as they stand, and only a person holding admin changes them.`,
-  };
+  const was = commitmentsOf(current);
+  if (was === undefined || isDeepStrictEqual(was, commitmentsOf(next))) return null;
+  return permissionRefusal(facts, 'commitments.write', 'changing the commitments');
 }

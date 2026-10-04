@@ -16,93 +16,14 @@ import { forgeMcpInstructions } from './instructions.js';
 import { toolCallRefusal } from './tool-call-guard.js';
 import { assertToolDeclaresAccess } from './tool-grant.js';
 import { toToolCallContent } from './tool-result.js';
-import { forgeAgentReportTool, forgeFeedbackAliasTool } from './tools/forge-agent-report.js';
-import {
-  forgeAgentSessionsGetTool,
-  forgeAgentSessionsListTool,
-} from './tools/forge-agent-sessions.js';
-import { forgeAutomationTool } from './tools/forge-automation.js';
-import { forgeCollaboratorsTool } from './tools/forge-collaborators.js';
-import { forgeCommentsTool } from './tools/forge-comments.js';
-import { forgeConfigTool } from './tools/forge-config.js';
+import { forgeAgentReportTool } from './tools/forge-agent-report.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
-import { forgeCriteriaTool } from './tools/forge-criteria.js';
 import { forgeEcosystemTool } from './tools/forge-ecosystem.js';
-import { forgeFeedbackItemsTool } from './tools/forge-feedback-items.js';
 import { forgeGoogleSheetsTool } from './tools/forge-google-sheets.js';
-import { forgeGuideTool } from './tools/forge-guide.js';
-import { forgeHealthTool } from './tools/forge-health.js';
-import { forgeIssueEventsTool } from './tools/forge-issue-events.js';
-import { forgeIssuesTool } from './tools/forge-issues.js';
-import {
-  forgeJobsCancelTool,
-  forgeJobsEventsTool,
-  forgeJobsGetTool,
-  forgeJobsListTool,
-  forgeJobsResumeTool,
-} from './tools/forge-jobs.js';
-import { forgeKnowledgeTool } from './tools/forge-knowledge.js';
-import { forgeMastersTool } from './tools/forge-masters.js';
-import {
-  forgeMemoryDeleteTool,
-  forgeMemoryFeedbackTool,
-  forgeMemoryGetTool,
-  forgeMemorySearchTool,
-  forgeMemoryWriteTool,
-} from './tools/forge-memory.js';
-import {
-  forgeMetricsProjectRetryRescuesTool,
-  forgeMetricsProjectStepDurationsTool,
-  forgeMetricsProjectTimeseriesTool,
-  forgeMetricsSessionFailuresTool,
-} from './tools/forge-metrics.js';
-import { forgeMockupsTool } from './tools/forge-mockups.js';
-import { forgeOnboardingTool } from './tools/forge-onboarding.js';
-import { forgeOrgsListTool, forgeOrgsMembersTool } from './tools/forge-orgs.js';
-import { forgePhaseTool } from './tools/forge-phase.js';
-import { forgePipelineRunsGetTool } from './tools/forge-pipeline-runs.js';
-import { forgePmSetDependencyTool } from './tools/forge-pm-set-dependency.js';
-import { forgeProjectPipelineRunsTool } from './tools/forge-project-pipeline-runs.js';
-import { forgeProjectPmTool } from './tools/forge-project-pm.js';
-import {
-  forgeProjectsCreateTool,
-  forgeProjectsGetTool,
-  forgeProjectsListTool,
-  forgeProjectsUpdateTool,
-} from './tools/forge-projects.js';
-import { forgeQuestionsTool } from './tools/forge-questions.js';
-import { forgeReconcileTool } from './tools/forge-reconcile.js';
-import { forgeReleaseBatchTool } from './tools/forge-release-batch.js';
-import { forgeRequirementsTool } from './tools/forge-requirements.js';
-import { forgeRunnersTool } from './tools/forge-runners.js';
-import { forgeRunsTool } from './tools/forge-runs.js';
-import { forgeSchedulesTool } from './tools/forge-schedules.js';
 import { forgeSentryTool } from './tools/forge-sentry.js';
-import { forgeSkillFactsGetTool, forgeSkillFactsListTool } from './tools/forge-skill-facts.js';
-import {
-  forgeSkillsAdoptTool,
-  forgeSkillsCreateTool,
-  forgeSkillsDeleteTool,
-  forgeSkillsEffectiveTool,
-  forgeSkillsGetTool,
-  forgeSkillsListRegistrationsTool,
-  forgeSkillsListTool,
-  forgeSkillsPushTool,
-  forgeSkillsRegisterTool,
-  forgeSkillsSyncStatusTool,
-  forgeSkillsUpdateTool,
-} from './tools/forge-skills.js';
-import { forgeGithubAliasTool, forgeSourceTool } from './tools/forge-source.js';
-import {
-  forgeStepHandoffDeleteTool,
-  forgeStepHandoffGetTool,
-  forgeStepHandoffWriteTool,
-} from './tools/forge-step-handoff.js';
-import { forgeStepStartTool } from './tools/forge-step-start.js';
+import { forgeSourceTool } from './tools/forge-source.js';
 import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
-import { forgeSuggestionsTool } from './tools/forge-suggestions.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
-import { forgeWorkflowsTool } from './tools/forge-workflows.js';
 import { type McpContext, type McpTool, refusedAnswer } from './tools/lib.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/project-scope.js';
 
@@ -127,90 +48,24 @@ function projectIdFromArgs(args: Record<string, unknown>): string | null {
 }
 
 export function mcpTools(ctx: McpContext): McpTool[] {
+  // The REST API is the primary door and the forge CLI sits on it; a tool is served here only
+  // where an agent Forge runs needs it and neither covers it for that agent.
   const tools: McpTool[] = [
-    forgeMemorySearchTool(ctx),
-    forgeMemoryWriteTool(ctx),
-    forgeMemoryGetTool(ctx),
-    forgeMemoryDeleteTool(ctx),
-    forgeMemoryFeedbackTool(ctx),
-    forgeStepHandoffWriteTool(ctx),
-    forgeStepHandoffGetTool(ctx),
-    forgeStepHandoffDeleteTool(ctx),
-    forgeSkillsListTool(ctx),
-    forgeSkillsGetTool(ctx),
-    forgeSkillsRegisterTool(ctx),
-    forgeSkillsListRegistrationsTool(ctx),
-    forgeSkillsCreateTool(ctx),
-    forgeSkillsUpdateTool(ctx),
-    forgeSkillsDeleteTool(ctx),
-    forgeSkillsEffectiveTool(ctx),
-    forgeSkillsAdoptTool(ctx),
-    forgeSkillsSyncStatusTool(ctx),
-    forgeSkillsPushTool(ctx),
-    forgeSkillFactsListTool(ctx),
-    forgeSkillFactsGetTool(ctx),
-    forgeMetricsProjectRetryRescuesTool(ctx),
-    forgeMetricsProjectStepDurationsTool(ctx),
-    forgeMetricsProjectTimeseriesTool(ctx),
-    forgeRunnersTool(ctx),
-    forgeSchedulesTool(ctx),
-    forgeCollaboratorsTool(ctx),
-    forgeIssuesTool(ctx),
-    forgePhaseTool(ctx),
-    forgeStepStartTool(ctx),
-    forgeCommentsTool(ctx),
-    forgeIssueEventsTool(ctx),
-    forgeQuestionsTool(ctx),
+    // submit reads the caller's live job or session context, which no REST route resolves.
     forgeAgentReportTool(ctx),
-    forgeFeedbackAliasTool(ctx),
+    // An image attachment comes back as a viewable block; `forge-runner api` prints text only.
     forgeUploadsTool(ctx),
-    forgeCriteriaTool(ctx),
-    forgeConfigTool(ctx),
-    forgeKnowledgeTool(ctx),
-    forgeCoolifyDeployTool(ctx),
-    forgeReleaseBatchTool(ctx),
-    forgeGoogleSheetsTool(ctx),
-    forgeStorefrontTargetTool(ctx),
-    forgeWorkflowsTool(ctx),
-    forgeRequirementsTool(ctx),
-    forgeSuggestionsTool(ctx),
-    forgeRunsTool(ctx),
-    forgeAutomationTool(ctx),
-    forgeMastersTool(ctx),
-    forgeOnboardingTool(ctx),
-    forgeFeedbackItemsTool(ctx),
-    forgeMockupsTool(ctx),
-    forgeJobsListTool(ctx),
-    forgeJobsGetTool(ctx),
-    forgeJobsEventsTool(ctx),
-    forgeJobsCancelTool(ctx),
-    forgeAgentSessionsListTool(ctx),
-    forgeAgentSessionsGetTool(ctx),
-    forgeProjectPipelineRunsTool(ctx),
-    forgePipelineRunsGetTool(ctx),
-    forgeProjectsListTool(ctx),
-    forgeProjectsCreateTool(ctx),
-    forgeOrgsListTool(ctx),
-    forgeOrgsMembersTool(ctx),
-    forgeProjectsUpdateTool(ctx),
-    forgeProjectsGetTool(ctx),
-    forgeProjectPmTool(ctx),
-    forgePmSetDependencyTool(ctx),
-    forgeHealthTool(ctx),
-    forgeReconcileTool(ctx),
-    forgeJobsResumeTool(ctx),
-    forgeMetricsSessionFailuresTool(ctx),
-    // ISS-50 — `forge_source` is the agent face of the project's source host (GitHub or GitLab);
-    // `forge_github` is its priced former name.
-    forgeSourceTool(ctx),
-    forgeGithubAliasTool(ctx),
-    // ISS-1247 — `forge_sentry` is the read side of the Sentry integration, on demand.
-    forgeSentryTool(ctx),
-    forgeGuideTool(ctx),
-    // ISS-38 — the ecosystem channel, interface and links reach a master and its runs, through the
-    // one channel implementation chat already serves.
+    // The channel's unanswered read is device-only over REST and its gate answers across the
+    // ecosystem fence; the ecosystem's contract context has no REST route.
     forgeChannelTool(ctx),
     forgeEcosystemTool(ctx),
+    // A core-mediated integration's agent path: the provider credential stays in core, and no REST
+    // route serves these reads and writes (for Coolify, its deployment and runtime logs).
+    forgeSourceTool(ctx),
+    forgeCoolifyDeployTool(ctx),
+    forgeSentryTool(ctx),
+    forgeGoogleSheetsTool(ctx),
+    forgeStorefrontTargetTool(ctx),
   ];
   for (const tool of tools) assertToolDeclaresAccess(tool);
   return tools;

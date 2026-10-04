@@ -5,10 +5,11 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { deleteMine, findMine, listMine } from './mine-service.js';
+import { requireCan } from '../permissions/index.js';
 
 const listQuerySchema = z.object({ projectId: z.uuid().optional() });
 const idParamSchema = z.object({ id: z.uuid() });
@@ -51,7 +52,7 @@ memoryMineRoutes.delete(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
     const mine = await findMine(userId, id);
-    if (mine) await assertProjectAccess(mine.projectId, userId);
+    if (mine) await requireCan({ userId }, 'project.write', mine.projectId);
     const removed = mine ? await deleteMine(userId, id) : false;
     if (!removed) {
       throw new HTTPException(404, {

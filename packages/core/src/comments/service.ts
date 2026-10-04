@@ -58,15 +58,6 @@ export function onIssue<T extends { id: string; issueId: string | null }>(
   return row as T & { issueId: string };
 }
 
-/** One issue's comments, oldest first, all of them. */
-export async function listIssueComments(issueId: string) {
-  return db
-    .select(commentThreadColumns)
-    .from(comments)
-    .where(eq(comments.issueId, issueId))
-    .orderBy(asc(comments.createdAt), asc(comments.id));
-}
-
 /**
  * Comment depth the DB trigger allows. A root plus this many rounds of
  * `parent_id IN (…)` reaches every descendant of the roots on a page.
@@ -138,41 +129,6 @@ export async function listIssueCommentPage(
 
   rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
   return { rows, roots, nextCursor, cursorKeyById };
-}
-
-/** The project an issue belongs to; throws when the issue is gone. */
-export async function loadIssueProjectId(issueId: string): Promise<string> {
-  const [row] = await db
-    .select({ projectId: issues.projectId })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  if (!row) throw new Error('NOT_FOUND: issue not found');
-  return row.projectId;
-}
-
-export type CommentAccessRow = {
-  id: string;
-  issueId: string;
-  authorId: string;
-  projectId: string;
-};
-
-/** Who owns a comment and which project it sits under, for an access check. */
-export async function loadCommentForAccess(commentId: string): Promise<CommentAccessRow> {
-  const [row] = await db
-    .select({
-      id: comments.id,
-      issueId: issues.id,
-      authorId: comments.authorId,
-      projectId: issues.projectId,
-    })
-    .from(comments)
-    .innerJoin(issues, eq(comments.issueId, issues.id))
-    .where(eq(comments.id, commentId))
-    .limit(1);
-  if (!row) throw new Error('NOT_FOUND: comment not found');
-  return row;
 }
 
 export type NewComment = {

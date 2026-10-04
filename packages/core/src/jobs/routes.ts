@@ -13,7 +13,7 @@ import {
   promptBlobs,
   usageRecords,
 } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -27,6 +27,7 @@ import {
   extractResolvedFlags,
   type PromptEnvelope,
 } from './prompt-route.js';
+import { requireHeld } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -126,7 +127,7 @@ jobProjectRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
 
     if (input.issueId) await assertIssueInProject(projectId, input.issueId);
     if (poolPrompt(input.payload) === null) {
@@ -179,7 +180,7 @@ jobProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     const conditions = [eq(jobs.projectId, projectId)];
     if (q.status) conditions.push(eq(jobs.status, q.status));
@@ -219,7 +220,7 @@ jobRoutes.get(
 
     const job = await loadJob(id);
     const access = await loadProjectAccess(job.projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     let device: { id: string; name: string; status: string } | null = null;
     if (job.deviceId) {
@@ -252,7 +253,7 @@ jobRoutes.patch(
 
     const job = await loadJob(id);
     const access = await loadProjectAccess(job.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
 
     if (job.status !== 'queued') {
       throw conflict('jobs can only be patched while queued', 'JOB_NOT_QUEUED');
@@ -287,7 +288,7 @@ jobRoutes.get(
 
     const job = await loadJob(id);
     const access = await loadProjectAccess(job.projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     // Archive-path stub (W2.1.5 will land the real fetcher).
     if (job.archivePath && !job.userPromptSnapshot && !job.systemPromptHash) {

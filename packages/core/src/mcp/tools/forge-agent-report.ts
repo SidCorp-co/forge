@@ -30,7 +30,6 @@ import {
 import { resolvePipelineContext } from '../../jobs/active-job-context.js';
 import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';
 import {
-  assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
   loadVisibleProjectsWithRoleForPrincipal,
@@ -41,6 +40,7 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
+import { requireCan } from '../../permissions/index.js';
 
 const inputSchema = z
   .object({
@@ -123,14 +123,14 @@ const DESCRIPTION =
   'action=submit: report friction, skill gaps, unclear steps, or learnings mid-run. ' +
   'Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it; a report filed from a scheduled run also carries scheduleRunId, the fire that ran it. ' +
   'Required fields: projectId, kind, target, summary. ' +
-  'projectId names the project the report is ABOUT, which need not be the one you are working in; it is REQUIRED and never inferred, because a report filed into the wrong feed is never read (`forge_projects.list` prints it beside each slug — it is its own tool, not an action on one). ' +
+  'projectId names the project the report is ABOUT, which need not be the one you are working in; it is REQUIRED and never inferred, because a report filed into the wrong feed is never read (`GET /api/projects` prints it beside each slug). ' +
   'Optional: severity (default low), targetRef, detail, suggestion. ' +
   'Returns {ok:true,id,signalKey} on success; {ok:false,reason:"rate_limited"} when the per-job cap is hit (not a 500 — agent continues). ' +
   'action=list: read the friction feed. Supports filters.kind/target/severity/triage (new | filed | dismissed | duplicate), limit (default 25, fleet default 50). ' +
   'scope="project" (default) reads the resolved project; scope="all" unions every project you own or are a member of and adds projectId/projectSlug to each row. ' +
   'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete. `truncated:true` + `truncatedBy` say which cap bit (your limit, or the hard response-size cap). ' +
   'action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. ' +
-  'Every report carries triage (new | filed | dismissed | duplicate) with triagedBy, triagedAt and triageReason; a filed one has exactly one target, linkedIssueId or `feedback` { key, phase, route } (promote with forge_feedback_items action=promote, which files it). ' +
+  'Every report carries triage (new | filed | dismissed | duplicate) with triagedBy, triagedAt and triageReason; a filed one has exactly one target, linkedIssueId or `feedback` { key, phase, route } (promote with `POST /api/projects/:id/feedback/promote`, which files it). ' +
   'action=triage: decide what a report is, with act: ' +
   "file (exactly one of issue: <uuid of an issue in any project you can see> | createIssue: { title?, description? }, which creates the issue at draft in the report's project with the report as its evidence) · " +
   'dismiss (reason REQUIRED: AGENT_REPORT_DISMISS_REASON_REQUIRED) · duplicate (duplicateOf: an earlier report of the same project, else AGENT_REPORT_DUPLICATE_UNKNOWN; reason?) · reopen (back to new; AGENT_REPORT_NOT_TRIAGED when it is new already, AGENT_REPORT_PROMOTED when it became feedback). ' +
@@ -158,11 +158,11 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
       if (!input.projectId) {
         throw new Error(
           'BAD_REQUEST: projectId is required for submit — a report is filed against the project whose defect it describes, and the server will not guess which that is. ' +
-            'Pass the projectId of the project this report is ABOUT (not necessarily the one you are working in); `forge_projects.list` prints it beside each slug.',
+            'Pass the projectId of the project this report is ABOUT (not necessarily the one you are working in); `GET /api/projects` prints it beside each slug.',
         );
       }
       const projectId = input.projectId;
-      await assertPrincipalIsMember(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', projectId);
 
       if (!input.kind) throw new Error('BAD_REQUEST: kind is required for submit');
       if (!input.target) throw new Error('BAD_REQUEST: target is required for submit');
@@ -230,7 +230,7 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
         limit = input.limit ?? 50;
       } else {
         const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-        await assertPrincipalIsMember(principal, projectId);
+        await requireCan({ userId: principal.userId }, 'project.read', projectId);
         scopeCondition = eq(agentReports.projectId, projectId);
         limit = input.limit ?? 25;
       }
@@ -256,7 +256,7 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
 
       // No caller-supplied project here — membership is checked against the
       // row's own project, resolved only after the row is known.
-      await assertPrincipalIsMember(principal, row.projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', row.projectId);
 
       const [view] = await reportViews([row]);
       return { report: view ? frameReport(view) : null };
@@ -316,7 +316,7 @@ async function triage(ctx: McpContext, input: z.infer<typeof inputSchema>) {
       ];
     } else {
       const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-      await assertPrincipalIsMember(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', projectId);
       scope = [eq(agentReports.projectId, projectId), eq(agentReports.signalKey, input.signalKey)];
     }
   } else {
@@ -325,7 +325,7 @@ async function triage(ctx: McpContext, input: z.infer<typeof inputSchema>) {
     }
     if (!input.reportId) throw new Error('BAD_REQUEST: triage needs reportId or signalKey');
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-    await assertPrincipalIsMember(principal, projectId);
+    await requireCan({ userId: principal.userId }, 'project.read', projectId);
     const row = await readReport(input.reportId);
     if (!row || row.projectId !== projectId) {
       throw new Error(`NOT_FOUND: agent report ${input.reportId} not found in this project`);
@@ -353,30 +353,4 @@ export const forgeAgentReportTool: ContextScopedMcpToolFactory = (ctx) => ({
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
   handler: (args) => handleAgentReport(ctx, args),
-});
-
-/** What every `forge_feedback` result carries, so a caller of the old name is told the new one. */
-export const FORGE_FEEDBACK_DEPRECATION = {
-  tool: 'forge_feedback',
-  replacement: 'forge_agent_report',
-  reason:
-    'agent friction reports are `agent_reports` now; the word `feedback` belongs to a person reporting on the product',
-  endsWhen: 'forge-plugin no longer calls forge_feedback',
-} as const;
-
-// cm:hack the pinned forge-plugin's `forge feedback` verb still calls `forge_feedback`, so the old
-// name runs the same handler and says it is deprecated — ends when forge-plugin moves to
-// `forge_agent_report` (logged in forge-local-docs/plugin-followups.md); then delete this tool.
-export const forgeFeedbackAliasTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_feedback',
-  reach: 'project',
-  route: '/api/agent-reports',
-  grant: GRANT,
-  description: `[DEPRECATED alias — use forge_agent_report; every result carries a \`deprecation\` field] ${DESCRIPTION}`,
-  inputSchema: zodToMcpSchema(inputSchema),
-  handler: async (args) => {
-    if (ctx.deprecations) ctx.deprecations.add('forge_feedback');
-    const result = await handleAgentReport(ctx, args);
-    return { ...result, deprecation: FORGE_FEEDBACK_DEPRECATION };
-  },
 });

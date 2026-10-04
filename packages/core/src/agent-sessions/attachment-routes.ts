@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
@@ -15,6 +15,7 @@ import {
   persistSessionAttachment,
   SessionAttachmentError,
 } from './attachment-service.js';
+import { requireHeld } from '../permissions/index.js';
 
 function attachmentErrorToHttp(err: SessionAttachmentError): HTTPException {
   switch (err.code) {
@@ -78,7 +79,7 @@ async function authorizeSession(
     }
   } else {
     const access = await loadProjectAccess(session.projectId, c.get('userId'));
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
   }
   return session;
 }

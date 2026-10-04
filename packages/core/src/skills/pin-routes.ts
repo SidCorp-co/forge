@@ -7,10 +7,11 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { setSkillPinned } from './pin-service.js';
+import { requireHeld } from '../permissions/index.js';
 
 const paramSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() });
 
@@ -42,7 +43,7 @@ skillPinRoutes.put(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
+    requireHeld(access, 'project.admin');
 
     try {
       return c.json({

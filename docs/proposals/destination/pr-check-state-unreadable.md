@@ -9,7 +9,7 @@ went green on the pull request.
 Nothing sanctioned reads a pull request's check runs:
 
 - `forge` has no `github` verb at all, so no check state is reachable from a terminal.
-- `forge_source` (named `forge_github` until ISS-50, which keeps that name as a priced alias)
+- `forge_source` (named `forge_github` until ISS-50)
   serves `list | diff | check-log | comment | open-change-request | request-review | review`.
   `check-log` needs a `checkRunId`, and **no action returns one** — its own description says
   to take it from "the projection", which no read surface exposes.

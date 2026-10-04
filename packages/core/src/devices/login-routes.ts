@@ -27,7 +27,6 @@ import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { deviceLoginCodes, organizationMembers, users } from '../db/schema.js';
 import { provisionGitCredential } from '../git/provision-credential.js';
-import { assertOrgAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
@@ -36,6 +35,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { Sentry } from '../observability/sentry.js';
 import { issueDeviceCredential } from './credential.js';
 import { registerDevice } from './register.js';
+import { requireOrgCan } from '../permissions/index.js';
 
 type LoginPlatform = 'windows' | 'macos' | 'linux';
 
@@ -261,7 +261,7 @@ async function resolveApprovableAgent(raw: unknown, approverId: string): Promise
       cause: { code: 'AGENT_NOT_FOUND' },
     });
   }
-  await assertOrgAccess(agent.orgId, approverId, 'admin');
+  await requireOrgCan({ userId: approverId }, 'org.admin', agent.orgId);
   return agent.id;
 }
 

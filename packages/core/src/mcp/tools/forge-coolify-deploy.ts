@@ -9,8 +9,7 @@
  * that goes stale. ISS-925 added the controls beside deploy: `cancel`,
  * `rollback-images`, `rollback`, `applications`, `targets`.
  *
- * Authorization is membership-level (`assertPrincipalIsMember`) like
- * `forge_issues`, raised to writer for the three actions that change something;
+ * Authorization is `project.read`, raised to `project.write` for the three actions that change something;
  * prod safety is the human-confirm gate inside `tryDispatchCoolifyRelease` and
  * `prodActionNeedsHumanConfirm`, not RBAC. No DEVICE_REQUIRED entry — the tool
  * has no runner dependency.
@@ -41,13 +40,12 @@ import {
 import type { CoolifyConfig } from '../../integrations/coolify/types.js';
 import { findLastOutbound } from '../../integrations/deliveries.js';
 import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   type McpContext,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const inputSchema = z
   .object({
@@ -224,7 +222,7 @@ async function dispatchAction(
   // running it before the membership check would confirm to a non-member that the binding exists.
   if (input.action !== 'list') {
     const gateProjectId = await resolveProjectId(input, ctx);
-    await assertPrincipalIsMember(principal, gateProjectId);
+    await requireCan({ userId: principal.userId }, 'project.read', gateProjectId);
     assertAgentMayDeployCoolify(
       await activeCoolifyIntegrations(gateProjectId),
       input.integrationId,
@@ -236,13 +234,13 @@ async function dispatchAction(
   switch (input.action) {
     case 'list': {
       const projectId = await resolveProjectId(input, ctx);
-      await assertPrincipalIsMember(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', projectId);
       return listCoolifyIntegrations(projectId);
     }
 
     case 'deploy': {
       const projectId = await resolveProjectId(input, ctx);
-      await assertPrincipalIsWriter(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.write', projectId);
       return runCoolifyDeploy({
         projectId,
         ...(input.issueId ? { issueId: input.issueId } : {}),
@@ -253,7 +251,7 @@ async function dispatchAction(
 
     case 'status': {
       const projectId = await resolveProjectId(input, ctx);
-      await assertPrincipalIsMember(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', projectId);
       return coolifyDeliveryStatus({
         projectId,
         ...(input.integrationId ? { integrationId: input.integrationId } : {}),
@@ -262,7 +260,7 @@ async function dispatchAction(
 
     case 'logs': {
       const projectId = await resolveProjectId(input, ctx);
-      await assertPrincipalIsMember(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', projectId);
 
       // Resolve the integration row. Explicit integrationId wins; otherwise
       // require exactly one active Coolify integration (multiple is ambiguous).
@@ -312,7 +310,7 @@ async function dispatchAction(
 
     case 'runtime-logs': {
       const projectId = await resolveProjectId(input, ctx);
-      await assertPrincipalIsMember(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', projectId);
 
       const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
       if (!row) {
@@ -370,7 +368,7 @@ async function dispatchControlAction(
   switch (input.action) {
     case 'cancel': {
       const projectId = await resolveProjectId(input, ctx);
-      await assertPrincipalIsWriter(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.write', projectId);
       return runCoolifyCancel({
         projectId,
         ...(input.integrationId ? { integrationId: input.integrationId } : {}),
@@ -379,7 +377,7 @@ async function dispatchControlAction(
     }
     case 'rollback-images': {
       const projectId = await resolveProjectId(input, ctx);
-      await assertPrincipalIsMember(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', projectId);
       return listCoolifyRollbackImages({
         projectId,
         ...(input.integrationId ? { integrationId: input.integrationId } : {}),
@@ -388,7 +386,7 @@ async function dispatchControlAction(
     }
     case 'rollback': {
       const projectId = await resolveProjectId(input, ctx);
-      await assertPrincipalIsWriter(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.write', projectId);
       if (!input.commit) {
         throw new Error(
           'BAD_REQUEST: rollback needs `commit` — the image tag from rollback-images',
@@ -403,7 +401,7 @@ async function dispatchControlAction(
     }
     case 'applications': {
       const projectId = await resolveProjectId(input, ctx);
-      await assertPrincipalIsMember(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', projectId);
       return listApplicationsForIntegration({
         projectId,
         ...(input.integrationId ? { integrationId: input.integrationId } : {}),
@@ -411,7 +409,7 @@ async function dispatchControlAction(
     }
     case 'targets': {
       const projectId = await resolveProjectId(input, ctx);
-      await assertPrincipalIsMember(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', projectId);
       return resolveCoolifyTargets({
         projectId,
         ...(input.integrationId ? { integrationId: input.integrationId } : {}),

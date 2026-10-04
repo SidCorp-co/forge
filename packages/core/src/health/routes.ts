@@ -11,11 +11,12 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import pkg from '../../package.json' with { type: 'json' };
-import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { sourceCommit } from '../observability/source-commit.js';
 import { readLiveness, readOpsHealth } from './service.js';
+import { requireHeld } from '../permissions/index.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const staleQuerySchema = z.object({
@@ -68,7 +69,7 @@ opsHealthProjectRoutes.get(
     const { id: projectId } = c.req.valid('param');
     const { staleJobThresholdSeconds } = c.req.valid('query');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
 
     return c.json(
       await readOpsHealth([projectId], staleJobThresholdSeconds ?? DEFAULT_STALE_JOB_SECONDS),

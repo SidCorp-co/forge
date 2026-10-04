@@ -1,6 +1,6 @@
 import { db, type Tx } from '../db/client.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { effectiveProjectRole } from '../lib/authz.js';
+import { permissionFactsOf } from '../permissions/index.js';
 import { staleBase } from '../project-config/documents.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { notFound } from './access.js';
@@ -73,7 +73,6 @@ export type RecordOutcome<W> =
 
 interface RecordKind<W> {
   what: string;
-  writerCode: 'LINK_WRITER_NOT_CONSUMER' | 'BUILDER_RUN_WRITER_NOT_PROJECT';
   parse(raw: unknown, projectId: string): Checked<W>;
   stored(row: StoredRecord): W;
   identity(stored: W, next: W): EcosystemRefusal[];
@@ -87,8 +86,10 @@ interface RecordKind<W> {
 }
 
 async function writerMiss(kind: RecordKind<unknown>, writer: RecordWriter, projectId: string) {
-  const role = (await effectiveProjectRole(writer.userId, projectId))?.role ?? null;
-  const refusal = writerRefusal({ ...writer, role }, projectId, kind.writerCode);
+  const refusal = writerRefusal(
+    await permissionFactsOf(writer.userId, projectId),
+    `writing a ${kind.what}`,
+  );
   return refusal ? { ok: false as const, refusals: [refusal] } : null;
 }
 
@@ -195,7 +196,6 @@ async function linkWorld(tx: Tx, doc: LinkWrite, selfId: string | null): Promise
 
 const LINK: RecordKind<LinkWrite> = {
   what: 'link',
-  writerCode: 'LINK_WRITER_NOT_CONSUMER',
   parse: parseLink,
   stored: (row) => storedAs(linkWriteSchema, row.document, `link ${row.id}`),
   identity: linkIdentityRefusals,
@@ -235,7 +235,6 @@ async function builderRunWorld(
 
 const BUILDER_RUN: RecordKind<BuilderRunWrite> = {
   what: 'builder run',
-  writerCode: 'BUILDER_RUN_WRITER_NOT_PROJECT',
   parse: parseBuilderRun,
   stored: (row) => storedAs(builderRunWriteSchema, row.document, `builder run ${row.id}`),
   identity: builderRunIdentityRefusals,

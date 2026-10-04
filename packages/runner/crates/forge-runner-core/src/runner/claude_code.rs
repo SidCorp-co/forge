@@ -420,8 +420,8 @@ fn classify_failure_reason(
 
 /// Is the required `forge` MCP server among the ones that TERMINALLY failed to
 /// connect at init? (`mcp_failed` already excludes transient `pending` — see
-/// [`mcp_failed_servers`].) Every pipeline step requires forge tools
-/// (`forge_issues.*` etc.) to read the issue and advance its status. A job that
+/// [`mcp_failed_servers`].) A pipeline step reads attachments and reaches its
+/// connected integrations through forge tools (`forge_uploads`, `forge_source`, ...). A job that
 /// ran without them can only emit pseudocode — it must FAIL (not Done) so core
 /// routes it through bounded auto-retry instead of leaving the issue unchanged
 /// and letting the reconciler re-dispatch forever (ISS-570 / ISS-563 loop).

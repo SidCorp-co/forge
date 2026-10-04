@@ -1,8 +1,8 @@
 // Forge capability-guide registry — a code-defined, server-canonical index of
 // how-to-use guides for Forge's own features (test credentials, dependencies,
 // memory, deploy safety, pipeline lifecycle, uploads). Two live read surfaces
-// consume this module: the `forge_guide` MCP tool (`mcp/tools/forge-guide.ts`)
-// and the public `GET /api/guides` routes (`guides/routes.ts`).
+// consume this module: the public `GET /api/guides` routes (`guides/routes.ts`) and the
+// in-prompt guide pointers (`guides/guide-ref.ts`).
 //
 // Why a code module, and which pages belong here rather than in another of the four
 // documentation homes: docs/modules/guides/where-a-page-lives.md.
@@ -37,27 +37,27 @@ export const FORGE_GUIDES: readonly CoreGuide[] = [
     audience: 'agent',
     title: 'Project settings & test credentials',
     summary:
-      'Where to fetch repo paths, branches, workspace setup, preview URLs, and test credentials — and why forge_config never returns them.',
+      'Where to fetch repo paths, branches, workspace setup, preview URLs, and test credentials — and why the project config never returns them.',
     version: 4,
     body: `## Project settings & test credentials
 
-Two tools, two different jobs — mixing them up is the single most common Forge discoverability miss.
+Two reads, two different jobs — mixing them up is the single most common Forge discoverability miss.
 
-- **\`forge_projects.get\`** — name, slug and base branch. A checkout path is not here: each device binding names its own.
-- **\`forge_config\` → \`projectDocument\`** — the project document: its repository (\`source.git.repository\`), its setup procedure (\`workspace.setup\`), each environment's tier, address, the branch it deploys from and the testing profile its testers get in through, and the promotions a landed change crosses. A testing profile names \`secret://\` references, never values, and its \`limits\` say what that environment does NOT have.
-- **\`forge_config\`** — process-shaped facts: \`config.policy\` (the project's policy-v1 document: \`qa\`, intake, and each status's model and permission profile), \`plugins\`. It carries no project PROSE — \`projectFacts\` and \`projectFactsConfig\` were retired in ISS-1048 and a call naming either is refused by name; the prose is \`forge_knowledge\`. It deliberately does **not** return credentials or preview URLs — don't go looking for them there, and don't add them there either.
+- **\`GET /api/projects/:id\`** — name, slug and base branch. A checkout path is not here: each device binding names its own.
+- **\`GET /api/projects/:id/config\` → \`projectDocument\`** — the project document: its repository (\`source.git.repository\`), its setup procedure (\`workspace.setup\`), each environment's tier, address, the branch it deploys from and the testing profile its testers get in through, and the promotions a landed change crosses. A testing profile names \`secret://\` references, never values, and its \`limits\` say what that environment does NOT have.
+- **\`GET /api/projects/:id/policy\`** — the project's policy-v1 document: \`qa\`, intake, and each status's model and permission profile. Neither read carries project PROSE — a write naming \`projectFacts\` or \`projectFactsConfig\` is refused by name; the prose is the project's knowledge (\`GET /api/projects/:id/knowledge\`, or \`forge knowledge\`). It deliberately does **not** return credentials or preview URLs — don't go looking for them there, and don't add them there either.
 
   ${ALWAYS_INJECT_GUARANTEE_NOTE} ${ALWAYS_INJECT_ENFORCEMENT_NOTE}
 
 ### Rules
 1. Never hardcode a repo path, branch name, or test credential in a skill body, prompt, or comment — always fetch it live. A hardcoded value silently drifts the moment the project's settings change.
 2. Never echo a fetched credential past the immediate authentication step (into a commit message, a PR description, or tool output) — treat it as a secret even though it's a test account.
-3. When you need to change the policy, **GET it first, then send the whole document with the revision you read** — \`PUT /api/projects/:id/policy\` with \`{ baseRevision, document }\`. A write against a revision that moved is refused by name, never merged. A knowledge entry is not one of them: \`forge_knowledge\` writes one slug whole, so there are no siblings to clobber.
+3. When you need to change the policy, **GET it first, then send the whole document with the revision you read** — \`PUT /api/projects/:id/policy\` with \`{ baseRevision, document }\`. A write against a revision that moved is refused by name, never merged. A knowledge entry is not one of them: a knowledge write replaces one slug whole, so there are no siblings to clobber.
 4. \`environments.preview: null\` means this project HAS no preview side — a one-box project saying so, not a setting somebody forgot. Test against \`environments.live\` and don't invent a staging host. Equally, an empty \`environments.live.url\` is not permission to guess one: nothing in Forge derives a hostname from another.
 5. \`workspace.setup\` is the project's own setup procedure — install commands, hook setup, toolchain quirks — and it is prose, not a script anything executes. It is what a stage follows instead of guessing when it lands in a broken checkout. **If it is empty and you worked the procedure out, write it back** into the project document (\`PUT /api/projects/:id/config\` with the \`baseRevision\` you read), recording only steps you ran and saw succeed.
 
 ### Common mistake this guide exists to prevent
-An agent hits a login wall on a preview deploy, can't find credentials in \`forge_config\`, and either asks a human or gives up. The environment's \`testing\` profile named them, as \`secret://\` references the job resolves.
+An agent hits a login wall on a preview deploy, can't find credentials in the project config, and either asks a human or gives up. The environment's \`testing\` profile named them, as \`secret://\` references the job resolves.
 
 The same shape costs tokens rather than a stall: a stage lands in a checkout whose hooks are missing, works out the install procedure from the lockfile, fixes it, and says nothing. The next job on that project pays for the same derivation, and the one after that. \`workspace.setup\` exists so that happens once.`,
   },
@@ -78,9 +78,9 @@ Edges are directional \`fromIssue --kind--> toIssue\`:
 
 ### Setting a blocks edge — avoid the create-then-block race
 - Blocker known **at create time** → pass it in the create call itself (\`data.relations: [{ kind: 'blocks', dependsOnId }]\`), committed before the issue dispatches. This is atomic.
-- Both issues already exist → \`forge_issues action=update\` with \`data.relations: [{ kind: 'blocks', dependsOnId }]\`, relative to the issue you are updating (\`dependsOnId\` = it blocks me, \`blocksId\` = I block it). This works with any credential class and commits the edge before the call's own status transition. Or set it via the PM dependency tool with \`from\` = the blocker — that route needs a paired-device token.
+- Both issues already exist → \`POST /api/issues/:id/dependencies\` with \`{ kind: 'blocks', dependsOnId }\` on the dependent issue (\`dependsOnId\` = the blocker). This works with any credential class.
 - Red flag: creating the new issue at \`open\` and setting the blocks edge in a second call — the issue can dispatch in the gap between the two calls.
-- Verify, don't assume: \`forge_issues action=get\` returns \`relations\` keyed by kind, each with \`outgoing\` and \`incoming\` edges; \`relations.blocks.incoming\` is what holds the issue back, and an edge is \`blocking\` only while its kind is \`blocks\` and it is not \`expired\` (its \`validUntil\` has passed). A \`relates\`, \`duplicates\`, \`parent\` or \`decomposes\` edge never blocks. Retract an edge by re-sending it with \`validUntil\` in the past — the write reports \`updated: true\`.
+- Verify, don't assume: \`GET /api/issues/:id/dependencies\` lists the edges, each carrying \`expired\`; an edge holds the issue back only while its kind is \`blocks\` and it is not \`expired\` (its \`validUntil\` has passed). A \`relates\`, \`duplicates\`, \`parent\` or \`decomposes\` edge never blocks. Retract an edge with \`DELETE /api/issues/:id/dependencies/:edgeId\`, or by re-sending it with \`validUntil\` in the past.
 
 ### An issue bigger than one change
 Splitting is ordinary work, not a lifecycle. Nothing parks a parent, nothing promotes a draft for you, and no edge holds a parent's own work back.
@@ -103,16 +103,16 @@ Create the issue at \`draft\`, never \`open\` — \`open\` auto-triages and spaw
 
 Forge separates durable context into three tiers, each with a different job:
 
-- **\`forge_memory\`** — per-project semantic search over accumulated notes, decisions, fix-patterns, policies. Not auto-loaded into any prompt; you recall it deliberately. \`search({ projectId, query, topK, sourceFilter? })\` returns scored hits; \`write({ projectId, source, sourceRef, textContent, metadata? })\` upserts on the natural key \`(projectId, source, sourceRef)\` — reusing a \`sourceRef\` refines the existing entry instead of duplicating it.
-- **\`forge_knowledge\`** — curated, structured knowledge entries (overview / workflow / rule / reference kinds) with an explicit \`injection\` policy (\`always\` / \`on_demand\` / \`none\`). This is the project's authored knowledge base, distinct from the free-form memory stream.
-- **\`forge_knowledge\` with \`injection: always\`** — entries rendered verbatim into every pipeline preamble for this project, as against \`on_demand\`, which reaches the prompt as a slug the agent fetches when it needs the text.
+- **Memory** — per-project semantic search over accumulated notes, decisions, fix-patterns, policies. Not auto-loaded into any prompt; you recall it deliberately. \`POST /api/memory/search\` \`{ projectId, query, topK, sourceFilter? }\` returns scored hits; \`POST /api/memory\` \`{ projectId, source, sourceRef, textContent, metadata? }\` upserts on the natural key \`(projectId, source, sourceRef)\` — reusing a \`sourceRef\` refines the existing entry instead of duplicating it.
+- **Knowledge** (\`/api/projects/:id/knowledge\`, \`forge knowledge\`) — curated, structured knowledge entries (overview / workflow / rule / reference kinds) with an explicit \`injection\` policy (\`always\` / \`on_demand\` / \`none\`). This is the project's authored knowledge base, distinct from the free-form memory stream.
+- **Knowledge with \`injection: always\`** — entries rendered verbatim into every pipeline preamble for this project, as against \`on_demand\`, which reaches the prompt as a slug the agent fetches when it needs the text.
 
 ### Recall-first discipline
 Before you design, reproduce, or fix something non-trivial: recall what prior work already established for the area you're about to touch, so you neither contradict a settled decision nor rediscover it from scratch. Run one or two focused queries on the concrete nouns of the task — a generic query on the whole project wastes a call and returns noise.
 
 ### Verify at recall — the loop that keeps memory clean
 A memory hit is point-in-time. Once you've checked it against the live code:
-- If it still holds → report \`forge_memory.feedback({ ..., verdict: 'confirmed' })\`. This protects the entry from decay.
+- If it still holds → report \`POST /api/memory/feedback\` with \`{ projectId, source, sourceRef, verdict: 'confirmed' }\`. This protects the entry from decay.
 - If it's been superseded → report \`verdict: 'outdated', evidence: '<what disproved it>'\`. This archives it immediately instead of letting the next agent trip over the same stale claim.
 A verification you silently do but never report is a cleaning signal thrown away — the entry stays stale for the next reader.
 
@@ -211,7 +211,7 @@ Gate 4 is the one that gets skipped. \`draft\` means *not yet time to work on th
 | You have | It is | Put it |
 |---|---|---|
 | A session log or summary of what you did | a record | a handoff doc, or project memory |
-| A note, learning, or convention | knowledge | \`forge_memory_write\` (durable business logic → repo \`docs/\`) |
+| A note, learning, or convention | knowledge | \`POST /api/memory\` (durable business logic → repo \`docs/\`) |
 | An open question needing a human decision | a decision | a comment on the issue that raised it + \`needs_info\` (\`waitingKind: needs_decision\`) if it blocks that issue; a standing policy question → \`docs/proposals/<topic>.md\` marked *pending sign-off* |
 | An audit or scan finding | an observation | memory, until it becomes work with a deliverable |
 | A fix you already made by hand | a record | move the status, capture the learning in memory |
@@ -285,7 +285,7 @@ This is a placement rule, not a ban. A verified constraint — *"this table has 
 
 ### Diagrams
 
-A fenced \`mermaid\` block renders as a diagram in issue descriptions, plans and comments. Prefer it over prose and over ASCII art: it is a few hundred characters, and an agent reading the issue through MCP still understands it as text.
+A fenced \`mermaid\` block renders as a diagram in issue descriptions, plans and comments. Prefer it over prose and over ASCII art: it is a few hundred characters, and an agent reading the issue through the API still understands it as text.
 
 \`\`\`mermaid
 flowchart LR
@@ -315,7 +315,7 @@ Same discipline, shorter. Lead with the outcome, put the trace underneath. A com
 ### An issue is a unit of WORK — draft vs open
 \`draft\` never dispatches; \`open\` auto-triages and immediately spawns a pipeline run, burning a runner slot. Creating a note-only issue at \`open\` is the single most common way to accidentally start unwanted pipeline work.
 
-But \`draft\` is not a notepad either. Apply the test before you create anything: **an issue is work someone must do.** If nothing needs doing, it is not an issue — \`draft\` makes it invisible, not appropriate, and nobody ever opens the issue list looking for documentation. A note, learning, decision or record goes to \`forge_memory_write\` (durable business logic → repo \`docs/\`). Keep \`draft\` for follow-ups that need work later. Red flags: \`open-as-note\` AND \`draft-as-note\`.
+But \`draft\` is not a notepad either. Apply the test before you create anything: **an issue is work someone must do.** If nothing needs doing, it is not an issue — \`draft\` makes it invisible, not appropriate, and nobody ever opens the issue list looking for documentation. A note, learning, decision or record goes to project memory, \`POST /api/memory\` (durable business logic → repo \`docs/\`). Keep \`draft\` for follow-ups that need work later. Red flags: \`open-as-note\` AND \`draft-as-note\`.
 
 ### Working an issue directly, outside the pipeline
 \`draft\` vs \`open\` is not the whole choice. \`draft\` has exactly **two** exits — \`open\` and \`dropped\` — and it is never entered again. What you do after admitting it is what makes a direct session cheap or expensive:
@@ -328,14 +328,14 @@ But \`draft\` is not a notepad either. Apply the test before you create anything
 | Decided against it; the work will not happen | \`dropped\` with a reason | Terminal, and does NOT stamp \`merged_at\` — this is the discard \`closed\` should not be used for |
 | Looked at it, not doing it now | leave \`draft\` | Costs nothing, dispatches nothing |
 
-How far the work got is never a status: it is \`workState\` — the run's \`step\` (triage, clarify, plan, build, test, release), the \`branch\` it builds on and the \`headSha\` it pushed. Write those with \`forge_issues\` \`update\` \`data.workState\` (REST \`PATCH /api/issues/:id\` \`workState\`).
+How far the work got is never a status: it is \`workState\` — the run's \`step\` (triage, clarify, plan, build, test, release), the \`branch\` it builds on and the \`headSha\` it pushed. Write those with \`PATCH /api/issues/:id\` \`{ workState }\`.
 
 ### A status says WHO the issue waits on, never WHAT exists
 Every status answers one question — whose move is next. It is declared per status in \`pipeline/status-assertions.ts\`, and a run's progress inside \`in_progress\` is its step on \`issue_work_state\`, not a rung of its own. So do not read a status as a promise that code was written, pushed or merged.
 
 The evidence questions are answered by row fields instead, and you read them directly: \`merged_at\` (it landed), \`workState.branch\` (a branch exists), \`workState.headSha\` and the implementation handoff's \`commitSha\`. \`merged_at\` is caller-asserted rather than verified — \`mark_merged\` writes what the caller says landed, and no transition writes it at all — so it is evidence of a claim, which is what an evidence field is.
 
-**\`closed\` means the work shipped, and \`dropped\` is the exit for everything else.** A close is refused (\`CLOSE_REQUIRES_SHIPPED\`) while the issue carries no \`merged_at\`, and the database refuses the same TRANSITION whatever route it took: \`trg_issues_closed_means_shipped\` names the issue and the rule on any UPDATE moving a row into \`closed\` with no claim, on any INSERT creating one there, and on any write clearing the claim from under a row already standing there — raw SQL included. **The rule governs the transition and not the state**, so rows closed before it landed keep what they hold: they still read \`closed\` with no \`merged_at\`, they are still writable, and migration \`0304_closed_means_shipped\` counted them in a \`NOTICE\` when it ran rather than deciding for them. Whoever owns such a row marks it merged where the work landed, or moves it to \`dropped\` where it did not, and no sweep decides them by rule. Use \`dropped\` for anything discarded: a note, a question, a duplicate, something already done. Where the work DID land outside the pipeline, claim it first with \`forge_issues\` \`mark_merged\` naming where it landed, then close. On a project whose work lands outside git — its project document's \`source.type\` is \`storefront\` or \`none\` — a timestamp names nothing that landed, so the mark carries \`data.landing\` (the live URL, CMS entry or storefront resource the work now is) and a close whose mark names none is refused the same way; a commit is not asked for there.
+**\`closed\` means the work shipped, and \`dropped\` is the exit for everything else.** A close is refused (\`CLOSE_REQUIRES_SHIPPED\`) while the issue carries no \`merged_at\`, and the database refuses the same TRANSITION whatever route it took: \`trg_issues_closed_means_shipped\` names the issue and the rule on any UPDATE moving a row into \`closed\` with no claim, on any INSERT creating one there, and on any write clearing the claim from under a row already standing there — raw SQL included. **The rule governs the transition and not the state**, so rows closed before it landed keep what they hold: they still read \`closed\` with no \`merged_at\`, they are still writable, and migration \`0304_closed_means_shipped\` counted them in a \`NOTICE\` when it ran rather than deciding for them. Whoever owns such a row marks it merged where the work landed, or moves it to \`dropped\` where it did not, and no sweep decides them by rule. Use \`dropped\` for anything discarded: a note, a question, a duplicate, something already done. Where the work DID land outside the pipeline, claim it first with \`POST /api/issues/:id/merge\` naming where it landed, then close. On a project whose work lands outside git — its project document's \`source.type\` is \`storefront\` or \`none\` — a timestamp names nothing that landed, so the mark carries \`data.landing\` (the live URL, CMS entry or storefront resource the work now is) and a close whose mark names none is refused the same way; a commit is not asked for there.
 
 One thing about \`dropped\` is worth knowing before you reach for it: **it releases the dependents it was holding, and you do not retract their edges by hand.** \`issues/drop-cascade.ts\` expires this issue's outgoing \`blocks\` edges inside the same transaction that moves the status, and names the dependents it freed back to you, so a rollback takes the expiry with it. \`closed\` claims the work shipped, \`dropped\` claims only that it will not happen, and neither leaves an issue waiting on something that can never land.
 
@@ -371,7 +371,7 @@ needs_info / on_hold: entered from open, reopen, in_progress, approved, awaiting
 **The legacy statuses.** \`confirmed\`, \`clarified\`, \`developed\`, \`testing\`, \`tested\`, \`releasing\` and \`waiting\` are not statuses: the first six were steps of a run written as statuses, which is how an issue came to rest at \`developed\` with no owner of the next move, and \`waiting\` folded into \`needs_info\` with its kind kept. Every door refuses each by name and maps none: a move, a list filter or a search filter naming one answers 422 \`ISSUE_STATUS_LEGACY\`, each refusal carrying \`received\` and \`validStatuses\`. A run's progress inside a status is \`workState.step\`.
 
 ### What is enforced
-Every move not in the table above is refused with \`ILLEGAL_TRANSITION\`, naming the moves that are legal from where the issue stands. One move is a recovery rather than a claim: an \`in_progress\` issue that nothing holds any more — its run ended without moving it, the reconciler found it wedged, or a judge that is not its builder failed a criterion and let go — is handed back to \`open\`, \`approved\` or \`reopen\` (\`state-machine.ts:RECOVERY_EDGES\`, drawn in revision 3), and only while nothing holds it. The kernel makes it on its own; a person or a judge makes it explicitly with \`recovery: true\` on the transition (REST body, or MCP \`forge_issues\` transition \`data.recovery\`), sending a failed verdict back to \`reopen\` with the failed criteria as the reason. Anywhere else \`recovery\` is refused \`ILLEGAL_TRANSITION\` by name. Beside the edges, **an agent may not write \`closed\` while \`releaseNotes\` is null** (\`RELEASE_RECORD_REQUIRED\`), because \`closed\` is what every reader takes as shipped. One exemption, and it is narrow: a HUMAN close, because an operator making the claim deliberately owns it. The batch release is refused earlier instead, at the claim, with \`RELEASE_RECORD_MISSING\`. \`dropped\` has no exit: reopening a dropped issue would carry \`merged_at\` NULL into an issue that then ships, so re-filing is the correct move.
+Every move not in the table above is refused with \`ILLEGAL_TRANSITION\`, naming the moves that are legal from where the issue stands. One move is a recovery rather than a claim: an \`in_progress\` issue that nothing holds any more — its run ended without moving it, the reconciler found it wedged, or a judge that is not its builder failed a criterion and let go — is handed back to \`open\`, \`approved\` or \`reopen\` (\`state-machine.ts:RECOVERY_EDGES\`, drawn in revision 3), and only while nothing holds it. The kernel makes it on its own; a person or a judge makes it explicitly with \`recovery: true\` in the \`POST /api/issues/:id/transition\` body, sending a failed verdict back to \`reopen\` with the failed criteria as the reason. Anywhere else \`recovery\` is refused \`ILLEGAL_TRANSITION\` by name. Beside the edges, **an agent may not write \`closed\` while \`releaseNotes\` is null** (\`RELEASE_RECORD_REQUIRED\`), because \`closed\` is what every reader takes as shipped. One exemption, and it is narrow: a HUMAN close, because an operator making the claim deliberately owns it. The batch release is refused earlier instead, at the claim, with \`RELEASE_RECORD_MISSING\`. \`dropped\` has no exit: reopening a dropped issue would carry \`merged_at\` NULL into an issue that then ships, so re-filing is the correct move.
 
 Reason from the refusal, never from the shape of the ladder: each one names what was missing and the move that is legal.
 
@@ -427,7 +427,7 @@ Write it as the ask, not as the reason again. *"Choose: (a) accept the landed pa
 **The mint is gated on agency, not on the field.** A park by a person mints nothing — they stopped their own work and own their own resume. Only an agent-held credential (an agent account or a paired device) mints, so a \`needs\` sent by a human-owned token reaches no reader.
 
 ### Stopping the pipeline costs you a written reason
-\`needs_info\`, \`on_hold\`, \`reopen\` and \`dropped\` are **rejected without a \`reason\`** (422). Pass it on the \`forge_issues\` call (\`note\` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. \`waitingKind\` is REFUSED on every target but \`needs_info\` (422 \`WAITING_KIND_NOT_APPLICABLE\`) — no other target takes it, so put the ask in \`reason\`.
+\`needs_info\`, \`on_hold\`, \`reopen\` and \`dropped\` are **rejected without a \`reason\`** (422). Pass it in the \`POST /api/issues/:id/transition\` body (\`note\` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. \`waitingKind\` is REFUSED on every target but \`needs_info\` (422 \`WAITING_KIND_NOT_APPLICABLE\`) — no other target takes it, so put the ask in \`reason\`.
 
 Entering a park costs a sentence; leaving one costs nothing. That asymmetry is deliberate.
 
@@ -436,7 +436,7 @@ Write the reason for the person who will read it, not for the audit trail. "bloc
 There is no cap on how many times an issue may be reopened — the stop signal is judgement, not arithmetic: ~5 rounds with no movement means a human is needed, while 5 rounds each making progress is normal work.
 
 ### \`merged_at\` is written deliberately, and by nothing else
-Two things write it: \`forge_issues\` \`mark_merged\`, which is a claim you make, and an observed merge of a pull request Forge has projected. No transition stamps it as a side effect — closing did until ISS-1108 and no longer does, and the \`mergeStates.baseBranch\` rule that once stamped it on the way out of a state was removed before that. \`unmark\` clears a claim you made wrongly; it is not a step anything routine owes, and it is refused on a \`closed\` issue — \`closed\` means the work shipped, so reopen it first and take \`dropped\` from there where the work never landed.
+Two things write it: \`POST /api/issues/:id/merge\`, which is a claim you make, and an observed merge of a pull request Forge has projected. No transition stamps it as a side effect — closing did until ISS-1108 and no longer does, and the \`mergeStates.baseBranch\` rule that once stamped it on the way out of a state was removed before that. \`DELETE /api/issues/:id/merge\` clears a claim you made wrongly; it is not a step anything routine owes, and it is refused on a \`closed\` issue — \`closed\` means the work shipped, so reopen it first and take \`dropped\` from there where the work never landed.
 
 ### Derived fields you don't hand-set
 - \`plan\` — written by the **plan** step. A reporter who pre-fills it deletes that step's reason to exist, and risks a plan agent trusting it instead of exploring. Red flag: \`plan-by-hand\`.
@@ -458,19 +458,10 @@ If your job fails mechanically (process crash, non-zero exit), the system itself
     body: `## Attachments & uploads
 
 ### Writing an attachment — presigned URL, not base64
-For anything beyond a tiny snippet, use the \`forge_uploads\` presigned-URL pattern instead of inlining base64 bytes into a tool call: request an upload URL, then upload the file straight to storage. Base64 in a request body is slow to transmit and burns context tokens carrying bytes that don't need to pass through the model at all.
+Upload the file from disk instead of inlining base64 bytes into a request: \`forge attach <issue|comment> <id> <file>\`, or a multipart \`POST /api/issues/:id/attachments\` / \`POST /api/comments/:commentId/attachments\` with the file in the \`file\` field. Base64 in a request body is slow to transmit and burns context tokens carrying bytes that don't need to pass through the model at all.
 
 ### Reading an attachment's content
-\`forge_uploads\` with \`action=fetch\` reads an **existing** attachment by \`{ target: "issue" | "comment", attachmentId }\`:
-- Images (png/jpeg/gif/webp) come back as a viewable image block — use this whenever an issue or comment references a screenshot you need to actually look at, not just acknowledge.
-- Text/markdown comes back inline.
-- PDFs, video, and oversized files come back as metadata + a download URL only — fetch does not try to inline everything.
-
-### The typical flow
-1. Create the comment or issue update that will carry the attachment.
-2. Request a presigned upload URL from \`forge_uploads\`.
-3. Upload the file directly to the returned URL.
-4. Later, any reader (including a different agent) calls \`action=fetch\` on that attachment to see its actual content — never assume a filename or mime type tells you enough; fetch it when the content matters to the task.`,
+\`GET /api/issues/:id/attachments\` lists an issue's attachments (a comment carries its own \`attachments[]\`); \`GET /api/attachments/:id/download\` answers the bytes. Save them to a file and open that file, or read an image as a viewable block with \`forge_uploads\` \`action=fetch\` \`{ target: "issue" | "comment", attachmentId }\`. Never assume a filename or mime type tells you enough; read the content when it matters to the task.`,
   },
   {
     slug: 'agent-setup',
@@ -486,21 +477,21 @@ and durable memory live in Forge, not in the repo. Read this before your first w
 
 ### The one rule that saves the most time
 **Recall before you design.** Project memory is NOT loaded into your context automatically —
-\`forge_memory_search({ projectId, query, topK: 5 })\` is a call you have to make. Skipping it is how
+\`POST /api/memory/search\` with \`{ projectId, query, topK: 5 }\` is a call you have to make. Skipping it is how
 agents rediscover settled decisions, or contradict them. Treat every hit as point-in-time: verify it
 against live code or git before you rely on it.
 
 ### What Forge owns, and the tool for each
 | You need | Call |
 |---|---|
-| Issues, status, tasks | \`forge_issues\`, \`forge_comments\` |
-| Ordering between issues | \`forge_issues.create\`/\`.update\` with \`data.relations\`, or \`forge_project_pm action=set_dependency\` (\`from\` = the blocker; needs a paired device) |
-| Repo path, branches, preview URLs, test credentials | \`forge_projects.get\` |
-| Pipeline gates | \`forge_config\` |
-| The project's own prose | \`forge_knowledge\` |
-| A decision, learning or convention worth keeping | \`forge_memory_write\` |
-| Deeper per-package detail | \`forge_knowledge\` (list/get/search) |
-| How a Forge feature actually works | \`forge_guide\` — or fetch these same bytes at \`/api/guides/<slug>.md\` |
+| Issues, status, tasks | \`forge issue\`, \`forge new\`, \`forge comment\`; REST \`/api/issues/:id\`, \`/api/issues/:id/comments\`, \`/api/projects/:id/issues\` |
+| Ordering between issues | \`relations\` on the create (\`POST /api/projects/:id/issues\`), or \`POST /api/issues/:id/dependencies\` once both exist |
+| Repo path, branches, preview URLs, test credentials | \`GET /api/projects/:id\` and \`GET /api/projects/:id/config\` |
+| Pipeline gates | \`GET /api/projects/:id/policy\` |
+| The project's own prose | \`forge knowledge\` (\`/api/projects/:id/knowledge\`) |
+| A decision, learning or convention worth keeping | \`POST /api/memory\` |
+| Deeper per-package detail | \`forge knowledge list|get|search\` |
+| How a Forge feature actually works | \`forge guide <slug>\`, or \`/api/guides/<slug>.md\` |
 
 ### draft vs open — the costly one
 \`open\` auto-triages and immediately spawns a pipeline run, burning a runner slot. \`draft\` never
@@ -621,7 +612,7 @@ For a project that already names its modules somewhere ELSE — a knowledge entr
 a \`**Module:** billing\` line agents were told to write on every issue — and now wants them as first
 class \`kind:"module"\` labels with a primary per issue.
 
-This runs against a DEPLOYED Forge over MCP or REST. It is not a repo change, and Forge ships no
+This runs against a DEPLOYED Forge over REST. It is not a repo change, and Forge ships no
 command that does it for you: the mapping from an old convention to a taxonomy is a judgement, and
 the pass below is the shape that keeps that judgement re-runnable.
 
@@ -642,7 +633,7 @@ only one of them can ever be a primary.
 Produce the whole plan before writing anything. Nothing in this pass writes.
 
 1. Read the source of truth for the module list (the knowledge entry, the doc, whatever it is)
-   and the project's existing labels (\`forge_issues\` filters, or \`GET /api/projects/:id/labels\`).
+   and the project's existing labels (\`GET /api/projects/:id/labels\`).
 2. For each intended module, classify it: **absent** (will create), **exists as a plain label**
    (will promote), **exists as a module** (skip).
 3. List every issue carrying the old tag. Classify each: **no primary** (will attribute),
@@ -664,7 +655,7 @@ Colour is optional; a module created without one gets a stable colour derived fr
 For each issue in the to-attribute list, send the label set with the module as an object:
 
 \`\`\`
-forge_issues.update({ documentId, labels: [{ labelId: "billing", isPrimary: true }, ...existing] })
+PATCH /api/issues/:id  { "labels": [{ "labelId": "billing", "isPrimary": true }, ...existing] }
 \`\`\`
 
 \`labels\` REPLACES the set — read the issue's current \`labels[]\` and send it back WITH the module
@@ -684,9 +675,9 @@ At most one entry may be primary, and it must be a module; both are refused rath
 ### Verify
 Re-run pass 0. On a clean migration it reports zero to-create, zero to-promote, zero to-attribute,
 and the same conflict list as before. Spot-check one issue per module through
-\`forge_issues.get\` → \`labels[]\` and confirm exactly one entry has \`isPrimary:true\`. Then check
-the filter the taxonomy exists for: \`forge_issues.list\` with \`filters.module\` returns the issues
-you attributed and nothing else.
+\`GET /api/issues/:id\` → \`labels[]\` and confirm exactly one entry has \`isPrimary:true\`. Then read
+the project's issues (\`GET /api/projects/:id/issues\`) and confirm the issues carrying each module
+as primary are the ones you attributed and nothing else.
 
 ### After the migration
 Nothing else to switch on. A project whose labels include a \`kind:"module"\` row gets a

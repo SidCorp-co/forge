@@ -14,18 +14,18 @@ Since ISS-895 there is **no status → skill ladder**. One job type is dispatche
 ## 1. What Forge does with a skill (runtime model)
 
 - **One job type, one skill.** A `drive` job loads `issue-flow` (plugin-delivered) as its instructions — never all skills at once, and never one resolved from a status.
-- **Per job the agent gets:** the skill body + a **shared preamble** (status ladder, complexity/priority enums, relation kinds, handoff schema, `branchConfig`, creds-as-pointer) that Forge injects and **prompt-caches** + a check-in bundle from `forge_step_start`. `references/*.md` load **only when the agent reads them** (lazy) — so they cost nothing until needed.
-- **Scope & shadowing (ISS-388):** global skills are **read-only templates**. A project customizes one by creating a **same-name project skill**, which **shadows** the global for that project. There is no fork/override — just shadow-by-name. `forge_skills_effective` dedups by name (one row per name + `shadowsGlobal`).
-- **Server-side + explicit sync:** skills live in the Forge cloud per project. Edit = `forge_skills_update` (server) → `forge_skills_push` (signals devices) → each device pulls and writes `.claude/skills/<name>/`. Nothing auto-syncs.
+- **Per job the agent gets:** the skill body + a **shared preamble** (status ladder, complexity/priority enums, relation kinds, handoff schema, `branchConfig`, creds-as-pointer) that Forge injects and **prompt-caches**; the issue, its comments and handoffs the agent reads itself over `forge-runner api`. `references/*.md` load **only when the agent reads them** (lazy) — so they cost nothing until needed.
+- **Scope & shadowing (ISS-388):** global skills are **read-only templates**. A project customizes one by creating a **same-name project skill**, which **shadows** the global for that project. There is no fork/override — just shadow-by-name. `GET /api/projects/:projectId/skills/effective` dedups by name (one row per name + `shadowsGlobal`).
+- **Server-side + explicit sync:** skills live in the Forge cloud per project. Edit = `PUT /api/skills/:id` (server) → `POST /api/skills/bulk-push` `{ projectId }` (signals devices) → each device pulls and writes `.claude/skills/<name>/`. Nothing auto-syncs.
 
 ## 2. Decision tree — do you even need to touch a skill?
 
 ```
 Need different pipeline behaviour for THIS project?
 ├─ A value that changes per project (branch, test URL, creds, a domain fact)?
-│     → DON'T edit the skill. Put it in forge_knowledge / environments / branchConfig.
+│     → DON'T edit the skill. Put it in a knowledge entry / environments / branchConfig.
 ├─ The global skill is basically right, tweak the policy/heuristics?
-│     → SHADOW it: create a same-name project skill (forge_skills_create) and edit it.
+│     → SHADOW it: create a same-name project skill (POST /api/skills) and edit it.
 ├─ A whole new capability this project needs?
 │     → New project skill, installOnly, invoked by name.
 └─ It already works (most projects)?
@@ -36,7 +36,7 @@ Need different pipeline behaviour for THIS project?
 
 1. **Write WHAT, not HOW.** Intent altitude: *"build & test the affected packages, push only if green."* The agent infers the actual commands from the repo (package.json / Makefile / Cargo / lockfile). **Bad:** hardcode `npm run build`. **Good:** "build the affected package (infer the command from the repo)."
 2. **Don't restate the preamble.** Status ladder, enums, "status LAST", handoff schema, worktree rules are already injected every job. Restating them = drift when they change.
-3. **Don't hardcode project config.** A checkout path (a step already runs in its device binding's), base/live branch literals, test URLs, 🔒 credentials → come from the check-in bundle / `forge_config` / `environments` / `forge_knowledge`. **Never inline a secret** (it syncs to disk).
+3. **Don't hardcode project config.** A checkout path (a step already runs in its device binding's), base/live branch literals, test URLs, 🔒 credentials → come from the project document (`/api/projects/:id/config`) / `environments` / the project's knowledge. **Never inline a secret** (it syncs to disk).
 4. **Only write non-inferable POLICY** the agent can't derive from the repo: gitflow/merge model, deploy gate, domain heuristics, conventions.
 5. **Token economy — put the right thing in the right place:**
    - **Inline (always-paid):** decision logic the agent must always see — gates, exit rules, "when to X vs Y".
@@ -50,16 +50,16 @@ Need different pipeline behaviour for THIS project?
 1. Hardcoding mechanics (build/test/deploy commands) → breaks when the repo changes; violates rule 1.
 2. Restating preamble content → silent drift.
 3. **Double-merge:** the skill `git merge`s AND server `mergeStates` merges the same branch → empty-commit loop. Pick ONE merge mechanism.
-4. **Files without `encoding`:** when adding `references` via MCP, set `encoding:"utf8"` (or base64) — a missing encoding can break the runner's skill sync.
+4. **Files without `encoding`:** when adding `references` (`files[]`), set `encoding:"utf8"` (or base64) — a missing encoding can break the runner's skill sync.
 5. Secrets inline; or putting a per-project value in the body instead of a knowledge entry.
 6. Over-splitting: moving decision logic into a reference the agent may skip. Keep gates inline.
 
 ## 5. Authoring workflow (read → draft → ship → verify)
 
-1. **Read what's live:** `forge_skills_effective` (catalog + which are shadowed) and the global body you're customizing. **Reconcile first** — the server may have diverged from any local copy.
+1. **Read what's live:** `GET /api/projects/:projectId/skills/effective` (catalog + which are shadowed) and the global body you're customizing. **Reconcile first** — the server may have diverged from any local copy.
 2. **Draft** from `references/authoring-template.md`; run it through `references/authoring-checklist.md`.
-3. **Ship server-first:** `forge_skills_update` (existing project skill) or `forge_skills_create` (new shadow). Set `installOnly: true` so it force-syncs to runners as a user-invocable skill — there are no stages left to bind to.
-4. **Sync + verify:** `forge_skills_push` → then **verify ON DISK** (`md5`/grep the marker in `.claude/skills/<name>/SKILL.md`). The WS sync-status dashboard is unreliable (false-negatives) — trust the disk.
+3. **Ship server-first:** `PUT /api/skills/:id` (existing project skill) or `POST /api/skills` with `projectId` (new shadow). Set `installOnly: true` with `PUT /api/skills/:id` so it force-syncs to runners as a user-invocable skill — there are no stages left to bind to.
+4. **Sync + verify:** `POST /api/skills/bulk-push` → then **verify ON DISK** (`md5`/grep the marker in `.claude/skills/<name>/SKILL.md`). The WS sync-status dashboard is unreliable (false-negatives) — trust the disk.
 
 ## 6. What ships where
 
@@ -70,7 +70,7 @@ dispatched by a status.
 
 | Skill | Delivered as | Owns |
 |---|---|---|
-| issue-flow | plugin (`forge_config` `plugins`) | the whole walk from `open` to `closed` |
+| issue-flow | plugin (the project's `plugins`) | the whole walk from `open` to `closed` |
 | forge-onboard · forge-product-map | project copy, `installOnly` | survey the repo, seed knowledge / the product map |
 | forge-reconcile · forge-verify-skill | Forge-owned, name-reserved | police skill updates; verify a skill installed |
 | forge-skills | this one | author and ship project skills |
@@ -84,4 +84,4 @@ dispatched by a status.
 
 ## Ship reminder
 
-Edit the **server** first (`forge_skills_update`/`create`), **reconcile** before overwriting, **push**, then **verify on disk** — never hand-edit only the device copy and assume it stuck.
+Edit the **server** first (`PUT`/`POST /api/skills`), **reconcile** before overwriting, **push**, then **verify on disk** — never hand-edit only the device copy and assume it stuck.

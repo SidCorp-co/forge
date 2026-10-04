@@ -44,7 +44,7 @@ export async function runStaleSweep(now: Date = new Date()): Promise<{
         entityId: row.id,
         reason: `loop-miss: job quiet for >${thresholdMinutes}min and the result hop did not reap it`,
         action:
-          'Inspect core logs for a thrown result-hop handler; if the job is genuinely wedged, use the single-job cancel escape hatch (forge_jobs cancel).',
+          'Inspect core logs for a thrown result-hop handler; if the job is genuinely wedged, use the single-job cancel escape hatch (POST /api/jobs/:id/cancel).',
       });
     }
   }

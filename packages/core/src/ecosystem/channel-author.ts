@@ -4,10 +4,11 @@ import { isTurnTokenName } from '../auth/pat-format.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
 import type { Author, PersonVia } from './channel-schema.js';
+import { holds, permissionRefusal } from '../permissions/index.js';
 import type { EcosystemRefusal } from './refusals.js';
 
 export interface Writer {
@@ -72,20 +73,19 @@ export async function channelRoleRefusal(
   projectId: string,
   need: ChannelNeed,
 ): Promise<EcosystemRefusal | null> {
-  const role = (await effectiveProjectRole(userId, projectId))?.role ?? null;
-  if (!projectRoleAtLeast(role, 'viewer')) {
+  const access = (await effectiveProjectRole(userId, projectId)) ?? {
+    projectId,
+    role: null,
+    grants: [],
+  };
+  if (!holds(access, 'project.read')) {
     return {
       code: 'CHANNEL_NO_ROLE',
       path: '/from',
       detail: `person ${userId} holds no role on project ${projectId}, so nothing of its channel is read or written as them; a project admin can add them.`,
     };
   }
-  if (need === 'write' && !projectRoleAtLeast(role, 'member')) {
-    return {
-      code: 'CHANNEL_WRITE_NOT_AUTHORISED',
-      path: '/from',
-      detail: `person ${userId} is a ${role} on project ${projectId}; writing in its channel takes member or above, and a viewer reads only.`,
-    };
-  }
-  return null;
+  return need === 'write'
+    ? permissionRefusal(access, 'project.write', 'writing in the channel')
+    : null;
 }

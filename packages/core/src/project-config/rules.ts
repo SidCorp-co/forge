@@ -386,7 +386,7 @@ function checkDenyEntries(doc: PolicyDocument): ConfigRefusal[] {
       out.push({
         code: 'TOOL_PATTERN_INVALID',
         path: pointer('permissions', profile, 'deny', i),
-        detail: `"${entry}" names no tool this Forge server registers, so denying it denies nothing; a Forge tool is ${FORGE_TOOL_PREFIX}<tool> with the tool's dots as underscores, e.g. ${FORGE_TOOL_PREFIX}forge_jobs_cancel.`,
+        detail: `"${entry}" names no tool this Forge server registers, so denying it denies nothing; a Forge tool is ${FORGE_TOOL_PREFIX}<tool> with the tool's dots as underscores, e.g. ${FORGE_TOOL_PREFIX}forge_coolify_deploy.`,
       });
     });
   }

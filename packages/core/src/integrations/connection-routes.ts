@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
+import { loadOrgRole } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -18,7 +18,6 @@ import {
   assertVaultConfigured,
   bindingWriteMoved,
   defaultConnectionDisplayName,
-  forbidden,
   notFound,
   notifyConnectionChanged,
   summarizeBinding,
@@ -37,6 +36,7 @@ import {
   softDeleteConnection,
   updateConnection,
 } from './store.js';
+import { requireOrgHeld } from '../permissions/index.js';
 
 /**
  * Reading a connection, as opposed to managing it. Every principal the list
@@ -56,7 +56,7 @@ async function loadConnection(
   }
   const orgRole = await loadOrgRole(connection.ownerId, userId);
   if (!orgRole) throw notFound('connection');
-  if (intent === 'manage' && !orgRoleAtLeast(orgRole, 'admin')) throw forbidden();
+  if (intent === 'manage') requireOrgHeld(connection.ownerId, orgRole, 'org.admin');
   return connection;
 }
 
@@ -86,7 +86,7 @@ integrationConnectionsRoutes.post(
     if (body.orgId) {
       const orgRole = await loadOrgRole(body.orgId, userId);
       if (!orgRole) throw notFound('org');
-      if (!orgRoleAtLeast(orgRole, 'admin')) throw forbidden();
+      requireOrgHeld(body.orgId, orgRole, 'org.admin');
     }
     const connection = await createConnection({
       ownerType: body.orgId ? 'org' : 'user',
