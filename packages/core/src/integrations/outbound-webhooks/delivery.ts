@@ -1,11 +1,13 @@
 import { and, eq } from 'drizzle-orm';
+import { Webhook } from 'standardwebhooks';
 import { db } from '../../db/client.js';
 import { projectWebhooks } from '../../db/schema.js';
-import { signHmacSha256 } from '../../lib/hmac.js';
 import { logger } from '../../observability/logger.js';
 import { boss } from '../../queue/boss.js';
 
 export const WEBHOOK_DELIVERY_QUEUE = 'webhook-delivery';
+/** Where a delivery lands once its retries are spent; nothing works it, it is the record. */
+export const WEBHOOK_DEAD_LETTER_QUEUE = 'webhook-delivery-dead';
 
 interface DeliveryJob {
   webhookId: string;
@@ -27,17 +29,22 @@ export async function enqueueDelivery(
 
   for (const hook of matches) {
     const payload: DeliveryJob = { webhookId: hook.id, event, data };
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss options types vary across versions
-    await (boss as any).send(WEBHOOK_DELIVERY_QUEUE, payload, {
+    await boss.send(WEBHOOK_DELIVERY_QUEUE, payload, {
       retryLimit: 5,
       retryBackoff: true,
+      deadLetter: WEBHOOK_DEAD_LETTER_QUEUE,
     });
   }
 
   return matches.length;
 }
 
-export async function handleDelivery(job: DeliveryJob): Promise<void> {
+/**
+ * POST one event, signed per Standard Webhooks: `webhook-id` is the pg-boss job id, so it holds
+ * across retries and a receiver can drop a duplicate; the key is the UTF-8 bytes of the hook's
+ * secret. Any non-2xx throws, so pg-boss retries it and then moves it to the dead-letter queue.
+ */
+export async function handleDelivery(messageId: string, job: DeliveryJob): Promise<void> {
   const [hook] = await db
     .select()
     .from(projectWebhooks)
@@ -48,34 +55,30 @@ export async function handleDelivery(job: DeliveryJob): Promise<void> {
     return;
   }
 
+  const sentAt = new Date();
   const body = JSON.stringify({
     event: job.event,
     data: job.data,
-    timestamp: new Date().toISOString(),
+    timestamp: sentAt.toISOString(),
   });
-  const signature = signHmacSha256(hook.secret, body);
+  const signature = new Webhook(hook.secret, { format: 'raw' }).sign(messageId, sentAt, body);
 
   const res = await fetch(hook.url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-forge-signature-256': signature,
+      'webhook-id': messageId,
+      'webhook-timestamp': String(Math.floor(sentAt.getTime() / 1000)),
+      'webhook-signature': signature,
       'x-forge-event': job.event,
     },
     body,
   });
 
-  if (res.status >= 500) {
-    // transient — re-throw so pg-boss retries
-    throw new Error(`webhook delivery ${hook.url} returned ${res.status}`);
-  }
-  if (res.status >= 400) {
-    // permanent — log and complete (no retry)
-    logger.warn(
-      { webhookId: hook.id, url: hook.url, status: res.status },
-      'webhook-delivery: 4xx permanent failure',
+  if (!res.ok) {
+    throw new Error(
+      `webhook delivery ${messageId} to ${hook.url} returned ${res.status}; a non-2xx is a failed delivery`,
     );
-    return;
   }
   logger.info({ webhookId: hook.id, url: hook.url, status: res.status }, 'webhook-delivery: ok');
 }
@@ -84,16 +87,15 @@ let registered = false;
 
 export async function registerOutboundDeliveryWorker(): Promise<void> {
   if (registered) return;
-  // pg-boss v10 requires explicit createQueue before work().
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(WEBHOOK_DELIVERY_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(WEBHOOK_DELIVERY_QUEUE, { batchSize: 1 }, async (arg: unknown) => {
-    const entries = Array.isArray(arg) ? arg : [arg];
-    for (const entry of entries) {
-      const data = (entry as { data?: DeliveryJob })?.data;
-      if (!data || typeof data.webhookId !== 'string') continue;
-      await handleDelivery(data);
+  // The dead-letter queue first: a job naming it references the queue row.
+  await boss.createQueue(WEBHOOK_DEAD_LETTER_QUEUE);
+  await boss.createQueue(WEBHOOK_DELIVERY_QUEUE);
+  await boss.work<DeliveryJob>(WEBHOOK_DELIVERY_QUEUE, { batchSize: 1 }, async (jobs) => {
+    for (const job of jobs) {
+      if (typeof job.data?.webhookId !== 'string') {
+        throw new Error(`webhook delivery job ${job.id} carries no webhookId`);
+      }
+      await handleDelivery(job.id, job.data);
     }
   });
   registered = true;

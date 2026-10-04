@@ -15,10 +15,6 @@ export function verifyHmacSignature(
   return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(provided, 'hex'));
 }
 
-export function signHmacSha256(secret: string, body: string): string {
-  return `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
-}
-
 /**
  * A shared-token scheme's check — GitLab's `X-Gitlab-Token` carries the binding's secret itself
  * rather than a signature over the body. Compared over fixed-length digests, so neither the length
