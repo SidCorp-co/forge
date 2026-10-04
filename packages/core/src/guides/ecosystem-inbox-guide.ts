@@ -109,8 +109,7 @@ publishes and the versions of its contracts, and a person is not handed that wor
 
 1. \`forge_ecosystem action=interface\`, then \`interface_write { baseRevision, document }\` with the
    revision you read. Each contract this project serves is a \`publishes\` entry: its \`type\` is the
-   contract kind, and an artifact you upload is \`artifact: { upload: true }\` (a \`path\` is read by core
-   from the deployed branch at each land, and an upload to it is refused \`ARTIFACT_MEASURED_FROM_GIT\`).
+   contract kind, and an artifact you upload is \`artifact: { upload: true }\`; an opaque contract has \`artifact: null\`.
 2. \`commitments\` are this project's promise to its consumers: the versioning scheme, the days of notice
    before a breaking change takes effect (\`deprecationNoticeDays\`), and the days it answers an RFI or a
    change request in (\`responseDays\`). Propose the windows the project can keep; the first ones are stored as you

@@ -137,7 +137,7 @@ export interface ApiPagePublication {
   title: string;
   summary?: string;
   type: string;
-  artifact: "none" | "repository" | "upload";
+  artifact: "none" | "upload";
   lifecycle: string;
   ecosystems: string[];
   versions: string[];
