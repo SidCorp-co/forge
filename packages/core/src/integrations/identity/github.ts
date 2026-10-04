@@ -1,4 +1,4 @@
-import type { ProviderConfig } from './providers.js';
+import type { ProviderConfig } from './types.js';
 import type { AuthorizeArgs, CallbackArgs, OAuthIdentity, OAuthProvider } from './types.js';
 
 const AUTHORIZE_URL = 'https://github.com/login/oauth/authorize';

@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices } from '../db/schema.js';
 import { compareRunnerBuild } from '../devices/build-state.js';
-import { mainRunnerHead } from '../install/main-runner-head.js';
+import { mainRunnerHead } from '../integrations/github/main-runner-head.js';
 import { getPublishedRunnerBuild } from '../install/routes.js';
 import type { HealthResult, Runner, RunnerAdapter } from './types.js';
 

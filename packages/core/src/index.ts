@@ -64,7 +64,7 @@ import { ecosystemApiRoutes } from './ecosystem/mount.js';
 import { guideRoutes } from './guides/routes.js';
 import { opsHealthMeRoutes, opsHealthProjectRoutes, publicHealthRoutes } from './health/routes.js';
 import { improvementMessageRoutes } from './improvement-messages/routes.js';
-import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
+import { registerRunnerReleaseRefetch } from './integrations/github/fetch-release.js';
 import { installRoutes } from './install/routes.js';
 import { githubCallbackRoutes, githubConnectRoutes } from './integrations/github/connect-routes.js';
 import { runnerReleaseRoutes } from './integrations/github/runner-release-routes.js';
@@ -190,7 +190,7 @@ import { updatePacketRoutes } from './update-packets/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
-import { registerOutboundDeliveryWorker } from './webhooks/outbound.js';
+import { registerOutboundDeliveryWorker } from './integrations/outbound-webhooks/delivery.js';
 import { registerWebhookSubscribers } from './webhooks/subscribers.js';
 import { attachWs, closeWs } from './ws/server.js';
 

@@ -1,6 +1,6 @@
 /**
  * Shared OAuth flow — handles both /:provider/start and /:provider/callback.
- * Provider-specific logic lives in github.ts / oidc-provider.ts; this file
+ * Provider-specific logic lives in integrations/identity (github.ts, oidc-provider.ts); this file
  * is the connective tissue (cookie state, find-or-create-user, set the
  * auth cookie, redirect).
  */
@@ -18,9 +18,9 @@ import { ensurePersonalOrg } from '../../orgs/service.js';
 import { assertNotAgentUser } from '../agent-login-gate.js';
 import { setAuthCookie } from '../cookie.js';
 import { signUserToken } from '../jwt.js';
-import { githubProvider } from './github.js';
-import { googleProvider, oidcProvider } from './oidc-provider.js';
-import { getCallbackUrl, getProvider, type ProviderConfig, type ProviderId } from './providers.js';
+import { githubProvider } from '../../integrations/identity/github.js';
+import { googleProvider, oidcProvider } from '../../integrations/identity/oidc-provider.js';
+import { getCallbackUrl, getProvider } from './providers.js';
 import {
   clearStateCookie,
   generateNonce,
@@ -31,7 +31,12 @@ import {
   signState,
   verifyState,
 } from './state.js';
-import type { OAuthIdentity, OAuthProvider } from './types.js';
+import type {
+  OAuthIdentity,
+  OAuthProvider,
+  ProviderConfig,
+  ProviderId,
+} from '../../integrations/identity/types.js';
 
 const providerImpls: Record<ProviderId, OAuthProvider> = {
   github: githubProvider,

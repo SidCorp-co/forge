@@ -16,7 +16,8 @@ import {
   refuseStartQuery,
   startQuery,
 } from './handler.js';
-import { getEnabledProviders, type ProviderId, toPublic } from './providers.js';
+import type { ProviderId } from '../../integrations/identity/types.js';
+import { getEnabledProviders, toPublic } from './providers.js';
 
 export const oauthRoutes = new Hono<{ Variables: AuthVars }>();
 

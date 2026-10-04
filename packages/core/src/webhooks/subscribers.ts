@@ -1,6 +1,6 @@
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
-import { enqueueDelivery } from './outbound.js';
+import { enqueueDelivery } from '../integrations/outbound-webhooks/delivery.js';
 
 export function registerWebhookSubscribers(bus: HooksBus): void {
   bus.on('transition', async (payload) => {

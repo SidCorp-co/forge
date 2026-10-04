@@ -3,6 +3,11 @@ import { join } from 'node:path';
 import { argv } from 'node:process';
 import { pathToFileURL } from 'node:url';
 
+import {
+  downloadReleaseAsset,
+  listRepoReleases,
+  type PublicRelease as Release,
+} from './public-releases.js';
 import { refreshMainRunnerHead } from './main-runner-head.js';
 
 const REPO = process.env.RUNNER_RELEASE_REPO ?? 'SidCorp-co/forge';
@@ -11,27 +16,6 @@ const ASSET_PREFIX = 'forge-runner-';
 // Published beside VERSION by runner-release.yml: what tells two builds that share
 // a version number apart.
 const COMMIT_ASSET = 'COMMIT';
-
-interface ReleaseAsset {
-  name: string;
-  browser_download_url: string;
-}
-interface Release {
-  tag_name: string;
-  draft: boolean;
-  prerelease: boolean;
-  assets: ReleaseAsset[];
-}
-
-function ghHeaders(): Record<string, string> {
-  const h: Record<string, string> = {
-    'user-agent': 'forge-core-release-fetch',
-    accept: 'application/vnd.github+json',
-  };
-  const token = process.env.RUNNER_RELEASE_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
-  if (token) h.authorization = `Bearer ${token}`;
-  return h;
-}
 
 /** Compare two dotted numeric versions; >0 if a>b, <0 if a<b, 0 if equal. */
 export function cmpVersion(a: string, b: string): number {
@@ -68,21 +52,13 @@ export function pickLatestRunnerTag(releases: Release[]): Release | null {
 async function fetchCommitAsset(release: Release): Promise<string | null> {
   const asset = release.assets.find((a) => a.name === COMMIT_ASSET);
   if (!asset) return null;
-  const res = await fetch(asset.browser_download_url, {
-    headers: { 'user-agent': 'forge-core-release-fetch' },
-    redirect: 'follow',
-  });
-  if (!res.ok) throw new Error(`download ${COMMIT_ASSET}: ${res.status}`);
-  return (await res.text()).trim() || null;
+  const got = await downloadReleaseAsset(asset.browser_download_url);
+  if (!got.ok) throw new Error(`download ${COMMIT_ASSET}: ${got.status}`);
+  return got.bytes.toString('utf8').trim() || null;
 }
 
 async function latestRunnerRelease(): Promise<Release | null> {
-  const res = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=50`, {
-    headers: ghHeaders(),
-  });
-  if (!res.ok) throw new Error(`GitHub releases API ${res.status}`);
-  const all = (await res.json()) as Release[];
-  return pickLatestRunnerTag(all);
+  return pickLatestRunnerTag(await listRepoReleases(REPO));
 }
 
 export async function run(): Promise<void> {
@@ -115,12 +91,9 @@ export async function run(): Promise<void> {
   }
 
   for (const asset of assets) {
-    const res = await fetch(asset.browser_download_url, {
-      headers: { 'user-agent': 'forge-core-release-fetch' },
-      redirect: 'follow',
-    });
-    if (!res.ok) throw new Error(`download ${asset.name}: ${res.status}`);
-    const buf = Buffer.from(await res.arrayBuffer());
+    const got = await downloadReleaseAsset(asset.browser_download_url);
+    if (!got.ok) throw new Error(`download ${asset.name}: ${got.status}`);
+    const buf = got.bytes;
     // Write to a temp name then rename so a crash mid-download can't leave a
     // truncated binary that the install route would serve + hash.
     const tmp = join(dir, `${asset.name}.tmp`);
@@ -161,7 +134,7 @@ export function registerRunnerReleaseRefetch(intervalMs = 30 * 60_000): NodeJS.T
   return timer;
 }
 
-// Only run when invoked directly (`node dist/install/fetch-release.js`), not
+// Only run when invoked directly (`node dist/integrations/github/fetch-release.js`), not
 // when imported by the unit tests — otherwise importing the pure helpers would
 // trigger a live GitHub fetch and `process.exit(0)`.
 const isMain = argv[1] && import.meta.url === pathToFileURL(argv[1]).href;

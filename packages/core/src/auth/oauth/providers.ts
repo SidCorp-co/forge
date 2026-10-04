@@ -1,19 +1,5 @@
 import { env } from '../../config/env.js';
-
-export type ProviderId = 'github' | 'google' | 'oidc';
-
-export interface ProviderConfig {
-  id: ProviderId;
-  /** Human-facing button label, e.g. "Continue with GitHub". */
-  label: string;
-  /** OAuth 2.0 client id from the provider's developer console. */
-  clientId: string;
-  /** OAuth 2.0 client secret. */
-  clientSecret: string;
-  /** Default scopes requested at the authorize step. */
-  scopes: string[];
-  issuerUrl: string | null;
-}
+import type { ProviderConfig, ProviderId } from '../../integrations/identity/types.js';
 
 /** Resolve `OAUTH_REDIRECT_BASE` once; fall back to `APP_BASE_URL`. */
 export function getRedirectBase(): string {

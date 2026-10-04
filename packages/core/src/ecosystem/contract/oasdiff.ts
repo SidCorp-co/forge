@@ -5,6 +5,7 @@ import { chmod, mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { downloadReleaseAsset, releaseDownloadUrl } from '../../integrations/github/public-releases.js';
 
 const run = promisify(execFile);
 
@@ -78,10 +79,10 @@ export async function fetchOasdiff(
   const { name, sha256 } = asset(platform);
   const target = join(dir, 'oasdiff');
   if (existsSync(target)) return verify(target);
-  const url = `https://github.com/oasdiff/oasdiff/releases/download/v${OASDIFF_VERSION}/${name}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(120_000) });
-  if (!res.ok) throw new DifferUnavailable(`GET ${url} answered HTTP ${res.status}`);
-  const bytes = Buffer.from(await res.arrayBuffer());
+  const url = releaseDownloadUrl('oasdiff/oasdiff', `v${OASDIFF_VERSION}`, name);
+  const download = await downloadReleaseAsset(url, { timeoutMs: 120_000 });
+  if (!download.ok) throw new DifferUnavailable(`GET ${url} answered HTTP ${download.status}`);
+  const bytes = download.bytes;
   const got = createHash('sha256').update(bytes).digest('hex');
   if (got !== sha256) {
     throw new DifferUnavailable(`${name} hashes ${got}; the pin is ${sha256}.`);
