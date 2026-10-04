@@ -1,5 +1,5 @@
 import type { GitCredentialMint } from '../types.js';
-import { installationTokenWithExpiry } from './app-auth.js';
+import { mintInstallationToken } from './octokit.js';
 import { githubHostOf } from './source-host.js';
 import type { GitHubConfig, GitHubSecrets } from './types.js';
 
@@ -50,7 +50,7 @@ export const githubGitCredential: GitCredentialMint = {
     if (!s.appId || !s.privateKey) {
       throw new Error(`the connection behind ${c.owner}/${c.repo} holds no GitHub App credential`);
     }
-    const { token, expiresAt } = await installationTokenWithExpiry({
+    const { token, expiresAt } = await mintInstallationToken({
       appId: s.appId,
       privateKey: s.privateKey,
       installationId: c.installationId,

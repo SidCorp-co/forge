@@ -7,8 +7,12 @@
  * an account, and never something a person should be retyping into a text box.
  */
 
-import { buildAppJwt, installationToken } from './app-auth.js';
-import { GITHUB_API_BASE } from './types.js';
+import {
+  appOctokit,
+  type GitHubOctokit,
+  installationOctokit,
+  mintInstallationToken,
+} from './octokit.js';
 
 export interface InstallationRepo {
   installationId: number;
@@ -21,21 +25,16 @@ export interface InstallationRepo {
 const MAX_PAGES_PER_INSTALLATION = 5;
 const PER_PAGE = 100;
 
-async function githubJson<T>(
-  doFetch: typeof fetch,
-  url: string,
-  authorization: string,
-): Promise<T | null> {
-  const res = await doFetch(url, {
-    headers: { authorization, accept: 'application/vnd.github+json' },
-  });
-  if (!res.ok) return null;
-  return (await res.json()) as T;
+async function githubJson<T>(octokit: GitHubOctokit, url: string): Promise<T | null> {
+  try {
+    return (await octokit.request({ method: 'GET', url })).data as T;
+  } catch {
+    return null;
+  }
 }
 
 async function reposForInstallation(
-  doFetch: typeof fetch,
-  token: string,
+  octokit: GitHubOctokit,
   installationId: number,
   account: string,
 ): Promise<{ repos: InstallationRepo[]; truncated: boolean }> {
@@ -44,11 +43,7 @@ async function reposForInstallation(
     const body = await githubJson<{
       total_count?: number;
       repositories?: Array<{ name?: string; full_name?: string; owner?: { login?: string } }>;
-    }>(
-      doFetch,
-      `${GITHUB_API_BASE}/installation/repositories?per_page=${PER_PAGE}&page=${page}`,
-      `Bearer ${token}`,
-    );
+    }>(octokit, `/installation/repositories?per_page=${PER_PAGE}&page=${page}`);
     const batch = body?.repositories ?? [];
     for (const r of batch) {
       const owner = r.owner?.login;
@@ -78,32 +73,27 @@ export async function listInstallationRepositories(args: {
   privateKey: string;
   fetchImpl?: typeof fetch;
 }): Promise<{ repositories: InstallationRepo[]; truncated: boolean }> {
-  const doFetch = args.fetchImpl ?? fetch;
-  const jwt = await buildAppJwt(args.appId, args.privateKey);
-
   const installations = await githubJson<Array<{ id?: number; account?: { login?: string } }>>(
-    doFetch,
-    `${GITHUB_API_BASE}/app/installations`,
-    `Bearer ${jwt}`,
+    appOctokit(args),
+    '/app/installations',
   );
-  if (!installations) return { repositories: [], truncated: false };
+  if (!Array.isArray(installations)) return { repositories: [], truncated: false };
 
   const out: InstallationRepo[] = [];
   let truncated = false;
   for (const inst of installations) {
     if (typeof inst.id !== 'number') continue;
-    let token: string;
+    const cred = { ...args, installationId: inst.id };
     try {
-      token = await installationToken({
-        appId: args.appId,
-        privateKey: args.privateKey,
-        installationId: inst.id,
-        fetchImpl: doFetch,
-      });
+      await mintInstallationToken(cred);
     } catch {
       continue;
     }
-    const page = await reposForInstallation(doFetch, token, inst.id, inst.account?.login ?? '');
+    const page = await reposForInstallation(
+      installationOctokit(cred),
+      inst.id,
+      inst.account?.login ?? '',
+    );
     out.push(...page.repos);
     truncated = truncated || page.truncated;
   }

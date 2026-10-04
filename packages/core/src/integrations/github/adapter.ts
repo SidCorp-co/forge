@@ -11,15 +11,20 @@ import {
   type InboundFact,
   type IntegrationAdapterMethods,
 } from '../types.js';
-import { GitHubAuthError, installationToken } from './app-auth.js';
 import { compareBoundRepository, githubInboundSecret } from './bind-effects.js';
 import { githubGitCredential } from './git-credential.js';
 import { readAppHookConfig } from './hook-config.js';
 import { checkInstallationGrant } from './installation-permissions.js';
+import {
+  GitHubAuthError,
+  installationOctokit,
+  mintInstallationToken,
+  responseOf,
+} from './octokit.js';
 import { type GitHubEventPayload, handleGitHubEvent } from './projection-events.js';
 import { GITHUB_BINDING_CONFIG_KEYS, githubConfigBase, githubSecretsSchema } from './schemas.js';
 import { githubHostOf, githubSourceHost } from './source-host.js';
-import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
+import type { GitHubConfig, GitHubSecrets } from './types.js';
 
 const PROBE_TIMEOUT_MS = 8000;
 
@@ -84,7 +89,6 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
 
   async healthcheck(ctx: AdapterContext<GitHubConfig, GitHubSecrets>): Promise<HealthCheckResult> {
     const { owner, repo, installationId } = ctx.config ?? {};
-    const base = (ctx.config?.apiBaseUrl ?? GITHUB_API_BASE).replace(/\/+$/, '');
     const { appId, privateKey } = ctx.secrets ?? {};
 
     // The sentence goes to the connection beside the status. Until ISS-1140 the sweep dropped it,
@@ -104,37 +108,39 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     if (!owner || !repo) return finish('error', 'no owner/repo configured for this binding');
 
     try {
-      const token = await installationToken({
+      const cred = {
         appId,
         privateKey,
         installationId,
         ...(ctx.config?.apiBaseUrl ? { apiBaseUrl: ctx.config.apiBaseUrl } : {}),
-      });
-      const res = await fetch(
-        `${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
-          },
-          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-        },
-      );
-      if (res.status === 403) {
-        return finish(
-          'error',
-          `the App is installed but not permitted on ${owner}/${repo} (HTTP 403) — grant the permission on the installation rather than reconnecting`,
-        );
+      };
+      await mintInstallationToken(cred);
+      let body: { full_name?: string; default_branch?: string };
+      try {
+        body = (
+          await installationOctokit(cred).request({
+            method: 'GET',
+            url: `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
+            request: { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) },
+          })
+        ).data as typeof body;
+      } catch (err) {
+        const status = responseOf(err)?.status;
+        if (status === undefined) throw err;
+        if (status === 403) {
+          return finish(
+            'error',
+            `the App is installed but not permitted on ${owner}/${repo} (HTTP 403) — grant the permission on the installation rather than reconnecting`,
+          );
+        }
+        if (status === 404) {
+          return finish(
+            'error',
+            `${owner}/${repo} is not among the repositories this App was installed on`,
+          );
+        }
+        return finish('error', `GitHub returned HTTP ${status}`);
       }
-      if (res.status === 404) {
-        return finish(
-          'error',
-          `${owner}/${repo} is not among the repositories this App was installed on`,
-        );
-      }
-      if (!res.ok) return finish('error', `GitHub returned HTTP ${res.status}`);
-      const body = (await res.json()) as { full_name?: string; default_branch?: string };
 
       const inbound = await observeInboundEndpoint(ctx.connectionId, {
         appId,

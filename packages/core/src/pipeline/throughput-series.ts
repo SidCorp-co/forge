@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { utcDateTrunc } from '../lib/time-buckets.js';
 import { firstShipped } from './shipped-at.js';
 
@@ -29,7 +30,7 @@ export async function shippedPerDay(
   );
   const rows = (await db.execute(sql`
     WITH bounds AS (
-      SELECT (${utcDateTrunc('day', sql`${asOf.toISOString()}::timestamptz`)} AT TIME ZONE 'UTC')
+      SELECT (${utcDateTrunc('day', sqlTimestamp(asOf))} AT TIME ZONE 'UTC')
                - ((${days}::int - 1) * interval '1 day') AS first_day
     ),
     calendar AS (

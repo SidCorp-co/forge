@@ -29,6 +29,11 @@ clear reason and a note in the owning issue.
    shorthand (keeps a single style across the codebase).
    - `createdAt` → `.notNull().defaultNow()`
    - Optional timestamps (e.g. `emailVerifiedAt`) → nullable, no default
+   - A `Date` entering a raw `sql` template goes through `sqlTimestamp()`
+     ([`sql-timestamp.ts`](./sql-timestamp.ts)); a bare `${date}` is refused
+     by the driver with `RAW_SQL_DATE_PARAM`. Query-builder comparisons on a
+     timestamp column (`gte(col, date)`) are encoded by the column and need
+     nothing.
 
 4. **Foreign keys.** Always
    `.references(() => other.id, { onDelete: <behavior> })`.

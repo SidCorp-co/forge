@@ -291,6 +291,8 @@
           "@aws-sdk/",
           "@google-cloud/",
           "googleapis",
+          "google-auth-library",
+          "openid-client",
           "@octokit/",
           "@gitbeaker/",
           "@slack/",

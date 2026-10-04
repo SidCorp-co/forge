@@ -22,6 +22,7 @@ import {
   conversations,
   conversationWindows,
 } from '../db/schema-conversations.js';
+import { sqlTimestamp } from '../db/sql-timestamp.js';
 import type { Executor } from './db-executor.js';
 
 /**
@@ -239,7 +240,7 @@ export async function claimDueWindows(
     .set({
       claimedAt: now,
       claimedBy: args.claimant,
-      cutReason: sql`coalesce(${conversationWindows.cutReason}, case when ${conversationWindows.extendedAt} <= ${settleBefore.toISOString()}::timestamptz then 'quiet' else 'deadline' end)`,
+      cutReason: sql`coalesce(${conversationWindows.cutReason}, case when ${conversationWindows.extendedAt} <= ${sqlTimestamp(settleBefore)} then 'quiet' else 'deadline' end)`,
     })
     .where(sql`${conversationWindows.id} in ${due}`)
     .returning({
