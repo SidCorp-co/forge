@@ -21,7 +21,7 @@ import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { agentSessionEvents } from '../db/schema-agent-session-events.js';
 import { jobsOfSession, scrubJobOutput } from '../jobs/job-secret-scrub.js';
-import { maybeDeriveIncrementalFor } from '../jobs/session-transcript.js';
+import { maybeDeriveIncrementalFor } from './session-transcript.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import {

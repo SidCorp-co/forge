@@ -13,6 +13,11 @@ import {
   requirementWorkflows,
 } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
+import {
+  adoptIssuePlan,
+  linkIssueToRequirement,
+  unlinkIssueFromRequirement,
+} from '../issues/index.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
 import { plannedBaselineSeqIn } from './baselines.js';
 import { planDriftOf } from './plan-drift.js';
@@ -75,10 +80,7 @@ export async function linkIssue(input: {
       : null;
     if (held?.requirementId === row.id) {
       if (input.adoptPlan) {
-        await tx
-          .update(issues)
-          .set({ plannedRevision, plannedBaselineSeq, updatedAt: new Date() })
-          .where(eq(issues.id, issue.id));
+        await adoptIssuePlan(tx, issue.id, { plannedRevision, plannedBaselineSeq });
       }
       return null;
     }
@@ -91,10 +93,7 @@ export async function linkIssue(input: {
         },
       ];
     }
-    await tx
-      .update(issues)
-      .set({ requirementId: row.id, plannedRevision, plannedBaselineSeq, updatedAt: new Date() })
-      .where(eq(issues.id, issue.id));
+    await linkIssueToRequirement(tx, issue.id, row.id, { plannedRevision, plannedBaselineSeq });
     return null;
   });
   return answer(projectId, row.id, actor, refusals);
@@ -110,15 +109,7 @@ export async function unlinkIssue(input: {
   await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const row = await rowIn(db, projectId, input.ref);
   const issue = await issueIn(projectId, input.issue, actor.userId);
-  await db
-    .update(issues)
-    .set({
-      requirementId: null,
-      plannedRevision: null,
-      plannedBaselineSeq: null,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(issues.id, issue.id), eq(issues.requirementId, row.id)));
+  await unlinkIssueFromRequirement(issue.id, row.id);
   return answer(projectId, row.id, actor, null);
 }
 

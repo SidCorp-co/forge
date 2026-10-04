@@ -11,7 +11,8 @@ import { ISSUE_MACHINE, TAKEABLE_STATUSES } from '@forge/contracts/issue-machine
 import { exitsOf } from '@forge/contracts/state-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, type IssueStatus } from '../db/schema.js';
+import { postIssueNotice } from '../comments/index.js';
+import type { IssueStatus } from '../db/schema.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { wakeMastersForDesign } from '../ws/master-wake.js';
@@ -90,12 +91,7 @@ async function handBack(input: {
   }
   // Already takeable, being worked, or parked by a person: the status stays theirs, the reason is
   // still posted where the issue read shows it.
-  await db.insert(comments).values({
-    issueId: String(row.id),
-    authorId: input.decider.userId,
-    body,
-    parentId: null,
-  });
+  await postIssueNotice({ issueId: String(row.id), authorId: input.decider.userId, body });
   logger.info(
     { issueId: row.id, status },
     'workflow design returned: its issue keeps its status, the reason is posted on it',

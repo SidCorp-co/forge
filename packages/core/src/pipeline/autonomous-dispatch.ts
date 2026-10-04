@@ -1,5 +1,4 @@
-import { sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { stampRunStarted } from '../issues/index.js';
 import type { IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { PolicyDocument } from '../project-config/schema.js';
@@ -56,17 +55,7 @@ export async function dispatchDriveManual(args: {
       `AUTONOMOUS_NOT_AT_ENTRY: the driver is handed an issue at \`${AUTONOMOUS_ENTRY_STATUS}\`, this one is at \`${args.status}\``,
     );
   }
-  const rows = (await db.execute(sql`
-    UPDATE issues
-    SET session_context = CASE
-          WHEN session_context ? 'runRelease' THEN session_context
-          ELSE jsonb_set(COALESCE(session_context, '{}'::jsonb), ARRAY['runRelease'], to_jsonb(now()), true)
-        END,
-        updated_at = CASE WHEN session_context ? 'runRelease' THEN updated_at ELSE now() END
-    WHERE id = ${args.issueId}
-    RETURNING session_context->>'runRelease' AS started_at
-  `)) as unknown as Array<{ started_at: string }>;
-  const startedAt = rows[0]?.started_at;
+  const startedAt = await stampRunStarted(args.issueId);
   if (!startedAt) throw new Error(`issue ${args.issueId} vanished while it was being started`);
   await wakeMastersForProject({
     projectId: args.projectId,

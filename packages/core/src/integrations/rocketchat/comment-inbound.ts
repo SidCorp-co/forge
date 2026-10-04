@@ -11,7 +11,7 @@
 import { and, eq, isNull, lte, or } from 'drizzle-orm';
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { resolveSpeaker } from '../../assistant/identity/speaker-link.js';
-import { insertComment } from '../../comments/service.js';
+import { insertComment } from '../../comments/index.js';
 import { db } from '../../db/client.js';
 import { comments, issues } from '../../db/schema.js';
 import { rocketchatCommentMirrors } from '../../db/schema-rocketchat.js';

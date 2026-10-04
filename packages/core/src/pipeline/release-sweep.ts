@@ -8,7 +8,8 @@
 
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, issues } from '../db/schema.js';
+import { postIssueNoticeOnce } from '../comments/index.js';
+import { issues } from '../db/schema.js';
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
 import { logger } from '../logger.js';
 import { releaseBlockerSentence } from '../release-batch/blocker-sentences.js';
@@ -131,12 +132,7 @@ async function reportClaimedFailure(
   for (const row of claimed) {
     const body = claimedFailureBody(message, row.releaseBatchRunId);
     try {
-      const existing = await db
-        .select({ body: comments.body })
-        .from(comments)
-        .where(eq(comments.issueId, row.id));
-      if (existing.some((c) => c.body === body)) continue;
-      await db.insert(comments).values({ issueId: row.id, authorId, body });
+      await postIssueNoticeOnce({ issueId: row.id, authorId, body, marker: body });
     } catch (err) {
       logger.error({ err, issueId: row.id }, 'release-sweep: failed to post the failure comment');
     }

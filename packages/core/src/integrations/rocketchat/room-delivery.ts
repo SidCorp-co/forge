@@ -5,6 +5,7 @@
  * failover, fallback copy, progress source).
  */
 import { and, eq, sql } from 'drizzle-orm';
+import { claimSessionMetadataDelivery } from '../../agent-sessions/index.js';
 import { messageRoleToTurnRole } from '../../agent-sessions/turns-helpers.js';
 import { db } from '../../db/client.js';
 import { agentSessions, integrationBindings } from '../../db/schema.js';
@@ -109,23 +110,7 @@ export async function claimRoomReplyDelivery(
   session: SessionRow,
   marker: RoomReplyMarker,
 ): Promise<boolean> {
-  const prevMetadata = (session.metadata as Record<string, unknown>) ?? {};
-  const prevMarker = (prevMetadata[marker] as Record<string, unknown>) ?? {};
-  const nextMetadata = {
-    ...prevMetadata,
-    [marker]: { ...prevMarker, deliveredAt: new Date().toISOString() },
-  };
-  const claimed = await db
-    .update(agentSessions)
-    .set({ metadata: nextMetadata as never })
-    .where(
-      and(
-        eq(agentSessions.id, session.id),
-        sql`(${agentSessions.metadata} -> ${marker}::text ->> 'deliveredAt') IS NULL`,
-      ),
-    )
-    .returning({ id: agentSessions.id });
-  return claimed.length > 0;
+  return claimSessionMetadataDelivery(session.id, marker);
 }
 
 export async function hasInFlightRoomSession(

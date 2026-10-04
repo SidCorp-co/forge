@@ -77,12 +77,8 @@ import {
 import { deviceMasterRoutes } from '../masters/device-routes.js';
 import { readAdmissibleIssues } from './admissible.js';
 import { deviceChannelInboxRoutes } from './channel-inbox-routes.js';
-import {
-  prepareJobForMaster,
-  releaseAllHeldBySession,
-  releaseJobFromMaster,
-  startJobForMaster,
-} from './claim.js';
+import { releaseHoldsOf, releaseJobHold } from '../jobs/index.js';
+import { prepareJobForMaster, startJobForMaster } from './claim.js';
 import { deviceCommentInboxRoutes } from './comment-inbox-routes.js';
 import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
@@ -283,10 +279,10 @@ devicePoolRoutes.post(
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
     if (jobId) {
-      const released = await releaseJobFromMaster({ jobId, sessionId });
+      const released = await releaseJobHold(jobId, sessionId);
       return c.json({ released: released ? 1 : 0 });
     }
-    const released = await releaseAllHeldBySession(sessionId);
+    const released = await releaseHoldsOf(sessionId);
     return c.json({ released });
   },
 );

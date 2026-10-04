@@ -1,9 +1,10 @@
 // An unverified close says so on each issue, so it never reads as a verified one: sid-desk ISS-191
 // closed 42 issues on a release that was not running (ISS-1042, ISS-1321).
 
-import { and, eq, like, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, issues, pipelineRuns } from '../db/schema.js';
+import { postIssueNoticeOnce } from '../comments/index.js';
+import { issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { issueArchiveSide } from '../issues/archive.js';
 import { logger } from '../logger.js';
@@ -57,14 +58,8 @@ export async function noteUnverifiedCloses(args: {
         .where(and(eq(issues.id, issueId), ...issueArchiveSide(false)))
         .for('update');
       if (!live) return false;
-      const [already] = await tx
-        .select({ id: comments.id })
-        .from(comments)
-        .where(and(eq(comments.issueId, issueId), like(comments.body, `%${marker}%`)))
-        .limit(1);
-      if (already) return false;
-      await tx.insert(comments).values({ issueId, ...author, body });
-      return true;
+      const posted = await postIssueNoticeOnce({ issueId, ...author, body, marker }, tx);
+      return posted !== null;
     });
     if (wrote) written += 1;
   }

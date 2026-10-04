@@ -12,11 +12,12 @@
 // claim release to `releasing-recovery.ts`, which is also what a batch that
 // died without either outcome goes through.
 
-import { eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
+import { claimIssuesForRelease } from '../issues/index.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { setWorkStep } from '../issues/work-state.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -177,18 +178,7 @@ export async function createReleaseBatch(
   });
   await announceOneShotRun(run.id, runSpec);
 
-  const claimed = await db.execute<{ id: string }>(sql`
-    UPDATE issues
-    SET release_batch_run_id = ${run.id}, updated_at = now()
-    WHERE project_id = ${projectId}
-      AND id IN (${sql.join(
-        issueIds.map((id) => sql`${id}`),
-        sql`, `,
-      )})
-      AND status = ${gateStatus}
-      AND release_batch_run_id IS NULL
-    RETURNING id
-  `);
+  const claimed = await claimIssuesForRelease({ projectId, issueIds, gateStatus, runId: run.id });
 
   if (claimed.length !== issueIds.length) {
     await closeRunIfOneShot(run.id, 'cancelled');
