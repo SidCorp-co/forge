@@ -1,8 +1,7 @@
 /**
  * Git over HTTPS, authenticated by a short-lived credential minted per ask (ISS-50 made it any host's).
  *
- * The deploy-key path hands a runner one long-lived secret it keeps. This one hands it nothing to
- * keep: the runner's git credential helper asks here once per git invocation, and what the device is
+ * It hands a runner nothing to keep: the runner's git credential helper asks here once per git invocation, and what the device is
  * allowed to reach is decided on every ask from the bindings of the projects it actually runs. Each
  * source host provider says which repository a binding reaches and how its credential is minted
  * (`types.ts:GitCredentialMint`) — a GitHub App installation token, a GitLab access token.

@@ -134,7 +134,6 @@ export function provideExecutionPorts(): void {
     withDeclaredSource,
     projectsWithHostCredential,
     isHttpsGitUrl,
-    decryptSecret,
     publishedRunnerBuild: getPublishedRunnerBuild,
     mainRunnerHead,
     cmpVersion,

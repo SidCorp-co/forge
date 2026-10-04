@@ -88,9 +88,6 @@ sentence that justifies it, and an exception with no reason is refused.
   loads. It is the one module importing `@sentry/node`.
 - **The runner protocol** (the `ws`, `devices` and `runners` modules of core) is not under `integrations`: the paired box
   dials in to Forge over Forge's own contract in `packages/contracts`, so nothing there reaches out.
-- **The git binary** (`packages/core/src/git/remote-divergence.ts`) speaks the git protocol to the source host with a
-  credential the source-hosting port issues; the protocol is vendor-neutral, and the scan does not
-  read process spawns.
 - **The oasdiff binary** (`packages/core/src/ecosystem/contract/oasdiff.ts`) is a local process the
   contract differ runs over two specs it already holds; it reaches no system. Only its pinned
   download crosses a boundary, and that sits in `packages/core/src/integrations/published-releases/public-releases.ts`.
