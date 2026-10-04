@@ -58,7 +58,7 @@ export function AgentsTab() {
   const { toast } = useToast();
 
   const [revealed, setRevealed] = useState<{ userId: string; plaintext: string } | null>(null);
-  const [renaming, setRenaming] = useState<Renaming>(null);
+  const [renaming, setRenaming] = useState<{ userId: string; value: string } | null>(null);
 
   if (activeOrg && activeOrg.role !== "owner" && activeOrg.role !== "admin") {
     return (
@@ -123,7 +123,40 @@ export function AgentsTab() {
         </p>
       </header>
 
-      {revealed && <CredentialReveal plaintext={revealed.plaintext} onDone={() => setRevealed(null)} />}
+      {revealed && (
+        <Card>
+          <CardContent>
+            <CardTitle className="mb-2">Copy this now — it is shown once</CardTitle>
+            <p className="fg-body-sm mb-3">
+              Forge stores a hash of it, so there is nothing to read back. Losing it means minting
+              another.
+            </p>
+            <MonoTag>{revealed.plaintext}</MonoTag>
+            <div className="mt-3 flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(revealed.plaintext);
+                    toast({ title: "Copied to clipboard", tone: "success" });
+                  } catch {
+                    toast({
+                      title: "Copy failed",
+                      description: "Select and copy it by hand.",
+                      tone: "error",
+                    });
+                  }
+                }}
+              >
+                Copy
+              </Button>
+              <Button variant="ghost" onClick={() => setRevealed(null)}>
+                I have it
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <CreateAgentForm orgId={orgId} />
 
@@ -151,12 +184,35 @@ export function AgentsTab() {
                   return (
                     <TR key={agent.userId}>
                       <TD>
-                        <AgentNameCell
-                          agent={agent}
-                          renaming={renaming}
-                          onRenaming={setRenaming}
-                          onRename={onRename}
-                        />
+                        {renaming?.userId === agent.userId ? (
+                          <Field label="Name" hint="Free text. Nothing resolves against it.">
+                            <Input
+                              value={renaming.value}
+                              autoFocus
+                              onChange={(e) =>
+                                setRenaming({ userId: agent.userId, value: e.target.value })
+                              }
+                              onBlur={() => onRename(agent, renaming.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") onRename(agent, renaming.value);
+                                if (e.key === "Escape") setRenaming(null);
+                              }}
+                            />
+                          </Field>
+                        ) : (
+                          <button
+                            type="button"
+                            className="text-left"
+                            onClick={() =>
+                              setRenaming({
+                                userId: agent.userId,
+                                value: agent.displayName ?? "",
+                              })
+                            }
+                          >
+                            {agentLabel(agent)}
+                          </button>
+                        )}
                       </TD>
                       <TD>
                         <MonoTag>{agentAddress(agent)}</MonoTag>
@@ -218,85 +274,5 @@ export function AgentsTab() {
         </Card>
       )}
     </div>
-  );
-}
-
-/** The one-time reveal of a minted credential. */
-function CredentialReveal({ plaintext, onDone }: { plaintext: string; onDone: () => void }) {
-  const { toast } = useToast();
-  return (
-    <Card>
-      <CardContent>
-        <CardTitle className="mb-2">Copy this now — it is shown once</CardTitle>
-        <p className="fg-body-sm mb-3">
-          Forge stores a hash of it, so there is nothing to read back. Losing it means minting
-          another.
-        </p>
-        <MonoTag>{plaintext}</MonoTag>
-        <div className="mt-3 flex gap-2">
-          <Button
-            variant="secondary"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(plaintext);
-                toast({ title: "Copied to clipboard", tone: "success" });
-              } catch {
-                toast({
-                  title: "Copy failed",
-                  description: "Select and copy it by hand.",
-                  tone: "error",
-                });
-              }
-            }}
-          >
-            Copy
-          </Button>
-          <Button variant="ghost" onClick={onDone}>
-            I have it
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-type Renaming = { userId: string; value: string } | null;
-
-/** An agent's name, which a click turns into an inline editor saved on blur or Enter. */
-function AgentNameCell({
-  agent,
-  renaming,
-  onRenaming,
-  onRename,
-}: {
-  agent: AgentAccountRow;
-  renaming: Renaming;
-  onRenaming: (next: Renaming) => void;
-  onRename: (agent: AgentAccountRow, value: string) => void;
-}) {
-  if (renaming?.userId !== agent.userId) {
-    return (
-      <button
-        type="button"
-        className="text-left"
-        onClick={() => onRenaming({ userId: agent.userId, value: agent.displayName ?? "" })}
-      >
-        {agentLabel(agent)}
-      </button>
-    );
-  }
-  return (
-    <Field label="Name" hint="Free text. Nothing resolves against it.">
-      <Input
-        value={renaming.value}
-        autoFocus
-        onChange={(e) => onRenaming({ userId: agent.userId, value: e.target.value })}
-        onBlur={() => onRename(agent, renaming.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") onRename(agent, renaming.value);
-          if (e.key === "Escape") onRenaming(null);
-        }}
-      />
-    </Field>
   );
 }
