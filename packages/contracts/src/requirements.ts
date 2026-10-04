@@ -195,6 +195,28 @@ export interface RequirementWaitingOn {
 	act: string;
 	/** Why, for the tooltip: the rule in `requirements/standing.ts` that put it there. */
 	rule: string;
+	/** When what they owe is a task with an SLA, its due time. */
+	dueAt?: string;
+}
+
+/** The tasks of workflow requirement-to-delivery a requirement holds open, derived on read. */
+export const REQUIREMENT_TASK_KINDS = ["breakdown", "check"] as const;
+export type RequirementTaskKind = (typeof REQUIREMENT_TASK_KINDS)[number];
+
+/** Step `breakdown`: the master proposes the breakdown within this many working days of the agree. */
+export const BREAKDOWN_SLA_WORKING_DAYS = 2;
+/** Step `check`: the BA checks the business criteria within this many working days of delivery. */
+export const CHECK_SLA_WORKING_DAYS = 5;
+
+export interface RequirementTask {
+	kind: RequirementTaskKind;
+	/** The role the design gives the task: the project master breaks down, the BA checks. */
+	owner: "Project master" | "BA";
+	/** The requirement revision the task is for; a revision holds at most one of each kind. */
+	revision: number;
+	openedAt: string;
+	dueAt: string;
+	overdue: boolean;
 }
 
 /** A business criterion's proof: its linked issue criteria and their latest verdicts. */
@@ -300,6 +322,8 @@ export interface RequirementStanding {
 	attentionGroup: RequirementAttentionGroup;
 	waitingOn: RequirementWaitingOn;
 	facts: RequirementFacts;
+	/** The open tasks of the delivery journey, each with its owner and SLA. */
+	tasks: RequirementTask[];
 	/** The revision the coverage is read against: the current one, else the newest. */
 	shownRevision: number | null;
 	coverage: RequirementCoverage[];

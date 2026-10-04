@@ -81,7 +81,7 @@ const DESCRIPTION =
   'target SUGGESTION_QUEUE_FULL, a payload that does not parse for its kind SUGGESTION_PAYLOAD_INVALID. ' +
   'revision_diff takes { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } on a ' +
   'requirement; requirement_draft takes { title, reason, … } on an issue; readiness { checks: [{ check, passed, detail? }] }; ' +
-  'breakdown { issues: [{ title, description?, complexity: xs | s | m | l | xl, priority?, category?, builds?: flow | null, criteria?: [{ body, tracesTo? }], blockedBy?: [index | issue key] }], uncovered? } — ' +
+  'breakdown, proposed only by the project master (the project’s own agent; anyone else, and a revise, is SUGGESTION_BREAKDOWN_PROPOSE_FORBIDDEN), one open per requirement revision (SUGGESTION_BREAKDOWN_OPEN): { issues: [{ title, description?, complexity: xs | s | m | l | xl, priority?, category?, builds?: flow | null, criteria: [{ body, tracesTo: BC-n }] (at least one, each traced), blockedBy?: [index | issue key] }], uncovered? } — ' +
   'priority defaults to medium and category to feature, and the accept effect names each issue it defaulted; builds names the ' +
   'pinned design the issue builds (left out: the one design the latest baseline pins; several pinned is SUGGESTION_BUILD_UNNAMED, ' +
   'a flow it does not pin SUGGESTION_BUILD_UNPINNED), linked as the issue’s build so the build gate holds it; ' +

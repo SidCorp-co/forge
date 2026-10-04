@@ -111,6 +111,8 @@ export const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_BUILD_UNPINNED",
 	"SUGGESTION_REVISE_FORBIDDEN",
 	"SUGGESTION_REVISION_UNCHANGED",
+	"SUGGESTION_BREAKDOWN_PROPOSE_FORBIDDEN",
+	"SUGGESTION_BREAKDOWN_OPEN",
 	"CLARIFICATION_ALREADY_OPEN",
 ] as const;
 export type SuggestionRefusalCode = (typeof SUGGESTION_REFUSAL_CODES)[number];
@@ -206,11 +208,11 @@ export const SUGGESTION_PAYLOADS = {
 							.array(
 								z.strictObject({
 									body: z.string().trim().min(1).max(4_000),
-									tracesTo: bcCode.optional(),
+									tracesTo: bcCode,
 								}),
 							)
-							.max(100)
-							.optional(),
+							.min(1)
+							.max(100),
 						blockedBy: z.array(breakdownBlocker).max(50).optional(),
 						complexity: z.enum(REGISTRY_ISSUE_COMPLEXITIES),
 						priority: z.enum(REGISTRY_ISSUE_PRIORITIES).optional(),

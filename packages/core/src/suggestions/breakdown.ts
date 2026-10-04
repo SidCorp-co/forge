@@ -240,12 +240,12 @@ export async function breakdownEffect(
         ...(item.category === undefined ? (['category'] as const) : []),
       ],
     });
-    const criteria = (item.criteria ?? []).map((c, j) => ({
+    const criteria = item.criteria.map((c, j) => ({
       n: j + 1,
       statement: c.body,
-      requirementCriterionId: c.tracesTo ? (codes.get(c.tracesTo) ?? null) : null,
+      requirementCriterionId: codes.get(c.tracesTo) ?? null,
     }));
-    if (criteria.length) await putCriteria(tx, issue.id, criteria);
+    await putCriteria(tx, issue.id, criteria);
   }
   const writer = {
     actor: { type: 'user' as const, id: actor.userId, agency: actor.agency },

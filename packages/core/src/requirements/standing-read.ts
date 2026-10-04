@@ -52,6 +52,17 @@ const latestSeqAt = (
     null,
   );
 
+const firstBaselineAt = (
+  rows: readonly { requirementId: string; revision: number; agreedAt: Date }[],
+  id: string,
+  revision: number | null,
+) =>
+  rows.reduce<Date | null>(
+    (m, b) =>
+      b.requirementId === id && b.revision === revision && (!m || b.agreedAt < m) ? b.agreedAt : m,
+    null,
+  );
+
 /** The standing of each requirement in `rows`, keyed by id; all rows belong to `projectId`. */
 export async function standingsOf(
   projectId: string,
@@ -114,6 +125,7 @@ export async function standingsOf(
           requirementId: requirementBaselines.requirementId,
           revision: requirementBaselines.revision,
           seq: requirementBaselines.seq,
+          agreedAt: requirementBaselines.agreedAt,
         })
         .from(requirementBaselines)
         .where(inArray(requirementBaselines.requirementId, ids)),
@@ -174,6 +186,7 @@ export async function standingsOf(
         openSuggestionKinds: by(open, row.id).map((s) => s.kind),
         stalePins: stalePinsOf(by(pins, row.id)),
         feedback: feedbackBy.get(row.id) ?? { open: 0, untriaged: [] },
+        agreedAt: firstBaselineAt(baselineSeqs, row.id, row.currentRevision),
         updatedAt: row.updatedAt,
         now,
       }),
