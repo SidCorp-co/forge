@@ -1,7 +1,7 @@
 "use client";
 
-// A requirement's full page: a main column for reading and acting, split into five views by tabs
-// (Overview, Criteria, Revisions, Decisions, Activity), beside a sticky rail of the at-a-glance facts. Each
+// A requirement's full page: a main column for reading and acting, split into six views by tabs
+// (Overview, Criteria, Revisions, Mockups, Decisions, Activity), beside a sticky rail of the at-a-glance facts. Each
 // fact and each act appears once: the facts live in the rail, Accept / Reject only beside the diff.
 // Everything derived (whose turn, coverage, history) comes from core's read model.
 
@@ -22,6 +22,8 @@ import {
 } from "@/design";
 import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
 import { useEntityDecisions } from "@/features/comments/hooks";
+import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
+import { useMockups } from "@/features/mockups/hooks";
 import { PendingBadge, RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
 import { useWaitingSuggestions } from "@/features/suggestions/hooks";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
@@ -33,7 +35,7 @@ import { RequirementFacts } from "./requirement-facts";
 import { CriteriaTable, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
 import { RequirementBanner } from "./standing-bits";
 
-export const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "decisions", "activity"] as const;
+export const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "mockups", "decisions", "activity"] as const;
 export type RequirementTab = (typeof REQUIREMENT_TABS)[number];
 
 /** The open view rides `?tab=`, written without a navigation, so back from an issue lands on it. */
@@ -187,6 +189,13 @@ export function RequirementPage({
 }) {
   const q = useRequirement(projectId, reqKey);
   const decisions = useEntityDecisions(projectId, "requirement", reqKey);
+  const proposedAt =
+    q.data?.revisions.find((r) => r.state === "draft" || r.state === "proposed")?.revision ??
+    q.data?.currentRevision ??
+    q.data?.revisions[0]?.revision ??
+    1;
+  const mockupTarget = { type: "requirement" as const, key: reqKey, revision: proposedAt };
+  const mockups = useMockups(projectId, mockupTarget);
   if (q.isLoading) {
     return (
       <div className="grid min-h-[40vh] place-items-center">
@@ -208,6 +217,7 @@ export function RequirementPage({
     { value: "overview" as const, label: "Overview" },
     { value: "criteria" as const, label: "Criteria", count: s.coverage.length },
     { value: "revisions" as const, label: "Revisions", count: d.revisions.length },
+    { value: "mockups" as const, label: "Mockups", count: mockups.data?.returned },
     { value: "decisions" as const, label: "Decisions", count: decisions.data?.returned },
     { value: "activity" as const, label: "Activity", count: d.history.length },
   ];
@@ -228,6 +238,7 @@ export function RequirementPage({
         {tab === "overview" ? <Overview d={d} projectId={projectId} /> : null}
         {tab === "criteria" ? <Criteria d={d} projectId={projectId} slug={slug} /> : null}
         {tab === "revisions" ? <Revisions d={d} projectId={projectId} /> : null}
+        {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}
         {tab === "decisions" ? (
           <section data-testid="view-decisions" aria-label="Decisions">
             <ViewHeading>Decisions</ViewHeading>

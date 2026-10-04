@@ -41,6 +41,8 @@ import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
+import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
+import { useMockups } from "@/features/mockups/hooks";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
@@ -153,6 +155,8 @@ export function IssueDetailScreen({
   // `projectId` (already resolved from the route's slug) is what lets it
   // resolve on every one of these reads.
   const issueQ = useIssue(id, projectId);
+  const mockupTarget = { type: "issue" as const, key: issueQ.data?.displayId ?? id };
+  const mockupsQ = useMockups(projectId, mockupTarget);
   const canonicalId = canonicalIssueId(id, issueQ.data?.id);
   const commentsQ = useComments(canonicalId, projectId);
   const activityQ = useActivity(canonicalId, projectId);
@@ -325,6 +329,7 @@ export function IssueDetailScreen({
     { value: "overview" as const, label: "Overview" },
     { value: "criteria" as const, label: "Criteria", count: criteriaQ.data?.criteria.length ?? checklist.length },
     { value: "runs" as const, label: "Runs", count: stepOutcomes.length },
+    { value: "mockups" as const, label: "Mockups", count: mockupsQ.data?.returned },
     { value: "activity" as const, label: "Activity", count: commentsQ.data?.totalCount },
   ];
 
@@ -510,6 +515,7 @@ export function IssueDetailScreen({
               )}
             </div>
           ) : null}
+          {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}
           {tab === "activity" ? (
             <section id="issue-comments" aria-label="Activity" data-testid="view-activity">
               <SegmentedControl
@@ -574,7 +580,7 @@ export function IssueDetailScreen({
   );
 }
 
-const ISSUE_TABS = ["overview", "criteria", "runs", "activity"] as const;
+const ISSUE_TABS = ["overview", "criteria", "runs", "mockups", "activity"] as const;
 
 /** Skeleton placeholder for the detail tab bodies (comments / activity / tasks)
  *  while their queries load — replaces the bare "Loading …" text (ISS-308 F1). */

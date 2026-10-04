@@ -163,7 +163,7 @@ requirementRoutes.put(
   revisionParam,
   strictBody(
     z.strictObject(revisionFields),
-    '{ reason, spec?, tldr?, changeSummary?, criteria } rewrites a draft revision whole',
+    '{ reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } rewrites a draft revision whole; a code the draft or its base holds keeps that code, no code takes the next one',
   ),
   async (c) => {
     const { id, req, n } = c.req.valid('param');

@@ -25,6 +25,7 @@ import {
 import { assertProjectAccess } from '../lib/authz.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { staleOnTargetRevised } from '../suggestions/stale.js';
+import { acceptedMockupIds } from './baselines.js';
 import { embedRequirementHeadLater } from './embeddings.js';
 import {
   createRequirementIn,
@@ -205,8 +206,8 @@ export async function writeRevision(input: {
           eq(requirementRevisions.revision, target.revision),
         ),
       );
-    await resetDraftCriteria(tx, row.id, target.revision);
-    return writeCriteria(tx, row.id, target.revision, write.criteria);
+    const own = await resetDraftCriteria(tx, row.id, target.revision);
+    return writeCriteria(tx, row.id, target.revision, write.criteria, own);
   });
   return answer(projectId, row.id, actor, refusals);
 }
@@ -302,7 +303,7 @@ export async function returnRevision(input: {
   return answer(projectId, row.id, actor, refusals);
 }
 
-/** Writes the baseline of `revision` and a pin per linked design's approved revision. */
+/** Writes the baseline of `revision`: a pin per linked design's approved revision and accepted mockup. */
 async function writeBaseline(
   tx: Tx,
   requirementId: string,
@@ -315,11 +316,25 @@ async function writeBaseline(
   await tx
     .insert(requirementBaselines)
     .values({ requirementId, revision, agreedBy: actor.userId, reason, readiness });
-  const pins = designs.flatMap((d) =>
-    d.approvedRevision === null
-      ? []
-      : [{ requirementId, revision, workflowId: d.workflowId, designRevision: d.approvedRevision }],
-  );
+  const pins = [
+    ...designs.flatMap((d) =>
+      d.approvedRevision === null
+        ? []
+        : [
+            {
+              requirementId,
+              revision,
+              workflowId: d.workflowId,
+              designRevision: d.approvedRevision,
+            },
+          ],
+    ),
+    ...(await acceptedMockupIds(tx, requirementId, revision)).map((mockupId) => ({
+      requirementId,
+      revision,
+      mockupId,
+    })),
+  ];
   if (pins.length) await tx.insert(requirementBaselinePins).values(pins);
 }
 

@@ -4,7 +4,9 @@ import {
   CREATE_SUGGESTION_SHAPE,
   createSuggestionRequestSchema,
   listSuggestionsQuerySchema,
+  REVISE_SUGGESTION_SHAPE,
   rejectSuggestionRequestSchema,
+  reviseSuggestionRequestSchema,
   SUGGESTION_STATUSES,
   type SuggestionResponse,
   suggestionSummaryOf,
@@ -20,6 +22,7 @@ import {
   acceptSuggestion,
   createSuggestion,
   rejectSuggestion,
+  reviseSuggestion,
   type SuggestionOutcome,
   withdrawSuggestion,
 } from './service.js';
@@ -151,6 +154,26 @@ suggestionRoutes.post(
         id: sid,
         actor: actorOf(c),
         reason: c.req.valid('json').reason,
+      }),
+    );
+  },
+);
+
+suggestionRoutes.post(
+  '/:id/suggestions/:sid/revise',
+  suggestionParam,
+  strictBody(reviseSuggestionRequestSchema, REVISE_SUGGESTION_SHAPE),
+  async (c) => {
+    const { id, sid } = c.req.valid('param');
+    const body = c.req.valid('json');
+    return answer(
+      c,
+      await reviseSuggestion({
+        projectId: id,
+        id: sid,
+        actor: actorOf(c),
+        payload: body.payload,
+        reason: body.reason,
       }),
     );
   },

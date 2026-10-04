@@ -8,15 +8,19 @@
 
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { readProjectDocument } from '../project-config/service.js';
 import {
   ReleaseRecutRefusedError,
   ReleaseVersionConflictError,
   ReleaseVersionExhaustedError,
+  ReleaseVersionLineBehindError,
 } from './errors.js';
 import {
+  compareReleaseVersions,
   formatReleaseVersion,
   isStorableReleaseVersion,
   nextReleaseVersion,
+  type PrereleaseLine,
   parseReleaseVersion,
   RELEASE_VERSION_SHAPE,
   type ReleaseVersion,
@@ -41,8 +45,9 @@ export interface ReleaseRowReading {
   shipped: boolean;
 }
 
-// Ordered by the digits, because `'0.10.0' < '0.9.0'` as text and is not as a version; the shape
-// CHECK on the column is what makes the `int[]` cast safe.
+// cm:why ordered here by `compareReleaseVersions` rather than in SQL: `'0.10.0' < '0.9.0'` as text,
+// and a prerelease's `-dev.N` tail has no integer-array cast; the shape CHECK on the column is what
+// makes every stored value parse.
 export async function highestCutVersion(
   executor: Tx,
   projectId: string,
@@ -57,25 +62,31 @@ export async function highestCutVersion(
     FROM pipeline_runs r
     WHERE r.project_id = ${projectId}
       AND r.release_version IS NOT NULL
-    ORDER BY string_to_array(r.release_version, '.')::int[] DESC
-    LIMIT 1
   `);
-  const row = rows[0];
-  if (!row) return null;
-  const version = parseReleaseVersion(row.release_version);
-  if (!version) {
-    // Unreachable while the CHECK stands, and not silently repaired if it ever is.
-    throw new ReleaseVersionConflictError(
-      projectId,
-      `${row.release_version} (stored on run ${row.id}, which is not ${RELEASE_VERSION_SHAPE})`,
-    );
+  let highest: ReleaseRowReading | null = null;
+  for (const row of rows) {
+    const version = parseReleaseVersion(row.release_version);
+    if (!version) {
+      throw new ReleaseVersionConflictError(
+        projectId,
+        `${row.release_version} (stored on run ${row.id}, which is not ${RELEASE_VERSION_SHAPE})`,
+      );
+    }
+    if (highest && compareReleaseVersions(version, highest.version) <= 0) continue;
+    highest = {
+      runId: row.id,
+      version,
+      status: row.status,
+      shipped: row.release_released_at !== null,
+    };
   }
-  return {
-    runId: row.id,
-    version,
-    status: row.status,
-    shipped: row.release_released_at !== null,
-  };
+  return highest;
+}
+
+export async function releaseLineOf(projectId: string): Promise<PrereleaseLine | null> {
+  const declared = (await readProjectDocument(projectId))?.document.release?.prerelease;
+  const of = declared ? parseReleaseVersion(declared.of) : null;
+  return declared && of ? { of, label: declared.label } : null;
 }
 
 /** The version the last release to SHIP cut. `null` when no release here has ever shipped. */
@@ -102,6 +113,13 @@ export function ruleOnRecut(recutOf: string, highest: ReleaseRowReading | null):
     throw new ReleaseRecutRefusedError(
       recutOf,
       `it is not a version. Send ${RELEASE_VERSION_SHAPE}`,
+    );
+  }
+  if (asked.pre) {
+    throw new ReleaseRecutRefusedError(
+      recutOf,
+      'a prerelease is never re-cut: the next cut on its line takes the next number, the failed ' +
+        'one stays burned. Omit `recutOf`',
     );
   }
   if (!highest) {
@@ -137,6 +155,19 @@ export function ruleOnRecut(recutOf: string, highest: ReleaseRowReading | null):
   return highest.version;
 }
 
+export function ruleAboveHighest(
+  projectId: string,
+  next: ReleaseVersion,
+  highest: ReleaseRowReading | null,
+): void {
+  if (!highest || compareReleaseVersions(next, highest.version) > 0) return;
+  throw new ReleaseVersionLineBehindError(
+    projectId,
+    formatReleaseVersion(next),
+    formatReleaseVersion(highest.version),
+  );
+}
+
 export interface CutReleaseVersionArgs {
   runId: string;
   projectId: string;
@@ -153,14 +184,24 @@ export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Pr
   await lockProjectVersions(tx, projectId);
 
   const highest = await highestCutVersion(tx, projectId);
+  const line = await releaseLineOf(projectId);
+  if (line && recutOf !== undefined) {
+    throw new ReleaseRecutRefusedError(
+      recutOf,
+      `this project numbers every release as a prerelease of ${formatReleaseVersion(line.of)} ` +
+        '(project document `release.prerelease`), so a failed one is followed by the next number ' +
+        'on that line. Omit `recutOf`',
+    );
+  }
   // `!== undefined`, not truthiness: `recutOf: ''` asked for a re-cut with a value that is not a
   // version, and truthiness would absorb it as "no re-cut asked for" and cut a fresh minor.
   const recutFrom = recutOf !== undefined ? ruleOnRecut(recutOf, highest) : null;
-  const next = nextReleaseVersion(highest?.version ?? null, recutFrom);
+  const next = nextReleaseVersion(highest?.version ?? null, recutFrom, line);
   // Refused here rather than at the column, which would name itself instead of the rule.
   if (!isStorableReleaseVersion(next)) {
     throw new ReleaseVersionExhaustedError(projectId, formatReleaseVersion(next));
   }
+  ruleAboveHighest(projectId, next, highest);
   const version = formatReleaseVersion(next);
 
   const written = await tx.execute<{ id: string }>(sql`

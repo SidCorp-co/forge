@@ -4,6 +4,7 @@ import { MASTER_STATES } from '@forge/contracts/master-standing';
 import { RUN_STATES, RUN_STUCK_RULES } from '@forge/contracts/run-standing';
 import {
   SCHEDULE_KINDS,
+  SCHEDULE_RUN_SKIP_REASONS,
   SCHEDULE_RUN_STATUSES,
   SCHEDULE_RUN_TRIGGERS,
 } from '@forge/contracts/schedules';
@@ -71,5 +72,11 @@ describe('each schedule kind and fire trigger core serves reads as words', () =>
 
   it('ENUM_LABELS.fireTrigger names every SCHEDULE_RUN_TRIGGERS value and no other', () => {
     expect(Object.keys(ENUM_LABELS.fireTrigger).sort()).toEqual([...SCHEDULE_RUN_TRIGGERS].sort());
+  });
+
+  it('ENUM_LABELS.fireSkipReason names every SCHEDULE_RUN_SKIP_REASONS value and no other', () => {
+    expect(Object.keys(ENUM_LABELS.fireSkipReason).sort()).toEqual(
+      [...SCHEDULE_RUN_SKIP_REASONS].sort(),
+    );
   });
 });

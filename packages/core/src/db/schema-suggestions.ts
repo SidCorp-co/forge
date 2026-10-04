@@ -52,6 +52,9 @@ export const suggestions = pgTable(
     payload: jsonb('payload'),
     payloadVersion: integer('payload_version').notNull().default(1),
     fingerprint: text('fingerprint').notNull(),
+    // cm:why a reviewer's edit is a new suggestion by the reviewer naming the one it replaced, which
+    // is rejected in the same write (decision on design suggestion-lifecycle, ISS-117)
+    revisesId: uuid('revises_id').references((): AnyPgColumn => suggestions.id),
     status: text('status', { enum: SUGGESTION_STATUSES }).notNull().default('proposed'),
     producerKind: text('producer_kind', { enum: SUGGESTION_PRODUCERS }).notNull(),
     producerId: uuid('producer_id').references(() => users.id, { onDelete: 'set null' }),
@@ -110,5 +113,8 @@ export const suggestions = pgTable(
       .on(t.feedbackId, t.status)
       .where(sql`feedback_id IS NOT NULL`),
     sweepIdx: index('suggestions_status_created_idx').on(t.status, t.createdAt),
+    revisesUq: uniqueIndex('suggestions_revises_uq')
+      .on(t.revisesId)
+      .where(sql`revises_id IS NOT NULL`),
   }),
 );

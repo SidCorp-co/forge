@@ -3,13 +3,16 @@ import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import type { DesignStatus } from './design.js';
 import {
+  type LoadedRequirement,
+  type MockupContextRow,
+  type RequirementContextRow,
+  requirementContext,
+} from './requirement-context.js';
+import {
   ARTIFACT_CONTEXT_KEY,
   artifactContext,
   artifactContextRecord,
   type LoadedArtifact,
-  type LoadedRequirement,
-  type RequirementContextRow,
-  requirementContext,
   type TracedDesignRow,
 } from './run-context.js';
 
@@ -42,6 +45,23 @@ export async function loadArtifactContext(issueId: string): Promise<LoadedArtifa
   return artifactContext(await tracedDesignsOf(issueId));
 }
 
+const mockupLineOf = (m: Record<string, unknown>): MockupContextRow => ({
+  key: `MK-${Number(m.mockup_seq)}`,
+  kind: String(m.mockup_kind),
+  name: String(m.mockup_name),
+  caption: m.mockup_caption == null ? null : String(m.mockup_caption),
+});
+
+/** The mockups accepted on `issueId` itself, which its job is given beside its requirement's. */
+export async function issueMockupsOf(issueId: string): Promise<MockupContextRow[]> {
+  const rows = (await db.execute(sql`
+    SELECT mockup_seq, kind AS mockup_kind, name AS mockup_name, caption AS mockup_caption
+    FROM mockups WHERE issue_id = ${issueId} AND status = 'accepted'
+    ORDER BY mockup_seq
+  `)) as unknown as Array<Record<string, unknown>>;
+  return rows.map(mockupLineOf);
+}
+
 /** The requirement `issueId` delivers, at its head, with the criteria of that revision and its latest baseline. */
 export async function requirementRowOf(issueId: string): Promise<RequirementContextRow | null> {
   const [r] = (await db.execute(sql`
@@ -68,16 +88,18 @@ export async function requirementRowOf(issueId: string): Promise<RequirementCont
         `) as unknown as Promise<Array<Record<string, unknown>>>),
     db.execute(sql`
       SELECT b.revision, b.seq, b.agreed_at, p.workflow_id, w.flow, p.design_revision,
-             p.provider_project_id, p.contract_slug, p.contract_version
+             p.provider_project_id, p.contract_slug, p.contract_version,
+             m.mockup_seq, m.kind AS mockup_kind, m.name AS mockup_name, m.caption AS mockup_caption
       FROM requirement_baselines b
       LEFT JOIN requirement_baseline_pins p
         ON p.requirement_id = b.requirement_id AND p.revision = b.revision AND p.baseline_seq = b.seq
       LEFT JOIN project_workflows w ON w.id = p.workflow_id
+      LEFT JOIN mockups m ON m.id = p.mockup_id
       WHERE b.requirement_id = ${id}
         AND (b.revision, b.seq) = (
           SELECT revision, seq FROM requirement_baselines WHERE requirement_id = ${id}
            ORDER BY revision DESC, seq DESC LIMIT 1)
-      ORDER BY w.flow NULLS LAST, p.contract_slug
+      ORDER BY w.flow NULLS LAST, p.contract_slug, m.mockup_seq
     `) as unknown as Promise<Array<Record<string, unknown>>>,
   ]);
   const first = baselines[0];
@@ -112,6 +134,7 @@ export async function requirementRowOf(issueId: string): Promise<RequirementCont
               contractVersion: str(p.contract_version),
               providerProjectId: str(p.provider_project_id),
             })),
+          mockups: baselines.filter((p) => p.mockup_seq != null).map(mockupLineOf),
         }
       : null,
     plannedRevision: r.planned_revision == null ? null : Number(r.planned_revision),
@@ -121,8 +144,11 @@ export async function requirementRowOf(issueId: string): Promise<RequirementCont
 }
 
 /** The requirement a job on `issueId` is given; null when the issue delivers none. */
-export async function loadRequirementContext(issueId: string): Promise<LoadedRequirement | null> {
-  return requirementContext(await requirementRowOf(issueId));
+export async function loadRequirementContext(
+  issueId: string,
+  mockupsWithheld = false,
+): Promise<LoadedRequirement | null> {
+  return requirementContext(await requirementRowOf(issueId), mockupsWithheld);
 }
 
 /** Stamps the load on the job's session metadata, merged so no other key is touched. */

@@ -4,7 +4,8 @@ import { describeWireframe } from "@forge/contracts/wireframe";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { Button, IconButton, Input } from "@/design";
-import { issueDetailApi } from "@/features/issues/detail-api";
+import { fileBase64, mockupsApi } from "@/features/mockups/api";
+import { requirementsApi } from "@/features/requirements/api";
 import { formatApiError } from "@/lib/api/error";
 import { boardExporter, boardStore, useBoard } from "./board-store";
 
@@ -16,11 +17,21 @@ const BoardCanvas = dynamic(() => import("./board-canvas"), {
 /** The dock's width while a board is open: wide enough to draw in, still inside the dock's own bound. */
 export const BOARD_DOCK_WIDTH = 880;
 
+/** REQ-n is proposed against its open revision, else its head; FB-n and an issue key name themselves. */
+async function boardTarget(projectId: string, ref: string) {
+  if (/^REQ-\d+$/.test(ref)) {
+    const d = await requirementsApi.get(projectId, ref);
+    const revision = d.revisions.find((r) => r.state === "draft" || r.state === "proposed")?.revision ?? d.currentRevision ?? 1;
+    return { requirement: ref, revision };
+  }
+  return /^FB-\d+$/.test(ref) ? { feedback: ref } : { issue: ref };
+}
+
 const stamp = () => new Date().toISOString().replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-");
 
 /**
- * The assistant's board inside the chat panel, read-only to the person: the canvas, what it reads as, and Attach — which stores the board on
- * an issue as `board-<time>.wireframe.json` (the spec a run reads) and its SVG beside it.
+ * The assistant's board inside the chat panel, read-only to the person: the canvas, what it reads as, and Propose — which proposes the
+ * board as a wireframe mockup, with its SVG beside it, on the issue, requirement or feedback item named (ISS-78).
  */
 export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKey?: string | undefined }) {
   const board = useBoard();
@@ -36,13 +47,23 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
     if (!doc) return;
     setState({ busy: true, said: null, error: false });
     try {
-      const issue = await issueDetailApi.get(key.trim(), projectId);
-      const name = `board-${stamp()}`;
-      const json = new File([JSON.stringify(doc, null, 2)], `${name}.wireframe.json`, { type: "application/json" });
-      await issueDetailApi.uploadAttachment(issue.id, json);
+      const ref = key.trim();
+      const target = await boardTarget(projectId, ref);
       const svg = await boardExporter.svg();
-      if (svg) await issueDetailApi.uploadAttachment(issue.id, new File([svg], `${name}.svg`, { type: "image/svg+xml" }));
-      setState({ busy: false, said: `Attached to ${issue.displayId ?? key} as ${name}.wireframe.json${svg ? " + .svg" : ""}`, error: false });
+      const name = `board-${stamp()}`;
+      const caption = describeWireframe(doc);
+      const made = await mockupsApi.propose(projectId, { target, kind: "wireframe", document: doc, name: `${name}.wireframe.json`, caption });
+      if (svg) {
+        await mockupsApi.propose(projectId, {
+          target,
+          kind: "image",
+          name: `${name}.svg`,
+          mime: "image/svg+xml",
+          caption,
+          contentBase64: await fileBase64(new Blob([svg], { type: "image/svg+xml" })),
+        });
+      }
+      setState({ busy: false, said: `Proposed on ${made.mockup.target.key} as ${made.mockup.key}${svg ? " with its picture" : ""}; a person accepts it there.`, error: false });
     } catch (err) {
       setState({ busy: false, said: formatApiError(err), error: true });
     }
@@ -56,11 +77,11 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
           {board.doc ? describeWireframe(board.doc) : "Board"}
         </p>
         <Input
-          aria-label="Issue to attach the board to"
-          placeholder="ISS-…"
+          aria-label="Issue, requirement or feedback item to propose the board on"
+          placeholder="ISS-… REQ-… FB-…"
           value={key}
           onChange={(e) => setKey(e.target.value.toUpperCase())}
-          className="w-28"
+          className="w-40"
         />
         <Button
           size="sm"
@@ -68,7 +89,7 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
           disabled={!validKey || state.busy || !board.doc}
           onClick={attach}
         >
-          {state.busy ? "Attaching…" : `Attach to ${validKey ? key.trim() : "issue"}`}
+          {state.busy ? "Proposing…" : `Propose on ${validKey ? key.trim() : "…"}`}
         </Button>
         <IconButton icon="x" size="sm" aria-label="Close the board" onClick={boardStore.close} />
       </header>

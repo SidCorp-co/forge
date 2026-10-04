@@ -13,6 +13,7 @@ import { agentAccessValues } from '../db/release-axes.js';
 import type { IssueStatus } from '../db/schema.js';
 import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { AUTONOMOUS_DRIVER_STATUSES } from '../pipeline/autonomous-mode.js';
+import { releaseRuleSchema } from './release-rule-schema.js';
 
 export const SCHEMA_BASE = 'https://forge.sidcorp.co/schemas';
 
@@ -169,14 +170,7 @@ export const projectDocumentSchema = z.strictObject({
       approval: z.strictObject({ required: z.boolean() }),
     })
     .optional(),
-  // cm:why approval held as a project rule rather than a master's habit: `required` makes the
-  // kernel refuse every production act of a release batch until a person approved it
-  // (`release-batch/approvals.ts:assertApprovalAllowsAttempt`); absent is not required.
-  release: z
-    .strictObject({
-      approval: z.strictObject({ required: z.boolean() }),
-    })
-    .optional(),
+  release: releaseRuleSchema.optional(),
   // cm:why who decides a workflow design before anything is built from it
   // (`workflows/design.ts:designApproverRefusal`): `owner` is an org admin person, `master` adds
   // the project's own master; absent is `owner`. `templates` are the project's own diagram templates

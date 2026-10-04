@@ -248,7 +248,7 @@
       "name": "forge_agent_sessions.list"
     },
     {
-      "description": "Automation as core derives it (design automation rev 1): schedules, their fires and the agent reports the fires filed. Actions: standing | schedule | fire. standing: every schedule with state on | off | failing | owner_gone | firing, nextFireAt, owner, streak (trailing failed fires; a no-device skip counts, already-applied does not; failing at scheduleFailStreak, as admin alert A5 reads it) and lastFire; the newest fires (firesLimit, default 50; read firesHasMore) with status, why and produced {reports, newReports, proposals, issues, runs, notifications} counted by join; every report at triage new, high severity then oldest, then the newest triaged ones; and the steward proposals of the fires served. Each schedule, fire and report carries attentionGroup and waitingOn {kind you | person | admins | writers | issue | feedback | none, who, act triage_report | fix_schedule | reassign_owner | null, rule}: a report a fire filed goes to its schedule owner first, otherwise to members with write access; a failing schedule to its owner; a schedule whose owner is gone to the admins. schedule: one schedule by scheduleId with its fires, the reports they filed and their proposals. fire: one fire by fireId with each item it produced. To triage a report: forge_agent_report. view: 'summary' (the default) answers a list as summaries and a write as what it changed; view: 'full' answers the whole document, which get answers by default (get with view: 'summary' answers the summary).",
+      "description": "Automation as core derives it (design automation rev 1): schedules, their fires and the agent reports the fires filed. Actions: standing | schedule | fire | report. standing: every schedule with state on | off | failing | owner_gone | firing, nextFireAt, owner, streak (trailing failed fires; a no-device skip counts, already-applied does not; failing at scheduleFailStreak, as admin alert A5 reads it) and lastFire; the newest fires (firesLimit, default 50; read firesHasMore) with status, why and produced {reports, newReports, proposals, issues, runs, notifications} counted by join; every report at triage new, high severity then oldest, then the newest triaged ones; and the steward proposals of the fires served. Each schedule, fire and report carries attentionGroup and waitingOn {kind you | person | admins | writers | issue | feedback | none, who, act triage_report | fix_schedule | reassign_owner | null, rule}: a report a fire filed goes to its schedule owner first, otherwise to members with write access; a failing schedule to its owner; a schedule whose owner is gone to the admins. schedule: one schedule by scheduleId with its fires, the reports they filed and their proposals. fire: one fire by fireId with each item it produced. report: one agent report by reportId with its fire, triage and whom it waits on. To triage a report: forge_agent_report. view: 'summary' (the default) answers a list as summaries and a write as what it changed; view: 'full' answers the whole document, which get answers by default (get with view: 'summary' answers the summary).",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -257,7 +257,8 @@
             "enum": [
               "standing",
               "schedule",
-              "fire"
+              "fire",
+              "report"
             ],
             "type": "string"
           },
@@ -272,6 +273,11 @@
             "type": "integer"
           },
           "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "reportId": {
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "type": "string"
