@@ -3296,6 +3296,8 @@
 
 ### Fixed
 
+- **A landed issue waiting on its judge no longer reads as stuck.** Issues, the issue page and its
+  dependents say a judge owes a verdict, or that the next run claims and judges it.
 - **A client on the ten statuses is refused a retired status by name.** Naming `tested`,
   `developed` or another retired status, as a move or a filter, answers which ten statuses exist
   instead of mapping it. Only forge-plugin 3.36.542 still may.
