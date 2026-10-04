@@ -2,6 +2,7 @@
 // its id, or an edge by its from and to steps, with its label where several edges share both ends.
 
 import { z } from "zod";
+import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 
 export const WORKFLOW_STEP_ID = /^[a-z][a-z0-9_-]{0,62}$/;
 
@@ -110,7 +111,7 @@ export const OBSERVATION_REFUSAL_CODES = [
 	"WORKFLOW_OBSERVATION_DRIFT_UNKNOWN",
 	"WORKFLOW_OBSERVATION_REVISION_UNKNOWN",
 	"WORKFLOW_OBSERVATION_CITATION_KIND_MISMATCH",
-	"WORKFLOW_WRITER_NOT_PROJECT",
+	...PERMISSION_REFUSAL_CODES,
 ] as const;
 export type ObservationRefusalCode = (typeof OBSERVATION_REFUSAL_CODES)[number];
 

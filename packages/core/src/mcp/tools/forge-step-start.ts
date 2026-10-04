@@ -15,7 +15,8 @@ import {
   serializeWithAttachments,
 } from './forge-issues.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
-import { assertPrincipalIsWriter, zodToMcpSchema } from './lib.js';
+import { zodToMcpSchema } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 /**
  * Bound the comment thread so the bundle never overflows the MCP output cap on
@@ -57,7 +58,7 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    await assertPrincipalIsWriter(ctx.principal, input.projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.write', input.projectId);
 
     const loaded: IssueRow = await loadIssue(input.issueId);
     if (loaded.projectId !== input.projectId) {

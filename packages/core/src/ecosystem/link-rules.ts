@@ -1,7 +1,5 @@
 import type { z } from 'zod';
-import type { ProjectMemberRole } from '../db/schema.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
-import { actMiss, PROJECT_AGENT_WRITE } from '../lib/person-act.js';
+import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 import {
   type ApiRefusal,
   isRecord,
@@ -100,30 +98,9 @@ export function parseBuilderRun(raw: unknown, projectId: string): Checked<Builde
   return parseOwned(builderRunWriteSchema, raw, 'builder-run', owner);
 }
 
-export interface WriterFacts {
-  userId: string;
-  agency: ActorAgency;
-  role: ProjectMemberRole | null;
-}
-
-// cm:why a link and a builder run are the consuming project's own finding in its own code, so only that project's agent writes them: a person, a viewer, a counterparty's agent or a token fenced elsewhere is refused before anything is read
-export function writerRefusal(
-  facts: WriterFacts,
-  projectId: string,
-  code: 'LINK_WRITER_NOT_CONSUMER' | 'BUILDER_RUN_WRITER_NOT_PROJECT',
-): EcosystemRefusal | null {
-  const miss = actMiss(facts, PROJECT_AGENT_WRITE);
-  if (!miss) return null;
-  const held =
-    miss.kind === 'person-not-allowed'
-      ? `${facts.userId} acts as a person`
-      : `agent ${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}`;
-  return {
-    code,
-    path: '',
-    detail: `${held}; this is written only by project ${projectId}'s own agent (its master or a run it dispatched) holding member or above, through a token that reaches the project. The provider never writes or confirms it.`,
-  };
-}
+/** A link and a builder run are the consuming project's finding in its own code: ecosystem-links.write there. */
+export const writerRefusal = (facts: PermissionFacts, what: string): EcosystemRefusal | null =>
+  permissionRefusal(facts, 'ecosystem-links.write', what);
 
 export interface ProviderSide {
   id: string;

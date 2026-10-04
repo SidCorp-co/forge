@@ -27,7 +27,6 @@ import {
 import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
 import { isCommentIntent } from '../../issues/record-events/kinds.js';
-import { effectiveProjectRole } from '../../lib/authz.js';
 import { egressShown } from '../../lib/data-egress.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
@@ -42,7 +41,6 @@ import {
   updateEntity,
 } from './forge-comments-entity.js';
 import {
-  assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   type McpContext,
   principalAuthorDeviceId,
@@ -50,7 +48,8 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 import { buildListEnvelope } from './list-envelope.js';
-import { holds } from '../../permissions/index.js';
+import { requireCan } from '../../permissions/index.js';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
 
 /**
  * An MCP caller has no channel to declare a capability: `tool.handler(args)`
@@ -248,7 +247,7 @@ async function run(ctx: McpContext, principal: Principal, input: ToolInput): Pro
       if (!body) throw new Error('BAD_REQUEST: data.body is required for create');
 
       const projectId = await loadIssueProjectId(issueId);
-      await assertPrincipalIsWriter(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.write', projectId);
 
       const rawAttachments = input.data?.attachments ?? [];
       const decoded: Array<{ name: string; mime: string; bytes: Buffer }> = [];
@@ -332,9 +331,9 @@ async function run(ctx: McpContext, principal: Principal, input: ToolInput): Pro
       }
       const comment = await loadCommentForAccess(input.documentId);
 
-      await assertPrincipalIsWriter(principal, comment.projectId);
+      await requireCan({ userId: principal.userId }, 'project.write', comment.projectId);
       if (comment.authorId !== principal.userId) {
-        await assertCommentDeletePermission(principal.userId, comment.projectId);
+        await requireCan({ userId: principal.userId }, 'project.admin', comment.projectId);
       }
 
       await deleteComment(input.documentId);
@@ -351,13 +350,13 @@ async function run(ctx: McpContext, principal: Principal, input: ToolInput): Pro
 }
 
 type ToolInput = z.infer<typeof inputSchema>;
-type Principal = Parameters<typeof assertPrincipalIsWriter>[0];
+type Principal = McpPrincipal;
 
 async function listAction(principal: Principal, input: ToolInput): Promise<unknown> {
   const issueId = input.filters?.issue;
   if (!issueId) throw new Error('BAD_REQUEST: filters.issue is required for list');
   const projectId = await loadIssueProjectId(issueId);
-  await assertPrincipalIsWriter(principal, projectId);
+  await requireCan({ userId: principal.userId }, 'project.write', projectId);
 
   let after: ReturnType<typeof decodeCommentCursor> | undefined;
   if (input.cursor !== undefined) {
@@ -437,7 +436,7 @@ async function updateAction(principal: Principal, input: ToolInput): Promise<unk
   if (!body) throw new Error('BAD_REQUEST: data.body is required for update');
 
   const comment = await loadCommentForAccess(input.documentId);
-  await assertPrincipalIsWriter(principal, comment.projectId);
+  await requireCan({ userId: principal.userId }, 'project.write', comment.projectId);
 
   const written = await updateCommentBody(input.documentId, {
     body,
@@ -451,10 +450,3 @@ async function updateAction(principal: Principal, input: ToolInput): Promise<unk
   return result;
 }
 
-async function assertCommentDeletePermission(userId: string, projectId: string): Promise<void> {
-  const access = await effectiveProjectRole(userId, projectId);
-  if (!access) throw new Error('FORBIDDEN: project not found or not accessible');
-  if (!holds(access, 'project.admin')) {
-    throw new Error('FORBIDDEN: only the comment author or a project admin can delete');
-  }
-}

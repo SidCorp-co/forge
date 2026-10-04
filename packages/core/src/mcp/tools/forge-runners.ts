@@ -19,11 +19,12 @@ import {
 } from '../../runners/service.js';
 import { runnerCapabilitiesSchema } from '../../runners/types.js';
 import {
-  assertPrincipalIsAdmin,
+  assertTokenHasScope,
   type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const registerDataSchema = z
   .object({
@@ -129,7 +130,8 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (!input.data) {
         throw new Error('BAD_REQUEST: data is required for action=register');
       }
-      await assertPrincipalIsAdmin(ctx.principal, input.data.projectId);
+      assertTokenHasScope(ctx.principal, 'admin');
+      await requireCan({ userId: ctx.principal.userId }, 'project.admin', input.data.projectId);
       const caps = parseCapabilitiesOrThrow(input.data.capabilities);
       try {
         const row = await insertRunner({
@@ -157,7 +159,8 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
       const runnerId = input.runnerId;
       const ownerProjectId = await findRunnerProjectId(runnerId);
       if (!ownerProjectId) throw new Error('NOT_FOUND: runner not found');
-      await assertPrincipalIsAdmin(ctx.principal, ownerProjectId);
+      assertTokenHasScope(ctx.principal, 'admin');
+      await requireCan({ userId: ctx.principal.userId }, 'project.admin', ownerProjectId);
       const force = input.force ?? false;
       const inFlight = await countInFlightForOneRunner(runnerId);
       if (inFlight > 0 && !force) {
@@ -191,7 +194,8 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
       const runnerId = input.runnerId;
       const ownerProjectId = await findRunnerProjectId(runnerId);
       if (!ownerProjectId) throw new Error('NOT_FOUND: runner not found');
-      await assertPrincipalIsAdmin(ctx.principal, ownerProjectId);
+      assertTokenHasScope(ctx.principal, 'admin');
+      await requireCan({ userId: ctx.principal.userId }, 'project.admin', ownerProjectId);
       const transition = await auditedSetRunnerStatus({
         runnerId,
         newStatus: 'online',
@@ -212,7 +216,8 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
     const ownerProjectId = await findRunnerProjectId(input.runnerId);
     if (!ownerProjectId) throw new Error('NOT_FOUND: runner not found');
-    await assertPrincipalIsAdmin(ctx.principal, ownerProjectId);
+    assertTokenHasScope(ctx.principal, 'admin');
+    await requireCan({ userId: ctx.principal.userId }, 'project.admin', ownerProjectId);
     const caps = parseCapabilitiesOrThrow(input.capabilities);
     const row = await setRunnerCapabilities(input.runnerId, caps);
     if (!row) throw new Error('NOT_FOUND: runner not found');

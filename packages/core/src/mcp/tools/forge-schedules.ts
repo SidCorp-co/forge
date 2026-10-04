@@ -13,17 +13,13 @@ import {
   updateSchedule,
 } from '../../schedules/service.js';
 import {
-  assertPrincipalIsAdmin,
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
+  assertTokenHasScope,
   type ContextScopedMcpToolFactory,
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
-// REST uses viewer for read, but member is the lowest MCP gate available
-// (assertPrincipalIsMember); viewer-only PAT callers are not a supported
-// MCP persona so member is an acceptable tightening for the MCP surface.
 const scheduleMode = z.enum(['propose', 'auto']);
 const apiScheduleKind = z.enum(scheduleKinds);
 
@@ -85,7 +81,7 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
     switch (input.action) {
       case 'list': {
         if (!input.projectId) throw new Error('BAD_REQUEST: projectId is required for action=list');
-        await assertPrincipalIsMember(principal, input.projectId);
+        await requireCan({ userId: principal.userId }, 'project.read', input.projectId);
         const rows = await listSchedulesForMcp(input.projectId, input.enabled);
         return { schedules: rows };
       }
@@ -94,7 +90,7 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.scheduleId)
           throw new Error('BAD_REQUEST: scheduleId is required for action=get');
         const projectId = await readScheduleProjectId(input.scheduleId);
-        await assertPrincipalIsMember(principal, projectId);
+        await requireCan({ userId: principal.userId }, 'project.read', projectId);
         const row = await getSchedule(input.scheduleId, userId);
         return { schedule: row };
       }
@@ -103,7 +99,7 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.scheduleId)
           throw new Error('BAD_REQUEST: scheduleId is required for action=runs');
         const projectId = await readScheduleProjectId(input.scheduleId);
-        await assertPrincipalIsMember(principal, projectId);
+        await requireCan({ userId: principal.userId }, 'project.read', projectId);
         const viewer = await automationViewerOf(projectId, userId);
         if (!viewer) throw new Error(`FORBIDDEN: not a member of project ${projectId}`);
         const detail = await readScheduleDetail(projectId, input.scheduleId, viewer, {
@@ -120,7 +116,8 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
           throw new Error('BAD_REQUEST: projectId is required for action=create');
         if (!input.name) throw new Error('BAD_REQUEST: name is required for action=create');
         if (!input.cron) throw new Error('BAD_REQUEST: cron is required for action=create');
-        await assertPrincipalIsAdmin(principal, input.projectId);
+        assertTokenHasScope(principal, 'admin');
+        await requireCan({ userId: principal.userId }, 'project.admin', input.projectId);
         const inserted = await createSchedule(
           {
             projectId: input.projectId,
@@ -145,7 +142,8 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.scheduleId)
           throw new Error('BAD_REQUEST: scheduleId is required for action=update');
         const projectId = await readScheduleProjectId(input.scheduleId);
-        await assertPrincipalIsAdmin(principal, projectId);
+        assertTokenHasScope(principal, 'admin');
+        await requireCan({ userId: principal.userId }, 'project.admin', projectId);
         const updated = await updateSchedule(
           input.scheduleId,
           {
@@ -170,7 +168,8 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.scheduleId)
           throw new Error('BAD_REQUEST: scheduleId is required for action=delete');
         const projectId = await readScheduleProjectId(input.scheduleId);
-        await assertPrincipalIsAdmin(principal, projectId);
+        assertTokenHasScope(principal, 'admin');
+        await requireCan({ userId: principal.userId }, 'project.admin', projectId);
         await deleteSchedule(input.scheduleId, userId);
         return { deleted: true };
       }
@@ -179,14 +178,14 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.scheduleId)
           throw new Error('BAD_REQUEST: scheduleId is required for action=run');
         const projectId = await readScheduleProjectId(input.scheduleId);
-        await assertPrincipalIsWriter(principal, projectId);
+        await requireCan({ userId: principal.userId }, 'project.write', projectId);
         return runScheduleNow(input.scheduleId, { userId, viaTokenId: principal.tokenId });
       }
 
       case 'catalog': {
         if (!input.projectId)
           throw new Error('BAD_REQUEST: projectId is required for action=catalog');
-        await assertPrincipalIsMember(principal, input.projectId);
+        await requireCan({ userId: principal.userId }, 'project.read', input.projectId);
         return { messages: listImprovementMessages() };
       }
 

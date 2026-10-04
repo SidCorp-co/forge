@@ -1,12 +1,9 @@
 import { z } from 'zod';
 import { listAgentSessionsForMcp, readAgentSession } from '../../agent-sessions/service.js';
 import { agentSessionStatuses } from '../../db/schema.js';
-import {
-  assertPrincipalIsMember,
-  type ContextScopedMcpToolFactory,
-  zodToMcpSchema,
-} from './lib.js';
+import { type ContextScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
+import { requireCan } from '../../permissions/index.js';
 
 /**
  * MCP Phase 1 (ISS-7) — read-only access to the agent_sessions table.
@@ -36,7 +33,7 @@ export const forgeAgentSessionsListTool: ContextScopedMcpToolFactory = ({ princi
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId, issueId, status, limit } = listInputSchema.parse(args);
-    await assertPrincipalIsMember(principal, projectId);
+    await requireCan({ userId: principal.userId }, 'project.read', projectId);
 
     const sessionsLimit = limit ?? 50;
     const rows = await listAgentSessionsForMcp({
@@ -67,7 +64,7 @@ export const forgeAgentSessionsGetTool: ContextScopedMcpToolFactory = ({ princip
     const { sessionId } = getInputSchema.parse(args);
     const row = await readAgentSession(sessionId);
     if (!row) throw new Error('NOT_FOUND: agent session not found');
-    await assertPrincipalIsMember(principal, row.projectId);
+    await requireCan({ userId: principal.userId }, 'project.read', row.projectId);
 
     return { session: row };
   },

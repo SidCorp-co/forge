@@ -24,9 +24,6 @@ const postBodySchema = z
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 export const skillSmokeVerifyRoutes = new Hono<{ Variables: AuthVars }>();
 skillSmokeVerifyRoutes.use('/:projectId/skills/smoke-verify', requireAuth(), assertEmailVerified());
 
@@ -40,7 +37,7 @@ skillSmokeVerifyRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     return c.json(await buildSmokeVerifyReport(projectId));
   },
@@ -60,11 +57,7 @@ skillSmokeVerifyRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (tier === 2) {
-      requireHeld(access, 'project.admin');
-    } else if (!access.role) {
-      throw forbidden('not a project member');
-    }
+    requireHeld(access, tier === 2 ? 'project.admin' : 'project.read');
 
     let canary = null;
     if (tier === 2) {

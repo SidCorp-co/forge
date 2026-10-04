@@ -5,21 +5,20 @@ import { listJobEvents, listJobs, readJob } from '../../jobs/job-queries.js';
 import { assertDispatchable, gateReasonsForQueuedJobs } from '../../jobs/queued-gates.js';
 import { JobResumeError, resumeHeldJob } from '../../jobs/resume-job.js';
 import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   principalAgency,
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
+import { requireCan } from '../../permissions/index.js';
 
 /**
  * MCP Phase 1 (ISS-7) — read-only diagnostic surfaces over the jobs/events
  * tables. Mirrors the drizzle queries used by the REST job routes
  * (`packages/core/src/jobs/routes.ts`, `events-routes.ts`) but skips Hono so
  * MCP callers do not need an authenticated user session — project membership
- * is enforced on the calling principal (`assertPrincipalIsMember`).
+ * is enforced on the calling principal (`requireCan`).
  */
 
 const listInputSchema = z
@@ -61,7 +60,7 @@ export const forgeJobsListTool: ContextScopedMcpToolFactory = ({ principal }) =>
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId, status, type, issueId, limit } = listInputSchema.parse(args);
-    await assertPrincipalIsMember(principal, projectId);
+    await requireCan({ userId: principal.userId }, 'project.read', projectId);
 
     const jobsLimit = limit ?? DEFAULT_LIST_LIMIT;
     const rows = await listJobs({ projectId, status, type, issueId, limit: overfetch(jobsLimit) });
@@ -95,7 +94,7 @@ export const forgeJobsGetTool: ContextScopedMcpToolFactory = ({ principal }) => 
     const { jobId } = getInputSchema.parse(args);
     const row = await readJob(jobId);
     if (!row) throw new Error('NOT_FOUND: job not found');
-    await assertPrincipalIsMember(principal, row.projectId);
+    await requireCan({ userId: principal.userId }, 'project.read', row.projectId);
     if (row.status !== 'queued') return { job: row };
     return { job: row, gate: await assertDispatchable(row.id) };
   },
@@ -133,7 +132,7 @@ export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) 
     const { jobId, sinceSeq, limit } = eventsInputSchema.parse(args);
     const job = await readJob(jobId);
     if (!job) throw new Error('NOT_FOUND: job not found');
-    await assertPrincipalIsMember(principal, job.projectId);
+    await requireCan({ userId: principal.userId }, 'project.read', job.projectId);
 
     const eventsLimit = limit ?? 200;
     const fetched = await listJobEvents(jobId, overfetch(eventsLimit), sinceSeq);
@@ -175,7 +174,7 @@ export const forgeJobsCancelTool: ContextScopedMcpToolFactory = ({ principal }) 
     const { jobId, reason } = cancelInputSchema.parse(args);
     const job = await readJob(jobId);
     if (!job) throw new Error('NOT_FOUND: job not found');
-    await assertPrincipalIsWriter(principal, job.projectId);
+    await requireCan({ userId: principal.userId }, 'project.write', job.projectId);
 
     try {
       return await cancelJob(jobId, {
@@ -207,7 +206,7 @@ export const forgeJobsResumeTool: ContextScopedMcpToolFactory = ({ principal }) 
     const { jobId, reason } = cancelInputSchema.parse(args);
     const job = await readJob(jobId);
     if (!job) throw new Error('NOT_FOUND: job not found');
-    await assertPrincipalIsWriter(principal, job.projectId);
+    await requireCan({ userId: principal.userId }, 'project.write', job.projectId);
 
     try {
       return await resumeHeldJob(jobId, {

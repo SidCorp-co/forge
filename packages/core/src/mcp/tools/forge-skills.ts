@@ -22,12 +22,8 @@ import {
   updateProjectSkill,
 } from '../../skills/service.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
-import {
-  assertPrincipalIsAdmin,
-  assertPrincipalIsMember,
-  principalUserId,
-  zodToMcpSchema,
-} from './lib.js';
+import { assertTokenHasScope, principalUserId, zodToMcpSchema } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const listInputSchema = z.object({ projectId: z.uuid() });
 const getInputSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() });
@@ -174,7 +170,7 @@ export const forgeSkillsListTool: ContextScopedMcpToolFactory = ({ principal }) 
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId } = listInputSchema.parse(args);
-    await assertPrincipalIsMember(principal, projectId);
+    await requireCan({ userId: principal.userId }, 'project.read', projectId);
     const skills = dedupSkillsByName(await listProjectSkillCatalog(projectId)).map(toSkillListRow);
     return { skills };
   },
@@ -190,7 +186,7 @@ export const forgeSkillsGetTool: ContextScopedMcpToolFactory = ({ principal }) =
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const { projectId, skillId } = getInputSchema.parse(args);
-    await assertPrincipalIsMember(principal, projectId);
+    await requireCan({ userId: principal.userId }, 'project.read', projectId);
     const skill = await getSkillForProject(skillId, projectId);
     return { skill };
   },
@@ -206,7 +202,8 @@ export const forgeSkillsRegisterTool: ContextScopedMcpToolFactory = ({ principal
   inputSchema: zodToMcpSchema(registerInputSchema),
   handler: async (args) => {
     const input = registerInputSchema.parse(args);
-    await assertPrincipalIsAdmin(principal, input.projectId);
+    assertTokenHasScope(principal, 'admin');
+    await requireCan({ userId: principal.userId }, 'project.admin', input.projectId);
     const skill = await getSkillForProject(input.skillId, input.projectId);
     if (!skill) {
       throw new Error('NOT_FOUND: skill not found');
@@ -234,7 +231,7 @@ export const forgeSkillsListRegistrationsTool: ContextScopedMcpToolFactory = (ct
   inputSchema: zodToMcpSchema(listRegistrationsInputSchema),
   handler: async (args) => {
     const { projectId } = listRegistrationsInputSchema.parse(args);
-    await assertPrincipalIsMember(ctx.principal, projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
     const registrations = await listSkillRegistrations(projectId);
     return { registrations };
   },
@@ -250,7 +247,8 @@ export const forgeSkillsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(createInputSchema),
   handler: async (args) => {
     const input = createInputSchema.parse(args);
-    await assertPrincipalIsAdmin(ctx.principal, input.projectId);
+    assertTokenHasScope(ctx.principal, 'admin');
+    await requireCan({ userId: ctx.principal.userId }, 'project.admin', input.projectId);
     try {
       const skill = await createProjectSkill({
         projectId: input.projectId,
@@ -281,7 +279,8 @@ export const forgeSkillsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const { projectId, skillId, ...patch } = updateInputSchema.parse(args);
-    await assertPrincipalIsAdmin(ctx.principal, projectId);
+    assertTokenHasScope(ctx.principal, 'admin');
+    await requireCan({ userId: ctx.principal.userId }, 'project.admin', projectId);
     const row = await getSkillForProject(skillId, projectId);
     if (!row) throw new Error('NOT_FOUND: skill not found');
     if (row.scope !== 'project') {
@@ -311,7 +310,8 @@ export const forgeSkillsDeleteTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const { projectId, skillId } = getInputSchema.parse(args);
-    await assertPrincipalIsAdmin(ctx.principal, projectId);
+    assertTokenHasScope(ctx.principal, 'admin');
+    await requireCan({ userId: ctx.principal.userId }, 'project.admin', projectId);
     const row = await getSkillForProject(skillId, projectId);
     if (!row) throw new Error('NOT_FOUND: skill not found');
     if (row.scope !== 'project')
@@ -331,7 +331,7 @@ export const forgeSkillsEffectiveTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(effectiveInputSchema),
   handler: async (args) => {
     const { projectId } = effectiveInputSchema.parse(args);
-    await assertPrincipalIsMember(ctx.principal, projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
     const skills = await resolveEffectiveSkillsForProject(projectId);
     return { skills };
   },
@@ -347,7 +347,8 @@ export const forgeSkillsAdoptTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(adoptInputSchema),
   handler: async (args) => {
     const { projectId, skillId } = adoptInputSchema.parse(args);
-    await assertPrincipalIsAdmin(ctx.principal, projectId);
+    assertTokenHasScope(ctx.principal, 'admin');
+    await requireCan({ userId: ctx.principal.userId }, 'project.admin', projectId);
     const global = await getSkillForProject(skillId, projectId);
     if (!global) throw new Error('NOT_FOUND: skill not found');
     if (global.scope !== 'global') {
@@ -390,7 +391,7 @@ export const forgeSkillsSyncStatusTool: ContextScopedMcpToolFactory = (ctx) => (
   inputSchema: zodToMcpSchema(effectiveInputSchema),
   handler: async (args) => {
     const { projectId } = effectiveInputSchema.parse(args);
-    await assertPrincipalIsMember(ctx.principal, projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
     const status = await loadProjectSkillSyncStatus(projectId);
     return status;
   },
@@ -406,7 +407,8 @@ export const forgeSkillsPushTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(pushInputSchema),
   handler: async (args) => {
     const input = pushInputSchema.parse(args);
-    await assertPrincipalIsAdmin(ctx.principal, input.projectId);
+    assertTokenHasScope(ctx.principal, 'admin');
+    await requireCan({ userId: ctx.principal.userId }, 'project.admin', input.projectId);
     const result = await requestSkillSync({
       projectId: input.projectId,
       actorUserId: principalUserId(ctx.principal),

@@ -6,9 +6,10 @@ import { pipelineRunStatuses, pipelineRuns } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { listItemsFromRows, loadPipelineRunSummary } from './runs-rollup.js';
+import { requireHeld } from '../permissions/index.js';
 
 const listFiltersSchema = paginationSchema.extend({
   status: z.enum(pipelineRunStatuses).optional(),
@@ -36,7 +37,7 @@ pipelineRunReadRoutes.get(
     if (!row) throw notFound('pipeline run not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const summary = await loadPipelineRunSummary(id);
     if (!summary) throw notFound('pipeline run not found');
@@ -62,7 +63,7 @@ pipelineRunProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const conds: SQL[] = [eq(pipelineRuns.projectId, projectId)];
     if (q.status) conds.push(eq(pipelineRuns.status, q.status));

@@ -14,12 +14,8 @@ import {
   readQuestionsForIssue,
 } from '../../questions/read.js';
 import { QuestionRefused } from '../../questions/write.js';
-import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
-  type ContextScopedMcpToolFactory,
-  zodToMcpSchema,
-} from './lib.js';
+import { type ContextScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const optionSchema = z
   .object({
@@ -129,7 +125,7 @@ export const forgeQuestionsTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.data) throw new Error('BAD_REQUEST: data is required for ask');
         const data = input.data;
         const projectId = await loadIssueProjectId(data.issueId);
-        await assertPrincipalIsWriter(principal, projectId);
+        await requireCan({ userId: principal.userId }, 'project.write', projectId);
         try {
           const asked = await askAs({
             userId: principal.userId,
@@ -152,13 +148,13 @@ export const forgeQuestionsTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.id) throw new Error('BAD_REQUEST: id is required for get');
         const seen = await readQuestionFor(input.id, principal.userId);
         if (!seen?.projectId) throw new Error('NOT_FOUND: question not found');
-        await assertPrincipalIsMember(principal, seen.projectId);
+        await requireCan({ userId: principal.userId }, 'project.read', seen.projectId);
         return questionShown(seen.projectId, seen);
       }
       case 'list': {
         if (!input.issueId) throw new Error('BAD_REQUEST: issueId is required for list');
         const projectId = await loadIssueProjectId(input.issueId);
-        await assertPrincipalIsMember(principal, projectId);
+        await requireCan({ userId: principal.userId }, 'project.read', projectId);
         const rows = await readQuestionsForIssue(input.issueId, principal.userId);
         return {
           questions: await Promise.all((rows ?? []).map((r) => questionShown(projectId, r))),

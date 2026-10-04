@@ -66,9 +66,6 @@ const patchSchema = z
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
@@ -85,7 +82,7 @@ agentRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const conditions = [eq(agents.projectId, projectId)];
     if (type) conditions.push(eq(agents.type, type));
@@ -152,7 +149,7 @@ agentRoutes.get(
     if (!row) throw notFound('agent not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     return c.json(row);
   },

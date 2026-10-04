@@ -3,7 +3,6 @@
  * which payload a kind takes and on which target, whether the base is still the head, the open
  * queue's cap, who may not accept, and what a decided row refuses. Every refusal is named; the
  * service answers it with nothing written, except a stale base on accept, which marks the row stale.
- * Who is a person of the project is the shared check in `lib/person-act.ts`, not a rule of this file.
  */
 
 import { createHash } from 'node:crypto';
@@ -11,13 +10,12 @@ import {
   SUGGESTION_MAX_OPEN_PER_TARGET,
   SUGGESTION_PAYLOADS,
   type SuggestionKind,
-  type SuggestionProducer,
   type SuggestionRefusal,
   type SuggestionStatus,
   type SuggestionTargetType,
 } from '@forge/contracts/suggestions';
 import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
-import { type ActorFacts, actMiss, PROJECT_AGENT_WRITE } from '../lib/person-act.js';
+import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
 export type { SuggestionRefusal, SuggestionRefusalCode } from '@forge/contracts/suggestions';
 
@@ -100,24 +98,9 @@ export function queueFullRefusal(openOnTarget: number): SuggestionRefusal | null
   };
 }
 
-// workflow requirement-to-delivery step `breakdown`: the project master proposes it, so only the
-// project's own agent writes one; a person, the BA assistant door and another project's agent are
-// refused, and a person's revision too (the reviewer rejects with a reason, the master re-proposes)
-export function breakdownProposerRefusal(
-  facts: ActorFacts,
-  producer: SuggestionProducer,
-): SuggestionRefusal | null {
-  if (producer === 'agent' && !actMiss(facts, PROJECT_AGENT_WRITE)) return null;
-  const as =
-    producer === 'ba_assistant' ? 'the BA assistant' : facts.agency === 'agent' ? null : 'a person';
-  return {
-    code: 'SUGGESTION_BREAKDOWN_PROPOSE_FORBIDDEN',
-    path: '',
-    detail: as
-      ? `${facts.userId} writes as ${as}; a breakdown is proposed by the project master, the project's own agent. Reject a breakdown with a reason and the master proposes again.`
-      : `${facts.userId} is not an agent of this project; the project master proposes its breakdowns.`,
-  };
-}
+// workflow requirement-to-delivery step `breakdown`: proposing or revising one takes suggestions.write
+export const breakdownProposerRefusal = (facts: PermissionFacts): SuggestionRefusal | null =>
+  permissionRefusal(facts, 'suggestions.write', 'proposing a breakdown');
 
 // one open breakdown suggestion per requirement revision (step `breakdown` idempotency)
 export function breakdownOpenRefusal(

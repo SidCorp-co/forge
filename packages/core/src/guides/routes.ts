@@ -3,7 +3,6 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { INTEGRATION_PROVIDERS } from '../integrations/types.js';
-import { loadOrgRole } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import {
@@ -14,7 +13,7 @@ import {
   upsertIntegrationGuide,
 } from './integration-guides.js';
 import { getGuide, listGuides } from './registry.js';
-import { holdsOrg } from '../permissions/index.js';
+import { requireOrgCan } from '../permissions/index.js';
 
 /**
  * Public, read-only surface for Forge capability guides (D2 in the plan —
@@ -41,16 +40,6 @@ const upsertSchema = z.object({
 const orgGuideRoutes = new Hono<{ Variables: AuthVars }>();
 orgGuideRoutes.use('*', requireAuth());
 
-async function assertOrgAdmin(orgId: string, userId: string): Promise<void> {
-  const role = await loadOrgRole(orgId, userId);
-  if (!holdsOrg(role, 'org.admin')) {
-    throw new HTTPException(403, {
-      message: 'org admin or owner required',
-      cause: { code: 'FORBIDDEN' },
-    });
-  }
-}
-
 function assertKnownProvider(provider: string): void {
   if (!INTEGRATION_PROVIDERS.includes(provider as (typeof INTEGRATION_PROVIDERS)[number])) {
     throw new HTTPException(400, {
@@ -62,13 +51,13 @@ function assertKnownProvider(provider: string): void {
 
 orgGuideRoutes.get('/:orgId/guides', async (c) => {
   const orgId = c.req.param('orgId');
-  await assertOrgAdmin(orgId, c.get('userId'));
+  await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
   return c.json({ guides: await resolveGuideIndex(orgId) });
 });
 
 orgGuideRoutes.get('/:orgId/guides/:slug', async (c) => {
   const orgId = c.req.param('orgId');
-  await assertOrgAdmin(orgId, c.get('userId'));
+  await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
   const guide = await resolveGuide(c.req.param('slug'), orgId);
   if (!guide) {
     throw new HTTPException(404, { message: validSlugsMessage(), cause: { code: 'NOT_FOUND' } });
@@ -84,7 +73,7 @@ orgGuideRoutes.put(
     const provider = c.req.param('provider');
     assertKnownProvider(provider);
     const userId = c.get('userId');
-    await assertOrgAdmin(orgId, userId);
+    await requireOrgCan({ userId }, 'org.admin', orgId);
     const row = await upsertIntegrationGuide({
       orgId,
       provider: provider as (typeof INTEGRATION_PROVIDERS)[number],
@@ -107,7 +96,7 @@ orgGuideRoutes.delete('/:orgId/integration-guides/:provider', async (c) => {
   const orgId = c.req.param('orgId');
   const provider = c.req.param('provider');
   assertKnownProvider(provider);
-  await assertOrgAdmin(orgId, c.get('userId'));
+  await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
   return c.json({ deleted: await deleteIntegrationGuide(orgId, provider) });
 });
 

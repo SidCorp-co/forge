@@ -12,8 +12,7 @@ import { and, eq, ne } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { nearestFeedbackOf } from '../feedback/embeddings.js';
-import { permissionRefusalFor, requireCan } from '../permissions/index.js';
-import { effectiveProjectRole } from '../lib/authz.js';
+import { permissionFactsOf, permissionRefusalFor, requireCan } from '../permissions/index.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { designNodesIn, nodeSetRefusals } from '../workflows/node-refs.js';
 import { breakdownGuardIn } from './breakdown.js';
@@ -147,10 +146,8 @@ export async function createSuggestion(input: {
   const { projectId, kind } = input;
   await requireCan({ userId: input.actor.userId }, 'project.write', projectId);
   if (kind === 'breakdown') {
-    const access = await effectiveProjectRole(input.actor.userId, projectId);
     const forbidden = breakdownProposerRefusal(
-      { ...input.actor, role: access?.role ?? null },
-      input.producerKind,
+      await permissionFactsOf(input.actor.userId, projectId),
     );
     if (forbidden) return { ok: false, refusals: [forbidden] };
   }
@@ -208,11 +205,7 @@ export async function reviseSuggestion(input: {
   const { projectId, actor } = input;
   const first = await rowOf(db, projectId, input.id);
   if (first.kind === 'breakdown') {
-    const access = await effectiveProjectRole(actor.userId, projectId);
-    const refusal = breakdownProposerRefusal(
-      { ...actor, role: access?.role ?? null },
-      actor.agency === 'agent' ? 'agent' : 'person',
-    );
+    const refusal = breakdownProposerRefusal(await permissionFactsOf(actor.userId, projectId));
     if (refusal) return { ok: false, refusals: [refusal] };
   }
   const forbidden = await permissionRefusalFor(

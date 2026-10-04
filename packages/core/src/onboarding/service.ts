@@ -27,7 +27,6 @@ import { onboardings } from '../db/schema-onboarding.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { finalizeJobDone } from '../jobs/finalize-done.js';
-import { effectiveProjectRole } from '../lib/authz.js';
 import type { EgressReader } from '../lib/data-egress.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
@@ -63,7 +62,7 @@ import {
   settlesPhaseJob,
   startRefusal,
 } from './rules.js';
-import { requireCan } from '../permissions/index.js';
+import { permissionFactsOf, requireCan } from '../permissions/index.js';
 
 export interface OnboardingActor {
   userId: string;
@@ -85,10 +84,8 @@ async function lockOnboarding(tx: TxOnly, projectId: string) {
   );
 }
 
-async function factsOf(actor: OnboardingActor, projectId: string) {
-  const access = await effectiveProjectRole(actor.userId, projectId);
-  return { ...actor, role: access?.role ?? null };
-}
+const factsOf = (actor: OnboardingActor, projectId: string) =>
+  permissionFactsOf(actor.userId, projectId);
 
 async function nameOf(userId: string) {
   return (await userNames([userId])).get(userId) ?? 'Someone';
@@ -177,7 +174,7 @@ export async function startOnboarding(input: {
 }): Promise<OnboardingOutcome> {
   const { projectId, actor } = input;
   await requireCan({ userId: actor.userId }, 'project.read', projectId);
-  const who = personActRefusal(await factsOf(actor, projectId), projectId, 'starting onboarding');
+  const who = personActRefusal(await factsOf(actor, projectId), 'starting onboarding');
   if (who) return { ok: false, refusals: [who] };
   const [project] = await db
     .select({ name: projects.name })
@@ -232,11 +229,7 @@ export async function reanalyzeOnboarding(input: {
 }): Promise<OnboardingOutcome> {
   const { projectId, actor } = input;
   await requireCan({ userId: actor.userId }, 'project.read', projectId);
-  const who = personActRefusal(
-    await factsOf(actor, projectId),
-    projectId,
-    'asking for a re-analysis',
-  );
+  const who = personActRefusal(await factsOf(actor, projectId), 'asking for a re-analysis');
   if (who) return { ok: false, refusals: [who] };
   const asker = await nameOf(actor.userId);
   let conversationId = '';
@@ -311,7 +304,7 @@ export async function postOnboardingQuestionnaire(input: {
 }): Promise<OnboardingQuestionnaireOutcome> {
   const { projectId, actor, body } = input;
   await requireCan({ userId: actor.userId }, 'project.read', projectId);
-  const who = posterRefusal(await factsOf(actor, projectId), projectId);
+  const who = posterRefusal(await factsOf(actor, projectId));
   if (who) return { ok: false, refusals: [who] };
   let batchId = '';
   let conversationId = '';
@@ -362,7 +355,7 @@ export async function postOnboardingUpdate(input: {
 }): Promise<OnboardingOutcome> {
   const { projectId, actor, body } = input;
   await requireCan({ userId: actor.userId }, 'project.read', projectId);
-  const who = agentWriteRefusal(await factsOf(actor, projectId), projectId);
+  const who = agentWriteRefusal(await factsOf(actor, projectId));
   if (who) return { ok: false, refusals: [who] };
   let conversationId = '';
   let messageId: string | null = null;
@@ -419,7 +412,7 @@ export async function markOnboardingDone(input: {
 }): Promise<OnboardingOutcome> {
   const { projectId, actor } = input;
   await requireCan({ userId: actor.userId }, 'project.read', projectId);
-  const who = closeRefusal(await factsOf(actor, projectId), projectId);
+  const who = closeRefusal(await factsOf(actor, projectId));
   if (who) return { ok: false, refusals: [who] };
   const sensitive = await projectHoldsSensitiveData(projectId);
   let conversationId = '';

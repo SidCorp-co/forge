@@ -58,7 +58,7 @@ async function loadDeviceProjectRole(
   projectId: string,
 ): Promise<{ isAdmin: boolean }> {
   const access = await loadProjectAccess(projectId, deviceOwnerId);
-  if (!access.role) throw forbidden('device owner is not a project member');
+  requireHeld(access, 'project.read');
   return { isAdmin: holds(access, 'project.admin') };
 }
 
@@ -234,7 +234,7 @@ skillRegisterRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const rows = await db
       .select({

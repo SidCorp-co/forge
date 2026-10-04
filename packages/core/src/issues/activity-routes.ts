@@ -6,7 +6,7 @@ import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import type { ActorAgency } from './actor-agency.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
@@ -244,7 +244,7 @@ projectActivityRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const conditions = [eq(issues.projectId, projectId), ...issueArchiveSide(false)];
     if (before) conditions.push(lt(activityLog.createdAt, before));

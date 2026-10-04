@@ -9,11 +9,11 @@ import {
 } from '../../integrations/store.js';
 import type { IntegrationDeclaration } from '../../integrations/types.js';
 import {
-  assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const inputSchema = z
   .object({
@@ -110,7 +110,7 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => (
   handler: async (args) => {
     const input = inputSchema.parse(args) as Input;
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-    await assertPrincipalIsMember(ctx.principal, projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
 
     const served = storefrontProviders();
     let providers = served;

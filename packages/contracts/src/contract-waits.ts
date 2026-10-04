@@ -2,6 +2,7 @@
 // table CHECKs, REST, MCP and the web import the codes, the request schemas and the views from here.
 
 import { z } from "zod";
+import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 
 export const CONTRACT_REF_PATTERN =
 	/^([a-z][a-z0-9-]{0,62})\/([a-z][a-z0-9-]{0,62})$/;
@@ -21,7 +22,7 @@ export const CONTRACT_WAIT_REFUSAL_CODES = [
 	"CONTRACT_WAIT_DUPLICATE",
 	"CONTRACT_WAIT_REQUEST_MISMATCH",
 	"CONTRACT_WAIT_RETRACTED",
-	"CONTRACT_WAIT_WRITE_FORBIDDEN",
+	...PERMISSION_REFUSAL_CODES,
 	"CONTRACT_REQUEST_PROVIDER_UNKNOWN",
 ] as const;
 export type ContractWaitRefusalCode = (typeof CONTRACT_WAIT_REFUSAL_CODES)[number];

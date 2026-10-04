@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { loadOrgRole } from '../../lib/authz.js';
 import { listOrgMembers, listOrgsForUser } from '../../orgs/service.js';
 import { type ContextScopedMcpToolFactory, principalUserId, zodToMcpSchema } from './lib.js';
+import { requireOrgCan } from '../../permissions/index.js';
 
 const listInputSchema = z.object({}).strict();
 
@@ -33,8 +33,7 @@ export const forgeOrgsMembersTool: ContextScopedMcpToolFactory = (ctx) => ({
   handler: async (args) => {
     const input = membersInputSchema.parse(args);
     const userId = principalUserId(ctx.principal);
-    const role = await loadOrgRole(input.orgId, userId);
-    if (!role) throw new Error('NOT_FOUND: org not found or not accessible');
+    await requireOrgCan({ userId }, 'org.read', input.orgId);
     return { members: await listOrgMembers(input.orgId) };
   },
 });

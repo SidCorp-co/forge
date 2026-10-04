@@ -161,7 +161,7 @@ export async function createEcosystem(input: {
   const id = randomUUID();
   const parsed = parseEcosystem(input.raw, id, true);
   if (!parsed.ok) return parsed;
-  await assertStewardAdmin(parsed.value.ecosystem.steward, input.userId, 'creating an ecosystem');
+  await assertStewardAdmin(parsed.value.ecosystem.steward, input.userId);
   return store({ id, document: parsed.value, baseRevision: null, userId: input.userId });
 }
 
@@ -173,14 +173,14 @@ export async function writeEcosystem(input: {
 }): Promise<EcosystemOutcome> {
   const { id, userId, baseRevision, raw } = input;
   const current = await loadEcosystem(id);
-  await assertStewardAdmin(current.stewardOrgId, userId, 'editing an ecosystem');
+  await assertStewardAdmin(current.stewardOrgId, userId);
   if (current.revision !== baseRevision) {
     return { ok: false, refusals: [staleBase(baseRevision, current.revision)] };
   }
   const parsed = parseEcosystem(raw, id, false);
   if (!parsed.ok) return parsed;
   if (parsed.value.ecosystem.steward !== current.stewardOrgId) {
-    await assertStewardAdmin(parsed.value.ecosystem.steward, userId, 'handing an ecosystem over');
+    await assertStewardAdmin(parsed.value.ecosystem.steward, userId);
   }
   return store({ id, document: parsed.value, baseRevision, userId });
 }

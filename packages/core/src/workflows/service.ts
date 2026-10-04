@@ -6,7 +6,6 @@ import {
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { effectiveProjectRole } from '../lib/authz.js';
 import { peopleOf } from '../lib/people.js';
 import { staleBase } from '../project-config/documents.js';
 import { readProjectDocument } from '../project-config/service.js';
@@ -19,7 +18,6 @@ import {
   parseWorkflow,
   type WorkflowRefusal,
   workflowIdentityRefusals,
-  workflowWriterRefusal,
 } from './rules.js';
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
 import {
@@ -105,14 +103,7 @@ const templateFor = (doc: WorkflowWrite, templates: readonly WorkflowTemplate[])
   doc.version === 2 ? findTemplate(templates, doc.template) : null;
 
 export async function assertWriter(writer: WorkflowWriter, projectId: string): Promise<void> {
-  const role = (await effectiveProjectRole(writer.userId, projectId))?.role ?? null;
-  const refusal = workflowWriterRefusal({ ...writer, role }, projectId);
-  if (refusal) {
-    throw new HTTPException(403, {
-      message: refusal.detail,
-      cause: { code: refusal.code, details: { refusals: [refusal] } },
-    });
-  }
+  await requireCan(writer, 'workflow-designs.write', projectId, 'writing a workflow');
 }
 
 export async function createWorkflow(input: {

@@ -130,10 +130,8 @@ async function viewIn(
   return entityCommentView(row, target, authors, egress);
 }
 
-async function factsOf(actor: EntityCommentActor, projectId: string) {
-  const access = await requireCan({ userId: actor.userId }, 'project.read', projectId);
-  return { userId: actor.userId, agency: actor.agency, role: access.role };
-}
+const factsOf = (actor: EntityCommentActor, projectId: string) =>
+  requireCan({ userId: actor.userId }, 'project.read', projectId);
 
 export async function postEntityComment(input: {
   projectId: string;
@@ -215,7 +213,7 @@ export async function editEntityComment(input: {
       throw notFound(`${target.key} holds no comment ${commentId}`);
     }
     const refusals = [
-      editorRefusal(facts, row.authorId, target.key),
+      editorRefusal(facts, row.authorId === actor.userId, target.key),
       ...editRefusals(row.intent, request),
       ...(await nodeDecisionRefusals(tx, target, request.decision)),
     ].filter(present);

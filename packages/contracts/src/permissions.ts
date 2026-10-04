@@ -50,8 +50,17 @@ const PERSONAL = [
 	"commitments.write",
 ] as const;
 
-/** Configure the project, manage its members, and the admin acts that once refused an agent. */
-const ADMIN = ["project.admin", "members.admin", "feedback.redact", "comments.moderate"] as const;
+/**
+ * Configure the project, manage its members, admit an issue straight to `open` (`issues.admit`), and
+ * the admin acts that once refused an agent.
+ */
+const ADMIN = [
+	"project.admin",
+	"members.admin",
+	"issues.admit",
+	"feedback.redact",
+	"comments.moderate",
+] as const;
 
 export const PROJECT_PERMISSIONS = [...READ, ...WRITE, ...PERSONAL, ...APPROVE, ...ADMIN] as const;
 export type ProjectPermission = (typeof PROJECT_PERMISSIONS)[number];

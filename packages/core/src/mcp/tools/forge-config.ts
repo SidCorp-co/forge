@@ -22,13 +22,13 @@ import {
 } from '../../projects/project-facts.js';
 import { readIssueBranchInputs, readProjectWithConfig } from '../../projects/service.js';
 import {
-  assertPrincipalIsAdmin,
-  assertPrincipalIsMember,
+  assertTokenHasScope,
   type ContextScopedMcpToolFactory,
   refusedAnswer,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const inputSchema = z
   .object({
@@ -115,7 +115,8 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (!input.projectId) {
         throw new Error('BAD_REQUEST: projectId is required for action=update');
       }
-      await assertPrincipalIsAdmin(ctx.principal, input.projectId);
+      assertTokenHasScope(ctx.principal, 'admin');
+      await requireCan({ userId: ctx.principal.userId }, 'project.admin', input.projectId);
       if (input.contentLanguage !== undefined) {
         const written = await writeContentLanguage({
           projectId: input.projectId,
@@ -134,7 +135,7 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-    await assertPrincipalIsMember(ctx.principal, projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
 
     const row = await readProjectConfig(projectId);
     const baseResponse = await formatBaseResponse(row);

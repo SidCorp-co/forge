@@ -44,7 +44,7 @@ export async function automationViewerOf(
   userId: string,
 ): Promise<AutomationViewer | null> {
   const access = await loadProjectAccess(projectId, userId);
-  if (!access.role) return null;
+  if (!holds(access, 'project.read')) return null;
   return {
     userId,
     canWrite: holds(access, 'project.write'),

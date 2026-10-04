@@ -31,9 +31,6 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 export const skillStudioRoutes = new Hono<{ Variables: AuthVars }>();
 skillStudioRoutes.use('/:projectId/skills/effective', requireAuth(), assertEmailVerified());
 skillStudioRoutes.use('/:projectId/skills/apply-default', requireAuth(), assertEmailVerified());
@@ -48,7 +45,7 @@ skillStudioRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const globals = await db
       .select()

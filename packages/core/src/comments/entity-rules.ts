@@ -7,12 +7,7 @@ import {
 import type { CommentIntent } from '@forge/contracts/record-events';
 import { BodyInvalidError } from '../body/errors.js';
 import { prepareBody } from '../body/prepare.js';
-import {
-  type ActorFacts,
-  actMiss,
-  PERSON_ADMIN_ACT,
-  PROJECT_MEMBER_WRITE,
-} from '../lib/person-act.js';
+import { holds, type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
 export interface CommentArc {
   issueId?: string | null | undefined;
@@ -137,32 +132,19 @@ export function parentRefusal(
   };
 }
 
-export function posterRefusal(facts: ActorFacts, targetKey: string): CommentRefusal | null {
-  const miss = actMiss(facts, PROJECT_MEMBER_WRITE);
-  if (!miss) return null;
-  return {
-    code: 'COMMENT_POST_FORBIDDEN',
-    path: '',
-    detail: `${facts.userId} holds ${facts.role ?? 'no role'} on this project; a comment on ${targetKey} is posted by a member or above, person or the project's own agent`,
-  };
-}
+export const posterRefusal = (facts: PermissionFacts, targetKey: string): CommentRefusal | null =>
+  permissionRefusal(facts, 'project.write', `posting a comment on ${targetKey}`);
 
+/** Its author edits a comment while holding project.write; anyone else needs comments.moderate. */
 export function editorRefusal(
-  facts: ActorFacts,
-  authorId: string,
+  facts: PermissionFacts,
+  isAuthor: boolean,
   targetKey: string,
 ): CommentRefusal | null {
-  if (facts.userId === authorId) {
-    const miss = actMiss(facts, PROJECT_MEMBER_WRITE);
-    if (!miss) return null;
-  } else if (!actMiss(facts, PERSON_ADMIN_ACT)) {
-    return null;
-  }
-  return {
-    code: 'COMMENT_EDIT_FORBIDDEN',
-    path: '',
-    detail: `${facts.userId} may not edit this comment on ${targetKey}: its author edits it while a member, and otherwise only a project admin person`,
-  };
+  if (isAuthor) return permissionRefusal(facts, 'project.write', `editing a comment on ${targetKey}`);
+  return holds(facts, 'comments.moderate')
+    ? null
+    : permissionRefusal(facts, 'comments.moderate', `editing another's comment on ${targetKey}`);
 }
 
 export function decisionBody(d: DecisionFields): string {

@@ -11,14 +11,13 @@ import { guideRef } from '../../guides/guide-ref.js';
 import { egressDeep, egressOr } from '../../lib/data-egress.js';
 import { listRunStanding, readRunStanding } from '../../runs/read.js';
 import {
-  assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
   type McpContext,
-  principalAgency,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
 import { projectMany, projectOne, summaryNotice, VIEW_RULE, viewInput } from './projection.js';
+import { requireCan } from '../../permissions/index.js';
 
 const ACTIONS = ['list', 'get'] as const;
 const MCP_LIST_DEFAULT = 20;
@@ -56,9 +55,8 @@ function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]
 async function run(args: unknown, ctx: McpContext): Promise<unknown> {
   const input = inputSchema.parse(args);
   const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-  await assertPrincipalIsMember(ctx.principal, projectId);
-  const viewer =
-    principalAgency(ctx.principal) === 'human' ? { userId: ctx.principal.userId } : null;
+  await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
+  const viewer = { userId: ctx.principal.userId };
   switch (input.action) {
     case 'list': {
       const listed = await listRunStanding(

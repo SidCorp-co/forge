@@ -34,6 +34,7 @@ import {
   type StandingEdge,
   wavesOf,
 } from './standing.js';
+import { holds } from '../permissions/index.js';
 
 /** The most rows one read answers; the list says so when a scope holds more. */
 export const STANDING_LIMIT = 500;
@@ -295,9 +296,12 @@ async function viewerOf(viewer: StandingViewer | null, projectId: string) {
     effectiveProjectRole(viewer.userId, projectId),
     peopleOf([viewer.userId]),
   ]);
-  const role = access?.role ?? null;
+  // A person's wait addresses its viewer as "You" only when the viewer is a person.
   const person = people.get(viewer.userId)?.kind !== 'agent';
-  return { userId: viewer.userId, canWrite: person && (role === 'admin' || role === 'member') };
+  return {
+    userId: viewer.userId,
+    canWrite: person && access !== null && holds(access, 'project.write'),
+  };
 }
 
 async function standingRows(

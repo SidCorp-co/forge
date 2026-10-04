@@ -25,16 +25,16 @@ import {
 import { db } from '../../db/client.js';
 import { COMMENT_INTENTS } from '../../issues/record-events/kinds.js';
 import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
   type McpContext,
   principalAgency,
   principalAuthorDeviceId,
   refusedAnswer,
   resolveEffectiveProjectId,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
 
-type Principal = Parameters<typeof assertPrincipalIsWriter>[0];
+type Principal = McpPrincipal;
 
 const ref = z.string().trim().min(1).max(200);
 
@@ -112,7 +112,7 @@ export async function listEntity(
 ) {
   assertEntityGrant(ctx, principal, 'projects:read');
   const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-  await assertPrincipalIsMember(principal, projectId);
+  await requireCan({ userId: principal.userId }, 'project.read', projectId);
   const intent = z.enum(COMMENT_INTENTS).optional().safeParse(input.intent);
   if (!intent.success) {
     throw new Error(`BAD_REQUEST: filters.intent is one of ${COMMENT_INTENTS.join(' | ')}`);
@@ -135,7 +135,7 @@ export async function createEntity(
 ) {
   assertEntityGrant(ctx, principal, 'projects:write');
   const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-  await assertPrincipalIsWriter(principal, projectId);
+  await requireCan({ userId: principal.userId }, 'project.write', projectId);
   const { body, format, parentId, intent, decision } = input.data;
   const parsed = createEntityCommentRequestSchema.safeParse({
     body,
@@ -167,7 +167,7 @@ export async function updateEntity(
   if (!row || row.issueId) return null;
   assertEntityGrant(ctx, principal, 'projects:write');
   const place = await placeOfComment(db, row);
-  await assertPrincipalIsWriter(principal, place.projectId);
+  await requireCan({ userId: principal.userId }, 'project.write', place.projectId);
   const { body, format, decision } = data;
   const parsed = editEntityCommentRequestSchema.safeParse({ body, format, decision });
   if (!parsed.success) throw new Error(`BAD_REQUEST: data is ${EDIT_ENTITY_COMMENT_SHAPE}`);
@@ -203,7 +203,7 @@ export async function listDecisions(
   }
   if (scope.data !== 'issue') assertEntityGrant(ctx, principal, 'projects:read');
   const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-  await assertPrincipalIsMember(principal, projectId);
+  await requireCan({ userId: principal.userId }, 'project.read', projectId);
   return listDecisionsAs(
     actorOf(principal),
     projectId,

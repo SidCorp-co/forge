@@ -60,8 +60,6 @@ import { serializeTask, serializeTaskListRow } from './forge-issues-tasks.js';
 import { ISSUE_REF_CLAUSE, issueRefSchema, refsFor } from './issue-ref-input.js';
 import { issueStatusInput, WORK_STATE_FIELD } from './issue-status-input.js';
 import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   type McpContext,
   principalActor,
@@ -70,6 +68,7 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
+import { requireCan } from '../../permissions/index.js';
 
 /**
  * Action-based parity port of the legacy Strapi MCP `forge_issues` tool. The
@@ -517,7 +516,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
       case 'list': {
         const projectId = await resolveProjectId(input, ctx);
-        await assertPrincipalIsMember(principal, projectId);
+        await requireCan({ userId: principal.userId }, 'project.read', projectId);
 
         const issuesLimit = input.limit ?? 25;
         const f = input.filters;
@@ -572,7 +571,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'get': {
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for get');
         const loaded = await loadIssue(await refs.issue('documentId', input.documentId));
-        await assertPrincipalIsMember(principal, loaded.projectId);
+        await requireCan({ userId: principal.userId }, 'project.read', loaded.projectId);
         const issue = await issueEgress(loaded.projectId, loaded, loaded.id);
         if (input.fields && input.fields.length > 0) {
           const full = serialize(issue, await activeIssuePrefix(issue.projectId));
@@ -616,7 +615,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             'BAD_REQUEST: attributes is required for setAttributes — each entry is { key, value }, and the registered keys come back on action=get under `attributes`',
           );
         const issue = await loadIssue(await refs.issue('documentId', input.documentId));
-        await assertPrincipalIsWriter(principal, issue.projectId);
+        await requireCan({ userId: principal.userId }, 'project.write', issue.projectId);
         try {
           return await setIssueAttributes(
             input.attributes.map((a) => ({
@@ -636,7 +635,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'create': {
         if (!input.data?.title) throw new Error('BAD_REQUEST: data.title is required for create');
         const projectId = await resolveProjectId(input, ctx);
-        await assertPrincipalIsWriter(principal, projectId);
+        await requireCan({ userId: principal.userId }, 'project.write', projectId);
 
         let result: Awaited<ReturnType<typeof createIssue>>;
         try {
@@ -673,7 +672,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');
         if (!input.data) throw new Error('BAD_REQUEST: data is required for update');
         const issue = await loadIssue(await refs.issue('documentId', input.documentId));
-        await assertPrincipalIsWriter(principal, issue.projectId);
+        await requireCan({ userId: principal.userId }, 'project.write', issue.projectId);
 
         let labelIds: ResolvedLabelAttach[] | undefined;
         if (input.data.labels !== undefined) {
@@ -772,7 +771,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const target = input.data?.status;
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
         const issue = await loadIssue(await refs.issue('documentId', input.documentId));
-        await assertPrincipalIsWriter(principal, issue.projectId);
+        await requireCan({ userId: principal.userId }, 'project.write', issue.projectId);
         await transitionNamingRecovery(issue, target, principalActor(principal), input.data);
         const fresh = await issueEgress(issue.projectId, await loadIssue(issue.id), issue.id);
         const transitionOutput: Record<string, unknown> = await serializeWithAttachments(fresh);
@@ -792,7 +791,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!ref) throw new Error(`BAD_REQUEST: data.issueId is required for ${input.action}`);
         const marking = input.action === 'mark_merged';
         const issue = await loadIssue(await refs.issue('data.issueId', ref));
-        await assertPrincipalIsWriter(principal, issue.projectId);
+        await requireCan({ userId: principal.userId }, 'project.write', issue.projectId);
 
         try {
           const {
@@ -835,7 +834,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!ref) throw new Error('BAD_REQUEST: filters.issue required for listTasks');
         const issueId = await refs.issue('filters.issue', ref);
         const projectId = await loadIssueProjectId(issueId);
-        await assertPrincipalIsMember(principal, projectId);
+        await requireCan({ userId: principal.userId }, 'project.read', projectId);
 
         const tasksLimit = input.limit ?? 25;
         const rows = await listTasksForIssue(issueId, {
@@ -858,7 +857,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!data.taskTitle) throw new Error('BAD_REQUEST: data.taskTitle required for createTask');
         const issueId = await refs.issue('data.issueId', data.issueId);
         const projectId = await loadIssueProjectId(issueId);
-        await assertPrincipalIsWriter(principal, projectId);
+        await requireCan({ userId: principal.userId }, 'project.write', projectId);
 
         const created = await createTaskRow({
           issueId,
@@ -878,7 +877,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'updateTask': {
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId required for updateTask');
         const row = await loadTaskForAccess(refs.task('documentId', input.documentId));
-        await assertPrincipalIsWriter(principal, row.projectId);
+        await requireCan({ userId: principal.userId }, 'project.write', row.projectId);
 
         const data = input.data ?? {};
         const updates: Record<string, unknown> = {};
@@ -902,7 +901,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'deleteTask': {
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId required for deleteTask');
         const row = await loadTaskForAccess(refs.task('documentId', input.documentId));
-        await assertPrincipalIsWriter(principal, row.projectId);
+        await requireCan({ userId: principal.userId }, 'project.write', row.projectId);
         await deleteTaskRow(row, principalHookActor(principal));
         return { deleted: true, documentId: row.id };
       }

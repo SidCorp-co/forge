@@ -5,11 +5,8 @@ import {
   buildRetryRescuesReport,
   buildSessionFailuresReport,
 } from '../../metrics/session-failures-report.js';
-import {
-  assertPrincipalIsMember,
-  type ContextScopedMcpToolFactory,
-  zodToMcpSchema,
-} from './lib.js';
+import { type ContextScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const stepEnum = z.enum(jobTypes);
 
@@ -58,7 +55,7 @@ export const forgeMetricsProjectStepDurationsTool: ContextScopedMcpToolFactory =
   inputSchema: zodToMcpSchema(projectInputSchema),
   handler: async (args) => {
     const input = projectInputSchema.parse(args);
-    await assertPrincipalIsMember(ctx.principal, input.projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', input.projectId);
 
     const result = await stepDurationsForProject(
       input.projectId,
@@ -100,7 +97,7 @@ export const forgeMetricsProjectTimeseriesTool: ContextScopedMcpToolFactory = (c
   inputSchema: zodToMcpSchema(timeseriesInputSchema),
   handler: async (args) => {
     const input = timeseriesInputSchema.parse(args);
-    await assertPrincipalIsMember(ctx.principal, input.projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', input.projectId);
     return runTimeseries({
       projectId: input.projectId,
       metric: input.metric,
@@ -123,7 +120,7 @@ export const forgeMetricsProjectRetryRescuesTool: ContextScopedMcpToolFactory = 
   inputSchema: zodToMcpSchema(retryRescuesInputSchema),
   handler: async (args) => {
     const input = retryRescuesInputSchema.parse(args);
-    await assertPrincipalIsMember(ctx.principal, input.projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', input.projectId);
     return buildRetryRescuesReport(input.projectId, input.days);
   },
 });
@@ -140,7 +137,7 @@ export const forgeMetricsSessionFailuresTool: ContextScopedMcpToolFactory = (ctx
   inputSchema: zodToMcpSchema(sessionFailuresInputSchema),
   handler: async (args) => {
     const input = sessionFailuresInputSchema.parse(args);
-    await assertPrincipalIsMember(ctx.principal, input.projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', input.projectId);
     return buildSessionFailuresReport(input.projectId, input.days);
   },
 });

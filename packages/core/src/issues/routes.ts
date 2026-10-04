@@ -77,7 +77,7 @@ export {
 } from './metadata.js';
 
 import { withKernelMarker } from '../db/kernel-marker.js';
-import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
+import { badRequest, notFound } from '../middleware/route-errors.js';
 import { requireHeld } from '../permissions/index.js';
 
 export const issueCreateSchema = z
@@ -220,7 +220,7 @@ issueProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const parsed = parseIssueRef(
       displayId,
@@ -272,7 +272,7 @@ issueProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const conditions = [eq(issues.projectId, projectId)];
     if (q.status) conditions.push(eq(issues.status, q.status));
@@ -435,7 +435,7 @@ issueRoutes.get(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     return c.json(await jobHistoryForStep(id, step));
   },

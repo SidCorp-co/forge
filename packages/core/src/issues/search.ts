@@ -28,7 +28,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, forbidden, idParamSchema } from '../middleware/route-errors.js';
+import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
@@ -48,6 +48,7 @@ import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './p
 import { buildIssueSearchCondition, matchedSearchFieldsSql } from './search-predicate.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 import { refuseLegacyStatusFields } from './status-input.js';
+import { requireHeld } from '../permissions/index.js';
 
 export interface IssueBuckets {
   /** How many issues sit at each kernel status, under every filter except status and origin. */
@@ -249,7 +250,7 @@ searchRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const conditions = [eq(issues.projectId, projectId)];
     const axisFree = [eq(issues.projectId, projectId)];

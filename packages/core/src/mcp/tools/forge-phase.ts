@@ -14,7 +14,8 @@ import { phaseJournalOutcomes } from '../../db/schema-journal.js';
 import { endPhase, resumePoint, startPhase } from '../../pipeline/phase-journal.js';
 import { findRunProjectId } from '../../pipeline/runs.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
-import { assertPrincipalIsWriter, zodToMcpSchema } from './lib.js';
+import { zodToMcpSchema } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const inputSchema = z.object({
   action: z.enum(['start', 'end', 'resume_point']),
@@ -47,7 +48,7 @@ export const forgePhaseTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    await assertPrincipalIsWriter(ctx.principal, input.projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.write', input.projectId);
     await assertRunInProject(input.runId, input.projectId);
 
     if (input.action === 'resume_point') {

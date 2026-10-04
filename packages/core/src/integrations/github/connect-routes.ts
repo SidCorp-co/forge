@@ -23,8 +23,6 @@ import { badRequest } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { resolveApiBaseUrl } from '../inbound-door.js';
 import {
-  assertAdmin,
-  assertProjectMember,
   assertVaultConfigured,
   notFound,
 } from '../route-helpers.js';
@@ -44,7 +42,7 @@ import {
 } from './connect.js';
 import { findConnectionOwningInstallation } from './install-resolve.js';
 import { listInstallationRepositories } from './repositories.js';
-import { holdsOrg } from '../../permissions/index.js';
+import { requireCan, requireOrgHeld } from '../../permissions/index.js';
 
 const invalidQuery = (result: { success: boolean; error?: z.core.$ZodError }) => {
   if (!result.success && result.error) throw badRequest(z.flattenError(result.error));
@@ -63,7 +61,7 @@ const installedQuerySchema = z.object({
 
 // cm:why the admin check runs before the query is read, so a non-admin learns nothing from a 400
 const projectAdmin: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  assertAdmin(await assertProjectMember(c.req.param('projectId') ?? '', c.get('userId')));
+  await requireCan({ userId: c.get('userId') }, 'project.admin', c.req.param('projectId') ?? '');
   await next();
 };
 
@@ -127,19 +125,9 @@ async function ownerOrgForProjectApp(args: {
     });
   }
   if (!args.projectOrgId) return undefined;
-  const orgRole = await loadOrgRole(args.projectOrgId, args.userId);
-  if (!holdsOrg(orgRole, 'org.admin')) {
-    // Its own code, not a bare FORBIDDEN: the web prints one generic sentence
-    // for that and drops the server's, which carries the way round.
-    throw new HTTPException(403, {
-      message:
-        `this project belongs to org ${args.projectOrgId}, so a GitHub App created here is ` +
-        'owned by that org and reachable by every admin of the project. Creating one requires ' +
-        `org admin there; you are ${orgRole ?? 'not a member of that org'}. Ask an org admin to ` +
-        'run Connect, or bind an existing GitHub App to this project instead.',
-      cause: { code: 'ORG_ADMIN_REQUIRED' },
-    });
-  }
+  // A GitHub App created here is owned by the project's org and reachable by every admin of the
+  // project, so creating one takes org.admin there.
+  requireOrgHeld(args.projectOrgId, await loadOrgRole(args.projectOrgId, args.userId), 'org.admin');
   return args.projectOrgId;
 }
 
@@ -262,7 +250,7 @@ githubCallbackRoutes.get(
     const userId = c.get('userId');
     if (state.userId !== userId) throw badRequest({ state: 'issued for another user' });
 
-    assertAdmin(await assertProjectMember(state.projectId, userId));
+    await requireCan({ userId }, 'project.admin', state.projectId);
     assertVaultConfigured();
 
     const app = await convertManifestCode({ code });
@@ -312,7 +300,7 @@ githubCallbackRoutes.get(
     if (!state && !owner) throw notFound('github app');
     const projectId = state?.projectId ?? owner?.projectId ?? null;
     if (!projectId) return c.redirect(`${webBaseUrl()}/integrations`);
-    assertAdmin(await assertProjectMember(projectId, userId));
+    await requireCan({ userId }, 'project.admin', projectId);
 
     return c.redirect(`${webBaseUrl()}/projects/${projectId}/settings/integrations`);
   },

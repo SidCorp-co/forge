@@ -46,7 +46,7 @@ agentSessionInteractiveRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(input.projectId, userId);
-    assertMayRunSession(access.role);
+    assertMayRunSession(access);
 
     const clientMetadata = input.metadata as Record<string, unknown> | null | undefined;
     assertCallerDeclaresNoKind(clientMetadata, badRequest);
@@ -94,7 +94,7 @@ agentSessionInteractiveRoutes.post(
     if (!project) throw notFound('project not found');
 
     const access = await loadProjectAccess(project.id, userId);
-    assertMayRunSession(access.role);
+    assertMayRunSession(access);
 
     const client = await resolveInteractiveClient(
       { projectId: project.id, deviceId: null, metadata: null },

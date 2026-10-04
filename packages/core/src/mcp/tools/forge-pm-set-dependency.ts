@@ -5,12 +5,12 @@ import { IssueDependencyError, setIssueDependency } from '../../issues/dependenc
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { deprecationFor } from '../deprecation.js';
 import {
-  assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
   type McpContext,
   principalHookActor,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 export const pmSetDependencyInputSchema = z
   .object({
@@ -28,7 +28,7 @@ export async function pmSetDependencyHandler(
   input: z.infer<typeof pmSetDependencyInputSchema>,
   opts?: { deferHealthPublish?: boolean },
 ) {
-  await assertPrincipalIsMember(principal, input.projectId);
+  await requireCan({ userId: principal.userId }, 'project.read', input.projectId);
 
   try {
     return await setIssueDependency(

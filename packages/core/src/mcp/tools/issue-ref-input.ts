@@ -11,7 +11,8 @@ import { heldIssuePrefixes } from '../../issues/issue-prefix-read.js';
 import { findIssueByDisplaySeq } from '../../issues/read-service.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../../lib/issue-ref.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
-import { assertPrincipalIsMember, type McpContext, resolveEffectiveProjectId } from './lib.js';
+import { type McpContext, resolveEffectiveProjectId } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 export type RefInput = { action: string; field: string };
 
@@ -81,7 +82,7 @@ export function refsFor(
   const scope = (): Promise<string> => {
     scoped ??= (async () => {
       const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-      await assertPrincipalIsMember(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', projectId);
       return projectId;
     })();
     return scoped;

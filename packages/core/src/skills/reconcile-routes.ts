@@ -26,8 +26,6 @@ const runParamSchema = z.object({ projectId: z.string().uuid(), runId: z.string(
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-const forbidden = (msg: string) =>
-  new HTTPException(403, { message: msg, cause: { code: 'FORBIDDEN' } });
 const notFound = (msg: string) =>
   new HTTPException(404, { message: msg, cause: { code: 'NOT_FOUND' } });
 const conflict = (msg: string) =>
@@ -85,7 +83,7 @@ reconcileRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const runs = await listReconcileRunsForProject(projectId);
     return c.json({ runs });
@@ -102,7 +100,7 @@ reconcileRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const run = await getReconcileRun(runId);
     if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);

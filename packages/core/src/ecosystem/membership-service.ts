@@ -34,7 +34,7 @@ export async function invite(input: {
 }): Promise<MembershipOutcome> {
   const { ecosystemId, projectId, userId } = input;
   const eco = await loadEcosystem(ecosystemId);
-  await assertStewardAdmin(eco.stewardOrgId, userId, 'inviting a project');
+  await assertStewardAdmin(eco.stewardOrgId, userId);
   const [project] = await projectsWhere(db, { ids: [projectId] });
   if (!project) {
     return {
@@ -85,7 +85,7 @@ async function assertSide(
   userId: string,
 ) {
   if (TRANSITIONS[verb].side === 'steward') {
-    await assertStewardAdmin(eco.stewardOrgId, userId, `the ${verb} transition`);
+    await assertStewardAdmin(eco.stewardOrgId, userId);
     return;
   }
   await requireCan({ userId }, 'project.admin', row.projectId);

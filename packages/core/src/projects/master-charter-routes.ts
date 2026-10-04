@@ -1,30 +1,25 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import {
-  type AuthVars,
-  assertEmailVerified,
-  requireAuth,
-  restAuthored,
-} from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { MASTER_CHARTER_IS_A_PERSONS_WRITE, parseMasterCharterWrite } from './master-charter.js';
+import { requireCan } from '../permissions/index.js';
+import { parseMasterCharterWrite } from './master-charter.js';
 import {
   declareCharter,
   type MasterCharter,
   readCharterVersions,
   readCurrentCharter,
 } from './master-charter-service.js';
-import { requireCan } from '../permissions/index.js';
 
 /**
  * What a project's master is for, and the rules that bind it (ISS-1313).
  *
  * Two reads and one write. The reads are open to anything holding access to the
  * project, a master's own token included — reading is the whole point. The
- * write is a person's: an agent credential is refused by name before the body
- * is looked at, so nothing an agent sends can reach the store even malformed.
+ * write takes charter.write, which a token holds only where its grant names it,
+ * so a master's own token cannot rewrite the charter that binds it.
  */
 export const masterCharterRoutes = new Hono<{ Variables: AuthVars }>();
 masterCharterRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -85,14 +80,7 @@ masterCharterRoutes.put(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.write', id);
-
-    if (restAuthored(c) === 'agent') {
-      throw new HTTPException(403, {
-        message: MASTER_CHARTER_IS_A_PERSONS_WRITE,
-        cause: { code: 'MASTER_CHARTER_IS_A_PERSONS_WRITE' },
-      });
-    }
+    await requireCan({ userId }, 'charter.write', id, 'writing the master charter');
 
     const parsed = parseMasterCharterWrite(c.req.valid('json'));
     if (!parsed.ok) {

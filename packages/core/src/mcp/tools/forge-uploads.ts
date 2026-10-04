@@ -16,12 +16,8 @@ import {
   UPLOAD_TICKET_TTL_MS,
   UploadTicketError,
 } from '../../uploads/ticket-service.js';
-import {
-  assertPrincipalIsWriter,
-  type ContextScopedMcpToolFactory,
-  principalUserId,
-  zodToMcpSchema,
-} from './lib.js';
+import { type ContextScopedMcpToolFactory, principalUserId, zodToMcpSchema } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const inputSchema = z
   .object({
@@ -105,7 +101,7 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
         throw new Error('BAD_REQUEST: data.attachmentId is required for fetch');
       }
       const att = await loadAttachmentForFetch(target, attachmentId);
-      await assertPrincipalIsWriter(principal, att.projectId);
+      await requireCan({ userId: principal.userId }, 'project.write', att.projectId);
 
       const download = await mintDownloadTicket(target, attachmentId, att.projectId, principal);
       const meta = {
@@ -198,7 +194,7 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
         : target === 'session'
           ? await loadSessionProjectId(targetId)
           : await loadCommentProjectId(targetId);
-    await assertPrincipalIsWriter(principal, projectId);
+    await requireCan({ userId: principal.userId }, 'project.write', projectId);
 
     const mime = input.data.mime ?? mimeFromName(name);
 

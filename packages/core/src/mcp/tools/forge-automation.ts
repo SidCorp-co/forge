@@ -17,13 +17,13 @@ import {
 } from '../../automation/read.js';
 import { egressDeep, egressOr } from '../../lib/data-egress.js';
 import {
-  assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
   type McpContext,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
 import { projectMany, summaryNotice, VIEW_RULE, viewInput } from './projection.js';
+import { requireCan } from '../../permissions/index.js';
 
 const ACTIONS = ['standing', 'schedule', 'fire', 'report'] as const;
 
@@ -79,7 +79,7 @@ const FULL = "view: 'full' for each report's detail, suggestion, signal and tria
 async function run(args: unknown, ctx: McpContext): Promise<unknown> {
   const input = inputSchema.parse(args);
   const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-  await assertPrincipalIsMember(ctx.principal, projectId);
+  await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
   const viewer = await automationViewerOf(projectId, ctx.principal.userId);
   if (!viewer) throw new Error(`FORBIDDEN: not a member of project ${projectId}`);
   const firesLimit = input.firesLimit ?? AUTOMATION_FIRES_DEFAULT;

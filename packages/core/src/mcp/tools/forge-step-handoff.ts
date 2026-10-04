@@ -5,13 +5,8 @@ import {
   getIssueContexts,
   writeIssueContext,
 } from '../../pipeline/issue-context-store.js';
-import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
-  type ContextScopedMcpToolFactory,
-  principalHookActor,
-  zodToMcpSchema,
-} from './lib.js';
+import { type ContextScopedMcpToolFactory, principalHookActor, zodToMcpSchema } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const writeInputSchema = z.object({
   projectId: z.uuid(),
@@ -53,7 +48,7 @@ export const forgeStepHandoffWriteTool: ContextScopedMcpToolFactory = ({ princip
   inputSchema: zodToMcpSchema(writeInputSchema),
   handler: async (args) => {
     const input = writeInputSchema.parse(args);
-    await assertPrincipalIsWriter(principal, input.projectId);
+    await requireCan({ userId: principal.userId }, 'project.write', input.projectId);
     return writeIssueContext({ ...input, kind: 'handoff', actor: principalHookActor(principal) });
   },
 });
@@ -73,7 +68,7 @@ export const forgeStepHandoffGetTool: ContextScopedMcpToolFactory = ({ principal
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const input = getInputSchema.parse(args);
-    await assertPrincipalIsMember(principal, input.projectId);
+    await requireCan({ userId: principal.userId }, 'project.read', input.projectId);
     const rows = await getIssueContexts({ ...input, kind: 'handoff' });
     return { rows };
   },
@@ -94,7 +89,7 @@ export const forgeStepHandoffDeleteTool: ContextScopedMcpToolFactory = ({ princi
   inputSchema: zodToMcpSchema(deleteInputSchema),
   handler: async (args) => {
     const input = deleteInputSchema.parse(args);
-    await assertPrincipalIsWriter(principal, input.projectId);
+    await requireCan({ userId: principal.userId }, 'project.write', input.projectId);
     const n = await deleteIssueContext({ ...input, kind: 'handoff' });
     return { deleted: n > 0 };
   },

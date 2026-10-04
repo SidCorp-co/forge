@@ -11,7 +11,8 @@ import {
   runIssueArchive,
 } from '../../issues/archive.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
-import { assertPrincipalIsAdmin, principalHookActor } from './lib.js';
+import { assertTokenHasScope, principalHookActor } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 export async function runArchiveAction(input: {
   direction: ArchiveDirection;
@@ -20,7 +21,8 @@ export async function runArchiveAction(input: {
   dryRun: boolean | undefined;
   principal: McpPrincipal;
 }): Promise<IssueArchiveReport> {
-  await assertPrincipalIsAdmin(input.principal, input.projectId);
+  assertTokenHasScope(input.principal, 'admin');
+  await requireCan({ userId: input.principal.userId }, 'project.admin', input.projectId);
   if (!input.filter) {
     throw new Error(
       `BAD_REQUEST: ${input.direction} needs archiveFilter { keys?, statuses?, seqBelow?, exclude? } naming keys or statuses; send dryRun:true first to read back what it matches`,

@@ -8,7 +8,6 @@ import {
   upsertIntegrationGuide,
 } from '../../guides/integration-guides.js';
 import { INTEGRATION_PROVIDERS } from '../../integrations/types.js';
-import { loadOrgRole } from '../../lib/authz.js';
 import { findProjectOrgId } from '../../projects/service.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -17,7 +16,7 @@ import {
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
-import { holdsOrg } from '../../permissions/index.js';
+import { requireOrgCan } from '../../permissions/index.js';
 
 const inputSchema = z
   .object({
@@ -38,15 +37,6 @@ async function resolveOrgId(ctx: McpContext, projectIdArg?: string): Promise<str
   } catch {
     return null;
   }
-}
-
-async function assertOrgAdmin(ctx: McpContext, orgId: string): Promise<string> {
-  const userId = principalUserId(ctx.principal);
-  const role = await loadOrgRole(orgId, userId);
-  if (!holdsOrg(role, 'org.admin')) {
-    throw new Error('FORBIDDEN: writing an integration guide requires org admin or owner');
-  }
-  return userId;
 }
 
 export const forgeGuideTool: ContextScopedMcpToolFactory = (ctx) => ({
@@ -119,7 +109,8 @@ export const forgeGuideTool: ContextScopedMcpToolFactory = (ctx) => ({
         'BAD_REQUEST: project context missing — an integration guide is per-org, so set X-Forge-Project-Slug or pass projectId',
       );
     }
-    const userId = await assertOrgAdmin(ctx, orgId);
+    const userId = principalUserId(ctx.principal);
+    await requireOrgCan({ userId }, 'org.admin', orgId);
 
     if (input.action === 'delete') {
       const deleted = await deleteIntegrationGuide(orgId, provider);

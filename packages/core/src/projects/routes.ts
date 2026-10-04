@@ -19,7 +19,6 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import {
   badRequest,
   flatten,
-  forbidden,
   idParamSchema,
   notFound,
 } from '../middleware/route-errors.js';
@@ -44,7 +43,7 @@ import {
   readIssueBranchInputs,
   readProjectBranches,
 } from './service.js';
-import { requireOrgCan, requireOrgHeld } from '../permissions/index.js';
+import { requireHeld, requireOrgCan, requireOrgHeld } from '../permissions/index.js';
 
 const createProjectFields = {
   slug: z
@@ -225,7 +224,7 @@ projectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const [project] = await db
       .select(PROJECT_DETAIL)
@@ -447,7 +446,7 @@ projectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const project = await readProjectBranches(id);
     if (!project) throw notFound();

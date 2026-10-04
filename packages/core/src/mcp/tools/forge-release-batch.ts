@@ -38,12 +38,12 @@ import {
 } from '../../release-batch/service.js';
 import { readReleaseRunState } from '../../release-batch/state.js';
 import {
-  assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   principalActor,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const inputSchema = z
   .object({
@@ -219,7 +219,7 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId ?? null);
     // cm:why the release run's own refusal says how to end the turn, which the writer gate's does not
     assertCanRecord(ctx.principal);
-    await assertPrincipalIsWriter(ctx.principal, projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.write', projectId);
     await assertRunOfProject(input.runId, projectId);
     return run(ctx.principal, input, projectId);
   },

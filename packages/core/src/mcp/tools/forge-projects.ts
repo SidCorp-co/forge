@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ProjectMemberRole } from '../../db/schema.js';
-import { effectiveProjectRole, loadOrgRole, loadPersonalOrgId, maxProjectRole, orgDerivedProjectRole } from '../../lib/authz.js';
+import { loadPersonalOrgId, maxProjectRole, orgDerivedProjectRole } from '../../lib/authz.js';
 import { readProjectConfig, writeProjectConfig } from '../../project-config/service.js';
 import { retiredProjectFieldsMessage } from '../../projects/retired-project-keys.js';
 import {
@@ -14,7 +14,7 @@ import {
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
-import { holdsOrg } from '../../permissions/index.js';
+import { requireCan, requireOrgCan, requireOrgHeld } from '../../permissions/index.js';
 
 /**
  * Enumerate projects visible to the principal — explicit membership (any
@@ -108,8 +108,7 @@ export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
     // or the caller's personal org.
     let orgId: string;
     if (input.orgId) {
-      const orgRole = await loadOrgRole(input.orgId, creatorId);
-      if (!orgRole) throw new Error('NOT_FOUND: org not found or not accessible');
+      await requireOrgCan({ userId: creatorId }, 'org.read', input.orgId);
       orgId = input.orgId;
     } else {
       const personal = await loadPersonalOrgId(creatorId);
@@ -187,7 +186,7 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     // PAT allowlist gate first (translates miss to NOT_FOUND so the
-    // project namespace isn't enumerable — mirrors assertPrincipalIs*).
+    // project namespace isn't enumerable).
     if (
       principal.kind === 'pat' &&
       principal.projectIds !== null &&
@@ -197,15 +196,8 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     const userId = principalUserId(principal);
-    const access = await effectiveProjectRole(userId, input.projectId);
-    // Non-member returns NOT_FOUND (not FORBIDDEN) to avoid leaking
-    // existence; a member below the org-admin bar gets the truthful FORBIDDEN.
-    if (!access?.role) {
-      throw new Error('NOT_FOUND: project not found or not accessible');
-    }
-    if (!holdsOrg(access.orgRole, 'org.admin')) {
-      throw new Error('FORBIDDEN: requires org admin (project admin role is insufficient)');
-    }
+    const access = await requireCan({ userId }, 'project.read', input.projectId);
+    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
     const name = input.patch.name;
     const held = name === undefined ? null : await readProjectConfig(input.projectId);
@@ -264,13 +256,8 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
     const proj = await readProjectSummary(input.projectId);
     if (!proj) throw new Error('NOT_FOUND: project not found or not accessible');
 
-    // Resolve the effective caller role; a non-member surfaces NOT_FOUND so
-    // the namespace stays non-enumerable.
-    const access = await effectiveProjectRole(userId, input.projectId);
-    if (!access?.role) {
-      throw new Error('NOT_FOUND: project not found or not accessible');
-    }
-    const role: ProjectMemberRole = access.role;
+    const access = await requireCan({ userId }, 'project.read', input.projectId);
+    const role = access.role as ProjectMemberRole;
 
     return {
       project: {

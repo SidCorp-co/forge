@@ -14,14 +14,13 @@ import { listCriteria, putCriteria, recordVerdict } from '../../issues/criteria/
 import { withCurrentDrafts } from '../../issues/criteria/storefront-draft.js';
 import { egressShown } from '../../lib/data-egress.js';
 import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   principalAgency,
   principalAuthorDeviceId,
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const inputSchema = z.object({
   action: z.enum(['list', 'put', 'verdict']),
@@ -70,10 +69,10 @@ export const forgeCriteriaTool: ContextScopedMcpToolFactory = ({ principal }) =>
     const input = inputSchema.parse(args);
     const issue = await issueOf(input.issueId);
     if (input.action === 'list') {
-      await assertPrincipalIsMember(principal, issue.projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', issue.projectId);
       return { criteria: await criteriaShown(issue) };
     }
-    await assertPrincipalIsWriter(principal, issue.projectId);
+    await requireCan({ userId: principal.userId }, 'project.write', issue.projectId);
     if (input.action === 'put') {
       if (!input.criteria)
         throw new Error('BAD_REQUEST: action=put takes `criteria`, the whole set in order');

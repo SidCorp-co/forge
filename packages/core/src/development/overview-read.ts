@@ -213,11 +213,10 @@ interface Viewer {
 async function viewerFacts(projectId: string, userId: string | null): Promise<Viewer | null> {
   if (!userId) return null;
   const access = await effectiveProjectRole(userId, projectId);
-  const role = access?.role ?? null;
   return {
     userId,
-    isAdmin: role === 'admin',
-    isMember: role === 'admin' || role === 'member',
+    isAdmin: access !== null && holds(access, 'project.admin'),
+    isMember: access !== null && holds(access, 'project.write'),
     access,
   };
 }

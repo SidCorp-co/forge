@@ -15,13 +15,13 @@ import {
   spawnReconcileRun,
 } from '../../skills/reconcile-service.js';
 import {
-  assertPrincipalIsAdmin,
-  assertPrincipalIsMember,
+  assertTokenHasScope,
   type ContextScopedMcpToolFactory,
   principalUserId,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const inputSchema = z
   .object({
@@ -94,7 +94,8 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
     const actorUserId = principalUserId(ctx.principal);
 
     if (input.action === 'trigger') {
-      await assertPrincipalIsAdmin(ctx.principal, projectId);
+      assertTokenHasScope(ctx.principal, 'admin');
+      await requireCan({ userId: ctx.principal.userId }, 'project.admin', projectId);
       if (!input.packetId) throw new Error('BAD_REQUEST: packetId is required for action=trigger');
       if (!input.skillId) throw new Error('BAD_REQUEST: skillId is required for action=trigger');
 
@@ -111,7 +112,7 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     if (input.action === 'get') {
-      await assertPrincipalIsMember(ctx.principal, projectId);
+      await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=get');
       const run = await getReconcileRun(input.runId);
       if (!run || run.projectId !== projectId)
@@ -120,13 +121,14 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     if (input.action === 'list') {
-      await assertPrincipalIsMember(ctx.principal, projectId);
+      await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
       const runs = await listReconcileRunsForProject(projectId);
       return { runs };
     }
 
     if (input.action === 'record_verdict') {
-      await assertPrincipalIsAdmin(ctx.principal, projectId);
+      assertTokenHasScope(ctx.principal, 'admin');
+      await requireCan({ userId: ctx.principal.userId }, 'project.admin', projectId);
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=record_verdict');
       if (!input.verdict)
         throw new Error('BAD_REQUEST: verdict is required for action=record_verdict');
@@ -158,7 +160,7 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     if (input.action === 'record_vote') {
-      await assertPrincipalIsMember(ctx.principal, projectId);
+      await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=record_vote');
       if (!input.jobId) throw new Error('BAD_REQUEST: jobId is required for action=record_vote');
       if (!input.vote) throw new Error('BAD_REQUEST: vote is required for action=record_vote');
@@ -178,7 +180,8 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     if (input.action === 'apply') {
-      await assertPrincipalIsAdmin(ctx.principal, projectId);
+      assertTokenHasScope(ctx.principal, 'admin');
+      await requireCan({ userId: ctx.principal.userId }, 'project.admin', projectId);
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=apply');
 
       const applyRun = await getReconcileRun(input.runId);
@@ -196,7 +199,8 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     if (input.action === 'reject') {
-      await assertPrincipalIsAdmin(ctx.principal, projectId);
+      assertTokenHasScope(ctx.principal, 'admin');
+      await requireCan({ userId: ctx.principal.userId }, 'project.admin', projectId);
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=reject');
       if (!input.rejectReason)
         throw new Error('BAD_REQUEST: rejectReason is required for action=reject');
@@ -216,7 +220,8 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
 
     if (input.action === 'acknowledge') {
-      await assertPrincipalIsAdmin(ctx.principal, projectId);
+      assertTokenHasScope(ctx.principal, 'admin');
+      await requireCan({ userId: ctx.principal.userId }, 'project.admin', projectId);
       if (!input.runId) throw new Error('BAD_REQUEST: runId is required for action=acknowledge');
 
       const ackRun = await getReconcileRun(input.runId);

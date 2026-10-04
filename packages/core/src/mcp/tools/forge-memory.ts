@@ -14,12 +14,8 @@ import {
   runMemoryWrite,
   writeMemoryInputSchema,
 } from '../../memory/write-service.js';
-import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
-  type ContextScopedMcpToolFactory,
-  zodToMcpSchema,
-} from './lib.js';
+import { type ContextScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const deleteInputSchema = z.object({
   projectId: z.uuid(),
@@ -50,7 +46,7 @@ export const forgeMemorySearchTool: ContextScopedMcpToolFactory = ({ principal }
   inputSchema: zodToMcpSchema(searchInputSchema),
   handler: async (args) => {
     const input = searchInputSchema.parse(args);
-    await assertPrincipalIsMember(principal, input.projectId);
+    await requireCan({ userId: principal.userId }, 'project.read', input.projectId);
     try {
       return await runMemorySearch({ ...input, surface: 'agent' });
     } catch (err) {
@@ -78,7 +74,7 @@ export const forgeMemoryGetTool: ContextScopedMcpToolFactory = ({ principal }) =
   inputSchema: zodToMcpSchema(getMemoryInputSchema),
   handler: async (args) => {
     const input = getMemoryInputSchema.parse(args);
-    await assertPrincipalIsMember(principal, input.projectId);
+    await requireCan({ userId: principal.userId }, 'project.read', input.projectId);
     return runMemoryGet(input);
   },
 });
@@ -98,7 +94,7 @@ export const forgeMemoryDeleteTool: ContextScopedMcpToolFactory = ({ principal }
   inputSchema: zodToMcpSchema(deleteInputSchema),
   handler: async (args) => {
     const input = deleteInputSchema.parse(args);
-    await assertPrincipalIsWriter(principal, input.projectId);
+    await requireCan({ userId: principal.userId }, 'project.write', input.projectId);
     const removed = await deleteMemory(input.projectId, input.source, input.sourceRef);
     return { deleted: removed > 0 };
   },
@@ -120,7 +116,7 @@ export const forgeMemoryFeedbackTool: ContextScopedMcpToolFactory = ({ principal
   inputSchema: zodToMcpSchema(memoryFeedbackInputSchema),
   handler: async (args) => {
     const input = memoryFeedbackInputSchema.parse(args);
-    await assertPrincipalIsWriter(principal, input.projectId);
+    await requireCan({ userId: principal.userId }, 'project.write', input.projectId);
     try {
       return await runMemoryFeedback(input);
     } catch (err) {
@@ -142,7 +138,7 @@ export const forgeMemoryWriteTool: ContextScopedMcpToolFactory = ({ principal })
   inputSchema: zodToMcpSchema(writeMemoryInputSchema),
   handler: async (args) => {
     const input = writeMemoryInputSchema.parse(args);
-    await assertPrincipalIsWriter(principal, input.projectId);
+    await requireCan({ userId: principal.userId }, 'project.write', input.projectId);
     try {
       return await runMemoryWrite(input);
     } catch (err) {

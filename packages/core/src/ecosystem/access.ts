@@ -4,8 +4,8 @@ import type { OrgMemberRole } from '../db/schema.js';
 import { loadOrgRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { RefusalError } from '../lib/refusal.js';
 import type { EcosystemRefusal } from './refusals.js';
+import { requireOrgHeld } from '../permissions/index.js';
 import { activeMembersOf } from './store.js';
-import { holdsOrg } from '../permissions/index.js';
 
 export const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -32,12 +32,8 @@ export async function stewardRole(
 export async function assertStewardAdmin(
   stewardOrgId: string,
   userId: string | undefined,
-  act: string,
 ): Promise<void> {
-  const role = await stewardRole(stewardOrgId, userId);
-  if (!holdsOrg(role, 'org.admin')) {
-    throw forbidden(`${act} is the steward's: it needs owner or admin of org ${stewardOrgId}`);
-  }
+  requireOrgHeld(stewardOrgId, await stewardRole(stewardOrgId, userId), 'org.admin');
 }
 
 // cm:why a fence names the projects a credential acts for, so the reader is only those of the person's projects inside it

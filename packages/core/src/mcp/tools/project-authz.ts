@@ -1,20 +1,5 @@
-import { effectiveProjectRole } from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { PM_ACTIONS } from './pm-actions.js';
-import { holds } from '../../permissions/index.js';
-
-export async function loadUserProjectRoleFlags(
-  userId: string,
-  projectId: string,
-): Promise<{ isMember: boolean; isWriter: boolean; isAdmin: boolean } | null> {
-  const access = await effectiveProjectRole(userId, projectId);
-  if (!access) return null;
-  return {
-    isMember: access.role !== null,
-    isWriter: holds(access, 'project.write'),
-    isAdmin: holds(access, 'project.admin'),
-  };
-}
 
 const patReachablePmActions = PM_ACTIONS.filter((a) => a !== 'dispatch' && a !== 'write_decision');
 

@@ -15,13 +15,8 @@ import {
 } from '../../issues/record-events/store.js';
 import { writeScreenedRecordEvent } from '../../issues/record-events/write.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
-import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
-  type ContextScopedMcpToolFactory,
-  principalHookActor,
-  zodToMcpSchema,
-} from './lib.js';
+import { type ContextScopedMcpToolFactory, principalHookActor, zodToMcpSchema } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const inputSchema = z
   .object({
@@ -63,7 +58,7 @@ export const forgeIssueEventsTool: ContextScopedMcpToolFactory = (ctx) => ({
     const { principal } = ctx;
     const projectId = await loadIssueProjectId(input.issueId);
     if (input.action === 'list') {
-      await assertPrincipalIsMember(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', projectId);
       if (
         input.kind !== undefined &&
         input.kind !== RECORD_DIGEST_KIND &&
@@ -77,7 +72,7 @@ export const forgeIssueEventsTool: ContextScopedMcpToolFactory = (ctx) => ({
       });
       return { events: events.map(framed), returned: events.length };
     }
-    await assertPrincipalIsWriter(principal, projectId);
+    await requireCan({ userId: principal.userId }, 'project.write', projectId);
     try {
       const event = await writeScreenedRecordEvent({
         projectId,

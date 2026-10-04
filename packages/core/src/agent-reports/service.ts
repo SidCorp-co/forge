@@ -33,7 +33,8 @@ import { announceIssueCreated } from '../issues/create-service.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
 import { type PipelineCaller, resolvePipelineContext } from '../jobs/active-job-context.js';
-import { maxProjectRole, orgDerivedProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { maxProjectRole, orgDerivedProjectRole } from '../lib/authz.js';
+import { holds } from '../permissions/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
@@ -97,19 +98,26 @@ export async function readReport(reportId: string) {
   return row ?? null;
 }
 
-// cm:guard ISS-113: a triage across every project moves reports only where the caller may write,
-// member or above, effective through the org; a viewer membership is read-only, as on the
-// single-report and project doors
+// A triage across every project moves reports only where the caller holds project.write, as on the
+// single-report and project doors.
 export function writableProjectIds(
   rows: readonly {
     id: string;
     memberRole: ProjectMemberRole | null;
     orgRole: OrgMemberRole | null;
+    grants: readonly string[] | null;
   }[],
 ): string[] {
   return rows
     .filter((r) =>
-      projectRoleAtLeast(maxProjectRole(r.memberRole, orgDerivedProjectRole(r.orgRole)), 'member'),
+      holds(
+        {
+          projectId: r.id,
+          role: maxProjectRole(r.memberRole, orgDerivedProjectRole(r.orgRole)),
+          grants: r.grants ?? [],
+        },
+        'project.write',
+      ),
     )
     .map((r) => r.id);
 }

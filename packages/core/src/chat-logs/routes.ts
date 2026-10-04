@@ -3,11 +3,12 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { chatLogs, type ProjectMemberRole, projects, qaRatings } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { chatLogs, projects, qaRatings } from '../db/schema.js';
+import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { type ProjectPermission, requireHeld } from '../permissions/index.js';
 import { findProjectIdBySlug } from '../projects/service.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -55,12 +56,11 @@ const notFound = (message: string) =>
 async function assertChatLogAccess(
   projectSlug: string,
   userId: string,
-  minRole: ProjectMemberRole = 'viewer',
+  permission: ProjectPermission = 'project.read',
 ): Promise<void> {
   const projectId = await findProjectIdBySlug(projectSlug);
   if (!projectId) throw notFound('project not found');
-  const access = await loadProjectAccess(projectId, userId);
-  assertProjectRole(access, minRole, 'not a project member');
+  requireHeld(await loadProjectAccess(projectId, userId), permission);
 }
 
 export const chatLogRoutes = new Hono<{ Variables: AuthVars }>();
@@ -220,7 +220,7 @@ chatLogRoutes.patch(
       .limit(1);
     if (!row) throw notFound('chat log not found');
 
-    await assertChatLogAccess(row.projectSlug, userId, 'admin');
+    await assertChatLogAccess(row.projectSlug, userId, 'project.admin');
 
     const updates: Record<string, unknown> = {};
     if (patch.qaRating !== undefined) updates.qaRating = patch.qaRating;

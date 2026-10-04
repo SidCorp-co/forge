@@ -13,10 +13,10 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { noPromptMessage, POOL_JOB_NO_PROMPT } from '../jobs/pool-served.js';
-import { loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { StartRefusedError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
@@ -38,8 +38,6 @@ import { triggerTerminalDispatch } from './transition.js';
 import { holds, requireHeld } from '../permissions/index.js';
 
 const runPipelineStepBodySchema = z.object({}).strict();
-
-const START_ROLE = 'member' as const;
 
 const batchPatchBodySchema = z
   .object({
@@ -305,15 +303,7 @@ issueExtrasRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!projectRoleAtLeast(access.role, START_ROLE)) {
-      throw new HTTPException(403, {
-        message: `START_REQUIRES_MEMBER: starting an issue's pipeline requires project ${START_ROLE} access, and this caller's role on the project is ${access.role ?? 'none'}.`,
-        cause: {
-          code: 'START_REQUIRES_MEMBER',
-          details: { required: START_ROLE, role: access.role },
-        },
-      });
-    }
+    requireHeld(access, 'project.write', "starting an issue's pipeline");
 
     try {
       const { startedAt } = await triggerPipelineStepManual({
@@ -356,7 +346,7 @@ issueExtrasRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const conditions = [
       eq(issues.projectId, projectId),

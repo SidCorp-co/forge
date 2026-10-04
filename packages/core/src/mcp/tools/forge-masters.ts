@@ -7,12 +7,12 @@ import { z } from 'zod';
 import { guideRef } from '../../guides/guide-ref.js';
 import { listMasterPasses, readMasterStanding } from '../../masters/read.js';
 import {
-  assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
   type McpContext,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const ACTIONS = ['standing', 'passes'] as const;
 
@@ -34,7 +34,7 @@ const DESCRIPTION =
 async function run(args: unknown, ctx: McpContext): Promise<unknown> {
   const input = inputSchema.parse(args);
   const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-  await assertPrincipalIsMember(ctx.principal, projectId);
+  await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
   if (input.action === 'standing') return readMasterStanding(projectId);
   return listMasterPasses(projectId, {
     limit: input.limit ?? MASTER_PASS_PAGE_DEFAULT,

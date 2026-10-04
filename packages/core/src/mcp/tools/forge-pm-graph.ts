@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { PM_GRAPH_DEFAULT_DEPTH, PM_GRAPH_MAX_DEPTH, readPmGraph } from '../../pm/graph-service.js';
-import { assertPrincipalIsMember } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 export const pmGraphInputSchema = z
   .object({
@@ -15,6 +15,6 @@ export async function pmGraphHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pmGraphInputSchema>,
 ) {
-  await assertPrincipalIsMember(principal, input.projectId);
+  await requireCan({ userId: principal.userId }, 'project.read', input.projectId);
   return readPmGraph(input);
 }

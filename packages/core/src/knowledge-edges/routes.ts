@@ -41,9 +41,6 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 export const knowledgeEdgeRoutes = new Hono<{ Variables: AuthVars }>();
 knowledgeEdgeRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -57,7 +54,7 @@ knowledgeEdgeRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const conditions: SQL[] = [eq(knowledgeEdges.projectId, projectId)];
     if (subject) conditions.push(eq(knowledgeEdges.subject, subject));

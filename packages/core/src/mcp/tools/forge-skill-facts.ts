@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { jobTypes } from '../../db/schema.js';
 import { getResolvedFact, listResolvedFacts } from '../../prompt/facts/resolve.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
-import { assertPrincipalIsMember, zodToMcpSchema } from './lib.js';
+import { zodToMcpSchema } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const listInputSchema = z
   .object({ projectId: z.uuid(), stage: z.enum(jobTypes).optional() })
@@ -21,7 +22,7 @@ export const forgeSkillFactsListTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId, stage } = listInputSchema.parse(args);
-    await assertPrincipalIsMember(ctx.principal, projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
     const facts = await listResolvedFacts(projectId, stage ?? null);
     return { facts };
   },
@@ -37,7 +38,7 @@ export const forgeSkillFactsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const { projectId, id, stage } = getInputSchema.parse(args);
-    await assertPrincipalIsMember(ctx.principal, projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
     const fact = await getResolvedFact(projectId, id, stage ?? null);
     if (!fact) throw new Error('NOT_FOUND: unknown fact id');
     return { fact };

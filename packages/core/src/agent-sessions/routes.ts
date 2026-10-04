@@ -135,7 +135,7 @@ agentSessionRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const { session } = await ensureSessionRole(id, userId, 'member');
+    const { session } = await ensureSessionRole(id, userId, 'project.write');
 
     const meta = (session.metadata ?? {}) as { issueId?: string };
     if (!isPipelineSessionKind(session.kind)) {
@@ -231,7 +231,7 @@ agentSessionRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     // Group counts by deviceId × status. Devices without any active session
     // simply don't appear; the UI lists those via the standard devices API.
@@ -304,7 +304,7 @@ agentSessionRoutes.get(
 
     if (projectId) {
       const access = await loadProjectAccess(projectId, userId);
-      if (!access.role) throw forbidden('not a project member');
+      requireHeld(access, 'project.read');
       conditions.push(eq(agentSessions.projectId, projectId));
     } else if (deviceId) {
       // Scope a deviceId listing to caller-visible projects, like the
@@ -448,7 +448,7 @@ agentSessionRoutes.get(
       assertDeviceOwnsSession(c, row);
     } else {
       const access = await loadProjectAccess(row.projectId, userId);
-      if (!access.role) throw forbidden('not a project member');
+      requireHeld(access, 'project.read');
       assertAgentChatOwner(row, access, userId);
     }
 
@@ -762,7 +762,7 @@ agentSessionRoutes.post(
     const { event, data } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { session: existing } = await ensureSessionRole(id, userId, 'member');
+    const { session: existing } = await ensureSessionRole(id, userId, 'project.write');
 
     broadcastSession(existing, `agent-session.relay.${event}`, { payload: data });
     return c.json({ relayed: true });

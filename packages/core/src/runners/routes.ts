@@ -34,9 +34,6 @@ const badRequest = (details: unknown) =>
 const notFound = () =>
   new HTTPException(404, { message: 'runner not found', cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (msg: string) =>
-  new HTTPException(403, { message: msg, cause: { code: 'FORBIDDEN' } });
-
 function rowToRunner(r: typeof runners.$inferSelect): Runner {
   return {
     id: r.id,
@@ -118,7 +115,7 @@ runnerRoutes.get(
     const filters = [];
     if (q.projectId) {
       const access = await loadProjectAccess(q.projectId, userId);
-      if (!access.role) throw forbidden('not a project member');
+      requireHeld(access, 'project.read');
       filters.push(eq(runners.projectId, q.projectId));
     } else {
       return c.json({ runners: [] });
@@ -144,7 +141,7 @@ runnerRoutes.get(
     const userId = c.get('userId');
     const { projectId } = c.req.valid('query');
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const rows = await db.execute<{
       runner_id: string;
@@ -225,7 +222,7 @@ runnerRoutes.get(
     const [row] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!row) throw notFound();
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
     return c.json({ runner: publicRunner(rowToRunner(row)) });
   },
 );
@@ -256,7 +253,7 @@ runnerRoutes.get(
     const [row] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!row) throw notFound();
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const events = await db
       .select({
@@ -443,7 +440,7 @@ runnerRoutes.post(
     const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
     const adapter = getRunnerAdapter(existing.type);
     if (!adapter) throw badRequest({ type: 'no adapter registered' });
     return c.json(await runnerHealthWithBuild(adapter, rowToRunner(existing), existing.deviceId));

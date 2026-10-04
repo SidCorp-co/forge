@@ -6,9 +6,10 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, forbidden } from '../middleware/route-errors.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { readProjectRunSessions } from './run-ledger.js';
+import { requireHeld } from '../permissions/index.js';
 
 const paramsSchema = z.object({ id: z.uuid() });
 
@@ -24,7 +25,7 @@ runLedgerRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const access = await loadProjectAccess(id, c.get('userId'));
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
     const items = await readProjectRunSessions(id);
     return c.json({ items, count: items.length });
   },

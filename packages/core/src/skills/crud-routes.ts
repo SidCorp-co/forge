@@ -108,12 +108,12 @@ skillCrudRoutes.get(
     } else if (scope === 'project') {
       if (!projectId) throw badRequest({ projectId: 'required when scope=project' });
       const access = await loadProjectAccess(projectId, userId);
-      if (!access.role) throw forbidden('not a project member');
+      requireHeld(access, 'project.read');
       conditions.push(and(eq(skills.scope, 'project'), eq(skills.projectId, projectId)) as SQL);
     } else {
       if (projectId) {
         const access = await loadProjectAccess(projectId, userId);
-        if (!access.role) throw forbidden('not a project member');
+        requireHeld(access, 'project.read');
         const projectCond = and(
           eq(skills.scope, 'project'),
           eq(skills.projectId, projectId),
@@ -159,7 +159,7 @@ skillCrudRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const effective = await resolveRegisteredEffectiveSkills(projectId);
     const invokable = effective
@@ -185,7 +185,7 @@ skillCrudRoutes.get(
 
     if (row.scope === 'project' && row.projectId) {
       const access = await loadProjectAccess(row.projectId, userId);
-      if (!access.role) throw forbidden('not a project member');
+      requireHeld(access, 'project.read');
     }
 
     return c.json(row);
@@ -329,7 +329,7 @@ skillCrudRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     // Project skills + global skills relevant to this project.
     const projectSkills = await db

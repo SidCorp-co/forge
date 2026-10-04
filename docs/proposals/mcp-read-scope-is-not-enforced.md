@@ -16,9 +16,11 @@ On the REST data plane the scope holds: `middleware/pat-rest-surface.ts` refuses
 token's scopes do not cover. On `/mcp` it does not. `mcp/request-class.ts:classifyMcpEnvelope`
 already sorts every JSON-RPC envelope into `read` or `write`, failing closed to `write`, but the
 only reader of that answer is the rate limiter in `middleware/require-pat.ts:authenticatePat`.
-No gate compares it with `principal.scopes`. Outside `assertPrincipalIsAdmin` (the `admin` scope)
-and a handful of tools that check `write` themselves (`forge-release-batch`, `forge-projects`),
-a token holding only `read` can create issues, comment and change fields through `/mcp`.
+No gate compares it with `principal.scopes`. The permission check refuses any non-read permission
+to a token without `write` (`packages/core/src/permissions/can.ts:holds`), and `/mcp` admin acts
+also need the `admin` scope (`mcp/tools/lib.ts:assertTokenHasScope`), but a tool that asks only
+`project.read` before writing still lets a token holding only `read` create issues, comment and
+change fields through `/mcp`.
 
 ## Why it was not closed on ISS-1175
 

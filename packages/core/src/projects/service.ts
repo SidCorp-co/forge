@@ -132,6 +132,8 @@ export type VisibleProjectWithRole = {
   orgId: string;
   memberRole: ProjectMemberRole | null;
   orgRole: OrgMemberRole | null;
+  /** The membership's grant beyond its role; empty where the caller is not a member. */
+  grants: string[] | null;
 };
 
 export async function listVisibleProjectsWithRole(
@@ -143,6 +145,7 @@ export async function listVisibleProjectsWithRole(
       ...projectListColumns,
       memberRole: projectMembers.role,
       orgRole: organizationMembers.role,
+      grants: projectMembers.grants,
     })
     .from(projects)
     .leftJoin(

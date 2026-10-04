@@ -1,6 +1,6 @@
 import { fencedProjectIds } from '../auth/pat-scope.js';
 import { db } from '../db/client.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { forbidden, notFound, readerProjects } from './access.js';
 import { type LinkImpact, linkImpact } from './contract/impact.js';
 import { currentVersion, type StoredVersion, versionsOf } from './contract/store.js';
@@ -21,7 +21,7 @@ import { readableEcosystem } from './membership-service.js';
 import { edgeVisible, visibleMembers } from './party.js';
 import type { EdgeRow } from './store.js';
 import { projectsWhere, readInterfaces, recordedVersions } from './store.js';
-import { requireCan } from '../permissions/index.js';
+import { holds, requireCan } from '../permissions/index.js';
 
 const stamped = <W extends object>(held: Held<W>) => ({
   ...held.document,
@@ -44,8 +44,8 @@ const asEdge = (l: StoredLink, ecosystemId: string): EdgeRow => ({
 
 // cm:why a link is the consumer's record, read in full by the consumer's members and by the provider it points at; anyone else reads it only where the ecosystem shows every member everything, and an in-project link is in no ecosystem, so only the project's own members read it
 async function assertLinkReadable(userId: string, link: StoredLink): Promise<void> {
-  const role = (await effectiveProjectRole(userId, link.projectId))?.role ?? null;
-  if (projectRoleAtLeast(role, 'viewer')) return;
+  const access = await effectiveProjectRole(userId, link.projectId);
+  if (access && holds(access, 'project.read')) return;
   const ecosystemId = link.ecosystemId;
   if (ecosystemId !== null) {
     const graph = await loadGraph([ecosystemId]);
