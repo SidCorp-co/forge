@@ -1,7 +1,7 @@
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REPO_PATH_MAX, repoPath } from '@forge/contracts/repo-path';
 import { z } from 'zod';
-import { type STOREFRONT_PROVIDERS, slug, unique, uuid } from '../project-config/schema.js';
+import { type STOREFRONT_PROVIDERS, slug, unique, uuid } from '../project-config/index.js';
 
 type StorefrontProvider = (typeof STOREFRONT_PROVIDERS)[number];
 
