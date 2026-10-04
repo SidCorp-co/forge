@@ -17,7 +17,7 @@ import { FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_LABELS } from "@forge/contrac
 const STRIP: FeedbackPhase[] = ["new", "triaged", "planned", "resolved", "verified"];
 
 /** New → Triaged → Planned → Resolved → Verified; a declined or reopened item reads off the strip. */
-export function PhaseSteps({ f }: { f: FeedbackView }) {
+function PhaseSteps({ f }: { f: FeedbackView }) {
   const at = STRIP.indexOf(f.phase);
   if (at < 0) return null;
   return (
@@ -144,7 +144,7 @@ export function FeedbackFacts({ f, slug }: { f: FeedbackView; slug: string }) {
         {f.source ? (
           <Fact label="From" testId="facts-source">
             <Link
-              href={`/projects/${encodeURIComponent(slug)}/automation?tab=improvements`}
+              href={`/projects/${encodeURIComponent(slug)}/automation?tab=reports`}
               className="text-link hover:underline"
               title={`Agent report ${f.source.agentReport.id} · filed ${formatStamp(f.source.agentReport.createdAt)}`}
             >

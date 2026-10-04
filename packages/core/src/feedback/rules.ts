@@ -12,19 +12,18 @@ import {
   type FeedbackPhase,
   type FeedbackRefusal,
   type FeedbackRefusalCode,
-  type FeedbackRoute,
   type FeedbackRouteWrite,
   type FeedbackSeverity,
   type FeedbackStatus,
   type FeedbackTriage,
   type FeedbackTriageRoute,
 } from '@forge/contracts/feedback';
-import type { SuggestionKind, SuggestionStatus } from '@forge/contracts/suggestions';
+import type { SuggestionKind } from '@forge/contracts/suggestions';
 import type { NodeRef } from '@forge/contracts/workflow-health';
 import { addWorkingDays } from '../lib/working-days.js';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
-export type { FeedbackRefusal, FeedbackRefusalCode } from '@forge/contracts/feedback';
+export type { FeedbackRefusal } from '@forge/contracts/feedback';
 
 const refusal = (code: FeedbackRefusalCode, path: string, detail: string): FeedbackRefusal => ({
   code,
@@ -173,13 +172,11 @@ export function redactedRefusal(redactedAt: Date | null): FeedbackRefusal | null
 export const decideActRefusal = (facts: PermissionFacts, act: string) =>
   permissionRefusal(facts, 'feedback.approve', act);
 
-export const verifyActRefusal = decideActRefusal;
-
 /** Deleting reporter data (UC15). */
 export const redactActRefusal = (facts: PermissionFacts) =>
   permissionRefusal(facts, 'feedback.redact', "deleting a reporter's data");
 
-export interface PromoteFacts {
+interface PromoteFacts {
   reportId: string;
   reportProject: string;
   project: string;

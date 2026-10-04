@@ -2,8 +2,8 @@
 // import the kinds, statuses, limits, refusal codes, request schemas and views from here
 
 import { z } from "zod";
-import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { RefusalStatuses } from "./refusal.js";
 
 export const MOCKUP_KINDS = [
@@ -96,6 +96,7 @@ export const MOCKUP_LIMITS = {
 } as const;
 
 const MOCKUP_SOURCES = ["issue", "comment"] as const;
+
 export const MOCKUP_REFUSAL_CODES = [
 	"MOCKUP_CONTENT_REQUIRED",
 	"MOCKUP_TYPE_INVALID",

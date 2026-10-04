@@ -6,7 +6,9 @@ import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 
 export const WORKFLOW_STEP_ID = /^[a-z][a-z0-9_-]{0,62}$/;
 
-const stepId = z.string().regex(WORKFLOW_STEP_ID, "a step id reads like `my-step`");
+const stepId = z
+	.string()
+	.regex(WORKFLOW_STEP_ID, "a step id reads like `my-step`");
 
 export const edgeRefSchema = z.strictObject({
 	from: stepId,
@@ -29,6 +31,7 @@ export const nodeSetSchema = z.strictObject({
 export type NodeSet = z.infer<typeof nodeSetSchema>;
 
 const NODE_DECISION_VERDICTS = ["keep", "rewrite", "delete"] as const;
+
 /** `decision.node` on a workflow decision comment: the node decided and what is done with it. */
 export const nodeDecisionSchema = z.union([
 	z.strictObject({ step: stepId, verdict: z.enum(NODE_DECISION_VERDICTS) }),
@@ -37,9 +40,11 @@ export const nodeDecisionSchema = z.union([
 		verdict: z.enum(NODE_DECISION_VERDICTS),
 	}),
 ]);
+
 export const NODE_DECISION_SHAPE = `{ step, verdict } | { edge: { from, to, label? }, verdict } with verdict ${NODE_DECISION_VERDICTS.join(" | ")}`;
 
 const DESIGN_CHANGE_KINDS = ["change", "remove", "rewire"] as const;
+
 /** A `design_change` suggestion's payload: the nodes it is about, what it asks for and why. */
 export const designChangePayloadSchema = z
 	.strictObject({
@@ -52,6 +57,7 @@ export const designChangePayloadSchema = z
 		message: "a design_change names at least one step or edge",
 		path: ["steps"],
 	});
+
 /** `PUT /api/projects/:id/requirements/:req/criteria/:code/steps` — replaces the criterion's trace onto one design. */
 export const putCriterionStepsRequestSchema = z.strictObject({
 	workflow: z.string().trim().min(1).max(200),
@@ -73,7 +79,11 @@ export interface CriterionTraceView {
 }
 
 /** An observed layer may be larger than its design: code the design does not hold is drawn too. */
-export const OBSERVATION_LIMITS = { steps: 200, edges: 600, after: 24 } as const;
+export const OBSERVATION_LIMITS = {
+	steps: 200,
+	edges: 600,
+	after: 24,
+} as const;
 
 export const OBSERVATION_SOURCES = ["observer", "migrated"] as const;
 export type ObservationSource = (typeof OBSERVATION_SOURCES)[number];

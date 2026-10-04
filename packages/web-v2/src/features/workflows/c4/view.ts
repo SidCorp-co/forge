@@ -7,7 +7,7 @@ export type Level = "context" | "containers";
 export type Detail = "boundaries" | "systems";
 
 /** People fold by boundary only past this many, so a few roles stay readable one by one. */
-export const PEOPLE_AT_A_GLANCE = 4;
+const PEOPLE_AT_A_GLANCE = 4;
 
 export const FOCAL = "__system";
 

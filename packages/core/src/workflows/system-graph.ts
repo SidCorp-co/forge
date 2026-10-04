@@ -39,7 +39,7 @@ const GENERIC_KIND: TemplateEdgeKind = {
 const OPEN_MARK =
   /\s*\(([^()]*?(?:chưa xác nhận|đề xuất|unconfirmed|not confirmed|proposed|to be confirmed)[^()]*)\)\s*$/iu; // i18n-allow: the words HOP's designs mark an open integration with
 
-export function integrationOf(title: string): {
+function integrationOf(title: string): {
   name: string;
   state: IntegrationState;
   mark: string | null;
@@ -200,7 +200,7 @@ function factsOf(nodes: GraphNode[], boundaries: Boundary[]): GraphFacts {
   };
 }
 
-export interface GraphParts {
+interface GraphParts {
   focal: FocalSystem | null;
   nodes: GraphNode[];
   relationships: Relationship[];

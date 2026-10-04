@@ -3,20 +3,20 @@
 // response shapes from here, so no surface can name a kind, status or code another does not know.
 
 import { z } from "zod";
-import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import {
 	type FeedbackTriageEffect,
 	feedbackDedupSchema,
 	feedbackTriageSchema,
 } from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import {
 	REGISTRY_ISSUE_COMPLEXITIES,
 	REGISTRY_ISSUE_PRIORITIES,
 } from "./pipeline-registry.js";
 import { ANSWER_VIEWS, pickFields } from "./projection.js";
-import { designChangePayloadSchema } from "./workflow-health.js";
 import type { RefusalStatuses } from "./refusal.js";
+import { designChangePayloadSchema } from "./workflow-health.js";
 
 /** The six kinds rev 2 names, feedback_triage (workflow feedback-triage, ISS-59) and design_change (workflow step-health, REQ-17 BC-12); cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
 export const SUGGESTION_KINDS = [
@@ -311,6 +311,7 @@ export const REVISE_SUGGESTION_SHAPE =
 export const rejectSuggestionRequestSchema = z.strictObject({
 	reason: z.string().max(4_000),
 });
+
 /** `GET /api/projects/:id/suggestions` — `status` is comma-separated. */
 export const listSuggestionsQuerySchema = z.strictObject({
 	...targetFields,

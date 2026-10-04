@@ -1,10 +1,7 @@
 import type { DesignRevisionState, DesignStatus } from "./design-status.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
-import type { WaitingKind, WaitingOn } from "./standing.js";
 import type { RefusalStatuses } from "./refusal.js";
-
-// cm:why the answer shapes a workflow and its design are read in when the whole document is not
-// asked for (ISS-87)
+import type { WaitingKind, WaitingOn } from "./standing.js";
 
 export interface WorkflowSummaryView {
 	workflowId: string;
@@ -35,6 +32,7 @@ export type WorkflowWriteAnswer = Pick<
 > & { created: boolean };
 
 export const DESIGN_VIEWS = ["summary", "steps", "full"] as const;
+
 export const DESIGN_HEAD_FIELDS = [
 	"workflowId",
 	"flow",

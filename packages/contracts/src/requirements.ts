@@ -33,7 +33,9 @@ export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
 export const DEFERRABLE_STATUSES = ["draft", "agreed"] as const;
 
 export const REQUIREMENT_DEFERRAL_ACTS = ["defer", "undefer"] as const;
+
 export const BASELINE_ACTS = ["agree", "repin"] as const;
+
 /** The lifecycle a person reads: the stored status (draft, agreed, accepted, dropped) with agreed
  *  split by the derived delivery phase. `dropped` and `deferred` are off the line. */
 export const REQUIREMENT_LIFECYCLE = [
@@ -399,8 +401,7 @@ export const repinRequirementRequestSchema = z.strictObject({
 export const REPIN_REQUIREMENT_SHAPE =
 	"{ revision, reason? } — names the head revision; writes a baseline pinning each linked design's approved revision and each linked contract's current version";
 
-const REQUIREMENT_CONTRACT_REF =
-	/^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/;
+const REQUIREMENT_CONTRACT_REF = /^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/;
 
 export const linkRequirementContractRequestSchema = z.strictObject({
 	contract: z.string().regex(REQUIREMENT_CONTRACT_REF),
@@ -415,19 +416,6 @@ export interface RequirementDeferral {
 	deferredBy: string;
 	deferredAt: string;
 }
-
-export const REQUIREMENT_SUMMARY_FIELDS = [
-	"id",
-	"key",
-	"title",
-	"status",
-	"state",
-	"currentRevision",
-	"latestRevision",
-	"counts",
-	"waitingOn",
-	"updatedAt",
-] as const;
 
 export interface RequirementSummaryView {
 	id: string;

@@ -18,7 +18,7 @@ export interface WorkflowRefusal {
   detail: string;
 }
 
-export type CheckedWorkflow =
+type CheckedWorkflow =
   | { ok: true; value: WorkflowWrite }
   | { ok: false; refusals: WorkflowRefusal[] };
 
@@ -153,7 +153,7 @@ function afterCycle(steps: readonly AnyWorkflowStep[]): WorkflowRefusal[] {
 export type EvidenceSource = { kind: 'repo' } | { kind: 'storefront'; provider: string };
 
 /** What a design is checked against beyond itself: the templates it may name, and the project's other designs. */
-export interface WorkflowCheckContext {
+interface WorkflowCheckContext {
   /** The built-ins and the project's own. */
   templates: readonly WorkflowTemplate[];
   designs: ProjectDesigns;
@@ -168,11 +168,7 @@ export function checkWorkflow(doc: WorkflowWrite, ctx: WorkflowCheckContext): Wo
   if (dup.length > 0) return dup;
   const dangling = danglingAfter(steps);
   const cycle = afterCycle(steps);
-  return [
-    ...dangling,
-    ...cycle,
-    ...(doc.version === 2 ? designRefusals(doc, ctx, cycle.length === 0) : []),
-  ];
+  return [...dangling, ...cycle, ...designRefusals(doc, ctx, cycle.length === 0)];
 }
 
 function designRefusals(

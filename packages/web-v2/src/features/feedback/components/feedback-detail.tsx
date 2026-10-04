@@ -28,8 +28,8 @@ import type { FeedbackView } from "../types";
 import { FeedbackActions, Proposals } from "./feedback-actions";
 import { FeedbackBanner, FeedbackFacts } from "./feedback-facts";
 
-export const FEEDBACK_TABS = ["overview", "mockups", "history"] as const;
-export type FeedbackTab = (typeof FEEDBACK_TABS)[number];
+const FEEDBACK_TABS = ["overview", "mockups", "history"] as const;
+type FeedbackTab = (typeof FEEDBACK_TABS)[number];
 export const useFeedbackTab = () => useUrlTab(FEEDBACK_TABS);
 
 /** The one primary act the header and the peek offer: it opens the form that commits it. */

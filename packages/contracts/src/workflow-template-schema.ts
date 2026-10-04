@@ -22,6 +22,7 @@ const LAYOUT_FAMILIES = [
   'decision-model',
   'boundaries',
 ] as const;
+
 const LAYOUT_DIRECTIONS = ['down', 'right'] as const;
 
 /** The icon keys a node type may name; the web holds one glyph per key and nothing else. */
@@ -116,12 +117,14 @@ const EDGE_REQUIRABLE_FIELDS = [
   'payload',
   'protocol',
 ] as const;
+
 /**
  * `forward`: a line `after` draws, from an earlier step to a later one. `return`: a line back from
  * a later step to one it comes after — never drawn in `after`, so it orders nothing and is outside
  * the cycle check, and it is the only kind that may name what it `reevaluates`.
  */
 const EDGE_DIRECTIONS = ['forward', 'return'] as const;
+
 const EDGE_LINES = ['solid', 'dashed', 'dotted'] as const;
 
 /** The rules a template may switch on; the kernel implements each, and this is what each one holds. */
@@ -182,6 +185,7 @@ const templateBandSchema = z.strictObject({
   /** The node types a step in this band may be. */
   types: z.array(nodeTypeId()).min(1).max(TEMPLATE_LIMITS.nodeTypes),
 });
+
 /**
  * Where a diagram's bands come from: the template's own ordered list, the design itself (a
  * swimlane's actors, a sequence's systems — they differ per design, so the design declares them in
@@ -199,12 +203,14 @@ const templateLanesSchema = z.discriminatedUnion('from', [
   }),
   z.strictObject({ from: z.literal('none') }),
 ]);
+
 /** How many lines of one kind (any kind, when it names none) a node of the type has, in or out. */
 const templateLineRuleSchema = z.strictObject({
   kind: edgeKindId().optional(),
   min: z.number().int().min(0).max(TEMPLATE_LIMITS.lineCount),
   max: z.number().int().min(1).max(TEMPLATE_LIMITS.lineCount).optional(),
 });
+
 /**
  * A cross-link a node of the type may carry in `node.refs`: to a step of another design of the
  * project drawn in `template` (or a preset of it), whose type is one of `types`. `required` makes
@@ -216,6 +222,7 @@ const templateLinkSchema = z.strictObject({
   required: z.boolean(),
   tooltip: tooltip(),
 });
+
 export const templateNodeTypeSchema = z.strictObject({
   id: nodeTypeId(),
   label: label(),

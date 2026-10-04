@@ -13,6 +13,7 @@ const WIREFRAME_MAX_PEN_POINTS = 2000;
 
 /** The closed set. `pen` is in it so a stroke the person draws survives the round trip as itself. */
 const WIREFRAME_SHAPE_TYPES = ['frame', 'text', 'button', 'input', 'list', 'image', 'arrow', 'pen'] as const;
+
 const WIREFRAME_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 const id = z.string().regex(WIREFRAME_ID_PATTERN, 'a shape id: 1-64 of A-Z a-z 0-9 _ -');

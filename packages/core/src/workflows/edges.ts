@@ -74,7 +74,7 @@ export const impliedKind = (
 ): LineKind => lineKindOf(template, typeIn(doc, template, from), typeIn(doc, template, to));
 
 /** An edge's kind: the one it names, else the one its endpoints imply; null when they imply none. */
-export function edgeKindOf(
+function edgeKindOf(
   doc: WorkflowWriteV2,
   edge: Pick<WorkflowEdge, 'kind' | 'from' | 'to'>,
   template: WorkflowTemplate,

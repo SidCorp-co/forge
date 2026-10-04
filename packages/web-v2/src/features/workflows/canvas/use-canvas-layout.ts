@@ -15,13 +15,13 @@ const GUT = 150;
 const TOP = 44;
 
 /** What the eye is on, kept at the same place on screen across a relayout. */
-export interface Anchor {
+interface Anchor {
   ids: string[];
   sx: number;
   sy: number;
 }
 
-export interface Decoration {
+interface Decoration {
   selected: string | null;
   selectedEdge: string | null;
   relNodes: Set<string> | null;

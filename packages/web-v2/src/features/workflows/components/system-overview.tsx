@@ -27,7 +27,7 @@ const SOURCE: Record<SystemDescription["source"], string> = {
 };
 
 /** The project document with only `project.description` changed. */
-export function describedDocument(document: Record<string, unknown>, description: string) {
+function describedDocument(document: Record<string, unknown>, description: string) {
   const project = (document.project ?? {}) as Record<string, unknown>;
   return { ...document, project: { ...project, description } };
 }
@@ -217,7 +217,7 @@ function NoContext({ projectId, quiet }: { projectId: string; quiet: boolean }) 
   );
 }
 
-export interface SystemOverviewRegionProps {
+interface SystemOverviewRegionProps {
   records: readonly WorkflowRecord[];
   templates: readonly WorkflowTemplate[];
   projectId: string;
