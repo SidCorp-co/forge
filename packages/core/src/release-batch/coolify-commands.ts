@@ -19,15 +19,15 @@ import {
   listActiveDeployBindingsForProvider,
 } from '../integrations/index.js';
 import { refuser } from '../lib/refusal.js';
+import type { DispatchOutcome } from '../pipeline/index.js';
 import {
-  type DispatchOutcome,
   dispatchCoolifyDeployDirect,
   isIssueAtReleaseStage,
   resolveLatestIssueRunId,
   tryDispatchCoolifyRelease,
 } from '../pipeline/release-coolify.js';
-import { readDeployMap } from '../project-config/release-path.js';
-import { approvalRequired, assertApprovalAllowsAttempt } from './approvals.js';
+import { approvalRequired, readDeployMap } from '../project-config/index.js';
+import { assertApprovalAllowsAttempt } from './approvals.js';
 import { readRunMethod } from './method.js';
 import { refuseRelease } from './refuse.js';
 import { isOpenReleaseBatchRun } from './service.js';

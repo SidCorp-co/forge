@@ -6,9 +6,13 @@ import type { AppConfigRefusalCode } from '@forge/contracts/app-config';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { memoryModelOf, setMemoryModel } from '../app-config/index.js';
 import { memoryModels } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import {
   countPending,
   enqueueChunkPurge,
@@ -17,12 +21,7 @@ import {
   isLive,
   readReindex,
   writeReindex,
-} from '../memory/chunk-reindex.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
-import { memoryModelOf } from './read.js';
-import { setMemoryModel } from './service.js';
+} from './chunk-reindex.js';
 
 const refuse = refuser<AppConfigRefusalCode>('APP_CONFIG_REFUSED');
 

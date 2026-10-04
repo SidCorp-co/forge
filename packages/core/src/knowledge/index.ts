@@ -1,4 +1,5 @@
 export {
+  getKnowledgeEntry,
   selectAllSlugsFromKnowledge,
   selectAlwaysInjectFromKnowledge,
   selectKnowledgeBodies,

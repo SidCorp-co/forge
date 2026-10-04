@@ -4,6 +4,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
 import { projectSecrets } from '../db/schema-project-config.js';
+import { appendJobEvent } from './intervention-event.js';
 import { jobsPorts } from './ports.js';
 
 export const SECRET_RESOLVE_KIND = 'secret_resolve' as const;
@@ -14,6 +15,12 @@ export interface SecretResolveAudit {
   refs: string[];
   tokenId: string;
   deviceId: string | null;
+}
+
+/** A testing-secrets resolve, on the job's event log: the row commits before any value leaves, and
+ *  it is the row the scrubber reads to know what this job holds. */
+export async function recordSecretResolve(jobId: string, audit: SecretResolveAudit): Promise<void> {
+  await db.transaction((tx) => appendJobEvent(tx, jobId, SECRET_RESOLVE_KIND, { ...audit }));
 }
 
 // cm:why the audit row names refs, never values, so a value rotated after it was handed out is

@@ -17,3 +17,5 @@ export { SESSION_SILENCE_TIMEOUT_MS, SESSION_SILENCE_TIMEOUT_S } from './session
 export { runDeviceStaleSweep } from './stale-detector.js';
 export { deviceHolderUserId } from './workspace-credential.js';
 export { setMaxJobPanes, stampGitCredentialRef } from './writes.js';
+export { residentMasterSql } from './master-session.js';
+export { readRunnerPoolRead } from './pool-read-report.js';

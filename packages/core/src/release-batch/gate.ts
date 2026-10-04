@@ -11,7 +11,7 @@ import {
   promotedBranch,
   type ReleasePath,
   readReleasePath,
-} from '../project-config/release-path.js';
+} from '../project-config/index.js';
 import { blockerRefusal } from './refuse.js';
 
 /** The one status an issue waits at for release. */

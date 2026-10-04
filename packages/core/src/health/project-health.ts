@@ -3,7 +3,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projectMembers, projects, runners, users } from '../db/schema.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
-import { firstShipped } from '../pipeline/shipped-at.js';
+import { firstShipped } from '../pipeline/index.js';
 
 /**
  * The ten independent per-project reads behind `GET /api/projects/health`, and

@@ -1,14 +1,25 @@
 export type { PipelineCaller } from './active-job-context.js';
 export { resolvePipelineContext } from './active-job-context.js';
+export { syncAgentSessionLifecycle } from './agent-session-link.js';
 export type { HoldState } from './hold.js';
 export { holdReleasesItself, readHoldState } from './hold.js';
 export { countInFlightByRunner } from './in-flight.js';
 export { appendJobEvent, insertInterventionEvent } from './intervention-event.js';
 export { resolveJobPolicy } from './job-policy.js';
-export { jobsOfSession, scrubJobOutput } from './job-secret-scrub.js';
+export {
+  jobsOfSession,
+  recordSecretResolve,
+  rememberHandedOut,
+  scrubJobOutput,
+} from './job-secret-scrub.js';
 export { buildJobSystemPrompt } from './job-system-prompt.js';
 export { killGraceMs } from './kill-gate.js';
 export { reapZombieSessions } from './loop-monitor.js';
+export {
+  countClaimHeldIssuesByProject,
+  type LoopMonitorCoverage,
+  loopMonitorCoverage,
+} from './loop-monitor-axis.js';
 export { getLoopThresholds } from './loop-monitor-thresholds.js';
 export {
   holdQueuedJob,

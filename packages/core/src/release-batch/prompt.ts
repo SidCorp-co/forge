@@ -3,7 +3,7 @@
 // Untrusted issue text is wrapped via markUntrusted (same as every state prompt).
 
 import { markUntrusted } from '../lib/untrusted-text.js';
-import { describeCrossings, type ReleasePath } from '../project-config/release-path.js';
+import { describeCrossings, type ReleasePath } from '../project-config/index.js';
 import { RELEASE_BATCH_SKILL, type ReleasePlan, releaseBatchPath } from './plan.js';
 
 interface IssueSummary {

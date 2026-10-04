@@ -86,4 +86,3 @@ appConfigRoutes.put(
   },
 );
 
-export { memoryModelRoutes } from './memory-model-routes.js';

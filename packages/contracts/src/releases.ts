@@ -361,6 +361,12 @@ export interface ReleaseResponse {
 }
 
 /** Every reason a release will not start, in the order the doors refuse in (ISS-1127). */
+/** What an issue with no release note is told to do before it can ship. */
+export const RELEASE_RECORD_REMEDY =
+	"Set `releaseNotes` first: `{ section, userFacing }` with the one plain-language line a " +
+	"user would read, or `{ section: 'Skip', userFacing: '-' }` when the change has no " +
+	"user-facing half.";
+
 export const RELEASE_BLOCKER_CODES = [
 	"NO_RELEASE_GATE",
 	"RELEASE_TARGET_UNDECLARED",
@@ -426,6 +432,35 @@ export const RELEASE_REFUSAL_STATUSES = {
 	RELEASE_VERSION_CONFLICT: 409,
 	CLAIM_CONFLICT: 409,
 } as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;
+
+/** What production serves, read when asked and never stored (core `release-batch/serving-reading.ts`). */
+export interface ServedAt {
+	readonly commit: string;
+	readonly where: string;
+}
+
+/** One reading. `served` pairs each commit a probe or a Forge deployment answered with where it
+ *  runs — a probe's url, a target's deployment — `unread` is a line per source answering none, and
+ *  only a project with nothing to ask is an absence: `missing` says why, `route` what opens one. */
+export type ServingReading =
+	| {
+			readonly kind: "serving";
+			readonly served: readonly ServedAt[];
+			readonly unread: readonly string[];
+			readonly readAt: string;
+	  }
+	| { readonly kind: "undeclared"; readonly missing: string; readonly route: string }
+	| {
+			readonly kind: "unreadable";
+			readonly why: string;
+			readonly hosts: readonly string[];
+			readonly readAt: string;
+	  };
+
+export function servedCommits(serving: ServingReading): string[] {
+	if (serving.kind !== "serving") return [];
+	return [...new Set(serving.served.map((s) => s.commit))];
+}
 
 /** `release.approval.required` of a project document; a project with no document, or no release rule, requires none. */
 export function releaseApprovalRequired(

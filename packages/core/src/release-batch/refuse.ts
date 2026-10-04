@@ -1,5 +1,5 @@
 import type { ReleaseBlockerCode, ReleaseRefusalCode } from '@forge/contracts/releases';
-import { type LiveShortfall, notLiveSentence } from '../ecosystem/waits/rules.js';
+import { type LiveShortfall, notLiveSentence } from '@forge/contracts/contract-waits';
 import { type Refusal, RefusalError, refuser } from '../lib/refusal.js';
 import {
   type ReleaseBlocker,

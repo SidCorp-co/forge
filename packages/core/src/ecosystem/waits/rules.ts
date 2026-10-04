@@ -1,4 +1,8 @@
-import type { ContractWaitRefusal, ProviderLiveMode } from '@forge/contracts/contract-waits';
+import type {
+  ContractWaitRefusal,
+  LiveShortfall,
+  ProviderLiveMode,
+} from '@forge/contracts/contract-waits';
 import { type PermissionFacts, permissionRefusal } from '../../permissions/index.js';
 import {
   compareVersions,
@@ -7,7 +11,8 @@ import {
   type Versioning,
 } from '../contract/naming.js';
 
-export type { ContractWaitRefusal } from '@forge/contracts/contract-waits';
+export type { ContractWaitRefusal, LiveShortfall } from '@forge/contracts/contract-waits';
+export { notLiveSentence } from '@forge/contracts/contract-waits';
 
 export const writerRefusal = (facts: PermissionFacts, act: string): ContractWaitRefusal | null =>
   permissionRefusal(facts, 'project.write', act);
@@ -143,13 +148,6 @@ export function providerLiveMode(
   return modes.length > 0 && modes.every((m) => m === 'off') ? 'off' : 'required';
 }
 
-export interface LiveShortfall {
-  issueId: string;
-  issue: string;
-  contract: string;
-  needed: string;
-  live: string | null;
-}
 
 // cm:guard kernel, zero tolerance: a consumer's production release ships past a wait only once the
 // provider's production serves a version at or above it, unless the ecosystem turned that off (E4)
@@ -173,14 +171,4 @@ export function providerLiveShortfall(f: {
     needed: f.minVersion,
     live: f.live,
   };
-}
-
-export function notLiveSentence(shortfalls: readonly LiveShortfall[]): string {
-  const each = shortfalls
-    .map(
-      (s) =>
-        `\`${s.issue}\` needs ${s.contract} >= ${s.needed}, and its provider's production serves ${s.live ?? 'no version Forge could read'}`,
-    )
-    .join('; ');
-  return `A production release of this project waits for each provider to serve the contract version its issues wait on: ${each}. Release once the provider has, or take the issue out of this release; the ecosystem's steward can set releases.providerLive to "off" where this gate is not wanted.`;
 }

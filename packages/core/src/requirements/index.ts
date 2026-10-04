@@ -5,11 +5,11 @@ export { similarRequirements } from './embeddings.js';
 export { feedbackLinksOf } from './feedback-links.js';
 export { readRequirementAs, rowIn } from './read.js';
 export { linkIssueRefusal } from './rules.js';
-export type { RevisionWrite } from './service.js';
 export {
   createRequirementIn,
   lockRequirements,
   newDraftRevisionIn,
   openRevisionOf,
+  type RevisionWrite,
 } from './service.js';
-export { deliveredAmong } from './standing-read.js';
+export { deliveredAmong, standingsOf } from './standing-read.js';

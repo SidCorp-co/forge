@@ -12,8 +12,9 @@ import {
 } from '../db/schema-project-config.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
-import { projectDocumentNames } from '../projects/index.js';
+import { DEFAULT_POLICY } from './default-policy.js';
 import type { ApiRefusal } from './documents.js';
+import { projectConfigPorts } from './ports.js';
 import type { ProjectDocument } from './schema.js';
 
 export interface StoredDocument {
@@ -162,7 +163,7 @@ export const drizzleConfigStore: ConfigStore = {
           .insert(projectConfigRevisions)
           .values({ projectId, revision, document, writtenBy: userId, writtenAt: now });
         if (!row) throw new Error('project-config: document upsert returned no row');
-        if (!(await projectDocumentNames(tx, projectId, { slug, name }))) {
+        if (!(await projectConfigPorts().projectDocumentNames(tx, projectId, { slug, name }))) {
           throw new Error(
             `project-config: project ${projectId} has a document and no projects row`,
           );
@@ -376,11 +377,9 @@ export const drizzleConfigStore: ConfigStore = {
 };
 
 /** A new project's first policy revision. */
-export async function seedProjectPolicy(
-  tx: Tx,
-  projectId: string,
-  document: unknown,
-  userId: string,
-): Promise<void> {
-  await tx.insert(projectPolicies).values({ projectId, revision: 1, document, updatedBy: userId });
+/** A new project's policy, revision 1: the default, so no default is invented later. */
+export async function seedProjectPolicy(tx: Tx, projectId: string, userId: string): Promise<void> {
+  await tx
+    .insert(projectPolicies)
+    .values({ projectId, revision: 1, document: DEFAULT_POLICY, updatedBy: userId });
 }

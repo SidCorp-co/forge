@@ -20,13 +20,23 @@ export { registerPhaseJournalClose } from './phase-journal-close.js';
 export { runReconcilerOnce } from './reconciler.js';
 export { classifyVerdict, JOB_TYPE_ENTRY_STATUS, verifyRecovery } from './recovery-verifier.js';
 export { RUNNER_CAPABILITIES } from './registry.js';
-export { bindingReachesProduction, confirmPendingProdDeploy } from './release-coolify.js';
+export {
+  bindingReachesProduction,
+  confirmPendingProdDeploy,
+  type DispatchOutcome,
+} from './release-coolify.js';
 export { NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 export { resolvedWindowDaysFor, retentionRuleFor } from './retention/policy.js';
 export type { TableStatements } from './retention/shape.js';
 export { JOB_TERMINAL, olderThan, SESSION_TERMINAL } from './retention/shape.js';
 export { runRetentionSweep } from './retention/sweep.js';
 export { describePause } from './run-pause.js';
+export {
+  type RunMetadataWrite,
+  stampReleaseShipped,
+  stampReleaseVersion,
+  writeRunMetadata,
+} from './run-records.js';
 export type { OneShotRunSpec } from './runs.js';
 export {
   closeOpenRunForIssue,

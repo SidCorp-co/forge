@@ -7,7 +7,7 @@ export const RELEASE_BATCH_SKILL = 'release-flow';
 export const releaseBatchPath = (runId: string): string =>
   `projects/$FORGE_PROJECT_ID/release-batches/${runId}`;
 
-import { promotedBranch, type ReleasePath } from '../project-config/release-path.js';
+import { promotedBranch, type ReleasePath } from '../project-config/index.js';
 import type { VerifyConfig } from './verify.js';
 
 export interface ReleaseBranches {

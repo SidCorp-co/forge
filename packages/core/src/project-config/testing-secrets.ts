@@ -5,14 +5,8 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/index.js';
-import { resolvePipelineContext } from '../jobs/active-job-context.js';
-import { appendJobEvent } from '../jobs/index.js';
-import {
-  rememberHandedOut,
-  SECRET_RESOLVE_KIND,
-  type SecretResolveAudit,
-} from '../jobs/job-secret-scrub.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
+import { projectConfigPorts } from './ports.js';
 import { environmentsOf } from './release-path.js';
 import type { ProjectDocument } from './schema.js';
 import {
@@ -62,7 +56,7 @@ export async function resolveTestingSecrets(args: {
   refs: readonly string[] | null;
 }): Promise<TestingSecretsOutcome> {
   const { principal, profileId } = args;
-  const context = await resolvePipelineContext(principal);
+  const context = await projectConfigPorts().jobOfCredential(principal);
   if (!context.ok) {
     return context.reason === 'ambiguous_pipeline_context'
       ? refuse(422, 'TESTING_SECRETS_JOB_AMBIGUOUS', `${context.detail} Nothing was read.`)
@@ -184,14 +178,14 @@ export async function resolveTestingSecrets(args: {
     secrets.push({ ref, value });
   }
 
-  await writeResolveAudit(jobId, {
+  await projectConfigPorts().recordSecretResolve(jobId, {
     environment,
     profile: profileId,
     refs: wanted,
     tokenId: principal.tokenId,
     deviceId: principal.deviceId ?? null,
   });
-  rememberHandedOut(
+  projectConfigPorts().rememberHandedOut(
     jobId,
     secrets.map((s) => s.value),
   );
@@ -257,11 +251,3 @@ async function judgedEnvironment(
   }
   return { ok: true, environment: only.name, testing: only.declaration.testing };
 }
-
-// cm:flow testing-secrets/audit after:resolve — the row commits before any value leaves, and it is
-// the row the scrubber reads to know what this job holds
-async function writeResolveAudit(jobId: string, audit: SecretResolveAudit): Promise<void> {
-  await db.transaction((tx) => appendJobEvent(tx, jobId, SECRET_RESOLVE_KIND, { ...audit }));
-}
-
-export { JUDGING_JOB_TYPES, SELF_JOB };

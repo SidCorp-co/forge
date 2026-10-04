@@ -9,6 +9,7 @@ export {
   handleRunnerUnregister,
   handleRunnerUpdate,
 } from './heartbeat-ws.js';
+export { type RunnerHold, type RunnerHoldReason, releaseIneligibleRunners } from './ineligible.js';
 export {
   DEFAULT_LIMIT_COOLDOWN_MS,
   detectRunnerLimit,

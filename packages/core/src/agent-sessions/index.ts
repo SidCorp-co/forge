@@ -1,12 +1,14 @@
 export { persistSessionAttachment } from './attachment-service.js';
 export { runCanonicalBackfillOnce } from './backfill-canonical-transcripts.js';
-export { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
+export { createChatSessionRow, dispatchChatTurn, noClaudeClient } from './chat-turn.js';
 export type { InteractiveAuthority, SessionRefusal } from './interactive-credential.js';
 export {
+  authorizeInteractiveTurn,
   dispatchInteractiveTurn,
   RUNNER_OUTDATED_REFUSAL,
   readBoxAuthority,
   refusalError,
+  resolveInteractiveClient,
   sessionRoleRefusal,
 } from './interactive-credential.js';
 export { type AgentSessionsPorts, provideAgentSessionsPorts } from './ports.js';
