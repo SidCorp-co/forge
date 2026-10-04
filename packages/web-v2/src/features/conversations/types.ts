@@ -51,10 +51,9 @@ export interface ConversationRow {
   ecosystemId: string | null;
   pinned?: boolean;
   requirementId?: string | null;
-  /** The thread's kind and badge (ISS-63); core reads a status for every room (ISS-73). */
+  /** The thread's kind and badge (ISS-63). */
   kind?: "onboarding" | "requirement" | null;
   threadStatus?: OnboardingStatus | null;
-  /** The record the room is about (`REQ-3` for a requirement's BA room); null for a project room. */
   subjectKey?: string | null;
 }
 

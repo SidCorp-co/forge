@@ -58,7 +58,6 @@ import {
   readableConversation,
   writableConversation,
 } from './conversation-access.js';
-import { threadMarks } from './thread-marks.js';
 import { agentModeOffer } from './conversation-agent-offer.js';
 import { conversationAttachmentRoutes } from './conversation-attachment-routes.js';
 import { foreignAttachmentIds, imagesFromAttachments } from './conversation-images.js';
@@ -73,6 +72,7 @@ import {
 } from './conversation-scope.js';
 import { ConversationModeSettledError, sendWebConversationMessage } from './conversation-send.js';
 import { conversationToolCallRoutes } from './conversation-tool-calls.js';
+import { threadMarks } from './thread-marks.js';
 import { rememberUiSnapshot } from './ui-snapshot.js';
 
 const READ_WINDOW = 200;

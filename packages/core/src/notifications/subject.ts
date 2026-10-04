@@ -1,17 +1,12 @@
 import type { NotificationSubject } from '@forge/contracts';
 import { ISSUE_STATUS_LABELS, type KernelIssueStatus } from '@forge/contracts/issue-vocabulary';
 
-/** A kernel status as words inside a sentence: `awaiting_release` → "awaiting release". */
 export function statusWords(status: string): string {
   const label = ISSUE_STATUS_LABELS[status as KernelIssueStatus];
   return label ? label.toLowerCase() : status;
 }
 
-/**
- * What one delivery names: the issue its single record references, else the project it belongs to.
- * A delivery grouping several records names its project, because the issue on any one member is
- * not the delivery's.
- */
+/** A grouped delivery names its project: the issue on any one member is not the delivery's. */
 export function deliverySubject(
   row: { members: number; issueId: string | null; projectId: string | null },
   issueKeys: ReadonlyMap<string, string>,
@@ -27,10 +22,6 @@ export function deliverySubject(
 const LEAD = /^\s*[—:-]?\s*/;
 const MOVED_TO = /moved to ([a-z_]+)$/;
 
-/**
- * The delivery's one line beside its subject key: the stored title without the key it opens with,
- * and with a status change's raw status read as words.
- */
 // cm:hack ISS-74 until:no stored notification title predates `notify-transitions.ts` writing the status as words — a title stored before that change still ends "moved to awaiting_release", and the bell reads it here rather than show a raw value
 export function deliveryLine(title: string, type: string, subjectKey: string | null): string {
   let line = title;

@@ -68,8 +68,6 @@ export function toNotificationItem(
     time: formatRelativeTime(row.createdAt),
     unread: row.readAt === null && !resolved,
     hue: resolved ? "green" : hueFor(row),
-    // A delivery carrying one record is a plain row; one carrying several names the
-    // cause, says how many are still true, and expands to them.
     group: row.members > 1 ? { total: row.members, open: row.openMembers } : undefined,
     actions,
   };

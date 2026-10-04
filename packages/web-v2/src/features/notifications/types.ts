@@ -24,9 +24,7 @@ export interface NotificationRow {
   secondaryIssueId: string | null;
   agentSessionId: string | null;
   createdAt: string;
-  /** What the delivery names, read by core from the record's references. */
   subject: NotificationSubject | null;
-  /** The title as one line beside the subject key: core drops the key it opens with. */
   line: string;
 }
 
