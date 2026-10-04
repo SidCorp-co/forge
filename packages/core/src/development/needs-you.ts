@@ -23,7 +23,7 @@ import { automationViewerOf, readAutomationStanding } from '../automation/index.
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { readContractStanding } from '../ecosystem/standing/read.js';
-import { listFeedbackAs } from '../feedback/read.js';
+import { listFeedbackAs } from '../feedback/list-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
 import { effectiveProjectRole, loadVisibleProjectIds, type ProjectAccess } from '../lib/authz.js';
 import { holds } from '../permissions/index.js';

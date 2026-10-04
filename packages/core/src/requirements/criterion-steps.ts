@@ -15,7 +15,7 @@ import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { designNodesIn, nodeSetRefusals } from '../workflows/index.js';
 import { notFound, type RequirementActor, rowIn } from './read.js';
 import type { RequirementRefusal } from './rules.js';
-import { answer, inTx, lockRequirements, type RequirementOutcome } from './service.js';
+import { answer, inTx, lockRequirements, type RequirementOutcome } from './write-tx.js';
 
 export async function putCriterionSteps(input: {
   projectId: string;

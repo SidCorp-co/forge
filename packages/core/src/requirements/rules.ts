@@ -5,11 +5,11 @@
  * nothing written.
  */
 
-import type { RequirementRefusalCode } from '@forge/contracts/requirements';
 import {
   type BaselineReadiness,
   DEFERRABLE_STATUSES,
   type RequirementReadinessGate,
+  type RequirementRefusalCode,
 } from '@forge/contracts/requirements';
 import type { CriterionForm, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
 import { refuser } from '../lib/refusal.js';
@@ -117,10 +117,10 @@ export function contractLinkRefusal(input: {
   };
 }
 
-// cm:guard an agree reads the current head and pins only current revisions: the named revision must
+// An agree reads the current head and pins only current revisions: the named revision must
 // be the head (REQUIREMENT_REVISION_STALE), the head must be current (REQUIREMENT_REVISION_NOT_CURRENT),
 // and every linked design must hold an approved revision, each one named (REQUIREMENT_DESIGN_UNAPPROVED, Q10)
-// cm:guard the pin is the design's approved revision, as the build gate reads it; a newer revision only
+// The pin is the design's approved revision, as the build gate reads it; a newer revision only
 // proposed does not unapprove the one already approved (HOP REQ-1 accept refused while rev 5 was proposed)
 export function agreeRefusals(input: {
   status: RequirementStatus;
@@ -183,7 +183,7 @@ export function baselineReadiness(
   };
 }
 
-// cm:guard at `requirements.readinessGate: block` an agree needs an accepted readiness result at the
+// At `requirements.readinessGate: block` an agree needs an accepted readiness result at the
 // head with every check passing; one missing or failing is refused by name (REQUIREMENT_NOT_READY)
 export function readinessRefusal(
   recorded: BaselineReadiness | null,
@@ -211,7 +211,66 @@ export function linkIssueRefusal(status: RequirementStatus): RequirementRefusal 
   };
 }
 
-// cm:why scenario form is optional per project (Q12); when chosen, the body must read as
+// A deferred requirement is out of the current release: nothing is signed off, agreed,
+// re-pinned or linked to it until a person undefers it (REQUIREMENT_DEFERRED, ISS-85)
+export function deferredRefusal(
+  status: RequirementStatus,
+  act: string,
+  path = '',
+): RequirementRefusal | null {
+  if (status !== 'deferred') return null;
+  return {
+    code: 'REQUIREMENT_DEFERRED',
+    path,
+    detail: `the requirement is deferred out of the current release, so ${act} waits; a person undefers it first.`,
+  };
+}
+
+// A defer is a person's act with a reason, from draft or agreed only, and never while a
+// linked issue is in work: those are dropped, unlinked or left at draft first, each one named
+export function deferRefusals(input: {
+  status: RequirementStatus;
+  reason: string | null | undefined;
+  workingIssues: readonly string[];
+}): RequirementRefusal[] {
+  const out: RequirementRefusal[] = [];
+  const deferred = deferredRefusal(input.status, 'deferring it again');
+  if (deferred) return [deferred];
+  if (!(DEFERRABLE_STATUSES as readonly string[]).includes(input.status)) {
+    out.push({
+      code: 'REQUIREMENT_NOT_DEFERRABLE',
+      path: '',
+      detail: `the requirement is ${input.status}; only a draft or agreed requirement is deferred out of the current release.`,
+    });
+  }
+  if (!input.reason?.trim()) {
+    out.push({
+      code: 'REQUIREMENT_DEFER_REASON_REQUIRED',
+      path: '/reason',
+      detail:
+        'a deferred requirement says why it left the current release, so nobody re-proposes it.',
+    });
+  }
+  if (input.workingIssues.length) {
+    out.push({
+      code: 'REQUIREMENT_HAS_LIVE_ISSUES',
+      path: '',
+      detail: `linked issues are past draft and not closed: ${input.workingIssues.join(', ')}; drop or unlink them, or leave them at draft, before the requirement leaves the release.`,
+    });
+  }
+  return out;
+}
+
+export function undeferRefusal(status: RequirementStatus): RequirementRefusal | null {
+  if (status === 'deferred') return null;
+  return {
+    code: 'REQUIREMENT_NOT_DEFERRED',
+    path: '',
+    detail: `the requirement is ${status}, not deferred; only a deferred requirement is undeferred.`,
+  };
+}
+
+// Scenario form is optional per project (Q12); when chosen, the body must read as
 // Given … When … Then, each keyword starting a line, or it is refused rather than stored unparsed
 function scenarioParses(body: string): boolean {
   const starts = body.split('\n').map((l) => l.trim().split(/\s+/)[0]?.toLowerCase() ?? '');
@@ -244,6 +303,20 @@ interface CriteriaPlan {
 }
 
 const codeNumber = (code: string) => Number(code.slice(3));
+
+/** The wordings live at `revision`, in code order. */
+export const liveAt = <
+  T extends { code: string; sinceRevision: number; retiredRevision: number | null },
+>(
+  criteria: readonly T[],
+  revision: number,
+): T[] =>
+  criteria
+    .filter(
+      (c) =>
+        c.sinceRevision <= revision && (c.retiredRevision === null || c.retiredRevision > revision),
+    )
+    .sort((a, b) => codeNumber(a.code) - codeNumber(b.code));
 
 /**
  * How a revision's criteria list becomes rows: a criterion naming a live code keeps it (unchanged,
@@ -330,7 +403,7 @@ interface PinPosition {
   approved: number | null;
 }
 
-// cm:why the one detector of a pin that has fallen behind (D14, ISS-86): the standing reads it to
+// The one detector of a pin that has fallen behind (D14, ISS-86): the standing reads it to
 // say "re-pin" and the re-pin act reads it to refuse when nothing moved, so the two cannot disagree
 export function stalePinsOf(
   positions: readonly PinPosition[],
@@ -365,7 +438,7 @@ export function staleContractPinsOf(
   });
 }
 
-// cm:guard a re-pin writes a baseline of the head with no text revision (ISS-86): an agreed
+// A re-pin writes a baseline of the head with no text revision (ISS-86): an agreed
 // requirement (an accepted one is delivered, and a draft has nothing to move), the head named and
 // current, every linked design approved (the agree's own guards), and at least one linked design
 // unpinned or approved past what the latest baseline pins, else REQUIREMENT_PINS_CURRENT
@@ -419,63 +492,4 @@ export function repinRefusals(input: {
     ];
   }
   return [];
-}
-
-// cm:guard a deferred requirement is out of the current release: nothing is signed off, agreed,
-// re-pinned or linked to it until a person undefers it (REQUIREMENT_DEFERRED, ISS-85)
-export function deferredRefusal(
-  status: RequirementStatus,
-  act: string,
-  path = '',
-): RequirementRefusal | null {
-  if (status !== 'deferred') return null;
-  return {
-    code: 'REQUIREMENT_DEFERRED',
-    path,
-    detail: `the requirement is deferred out of the current release, so ${act} waits; a person undefers it first.`,
-  };
-}
-
-// cm:guard a defer is a person's act with a reason, from draft or agreed only, and never while a
-// linked issue is in work: those are dropped, unlinked or left at draft first, each one named
-export function deferRefusals(input: {
-  status: RequirementStatus;
-  reason: string | null | undefined;
-  workingIssues: readonly string[];
-}): RequirementRefusal[] {
-  const out: RequirementRefusal[] = [];
-  const deferred = deferredRefusal(input.status, 'deferring it again');
-  if (deferred) return [deferred];
-  if (!(DEFERRABLE_STATUSES as readonly string[]).includes(input.status)) {
-    out.push({
-      code: 'REQUIREMENT_NOT_DEFERRABLE',
-      path: '',
-      detail: `the requirement is ${input.status}; only a draft or agreed requirement is deferred out of the current release.`,
-    });
-  }
-  if (!input.reason?.trim()) {
-    out.push({
-      code: 'REQUIREMENT_DEFER_REASON_REQUIRED',
-      path: '/reason',
-      detail:
-        'a deferred requirement says why it left the current release, so nobody re-proposes it.',
-    });
-  }
-  if (input.workingIssues.length) {
-    out.push({
-      code: 'REQUIREMENT_HAS_LIVE_ISSUES',
-      path: '',
-      detail: `linked issues are past draft and not closed: ${input.workingIssues.join(', ')}; drop or unlink them, or leave them at draft, before the requirement leaves the release.`,
-    });
-  }
-  return out;
-}
-
-export function undeferRefusal(status: RequirementStatus): RequirementRefusal | null {
-  if (status === 'deferred') return null;
-  return {
-    code: 'REQUIREMENT_NOT_DEFERRED',
-    path: '',
-    detail: `the requirement is ${status}, not deferred; only a deferred requirement is undeferred.`,
-  };
 }

@@ -160,7 +160,7 @@ function undrawn(
   };
 }
 
-// cm:why a return edge is the one line allowed to run backwards, so it pays for that with what its template requires of it; one that runs forwards is an ordinary edge wearing the wrong kind
+// A return edge is the one line allowed to run backwards, so it pays for that with what its template requires of it; one that runs forwards is an ordinary edge wearing the wrong kind
 function directionRefusals(
   doc: WorkflowWriteV2,
   e: WorkflowEdge,

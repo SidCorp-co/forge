@@ -47,6 +47,7 @@ import {
   rejectReasonRefusal,
   unchangedRevisionRefusal,
 } from './rules.js';
+import { markMovedStale } from './stale.js';
 import {
   answer,
   inTx,
@@ -200,7 +201,7 @@ export async function createSuggestion(input: {
   return answer(id, { created: true });
 }
 
-// cm:why decision on design suggestion-lifecycle (ISS-117): a reviewer's edit is a new suggestion
+// Decision on design suggestion-lifecycle (ISS-117): a reviewer's edit is a new suggestion
 // the reviewer produced, naming the original, which is rejected with the reviewer's reason in the
 // same transaction; no state is added. Revising rejects the original, so it takes
 // suggestions.approve like any decision (ADR 0007)
@@ -281,18 +282,7 @@ export async function reviseSuggestion(input: {
     await recordDecision(tx, row, actor, 'rejected', rejected);
     return null;
   });
-  if (stale.reason) {
-    await transition(db, SUGGESTION_MACHINE, {
-      to: 'stale',
-      from: 'proposed',
-      set: { decidedAt: new Date(), reason: stale.reason },
-      where: eq(suggestions.id, first.id),
-      reason: stale.reason,
-      actor: suggestionKernelActor(actor),
-      source: 'suggestions-stale',
-      returning: ['id'],
-    });
-  }
+  if (stale.reason) await markMovedStale(first.id, stale.reason, suggestionKernelActor(actor));
   if (refusals) return { ok: false, refusals };
   return answer(id, { created: true });
 }

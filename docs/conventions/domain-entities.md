@@ -621,7 +621,8 @@ contracts/src/feedback.ts         FEEDBACK_STATUSES, FEEDBACK_REFUSAL_CODES, lim
 core/src/db/schema-feedback.ts    the tables; each listed under feedback's `owns` in modules.json
 core/src/modules.json             "feedback": { "kind": "domain", "context": "design", "owns": [...] }
 core/src/feedback/rules.ts        pure guards → FeedbackRefusal | null
-core/src/feedback/read.ts         rowIn (uuid | FB-n | n), feedbackKey, list and detail views
+core/src/feedback/read.ts         rowIn (uuid | FB-n | n); the list and detail views sit beside it
+                                  (list-read.ts, detail-read.ts) once one file would pass 400 lines
 core/src/feedback/service.ts      lockFeedback; createFeedback / declineFeedback → Outcome
 core/src/feedback/standing.ts     its derived facts, if any, in the contracts standing shape
 core/src/feedback/events.ts       the outbox events it emits, each with a consumer

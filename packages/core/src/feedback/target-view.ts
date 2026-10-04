@@ -2,7 +2,8 @@
 
 import type { FeedbackTargetView } from '@forge/contracts/feedback';
 import type { NodeRef } from '@forge/contracts/workflow-health';
-import type { Linked, Row } from './read.js';
+import type { Linked } from './list-read.js';
+import type { Row } from './read.js';
 import { targetTypeOf } from './refs.js';
 
 export function targetView(r: Row, l: Linked): FeedbackTargetView {

@@ -17,8 +17,12 @@ import { issues } from '../db/schema.js';
 import { requirementRevisions } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { rowIn as feedbackRowIn, triageIn } from '../feedback/index.js';
-import type { PendingIssueRelation } from '../issues/index.js';
-import { activeIssuePrefix, emitIssueFieldUpdate, setIssueTriage } from '../issues/index.js';
+import {
+  activeIssuePrefix,
+  emitIssueFieldUpdate,
+  type PendingIssueRelation,
+  setIssueTriage,
+} from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { Refusal } from '../lib/refusal.js';
 import { transition } from '../lifecycle/index.js';
@@ -26,7 +30,6 @@ import { emitEvent } from '../outbox/index.js';
 import {
   createRequirementIn,
   newDraftRevisionIn,
-  openRevisionOf,
   type RevisionWrite,
   rowIn,
 } from '../requirements/index.js';
@@ -49,12 +52,12 @@ const undecided = (kind: string, path: string, what: string): Refusal => ({
   detail: `the approved designs name no effect for ${what}, so accepting this ${kind} suggestion would write nothing; reject it with a reason, or have its producer propose it without that part.`,
 });
 
-// cm:why a revision an accepted suggestion carries was written by its producer, not by the person
+// A revision an accepted suggestion carries was written by its producer, not by the person
 // who accepted it; the accept is recorded on the suggestion row (decided_by)
 const authorOf = (row: Row, actor: SuggestionActor): SuggestionActor =>
   row.producerId ? { userId: row.producerId, agency: actor.agency } : actor;
 
-// cm:why workflow requirement-to-delivery step `ready`: readiness is a suggestion kind with no table
+// Workflow requirement-to-delivery step `ready`: readiness is a suggestion kind with no table
 // of its own, so the accepted row at its base revision IS the readiness result an agree reads
 async function readinessEffect(tx: Tx, projectId: string, row: Row): Promise<EffectWritten> {
   const req = await rowIn(tx, projectId, targetOfRow(row).id);
@@ -84,7 +87,7 @@ async function issueRowOf(tx: Tx, projectId: string, issueId: string) {
 
 type IssueTriage = ReturnType<(typeof SUGGESTION_PAYLOADS)['triage']['schema']['parse']>;
 
-// cm:why decision on ISS-58 (2026-10-04): a triage suggestion on an issue applies only the fields the
+// Decision on ISS-58 (2026-10-04): a triage suggestion on an issue applies only the fields the
 // feedback-triage design names, priority, category and complexity; its free-text `route` is not an
 // effect, so it is kept as a note comment on the issue rather than refused or dropped
 function issueTriageOf(p: IssueTriage, suggestionId: string) {
@@ -181,7 +184,6 @@ export async function writeEffect(
     const refusals = await newDraftRevisionIn(tx, {
       requirementId: target.id,
       head,
-      open: await openRevisionOf(tx, target.id),
       baseRevision: row.baseRevision,
       actor: authorOf(row, actor),
       write: { ...write, fromSuggestionId: row.id },

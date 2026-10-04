@@ -25,7 +25,7 @@ import {
   lockRequirements,
   type RequirementOutcome,
   requirementKernelActor,
-} from './service.js';
+} from './write-tx.js';
 
 async function workingIssuesOf(tx: Tx, projectId: string, requirementId: string) {
   const rows = await tx

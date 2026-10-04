@@ -6,6 +6,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { feedbackKey } from '@forge/contracts/feedback';
 import { MOCKUP_MACHINE } from '@forge/contracts/mockup-machine';
 import type { MockupTargetInput, MockupView, ProposeMockupRequest } from '@forge/contracts/mockups';
 import type { RevisionState } from '@forge/contracts/requirements';
@@ -69,7 +70,7 @@ async function resolveMockupTarget(
   if ('feedback' in target) {
     try {
       const row = await feedbackRowIn(db, projectId, target.feedback);
-      return { ...none, feedbackId: row.id, label: `FB-${row.fbSeq}` };
+      return { ...none, feedbackId: row.id, label: feedbackKey(row.fbSeq) };
     } catch {
       return invalidTarget(
         '/target/feedback',
