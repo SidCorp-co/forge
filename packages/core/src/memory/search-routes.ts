@@ -1,8 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
-import { memorySources } from '../db/schema.js';
 import {
   EMBEDDING_UNAVAILABLE,
   EmbeddingUnavailableError,
@@ -11,21 +9,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { memorySearchStrategies, runMemorySearch } from './search-service.js';
-
-const searchBodySchema = z.object({
-  projectId: z.uuid(),
-  query: z.string().trim().min(1).max(4000),
-  topK: z.number().int().min(1).max(50).default(10),
-  sourceFilter: z.array(z.enum(memorySources)).optional(),
-  strategy: z.enum(memorySearchStrategies).default('semantic'),
-});
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, {
-    message: 'Invalid input',
-    cause: { code: 'BAD_REQUEST', details },
-  });
+import { memorySearchInputSchema, runMemorySearch } from './search-service.js';
 
 export const memorySearchRoutes = new Hono<{ Variables: AuthVars }>();
 memorySearchRoutes.use(
@@ -34,36 +18,30 @@ memorySearchRoutes.use(
   assertEmailVerified(),
   rateLimit(() => RULES.memorySearch, { name: 'memory-search' }),
 );
-memorySearchRoutes.post(
-  '/search',
-  zValidator('json', searchBodySchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const body = c.req.valid('json');
-    const userId = c.get('userId');
+memorySearchRoutes.post('/search', zValidator('json', memorySearchInputSchema), async (c) => {
+  const body = c.req.valid('json');
+  const userId = c.get('userId');
 
-    await requireCan(actorFor(userId), 'project.read', projectResource(body.projectId));
+  await requireCan(actorFor(userId), 'project.read', projectResource(body.projectId));
 
-    let result: Awaited<ReturnType<typeof runMemorySearch>>;
-    try {
-      result = await runMemorySearch({
-        projectId: body.projectId,
-        query: body.query,
-        topK: body.topK,
-        sourceFilter: body.sourceFilter,
-        strategy: body.strategy,
-        surface: 'web',
+  let result: Awaited<ReturnType<typeof runMemorySearch>>;
+  try {
+    result = await runMemorySearch({
+      projectId: body.projectId,
+      query: body.query,
+      topK: body.topK,
+      sourceFilter: body.sourceFilter,
+      strategy: body.strategy,
+      surface: 'web',
+    });
+  } catch (err) {
+    if (err instanceof EmbeddingUnavailableError) {
+      throw new HTTPException(503, {
+        message: 'embeddings service unavailable',
+        cause: { code: EMBEDDING_UNAVAILABLE },
       });
-    } catch (err) {
-      if (err instanceof EmbeddingUnavailableError) {
-        throw new HTTPException(503, {
-          message: 'embeddings service unavailable',
-          cause: { code: EMBEDDING_UNAVAILABLE },
-        });
-      }
-      throw err;
     }
-    return c.json(result);
-  },
-);
+    throw err;
+  }
+  return c.json(result);
+});
