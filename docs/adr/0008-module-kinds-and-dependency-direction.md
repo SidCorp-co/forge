@@ -127,6 +127,17 @@ under the owner's dev delegation.
 - **Sign-in belongs to the auth door.** Signing a person in through the identity adapter is a door's
   work, not a platform leaf's: `auth` is declared a door, and a door may reach an adapter through
   its port's **index.ts** (`packages/core/src/integrations/identity/index.ts`), as a domain may.
-  The credential helpers other modules import from `auth` (`pat-scope`, `pat-format`,
-  `pat-permissions`, `pat`, `jwt`, `cookie`, the device and turn credentials) now read as imports
-  of a door from below until they move to a platform module; the checker reports them.
+  The credential helpers every kind uses (the PAT helpers, `jwt`, `cookie`, the device and turn
+  credentials, the MCP audit writer) live in the platform module `packages/core/src/credentials/`,
+  which owns `personalAccessTokens` and `mcpAuditLog`. Whether a turn may act as a person asks
+  `project.read`, so it sits in the permission kernel
+  (`packages/core/src/permissions/turn-authority.ts`). Assistant and display preferences are the
+  `preferences` domain's. `auth` keeps only sign-in and the person's own profile.
+- **The permission check reads only its own tables.** Where a project sits (its org) is the
+  projects domain's fact: the HTTP door hands it to the check at boot
+  (`packages/core/src/lib/authz.ts:provideProjectOrg`, given
+  `packages/core/src/projects/service.ts:findProjectOrgId`), and the org check reads only the
+  caller's org membership, so an org the caller is not in and one that does not exist are the same
+  403. Carrying the org on membership rows was the other option; it would not cover an org owner
+  or admin with no project row, who holds admin on every project of the org, so it needed a second
+  copy of `projects.org_id` kept in step by every create and transfer.

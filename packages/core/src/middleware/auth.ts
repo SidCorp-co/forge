@@ -1,10 +1,10 @@
 import { eq } from 'drizzle-orm';
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { verifyDeviceCredential } from '../auth/device-credential.js';
-import { verifyUserToken } from '../auth/jwt.js';
-import { isPatLike } from '../auth/pat-format.js';
-import { runWithPatScope } from '../auth/pat-scope.js';
+import { verifyDeviceCredential } from '../credentials/device-credential.js';
+import { verifyUserToken } from '../credentials/jwt.js';
+import { isPatLike } from '../credentials/pat-format.js';
+import { runWithPatScope } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';

@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import type { Context } from 'hono';
-import { isTurnTokenName } from '../auth/pat-format.js';
+import { isTurnTokenName } from '../credentials/pat-format.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';

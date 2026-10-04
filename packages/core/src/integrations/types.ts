@@ -1,3 +1,4 @@
+import type { ProjectPermission } from '@forge/contracts/permissions';
 import type { z } from 'zod';
 import type { BindingRole } from '../db/schema.js';
 import type { TargetedDeployAdapter } from '../project-config/deploy-adapters/types.js';
@@ -113,6 +114,15 @@ export interface InboundDispatchResult {
 export type AgentPath =
   | { readonly kind: 'none' }
   | { readonly kind: 'core-mediated'; readonly tools: readonly string[] }
+  | {
+      /**
+       * Core answers the tools, and holding `permission` on the project decides who may use them,
+       * agent or person; the binding carries no agent access grant.
+       */
+      readonly kind: 'permission';
+      readonly tools: readonly string[];
+      readonly permission: ProjectPermission;
+    }
   | {
       readonly kind: 'direct-mcp';
       readonly tools: readonly string[];

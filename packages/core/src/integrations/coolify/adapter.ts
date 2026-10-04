@@ -450,7 +450,7 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     // Coolify's API has a rollback endpoint, so a rollback here is an ACTION and not a note for a
     // human — which is why the release batch refuses free text on a coolify channel.
     structuredRollback: true,
-    agentPath: { kind: 'core-mediated', tools: ['forge_coolify_deploy'] },
+    agentPath: { kind: 'permission', tools: ['forge_coolify_deploy'], permission: 'deploys.run' },
   },
   schemas: {
     connectionConfig: coolifyConnectionConfigSchema,

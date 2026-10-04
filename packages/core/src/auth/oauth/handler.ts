@@ -25,8 +25,8 @@ import {
 import { logger } from '../../logger.js';
 import { ensurePersonalOrg } from '../../orgs/service.js';
 import { assertNotAgentUser } from '../agent-login-gate.js';
-import { setAuthCookie } from '../cookie.js';
-import { signUserToken } from '../jwt.js';
+import { setAuthCookie } from '../../credentials/cookie.js';
+import { signUserToken } from '../../credentials/jwt.js';
 import { getCallbackUrl, getProvider } from './providers.js';
 import {
   clearStateCookie,

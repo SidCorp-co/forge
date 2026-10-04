@@ -12,11 +12,9 @@ import { TURN_AUTHORITY_REFUSAL_CODES, type TurnAuthorityRefusalCode } from '@fo
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { personalAccessTokens, users } from '../db/schema.js';
-import { effectiveProjectRole } from '../lib/authz.js';
 import { isRefusal, refuser } from '../lib/refusal.js';
 import { logger } from '../logger.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
-import { holds } from '../permissions/index.js';
 import { mintPat, revokePat } from './pat.js';
 import { turnTokenDefaultName } from './pat-format.js';
 import { patIsLive } from './pat-live.js';
@@ -82,76 +80,20 @@ export type TurnAuthorityOutcome =
   | { ok: true; authority: TurnAuthority }
   | { ok: false; refusal: TurnAuthorityRefusal };
 
-const refuse = (code: TurnAuthorityRefusalCode, message: string): TurnAuthorityOutcome => ({
-  ok: false,
-  refusal: { code, message },
-});
-
-/**
- * Resolve whether `userId` may be acted as on `projectId` right now, bounded by `viaTokenId`
- * when the person reached Forge with a token. Read at the moment the turn acts, not when the
- * message arrived: a role or a token that went away since is not acted on.
- */
-export async function resolveTurnAuthority(args: {
-  userId: string;
-  projectId: string;
-  viaTokenId: string | null;
-}): Promise<TurnAuthorityOutcome> {
-  const access = await effectiveProjectRole(args.userId, args.projectId);
-  if (!(access ? holds(access, 'project.read') : false)) {
-    return refuse(
-      'TURN_NO_ROLE',
-      'I cannot act on this: the person asking holds no role on this project, so there is nobody here I may act as. A project admin can add them.',
-    );
-  }
-
-  let grant: readonly string[] | null = null;
-  let fence: readonly string[] | null = null;
-  let scopes: readonly string[] = ['read', 'write'];
-  let grantEpoch = PAT_GRANT_EPOCH;
-  if (args.viaTokenId) {
-    const [row] = await db
-      .select()
-      .from(personalAccessTokens)
-      .where(
-        and(
-          eq(personalAccessTokens.id, args.viaTokenId),
-          eq(personalAccessTokens.userId, args.userId),
-          patIsLive(),
-        ),
-      )
-      .limit(1);
-    if (!row) {
-      return refuse(
-        'TURN_TOKEN_NOT_LIVE',
-        'I will not act on this: the access token it was sent with has been revoked or has expired since, and a message is acted on with the authority it arrived with. Send it again signed in, or with a live token.',
-      );
-    }
-    const tokenFence = row.boundProjectId ? [row.boundProjectId] : (row.projectIds ?? null);
-    if (tokenFence !== null && !tokenFence.includes(args.projectId)) {
-      return refuse(
-        'TURN_TOKEN_FENCED',
-        'I will not act on this: the access token it was sent with does not reach this project, and acting here would reach past it.',
-      );
-    }
-    grant = row.permissions ?? null;
-    fence = tokenFence;
-    scopes = row.scopes;
-    grantEpoch = row.grantEpoch;
-  }
-
-  return {
-    ok: true,
-    authority: {
-      userId: args.userId,
-      projectId: args.projectId,
-      viaTokenId: args.viaTokenId,
-      grant,
-      fence,
-      scopes,
-      grantEpoch,
-    },
-  };
+/** The person's own token a turn is bounded by, or null where it was revoked or has expired since. */
+export async function liveTurnToken(tokenId: string, userId: string) {
+  const [row] = await db
+    .select()
+    .from(personalAccessTokens)
+    .where(
+      and(
+        eq(personalAccessTokens.id, tokenId),
+        eq(personalAccessTokens.userId, userId),
+        patIsLive(),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }
 
 /** A token minted for one turn: its plaintext for a child process, its principal for in-process tools. */

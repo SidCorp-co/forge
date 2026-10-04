@@ -8,8 +8,8 @@ import {
 import { HTTPException } from 'hono/http-exception';
 import pkg from '../../package.json' with { type: 'json' };
 import { forgeChannelTool } from '../assistant/tools/forge-channel-tool.js';
-import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
-import { runWithPatScope } from '../auth/pat-scope.js';
+import { type AuditResultCode, digestArgs, writeMcpAudit } from '../credentials/mcp-audit.js';
+import { runWithPatScope } from '../credentials/pat-scope.js';
 import { RefusalError } from '../lib/refusal.js';
 import { resolveManagedMetaPrompts } from '../skills/effective.js';
 import { forgeMcpInstructions } from './instructions.js';

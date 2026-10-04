@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
-import { AUTH_COOKIE_NAME } from '../auth/cookie-names.js';
+import { AUTH_COOKIE_NAME } from '../credentials/cookie-names.js';
 
 const BEARER = /^Bearer\s+(.+)$/i;
 

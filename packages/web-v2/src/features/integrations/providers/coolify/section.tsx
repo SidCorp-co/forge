@@ -15,13 +15,7 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
-import {
-  AGENT_ACCESS_CLOSED,
-  AgentAccessChoice,
-  AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
-import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
-import { coolify } from "./index";
 import { CoolifyTargetsField } from "./targets-field";
 import {
   useConfirmProdDeploy,
@@ -147,7 +141,6 @@ function BindingPanel({
     null,
   );
   const [error, setError] = useState<string | null>(null);
-  const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
 
   const saving = create.isPending || update.isPending;
   // Org-shared credential: only an org owner/admin may change the CONNECTION
@@ -199,7 +192,6 @@ function BindingPanel({
           role: "deploy",
           config: { baseUrl, targets: cleanTargets },
           secrets: { apiToken: apiToken.trim() },
-          ...agentAccessBody(coolify.agentPathKind, agentAccess),
           ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
         });
       }
@@ -314,23 +306,6 @@ function BindingPanel({
             {testResult.message ?? "Connection failed"}
           </Banner>
         ))}
-
-      {existing ? (
-        <AgentAccessControl
-          projectId={projectId}
-          binding={existing}
-          canEdit={true}
-          disabledReason="Org-shared credential — only an org owner/admin can grant it."
-        />
-      ) : (
-        <AgentAccessChoice
-          value={agentAccess}
-          onChange={setAgentAccess}
-          pathKind={coolify.agentPathKind}
-          canEdit={true}
-          disabledReason="Org-shared credential — only an org owner/admin can grant it."
-        />
-      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="primary" onClick={handleSave} loading={saving}>

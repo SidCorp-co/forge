@@ -26,9 +26,7 @@ import { approvalRequired, assertApprovalAllowsAttempt } from '../../release-bat
 import { readRunMethod } from '../../release-batch/method.js';
 import { refuseRelease } from '../../release-batch/refuse.js';
 import { isOpenReleaseBatchRun } from '../../release-batch/service.js';
-import { grantHolds, notGrantedMessage } from '../agent-access.js';
 import { findLastOutbound, findLastOutboundForTarget } from '../deliveries.js';
-import { getIntegration } from '../registry.js';
 import type { CoolifyConfig } from './types.js';
 
 /** A Coolify rule refused by name, in the one 422 envelope. */
@@ -66,25 +64,6 @@ export async function activeCoolifyIntegrations(projectId: string) {
 }
 
 export type CoolifyIntegrationRow = Awaited<ReturnType<typeof activeCoolifyIntegrations>>[number];
-
-export function assertAgentMayDeployCoolify(
-  rows: CoolifyIntegrationRow[],
-  integrationId: string | undefined,
-): void {
-  if (rows.length === 0) return;
-  const candidates = integrationId ? rows.filter((r) => r.id === integrationId) : rows;
-  if (candidates.length === 0) return;
-  const decl = getIntegration('coolify');
-  // EVERY candidate, not `some`. Without an id, `status`, `logs`, `cancel` and `rollback` read the
-  // project's whole Coolify set, so one granted binding letting the action through would hand the
-  // agent an ungranted binding's deliveries — a per-binding switch that only holds per project.
-  const ungranted = candidates.find((r) => !grantHolds(decl, r.pair.binding));
-  if (!ungranted) return;
-  if (integrationId) throw new CoolifyCommandError(notGrantedMessage('coolify', ungranted.id));
-  throw new CoolifyCommandError(
-    `${notGrantedMessage('coolify', ungranted.id)} This call named no integrationId, so it would have read every Coolify binding on the project, that one included. Name the binding you mean with integrationId and a granted one still answers.`,
-  );
-}
 
 /**
  * Pick the one integration the caller means: an explicit `integrationId`, else

@@ -1,6 +1,6 @@
 import type { PatFence, PatFenceRefusalCode } from '@forge/contracts/pat-fence';
-import { coreTokenNamePrefixOf } from '../auth/pat-format.js';
-import { PAT_ACCOUNT_ONLY_PERMISSIONS } from '../auth/pat-permissions.js';
+import { coreTokenNamePrefixOf } from '../credentials/pat-format.js';
+import { PAT_ACCOUNT_ONLY_PERMISSIONS } from '../credentials/pat-permissions.js';
 import type { Refusal } from '../lib/refusal.js';
 
 export type PatFenceRefusal = Refusal & { code: PatFenceRefusalCode };

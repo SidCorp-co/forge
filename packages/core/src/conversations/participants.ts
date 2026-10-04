@@ -7,7 +7,7 @@
 
 import { and, count, eq, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { patIsLive } from '../auth/pat-live.js';
+import { patIsLive } from '../credentials/pat-live.js';
 import { db as defaultDb } from '../db/client.js';
 import { organizationMembers, personalAccessTokens, projectMembers, users } from '../db/schema.js';
 import {

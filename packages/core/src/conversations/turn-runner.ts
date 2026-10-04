@@ -22,7 +22,7 @@ import {
   type TurnAuthority,
   turnAuthorityRefusalOf,
   type TurnCredential,
-} from '../auth/turn-credential.js';
+} from '../credentials/turn-credential.js';
 import type { ChatStreamEvent } from '../integrations/llm/types.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { egressDeep } from '../lib/data-egress.js';
