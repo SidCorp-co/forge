@@ -1,5 +1,5 @@
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
-import { emitJsonSchema } from '../project-config/json-schema.js';
+import { emitJsonSchema } from '../project-config/index.js';
 import {
   DOCUMENT_SCHEMA_ID,
   documentSchema,
