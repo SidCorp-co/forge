@@ -110,40 +110,83 @@ interface PostInput {
   items: readonly QuestionnaireItem[];
 }
 
+/** Why this batch may not be posted now: a malformed item, a batch already open, an item answered
+ *  or rejected in this series, or a requirement already holding an open ask. */
+async function postRefusals(tx: TxOnly, input: PostInput): Promise<Refusal[]> {
+  const shape = itemRefusals(input.items);
+  if (shape.length) return shape;
+  const busy = alreadyOpenRefusal(await openBatchOf(tx, input.conversationId));
+  if (busy) return [busy];
+  const prior = await priorAnswers(tx, input.conversationId, input.seriesSince);
+  const repeats = repeatRefusals(input.items, prior.answered, prior.rejected);
+  if (repeats.length || !input.requirementId) return repeats;
+  const [single] = await tx
+    .select({ id: agentQuestions.id })
+    .from(agentQuestions)
+    .where(
+      and(eq(agentQuestions.requirementId, input.requirementId), eq(agentQuestions.status, 'open')),
+    )
+    .limit(1);
+  if (!single) return [];
+  return [
+    {
+      code: 'CLARIFICATION_ALREADY_OPEN',
+      path: '',
+      detail: `question ${single.id} is still open on this requirement; at most one ask is open per item (Q5), and a batch is one. Wait for its answer.`,
+    },
+  ];
+}
+
+/**
+ * What a new batch settles in the thread before it. What stayed open in an answered batch is asked
+ * again here or not at all, so its rows close as carried and no decision is open twice; and an
+ * answer to a superseded batch is refused naming its replacement, which is this one.
+ */
+async function settleEarlierBatches(tx: TxOnly, input: PostInput, batchId: string): Promise<void> {
+  const answeredBefore = await tx
+    .select({ id: questionnaireBatches.id })
+    .from(questionnaireBatches)
+    .where(
+      and(
+        eq(questionnaireBatches.conversationId, input.conversationId),
+        eq(questionnaireBatches.status, 'submitted'),
+      ),
+    );
+  if (answeredBefore.length) {
+    const why = `carried into questionnaire ${batchId}`;
+    await transition(tx, QUESTION_MACHINE, {
+      to: 'void',
+      from: 'open',
+      set: { voidReason: why, updatedAt: new Date() },
+      where: inArray(
+        agentQuestions.batchId,
+        answeredBefore.map((b) => b.id),
+      ),
+      reason: why,
+      actor: questionnaireKernelActor(input.actor),
+      source: 'questionnaire',
+      returning: ['id'],
+    });
+  }
+  await tx
+    .update(questionnaireBatches)
+    .set({ supersededBy: batchId })
+    .where(
+      and(
+        eq(questionnaireBatches.conversationId, input.conversationId),
+        eq(questionnaireBatches.status, 'superseded'),
+        isNull(questionnaireBatches.supersededBy),
+      ),
+    );
+}
+
 /** Posts one batch in the caller's transaction; the caller holds the thread's lock and checked who may. */
 export async function postQuestionnaireIn(
   tx: TxOnly,
   input: PostInput,
 ): Promise<Refusal[] | { batchId: string; messageId: string }> {
-  const shape = itemRefusals(input.items);
-  if (shape.length) return shape;
-  const open = await openBatchOf(tx, input.conversationId);
-  const busy = alreadyOpenRefusal(open);
-  if (busy) return [busy];
-  const prior = await priorAnswers(tx, input.conversationId, input.seriesSince);
-  const repeats = repeatRefusals(input.items, prior.answered, prior.rejected);
-  if (repeats.length) return repeats;
-  if (input.requirementId) {
-    const [single] = await tx
-      .select({ id: agentQuestions.id })
-      .from(agentQuestions)
-      .where(
-        and(
-          eq(agentQuestions.requirementId, input.requirementId),
-          eq(agentQuestions.status, 'open'),
-        ),
-      )
-      .limit(1);
-    if (single) {
-      return [
-        {
-          code: 'CLARIFICATION_ALREADY_OPEN',
-          path: '',
-          detail: `question ${single.id} is still open on this requirement; at most one ask is open per item (Q5), and a batch is one. Wait for its answer.`,
-        },
-      ];
-    }
-  }
+  const refusals = await postRefusals(tx, input);
+  if (refusals.length) return refusals;
   const [room] = await tx
     .select({ externalId: conversations.externalId, adapter: conversations.adapter })
     .from(conversations)
@@ -210,45 +253,7 @@ export async function postQuestionnaireIn(
     .update(questionnaireBatches)
     .set({ messageId: message.id })
     .where(eq(questionnaireBatches.id, batch.id));
-  // cm:why what stayed open in an answered batch is asked again here or not at all: its rows close
-  // as carried, so no decision is open twice
-  const answeredBefore = await tx
-    .select({ id: questionnaireBatches.id })
-    .from(questionnaireBatches)
-    .where(
-      and(
-        eq(questionnaireBatches.conversationId, input.conversationId),
-        eq(questionnaireBatches.status, 'submitted'),
-      ),
-    );
-  if (answeredBefore.length) {
-    const why = `carried into questionnaire ${batch.id}`;
-    await transition(tx, QUESTION_MACHINE, {
-      to: 'void',
-      from: 'open',
-      set: { voidReason: why, updatedAt: new Date() },
-      where: inArray(
-        agentQuestions.batchId,
-        answeredBefore.map((b) => b.id),
-      ),
-      reason: why,
-      actor: questionnaireKernelActor(input.actor),
-      source: 'questionnaire',
-      returning: ['id'],
-    });
-  }
-  // cm:why an answer to a superseded batch is refused naming the batch that replaced it: the next
-  // batch posted in the thread is that replacement
-  await tx
-    .update(questionnaireBatches)
-    .set({ supersededBy: batch.id })
-    .where(
-      and(
-        eq(questionnaireBatches.conversationId, input.conversationId),
-        eq(questionnaireBatches.status, 'superseded'),
-        isNull(questionnaireBatches.supersededBy),
-      ),
-    );
+  await settleEarlierBatches(tx, input, batch.id);
   return { batchId: batch.id, messageId: message.id };
 }
 

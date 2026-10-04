@@ -61,8 +61,115 @@ interface SubmitInput {
   onSubmittedIn?: ((tx: TxOnly, batch: BatchRow, skipped: boolean) => Promise<void>) | undefined;
 }
 
-// cm:why one submit for the whole batch (BC-7): every answer, the user's answers message and the
-// batch's state land in one write or none does, and an unanswered item stays open
+type ItemEntry = {
+  item: StoredItem;
+  open: boolean;
+  row: Awaited<ReturnType<typeof itemsOf>>[number];
+};
+type Answer = SubmitInput['answers'][number];
+
+/** Each given answer moves its item to `answered`; answers the map the answers message quotes. */
+async function answerItems(
+  tx: TxOnly,
+  byId: Map<string, ItemEntry>,
+  answers: readonly Answer[],
+  input: SubmitInput,
+  now: Date,
+): Promise<Map<string, Omit<QuestionnaireAnswer, 'itemId'>>> {
+  const at = now.toISOString();
+  const given = new Map<string, Omit<QuestionnaireAnswer, 'itemId'>>();
+  for (const a of answers) {
+    const entry = byId.get(a.itemId);
+    if (!entry) continue;
+    const { itemId: _id, ...answer } = a;
+    given.set(a.itemId, answer);
+    const steps = entry.row.steps;
+    const last = steps.at(-1);
+    if (!last) throw new Error(`questionnaires: item ${a.itemId} has no step`);
+    const answered = await transition(tx, QUESTION_MACHINE, {
+      to: 'answered',
+      expect: entry.row.status,
+      set: {
+        steps: [...steps.slice(0, -1), answeredStep(last, entry.item, a, input.actor.userId, at)],
+        updatedAt: now,
+      },
+      where: eq(agentQuestions.id, entry.row.id),
+      actor: questionnaireKernelActor(input.actor),
+      source: 'questionnaire-submit',
+      returning: ['id'],
+    });
+    movedRow(answered);
+  }
+  return given;
+}
+
+/**
+ * The person's answers message. In a BA requirement room the answers are the person's turn: a
+ * window opens on them, so the BA assistant answers as it would a typed message; an onboarding
+ * thread hands back through a job instead.
+ */
+async function postAnswers(
+  tx: TxOnly,
+  batch: BatchRow,
+  byId: Map<string, ItemEntry>,
+  given: Map<string, Omit<QuestionnaireAnswer, 'itemId'>>,
+  input: SubmitInput,
+): Promise<string | null> {
+  const items = [...byId.values()]
+    .filter((e) => e.open)
+    .sort((x, y) => x.item.position - y.item.position)
+    .map((e) => e.item);
+  const [message] = await appendMessagesIn(tx, {
+    conversationId: batch.conversationId,
+    messages: [
+      {
+        role: 'user',
+        authorUserId: input.actor.userId,
+        content: answersText({ title: batch.title, round: batch.round, items, answers: given }),
+        blocks: [{ type: 'questionnaire_answers', batchId: batch.id }],
+      },
+    ],
+  });
+  if (batch.requirementId && message) {
+    await openOrExtendWindow(
+      {
+        conversationId: batch.conversationId,
+        projectId: input.projectId,
+        adapter: 'web',
+        seq: message.seq,
+      },
+      tx as never,
+    );
+  }
+  return message?.id ?? null;
+}
+
+/** The batch's own move, to `skipped` or `submitted`, then the thread owner's hook. */
+async function settleBatch(
+  tx: TxOnly,
+  batch: BatchRow,
+  input: SubmitInput,
+  now: Date,
+  messageId: string | null | undefined,
+): Promise<void> {
+  const skip = messageId === undefined;
+  const moved = await transition(tx, QUESTIONNAIRE_MACHINE, {
+    to: skip ? 'skipped' : 'submitted',
+    expect: batch.status,
+    set: skip
+      ? { skippedBy: input.actor.userId, skippedAt: now }
+      : { submittedBy: input.actor.userId, submittedAt: now, answersMessageId: messageId },
+    where: eq(questionnaireBatches.id, batch.id),
+    actor: questionnaireKernelActor(input.actor),
+    source: 'questionnaire-submit',
+    returning: ['id'],
+  });
+  movedRow(moved);
+  await input.onSubmittedIn?.(tx, batch, skip);
+}
+
+// One submit for the whole batch (BC-7): every answer, the user's answers message and the batch's
+// state land in one write or none does, and an unanswered item stays open.
 export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOutcome> {
   const who = submitterRefusal(await permissionFactsOf(input.actor.userId, input.projectId));
   if (who) return { ok: false, refusals: [who] };
@@ -86,7 +193,7 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
       ];
     }
     const rows = await itemsOf(tx, [batch.id]);
-    const byId = new Map(
+    const byId = new Map<string, ItemEntry>(
       rows.map((r) => [
         (r.item as StoredItem).id,
         { item: r.item as StoredItem, open: r.status === 'open', row: r },
@@ -96,83 +203,12 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
     if (refusals.length) return refusals;
     const now = new Date();
     if (skip) {
-      const skipped = await transition(tx, QUESTIONNAIRE_MACHINE, {
-        to: 'skipped',
-        expect: batch.status,
-        set: { skippedBy: input.actor.userId, skippedAt: now },
-        where: eq(questionnaireBatches.id, batch.id),
-        actor: questionnaireKernelActor(input.actor),
-        source: 'questionnaire-submit',
-        returning: ['id'],
-      });
-      movedRow(skipped);
-      await input.onSubmittedIn?.(tx, batch, true);
+      await settleBatch(tx, batch, input, now, undefined);
       return null;
     }
-    const at = now.toISOString();
-    const given = new Map<string, Omit<QuestionnaireAnswer, 'itemId'>>();
-    for (const a of answers) {
-      const entry = byId.get(a.itemId);
-      if (!entry) continue;
-      const { itemId: _id, ...answer } = a;
-      given.set(a.itemId, answer);
-      const steps = entry.row.steps;
-      const last = steps.at(-1);
-      if (!last) throw new Error(`questionnaires: item ${a.itemId} has no step`);
-      const answered = await transition(tx, QUESTION_MACHINE, {
-        to: 'answered',
-        expect: entry.row.status,
-        set: {
-          steps: [...steps.slice(0, -1), answeredStep(last, entry.item, a, input.actor.userId, at)],
-          updatedAt: now,
-        },
-        where: eq(agentQuestions.id, entry.row.id),
-        actor: questionnaireKernelActor(input.actor),
-        source: 'questionnaire-submit',
-        returning: ['id'],
-      });
-      movedRow(answered);
-    }
-    const items = [...byId.values()]
-      .filter((e) => e.open)
-      .sort((x, y) => x.item.position - y.item.position)
-      .map((e) => e.item);
-    const [message] = await appendMessagesIn(tx, {
-      conversationId: batch.conversationId,
-      messages: [
-        {
-          role: 'user',
-          authorUserId: input.actor.userId,
-          content: answersText({ title: batch.title, round: batch.round, items, answers: given }),
-          blocks: [{ type: 'questionnaire_answers', batchId: batch.id }],
-        },
-      ],
-    });
-    messageId = message?.id ?? null;
-    // cm:why in a BA requirement room the answers are the person's turn: a window opens on them, so the
-    // BA assistant answers as it would a typed message; an onboarding thread hands back through a job
-    if (batch.requirementId && message) {
-      await openOrExtendWindow(
-        {
-          conversationId: batch.conversationId,
-          projectId: input.projectId,
-          adapter: 'web',
-          seq: message.seq,
-        },
-        tx as never,
-      );
-    }
-    const submitted = await transition(tx, QUESTIONNAIRE_MACHINE, {
-      to: 'submitted',
-      expect: batch.status,
-      set: { submittedBy: input.actor.userId, submittedAt: now, answersMessageId: messageId },
-      where: eq(questionnaireBatches.id, batch.id),
-      actor: questionnaireKernelActor(input.actor),
-      source: 'questionnaire-submit',
-      returning: ['id'],
-    });
-    movedRow(submitted);
-    await input.onSubmittedIn?.(tx, batch, false);
+    const given = await answerItems(tx, byId, answers, input, now);
+    messageId = await postAnswers(tx, batch, byId, given, input);
+    await settleBatch(tx, batch, input, now, messageId);
     return null;
   });
   if (refused) return { ok: false, refusals: refused };

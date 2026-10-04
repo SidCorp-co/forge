@@ -57,7 +57,7 @@ export async function criteriaOf(
   }));
 }
 
-interface RequirementRaw {
+export interface RequirementRaw {
   id: string;
   req_seq: number;
   title: string;

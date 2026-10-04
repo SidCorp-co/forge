@@ -9,7 +9,7 @@
  *   guarded by a visited set.
  */
 
-import { and, count, eq, inArray } from 'drizzle-orm';
+import { and, count, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueDependencyKind, issueDependencies, issues } from '../db/schema.js';
 import { issueArchiveSide } from './archive.js';
@@ -24,147 +24,94 @@ type GraphEdge = {
   kind: IssueDependencyKind;
 };
 
-type GraphNode = {
-  id: string;
-  status: string;
-  priority: string;
-  assigneeId: string | null;
-};
-
 type PmGraphQuery = {
   projectId: string;
   rootIssueId?: string | undefined;
   depth: number;
 };
 
-/** The project's dependency graph, whole or BFS'd out from one root. */
-export async function readPmGraph({ projectId, rootIssueId, depth }: PmGraphQuery) {
-  if (!rootIssueId) {
-    // ISS-1237 — the whole-project view is discovery, so an archived issue is not a node of it.
-    const wholeGraph = and(eq(issues.projectId, projectId), ...issueArchiveSide(false));
-    const [countRow] = (await db
-      .select({ total: count() })
-      .from(issues)
-      .where(wholeGraph)) as Array<{ total: number } | undefined>;
+const NODE_COLUMNS = {
+  id: issues.id,
+  status: issues.status,
+  priority: issues.priority,
+  assigneeId: issues.assigneeId,
+};
 
-    const totalNodes = Number(countRow?.total ?? 0);
-    const truncated = totalNodes > PM_GRAPH_MAX_NODES;
-    const remainingNodes = truncated ? totalNodes - PM_GRAPH_MAX_NODES : 0;
+const EDGE_COLUMNS = {
+  from: issueDependencies.fromIssueId,
+  to: issueDependencies.toIssueId,
+  kind: issueDependencies.kind,
+};
 
-    const nodes = await db
-      .select({
-        id: issues.id,
-        status: issues.status,
-        priority: issues.priority,
-        assigneeId: issues.assigneeId,
-      })
-      .from(issues)
-      .where(wholeGraph)
-      .limit(PM_GRAPH_MAX_NODES);
-
-    const nodeIds = new Set(nodes.map((n) => n.id));
-
-    const depEdges = await db
-      .select({
-        from: issueDependencies.fromIssueId,
-        to: issueDependencies.toIssueId,
-        kind: issueDependencies.kind,
-      })
+/** The whole-project view, capped at `PM_GRAPH_MAX_NODES`. It is discovery, so an archived issue
+ *  is not a node of it (ISS-1237). */
+async function wholeGraph(projectId: string, depth: number) {
+  const scope = and(eq(issues.projectId, projectId), ...issueArchiveSide(false));
+  const [countRow] = await db.select({ total: count() }).from(issues).where(scope);
+  const totalNodes = Number(countRow?.total ?? 0);
+  const truncated = totalNodes > PM_GRAPH_MAX_NODES;
+  const nodes = await db.select(NODE_COLUMNS).from(issues).where(scope).limit(PM_GRAPH_MAX_NODES);
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const edges: GraphEdge[] = (
+    await db
+      .select(EDGE_COLUMNS)
       .from(issueDependencies)
-      .where(eq(issueDependencies.projectId, projectId));
-
-    const edges: GraphEdge[] = depEdges
-      .filter((e) => nodeIds.has(e.from) && nodeIds.has(e.to))
-      .map((e) => ({ from: e.from, to: e.to, kind: e.kind }));
-
-    return {
-      nodes: nodes.map((n) => ({
-        id: n.id,
-        status: n.status,
-        priority: n.priority,
-        assigneeId: n.assigneeId,
-      })),
-      edges,
-      rootIssueId: null,
-      depth: depth,
-      truncated,
-      remainingNodes,
-    };
-  }
-
-  const visited = new Set<string>([rootIssueId]);
-  let frontier = new Set<string>([rootIssueId]);
-  const allEdges: GraphEdge[] = [];
-
-  for (let d = 0; d < depth && frontier.size > 0; d++) {
-    const frontierIds = [...frontier];
-    const nextFrontier = new Set<string>();
-
-    const dependencyEdges = await db
-      .select({
-        from: issueDependencies.fromIssueId,
-        to: issueDependencies.toIssueId,
-        kind: issueDependencies.kind,
-      })
-      .from(issueDependencies)
-      .where(
-        and(
-          eq(issueDependencies.projectId, projectId),
-          inArray(issueDependencies.fromIssueId, frontierIds),
-        ),
-      );
-    const dependencyEdgesReverse = await db
-      .select({
-        from: issueDependencies.fromIssueId,
-        to: issueDependencies.toIssueId,
-        kind: issueDependencies.kind,
-      })
-      .from(issueDependencies)
-      .where(
-        and(
-          eq(issueDependencies.projectId, projectId),
-          inArray(issueDependencies.toIssueId, frontierIds),
-        ),
-      );
-    for (const e of [...dependencyEdges, ...dependencyEdgesReverse]) {
-      allEdges.push(e);
-      for (const id of [e.from, e.to]) {
-        if (!visited.has(id)) {
-          visited.add(id);
-          nextFrontier.add(id);
-        }
-      }
-    }
-
-    frontier = nextFrontier;
-  }
-
-  const edgeKey = (e: GraphEdge) => `${e.from}:${e.to}:${e.kind}`;
-  const dedupedEdges = Array.from(new Map(allEdges.map((e) => [edgeKey(e), e])).values());
-
-  const nodeRows = await db
-    .select({
-      id: issues.id,
-      status: issues.status,
-      priority: issues.priority,
-      assigneeId: issues.assigneeId,
-    })
-    .from(issues)
-    .where(and(eq(issues.projectId, projectId), inArray(issues.id, [...visited])));
-
-  const nodes: GraphNode[] = nodeRows.map((r) => ({
-    id: r.id,
-    status: r.status,
-    priority: r.priority,
-    assigneeId: r.assigneeId,
-  }));
-
+      .where(eq(issueDependencies.projectId, projectId))
+  ).filter((e) => nodeIds.has(e.from) && nodeIds.has(e.to));
   return {
     nodes,
-    edges: dedupedEdges,
-    rootIssueId: rootIssueId,
-    depth: depth,
+    edges,
+    rootIssueId: null,
+    depth,
+    truncated,
+    remainingNodes: truncated ? totalNodes - PM_GRAPH_MAX_NODES : 0,
+  };
+}
+
+/** BFS from one root to `depth`, undirected over both edge directions. */
+async function rootGraph(projectId: string, rootIssueId: string, depth: number) {
+  const visited = new Set<string>([rootIssueId]);
+  let frontier = [rootIssueId];
+  const edgesByKey = new Map<string, GraphEdge>();
+  for (let d = 0; d < depth && frontier.length > 0; d++) {
+    const touching = await db
+      .select(EDGE_COLUMNS)
+      .from(issueDependencies)
+      .where(
+        and(
+          eq(issueDependencies.projectId, projectId),
+          or(
+            inArray(issueDependencies.fromIssueId, frontier),
+            inArray(issueDependencies.toIssueId, frontier),
+          ),
+        ),
+      );
+    const next: string[] = [];
+    for (const e of touching) {
+      edgesByKey.set(`${e.from}:${e.to}:${e.kind}`, e);
+      for (const id of [e.from, e.to]) {
+        if (visited.has(id)) continue;
+        visited.add(id);
+        next.push(id);
+      }
+    }
+    frontier = next;
+  }
+  const nodes = await db
+    .select(NODE_COLUMNS)
+    .from(issues)
+    .where(and(eq(issues.projectId, projectId), inArray(issues.id, [...visited])));
+  return {
+    nodes,
+    edges: [...edgesByKey.values()],
+    rootIssueId,
+    depth,
     truncated: false,
     remainingNodes: 0,
   };
+}
+
+/** The project's dependency graph, whole or BFS'd out from one root. */
+export function readPmGraph({ projectId, rootIssueId, depth }: PmGraphQuery) {
+  return rootIssueId ? rootGraph(projectId, rootIssueId, depth) : wholeGraph(projectId, depth);
 }

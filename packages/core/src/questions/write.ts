@@ -5,7 +5,6 @@
 // only by TypeScript is a shape held nowhere (ISS-964 criteria 14, 16, 21).
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import type { QuestionRefusalCode } from '@forge/contracts/questions';
 import { eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -21,8 +20,6 @@ import {
 } from '../db/schema-questions.js';
 import type { IssueDependencyExecutor } from '../issues/index.js';
 import { refuser } from '../lib/refusal.js';
-import { type KernelActor, transition } from '../lifecycle/index.js';
-import { notFound } from '../middleware/route-errors.js';
 import { holds, type PermissionFacts } from '../permissions/index.js';
 import { resolveAskOrigin } from './origin.js';
 import { screenRound } from './screen.js';
@@ -234,42 +231,6 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
   if (!row) throw new Error('the question was not written');
   return view(row);
 }
-
-export async function voidQuestion(args: {
-  questionId: string;
-  reason: string;
-  actor: KernelActor;
-}) {
-  if (!args.reason?.trim()) {
-    throw refuseQuestion(
-      'QUESTION_REASON_REQUIRED',
-      'a question is voided WITH a reason — removed silently it is indistinguishable from one nobody answered',
-    );
-  }
-  const { rows: voided } = await transition(db, QUESTION_MACHINE, {
-    to: 'void',
-    from: 'open',
-    set: { voidReason: args.reason, updatedAt: new Date() },
-    where: eq(agentQuestions.id, args.questionId),
-    reason: args.reason,
-    actor: args.actor,
-    source: 'questions',
-    returning: ['id'],
-  });
-  if (voided.length > 0) return;
-  const row = await load(args.questionId);
-  throw refuseQuestion(
-    'QUESTION_NOT_OPEN',
-    `this question is ${row.status} — only an open question can be voided, and voiding an answered one would erase the answer`,
-  );
-}
-
-async function load(id: string) {
-  const [row] = await db.select().from(agentQuestions).where(eq(agentQuestions.id, id)).limit(1);
-  if (!row) throw notFound(`no question ${id}`);
-  return row;
-}
-
 export function answeredBody(step: QuestionStep | undefined): string {
   if (!step) return '';
   if (!isChoiceStep(step)) return step.answerText ?? '';

@@ -1,5 +1,5 @@
 import type { CommentRefusalCode } from '@forge/contracts/comments';
-import { isCommentIntent } from '@forge/contracts/record-events';
+import { type CommentIntent, isCommentIntent } from '@forge/contracts/record-events';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -29,7 +29,7 @@ import {
   declares,
   RECORD_ROUTE_CAPABILITY,
 } from '../middleware/client-capabilities.js';
-import { badRequest, forbidden, idParamSchema } from '../middleware/route-errors.js';
+import { badRequest, forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { commentAttachmentRoutes } from './attachment-routes.js';
@@ -63,9 +63,6 @@ const threadQuerySchema = paginationSchema.extend({
   intent: z.string().max(64).optional(),
 });
 
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
 export async function loadIssue(issueId: string) {
   const row = await issueProjectOf(issueId);
   if (!row) throw notFound('issue not found');
@@ -92,6 +89,60 @@ const commentsShown = <T>(
   what: string,
 ) => egressForRequest(restActor(c).agency, projectId, 'issue.comments', rows, what);
 
+async function assertParentOnIssue(parentId: string, issueId: string): Promise<void> {
+  const parent = await parentCommentOf(parentId);
+  if (!parent) throw notFound('parent comment not found');
+  if (parent.issueId !== issueId) {
+    throw new HTTPException(400, {
+      message: 'parent comment belongs to a different issue',
+      cause: { code: 'PARENT_MISMATCH' },
+    });
+  }
+}
+
+/** A failed comment insert as the answer it owes: a body or message refusal, a reply nested too
+ *  deep, a parent gone under it, or the error itself. */
+function commentWriteRefusal(err: unknown, parentId: string | undefined): unknown {
+  const refusal = bodyRefusalHttp(err) ?? messageRefusalHttp(err);
+  if (refusal) return refusal;
+  const pgCode = pgErrorCode(err);
+  if (pgCode === '23514') {
+    return refuse(
+      'COMMENT_DEPTH_EXCEEDED',
+      'a reply sits at most 3 deep; reply to a comment higher in the thread',
+      '/parentId',
+    );
+  }
+  if (pgCode === '23503' && parentId && pgConstraintName(err) === 'comments_parent_id_fk') {
+    return notFound('parent comment not found');
+  }
+  return err;
+}
+
+/** One page of an issue's thread, shaped for its reader: egress, attachments, lens, authors. */
+async function issueThreadPage(
+  c: Parameters<typeof restActor>[0],
+  issue: { id: string; projectId: string },
+  rawId: string,
+  page: { after: CommentCursor | undefined; limit: number; intent: CommentIntent | undefined },
+) {
+  const total = await countIssueComments(issue.id, page.intent);
+  const read = await listIssueCommentPage(issue.id, page);
+  const rows = await commentsShown(c, issue.projectId, read.rows, `the comments on ${rawId}`);
+  const commentIds = rows.map((r) => r.id);
+  const tree = buildCommentTree(
+    rows,
+    await attachmentsByComment(commentIds),
+    await projectLens(issue.projectId),
+    await mirroredEventsFor(issue.id, commentIds),
+  );
+  const refs: ActorRef[] = rows.map((r) =>
+    r.authorDeviceId ? { type: 'device', id: r.authorDeviceId } : { type: 'user', id: r.authorId },
+  );
+  attachAuthors(tree, await resolveActors(refs));
+  return { tree, total: Number(total), nextCursor: read.nextCursor };
+}
+
 export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.post(
     '/:id/comments',
@@ -110,49 +161,20 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       const access = await loadProjectAccess(issue.projectId, userId);
       requireHeld(access, 'project.write');
 
-      if (parentId) {
-        const parent = await parentCommentOf(parentId);
-        if (!parent) throw notFound('parent comment not found');
-        if (parent.issueId !== issueId) {
-          throw new HTTPException(400, {
-            message: 'parent comment belongs to a different issue',
-            cause: { code: 'PARENT_MISMATCH' },
-          });
-        }
-      }
-
-      let written: Awaited<ReturnType<typeof insertComment>> | undefined;
-      try {
-        written = await insertComment({
-          issueId,
-          authorId: userId,
-          authorDeviceId: c.get('patDeviceId') ?? null,
-          body,
-          format,
-          parentId: parentId ?? null,
-          declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
-          intent,
-          announce: { actor: restActor(c), authored: restAuthored(c) },
-        });
-      } catch (err) {
-        const refusal = bodyRefusalHttp(err) ?? messageRefusalHttp(err);
-        if (refusal) throw refusal;
-        const pgCode = pgErrorCode(err);
-        if (pgCode === '23514') {
-          throw refuse(
-            'COMMENT_DEPTH_EXCEEDED',
-            'a reply sits at most 3 deep; reply to a comment higher in the thread',
-            '/parentId',
-          );
-        }
-        if (pgCode === '23503' && parentId) {
-          const constraint = pgConstraintName(err);
-          if (constraint === 'comments_parent_id_fk') {
-            throw notFound('parent comment not found');
-          }
-        }
-        throw err;
-      }
+      if (parentId) await assertParentOnIssue(parentId, issueId);
+      const written = await insertComment({
+        issueId,
+        authorId: userId,
+        authorDeviceId: c.get('patDeviceId') ?? null,
+        body,
+        format,
+        parentId: parentId ?? null,
+        declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
+        intent,
+        announce: { actor: restActor(c), authored: restAuthored(c) },
+      }).catch((err: unknown) => {
+        throw commentWriteRefusal(err, parentId);
+      });
       const inserted = written.row;
 
       return c.json(
@@ -179,7 +201,6 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       }
 
       const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
-      const issueId = issue.id;
 
       let after: CommentCursor | undefined;
       if (cursor !== undefined) {
@@ -188,28 +209,8 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         after = decoded;
       }
 
-      const total = await countIssueComments(issueId, intent);
-      const page = await listIssueCommentPage(issueId, { after, limit, intent });
-      const rows = await commentsShown(c, issue.projectId, page.rows, `the comments on ${rawId}`);
-
-      const commentIds = rows.map((r) => r.id);
-      const attachmentsByCommentId = await attachmentsByComment(commentIds);
-
-      const tree = buildCommentTree(
-        rows,
-        attachmentsByCommentId,
-        await projectLens(issue.projectId),
-        await mirroredEventsFor(issueId, commentIds),
-      );
-
-      const refs: ActorRef[] = rows.map((r) =>
-        r.authorDeviceId
-          ? { type: 'device', id: r.authorDeviceId }
-          : { type: 'user', id: r.authorId },
-      );
-      attachAuthors(tree, await resolveActors(refs));
-
-      return c.json(cursorList(c, tree, Number(total), { limit, nextCursor: page.nextCursor }));
+      const page = await issueThreadPage(c, issue, rawId, { after, limit, intent });
+      return c.json(cursorList(c, page.tree, page.total, { limit, nextCursor: page.nextCursor }));
     },
   );
 }
