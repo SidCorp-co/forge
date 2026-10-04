@@ -1,45 +1,10 @@
 {
  "$comment": "Frozen violations of the import rules scripts/check-module-boundaries.mjs generates from packages/core/src/modules.json, one \"<importing file> -> <imported file>\" per entry under its rule. Shrink-only: a new violation fails, an entry that no longer occurs fails, and a rule whose count rose over the base revision fails. Rewrite with --update-baseline after fixing violations, never to admit one.",
  "rules": {
-  "context-direction": [
-   "issues/transition-guards.ts -> requirements/plan-drift.ts",
-   "lib/chat-preamble.ts -> prompt/system.ts",
-   "onboarding/service.ts -> conversations/db-executor.ts",
-   "onboarding/service.ts -> conversations/membership.ts",
-   "onboarding/service.ts -> conversations/participants.ts",
-   "onboarding/service.ts -> conversations/store.ts",
-   "onboarding/service.ts -> jobs/finalize-done.ts",
-   "onboarding/service.ts -> pipeline/enqueue-helper.ts",
-   "onboarding/service.ts -> pipeline/runs.ts",
-   "onboarding/service.ts -> questionnaires/read.ts",
-   "onboarding/service.ts -> questionnaires/rules.ts",
-   "onboarding/service.ts -> questionnaires/service.ts"
-  ],
-  "kind-direction": [
-   "issues/transition-guards.ts -> project-config/service.ts",
-   "issues/transition-guards.ts -> requirements/plan-drift.ts",
-   "lib/chat-preamble.ts -> prompt/system.ts"
-  ],
+  "context-direction": [],
+  "kind-direction": [],
   "runtime-cycle": [],
-  "face-only": [
-   "issues/transition-guards.ts -> lifecycle/transition.ts",
-   "issues/transition-guards.ts -> project-config/service.ts",
-   "issues/transition-guards.ts -> requirements/plan-drift.ts",
-   "jobs/hold.ts -> runners/select.ts",
-   "jobs/hold.ts -> runners/types.ts",
-   "lib/chat-preamble.ts -> prompt/system.ts",
-   "onboarding/service.ts -> conversations/db-executor.ts",
-   "onboarding/service.ts -> conversations/membership.ts",
-   "onboarding/service.ts -> conversations/participants.ts",
-   "onboarding/service.ts -> conversations/store.ts",
-   "onboarding/service.ts -> jobs/finalize-done.ts",
-   "onboarding/service.ts -> pipeline/enqueue-helper.ts",
-   "onboarding/service.ts -> pipeline/runs.ts",
-   "onboarding/service.ts -> questionnaires/read.ts",
-   "onboarding/service.ts -> questionnaires/rules.ts",
-   "onboarding/service.ts -> questionnaires/service.ts",
-   "release-batch/queries.ts -> schedules/cron.ts"
-  ],
+  "face-only": [],
   "adapter-port": [],
   "undeclared-read": []
  }
