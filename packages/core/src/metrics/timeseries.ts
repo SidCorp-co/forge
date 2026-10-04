@@ -1,6 +1,6 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { bucketIso, utcDateTrunc } from '../lib/time-buckets.js';
+import { bucketBoundaries, bucketIso, bucketStepMs, utcDateTrunc } from '../lib/time-buckets.js';
 import { firstShipped } from '../pipeline/index.js';
 
 export const METRICS = [
@@ -22,7 +22,6 @@ export const BUCKETS = ['day', 'hour'] as const;
 export type Bucket = (typeof BUCKETS)[number];
 
 const BUCKET_SECONDS: Record<Bucket, number> = { day: 86_400, hour: 3_600 };
-const BUCKET_MS: Record<Bucket, number> = { day: 86_400_000, hour: 3_600_000 };
 
 function num(x: unknown): number {
   if (x === null || x === undefined) return 0;
@@ -31,27 +30,6 @@ function num(x: unknown): number {
 
 export function windowCutoff(days: number): SQL {
   return sql`now() - (${days}::int * interval '1 day')`;
-}
-
-/**
- * The ordered list of bucket-boundary ISO timestamps the window should contain,
- * computed in JS so the response is dense (gap-filled) regardless of which
- * buckets had rows. Daily buckets are floored to UTC midnight, hourly to the
- * hour. `now` is injectable for deterministic tests.
- */
-function bucketTimestamps(days: number, bucket: Bucket, now: Date): string[] {
-  const end = new Date(now);
-  end.setUTCMilliseconds(0);
-  end.setUTCSeconds(0);
-  end.setUTCMinutes(0);
-  if (bucket === 'day') end.setUTCHours(0);
-  const count = bucket === 'day' ? days : days * 24;
-  const step = BUCKET_MS[bucket];
-  const out: string[] = [];
-  for (let i = count - 1; i >= 0; i--) {
-    out.push(new Date(end.getTime() - i * step).toISOString());
-  }
-  return out;
 }
 
 interface TimeseriesPoint {
@@ -346,7 +324,7 @@ const SERIES: Record<Metric, (ctx: SeriesCtx) => Promise<TimeseriesPoint[]>> = {
       ORDER BY runner_id, ts DESC
     ) carry
   `);
-    return computeRunnerUptime(buckets, rows, BUCKET_MS[bucket], now);
+    return computeRunnerUptime(buckets, rows, bucketStepMs(bucket), now);
   },
 };
 
@@ -364,7 +342,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
     metric,
     bucket,
     cutoff: windowCutoff(days),
-    buckets: bucketTimestamps(days, bucket, now),
+    buckets: bucketBoundaries(bucket, bucket === 'day' ? days : days * 24, now),
     groupByStep,
     now,
   });

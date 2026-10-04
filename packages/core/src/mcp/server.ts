@@ -33,6 +33,8 @@ function classifyError(err: unknown): { code: AuditResultCode; message: string }
   return { code: 'error', message };
 }
 
+const errorAnswer = (text: string) => ({ content: [{ type: 'text', text }], isError: true });
+
 function projectIdFromArgs(args: Record<string, unknown>): string | null {
   const top = args.projectId;
   if (typeof top === 'string') return top;
@@ -120,20 +122,14 @@ export function createMcpServer(ctx: McpContext): Server {
 
     if (!tool) {
       writeMcpAudit({ ...auditBase, resultCode: 'not_found' });
-      return {
-        content: [{ type: 'text', text: `Unknown tool: ${name}` }],
-        isError: true,
-      };
+      return errorAnswer(`Unknown tool: ${name}`);
     }
 
     const allow = patEffectiveProjectIds(principal);
     const target = auditBase.projectId;
     if (allow !== null && target && !allow.includes(target)) {
       writeMcpAudit({ ...auditBase, resultCode: 'not_found' });
-      return {
-        content: [{ type: 'text', text: 'NOT_FOUND: project not found or not accessible' }],
-        isError: true,
-      };
+      return errorAnswer('NOT_FOUND: project not found or not accessible');
     }
 
     const patScope = {
@@ -154,7 +150,7 @@ export function createMcpServer(ctx: McpContext): Server {
       });
       if (refusal) {
         writeMcpAudit({ ...auditBase, resultCode: 'forbidden' });
-        return { content: [{ type: 'text', text: `Error: ${refusal}` }], isError: true };
+        return errorAnswer(`Error: ${refusal}`);
       }
 
       try {
@@ -171,11 +167,9 @@ export function createMcpServer(ctx: McpContext): Server {
         }
         const { code, message } = classifyError(err);
         writeMcpAudit({ ...auditBase, resultCode: code });
-        const text = message.replace(/^(?:FORBIDDEN|NOT_FOUND|BAD_REQUEST):\s*/, '');
-        return {
-          content: [{ type: 'text', text: `Error: ${text}` }],
-          isError: true,
-        };
+        return errorAnswer(
+          `Error: ${message.replace(/^(?:FORBIDDEN|NOT_FOUND|BAD_REQUEST):\s*/, '')}`,
+        );
       }
     });
   });

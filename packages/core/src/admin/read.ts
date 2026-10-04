@@ -18,11 +18,9 @@ import {
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { buildIlikePattern } from '../issues/index.js';
 import { ADMIN_THRESHOLDS } from '../lib/admin-thresholds.js';
-import { utcDateTrunc } from '../lib/time-buckets.js';
+import { type BucketUnit, bucketBoundaries, utcDateTrunc } from '../lib/time-buckets.js';
 import { computeAlerts } from './alert-queries.js';
 import {
-  type BucketUnit,
-  bucketBoundaries,
   computeSeries,
   createRawLoaders,
   cutoffExpr,

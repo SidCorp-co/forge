@@ -11,7 +11,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { countActivePatsForUser, mintPat, revokePat } from './pat.js';
+import { countActivePatsForUser, hasLivePatNamed, listPatsOf, mintPat, revokePat } from './pat.js';
 import { coreTokenNamePrefixOf } from './pat-format.js';
 import {
   PAT_ACCOUNT_ONLY_PERMISSIONS,
@@ -22,7 +22,6 @@ import {
   patGrantIsLegacy,
   patGrantIsStatedFull,
 } from './pat-permissions.js';
-import { hasLivePatNamed, listPatsOf } from './pat-read.js';
 
 const refuse = refuser<PatRefusalCode>('PAT_REFUSED');
 
@@ -183,15 +182,13 @@ patRoutes.post(
       ...(body.boundProjectId ? [body.boundProjectId] : []),
     ];
     if (referenced.length > 0) {
-      const allowed = await listUserProjectIds(userId);
-      const allowedSet = new Set(allowed);
-      for (const pid of referenced) {
-        if (!allowedSet.has(pid)) {
-          throw new HTTPException(403, {
-            message: 'project not accessible',
-            cause: { code: 'FORBIDDEN_PROJECT', details: { projectId: pid } },
-          });
-        }
+      const allowed = new Set(await loadVisibleProjectIds(userId));
+      const projectId = referenced.find((pid) => !allowed.has(pid));
+      if (projectId) {
+        throw new HTTPException(403, {
+          message: 'project not accessible',
+          cause: { code: 'FORBIDDEN_PROJECT', details: { projectId } },
+        });
       }
     }
 
@@ -239,7 +236,3 @@ patRoutes.delete(
     return c.json(publicShape(row));
   },
 );
-
-async function listUserProjectIds(userId: string): Promise<string[]> {
-  return loadVisibleProjectIds(userId);
-}

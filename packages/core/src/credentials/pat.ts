@@ -1,5 +1,5 @@
 import argon2 from 'argon2';
-import { and, eq, type InferSelectModel, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, type InferSelectModel, isNull, or, sql } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
@@ -280,4 +280,29 @@ export async function countActivePatsForUser(userId: string): Promise<number> {
       ),
     );
   return rows.length;
+}
+
+/** Every personal access token a user holds, revoked ones included, newest first. */
+export async function listPatsOf(userId: string) {
+  return db
+    .select()
+    .from(personalAccessTokens)
+    .where(eq(personalAccessTokens.userId, userId))
+    .orderBy(desc(personalAccessTokens.createdAt));
+}
+
+/** Whether the user holds a live token with this name. */
+export async function hasLivePatNamed(userId: string, name: string): Promise<boolean> {
+  const [existing] = await db
+    .select({ id: personalAccessTokens.id })
+    .from(personalAccessTokens)
+    .where(
+      and(
+        eq(personalAccessTokens.userId, userId),
+        eq(personalAccessTokens.name, name),
+        isNull(personalAccessTokens.revokedAt),
+      ),
+    )
+    .limit(1);
+  return existing !== undefined;
 }
