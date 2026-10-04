@@ -28,6 +28,7 @@ import {
   verifyRoutes,
 } from './auth/routes.js';
 import { automationRoutes } from './automation/routes.js';
+import { codeTraceRoutes } from './code-trace.js';
 import {
   commentRoutes,
   entityCommentRoutes,
@@ -192,7 +193,7 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   mountRemainingRoutes(app);
 }
 
-/** The unauthenticated surfaces: health, the MCP endpoint, install, guides and the root. */
+/** The unauthenticated surfaces: health, the MCP endpoint, install, guides, the build's trace and the root. */
 function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
 
@@ -202,6 +203,7 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
 
   for (const at of ['/', '/api']) app.route(at, installRoutes);
   for (const at of ['/', '/api']) app.route(at, guideRoutes);
+  app.route('/api', codeTraceRoutes);
 
   app.route('/', rootRoutes);
 }
