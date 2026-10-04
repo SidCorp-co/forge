@@ -216,7 +216,7 @@ export interface IssueStandingList {
 }
 
 /** The one act a blocker banner offers. */
-export const ISSUE_BLOCKER_ACTS = [
+const ISSUE_BLOCKER_ACTS = [
 	"provide_info",
 	"resume_park",
 	"resume_run",

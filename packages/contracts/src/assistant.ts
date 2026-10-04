@@ -1,12 +1,4 @@
 // The codes the assistant's chat tools and speaker identity refuse under.
-
-export const ASSISTANT_REFUSAL_CODES = [
-	"ASSISTANT_REFUSED",
-	"ASSISTANT_WEEKLY_OFF",
-] as const;
-
-export type AssistantRefusalCode = (typeof ASSISTANT_REFUSAL_CODES)[number];
-
 export const SPEAKER_REFUSAL_CODES = [
 	"SPEAKER_UNLINKED",
 	"SPEAKER_SOURCE_UNKNOWN",

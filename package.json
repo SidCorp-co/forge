@@ -21,11 +21,16 @@
     "lint:code-quality": "node .forge/code-quality/bin/code-quality-gate.mjs"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "dependency-cruiser": "^18.2.0",
     "eslint": "^10.11.0",
+    "postgres": "^3.4.9",
+    "tsx": "^4.23.15",
     "turbo": "^2.11.4",
-    "typescript-eslint": "^8.70.1"
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.2"
   },
   "pnpm": {
     "overrides": {

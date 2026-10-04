@@ -21,7 +21,7 @@ export type IssueStatus = (typeof ISSUE_STATUSES)[number];
 
 /** The seventeen-status model's names the ten do not hold. Kernel input naming one is refused
  *  `ISSUE_STATUS_LEGACY`; none is mapped onto a status. */
-export const LEGACY_ISSUE_STATUSES = [
+const LEGACY_ISSUE_STATUSES = [
 	"confirmed",
 	"clarified",
 	"waiting",
@@ -30,11 +30,7 @@ export const LEGACY_ISSUE_STATUSES = [
 	"tested",
 	"releasing",
 ] as const;
-export type LegacyIssueStatus = (typeof LEGACY_ISSUE_STATUSES)[number];
-
-export const ISSUE_STATUS_REFUSAL_CODES = ["ISSUE_STATUS_LEGACY"] as const;
-export type IssueStatusRefusalCode = (typeof ISSUE_STATUS_REFUSAL_CODES)[number];
-
+type LegacyIssueStatus = (typeof LEGACY_ISSUE_STATUSES)[number];
 /** What a status move is refused with: the guards' codes, then the kernel's own. */
 export const ISSUE_TRANSITION_REFUSAL_CODES = [
 	"ILLEGAL_TRANSITION",
@@ -68,7 +64,7 @@ export const ISSUE_TRANSITION_REFUSAL_STATUSES = {
 	STALE_TRANSITION: 409,
 } as const satisfies RefusalStatuses<IssueTransitionRefusalCode>;
 
-export type IssueStatusLegacyRefusal = Refusal & {
+type IssueStatusLegacyRefusal = Refusal & {
 	code: "ISSUE_STATUS_LEGACY";
 	received: LegacyIssueStatus;
 	validStatuses: readonly IssueStatus[];
@@ -101,7 +97,7 @@ export const REASON_REQUIRED_STATUSES = ["reopen", "needs_info", "on_hold", "dro
 export const PARK_STATUSES: readonly IssueStatus[] = ["needs_info", "on_hold"];
 
 /** Where a park is entered from, and so where its return may land. */
-export const PARKABLE_STATUSES: readonly IssueStatus[] = [
+const PARKABLE_STATUSES: readonly IssueStatus[] = [
 	"open",
 	"reopen",
 	"in_progress",
@@ -244,7 +240,7 @@ export const ISSUE_MACHINE = defineMachine({
 });
 
 /** How a move reads against the status it is offered from. */
-export const ISSUE_MOVE_KINDS = ["forward", "bounce", "discard"] as const;
+const ISSUE_MOVE_KINDS = ["forward", "bounce", "discard"] as const;
 export type IssueMoveKind = (typeof ISSUE_MOVE_KINDS)[number];
 
 export interface IssueMove {
@@ -257,7 +253,7 @@ export interface IssueMove {
 }
 
 const BOUNCE_TARGETS: readonly IssueStatus[] = ["needs_info", "on_hold", "reopen"];
-const DISCARD_TARGETS: readonly IssueStatus[] = ["closed", "dropped"];
+const DISCARD_TARGETS = ISSUE_TERMINAL_STATUSES;
 
 /**
  * The moves a person may offer from a status, read off the machine in the order it declares them:

@@ -385,7 +385,7 @@ export const RELEASE_BLOCKER_CODES = [
 ] as const;
 export type ReleaseBlockerCode = (typeof RELEASE_BLOCKER_CODES)[number];
 
-export const RELEASE_APPROVAL_REFUSAL_CODES = [
+const RELEASE_APPROVAL_REFUSAL_CODES = [
 	"RELEASE_APPROVAL_SHAPE",
 	"RELEASE_APPROVAL_PENDING",
 	"RELEASE_APPROVAL_NOT_PENDING",
@@ -399,9 +399,6 @@ export const RELEASE_APPROVAL_REFUSAL_CODES = [
 	"RELEASE_APPROVAL_REQUIRED",
 	"RELEASE_VERSION_SHAPE",
 ] as const;
-export type ReleaseApprovalRefusalCode =
-	(typeof RELEASE_APPROVAL_REFUSAL_CODES)[number];
-
 /** Every code a release door refuses with, in the one refusal envelope; `RELEASE_REFUSED` when several differ. */
 export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_REFUSED",

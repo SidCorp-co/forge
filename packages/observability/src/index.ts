@@ -7,7 +7,7 @@ export const SCRUB_HEADER_KEYS: ReadonlySet<string> = new Set([
 	"x-csrf-token",
 ]);
 
-export const SCRUB_BODY_KEYS: ReadonlySet<string> = new Set([
+const SCRUB_BODY_KEYS: ReadonlySet<string> = new Set([
 	"authToken",
 	"auth_token",
 	"apiKey",
@@ -35,7 +35,7 @@ export const SCRUB_BODY_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /** Matches `?token=...` / `?jwt=...` / `?access_token=...` / `?api_key=...` query params. */
-export const URL_TOKEN_PATTERN =
+const URL_TOKEN_PATTERN =
 	/([?&](?:token|jwt|access_token|refresh_token|api_key)=)[^&#]+/gi;
 
 /**
@@ -43,12 +43,12 @@ export const URL_TOKEN_PATTERN =
  * global so we can redact tokens that leak inside larger strings — query
  * params, JSON bodies, breadcrumb messages.
  */
-export const PAT_STRING_PATTERN = /forge_pat_(?:dev|stg|prd)_[A-Fa-f0-9]+/g;
+const PAT_STRING_PATTERN = /forge_pat_(?:dev|stg|prd)_[A-Fa-f0-9]+/g;
 
-export const PEM_PRIVATE_KEY_PATTERN =
+const PEM_PRIVATE_KEY_PATTERN =
 	/-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/g;
 
-export const PEM_PRIVATE_KEY_HEAD_PATTERN =
+const PEM_PRIVATE_KEY_HEAD_PATTERN =
 	/-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----(?:\\n|\s)*(?:[A-Za-z0-9+/=]{16,}(?:(?:\\n|\s)+[A-Za-z0-9+/=]{16,})*)?/g;
 
 /**
@@ -56,14 +56,14 @@ export const PEM_PRIVATE_KEY_HEAD_PATTERN =
  * service-account key. Redacted for the same reason the key is: a token that
  * reaches a log is a live credential for its hour.
  */
-export const GOOGLE_ACCESS_TOKEN_PATTERN = /ya29\.[A-Za-z0-9_\-.]+/g;
+const GOOGLE_ACCESS_TOKEN_PATTERN = /ya29\.[A-Za-z0-9_\-.]+/g;
 
-export const ENV_SECRET_ASSIGNMENT_PATTERN =
+const ENV_SECRET_ASSIGNMENT_PATTERN =
 	/^(\s*(?:export\s+)?(?:[A-Z0-9]+_)*(?:PASSWORD|SECRET|TOKEN|KEY|PASS|PEPPER|DSN|CREDENTIALS)(?:_[A-Z0-9]+)*)\s*=\s*\S.*$/;
 
 export const FILTERED = "[Filtered]";
 
-export function scrubStringValues(obj: unknown, depth = 0): void {
+function scrubStringValues(obj: unknown, depth = 0): void {
 	if (depth > 8 || !obj) return;
 	if (typeof obj !== "object") return;
 	if (Array.isArray(obj)) {
@@ -89,7 +89,7 @@ export function scrubStringValues(obj: unknown, depth = 0): void {
  * pattern whose SHAPE identifies it without a key name beside it, so one call
  * covers a value wherever it turns up.
  */
-export function scrubPatInString(s: string): string {
+function scrubPatInString(s: string): string {
 	return s
 		.replace(PAT_STRING_PATTERN, FILTERED)
 		.replace(PEM_PRIVATE_KEY_PATTERN, FILTERED)
@@ -97,7 +97,7 @@ export function scrubPatInString(s: string): string {
 		.replace(GOOGLE_ACCESS_TOKEN_PATTERN, FILTERED);
 }
 
-export function scrubBodyKeys(obj: unknown, depth = 0): void {
+function scrubBodyKeys(obj: unknown, depth = 0): void {
 	if (depth > 8 || !obj || typeof obj !== "object") return;
 	if (Array.isArray(obj)) {
 		for (const item of obj) scrubBodyKeys(item, depth + 1);
@@ -113,7 +113,7 @@ export function scrubBodyKeys(obj: unknown, depth = 0): void {
 	}
 }
 
-export function scrubHeaders(
+function scrubHeaders(
 	headers: Record<string, string | string[] | undefined>,
 ): void {
 	for (const k of Object.keys(headers)) {
@@ -124,7 +124,7 @@ export function scrubHeaders(
 }
 
 /** Returns `url` with token-shaped query params replaced. */
-export function scrubUrl(url: string): string {
+function scrubUrl(url: string): string {
 	return url.replace(URL_TOKEN_PATTERN, `$1${FILTERED}`);
 }
 
@@ -142,7 +142,7 @@ const scrubbable = (secrets: readonly string[]) =>
 		(s) => typeof s === "string" && s.length >= SCRUB_MIN_SECRET_LENGTH,
 	);
 
-export function scrubSecretValues(
+function scrubSecretValues(
 	text: string,
 	secrets: readonly string[],
 ): string {
@@ -268,9 +268,6 @@ export function parseSourceCommit(raw: string | undefined): string | null {
 }
 
 export {
-	PERSONAL_DATA_PLACEHOLDER,
-	type PersonalDataKind,
-	type PersonalDataScrub,
 	redactionCount,
 	scrubPersonalData,
 } from "./personal-data.js";

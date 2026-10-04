@@ -16,7 +16,7 @@ export const KERNEL_RECORD_KINDS = [
 	"park",
 	"correction",
 ] as const;
-export type KernelRecordKind = (typeof KERNEL_RECORD_KINDS)[number];
+type KernelRecordKind = (typeof KERNEL_RECORD_KINDS)[number];
 
 // cm:why core alone writes these, in the act's transaction (EVENT_KIND_KERNEL_ONLY)
 export const KERNEL_ONLY_RECORD_KINDS = [
@@ -36,24 +36,6 @@ export const NARRATION_RECORD_KINDS = [
 	"gap",
 	"baseline",
 ] as const satisfies readonly Exclude<RecordEventKind, KernelRecordKind>[];
-export type NarrationRecordKind = (typeof NARRATION_RECORD_KINDS)[number];
-
-/** Kinds that are neither: kept, and not kernel evidence any gate reads. */
-export const KEPT_RECORD_KINDS = [
-	"decision",
-	"question",
-	"answer",
-	"confirmation",
-	"superseded",
-	"review",
-	"finding",
-	"triage",
-	"folded",
-	"declined",
-	"wave",
-	"verification",
-] as const;
-
 /**
  * Every kind a record event may carry: the closed set. A kind outside it is refused by name
  * (`EVENT_KIND_UNKNOWN`), and `activity_log_record_kind_chk` refuses it again at the table.
@@ -111,26 +93,6 @@ export function isCommentIntent(intent: unknown): intent is CommentIntent {
 
 export function recordAction(kind: RecordEventKind | typeof RECORD_DIGEST_KIND): string {
 	return `${RECORD_ACTION_PREFIX}${kind}`;
-}
-
-export interface RecordEventFieldView {
-	readonly key: string;
-	readonly value: string;
-}
-
-export interface RecordEventView {
-	readonly id: string;
-	readonly issueId: string;
-	readonly kind: RecordEventKind | typeof RECORD_DIGEST_KIND;
-	readonly contract: number;
-	readonly fields: readonly RecordEventFieldView[];
-	readonly lead: string | null;
-	readonly commentId: string | null;
-	readonly counts?: Readonly<Record<string, number>>;
-	readonly writer: "core" | "client";
-	readonly actorType: string;
-	readonly actorId: string;
-	readonly createdAt: string;
 }
 
 export const RECORD_EVENT_REFUSAL_CODES = [

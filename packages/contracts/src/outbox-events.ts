@@ -73,7 +73,7 @@ export function emitsTransition(
 }
 
 /** One kernel move, as `kernel_transitions` records it, with the row's project and issue. */
-export interface TransitionEvent<E extends TransitionEventEntity> {
+interface TransitionEvent<E extends TransitionEventEntity> {
 	entity: E;
 	id: string;
 	projectId: string;
@@ -114,7 +114,7 @@ export interface ErrorTrackerTarget {
 	projectSlug?: string;
 }
 
-export interface IssueSnapshot {
+interface IssueSnapshot {
 	title: string;
 	description: string | null;
 	descriptionFormat?: string;

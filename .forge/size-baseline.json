@@ -21,10 +21,6 @@
       "fileLines": 822,
       "maxFunctionLines": 162
     },
-    "packages/core/src/assistant/providers/openai.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 184
-    },
     "packages/core/src/comments/routes.ts": {
       "fileLines": 515,
       "maxFunctionLines": 0
@@ -47,10 +43,6 @@
     },
     "packages/core/src/index.ts": {
       "fileLines": 506,
-      "maxFunctionLines": 0
-    },
-    "packages/core/src/integrations/routes.test.ts": {
-      "fileLines": 1245,
       "maxFunctionLines": 0
     },
     "packages/core/src/issues/attachment-routes.test.ts": {
@@ -97,57 +89,9 @@
       "fileLines": 652,
       "maxFunctionLines": 367
     },
-    "packages/core/src/mcp/tools/forge-comments.test.ts": {
-      "fileLines": 663,
-      "maxFunctionLines": 369
-    },
-    "packages/core/src/mcp/tools/forge-config.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 175
-    },
-    "packages/core/src/mcp/tools/forge-feedback.test.ts": {
-      "fileLines": 682,
-      "maxFunctionLines": 158
-    },
-    "packages/core/src/mcp/tools/forge-feedback.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 168
-    },
-    "packages/core/src/mcp/tools/forge-issues.test.ts": {
-      "fileLines": 2312,
-      "maxFunctionLines": 1288
-    },
-    "packages/core/src/mcp/tools/forge-issues.ts": {
-      "fileLines": 878,
-      "maxFunctionLines": 347
-    },
-    "packages/core/src/mcp/tools/forge-jobs.test.ts": {
-      "fileLines": 533,
-      "maxFunctionLines": 0
-    },
-    "packages/core/src/mcp/tools/forge-projects.test.ts": {
-      "fileLines": 856,
-      "maxFunctionLines": 0
-    },
-    "packages/core/src/mcp/tools/forge-step-start.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 173
-    },
-    "packages/core/src/me/attention-routes.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 196
-    },
-    "packages/core/src/memory/consolidation.test.ts": {
-      "fileLines": 672,
-      "maxFunctionLines": 0
-    },
     "packages/core/src/memory/consolidation.ts": {
       "fileLines": 731,
       "maxFunctionLines": 0
-    },
-    "packages/core/src/metrics/routes.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 189
     },
     "packages/core/src/pipeline/analytics-routes.test.ts": {
       "fileLines": 581,
@@ -156,10 +100,6 @@
     "packages/core/src/pipeline/failure-classifier.test.ts": {
       "fileLines": 0,
       "maxFunctionLines": 219
-    },
-    "packages/core/src/pipeline/pipeline-config-schema.test.ts": {
-      "fileLines": 505,
-      "maxFunctionLines": 0
     },
     "packages/core/src/pipeline/subscribers.test.ts": {
       "fileLines": 0,
@@ -185,49 +125,17 @@
       "fileLines": 705,
       "maxFunctionLines": 0
     },
-    "packages/core/src/prompt/user.test.ts": {
-      "fileLines": 565,
-      "maxFunctionLines": 0
-    },
     "packages/core/src/runners/routes.ts": {
       "fileLines": 505,
       "maxFunctionLines": 0
-    },
-    "packages/core/src/schedules/dispatch.test.ts": {
-      "fileLines": 1208,
-      "maxFunctionLines": 181
-    },
-    "packages/core/src/schedules/routes.test.ts": {
-      "fileLines": 650,
-      "maxFunctionLines": 174
-    },
-    "packages/core/src/skills/builtin-seed.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 164
-    },
-    "packages/core/src/skills/reconcile-service.test.ts": {
-      "fileLines": 538,
-      "maxFunctionLines": 166
     },
     "packages/core/tests/integration/admin-aggregate-routes.test.ts": {
       "fileLines": 0,
       "maxFunctionLines": 196
     },
-    "packages/core/tests/integration/budget-check-e2e.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 226
-    },
-    "packages/core/tests/integration/dependency-routes-e2e.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 260
-    },
     "packages/core/tests/integration/device-skills-activity.test.ts": {
       "fileLines": 0,
       "maxFunctionLines": 207
-    },
-    "packages/core/tests/integration/failure-taxonomy-policy-e2e.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 159
     },
     "packages/core/tests/integration/issues-job-history-route.test.ts": {
       "fileLines": 0,
@@ -236,30 +144,6 @@
     "packages/core/tests/integration/jobs-prompt-route.test.ts": {
       "fileLines": 0,
       "maxFunctionLines": 227
-    },
-    "packages/core/tests/integration/mcp-tools.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 316
-    },
-    "packages/core/tests/integration/memory-live.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 165
-    },
-    "packages/core/tests/integration/memory-search.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 321
-    },
-    "packages/core/tests/integration/memory-write-get-delete.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 296
-    },
-    "packages/core/tests/integration/org-tier.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 157
-    },
-    "packages/core/tests/integration/per-state-override-e2e.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 182
     },
     "packages/core/tests/integration/pipeline-e2e.test.ts": {
       "fileLines": 0,
@@ -276,14 +160,6 @@
     "packages/core/tests/integration/session-context-staleness-e2e.test.ts": {
       "fileLines": 0,
       "maxFunctionLines": 169
-    },
-    "packages/core/tests/integration/skill-activity.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 218
-    },
-    "packages/core/tests/integration/skill-routes.test.ts": {
-      "fileLines": 666,
-      "maxFunctionLines": 467
     },
     "packages/core/tests/integration/step-handoff-flow.test.ts": {
       "fileLines": 0,

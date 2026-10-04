@@ -90,7 +90,9 @@ const current = violationKeys([imports.summary, cycles.summary]);
 const sources = imports.modules.filter((m) => m.source.startsWith(SRC));
 const text = (f) => readFileSync(join(ROOT, f), 'utf8');
 const tables = declaredTables(
-  sources.filter((m) => /^packages\/core\/src\/db\/schema[^/]*\.ts$/.test(m.source)).map((m) => text(m.source)),
+  sources
+    .filter((m) => /^packages\/core\/src\/db\/schema[^/]*\.ts$/.test(m.source))
+    .map((m) => text(m.source)),
 );
 const { undeclared, unused } = readFindings({
   modules: parsed.modules,

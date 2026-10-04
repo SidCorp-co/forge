@@ -38,14 +38,6 @@ function die(msg) {
 
 const EXEMPT = [
   {
-    route: 'POST /api/projects/:projectId/integrations',
-    why: 'answers 410 BINDING_WRITE_MOVED and reads nothing (ISS-15: a binding is written as its binding-v1 document)',
-  },
-  {
-    route: 'DELETE /api/projects/:projectId/integrations/:id',
-    why: 'answers 410 BINDING_WRITE_MOVED and reads nothing (ISS-34: a binding is switched off by DELETE /api/projects/:id/bindings/:bindingId)',
-  },
-  {
     route: 'POST /api/body/preview',
     why: 'renders the body sent in the request and nothing else; it reads no stored row',
   },

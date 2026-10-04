@@ -184,13 +184,6 @@ function compareTighten(before, now) {
 
 const COMPARE = { down: compareDown, shrink: compareShrink, tighten: compareTighten };
 
-/** The direction check over two parsed baselines. Exported so it is testable without a git tree. */
-export function compareBaseline(improves, before, now) {
-  const cmp = COMPARE[improves];
-  if (!cmp) return [`unknown direction ${improves}`];
-  return cmp(before, now);
-}
-
 /**
  * Judge one declared baseline against the same file at `rev`.
  *

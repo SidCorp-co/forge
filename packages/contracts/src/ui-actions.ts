@@ -32,7 +32,7 @@ export const UI_ROUTES = {
 export type UiRoute = keyof typeof UI_ROUTES;
 const ROUTE_NAMES = Object.keys(UI_ROUTES) as [UiRoute, ...UiRoute[]];
 
-export const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9]*-\d+$/;
+const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9]*-\d+$/;
 const issueKey = z.string().regex(ISSUE_KEY_PATTERN, 'an issue key such as ISS-47');
 
 export const UI_ISSUE_FILTER_FIELDS = ['status', 'priority', 'createdBy', 'assignee', 'text'] as const;
@@ -118,7 +118,7 @@ export const UI_ACTIONS = {
   },
 } as const;
 
-export type UiActionName = keyof typeof UI_ACTIONS;
+type UiActionName = keyof typeof UI_ACTIONS;
 export const UI_ACTION_NAMES = Object.keys(UI_ACTIONS) as UiActionName[];
 
 export type UiAction =
@@ -129,8 +129,8 @@ export type UiAction =
   | { name: 'ui.board.draw'; v: 1; params: z.infer<typeof boardDrawParams> }
   | { name: 'ui.board.revise'; v: 1; params: z.infer<typeof boardReviseParams> };
 
-export type UiActionRefusalCode = 'UI_ACTION_UNKNOWN' | 'UI_ACTION_INVALID' | WireframeRefusalCode;
-export type UiActionParse =
+type UiActionRefusalCode = 'UI_ACTION_UNKNOWN' | 'UI_ACTION_INVALID' | WireframeRefusalCode;
+type UiActionParse =
   | { ok: true; action: UiAction }
   | { ok: false; code: UiActionRefusalCode; name: string; message: string };
 
