@@ -10,7 +10,7 @@ import {
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { memorySearchStrategies, runMemorySearch } from './search-service.js';
 
 const searchBodySchema = z.object({
@@ -43,7 +43,7 @@ memorySearchRoutes.post(
     const body = c.req.valid('json');
     const userId = c.get('userId');
 
-    await requireCan({ userId }, 'project.read', body.projectId);
+    await requireCan(actorFor(userId), 'project.read', projectResource(body.projectId));
 
     let result: Awaited<ReturnType<typeof runMemorySearch>>;
     try {

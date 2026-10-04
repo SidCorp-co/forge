@@ -21,7 +21,7 @@ import { readableEcosystem } from './membership-service.js';
 import { edgeVisible, visibleMembers } from './party.js';
 import type { EdgeRow } from './store.js';
 import { projectsWhere, readInterfaces, recordedVersions } from './store.js';
-import { holds, requireCan } from '../permissions/index.js';
+import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
 
 const stamped = <W extends object>(held: Held<W>) => ({
   ...held.document,
@@ -71,13 +71,13 @@ export async function readLinkAs(userId: string, projectId: string, linkId: stri
 }
 
 export async function listLinksAs(userId: string, projectId: string) {
-  await requireCan({ userId }, 'project.read', projectId);
+  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
   const rows = await linksWhere(db, { consumerId: projectId });
   return rows.map((row) => recordView({ row, document: storedLink(row) }));
 }
 
 export async function readBuilderRunAs(userId: string, projectId: string, runId: string) {
-  await requireCan({ userId }, 'project.read', projectId);
+  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
   const row = await readBuilderRun(db, runId);
   if (!row || row.projectId !== projectId) {
     throw notFound(`project ${projectId} holds no builder run ${runId}`);
@@ -86,7 +86,7 @@ export async function readBuilderRunAs(userId: string, projectId: string, runId:
 }
 
 export async function listBuilderRunsAs(userId: string, projectId: string) {
-  await requireCan({ userId }, 'project.read', projectId);
+  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
   const rows = await builderRunsOf(db, projectId);
   return rows.map((row) => recordView({ row, document: storedBuilderRun(row) }));
 }

@@ -1,24 +1,21 @@
 /**
- * Anthropic Messages adapter (`/v1/messages`) behind the same OpenAI-shaped `ChatProvider` contract:
- * the request is translated on the way out (system → `system`, `tool_calls` → `tool_use`, `role:'tool'`
- * → `tool_result` blocks in the next user turn, data-URI images → base64 `image` blocks) and the event
- * stream on the way in, so `runTurnEvents` and every toolset stay wire-agnostic. The second adapter
- * after `openai.ts`: the Messages wire carries what the Completions wire hides — explicit `cache_control`,
- * cache-read token counts, `thinking` blocks — and an Anthropic-format proxy is a URL an operator may have.
- * ISS-1079 forwards the thinking half of that: a `thinking_delta` becomes a `reasoning` event, and a
- * `redacted_thinking` block becomes one marked `redacted` carrying no text.
+ * Anthropic Messages adapter over `@ai-sdk/anthropic`, behind the same OpenAI-shaped `ChatProvider`
+ * contract. The Messages wire carries what the Completions wire hides — explicit `cache_control`,
+ * cache-read token counts, `thinking` blocks — and an Anthropic-format proxy is a URL an operator may
+ * have. Every system message joins one leading block marked for caching, as does the last tool; a
+ * `redacted_thinking` block becomes a `reasoning` event marked `redacted` carrying no text (ISS-1079).
  */
 
-import { openAiCompatUrl } from '../../lib/openai-compat-url.js';
-import { DEFAULT_RETRY_DELAYS_MS, errorMessage, openStream, parseSseStream } from './sse.js';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { streamText } from 'ai';
+import { openAiCompatBaseUrl } from '../../lib/openai-compat-url.js';
+import { bridgeStream, MAX_RETRIES, toModelMessages, toToolSet } from './ai-sdk.js';
 import type {
-  ChatContentPart,
-  ChatMessage,
   ChatProvider,
   ChatResponseFormat,
   ChatStreamEvent,
   ChatStreamRequest,
-  ChatStreamUsage,
+  ChatTool,
 } from './types.js';
 
 export interface AnthropicConfig {
@@ -27,105 +24,15 @@ export interface AnthropicConfig {
   defaultModel: string;
   /** `max_tokens` is REQUIRED by the Messages API on every request. */
   maxTokens?: number | undefined;
-  fetchImpl?: typeof fetch;
-  retryDelaysMs?: number[];
+  fetchImpl?: typeof fetch | undefined;
+  maxRetries?: number | undefined;
 }
 
 export const ANTHROPIC_VERSION = '2023-06-01';
 export const DEFAULT_MAX_TOKENS = 8192;
 
-type Block = { type: string } & Record<string, unknown>;
-export interface AnthropicMessage {
-  role: 'user' | 'assistant';
-  content: Block[];
-}
-
-const DATA_URI = /^data:([^;,]+);base64,([\s\S]+)$/;
-
-function textBlock(text: string): Block {
-  return { type: 'text', text };
-}
-
-function flattenText(content: ChatMessage['content']): string {
-  if (typeof content === 'string') return content;
-  if (!content) return '';
-  return content
-    .filter((p): p is Extract<ChatContentPart, { type: 'text' }> => p.type === 'text')
-    .map((p) => p.text)
-    .join('\n');
-}
-
-function userBlocks(content: ChatMessage['content']): Block[] {
-  if (typeof content === 'string') return content ? [textBlock(content)] : [];
-  if (!content) return [];
-  const out: Block[] = [];
-  for (const part of content) {
-    if (part.type === 'text') {
-      if (part.text) out.push(textBlock(part.text));
-      continue;
-    }
-    const m = DATA_URI.exec(part.image_url.url);
-    out.push(
-      m
-        ? { type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } }
-        : textBlock('[image omitted: not a data: URI]'),
-    );
-  }
-  return out;
-}
-
-function toolInput(argumentsJson: string): Record<string, unknown> {
-  try {
-    const parsed: unknown = argumentsJson.trim() ? JSON.parse(argumentsJson) : {};
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-function assistantBlocks(m: ChatMessage): Block[] {
-  const text = flattenText(m.content);
-  const out: Block[] = text ? [textBlock(text)] : [];
-  for (const tc of m.tool_calls ?? []) {
-    out.push({
-      type: 'tool_use',
-      id: tc.id,
-      name: tc.function.name,
-      input: toolInput(tc.function.arguments),
-    });
-  }
-  return out;
-}
-
-export function toAnthropicMessages(messages: readonly ChatMessage[]): {
-  system: string;
-  messages: AnthropicMessage[];
-} {
-  const system: string[] = [];
-  const out: AnthropicMessage[] = [];
-  const push = (role: AnthropicMessage['role'], blocks: Block[]) => {
-    if (blocks.length === 0) return;
-    if (out.length === 0 && role === 'assistant') return;
-    const last = out[out.length - 1];
-    if (last?.role === role) last.content.push(...blocks);
-    else out.push({ role, content: blocks });
-  };
-  for (const m of messages) {
-    if (m.role === 'system') {
-      const text = flattenText(m.content);
-      if (text) system.push(text);
-    } else if (m.role === 'user') push('user', userBlocks(m.content));
-    else if (m.role === 'assistant') push('assistant', assistantBlocks(m));
-    else {
-      push('user', [
-        { type: 'tool_result', tool_use_id: m.tool_call_id ?? '', content: flattenText(m.content) },
-      ]);
-    }
-  }
-  return { system: system.join('\n\n'), messages: out };
-}
+const PROVIDER = 'anthropic';
+const CACHE = { anthropic: { cacheControl: { type: 'ephemeral' } } } as const;
 
 function jsonInstruction(format: ChatResponseFormat): string {
   return format.type === 'json_schema'
@@ -133,158 +40,41 @@ function jsonInstruction(format: ChatResponseFormat): string {
     : 'Respond with a single JSON object and nothing else.';
 }
 
-export function toRequestBody(
-  req: ChatStreamRequest,
-  maxTokens: number,
-  toolChoice: ChatStreamRequest['toolChoice'],
-): Record<string, unknown> {
-  const { system, messages } = toAnthropicMessages(req.messages);
-  const body: Record<string, unknown> = {
-    model: req.model,
-    max_tokens: maxTokens,
-    stream: true,
-    messages,
-  };
-  const systemBlocks: Block[] = [];
-  if (system) systemBlocks.push({ ...textBlock(system), cache_control: { type: 'ephemeral' } });
-  if (req.responseFormat) systemBlocks.push(textBlock(jsonInstruction(req.responseFormat)));
-  if (systemBlocks.length > 0) body.system = systemBlocks;
-  if (req.tools && req.tools.length > 0) {
-    const last = req.tools.length - 1;
-    body.tools = req.tools.map((t, i) => ({
-      name: t.function.name,
-      ...(t.function.description ? { description: t.function.description } : {}),
-      input_schema: { type: 'object', ...t.function.parameters },
-      ...(i === last ? { cache_control: { type: 'ephemeral' } } : {}),
-    }));
-    if (toolChoice) body.tool_choice = { type: toolChoice === 'required' ? 'any' : 'auto' };
-  }
-  if (req.temperature !== undefined) body.temperature = req.temperature;
-  return body;
-}
-
-interface WireUsage {
-  input_tokens?: number;
-  output_tokens?: number;
-  cache_read_input_tokens?: number;
-  cache_creation_input_tokens?: number;
-}
-
-interface WireEvent {
-  type: string;
-  index?: number;
-  content_block?: { type: string; id?: string; name?: string };
-  delta?: {
-    type?: string;
-    text?: string;
-    thinking?: string;
-    partial_json?: string;
-    stop_reason?: string;
-  };
-  message?: { usage?: WireUsage };
-  usage?: WireUsage;
-  error?: { message?: string };
-}
-
-function mergeUsage(into: WireUsage, from: WireUsage | undefined): void {
-  for (const key of Object.keys(from ?? {}) as Array<keyof WireUsage>) {
-    const n = from?.[key];
-    if (typeof n === 'number') into[key] = n;
-  }
-}
-
-function toUsage(u: WireUsage): ChatStreamUsage {
-  const out: ChatStreamUsage = {};
-  const read = u.cache_read_input_tokens ?? 0;
-  if (u.input_tokens !== undefined) {
-    out.promptTokens = u.input_tokens + read + (u.cache_creation_input_tokens ?? 0);
-  }
-  if (u.output_tokens !== undefined) out.completionTokens = u.output_tokens;
-  if (out.promptTokens !== undefined && out.completionTokens !== undefined) {
-    out.totalTokens = out.promptTokens + out.completionTokens;
-  }
-  if (u.cache_read_input_tokens !== undefined) out.cachedPromptTokens = read;
-  return out;
-}
-
-async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<ChatStreamEvent> {
-  const pending = new Map<number, { id: string; name: string; json: string }>();
-  const usage: WireUsage = {};
-  for await (const data of parseSseStream(body)) {
-    if (data === '[DONE]') break;
-    let ev: WireEvent;
-    try {
-      ev = JSON.parse(data) as WireEvent;
-    } catch {
-      continue;
-    }
-    const index = ev.index ?? 0;
-    if (ev.type === 'message_start') mergeUsage(usage, ev.message?.usage);
-    else if (ev.type === 'content_block_start' && ev.content_block?.type === 'tool_use') {
-      pending.set(index, {
-        id: ev.content_block.id ?? '',
-        name: ev.content_block.name ?? '',
-        json: '',
-      });
-    } else if (
-      ev.type === 'content_block_start' &&
-      ev.content_block?.type === 'redacted_thinking'
-    ) {
-      yield { type: 'reasoning', text: '', redacted: true };
-    } else if (ev.type === 'content_block_delta') {
-      if (ev.delta?.type === 'text_delta' && ev.delta.text)
-        yield { type: 'chunk', text: ev.delta.text };
-      else if (ev.delta?.type === 'thinking_delta' && ev.delta.thinking)
-        yield { type: 'reasoning', text: ev.delta.thinking };
-      else if (ev.delta?.type === 'input_json_delta') {
-        const acc = pending.get(index);
-        if (acc) acc.json += ev.delta.partial_json ?? '';
-      }
-    } else if (ev.type === 'content_block_stop') {
-      const acc = pending.get(index);
-      if (acc) {
-        pending.delete(index);
-        yield { type: 'tool_call', id: acc.id, name: acc.name, arguments: acc.json || '{}' };
-      }
-    } else if (ev.type === 'message_delta') mergeUsage(usage, ev.usage);
-    else if (ev.type === 'error') {
-      yield { type: 'error', message: ev.error?.message ?? 'anthropic stream error' };
-      return;
-    }
-  }
-  for (const acc of pending.values()) {
-    yield { type: 'tool_call', id: acc.id, name: acc.name, arguments: acc.json || '{}' };
-  }
-  if (Object.keys(usage).length > 0) yield { type: 'usage', usage: toUsage(usage) };
-  yield { type: 'done' };
-}
-
 export function createAnthropicProvider(cfg: AnthropicConfig): ChatProvider {
-  const fetchImpl = cfg.fetchImpl ?? fetch;
-  const url = openAiCompatUrl(cfg.baseUrl, 'messages');
+  const sdk = createAnthropic({
+    baseURL: openAiCompatBaseUrl(cfg.baseUrl),
+    apiKey: cfg.apiKey,
+    ...(cfg.fetchImpl ? { fetch: cfg.fetchImpl } : {}),
+  });
   const maxTokens = cfg.maxTokens ?? DEFAULT_MAX_TOKENS;
   return {
-    id: 'anthropic',
+    id: PROVIDER,
     defaultModel: cfg.defaultModel,
-    async *stream(req: ChatStreamRequest): AsyncIterable<ChatStreamEvent> {
-      let toolChoice = req.toolChoice;
-      const opened = await openStream({
-        fetchImpl,
-        url,
-        label: 'anthropic',
-        retryDelaysMs: cfg.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS,
-        signal: req.signal,
-        init: () => ({
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-api-key': cfg.apiKey,
-            'anthropic-version': ANTHROPIC_VERSION,
-            accept: 'text/event-stream',
-          },
-          body: JSON.stringify(toRequestBody(req, maxTokens, toolChoice)),
-          ...(req.signal ? { signal: req.signal } : {}),
-        }),
+    stream(req: ChatStreamRequest): AsyncIterable<ChatStreamEvent> {
+      const offered = req.tools && req.tools.length > 0 ? req.tools : undefined;
+      let toolChoice = offered ? req.toolChoice : undefined;
+      const messages = toModelMessages(req.messages, {
+        userFirst: true,
+        hoistSystem: {
+          providerOptions: CACHE,
+          extra: req.responseFormat ? [jsonInstruction(req.responseFormat)] : [],
+        },
+      });
+      return bridgeStream({
+        label: PROVIDER,
+        open: () =>
+          streamText({
+            model: sdk.messages(req.model),
+            messages,
+            allowSystemInMessages: true,
+            maxOutputTokens: maxTokens,
+            ...(offered ? { tools: toToolSet(offered, CACHE) } : {}),
+            ...(toolChoice ? { toolChoice } : {}),
+            ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
+            maxRetries: cfg.maxRetries ?? MAX_RETRIES,
+            ...(req.signal ? { abortSignal: req.signal } : {}),
+            onError: () => undefined,
+          }),
         degrade: (body) => {
           if (toolChoice && /tool_choice/i.test(body)) {
             toolChoice = undefined;
@@ -292,18 +82,41 @@ export function createAnthropicProvider(cfg: AnthropicConfig): ChatProvider {
           }
           return false;
         },
+        cachedFromRaw: (raw) =>
+          typeof raw?.cache_read_input_tokens === 'number'
+            ? raw.cache_read_input_tokens
+            : undefined,
       });
-      if ('error' in opened) {
-        yield { type: 'error', message: opened.error };
-        return;
-      }
-      try {
-        yield* readEvents(opened.body);
-      } catch (err) {
-        yield { type: 'error', message: errorMessage(err) };
-      }
     },
   };
+}
+
+class Captured extends Error {}
+
+/** The `tools` array exactly as this adapter puts it on the Messages wire, `cache_control` marker included: one request is built and caught before it leaves the process. */
+export async function anthropicWireTools(tools: ChatTool[], model: string): Promise<unknown[]> {
+  let body: { tools?: unknown[] } | null = null;
+  const provider = createAnthropicProvider({
+    baseUrl: 'https://anthropic.invalid',
+    apiKey: 'unused',
+    defaultModel: model,
+    maxTokens: 1,
+    maxRetries: 0,
+    fetchImpl: async (_url, init) => {
+      body = JSON.parse(String(init?.body ?? '{}')) as { tools?: unknown[] };
+      throw new Captured('captured');
+    },
+  });
+  for await (const _ of provider.stream({
+    model,
+    messages: [{ role: 'user', content: 'x' }],
+    tools,
+  })) {
+    // drained only to make the request
+  }
+  const captured = body as { tools?: unknown[] } | null;
+  if (!captured) throw new Error('the Messages request was never built');
+  return captured.tools ?? [];
 }
 
 export interface CountTokensRequest {
@@ -314,11 +127,11 @@ export interface CountTokensRequest {
   fetchImpl?: typeof fetch | undefined;
 }
 
-/** Input tokens one request would bill, by the Messages `count_tokens` endpoint; null when it does not answer a count. */
+/** Input tokens one request would bill, by the Messages `count_tokens` endpoint the AI SDK does not cover; null when it does not answer a count. */
 export async function countAnthropicInputTokens(req: CountTokensRequest): Promise<number | null> {
   const fetchImpl = req.fetchImpl ?? fetch;
-  const url = `${openAiCompatUrl(req.baseUrl ?? process.env.ANTHROPIC_API_URL ?? 'https://api.anthropic.com', 'messages')}/count_tokens`;
-  const res = await fetchImpl(url, {
+  const base = req.baseUrl ?? process.env.ANTHROPIC_API_URL ?? 'https://api.anthropic.com';
+  const res = await fetchImpl(`${openAiCompatBaseUrl(base)}/messages/count_tokens`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',

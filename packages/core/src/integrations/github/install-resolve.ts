@@ -13,16 +13,15 @@ import {
   type IntegrationConnectionRow,
   listBindingsForConnection,
 } from '../store.js';
-import { buildAppJwt } from './app-auth.js';
 import { listGithubAppsReachableBy } from './install-candidates.js';
-import { GITHUB_API_BASE } from './types.js';
+import { appOctokit } from './octokit.js';
 
 export async function findConnectionOwningInstallation(args: {
   userId: string;
   installationId: number;
   fetchImpl?: typeof fetch;
 }): Promise<{ connection: IntegrationConnectionRow; projectId: string | null } | null> {
-  const doFetch = args.fetchImpl ?? fetch;
+  const fetchOpt = args.fetchImpl ? { fetchImpl: args.fetchImpl } : {};
   const connections = await listGithubAppsReachableBy(args.userId);
 
   for (const connection of connections) {
@@ -34,13 +33,11 @@ export async function findConnectionOwningInstallation(args: {
 
     let ok = false;
     try {
-      const res = await doFetch(`${GITHUB_API_BASE}/app/installations/${args.installationId}`, {
-        headers: {
-          authorization: `Bearer ${await buildAppJwt(appId, privateKey)}`,
-          accept: 'application/vnd.github+json',
-        },
+      await appOctokit({ appId, privateKey, ...fetchOpt }).request({
+        method: 'GET',
+        url: `/app/installations/${args.installationId}`,
       });
-      ok = res.ok;
+      ok = true;
     } catch {
       ok = false;
     }

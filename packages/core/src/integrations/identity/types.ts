@@ -20,23 +20,27 @@ export interface OAuthIdentity {
   emailVerified: boolean;
 }
 
-export interface AuthorizeArgs {
+/** The per-login secrets the browser carries between start and callback, in the signed cookie. */
+export interface LoginChecks {
   state: string;
-  codeChallenge: string;
   nonce: string;
-  redirectUri: string;
+  codeVerifier: string;
 }
 
-export interface CallbackArgs {
-  code: string;
-  codeVerifier: string;
-  nonce: string;
-  redirectUri: string;
+export interface LoginStart {
+  url: string;
+  checks: LoginChecks;
+}
+
+export interface LoginFinish {
+  /** The callback URL as the provider redirected to it, query included. */
+  callbackUrl: URL;
+  checks: LoginChecks;
 }
 
 export interface OAuthProvider {
-  /** Build the URL to send the browser to in /:provider/start. */
-  buildAuthorizeUrl(cfg: ProviderConfig, args: AuthorizeArgs): Promise<string>;
-  /** Exchange the auth code, fetch userinfo, return a normalised identity. */
-  callback(cfg: ProviderConfig, args: CallbackArgs): Promise<OAuthIdentity>;
+  /** Mint the login's state, nonce and PKCE pair and the URL that sends the browser to sign in. */
+  start(cfg: ProviderConfig, redirectUri: string): Promise<LoginStart>;
+  /** Check the callback against the login's own checks, exchange the code, return the identity. */
+  finish(cfg: ProviderConfig, args: LoginFinish): Promise<OAuthIdentity>;
 }

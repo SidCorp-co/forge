@@ -12,7 +12,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { findPersonalOrgId } from '../orgs/service.js';
-import { requireHeld, requireOrgCan, requireOrgHeld } from '../permissions/index.js';
+import { actorFor, orgResource, requireHeld, requireOrgCan, requireOrgHeld } from '../permissions/index.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { readDeclaredSource } from '../project-config/source.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
@@ -51,7 +51,7 @@ projectRoutes.post(
     // any role) or the caller's personal org.
     let orgId: string;
     if (requestedOrgId) {
-      await requireOrgCan({ userId }, 'org.read', requestedOrgId);
+      await requireOrgCan(actorFor(userId), 'org.read', orgResource(requestedOrgId));
       orgId = requestedOrgId;
     } else {
       const personal = await findPersonalOrgId(userId);
@@ -151,7 +151,7 @@ projectRoutes.patch(
 
     let orgId: string | undefined;
     if (patch.orgId !== undefined && patch.orgId !== access.orgId) {
-      await requireOrgCan({ userId }, 'org.admin', patch.orgId);
+      await requireOrgCan(actorFor(userId), 'org.admin', orgResource(patch.orgId));
       orgId = patch.orgId;
     }
 

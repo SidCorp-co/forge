@@ -24,7 +24,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { requirementKey, rowIn as requirementRowIn } from '../requirements/read.js';
 import { type CommentArc, scopeOfArc } from './entity-rules.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 export interface EntityCommentActor {
   userId: string;
@@ -194,7 +194,7 @@ export async function listEntityCommentsAs(
   query: { intent?: CommentIntent | undefined } = {},
   door: ReadDoor = {},
 ): Promise<EntityCommentListResponse> {
-  await requireCan({ userId: actor.userId }, 'project.read', projectId);
+  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
   const target = await targetIn(db, projectId, scope, ref);
   const rows = await db
     .select(entityCommentColumns)
@@ -233,7 +233,7 @@ export async function listDecisionsAs(
   query: { scope?: CommentScope | undefined; limit?: number | undefined } = {},
   door: ReadDoor = {},
 ): Promise<DecisionListResponse> {
-  await requireCan({ userId: actor.userId }, 'project.read', projectId);
+  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
   const limit = query.limit ?? DECISIONS_DEFAULT_LIMIT;
   const inProject = or(
     eq(issues.projectId, projectId),

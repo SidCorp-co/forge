@@ -1,8 +1,9 @@
 import { PARK_STATUSES } from '@forge/contracts/issue-machine';
+import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
+import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { ageSeconds, emptyBuckets, foldBuckets } from './pulse-folds.js';
 import { readPulseLive } from './pulse-live.js';
@@ -58,7 +59,7 @@ async function selectAbandoned(
     -- The ISO text is cast rather than bound as a Date, which postgres-js refuses (ISS-267).
     ), aged AS (
       SELECT * FROM stale
-      WHERE idle_since < ${now.toISOString()}::timestamptz
+      WHERE idle_since < ${sqlTimestamp(now)}
                          - (${thresholds.abandonedIssueSeconds}::int * interval '1 second')
     )
     SELECT
@@ -112,7 +113,7 @@ async function selectReleaseWaiting(
       FROM issues i JOIN projects p ON p.id = i.project_id
       WHERE i.project_id IN (${idList(projectIds)})
         AND i.status = 'awaiting_release'
-        AND i.updated_at < ${now.toISOString()}::timestamptz
+        AND i.updated_at < ${sqlTimestamp(now)}
                            - (${thresholds.releaseWaitingSeconds}::int * interval '1 second')
     )
     SELECT

@@ -126,8 +126,9 @@ publishes and the versions of its contracts, and a person is not handed that wor
      on semver.
    Core indexes the elements and measures the change against the latest version. A GraphQL contract's
    elements are its operations under their role (\`Query.products\`, \`Mutation.productCreate\`), their
-   arguments (\`Query.products(first)\`) and each type's fields (\`Product.title\`). A removed operation,
-   field, enum value or argument and a new required argument are breaking; an added enum value or union
+   arguments (\`Query.products(first)\`) and each type's fields (\`Product.title\`). graphql-inspector
+   measures the change: a removed operation, field, enum value or argument and a new required
+   argument are breaking; an added enum value or union
    member is a warning; and a breaking type change is also named under each operation reaching it
    (\`Query.products.variants.price\`), which is what a consumer's link names in \`fieldsUsed\`
    (\`products.variants.price\`). A tools contract's elements are each tool and its input properties

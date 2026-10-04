@@ -369,14 +369,31 @@ written:
 
 ## Permissions (BC-20)
 
-- **One check**: `packages/core/src/permissions/can.ts:can(actor, permission, scope)` and its forms
-  (`holds` for a read flag, `requireHeld` / `requireCan` for a route, `permissionRefusal` for a rule
-  that returns its refusal). Nothing else reads a role, a grant or a token to decide who may act.
+- **One check**: `packages/core/src/permissions/can.ts:can(actor, permission, resource)` and its
+  forms (`holds` for a read flag, `requireHeld` / `requireCan` for a route, `permissionRefusal` /
+  `permissionRefusalFor` for a rule that returns its refusal). The resource is
+  `{ type, id, projectId }` (`@forge/contracts/permissions:ProjectResource`; `projectResource(id)`
+  for a project-wide check) or an org (`orgResource(id)`); only the project decides today, and the
+  type and id are carried so per-resource permissions change no call site. Nothing else reads a
+  role, a grant or a token to decide who may act.
+- **One list filter**: `packages/core/src/permissions/can.ts:visibleFilter(actor, permission, { type, projectId })`
+  answers the same question for every row of a list as a Drizzle predicate over the rows' project
+  column, the token's fence and grant included. A list read uses it rather than joining
+  `project_members` by hand (`packages/core/src/me/attention-gates.ts`,
+  `packages/core/src/me/attention-buckets.ts`).
+- **The actor** is `{ userId, agency, tokenId, onBehalfOf }`
+  (`packages/core/src/permissions/actor.ts:Actor`, built by `actorFor(userId)`, which takes the
+  token and delegation from the request's own credential). A kernel move records the token and the
+  person it acts for (`kernel_transitions.actor_token_id`, `actor_on_behalf_of`); no rule reads
+  them.
 - **One vocabulary**: `<resource>.<verb>` in `packages/contracts/src/permissions.ts:PERMISSIONS`.
   A role is a permission set declared there as data (`ROLE_PERMISSIONS`, `ORG_ROLE_PERMISSIONS`);
   a membership's grant (`project_members.grants`) adds permissions on its project beyond the role;
   a token narrows what its holder reaches, and holds a permission in `TOKEN_EXPLICIT_PERMISSIONS`
-  only where its own grant names it.
+  (every `<resource>.approve` among them) only where its own grant names it. A credential core
+  mints for an agent names the explicit permissions the agent's memberships grant
+  (`packages/core/src/orgs/agent-fence.ts:agentCredentialGrant`), and an agent account's credential
+  expires after a year.
 - **Approval is a permission**
   ([ADR 0007](../adr/0007-approval-is-a-permission.md)): every approve-type act asks for
   `<resource>.approve`. No rule refuses an actor for being an agent, for being a person or for being

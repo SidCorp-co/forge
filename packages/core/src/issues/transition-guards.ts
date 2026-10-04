@@ -37,7 +37,7 @@ import type { Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import type { Guard, GuardInput } from '../lifecycle/transition.js';
 import type { Refusal } from '../lib/refusal.js';
-import { permissionRefusalFor } from '../permissions/index.js';
+import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { planDriftOf } from '../requirements/plan-drift.js';
 import type { ActorAgency } from './actor-agency.js';
@@ -234,9 +234,9 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
   }
   if (await planApprovalRequired(ctx.issue.projectId)) {
     const denied = await permissionRefusalFor(
-      { userId: ctx.actorUserId },
-      ctx.issue.projectId,
+      actorFor(ctx.actorUserId),
       'plans.approve',
+      projectResource(ctx.issue.projectId),
       'moving an issue to `approved` (project document `plan.approval.required`)',
     );
     if (denied) {
@@ -413,9 +413,9 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
   const guards: Record<IssueGuard, Guard<'issue'>> = {
     admit: async () => {
       const denied = await permissionRefusalFor(
-        { userId: base.actorUserId },
-        base.issue.projectId,
+        actorFor(base.actorUserId),
         ISSUE_ADMIT_PERMISSION,
+        projectResource(base.issue.projectId),
         'promoting a `draft` to `open`',
       );
       return denied ? ({ ...denied, path: '/status' } as Refusal) : null;

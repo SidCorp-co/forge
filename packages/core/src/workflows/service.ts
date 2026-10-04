@@ -38,7 +38,7 @@ import {
   workflowsOf,
 } from './store.js';
 import { type ProjectDesign, type ProjectDesigns, projectDesignOf } from './template-check.js';
-import { permissionFactsOf, requireCan } from '../permissions/index.js';
+import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 
 export interface WorkflowWriter {
   userId: string;
@@ -109,7 +109,7 @@ const templateFor = (doc: WorkflowWrite, templates: readonly WorkflowTemplate[])
   doc.version === 2 ? findTemplate(templates, doc.template) : null;
 
 export async function assertWriter(writer: WorkflowWriter, projectId: string): Promise<void> {
-  await requireCan(writer, 'workflow-designs.write', projectId, 'writing a workflow');
+  await requireCan(actorFor(writer.userId, writer.agency), 'workflow-designs.write', projectResource(projectId), 'writing a workflow');
 }
 
 export async function createWorkflow(input: {
@@ -266,7 +266,7 @@ function listedView(
 }
 
 export async function listWorkflowsAs(userId: string, projectId: string) {
-  await requireCan({ userId }, 'project.read', projectId);
+  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
   const rows = await workflowsOf(db, projectId);
   const [names, reasons, canDecide] = await Promise.all([
     writerNames(rows),
@@ -282,7 +282,7 @@ export async function listWorkflowsAs(userId: string, projectId: string) {
 }
 
 export async function readWorkflowAs(userId: string, projectId: string, id: string) {
-  await requireCan({ userId }, 'project.read', projectId);
+  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
   const row = await readWorkflow(db, id);
   if (!row || row.projectId !== projectId) {
     throw notFound(`project ${projectId} holds no workflow ${id}`);

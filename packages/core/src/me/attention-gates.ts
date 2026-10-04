@@ -1,9 +1,10 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { organizationMembers, projectMembers, projects } from '../db/schema.js';
+import { projects } from '../db/schema.js';
 import { channelDocuments } from '../db/schema-ecosystem.js';
 import { agentQuestions, isChoiceStep } from '../db/schema-questions.js';
-import { effectiveProjectRole, visibleProjectsWhere } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
+import { actorFor, visibleFilter } from '../permissions/index.js';
 import { mayChoose } from '../questions/write.js';
 
 export const CHANNEL_GATES_CAP = 20;
@@ -39,19 +40,14 @@ export async function selectChannelGates(userId: string): Promise<AttentionGateR
       channelDocuments,
       sql`${channelDocuments.id}::text = ${agentQuestions.origin}->>'documentId'`,
     )
-    .leftJoin(
-      projectMembers,
-      and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
-    )
-    .leftJoin(
-      organizationMembers,
-      and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
-    )
     .where(
       and(
         eq(agentQuestions.status, 'open'),
         sql`${agentQuestions.origin}->>'kind' = 'channel_gate'`,
-        ...visibleProjectsWhere(),
+        visibleFilter(actorFor(userId), 'project.read', {
+          type: 'question',
+          projectId: agentQuestions.projectId,
+        }),
       ),
     )
     .orderBy(desc(agentQuestions.createdAt));

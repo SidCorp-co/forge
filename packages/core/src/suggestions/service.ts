@@ -26,7 +26,7 @@ import {
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
-import { permissionRefusalFor, requireCan } from '../permissions/index.js';
+import { actorFor, permissionRefusalFor, projectResource, requireCan } from '../permissions/index.js';
 import { lockRequirements } from '../requirements/service.js';
 import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
 import {
@@ -181,9 +181,9 @@ export async function acceptSuggestion(input: {
   const reason = input.reason?.trim() || null;
   const first = await rowOf(db, projectId, input.id);
   const forbidden = await permissionRefusalFor(
-    actor,
-    projectId,
+    actorFor(actor.userId, actor.agency),
     'suggestions.approve',
+    projectResource(projectId),
     'accepting a suggestion',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };
@@ -250,9 +250,9 @@ export async function rejectSuggestion(input: {
 }): Promise<SuggestionOutcome> {
   const { projectId, actor } = input;
   const forbidden = await permissionRefusalFor(
-    actor,
-    projectId,
+    actorFor(actor.userId, actor.agency),
     'suggestions.approve',
+    projectResource(projectId),
     'rejecting a suggestion',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };
@@ -289,7 +289,7 @@ export async function withdrawSuggestion(input: {
   actor: SuggestionActor;
 }): Promise<SuggestionOutcome> {
   const { projectId, actor } = input;
-  await requireCan({ userId: actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const refusals = await inTx(async (tx) => {
     const row = await rowOf(tx, projectId, input.id, true);
     const refusal = withdrawRefusal(actor.userId, row.producerId) ?? decidedRefusal(row.status);

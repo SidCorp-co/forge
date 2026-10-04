@@ -112,6 +112,9 @@ export async function beginPatRequest(
     scope: {
       projectIds: effectiveProjectIds,
       tokenId: principal.tokenId,
+      userId: principal.userId,
+      agency: principal.agency,
+      onBehalfOf: principal.onBehalfOf,
       grant: principal.permissions ?? null,
       scopes: principal.scopes,
     },

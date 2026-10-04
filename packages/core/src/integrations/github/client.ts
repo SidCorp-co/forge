@@ -8,7 +8,7 @@
  * config file on the runner, invisible to Forge and impossible to audit.
  *
  * Resolution here is by PROJECT, which is what a webhook delivery and a kernel
- * transition both know. `git/github-app-credential.ts` resolves the same App by
+ * transition both know. `git-credential.ts` resolves the same App by
  * DEVICE and repository, because a git credential helper is handed a URL and
  * nothing else; the two are different keys onto the same credential and share
  * the token mint rather than either one's lookup.
@@ -19,13 +19,14 @@ import { db } from '../../db/client.js';
 import { integrationBindings } from '../../db/schema.js';
 import { SourceHostCallError, SourceHostUnavailable } from '../source-host/errors.js';
 import { decryptConnectionSecrets, findConnectionById } from '../store.js';
-import { GitHubAuthError, installationToken } from './app-auth.js';
 import {
-  GITHUB_API_BASE,
-  type GitHubConfig,
-  type GitHubSecrets,
-  type HeadersLike,
-} from './types.js';
+  GitHubAuthError,
+  installationOctokit,
+  isTimeout,
+  mintInstallationToken,
+  responseOf,
+} from './octokit.js';
+import type { GitHubConfig, GitHubSecrets, HeadersLike } from './types.js';
 
 const READ_TIMEOUT_MS = 6000;
 const PUBLISH_TIMEOUT_MS = 8000;
@@ -171,14 +172,14 @@ export function buildRepoClient(args: {
     );
   }
 
-  const base = (args.config.apiBaseUrl ?? GITHUB_API_BASE).replace(/\/+$/, '');
-  const mint = () =>
-    installationToken({
-      appId,
-      privateKey,
-      installationId,
-      ...(args.config.apiBaseUrl ? { apiBaseUrl: args.config.apiBaseUrl } : {}),
-    });
+  const cred = {
+    appId,
+    privateKey,
+    installationId,
+    ...(args.config.apiBaseUrl ? { apiBaseUrl: args.config.apiBaseUrl } : {}),
+  };
+  const octokit = installationOctokit(cred);
+  const mint = () => mintInstallationToken(cred);
 
   return {
     bindingId: args.bindingId,
@@ -187,30 +188,28 @@ export function buildRepoClient(args: {
     repo,
     fullName,
     async get<T>(path: string): Promise<T> {
-      let token: string;
       try {
-        token = await mint();
+        await mint();
       } catch (err) {
-        if (err instanceof GitHubAuthError) {
+        if (err instanceof GitHubAuthError)
           throw new GitHubReadError(err.status, err.message, 'mint');
-        }
         throw err;
       }
-      const res = await fetch(`${base}${path}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28',
-        },
-        signal: AbortSignal.timeout(READ_TIMEOUT_MS),
-      });
-      if (!res.ok) {
+      try {
+        const res = await octokit.request({
+          method: 'GET',
+          url: path,
+          request: { signal: AbortSignal.timeout(READ_TIMEOUT_MS) },
+        });
+        return res.data as T;
+      } catch (err) {
+        const answered = responseOf(err);
+        if (!answered) throw err;
         throw new GitHubReadError(
-          res.status,
-          `GET ${path} on ${fullName} returned HTTP ${res.status}`,
+          answered.status,
+          `GET ${path} on ${fullName} returned HTTP ${answered.status}`,
         );
       }
-      return (await res.json()) as T;
     },
 
     async publish<T>(args: {
@@ -219,9 +218,8 @@ export function buildRepoClient(args: {
       path: string;
       body?: unknown;
     }): Promise<T> {
-      let token: string;
       try {
-        token = await mint();
+        await mint();
       } catch (err) {
         if (err instanceof GitHubAuthError) {
           throw new GitHubPublishError({
@@ -233,69 +231,48 @@ export function buildRepoClient(args: {
         }
         throw new GitHubPublishError({
           op: 'mint',
-          timedOut: isAbort(err),
+          timedOut: isTimeout(err),
           message: err instanceof Error ? err.message : String(err),
         });
       }
 
-      let res: Response;
       try {
-        res = await fetch(`${base}${args.path}`, {
+        const res = await octokit.request({
           method: args.method,
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
-            ...(args.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          url: args.path,
+          ...(args.body === undefined ? {} : { data: args.body }),
+          request: {
+            signal: AbortSignal.timeout(PUBLISH_TIMEOUT_MS),
+            ...(args.method === 'GET' ? {} : { retries: 0 }),
           },
-          ...(args.body === undefined ? {} : { body: JSON.stringify(args.body) }),
-          signal: AbortSignal.timeout(PUBLISH_TIMEOUT_MS),
         });
+        return res.data as T;
       } catch (err) {
+        const answered = responseOf(err);
+        if (!answered) {
+          throw new GitHubPublishError({
+            op: args.op,
+            timedOut: isTimeout(err),
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
         throw new GitHubPublishError({
           op: args.op,
-          timedOut: isAbort(err),
-          message: err instanceof Error ? err.message : String(err),
-        });
-      }
-
-      if (!res.ok) {
-        throw new GitHubPublishError({
-          op: args.op,
-          status: res.status,
-          headers: res.headers,
-          detail: await bodyText(res),
-          message: `${args.method} ${args.path} on ${fullName} returned HTTP ${res.status}`,
-        });
-      }
-      try {
-        return (await res.json()) as T;
-      } catch (err) {
-        throw new GitHubPublishError({
-          op: args.op,
-          status: res.status,
-          headers: res.headers,
-          timedOut: isAbort(err),
-          message: `${args.method} ${args.path} on ${fullName} answered HTTP ${res.status} and its body could not be read: ${err instanceof Error ? err.message : String(err)}`,
+          status: answered.status,
+          headers: answered.headers,
+          detail: bodyText(answered.data),
+          message: `${args.method} ${args.path} on ${fullName} returned HTTP ${answered.status}`,
         });
       }
     },
   };
 }
 
-/** Whether a thrown value is the timeout `AbortSignal.timeout` raises. */
-function isAbort(err: unknown): boolean {
-  return err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
-}
-
-/** GitHub's own words for a refusal, where it sent any. Never fatal on its own. */
-async function bodyText(res: Response): Promise<string | null> {
-  try {
-    const text = await res.text();
-    return text.length > 0 ? text.slice(0, 2000) : null;
-  } catch {
-    return null;
-  }
+/** GitHub's own words for a refusal, where it sent any. */
+function bodyText(data: unknown): string | null {
+  if (data === undefined || data === null || data === '') return null;
+  const text = typeof data === 'string' ? data : JSON.stringify(data);
+  return text.length > 0 ? text.slice(0, 2000) : null;
 }
 
 export async function githubRepoClient(projectId: string): Promise<GitHubRepoClient> {

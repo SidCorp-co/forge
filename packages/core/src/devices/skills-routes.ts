@@ -8,7 +8,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { loadDeviceSkillStatus, resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { assertDeviceBoundToProject } from './device-project.js';
 import { applySkillReport, recordSkillSyncFailure } from './service.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 // Skill Studio 4 (ISS-278) — server-driven device skill sync.
 //
@@ -188,7 +188,7 @@ deviceSkillStatusRoutes.get(
   async (c) => {
     const { projectId, deviceId } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.read', projectId);
+    await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
     const status = await loadDeviceSkillStatus(projectId, deviceId);
     return c.json({ skills: status });

@@ -20,6 +20,7 @@ export function patPrincipalOf({ row, ownerKind }: VerifiedPat): PatPrincipal {
     grantEpoch: row.grantEpoch,
     boundProjectId: row.boundProjectId ?? null,
     deviceId: row.deviceId ?? null,
+    onBehalfOf: row.onBehalfOf ?? null,
   };
 }
 

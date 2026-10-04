@@ -15,7 +15,6 @@ import { insertAgentAccount, setUserDisplayName } from '../auth/agent-users.js';
 import { isAgentHandle } from '../credentials/agent-account.js';
 import { mintPat, refenceLiveTokens, revokeLiveTokens } from '../credentials/pat.js';
 import { patIsLive } from '../credentials/pat-live.js';
-import { PAT_GRANT_ALL } from '../credentials/pat-permissions.js';
 import { handleNameForProject } from '../conversations/handles.js';
 import { db, type Tx } from '../db/client.js';
 import {
@@ -36,11 +35,21 @@ import {
 import {
   type AgentCredentialFence,
   agentCredentialFence,
+  agentCredentialGrant,
   badRequest,
+  regrantAgentCredentials,
   fenceFor,
   withAgentFenceLock,
 } from './agent-fence.js';
 import { refuse } from './refuse.js';
+
+/**
+ * How long an agent account's credential lives: a year, the longest a fine-grained personal token
+ * may be set to live on GitHub. Minting a fresh one is the org admin's act.
+ */
+const AGENT_CREDENTIAL_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+
+const agentCredentialExpiry = () => new Date(Date.now() + AGENT_CREDENTIAL_TTL_MS);
 
 export interface CreateAgentAccountInput {
   orgId: string;
@@ -157,8 +166,9 @@ export async function createAgentAccount(
         userId: created.id,
         name: `agent:${input.handle}`,
         scopes: ['read', 'write'],
-        permissions: PAT_GRANT_ALL,
+        permissions: await agentCredentialGrant(created.id, tx),
         grantEpoch: input.grantEpoch,
+        expiresAt: agentCredentialExpiry(),
         ...fence,
       },
       tx,
@@ -298,13 +308,21 @@ async function mintDistinctlyNamed(
   fence: AgentCredentialFence & { grantEpoch?: number | undefined },
   tx: Tx = db,
 ): Promise<string> {
+  const permissions = await agentCredentialGrant(userId, tx);
   const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
   const names = [base, `${base} ${stamp}`, `${base} ${randomBytes(4).toString('hex')}`];
   for (const name of names) {
     try {
       const minted = await tx.transaction((sp) =>
         mintPat(
-          { userId, name, scopes: ['read', 'write'], permissions: PAT_GRANT_ALL, ...fence },
+          {
+            userId,
+            name,
+            scopes: ['read', 'write'],
+            permissions,
+            expiresAt: agentCredentialExpiry(),
+            ...fence,
+          },
           sp,
         ),
       );
@@ -387,10 +405,14 @@ export async function setAgentProjects(
     const held = new Map(
       (
         await tx
-          .select({ projectId: projectMembers.projectId, role: projectMembers.role })
+          .select({
+            projectId: projectMembers.projectId,
+            role: projectMembers.role,
+            grants: projectMembers.grants,
+          })
           .from(projectMembers)
           .where(eq(projectMembers.userId, agentUserId))
-      ).map((r) => [r.projectId, r.role]),
+      ).map((r) => [r.projectId, r]),
     );
     await removeProjectMembershipsOf(tx, agentUserId);
     await addProjectMembers(
@@ -398,10 +420,13 @@ export async function setAgentProjects(
       wanted.map((projectId) => ({
         userId: agentUserId,
         projectId,
-        role: held.get(projectId) ?? ('member' as const),
+        role: held.get(projectId)?.role ?? ('member' as const),
+        grants: held.get(projectId)?.grants ?? [],
       })),
     );
-    return refenceLiveTokens(tx, agentUserId, fence);
+    const refenced = await refenceLiveTokens(tx, agentUserId, fence);
+    await regrantAgentCredentials(tx, agentUserId);
+    return refenced;
   });
 
   return { projects: wanted, fence, refenced };

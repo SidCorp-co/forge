@@ -8,7 +8,7 @@ import { peopleOf } from '../lib/people.js';
 import { agrees } from '../lib/plural.js';
 import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
-import { permissionRefusalFor } from '../permissions/index.js';
+import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import { environmentsOf, readReleasePath } from '../project-config/release-path.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { refuseRelease } from './refuse.js';
@@ -192,9 +192,9 @@ export async function decideApproval(input: {
 }): Promise<ApprovalView> {
   const { projectId, runId, approvalId, userId, decision } = input;
   const denied = await permissionRefusalFor(
-    { userId },
-    projectId,
+    actorFor(userId),
     'releases.approve',
+    projectResource(projectId),
     'approving or returning a release',
   );
   if (denied) throw new RefusalError([denied], denied.code);

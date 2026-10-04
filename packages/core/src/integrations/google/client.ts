@@ -75,14 +75,12 @@ function describeSheetsFailure(
 
 async function mintFor(args: GoogleClientArgs, access: SheetsAccess): Promise<string> {
   const scope = scopeFor(access);
-  const fetchOpt = args.fetchImpl ? { fetchImpl: args.fetchImpl } : {};
   try {
     return (
       await googleAccessToken({
         connectionId: args.connectionId,
         serviceAccountJson: args.serviceAccountJson,
         scope,
-        ...fetchOpt,
       })
     ).token;
   } catch (err) {
@@ -94,7 +92,6 @@ async function mintFor(args: GoogleClientArgs, access: SheetsAccess): Promise<st
         connectionId: args.connectionId,
         serviceAccountJson: args.previousServiceAccountJson as string,
         scope,
-        ...fetchOpt,
       })
     ).token;
   }

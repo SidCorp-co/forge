@@ -8,7 +8,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { readBearerToken } from '../middleware/bearer.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { listBindings, readBinding, removeBinding, writeBinding } from './bindings.js';
 import { buildEffectiveConfig } from './effective.js';
 import {
@@ -89,7 +89,7 @@ function answer<T>(c: Context, outcome: WriteOutcome<T>) {
 
 projectConfigRoutes.get('/:id/config', paramOf(idParam), async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const held = await readProjectConfig(id);
   return c.json(held ? serialise(held) : UNDECLARED);
 });
@@ -101,7 +101,7 @@ projectConfigRoutes.put(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.admin', id);
+    await requireCan(actorFor(userId), 'project.admin', projectResource(id));
     const { baseRevision, document } = envelopeOf(c.req.valid('json'));
     return answer(
       c,
@@ -112,7 +112,7 @@ projectConfigRoutes.put(
 
 projectConfigRoutes.get('/:id/config/revisions', paramOf(idParam), async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const revisions = await readProjectRevisions(id);
   return c.json({
     revisions: revisions.map((r) => ({
@@ -133,13 +133,13 @@ async function callingDevice(c: Context<{ Variables: AuthVars }>): Promise<strin
 
 projectConfigRoutes.get('/:id/config/effective', paramOf(idParam), async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   return c.json(await buildEffectiveConfig({ projectId: id, deviceId: await callingDevice(c) }));
 });
 
 projectConfigRoutes.get('/:id/policy', paramOf(idParam), async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const held = await readPolicy(id);
   return c.json(held ? serialise(held) : UNDECLARED);
 });
@@ -151,7 +151,7 @@ projectConfigRoutes.put(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.admin', id);
+    await requireCan(actorFor(userId), 'project.admin', projectResource(id));
     const { baseRevision, document } = envelopeOf(c.req.valid('json'));
     return answer(c, await writePolicy({ projectId: id, userId, baseRevision, raw: document }));
   },
@@ -159,7 +159,7 @@ projectConfigRoutes.put(
 
 projectConfigRoutes.get('/:id/testing-profiles', paramOf(idParam), async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const profiles = await listTestingProfiles(id);
   return c.json({
     profiles: profiles.map((p) => ({ profileId: p.profileId, ...serialise(p) })),
@@ -169,7 +169,7 @@ projectConfigRoutes.get('/:id/testing-profiles', paramOf(idParam), async (c) => 
 
 projectConfigRoutes.get('/:id/testing-profiles/:profileId', paramOf(profileParam), async (c) => {
   const { id, profileId } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const held = await readTestingProfile(id, profileId);
   return c.json(held ? serialise(held) : UNDECLARED);
 });
@@ -181,7 +181,7 @@ projectConfigRoutes.put(
   async (c) => {
     const { id, profileId } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.admin', id);
+    await requireCan(actorFor(userId), 'project.admin', projectResource(id));
     const { baseRevision, document } = envelopeOf(c.req.valid('json'));
     return answer(
       c,
@@ -192,7 +192,7 @@ projectConfigRoutes.put(
 
 projectConfigRoutes.delete('/:id/testing-profiles/:profileId', paramOf(profileParam), async (c) => {
   const { id, profileId } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.admin', id);
+  await requireCan(actorFor(c.get('userId')), 'project.admin', projectResource(id));
   const outcome = await deleteTestingProfile(id, profileId);
   if (outcome.ok) return c.json({ deleted: true, profileId });
   if (outcome.notFound) {
@@ -206,7 +206,7 @@ projectConfigRoutes.delete('/:id/testing-profiles/:profileId', paramOf(profilePa
 
 projectConfigRoutes.get('/:id/secrets', paramOf(idParam), async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const secrets = await listSecretNames(id);
   return c.json({
     secrets: secrets.map(secretView),
@@ -227,7 +227,7 @@ projectConfigRoutes.put(
   }),
   async (c) => {
     const { id, scope, name } = c.req.valid('param');
-    await requireCan({ userId: c.get('userId') }, 'project.admin', id);
+    await requireCan(actorFor(c.get('userId')), 'project.admin', projectResource(id));
     const outcome = await putSecret({
       projectId: id,
       scope,
@@ -247,7 +247,7 @@ projectConfigRoutes.put(
 
 projectConfigRoutes.get('/:id/bindings', paramOf(idParam), async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const { held, unrepresentable } = await listBindings(id);
   return c.json({
     bindings: held.map((h) => ({ declared: true as const, ...h })),
@@ -258,7 +258,7 @@ projectConfigRoutes.get('/:id/bindings', paramOf(idParam), async (c) => {
 
 projectConfigRoutes.get('/:id/bindings/:bindingId', paramOf(bindingParam), async (c) => {
   const { id, bindingId } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const read = await readBinding(id, bindingId);
   if (!read) return c.json(UNDECLARED);
   if (!read.ok) {
@@ -284,7 +284,7 @@ projectConfigRoutes.put(
   async (c) => {
     const { id, bindingId } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.admin', id);
+    await requireCan(actorFor(userId), 'project.admin', projectResource(id));
     const { baseRevision, document } = envelopeOf(c.req.valid('json'));
     const outcome = await writeBinding({
       projectId: id,
@@ -311,7 +311,7 @@ projectConfigRoutes.delete(
   zValidator('json', z.unknown()),
   async (c) => {
     const { id, bindingId } = c.req.valid('param');
-    await requireCan({ userId: c.get('userId') }, 'project.admin', id);
+    await requireCan(actorFor(c.get('userId')), 'project.admin', projectResource(id));
     const body = removeBody.safeParse(c.req.valid('json'));
     if (!body.success) {
       throw new HTTPException(400, {

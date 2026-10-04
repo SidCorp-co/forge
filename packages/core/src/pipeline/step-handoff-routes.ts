@@ -7,7 +7,7 @@ import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { resolveActor } from './activity.js';
 import { deleteIssueContext, getIssueContexts, writeIssueContext } from './issue-context-store.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 /**
  * REST surface for step-handoff persistence (proposal Y), over the one
@@ -62,7 +62,7 @@ stepHandoffRoutes.post(
   async (c) => {
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.write', body.projectId);
+    await requireCan(actorFor(userId), 'project.write', projectResource(body.projectId));
     const r = await writeIssueContext({ ...body, kind: 'handoff', actor: resolveActor(c) });
     return c.json(r, 201);
   },
@@ -76,7 +76,7 @@ stepHandoffRoutes.get(
   async (c) => {
     const q = c.req.valid('query');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.read', q.projectId);
+    await requireCan(actorFor(userId), 'project.read', projectResource(q.projectId));
     const issueId = await resolveIssueKeyInProject(q.issueId, q.projectId);
     const rows = await getIssueContexts({
       projectId: q.projectId,
@@ -99,7 +99,7 @@ stepHandoffRoutes.delete(
   async (c) => {
     const q = c.req.valid('query');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.write', q.projectId);
+    await requireCan(actorFor(userId), 'project.write', projectResource(q.projectId));
     const n = await deleteIssueContext({
       projectId: q.projectId,
       issueId: q.issueId,

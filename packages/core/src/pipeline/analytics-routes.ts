@@ -16,7 +16,7 @@ import {
   readStepDurations,
 } from './read.js';
 import { shippedPerDay } from './throughput-series.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 const querySchema = z.object({
   days: z.coerce.number().int().min(1).max(90).optional().default(30),
@@ -179,7 +179,7 @@ projectCostAnalyticsRoutes.get(
     const { id } = c.req.valid('param');
     const { days } = c.req.valid('query');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.read', id);
+    await requireCan(actorFor(userId), 'project.read', projectResource(id));
 
     return c.json(await readCostSummary(id, days));
   },
@@ -201,7 +201,7 @@ projectCostAnalyticsRoutes.get(
     const { id } = c.req.valid('param');
     const { days, step } = c.req.valid('query');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.read', id);
+    await requireCan(actorFor(userId), 'project.read', projectResource(id));
 
     return c.json(await readCostTrend(id, days, step));
   },
@@ -224,7 +224,7 @@ projectCostAnalyticsRoutes.get(
     const { id } = c.req.valid('param');
     const { days } = c.req.valid('query');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.read', id);
+    await requireCan(actorFor(userId), 'project.read', projectResource(id));
 
     return c.json(await readCostOutliers(id, days));
   },

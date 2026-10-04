@@ -6,7 +6,7 @@ import { INTEGRATION_PROVIDERS } from '../integrations/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld, requireOrgCan } from '../permissions/index.js';
+import { actorFor, orgResource, requireHeld, requireOrgCan } from '../permissions/index.js';
 import { findProjectOrgId } from '../projects/service.js';
 import {
   deleteIntegrationGuide,
@@ -53,13 +53,13 @@ function assertKnownProvider(provider: string): void {
 
 orgGuideRoutes.get('/:orgId/guides', async (c) => {
   const orgId = c.req.param('orgId');
-  await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+  await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
   return c.json({ guides: await resolveGuideIndex(orgId) });
 });
 
 orgGuideRoutes.get('/:orgId/guides/:slug', async (c) => {
   const orgId = c.req.param('orgId');
-  await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+  await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
   const guide = await resolveGuide(c.req.param('slug'), orgId);
   if (!guide) {
     throw new HTTPException(404, { message: validSlugsMessage(), cause: { code: 'NOT_FOUND' } });
@@ -75,7 +75,7 @@ orgGuideRoutes.put(
     const provider = c.req.param('provider');
     assertKnownProvider(provider);
     const userId = c.get('userId');
-    await requireOrgCan({ userId }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(userId), 'org.admin', orgResource(orgId));
     const row = await upsertIntegrationGuide({
       orgId,
       provider: provider as (typeof INTEGRATION_PROVIDERS)[number],
@@ -98,7 +98,7 @@ orgGuideRoutes.delete('/:orgId/integration-guides/:provider', async (c) => {
   const orgId = c.req.param('orgId');
   const provider = c.req.param('provider');
   assertKnownProvider(provider);
-  await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+  await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
   return c.json({ deleted: await deleteIntegrationGuide(orgId, provider) });
 });
 

@@ -1,4 +1,4 @@
-export { countAnthropicInputTokens, toRequestBody } from './anthropic.js';
+export { anthropicWireTools, countAnthropicInputTokens } from './anthropic.js';
 export { bootstrapChatProviders, defaultChatProviderId } from './bootstrap.js';
 export { callFastModel, fastModelConfigured, fastModelName } from './fast-model.js';
 export { createOpenAIProvider } from './openai.js';

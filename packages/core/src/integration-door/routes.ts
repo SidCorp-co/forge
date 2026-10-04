@@ -38,7 +38,7 @@ import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireCan, requireOrgHeld } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan, requireOrgHeld } from '../permissions/index.js';
 import { announceIntegrationChanged, setBindingInboundSecret } from '../project-config/index.js';
 import { registerCoolifyDeployRoutes } from './coolify-routes.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
@@ -62,7 +62,7 @@ async function projectBinding(
   userId: string,
   need?: 'admin',
 ): Promise<BindingWithConnection> {
-  await requireCan({ userId }, need === 'admin' ? 'project.admin' : 'project.read', projectId);
+  await requireCan(actorFor(userId), need === 'admin' ? 'project.admin' : 'project.read', projectResource(projectId));
   const existing = await findBindingWithConnectionById(id);
   if (!existing || existing.binding.projectId !== projectId) throw notFound();
   return existing;
@@ -71,7 +71,7 @@ async function projectBinding(
 integrationsRoutes.get('/:projectId/integrations', async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
-  await requireCan({ userId }, 'project.read', projectId);
+  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
   const pairs = await listBindingsForProject(projectId);
   // One array under both keys: `items` is the alias the `forge` CLI and the runner read (ISS-1191).
@@ -201,7 +201,7 @@ integrationsRoutes.post(
   async (c) => {
     const projectId = c.req.param('projectId');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.read', projectId);
+    await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
     const body = c.req.valid('json');
 
     let auth: { serverUrl: string; authToken: string; userId: string };
@@ -304,7 +304,7 @@ integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/ret
 integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
-  await requireCan({ userId }, 'project.read', projectId);
+  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
   return c.json({ cards: await buildIntegrationsStatusCards(projectId) });
 });
@@ -314,7 +314,7 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
 integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
-  await requireCan({ userId }, 'project.read', projectId);
+  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
   return c.json(await buildMcpPreview(projectId));
 });

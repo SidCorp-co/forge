@@ -11,7 +11,7 @@ import {
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
   ALWAYS_INJECT_GUARANTEE_NOTE,
   ALWAYS_INJECT_MAX_CHARS,
@@ -94,7 +94,7 @@ knowledgeRoutes.get(
     const verb = parseVerbQuery(verbRaw);
     const status = parseStatusQuery(statusRaw);
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.write', id);
+    await requireCan(actorFor(userId), 'project.write', projectResource(id));
 
     const result = await listKnowledgeEntries({ projectId: id, kind, injection, verb, status });
     return c.json({
@@ -125,7 +125,7 @@ knowledgeRoutes.post(
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.write', id);
+    await requireCan(actorFor(userId), 'project.write', projectResource(id));
 
     try {
       const result = await runUnifiedSearch({ projectId: id, ...body });
@@ -150,7 +150,7 @@ knowledgeRoutes.get(
   async (c) => {
     const { id, slug } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.write', id);
+    await requireCan(actorFor(userId), 'project.write', projectResource(id));
 
     const entry = await getKnowledgeEntry(id, slug);
     if (!entry) throw notFound();
@@ -172,7 +172,7 @@ knowledgeRoutes.put(
     const { id, slug } = c.req.valid('param');
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.write', id);
+    await requireCan(actorFor(userId), 'project.write', projectResource(id));
 
     try {
       const result = await upsertKnowledgeEntry({ projectId: id, slug, ...body });
@@ -197,7 +197,7 @@ knowledgeRoutes.delete(
   async (c) => {
     const { id, slug } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.write', id);
+    await requireCan(actorFor(userId), 'project.write', projectResource(id));
 
     const removed = await deleteKnowledgeEntry(id, slug);
     return c.json({ deleted: removed > 0 });

@@ -23,7 +23,7 @@ import {
   type SpeakerRefusal,
   sourceUnknownRefusal,
 } from './speaker-link.js';
-import { requireCan } from '../../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 import { listSpeakerLinks } from '../read.js';
 import { confirmSpeakerLink, unlinkSpeaker } from '../service.js';
 
@@ -57,7 +57,7 @@ const refused = (refusal: SpeakerRefusal, path = ''): RefusalError =>
 
 // cm:why project access is refused before the body is read, so a stranger learns nothing from a 400
 const projectAccess: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  await requireCan({ userId: c.get('userId') }, 'project.write', c.req.param('projectId') ?? '');
+  await requireCan(actorFor(c.get('userId')), 'project.write', projectResource(c.req.param('projectId') ?? ''));
   await next();
 };
 

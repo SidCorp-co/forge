@@ -1,6 +1,4 @@
-export type OpenAiCompatPath = 'chat/completions' | 'embeddings' | 'messages';
-
-export function openAiCompatUrl(base: string, path: OpenAiCompatPath): string {
-  const host = base.replace(/\/+$/, '').replace(/\/v1$/, '');
-  return `${host}/v1/${path}`;
+/** The `/v1` root an OpenAI- or Anthropic-format client appends its path to; a base given with or without its `/v1` names the same root. */
+export function openAiCompatBaseUrl(base: string): string {
+  return `${base.replace(/\/+$/, '').replace(/\/v1$/, '')}/v1`;
 }

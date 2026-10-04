@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { listContractRequests } from './read.js';
-import { requireCan } from '../../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 
 export const contractRequestRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -22,7 +22,7 @@ const projectParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
 
 contractRequestRoutes.get('/:id/contract-requests', projectParam, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const body: ContractRequestListResponse = { requests: await listContractRequests(id) };
   return c.json(body);
 });

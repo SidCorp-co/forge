@@ -2514,6 +2514,13 @@
       "when": 1816646400000,
       "tag": "0390_rate_limit_points_survive_a_deploy",
       "breakpoints": true
+    },
+    {
+      "idx": 391,
+      "version": "7",
+      "when": 1816732800000,
+      "tag": "0391_acts_record_the_token_and_whom_it_acts_for",
+      "breakpoints": true
     }
   ]
 }

@@ -1,9 +1,8 @@
 /** The wire vocabulary every backlog stream speaks (ISS-1173). Each frame names its kind in a
- *  `type` field inside the `data:` payload as well as on the SSE `event:` line, because
- *  `integrations/llm/sse.ts:frameData` keeps only `data:` lines and drops `event:`, `id:` and
- *  `retry:` — which is why `anthropic.ts` switches on a `type` in the JSON — and the forge CLI's
- *  reader does the same. An item's `seq` is transport order and never a rank, and its payload's
- *  fields sit at the top level so a reader never unwraps. */
+ *  `type` field inside the `data:` payload as well as on the SSE `event:` line, because the forge
+ *  CLI's reader keeps only `data:` lines and drops `event:`, `id:` and `retry:`. An item's `seq` is
+ *  transport order and never a rank, and its payload's fields sit at the top level so a reader
+ *  never unwraps. */
 
 export type BacklogStreamKind = 'ordering' | 'alike';
 

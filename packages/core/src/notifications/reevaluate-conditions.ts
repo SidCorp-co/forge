@@ -1,6 +1,7 @@
 import { and, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
+import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { logger } from '../observability/logger.js';
 import { resolveNotifications } from './auto-resolve.js';
 import { PENDING_STALE_MS } from './deliver.js';
@@ -41,7 +42,7 @@ export async function reevaluateConditions(now: Date = new Date()): Promise<Reev
 
     const released = await db.execute<{ id: string }>(sql`
       UPDATE notifications n
-         SET state = 'pending', inhibited_by = NULL, pending_since = ${now.toISOString()}::timestamptz
+         SET state = 'pending', inhibited_by = NULL, pending_since = ${sqlTimestamp(now)}
         FROM notifications root
        WHERE n.inhibited_by = root.id
          AND n.state = 'inhibited'
