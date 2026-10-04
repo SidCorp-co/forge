@@ -34,12 +34,12 @@ import {
   updatePackets,
 } from '../db/schema.js';
 import { insertJobRow } from '../jobs/index.js';
-import { selectKnowledgeBodies } from '../knowledge/service.js';
+import { selectKnowledgeBodies } from '../knowledge/index.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { transition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
-import { closeRun, openOneShotRun } from '../pipeline/runs.js';
-import { readEffectivePolicy } from '../project-config/effective.js';
+import { closeRun, openOneShotRun } from '../pipeline/index.js';
+import { readEffectivePolicy } from '../project-config/index.js';
 import type { RecordSkillActivityEventInput, SkillActivityExecutor } from './activity.js';
 import { recordSkillActivityEvent } from './activity.js';
 import { globalEffectiveMd } from './effective.js';

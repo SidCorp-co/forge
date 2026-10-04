@@ -107,7 +107,7 @@ const { manifest, error } = readManifest(ROOT);
 if (error) die(error);
 
 const cfg = manifest?.checkers?.['integration-declarations'] ?? {};
-const entrypointRel = cfg.entrypoint ?? 'packages/core/src/integrations/register-all.ts';
+const entrypointRel = cfg.entrypoint ?? 'packages/core/src/integration-registry.ts';
 const registerFn = cfg.registerFn ?? 'registerAllIntegrations';
 const entrypoint = join(ROOT, entrypointRel);
 

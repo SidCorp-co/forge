@@ -1,5 +1,5 @@
 import type { IssueStatus, JobType } from '../../db/schema.js';
-import { guideRef } from '../../guides/guide-ref.js';
+import { guideRef } from '../../guides/index.js';
 import { STEP_TOOL_REFERENCE_TEXT } from './drive-rules.js';
 
 export type FactCategory = 'enum' | 'protocol' | 'format' | 'reference';

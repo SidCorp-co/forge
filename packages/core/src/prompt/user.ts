@@ -12,8 +12,8 @@ import {
   renderDriveTerminationBlock,
   renderTerminationBlock,
   type StepHandoffPayload,
-} from '../memory/step-handoff-schema.js';
-import { handoffInjectSteps } from '../pipeline/handoff-policy.js';
+} from '../memory/index.js';
+import { handoffInjectSteps } from '../pipeline/index.js';
 
 /** ISS-699 — steps that finished after `sessionContext.lastUpdated`, measured
  *  from the jobs ledger by `loadIssueSnapshot`. null when nothing is newer. */

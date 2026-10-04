@@ -17,6 +17,7 @@
  * into the kernel through a second door (ISS-1050).
  */
 
+import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -25,11 +26,7 @@ import { lockXact } from '../lib/advisory-lock.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
 import { devicesPorts } from './ports.js';
-import {
-  BOX_RUN_ID_METADATA_KEY,
-  RUN_ISSUES_METADATA_KEY,
-  RUN_SESSION_KIND,
-} from './run-session.js';
+import { BOX_RUN_ID_METADATA_KEY } from './run-session.js';
 
 /**
  * The box's half, exactly as `daemon/checkpoint.rs` puts it on the wire.

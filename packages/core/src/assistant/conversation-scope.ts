@@ -1,10 +1,9 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { refuseConversation } from '../conversations/refusals.js';
+import { readableConversation, refuseConversation } from '../conversations/index.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { readableConversation } from './conversation-access.js';
 import { homeIsEcosystemMember } from './read.js';
 import { pinConversation, unpinConversation } from './service.js';
 

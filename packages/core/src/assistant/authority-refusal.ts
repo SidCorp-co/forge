@@ -6,11 +6,17 @@
  * its line ceiling; nothing here changed in the move.
  */
 
+import {
+  type ConversationVenue,
+  type ConversationWindowRow,
+  codeAuthored,
+  conversationTransport,
+  recordDeliveredReply,
+  reserveDelivery,
+  type WindowClaim,
+} from '../conversations/index.js';
 import { logger } from '../observability/logger.js';
-import { type ConversationVenue, codeAuthored, conversationTransport } from './ports.js';
 import type { RoutedWindow, RouteWindowArgs } from './route-window.js';
-import { recordDeliveredReply } from './transcript.js';
-import { type ConversationWindowRow, reserveDelivery, type WindowClaim } from './windows.js';
 
 export const AUTHORITY_REFUSED_REPLY =
   'I cannot answer in this room: the account speaking here is not linked to a Forge user, so there is nobody for me to act as. Link your chat account to your Forge account and ask again.';

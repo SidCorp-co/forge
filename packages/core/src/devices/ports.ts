@@ -63,7 +63,7 @@ export interface DevicesPorts {
   projectsWithHostCredential(projectIds: string[]): Promise<Set<string>>;
   isHttpsGitUrl(url: string | null | undefined): boolean;
   /** The push credential this deployment hands a paired box, or null when it hands none. */
-  provisionGitCredential(): Promise<GitCredential | null>;
+  provisionGitCredential(deviceId: string): Promise<GitCredential | null>;
   decryptSecret(enc: Buffer): string;
   publishedRunnerBuild(): Promise<PublishedRunnerBuild | null>;
   mainRunnerHead(): string | null;

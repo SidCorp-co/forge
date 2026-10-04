@@ -4,7 +4,7 @@
  * refusal naming the route, the status and the body's first line; nothing here returns a guess.
  */
 
-import { CANONICAL_LADDER } from '../../prompt/facts/registry.js';
+import { CANONICAL_LADDER } from '../../prompt/index.js';
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 

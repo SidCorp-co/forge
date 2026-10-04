@@ -27,7 +27,7 @@ import {
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, type MemberLens } from '../db/schema.js';
-import { buildProgressFactsBlock, computeProjectProgress } from '../issues/progress.js';
+import { buildProgressFactsBlock, computeProjectProgress } from '../issues/index.js';
 import { egressShown } from '../lib/data-egress.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { logger } from '../observability/logger.js';

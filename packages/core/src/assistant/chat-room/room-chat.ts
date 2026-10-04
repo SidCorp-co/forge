@@ -2,8 +2,8 @@
 // hands over is collected into its conversation here, and a reply in a thread Forge opened goes
 // to the issue or question that owns it.
 
-import { consumeIssueThreadReply, consumeQuestionThreadReply } from '../../assistant/index.js';
 import { webBaseUrl } from '../../config/web-base-url.js';
+import { collectInboundMessage, registerConversationTransport } from '../../conversations/index.js';
 import {
   FIXED_REPLY_CONSTANT,
   provideRoomHandlers,
@@ -11,9 +11,9 @@ import {
   sendFixedReply,
 } from '../../integrations/rocketchat/index.js';
 import { logger } from '../../observability/logger.js';
-import { collectInboundMessage } from '../collect-inbound.js';
-import { registerConversationTransport } from '../ports.js';
+import { consumeIssueThreadReply } from './comment-inbound.js';
 import { type RocketChatFrame, rocketChatConversationPorts } from './port.js';
+import { consumeQuestionThreadReply } from './question-inbound.js';
 import { drainConversationWindows } from './window-drain.js';
 
 /** Hands the connection its handlers and registers the room transport. Called once at boot. */

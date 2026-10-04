@@ -1,16 +1,15 @@
+import { type PipelineControl, type PipelineHealth } from '@forge/contracts/pipeline-control';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { safeRecordActivity } from '../pipeline/activity.js';
+import { safeRecordActivity } from '../pipeline/index.js';
 import { broadcastSession } from './broadcast.js';
 import {
   buildPipelineControl,
   buildPipelineHealth,
   DEFAULT_PIPELINE_HEALTH,
   normalisePipelineControl,
-  type PipelineControl,
-  type PipelineHealth,
   pipelineControlInputSchema,
   pipelineHealthInputSchema,
 } from './pipeline-control-types.js';

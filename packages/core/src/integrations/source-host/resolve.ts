@@ -1,13 +1,15 @@
-import { grantHolds, notGrantedMessage } from '../agent-access.js';
-import { forgeReads } from '../forge-reads.js';
-import { getIntegration, listIntegrations } from '../registry.js';
 import {
   type BindingWithConnection,
   decryptConnectionSecrets,
   effectiveConfig,
   findBindingWithConnectionById,
+  forgeReads,
+  getIntegration,
+  grantHolds,
   listBindingsForProject,
-} from '../store.js';
+  listIntegrations,
+  notGrantedMessage,
+} from '../index.js';
 import { SourceHostUnavailable } from './errors.js';
 import type { SourceHost, SourceHostFactory } from './types.js';
 

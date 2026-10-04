@@ -2,7 +2,7 @@ import { RUNNER_MACHINE } from '@forge/contracts/runner-machine';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
-import { transition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/index.js';
 
 export interface HeartbeatRunnerTransition {
   id: string;

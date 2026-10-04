@@ -20,22 +20,28 @@ import type { DispatchState, PolicyRefusalCode } from '@forge/contracts/project-
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
-import { heldTakeRefusal, refuseBlockedTake } from '../issues/blocked-by.js';
-import { assertDispatchGatesForIssue, type DispatchGateCode } from '../issues/dispatch-gates.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { holdQueuedJob, releaseJobHold } from '../jobs/index.js';
-import { resolveJobPolicy } from '../jobs/job-policy.js';
-import { poolPrompt, settleNoPromptJob } from '../jobs/pool-served.js';
+import {
+  activeIssuePrefix,
+  assertDispatchGatesForIssue,
+  type DispatchGateCode,
+  heldTakeRefusal,
+  refuseBlockedTake,
+} from '../issues/index.js';
 import {
   canNameItsAgent,
   checkoutUnboundMessage,
+  holdQueuedJob,
   type PreparedJob,
+  poolPrompt,
   prepareClaimedJob,
+  releaseJobHold,
+  resolveJobPolicy,
   resolveRunnerForDevice,
-} from '../jobs/prepare-claimed-job.js';
+  settleNoPromptJob,
+} from '../jobs/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { refusalCodeOf } from '../lib/refusal.js';
-import { transition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
 import { runnerAdmission } from './pool-admission.js';
 import { devicesPorts } from './ports.js';

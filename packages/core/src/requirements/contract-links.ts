@@ -7,24 +7,35 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { requirementContracts } from '../db/schema-requirements.js';
-import { heldInterface } from '../ecosystem/interface-service.js';
-import { projectsWhere, readInterfaces } from '../ecosystem/store.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { findProjectIdBySlug } from '../projects/index.js';
 import { linkedContracts } from './baselines.js';
 import { notFound, type RequirementActor, rowIn } from './read.js';
 import { contractLinkRefusal } from './rules.js';
 import { answer, type RequirementOutcome } from './service.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
-/** The contracts `projectId`'s interface publishes and consumes, as `<project>/<contract>` refs. */
+/** The contracts a project's interface publishes and consumes, as `<project>/<contract>` refs; null when it holds none. */
+export type InterfaceContracts = (
+  projectId: string,
+) => Promise<{ publishes: string[]; consumes: string[] } | null>;
+
+let interfaceContracts: InterfaceContracts | null = null;
+
+/**
+ * Ecosystem holds a project's interface and sits downstream of design, so the composition root
+ * hands its read in at boot rather than this module importing it.
+ */
+export function provideInterfaceContracts(source: InterfaceContracts): void {
+  interfaceContracts = source;
+}
+
 async function contractsOfProject(projectId: string) {
-  const [own] = await projectsWhere(db, { ids: [projectId] });
-  const held = (await readInterfaces(db, [projectId])).get(projectId);
-  if (!own || !held) return { publishes: [], consumes: [] };
-  const doc = heldInterface(held, projectId).document;
-  return {
-    publishes: Object.keys(doc.publishes).map((slug) => `${own.slug}/${slug}`),
-    consumes: doc.consumes.map((c) => c.contract),
-  };
+  if (!interfaceContracts) {
+    throw new Error(
+      'requirement contract links: no interface source was provided, so what a project publishes and consumes cannot be read; the process entry calls provideInterfaceContracts(interfaceContractsOf) from ecosystem/index.ts before it serves',
+    );
+  }
+  return (await interfaceContracts(projectId)) ?? { publishes: [], consumes: [] };
 }
 
 export async function linkContract(input: {
@@ -42,13 +53,13 @@ export async function linkContract(input: {
   });
   if (refusal) return { ok: false, refusals: [refusal] };
   const [providerSlug, contractSlug] = input.contract.split('/') as [string, string];
-  const [provider] = await projectsWhere(db, { slugs: [providerSlug] });
-  if (!provider) throw notFound(`no project has the slug ${providerSlug}`);
+  const providerProjectId = await findProjectIdBySlug(providerSlug);
+  if (!providerProjectId) throw notFound(`no project has the slug ${providerSlug}`);
   await db
     .insert(requirementContracts)
     .values({
       requirementId: row.id,
-      providerProjectId: provider.id,
+      providerProjectId,
       contractSlug,
       linkedBy: actor.userId,
     })

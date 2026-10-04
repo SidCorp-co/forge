@@ -1,23 +1,13 @@
+import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
-import {
-  and,
-  type Column,
-  eq,
-  getTableName,
-  inArray,
-  notInArray,
-  sql,
-} from 'drizzle-orm';
-import { beatSession, insertSessionRow } from '../agent-sessions/index.js';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
+import { and, type Column, eq, getTableName, inArray, notInArray, sql } from 'drizzle-orm';
+import { beatSession, insertSessionRow, transitionSessions } from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
-import { lockXact } from '../lib/advisory-lock.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
-import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { logger } from '../observability/logger.js';
-import { insertOneShotRun, type OneShotRunSpec } from '../pipeline/runs.js';
+import { insertOneShotRun, type OneShotRunSpec } from '../pipeline/index.js';
 
-export { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 export { liveMasterSessionId, masterSessionIfOwned } from './master-owner.js';
 
 export interface MasterSession {

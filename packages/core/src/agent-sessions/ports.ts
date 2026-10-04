@@ -5,7 +5,7 @@
 import type { ContentLanguageView } from '@forge/contracts/content-language';
 import type { KernelExecutor } from '../db/kernel-marker.js';
 import type { EgressScope } from '../lib/data-egress.js';
-import type { KernelActor } from '../lifecycle/transition.js';
+import type { KernelActor } from '../lifecycle/index.js';
 
 /** The blob store attachment bytes live in. */
 export interface AttachmentStore {

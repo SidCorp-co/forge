@@ -1,11 +1,11 @@
 // A handle's presence — how eager it is to speak in a room it was not summoned
 // into — as configuration with today's constants for defaults (ISS-1034).
 //
-// This is the ONE reader of `PresenceConfig`: the bounds a value must sit in,
-// what an unset key means, and how a room with several handles folds their
-// values into the one set of thresholds `decideProactivity` reads.
+// This is the ONE reader of `PresenceConfig`: what an unset key means, and how
+// a room with several handles folds their values into the one set of thresholds
+// `decideProactivity` reads. The bounds a written value must sit in are its
+// owner's, `orgs/agent-presence.ts`.
 
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
   type AnswerInGroupMode,
@@ -13,6 +13,7 @@ import {
   type PresenceConfig,
 } from '../db/schema-agent-selves.js';
 import type { RoomPresence } from '../db/schema-conversations.js';
+import { boundedPresence, presenceInvalid } from '../orgs/index.js';
 
 /**
  * Today's constants, and what an unset key folds as. `proactivity.ts` reads
@@ -28,74 +29,6 @@ export const PRESENCE_DEFAULTS = {
   heartbeatEnabled: false,
   heartbeatIntervalMs: 60 * 60 * 1000,
 } as const;
-
-/** Inclusive bounds, named in every refusal. */
-export const PRESENCE_BOUNDS = {
-  dormantMs: [60_000, 30 * 24 * 60 * 60 * 1000],
-  backoffAfter: [1, 20],
-  loopBounceMs: [10_000, 60 * 60 * 1000],
-  loopLimit: [1, 20],
-  heartbeatIntervalMs: [5 * 60 * 1000, 7 * 24 * 60 * 60 * 1000],
-} as const;
-
-const bounded = (key: keyof typeof PRESENCE_BOUNDS) => {
-  const [lo, hi] = PRESENCE_BOUNDS[key];
-  return z
-    .number()
-    .int()
-    .min(lo, { error: `presence.${key} must be between ${lo} and ${hi}` })
-    .max(hi, { error: `presence.${key} must be between ${lo} and ${hi}` });
-};
-
-export const PRESENCE_KEYS = [
-  'dormantMs',
-  'backoffAfter',
-  'loopBounceMs',
-  'loopLimit',
-  'answerInGroup',
-  'heartbeat',
-] as const;
-const HEARTBEAT_KEYS = ['enabled', 'intervalMs'] as const;
-
-export const presenceConfigSchema = z
-  .object({
-    dormantMs: bounded('dormantMs').optional(),
-    backoffAfter: bounded('backoffAfter').optional(),
-    loopBounceMs: bounded('loopBounceMs').optional(),
-    loopLimit: bounded('loopLimit').optional(),
-    answerInGroup: z.enum(answerInGroupModes).optional(),
-    heartbeat: z
-      .object({
-        enabled: z.boolean().optional(),
-        intervalMs: bounded('heartbeatIntervalMs').optional(),
-      })
-      .strict()
-      .optional(),
-  })
-  .strict();
-
-/** A presence document that does not fit its shape: request shape, so a 400 naming each key. */
-function presenceInvalid(issues: string[]): HTTPException {
-  return new HTTPException(400, {
-    message: issues.join('; '),
-    cause: { code: 'PRESENCE_INVALID', details: { issues } },
-  });
-}
-
-/** The shape, or a refusal that says which key or bound was wrong. */
-export function validatePresence(input: unknown): PresenceConfig {
-  const parsed = presenceConfigSchema.safeParse(input);
-  if (parsed.success) return parsed.data;
-  const issues = parsed.error.issues.map((i) => {
-    const path = i.path.length ? `presence.${i.path.join('.')}` : 'presence';
-    if (i.code === 'unrecognized_keys') {
-      const inner = i.path.length ? HEARTBEAT_KEYS : PRESENCE_KEYS;
-      return `${path}: unknown key(s) ${i.keys.map((k) => `\`${k}\``).join(', ')}; it takes only: ${inner.join(', ')}`;
-    }
-    return `${path}: ${i.message}`;
-  });
-  throw presenceInvalid(issues);
-}
 
 /** What `decideProactivity` reads: every key resolved, none optional. */
 export interface ResolvedPresence {
@@ -151,10 +84,10 @@ export const ROOM_PRESENCE_KEYS = [
 
 export const roomPresenceSchema = z
   .object({
-    dormantMs: bounded('dormantMs').optional(),
-    backoffAfter: bounded('backoffAfter').optional(),
-    loopBounceMs: bounded('loopBounceMs').optional(),
-    loopLimit: bounded('loopLimit').optional(),
+    dormantMs: boundedPresence('dormantMs').optional(),
+    backoffAfter: boundedPresence('backoffAfter').optional(),
+    loopBounceMs: boundedPresence('loopBounceMs').optional(),
+    loopLimit: boundedPresence('loopLimit').optional(),
     answerInGroup: z.enum(answerInGroupModes).optional(),
   })
   .strict();

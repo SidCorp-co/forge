@@ -9,7 +9,12 @@ export {
   fastModelName,
 } from './fast-model.js';
 export { createOpenAIProvider } from './openai.js';
-export { type ChatTurnKind, chatTurnKinds, resolveForProject } from './registry.js';
+export {
+  type ChatTurnKind,
+  chatTurnKinds,
+  get as getChatProvider,
+  resolveForProject,
+} from './registry.js';
 export type {
   ChatContentPart,
   ChatMessage,

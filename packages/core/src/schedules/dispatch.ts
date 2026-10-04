@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm';
-import { createChatSessionRow } from '../agent-sessions/chat-turn.js';
 import {
+  createChatSessionRow,
   dispatchInteractiveTurn,
   type SessionRefusal,
-} from '../agent-sessions/interactive-credential.js';
+} from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import type { ScheduleMode } from '../db/schema.js';
 import { type agentSessions, projects } from '../db/schema.js';

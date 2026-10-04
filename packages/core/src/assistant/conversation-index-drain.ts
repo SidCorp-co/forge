@@ -1,7 +1,4 @@
-import {
-  conversationsNeedingIndex,
-  indexConversationOnce,
-} from '../conversations/transcript-index.js';
+import { conversationsNeedingIndex, indexConversationOnce } from '../conversations/index.js';
 import { logger } from '../observability/logger.js';
 
 /** Rooms one tick takes. Each is a bounded pass of its own, so a busy fleet drains over ticks. */

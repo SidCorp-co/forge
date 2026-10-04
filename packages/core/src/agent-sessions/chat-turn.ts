@@ -23,7 +23,7 @@ import {
 } from '../lib/device-pool.js';
 import type { RefusalError } from '../lib/refusal.js';
 import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
-import { type KernelActor, movedRow } from '../lifecycle/transition.js';
+import { type KernelActor, movedRow } from '../lifecycle/index.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import { listSessionAttachmentsByIds, type SessionAttachmentRef } from './attachment-service.js';
 import { applyAutoTitleAsync } from './auto-title.js';

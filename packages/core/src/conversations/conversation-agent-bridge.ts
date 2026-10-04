@@ -22,7 +22,7 @@ import type { ProgressFacts } from '../messaging/facts.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { logger } from '../observability/logger.js';
-import { resolveFailureCause } from '../pipeline/failure-causes.js';
+import { resolveFailureCause } from '../pipeline/index.js';
 import {
   CONVERSATION_AGENT_MARKER,
   type ConversationAgentMeta,

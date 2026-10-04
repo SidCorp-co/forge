@@ -2,8 +2,8 @@ import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import type { z } from 'zod';
 import type { BindingRole } from '../db/schema.js';
-import type { TargetedDeployAdapter } from './deploy/records.js';
-import type { SourceHostFactory } from './source-host/types.js';
+import type { TargetedDeployAdapter } from './deploy/index.js';
+import type { SourceHostFactory } from './source-host/index.js';
 
 export type IntegrationProvider =
   | 'coolify'

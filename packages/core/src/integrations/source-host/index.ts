@@ -1,3 +1,4 @@
+export { sourceHostMismatch } from './bind.js';
 export {
   SourceHostCallError,
   SourceHostInputRefusal,
@@ -20,6 +21,27 @@ export {
   OpenedPullRequestIncomplete,
   projectOpenedPullRequest,
 } from './opened-change-request.js';
+export type {
+  CheckRunPayload,
+  ProjectionContext,
+  PullRequestPayload,
+  PushPayload,
+  RefreshOutcome,
+  ReviewPayload,
+} from './projection.js';
+export {
+  applyCheckRunEvent,
+  applyPullRequestEvent,
+  applyReviewEvent,
+  BASE_PUSH_REFRESH_CAP,
+  branchOfPush,
+  findRowByNumber,
+  markRefreshCapped,
+  openPullRequestsOnBase,
+  stateOf,
+  storeRefresh,
+  storeRefreshRefusal,
+} from './projection.js';
 export {
   describeEmptyProjection,
   type InboundDeliveryReport,

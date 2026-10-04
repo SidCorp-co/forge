@@ -1,12 +1,13 @@
 import { logger } from '../../observability/logger.js';
-import { isPreviousCredentialValid } from '../rotation.js';
-import { findConnectionById, updateConnection } from '../store.js';
 import {
   declareIntegration,
+  findConnectionById,
   type HealthCheckResult,
   type HealthStatus,
   type IntegrationAdapterMethods,
-} from '../types.js';
+  isPreviousCredentialValid,
+  updateConnection,
+} from '../index.js';
 import { type AutoflowGqlResult, autoflowGql } from './client.js';
 import { autoflowStorefrontDraft } from './draft.js';
 import { autoflowBaseUrl, autoflowGraphqlUrl, autoflowMcpUrl } from './endpoints.js';

@@ -16,11 +16,13 @@ import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { blockedByUnsettledSql } from '../issues/blocked-by.js';
-import { dispatchGateHeldSql } from '../issues/dispatch-gates.js';
-import { issueWorkInFlightSql } from '../issues/issue-lease.js';
+import {
+  blockedByUnsettledSql,
+  dispatchGateHeldSql,
+  issueWorkInFlightSql,
+} from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/autonomous-mode.js';
+import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/index.js';
 import type { PoolRelation } from './pool.js';
 import { devicesPorts } from './ports.js';
 

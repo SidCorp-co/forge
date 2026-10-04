@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
 import { logger } from '../../observability/logger.js';
-import { type RefreshOutcome, storeRefresh } from '../source-host/projection.js';
+import { type RefreshOutcome, storeRefresh } from '../source-host/index.js';
 import { GitHubClientError, GitHubReadError, type GitHubRepoClient } from './client.js';
 
 interface PullRead {

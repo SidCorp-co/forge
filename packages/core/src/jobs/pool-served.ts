@@ -10,7 +10,7 @@ import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
-import { transition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
 import { jobsPorts } from './ports.js';

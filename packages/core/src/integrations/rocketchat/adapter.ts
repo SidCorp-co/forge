@@ -8,13 +8,13 @@
  * credential against `GET /api/v1/me`, powering the test-connection UI.
  */
 
-import { updateConnection } from '../store.js';
 import {
   type AdapterContext,
   declareIntegration,
   type HealthCheckResult,
   type IntegrationAdapterMethods,
-} from '../types.js';
+  updateConnection,
+} from '../index.js';
 import {
   ROCKETCHAT_BINDING_CONFIG_KEYS,
   rocketchatConfigBase,

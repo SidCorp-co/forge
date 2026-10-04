@@ -1,4 +1,8 @@
 import {
+  PROPOSE_FEEDBACK_TRIAGE_SHAPE,
+  proposeFeedbackTriageRequestSchema,
+} from '@forge/contracts/feedback';
+import {
   ACCEPT_SUGGESTION_SHAPE,
   acceptSuggestionRequestSchema,
   CREATE_SUGGESTION_SHAPE,
@@ -14,6 +18,8 @@ import {
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { db } from '../db/client.js';
+import { rowIn as feedbackRowIn } from '../feedback/index.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
@@ -29,7 +35,11 @@ import {
 
 export const suggestionRoutes = new Hono<{ Variables: AuthVars }>();
 
-for (const path of ['/:id/suggestions', '/:id/suggestions/*']) {
+for (const path of [
+  '/:id/suggestions',
+  '/:id/suggestions/*',
+  '/:id/feedback/:fb/triage-suggestions',
+]) {
   suggestionRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 
@@ -39,6 +49,15 @@ const badRequest = (message: string) =>
 const projectParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
   if (!r.success) throw badRequest('invalid path: the project id is a uuid');
 });
+
+const feedbackParam = zValidator(
+  'param',
+  z.object({ id: z.uuid(), fb: z.string().trim().min(1).max(64) }),
+  (r) => {
+    if (!r.success)
+      throw badRequest('invalid path: a project uuid and a feedback uuid or key (FB-n)');
+  },
+);
 
 const suggestionParam = zValidator('param', z.object({ id: z.uuid(), sid: z.uuid() }), (r) => {
   if (!r.success) throw badRequest('invalid path: a project uuid and a suggestion uuid');
@@ -185,3 +204,29 @@ suggestionRoutes.post('/:id/suggestions/:sid/withdraw', suggestionParam, emptyBo
   const { id, sid } = c.req.valid('param');
   return answer(c, await withdrawSuggestion({ projectId: id, id: sid, actor: actorOf(c) }));
 });
+
+suggestionRoutes.post(
+  '/:id/feedback/:fb/triage-suggestions',
+  feedbackParam,
+  strictBody(proposeFeedbackTriageRequestSchema, PROPOSE_FEEDBACK_TRIAGE_SHAPE),
+  async (c) => {
+    const { id, fb } = c.req.valid('param');
+    const actor = actorOf(c);
+    const body = c.req.valid('json');
+    const row = await feedbackRowIn(db, id, fb);
+    const outcome = await createSuggestion({
+      projectId: id,
+      actor,
+      producerKind: actor.agency === 'agent' ? 'agent' : 'person',
+      producerId: actor.userId,
+      kind: 'feedback_triage',
+      target: { feedback: row.id },
+      baseRevision: null,
+      payload: body.triage,
+      model: body.model ?? null,
+    });
+    if (!outcome.ok) return refused(c, outcome.refusals, 'FEEDBACK_REFUSED');
+    const answerBody: SuggestionResponse = { suggestion: outcome.suggestion };
+    return c.json(answerBody, 201);
+  },
+);

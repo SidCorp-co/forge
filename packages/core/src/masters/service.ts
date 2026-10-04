@@ -1,3 +1,4 @@
+import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import type {
   MasterClosedPass,
   MasterOpenPass,
@@ -10,9 +11,8 @@ import { eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, devices, terminalAgentSessionStatuses } from '../db/schema.js';
-import { setMaxJobPanes } from '../devices/index.js';
-import { ensureMasterSession } from '../devices/master-session.js';
-import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
+import { ensureMasterSession, setMaxJobPanes } from '../devices/index.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { closedPassOf, openPassOf, readClosedPass, readOpenPass } from './read.js';
 import {
   passAlreadyOpenRefusal,
@@ -20,7 +20,6 @@ import {
   sessionEndedRefusal,
   slotsUndeclaredRefusal,
 } from './rules.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 type Refused = { ok: false; refusals: MasterRefusal[] };
 

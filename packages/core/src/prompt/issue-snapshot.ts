@@ -6,7 +6,7 @@ import {
 } from '../branches/resolve.js';
 import { db } from '../db/client.js';
 import { issues, jobs, projects } from '../db/schema.js';
-import { readDeclaredSource } from '../project-config/source.js';
+import { readDeclaredSource } from '../project-config/index.js';
 import type { IssueSnapshot, SessionContextSnapshot } from './user.js';
 
 export type LoadedIssueSnapshot = IssueSnapshot & {

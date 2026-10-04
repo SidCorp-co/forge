@@ -1,11 +1,10 @@
 import { JOB_MACHINE, type JobStatus, OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { beatSession } from '../agent-sessions/index.js';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
+import { beatSession, transitionSessions } from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, jobEvents, jobs, skills } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { transition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/index.js';
 import type { JobGateRow } from './job-queries.js';
 import { jobsPorts } from './ports.js';
 

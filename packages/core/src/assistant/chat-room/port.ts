@@ -7,10 +7,15 @@
 // history the seed already reads.
 
 import { and, eq } from 'drizzle-orm';
-import {
-  resolveSpeaker as resolveForgeSpeaker,
-  type SpeakerResolution,
-} from '../../assistant/index.js';
+import type {
+  ConversationAdapterPorts,
+  ConversationHistoryMessage,
+  ConversationVenue,
+  DeliveryOptions,
+  DeliveryReceipt,
+  RequestAck,
+  ScreenedMessage,
+} from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { integrationBindings, integrationConnections } from '../../db/schema.js';
 import { decryptConnectionSecrets } from '../../integrations/index.js';
@@ -37,15 +42,10 @@ import {
 } from '../../integrations/rocketchat/index.js';
 import { reframed } from '../../messaging/proven.js';
 import { logger } from '../../observability/logger.js';
-import type {
-  ConversationAdapterPorts,
-  ConversationHistoryMessage,
-  ConversationVenue,
-  DeliveryOptions,
-  DeliveryReceipt,
-  RequestAck,
-  ScreenedMessage,
-} from '../ports.js';
+import {
+  resolveSpeaker as resolveForgeSpeaker,
+  type SpeakerResolution,
+} from '../identity/speaker-link.js';
 
 /** What Rocket.Chat hands the ports: the message, the credential it arrived on, and the room's binding. */
 export interface RocketChatFrame {

@@ -1,4 +1,4 @@
-import type { OutboundDispatchResult } from '../types.js';
+import type { OutboundDispatchResult } from '../index.js';
 import { SentryRefusal } from './refusals.js';
 import type { ResolvedSentryTarget } from './targets.js';
 import type { SentryIssueDetail } from './types.js';

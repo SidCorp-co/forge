@@ -6,7 +6,7 @@ import { db } from '../db/client.js';
 import { type RunnerStatus, runners, runnerTypes } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { projectRoom, roomManager, runnerRoom } from '../lib/rooms.js';
-import { transition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
 import { defaultRunnerCapabilities } from './select.js';
 

@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
-import { publishSessionRecoveryChanged } from '../agent-sessions/recovery-publish.js';
 import {
   incrementAutoRetryCount,
   incrementRecoveryStats,
   markSessionTerminal,
-} from '../agent-sessions/recovery-stats.js';
+  publishSessionRecoveryChanged,
+} from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
@@ -17,8 +17,8 @@ import {
   emitPipelineWedge,
   resolvePipelineWedge,
 } from '../pipeline/wedge.js';
-import { onlineCapableDeviceIds } from '../runners/select.js';
-import type { RequiredCapabilities } from '../runners/types.js';
+import type { RequiredCapabilities } from '../runners/index.js';
+import { onlineCapableDeviceIds } from '../runners/index.js';
 import { jobsPorts } from './ports.js';
 
 type JobRow = typeof jobs.$inferSelect;

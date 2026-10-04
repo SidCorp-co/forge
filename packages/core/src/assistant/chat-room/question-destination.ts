@@ -12,7 +12,6 @@
 // disclosure rather than a misdelivery.
 
 import { and, eq } from 'drizzle-orm';
-import { parseRocketChatVenueId } from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { integrationBindings, integrationConnections } from '../../db/schema.js';
 import type { QuestionOrigin, QuestionStep } from '../../db/schema-questions.js';
@@ -27,6 +26,7 @@ import {
   resolveRoomPostAuth,
   roomForProject,
 } from '../../integrations/rocketchat/index.js';
+import { parseRocketChatVenueId } from './port.js';
 
 /**
  * Where a round goes, or why it goes nowhere.

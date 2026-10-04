@@ -1,14 +1,11 @@
-import type { SpeakerRefusalCode } from '@forge/contracts/assistant';
 import { and, eq } from 'drizzle-orm';
+import type { SpeakerRefusal, SpeakerResolution } from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { type ConversationAdapter, conversationAdapters } from '../../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../../db/schema-speaker-links.js';
 import { speakerLinkUrl } from './link-url.js';
 
-export interface SpeakerRefusal {
-  code: SpeakerRefusalCode;
-  message: string;
-}
+export type { SpeakerRefusal, SpeakerResolution };
 
 export interface SpeakerRef {
   source: string;
@@ -18,10 +15,6 @@ export interface SpeakerRef {
   /** Display name, for the refusal text alone. */
   label?: string | null | undefined;
 }
-
-export type SpeakerResolution =
-  | { linked: true; userId: string }
-  | { linked: false; refusal: SpeakerRefusal };
 
 function speakerPhrase(ref: SpeakerRef): string {
   const label = ref.label?.trim();

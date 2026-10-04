@@ -1,6 +1,6 @@
 import { JUDGING_JOB_TYPES, SELF_JOB } from '@forge/contracts/project-config';
-import { environmentsOf } from '../../project-config/release-path.js';
-import type { ProjectDocument, TestingProfile } from '../../project-config/schema.js';
+import type { ProjectDocument, TestingProfile } from '../../project-config/index.js';
+import { environmentsOf } from '../../project-config/index.js';
 
 /** Every environment's address, each line naming the environment and its tier. */
 export function renderTestUrls(document: ProjectDocument | null): string | undefined {

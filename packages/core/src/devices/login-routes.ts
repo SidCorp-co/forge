@@ -37,7 +37,6 @@ import { devicesPorts } from './ports.js';
 import { loginCodeState, userExists, userKindAndOrg } from './read.js';
 import { registerDevice } from './register.js';
 import { approveLoginCode, consumeLoginCode, insertLoginCode } from './service.js';
-import { stampGitCredentialRef } from './writes.js';
 
 type LoginPlatform = 'windows' | 'macos' | 'linux';
 
@@ -347,8 +346,7 @@ deviceLoginRoutes.get(
       // Optional, flag-gated, best-effort git push-credential provisioning.
       let gitCredential: GitCredential | null = null;
       try {
-        gitCredential = await devicesPorts().provisionGitCredential();
-        if (gitCredential) await stampGitCredentialRef(device.id, `https:${gitCredential.host}`);
+        gitCredential = await devicesPorts().provisionGitCredential(device.id);
       } catch (err) {
         logger.error(
           { err, deviceId: device.id },

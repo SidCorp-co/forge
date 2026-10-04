@@ -1,7 +1,21 @@
 export { persistSessionAttachment } from './attachment-service.js';
 export { runCanonicalBackfillOnce } from './backfill-canonical-transcripts.js';
 export { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
+export type { InteractiveAuthority, SessionRefusal } from './interactive-credential.js';
+export {
+  dispatchInteractiveTurn,
+  RUNNER_OUTDATED_REFUSAL,
+  readBoxAuthority,
+  refusalError,
+  sessionRoleRefusal,
+} from './interactive-credential.js';
 export { type AgentSessionsPorts, provideAgentSessionsPorts } from './ports.js';
+export { publishSessionRecoveryChanged } from './recovery-publish.js';
+export {
+  incrementAutoRetryCount,
+  incrementRecoveryStats,
+  markSessionTerminal,
+} from './recovery-stats.js';
 export { setSessionMetadata } from './service.js';
 export {
   agentRefusalText,
@@ -17,7 +31,7 @@ export {
   maybeDeriveIncremental,
   stampFinalizeAttempt,
 } from './session-transcript.js';
-export { transitionSessions } from './session-transition.js';
+export { SWEEP_SESSION_COLUMNS, transitionSessions } from './session-transition.js';
 export { provideTerminalSessionBridge } from './terminal-effects.js';
 export { firstUserMessageText, messageRoleToTurnRole } from './turns-helpers.js';
 export {

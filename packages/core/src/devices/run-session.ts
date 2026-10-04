@@ -12,41 +12,32 @@
  * `issues/issue-lease.ts` is the only thing that writes or reads it.
  */
 
+import {
+  RUN_GROUP_METADATA_KEY,
+  RUN_ISSUE_STATUSES_METADATA_KEY,
+  RUN_ISSUES_METADATA_KEY,
+  RUN_SESSION_KIND,
+} from '@forge/contracts/agent-sessions';
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
-import { insertSessionRow } from '../agent-sessions/index.js';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
+import { insertSessionRow, transitionSessions } from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
-import { refuseHeldTakeForSeqs } from '../issues/blocked-by.js';
 import {
+  heldIssuePrefixes,
   type IssueLeaseRelease,
   readDeviceIssueLease,
+  refuseHeldTakeForSeqs,
   releaseIssueLeaseRow,
   takeIssueLeases,
-} from '../issues/issue-lease.js';
-import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
-import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
+} from '../issues/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
-import { closeRunIfOneShot, insertOneShotRun, type OneShotRunSpec } from '../pipeline/runs.js';
+import { closeRunIfOneShot, insertOneShotRun, type OneShotRunSpec } from '../pipeline/index.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
 import { projectAdmission, runnerNotAdmitted } from './pool-admission.js';
 import { devicesPorts } from './ports.js';
-import {
-  RUN_GROUP_METADATA_KEY,
-  RUN_ISSUE_STATUSES_METADATA_KEY,
-  RUN_ISSUES_METADATA_KEY,
-} from './run-session-keys.js';
-
-export { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
-
-export {
-  RUN_GROUP_METADATA_KEY,
-  RUN_ISSUE_STATUSES_METADATA_KEY,
-  RUN_ISSUES_METADATA_KEY,
-} from './run-session-keys.js';
 
 /** The box's own run id for this dispatch, so the two records can be joined. */
 export const BOX_RUN_ID_METADATA_KEY = 'boxRunId';

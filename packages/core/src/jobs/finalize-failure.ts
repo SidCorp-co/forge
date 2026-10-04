@@ -1,19 +1,24 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type jobs, projects } from '../db/schema.js';
-import type { DeviceLite } from '../issues/actor-agency.js';
-import { applyStatusTransition, type TransitionIssueRow } from '../issues/apply-transition.js';
-import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
+import type { DeviceLite } from '../issues/index.js';
+import {
+  applyStatusTransition,
+  publishPipelineHealthChanged,
+  type TransitionIssueRow,
+} from '../issues/index.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { logger } from '../observability/logger.js';
 import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { classifyVerdict, JOB_TYPE_ENTRY_STATUS } from '../pipeline/recovery-verifier.js';
 import { closeOpenRunForIssue } from '../pipeline/runs.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
-import { stampRunnerLimit } from '../runners/apply-runner-limit.js';
-import { attributeFailureToRunner } from '../runners/attribute-failure.js';
-import { detectRunnerLimit } from '../runners/limit-detect.js';
-import { maybeQuarantineRunner } from '../runners/quarantine.js';
+import {
+  attributeFailureToRunner,
+  detectRunnerLimit,
+  maybeQuarantineRunner,
+  stampRunnerLimit,
+} from '../runners/index.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { finalizeJobDone, hasTerminalHandoffForAttempt } from './finalize-done.js';
 import { holdAutoReleases, holdJobForReason } from './hold.js';

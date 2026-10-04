@@ -15,6 +15,24 @@ export interface GitCredential {
   instructions: string;
 }
 
+/** Records which credential a device was handed; the process entry fills it from devices at boot. */
+export type GitCredentialStamp = (deviceId: string, ref: string) => Promise<void>;
+
+let stampProvided: GitCredentialStamp | null = null;
+
+export function provideGitCredentialStamp(stamp: GitCredentialStamp): void {
+  stampProvided = stamp;
+}
+
+function stampGitCredentialRef(deviceId: string, ref: string): Promise<void> {
+  if (!stampProvided) {
+    throw new Error(
+      'git: no credential stamp was provided, so the device row cannot record which credential it holds; the process entry calls provideGitCredentialStamp before it serves',
+    );
+  }
+  return stampProvided(deviceId, ref);
+}
+
 export function classifyGitRemote(url: string | null | undefined): GitTransport {
   if (!url) return 'unknown';
   const u = url.trim();
@@ -23,7 +41,7 @@ export function classifyGitRemote(url: string | null | undefined): GitTransport 
   return 'unknown';
 }
 
-export async function provisionGitCredential(): Promise<GitCredential | null> {
+export async function provisionGitCredential(deviceId: string): Promise<GitCredential | null> {
   if (!isEnabled('runnerGitCredProvision')) return null;
 
   const token = process.env.GIT_PROVISION_TOKEN;
@@ -36,6 +54,13 @@ export async function provisionGitCredential(): Promise<GitCredential | null> {
       'runnerGitCredProvision is enabled but GIT_PROVISION_TOKEN is unset — skipping git-cred provisioning',
     );
     return null;
+  }
+
+  const ref = `https:${host}`;
+  try {
+    await stampGitCredentialRef(deviceId, ref);
+  } catch (err) {
+    logger.error({ err, deviceId }, 'failed to stamp devices.git_credential_ref');
   }
 
   return {

@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import { pipelineRuns } from '../../db/schema.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
-import { recordDelivery, updateDelivery } from '../deliveries.js';
+import { recordDelivery, updateDelivery } from '../index.js';
 import { SourceHostUnavailable } from './errors.js';
 import { markPullRequestMerged } from './projection.js';
 import { sourceHostForBinding } from './resolve.js';

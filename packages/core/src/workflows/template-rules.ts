@@ -5,7 +5,7 @@
  */
 
 import { bandOfNode, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
-import { pointer } from '../project-config/documents.js';
+import { jsonPointer as pointer } from '../lib/refusal.js';
 import { designLines, nodeOf } from './edges.js';
 import type { WorkflowRefusal } from './rules.js';
 import type { WorkflowWriteV2 } from './schema.js';

@@ -9,10 +9,10 @@
  * edge back leaves this module's own top-level constants in their temporal dead zone while the
  * walk runs.
  */
+import { RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
-import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { logger } from '../observability/logger.js';
 
 export const DESCENT_SOURCE = 'session-descent';
@@ -82,7 +82,7 @@ export async function closeSessionsOwnedBy(
 
       if (child.kind === RUN_SESSION_KIND) {
         // The flip handed its issues back (`session-transition.ts:transitionSessions`).
-        const { closeRunIfOneShot } = await import('../pipeline/runs.js');
+        const { closeRunIfOneShot } = await import('../pipeline/index.js');
         await closeRunIfOneShot(child.pipelineRunId, 'failed');
         result.runsReturned.push(child.pipelineRunId);
         logger.warn(

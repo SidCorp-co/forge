@@ -2,10 +2,10 @@
  * Who owns a session, from core's own record. Deliberately thin — reaching
  * `master-session.ts` instead cycles through the pipeline-runs graph.
  */
+import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { and, eq, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
-import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 
 /** How core issues the owner edge: the box does not say who its parent is. */
 export async function liveMasterSessionId(args: {

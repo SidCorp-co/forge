@@ -12,6 +12,15 @@ export function isAgentHandle(handle: string): boolean {
   return HANDLE_PATTERN.test(handle);
 }
 
+/** A project's agent handle: its slug where that is a valid handle, else one derived from its id. */
+export function handleNameForProject(slug: string, projectId: string): string {
+  const derived = slug
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return isAgentHandle(derived) ? derived : `agent-${projectId.slice(0, 8)}`;
+}
+
 export function synthesizeAgentEmail(handle: string): string {
   return `${handle}.${randomBytes(6).toString('hex')}@${AGENT_EMAIL_DOMAIN}`;
 }

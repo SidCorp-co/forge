@@ -14,11 +14,16 @@
  */
 
 import { env } from '../../config/env.js';
+import {
+  type ClaimedWindow,
+  claimDueWindows,
+  claimOf,
+  releaseWindow,
+} from '../../conversations/index.js';
 import type { ActiveConnection } from '../../integrations/rocketchat/index.js';
 import { namespaceFromServerUrl } from '../../integrations/rocketchat/index.js';
 import { logger } from '../../observability/logger.js';
 import { routeWindow, type WindowMessage } from '../route-window.js';
-import { type ClaimedWindow, claimDueWindows, claimOf, releaseWindow } from '../windows.js';
 import { parseRocketChatVenueId, rocketChatConversationPorts } from './port.js';
 import { rocketChatTurn } from './turn-inputs.js';
 
@@ -81,7 +86,9 @@ export async function routeOne(
   const outcome = await routeWindow({
     window,
     handoffFor: async (windowId) =>
-      (await import('../conversation-agent.js')).conversationAgentTurnForWindow(windowId),
+      (await import('../../conversations/conversation-agent.js')).conversationAgentTurnForWindow(
+        windowId,
+      ),
     refusalFor: async ({ authorKey, authorLabel }) => {
       if (!authorKey) return null;
       const resolved = await rocketChatConversationPorts.resolveSpeaker({

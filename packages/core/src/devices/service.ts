@@ -13,14 +13,14 @@ import {
   skills,
 } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { type KernelActor, transition } from '../lifecycle/transition.js';
+import { type KernelActor, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import {
   deleteDeviceRunners,
+  insertRunnerEvent,
   mirrorHeartbeatToRunners,
   setRunnerProvisionDetail,
 } from '../runners/index.js';
-import { insertRunnerEvent } from '../runners/runner-events.js';
 import { revokeDeviceCredentials } from './credential.js';
 import type { DevicePatch } from './heartbeat-patch.js';
 import { heartbeatPool } from './pool-read-report.js';

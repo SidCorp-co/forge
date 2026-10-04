@@ -9,11 +9,13 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { createChatSessionRow } from '../agent-sessions/chat-turn.js';
-import { setSessionFailureDetail } from '../agent-sessions/index.js';
-import { dispatchInteractiveTurn } from '../agent-sessions/interactive-credential.js';
-import { readSessionAsker } from '../agent-sessions/session-credential.js';
-import { firstUserMessageText } from '../agent-sessions/turns-helpers.js';
+import {
+  createChatSessionRow,
+  dispatchInteractiveTurn,
+  firstUserMessageText,
+  readSessionAsker,
+  setSessionFailureDetail,
+} from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, projects } from '../db/schema.js';
 import { logger } from '../observability/logger.js';

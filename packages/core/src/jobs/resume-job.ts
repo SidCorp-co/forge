@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
-import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
+import { publishPipelineHealthChanged } from '../issues/index.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
-import type { KernelActor } from '../lifecycle/transition.js';
+import type { KernelActor } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { logger } from '../observability/logger.js';
 import { dispatchRequeuedJob, readHoldState, requeueHeldJob } from './hold.js';

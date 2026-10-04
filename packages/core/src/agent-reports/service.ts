@@ -28,9 +28,8 @@ import {
   scheduleRuns,
 } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { writeRecordEvent } from '../issues/record-events/store.js';
-import { type PipelineCaller, resolvePipelineContext } from '../jobs/active-job-context.js';
+import { activeIssuePrefix, writeRecordEvent } from '../issues/index.js';
+import { type PipelineCaller, resolvePipelineContext } from '../jobs/index.js';
 import { maxProjectRole, orgDerivedProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';

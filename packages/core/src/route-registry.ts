@@ -142,7 +142,7 @@ import {
   stepHandoffRoutes,
 } from './pipeline/routes.js';
 import { pmReadRoutes, pmRoutes } from './pm/routes.js';
-import { preferenceRoutes } from './preferences/routes.js';
+import { orgMemberPreferenceRoutes, preferenceRoutes } from './preferences/routes.js';
 import {
   environmentStateRoutes,
   jobTestingSecretsRoutes,
@@ -277,8 +277,9 @@ function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void
   app.route('/api/projects', projectRoutes);
   app.route('/api/projects', assistantWeeklyRoutes);
   app.route('/api/orgs', orgRoutes);
-  // No auth of its own: it answers under orgRoutes' gate, mounted just above on the same prefix.
+  // No auth of their own: they answer under orgRoutes' gate, mounted just above on the same prefix.
   app.route('/api/orgs', deviceOrgRoutes);
+  app.route('/api/orgs', orgMemberPreferenceRoutes);
   app.route('/api/orgs', sshKeyRoutes);
   app.route('/api/org-invitations', orgInvitationRoutes);
   app.route('/api/projects', integrationsRoutes);

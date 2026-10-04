@@ -16,6 +16,7 @@ import {
   type FeedbackView,
   feedbackKey,
 } from '@forge/contracts/feedback';
+import { requirementKey } from '@forge/contracts/requirements';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { and, asc, count, desc, eq, ilike, inArray } from 'drizzle-orm';
@@ -32,16 +33,13 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { isUuid } from '../issues/issue-route-ref.js';
-import { findIssueById } from '../issues/read-service.js';
+import { activeIssuePrefix, findIssueById, isUuid } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
-import { requirementKey, rowIn as requirementRowIn } from '../requirements/read.js';
-import { deliveredAmong } from '../requirements/standing-read.js';
-import { userNames } from '../workflows/service.js';
+import { deliveredAmong, rowIn as requirementRowIn } from '../requirements/index.js';
+import { userNames } from '../workflows/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { feedbackIdsOfRequirement, NO_FEEDBACK, sourceOf } from './relations.js';
 import { type FeedbackRefusal, searchWithheldRefusal } from './rules.js';

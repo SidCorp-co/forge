@@ -8,9 +8,8 @@ import {
   skillRegistrations,
   skills,
 } from '../db/schema.js';
-import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
-import { openOneShotRun } from '../pipeline/runs.js';
-import { onlineCapableDeviceIds } from '../runners/select.js';
+import { insertAndEnqueueJob, openOneShotRun } from '../pipeline/index.js';
+import { onlineCapableDeviceIds } from '../runners/index.js';
 import { loadProjectSkillSyncStatus, type ProjectSkillSyncStatus } from './effective.js';
 import { refuse } from './refuse.js';
 

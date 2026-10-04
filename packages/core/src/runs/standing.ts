@@ -12,7 +12,7 @@ import type {
   RunState,
   RunStep,
 } from '@forge/contracts/run-standing';
-import { stepOf } from '../pipeline/runs-lane.js';
+import { stepOf } from '../pipeline/index.js';
 import { finalOf } from './standing-final.js';
 import { holderOf } from './standing-holder.js';
 import { liveOf } from './standing-live.js';

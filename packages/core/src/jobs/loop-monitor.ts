@@ -1,9 +1,9 @@
 import { JOB_MACHINE, OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, eq, inArray, isNotNull, lt, or, type SQL, sql } from 'drizzle-orm';
-import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/session-transition.js';
+import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
-import { transition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
 import { resumeLapsedAnswers } from '../pipeline/answer-resume.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';

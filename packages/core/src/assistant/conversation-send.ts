@@ -15,26 +15,25 @@
 
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { agentRefusalText } from '../agent-sessions/session-credential.js';
-import { collectInboundMessage } from '../conversations/collect-inbound.js';
-import { type ProjectHandle, resolveProjectHandle } from '../conversations/handles.js';
-import { type ConversationVenue, codeAuthored } from '../conversations/ports.js';
-import { refuseConversation } from '../conversations/refusals.js';
-import { routeWindow, type WindowTurnInputs } from '../conversations/route-window.js';
+import { agentRefusalText } from '../agent-sessions/index.js';
 import {
   type ConversationImage,
-  effectiveConversationMode,
-  getConversation,
-  readMessages,
-  settleConversationMode,
-} from '../conversations/store.js';
-import {
+  type ConversationVenue,
   type ConversationWindowRow,
   claimDueWindows,
   claimOf,
+  codeAuthored,
+  collectInboundMessage,
+  effectiveConversationMode,
+  getConversation,
+  type ProjectHandle,
+  readMessages,
+  refuseConversation,
   releaseWindow,
+  resolveProjectHandle,
+  settleConversationMode,
   type WindowClaim,
-} from '../conversations/windows.js';
+} from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import type { ConversationMode, ConversationShape } from '../db/schema-conversations.js';
@@ -55,6 +54,7 @@ import {
   webAgentConversationPersona,
   webConversationPersona,
 } from './door-persona.js';
+import { routeWindow, type WindowTurnInputs } from './route-window.js';
 import { buildBaToolset } from './tools/ba-tools.js';
 import { mergeToolsets } from './tools/mcp-adapter.js';
 import { buildChatToolContext } from './tools/principal.js';

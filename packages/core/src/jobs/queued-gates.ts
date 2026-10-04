@@ -3,13 +3,13 @@ import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { runnerMayTakeJob } from '../devices/release-label.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
-import { claimCapableSql } from '../runners/device-cap.js';
 import {
+  claimCapableSql,
   deviceNotDisabled,
   runnerFresh,
   runnerUnlimited,
   runnerWorkspaceReady,
-} from '../runners/liveness-sql.js';
+} from '../runners/index.js';
 
 export type GateSkipReason =
   | 'not_found'

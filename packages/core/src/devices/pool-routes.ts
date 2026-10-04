@@ -68,11 +68,7 @@ type AskBody = z.infer<typeof askBodySchema>;
 
 const answerQuerySchema = z.object({ runId: z.string().optional() });
 
-import {
-  type ResolvedLeaseKey,
-  readDeviceIssueLease,
-  resolveLeaseKey,
-} from '../issues/issue-lease.js';
+import { type ResolvedLeaseKey, readDeviceIssueLease, resolveLeaseKey } from '../issues/index.js';
 import { releaseHoldsOf, releaseJobHold } from '../jobs/index.js';
 import { readAdmissibleIssues } from './admissible.js';
 import { prepareJobForMaster, startJobForMaster } from './claim.js';

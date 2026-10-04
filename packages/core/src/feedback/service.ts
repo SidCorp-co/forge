@@ -19,17 +19,17 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
-import { deleteFeedbackEmbedding } from '../embeddings/item-writer.js';
+import { deleteFeedbackEmbedding } from '../embeddings/index.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
-import { type KernelActor, movedRow, transition } from '../lifecycle/transition.js';
-import { deleteFeedbackMockups } from '../mockups/index.js';
+import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { deleteFeedbackQuestions } from '../questions/index.js';
 import { getStorage } from '../storage/index.js';
-import { redactFeedbackSuggestions } from '../suggestions/index.js';
-import { designNodesIn, nodeRefRefusal } from '../workflows/node-refs.js';
+import { designNodesIn, nodeRefRefusal } from '../workflows/index.js';
+import { feedbackDependents } from './dependents.js';
 import { embedFeedbackLater } from './embeddings.js';
 import { detailAs, type FeedbackActor, feedbackKey, phaseOfRow, type Row, rowIn } from './read.js';
 import { isRefusal, resolveTarget } from './refs.js';
@@ -42,7 +42,6 @@ import {
   verifyActRefusal,
   verifyRefusal,
 } from './rules.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 export type FeedbackOutcome =
   | { ok: true; feedback: FeedbackView; created?: boolean; effect?: FeedbackTriageEffect }
@@ -356,7 +355,11 @@ export async function redactReporterData(input: {
     await deleteFeedbackQuestions(tx, row.id);
     const now = new Date();
     const why = `reporter data of ${feedbackKey(row.fbSeq)} deleted`;
-    await redactFeedbackSuggestions(tx, row.id, { why, now, actor: feedbackKernelActor(actor) });
+    await feedbackDependents().redactSuggestions(tx, row.id, {
+      why,
+      now,
+      actor: feedbackKernelActor(actor),
+    });
     await tx
       .update(feedback)
       .set({
@@ -367,7 +370,7 @@ export async function redactReporterData(input: {
         updatedAt: now,
       })
       .where(eq(feedback.id, row.id));
-    paths.push(...(await deleteFeedbackMockups(tx, row.id)));
+    paths.push(...(await feedbackDependents().deleteMockups(tx, row.id)));
     await decide(tx, row, actor, { decision: 'redacted' });
     return null;
   });

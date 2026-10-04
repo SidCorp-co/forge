@@ -1,3 +1,4 @@
+import { MASTER_SESSION_KIND, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import type {
   MasterClosedPass,
   MasterOpenPass,
@@ -7,15 +8,17 @@ import type {
   MasterStanding,
   MasterVerb,
 } from '@forge/contracts/master-standing';
+import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
-import { OCCUPYING } from '../devices/load.js';
-import { masterLastBeatSql, masterSilentSql } from '../devices/master-silence.js';
-import { SESSION_SILENCE_TIMEOUT_S } from '../devices/session-silence.js';
-import { NOT_PARKED } from '../jobs/resident-session.js';
-import { MASTER_SESSION_KIND, RUN_SESSION_KIND } from '../jobs/session-kinds.js';
-import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
+import {
+  masterLastBeatSql,
+  masterSilentSql,
+  OCCUPYING,
+  SESSION_SILENCE_TIMEOUT_S,
+} from '../devices/index.js';
+import { NOT_PARKED } from '../jobs/index.js';
 import { slotsOf } from './rules.js';
 
 const rowsOf = <T>(r: unknown) => [...(r as Iterable<T>)];

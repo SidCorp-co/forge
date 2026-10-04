@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices } from '../db/schema.js';
-import { compareRunnerBuild } from '../devices/build-state.js';
+import { compareRunnerBuild } from '../devices/index.js';
 import { runnersPorts } from './ports.js';
 import type { HealthResult, Runner, RunnerAdapter } from './types.js';
 

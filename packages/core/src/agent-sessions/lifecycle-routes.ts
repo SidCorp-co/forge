@@ -10,7 +10,7 @@ import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { holds } from '../permissions/index.js';
-import { closeRunIfOneShot } from '../pipeline/runs.js';
+import { closeRunIfOneShot } from '../pipeline/index.js';
 import { broadcastSession } from './broadcast.js';
 import { checkoutUnbound, noClaudeClient } from './chat-turn.js';
 import { abortBodySchema, desktopStatusSchema, setRunnerBodySchema } from './lifecycle-schemas.js';

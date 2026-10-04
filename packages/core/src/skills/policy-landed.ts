@@ -6,7 +6,7 @@ import {
   buildPlatformInvariantSet,
   describeInvariantDelta,
   type PlatformInvariantEntry,
-} from '../prompt/facts/invariant-set.js';
+} from '../prompt/index.js';
 import { recordSkillActivityEvent } from './activity.js';
 
 export interface PolicyLandedSweepResult {

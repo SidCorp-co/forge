@@ -7,7 +7,7 @@ import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { resolvedWindowDaysFor } from '../pipeline/retention/policy.js';
+import { resolvedWindowDaysFor } from '../pipeline/index.js';
 import { runnerHealthWithBuild } from './build-comparison.js';
 import { clearRunnerQuarantine } from './quarantine.js';
 import {

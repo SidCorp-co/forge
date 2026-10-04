@@ -1,7 +1,6 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { claimCapableSql } from '../runners/device-cap.js';
-import { runnerLive } from '../runners/liveness-sql.js';
+import { claimCapableSql, runnerLive } from '../runners/index.js';
 
 // cm:edge contract -> packages/core/src/project-config/release-path.ts:productionOf — the one
 // production environment's deploy binding, read off the stored project document.

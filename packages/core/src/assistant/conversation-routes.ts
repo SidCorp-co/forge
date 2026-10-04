@@ -16,39 +16,37 @@ import { uiSnapshotSchema } from '@forge/contracts/ui-actions';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { listConversationAttachmentsByIds } from '../conversations/attachment-service.js';
 import {
   conversationAgentUnavailableReason,
   readConversationAgentTurns,
 } from '../conversations/conversation-agent.js';
-import { projectsNamed } from '../conversations/membership.js';
-import { listParticipants } from '../conversations/participants.js';
-import { validateRoomPresence } from '../conversations/presence.js';
-import { refuseConversation } from '../conversations/refusals.js';
-import { derivedScope } from '../conversations/scope.js';
 import {
   type ConversationRow,
   deleteConversation,
+  derivedScope,
   effectiveConversationMode,
+  listConversationAttachmentsByIds,
   listConversationsInProject,
+  listParticipants,
+  listWindowsForConversation,
+  mayChangeMembership,
+  projectsNamed,
+  readableConversation,
   readMessages,
+  refuseConversation,
   renameConversation,
   setConversationArchived,
   setConversationPresence,
-} from '../conversations/store.js';
-import { listWindowsForConversation } from '../conversations/windows.js';
+  validateRoomPresence,
+  writableConversation,
+} from '../conversations/index.js';
 import { conversationModes } from '../db/schema-conversations.js';
 import { effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { batchesOfConversation } from '../questionnaires/read.js';
-import {
-  mayChangeMembership,
-  readableConversation,
-  writableConversation,
-} from './conversation-access.js';
+import { batchesOfConversation } from '../questionnaires/index.js';
 import { agentModeOffer } from './conversation-agent-offer.js';
 import { conversationAttachmentRoutes } from './conversation-attachment-routes.js';
 import { foreignAttachmentIds, imagesFromAttachments } from './conversation-images.js';
