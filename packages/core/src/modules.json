@@ -809,7 +809,6 @@
       "context": "knowledge",
       "owns": [
         "memories",
-        "memoryChunks",
         "memoryRevisions",
         "retrievalAnalytics"
       ],
@@ -946,8 +945,7 @@
       "owns": [
         "agentSelves",
         "orgInvitations",
-        "organizations",
-        "workspaceSshKeys"
+        "organizations"
       ],
       "serves": [
         "personal-data-flow#ds-users",
@@ -969,9 +967,7 @@
     "pat": {
       "kind": "platform",
       "context": "platform",
-      "owns": [
-        "patFenceChanges"
-      ],
+      "owns": [],
       "serves": [
         "personal-data-flow#src-mcp",
         "personal-data-flow#ds-audit",
@@ -1047,7 +1043,6 @@
       "kind": "domain",
       "context": "project-config",
       "owns": [
-        "projectGitCredentials",
         "projectInvitations",
         "projectMasterCharters",
         "projects"

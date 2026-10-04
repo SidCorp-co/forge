@@ -194,12 +194,6 @@ export const userPreferences = pgTable('user_preferences', {
    */
   notifyOnMention: boolean('notify_on_mention').notNull().default(true),
   /**
-   * Newest "What's New" entry seen: a changelog version, or `unreleased:<hash>`
-   * for the moving [Unreleased] section. The nav badge shows while this differs
-   * from the top entry; null means the feed was never opened (ISS-384).
-   */
-  lastSeenWhatsNew: text('last_seen_whats_new'),
-  /**
    * The org being "worked in" (ISS-469). Null means no explicit choice and the
    * client resolves it to the personal org; `set null` on org delete so a removed
    * org clears the pointer rather than blocking the delete or dangling.
@@ -728,11 +722,6 @@ export const jobs = pgTable(
     activeUniqueIdx: uniqueIndex('jobs_active_unique')
       .on(t.issueId, t.type)
       .where(sql`status IN ('queued','dispatched','running','held') AND issue_id IS NOT NULL`),
-    // PM jobs may have a NULL issue_id (project-scoped coordinator), so the
-    // existing per-issue index does not cover them. ISS-17.
-    pmActiveUniqueIdx: uniqueIndex('jobs_pm_per_project_unique_idx')
-      .on(t.projectId)
-      .where(sql`type = 'pm' AND status IN ('queued','dispatched','running','held')`),
     pipelineRunIdx: index('jobs_pipeline_run_idx').on(t.pipelineRunId),
     finishedArchiveIdx: index('jobs_finished_archive_idx')
       .on(t.finishedAt)
@@ -1495,8 +1484,6 @@ export const memories = pgTable(
     // Soft delete for decay/consolidation. Archived rows are excluded from
     // every read surface; hard purge happens after a further grace period.
     archivedAt: timestamp('archived_at', { withTimezone: true }),
-    chunkGeneration: integer('chunk_generation').notNull().default(0),
-    chunkedAt: timestamp('chunked_at', { withTimezone: true }),
     // memory-v2 phase 1 keyword retrieval. GENERATED ALWAYS in Postgres
     // (migration 0105) — drizzle must never include it in INSERT/UPDATE.
     textSearch: tsVector('text_search').generatedAlwaysAs(
@@ -1615,49 +1602,6 @@ export const knowledgeEntriesRelations = relations(knowledgeEntries, ({ one }) =
   project: one(projects, { fields: [knowledgeEntries.projectId], references: [projects.id] }),
 }));
 
-export const taskStatuses = ['backlog', 'todo', 'in_progress', 'in_review', 'done'] as const;
-export type TaskStatus = (typeof taskStatuses)[number];
-
-export const taskAgentStatuses = ['idle', 'running', 'completed', 'failed'] as const;
-export type TaskAgentStatus = (typeof taskAgentStatuses)[number];
-
-export const tasks = pgTable(
-  'tasks',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    issueId: uuid('issue_id')
-      .notNull()
-      .references(() => issues.id, { onDelete: 'cascade' }),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    title: text('title').notNull(),
-    description: text('description'),
-    status: text('status', { enum: taskStatuses }).notNull().default('backlog'),
-    priority: text('priority', { enum: issuePriorities }).notNull().default('none'),
-    assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
-    isAgentTask: boolean('is_agent_task').notNull().default(false),
-    agentStatus: text('agent_status', { enum: taskAgentStatuses }),
-    agentLog: jsonb('agent_log'),
-    acceptanceCriteria: jsonb('acceptance_criteria'),
-    sortOrder: integer('sort_order').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    issueIdx: index('tasks_issue_id_idx').on(t.issueId),
-    projectStatusIdx: index('tasks_project_status_idx').on(t.projectId, t.status),
-    assigneeIdx: index('tasks_assignee_idx').on(t.assigneeId),
-    issueSortIdx: index('tasks_issue_sort_idx').on(t.issueId, t.sortOrder),
-  }),
-);
-
-export const tasksRelations = relations(tasks, ({ one }) => ({
-  issue: one(issues, { fields: [tasks.issueId], references: [issues.id] }),
-  project: one(projects, { fields: [tasks.projectId], references: [projects.id] }),
-  assignee: one(users, { fields: [tasks.assigneeId], references: [users.id] }),
-}));
-
 export const scheduleModes = ['propose', 'auto'] as const;
 export type ScheduleMode = (typeof scheduleModes)[number];
 
@@ -1684,7 +1628,6 @@ export const schedules = pgTable(
     templateKey: text('template_key'),
     params: jsonb('params'),
     mode: text('mode', { enum: scheduleModes }),
-    appliedMessageVersions: jsonb('applied_message_versions'),
     kind: text('kind', { enum: scheduleKinds }).notNull().default('prompt'),
     script: text('script'),
     /**
@@ -1709,36 +1652,6 @@ export const schedulesRelations = relations(schedules, ({ one }) => ({
 }));
 
 export * from './schema-schedule-runs.js';
-
-export const knowledgeEdges = pgTable(
-  'knowledge_edges',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    subject: text('subject').notNull(),
-    predicate: text('predicate').notNull(),
-    object: text('object').notNull(),
-    value: text('value'),
-    sourceMemoryId: text('source_memory_id'),
-    confidence: real('confidence').notNull().default(1.0),
-    validFrom: timestamp('valid_from', { withTimezone: true }),
-    validUntil: timestamp('valid_until', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    projectSubjectIdx: index('knowledge_edges_project_subject_idx').on(t.projectId, t.subject),
-    projectPredicateIdx: index('knowledge_edges_project_predicate_idx').on(
-      t.projectId,
-      t.predicate,
-    ),
-  }),
-);
-
-export const knowledgeEdgesRelations = relations(knowledgeEdges, ({ one }) => ({
-  project: one(projects, { fields: [knowledgeEdges.projectId], references: [projects.id] }),
-}));
 
 export const usageSources = ['cli', 'api', 'desktop'] as const;
 export type UsageSource = (typeof usageSources)[number];
@@ -1937,8 +1850,6 @@ export const sessionAttachmentsRelations = relations(sessionAttachments, ({ one 
   }),
 }));
 
-export const memoryModels = ['flat', 'chunked'] as const;
-export type MemoryModel = (typeof memoryModels)[number];
 
 export const appConfig = pgTable('app_config', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1950,15 +1861,9 @@ export const appConfig = pgTable('app_config', {
   chatModel: text('chat_model'),
   /** `{ [ChatTurnKind]: model }` — a per-kind model on the same provider; a missing kind falls to `chatModel`. */
   chatModelByKind: jsonb('chat_model_by_kind').notNull().default(sql`'{}'::jsonb`),
-  retrievalTopK: integer('retrieval_top_k').notNull().default(10),
-  retrievalMinScore: real('retrieval_min_score').notNull().default(0),
   retrievalRerank: boolean('retrieval_rerank').notNull().default(false),
-  memoryModel: text('memory_model', { enum: memoryModels }).notNull().default('flat'),
   retrievalExpandRelations: boolean('retrieval_expand_relations').notNull().default(false),
-  memoryReindex: jsonb('memory_reindex').notNull().default(sql`'{}'::jsonb`),
-  enabledChannels: jsonb('enabled_channels').notNull().default(sql`'[]'::jsonb`),
   systemPromptOverride: text('system_prompt_override'),
-  lastBackfillAt: timestamp('last_backfill_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -2071,98 +1976,6 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
     return 'bytea';
   },
 });
-
-// ISS-628 — org-scoped Private Keys pool (workspace resource). A key is
-// generated/pasted once per org and referenced by any number of projects in
-// that org, replacing the old 1:1-per-project model below. `forge_generated`
-// => Forge minted the ed25519 pair (private encrypted here, public surfaced
-// for the user to add as a deploy key); `user_provided` => the user pasted
-// their own private key (encrypted the same way). Listing/showing a key NEVER
-// decrypts the private half — it is decrypted only at device provisioning,
-// delivered once over the wire (mirrors the ISS-305 side-channel).
-export const projectGitCredentialSources = ['forge_generated', 'user_provided'] as const;
-export type ProjectGitCredentialSource = (typeof projectGitCredentialSources)[number];
-
-export const workspaceSshKeyTypes = ['ed25519'] as const;
-export type WorkspaceSshKeyType = (typeof workspaceSshKeyTypes)[number];
-
-export const workspaceSshKeys = pgTable(
-  'workspace_ssh_keys',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    orgId: uuid('org_id')
-      .notNull()
-      .references(() => organizations.id, { onDelete: 'cascade' }),
-    name: text('name').notNull(),
-    note: text('note'),
-    source: text('source', { enum: projectGitCredentialSources }).notNull(),
-    keyType: text('key_type', { enum: workspaceSshKeyTypes }).notNull().default('ed25519'),
-    // Non-secret OpenSSH public key line ("ssh-ed25519 AAAA… forge-<slug>").
-    publicKey: text('public_key').notNull(),
-    // Vault-encrypted (<iv:12><tag:16><ct>) OpenSSH private key — same format as
-    // integration_connections.secrets_enc; decrypt only at provision dispatch.
-    privateKeyEnc: bytea('private_key_enc').notNull(),
-    // Non-secret SHA256 fingerprint for display + dedup ("SHA256:…"). Nullable
-    // to tolerate legacy rows folded in by migration 0150 that predate
-    // fingerprint capture.
-    fingerprint: text('fingerprint'),
-    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    orgIdIdx: index('workspace_ssh_keys_org_id_idx').on(t.orgId),
-    // Dedup identical physical keys within an org (Coolify pattern). Partial so
-    // legacy rows without a captured fingerprint (NULL) never collide.
-    orgFingerprintUq: uniqueIndex('workspace_ssh_keys_org_fingerprint_uq')
-      .on(t.orgId, t.fingerprint)
-      .where(sql`fingerprint IS NOT NULL`),
-  }),
-);
-
-export const workspaceSshKeysRelations = relations(workspaceSshKeys, ({ one, many }) => ({
-  organization: one(organizations, {
-    fields: [workspaceSshKeys.orgId],
-    references: [organizations.id],
-  }),
-  creator: one(users, { fields: [workspaceSshKeys.createdBy], references: [users.id] }),
-  projects: many(projectGitCredentials),
-}));
-
-// Per-project Git access — a thin (project_id, ssh_key_id) reference into the
-// org's `workspace_ssh_keys` pool. A project picks at most one pool key; many
-// projects may reference the same key. ON DELETE RESTRICT backs the
-// server-side safe-delete guard at the DB level (a pool key in use can't be
-// dropped out from under a project).
-export const projectGitCredentials = pgTable(
-  'project_git_credentials',
-  {
-    // 1:1 with the project — PK is the FK so a project has at most one reference.
-    projectId: uuid('project_id')
-      .primaryKey()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    sshKeyId: uuid('ssh_key_id')
-      .notNull()
-      .references(() => workspaceSshKeys.id, { onDelete: 'restrict' }),
-    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    sshKeyIdIdx: index('project_git_credentials_ssh_key_id_idx').on(t.sshKeyId),
-  }),
-);
-
-export const projectGitCredentialsRelations = relations(projectGitCredentials, ({ one }) => ({
-  project: one(projects, {
-    fields: [projectGitCredentials.projectId],
-    references: [projects.id],
-  }),
-  sshKey: one(workspaceSshKeys, {
-    fields: [projectGitCredentials.sshKeyId],
-    references: [workspaceSshKeys.id],
-  }),
-}));
 
 import * as ints from './schema-integration-types.js';
 
