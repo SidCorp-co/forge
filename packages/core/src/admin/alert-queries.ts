@@ -11,13 +11,13 @@
  */
 
 import { inArray, sql } from 'drizzle-orm';
+import { readThresholds } from '../admin-thresholds/index.js';
 import { db } from '../db/client.js';
 import { schedules } from '../db/schema.js';
 import { runnerMayTakeJob } from '../devices/release-label.js';
 import { buildBarrierFragments } from '../jobs/queued-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { readScheduleStreaks, type ScheduleStreak, streakFails } from '../schedules/streak.js';
-import { readThresholds } from './thresholds.js';
 import type { AdminAlert, AdminAlertId, AdminAlertStatus, AdminThresholds } from './types.js';
 import { ADMIN_THRESHOLD_DEFAULTS } from './types.js';
 

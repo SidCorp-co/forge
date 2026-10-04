@@ -11,8 +11,9 @@ import {
   type ScheduleDetailResponse,
   type ScheduleStanding,
 } from '@forge/contracts/automation-standing';
-import { readThresholds } from '../admin/thresholds.js';
+import { readThresholds } from '../admin-thresholds/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { holds } from '../permissions/index.js';
 import { lastFires } from '../schedules/fires.js';
 import { readScheduleStreaks } from '../schedules/streak.js';
 import {
@@ -36,7 +37,6 @@ import {
   type StewardAction,
   scheduleStandingOf,
 } from './standing.js';
-import { holds } from '../permissions/index.js';
 
 /** The viewer a read addresses its waits to: null when the caller is not a project member. */
 export async function automationViewerOf(

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { readThresholds } from '../admin/thresholds.js';
+import { readThresholds } from '../admin-thresholds/index.js';
 import { db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { setRunnerStatus } from './runner-events.js';

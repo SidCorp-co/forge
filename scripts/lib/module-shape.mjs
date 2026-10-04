@@ -28,22 +28,71 @@ export const RULES = [
 export const ROOT_MODULE = '(root)';
 const SRC = 'packages/core/src/';
 
+/** The kinds that may own a table; a read model derives and a door composes. */
+export const OWNING_KINDS = ['kernel', 'domain', 'adapter', 'platform'];
+
+/** The technical layers, each defined by one kind. */
+export const LAYER_OF_KIND = { platform: 'platform', adapter: 'adapters' };
+
+const SHAPE =
+  'shape { contexts: [{ name, label }], modules: { "<dir>": { kind, context, owns? } } }';
+
+/** The declared contexts in dependency order, or the faults that stop them being read. */
+function parseContexts(list) {
+  if (!Array.isArray(list) || list.length === 0)
+    return { faults: [`modules.json: no \`contexts\` list — ${SHAPE}`], order: [] };
+  const faults = [];
+  const order = [];
+  for (const [i, c] of list.entries()) {
+    if (typeof c?.name !== 'string' || !/^[a-z][a-z-]*$/.test(c.name))
+      faults.push(`modules.json: contexts[${i}] has no kebab-case \`name\` — ${SHAPE}`);
+    else if (order.includes(c.name)) faults.push(`modules.json: context ${c.name} is listed twice`);
+    else order.push(c.name);
+    if (typeof c?.label !== 'string' || !c.label.trim())
+      faults.push(`modules.json: contexts[${i}] has no \`label\`, its root module label`);
+  }
+  for (const layer of Object.values(LAYER_OF_KIND))
+    if (!order.includes(layer)) faults.push(`modules.json: the ${layer} layer is not a context`);
+  return { faults, order };
+}
+
 /** Refuses a declaration it cannot read whole, naming the entry and the valid shape. */
 export function parseDeclaration(doc) {
-  const faults = [];
   const modules = doc?.modules;
   if (!modules || typeof modules !== 'object') {
-    return {
-      faults: [
-        'modules.json: no `modules` object — shape { modules: { "<dir>": { kind, owns? } } }',
-      ],
-    };
+    return { faults: [`modules.json: no \`modules\` object — ${SHAPE}`] };
   }
+  const { faults, order } = parseContexts(doc.contexts);
   const owners = new Map();
   for (const [path, spec] of Object.entries(modules)) {
     if (!KINDS.includes(spec?.kind)) {
       faults.push(
         `modules.json: ${path} declares kind ${JSON.stringify(spec?.kind)}, not one of ${KINDS.join(', ')}`,
+      );
+    }
+    if (spec?.context === undefined) {
+      faults.push(`modules.json: ${path} declares no context — one of ${order.join(', ')}`);
+    } else if (!order.includes(spec.context)) {
+      faults.push(
+        `modules.json: ${path} declares context ${JSON.stringify(spec.context)}, not one of ${order.join(', ')}`,
+      );
+    } else {
+      const layer = LAYER_OF_KIND[spec.kind];
+      if (layer && spec.context !== layer)
+        faults.push(
+          `modules.json: ${path} is a ${spec.kind} module in ${spec.context}; every ${spec.kind} module is in ${layer}`,
+        );
+      if (
+        Object.values(LAYER_OF_KIND).includes(spec.context) &&
+        ['domain', 'read-model'].includes(spec.kind)
+      )
+        faults.push(
+          `modules.json: ${path} is a ${spec.kind} in the ${spec.context} layer, which holds no domain or read model`,
+        );
+    }
+    if (spec?.owns?.length && KINDS.includes(spec.kind) && !OWNING_KINDS.includes(spec.kind)) {
+      faults.push(
+        `modules.json: ${path} is a ${spec.kind} and owns ${spec.owns.join(', ')}; only ${OWNING_KINDS.join(', ')} modules own tables`,
       );
     }
     for (const table of spec?.owns ?? []) {
@@ -55,7 +104,7 @@ export function parseDeclaration(doc) {
       else owners.set(table, path);
     }
   }
-  return { faults, modules, owners };
+  return { faults, modules, owners, contexts: order };
 }
 
 export function isTestFile(file) {

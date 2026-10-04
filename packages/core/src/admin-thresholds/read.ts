@@ -1,7 +1,11 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { ADMIN_THRESHOLDS_ID, adminThresholds } from '../db/schema-admin-thresholds.js';
-import { ADMIN_THRESHOLD_DEFAULTS, type AdminThresholds } from './types.js';
+import {
+  ADMIN_THRESHOLD_DEFAULTS,
+  ADMIN_THRESHOLDS_ID,
+  type AdminThresholds,
+  adminThresholds,
+} from '../db/schema-admin-thresholds.js';
 
 export async function readThresholds(): Promise<AdminThresholds> {
   const [row] = await db

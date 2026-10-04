@@ -11,6 +11,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { readThresholds } from '../admin-thresholds/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -22,7 +23,6 @@ import {
   METRIC_SOURCES,
   WINDOW_SPECS,
 } from './metric-series.js';
-import { readThresholds } from './thresholds.js';
 import { type AdminMetricSeries, GLANCE_METRIC_NAMES, GLANCE_WINDOWS } from './types.js';
 
 const badRequest = (details: unknown) =>

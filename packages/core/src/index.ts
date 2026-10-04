@@ -5,7 +5,7 @@ import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { readThresholds } from './admin/index.js';
+import { readThresholds } from './admin-thresholds/index.js';
 import { registerWebConversationAdapter } from './assistant/index.js';
 import { runOnceBackfills } from './boot-backfills.js';
 import { env } from './config/env.js';

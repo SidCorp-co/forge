@@ -9,9 +9,9 @@ import {
   adminMcpAuditRoutes,
   adminMetricSeriesRoutes,
   adminRoutes,
-  adminThresholdRoutes,
   pipelineHealthAdminRoutes,
 } from './admin/index.js';
+import { adminThresholdRoutes } from './admin-thresholds/routes.js';
 import { agentReportRoutes, feedbackReportsAliasRoutes } from './agent-reports/index.js';
 import {
   agentSessionAttachmentRoutes,
