@@ -3,7 +3,7 @@
 import type { SensitiveDataLevel } from "@forge/contracts/data-policy";
 import { StatusBadge, statusReading, Tooltip } from "@/design";
 import { TONE_META } from "@/design/status";
-import type { IntegrationState } from "../c4/geometry";
+import type { IntegrationState } from "../c4/graph";
 import type { DesignStatus, WorkflowRecord } from "../types";
 
 /** A design's approval state: the shared design badge, the return reason in its tooltip. */
