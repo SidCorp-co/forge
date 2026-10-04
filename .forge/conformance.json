@@ -288,6 +288,8 @@
           "@sentry/node",
           "@anthropic-ai/",
           "openai",
+          "ai",
+          "@ai-sdk/",
           "@aws-sdk/",
           "@google-cloud/",
           "googleapis",

@@ -1,96 +1,65 @@
 /**
- * v1 EPIC 1 (ISS-270) — the OpenAI-wire chat adapter. Streams any OpenAI-compatible
- * `/v1/chat/completions` endpoint, which in production is a LiteLLM proxy fanning out to several
- * upstream models — so "Vertex" and "Gemini" below name models reached THROUGH that proxy. The
- * provider contract IS this wire, so this adapter passes the request through; `anthropic.ts` is the
- * one adapter that translates, and the retry + SSE plumbing both share lives in `sse.ts`.
+ * v1 EPIC 1 (ISS-270) — the OpenAI-wire chat adapter over `@ai-sdk/openai-compatible`. In production
+ * the endpoint is a LiteLLM proxy fanning out to several upstream models, so "Vertex" and "Gemini"
+ * name models reached THROUGH that proxy. `response_format` rides as an extra body field so the
+ * caller's shape reaches the wire unchanged.
  */
 
-import { openAiCompatUrl } from '../../lib/openai-compat-url.js';
-import { DEFAULT_RETRY_DELAYS_MS, errorMessage, openStream, parseSseStream } from './sse.js';
-import type { ChatProvider, ChatStreamEvent, ChatStreamRequest, ChatStreamUsage } from './types.js';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { type JSONValue, streamText } from 'ai';
+import { openAiCompatBaseUrl } from '../../lib/openai-compat-url.js';
+import { bridgeStream, MAX_RETRIES, toModelMessages, toToolSet } from './ai-sdk.js';
+import type { ChatProvider, ChatStreamEvent, ChatStreamRequest } from './types.js';
 
 export interface OpenAIConfig {
   baseUrl: string;
   apiKey: string;
   defaultModel: string;
-  /** Override the global `fetch` for tests. */
-  fetchImpl?: typeof fetch;
-  /** Backoff between pre-stream retries; tests pass [0] to skip waiting. */
-  retryDelaysMs?: number[];
+  fetchImpl?: typeof fetch | undefined;
+  maxRetries?: number | undefined;
 }
 
-interface OpenAIToolCallDelta {
-  index?: number;
-  id?: string;
-  type?: string;
-  function?: { name?: string; arguments?: string };
-}
-
-interface OpenAIDelta {
-  content?: string | null;
-  role?: string;
-  reasoning_content?: string | null;
-  tool_calls?: OpenAIToolCallDelta[];
-}
-
-interface OpenAIChunk {
-  choices?: Array<{ delta?: OpenAIDelta; finish_reason?: string | null }>;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-    prompt_tokens_details?: { cached_tokens?: number };
-  };
-}
-
-interface ToolCallAccumulator {
-  id: string;
-  name: string;
-  args: string;
-}
+const PROVIDER = 'openai';
 
 export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
-  const fetchImpl = cfg.fetchImpl ?? fetch;
-  const url = openAiCompatUrl(cfg.baseUrl, 'chat/completions');
+  const sdk = createOpenAICompatible({
+    name: PROVIDER,
+    baseURL: openAiCompatBaseUrl(cfg.baseUrl),
+    apiKey: cfg.apiKey,
+    includeUsage: true,
+    ...(cfg.fetchImpl ? { fetch: cfg.fetchImpl } : {}),
+  });
   return {
-    id: 'openai',
+    id: PROVIDER,
     defaultModel: cfg.defaultModel,
-    async *stream(req: ChatStreamRequest): AsyncIterable<ChatStreamEvent> {
-      let toolChoice = req.toolChoice;
+    stream(req: ChatStreamRequest): AsyncIterable<ChatStreamEvent> {
+      const offered = req.tools && req.tools.length > 0 ? req.tools : undefined;
+      let toolChoice = offered ? req.toolChoice : undefined;
       let responseFormat = req.responseFormat;
       let reasoningEffort = req.reasoningEffort;
-      const init = (): RequestInit => {
-        const i: RequestInit = {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            authorization: `Bearer ${cfg.apiKey}`,
-            accept: 'text/event-stream',
-          },
-          body: JSON.stringify({
-            model: req.model,
-            messages: req.messages,
-            stream: true,
-            stream_options: { include_usage: true },
-            ...(req.tools && req.tools.length > 0 ? { tools: req.tools } : {}),
-            ...(req.tools && req.tools.length > 0 && toolChoice ? { tool_choice: toolChoice } : {}),
+      const messages = toModelMessages(req.messages);
+      return bridgeStream({
+        label: PROVIDER,
+        open: () =>
+          streamText({
+            model: sdk.chatModel(req.model),
+            messages,
+            allowSystemInMessages: true,
+            ...(offered ? { tools: toToolSet(offered) } : {}),
+            ...(toolChoice ? { toolChoice } : {}),
             ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
-            ...(responseFormat ? { response_format: responseFormat } : {}),
-            ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+            providerOptions: {
+              [PROVIDER]: {
+                ...(reasoningEffort ? { reasoningEffort } : {}),
+                ...(responseFormat
+                  ? { response_format: responseFormat as unknown as JSONValue }
+                  : {}),
+              },
+            },
+            maxRetries: cfg.maxRetries ?? MAX_RETRIES,
+            ...(req.signal ? { abortSignal: req.signal } : {}),
+            onError: () => undefined,
           }),
-        };
-        if (req.signal) i.signal = req.signal;
-        return i;
-      };
-
-      const opened = await openStream({
-        fetchImpl,
-        url,
-        init,
-        label: 'openai',
-        retryDelaysMs: cfg.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS,
-        signal: req.signal,
         degrade: (body) => {
           if (toolChoice && /too many states/i.test(body)) {
             toolChoice = undefined;
@@ -109,77 +78,11 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
           }
           return false;
         },
+        cachedFromRaw: (raw) => {
+          const details = raw?.prompt_tokens_details as { cached_tokens?: unknown } | undefined;
+          return typeof details?.cached_tokens === 'number' ? details.cached_tokens : undefined;
+        },
       });
-      if ('error' in opened) {
-        yield { type: 'error', message: opened.error };
-        return;
-      }
-
-      const toolAcc = new Map<number, ToolCallAccumulator>();
-      const flushToolCalls = function* (): Generator<ChatStreamEvent> {
-        for (const [, acc] of [...toolAcc.entries()].sort((a, b) => a[0] - b[0])) {
-          if (!acc.name) continue;
-          yield { type: 'tool_call', id: acc.id, name: acc.name, arguments: acc.args };
-        }
-        toolAcc.clear();
-      };
-
-      try {
-        for await (const event of parseSseStream(opened.body)) {
-          if (event === '[DONE]') break;
-          let chunk: OpenAIChunk;
-          try {
-            chunk = JSON.parse(event) as OpenAIChunk;
-          } catch {
-            continue;
-          }
-          const choice = chunk.choices?.[0];
-          const reasoning = choice?.delta?.reasoning_content;
-          if (typeof reasoning === 'string' && reasoning.length > 0) {
-            yield { type: 'reasoning', text: reasoning };
-          }
-          const text = choice?.delta?.content;
-          if (typeof text === 'string' && text.length > 0) {
-            yield { type: 'chunk', text };
-          }
-          const toolDeltas = choice?.delta?.tool_calls;
-          if (toolDeltas) {
-            for (const td of toolDeltas) {
-              const idx = td.index ?? 0;
-              let acc = toolAcc.get(idx);
-              if (!acc) {
-                acc = { id: '', name: '', args: '' };
-                toolAcc.set(idx, acc);
-              }
-              if (td.id) acc.id = td.id;
-              if (td.function?.name) acc.name = td.function.name;
-              if (td.function?.arguments) acc.args += td.function.arguments;
-            }
-          }
-          if (choice?.finish_reason === 'tool_calls') {
-            yield* flushToolCalls();
-          }
-          if (chunk.usage) {
-            const usage: ChatStreamUsage = {};
-            if (chunk.usage.prompt_tokens !== undefined) {
-              usage.promptTokens = chunk.usage.prompt_tokens;
-            }
-            if (chunk.usage.completion_tokens !== undefined) {
-              usage.completionTokens = chunk.usage.completion_tokens;
-            }
-            if (chunk.usage.total_tokens !== undefined) {
-              usage.totalTokens = chunk.usage.total_tokens;
-            }
-            const cached = chunk.usage.prompt_tokens_details?.cached_tokens;
-            if (typeof cached === 'number') usage.cachedPromptTokens = cached;
-            yield { type: 'usage', usage };
-          }
-        }
-        yield* flushToolCalls();
-        yield { type: 'done' };
-      } catch (err) {
-        yield { type: 'error', message: errorMessage(err) };
-      }
     },
   };
 }

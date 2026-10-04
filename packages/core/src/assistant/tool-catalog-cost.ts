@@ -7,15 +7,15 @@
  * the catalog cost note beside this module.
  *
  * The catalog is re-derived rather than quoted, because it moves whenever a factory joins
- * `CHAT_TOOL_ALLOWLIST` or a `forge_*` description is edited, and it is serialized by calling
- * `toRequestBody` itself so that what is counted is what the wire carries.
+ * `CHAT_TOOL_ALLOWLIST` or a `forge_*` description is edited, and it is serialized by building one
+ * request through the Anthropic adapter itself so that what is counted is what the wire carries.
  */
 
 import postgres from 'postgres';
 import {
+  anthropicWireTools,
   type ChatTool,
   countAnthropicInputTokens,
-  toRequestBody,
 } from '../integrations/llm/index.js';
 import { catalogOnlyContext } from './tools/principal.js';
 import { buildProjectToolset, CHAT_TOOL_ALLOWLIST } from './tools/registry.js';
@@ -52,21 +52,16 @@ export interface CatalogMeasurement {
   tokens: TokenFigure;
 }
 
-/** The `tools` array exactly as `toRequestBody` puts it on the Messages wire, `cache_control` marker included. */
-export function serializeCatalogForWire(tools: ChatTool[]): unknown[] {
-  const body = toRequestBody(
-    { model: PRICING.model, messages: [{ role: 'user', content: 'x' }], tools },
-    1,
-    undefined,
-  );
-  return (body.tools ?? []) as unknown[];
+/** The `tools` array exactly as the Anthropic adapter puts it on the Messages wire, `cache_control` marker included. */
+export function serializeCatalogForWire(tools: ChatTool[]): Promise<unknown[]> {
+  return anthropicWireTools(tools, PRICING.model);
 }
 
 /** Build the live catalog through the same call the chat routes make, and size it. */
-export function measureLiveCatalog(): CatalogMeasurement {
+export async function measureLiveCatalog(): Promise<CatalogMeasurement> {
   const nilUuid = '00000000-0000-0000-0000-000000000000';
   const ctx = catalogOnlyContext(nilUuid, 'measurement');
-  const wire = serializeCatalogForWire(buildProjectToolset(ctx).tools);
+  const wire = await serializeCatalogForWire(buildProjectToolset(ctx).tools);
   const chars = JSON.stringify(wire).length;
   return {
     toolCount: wire.length,
@@ -100,7 +95,7 @@ export function uncappedCatalogChars(ctx: Parameters<typeof buildProjectToolset>
  * and the pretty-printed form. A catalog size quoted somewhere else can be matched against the
  * shape that produced it instead of argued about.
  */
-export function catalogVariants(catalog: CatalogMeasurement): [string, number][] {
+export async function catalogVariants(catalog: CatalogMeasurement): Promise<[string, number][]> {
   const nilUuid = '00000000-0000-0000-0000-000000000000';
   const boundCtx = catalogOnlyContext(nilUuid, 'measurement');
   const bound = buildProjectToolset(boundCtx).tools;
@@ -113,7 +108,7 @@ export function catalogVariants(catalog: CatalogMeasurement): [string, number][]
     ],
     [
       'wire, unbound — projectId left in every schema',
-      JSON.stringify(serializeCatalogForWire(unbound)).length,
+      JSON.stringify(await serializeCatalogForWire(unbound)).length,
     ],
     ['OpenAI-shaped toolset, project-bound', JSON.stringify(bound).length],
     [
@@ -241,10 +236,10 @@ export const CENSUS_GROUPING_SHORTFALL =
   'chat_logs carries no provider column, only `model` — this census groups by model alone. Two backends reachable under one model name are indistinguishable in it.';
 
 /**
- * How many logged chat requests came back reporting a cache read at all. `anthropic.ts:toUsage`
- * sets `cachedPromptTokens` only when the response carried `cache_read_input_tokens`, and
- * `openai.ts` only when it carried `prompt_tokens_details.cached_tokens`, so a backend that ignores
- * the markers leaves the field absent rather than zero.
+ * How many logged chat requests came back reporting a cache read at all. Each adapter's
+ * `cachedFromRaw` sets `cachedPromptTokens` only when the response carried
+ * `cache_read_input_tokens` (`anthropic.ts`) or `prompt_tokens_details.cached_tokens` (`openai.ts`),
+ * so a backend that ignores the markers leaves the field absent rather than zero.
  */
 export async function runCensus(url: string): Promise<CensusRow[]> {
   const sql = postgres(url, { max: 1 });
@@ -328,9 +323,10 @@ function printCatalog(catalog: CatalogMeasurement, tokens: TokenFigure, why: str
 }
 
 /** Every serialization of the same allowlist, so a figure quoted elsewhere can be matched against the shape that produced it. */
-function printVariants(catalog: CatalogMeasurement): void {
-  console.log(`\n## The same catalog, serialized ${catalogVariants(catalog).length} ways`);
-  for (const [label, chars] of catalogVariants(catalog)) {
+async function printVariants(catalog: CatalogMeasurement): Promise<void> {
+  const variants = await catalogVariants(catalog);
+  console.log(`\n## The same catalog, serialized ${variants.length} ways`);
+  for (const [label, chars] of variants) {
     console.log(`  ${label}: ${count(chars)} chars`);
   }
 }
@@ -400,11 +396,11 @@ const COUNT_UNAVAILABLE: Record<Exclude<CountOutcome, { ok: true }>['reason'], s
 export async function main(): Promise<void> {
   console.log(`# Tool catalog cost — ${PRICING.provider} / ${PRICING.model}`);
   const censusAnswered = await printCensus(process.env.FORGE_CENSUS_DATABASE_URL);
-  const catalog = measureLiveCatalog();
+  const catalog = await measureLiveCatalog();
   const counted = await countCatalogTokens(catalog.wire);
   const tokens = counted.ok ? counted.figure : catalog.tokens;
   printCatalog(catalog, tokens, counted.ok ? null : COUNT_UNAVAILABLE[counted.reason]);
-  printVariants(catalog);
+  await printVariants(catalog);
   printCosts(tokens, [2_000, 20_000]);
   if (!censusAnswered) process.exitCode = 1;
 }

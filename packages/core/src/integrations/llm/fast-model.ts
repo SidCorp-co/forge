@@ -7,17 +7,16 @@
  * return means skip this run, always preceded by a log saying which of "no
  * backend", "the call failed", "the budget ran out" and "the data policy withholds it" it was.
  */
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { generateText } from 'ai';
 import { env } from '../../config/env.js';
 import { type EgressScope, egressScoped } from '../../lib/data-egress.js';
-import { openAiCompatUrl } from '../../lib/openai-compat-url.js';
+import { openAiCompatBaseUrl } from '../../lib/openai-compat-url.js';
 import { logger } from '../../observability/logger.js';
+import { badRequestBody, errorText } from './ai-sdk.js';
 
 /** Hard cap so a hung endpoint can never wedge a pg-boss worker. */
 const COMPLETION_TIMEOUT_MS = 60_000;
-
-function reasoningControl(): Record<string, unknown> {
-  return { reasoning_effort: env.LITELLM_FAST_REASONING_EFFORT };
-}
 
 /** The model every system job runs on unless a caller names another. */
 export function fastModelName(): string {
@@ -25,62 +24,37 @@ export function fastModelName(): string {
 }
 
 const EXHAUSTED_RETRY_TOKENS = 4000;
-
-interface CompletionChoice {
-  finish_reason?: string | null;
-  message?: { content?: string | null };
-}
+const PROVIDER = 'litellm';
 
 /** A 400 rejecting the request SHAPE, the one case worth retrying without the field. */
-function rejectsReasoningEffort(status: number, body: string): boolean {
-  return (
-    status === 400 && /reasoning_effort|unsupported|unrecognized|unknown.{0,20}param/i.test(body)
-  );
-}
+const REJECTS_REASONING_EFFORT = /reasoning_effort|unsupported|unrecognized|unknown.{0,20}param/i;
 
-async function postCompletion(
+type Completion = { text: string; finishReason: string } | { failed: string; body: string | null };
+
+async function complete(
   prompt: string,
   maxTokens: number,
   model: string,
-  extra: Record<string, unknown>,
-): Promise<Response | null> {
+  reasoningEffort: string | undefined,
+): Promise<Completion> {
+  const sdk = createOpenAICompatible({
+    name: PROVIDER,
+    baseURL: openAiCompatBaseUrl(env.LITELLM_API_URL ?? ''),
+    ...(env.LITELLM_API_KEY ? { apiKey: env.LITELLM_API_KEY } : {}),
+  });
   try {
-    return await fetch(openAiCompatUrl(env.LITELLM_API_URL ?? '', 'chat/completions'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(env.LITELLM_API_KEY ? { Authorization: `Bearer ${env.LITELLM_API_KEY}` } : {}),
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: maxTokens,
-        temperature: 0,
-        ...extra,
-      }),
-      signal: AbortSignal.timeout(COMPLETION_TIMEOUT_MS),
+    const out = await generateText({
+      model: sdk.chatModel(model),
+      prompt,
+      maxOutputTokens: maxTokens,
+      temperature: 0,
+      maxRetries: 0,
+      abortSignal: AbortSignal.timeout(COMPLETION_TIMEOUT_MS),
+      ...(reasoningEffort ? { providerOptions: { [PROVIDER]: { reasoningEffort } } } : {}),
     });
+    return { text: out.text, finishReason: out.finishReason };
   } catch (err) {
-    logger.warn({ err: (err as Error).message }, 'memory.llm: completion request failed');
-    return null;
-  }
-}
-
-async function safeText(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch {
-    return '';
-  }
-}
-
-async function readChoice(response: Response): Promise<CompletionChoice | null> {
-  try {
-    const data = (await response.json()) as { choices?: CompletionChoice[] };
-    return data.choices?.[0] ?? null;
-  } catch (err) {
-    logger.warn({ err: (err as Error).message }, 'memory.llm: completion body unreadable');
-    return null;
+    return { failed: errorText(err, 'memory.llm'), body: badRequestBody(err) };
   }
 }
 
@@ -89,29 +63,27 @@ async function callLiteLlm(
   maxTokens: number,
   model: string,
 ): Promise<string | null> {
-  let control: Record<string, unknown> = reasoningControl();
+  let reasoningEffort: string | undefined = env.LITELLM_FAST_REASONING_EFFORT;
   let budget = maxTokens;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const response = await postCompletion(prompt, budget, model, control);
-    if (!response) return null;
-    if (!response.ok) {
-      const body = response.status === 400 ? await safeText(response) : '';
+    const result = await complete(prompt, budget, model, reasoningEffort);
+    if ('failed' in result) {
       if (
         attempt === 0 &&
-        'reasoning_effort' in control &&
-        rejectsReasoningEffort(response.status, body)
+        reasoningEffort &&
+        result.body !== null &&
+        REJECTS_REASONING_EFFORT.test(result.body)
       ) {
         logger.info('memory.llm: endpoint rejected reasoning_effort, retrying without it');
-        control = {};
+        reasoningEffort = undefined;
         continue;
       }
-      logger.warn({ status: response.status }, 'memory.llm: completion call failed');
+      logger.warn({ err: result.failed }, 'memory.llm: completion call failed');
       return null;
     }
-    const choice = await readChoice(response);
-    const text = choice?.message?.content?.trim() || null;
+    const text = result.text.trim() || null;
     if (text) return text;
-    if (choice?.finish_reason === 'length' && attempt === 0) {
+    if (result.finishReason === 'length' && attempt === 0) {
       logger.warn(
         { budget, retryBudget: EXHAUSTED_RETRY_TOKENS, model },
         'memory.llm: token budget exhausted before any output, retrying once with a larger budget',
@@ -120,7 +92,7 @@ async function callLiteLlm(
       continue;
     }
     logger.warn(
-      { finishReason: choice?.finish_reason ?? null, budget, model },
+      { finishReason: result.finishReason, budget, model },
       'memory.llm: completion returned no text',
     );
     return null;
