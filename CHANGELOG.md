@@ -152,6 +152,10 @@
 
 ### Added
 
+- **Releases can be numbered as prereleases.** With `release.prerelease` in the project document,
+  each release is `0.4.0-dev.1`, `0.4.0-dev.2` and so on. Dev releases carry such a version in
+  `/api/version` and the sidebar, tagged `dev-v…`.
+
 - **A reviewer can revise a proposed suggestion instead of rejecting it whole (ISS-117).**
   `POST /api/projects/:id/suggestions/:sid/revise { payload, reason }` (and `forge_suggestions`
   `revise`) rejects the original with the reason and proposes the edited payload as the reviewer's
