@@ -28,10 +28,11 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { isUuid } from '../issues/issue-route-ref.js';
+import { mayApprove } from '../lib/approval.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { actMiss, PERSON_ACT, PERSON_ADMIN_ACT } from '../lib/person-act.js';
+import { actMiss, PERSON_ADMIN_ACT } from '../lib/person-act.js';
 import { requirementKey } from '../requirements/read.js';
 import { deliveredAmong } from '../requirements/standing-read.js';
 import { userNames } from '../workflows/service.js';
@@ -495,8 +496,8 @@ export async function detailAs(
       openSuggestions: open?.n ?? 0,
       can: {
         triage:
-          !actMiss(facts, PERSON_ACT) && ['new', 'triaged', 'reopened'].includes(summary.phase),
-        verify: !actMiss(facts, PERSON_ACT) && summary.phase === 'resolved',
+          mayApprove(facts, 'feedback') && ['new', 'triaged', 'reopened'].includes(summary.phase),
+        verify: mayApprove(facts, 'feedback') && summary.phase === 'resolved',
         redact: !actMiss(facts, PERSON_ADMIN_ACT) && row.redactedAt === null,
       },
       sensitive: level !== 'off',

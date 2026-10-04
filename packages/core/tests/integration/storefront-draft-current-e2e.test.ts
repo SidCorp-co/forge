@@ -102,6 +102,7 @@ async function gate(readDraft?: () => Promise<Reading>) {
     from: 'in_progress',
     to: 'awaiting_release',
     agency: 'agent',
+    actorUserId: crypto.randomUUID(),
     executor: db,
     ...(readDraft ? { readDraft } : {}),
   });
@@ -134,6 +135,7 @@ describe('FB-56 a storefront-draft verdict is weighed against the draft the stor
       from: 'in_progress',
       to: 'closed',
       agency: 'agent',
+      actorUserId: crypto.randomUUID(),
       executor: db,
       readDraft: reads(CURRENT),
     });

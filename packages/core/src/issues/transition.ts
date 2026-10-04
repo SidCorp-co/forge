@@ -72,6 +72,7 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
     case 'CLOSE_REQUIRES_SHIPPED':
     case 'VOID_REASON_REQUIRED':
     case 'PLAN_REQUIRED':
+    case 'APPROVE_PERMISSION_REQUIRED':
     case 'VERDICT_IDENTITY_REQUIRED':
     case 'VERDICT_IDENTITY_NOT_ADMISSIBLE':
       return new HTTPException(422, { message: err.detail, cause });

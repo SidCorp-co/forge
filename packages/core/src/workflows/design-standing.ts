@@ -1,6 +1,5 @@
 import type { DesignRevisionState } from '@forge/contracts/design-status';
 import type { DesignBuildGate, DesignWaitingOn } from '@forge/contracts/workflows';
-import type { DesignApprover } from '../project-config/schema.js';
 import type { DesignDecision, DesignStatus } from './design.js';
 
 export interface DesignHeadFacts {
@@ -11,7 +10,6 @@ export interface DesignHeadFacts {
 
 export interface DesignStandingInput extends DesignHeadFacts {
   latest: { revision: number; author: string | null } | null;
-  approver: DesignApprover;
   canDecide: boolean;
 }
 
@@ -22,26 +20,16 @@ const wait = (
   rule: string,
 ): DesignWaitingOn => ({ kind, who, act, rule });
 
-const APPROVER_WHO = 'An org owner or admin';
-
 function proposedWait(input: DesignStandingInput, revision: number): DesignWaitingOn {
   const act = `approve or return revision ${revision}`;
   if (input.canDecide) {
     return wait('you', 'You', act, `revision ${revision} is proposed and you may decide it`);
   }
-  if (input.approver === 'master') {
-    return wait(
-      'agent',
-      'Master',
-      act,
-      'workflows.designApprover is "master": the project\'s own master decides its designs',
-    );
-  }
   return wait(
     'person',
-    APPROVER_WHO,
+    'A holder of workflow-designs.approve',
     act,
-    'a design is decided by a person who is an org owner or admin of the project',
+    'a design is decided by whoever holds workflow-designs.approve on the project (project admin, or an org owner or admin), person or agent',
   );
 }
 

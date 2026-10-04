@@ -25,14 +25,14 @@ import {
   writeIssueRelations,
 } from '../issues/relations-service.js';
 import { emitIssueFieldUpdate } from '../issues/update-hook.js';
+import { approvalRefusalFor } from '../lib/approval.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { personActRefusalFor } from '../lib/person-act.js';
 import { hooks } from '../pipeline/hooks.js';
 import { lockRequirements } from '../requirements/service.js';
 import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
 import { headOf, type Row, rowOf, type SuggestionActor, targetOfRow } from './read.js';
-import { decidedRefusal, producerRefusal, rejectReasonRefusal, withdrawRefusal } from './rules.js';
+import { decidedRefusal, rejectReasonRefusal, withdrawRefusal } from './rules.js';
 import {
   answer,
   inTx,
@@ -197,13 +197,12 @@ export async function acceptSuggestion(input: {
   const { projectId, actor } = input;
   const reason = input.reason?.trim() || null;
   const first = await rowOf(db, projectId, input.id);
-  const forbidden =
-    (await personActRefusalFor(
-      actor,
-      projectId,
-      'accepting a suggestion',
-      'SUGGESTION_ACCEPT_FORBIDDEN',
-    )) ?? producerRefusal(actor.userId, first.producerId);
+  const forbidden = await approvalRefusalFor(
+    actor,
+    projectId,
+    'suggestions',
+    'accepting a suggestion',
+  );
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const target = targetOfRow(first);
   if (first.kind === 'duplicate' && target.type === 'issue' && first.status === 'proposed') {
@@ -252,11 +251,11 @@ export async function rejectSuggestion(input: {
   reason: string | null | undefined;
 }): Promise<SuggestionOutcome> {
   const { projectId, actor } = input;
-  const forbidden = await personActRefusalFor(
+  const forbidden = await approvalRefusalFor(
     actor,
     projectId,
+    'suggestions',
     'rejecting a suggestion',
-    'SUGGESTION_ACCEPT_FORBIDDEN',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const early = rejectReasonRefusal(input.reason);

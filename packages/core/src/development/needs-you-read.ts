@@ -13,6 +13,8 @@ export interface NeedsYouViewer {
   userId: string;
   agency: ActorAgency;
   isAdmin: boolean;
+  /** Holds releases.approve (`lib/approval.ts:mayApprove`). */
+  mayApprove: boolean;
 }
 
 async function automationOf(projectId: string, userId: string, now: Date) {
