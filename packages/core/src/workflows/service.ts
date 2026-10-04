@@ -1,3 +1,4 @@
+import type { ActorAgency } from '@forge/contracts/permissions';
 import {
   findTemplate,
   resolveProjectTemplates,
@@ -5,8 +6,8 @@ import {
 } from '@forge/contracts/workflow-templates';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { peopleOf } from '../lib/people.js';
+import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { staleBase } from '../project-config/documents.js';
 import { readProjectDocument } from '../project-config/service.js';
 import {
@@ -38,7 +39,6 @@ import {
   workflowsOf,
 } from './store.js';
 import { type ProjectDesign, type ProjectDesigns, projectDesignOf } from './template-check.js';
-import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 
 export interface WorkflowWriter {
   userId: string;

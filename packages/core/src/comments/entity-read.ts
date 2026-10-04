@@ -6,6 +6,7 @@ import type {
   EntityCommentScope,
   EntityCommentView,
 } from '@forge/contracts/comments';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type { CommentIntent } from '@forge/contracts/record-events';
 import { and, asc, desc, eq, isNotNull, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -16,15 +17,14 @@ import { requirements } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ReadDoor } from '../feedback/egress.js';
 import { feedbackKey, rowIn as feedbackRowIn } from '../feedback/read.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { isUuid } from '../issues/issue-route-ref.js';
 import { dataPolicyOf, type EgressSurface, egressReading } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { requirementKey, rowIn as requirementRowIn } from '../requirements/read.js';
 import { type CommentArc, scopeOfArc } from './entity-rules.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 export interface EntityCommentActor {
   userId: string;

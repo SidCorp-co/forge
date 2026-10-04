@@ -11,9 +11,9 @@
  *   a design                resolved to the project's workflow by flow or id, at a revision it holds
  */
 
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type { ForgeRecord } from '../../messaging/forge-record.js';
 import { criterionBlocksIn } from '../../messaging/verdict-identity.js';
-import type { ActorAgency } from '../actor-agency.js';
 import { type ParsedCriterion, parseCriteriaText } from './criteria-text.js';
 import { draftFromBlock, verdictDraftFault } from './verdict-input.js';
 

@@ -1,5 +1,5 @@
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { delegationOf } from '../credentials/pat-scope.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 
 /**
  * Who acts: the account whose permissions decide, whether a person or an agent is at the keyboard,

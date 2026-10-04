@@ -1,6 +1,6 @@
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type { Tx } from '../../db/client.js';
 import { contractRequests } from '../../db/schema-contract-waits.js';
-import type { ActorAgency } from '../../issues/actor-agency.js';
 import { createRequirementIn } from '../../requirements/revision-write.js';
 import { lockRequirements } from '../../requirements/service.js';
 import { refusedWith } from '../channel-act.js';

@@ -1,4 +1,5 @@
 import type { IssueAttachmentRefusalCode } from '@forge/contracts/issues';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
@@ -16,7 +17,6 @@ import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage } from '../storage/index.js';
-import type { ActorAgency } from './actor-agency.js';
 
 export { safeName };
 

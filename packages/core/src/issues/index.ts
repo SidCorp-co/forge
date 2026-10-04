@@ -1,10 +1,5 @@
 export { insertActivityRow } from './activity-log.js';
-export {
-  type ActorAgency,
-  actorAgency,
-  principalAgency,
-  type TransitionActor,
-} from './actor-agency.js';
+export { actorAgency, principalAgency, type TransitionActor } from './actor-agency.js';
 export { TransitionError, transitionIssueStatus } from './apply-transition.js';
 export { closeBacklogStreams } from './backlog/open-streams.js';
 export { runCriteriaBackfillOnce } from './criteria/backfill.js';
