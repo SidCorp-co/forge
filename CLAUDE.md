@@ -153,6 +153,10 @@ back marked *still true* / *edited* / *deleted*; "did not touch" is not one of t
 pipeline's `forge-code` step decides which, and `check-doc-citations` decides whether it was
 entitled to say *still true*.
 
+**A proposal is deleted by the change that implements it.** Every `docs/proposals/*.md` opens with
+a `**Removed when:**` line naming the issue whose landing deletes it; `check-honest-costs` refuses
+one without.
+
 <!-- doc-citation: unchecked `file.ts:symbol` — the NOTATION being defined, not a file this repo holds. -->
 Cite a doc claim by identifier or `file.ts:symbol` anchor, **never a line number** — a line number
 is stale the moment anything above it moves, and stale in silence.
