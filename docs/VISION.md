@@ -128,9 +128,11 @@ Grouped for recall. The **bold name** is the identifier — cite it, not the num
 
 ### Custody and trust
 
-1. **server-never-holds-credentials** — execution credentials stay on infrastructure the team
-   controls. What matters is custody, not where a machine physically sits. Forge orchestrates; it
-   never becomes your model provider.
+1. **execution-stays-on-your-runners** — agents run on infrastructure the team controls, and the
+   accounts they run on stay there. What matters is custody, not where a machine physically sits.
+   Forge does hold the keys its own features need — the model API key set in the instance's
+   environment for assistant-mode chat, integration tokens — but it never runs a team's agents on its
+   own capacity.
 2. **trust-over-features** — correctness, recoverability, state integrity and safe operation
    outrank feature breadth.
 3. **state-never-lies** — no state transition without evidence; no failure that isn't observable.
@@ -173,8 +175,9 @@ What Forge will not become, regardless of demand:
 
 - **Not a coding-agent replacement.** Forge orchestrates agents; it does not reimplement them.
 - **Not a chat UI.** The primary surface is a lifecycle a team can audit, not a conversation.
-- **Not a model provider, and never a holder of model credentials.** This one is load-bearing:
-  the whole custody argument collapses if it is ever traded away for convenience.
+- **Not a model provider.** Chat has two modes: assistant mode talks to a model directly with the
+  key set in the instance's environment, and agent mode runs on the team's runner. Forge supplies neither the model
+  nor the capacity agents execute on.
 - **Not a ticket tracker with automation bolted on**, and not an agent-framework abstraction layer.
 - **Not multi-tenant SaaS in core** — one instance, one tenant.
 - **Not an enterprise governance suite.** Organization and project roles exist because the lifecycle
@@ -198,7 +201,7 @@ not taken, and a document that prices everything except itself has taken one unp
 
 | The commitment | What it costs you |
 |---|---|
-| `server-never-holds-credentials` | you bring and pay for the model accounts, and you keep a runner alive on infrastructure you own. There is no sign-in-and-go path, and when execution capacity runs out it is your fleet that is short |
+| `execution-stays-on-your-runners` | you bring and pay for the model accounts and keys, and you keep a runner alive on infrastructure you own. There is no sign-in-and-go path, and when execution capacity runs out it is your fleet that is short |
 | One instance, one tenant | you install, upgrade, back up and monitor it, once per team. No shared plane absorbs an outage on your behalf, and nobody else's upgrade fixes your instance |
 | `issue-is-the-currency` | work that would have been a message becomes an issue with a state and an audit trail. On the day you only wanted a quick fix, that discipline is friction — and it is the product, not an accident of it |
 | `kernel-hard-policy-soft` | the policy is yours to write. Pipelines, skills, gates and routing are configuration, so a project nobody has configured runs a default that fits nobody exactly. The kernel will not guess on your behalf |
