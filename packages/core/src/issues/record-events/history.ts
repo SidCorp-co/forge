@@ -5,7 +5,7 @@ import { and, asc, eq, gt, like } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import { comments } from '../../db/schema.js';
 import { type ForgeRecord, parseForgeRecord } from '../../messaging/forge-record.js';
-import type { RecordEventKind } from './kinds.js';
+import { isKernelOnlyRecordKind, type RecordEventKind } from './kinds.js';
 import { listRecordEvents, mirroredCommentIds, recordOfEvent } from './store.js';
 
 export interface RecordEntry {
@@ -28,11 +28,9 @@ export interface RecordHistoryQuery {
 }
 
 /**
- * cm:hack — legacy comment records, read for history. Records posted as comment fences before
- * migration 0347 have no event, and dropping them would erase every verdict, park and answer an
- * issue earned before the cutover. A comment whose record was mirrored into an event is skipped, so
- * no record is read twice. Ends when a backfill writes an event for every pre-0347 record comment,
- * after which this function and its callers' merge go and events are the only read.
+ * cm:hack — a record comment with no event of its own is read for history, and one mirrored into an
+ * event is skipped, so no record is read twice. Ends when a backfill gives every such comment its
+ * event; then events are the only read.
  */
 async function legacyCommentRecords(
   issueId: string,
@@ -52,7 +50,7 @@ async function legacyCommentRecords(
     .from(comments)
     .where(and(...scope))
     .orderBy(asc(comments.createdAt), asc(comments.id));
-  const wanted = new Set<string>(query.kinds);
+  const wanted = new Set<string>(query.kinds.filter((kind) => !isKernelOnlyRecordKind(kind)));
   return rows.flatMap((row): RecordEntry[] => {
     if (mirrored.has(row.id)) return [];
     const record = parseForgeRecord(row.body);
@@ -78,7 +76,16 @@ export async function recordHistory(
   query: RecordHistoryQuery,
   executor: Tx = db,
 ): Promise<RecordEntry[]> {
-  const events = await listRecordEvents(issueId, { kinds: query.kinds }, executor);
+  // cm:guard ISS-96 — a transition, park or verdict is read only as core wrote it, never from a
+  // comment fence or an event a caller posted
+  const kernel = query.kinds.filter((kind) => isKernelOnlyRecordKind(kind));
+  const told = query.kinds.filter((kind) => !isKernelOnlyRecordKind(kind));
+  const events = [
+    ...(kernel.length > 0
+      ? await listRecordEvents(issueId, { kinds: kernel, kernelOnly: true }, executor)
+      : []),
+    ...(told.length > 0 ? await listRecordEvents(issueId, { kinds: told }, executor) : []),
+  ];
   const fromEvents = events
     .filter((e) => !query.after || e.createdAt.getTime() > query.after.getTime())
     .map(

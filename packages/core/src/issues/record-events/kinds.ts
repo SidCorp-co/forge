@@ -18,6 +18,14 @@ export const KERNEL_RECORD_KINDS = [
 ] as const;
 export type KernelRecordKind = (typeof KERNEL_RECORD_KINDS)[number];
 
+// cm:why core alone writes these, in the act's transaction (EVENT_KIND_KERNEL_ONLY)
+export const KERNEL_ONLY_RECORD_KINDS = [
+  'transition',
+  'park',
+  'verdict',
+] as const satisfies readonly KernelRecordKind[];
+export type KernelOnlyRecordKind = (typeof KERNEL_ONLY_RECORD_KINDS)[number];
+
 /**
  * Agent narration: collapsed into one digest per issue once the issue has been terminal for
  * `NARRATION_COLLAPSE_DAYS` (req-feedback decision Q6).
@@ -75,16 +83,12 @@ export const RECORD_EVENT_KINDS = [
 ] as const;
 export type RecordEventKind = (typeof RECORD_EVENT_KINDS)[number];
 
-/** The row a collapse leaves behind in place of an issue's narration. Never written by a caller. */
 export const RECORD_DIGEST_KIND = 'digest';
 
-/** `activity_log.action` of a record event: `record.<kind>`. */
 export const RECORD_ACTION_PREFIX = 'record.';
 
-/** Days an issue stays terminal before its narration collapses (decision Q6). */
 export const NARRATION_COLLAPSE_DAYS = 180;
 
-/** Every `activity_log.action` a record row may carry: each kind's, and the digest's. */
 export const RECORD_ACTIONS: readonly string[] = [
   ...RECORD_EVENT_KINDS.map((kind) => `${RECORD_ACTION_PREFIX}${kind}`),
   `${RECORD_ACTION_PREFIX}${RECORD_DIGEST_KIND}`,
@@ -92,6 +96,12 @@ export const RECORD_ACTIONS: readonly string[] = [
 
 export function isRecordEventKind(kind: string | null | undefined): kind is RecordEventKind {
   return kind != null && (RECORD_EVENT_KINDS as readonly string[]).includes(kind);
+}
+
+export function isKernelOnlyRecordKind(
+  kind: string | null | undefined,
+): kind is KernelOnlyRecordKind {
+  return kind != null && (KERNEL_ONLY_RECORD_KINDS as readonly string[]).includes(kind);
 }
 
 export function isCommentIntent(intent: unknown): intent is CommentIntent {

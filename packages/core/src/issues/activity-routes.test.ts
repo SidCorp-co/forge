@@ -52,7 +52,9 @@ vi.mock('./actor-resolution.js', () => {
   };
 });
 
-const { issueActivityRoutes, projectActivityRoutes } = await import('./activity-routes.js');
+const { assertActivityMutable, issueActivityRoutes, projectActivityRoutes } = await import(
+  './activity-routes.js'
+);
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
@@ -307,5 +309,25 @@ describe('GET /api/projects/:id/activity', () => {
     // A device actor resolves to an agent label.
     expect(body.items[0]?.actor?.isAgent).toBe(true);
     expect(body.items[0]?.actor?.displayName).toBe('Agent Device');
+  });
+});
+
+describe('KERNEL_RECORD_IMMUTABLE', () => {
+  it('refuses to evaluate or delete a kernel record, naming it, and lets every other row through', () => {
+    for (const kind of ['verdict', 'transition', 'landing', 'park', 'correction']) {
+      let caught: unknown;
+      try {
+        assertActivityMutable(`record.${kind}`);
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toMatchObject({
+        status: 409,
+        cause: { code: 'KERNEL_RECORD_IMMUTABLE', details: { action: `record.${kind}` } },
+      });
+      expect(String((caught as Error).message)).toContain(`\`record.${kind}\` is kernel evidence`);
+    }
+    expect(() => assertActivityMutable('issue.statusChanged')).not.toThrow();
+    expect(() => assertActivityMutable('record.fold')).not.toThrow();
   });
 });

@@ -187,8 +187,16 @@ no writer gets a fourth state.
 ## Records and audit
 
 - **Issue-scoped facts.** A fact about an issue that a gate or reader relies on is a typed event,
-  `record.<kind>` in `activity_log`. It is written by `packages/core/src/issues/record-events/store.ts:writeRecordEvent`,
+  `record.<kind>` in `activity_log`. A caller's record is written by `packages/core/src/issues/record-events/store.ts:writeRecordEvent`,
   and its kinds come from `packages/contracts/src/record-events.ts:RECORD_EVENT_KINDS`.
+- **Kernel evidence is core's.** A transition, a park and a verdict
+  (`packages/contracts/src/record-events.ts:KERNEL_ONLY_RECORD_KINDS`) are written only by core, by
+  `packages/core/src/issues/record-events/store.ts:writeKernelRecord`, in the transaction of the act
+  they record: the status move (`packages/core/src/issues/record-events/kernel-records.ts:recordMove`)
+  and the verdict row (`packages/core/src/issues/criteria/store.ts:recordVerdict`). A caller posting one
+  is refused `EVENT_KIND_KERNEL_ONLY`, and a kernel row cannot be evaluated or deleted
+  (`KERNEL_RECORD_IMMUTABLE`). `issue.statusChanged` stays as the feed's and the charts' activity
+  row; no gate reads it.
 - **Revisioned entities.** Their audit is their own rows: `<act>_by` / `<act>_at` / `reason` on the
   revision or decision row. A slice writes no untyped `activity_log` row of its own.
 - **Repeated acts.** A decision that can happen more than once on one item, such as a return
@@ -338,14 +346,15 @@ Read at `origin/dev` `0b3a1069a`.
 | Actor columns | `decided_by` (requirements, suggestions, contracts) against `decided_by_user` (workflow designs); FK `restrict` against `set null` (suggestions) | `packages/core/src/db/schema-workflows.ts:projectWorkflowDesigns` |
 | Immutability | A trigger only on requirement revisions and baselines; verdicts and criteria are insert-only by comment | `packages/core/src/db/schema-issue-criteria.ts:verdictValues` |
 | Keys | ISS-n by counter row and trigger; REQ-n by `max+1` under a lock; no shared counter | `packages/core/src/db/schema.ts:projectIssCounters` |
-| Audit | Typed events only for issue records; requirements, suggestions, designs and contracts audit in their own columns; a transition writes the untyped `issue.statusChanged` | `packages/core/src/issues/record-events/store.ts:writeRecordEvent` |
+| Audit | Typed events only for issue records; requirements, suggestions, designs and contracts audit in their own columns; a transition writes its typed `record.transition` and, after the commit, the untyped `issue.statusChanged` activity row | `packages/core/src/issues/record-events/kernel-records.ts:recordMove` |
 | Amnesties | Every ISS-54/55/56 hack writes its exit as prose ("Exit:", "Ends when"), not `ISS-n until:` | `packages/core/src/issues/apply-transition.ts:LegacyMove`, `packages/core/src/issues/criteria/store.ts:syncCriteriaFromText` |
-| Web badges | Four colour maps and a second badge primitive (a requirements `EnumBadge`, the criteria `BADGE`, `DESIGN_PILL`) | now `packages/web-v2/src/design/primitives/enum-badge.tsx:StatusBadge` and `:EnumBadge` everywhere but the Workflows page's `packages/web-v2/src/features/workflows/components/workflow-parts.tsx:DESIGN_PILL` |
+| Web badges | Four colour maps and a second badge primitive (a requirements `EnumBadge`, the criteria `BADGE`, `DESIGN_PILL`) | now `packages/web-v2/src/design/primitives/enum-badge.tsx:StatusBadge` and `:EnumBadge` everywhere |
 
 ## Non-conforming today
 
 Two owners appear here. **Review** is the review pass after the POC. A numbered slice is the next
-slice to touch that code. Items 1 and 13 were closed by ISS-61, and their numbers are not reused.
+slice to touch that code. Items 1 and 13 were closed by ISS-61, 18 and 29 by the shared
+`StatusBadge`, and 19 by ISS-96; their numbers are not reused.
 
 | # | Divergence | Owner |
 |---|---|---|
@@ -364,8 +373,6 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, and their number
 | 15 | Body validation outside `strictBody`: criteria, record events and agent reports use `zValidator` + `flattenError` with no shape hint | review |
 | 16 | `packages/core/src/agent-reports/routes.ts` writes with inline drizzle rather than `packages/core/src/agent-reports/service.ts`; `forge_agent_report` is a singular name | review |
 | 17 | The ISS-54/55/56 `cm:hack` annotations carry no `ISS-n until:` (`packages/core/src/issues/legacy-status.ts`, `packages/core/src/issues/criteria/event-verdicts.ts`, `packages/core/src/issues/record-events/mirror.ts`, `packages/core/src/issues/record-events/history.ts:legacyCommentRecords`, `packages/core/src/comments/tree.ts:recordOf`, `packages/core/src/agent-reports/routes.ts:feedbackReportsAliasRoutes`, `packages/core/src/mcp/tools/forge-agent-report.ts:forgeFeedbackAliasTool`) | review |
-| 18 | One web colour map outside contracts remains, on the Workflows page: `packages/web-v2/src/features/workflows/components/workflow-parts.tsx:DESIGN_PILL` (draft is coloured twice, differently). The requirements `EnumBadge` and its `HUE`, the criteria `BADGE` and the agent-report tone maps are gone | Workflows run |
-| 19 | The issue transition audits as the untyped `issue.statusChanged`, not `record.transition` | review |
 | 20 | The BA door posts a questionnaire through its bound tool (`packages/core/src/assistant/tools/ba-tools.ts`, `ba_send_questionnaire`) without the `PROJECT_AGENT_WRITE` rule REST and MCP posting take (`packages/core/src/questionnaires/rules.ts:posterRefusal`); the room binding stands in for it | review |
 | 21 | FB-n's MCP tool is `forge_feedback_items`, because `forge_feedback` is still the agent-reports alias; the `feedback:*` token grant also still means agent reports, so FB-n routes ride `projects:*` (`cm:hack ISS-59` in `packages/core/src/auth/pat-permissions.ts`) | review (a migration rewrites stored `feedback:*` grants, then the names move) |
 | 22 | Feedback's target arc holds requirement, issue, release and workflow; a screen is `where_seen` text with no key, as the approved design has it, not the arc member REQ-7 BC-1 lists. A release is a `pipeline_runs` row | review |
@@ -375,7 +382,6 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, and their number
 | 26 | The conversation detail carries the room's questionnaire batches, and the list each room's `kind` and `threadStatus` (`packages/core/src/assistant/conversation-routes.ts`): a conversation route reading the onboarding and questionnaire rows instead of the client reading `/questionnaires/:bid` | review |
 | 27 | `onboardings.status` is set by each writer (start, post, submit, done), not derived on read from the batches and the job; the dashboard hint is derived (`packages/core/src/onboarding/read.ts:hintOf`) | review |
 | 28 | `POST /api/projects/:id/onboarding/join` adds the caller to the onboarding room, which can turn a direct room into a group; no rule decides who may join beyond project access | review |
-| 29 | The web maps onboarding tones onto `StatusChip` keys (`packages/web-v2/src/features/onboarding/components/marks.tsx:TONE_CHIP`), one more colour map outside contracts beside item 18 | review |
 | 30 | Answering a questionnaire row through the questions route is refused `QUESTION_IN_QUESTIONNAIRE` as a thrown 409 in the questions slice's own shape (`packages/core/src/questions/write.ts:answerQuestion`), not the envelope | review |
 | 31 | The data-flow guard reads the level itself (`packages/core/src/onboarding/read.ts:projectHoldsSensitiveData`) to decide whether a data-flow design is owed, which is not an egress decision | review |
 | 32 | `CONTRACT_PROVIDER_NOT_LIVE` answers in the release blockers' 409 shape (`packages/core/src/release-batch/blocker-errors.ts:releaseBlockerError`), not the envelope, as every release blocker does; and it refuses the whole release, the auto-release sweep included, not only the issue that waits | review |

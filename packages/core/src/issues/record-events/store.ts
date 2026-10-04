@@ -1,14 +1,16 @@
 // Typed record events (ISS-56): a `forge-record` is a row of `activity_log` with action
 // `record.<kind>`, so a gate reads a table instead of parsing a thread.
 
-import { and, asc, eq, inArray, like } from 'drizzle-orm';
+import { and, asc, eq, inArray, like, sql } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import { activityLog } from '../../db/schema-activity.js';
 import { type ForgeRecord, overBudget, REQUESTED_FIELDS } from '../../messaging/forge-record.js';
 import type { Actor } from '../../pipeline/activity.js';
-import { recordEventVerdicts } from '../criteria/event-verdicts.js';
 import {
+  isKernelOnlyRecordKind,
   isRecordEventKind,
+  KERNEL_ONLY_RECORD_KINDS,
+  type KernelOnlyRecordKind,
   RECORD_ACTION_PREFIX,
   type RECORD_DIGEST_KIND,
   RECORD_EVENT_KINDS,
@@ -44,12 +46,16 @@ export interface RecordEvent {
   readonly lead: string | null;
   readonly commentId: string | null;
   readonly counts?: Readonly<Record<string, number>>;
+  readonly writer: 'core' | 'client';
   readonly actorType: string;
   readonly actorId: string;
   readonly createdAt: Date;
 }
 
-export type RecordEventRefusalCode = 'EVENT_KIND_UNKNOWN' | 'EVENT_PAYLOAD_INVALID';
+export type RecordEventRefusalCode =
+  | 'EVENT_KIND_UNKNOWN'
+  | 'EVENT_KIND_KERNEL_ONLY'
+  | 'EVENT_PAYLOAD_INVALID';
 
 /** A draft that cannot be stored, refused by name: what was wrong, where, and the valid shape. */
 export class RecordEventRefused extends Error {
@@ -64,11 +70,27 @@ export class RecordEventRefused extends Error {
 
 const KIND_LIST = RECORD_EVENT_KINDS.join(', ');
 
+const KERNEL_ACTS: Record<KernelOnlyRecordKind, string> = {
+  transition: 'a transition when the issue moves (`POST /api/issues/:id/transition`)',
+  park: "a park when the issue moves to `needs_info` or `on_hold`, carrying the move's `reason`",
+  verdict: 'a verdict when one is recorded on a criterion (`POST /api/issues/:id/verdicts`)',
+};
+
 /**
  * The draft, checked, or the refusal naming its first fault. A digest is the collapse's own row and
  * no writer may author one, so it is refused alongside every kind outside the set.
  */
 export function assertRecordEventDraft(draft: RecordEventDraft): void {
+  assertRecordEventShape(draft);
+  if (isKernelOnlyRecordKind(draft.kind)) {
+    throw new RecordEventRefused(
+      'EVENT_KIND_KERNEL_ONLY',
+      `\`${draft.kind}\` is kernel evidence core writes in the transaction of the act it records (${KERNEL_ONLY_RECORD_KINDS.join(', ')}), and no caller may post one: core writes ${KERNEL_ACTS[draft.kind]}. Make the act; the record follows it.`,
+    );
+  }
+}
+
+function assertRecordEventShape(draft: RecordEventDraft): void {
   if (!isRecordEventKind(draft.kind)) {
     throw new RecordEventRefused(
       'EVENT_KIND_UNKNOWN',
@@ -137,7 +159,10 @@ interface StoredPayload {
   lead?: unknown;
   commentId?: unknown;
   counts?: unknown;
+  writer?: unknown;
 }
+
+const KERNEL_WRITER = 'core';
 
 function fieldsOfPayload(raw: unknown): RecordEventField[] {
   if (!Array.isArray(raw)) return [];
@@ -164,6 +189,7 @@ function eventOfRow(row: ActivityRow): RecordEvent {
     ...(payload.counts && typeof payload.counts === 'object'
       ? { counts: payload.counts as Record<string, number> }
       : {}),
+    writer: payload.writer === KERNEL_WRITER ? 'core' : 'client',
     actorType: row.actorType,
     actorId: row.actorId,
     createdAt: row.createdAt,
@@ -193,42 +219,61 @@ export async function writeRecordEvent(
   const kind = input.kind as RecordEventKind;
   const fields = input.fields.map((f) => ({ key: f.key, value: f.value }));
   const lead = fields.find((f) => f.key === 'lead')?.value ?? null;
-  // One transaction: a verdict whose criterion rows are refused leaves no event behind (ISS-55).
-  return executor.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(activityLog)
-      .values({
-        issueId: input.issueId,
-        actorType: input.actor.type,
-        actorId: input.actor.id,
-        actorAgency: input.actor.agency,
-        action: recordAction(kind),
-        payload: {
-          contract: input.contract,
-          fields,
-          lead,
-          ...(input.commentId ? { commentId: input.commentId } : {}),
-        },
-        dedupeKey: input.commentId ? commentMirrorKey(input.commentId) : null,
-        ...(input.at ? { createdAt: input.at } : {}),
-      })
-      .returning();
-    if (!row) throw new Error('record event insert returned no row');
-    if (kind === 'verdict') {
-      await recordEventVerdicts(tx, {
-        issueId: input.issueId,
-        record: recordOfFields(kind, input.contract, fields),
-        actor: input.actor,
-        commentId: input.commentId ?? null,
-      });
-    }
-    return eventOfRow(row);
+  const [row] = await executor
+    .insert(activityLog)
+    .values({
+      issueId: input.issueId,
+      actorType: input.actor.type,
+      actorId: input.actor.id,
+      actorAgency: input.actor.agency,
+      action: recordAction(kind),
+      payload: {
+        contract: input.contract,
+        fields,
+        lead,
+        ...(input.commentId ? { commentId: input.commentId } : {}),
+      },
+      dedupeKey: input.commentId ? commentMirrorKey(input.commentId) : null,
+      ...(input.at ? { createdAt: input.at } : {}),
+    })
+    .returning();
+  if (!row) throw new Error('record event insert returned no row');
+  return eventOfRow(row);
+}
+
+export interface KernelRecordInput {
+  readonly issueId: string;
+  readonly actor: Actor;
+  readonly kind: KernelOnlyRecordKind;
+  readonly fields: readonly RecordEventField[];
+  readonly commentId?: string | null;
+}
+
+// cm:guard runs on the executor of the act it records, so the act and its record commit or roll back
+// together; no caller's draft reaches it
+export async function writeKernelRecord(executor: Tx, input: KernelRecordInput): Promise<void> {
+  const fields = input.fields.map((f) => ({ key: f.key, value: f.value }));
+  assertRecordEventShape({ kind: input.kind, contract: 1, fields });
+  await executor.insert(activityLog).values({
+    issueId: input.issueId,
+    actorType: input.actor.type,
+    actorId: input.actor.id,
+    actorAgency: input.actor.agency,
+    action: recordAction(input.kind),
+    payload: {
+      contract: 1,
+      fields,
+      lead: null,
+      writer: KERNEL_WRITER,
+      ...(input.commentId ? { commentId: input.commentId } : {}),
+    },
   });
 }
 
 export interface RecordEventQuery {
   readonly kinds?: readonly (RecordEventKind | typeof RECORD_DIGEST_KIND)[];
   readonly limit?: number;
+  readonly kernelOnly?: boolean;
 }
 
 /** One issue's record events, oldest first, of the kinds asked for (every kind where none is). */
@@ -240,10 +285,13 @@ export async function listRecordEvents(
   const scope = query.kinds?.length
     ? inArray(activityLog.action, query.kinds.map(recordAction))
     : like(activityLog.action, `${RECORD_ACTION_PREFIX}%`);
+  const written = query.kernelOnly
+    ? sql`${activityLog.payload}->>'writer' = ${KERNEL_WRITER}`
+    : undefined;
   const base = executor
     .select()
     .from(activityLog)
-    .where(and(eq(activityLog.issueId, issueId), scope))
+    .where(and(eq(activityLog.issueId, issueId), scope, written))
     .orderBy(asc(activityLog.createdAt), asc(activityLog.id));
   const rows = query.limit ? await base.limit(query.limit) : await base;
   return rows.map(eventOfRow);

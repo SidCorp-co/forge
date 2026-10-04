@@ -16,8 +16,22 @@ function refusalOf(draft: Parameters<typeof assertRecordEventDraft>[0]): RecordE
 describe('a record event draft is refused by name', () => {
   it('takes a closed kind with a contract and fields', () => {
     expect(() =>
-      assertRecordEventDraft({ kind: 'verdict', contract: 1, fields: [field] }),
+      assertRecordEventDraft({ kind: 'landing', contract: 1, fields: [field] }),
     ).not.toThrow();
+  });
+
+  it('refuses a kernel kind a caller tries to author, naming the act that writes it', () => {
+    const acts = {
+      transition: 'POST /api/issues/:id/transition',
+      park: '`needs_info` or `on_hold`',
+      verdict: 'POST /api/issues/:id/verdicts',
+    };
+    for (const [kind, act] of Object.entries(acts)) {
+      const err = refusalOf({ kind, contract: 1, fields: [field] });
+      expect(err.code).toBe('EVENT_KIND_KERNEL_ONLY');
+      expect(err.message).toContain(`\`${kind}\` is kernel evidence`);
+      expect(err.message).toContain(act);
+    }
   });
 
   it('refuses a kind outside the closed set, listing the set', () => {

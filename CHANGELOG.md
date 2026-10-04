@@ -3296,6 +3296,11 @@
 
 ### Fixed
 
+- **An issue can no longer close from In progress without passing verdicts.** Every criterion
+  needs one, as for Awaiting release, whether or not the issue was reopened. An issue that is not
+  work is dropped instead.
+- **Transitions, parks and verdicts are recorded by Forge itself,** with the move or verdict they
+  record. A client posting one is refused by name, and none can be edited or deleted afterwards.
 - **A `forge_uploads` fetch carries the text it inlines in its structured answer.** A client reading
   the structured result no longer sees `inlined: true` with the body missing.
 - **One rule decides what an agent may read on a sensitive project.** Requirements, designs, issues,

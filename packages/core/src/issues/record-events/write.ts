@@ -16,11 +16,7 @@ export interface ScreenedRecordEventInput extends Omit<WriteRecordEventInput, 'c
   readonly projectId: string;
 }
 
-/**
- * Check the draft's shape (EVENT_KIND_UNKNOWN / EVENT_PAYLOAD_INVALID), then screen it as the
- * comment door screens an agent's record — field budget, verdict identity, design, evidence and
- * lead — and store it only if nothing refused it.
- */
+/** Check the draft, screen it as the comment door screens a record, store it if nothing refused. */
 export async function writeScreenedRecordEvent(
   input: ScreenedRecordEventInput,
   executor: Tx = db,

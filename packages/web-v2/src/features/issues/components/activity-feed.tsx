@@ -80,13 +80,18 @@ function describeUpdate(payload: Record<string, unknown>): React.ReactNode {
   );
 }
 
+// cm:why a move writes both its `issue.statusChanged` line and its `record.transition` evidence (ISS-96);
+// the feed draws the move once, from the first
+const DRAWN_ELSEWHERE = new Set(["record.transition"]);
+
 export function ActivityFeed({ items }: { items: ActivityItem[] }) {
-  if (items.length === 0) {
+  const shown = items.filter((item) => !DRAWN_ELSEWHERE.has(item.action));
+  if (shown.length === 0) {
     return <EmptyState title="No activity yet" message="Status changes and edits will show here." mascot={false} />;
   }
   return (
     <ol className="space-y-3">
-      {items.map((item) => {
+      {shown.map((item) => {
         const node = describe(item);
         // Prefer the server-resolved actor (member email / agent device name)
         // over the bare actorType. Fall back to the raw type for older payloads;
