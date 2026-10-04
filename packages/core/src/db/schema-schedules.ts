@@ -1,15 +1,6 @@
 import { SCHEDULE_KINDS } from '@forge/contracts/schedules';
 import { relations, sql } from 'drizzle-orm';
-import {
-  boolean,
-  index,
-  jsonb,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-  uuid,
-} from 'drizzle-orm/pg-core';
+import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { users } from './schema-auth.js';
 import { projects } from './schema-projects.js';
 

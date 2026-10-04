@@ -1,17 +1,6 @@
 import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
 import { type InferSelectModel, relations, sql } from 'drizzle-orm';
-import {
-  check,
-  index,
-  integer,
-  jsonb,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-  unique,
-  uuid,
-} from 'drizzle-orm/pg-core';
+import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { devicePlatforms, deviceStatuses } from './device-vocabulary.js';
 import { users } from './schema-auth.js';
 import { jobs } from './schema-jobs.js';

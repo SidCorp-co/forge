@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-export type RequestPart = 'json' | 'query' | 'param' | 'form' | 'header' | 'cookie';
+type RequestPart = 'json' | 'query' | 'param' | 'form' | 'header' | 'cookie';
 
 export type RequestRead =
   | { kind: 'validated'; part: RequestPart; via: string }

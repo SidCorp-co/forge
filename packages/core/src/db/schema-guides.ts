@@ -1,13 +1,5 @@
 import { relations } from 'drizzle-orm';
-import {
-  integer,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from 'drizzle-orm/pg-core';
+import { integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { users } from './schema-auth.js';
 import { organizations } from './schema-orgs.js';
 

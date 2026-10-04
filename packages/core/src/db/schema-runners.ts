@@ -1,19 +1,8 @@
 import { RUNNER_PROVISION_STATUSES, RUNNER_STATUSES } from '@forge/contracts/runner-machine';
 import { relations } from 'drizzle-orm';
-import {
-  type AnyPgColumn,
-  index,
-  jsonb,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from 'drizzle-orm/pg-core';
+import { type AnyPgColumn, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { devices } from './schema-devices.js';
 import { jobs } from './schema-jobs.js';
-import { labels } from './schema-labels.js';
 import { projects } from './schema-projects.js';
 
 // EPIC 2 (ISS-271) — Runner framework.

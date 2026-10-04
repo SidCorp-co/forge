@@ -1,14 +1,5 @@
 import { relations, sql } from 'drizzle-orm';
-import {
-  boolean,
-  jsonb,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-  unique,
-  uuid,
-} from 'drizzle-orm/pg-core';
+import { boolean, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { projects } from './schema-projects.js';
 
 export const appConfig = pgTable('app_config', {

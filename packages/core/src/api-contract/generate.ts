@@ -6,8 +6,8 @@ import { enterHermeticEnv } from './hermetic-env.js';
 
 const GENERATOR = 'packages/core/src/api-contract/generate.ts';
 const DEFAULT_OUT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'contracts');
-export const API_ARTIFACT = 'forge-api.openapi.json';
-export const MCP_ARTIFACT = 'forge-mcp.tools.json';
+const API_ARTIFACT = 'forge-api.openapi.json';
+const MCP_ARTIFACT = 'forge-mcp.tools.json';
 
 function outDir(argv: string[]): string {
   const i = argv.indexOf('--out');

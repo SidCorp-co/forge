@@ -1,18 +1,6 @@
 import { JOB_STATUSES } from '@forge/contracts/job-machine';
 import { relations, sql } from 'drizzle-orm';
-import {
-  type AnyPgColumn,
-  boolean,
-  index,
-  integer,
-  jsonb,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from 'drizzle-orm/pg-core';
+import { type AnyPgColumn, boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { jobEventKinds } from './job-event-kinds.js';
 import { users } from './schema-auth.js';
 import { devices } from './schema-devices.js';

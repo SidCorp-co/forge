@@ -1,4 +1,4 @@
-import { index, integer, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { actorAgencies, kernelTransitionEntities } from './schema-vocabulary.js';
 
 export const kernelTransitionActorTypes = ['user', 'system', 'runner', 'sweeper'] as const;
