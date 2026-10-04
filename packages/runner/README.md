@@ -6,6 +6,10 @@ Code CLI (future: codex), and streams events back.
 
 Replaces the Tauri desktop app.
 
+**What it is for:** [ADR 0009](../../docs/adr/0009-the-runner-is-a-thin-box-agent.md). The runner
+does only what the machine alone can do (pair, run the agent, own worktrees and panes, stream
+events, reap processes, self-update); every decision belongs to core.
+
 ## Layout
 
 - `crates/forge-runner-core` — the lib: transport, auth, runner abstraction, workspace,
@@ -22,7 +26,7 @@ Replaces the Tauri desktop app.
 | `setup` | Installed → running work: check tools, pair, pick projects, get checkouts, install the service, end on `doctor` |
 | `login` | Pair this device: prints an approval URL (`--open` launches a browser); `--pat` stores a REST token instead |
 | `bind` | Bind a project slug to a local repo path |
-| `start` | Run the daemon — connect, register, accept jobs |
+| `start` | Run the daemon — connect, accept jobs |
 | `status` | Connection + runner status |
 | `logs` | Say where this box's runner log is read |
 | `config` | Inspect or edit local config |
