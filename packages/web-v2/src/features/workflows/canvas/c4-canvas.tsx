@@ -101,18 +101,21 @@ export function C4Canvas(props: WorkflowCanvasProps) {
     };
   }, [view]);
 
-  /** Fit: as large as the view holds, never below the zoom at which the smallest type reads at 12px. */
+  /**
+   * Fit: as large as the view holds, never below the zoom at which the smallest type reads at 12px.
+   * Along an axis it cannot hold, the view centres on the system without running past either end.
+   */
   const fitTo = useCallback(
     (d: Diagram) => {
-      const el = wrap.current;
       const box = viewBox();
-      if (!el || !box) return false;
+      if (!box) return false;
       const k = Math.max(MIN_READABLE_ZOOM, fitZoom(d, box, FIT_MAX));
-      const fits = d.width * k <= box.width && d.height * k <= box.height;
       const core = d.boxes.find((b) => b.node.id === FOCAL) ?? d.frames.find((f) => f.frame.id === FOCAL);
-      const cx = fits || !core ? d.width / 2 : core.x + core.w / 2;
-      const cy = fits || !core ? d.height / 2 : core.y + core.h / 2;
-      void rf.setViewport({ x: el.clientWidth / 2 - cx * k, y: el.clientHeight / 2 - cy * k, zoom: k });
+      const offset = (size: number, room: number, centre: number) =>
+        size * k <= room ? (room - size * k) / 2 : -Math.min(Math.max(centre * k - room / 2, 0), size * k - room);
+      const x = PAD + offset(d.width, box.width, core ? core.x + core.w / 2 : d.width / 2);
+      const y = PAD + offset(d.height, box.height, core ? core.y + core.h / 2 : d.height / 2);
+      void rf.setViewport({ x, y, zoom: k });
       setZoom(k);
       return true;
     },

@@ -106,9 +106,10 @@
 .wfc-c4-fold { pointer-events: auto; display: inline-flex; min-width: 0; max-width: 100%; align-items: center; gap: 3px; height: auto; margin: -1px 0 0 -4px; padding: 1px 4px; border: 0; border-radius: var(--r-sm); background: none; font: inherit; color: var(--fg-muted); cursor: pointer; }
 .wfc-c4-fold:hover { background: var(--bg-hover); }
 .wfc-c4-fold:hover .wfc-c4-frame-label { color: var(--fg-default); }
-.wfc-c4-label { position: absolute; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 4px; border-radius: var(--r-sm); background: var(--bg-app); font-weight: 500; line-height: 1; color: var(--fg-muted); white-space: nowrap; cursor: pointer; pointer-events: all; transition: opacity var(--dur-base); }
-.wfc-c4-label-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.wfc-c4-more { flex: none; padding: 1px 5px; border-radius: 999px; background: var(--bg-sunken); color: var(--fg-subtle); }
+.wfc-c4-label { position: absolute; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1px 4px; border-radius: var(--r-sm); background: var(--bg-app); font-weight: 500; line-height: 15px; color: var(--fg-muted); text-align: center; cursor: pointer; pointer-events: all; transition: opacity var(--dur-base); }
+.wfc-c4-label-line { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wfc-c4-more { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 999px; background: var(--bg-sunken); line-height: 14px; color: var(--fg-subtle); }
+.wfc-c4-label-line:only-child > .wfc-c4-more:first-child, .wfc-c4-label-line > .wfc-c4-more:only-child { margin-left: 0; }
 .wfc-c4-label:hover, .wfc-c4-label[data-on="true"] { color: var(--fg-default); }
 
 @media (max-width: 700px) {
