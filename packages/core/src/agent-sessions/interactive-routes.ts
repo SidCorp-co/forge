@@ -1,14 +1,10 @@
-import { eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { issues, projects } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
-import { refuseSession } from './refusals.js';
 import { broadcastSession } from './broadcast.js';
 import { createChatSessionRow } from './chat-turn.js';
 import {
@@ -18,8 +14,9 @@ import {
   resolveInteractiveClient,
 } from './interactive-credential.js';
 import { assertCallerDeclaresNoKind } from './kind-query.js';
-import { loadProjectBySlug } from './lifecycle-routes.js';
 import { sendBodySchema, startBodySchema } from './lifecycle-schemas.js';
+import { issueRefsOf, loadProjectBySlug, projectHandle } from './read.js';
+import { refuseSession } from './refusals.js';
 import { badRequest, ensureSessionOwnerOrAdmin, notFound } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 
@@ -110,11 +107,7 @@ agentSessionInteractiveRoutes.post(
 
     let title: string;
     if (input.issueIds && input.issueIds.length > 0) {
-      const rows = await db
-        .select({ seq: issues.issSeq, prefix: projects.issuePrefix, title: issues.title })
-        .from(issues)
-        .innerJoin(projects, eq(projects.id, issues.projectId))
-        .where(inArray(issues.id, input.issueIds));
+      const rows = await issueRefsOf(input.issueIds);
       const refs = rows.map((r) => formatIssueRef(r.prefix, r.seq));
       if (refs.length === 1) title = `${refs[0]} ${rows[0]?.title ?? ''}`.slice(0, 120);
       else if (refs.length > 1) title = refs.join(', ').slice(0, 120);
@@ -179,7 +172,10 @@ agentSessionInteractiveRoutes.post(
 
     const { session } = await ensureSessionOwnerOrAdmin(input.sessionId, userId);
     if (session.status === 'running' || session.status === 'queued') {
-      throw refuseSession('SESSION_RUNNING', 'The agent is still working on this conversation, under the access of the person whose turn it is. Wait for it to finish or stop it, then send.');
+      throw refuseSession(
+        'SESSION_RUNNING',
+        'The agent is still working on this conversation, under the access of the person whose turn it is. Wait for it to finish or stop it, then send.',
+      );
     }
 
     // Resolve the client through the SHARED path: honour an explicit runner pick
@@ -199,11 +195,7 @@ agentSessionInteractiveRoutes.post(
       asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
     });
 
-    const [project] = await db
-      .select({ id: projects.id, slug: projects.slug })
-      .from(projects)
-      .where(eq(projects.id, session.projectId))
-      .limit(1);
+    const project = await projectHandle(session.projectId);
     if (!project) throw notFound('project not found');
 
     await dispatchInteractiveTurn({

@@ -1,12 +1,10 @@
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { agentSessions } from '../db/schema.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { sessionPlacement } from './read.js';
 import { confirmSessionSend, markSessionSendApplied } from './session-send.js';
 
 const badRequest = (details: unknown) =>
@@ -17,11 +15,7 @@ export const agentSessionInboxRoutes = new Hono<{ Variables: AuthVars }>();
 const paramSchema = z.object({ id: z.uuid(), seq: z.coerce.number().int().positive() });
 
 async function assertOwnsSession(sessionId: string, c: { get: (k: 'deviceId') => unknown }) {
-  const [row] = await db
-    .select({ deviceId: agentSessions.deviceId })
-    .from(agentSessions)
-    .where(eq(agentSessions.id, sessionId))
-    .limit(1);
+  const row = await sessionPlacement(sessionId);
   if (!row || row.deviceId !== c.get('deviceId')) throw forbidden('session is not on this device');
 }
 
