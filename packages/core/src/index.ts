@@ -35,7 +35,12 @@ import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { logger } from './observability/logger.js';
-import { emitEvents, startOutboxWorker, stopOutboxWorker } from './outbox/index.js';
+import {
+  declareOutboxQueues,
+  emitEvents,
+  startOutboxWorker,
+  stopOutboxWorker,
+} from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
 import { readDeclaredSource } from './project-config/index.js';
 import { findProjectOrgId } from './projects/index.js';
@@ -141,6 +146,7 @@ if (isMain) {
   }
 
   await startBoss();
+  await declareOutboxQueues();
   await assertVaultBootSafety();
   registerAllIntegrations();
   await registerDeployWorker();

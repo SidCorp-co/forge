@@ -1,5 +1,5 @@
 // The kernel's transaction-local flag, `forge.kernel_txn`. The status trigger on every machine's
-// status column (`forge_kernel_status_guard`, migration 0392) refuses an UPDATE of the status unless
+// status column (`forge_kernel_status_guard`, migration 0393) refuses an UPDATE of the status unless
 // the flag holds the current transaction id; the deletion detectors chart a delete made without it.
 
 import { sql } from 'drizzle-orm';

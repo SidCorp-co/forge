@@ -1,6 +1,6 @@
 {
   "name": "@forge/core",
-  "version": "0.4.0-dev.4",
+  "version": "0.4.0-dev.6",
   "private": true,
   "license": "Apache-2.0",
   "description": "Forge core API — Hono + Drizzle (RFC 0002 Strapi replacement).",
@@ -75,7 +75,7 @@
     "nodemailer": "^10.0.11",
     "openid-client": "^6.8.8",
     "pg": "^8.23.0",
-    "pg-boss": "^10.4.2",
+    "pg-boss": "^12.36.0",
     "pino": "^10.3.1",
     "postgres": "^3.4.9",
     "rate-limiter-flexible": "^11.2.1",
@@ -101,6 +101,6 @@
     "vitest": "^5.0.2"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12"
   }
 }

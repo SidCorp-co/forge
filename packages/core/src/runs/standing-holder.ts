@@ -127,7 +127,7 @@ function heartbeatClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext)
 
 function silenceExpiry(f: RunFacts, ctx: StandingContext): Clock {
   const s = f.session;
-  if (f.run.rawLane === 'run_session' && s && !TERMINAL_SESSION.includes(s.status)) {
+  if (f.run.rawLane === 'run_session' && s?.status === 'running') {
     const beat = s.lastHeartbeatAt ?? s.startedAt ?? s.createdAt;
     return clock(
       after(beat, ctx.silenceReapMs),
@@ -187,7 +187,7 @@ export function holderOf(f: RunFacts, ctx: StandingContext, state: RunState): Ru
     device: RunDevice | null;
     acquiredAt: Date | null;
   } | null = null;
-  if (f.run.rawLane === 'run_session' && s && !TERMINAL_SESSION.includes(s.status)) {
+  if (f.run.rawLane === 'run_session' && s?.status === 'running') {
     const first = f.fleetKeys.map((k) => k.acquiredAt).sort((a, b) => a.getTime() - b.getTime())[0];
     identity = {
       kind: 'run',

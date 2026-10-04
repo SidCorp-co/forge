@@ -1,4 +1,4 @@
-import { holdResumesItself } from '../jobs/hold.js';
+import { holdReleasesItself, readHoldState } from '../jobs/hold.js';
 import type { RunnerAvailability } from '../jobs/queued-gates.js';
 import type { PauseResumer } from '../pipeline/run-pause.js';
 import type {
@@ -44,8 +44,8 @@ const GATE_READINGS: Record<Exclude<PipelineWaitingReason, 'job_held'>, Pipeline
   },
 };
 
-function heldReading(holdReason: string | null): PipelineReading {
-  return holdResumesItself(holdReason)
+function heldReading(releasesItself: boolean): PipelineReading {
+  return releasesItself
     ? {
         short: 'Step held',
         detail: 'A step is held: it could not run and is waiting for the condition to clear.',
@@ -65,8 +65,8 @@ export function gateOf(
   since: string,
   details: Record<string, unknown>,
 ): PipelineGate {
-  const hold = typeof details.holdReason === 'string' ? details.holdReason : null;
-  const reading = reason === 'job_held' ? heldReading(hold) : GATE_READINGS[reason];
+  const reading =
+    reason === 'job_held' ? heldReading(details.releasesItself === true) : GATE_READINGS[reason];
   return { reason, since, details, reading };
 }
 
@@ -124,6 +124,7 @@ export function heldWaitingOn(issueJobs: PipelineHealthJob[]): PipelineHealth['w
     heldJobId: held.id,
     heldJobType: held.type,
     holdReason: held.failureReason ?? null,
+    releasesItself: holdReleasesItself(readHoldState(held.payload), held.failureReason ?? null),
   });
 }
 

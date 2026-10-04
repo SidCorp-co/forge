@@ -2526,7 +2526,14 @@
       "idx": 392,
       "version": "7",
       "when": 1816819200000,
-      "tag": "0392_a_status_moves_only_through_the_kernel",
+      "tag": "0392_outbox_deliveries_are_pg_boss_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 393,
+      "version": "7",
+      "when": 1816905600000,
+      "tag": "0393_a_status_moves_only_through_the_kernel",
       "breakpoints": true
     }
   ]

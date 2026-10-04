@@ -18,7 +18,8 @@ const pageQuery = zValidator(
     offset: z.coerce.number().int().min(0).default(0),
   }),
   (r) => {
-    if (!r.success) throw badRequest('invalid query: limit? (1..200, 50 by default), offset? (0 or more)');
+    if (!r.success)
+      throw badRequest('invalid query: limit? (1..200, 50 by default), offset? (0 or more)');
   },
 );
 

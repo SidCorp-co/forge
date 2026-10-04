@@ -67,8 +67,7 @@ export async function observeLand(input: {
   if (rows.length === 0) return 0;
   const job: LandJob = { projectId, bindingId, measurementIds: rows.map((r) => r.id) };
   try {
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss send signature varies
-    await (boss as any).send(CONTRACT_MEASURE_QUEUE, job, {
+    await boss.send(CONTRACT_MEASURE_QUEUE, job, {
       retryLimit: 3,
       retryBackoff: true,
       singletonKey: `${projectId}:${commit}`,
@@ -164,12 +163,10 @@ let registered = false;
 
 export async function registerContractMeasureWorker(): Promise<void> {
   if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(CONTRACT_MEASURE_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(CONTRACT_MEASURE_QUEUE, { batchSize: 1 }, async (arg: unknown) => {
-    for (const entry of Array.isArray(arg) ? arg : [arg]) {
-      const data = (entry as { data?: LandJob })?.data;
+  await boss.createQueue(CONTRACT_MEASURE_QUEUE);
+  await boss.work<LandJob>(CONTRACT_MEASURE_QUEUE, { batchSize: 1 }, async (jobs) => {
+    for (const entry of jobs) {
+      const data = entry.data;
       if (data && Array.isArray(data.measurementIds)) await measureLand(data);
     }
   });

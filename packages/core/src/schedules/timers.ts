@@ -38,7 +38,7 @@ export interface ProcessTimer {
 export type Timer = ClusterTimer | ProcessTimer;
 
 let clusterTimers: readonly ClusterTimer[] = [];
-const workerIds: string[] = [];
+const workers: { name: string; id: string }[] = [];
 const processStops: Array<() => void> = [];
 let started = false;
 
@@ -182,8 +182,9 @@ export async function startTimers(timers: readonly Timer[]): Promise<void> {
 
   for (const t of clusterTimers) {
     await boss.createQueue(t.name);
-    workerIds.push(
-      await boss.work(t.name, async () => {
+    workers.push({
+      name: t.name,
+      id: await boss.work(t.name, async () => {
         try {
           await t.run();
         } catch (err) {
@@ -191,11 +192,11 @@ export async function startTimers(timers: readonly Timer[]): Promise<void> {
           throw err;
         }
       }),
-    );
+    });
   }
 
   await boss.createQueue(TICK_QUEUE);
-  workerIds.push(await boss.work(TICK_QUEUE, { batchSize: 1 }, tick));
+  workers.push({ name: TICK_QUEUE, id: await boss.work(TICK_QUEUE, { batchSize: 1 }, tick) });
   await removeOtherCrons();
   await boss.schedule(TICK_QUEUE, TICK_CRON, {}, { tz: 'UTC' });
 
@@ -206,8 +207,8 @@ export async function stopTimers(): Promise<void> {
   if (!started) return;
   started = false;
   for (const stop of processStops.splice(0)) stop();
-  for (const id of workerIds.splice(0)) {
-    await boss.offWork({ id }).catch((err) => logger.warn({ err }, 'timers: offWork failed'));
+  for (const { name, id } of workers.splice(0)) {
+    await boss.offWork(name, { id }).catch((err) => logger.warn({ err }, 'timers: offWork failed'));
   }
   clusterTimers = [];
 }

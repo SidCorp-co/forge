@@ -72,8 +72,7 @@ export async function enqueueCoolifyConfirm(
   job: CoolifyConfirmJob,
   opts: { startAfterSeconds?: number } = {},
 ): Promise<void> {
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss send signature varies
-  await (boss as any).send(INTEGRATIONS_QUEUE_NAME, job, {
+  await boss.send(INTEGRATIONS_QUEUE_NAME, job, {
     retryLimit: 3,
     retryBackoff: true,
     startAfter: opts.startAfterSeconds ?? POLL_INTERVAL_SECONDS,

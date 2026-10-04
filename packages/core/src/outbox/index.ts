@@ -1,5 +1,6 @@
 export { type Consumer, consume, type Delivery } from './consumers.js';
 export { emitEvent, emitEvents, type OutboxEvent } from './emit.js';
+export { declareOutboxQueues } from './queues.js';
 export {
   countOverdueDeliveries,
   type DeadDeliveryTally,
@@ -7,4 +8,4 @@ export {
   tallyDeadDeliveries,
 } from './read.js';
 export { pruneOutbox, replayDelivery } from './service.js';
-export { drainOutboxOnce, startOutboxWorker, stopOutboxWorker } from './worker.js';
+export { startOutboxWorker, stopOutboxWorker } from './worker.js';

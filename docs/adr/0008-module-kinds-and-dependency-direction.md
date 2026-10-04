@@ -42,10 +42,8 @@ The choices inside that, and why:
   "routes" and "services". A kind says what a module may know: the kernel owns the machines every
   product module moves, a read model only derives, an adapter only speaks a vendor's protocol.
 - **Read models sit above domains.** A derived fact usually spans several domains (needs-you reads
-  issues, requirements and questions), so its read model imports their read functions. A domain
-  that must gate on the same fact applies the fact's predicate from contracts to its own rows. The
-  alternative, read models below domains, forces each read model to query other modules' tables
-  directly, which is the ownership breach this decision exists to end.
+  issues, requirements and questions). How a read model reaches their data is the ISS-188
+  amendment below: it SELECTs the owners' tables it declares, and writes none.
 - **The kernel imports no adapter.** An effect of a transition on the outside world (a chat
   message, a deploy) is a domain's reaction to the transition's outbox event. That keeps the kernel
   testable without a vendor and keeps `VISION: kernel-hard-policy-soft` structural.
@@ -74,13 +72,28 @@ The choices inside that, and why:
   outbox makes every reaction durable, and an event nobody consumes is not emitted. Durable is not
   enough on its own: a single row with one shared attempt counter let one failing consumer spend the
   retries of every other, gave up after three quick attempts, and left the row unprocessed for ever
-  with nobody told, which breaks `VISION: state-never-lies`. So each consumer has its own delivery
-  row, which is also its inbox, retries back off over hours, and a delivery that runs out ends
-  `dead`, listed, alerted and replayable. pg-boss, already a core dependency, was weighed for this
-  and covers roughly 60% of it: it sends in a transaction, keeps queues independent, backs off and
-  prunes, but it keeps no order per issue through a retry, renews no lease, and archives a failed
-  job out of sight after a retention window, so a dead delivery would stop being visible before
-  anyone replayed it.
+  with nobody told, which breaks `VISION: state-never-lies`. So each consumer gets its own pg-boss
+  job, sent in the act's transaction through pg-boss's Drizzle executor; its retries back off over
+  hours, and a job that runs out ends `dead`, listed, alerted and replayable. Measured on **pg-boss
+  12.36.0** (ISS-192), it covers six of the nine requirements as shipped, one more with a derived job
+  id, and two are built: a transactional send, one queue per consumer, backoff up to a cap, a
+  heartbeat that holds a running job, a dead-letter copy with retry of the failed job, and
+  `key_strict_fifo`, which holds an issue's later jobs behind an active, retrying or failed one.
+  That last is the rule chosen on
+  2026-10-05: **a dead delivery blocks its issue for that consumer until it is replayed**, loudly,
+  through A6. Three gaps are built here. pg-boss's retention deletes a failed job with the completed
+  ones, which would release the block and hide the dead, so the consumer queues delete nothing and a
+  timer prunes only delivered jobs. Within a key pg-boss orders by the emitting transaction's start,
+  then by id, so a job id leads with the event's `seq` and events written in one transaction keep
+  their order; across transactions the order is by transaction start, where the hand-rolled claim
+  ordered by `seq` taken at insert, and neither follows commit order. pg-boss counts no overdue job
+  that excludes the ones a key holds back, so that count reads its job table. The earlier 60% reading
+  was of 10.4.2. pg-boss 12 cannot migrate the version-24 schema 10.4.2 wrote, so it lives in
+  `pgboss_v12` and core copies the jobs 10.4.2 left waiting on first start
+  (`packages/core/src/queue/v10-carry-over.ts`); `pgboss` is only read, so a code revert returns to
+  10.4.2. **`pgboss` is dropped once** every environment that ran 10.4.2 has booted this build, the
+  boot log there names no job written to `pgboss` after the copy, and a revert to 10.4.2 is no longer
+  wanted.
 - **Refusals stay one envelope**, and the error-class and `HTTPException` shapes are retired rather
   than mapped, because a client that has to read four shapes reads none of them reliably.
 - **Permission is [ADR 0007](0007-approval-is-a-permission.md)'s**, not restated here: approval
@@ -99,7 +112,7 @@ sau"), so neither ships with unit tests, and the only check before a push on dev
 `pnpm tc:changed` (`scripts/tc-changed.mjs`), a typecheck of the touched packages and their
 importers.
 
-Two rules have no script yet: read models (web derivations) and permission. They are judged by the
+Two rules have no script yet: web derivations and permission. They are judged by the
 reconciliation decision on each module until a check exists.
 
 ## Consequences
@@ -237,3 +250,31 @@ excluded.
 - **Not taken:** a planted-violation test per rule. The owner ruled on 2026-10-04 that dev is code
   only and QA comes later, so each rule is trusted on its generated configuration until QA plants
   a violation per rule and watches it go red.
+
+## Amendment (2026-10-05, ISS-188): read models read the data directly
+
+The same research pass compared read models with the CQRS sources. Greg Young's thin read layer
+"reads directly from the database and projects DTOs" and names loading several aggregates to build
+one DTO as the cost; Dahan keeps the domain model out of queries; Grzybek's read side is raw SQL
+over views. Building a read model by calling several domains' read functions is that cost, an N+1
+read, and Forge's own reference read model (`packages/core/src/runs/facts-read.ts`, one statement
+per table over twelve tables) already broke the rule this ADR stated. The rule now matches it.
+
+- **A read model SELECTs the tables it declares.** Each read model lists under `reads` in
+  `packages/core/src/modules.json` the owners' tables or views it reads, and writes none. Ownership
+  is about writes: a SELECT skips no owner's rule, and the declaration keeps every cross-owner read
+  visible and reviewable.
+- **The boundary check enforces the list.** `scripts/check-module-boundaries.mjs` refuses a read
+  model file that SELECTs (raw SQL `FROM` or `JOIN`, or a value import from a schema file) a table
+  its `reads` does not name (`undeclared-read`), and a declared read nothing uses. A read model may
+  import an owner's read files (`read.ts`, `<x>-read.ts`, `read/`) for a table it declares, past the
+  face-only and context-direction rules; nothing else behind the face.
+- **One input-builder per derived fact.** The predicate was declared once, in contracts, but its
+  inputs were assembled twice, by the read model and by the gate, so the two could drift. Each fact
+  now has one function that builds the predicate's input from a `tx`, beside the table that owns
+  the fact's subject; the read model calls it with the database and the gate calls it inside its
+  own write transaction.
+- **A written path when a read gets slow:** an index, then a view, then a materialized view with
+  its staleness stated, then a projection table the read model declares under `projections` (the one
+  table a read model owns), written only by its outbox consumer and rebuildable from source. Application-maintained caches are "a complete mess of complicated
+  invalidation logic" (Kleppmann); each step is taken only when the one before cannot serve.

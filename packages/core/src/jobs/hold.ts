@@ -52,21 +52,25 @@ export const AUTO_RELEASE_REASONS: ReadonlySet<string> = new Set([
 /** How long a {@link TIME_CHECKED_REASONS} hold waits before it tries again. */
 export const HOLD_RECHECK_MS = 10 * 60_000;
 
-/**
- * Whether a hold for `reason` clears without anyone doing anything.
- *
- * The one predicate every surface that describes a hold must ask, so no copy
- * can promise a resume this module will not perform.
- */
-export function holdResumesItself(reason: string | null | undefined): boolean {
+function holdResumesItself(reason: string | null | undefined): boolean {
   return reason !== null && reason !== undefined && AUTO_RELEASE_REASONS.has(reason);
 }
 
 /**
- * Whether holding `job` for `reason` produces a hold that will release itself.
- *
- * Narrower than {@link holdResumesItself}: it also spends the once-per-lineage
- * bound, so a re-hold answers false even for a self-clearing reason.
+ * Whether a held job releases itself: a self-clearing reason on a lineage that has not spent its
+ * one auto-release. The release sweep below acts on it, and every surface that describes a held job
+ * asks it with the job's own hold state, so no copy promises a resume the sweep will not perform.
+ */
+export function holdReleasesItself(
+  hold: HoldState | null,
+  failureReason: string | null = null,
+): boolean {
+  return hold ? hold.autoRelease && holdResumesItself(hold.reason) : holdResumesItself(failureReason);
+}
+
+/**
+ * Whether holding `job` for `reason` produces a hold that will release itself: a self-clearing
+ * reason on a lineage that has not been held before, so a re-hold answers false.
  */
 export function holdAutoReleases(priorPayload: unknown, reason: string): boolean {
   return readHoldState(priorPayload) === null && AUTO_RELEASE_REASONS.has(reason);
@@ -225,7 +229,7 @@ export async function releaseHeldJobs(projectId: string): Promise<number> {
   for (const job of candidates) {
     const state = readHoldState(job.payload);
     const reason = state?.reason ?? job.failureReason ?? '';
-    if (state && !state.autoRelease) continue;
+    if (state && !holdReleasesItself(state)) continue;
     let cleared = false;
     try {
       cleared = await conditionCleared(job, reason);

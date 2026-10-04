@@ -9,8 +9,8 @@ import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { masterLastBeatSql } from '../devices/master-silence.js';
 import { RUN_GROUP_METADATA_KEY } from '../devices/run-session-keys.js';
 import {
+  heartbeatReapedSql,
   MASTER_SESSION_KIND,
-  PIPELINE_SESSION_KINDS,
   RUN_SESSION_KIND,
 } from '../jobs/session-kinds.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
@@ -184,11 +184,7 @@ function runRows(projectId: string, ids: string[]) {
              s.status AS session_status, s.runtime_state AS session_runtime_state,
              s.started_at AS session_started_at, s.updated_at AS session_updated_at,
              s.created_at AS session_created_at,
-             (s.kind IN (${sql.join(
-               PIPELINE_SESSION_KINDS.map((k) => sql`${k}`),
-               sql`, `,
-             )}) OR s.metadata -> 'escalation' IS NOT NULL
-               OR s.metadata -> 'agentChat' IS NOT NULL) AS session_heartbeat_reaped,
+             ${heartbeatReapedSql(sql`s`)} AS session_heartbeat_reaped,
              EXISTS (SELECT 1 FROM job_events e WHERE e.job_id = j.id) AS job_has_events
         FROM jobs j
         LEFT JOIN devices d ON d.id = j.device_id

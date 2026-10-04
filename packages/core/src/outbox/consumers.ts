@@ -1,7 +1,7 @@
 import {
+  OUTBOX_CONSUMERS,
   type OutboxConsumerName,
   type OutboxConsumerOf,
-  OUTBOX_CONSUMERS,
 } from '@forge/contracts/outbox-consumers';
 import {
   OUTBOX_EVENT_TYPES,
@@ -20,10 +20,11 @@ export interface Delivery {
   /** 1 on the first start, counting every start since (a crash included). */
   attempt: number;
   /**
-   * Runs `write` in one transaction with this delivery's `delivered` mark, so the consumer's rows and
-   * its inbox commit together and a redelivery after the commit finds nothing to do. A consumer whose
-   * effect is rows writes them here; one whose effect leaves the database (a push, a queue send) is
-   * marked by the worker once `handle` returns, and is delivered at least once.
+   * Runs `write` in one transaction with the completion of this delivery's pg-boss job, so the
+   * consumer's rows and the completion commit together and a redelivery after the commit finds
+   * nothing to do. A consumer whose effect is rows writes them here; one whose effect leaves the
+   * database (a push, a queue send) is completed by pg-boss once `handle` returns, and is delivered
+   * at least once.
    */
   inbox: <R>(write: (tx: DeliveryTx) => Promise<R>) => Promise<R>;
 }
@@ -35,7 +36,11 @@ export interface Consumer<T extends OutboxEventType> {
    * Runs once when this consumer's delivery goes `dead`, to settle a row of the consumer's own that
    * would otherwise wait on it for ever. The alert is the outbox's, not this hook's.
    */
-  onDeadLetter?: (payload: OutboxEventPayload<T>, error: string, delivery: Delivery) => Promise<void>;
+  onDeadLetter?: (
+    payload: OutboxEventPayload<T>,
+    error: string,
+    delivery: Delivery,
+  ) => Promise<void>;
 }
 
 type AnyConsumer = {
@@ -74,10 +79,12 @@ export function registryMismatches(): string[] {
     const declared = new Set<string>(OUTBOX_CONSUMERS[type] as readonly OutboxConsumerName[]);
     const registered = new Set(registry.get(type)?.keys() ?? []);
     for (const name of declared) {
-      if (!registered.has(name)) out.push(`\`${type}\` declares \`${name}\`, and nothing registered it`);
+      if (!registered.has(name))
+        out.push(`\`${type}\` declares \`${name}\`, and nothing registered it`);
     }
     for (const name of registered) {
-      if (!declared.has(name)) out.push(`\`${name}\` consumes \`${type}\`, and OUTBOX_CONSUMERS does not declare it`);
+      if (!declared.has(name))
+        out.push(`\`${name}\` consumes \`${type}\`, and OUTBOX_CONSUMERS does not declare it`);
     }
   }
   return out;

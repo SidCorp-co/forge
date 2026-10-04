@@ -84,12 +84,12 @@ export async function enqueueOutboundDispatch(
   job: OutboundDispatchJob,
   opts: EnqueueOptions = {},
 ): Promise<string> {
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss send signature varies
-  const id = (await (boss as any).send(INTEGRATIONS_QUEUE_NAME, job, {
+  const id = await boss.send(INTEGRATIONS_QUEUE_NAME, job, {
     retryLimit: opts.retryLimit ?? 5,
     retryBackoff: opts.retryBackoff ?? true,
     retryDelay: opts.retryDelay ?? 30,
-    singletonKey: job.requestId,
-  })) as string;
+    ...(job.requestId ? { singletonKey: job.requestId } : {}),
+  });
+  if (!id) throw new Error(`integrations: the ${job.jobKind} dispatch was not queued`);
   return id;
 }

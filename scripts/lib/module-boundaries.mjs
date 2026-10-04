@@ -2,7 +2,7 @@
 // rule set generated from packages/core/src/modules.json, and the shrink-only baseline over its
 // violations. Pure functions: the CLI hands in the declaration and the cruise result.
 
-import { ROOT_MODULE } from './module-shape.mjs';
+import { ROOT_MODULE, tableReads } from './module-shape.mjs';
 
 export const SRC = 'packages/core/src/';
 
@@ -22,6 +22,7 @@ export const BOUNDARY_RULES = [
   'runtime-cycle',
   'face-only',
   'adapter-port',
+  'undeclared-read',
 ];
 
 /**
@@ -52,6 +53,23 @@ export function modulePattern(mod, modules) {
 const fileOf = (mod, name) =>
   `^${esc(SRC)}${mod === ROOT_MODULE ? '' : `${esc(mod)}/`}${esc(name)}$`;
 
+/** A module's read files: `read.ts`, `<x>-read.ts`, or anything under a `read/` directory. */
+export function readFilePattern(mod, modules) {
+  return `${modulePattern(mod, modules)}(?:|.*/)(?:read\\.ts|[\\w-]+-read\\.ts|read/[^/]+)$`;
+}
+
+/** The owners whose tables or views a read model declares under `reads`. */
+export function ownersRead(spec, modules) {
+  const out = new Set();
+  for (const table of spec?.reads ?? [])
+    for (const [mod, s] of Object.entries(modules)) if (s.owns?.includes(table)) out.add(mod);
+  return [...out];
+}
+
+/** Every read model that declares a read of a table or view `mod` owns. */
+const readersOf = (mod, modules) =>
+  Object.keys(modules).filter((m) => ownersRead(modules[m], modules).includes(mod));
+
 /** The direction and face rules the declaration implies, over every import including type-only. */
 export function importRuleSet({ modules, contexts }) {
   const names = Object.keys(modules);
@@ -64,15 +82,20 @@ export function importRuleSet({ modules, contexts }) {
   };
 
   for (const [rank, ctx] of contexts.entries()) {
-    const own = of((s) => s.context === ctx && s.kind !== 'door');
     const above = of((s) => contexts.indexOf(s.context) > rank);
-    if (!own.length || !above.length) continue;
-    push(
-      'context-direction',
-      `${ctx} imports only its own context or one listed before it in modules.json contexts`,
-      { path: pat(own) },
-      { path: pat(above) },
-    );
+    if (!above.length) continue;
+    const say = `${ctx} imports only its own context or one listed before it in modules.json contexts`;
+    const own = of((s) => s.context === ctx && s.kind !== 'door' && !s.reads?.length);
+    if (own.length) push('context-direction', say, { path: pat(own) }, { path: pat(above) });
+    for (const reader of of((s) => s.context === ctx && s.kind !== 'door' && s.reads?.length)) {
+      const declared = ownersRead(modules[reader], modules).map((o) => readFilePattern(o, modules));
+      push(
+        'context-direction',
+        `${say}, or the read files of an owner it declares under reads`,
+        { path: modulePattern(reader, modules) },
+        declared.length ? { path: pat(above), pathNot: any(declared) } : { path: pat(above) },
+      );
+    }
   }
 
   for (const [kind, may] of Object.entries(MAY_IMPORT)) {
@@ -99,7 +122,24 @@ export function importRuleSet({ modules, contexts }) {
       kind === 'adapter'
         ? `${mod} is reached only through its port, ${mod}/index.ts`
         : `${mod} is reached only through ${mod}/index.ts; its routes.ts and tool.ts only from the registries`;
-    push(rule, say, { pathNot: any([self, ...registries]) }, { path: self, pathNot: index });
+    const readers = readersOf(mod, modules).map((r) => modulePattern(r, modules));
+    if (readers.length) {
+      const reads = readFilePattern(mod, modules);
+      push(
+        rule,
+        say,
+        { pathNot: any([self, ...registries]) },
+        { path: self, pathNot: any([index, reads]) },
+      );
+      push(
+        rule,
+        `${say}; its read files also from a read model that declares one of its tables under reads`,
+        { pathNot: any([self, ...registries, ...readers]) },
+        { path: reads, pathNot: index },
+      );
+    } else {
+      push(rule, say, { pathNot: any([self, ...registries]) }, { path: self, pathNot: index });
+    }
     for (const [face, roots] of Object.entries(REGISTRIES)) {
       push(
         rule,
@@ -159,6 +199,41 @@ export function cruiseOptions(declaration, tsConfig) {
       exclude: { path: TESTS, dynamic: true },
     },
   };
+}
+
+/**
+ * What each read model SELECTs that its `reads` does not declare, as `<file> -> <table>` keys, and
+ * each declared read that no file of the read model uses: neither a SELECT of the table nor an
+ * import of its owner's read files. `files` maps each core source file to its text and the core
+ * files it imports.
+ */
+export function readFindings({ modules, files, tables, moduleOf }) {
+  const undeclared = new Set();
+  const used = new Map();
+  for (const [file, { text, imports }] of files) {
+    const mod = moduleOf(file);
+    const spec = modules[mod];
+    if (spec?.kind !== 'read-model') continue;
+    const declared = new Set([...(spec.reads ?? []), ...(spec.projections ?? [])]);
+    if (!used.has(mod)) used.set(mod, new Set());
+    for (const { table } of tableReads(text, tables)) {
+      if (declared.has(table)) used.get(mod).add(table);
+      else undeclared.add(`${file.slice(SRC.length)} -> ${table}`);
+    }
+    for (const table of declared) {
+      const owner = Object.keys(modules).find((m) => modules[m].owns?.includes(table));
+      const pattern = owner && new RegExp(readFilePattern(owner, modules));
+      if (pattern && imports.some((i) => pattern.test(i))) used.get(mod).add(table);
+    }
+  }
+  const unused = [];
+  for (const [mod, spec] of Object.entries(modules))
+    for (const table of spec.reads ?? [])
+      if (!used.get(mod)?.has(table))
+        unused.push(
+          `${mod} declares reads ${table}, but no file of it SELECTs ${table} or imports its owner's read files; drop it from reads`,
+        );
+  return { undeclared: [...undeclared].sort(), unused };
 }
 
 /** One baseline key per (rule, importing file, imported file), over the cruises' summaries. */

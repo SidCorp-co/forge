@@ -1,5 +1,5 @@
 import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
-import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
+import { ISSUE_STATUS_LABELS, type WorkStep } from '@forge/contracts/issue-vocabulary';
 import type { IssueTakeRefusalCode } from '@forge/contracts/issues';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -7,7 +7,12 @@ import type { IssueStatus } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { isRefusal, RefusalError } from '../lib/refusal.js';
 import { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } from './dependency-effects.js';
-import { designHeldSql, designHoldPhrase, designHoldsOf } from './design-delivery.js';
+import {
+  type DesignHold,
+  designHeldSql,
+  designHoldPhrase,
+  designHoldsOf,
+} from './design-delivery.js';
 import {
   assertDispatchGatesForIssue,
   assertDispatchGatesForSeqs,
@@ -24,27 +29,103 @@ const settledList = sql.join(
 // cm:guard the one settle predicate (REQ-2 BC-11, FB-57): a blocker holds its dependents until it
 // reaches BLOCKER_SETTLED_STATUSES and every design revision it delivers is approved. A dropped
 // blocker holds nothing: a drop expires its edges (drop-cascade.ts), and an edge drawn from an issue
-// already dropped is read the same way, as the issue list reads it (standing.ts:holdsBack). The
-// admissible set and every claim door ask this, so none can release what another holds.
+// already dropped is read the same way. The admissible set, every claim door and the issue reads
+// (through blockingEdgesIn) ask this, so none can release what another holds.
 export function blockerUnsettledSql(blocker: SQL): SQL {
   return sql`(${blocker}.status <> ${DROPPED} AND (${blocker}.status NOT IN (${settledList}) OR ${designHeldSql(sql`${blocker}.id`)}))`;
 }
 
-const liveBlockingEdges = (issueId: SQL | string, projectId: SQL | string) => sql`
+const liveBlockingEdges = (where: SQL, joins: SQL = sql``) => sql`
   FROM issue_dependencies d
   JOIN issues b ON b.id = d.from_issue_id
-  WHERE d.project_id = ${projectId}
-    AND d.to_issue_id = ${issueId}
-    AND d.kind = ${DISPATCH_GATING_KIND}
+  ${joins}
+  WHERE d.kind = ${DISPATCH_GATING_KIND}
     AND (d.valid_until IS NULL OR d.valid_until > now())
-    AND ${blockerUnsettledSql(sql`b`)}`;
+    AND ${where}`;
 
 // cm:why correlated on the project as well as the endpoint: issue_dependencies carries only the
 // composite indexes (project_id, from_issue_id) and (project_id, to_issue_id), and an endpoint-only
 // filter degrades to a sequential scan of every edge; an edge never crosses projects, so the
 // correlation narrows nothing a claim could take.
 export function blockedByUnsettledSql(args: { issueId: SQL; projectId: SQL | string }): SQL {
-  return sql`EXISTS (SELECT 1 ${liveBlockingEdges(args.issueId, args.projectId)})`;
+  return sql`EXISTS (SELECT 1 ${liveBlockingEdges(
+    sql`d.project_id = ${args.projectId} AND d.to_issue_id = ${args.issueId} AND ${blockerUnsettledSql(sql`b`)}`,
+  )})`;
+}
+
+/** One live `blocks` edge, both ends as they stand, and whether its blocker still holds. */
+export interface BlockingEdge {
+  edgeId: string;
+  fromId: string;
+  toId: string;
+  fromSeq: number;
+  toSeq: number;
+  fromTitle: string;
+  toTitle: string;
+  fromStatus: IssueStatus;
+  toStatus: IssueStatus;
+  fromMerged: boolean;
+  toMerged: boolean;
+  fromStep: WorkStep | null;
+  toStep: WorkStep | null;
+  /** `blockerUnsettledSql` over the blocker: the edge holds `to` back. */
+  holds: boolean;
+  /** The design revisions each end delivers that are not approved yet. */
+  fromDesign: DesignHold[];
+  toDesign: DesignHold[];
+}
+
+/**
+ * The input of the blocked-by fact: every live `blocks` edge touching these issues. The issue
+ * standing read and the dependency read call it with the database, and every take gate with its own
+ * transaction, so all of them judge the same rows by the one predicate.
+ */
+export async function blockingEdgesIn(
+  executor: Pick<Tx, 'execute'>,
+  projectId: string,
+  issueIds: readonly string[],
+): Promise<BlockingEdge[]> {
+  if (issueIds.length === 0) return [];
+  const ids = sql.join(
+    [...new Set(issueIds)].map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const rows = (await executor.execute(sql`
+    SELECT d.id AS edge_id, d.from_issue_id AS from_id, d.to_issue_id AS to_id,
+           b.iss_seq AS from_seq, t.iss_seq AS to_seq, b.title AS from_title, t.title AS to_title,
+           b.status AS from_status, t.status AS to_status,
+           b.merged_at IS NOT NULL AS from_merged, t.merged_at IS NOT NULL AS to_merged,
+           bw.step AS from_step, tw.step AS to_step,
+           ${blockerUnsettledSql(sql`b`)} AS holds
+    ${liveBlockingEdges(
+      sql`d.project_id = ${projectId} AND (d.from_issue_id IN (${ids}) OR d.to_issue_id IN (${ids}))`,
+      sql`JOIN issues t ON t.id = d.to_issue_id
+          LEFT JOIN issue_work_state bw ON bw.issue_id = b.id
+          LEFT JOIN issue_work_state tw ON tw.issue_id = t.id`,
+    )}
+    ORDER BY b.iss_seq, t.iss_seq`)) as unknown as Array<Record<string, unknown>>;
+  const designs = await designHoldsOf(
+    executor,
+    rows.flatMap((r) => [String(r.from_id), String(r.to_id)]),
+  );
+  return rows.map((r) => ({
+    edgeId: String(r.edge_id),
+    fromId: String(r.from_id),
+    toId: String(r.to_id),
+    fromSeq: Number(r.from_seq),
+    toSeq: Number(r.to_seq),
+    fromTitle: String(r.from_title),
+    toTitle: String(r.to_title),
+    fromStatus: r.from_status as IssueStatus,
+    toStatus: r.to_status as IssueStatus,
+    fromMerged: r.from_merged === true,
+    toMerged: r.to_merged === true,
+    fromStep: (r.from_step as WorkStep | null) ?? null,
+    toStep: (r.to_step as WorkStep | null) ?? null,
+    holds: r.holds === true,
+    fromDesign: designs.get(String(r.from_id)) ?? [],
+    toDesign: designs.get(String(r.to_id)) ?? [],
+  }));
 }
 
 export interface UnsettledBlocker {
@@ -56,25 +137,17 @@ export interface UnsettledBlocker {
 
 export async function unsettledBlockersOf(
   executor: Pick<Tx, 'execute'>,
-  issue: { id: string; projectId: string },
+  issue: { id: string; projectId: string; prefix: string | null },
 ): Promise<UnsettledBlocker[]> {
-  const rows = (await executor.execute(sql`
-    SELECT b.id, b.status, b.iss_seq,
-           (SELECT bp.issue_prefix FROM projects bp WHERE bp.id = b.project_id) AS issue_prefix
-    ${liveBlockingEdges(issue.id, issue.projectId)}
-    ORDER BY b.iss_seq
-  `)) as unknown as Array<Record<string, unknown>>;
-  if (rows.length === 0) return [];
-  const holds = await designHoldsOf(rows.map((r) => String(r.id)));
-  return rows.map((r) => {
-    const held = holds.get(String(r.id));
-    return {
-      issueId: String(r.id),
-      issueKey: formatIssueRef((r.issue_prefix as string | null) ?? null, Number(r.iss_seq)),
-      status: r.status as IssueStatus,
-      design: held ? designHoldPhrase(held) : null,
-    };
-  });
+  const edges = await blockingEdgesIn(executor, issue.projectId, [issue.id]);
+  return edges
+    .filter((e) => e.toId === issue.id && e.holds)
+    .map((e) => ({
+      issueId: e.fromId,
+      issueKey: formatIssueRef(issue.prefix, e.fromSeq),
+      status: e.fromStatus,
+      design: e.fromDesign.length > 0 ? designHoldPhrase(e.fromDesign) : null,
+    }));
 }
 
 function whyUnsettled(b: UnsettledBlocker): string {
@@ -119,7 +192,13 @@ function issueBlocked(held: BlockedIssue[], door: string): RefusalError {
 
 export const isTakeable = (status: IssueStatus) => TAKEABLE_STATUSES.includes(status);
 
-type TakenIssue = { id: string; projectId: string; status: IssueStatus; issueKey: string };
+type TakenIssue = {
+  id: string;
+  projectId: string;
+  prefix: string | null;
+  status: IssueStatus;
+  issueKey: string;
+};
 
 async function blockedOf(
   executor: Pick<Tx, 'execute'>,
@@ -130,9 +209,10 @@ async function blockedOf(
   return blockers.length > 0 ? { issueKey: issue.issueKey, blockers } : null;
 }
 
-const takenRow = (row: Record<string, unknown>) => ({
+const takenRow = (row: Record<string, unknown>): TakenIssue => ({
   id: String(row.id),
   projectId: String(row.project_id),
+  prefix: (row.issue_prefix as string | null) ?? null,
   status: row.status as IssueStatus,
   issueKey: formatIssueRef((row.issue_prefix as string | null) ?? null, Number(row.iss_seq)),
 });

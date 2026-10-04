@@ -4,6 +4,7 @@ import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
+import { issueWorkInFlightSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { ageSeconds, emptyBuckets, foldBuckets } from './pulse-folds.js';
 import { readPulseLive } from './pulse-live.js';
@@ -19,7 +20,8 @@ import type {
 const LIVE = [...LIVE_JOB_STATUSES];
 
 /**
- * Issues the tracker calls in flight that nothing is working.
+ * Issues the tracker calls in flight that nothing is working: no work the idle-issue sweep counts as
+ * in flight (`issues/issue-lease.ts:issueWorkInFlightSql`), so the pulse and the sweep agree.
  */
 async function selectAbandoned(
   projectIds: string[],
@@ -45,13 +47,11 @@ async function selectAbandoned(
       JOIN projects p ON p.id = i.project_id
       WHERE i.project_id IN (${idList(projectIds)})
         AND i.status = 'in_progress'
-        AND NOT EXISTS (
-          SELECT 1 FROM jobs j
-          WHERE j.issue_id = i.id AND j.status IN (${idList(LIVE)})
-          UNION ALL
-          SELECT 1 FROM jobs j JOIN pipeline_runs r ON r.id = j.pipeline_run_id
-          WHERE r.issue_id = i.id AND j.status IN (${idList(LIVE)})
-        )
+        AND NOT ${issueWorkInFlightSql({
+          issueId: sql`i.id`,
+          projectId: sql`i.project_id`,
+          issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
+        })}
     -- the age this read reports is measured against that same value in ageSeconds below: a
     -- row the SQL called stale against one clock and the fold ages against another is a row
     -- whose reported age can disagree with the reason it was selected. That now is injectable
