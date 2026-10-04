@@ -35,6 +35,7 @@ export interface DeliverInput {
   issueId?: string | null;
   secondaryIssueId?: string | null;
   agentSessionId?: string | null;
+  scheduleRunId?: string | null;
   severity?: string | null;
   /** The condition's identity. Two emissions sharing it are one condition. */
   resolutionKey?: string | null;
@@ -315,6 +316,7 @@ export async function recordAndDeliver(
       issueId: input.issueId ?? null,
       secondaryIssueId: input.secondaryIssueId ?? null,
       agentSessionId: input.agentSessionId ?? null,
+      scheduleRunId: input.scheduleRunId ?? null,
       groupKey: input.groupKey ?? null,
       inhibitedBy,
       pendingSince: kind === 'condition' ? now : null,

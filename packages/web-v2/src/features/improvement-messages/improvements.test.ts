@@ -21,11 +21,18 @@ const report = (over: Partial<AgentReport> = {}): AgentReport => ({
 });
 
 const run = (actions: NonNullable<ScheduleRun["stewardReport"]>["actions"]): ScheduleRun => ({
+  id: "f1",
   sessionId: "s1",
   pipelineRunId: null,
   status: "completed",
+  fireStatus: "success",
   runStatus: null,
   trigger: "scheduled",
+  reason: null,
+  refusal: null,
+  disposition: null,
+  output: null,
+  error: null,
   title: null,
   failureReason: null,
   failureDetail: null,

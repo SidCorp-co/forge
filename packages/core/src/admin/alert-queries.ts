@@ -10,6 +10,7 @@
  * which drizzle expands as a malformed record tuple.
  */
 
+import { SCHEDULE_RUN_STREAK_SKIP_REASONS } from '@forge/contracts/schedules';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { runnerMayTakeJob } from '../devices/release-label.js';
@@ -414,6 +415,11 @@ function oldestIso(values: Array<PgTimestamp | null>): string | null {
   return oldest === null ? null : new Date(oldest).toISOString();
 }
 
+const STREAK_SKIP_REASONS_SQL = sql.join(
+  SCHEDULE_RUN_STREAK_SKIP_REASONS.map((r) => sql`${r}`),
+  sql`, `,
+);
+
 /** A5 — two contributors combined into one alert: schedule fail-streaks and integration-delivery fail-rates. */
 async function alertAutomationFailing(thresholds: AdminThresholds): Promise<AdminAlert> {
   const [scheduleRows, deliveryRows] = await Promise.all([
@@ -422,14 +428,7 @@ async function alertAutomationFailing(thresholds: AdminThresholds): Promise<Admi
         SELECT schedule_id::text, status = 'success' AS succeeded, created_at
         FROM schedule_runs
         WHERE status IN ('success', 'failed')
-        UNION ALL
-        SELECT metadata ->> 'scheduleId' AS schedule_id,
-               status IN ('completed', 'completed_via_recovery', 'cancelled_stale') AS succeeded,
-               updated_at AS created_at
-        FROM agent_sessions
-        WHERE metadata ->> 'source' = 'schedule.run'
-          AND metadata ->> 'scheduleId' IS NOT NULL
-          AND status IN ('completed', 'completed_via_recovery', 'cancelled_stale', 'failed')
+           OR (status = 'skipped' AND reason IN (${STREAK_SKIP_REASONS_SQL}))
       ),
       ranked AS (
         SELECT schedule_id, succeeded, created_at,

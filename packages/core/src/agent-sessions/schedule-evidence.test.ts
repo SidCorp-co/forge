@@ -202,26 +202,6 @@ describe('PATCH /api/agent-sessions/:id — ISS-859: a scheduled run that read n
     expect(persistedUpdate().failureReason).toBe(BLIND_SCHEDULE_RUN_REASON);
   });
 
-  it("leaves the schedule's lastStatus reading failed, not success", async () => {
-    seedSession(SCHEDULE_META);
-    updateReturning.mockResolvedValueOnce([
-      {
-        id: SESSION_ID,
-        projectId: PROJECT_ID,
-        deviceId: DEVICE_ID,
-        status: 'failed',
-        metadata: SCHEDULE_META,
-      },
-    ]);
-
-    await patchAsDevice({ status: 'completed', toolCallCount: 0 });
-
-    const lastStatusWrite = updateSet.mock.calls
-      .map((call) => call[0] as { lastStatus?: string })
-      .find((set) => set.lastStatus !== undefined);
-    expect(lastStatusWrite?.lastStatus).toBe('failed');
-  });
-
   it('records the reported count on the session for later forensics', async () => {
     seedSession(SCHEDULE_META);
     updateReturning.mockResolvedValueOnce([

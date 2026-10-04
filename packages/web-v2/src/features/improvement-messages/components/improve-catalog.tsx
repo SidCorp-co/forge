@@ -68,7 +68,7 @@ function RunItem({ run, slug }: { run: ScheduleRun; slug: string | undefined }) 
   const body = (
     <div className="flex flex-wrap items-center gap-2 py-1.5">
       <EnumBadge family="trigger" value={run.trigger} />
-      <StatusBadge family="session" value={run.status} />
+      <StatusBadge family={run.sessionId ? "session" : "scheduleRun"} value={run.status} />
       <span className="fg-caption text-subtle">{fmtTime(run.startedAt)}</span>
       <span className="fg-caption font-mono text-subtle">{fmtDuration(run.durationSeconds)}</span>
       {run.failureReason && (
@@ -126,7 +126,7 @@ function RunLog({
       {runs.length > 0 && (
         <div className="divide-y divide-line-subtle">
           {runs.map((r) => (
-            <RunItem key={r.sessionId} run={r} slug={slug} />
+            <RunItem key={r.id} run={r} slug={slug} />
           ))}
         </div>
       )}

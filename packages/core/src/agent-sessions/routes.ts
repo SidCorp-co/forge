@@ -25,7 +25,6 @@ import {
   restActor,
 } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { writeBackScheduleLastStatus } from '../schedules/service.js';
 import {
   canonicalSessionId,
   EMPTY_USAGE_TOTALS,
@@ -707,10 +706,6 @@ agentSessionRoutes.patch(
 
     if (classification) {
       await classification.recoverAfterWrite(updated.metadata ?? existing.metadata);
-    }
-
-    if (updated.status === 'completed' || updated.status === 'failed') {
-      await writeBackScheduleLastStatus(updated.metadata, id, updated.status);
     }
 
     await syncRunnerHealthFromChatTerminal({

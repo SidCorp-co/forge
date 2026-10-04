@@ -119,19 +119,19 @@ function ScheduleRunItem({
   slug: string | undefined;
   kind: ScheduleKind;
 }) {
-
+  const why = run.failureDetail ?? run.failureReason ?? run.refusal ?? run.reason;
   const header = (
     <div className="flex flex-wrap items-center gap-2 py-1.5">
       <EnumBadge family="trigger" value={run.trigger} />
-      <StatusBadge family={kind === "script" ? "scheduleRun" : "session"} value={run.status} />
+      <StatusBadge family={run.sessionId ? "session" : "scheduleRun"} value={run.status} />
       <span className="fg-caption text-subtle">{fmtTime(run.startedAt)}</span>
       <span className="fg-caption font-mono text-subtle">{fmtDuration(run.durationSeconds)}</span>
-      {kind === "prompt" && run.failureReason && (
-        <Tooltip label={run.failureDetail ?? run.failureReason}>
+      {why && (
+        <Tooltip label={why}>
           <span className="fg-caption text-danger underline decoration-dotted">why?</span>
         </Tooltip>
       )}
-      {kind === "prompt" && slug && (
+      {run.sessionId && slug && (
         <span className="fg-caption text-accent">View session →</span>
       )}
     </div>
@@ -169,7 +169,7 @@ function ScheduleRunItem({
     </div>
   );
 
-  if (kind === "prompt" && slug) {
+  if (run.sessionId && slug) {
     return (
       <div className="rounded-md px-1 hover:bg-hover">
         <Link
@@ -233,7 +233,7 @@ function ScheduleHistory({ row, slug }: { row: ScheduleRow; slug: string | undef
         {runs.length > 0 && (
           <div className="divide-y divide-line-subtle">
             {runs.map((r) => (
-              <ScheduleRunItem key={r.sessionId} run={r} slug={slug} kind={row.kind} />
+              <ScheduleRunItem key={r.id} run={r} slug={slug} kind={row.kind} />
             ))}
           </div>
         )}

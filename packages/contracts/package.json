@@ -106,6 +106,10 @@
       "types": "./dist/feedback.d.ts",
       "default": "./dist/feedback.js"
     },
+    "./schedules": {
+      "types": "./dist/schedules.d.ts",
+      "default": "./dist/schedules.js"
+    },
     "./releases": {
       "types": "./dist/releases.d.ts",
       "default": "./dist/releases.js"

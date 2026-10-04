@@ -206,6 +206,7 @@ export const STATE_READINGS = {
 		success: ["Succeeded", "ready", "✓"],
 		failed: ["Failed", "err", "×"],
 		running: ["Running", "run", "●"],
+		skipped: ["Skipped", "done", "–"],
 	},
 	/** Whether a C4 design names an outside system's integration as settled (web `workflows/c4/geometry.ts:IntegrationState`). */
 	integration: {

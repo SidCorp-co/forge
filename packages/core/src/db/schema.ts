@@ -55,6 +55,7 @@ import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './s
 export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
 import type { DecisionFields } from '@forge/contracts/comments';
+import { SCHEDULE_RUN_STATUSES } from '@forge/contracts/schedules';
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import { COMMENT_INTENTS } from '../issues/record-events/kinds.js';
@@ -1773,7 +1774,7 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
   assignee: one(users, { fields: [tasks.assigneeId], references: [users.id] }),
 }));
 
-export const scheduleStatuses = ['success', 'failed', 'running', 'skipped'] as const;
+export const scheduleStatuses = SCHEDULE_RUN_STATUSES;
 export type ScheduleStatus = (typeof scheduleStatuses)[number];
 
 export const scheduleModes = ['propose', 'auto'] as const;
@@ -1781,12 +1782,6 @@ export type ScheduleMode = (typeof scheduleModes)[number];
 
 export const scheduleKinds = ['prompt', 'script', 'release_batch', 'sentry_pull'] as const;
 
-export const RUNNER_LESS_SCHEDULE_KINDS = ['script', 'release_batch', 'sentry_pull'] as const;
-export type RunnerLessScheduleKind = (typeof RUNNER_LESS_SCHEDULE_KINDS)[number];
-
-export function isRunnerLessScheduleKind(kind: string | null | undefined): boolean {
-  return (RUNNER_LESS_SCHEDULE_KINDS as readonly string[]).includes(kind ?? '');
-}
 export type ScheduleKind = (typeof scheduleKinds)[number];
 
 export const schedules = pgTable(
@@ -1835,35 +1830,7 @@ export const schedulesRelations = relations(schedules, ({ one }) => ({
   project: one(projects, { fields: [schedules.projectId], references: [projects.id] }),
 }));
 
-// ISS-618 — run history for script-kind schedules (no agent_sessions row is
-// created for these; prompt-kind run history still derives from agentSessions).
-export const scheduleRuns = pgTable(
-  'schedule_runs',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    scheduleId: uuid('schedule_id')
-      .notNull()
-      .references(() => schedules.id, { onDelete: 'cascade' }),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    trigger: text('trigger', { enum: ['manual', 'scheduled'] as const }).notNull(),
-    status: text('status', { enum: scheduleStatuses }).notNull(),
-    output: text('output'),
-    error: text('error'),
-    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
-    finishedAt: timestamp('finished_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    scheduleCreatedIdx: index('schedule_runs_schedule_created_idx').on(t.scheduleId, t.createdAt),
-  }),
-);
-
-export const scheduleRunsRelations = relations(scheduleRuns, ({ one }) => ({
-  schedule: one(schedules, { fields: [scheduleRuns.scheduleId], references: [schedules.id] }),
-  project: one(projects, { fields: [scheduleRuns.projectId], references: [projects.id] }),
-}));
+export * from './schema-schedule-runs.js';
 
 export const knowledgeEdges = pgTable(
   'knowledge_edges',
