@@ -1,37 +1,78 @@
-import type { OutboxEventPayload, OutboxEventType } from '@forge/contracts/outbox-events';
+import {
+  type OutboxConsumerName,
+  type OutboxConsumerOf,
+  OUTBOX_CONSUMERS,
+} from '@forge/contracts/outbox-consumers';
+import {
+  OUTBOX_EVENT_TYPES,
+  type OutboxEventPayload,
+  type OutboxEventType,
+} from '@forge/contracts/outbox-events';
+import type { Db } from '../db/client.js';
 
-/** The delivery as a consumer sees it: the row's id makes a consumer's own write idempotent. */
+export type DeliveryTx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+/** One delivery of one event to one consumer, as the consumer sees it. */
 export interface Delivery {
+  id: string;
   eventId: string;
   createdAt: Date;
+  /** 1 on the first start, counting every start since (a crash included). */
+  attempt: number;
+  /**
+   * Runs `write` in one transaction with this delivery's `delivered` mark, so the consumer's rows and
+   * its inbox commit together and a redelivery after the commit finds nothing to do. A consumer whose
+   * effect is rows writes them here; one whose effect leaves the database (a push, a queue send) is
+   * marked by the worker once `handle` returns, and is delivered at least once.
+   */
+  inbox: <R>(write: (tx: DeliveryTx) => Promise<R>) => Promise<R>;
 }
 
 export interface Consumer<T extends OutboxEventType> {
-  /** Unique per type; `pipeline_outbox.delivered` records it once this consumer is through. */
-  name: string;
+  name: OutboxConsumerOf<T>;
   handle: (payload: OutboxEventPayload<T>, delivery: Delivery) => Promise<void> | void;
-  /** Runs once when the event is given up on with this consumer still failing. */
-  onDeadLetter?: (
-    payload: OutboxEventPayload<T>,
-    error: string,
-    delivery: Delivery,
-  ) => Promise<void>;
 }
 
-type AnyConsumer = Consumer<OutboxEventType>;
+type AnyConsumer = {
+  name: string;
+  handle: (payload: unknown, delivery: Delivery) => Promise<void> | void;
+};
 
-const registry = new Map<OutboxEventType, AnyConsumer[]>();
+const registry = new Map<OutboxEventType, Map<string, AnyConsumer>>();
 
-/** Registers a consumer of one event type. A second consumer under one name is refused by name. */
+/**
+ * Registers a consumer of one event type under a name `OUTBOX_CONSUMERS` declares for it. A second
+ * consumer under one name is refused by name.
+ */
 export function consume<T extends OutboxEventType>(type: T, consumer: Consumer<T>): void {
-  const list = registry.get(type) ?? [];
-  if (list.some((c) => c.name === consumer.name)) {
+  const byName = registry.get(type) ?? new Map<string, AnyConsumer>();
+  if (byName.has(consumer.name)) {
     throw new Error(`outbox: \`${type}\` already has a consumer named \`${consumer.name}\``);
   }
-  list.push(consumer as unknown as AnyConsumer);
-  registry.set(type, list);
+  byName.set(consumer.name, consumer as unknown as AnyConsumer);
+  registry.set(type, byName);
 }
 
-export function consumersOf(type: OutboxEventType): readonly AnyConsumer[] {
-  return registry.get(type) ?? [];
+export function consumerOf(type: OutboxEventType, name: string): AnyConsumer | undefined {
+  return registry.get(type)?.get(name);
+}
+
+/**
+ * Each disagreement between the registered consumers and `OUTBOX_CONSUMERS`: a declared consumer
+ * nobody registered would leave its deliveries pending until they die, and a registered one nobody
+ * declared would never be handed a delivery.
+ */
+export function registryMismatches(): string[] {
+  const out: string[] = [];
+  for (const type of OUTBOX_EVENT_TYPES) {
+    const declared = new Set<string>(OUTBOX_CONSUMERS[type] as readonly OutboxConsumerName[]);
+    const registered = new Set(registry.get(type)?.keys() ?? []);
+    for (const name of declared) {
+      if (!registered.has(name)) out.push(`\`${type}\` declares \`${name}\`, and nothing registered it`);
+    }
+    for (const name of registered) {
+      if (!declared.has(name)) out.push(`\`${name}\` consumes \`${type}\`, and OUTBOX_CONSUMERS does not declare it`);
+    }
+  }
+  return out;
 }

@@ -24,6 +24,7 @@ const ALERT_TITLE: Record<string, string> = {
   A3: "Runner-starved projects",
   A4: "Spend spike",
   A5: "Automation failing",
+  A6: "Dead outbox deliveries",
 };
 
 const STATUS_RANK: Record<AdminAlertStatus, number> = { crit: 0, warn: 1, ok: 2 };

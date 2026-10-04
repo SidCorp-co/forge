@@ -29,6 +29,7 @@ import {
   runEmbeddingBackfill,
   runMemoryDecay,
 } from './memory/index.js';
+import { pruneOutbox } from './outbox/index.js';
 import {
   backfillPhaseJournal,
   runPipelineSweep,
@@ -65,6 +66,15 @@ export function coreTimers(): Timer[] {
       name: 'job-event-retention',
       cron: '0 3 * * *',
       run: logged('retention: sweep complete', runRetentionSweep),
+    },
+    {
+      kind: 'cluster',
+      name: 'outbox-retention',
+      cron: '45 3 * * *',
+      run: logged('outbox-retention: pruned', pruneOutbox, (r) => {
+        const { deliveries, events } = r as { deliveries: number; events: number };
+        return deliveries > 0 || events > 0;
+      }),
     },
     {
       kind: 'cluster',

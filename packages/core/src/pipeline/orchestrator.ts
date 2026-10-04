@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { consume, MAX_REDELIVERIES } from '../outbox/index.js';
+import { consume } from '../outbox/index.js';
 import { policyRefusal } from '../project-config/dispatch-policy.js';
 import { readEffectivePolicy } from '../project-config/effective.js';
 import type { PolicyDocument } from '../project-config/schema.js';
@@ -14,7 +14,6 @@ import {
   isEntryGateClosed,
 } from './autonomous-dispatch.js';
 import { refusePipeline } from './refuse.js';
-import { emitPipelineWedge } from './wedge.js';
 
 /** Why a person's start on an issue changes nothing. */
 const intakeNotManual = (projectId: string) =>
@@ -84,33 +83,10 @@ export async function reEnqueueForIssue(args: {
   await dispatchAutonomous({ ...args, policy, projectCreatedBy });
 }
 
-/** An issue the pipeline could not be handed after every redelivery is a wedge a person sees. */
-async function wedgeUndispatched(
-  p: { projectId: string; issueId: string; to: string; from?: string },
-  error: string,
-  eventId: string,
-): Promise<void> {
-  const move = p.from ? `transition ${p.from} → ${p.to}` : `creation at ${p.to}`;
-  await emitPipelineWedge({
-    projectId: p.projectId,
-    issueId: p.issueId,
-    hop: 'dispatch',
-    entity: 'outbox',
-    entityId: eventId,
-    reason: `${move} failed after ${MAX_REDELIVERIES} redeliveries: ${error}`,
-    action:
-      'Inspect the pipeline_outbox row + orchestrator logs; the issue may be sitting at its trigger status with no job.',
-    title: 'Status change not processed',
-    summary: `An issue's move to "${p.to}" could not be handed to the pipeline after ${MAX_REDELIVERIES} retries, so no next step was started.`,
-    nextStep:
-      'Open the issue and re-apply the status change, or check the server logs for the failing consumer.',
-  });
-}
-
 /**
  * The pipeline orchestrator, a consumer of issue moves and creations: creation lands an issue at
- * its birth status without a move, so covering it needs both. A failure is redelivered, and the
- * last one wedges the issue.
+ * its birth status without a move, so covering it needs both. A failure is redelivered with
+ * backoff, and a delivery that runs out of attempts is dead, raised by the outbox's ops alert.
  */
 export function registerPipelineOrchestrator(): void {
   consume('issue.transitioned', {
@@ -125,12 +101,6 @@ export function registerPipelineOrchestrator(): void {
         reason: { transition: { from: p.from, to: p.to } },
       });
     },
-    onDeadLetter: (p, error, d) =>
-      wedgeUndispatched(
-        { projectId: p.projectId, issueId: p.id, from: p.from, to: p.to },
-        error,
-        d.eventId,
-      ),
   });
 
   consume('issue.created', {
@@ -144,11 +114,5 @@ export function registerPipelineOrchestrator(): void {
         reason: { created: true },
       });
     },
-    onDeadLetter: (p, error, d) =>
-      wedgeUndispatched(
-        { projectId: p.projectId, issueId: p.issueId, to: p.status },
-        error,
-        d.eventId,
-      ),
   });
 }

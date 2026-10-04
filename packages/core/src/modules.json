@@ -388,6 +388,7 @@
     "outbox": {
       "kind": "kernel",
       "owns": [
+        "outboxDeliveries",
         "pipelineOutbox"
       ]
     },

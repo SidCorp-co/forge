@@ -1,31 +1,21 @@
 import { issueUpdatedPayload } from '@forge/contracts/field-changes';
-import { and, eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { activityLog } from '../db/schema.js';
 import { consume, type Delivery } from '../outbox/index.js';
-import { type RecordActivityInput, recordActivity } from './activity.js';
+import { type RecordActivityInput, recordActivityTx } from './activity.js';
 
 const MAX_BODY_SNIPPET = 240;
 const snippet = (s: string): string => s.slice(0, MAX_BODY_SNIPPET);
 
-/** True when this delivery's row is already written: a redelivery after a crash between the write
- *  and the outbox recording it, which writes nothing again. */
-async function alreadyRecorded(dedupeKey: string, action: string): Promise<boolean> {
-  const [existing] = await db
-    .select({ id: activityLog.id })
-    .from(activityLog)
-    .where(and(eq(activityLog.dedupeKey, dedupeKey), eq(activityLog.action, action)))
-    .limit(1);
-  return Boolean(existing);
-}
-
-async function recordOnce(
+/** Writes the delivery's feed rows in its inbox transaction, so a redelivery writes none again. */
+function recordOnce(
   delivery: Delivery,
-  input: Omit<RecordActivityInput, 'dedupeKey'>,
+  ...inputs: Omit<RecordActivityInput, 'dedupeKey'>[]
 ): Promise<void> {
-  const dedupeKey = `outbox:${delivery.eventId}`;
-  if (await alreadyRecorded(dedupeKey, input.action)) return;
-  await recordActivity({ ...input, dedupeKey, at: input.at ?? delivery.createdAt });
+  if (inputs.length === 0) return Promise.resolve();
+  return delivery.inbox(async (tx) => {
+    for (const input of inputs) {
+      await recordActivityTx(tx, { ...input, at: input.at ?? delivery.createdAt });
+    }
+  });
 }
 
 const NAME = 'activity-feed';
@@ -52,11 +42,12 @@ export function registerActivitySubscribers(): void {
   // nothing records nothing
   consume('issue.updated', {
     name: NAME,
-    handle: async (p, d) => {
+    handle: (p, d) => {
       const nonAssignee = p.fields.filter((f) => f !== 'assigneeId');
       const payload = issueUpdatedPayload(nonAssignee, p.before, p.after);
+      const rows: Omit<RecordActivityInput, 'dedupeKey'>[] = [];
       if (payload) {
-        await recordOnce(d, {
+        rows.push({
           issueId: p.issueId,
           actor: p.actor,
           action: 'issue.updated',
@@ -64,7 +55,7 @@ export function registerActivitySubscribers(): void {
         });
       }
       if (p.fields.includes('assigneeId')) {
-        await recordOnce(d, {
+        rows.push({
           issueId: p.issueId,
           actor: p.actor,
           action: 'issue.assigned',
@@ -74,6 +65,7 @@ export function registerActivitySubscribers(): void {
           },
         });
       }
+      return recordOnce(d, ...rows);
     },
   });
 
