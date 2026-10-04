@@ -90,88 +90,6 @@ function mergedResult(
   return { kind, commitSha, mergedAt };
 }
 
-/** Not open, a draft, or a head that moved since the caller judged it. */
-function stateRefusal(
-  client: GitLabClient,
-  mr: MergeRequestBody,
-  iid: number,
-  args: HostMergeArgs,
-): HostMergeResult | null {
-  if (mr.state !== 'opened') {
-    return refused(
-      'not-open',
-      `merge request !${iid} on ${client.fullName} is ${mr.state ?? 'in no state GitLab named'}, not open, so there is nothing to merge`,
-    );
-  }
-  if (mr.draft === true || mr.work_in_progress === true) {
-    return refused(
-      'draft',
-      `merge request !${iid} is a draft — mark it ready on GitLab before Forge merges it`,
-    );
-  }
-  const head = mr.sha ?? '';
-  if (args.expectedHeadSha && !head.toLowerCase().startsWith(args.expectedHeadSha.toLowerCase())) {
-    return refused(
-      'head-moved',
-      `merge request !${iid}'s head is ${head || 'unknown'}, and this merge was judged at ${args.expectedHeadSha} — a head that moved is refused, never re-aimed`,
-    );
-  }
-  return null;
-}
-
-/** An approval rule still owed; an unreadable approvals answer is refused rather than guessed past. */
-async function approvalsRefusal(
-  client: GitLabClient,
-  path: string,
-  iid: number,
-): Promise<HostMergeResult | null> {
-  let approvals: ApprovalsBody;
-  try {
-    approvals = await client.json<ApprovalsBody>('GET', `${path}/approvals`);
-  } catch (err) {
-    if (err instanceof SourceHostCallError) {
-      return refused(
-        'approvals-unreadable',
-        `GitLab answered HTTP ${err.status} for merge request !${iid}'s approvals, so Forge cannot tell an approved request from one still owed an approval, and does not merge on the difference`,
-      );
-    }
-    throw err;
-  }
-  const left = approvals.approvals_left ?? 0;
-  if (left <= 0) return null;
-  return refused(
-    'not-approved',
-    `merge request !${iid} still needs ${left} approval${left === 1 ? '' : 's'} of the ${approvals.approvals_required ?? left} its rules require — Forge does not merge a release the owner has not approved`,
-  );
-}
-
-/** A head pipeline that is not green, or any `detailed_merge_status` but `mergeable`. */
-function readinessRefusal(mr: MergeRequestBody, iid: number): HostMergeResult | null {
-  const pipeline = mr.head_pipeline;
-  if (pipeline && pipeline.status !== 'success') {
-    return refused(
-      'checks-not-green',
-      `merge request !${iid}'s head pipeline ${pipeline.id ?? ''} is ${pipeline.status ?? 'in no state'}, not success`,
-    );
-  }
-  const status = mr.detailed_merge_status ?? null;
-  if (status === 'mergeable') return null;
-  const reason =
-    status === 'not_approved'
-      ? 'not-approved'
-      : status === 'draft_status'
-        ? 'draft'
-        : status && UNDECIDED.has(status)
-          ? 'mergeability-unknown'
-          : status && CHECKS.has(status)
-            ? 'checks-not-green'
-            : 'not-mergeable';
-  return refused(
-    reason,
-    `GitLab reports merge request !${iid} as \`${status ?? 'no detailed_merge_status'}\`, not \`mergeable\`, so it is not merged`,
-  );
-}
-
 /**
  * Merge one merge request with the binding's token, on GitLab's own say-so.
  *
@@ -192,17 +110,78 @@ export async function mergeGitLabMergeRequest(
   } catch (err) {
     return callRefusal(err, iid, 'reading');
   }
+
   if (mr.state === 'merged') return mergedResult(mr, iid, 'already-merged');
-  const refusal =
-    stateRefusal(client, mr, iid, args) ??
-    (await approvalsRefusal(client, path, iid)) ??
-    readinessRefusal(mr, iid);
-  if (refusal) return refusal;
+  if (mr.state !== 'opened') {
+    return refused(
+      'not-open',
+      `merge request !${iid} on ${client.fullName} is ${mr.state ?? 'in no state GitLab named'}, not open, so there is nothing to merge`,
+    );
+  }
+  if (mr.draft === true || mr.work_in_progress === true) {
+    return refused(
+      'draft',
+      `merge request !${iid} is a draft — mark it ready on GitLab before Forge merges it`,
+    );
+  }
+  const head = mr.sha ?? '';
+  if (args.expectedHeadSha && !head.toLowerCase().startsWith(args.expectedHeadSha.toLowerCase())) {
+    return refused(
+      'head-moved',
+      `merge request !${iid}'s head is ${head || 'unknown'}, and this merge was judged at ${args.expectedHeadSha} — a head that moved is refused, never re-aimed`,
+    );
+  }
+
+  let approvals: ApprovalsBody;
+  try {
+    approvals = await client.json<ApprovalsBody>('GET', `${path}/approvals`);
+  } catch (err) {
+    if (err instanceof SourceHostCallError) {
+      return refused(
+        'approvals-unreadable',
+        `GitLab answered HTTP ${err.status} for merge request !${iid}'s approvals, so Forge cannot tell an approved request from one still owed an approval, and does not merge on the difference`,
+      );
+    }
+    throw err;
+  }
+  const left = approvals.approvals_left ?? 0;
+  if (left > 0) {
+    return refused(
+      'not-approved',
+      `merge request !${iid} still needs ${left} approval${left === 1 ? '' : 's'} of the ${approvals.approvals_required ?? left} its rules require — Forge does not merge a release the owner has not approved`,
+    );
+  }
+
+  const pipeline = mr.head_pipeline;
+  if (pipeline && pipeline.status !== 'success') {
+    return refused(
+      'checks-not-green',
+      `merge request !${iid}'s head pipeline ${pipeline.id ?? ''} is ${pipeline.status ?? 'in no state'}, not success`,
+    );
+  }
+
+  const status = mr.detailed_merge_status ?? null;
+  if (status !== 'mergeable') {
+    const reason =
+      status === 'not_approved'
+        ? 'not-approved'
+        : status === 'draft_status'
+          ? 'draft'
+          : status && UNDECIDED.has(status)
+            ? 'mergeability-unknown'
+            : status && CHECKS.has(status)
+              ? 'checks-not-green'
+              : 'not-mergeable';
+    return refused(
+      reason,
+      `GitLab reports merge request !${iid} as \`${status ?? 'no detailed_merge_status'}\`, not \`mergeable\`, so it is not merged`,
+    );
+  }
 
   let after: MergeRequestBody;
   try {
     after = await client.json<MergeRequestBody>('PUT', `${path}/merge`, {
-      sha: mr.sha ?? '',
+      sha: head,
       squash: args.method === 'squash',
       should_remove_source_branch: false,
     });
