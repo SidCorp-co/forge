@@ -382,6 +382,3 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
   },
   adapter: coolifyAdapterMethods,
 });
-
-/** The three methods alone, for the queue worker and the adapter's own tests. */
-export const coolifyAdapter = coolifyAdapterMethods;

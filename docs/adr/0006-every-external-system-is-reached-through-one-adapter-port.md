@@ -48,7 +48,6 @@ a vendor SDK, a `fetch` to a vendor host, or a vendor's types.
 | deploy | `coolify`, `deploy`; the contract is `packages/core/src/integrations/deploy/records.ts` | Coolify; a deployed app's runtime probe | a project's binding |
 | error tracking | `sentry` | Sentry | a project's binding |
 | storefront | `epodsystem`, `autoflow` | ePodSystem, Autoflow | a project's binding |
-| documents | `google` | Google Sheets | a project's binding |
 | chat | `rocketchat` | Rocket.Chat | a project's binding |
 | LLM | `llm` | any OpenAI-compatible endpoint (LiteLLM), Anthropic Messages | the deployment |
 | embeddings | `embeddings` | any OpenAI-compatible endpoint | the deployment |

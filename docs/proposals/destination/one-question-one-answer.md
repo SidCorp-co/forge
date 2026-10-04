@@ -69,7 +69,7 @@ the tools an agent needs that neither covers. The registry holds 9: `forge_agent
 `submit` reads the caller's live job), `forge_uploads` (fetch, for the transport reason above),
 `forge_channel` and `forge_ecosystem` (reads REST serves only device-only or across the ecosystem
 fence), and the core-mediated integrations whose credential stays in core — `forge_source`,
-`forge_coolify_deploy`, `forge_sentry`, `forge_google_sheets`, `forge_storefront_target`. Reading
+`forge_coolify_deploy`, `forge_sentry`, `forge_storefront_target`. Reading
 and writing the record, memory, knowledge and project settings are REST.
 
 ## Carried over from ISS-894, still true

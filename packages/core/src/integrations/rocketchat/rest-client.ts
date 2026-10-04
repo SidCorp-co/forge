@@ -226,7 +226,7 @@ export async function fetchMessagesBeside(
   return null;
 }
 
-export interface RocketChatRoomInfo {
+interface RocketChatRoomInfo {
   rid: string;
   name: string;
   /** c = public channel, p = private group. */
@@ -300,14 +300,8 @@ export async function buildMessagePermalink(
   return `${auth.serverUrl.replace(/\/+$/, '')}/${segment}/${info.name}?msg=${messageId}`;
 }
 
-/** The bot account's own username (api/v1/me) — lets the bot speak about
- *  itself by name instead of as "the system". Null on failure. */
-export async function fetchOwnUsername(auth: RocketChatRestAuth): Promise<string | null> {
-  return (await fetchOwnIdentity(auth)).username;
-}
-
 /** The two names Rocket.Chat may show for the bot: its username, and the display name `UI_Use_Real_Name` swaps in. */
-export interface RocketChatOwnIdentity {
+interface RocketChatOwnIdentity {
   username: string | null;
   displayName: string | null;
 }
@@ -352,7 +346,7 @@ export async function reactToMessage(
 }
 
 /** One Rocket.Chat account as the server's own directory reports it. */
-export interface RocketChatUserProfile {
+interface RocketChatUserProfile {
   externalId: string;
   username: string | null;
   email: string | null;

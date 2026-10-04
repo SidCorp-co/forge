@@ -3,7 +3,7 @@ import { EgressRefused, type EgressScope, egressScoped } from '../../lib/data-eg
 import { type EmbedDetailed, EmbeddingsClient, EmbeddingUnavailableError } from './client.js';
 
 /** What `embed` needs of a client; the real one and a test's stand-in both fit. */
-export interface EmbeddingsPort {
+interface EmbeddingsPort {
   embed(text: string): Promise<number[]>;
   embedBatch(texts: string[]): Promise<number[][]>;
   /** Absent on a test stand-in; `embedQuery` then reads the vector off `embed` and takes the configured model as its producer. */
@@ -29,8 +29,8 @@ function get(): EmbeddingsPort {
   return singleton;
 }
 
-export const QUERY_CACHE_MAX = 256;
-export const QUERY_CACHE_TTL_MS = 10 * 60_000;
+const QUERY_CACHE_MAX = 256;
+const QUERY_CACHE_TTL_MS = 10 * 60_000;
 
 const queryCache = new Map<string, { vec: number[]; at: number }>();
 
@@ -98,15 +98,4 @@ export async function embedBatch(scope: EgressScope, texts: string[]): Promise<n
   return client.embedBatch(await Promise.all(texts.map((t) => sent(scope, t))));
 }
 
-/** Test-only. */
-export function resetEmbeddingsClient(client?: EmbeddingsPort): void {
-  singleton = client ?? null;
-  queryCache.clear();
-}
-
-/** Test-only: how many query vectors the cache holds. */
-export function queryCacheSize(): number {
-  return queryCache.size;
-}
-
-export { EMBEDDING_UNAVAILABLE, EmbeddingsClient, EmbeddingUnavailableError } from './client.js';
+export { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from './client.js';

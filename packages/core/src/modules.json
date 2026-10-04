@@ -577,14 +577,6 @@
         "github-merge-sequence#p-github"
       ]
     },
-    "integrations/google": {
-      "kind": "adapter",
-      "context": "adapters",
-      "serves": [
-        "personal-data-flow#src-identity",
-        "REQ-27"
-      ]
-    },
     "integrations/identity": {
       "kind": "adapter",
       "context": "adapters",

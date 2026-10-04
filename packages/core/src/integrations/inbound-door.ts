@@ -25,7 +25,7 @@ export type InboundDoorState =
   | 'silent';
 
 /** `accepted` got through; `refused` counts RECORDS, one per code per bucket, so it is a floor on the calls turned away — attributed to nobody, and never `failed`, which is a delivery accepted and then not processed and which the outbound breaker counts. */
-export interface InboundDoorTraffic {
+interface InboundDoorTraffic {
   accepted: number;
   lastAcceptedAt: Date | null;
   refusalRecords: number;

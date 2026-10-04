@@ -22,21 +22,16 @@ import { refreshStoredPullRequest } from './projection-refresh.js';
 import type { GitHubConfig, GitHubSecrets } from './types.js';
 
 /** The events this projection is built from. Anything else falls through. */
-export const PROJECTED_EVENTS = [
-  'pull_request',
-  'check_run',
-  'pull_request_review',
-  'push',
-] as const;
+const PROJECTED_EVENTS = ['pull_request', 'check_run', 'pull_request_review', 'push'] as const;
 
-export type ProjectedEvent = (typeof PROJECTED_EVENTS)[number];
+type ProjectedEvent = (typeof PROJECTED_EVENTS)[number];
 
-export function isProjectedEvent(eventType: string): eventType is ProjectedEvent {
+function isProjectedEvent(eventType: string): eventType is ProjectedEvent {
   return (PROJECTED_EVENTS as readonly string[]).includes(eventType);
 }
 
 /** What a delivery brings with it: its own binding, config and credential, and the facts it reports. */
-export interface DeliveryContext extends ProjectionContext {
+interface DeliveryContext extends ProjectionContext {
   config: GitHubConfig;
   secrets: GitHubSecrets;
   /** Collected here and emitted by the inbound door for the modules that own each effect. */
@@ -168,7 +163,7 @@ async function onReview(ctx: DeliveryContext, payload: ReviewPayload): Promise<n
 }
 
 /** Apply one delivery to the projection, and report how many rows it moved. */
-export async function applyProjectedEvent(
+async function applyProjectedEvent(
   ctx: DeliveryContext,
   eventType: ProjectedEvent,
   payload: unknown,

@@ -1,6 +1,6 @@
 import type { IntegrationDeclaration } from './types.js';
 
-export const ROTATION_WINDOW_MS = 24 * 60 * 60_000;
+const ROTATION_WINDOW_MS = 24 * 60 * 60_000;
 
 export function mergeRotatedSecrets(
   decl: Pick<IntegrationDeclaration, 'schemas'>,

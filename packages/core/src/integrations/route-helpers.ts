@@ -26,7 +26,7 @@ export function assertVaultConfigured(): void {
 export const notFound = (entity = 'integration') =>
   new HTTPException(404, { message: `${entity} not found`, cause: { code: 'NOT_FOUND' } });
 
-export const BINDING_DOOR =
+const BINDING_DOOR =
   'PUT /api/projects/:projectId/bindings/:bindingId { baseRevision, document } (a binding-v1 document), and switched off only through DELETE /api/projects/:projectId/bindings/:bindingId { baseRevision }';
 
 export function bindingWriteMoved(what: string): HTTPException {

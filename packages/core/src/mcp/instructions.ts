@@ -12,7 +12,7 @@ export function forgeMcpInstructions(): string {
 - \`forge_agent_report\` — report friction, a skill gap or a learning mid-run (\`submit\` reads your live job or session context).
 - \`forge_uploads\` — read an issue, comment or session attachment; an image comes back as a viewable block.
 - \`forge_channel\` and \`forge_ecosystem\` — a project's channel inside its ecosystem: what it owes a reply to (\`forge_channel action=unanswered\`), gates, and the contract context. How a master works the inbox: \`GET <host>/api/guides/ecosystem-inbox.md\`.
-- \`forge_source\`, \`forge_coolify_deploy\`, \`forge_sentry\`, \`forge_google_sheets\`, \`forge_storefront_target\` — a connected integration whose credential stays in core.
+- \`forge_source\`, \`forge_coolify_deploy\`, \`forge_sentry\`, \`forge_storefront_target\` — a connected integration whose credential stays in core.
 
 Everything else is REST or the CLI:
 - Project memory is NOT auto-loaded. At the start of any task needing project context, recall it first: \`POST /api/memory/search\` \`{ projectId, query, topK: 5 }\`. Hits are point-in-time — verify against live code/git before trusting, then report it at \`POST /api/memory/feedback\`.

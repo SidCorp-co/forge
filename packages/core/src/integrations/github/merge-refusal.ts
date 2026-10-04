@@ -17,7 +17,7 @@ export type MergeCallRefusal = PublishRefusal;
  * needs its own permissions, so each carries its own sentences; the merge needs
  * no check permission at all (ISS-1151).
  */
-export type MergeOp = 'mint' | 'lookup' | 'merge';
+type MergeOp = 'mint' | 'lookup' | 'merge';
 
 const MERGE_SUBJECT: PublishSubject<MergeOp> = {
   mint: {

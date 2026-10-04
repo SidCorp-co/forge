@@ -10,7 +10,7 @@ import { rocketchatThreads } from '../../db/schema-rocketchat.js';
 
 export type ThreadSubject = { kind: 'question'; questionId: string };
 
-export interface ThreadRef {
+interface ThreadRef {
   connectionId: string;
   rid: string;
   tmid: string;

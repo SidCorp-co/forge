@@ -10,7 +10,6 @@ import type { ChatToolSpec } from '../assistant/index.js';
 import { forgeChannelTool, forgeEcosystemTool } from '../ecosystem/tool.js';
 import {
   forgeCoolifyDeployTool,
-  forgeGoogleSheetsTool,
   forgeSentryTool,
   forgeSourceTool,
   forgeStorefrontTargetTool,
@@ -37,7 +36,6 @@ export const MCP_TOOLS = {
   forge_source: (ctx) => forgeSourceTool(ctx),
   forge_coolify_deploy: (ctx) => forgeCoolifyDeployTool(ctx),
   forge_sentry: (ctx) => forgeSentryTool(ctx),
-  forge_google_sheets: (ctx) => forgeGoogleSheetsTool(ctx),
   forge_storefront_target: (ctx) => forgeStorefrontTargetTool(ctx),
 } satisfies Record<McpToolName, ContextScopedMcpToolFactory>;
 

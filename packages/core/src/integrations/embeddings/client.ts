@@ -9,7 +9,7 @@ import { logger } from '../../observability/logger.js';
  * quota reading, the dimension guard and a module-local circuit breaker.
  */
 
-export interface EmbeddingsConfig {
+interface EmbeddingsConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -38,7 +38,7 @@ export class EmbeddingUnavailableError extends Error {
   }
 }
 
-export interface CircuitBreakerState {
+interface CircuitBreakerState {
   consecutiveFailures: number;
   openUntil: number;
 }
@@ -216,7 +216,7 @@ const QUOTA_MARKERS = [
   'billing',
 ] as const;
 
-export function isQuotaRejection(status: number, body: string): boolean {
+function isQuotaRejection(status: number, body: string): boolean {
   if (status === 429) return true;
   const haystack = body.toLowerCase();
   return QUOTA_MARKERS.some((m) => haystack.includes(m));

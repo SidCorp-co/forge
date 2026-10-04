@@ -11,7 +11,7 @@ import { openAiCompatBaseUrl } from '../../lib/openai-compat-url.js';
 import { bridgeStream, MAX_RETRIES, toModelMessages, toToolSet } from './ai-sdk.js';
 import type { ChatProvider, ChatStreamEvent, ChatStreamRequest } from './types.js';
 
-export interface OpenAIConfig {
+interface OpenAIConfig {
   baseUrl: string;
   apiKey: string;
   defaultModel: string;

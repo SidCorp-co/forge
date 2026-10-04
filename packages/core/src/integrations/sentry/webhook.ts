@@ -17,13 +17,13 @@ export const SENTRY_SIGNATURE_HEADER = 'sentry-hook-signature';
  * `preprod_artifact`. `error` is one delivery per EVENT, which is a firehose aimed at a gate built
  * to judge issues; the rest describe objects Forge holds no opinion about.
  */
-export const SENTRY_SERVED_RESOURCE = 'issue';
+const SENTRY_SERVED_RESOURCE = 'issue';
 
 /**
  * The issue actions this handler serves, out of `created`, `resolved`, `assigned`, `archived` and
  * `unresolved`.
  */
-export const SENTRY_SERVED_ACTIONS = ['created', 'unresolved'] as const;
+const SENTRY_SERVED_ACTIONS = ['created', 'unresolved'] as const;
 
 /** What one delivery's envelope carried, before anything is decided about it. */
 interface SentryDeliveryEnvelope {
@@ -51,7 +51,7 @@ function readEnvelope(input: InboundDispatchInput): SentryDeliveryEnvelope {
  * organization and a project together. Two targets under different orgs can therefore both declare
  * a project called `web`, and nothing in the delivery tells them apart.
  */
-export function selectSentryTarget(
+function selectSentryTarget(
   config: SentryConfig | null | undefined,
   projectSlug: string | null,
 ): { label: string } | { refusal: string } {

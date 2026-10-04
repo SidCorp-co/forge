@@ -83,10 +83,6 @@ integrationsRoutes.get('/:projectId/integrations', async (c) => {
   return c.json({ bindings, items: bindings });
 });
 
-integrationsRoutes.post('/:projectId/integrations', () => {
-  throw bindingWriteMoved('POST /api/projects/:projectId/integrations');
-});
-
 integrationsRoutes.patch(
   '/:projectId/integrations/:id',
   zValidator('json', updateSchema, (result) => {
@@ -164,10 +160,6 @@ integrationsRoutes.patch(
     return c.json({ integration: summarizeBinding(refreshed) });
   },
 );
-
-integrationsRoutes.delete('/:projectId/integrations/:id', () => {
-  throw bindingWriteMoved('DELETE /api/projects/:projectId/integrations/:id');
-});
 
 integrationsRoutes.post('/:projectId/integrations/:id/test', async (c) => {
   const projectId = c.req.param('projectId');

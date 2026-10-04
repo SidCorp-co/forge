@@ -1,7 +1,7 @@
 /** Where an Autoflow ("Sidcorp Auto") platform answers: its GraphQL API, its shop MCP, a site's host. */
 
-export const AUTOFLOW_DEFAULT_BASE_URL = 'https://auto.sidcorp.co';
-export const AUTOFLOW_DEFAULT_MCP_URL = 'https://mcp.auto.sidcorp.co/mcp';
+const AUTOFLOW_DEFAULT_BASE_URL = 'https://auto.sidcorp.co';
+const AUTOFLOW_DEFAULT_MCP_URL = 'https://mcp.auto.sidcorp.co/mcp';
 
 interface EndpointConfig {
   baseUrl?: unknown;
