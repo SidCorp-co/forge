@@ -2,9 +2,9 @@
 
 import type { FeedbackTargetView } from '@forge/contracts/feedback';
 import type { NodeRef } from '@forge/contracts/workflow-health';
+import type { Linked } from './list-read.js';
 import type { Row } from './read.js';
 import { targetTypeOf } from './refs.js';
-import type { Linked } from './summary.js';
 
 export function targetView(r: Row, l: Linked): FeedbackTargetView {
   const type = targetTypeOf(r);

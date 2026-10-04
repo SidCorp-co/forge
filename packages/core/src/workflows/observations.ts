@@ -106,31 +106,6 @@ async function viewOf(row: Row, flow: string): Promise<ObservationView> {
   return { ...summaryOf(row, flow, names), document: documentOf(row) };
 }
 
-/** One observation per workflow and sha: a second at the same sha replaces the first. */
-async function upsertIn(
-  tx: Tx,
-  values: typeof projectWorkflowObservations.$inferInsert & { workflowId: string; atSha: string },
-): Promise<{ row: Row | null; created: boolean }> {
-  const [before] = await tx
-    .select({ id: projectWorkflowObservations.id })
-    .from(projectWorkflowObservations)
-    .where(
-      and(
-        eq(projectWorkflowObservations.workflowId, values.workflowId),
-        eq(projectWorkflowObservations.atSha, values.atSha),
-      ),
-    );
-  const [row] = await tx
-    .insert(projectWorkflowObservations)
-    .values(values)
-    .onConflictDoUpdate({
-      target: [projectWorkflowObservations.workflowId, projectWorkflowObservations.atSha],
-      set: { ...values, createdAt: new Date() },
-    })
-    .returning();
-  return { row: row ?? null, created: !before };
-}
-
 export async function writeObservation(input: {
   projectId: string;
   workflow: string;
@@ -173,23 +148,41 @@ export async function writeObservation(input: {
       source: facts.source,
     });
     if (wrong.length) return wrong;
-    const upserted = await upsertIn(tx, {
+    const document: ObservationDocument = {
+      ...(write.summary ? { summary: write.summary } : {}),
+      steps: write.steps,
+      edges: write.edges ?? [],
+      drift: write.drift ?? null,
+    };
+    const [before] = await tx
+      .select({ id: projectWorkflowObservations.id })
+      .from(projectWorkflowObservations)
+      .where(
+        and(
+          eq(projectWorkflowObservations.workflowId, wf.id),
+          eq(projectWorkflowObservations.atSha, write.atSha),
+        ),
+      );
+    created = !before;
+    const values = {
       projectId,
       workflowId: wf.id,
       atSha: write.atSha,
       revision,
-      document: {
-        ...(write.summary ? { summary: write.summary } : {}),
-        steps: write.steps,
-        edges: write.edges ?? [],
-        drift: write.drift ?? null,
-      },
+      document,
       source: input.source ?? 'observer',
       writtenBy: writer.userId,
       writtenByAgency: writer.agency,
-    });
-    created = upserted.created;
-    written = upserted.row;
+    };
+    const [row] = await tx
+      .insert(projectWorkflowObservations)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [projectWorkflowObservations.workflowId, projectWorkflowObservations.atSha],
+        set: { ...values, createdAt: new Date() },
+      })
+      .returning();
+    written = row ?? null;
     return [];
   });
   if (refusals.length) return { ok: false, refusals };

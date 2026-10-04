@@ -27,10 +27,10 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { addAttachment, askClarification, attachmentBytes } from './attachments.js';
-import { detailAs } from './detail.js';
 import { similarFeedbackAs } from './embeddings.js';
+import { listFeedbackAs } from './list-read.js';
 import { promoteAgentReport } from './promote.js';
-import type { FeedbackActor } from './read.js';
+import { detailAs, type FeedbackActor } from './read.js';
 import {
   createFeedback,
   type FeedbackOutcome,
@@ -38,7 +38,6 @@ import {
   reopenFeedback,
   verifyFeedback,
 } from './service.js';
-import { listFeedbackAs } from './summary.js';
 import { routeFeedback, triageFeedback } from './triage.js';
 
 export const feedbackRoutes = new Hono<{ Variables: AuthVars }>();

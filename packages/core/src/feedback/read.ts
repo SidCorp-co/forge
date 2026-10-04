@@ -1,12 +1,30 @@
-import { feedbackKey } from '@forge/contracts/feedback';
+import {
+  type FeedbackDecisionView,
+  type FeedbackView,
+  feedbackKey,
+} from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, count, desc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { Tx } from '../db/client.js';
-import { feedback, feedbackCases } from '../db/schema-feedback.js';
+import { db, type Tx } from '../db/client.js';
+import {
+  feedback,
+  feedbackAttachments,
+  feedbackCases,
+  feedbackDecisions,
+} from '../db/schema-feedback.js';
+import { agentQuestions } from '../db/schema-questions.js';
+import { suggestions } from '../db/schema-suggestions.js';
 import { findIssueById, isUuid } from '../issues/index.js';
+import { effectiveProjectRole } from '../lib/authz.js';
+import { dataPolicyOf } from '../lib/data-egress.js';
+import { userNames } from '../lib/people.js';
+import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
 import { rowIn as requirementRowIn } from '../requirements/index.js';
+import { feedbackEgress, type ReadDoor } from './egress.js';
+import { linkedOf, summaryOf } from './list-read.js';
+import { sourceOf } from './relations.js';
 
 export interface FeedbackActor {
   userId: string;
@@ -71,4 +89,112 @@ export async function targetRequirementOf(tx: Tx, row: Row): Promise<TargetRequi
   if (!id) return null;
   const req = await requirementRowIn(tx, row.projectId, id);
   return { id: req.id, key: requirementKey(req.reqSeq), status: req.status };
+}
+
+export async function detailAs(
+  viewer: FeedbackActor,
+  projectId: string,
+  ref: string,
+  door: ReadDoor = {},
+): Promise<FeedbackView> {
+  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  const row = await rowIn(db, projectId, ref);
+  const [level, access, linked, decisions, attachments, questions, pointing, [open], source] =
+    await Promise.all([
+      dataPolicyOf(projectId),
+      effectiveProjectRole(viewer.userId, projectId),
+      linkedOf(projectId, [row]),
+      db
+        .select()
+        .from(feedbackDecisions)
+        .where(eq(feedbackDecisions.feedbackId, row.id))
+        .orderBy(asc(feedbackDecisions.decidedAt)),
+      db
+        .select()
+        .from(feedbackAttachments)
+        .where(eq(feedbackAttachments.feedbackId, row.id))
+        .orderBy(asc(feedbackAttachments.createdAt)),
+      db
+        .select({
+          id: agentQuestions.id,
+          status: agentQuestions.status,
+          steps: agentQuestions.steps,
+        })
+        .from(agentQuestions)
+        .where(eq(agentQuestions.feedbackId, row.id))
+        .orderBy(desc(agentQuestions.createdAt))
+        .limit(1),
+      duplicateKeysOf(db, row.id),
+      db
+        .select({ n: count() })
+        .from(suggestions)
+        .where(and(eq(suggestions.feedbackId, row.id), eq(suggestions.status, 'proposed'))),
+      sourceOf(row.id),
+    ]);
+  const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
+  const summary = summaryOf(row, linked, viewer, withhold);
+  const deciders = await userNames(decisions.map((d) => d.decidedBy));
+  const facts = { projectId, role: access?.role ?? null, grants: access?.grants ?? [] };
+  const q = questions[0];
+  const step = q?.steps.at(-1);
+  const root = row.duplicateOf ? linked.roots.get(row.duplicateOf) : undefined;
+  return shown<FeedbackView>(
+    {
+      ...summary,
+      body: withhold ? null : row.body,
+      whereSeen: withhold ? null : row.whereSeen,
+      duplicateOf: root ? feedbackKey(root.fbSeq) : null,
+      duplicates: pointing,
+      source:
+        source && withhold ? { agentReport: { ...source.agentReport, targetRef: null } } : source,
+      decisions: decisions.map(
+        (d): FeedbackDecisionView => ({
+          decision: d.decision,
+          route: d.route,
+          carrier: d.carrier,
+          reason: withhold ? null : d.reason,
+          decidedBy: d.decidedBy,
+          decidedByName: deciders.get(d.decidedBy) ?? null,
+          decidedAgency: d.decidedAgency,
+          decidedAt: d.decidedAt.toISOString(),
+          fromSuggestionId: d.fromSuggestionId,
+        }),
+      ),
+      attachments: attachments.map((a) => ({
+        id: a.id,
+        name: withhold ? 'withheld' : a.name,
+        mime: a.mime,
+        size: a.size,
+        flagged: a.flagged,
+        createdAt: a.createdAt.toISOString(),
+      })),
+      clarification: q
+        ? {
+            id: q.id,
+            status: q.status,
+            prompt: withhold ? null : (step?.prompt ?? null),
+            answer: withhold
+              ? null
+              : step && 'answerText' in step
+                ? (step.answerText ?? null)
+                : null,
+          }
+        : null,
+      openSuggestions: open?.n ?? 0,
+      can: {
+        triage:
+          holds(facts, 'feedback.approve') &&
+          ['new', 'triaged', 'reopened'].includes(summary.phase),
+        route:
+          summary.phase === 'triaged' &&
+          summary.case !== null &&
+          summary.case.routedAt === null &&
+          holds(facts, 'feedback.approve'),
+        verify: holds(facts, 'feedback.approve') && summary.phase === 'resolved',
+        redact: holds(facts, 'feedback.redact') && row.redactedAt === null,
+      },
+      sensitive: level !== 'off',
+    },
+    feedbackKey(row.fbSeq),
+  );
 }

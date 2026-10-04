@@ -99,49 +99,6 @@ const requirementRefusal = (code: ArtifactContextRefusalCode, key: string, reaso
     'ARTIFACT_CONTEXT_UNLOADABLE',
   );
 
-function contextLines(
-  row: RequirementContextRow,
-  baseline: NonNullable<RequirementContextRow['baseline']>,
-  currentRevision: number,
-  changed: boolean,
-  mockupsWithheld: boolean,
-): string[] {
-  const lines = [
-    `## The requirement this issue delivers`,
-    `${row.key} · ${row.title} — current revision ${currentRevision}, agreed (baseline r${baseline.revision}, ${baseline.agreedAt}).`,
-  ];
-  if (row.tldr) lines.push(row.tldr);
-  if (row.goal) lines.push(`Goal: ${row.goal}`);
-  lines.push(planLine(changed, row.plannedRevision, currentRevision));
-  lines.push(
-    '',
-    'Business criteria (each issue criterion traces to one of these codes):',
-    ...row.criteria.map(
-      (c) =>
-        `- ${c.code}${c.form === 'scenario' ? ' (scenario)' : ''}: ${c.body.replace(/\n/g, '\n  ')}`,
-    ),
-  );
-  if (baseline.pins.length) {
-    lines.push(
-      '',
-      'Pinned in the latest baseline (build to these revisions):',
-      ...baseline.pins.map((p) =>
-        p.workflowId
-          ? `- design \`${p.flow ?? p.workflowId}\` at revision ${p.designRevision} — ${fetchLine(p.workflowId, p.designRevision)}`
-          : `- contract \`${p.contractSlug}\`@${p.contractVersion} (provider ${p.providerProjectId})`,
-      ),
-    );
-  }
-  if (baseline.mockups.length) {
-    lines.push(
-      '',
-      'Mockups pinned in the latest baseline (what the screens and calls should look like):',
-      ...mockupLines(baseline.mockups, mockupsWithheld),
-    );
-  }
-  return lines;
-}
-
 // A job loads only the current revision and the baseline agreed at it: a head that is not current, or a latest baseline pinning another revision, is refused REQUIREMENT_REVISION_NOT_CURRENT
 export function requirementContext(
   row: RequirementContextRow | null,
@@ -170,9 +127,40 @@ export function requirementContext(
     );
   }
   const changed = changedSincePlan({ ...row, latestBaselineSeq: row.baseline.seq });
-  const text = contextLines(row, row.baseline, row.currentRevision, changed, mockupsWithheld).join(
-    '\n',
+  const lines = [
+    `## The requirement this issue delivers`,
+    `${row.key} · ${row.title} — current revision ${row.currentRevision}, agreed (baseline r${row.baseline.revision}, ${row.baseline.agreedAt}).`,
+  ];
+  if (row.tldr) lines.push(row.tldr);
+  if (row.goal) lines.push(`Goal: ${row.goal}`);
+  lines.push(planLine(changed, row.plannedRevision, row.currentRevision));
+  lines.push(
+    '',
+    'Business criteria (each issue criterion traces to one of these codes):',
+    ...row.criteria.map(
+      (c) =>
+        `- ${c.code}${c.form === 'scenario' ? ' (scenario)' : ''}: ${c.body.replace(/\n/g, '\n  ')}`,
+    ),
   );
+  if (row.baseline.pins.length) {
+    lines.push(
+      '',
+      'Pinned in the latest baseline (build to these revisions):',
+      ...row.baseline.pins.map((p) =>
+        p.workflowId
+          ? `- design \`${p.flow ?? p.workflowId}\` at revision ${p.designRevision} — ${fetchLine(p.workflowId, p.designRevision)}`
+          : `- contract \`${p.contractSlug}\`@${p.contractVersion} (provider ${p.providerProjectId})`,
+      ),
+    );
+  }
+  if (row.baseline.mockups.length) {
+    lines.push(
+      '',
+      'Mockups pinned in the latest baseline (what the screens and calls should look like):',
+      ...mockupLines(row.baseline.mockups, mockupsWithheld),
+    );
+  }
+  const text = lines.join('\n');
   if (text.length > REQUIREMENT_CONTEXT_CAP_CHARS) {
     throw requirementRefusal(
       'ARTIFACT_CONTEXT_OVER_BUDGET',

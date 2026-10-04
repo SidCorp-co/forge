@@ -5,7 +5,7 @@ import { useFeedbackItem } from "../hooks";
 import { FEEDBACK_LIST, feedbackListHref } from "../routes";
 import { FeedbackPage, FeedbackPrimary, useFeedbackTab } from "./feedback-detail";
 
-// cm:why the shell's top bar is the page's sticky header (the shared DetailHeader): "← Feedback" back
+// The shell's top bar is the page's sticky header (the shared DetailHeader): "← Feedback" back
 // to the list view it was opened from, the key, title and phase, and the one primary act
 export function FeedbackItemScreen({ projectId, slug, fbKey }: { projectId: string; slug: string; fbKey: string }) {
   const q = useFeedbackItem(projectId, fbKey);

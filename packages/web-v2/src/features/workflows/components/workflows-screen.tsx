@@ -15,7 +15,7 @@ import type { WorkflowRecord } from "../types";
 import { SystemOverviewRegion } from "./system-overview";
 import { DesignPill, ProposedMarker } from "./workflow-parts";
 
-// cm:why one grid template for the header and every row, so the columns line up without a table
+// One grid template for the header and every row, so the columns line up without a table
 const COLS = "grid grid-cols-[minmax(0,1fr)_170px_84px_230px_92px] gap-x-3.5 px-7 max-lg:grid-cols-[minmax(0,1fr)_150px_76px_210px]";
 
 function size(r: WorkflowRecord): string {

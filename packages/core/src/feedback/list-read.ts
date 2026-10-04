@@ -68,120 +68,85 @@ export interface Linked {
 
 const ids = (values: (string | null)[]) => [...new Set(values.filter((v): v is string => !!v))];
 
-const issueHeads = (ids: string[]) =>
-  ids.length
-    ? db
-        .select({ id: issues.id, seq: issues.issSeq, title: issues.title, status: issues.status })
-        .from(issues)
-        .where(inArray(issues.id, ids))
-    : [];
-
-const requirementHeads = (ids: string[]) =>
-  ids.length
-    ? db
-        .select({
-          id: requirements.id,
-          seq: requirements.reqSeq,
-          title: requirements.title,
-          status: requirements.status,
-        })
-        .from(requirements)
-        .where(inArray(requirements.id, ids))
-    : [];
-
-const suggestionHeads = (ids: string[]) =>
-  ids.length
-    ? db
-        .select({
-          id: suggestions.id,
-          status: suggestions.status,
-          revisionState: requirementRevisions.state,
-          requirementId: requirementRevisions.requirementId,
-        })
-        .from(suggestions)
-        .leftJoin(requirementRevisions, eq(requirementRevisions.fromSuggestionId, suggestions.id))
-        .where(inArray(suggestions.id, ids))
-    : [];
-
-async function linkedRowsOf(projectId: string, rows: Row[]) {
-  const known = new Set(rows.map((r) => r.id));
+export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
+  const issueIds = ids(rows.flatMap((r) => [r.issueId, r.routedIssueId]));
+  const reqIds = ids(rows.flatMap((r) => [r.requirementId, r.routedRequirementId]));
   const releaseIds = ids(rows.map((r) => r.releaseRunId));
   const workflowIds = ids(rows.map((r) => r.workflowId));
+  const suggestionIds = ids(rows.map((r) => r.routedSuggestionId));
+  const known = new Set(rows.map((r) => r.id));
   const rootIds = ids(rows.map((r) => r.duplicateOf)).filter((id) => !known.has(id));
-  const providerIds = ids(rows.map((r) => r.contractProviderProjectId));
-  const [
-    prefix,
-    issueRows,
-    reqRows,
-    releaseRows,
-    workflowRows,
-    suggestionRows,
-    rootRows,
-    providerRows,
-    cases,
-  ] = await Promise.all([
-    activeIssuePrefix(projectId),
-    issueHeads(ids(rows.flatMap((r) => [r.issueId, r.routedIssueId]))),
-    requirementHeads(ids(rows.flatMap((r) => [r.requirementId, r.routedRequirementId]))),
-    releaseIds.length
-      ? db
-          .select({ id: pipelineRuns.id, version: pipelineRuns.releaseVersion })
-          .from(pipelineRuns)
-          .where(inArray(pipelineRuns.id, releaseIds))
-      : [],
-    workflowIds.length
-      ? db
-          .select({
-            id: projectWorkflows.id,
-            flow: projectWorkflows.flow,
-            document: projectWorkflows.document,
-          })
-          .from(projectWorkflows)
-          .where(inArray(projectWorkflows.id, workflowIds))
-      : [],
-    suggestionHeads(ids(rows.map((r) => r.routedSuggestionId))),
-    rootIds.length ? db.select().from(feedback).where(inArray(feedback.id, rootIds)) : [],
-    providerIds.length
-      ? db
-          .select({ id: projects.id, slug: projects.slug })
-          .from(projects)
-          .where(inArray(projects.id, providerIds))
-      : [],
-    casesOf(rows.map((r) => r.id)),
-  ]);
-  return {
-    prefix,
-    issueRows,
-    reqRows,
-    releaseRows,
-    workflowRows,
-    suggestionRows,
-    rootRows,
-    providerRows,
-    cases,
-  };
-}
-
-export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
-  const {
-    prefix,
-    issueRows,
-    reqRows,
-    releaseRows,
-    workflowRows,
-    suggestionRows,
-    rootRows,
-    providerRows,
-    cases,
-  } = await linkedRowsOf(projectId, rows);
+  const [prefix, issueRows, reqRows, releaseRows, workflowRows, suggestionRows, rootRows, cases] =
+    await Promise.all([
+      activeIssuePrefix(projectId),
+      issueIds.length
+        ? db
+            .select({
+              id: issues.id,
+              seq: issues.issSeq,
+              title: issues.title,
+              status: issues.status,
+            })
+            .from(issues)
+            .where(inArray(issues.id, issueIds))
+        : [],
+      reqIds.length
+        ? db
+            .select({
+              id: requirements.id,
+              seq: requirements.reqSeq,
+              title: requirements.title,
+              status: requirements.status,
+            })
+            .from(requirements)
+            .where(inArray(requirements.id, reqIds))
+        : [],
+      releaseIds.length
+        ? db
+            .select({ id: pipelineRuns.id, version: pipelineRuns.releaseVersion })
+            .from(pipelineRuns)
+            .where(inArray(pipelineRuns.id, releaseIds))
+        : [],
+      workflowIds.length
+        ? db
+            .select({
+              id: projectWorkflows.id,
+              flow: projectWorkflows.flow,
+              document: projectWorkflows.document,
+            })
+            .from(projectWorkflows)
+            .where(inArray(projectWorkflows.id, workflowIds))
+        : [],
+      suggestionIds.length
+        ? db
+            .select({
+              id: suggestions.id,
+              status: suggestions.status,
+              revisionState: requirementRevisions.state,
+              requirementId: requirementRevisions.requirementId,
+            })
+            .from(suggestions)
+            .leftJoin(
+              requirementRevisions,
+              eq(requirementRevisions.fromSuggestionId, suggestions.id),
+            )
+            .where(inArray(suggestions.id, suggestionIds))
+        : [],
+      rootIds.length ? db.select().from(feedback).where(inArray(feedback.id, rootIds)) : [],
+      casesOf(rows.map((r) => r.id)),
+    ]);
   const allRows = [...rows, ...rootRows];
-  const [delivered, names] = await Promise.all([
-    deliveredAmong(
-      projectId,
-      ids([...reqRows.map((r) => r.id), ...suggestionRows.map((s) => s.requirementId)]),
-    ),
-    userNames(allRows.map((r) => r.reportedBy)),
-  ]);
+  const providerIds = ids(rows.map((r) => r.contractProviderProjectId));
+  const providerRows = providerIds.length
+    ? await db
+        .select({ id: projects.id, slug: projects.slug })
+        .from(projects)
+        .where(inArray(projects.id, providerIds))
+    : [];
+  const delivered = await deliveredAmong(
+    projectId,
+    ids([...reqRows.map((r) => r.id), ...suggestionRows.map((s) => s.requirementId)]),
+  );
   return {
     prefix,
     providers: new Map(providerRows.map((p) => [p.id, p.slug])),
@@ -223,7 +188,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
       ]),
     ),
     roots: new Map(allRows.map((r) => [r.id, r])),
-    names,
+    names: await userNames(allRows.map((r) => r.reportedBy)),
     cases,
   };
 }

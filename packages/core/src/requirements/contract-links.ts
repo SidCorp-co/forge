@@ -12,7 +12,7 @@ import { findProjectIdBySlug } from '../projects/index.js';
 import { linkedContracts } from './baselines.js';
 import { notFound, type RequirementActor, rowIn } from './read.js';
 import { contractLinkRefusal } from './rules.js';
-import { answer, type RequirementOutcome } from './service.js';
+import { answer, type RequirementOutcome } from './write-tx.js';
 
 /** The contracts a project's interface publishes and consumes, as `<project>/<contract>` refs; null when it holds none. */
 export type InterfaceContracts = (

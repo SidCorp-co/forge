@@ -25,7 +25,6 @@ import {
   writeIssueRelations,
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import type { Refusal } from '../lib/refusal.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 import {
@@ -69,67 +68,6 @@ async function announceEffect(written: EffectWritten, projectId: string, actor: 
   );
 }
 
-async function duplicateRootOf(
-  projectId: string,
-  ref: string,
-  issueId: string,
-  key: string,
-  userId: string,
-): Promise<{ id: string; issSeq: number } | { refusals: Refusal[] }> {
-  const root = await resolveIssueRouteRef(ref, projectId, userId).catch((err) => {
-    if (err instanceof HTTPException) return null;
-    throw err;
-  });
-  if (root && root.projectId === projectId && root.id !== issueId) return root;
-  const detail =
-    !root || root.projectId !== projectId
-      ? `${ref} is not an issue of this project, so ${key} cannot be marked its duplicate.`
-      : `${key} cannot be a duplicate of itself.`;
-  return {
-    refusals: [{ code: 'SUGGESTION_PAYLOAD_INVALID', path: '/payload/duplicateOf', detail }],
-  };
-}
-
-/** Inside the drop's transaction: the relates edge to the root, then the accept itself. */
-async function acceptDuplicateIn(
-  tx: Tx,
-  c: {
-    projectId: string;
-    first: Row;
-    actor: SuggestionActor;
-    reason: string | null;
-    issueId: string;
-    rootId: string;
-    rootKey: string;
-  },
-): Promise<PendingIssueRelation[]> {
-  const { projectId, actor, reason } = c;
-  await lockTarget(tx, projectId, targetOfRow(c.first));
-  const row = await rowOf(tx, projectId, c.first.id, true);
-  const decided = decidedRefusal(row.status);
-  if (decided) throw new RefusalError([decided], 'SUGGESTION_REFUSED');
-  const relations = await writeIssueRelations(
-    { actor: { type: 'user', id: actor.userId, agency: actor.agency }, createdById: actor.userId },
-    projectId,
-    c.issueId,
-    [{ kind: 'relates', dependsOnId: c.rootId, reason: `duplicate of ${c.rootKey}` }],
-    tx,
-  );
-  const decidedAccepted = await transition(tx, SUGGESTION_MACHINE, {
-    to: 'accepted',
-    expect: 'proposed',
-    set: { decidedBy: actor.userId, decidedAt: new Date(), reason },
-    where: eq(suggestions.id, row.id),
-    reason,
-    actor: suggestionKernelActor(actor),
-    source: 'suggestions',
-    returning: ['id'],
-  });
-  movedRow(decidedAccepted);
-  await recordDecision(tx, row, actor, 'accepted', reason);
-  return relations;
-}
-
 // Workflow issue-lifecycle step `dropped` ("not work: … a duplicate"): accepting a duplicate
 // on an issue drops it with the root named and a relates edge to it, through the one transition
 // writer; the accept is written inside that transition's transaction, so neither lands alone
@@ -154,8 +92,25 @@ async function acceptDuplicateOfIssue(
     .where(eq(issues.id, target.id));
   if (!issue) throw new Error(`suggestions: issue ${target.id} vanished under its suggestion`);
   const key = formatIssueRef(prefix, issue.seq);
-  const root = await duplicateRootOf(projectId, p.duplicateOf, issue.id, key, actor.userId);
-  if ('refusals' in root) return { ok: false, refusals: root.refusals };
+  const root = await resolveIssueRouteRef(p.duplicateOf, projectId, actor.userId).catch((err) => {
+    if (err instanceof HTTPException) return null;
+    throw err;
+  });
+  if (!root || root.projectId !== projectId || root.id === issue.id) {
+    return {
+      ok: false,
+      refusals: [
+        {
+          code: 'SUGGESTION_PAYLOAD_INVALID',
+          path: '/payload/duplicateOf',
+          detail:
+            !root || root.projectId !== projectId
+              ? `${p.duplicateOf} is not an issue of this project, so ${key} cannot be marked its duplicate.`
+              : `${key} cannot be a duplicate of itself.`,
+        },
+      ],
+    };
+  }
   const rootKey = formatIssueRef(prefix, root.issSeq);
   let relations: PendingIssueRelation[] = [];
   try {
@@ -171,15 +126,32 @@ async function acceptDuplicateOfIssue(
       {
         transitionReason: `Duplicate of ${rootKey}${p.note ? `: ${p.note}` : ''} (suggestion ${first.id}).`,
         beforeStatusWrite: async (tx) => {
-          relations = await acceptDuplicateIn(tx, {
+          await lockTarget(tx, projectId, target);
+          const row = await rowOf(tx, projectId, first.id, true);
+          const decided = decidedRefusal(row.status);
+          if (decided) throw new RefusalError([decided], 'SUGGESTION_REFUSED');
+          relations = await writeIssueRelations(
+            {
+              actor: { type: 'user', id: actor.userId, agency: actor.agency },
+              createdById: actor.userId,
+            },
             projectId,
-            first,
-            actor,
-            reason,
-            issueId: issue.id,
-            rootId: root.id,
-            rootKey,
+            issue.id,
+            [{ kind: 'relates', dependsOnId: root.id, reason: `duplicate of ${rootKey}` }],
+            tx,
+          );
+          const decidedAccepted = await transition(tx, SUGGESTION_MACHINE, {
+            to: 'accepted',
+            expect: 'proposed',
+            set: { decidedBy: actor.userId, decidedAt: new Date(), reason },
+            where: eq(suggestions.id, row.id),
+            reason: reason,
+            actor: suggestionKernelActor(actor),
+            source: 'suggestions',
+            returning: ['id'],
           });
+          movedRow(decidedAccepted);
+          await recordDecision(tx, row, actor, 'accepted', reason);
         },
       },
     );

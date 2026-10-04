@@ -131,8 +131,8 @@ import {
   stepHandoffRoutes,
 } from './pipeline/routes.js';
 import { preferenceRoutes } from './preferences/routes.js';
-import { contentLanguageRoutes } from './project-config/content-language-routes.js';
 import {
+  contentLanguageRoutes,
   environmentStateRoutes,
   jobTestingSecretsRoutes,
   projectConfigRoutes,

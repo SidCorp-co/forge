@@ -20,9 +20,8 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { detailAs } from './detail.js';
 import { embedFeedbackLater } from './embeddings.js';
-import { type FeedbackActor, notFound, rowIn } from './read.js';
+import { detailAs, type FeedbackActor, notFound, rowIn } from './read.js';
 import { promoteRefusal } from './rules.js';
 import { decide, insertFeedbackIn, inTx, lockFeedback, preparedFeedback } from './service.js';
 

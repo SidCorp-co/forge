@@ -10,9 +10,9 @@ import {
 import { acceptedMockupIds, latestBaselineIn, linkedContracts, writePinsIn } from './baselines.js';
 import { linkedDesigns, type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { repinRefusals } from './rules.js';
-import { answer, inTx, lockRequirements, type RequirementOutcome } from './service.js';
+import { answer, inTx, lockRequirements, type RequirementOutcome } from './write-tx.js';
 
-// cm:why when a linked design is approved past the revision the agreed baseline pins, or a linked
+// When a linked design is approved past the revision the agreed baseline pins, or a linked
 // contract has a newer approved version, a person writes a further baseline of the same head
 // revision pinning each linked design's approved revision and each linked contract's current
 // version, with no text revision; the earlier baseline stays, and an issue whose plan read it

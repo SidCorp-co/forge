@@ -22,7 +22,7 @@ export function ApproveAction({ revision, decide }: { revision: number | null; d
   );
 }
 
-// cm:why Return is the secondary act, so it sits in the banner that names the turn it answers, never beside the header's Approve
+// Return is the secondary act, so it sits in the banner that names the turn it answers, never beside the header's Approve
 export function ReturnControl({ revision, decide }: { revision: number | null; decide: Decide }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");

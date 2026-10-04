@@ -5,8 +5,11 @@
  * own stored vector with its project's, so reading it sends nothing to a provider.
  */
 
-import type { FeedbackDedup, SimilarFeedbackResponse } from '@forge/contracts/feedback';
-import { feedbackKey } from '@forge/contracts/feedback';
+import {
+  type FeedbackDedup,
+  feedbackKey,
+  type SimilarFeedbackResponse,
+} from '@forge/contracts/feedback';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
@@ -17,8 +20,8 @@ import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../observability/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
+import { phaseOfRow } from './list-read.js';
 import { type FeedbackActor, rowIn } from './read.js';
-import { phaseOfRow } from './summary.js';
 
 /** Embeds the item's text, replacing whatever row it held; a redacted item holds none. */
 async function embedFeedback(feedbackId: string) {
