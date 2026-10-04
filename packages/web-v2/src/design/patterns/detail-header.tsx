@@ -37,7 +37,7 @@ export function useListOrigin(list: string, listHref: string): string {
 
 export interface DetailHeaderProps {
   back: { href: string; label: string };
-  itemKey: string;
+  itemKey?: string;
   title: ReactNode;
   badge?: ReactNode;
   /** The one primary action; secondary acts live where they act, never beside it. */
@@ -65,9 +65,11 @@ export function DetailHeader({ back, itemKey, title, badge, action, keyTitle }: 
         }
         after={
           <span className="flex flex-none items-center gap-2 max-md:hidden">
-            <span className="font-mono text-12 font-semibold text-muted" title={keyTitle}>
-              {itemKey}
-            </span>
+            {itemKey ? (
+              <span className="font-mono text-12 font-semibold text-muted" title={keyTitle}>
+                {itemKey}
+              </span>
+            ) : null}
             {badge}
           </span>
         }
@@ -80,11 +82,11 @@ export function DetailHeader({ back, itemKey, title, badge, action, keyTitle }: 
 }
 
 /** The title block heading the main column below 768px, where the top bar only holds the back control. */
-export function DetailMobileTitle({ itemKey, title, badge }: { itemKey: string; title: ReactNode; badge?: ReactNode }) {
+export function DetailMobileTitle({ itemKey, title, badge }: { itemKey?: string; title: ReactNode; badge?: ReactNode }) {
   return (
     <div className="px-4 pb-1 pt-4 md:hidden" data-testid="detail-mobile-title">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-12 font-semibold text-muted">{itemKey}</span>
+        {itemKey ? <span className="font-mono text-12 font-semibold text-muted">{itemKey}</span> : null}
         {badge}
       </div>
       <p className="mt-1 text-[19px] font-semibold leading-snug text-fg">{title}</p>

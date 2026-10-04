@@ -164,7 +164,8 @@
 
 - **Releases is a release train and a page of its own.** A release shows whom it waits on, the
   requirements it completes and each issue's criteria, with Approve release and Return with reason
-  in its header; a refused gate reads as a sentence, its code behind a tooltip.
+  in its header; a refused gate reads as a sentence, its code behind a tooltip. Release refusals
+  now agree with their count ("1 issue has no release note") and name at most five issues.
 
 - **A storefront project's work can be judged on an unpublished draft.** A verdict names an Autoflow
   workflow, its draft version and a preview environment; Forge reads the draft back, and only a

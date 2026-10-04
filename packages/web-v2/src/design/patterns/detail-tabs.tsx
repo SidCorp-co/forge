@@ -65,12 +65,13 @@ export function DetailPane({ children, label, testId }: { children: ReactNode; l
 
 /** A heading inside a view: primary colour, 15/600, so it can never be mistaken for a label; an
  *  optional act or note sits at its right. Flat: a heading and its content, never a card. */
-export function ViewHeading({ children, right, id }: { children: ReactNode; right?: ReactNode; id?: string }) {
+export function ViewHeading({ children, right, id, hint }: { children: ReactNode; right?: ReactNode; id?: string; hint?: ReactNode }) {
   return (
     <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-      <h2 id={id} className="text-15 font-semibold leading-snug text-fg">
+      <h2 id={id} className="text-16 font-bold leading-snug text-accent-text">
         {children}
       </h2>
+      {hint ? <span className="text-12-5 text-muted">{hint}</span> : null}
       {right ? <div className="ml-auto flex items-center gap-2">{right}</div> : null}
     </div>
   );

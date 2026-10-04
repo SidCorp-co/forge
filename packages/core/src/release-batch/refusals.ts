@@ -7,6 +7,7 @@
  */
 
 import { HTTPException } from 'hono/http-exception';
+import { agrees } from '../lib/plural.js';
 import { conflict } from '../middleware/route-errors.js';
 import { ABORTED_CODE, abortedSentence } from './abort-stamp.js';
 import {
@@ -117,7 +118,7 @@ export function refuseMachineKeys(body: Record<string, unknown>): void {
   const sent = MACHINE_ONLY_KEYS.filter((k) => k in body);
   if (sent.length === 0) return;
   throw new HTTPException(400, {
-    message: `\`${sent.join('`, `')}\` ${sent.length === 1 ? 'is' : 'are'} core's reading and not yours to send. Core takes them from this project's declared probes at the moment you record your account, and stores them beside it. Send \`account\`, and \`providerRef\` for the provider's own handle on what you did.`,
+    message: `\`${sent.join('`, `')}\` ${agrees(sent.length, 'is', 'are')} core's reading and not yours to send. Core takes ${agrees(sent.length, 'it', 'them')} from this project's declared probes at the moment you record your account, and stores them beside it. Send \`account\`, and \`providerRef\` for the provider's own handle on what you did.`,
     cause: { code: 'RELEASE_VERDICT_NOT_YOURS', details: { keys: sent } },
   });
 }

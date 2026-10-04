@@ -147,7 +147,7 @@ const cutWaitingReleaseMock = vi.fn(
     issueIds: string[];
   }): Promise<CutOutcome> => ({
     status: 'success',
-    output: 'cut 1 issue(s) as run run-1',
+    output: 'cut 1 issue as run run-1',
   }),
 );
 // `named` defaults to what the real cut names: the oldest fifty it was handed (ISS-1127).
@@ -203,7 +203,7 @@ beforeEach(() => {
   cutWaitingReleaseMock.mockReset();
   cutWaitingReleaseMock.mockResolvedValue({
     status: 'success',
-    output: 'cut 1 issue(s) as run run-1',
+    output: 'cut 1 issue as run run-1',
   });
 });
 

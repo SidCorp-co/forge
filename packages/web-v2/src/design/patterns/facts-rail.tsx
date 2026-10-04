@@ -26,7 +26,7 @@ export function FactsRail({ children, label = "Facts", testId }: { children: Rea
 export function FactsGroup({ title, count, children, testId }: { title: string; count?: ReactNode; children: ReactNode; testId?: string }) {
   return (
     <section className="border-t border-line-subtle py-3.5 first:border-t-0 first:pt-0" data-testid={testId ?? "facts-group"}>
-      <h3 className="mb-2 flex items-baseline gap-2 text-13 font-semibold text-fg">
+      <h3 className="mb-2 flex items-baseline gap-2 text-14 font-bold text-accent-text">
         {title}
         {count ? <span className="ml-auto text-12 font-medium text-muted">{count}</span> : null}
       </h3>

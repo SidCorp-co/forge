@@ -9,6 +9,7 @@ export type {
   ReleaseGateView,
   ReleaseIssueView,
   ReleaseListResponse,
+  ReleaseNoteEntry,
   ReleasePerson,
   ReleaseProduction,
   ReleaseProof,
