@@ -31,7 +31,7 @@ const PRESENCE_DEFAULTS = {
 } as const;
 
 /** What `decideProactivity` reads: every key resolved, none optional. */
-export interface ResolvedPresence {
+interface ResolvedPresence {
   dormantMs: number;
   backoffAfter: number;
   loopBounceMs: number;

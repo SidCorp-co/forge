@@ -25,33 +25,18 @@ import {
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import type { Executor } from './db-executor.js';
 
-/**
- * How long a window waits for the next message before it settles.
- */
+/** How long a window waits for the next message before it settles. */
 const WINDOW_SETTLE_MS = 4000;
-
-/**
- * How long a window may keep collecting before it is due whether or not it has settled.
- */
+/** How long a window may keep collecting before it is due whether or not it has settled. */
 const WINDOW_HOLD_MS = 15_000;
-
-/** The hold in force: the deployment's override, else today's constant. */
-function resolveHoldMs(override: number | undefined = env.CONVERSATION_WINDOW_HOLD_MS): number {
-  return override ?? WINDOW_HOLD_MS;
-}
-
-/**
- * How long a claim holds before the window is claimable again.
- */
+/** How long a claim holds before the window is claimable again. */
 const CLAIM_LEASE_MS = 120_000;
 
 /** A window taken off the queue, with the venue it belongs to. */
 export interface ClaimedWindow extends ConversationWindowRow {
   venueExternalId: string;
   venueShape: ConversationShape;
-  /**
-   * When this window became due under the clocks the claim used.
-   */
+  /** When this window became due under the clocks the claim used. */
   dueAt: Date;
 }
 
@@ -74,9 +59,7 @@ export interface ConversationWindowRow {
   decisionDetail: unknown;
 }
 
-/**
- * Which claim a write belongs to.
- */
+/** Which claim a write belongs to. */
 export interface WindowClaim {
   claimedAt: Date;
   claimedBy: string;
@@ -89,21 +72,12 @@ export function claimOf(row: ConversationWindowRow): WindowClaim | null {
     : null;
 }
 
-function heldBy(claim: WindowClaim) {
-  return and(
-    eq(conversationWindows.claimedAt, claim.claimedAt),
-    eq(conversationWindows.claimedBy, claim.claimedBy),
-  );
-}
-
-/**
- * The delivery key for a window's reply.
- */
+/** The delivery key for a window's reply. */
 export function windowDeliveryKey(windowId: string): string {
   return `window:${windowId}`;
 }
 
-const selection = {
+export const windowSelection = {
   id: conversationWindows.id,
   conversationId: conversationWindows.conversationId,
   projectId: conversationWindows.projectId,
@@ -121,7 +95,7 @@ const selection = {
   decisionDetail: conversationWindows.decisionDetail,
 };
 
-export interface OpenOrExtendArgs {
+interface OpenOrExtendArgs {
   conversationId: string;
   projectId: string;
   adapter: ConversationAdapter;
@@ -134,10 +108,7 @@ export interface OpenOrExtendArgs {
   now?: Date;
 }
 
-/**
- * Put this message in the conversation's collecting window, opening one if there
- * is none.
- */
+/** Put this message in the conversation's collecting window, opening one if there is none. */
 export async function openOrExtendWindow(
   args: OpenOrExtendArgs,
   tx: Executor = defaultDb,
@@ -163,7 +134,7 @@ export async function openOrExtendWindow(
         lastSeq: sql`greatest(${conversationWindows.lastSeq}, excluded.last_seq)`,
       },
     })
-    .returning(selection);
+    .returning(windowSelection);
   if (!row) {
     throw new Error(
       `conversation_windows: neither opened nor extended a window for conversation ${args.conversationId}`,
@@ -172,35 +143,27 @@ export async function openOrExtendWindow(
   return row as ConversationWindowRow;
 }
 
-export interface ClaimArgs {
+interface ClaimArgs {
   adapter: ConversationAdapter;
   /** Names the core in the log; the claim itself is the conditional update. */
   claimant: string;
   limit: number;
-  /**
-   * Only windows whose venue id starts with one of these.
-   */
+  /** Only windows whose venue id starts with one of these. */
   venuePrefixes?: readonly string[];
-  now?: Date;
   settleMs?: number;
-  /** How long a window may collect before it is due regardless of quiet; `resolveHoldMs()` absent. */
-  holdMs?: number;
-  leaseMs?: number;
 }
 
-/**
- * Claim the windows this adapter owes an answer, and hand them back.
- */
+/** Claim the windows this adapter owes an answer, and hand them back. */
 export async function claimDueWindows(
   args: ClaimArgs,
   tx: Executor = defaultDb,
 ): Promise<ClaimedWindow[]> {
-  const now = args.now ?? new Date();
+  const now = new Date();
   const settleMs = args.settleMs ?? WINDOW_SETTLE_MS;
-  const holdMs = args.holdMs ?? resolveHoldMs();
+  const holdMs = env.CONVERSATION_WINDOW_HOLD_MS ?? WINDOW_HOLD_MS;
   const settleBefore = new Date(now.getTime() - settleMs);
   const holdBefore = new Date(now.getTime() - holdMs);
-  const leaseBefore = new Date(now.getTime() - (args.leaseMs ?? CLAIM_LEASE_MS));
+  const leaseBefore = new Date(now.getTime() - CLAIM_LEASE_MS);
 
   const prefixes = args.venuePrefixes;
   if (prefixes && prefixes.length === 0) return [];
@@ -242,7 +205,7 @@ export async function claimDueWindows(
     })
     .where(sql`${conversationWindows.id} in ${due}`)
     .returning({
-      ...selection,
+      ...windowSelection,
       dueAt:
         sql`least(${conversationWindows.extendedAt} + ${settleMs} * interval '1 millisecond', ${conversationWindows.openedAt} + ${holdMs} * interval '1 millisecond')`.mapWith(
           conversationWindows.openedAt,
@@ -265,148 +228,13 @@ export async function claimDueWindows(
   });
 }
 
-/**
- * Close a claimed window under the decision that was taken.
- */
-export async function closeWindow(
-  args: {
-    windowId: string;
-    decision: ConversationWindowDecision;
-    detail?: unknown;
-    claim: WindowClaim;
-    now?: Date;
-  },
-  tx: Executor = defaultDb,
-): Promise<ConversationWindowRow | null> {
-  const [row] = await tx
-    .update(conversationWindows)
-    .set({
-      closedAt: args.now ?? new Date(),
-      decision: args.decision,
-      decisionDetail: (args.detail ?? null) as never,
-    })
-    .where(
-      and(
-        eq(conversationWindows.id, args.windowId),
-        isNull(conversationWindows.closedAt),
-        heldBy(args.claim),
-      ),
-    )
-    .returning(selection);
-  return (row as ConversationWindowRow | undefined) ?? null;
-}
-
-export interface SplitTailArgs {
-  windowId: string;
-  conversationId: string;
-  projectId: string;
-  adapter: ConversationAdapter;
-  claim: WindowClaim;
-  /** The last seq this window keeps; everything after it goes to the successor. */
-  prefixLastSeq: number;
-  /** The messages past the cap, when the first of them arrived, and when the last did. */
-  tail: { firstSeq: number; lastSeq: number; firstAt: Date; lastAt: Date };
-}
-
-/**
- * Keep the head of a window that collected more than a turn may carry, and hand
- * the tail to the collecting successor. False when the claim has moved on.
- */
-export async function splitWindowTail(
-  args: SplitTailArgs,
-  dbi: typeof defaultDb = defaultDb,
-): Promise<boolean> {
-  return dbi.transaction(async (tx) => {
-    const shrunk = await tx
-      .update(conversationWindows)
-      .set({ lastSeq: args.prefixLastSeq, cutReason: 'overflow' })
-      .where(
-        and(
-          eq(conversationWindows.id, args.windowId),
-          isNull(conversationWindows.closedAt),
-          heldBy(args.claim),
-        ),
-      )
-      .returning({ id: conversationWindows.id });
-    if (shrunk.length === 0) return false;
-    await tx
-      .insert(conversationWindows)
-      .values({
-        conversationId: args.conversationId,
-        projectId: args.projectId,
-        adapter: args.adapter,
-        openedAt: args.tail.firstAt,
-        extendedAt: args.tail.lastAt,
-        firstSeq: args.tail.firstSeq,
-        lastSeq: args.tail.lastSeq,
-        origin: 'inbound',
-      })
-      .onConflictDoUpdate({
-        target: conversationWindows.conversationId,
-        targetWhere: sql`claimed_at IS NULL AND closed_at IS NULL`,
-        set: {
-          firstSeq: sql`least(${conversationWindows.firstSeq}, excluded.first_seq)`,
-          lastSeq: sql`greatest(${conversationWindows.lastSeq}, excluded.last_seq)`,
-          openedAt: sql`least(${conversationWindows.openedAt}, excluded.opened_at)`,
-          extendedAt: sql`greatest(${conversationWindows.extendedAt}, excluded.extended_at)`,
-        },
-      });
-    return true;
-  });
-}
-
-/**
- * Write down that this window's reply is about to be handed to the transport.
- */
-export async function reserveDelivery(
-  windowId: string,
-  claim: WindowClaim,
-  tx: Executor = defaultDb,
-  now: Date = new Date(),
-): Promise<boolean> {
-  const rows = await tx
-    .update(conversationWindows)
-    .set({ deliveryReservedAt: now })
-    .where(
-      and(
-        eq(conversationWindows.id, windowId),
-        isNull(conversationWindows.closedAt),
-        heldBy(claim),
-      ),
-    )
-    .returning({ id: conversationWindows.id });
-  return rows.length > 0;
-}
-
-/**
- * Give a claimed window back without deciding anything.
- */
-export async function releaseWindow(
-  windowId: string,
-  claim: WindowClaim,
-  tx: Executor = defaultDb,
-): Promise<void> {
-  await tx
-    .update(conversationWindows)
-    .set({ claimedAt: null, claimedBy: null })
-    .where(
-      and(
-        eq(conversationWindows.id, windowId),
-        isNull(conversationWindows.closedAt),
-        heldBy(claim),
-      ),
-    );
-}
-/**
- * This conversation's windows, oldest first, for a reader rather than a guard.
- */
+/** This conversation's windows, oldest first, for a reader rather than a guard. */
 export async function listWindowsForConversation(
   conversationId: string,
   limit: number,
-  tx: Executor = defaultDb,
 ): Promise<ConversationWindowRow[]> {
-  const rows = await tx
-    .select(selection)
+  const rows = await defaultDb
+    .select(windowSelection)
     .from(conversationWindows)
     .where(eq(conversationWindows.conversationId, conversationId))
     .orderBy(desc(conversationWindows.firstSeq))
@@ -414,9 +242,7 @@ export async function listWindowsForConversation(
   return (rows as ConversationWindowRow[]).reverse();
 }
 
-/**
- * The decisions this conversation's windows have settled on, newest first.
- */
+/** The decisions this conversation's windows have settled on, newest first. */
 export async function recentDecisions(
   conversationId: string,
   opts: { since?: Date; limit?: number } = {},

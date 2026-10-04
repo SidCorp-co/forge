@@ -2,7 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { users } from '../../db/schema.js';
 
-export type CandidateTier = 'address' | 'local-part';
+type CandidateTier = 'address' | 'local-part';
 
 export interface SpeakerCandidate {
   userId: string;

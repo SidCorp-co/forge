@@ -1,9 +1,6 @@
 {
   "version": 1,
   "frozen": {
-    "no-coordinator-blob|packages/core/src/assistant/chat-room/escalation-bridge.ts": 7,
-    "no-coordinator-blob|packages/core/src/assistant/chat-room/question-delivery.ts": 8,
-    "no-coordinator-blob|packages/core/src/conversations/conversation-agent.ts": 7,
     "no-coordinator-blob|packages/core/src/devices/claim.ts": 7,
     "no-coordinator-blob|packages/core/src/jobs/finalize-done.ts": 7,
     "no-coordinator-blob|packages/core/src/jobs/lifecycle-routes.ts": 7,

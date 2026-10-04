@@ -4,7 +4,7 @@ function appBaseUrl(): string {
   return env.APP_BASE_URL.replace(/\/+$/, '');
 }
 
-export interface SpeakerLinkTarget {
+interface SpeakerLinkTarget {
   projectId: string;
   source: string;
   externalId: string;

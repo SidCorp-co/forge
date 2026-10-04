@@ -1,4 +1,3 @@
-
 import type { UiSnapshot } from "@forge/contracts/ui-actions";
 import { apiClient, apiClientList, apiPutBytes } from "@/lib/api/client";
 import type {
@@ -16,6 +15,19 @@ export interface OpenConversationArgs {
   people?: string[];
   handles?: Array<{ userId?: string | null; projectId: string }>;
   ecosystemId?: string | null;
+}
+
+export interface SendArgs {
+  conversationId: string;
+  content: string;
+  /** Sent on the FIRST message of a room and never again; the server refuses it after that. */
+  mode?: ConversationMode | undefined;
+  /** This browser's own id for the message, echoed on `conversation.accepted` (ISS-1078). */
+  clientToken?: string | undefined;
+  /** Files already uploaded to this room, staged with this message (ISS-1146). */
+  attachmentIds?: string[] | undefined;
+  /** The page beside the chat, typed by the UI-action registry (ISS-47). */
+  uiSnapshot?: UiSnapshot | undefined;
 }
 
 export interface SendResult
@@ -117,25 +129,9 @@ export const conversationsApi = {
       method: "DELETE",
     }),
 
-  /** `POST /api/conversations/:id/messages` — say something, and get the room back. */
-  send: (
-    id: string,
-    content: string,
-    mode?: ConversationMode,
-    clientToken?: string,
-    attachmentIds?: string[],
-    uiSnapshot?: UiSnapshot,
-  ) =>
-    apiClient<SendResult>(`/conversations/${id}/messages`, {
-      method: "POST",
-      body: JSON.stringify({
-        content,
-        ...(mode ? { mode } : {}),
-        ...(clientToken ? { clientToken } : {}),
-        ...(attachmentIds?.length ? { attachmentIds } : {}),
-        ...(uiSnapshot ? { uiSnapshot } : {}),
-      }),
-    }),
+  /** `POST /api/conversations/:id/messages` — say something, and get the room back. A field left undefined is not sent. */
+  send: ({ conversationId, ...body }: SendArgs) =>
+    apiClient<SendResult>(`/conversations/${conversationId}/messages`, { method: "POST", body: JSON.stringify(body) }),
 
   /**
    * Mint a ticket, then stream the bytes to the capability URL it names — two

@@ -1,4 +1,9 @@
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import {
+  listWindowsForConversation,
+  readConversationAgentTurns,
+  readMessages,
+} from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import {
@@ -75,4 +80,17 @@ export async function listSpeakerLinks(userId: string) {
     .from(assistantSpeakerLinks)
     .where(eq(assistantSpeakerLinks.userId, userId))
     .orderBy(desc(assistantSpeakerLinks.confirmedAt));
+}
+
+/** How many of a room's latest messages, and of its windows, a read carries. */
+const READ_WINDOW = 200;
+
+/** What a room's read and a send into it both answer with. */
+export async function roomTail(id: string) {
+  const [messages, windows, agentTurns] = await Promise.all([
+    readMessages(id, READ_WINDOW),
+    listWindowsForConversation(id, READ_WINDOW),
+    readConversationAgentTurns(id),
+  ]);
+  return { messages, windows, agentTurns };
 }

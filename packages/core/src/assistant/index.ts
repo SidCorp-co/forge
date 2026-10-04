@@ -1,8 +1,3 @@
-export {
-  buildConversationContext,
-  buildRocketChatHistoryToolset,
-  buildRocketChatQuoteContextToolset,
-} from './chat-room/context.js';
 export { drainRoomQuestions, registerRoomBridges } from './chat-room/drains.js';
 export {
   ESCALATION_ACK,

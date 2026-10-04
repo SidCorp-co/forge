@@ -1,26 +1,15 @@
 "use client";
 
-import { type RefObject, useCallback, useEffect, useMemo, useState } from "react";
+import { type RefObject, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ConfirmDialog, enumLabel, NotificationsMenu, Popover } from "@/design";
+import { NotificationsMenu, Popover } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
-import { formatApiError } from "@/lib/api/error";
-import { formatRelativeTime } from "@/lib/utils/format";
-import { useToast } from "@/providers/toast-provider";
-import {
-  useNotifications,
-  useNotificationMembers,
-  useOpenCount,
-  useMarkRead,
-  useMarkAllRead,
-  usePendingInvitations,
-  useAcceptInvitation,
-  useDeclineInvitation,
-} from "../hooks";
-import { toNotificationItem, toInvitationItem } from "../map";
-import type { PendingInvitation } from "../types";
-import { type DeliveryNotification, useNotificationDelivery } from "../use-notification-delivery";
+import { useMarkAllRead, useMarkRead, useNotificationMembers, useNotifications, useOpenCount } from "../hooks";
+import { toMemberItem, toNotificationItem } from "../map";
+import { useNotificationDelivery } from "../use-notification-delivery";
+import type { NotificationRow } from "../types";
 import { useOpenIndicator } from "../use-open-indicator";
+import { useInvitationItems } from "./use-invitation-items";
 
 export interface NotificationsBellProps {
   /** Dropdown visibility — toggled by the sidebar bell, or the bell in the mobile More drawer. */
@@ -30,191 +19,60 @@ export interface NotificationsBellProps {
   anchor: RefObject<HTMLElement | null>;
 }
 
+/**
+ * The bell's own rows. A passive invitation_received row is dropped: the invite shows once, as its
+ * actionable item, and still counts toward the badge through the open count. ISS-619: a
+ * dependency-stall wedge also offers its blocker, which differs from the wedged issue.
+ */
+function bellItems(rows: NotificationRow[], openSubTask: (row: NotificationRow) => void) {
+  return rows
+    .filter((r) => r.type !== "invitation_received")
+    .map((row) =>
+      row.type === "pipeline_wedge" && row.secondaryIssueId
+        ? toNotificationItem(row, [
+            { id: "open-sub-task", label: "Open sub-task", variant: "primary", onClick: () => openSubTask(row) },
+          ])
+        : toNotificationItem(row),
+    );
+}
+
 export function NotificationsBell({ open, onClose, anchor }: NotificationsBellProps) {
   const router = useRouter();
-  const { toast } = useToast();
   const { data: projects } = useProjects();
-
   const notificationsQuery = useNotifications(open);
   const { data: openCount } = useOpenCount();
   const markRead = useMarkRead();
   const markAllRead = useMarkAllRead();
-
-  // ISS-597 — pending invitations (Accept/Decline from the bell).
-  const pendingQuery = usePendingInvitations(open);
-  const acceptInvitation = useAcceptInvitation();
-  const declineInvitation = useDeclineInvitation();
-  const [declineTarget, setDeclineTarget] = useState<PendingInvitation | null>(null);
-
-  const onAccept = useCallback(
-    (inv: PendingInvitation) => {
-      acceptInvitation.mutate(
-        { kind: inv.kind, token: inv.token },
-        {
-          onSuccess: () =>
-            toast({ title: `You joined ${inv.name} as ${enumLabel("role", inv.role)}`, tone: "success" }),
-          onError: (err) =>
-            toast({ title: "Failed to accept invitation", description: formatApiError(err), tone: "error" }),
-        },
-      );
-    },
-    [acceptInvitation, toast],
-  );
-
-  const onDeclineConfirm = useCallback(() => {
-    if (!declineTarget) return;
-    const inv = declineTarget;
-    declineInvitation.mutate(
-      { kind: inv.kind, token: inv.token },
-      {
-        onSuccess: () => {
-          toast({ title: "Invitation declined", tone: "success" });
-          setDeclineTarget(null);
-        },
-        onError: (err) => {
-          toast({ title: "Failed to decline invitation", description: formatApiError(err), tone: "error" });
-          setDeclineTarget(null);
-        },
-      },
-    );
-  }, [declineTarget, declineInvitation, toast]);
-
-  const notificationRows = useMemo(
-    () => notificationsQuery.data?.items ?? [],
-    [notificationsQuery.data],
-  );
-
-  // Actionable invite items prepended to the bell; passive invitation_received
-  // rows are filtered out so each invite appears once (as the actionable item).
-  // The passive rows still count toward the bell badge via the open-count API.
-  const pendingItems = useMemo(
-    () =>
-      (pendingQuery.data ?? []).map((inv) =>
-        toInvitationItem(inv, [
-          {
-            id: "accept",
-            label: "Accept",
-            variant: "primary",
-            loading: acceptInvitation.isPending && acceptInvitation.variables?.token === inv.token,
-            disabled: acceptInvitation.isPending || declineInvitation.isPending,
-            onClick: () => onAccept(inv),
-          },
-          {
-            id: "decline",
-            label: "Decline",
-            variant: "ghost",
-            loading: declineInvitation.isPending && declineInvitation.variables?.token === inv.token,
-            disabled: acceptInvitation.isPending || declineInvitation.isPending,
-            // The confirmation is a dialog in the page, and the dropdown sits in a
-            // portal above the page, so the dropdown steps aside for it.
-            onClick: () => {
-              setDeclineTarget(inv);
-              onClose();
-            },
-          },
-        ]),
-      ),
-    [pendingQuery.data, acceptInvitation.isPending, acceptInvitation.variables, declineInvitation.isPending, declineInvitation.variables, onAccept, onClose],
-  );
-
-  // ISS-619 — a dependency-stall wedge's actionable target (the blocker/child
-  // issue) can differ from `issueId` (the wedged issue, kept for interventions
-  // metric attribution). Give those rows a distinct "Open sub-task" action
-  // alongside the default row-click (which still deep-links `issueId`).
-  const notificationItems = useMemo(
-    () => [
-      ...pendingItems,
-      ...notificationRows
-        .filter((r) => r.type !== "invitation_received")
-        .map((row) => {
-          if (row.type !== "pipeline_wedge" || !row.secondaryIssueId) return toNotificationItem(row);
-          return toNotificationItem(row, [
-            {
-              id: "open-sub-task",
-              label: "Open sub-task",
-              variant: "primary",
-              onClick: () => {
-                markRead.mutate(row.id);
-                onClose();
-                const target = projects?.find((p) => p.id === row.projectId);
-                if (target) router.push(`/projects/${target.slug}/issues/${row.secondaryIssueId}`);
-              },
-            },
-          ]);
-        }),
-    ],
-    [pendingItems, notificationRows, markRead, projects, router, onClose],
-  );
-  const onSelectNotification = useCallback(
-    (id: string) => {
-      const row = notificationRows.find((n) => n.id === id);
-      if (row && row.readAt === null) markRead.mutate(id);
-      onClose();
-      if (!row?.projectId) return; // mark-read only, no dead-end
-      const target = projects?.find((p) => p.id === row.projectId);
-      if (!target) return;
-      if (!row.issueId) return;
-      router.push(`/projects/${target.slug}/issues/${row.issueId}`);
-    },
-    [notificationRows, markRead, projects, router, onClose],
-  );
-
-  // ISS-1063 — a grouped delivery expands to the records it carries. The fetch is
-  // deferred to the expansion so the common case (one member) costs no request, and
-  // a member click deep-links the same way a plain row does.
+  const invitations = useInvitationItems(open, onClose);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // ISS-1063: a grouped delivery fetches its records only once expanded.
   const membersQuery = useNotificationMembers(expandedId);
-  const expandedMembers = useMemo(
-    () =>
-      (membersQuery.data ?? []).map((m) => ({
-        id: m.id,
-        text: m.title,
-        time: formatRelativeTime(m.createdAt),
-        open: m.open,
-      })),
-    [membersQuery.data],
-  );
-  const onToggleGroup = useCallback(
-    (id: string) => setExpandedId((prev) => (prev === id ? null : id)),
-    [],
-  );
-  const onSelectMember = useCallback(
-    (memberId: string) => {
-      const member = membersQuery.data?.find((m) => m.id === memberId);
-      if (!member?.projectId || !member.issueId) return;
-      const target = projects?.find((p) => p.id === member.projectId);
-      if (!target) return;
+
+  /** Every click on a notification ends here: to the issue it names, in the project it sits in. */
+  const openIssue = (projectId: string | null | undefined, issueId: string | null | undefined) => {
+    const slug = projects?.find((p) => p.id === projectId)?.slug;
+    if (slug && issueId) router.push(`/projects/${slug}/issues/${issueId}`);
+  };
+
+  const rows = notificationsQuery.data?.items ?? [];
+  const items = [
+    ...invitations.items,
+    ...bellItems(rows, (row) => {
+      markRead.mutate(row.id);
       onClose();
-      router.push(`/projects/${target.slug}/issues/${member.issueId}`);
-    },
-    [membersQuery.data, projects, router, onClose],
-  );
+      openIssue(row.projectId, row.secondaryIssueId);
+    }),
+  ];
 
-  // Realtime delivery bridge (ISS-510): toast + browser channels for incoming
-  // `notification.created` events. Mounted here so a click reuses the same
-  // mark-read + deep-link path as the bell. The persistent bell itself updates
-  // via the event-router's query invalidation — independent of this hook.
-  const onDeliveryNavigate = useCallback(
-    (n: DeliveryNotification) => {
-      markRead.mutate(n.notificationId);
-      if (!n.projectId) return;
-      const target = projects?.find((p) => p.id === n.projectId);
-      if (!target) return;
-      if (!n.issueId) return;
-      router.push(`/projects/${target.slug}/issues/${n.issueId}`);
-    },
-    [markRead, projects, router],
-  );
-  useNotificationDelivery(onDeliveryNavigate);
-
-  // Always-visible indicator (ISS-523): mirror the OPEN count onto the favicon (a
-  // dot) + document title (`(N) Forge`). Same source as the bell, so they never
-  // disagree — and it covers the focused-tab case the background-only native
-  // notification channel intentionally skips. ISS-1063: reading a notification no
-  // longer changes this number; the thing being no longer true is what changes it.
+  // ISS-510: toasts and browser notifications for live deliveries reuse the bell's mark-read + deep link.
+  useNotificationDelivery((n) => {
+    markRead.mutate(n.notificationId);
+    openIssue(n.projectId, n.issueId);
+  });
+  // ISS-523: the open count on the favicon and the title, from the same source as the bell.
   useOpenIndicator(openCount?.count ?? 0);
 
-  // Esc closes the notifications dropdown (AC11 — always dismissable).
+  // Esc closes the notifications dropdown (AC11 — always dismissable), wherever focus is.
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -238,34 +96,33 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
         className="overflow-y-auto"
       >
         <NotificationsMenu
-          items={notificationItems}
-          loading={notificationsQuery.isLoading || pendingQuery.isLoading}
-          error={notificationsQuery.isError || pendingQuery.isError}
+          items={items}
+          loading={notificationsQuery.isLoading || invitations.query.isLoading}
+          error={notificationsQuery.isError || invitations.query.isError}
           onRetry={() => {
             notificationsQuery.refetch();
-            pendingQuery.refetch();
+            invitations.query.refetch();
           }}
-          onSelect={onSelectNotification}
+          onSelect={(id) => {
+            const row = rows.find((n) => n.id === id);
+            if (row?.readAt === null) markRead.mutate(id);
+            onClose();
+            openIssue(row?.projectId, row?.issueId);
+          }}
           onMarkAllRead={() => markAllRead.mutate()}
           expandedId={expandedId}
-          expandedMembers={expandedMembers}
+          expandedMembers={(membersQuery.data ?? []).map(toMemberItem)}
           expandedLoading={membersQuery.isLoading}
-          onToggleGroup={onToggleGroup}
-          onSelectMember={onSelectMember}
+          onToggleGroup={(id) => setExpandedId((prev) => (prev === id ? null : id))}
+          onSelectMember={(memberId) => {
+            const member = membersQuery.data?.find((m) => m.id === memberId);
+            if (!member?.projectId || !member.issueId || !projects?.some((p) => p.id === member.projectId)) return;
+            onClose();
+            openIssue(member.projectId, member.issueId);
+          }}
         />
       </Popover>
-
-      {/* ISS-597 — decline confirmation modal */}
-      <ConfirmDialog
-        open={declineTarget !== null}
-        title={`Decline invitation to ${declineTarget?.name ?? ""}?`}
-        message={`You will no longer see this invitation in your notifications. You can still accept it via the original email link.`}
-        confirmLabel="Yes, decline"
-        tone="danger"
-        loading={declineInvitation.isPending}
-        onConfirm={onDeclineConfirm}
-        onClose={() => setDeclineTarget(null)}
-      />
+      {invitations.dialog}
     </>
   );
 }

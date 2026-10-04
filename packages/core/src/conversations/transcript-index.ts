@@ -1,60 +1,27 @@
 /**
- * The rule that cuts a room's retained transcript into bounded, source-linked
- * passages, and the pass that writes them (ISS-1090).
- *
- * Two properties are the whole of this file and everything in it serves one or
- * the other:
- *
- * - **Total over retained content.** Every transcript row with text in it is
- *   indexed, whatever the window it fell in decided. An index built from what
- *   an answering turn kept would forget every silence the guards were right
- *   about.
- * - **Rebuildable.** Dropping every row and rebuilding from the transcript
- *   alone yields the same rows, because the rule is a deterministic greedy walk
- *   from the start of the transcript and the unclosed tail is written open and
- *   re-derived rather than resumed from.
- *
- * Nothing here summarises. A passage is its rows' own text, framed with the
- * speaker, and a pointer back at the range it came from.
+ * The pass that writes a room's transcript passages (ISS-1090). It is total over
+ * retained content — every row with text is indexed, whatever its window decided —
+ * and rebuildable: the unclosed tail is written open and re-derived rather than
+ * resumed from.
  */
 
-import { type AnyColumn, and, asc, desc, eq, gte, lte, type SQL, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
-import type { ConversationMessageRole } from '../db/schema-conversations.js';
 import { conversationMessages, conversations } from '../db/schema-conversations.js';
 import { conversationIndexState, conversationPassages } from '../db/schema-transcript-index.js';
+import {
+  buildPassages,
+  eligibleForIndex,
+  hasText,
+  type IndexableMessage,
+  PASSAGE_BUILDER_REVISION,
+  PASSAGE_MAX_MESSAGES,
+  type PassageDraft,
+  WATERMARK_EMPTY,
+} from './transcript-passages.js';
 
-/**
- * The version of the rule below. A room indexed under an older one is rebuilt.
- */
-export const PASSAGE_BUILDER_REVISION = 1;
-
-/** Source characters a passage may hold. Every passage is under it; the tail of a long message is a passage of its own. */
-export const PASSAGE_MAX_CHARS = 2000;
-/** Fragments a passage may hold. */
-export const PASSAGE_MAX_MESSAGES = 10;
-/** The speaker label a passage line carries, clipped, so a passage's text has a bound and not a hope. */
-export const SPEAKER_LABEL_CAP = 40;
-/**
- * The hard ceiling on a stored passage's text.
- */
-export const PASSAGE_TEXT_BOUND =
-  PASSAGE_MAX_CHARS + PASSAGE_MAX_MESSAGES * (SPEAKER_LABEL_CAP + 5);
 /** Transcript rows one pass reads, so a first index of a long room is many bounded passes rather than one unbounded one. */
-export const INDEX_PASS_MESSAGE_LIMIT = 500;
-
-/**
- * A watermark meaning "the pass read this room and it holds no rows".
- */
-export const WATERMARK_EMPTY = -1;
-
-export interface IndexableMessage {
-  seq: number;
-  role: ConversationMessageRole;
-  authorLabel: string | null;
-  content: string;
-  createdAt: Date;
-}
+const INDEX_PASS_MESSAGE_LIMIT = 500;
 
 type IndexTx = Parameters<Parameters<typeof defaultDb.transaction>[0]>[0];
 
@@ -66,134 +33,8 @@ const MESSAGE_COLUMNS = {
   createdAt: conversationMessages.createdAt,
 } as const;
 
-/**
- * The whitespace this index trims, spelled once for both halves.
- */
-const TRIM = /^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g;
-
-/** The text a row contributes, which is its content with the surrounding whitespace off and nothing else done to it. */
-export function sourceOf(message: Pick<IndexableMessage, 'content'>): string {
-  return message.content.replace(TRIM, '');
-}
-
-/** The SQL half of {@link eligibleForIndex}: this row has something other than whitespace in it. */
-export function hasText(column: AnyColumn): SQL {
-  return sql`${column} ~ '[^ \\t\\n\\r\\f\\v]'`;
-}
-
-/**
- * Whether a transcript row has anything to index.
- */
-export function eligibleForIndex(message: Pick<IndexableMessage, 'content'>): boolean {
-  return sourceOf(message).length > 0;
-}
-
-/** One bounded piece of one message's text, and where in that message it starts. */
-export interface Fragment {
-  seq: number;
-  /** Character offset into the message's trimmed content. */
-  offset: number;
-  text: string;
-  label: string;
-  at: Date;
-}
-
-/** The index of the last whitespace character in a string, or -1. */
-function lastWhitespace(s: string): number {
-  for (let i = s.length - 1; i >= 0; i -= 1) {
-    if (/\s/.test(s[i] as string)) return i;
-  }
-  return -1;
-}
-
-/**
- * Cut one message into fragments no longer than {@link PASSAGE_MAX_CHARS}.
- */
-export function fragmentsOf(message: IndexableMessage, from = 0): Fragment[] {
-  const src = sourceOf(message);
-  const label = (message.authorLabel ?? message.role).slice(0, SPEAKER_LABEL_CAP);
-  const out: Fragment[] = [];
-  let offset = from;
-  while (offset < src.length) {
-    if (src.length - offset <= PASSAGE_MAX_CHARS) {
-      out.push({ seq: message.seq, offset, text: src.slice(offset), label, at: message.createdAt });
-      break;
-    }
-    const window = src.slice(offset, offset + PASSAGE_MAX_CHARS);
-    const ws = lastWhitespace(window);
-    const cut = ws >= PASSAGE_MAX_CHARS / 2 ? ws : PASSAGE_MAX_CHARS;
-    out.push({
-      seq: message.seq,
-      offset,
-      text: src.slice(offset, offset + cut),
-      label,
-      at: message.createdAt,
-    });
-    offset += cut;
-  }
-  return out;
-}
-
-/** A passage, before it is a row. */
-export interface PassageDraft {
-  firstSeq: number;
-  firstOffset: number;
-  lastSeq: number;
-  lastOffset: number;
-  fragmentCount: number;
-  startedAt: Date;
-  endedAt: Date;
-  text: string;
-  isOpen: boolean;
-}
-
-function draftOf(acc: readonly Fragment[], isOpen: boolean): PassageDraft {
-  const first = acc[0] as Fragment;
-  const last = acc[acc.length - 1] as Fragment;
-  return {
-    firstSeq: first.seq,
-    firstOffset: first.offset,
-    lastSeq: last.seq,
-    lastOffset: last.offset + last.text.length,
-    fragmentCount: acc.length,
-    startedAt: first.at,
-    endedAt: last.at,
-    text: acc.map((f) => `[${f.label}]: ${f.text}`).join('\n'),
-    isOpen,
-  };
-}
-
-/**
- * Cut a run of transcript rows into passages.
- */
-export function buildPassages(
-  messages: readonly IndexableMessage[],
-  resumeAt?: { seq: number; offset: number },
-): PassageDraft[] {
-  const fragments = messages
-    .filter(eligibleForIndex)
-    .flatMap((m) => fragmentsOf(m, resumeAt && resumeAt.seq === m.seq ? resumeAt.offset : 0));
-  const out: PassageDraft[] = [];
-  let acc: Fragment[] = [];
-  let chars = 0;
-  for (const f of fragments) {
-    if (
-      acc.length > 0 &&
-      (chars + f.text.length > PASSAGE_MAX_CHARS || acc.length >= PASSAGE_MAX_MESSAGES)
-    ) {
-      out.push(draftOf(acc, false));
-      acc = [];
-      chars = 0;
-    }
-    acc.push(f);
-    chars += f.text.length;
-  }
-  if (acc.length > 0) out.push(draftOf(acc, true));
-  return out;
-}
-
 /** What one pass did. */
-export interface IndexPass {
+interface IndexPass {
   conversationId: string;
   outcome: 'indexed' | 'conversation-gone';
   passagesWritten: number;
@@ -206,21 +47,16 @@ interface ResumePoint {
   /** The fragment the rebuilt tail begins on. */
   seq: number;
   offset: number;
-  /**
-   * The seq above which this pass spends its row budget.
-   */
+  /** The seq above which this pass spends its row budget. */
   budgetFloor: number;
 }
 
-/**
- * Index one room, once.
- */
+/** Index one room, once: rebuild the open tail, then spend the row budget above the watermark. */
 export async function indexConversationOnce(
   conversationId: string,
   opts: { rebuild?: boolean; db?: typeof defaultDb } = {},
 ): Promise<IndexPass> {
-  const dbi = opts.db ?? defaultDb;
-  return dbi.transaction(async (tx) => {
+  return (opts.db ?? defaultDb).transaction(async (tx) => {
     const [live] = await tx
       .select({ id: conversations.id })
       .from(conversations)
@@ -244,7 +80,6 @@ export async function indexConversationOnce(
       .limit(1);
     const rebuild =
       opts.rebuild === true || !state || state.builderRevision !== PASSAGE_BUILDER_REVISION;
-
     const resume = await clearAndResume(
       tx,
       conversationId,
@@ -258,49 +93,19 @@ export async function indexConversationOnce(
       .where(eq(conversationMessages.conversationId, conversationId))
       .orderBy(desc(conversationMessages.seq))
       .limit(1);
-    const cut = top?.seq ?? WATERMARK_EMPTY;
-
     const tailRows = await readTailRows(tx, conversationId, resume);
-    const newRows = await readNewRows(tx, conversationId, resume.budgetFloor, cut);
+    const newRows = await readNewRows(
+      tx,
+      conversationId,
+      resume.budgetFloor,
+      top?.seq ?? WATERMARK_EMPTY,
+    );
     const drafts = buildPassages([...tailRows, ...newRows], resume);
-    if (drafts.length > 0) {
-      await tx.insert(conversationPassages).values(
-        drafts.map((d) => ({
-          conversationId,
-          firstSeq: d.firstSeq,
-          firstOffset: d.firstOffset,
-          lastSeq: d.lastSeq,
-          lastOffset: d.lastOffset,
-          messageCount: d.fragmentCount,
-          startedAt: d.startedAt,
-          endedAt: d.endedAt,
-          text: d.text,
-          isOpen: d.isOpen,
-        })),
-      );
-    }
+    await insertPassages(tx, conversationId, drafts);
 
     const last = newRows[newRows.length - 1];
     const readThrough = last ? last.seq : resume.budgetFloor;
-    await tx
-      .insert(conversationIndexState)
-      .values({
-        conversationId,
-        indexedThroughSeq: readThrough,
-        indexedThroughAt: last ? last.createdAt : null,
-        builderRevision: PASSAGE_BUILDER_REVISION,
-        indexedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: conversationIndexState.conversationId,
-        set: {
-          indexedThroughSeq: readThrough,
-          indexedThroughAt: last ? last.createdAt : null,
-          builderRevision: PASSAGE_BUILDER_REVISION,
-          indexedAt: new Date(),
-        },
-      });
-
+    await writeState(tx, conversationId, readThrough, last?.createdAt ?? null);
     return {
       conversationId,
       outcome: 'indexed' as const,
@@ -311,9 +116,36 @@ export async function indexConversationOnce(
   });
 }
 
-/**
- * Take the index back to the point this pass must resume from, and say where that is.
- */
+async function insertPassages(tx: IndexTx, conversationId: string, drafts: PassageDraft[]) {
+  if (drafts.length === 0) return;
+  await tx.insert(conversationPassages).values(
+    drafts.map(({ fragmentCount, ...d }) => ({
+      conversationId,
+      ...d,
+      messageCount: fragmentCount,
+    })),
+  );
+}
+
+async function writeState(
+  tx: IndexTx,
+  conversationId: string,
+  indexedThroughSeq: number,
+  indexedThroughAt: Date | null,
+) {
+  const set = {
+    indexedThroughSeq,
+    indexedThroughAt,
+    builderRevision: PASSAGE_BUILDER_REVISION,
+    indexedAt: new Date(),
+  };
+  await tx
+    .insert(conversationIndexState)
+    .values({ conversationId, ...set })
+    .onConflictDoUpdate({ target: conversationIndexState.conversationId, set });
+}
+
+/** Take the index back to the point this pass must resume from, and say where that is. */
 async function clearAndResume(
   tx: IndexTx,
   conversationId: string,
@@ -351,9 +183,7 @@ async function clearAndResume(
   return { seq: open.firstSeq, offset: open.firstOffset, budgetFloor: watermark };
 }
 
-/**
- * The rows the deleted open tail was built from.
- */
+/** The rows the deleted open tail was built from. */
 async function readTailRows(
   tx: IndexTx,
   conversationId: string,
@@ -404,17 +234,7 @@ async function readNewRows(
     .limit(INDEX_PASS_MESSAGE_LIMIT);
 }
 
-/** Throw the room's index away and build it again from the transcript alone. */
-export async function rebuildConversationIndex(
-  conversationId: string,
-  opts: { db?: typeof defaultDb } = {},
-): Promise<IndexPass> {
-  return indexConversationOnce(conversationId, { ...opts, rebuild: true });
-}
-
-/**
- * The rooms whose transcript has moved past what the index has read.
- */
+/** The rooms whose transcript has moved past what the index has read. */
 export async function conversationsNeedingIndex(
   limit: number,
   dbi: typeof defaultDb = defaultDb,
