@@ -2,7 +2,7 @@
 // and whether a version is eligible to be re-cut is the store's ruling, not this file's. Nine
 // digits per component is the `int4` bound `db/column-checks.ts` mirrors inside Postgres.
 
-export interface PrereleaseTag {
+interface PrereleaseTag {
   label: string;
   number: number;
 }
@@ -20,9 +20,9 @@ export interface PrereleaseLine {
   label: string;
 }
 
-export const FIRST_RELEASE_VERSION: ReleaseVersion = { major: 0, minor: 1, patch: 0 };
+const FIRST_RELEASE_VERSION: ReleaseVersion = { major: 0, minor: 1, patch: 0 };
 
-export const MAX_VERSION_COMPONENT = 999_999_999;
+const MAX_VERSION_COMPONENT = 999_999_999;
 
 export function isStorableReleaseVersion(v: ReleaseVersion): boolean {
   return (
@@ -37,8 +37,6 @@ export function isStorableReleaseVersion(v: ReleaseVersion): boolean {
 }
 
 const VERSION_RE = /^(\d{1,9})\.(\d{1,9})\.(\d{1,9})(?:-([a-z][a-z0-9]{0,15})\.(\d{1,9}))?$/;
-
-export const PRERELEASE_LABEL_RE = /^[a-z][a-z0-9]{0,15}$/;
 
 export const RELEASE_VERSION_SHAPE =
   'MAJOR.MINOR.PATCH, three dot-separated integers (e.g. 0.4.0), optionally followed by a prerelease -LABEL.N (e.g. 0.4.0-dev.2)';
@@ -56,7 +54,7 @@ export function parseReleaseVersion(text: string): ReleaseVersion | null {
   return { major, minor, patch, pre: { label: m[4], number: Number(m[5]) } };
 }
 
-export function releaseCore(v: ReleaseVersion): ReleaseVersion {
+function releaseCore(v: ReleaseVersion): ReleaseVersion {
   return { major: v.major, minor: v.minor, patch: v.patch };
 }
 

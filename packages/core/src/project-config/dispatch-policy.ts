@@ -1,3 +1,4 @@
+import { AUTONOMOUS_ENTRY_STATUS } from '@forge/contracts/issue-machine';
 import {
   type DispatchState,
   POLICY_REFUSAL_CODES,
@@ -5,7 +6,6 @@ import {
   type PolicyStateSource,
 } from '@forge/contracts/project-config';
 import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
-import { AUTONOMOUS_ENTRY_STATUS } from '@forge/contracts/issue-machine';
 import { readEffectivePolicy } from './effective.js';
 import { POLICY_STATE_STATUSES, type PolicyDocument } from './schema.js';
 import type { Held } from './service.js';
@@ -35,9 +35,9 @@ export function policyRefusalOf(err: unknown): { code: PolicyRefusalCode; detail
   return hit ? { code: hit.code as PolicyRefusalCode, detail: hit.detail } : null;
 }
 
-export type PolicyStatus = (typeof POLICY_STATE_STATUSES)[number];
+type PolicyStatus = (typeof POLICY_STATE_STATUSES)[number];
 
-export const isPolicyStatus = (status: string): status is PolicyStatus =>
+const isPolicyStatus = (status: string): status is PolicyStatus =>
   (POLICY_STATE_STATUSES as readonly string[]).includes(status);
 
 export type { DispatchState, PolicyStateSource };

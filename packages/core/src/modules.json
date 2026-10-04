@@ -128,16 +128,6 @@
         "core-components#door-rest"
       ]
     },
-    "app-config": {
-      "kind": "domain",
-      "context": "project-config",
-      "owns": [
-        "appConfig"
-      ],
-      "serves": [
-        "REQ-19"
-      ]
-    },
     "assistant": {
       "kind": "domain",
       "context": "conversations",

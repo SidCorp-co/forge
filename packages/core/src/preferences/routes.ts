@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { answerStyles } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { orgMemberRole } from '../orgs/index.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { readMePreferences, readPreferences } from './read.js';
 import {
@@ -15,8 +14,8 @@ import {
   writeMePreferences,
 } from './service.js';
 
-export const PREF_THEMES = ['system', 'light', 'dark'] as const;
-export const PREF_LANGUAGES = ['en', 'vi'] as const;
+const PREF_THEMES = ['system', 'light', 'dark'] as const;
+const PREF_LANGUAGES = ['en', 'vi'] as const;
 
 const patchBodySchema = z
   .object({
@@ -140,47 +139,5 @@ preferenceRoutes.patch(
     }
 
     return c.json(await writeMePreferences(userId, patch));
-  },
-);
-
-const memberParamSchema = z.object({ orgId: z.uuid(), userId: z.uuid() });
-
-const memberAssistantPrefsSchema = z
-  .object({
-    answerStyle: z.enum(answerStyles).optional(),
-    assistantInstructions: z.string().trim().max(2000).nullable().optional(),
-  })
-  .strict()
-  .refine((v) => v.answerStyle !== undefined || v.assistantInstructions !== undefined, {
-    error: 'at least one of answerStyle/assistantInstructions is required',
-  });
-
-/** An org admin sets a member's assistant preferences; mounted on `/api/orgs` under its auth gate. */
-export const orgMemberPreferenceRoutes = new Hono<{ Variables: AuthVars }>();
-
-orgMemberPreferenceRoutes.patch(
-  '/:orgId/members/:userId/assistant-preferences',
-  zValidator('param', memberParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', memberAssistantPrefsSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { orgId, userId } = c.req.valid('param');
-    const actor = c.get('userId');
-    await requireOrgCan(actorFor(actor), 'org.admin', orgResource(orgId));
-    if ((await orgMemberRole(orgId, userId)) === null) {
-      throw new HTTPException(404, {
-        message: 'membership not found',
-        cause: { code: 'NOT_FOUND' },
-      });
-    }
-    const prefs = await writeAssistantPreferences({
-      userId,
-      patch: c.req.valid('json'),
-      actor: { kind: 'admin', userId: actor },
-    });
-    return c.json(prefs);
   },
 );

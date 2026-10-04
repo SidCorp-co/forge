@@ -7,7 +7,7 @@ import type { WaitingCommit } from '../integrations/source-host/index.js';
 export type OwnerVia = 'declares_issue' | 'merged_in' | 'recorded_head';
 
 /** Every issue each waiting commit is the work of, keyed by the commit's lower-cased sha. */
-export type CommitOwners = ReadonlyMap<string, ReadonlyMap<number, OwnerVia>>;
+type CommitOwners = ReadonlyMap<string, ReadonlyMap<number, OwnerVia>>;
 
 const PR_REF_TAIL = /(?:\s*\(#\d+\))+\s*$/;
 const TRAILER = /\(([^()]*)\)\s*$/;

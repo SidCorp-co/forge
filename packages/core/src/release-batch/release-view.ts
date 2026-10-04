@@ -21,7 +21,7 @@ export interface ViewerFacts {
   mayApprove: boolean;
 }
 
-export interface TurnFacts {
+interface TurnFacts {
   state: ReleaseState;
   version: string;
   approval: {
@@ -36,7 +36,7 @@ export interface TurnFacts {
   crossedBounds: readonly string[];
 }
 
-export type Turn = Standing<ReleaseAttentionGroup, ReleaseWaitingKind>;
+type Turn = Standing<ReleaseAttentionGroup, ReleaseWaitingKind>;
 
 const NOBODY = nobodyWaits('the release has ended');
 

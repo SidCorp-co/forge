@@ -1,8 +1,7 @@
 // The finish record a release run carries (`pipeline_runs.metadata.finish`): its
 // shape, how it is read off the run, and the compare-and-set that writes it.
 
-import { and, eq, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { and, sql } from 'drizzle-orm';
 import { pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
@@ -10,7 +9,7 @@ import { RUN_NOT_ABORTED } from './abort-stamp.js';
 import type { ReleaseVerification } from './plan.js';
 import { releaseBatchPorts } from './ports.js';
 
-export type FinishState = 'accepted' | 'verifying' | 'closing' | 'finished' | 'failed';
+type FinishState = 'accepted' | 'verifying' | 'closing' | 'finished' | 'failed';
 
 export const IN_FLIGHT: ReadonlySet<FinishState> = new Set(['accepted', 'verifying', 'closing']);
 const STATES: ReadonlySet<string> = new Set([...IN_FLIGHT, 'finished', 'failed']);

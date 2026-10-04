@@ -25,7 +25,7 @@ export interface EnvironmentStateDeps {
   readonly probeTimeoutMs: number;
 }
 
-export interface EnvironmentStateContext {
+interface EnvironmentStateContext {
   readonly sourceType: ProjectDocument['source']['type'];
 }
 

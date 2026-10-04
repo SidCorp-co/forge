@@ -7,7 +7,7 @@
  * table's one writer.
  */
 
-import type { ReleaseHoldOwer, ReleaseHoldView } from '@forge/contracts/releases';
+import type { ReleaseHoldOwer } from '@forge/contracts/releases';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { releaseHolds } from '../db/schema-release-ledger.js';
@@ -31,12 +31,12 @@ export interface ReleaseHold {
  * and a reason compared with it would be a new hold every minute for as long as a row is held.
  * So a stored reason keeps the timestamp of the reading that wrote it (ISS-1215, ISS-1286).
  */
-export function withoutReadingTimes(text: string): string {
+function withoutReadingTimes(text: string): string {
   return text.replace(/read at \d{4}-\d{2}-\d{2}T[\d:.]+Z/g, 'read at a moment');
 }
 
 /** A runner's reset time to the minute: its milliseconds move each heartbeat while the limit stands. */
-export function withoutResetDrift(text: string): string {
+function withoutResetDrift(text: string): string {
   return text.replace(
     /(is rate limited|is quarantined) until (\d{4}-\d{2}-\d{2}T\d{2}:\d{2})[\d:.]*Z/g,
     '$1 until $2Z',
@@ -48,7 +48,7 @@ function comparable(text: string): string {
 }
 
 /** Whether two holds say the same thing; `heldAt` is when it was written, never what it says. */
-export function sameReleaseHold(a: ReleaseHold | null, b: ReleaseHold): boolean {
+function sameReleaseHold(a: ReleaseHold | null, b: ReleaseHold): boolean {
   return (
     a !== null &&
     a.code === b.code &&
@@ -208,7 +208,7 @@ const SELF_CLEARING: Readonly<Record<string, string>> = {
  * tick while the refusal stands still, so kept in, it would read as a new reason each sweep and
  * replace the hold every minute of an outage; stored, it would be false a minute later.
  */
-export function withoutAges(text: string): string {
+function withoutAges(text: string): string {
   return text
     .replace(/ It is up and reporting, last seen \d+s ago\./g, ' It is up and reporting.')
     .replace(/ (?:It last reported|Last seen) \d+s ago\./g, '');
@@ -235,7 +235,7 @@ export function cutFailedHold(reasons: readonly string[]): ReleaseHold {
   };
 }
 
-export interface ReleaseHoldTally {
+interface ReleaseHoldTally {
   /** Rows whose hold was written or replaced this call. */
   written: number;
   /** Rows already carrying this exact hold. */
@@ -306,30 +306,6 @@ async function standingHolds(issueIds: readonly string[]): Promise<Map<string, R
     .from(releaseHolds)
     .where(and(inArray(releaseHolds.issueId, [...issueIds]), isNull(releaseHolds.clearedAt)));
   return new Map(rows.map(({ issueId, ...hold }) => [issueId, hold]));
-}
-
-/** The hold standing on each of these issues, for the ones that have one. */
-export async function readReleaseHolds(
-  issueIds: readonly string[],
-): Promise<Map<string, ReleaseHoldView>> {
-  if (issueIds.length === 0) return new Map();
-  const rows = await db
-    .select({
-      issueId: releaseHolds.issueId,
-      code: releaseHolds.code,
-      reason: releaseHolds.reason,
-      owes: releaseHolds.owes,
-      waitingFor: releaseHolds.waitingFor,
-      heldAt: releaseHolds.heldAt,
-    })
-    .from(releaseHolds)
-    .where(and(inArray(releaseHolds.issueId, [...issueIds]), isNull(releaseHolds.clearedAt)));
-  return new Map(
-    rows.map(({ issueId, heldAt, ...hold }) => [
-      issueId,
-      { ...hold, heldAt: heldAt.toISOString() },
-    ]),
-  );
 }
 
 /** Take the hold off these rows: a release claimed them, or nothing holds them any more. */

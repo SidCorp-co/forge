@@ -17,7 +17,7 @@ import { holdsOrg } from '../permissions/index.js';
 import type { ApiRefusal } from './documents.js';
 import { announceIntegrationChanged } from './integration-changed.js';
 
-export interface BindEffects {
+interface BindEffects {
   refusals(input: {
     userId: string;
     projectId: string;

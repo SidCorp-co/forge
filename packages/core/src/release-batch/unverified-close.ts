@@ -1,10 +1,10 @@
 // An unverified close says so on each issue, so it never reads as a verified one: sid-desk ISS-191
 // closed 42 issues on a release that was not running (ISS-1042, ISS-1321).
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { postIssueNoticeOnce } from '../comments/index.js';
 import { db } from '../db/client.js';
-import { issues, pipelineRuns } from '../db/schema.js';
+import { issues } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
 import { issueArchiveSide } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
@@ -12,11 +12,11 @@ import type { ReleaseVerification } from './plan.js';
 import { releaseBatchPorts } from './ports.js';
 
 /** The line a reader, or a query, finds an unverified close by. One per issue per release run. */
-export function unverifiedMarker(runId: string): string {
+function unverifiedMarker(runId: string): string {
   return `release-verification: unverified ${runId}`;
 }
 
-export function unverifiedCloseNote(runId: string, commit: string | null): string {
+function unverifiedCloseNote(runId: string, commit: string | null): string {
   const reported = commit
     ? `The release reported shipping \`${commit}\`, and nothing checked that it is serving.`
     : 'The release reported no commit, so nothing names what it shipped.';

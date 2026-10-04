@@ -12,7 +12,7 @@ export { servedCommits } from '@forge/contracts/releases';
 
 /** Each served commit beside everywhere it runs — `3c38c68` at A; `ea69715` at B and C — one
  *  commit answered whole by one source and abbreviated by another named once, whole. */
-export function servedClause(served: readonly ServedAt[]): string {
+function servedClause(served: readonly ServedAt[]): string {
   const spelled = longestSpelling(served.map((s) => s.commit));
   const byCommit = new Map<string, string[]>();
   for (const s of served) {

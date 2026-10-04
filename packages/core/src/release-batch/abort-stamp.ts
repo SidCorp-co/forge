@@ -14,7 +14,7 @@ import { releaseBatchPorts } from './ports.js';
 import { refuseRelease } from './refuse.js';
 import { closedOnRoster, runRecordedPromotion } from './releasing-recovery.js';
 
-export interface AbortStamp {
+interface AbortStamp {
   id: string;
   at: string;
   reason: string;
@@ -24,7 +24,7 @@ export interface AbortStamp {
   closed: string[] | null;
 }
 
-export function readAbortStamp(metadata: unknown): AbortStamp | null {
+function readAbortStamp(metadata: unknown): AbortStamp | null {
   const raw = (metadata as { abort?: unknown } | null)?.abort;
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
@@ -139,16 +139,16 @@ const RETURNING_SENTENCE =
   'This batch was aborted, so there is nothing left to finish. The abort had not finished putting its roster back at the release gate when this was read, so each issue’s own status says whether its claim is released yet.';
 
 /** The code a finish on an aborted batch is refused with, at the door and on the stored record. */
-export const ABORTED_CODE = 'RELEASE_BATCH_ABORTED';
+const ABORTED_CODE = 'RELEASE_BATCH_ABORTED';
 
 /**
  * What an abort did to a batch, as the run records it: its release had `shipped`, it `held` a
  * promoted roster, it is still `returning` the roster, it `released` it, or nothing recorded it.
  */
-export type AbortAccount = 'shipped' | 'held' | 'returning' | 'released' | 'unrecorded';
+type AbortAccount = 'shipped' | 'held' | 'returning' | 'released' | 'unrecorded';
 
 /** What a finish on an aborted batch is told about, read off the run. */
-export interface AbortedFacts {
+interface AbortedFacts {
   account: AbortAccount;
   projectId: string;
   /** The roster issues its finish had closed before the abort; `null` where nothing recorded it. */
@@ -198,7 +198,7 @@ export async function closedBeforeAbort(
 
 /** What the abort did, and the roster issues closed before it: the stamp's, the run's records,
  *  and a held roster's still-claimed ones; `null` where nothing recorded them. */
-export function abortAccount(run: { metadata: unknown; shipped: boolean; heldClosed: string[] }): {
+function abortAccount(run: { metadata: unknown; shipped: boolean; heldClosed: string[] }): {
   account: AbortAccount;
   closed: string[] | null;
 } {
@@ -215,7 +215,7 @@ export function abortAccount(run: { metadata: unknown; shipped: boolean; heldClo
 }
 
 /** What the abort did to this batch. */
-export async function abortedFacts(runId: string, executor: Tx = db): Promise<AbortedFacts> {
+async function abortedFacts(runId: string, executor: Tx = db): Promise<AbortedFacts> {
   const rows = await executor.execute<{ project_id: string; metadata: unknown; shipped: boolean }>(
     sql`
       SELECT project_id, metadata, release_released_at IS NOT NULL AS shipped
@@ -236,7 +236,7 @@ export async function abortedError(runId: string, executor: Tx = db): Promise<Re
 }
 
 /** What a finish on an aborted batch is told, by what the abort did to that batch. */
-export function abortedSentence(err: AbortedFacts): string {
+function abortedSentence(err: AbortedFacts): string {
   const none = 'This batch was aborted, so there is nothing left to finish';
   const closed = err.closed ?? [];
   const kept = closed.length > 0 ? ` ${closedBeforeAbortSentence(closed, err.shown)}` : '';

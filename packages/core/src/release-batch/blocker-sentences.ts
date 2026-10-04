@@ -22,7 +22,7 @@ import type { ServingReading } from './serving-reading.js';
 /** The most issues one release may carry; `resolveRoster` holds every door to it. */
 export type { ReleaseBlockerCode };
 
-export type ReleaseWarningCode =
+type ReleaseWarningCode =
   | 'RELEASE_RUNNER_PREFERENCE_UNMET'
   | 'RELEASE_CRITERIA_HELD_BACK'
   | 'RELEASE_CRITERIA_UNCORROBORATED';
@@ -105,7 +105,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
  * an act whose consequence depends on state cannot be told to an operator, so it
  * is not an act to put in a remedy at all (ISS-1127).
  */
-export interface RemedyAct {
+interface RemedyAct {
   /** Worded so `remedyCostClause` reads as one sentence with it. */
   act: string;
   /** Stems, ANY one naming this act; a false positive is the cheaper error. */
@@ -114,7 +114,7 @@ export interface RemedyAct {
 }
 
 /** Over both unions, so a code added later cannot skip the question. */
-export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
+const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   NO_RELEASE_GATE: [],
   RELEASE_TARGET_UNDECLARED: [],
   CLAIM_CONFLICT: [],
@@ -134,7 +134,7 @@ export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_CRITERIA_UNCORROBORATED: [],
 };
 
-export function remedyCostClause(cost: RemedyAct): string {
+function remedyCostClause(cost: RemedyAct): string {
   return `${cost.act} raises \`${cost.raises}\`, which does stop a release until it is answered.`;
 }
 

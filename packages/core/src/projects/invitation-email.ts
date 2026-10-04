@@ -2,7 +2,7 @@ import { mailDeliveryEnabled, sendMail } from '../integrations/mail/index.js';
 import { buildInvitationLink, escapeInvitationHtml } from '../lib/invitation.js';
 import { logger } from '../observability/logger.js';
 
-export interface InvitationEmailContext {
+interface InvitationEmailContext {
   projectName: string;
   inviterEmail: string;
   token: string;

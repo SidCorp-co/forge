@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { AGENT_CONFIG_KEYS, type AgentConfigKey } from './agent-config-schema.js';
 
-export type AgentConfig = Record<string, unknown>;
+type AgentConfig = Record<string, unknown>;
 
 /** A drizzle handle: the pooled client, or a transaction a route is already inside. */
 type Db = Pick<typeof db, 'select' | 'execute'>;

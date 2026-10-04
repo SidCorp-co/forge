@@ -106,10 +106,6 @@ export async function readProjectConfig(projectId: string): Promise<Held<Project
   return stored ? reread(projectDocumentSchema, stored, `project document of ${projectId}`) : null;
 }
 
-export async function readProjectRevisions(projectId: string) {
-  return drizzleConfigStore.listProjectRevisions(projectId);
-}
-
 export async function readPolicy(projectId: string): Promise<Held<PolicyDocument> | null> {
   const stored = await drizzleConfigStore.readPolicy(projectId);
   return stored ? reread(policyDocumentSchema, stored, `policy of ${projectId}`) : null;
@@ -139,7 +135,7 @@ export async function listTestingProfiles(
   }));
 }
 
-export async function buildProjectConfigContext(projectId: string): Promise<ProjectConfigContext> {
+async function buildProjectConfigContext(projectId: string): Promise<ProjectConfigContext> {
   const [bindings, profiles, policy, templatesInUse] = await Promise.all([
     drizzleConfigStore.listActiveBindings(projectId),
     drizzleConfigStore.listTestingProfiles(projectId),
@@ -286,7 +282,7 @@ export async function writeTestingProfile(input: {
   });
 }
 
-export type DeleteOutcome =
+type DeleteOutcome =
   | { ok: true }
   | { ok: false; notFound: true }
   | { ok: false; notFound: false; refusals: ApiRefusal[] };
@@ -316,7 +312,7 @@ export async function deleteTestingProfile(
 
 export const SECRET_VALUE_MAX = 16_384;
 
-export type SecretOutcome =
+type SecretOutcome =
   | { ok: true; secret: SecretName & { ref: string } }
   | { ok: false; code: 'VAULT_NOT_CONFIGURED' };
 

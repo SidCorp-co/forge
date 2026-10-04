@@ -1,14 +1,14 @@
 import type { ReleaseAttemptRow } from './ledger.js';
 
 /** Defaults, and there is no per-project override — see the plan's trade note. */
-export const BOUND_DEFAULTS = {
+const BOUND_DEFAULTS = {
   total: 90 * 60_000,
   stall: 25 * 60_000,
 } as const;
 
-export type BoundName = 'total' | 'stall' | 'regression';
+type BoundName = 'total' | 'stall' | 'regression';
 
-export interface BoundReading {
+interface BoundReading {
   name: BoundName;
   crossed: boolean;
   /** Milliseconds for the duration bounds; `null` for `regression`. */

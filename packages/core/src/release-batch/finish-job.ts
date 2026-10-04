@@ -42,28 +42,22 @@ import { assertFinishable, finishReleaseBatch, readReleaseRun } from './service.
 import { claimedCommit, NOTHING_TO_COMPARE, notAWholeCommit } from './verify.js';
 
 /** How long a worker's claim on an attempt stands without a renewal. */
-export const FINISH_LEASE_MS = 120_000;
+const FINISH_LEASE_MS = 120_000;
 const HEARTBEAT_MS = 30_000;
 /** An accepted attempt no worker took in this long was never woken, so the sweep wakes it. */
-export const FINISH_UNTAKEN_MS = 60_000;
+const FINISH_UNTAKEN_MS = 60_000;
 
-export const RELEASE_FINISH_QUEUE = 'release-batch-finish';
+const RELEASE_FINISH_QUEUE = 'release-batch-finish';
 
-export {
-  type FinishRefusal,
-  type FinishState,
-  isInFlight,
-  type ReleaseFinishRecord,
-  readFinishRecord,
-} from './finish-record.js';
+export { isInFlight, type ReleaseFinishRecord, readFinishRecord } from './finish-record.js';
 
 // ── The door ────────────────────────────────────────────────────────────────
 
-export interface AcceptFinishOptions {
+interface AcceptFinishOptions {
   commit?: string | undefined;
 }
 
-export interface AcceptFinishResult {
+interface AcceptFinishResult {
   runId: string;
   finish: ReleaseFinishRecord;
   /** True when this call started the attempt; false when it answered one already standing. */
@@ -262,7 +256,7 @@ function refusalOf(err: unknown): FinishRefusal {
  * Do the work of the attempt the run carries, if no live worker holds it.
  * Always ends with the record terminal, unless its lease was taken over.
  */
-export interface FinishWorkerHooks {
+interface FinishWorkerHooks {
   /** Test seam: runs after the green verdict is committed and before the first close. */
   afterVerified?: () => Promise<void>;
   /** Test seam: runs as a fence starts, before it locks and reads the run row. */
@@ -294,10 +288,7 @@ async function refuseIfAborted(runId: string): Promise<void> {
   if (run && batchAborted(run)) throw await abortedError(runId);
 }
 
-export async function runReleaseBatchFinish(
-  runId: string,
-  hooks: FinishWorkerHooks = {},
-): Promise<void> {
+async function runReleaseBatchFinish(runId: string, hooks: FinishWorkerHooks = {}): Promise<void> {
   const run = await readReleaseRun(runId);
   const record = run ? readFinishRecord(run.metadata) : null;
   if (!run || !record) return;
@@ -403,7 +394,7 @@ interface SweepRow extends Record<string, unknown> {
 }
 
 /** Whether this record, on a run at this status, is owed a wake-up now. */
-export function owedWakeUp(record: ReleaseFinishRecord, runStatus: string, now: number): boolean {
+function owedWakeUp(record: ReleaseFinishRecord, runStatus: string, now: number): boolean {
   if (record.state === 'finished') return runStatus === 'running' || runStatus === 'paused';
   if (!isInFlight(record)) return false;
   if (record.owner === null) return Date.parse(record.updatedAt) + FINISH_UNTAKEN_MS < now;
@@ -446,7 +437,7 @@ export async function resumeStrandedFinishes(
  * Wake the job for this run. A failure to wake is logged, not thrown: the
  * attempt is already on the record, and the sweep wakes an untaken one.
  */
-export async function enqueueReleaseBatchFinish(runId: string): Promise<void> {
+async function enqueueReleaseBatchFinish(runId: string): Promise<void> {
   try {
     const { boss } = await import('../queue/boss.js');
     await boss.send(RELEASE_FINISH_QUEUE, { runId }, { singletonKey: runId, retryLimit: 0 });
@@ -483,8 +474,4 @@ export async function registerReleaseBatchFinish(): Promise<void> {
     }
   });
   registered = true;
-}
-
-export function resetReleaseBatchFinishForTest(): void {
-  registered = false;
 }

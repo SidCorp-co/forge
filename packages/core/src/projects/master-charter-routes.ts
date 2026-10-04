@@ -9,7 +9,6 @@ import { parseMasterCharterWrite } from './master-charter.js';
 import {
   declareCharter,
   type MasterCharter,
-  readCharterVersions,
   readCurrentCharter,
 } from './master-charter-service.js';
 
@@ -57,20 +56,6 @@ masterCharterRoutes.get(
   },
 );
 
-masterCharterRoutes.get(
-  '/:id/master-charter/versions',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid project id');
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-
-    const versions = await readCharterVersions(id);
-    return c.json({ versions: versions.map(serialise), returned: versions.length });
-  },
-);
-
 masterCharterRoutes.put(
   '/:id/master-charter',
   zValidator('param', idParamSchema, (r) => {
@@ -80,7 +65,12 @@ masterCharterRoutes.put(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'charter.write', projectResource(id), 'writing the master charter');
+    await requireCan(
+      actorFor(userId),
+      'charter.write',
+      projectResource(id),
+      'writing the master charter',
+    );
 
     const parsed = parseMasterCharterWrite(c.req.valid('json'));
     if (!parsed.ok) {

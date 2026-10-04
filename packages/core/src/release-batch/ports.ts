@@ -5,7 +5,7 @@
 import type { Tx } from '../db/client.js';
 import type { RunMetadataWrite } from '../pipeline/index.js';
 
-export interface ReleaseBatchPorts {
+interface ReleaseBatchPorts {
   /** The pipeline's writes on a release run's own row (`pipeline/run-records.ts`). Reached through
    *  the port while the pipeline's sweeper still imports this module at load, so a static import
    *  of the pipeline face would close a runtime cycle. */

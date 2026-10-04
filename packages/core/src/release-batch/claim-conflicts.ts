@@ -34,7 +34,7 @@ export async function refuseLostReleaseClaim(
 export const RELEASE_RECORD_SOURCE = 'release-record';
 
 /** One refused issue. `key` is its `ISS-nn`, or the id as sent where no issue on the project has it. */
-export type ClaimConflict =
+type ClaimConflict =
   | {
       id: string;
       key: string;
@@ -220,7 +220,7 @@ export async function claimConflictAt(
   );
 }
 
-export interface ClaimConflictDetails {
+interface ClaimConflictDetails {
   [key: string]: unknown;
   issueIds: string[];
   conflicts: ClaimConflict[];

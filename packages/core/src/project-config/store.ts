@@ -31,7 +31,7 @@ export interface StoredRevision {
   writtenAt: Date;
 }
 
-export interface StoredProfile extends StoredDocument {
+interface StoredProfile extends StoredDocument {
   profileId: string;
 }
 
@@ -59,14 +59,14 @@ export type CasResult =
   | { ok: false; storedRevision: number | null }
   | { ok: false; refusal: ApiRefusal };
 
-export interface CasInput {
+interface CasInput {
   projectId: string;
   baseRevision: number | null;
   document: unknown;
   userId: string;
 }
 
-export interface ConfigStore {
+interface ConfigStore {
   readProject(projectId: string): Promise<StoredDocument | null>;
   listProjectRevisions(projectId: string): Promise<StoredRevision[]>;
   casProject(input: CasInput): Promise<CasResult>;

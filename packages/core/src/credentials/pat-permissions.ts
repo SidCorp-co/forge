@@ -58,7 +58,7 @@ export const PAT_PERMISSION_RESOURCES = {
   schedules: { reach: 'project', prefixes: { '/api/schedules': 1 } },
   projects: {
     reach: 'project',
-    prefixes: { '/api/projects': 1, '/api/app-config': 2 },
+    prefixes: { '/api/projects': 1 },
   },
   questions: { reach: 'project', prefixes: { '/api/questions': 1 } },
   runners: { reach: 'project', prefixes: { '/api/runners': 2 } },

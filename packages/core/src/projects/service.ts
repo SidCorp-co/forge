@@ -12,11 +12,9 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import {
-  issues,
   type OrgMemberRole,
   organizationMembers,
   type ProjectMemberRole,
-  projectGitCredentials,
   projectInvitations,
   projectMembers,
   projects,
@@ -29,7 +27,7 @@ import {
   removeProjectMember,
   updateProjectMember,
 } from '../permissions/index.js';
-import { readDeclaredSource, seedProjectPolicy } from '../project-config/index.js';
+import { seedProjectPolicy } from '../project-config/index.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys } from './agent-config.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { PATCHED_PROJECT } from './projections.js';
@@ -55,23 +53,7 @@ export async function findProjectOrgId(projectId: string): Promise<string | null
   return row?.orgId ?? null;
 }
 
-export type ProjectBranches = {
-  /** Where an ISS-* branch is cut from. NOT a release fact. */
-  baseBranch: string | null;
-};
-
-/** The branch a project's pipeline cuts work from, or `null` when the project is gone. */
-export async function readProjectBranches(projectId: string): Promise<ProjectBranches | null> {
-  const [row] = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!row) return null;
-  return { baseBranch: (await readDeclaredSource(projectId)).defaultBranch };
-}
-
-export type NewProject = {
+type NewProject = {
   slug: string;
   name: string;
   orgId: string;
@@ -117,7 +99,7 @@ export async function createProject(input: NewProject) {
   }
 }
 
-export const projectListColumns = {
+const projectListColumns = {
   id: projects.id,
   slug: projects.slug,
   name: projects.name,
@@ -157,16 +139,6 @@ export async function listVisibleProjectsWithRole(
       and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
     )
     .where(and(...visibleProjectsWhere()));
-}
-
-/** The two jsonb fields a per-issue branch override can live on, scoped to a project so an id from elsewhere reads as absent. */
-export async function readIssueBranchInputs(issueId: string, projectId: string) {
-  const [row] = await db
-    .select({ id: issues.id, metadata: issues.metadata, sessionContext: issues.sessionContext })
-    .from(issues)
-    .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId)))
-    .limit(1);
-  return row ?? null;
 }
 
 /** The slug and name the project document declares, projected onto the row; false when no row. */
@@ -310,24 +282,4 @@ export async function unarchiveProject(projectId: string) {
     .where(eq(projects.id, projectId))
     .returning(ARCHIVE_PROJECTION);
   return updated ?? null;
-}
-
-/** The project's git access uses pool key `sshKeyId`, replacing any earlier pick. */
-export async function pickProjectGitKey(
-  projectId: string,
-  sshKeyId: string,
-  userId: string,
-): Promise<void> {
-  await db
-    .insert(projectGitCredentials)
-    .values({ projectId, sshKeyId, createdBy: userId })
-    .onConflictDoUpdate({
-      target: projectGitCredentials.projectId,
-      set: { sshKeyId, createdBy: userId, updatedAt: new Date() },
-    });
-}
-
-/** Forget the project's picked git key. */
-export async function clearProjectGitKey(projectId: string): Promise<void> {
-  await db.delete(projectGitCredentials).where(eq(projectGitCredentials.projectId, projectId));
 }

@@ -19,7 +19,6 @@ import {
   putSecret,
   readPolicy,
   readProjectConfig,
-  readProjectRevisions,
   readTestingProfile,
   SECRET_VALUE_MAX,
   type WriteOutcome,
@@ -109,21 +108,6 @@ projectConfigRoutes.put(
     );
   },
 );
-
-projectConfigRoutes.get('/:id/config/revisions', paramOf(idParam), async (c) => {
-  const { id } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-  const revisions = await readProjectRevisions(id);
-  return c.json({
-    revisions: revisions.map((r) => ({
-      revision: r.revision,
-      document: r.document,
-      writtenBy: r.writtenBy,
-      writtenAt: r.writtenAt.toISOString(),
-    })),
-    returned: revisions.length,
-  });
-});
 
 async function callingDevice(c: Context<{ Variables: AuthVars }>): Promise<string | null> {
   if (c.get('principal') !== 'pat') return null;

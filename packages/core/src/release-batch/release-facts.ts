@@ -18,7 +18,7 @@ import { peopleOf } from '../lib/people.js';
 import { standingsOf } from '../requirements/index.js';
 import type { CompletionFacts } from './release-view.js';
 
-export interface IssueFact {
+interface IssueFact {
   id: string;
   key: string;
   title: string;

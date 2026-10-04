@@ -14,14 +14,7 @@ import {
 import { blockerRefusal } from './refuse.js';
 import type { VerifyConfig } from './verify.js';
 
-export type {
-  CloseVerification,
-  ReleaseChannel,
-  ReleasePlan,
-  ReleaseRollback,
-  ReleaseVerification,
-} from './plan.js';
-export { RELEASE_PROCEDURE_FACT } from './plan.js';
+export type { CloseVerification, ReleaseChannel, ReleaseVerification } from './plan.js';
 
 /**
  * Read the production connection's stored `rollback` into what a release agent may act on.
@@ -30,7 +23,7 @@ export { RELEASE_PROCEDURE_FACT } from './plan.js';
  * exposes a rollback API and Forge performs it, so a paragraph there is a
  * second path to the same outcome that nothing has verified is still true.
  */
-export function classifyRollback(provider: string, raw: unknown): ReleaseRollback | null {
+function classifyRollback(provider: string, raw: unknown): ReleaseRollback | null {
   if (typeof raw === 'string') {
     const text = raw.trim();
     if (text.length === 0) return null;
@@ -52,7 +45,7 @@ export function classifyRollback(provider: string, raw: unknown): ReleaseRollbac
 }
 
 /** A release proves the commit it shipped, so only a probe identifying the source can prove it. */
-export function releaseProbesOf(production: NamedEnvironment): {
+function releaseProbesOf(production: NamedEnvironment): {
   verify: VerifyConfig | null;
   verifySource: ReleaseChannel['verifySource'];
 } {
@@ -92,7 +85,7 @@ export async function resolveReleaseChannels(projectId: string): Promise<Release
 }
 
 /** How the binding is named where a person has to find it: environment, provider, store slug, id. */
-export function bindingName(channel: ReleaseChannel): string {
+function bindingName(channel: ReleaseChannel): string {
   const named = channel.label ? `${channel.provider} [${channel.label}]` : channel.provider;
   return `environment \`${channel.environment}\` (${named} ${channel.bindingId})`;
 }

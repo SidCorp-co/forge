@@ -3,8 +3,8 @@
 // testing-secrets read is made for (execution, a context below in the order). The composition
 // root fills them at boot (`provideProjectOrg` is the pattern).
 
-import type { PatPrincipal } from '../middleware/require-pat.js';
 import type { Tx } from '../db/client.js';
+import type { PatPrincipal } from '../middleware/require-pat.js';
 
 export interface SecretResolveAudit {
   environment: string;
@@ -14,11 +14,11 @@ export interface SecretResolveAudit {
   deviceId: string | null;
 }
 
-export type JobCredentialRead =
+type JobCredentialRead =
   | { ok: true; context: { agentSessionId: string; jobId: string | null } }
   | { ok: false; reason: 'not_pipeline_context' | 'ambiguous_pipeline_context'; detail: string };
 
-export interface ProjectConfigPorts {
+interface ProjectConfigPorts {
   /** Write the document's slug and name onto the projects row; false when no row exists. */
   projectDocumentNames(
     tx: Tx,
@@ -26,7 +26,9 @@ export interface ProjectConfigPorts {
     names: { slug: string; name: string },
   ): Promise<boolean>;
   /** The job a job credential names, read from the credential's session. */
-  jobOfCredential(caller: Pick<PatPrincipal, 'deviceId' | 'boundProjectId'>): Promise<JobCredentialRead>;
+  jobOfCredential(
+    caller: Pick<PatPrincipal, 'deviceId' | 'boundProjectId'>,
+  ): Promise<JobCredentialRead>;
   /** Audit a resolve on the job's event log, committed before any value leaves. */
   recordSecretResolve(jobId: string, audit: SecretResolveAudit): Promise<void>;
   /** Hand the scrubber the values this job now holds. */

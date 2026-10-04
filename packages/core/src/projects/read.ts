@@ -6,13 +6,11 @@ import {
   organizationMembers,
   organizations,
   orgInvitations,
-  projectGitCredentials,
   projectInvitations,
   projectMembers,
   projects,
   runners,
   users,
-  workspaceSshKeys,
 } from '../db/schema.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { PROJECT_DETAIL } from './projections.js';
@@ -169,9 +167,7 @@ export async function listPendingProjectInvitations(projectId: string) {
     })
     .from(projectInvitations)
     .innerJoin(users, eq(users.id, projectInvitations.inviterId))
-    .where(
-      and(eq(projectInvitations.projectId, projectId), isNull(projectInvitations.acceptedAt)),
-    );
+    .where(and(eq(projectInvitations.projectId, projectId), isNull(projectInvitations.acceptedAt)));
 }
 
 /** The live project and org invitations sent to `email`, newest first. */
@@ -243,25 +239,4 @@ export async function projectInvitationByToken(token: string) {
     .where(eq(projectInvitations.token, token))
     .limit(1);
   return row ?? null;
-}
-
-/** The pool key the project picked for git, or null. */
-export async function projectGitKeyId(projectId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ sshKeyId: projectGitCredentials.sshKeyId })
-    .from(projectGitCredentials)
-    .where(eq(projectGitCredentials.projectId, projectId))
-    .limit(1);
-  return row?.sshKeyId ?? null;
-}
-
-/** The encrypted private key of the project's picked pool key, or null. */
-export async function projectGitPrivateKeyEnc(projectId: string): Promise<Buffer | null> {
-  const [row] = await db
-    .select({ privateKeyEnc: workspaceSshKeys.privateKeyEnc })
-    .from(projectGitCredentials)
-    .innerJoin(workspaceSshKeys, eq(workspaceSshKeys.id, projectGitCredentials.sshKeyId))
-    .where(eq(projectGitCredentials.projectId, projectId))
-    .limit(1);
-  return row?.privateKeyEnc ?? null;
 }

@@ -7,9 +7,9 @@ import type { LiveReading } from './live-reach.js';
 import { readProjectDivergence } from './live-source.js';
 
 /** How long one reading answers for a project before the next read takes another. */
-export const LIVE_READING_HOLD_MS = 5 * 60_000;
+const LIVE_READING_HOLD_MS = 5 * 60_000;
 /** How long a read with nothing held waits for the first reading before answering `pending`. */
-export const LIVE_READING_FIRST_WAIT_MS = 3_000;
+const LIVE_READING_FIRST_WAIT_MS = 3_000;
 
 export interface LiveReadingDeps {
   /** The commits on base that live lacks, from whichever source the project holds. */
@@ -23,7 +23,7 @@ const defaultDeps: LiveReadingDeps = {
 };
 
 /** What the project document says a landed change crosses to reach production. */
-export interface ProjectReleaseRow {
+interface ProjectReleaseRow {
   id: string;
   /** Where work lands (`source.git.defaultBranch`). */
   baseBranch: string | null;
@@ -47,20 +47,14 @@ function keyOf(row: ProjectReleaseRow): string {
 }
 
 /** Drop what is held for a project, so the next read compares the branches again. */
-export function forgetLiveReading(projectId: string): void {
+function forgetLiveReading(projectId: string): void {
   held.delete(projectId);
   const running = inFlight.get(projectId);
   if (running) running.stale = true;
 }
 
-/** Every held reading, dropped. For tests; nothing in the app calls it. */
-export function forgetAllLiveReadings(): void {
-  held.clear();
-  inFlight.clear();
-}
-
 /** Take one reading now. Never throws: a failure is a `refused` reading carrying its reason. */
-export async function takeLiveReading(
+async function takeLiveReading(
   row: ProjectReleaseRow & { deploysFrom: string },
   deps: LiveReadingDeps = defaultDeps,
 ): Promise<LiveReading> {

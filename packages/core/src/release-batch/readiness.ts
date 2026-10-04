@@ -12,7 +12,7 @@ import { releaseRunnerLabelOf } from './channel.js';
 import type { ReleaseRollback, VerifySource } from './plan.js';
 import { readServingNow } from './serving-reading.js';
 
-export type ReleaseGapKey = string;
+type ReleaseGapKey = string;
 
 type ReleaseDeclarationRead = Awaited<ReturnType<typeof collectReleaseBlockers>>['declaration'];
 type ReleaseChannelRead = NonNullable<
@@ -22,7 +22,7 @@ interface ProjectRow {
   repository: string | null;
 }
 
-export interface ReleaseProduction {
+interface ReleaseProduction {
   environment: string;
   /** The branch it deploys from where a promotion crosses into it; null where none does. */
   deploysFrom: string | null;
@@ -30,7 +30,7 @@ export interface ReleaseProduction {
   trigger: DeploymentTrigger;
 }
 
-export interface ReleaseReadiness {
+interface ReleaseReadiness {
   hasReleaseGate: boolean;
   /** Where work lands (`source.git.defaultBranch`); null with no git source or no reading. */
   defaultBranch: string | null;

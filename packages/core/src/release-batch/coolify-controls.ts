@@ -40,14 +40,14 @@ import { enqueueCoolifyConfirm } from './coolify-confirm.js';
 import { liveActionNeedsHumanConfirm } from './release-coolify.js';
 
 /** A bound target with the identity Coolify reports for it. */
-export interface CoolifyTargetIdentity extends CoolifyApplicationSummary {
+interface CoolifyTargetIdentity extends CoolifyApplicationSummary {
   targetId: string;
   label: string;
   /** `false` when Coolify does not list this `resourceUuid` at all. */
   found: boolean;
 }
 
-export interface CoolifyRollbackImagesResult {
+interface CoolifyRollbackImagesResult {
   integrationId: string;
   resourceUuid: string;
   targetLabel: string;
@@ -55,7 +55,7 @@ export interface CoolifyRollbackImagesResult {
   images: { tag: string; createdAt: string | null; isCurrent: boolean }[];
 }
 
-export interface CoolifyControlOutcome {
+interface CoolifyControlOutcome {
   integrationId: string;
   /** `true` only when Coolify accepted the action and named what it started. */
   performed: boolean;
@@ -197,7 +197,7 @@ export async function listCoolifyRollbackImages(input: {
  * The issue's business rule, enforced here because Coolify does not enforce it:
  * a rollback target Coolify no longer lists is refused BY NAME.
  */
-export function assertRollbackTagListed(
+function assertRollbackTagListed(
   images: { tag: string }[],
   commit: string,
   targetLabel: string,

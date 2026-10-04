@@ -16,7 +16,7 @@ import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/s
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readReleasePath } from '../project-config/index.js';
-import { nextRunFor } from '../schedules/cron.js';
+import { nextRunFor } from '../schedules/index.js';
 import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import { releaseBranches } from './plan.js';
@@ -169,7 +169,7 @@ export async function isOpenReleaseBatchRun(projectId: string, runId: string): P
   );
 }
 
-export interface ActiveReleaseBatchInfo {
+interface ActiveReleaseBatchInfo {
   runId: string;
   issueIds: string[];
   startedAt: string;
@@ -211,7 +211,7 @@ export async function getActiveReleaseBatch(
   };
 }
 
-export interface ReleaseBatchIssue {
+interface ReleaseBatchIssue {
   id: string;
   displayId: string;
   title: string;
@@ -226,7 +226,7 @@ export interface ReleaseBatchIssue {
  * `null` for a run opened before ISS-1128, which recorded no verdict: saying
  * `preferenceMet: false` there would claim a reading nobody took.
  */
-export interface ReleaseRunnerAccount {
+interface ReleaseRunnerAccount {
   /** The declared preference, as the production deploy binding resolved it. */
   label: string | null;
   /** False where no box eligible to release carried the label. */
@@ -235,7 +235,7 @@ export interface ReleaseRunnerAccount {
   claimedByDeviceId: string | null;
 }
 
-export interface ReleaseBatchContext {
+interface ReleaseBatchContext {
   runId: string;
   projectId: string;
   gateStatus: IssueStatus;

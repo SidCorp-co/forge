@@ -218,7 +218,8 @@ excluded.
   the thresholds moved to the domain `admin-thresholds` (since ISS-220 fixed defaults, with no
   table), and `admin` keeps only derived views.
   `app-config`, declared platform, holds a project's assistant settings behind routes and a
-  permission check: it is a domain in project-config. **Who owns tables:** kernel, domain, adapter
+  permission check: it was a domain in project-config until ISS-213 deleted it with its last
+  caller. **Who owns tables:** kernel, domain, adapter
   and platform modules; an adapter only its own bookkeeping with the vendor (connections,
   deliveries, mirrored vendor state), a platform module only its own (backfill markers, tokens, the
   embedding index). A read model and a door own nothing.

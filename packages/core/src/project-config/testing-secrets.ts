@@ -16,14 +16,14 @@ import {
   readTestingProfile,
 } from './service.js';
 
-export interface TestingSecretsRefusal {
+interface TestingSecretsRefusal {
   status: 403 | 404 | 422 | 503;
   code: TestingSecretsRefusalCode;
   message: string;
   details?: Record<string, unknown>;
 }
 
-export interface ResolvedTestingSecrets {
+interface ResolvedTestingSecrets {
   jobId: string;
   environment: string;
   profileId: string;
@@ -32,7 +32,7 @@ export interface ResolvedTestingSecrets {
 
 type Refused = { ok: false; refusal: TestingSecretsRefusal };
 
-export type TestingSecretsOutcome = { ok: true; resolved: ResolvedTestingSecrets } | Refused;
+type TestingSecretsOutcome = { ok: true; resolved: ResolvedTestingSecrets } | Refused;
 
 const refuse = (
   status: TestingSecretsRefusal['status'],

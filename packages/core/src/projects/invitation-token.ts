@@ -7,14 +7,14 @@ import { addProjectMembers } from '../permissions/index.js';
 
 const MAX_INSERT_RETRIES = 3;
 
-export interface IssueInvitationInput {
+interface IssueInvitationInput {
   projectId: string;
   inviterId: string;
   email: string;
   role: ProjectMemberRole;
 }
 
-export interface IssueInvitationResult {
+interface IssueInvitationResult {
   token: string;
   expiresAt: Date;
 }
@@ -66,7 +66,7 @@ export async function issueInvitationToken(
   });
 }
 
-export type ConsumeInvitationResult =
+type ConsumeInvitationResult =
   | { status: 'ok'; projectId: string; role: ProjectMemberRole }
   | { status: 'invalid' }
   | { status: 'expired' }

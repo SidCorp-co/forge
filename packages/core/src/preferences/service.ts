@@ -2,10 +2,11 @@
  * The one writer of a person's assistant preferences, and the trail every
  * write leaves (ISS-1034).
  *
- * Three actors write these — the person, an org admin, the assistant from a
- * room — and all three come through here, because the person's way back from
- * a change they did not make is the previous value, and only a writer that
- * records it can offer one.
+ * Two actors write these — the person and the assistant from a room — and
+ * both come through here, because the person's way back from a change they
+ * did not make is the previous value, and only a writer that records it can
+ * offer one. `admin` stays a change actor for the trail rows the retired org
+ * admin route left (ISS-213).
  */
 
 import type { AuthRefusalCode } from '@forge/contracts/auth';
@@ -29,14 +30,14 @@ import {
 
 const refuse = refuser<AuthRefusalCode>('AUTH_REFUSED');
 
-export interface AssistantPreferences {
+interface AssistantPreferences {
   userId: string;
   answerStyle: AnswerStyle;
   assistantInstructions: string | null;
   updatedAt: Date | null;
 }
 
-export interface AssistantPreferencePatch {
+interface AssistantPreferencePatch {
   answerStyle?: AnswerStyle | undefined;
   assistantInstructions?: string | null | undefined;
 }
@@ -45,18 +46,18 @@ export interface AssistantPreferencePatch {
  * The one form `assistantInstructions` is compared and stored in: outer
  * whitespace trimmed, blank text null, internal whitespace kept.
  */
-export function canonicalInstructions(v: string | null): string | null {
+function canonicalInstructions(v: string | null): string | null {
   const t = v?.trim() ?? '';
   return t.length ? t : null;
 }
 
-export interface PreferenceActor {
+interface PreferenceActor {
   kind: PreferenceChangeActor;
-  /** The person, the admin, or — through the assistant — the person whose message asked for it. */
+  /** The person, or — through the assistant — the person whose message asked for it. */
   userId: string | null;
 }
 
-export interface PreferenceChange {
+interface PreferenceChange {
   id: string;
   userId: string;
   field: PreferenceChangeField;
@@ -286,7 +287,7 @@ export async function writeDisplayPreferences(
   });
 }
 
-export interface MePreferencePatch {
+interface MePreferencePatch {
   theme?: PreferenceValues['theme'] | undefined;
   language?: PreferenceValues['language'] | undefined;
   notifyOnMention?: boolean | undefined;

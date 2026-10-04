@@ -21,7 +21,7 @@ export interface ReleasePath {
   crossings: Promotion[];
 }
 
-export type ReleasePathRead = { ok: true; path: ReleasePath } | { ok: false; reason: string };
+type ReleasePathRead = { ok: true; path: ReleasePath } | { ok: false; reason: string };
 
 export function environmentsOf(document: ProjectDocument): NamedEnvironment[] {
   return Object.entries(document.environments).map(([name, declaration]) => ({

@@ -12,17 +12,17 @@ import {
 import { readDeclaredSource, remoteOf } from '../project-config/index.js';
 
 /** Where a project's branches are read from, or why they cannot be. */
-export type LiveSource =
+type LiveSource =
   | { kind: 'binding'; host: SourceHost }
   | { kind: 'deploy_key'; repoUrl: string; privateKey: string }
   | { kind: 'refused'; reason: string };
 
-export interface DeployKeyRow {
+interface DeployKeyRow {
   repository: string | null;
   privateKeyEnc: Buffer | null;
 }
 
-export interface LiveSourceDeps {
+interface LiveSourceDeps {
   sourceHost: (projectId: string) => Promise<SourceHost>;
   deployKey: (projectId: string) => Promise<DeployKeyRow>;
 }
@@ -56,7 +56,7 @@ function noCredential(repository: string | null): string {
  * binding at all — the deploy key attached to it. A binding that exists and cannot be used is a
  * refusal in its own words, never answered from the key instead.
  */
-export async function resolveLiveSource(
+async function resolveLiveSource(
   projectId: string,
   deps: LiveSourceDeps = defaultDeps,
 ): Promise<LiveSource> {
@@ -89,7 +89,7 @@ export async function resolveLiveSource(
   return { kind: 'deploy_key', repoUrl: remoteOf(row.repository, 'ssh'), privateKey };
 }
 
-export interface ProjectDivergenceDeps {
+interface ProjectDivergenceDeps {
   source: (projectId: string) => Promise<LiveSource>;
   deployKey: typeof readRemoteDivergence;
 }

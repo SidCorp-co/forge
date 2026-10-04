@@ -52,36 +52,8 @@ export function releaseBlockedRefusal(report: ReleaseBlockerReport): RefusalErro
   );
 }
 
-/** The first code a thrown release refusal names, or null for anything else. */
-export function firstRefusalCode(err: unknown): string | null {
-  return err instanceof RefusalError ? (err.refusals[0]?.code ?? null) : null;
-}
-
 /** What a stored record says of a failure: a refusal's sentences, or an error's message. */
 export function reasonOf(err: unknown): string {
   if (err instanceof RefusalError) return err.refusals.map((r) => r.detail).join(' ');
   return err instanceof Error ? err.message : String(err);
-}
-
-// The probes' reading is core's, so a caller sending it is told where it actually comes from, or the
-// next caller sends it again under a different spelling.
-export const MACHINE_ONLY_KEYS = [
-  'health',
-  'identity',
-  'verdict',
-  'verdictReason',
-  'readings',
-] as const;
-
-export function refuseMachineKeys(body: Record<string, unknown>): void {
-  const sent = MACHINE_ONLY_KEYS.filter((k) => k in body);
-  if (sent.length === 0) return;
-  throw new RefusalError(
-    sent.map((k) => ({
-      code: 'RELEASE_VERDICT_NOT_YOURS',
-      path: `/${k}`,
-      detail: `\`${k}\` is core's reading and not yours to send. Core takes it from this project's declared probes at the moment you record your account, and stores it beside it. Send \`account\`, and \`providerRef\` for the provider's own handle on what you did.`,
-    })),
-    'RELEASE_REFUSED',
-  );
 }

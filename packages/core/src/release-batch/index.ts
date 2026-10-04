@@ -17,29 +17,10 @@ export {
 } from './coolify-controls.js';
 export { registerDeployWorker } from './deploy-worker.js';
 export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job.js';
-export {
-  clearProjectReleaseHolds,
-  clearReleaseHolds,
-  clearStaleReleaseHolds,
-  criteriaHold,
-  criteriaUnreadableHold,
-  cutFailedHold,
-  gateUnreadableHold,
-  NO_ACTOR_HOLD,
-  NO_RELEASE_GATE_HOLD,
-  queuedBehindHold,
-  type ReleaseHold,
-  type ReleaseHoldTally,
-  readReleaseHolds,
-  refusalHold,
-  runtimeUnroutedHold,
-  targetUndeclaredHold,
-  writeReleaseHolds,
-} from './hold.js';
+export type { ReleaseHold } from './hold.js';
 export { provideReleaseBatchPorts } from './ports.js';
 export { loadReleaseRoster } from './queries.js';
 export { bindingReachesProduction, confirmPendingProdDeploy } from './release-coolify.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export { createReleaseBatch } from './service.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';
-export { reportedCommit } from './verify.js';

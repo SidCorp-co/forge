@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
+import { coolifyIntegration } from '../integrations/coolify/index.js';
 import {
   enqueueOutboundDispatch,
   findDeliveryByRequestId,
@@ -19,6 +20,7 @@ import {
   setCurrentStep,
 } from '../pipeline/index.js';
 import { type DeployMap, readDeployMap } from '../project-config/index.js';
+import { releaseBatchPorts } from './ports.js';
 import { productionDeploysOnLand } from './production-trigger.js';
 import {
   type DeployLockIntent,
@@ -29,6 +31,9 @@ import {
   targetLabelOf,
 } from './release-coolify-hold.js';
 
+/** The provider these bindings belong to, as the adapter's own declaration names it (ADR 0006). */
+const COOLIFY = coolifyIntegration.provider;
+
 /**
  * Substep markers stamped onto pipelineRuns.currentStep so the UI / WS
  * observers can render the deploy state without a state-machine change.
@@ -38,8 +43,8 @@ import {
 /** Re-exported so this module's existing callers and their mocks keep one path. */
 export { productionDeploysOnLand };
 
-export const RELEASE_DEPLOY_PENDING = 'release.deploy.pending_human';
-export const RELEASE_DEPLOY_SKIPPED = 'release.deploy.skipped';
+const RELEASE_DEPLOY_PENDING = 'release.deploy.pending_human';
+const RELEASE_DEPLOY_SKIPPED = 'release.deploy.skipped';
 
 export interface DispatchOutcome {
   dispatched: boolean;
@@ -78,7 +83,7 @@ export async function bindingReachesProduction(
   projectId: string,
   binding: { id: string; config: unknown },
 ): Promise<boolean> {
-  const pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
+  const pairs = await listActiveDeployBindingsForProvider(projectId, COOLIFY);
   return reachesProductionOf(await readDeployMap(projectId), pairs)(binding);
 }
 
@@ -150,7 +155,7 @@ export async function tryDispatchCoolifyRelease(args: {
   const { projectId, issueId, runId, integrationId, allowLive = true } = args;
   const takeEnvironmentLock = args.takeEnvironmentLock === true;
   await warnIfRunAlreadyTerminal(runId, issueId);
-  const allPairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
+  const allPairs = await listActiveDeployBindingsForProvider(projectId, COOLIFY);
   const map = await readDeployMap(projectId);
   const reachesLive = reachesProductionOf(map, allPairs);
   const envOf = (binding: { id: string }) => map.environments.get(binding.id)?.name ?? null;
@@ -283,7 +288,7 @@ export async function dispatchCoolifyDeployDirect(args: {
   integrationId: string;
 }): Promise<DispatchOutcome> {
   const { projectId, integrationId } = args;
-  const pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
+  const pairs = await listActiveDeployBindingsForProvider(projectId, COOLIFY);
   const pair = pairs.find((p) => p.binding.id === integrationId);
   if (!pair) {
     return {
@@ -361,13 +366,10 @@ async function markPendingHumanConfirm(input: {
     confirmedAt: null,
     ...(input.lock ? { lock: input.lock } : {}),
   };
-  await db
-    .update(pipelineRuns)
-    .set({
-      metadata: { ...current, [GATE_METADATA_KEY]: gates },
-      updatedAt: new Date(),
-    })
-    .where(eq(pipelineRuns.id, input.runId));
+  await releaseBatchPorts().writeRunMetadata(input.runId, {
+    merge: { [GATE_METADATA_KEY]: gates },
+    touch: true,
+  });
 
   await setCurrentStep(input.runId, RELEASE_DEPLOY_PENDING);
 
@@ -411,7 +413,7 @@ async function getProdGateState(bindingId: string): Promise<ProdGateState | null
   return null;
 }
 
-export interface ConfirmProdResult {
+interface ConfirmProdResult {
   confirmed: boolean;
   runId: string | null;
   /** The binding id the confirmation targeted (== old project_integration id). */
@@ -460,10 +462,10 @@ export async function confirmPendingProdDeploy(
       confirmedAt: new Date().toISOString(),
       ...(confirmedByUserId ? { confirmedByUserId } : {}),
     };
-    await db
-      .update(pipelineRuns)
-      .set({ metadata: { ...md, [GATE_METADATA_KEY]: gates }, updatedAt: new Date() })
-      .where(eq(pipelineRuns.id, run.id));
+    await releaseBatchPorts().writeRunMetadata(run.id, {
+      merge: { [GATE_METADATA_KEY]: gates },
+      touch: true,
+    });
 
     await setCurrentStep(run.id, RELEASE_DEPLOY_IN_FLIGHT_STEP);
 
