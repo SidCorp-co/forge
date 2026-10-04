@@ -5,11 +5,12 @@
 
 import { EmptyState, ErrorState, PageTitle, ProjectLoader } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useModuleRollup } from "../hooks";
+import { useCodeTrace, useModuleRollup } from "../hooks";
 import { ModuleLevel } from "./module-level";
 
 export function ModulesScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const q = useModuleRollup(projectId);
+  const trace = useCodeTrace().data;
   const title = <PageTitle>Modules</PageTitle>;
 
   if (q.isLoading) {
@@ -43,8 +44,13 @@ export function ModulesScreen({ projectId, slug }: { projectId: string; slug: st
           data={q.data}
           scope={null}
           toolbar={
-            <p className="border-b border-line-subtle px-5 py-2.5 text-right text-12 text-subtle max-md:px-3" title="Open issues in no module are not counted in any row">
-              Open issues in no module {q.data.unassigned.open}
+            <p className="flex justify-end gap-5 border-b border-line-subtle px-5 py-2.5 text-12 text-subtle max-md:px-3">
+              {trace ? (
+                <span data-testid="modules-untraced" title={trace.units.filter((u) => u.serves.length === 0).map((u) => `${u.scope}:${u.unit}`).join(", ") || "Every unit serves a requirement or workflow step"}>
+                  Code units untraced {trace.untraced} of {trace.total}
+                </span>
+              ) : null}
+              <span title="Open issues in no module are not counted in any row">Open issues in no module {q.data.unassigned.open}</span>
             </p>
           }
         />

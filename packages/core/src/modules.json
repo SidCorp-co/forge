@@ -1,5 +1,5 @@
 {
-  "$comment": "Pattern v2 (docs/conventions/domain-entities.md, ADR 0008): every directory under packages/core/src is exactly one kind and sits in one business context, and every table has exactly one owning module, the only one that writes it. A read model lists under `reads` the owners' tables or views it SELECTs, and writes none. A nested path (integrations/<port>) is a module of its own. `contexts` lists the contexts in dependency order: a module imports only its own context or one listed before it, a door excepted. Each context's label is its root module label on the Forge project. scripts/check-module-boundaries.mjs generates its dependency-cruiser rules from this file, and scripts/check-module-shape.mjs reads it for the declaration checks and the semantic rules.",
+  "$comment": "Pattern v2 (docs/conventions/domain-entities.md, ADR 0008): every directory under packages/core/src is exactly one kind and sits in one business context, and every table has exactly one owning module, the only one that writes it. A read model lists under `reads` the owners' tables or views it SELECTs, and writes none. A nested path (integrations/<port>) is a module of its own. `contexts` lists the contexts in dependency order: a module imports only its own context or one listed before it, a door excepted. Each context's label is its root module label on the Forge project. scripts/check-module-boundaries.mjs generates its dependency-cruiser rules from this file, and scripts/check-module-shape.mjs reads it for the declaration checks and the semantic rules. Every module, every web-v2 feature directory (`web`) and every runner crate (`runner`) lists under `serves` the requirements (REQ-<n>) and workflow steps (<workflow>#<step>) it exists for, or `via:<module>` for code that serves only through a module that serves one directly; scripts/check-module-shape.mjs checks them against .forge/design-index.json.",
   "contexts": [
     {
       "name": "platform",
@@ -53,7 +53,10 @@
   "modules": {
     "(root)": {
       "kind": "door",
-      "context": "platform"
+      "context": "platform",
+      "serves": [
+        "core-components#door-rest"
+      ]
     },
     "admin": {
       "kind": "read-model",
@@ -75,17 +78,30 @@
         "schedules",
         "usageRecords",
         "users"
+      ],
+      "serves": [
+        "REQ-22"
       ]
     },
     "admin-thresholds": {
       "kind": "domain",
-      "context": "operations"
+      "context": "operations",
+      "serves": [
+        "REQ-22"
+      ]
     },
     "agent-reports": {
       "kind": "domain",
       "context": "execution",
       "owns": [
         "agentReports"
+      ],
+      "serves": [
+        "REQ-16",
+        "automation#report",
+        "automation#triage",
+        "automation#promote",
+        "REQ-7"
       ]
     },
     "agent-sessions": {
@@ -97,17 +113,29 @@
         "agentSessions",
         "sessionAttachments",
         "sessionInbox"
+      ],
+      "serves": [
+        "REQ-15",
+        "agent-run-standing#handed_back",
+        "issue-delivery#ev-run-ended",
+        "personal-data-flow#ds-transcripts"
       ]
     },
     "api-contract": {
       "kind": "door",
-      "context": "platform"
+      "context": "platform",
+      "serves": [
+        "core-components#door-rest"
+      ]
     },
     "app-config": {
       "kind": "domain",
       "context": "project-config",
       "owns": [
         "appConfig"
+      ],
+      "serves": [
+        "REQ-19"
       ]
     },
     "assistant": {
@@ -117,6 +145,14 @@
         "assistantSpeakerLinks",
         "conversationPins",
         "rocketchatQuestionDeliveries"
+      ],
+      "serves": [
+        "REQ-8",
+        "REQ-10",
+        "project-onboarding#card",
+        "project-onboarding#req-case",
+        "suggestion-lifecycle#start",
+        "personal-data-flow#pr-assistant"
       ]
     },
     "auth": {
@@ -127,6 +163,11 @@
         "oauthAccounts",
         "refreshTokens",
         "users"
+      ],
+      "serves": [
+        "personal-data-flow#pr-signin",
+        "personal-data-flow#ds-users",
+        "REQ-27"
       ]
     },
     "automation": {
@@ -141,15 +182,28 @@
         "projects",
         "scheduleRuns",
         "schedules"
+      ],
+      "serves": [
+        "REQ-16",
+        "automation"
       ]
     },
     "body": {
       "kind": "platform",
-      "context": "platform"
+      "context": "platform",
+      "serves": [
+        "via:comments",
+        "via:issues",
+        "via:memory"
+      ]
     },
     "branches": {
       "kind": "platform",
-      "context": "platform"
+      "context": "platform",
+      "serves": [
+        "via:projects",
+        "via:prompt"
+      ]
     },
     "comments": {
       "kind": "domain",
@@ -159,15 +213,45 @@
         "commentEvents",
         "commentMentions",
         "comments"
+      ],
+      "serves": [
+        "workflow-step-health#in-node-decisions",
+        "design-reconciliation#decision",
+        "personal-data-flow#ds-issues",
+        "personal-data-flow#pr-chat-out"
       ]
     },
     "config": {
       "kind": "platform",
-      "context": "platform"
+      "context": "platform",
+      "serves": [
+        "via:agent-reports",
+        "via:agent-sessions",
+        "via:assistant",
+        "via:auth",
+        "via:comments",
+        "via:credentials",
+        "via:devices",
+        "via:integrations",
+        "via:integrations/embeddings",
+        "via:integrations/identity",
+        "via:integrations/llm",
+        "via:integrations/mail",
+        "via:issues",
+        "via:knowledge",
+        "via:memory",
+        "via:orgs",
+        "via:pat",
+        "via:projects",
+        "via:uploads"
+      ]
     },
     "content-language": {
       "kind": "domain",
-      "context": "design"
+      "context": "design",
+      "serves": [
+        "REQ-13"
+      ]
     },
     "conversations": {
       "kind": "domain",
@@ -180,6 +264,12 @@
         "conversationPassages",
         "conversationWindows",
         "conversations"
+      ],
+      "serves": [
+        "project-onboarding#card",
+        "personal-data-flow#pr-chat",
+        "personal-data-flow#ds-conversations",
+        "REQ-19"
       ]
     },
     "credentials": {
@@ -188,6 +278,11 @@
       "owns": [
         "mcpAuditLog",
         "personalAccessTokens"
+      ],
+      "serves": [
+        "personal-data-flow#ds-vault",
+        "personal-data-flow#pr-provision",
+        "github-merge-sequence#m-verify"
       ]
     },
     "db": {
@@ -195,6 +290,60 @@
       "context": "platform",
       "owns": [
         "backfillMarkers"
+      ],
+      "serves": [
+        "via:agent-reports",
+        "via:agent-sessions",
+        "via:assistant",
+        "via:auth",
+        "via:automation",
+        "via:comments",
+        "via:credentials",
+        "via:development",
+        "via:devices",
+        "via:ecosystem",
+        "via:embeddings",
+        "via:error-intake",
+        "via:feedback",
+        "via:git",
+        "via:integration-door",
+        "via:integrations",
+        "via:integrations/github",
+        "via:integrations/gitlab",
+        "via:integrations/llm",
+        "via:integrations/source-host",
+        "via:issues",
+        "via:jobs",
+        "via:knowledge",
+        "via:labels",
+        "via:lifecycle",
+        "via:masters",
+        "via:me",
+        "via:memory",
+        "via:mockups",
+        "via:notifications",
+        "via:onboarding",
+        "via:orgs",
+        "via:outbox",
+        "via:pat",
+        "via:permissions",
+        "via:pipeline",
+        "via:project-config",
+        "via:projects",
+        "via:prompt",
+        "via:questionnaires",
+        "via:questions",
+        "via:release-batch",
+        "via:requirements",
+        "via:runners",
+        "via:runs",
+        "via:schedules",
+        "via:skills",
+        "via:suggestions",
+        "via:uploads",
+        "via:webhooks",
+        "via:workflows",
+        "via:ws"
       ]
     },
     "development": {
@@ -215,6 +364,10 @@
         "projects",
         "releaseApprovals",
         "requirements"
+      ],
+      "serves": [
+        "REQ-11",
+        "REQ-14"
       ]
     },
     "devices": {
@@ -225,6 +378,13 @@
         "deviceRunLedger",
         "devices",
         "pairingCodes"
+      ],
+      "serves": [
+        "issue-delivery#box",
+        "issue-delivery#rule-dispatch",
+        "agent-run-standing#master",
+        "personal-data-flow#ds-box-creds",
+        "personal-data-flow#pr-provision"
       ]
     },
     "ecosystem": {
@@ -249,6 +409,13 @@
         "issueContractWaits",
         "projectInterfaceRevisions",
         "projectInterfaces"
+      ],
+      "serves": [
+        "REQ-5",
+        "REQ-9",
+        "requirement-to-delivery#contract-first",
+        "requirement-to-delivery#release-gate",
+        "feedback-triage#breaking"
       ]
     },
     "embeddings": {
@@ -256,11 +423,20 @@
       "context": "knowledge",
       "owns": [
         "itemEmbeddings"
+      ],
+      "serves": [
+        "feedback-triage#vectors",
+        "feedback-triage#dedup",
+        "requirement-to-delivery#similar"
       ]
     },
     "error-intake": {
       "kind": "domain",
-      "context": "work"
+      "context": "work",
+      "serves": [
+        "personal-data-flow#src-sentry",
+        "automation#inline"
+      ]
     },
     "feedback": {
       "kind": "domain",
@@ -270,17 +446,30 @@
         "feedbackAttachments",
         "feedbackCases",
         "feedbackDecisions"
+      ],
+      "serves": [
+        "REQ-7",
+        "feedback-lifecycle",
+        "feedback-triage#intake",
+        "requirement-to-delivery#fb-filed"
       ]
     },
     "git": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "github-merge-sequence#m-host-merge",
+        "personal-data-flow#pr-provision"
+      ]
     },
     "guides": {
       "kind": "domain",
       "context": "knowledge",
       "owns": [
         "integrationGuides"
+      ],
+      "serves": [
+        "REQ-23"
       ]
     },
     "health": {
@@ -296,19 +485,31 @@
         "projects",
         "runners",
         "users"
+      ],
+      "serves": [
+        "REQ-22"
       ]
     },
     "improvement-messages": {
       "kind": "domain",
-      "context": "design"
+      "context": "design",
+      "serves": []
     },
     "install": {
       "kind": "door",
-      "context": "access"
+      "context": "access",
+      "serves": [
+        "REQ-25"
+      ]
     },
     "integration-door": {
       "kind": "door",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "github-merge-sequence#m-webhook",
+        "github-merge-sequence#m-verify",
+        "issue-delivery#github"
+      ]
     },
     "integrations": {
       "kind": "adapter",
@@ -316,72 +517,137 @@
       "owns": [
         "integrationConnections",
         "integrationDeliveries"
+      ],
+      "serves": [
+        "github-merge-sequence#p-integrations",
+        "github-merge-sequence#m-delivery",
+        "personal-data-flow#ds-vault"
       ]
     },
     "integrations/autoflow": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "REQ-21"
+      ]
     },
     "integrations/coolify": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "issue-delivery#task-release",
+        "issue-delivery#act-release"
+      ]
     },
     "integrations/deploy": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "issue-delivery#task-release"
+      ]
     },
     "integrations/embeddings": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "personal-data-flow#ext-embeddings",
+        "feedback-triage#vectors"
+      ]
     },
     "integrations/epodsystem": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "REQ-21"
+      ]
     },
     "integrations/github": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "github-merge-sequence#p-github",
+        "github-merge-sequence#m-project",
+        "personal-data-flow#src-identity"
+      ]
     },
     "integrations/gitlab": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "github-merge-sequence#p-github"
+      ]
     },
     "integrations/google": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "personal-data-flow#src-identity",
+        "REQ-27"
+      ]
     },
     "integrations/identity": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "personal-data-flow#src-identity",
+        "REQ-27"
+      ]
     },
     "integrations/llm": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "personal-data-flow#ext-llm",
+        "personal-data-flow#pr-assistant",
+        "REQ-19"
+      ]
     },
     "integrations/mail": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "personal-data-flow#pr-mail",
+        "personal-data-flow#ext-smtp",
+        "REQ-27"
+      ]
     },
     "integrations/published-releases": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "REQ-25"
+      ]
     },
     "integrations/rocketchat": {
       "kind": "adapter",
       "context": "adapters",
       "owns": [
         "rocketchatThreads"
+      ],
+      "serves": [
+        "personal-data-flow#src-rocketchat",
+        "personal-data-flow#pr-chat-out",
+        "REQ-20"
       ]
     },
     "integrations/sentry": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "personal-data-flow#src-sentry",
+        "personal-data-flow#ext-sentry",
+        "automation#inline"
+      ]
     },
     "integrations/source-host": {
       "kind": "adapter",
       "context": "adapters",
       "owns": [
         "repoPullRequests"
+      ],
+      "serves": [
+        "github-merge-sequence#m-host-merge",
+        "issue-delivery#github"
       ]
     },
     "issues": {
@@ -401,6 +667,15 @@
         "issueWorkState",
         "issues",
         "projectIssCounters"
+      ],
+      "serves": [
+        "REQ-2",
+        "REQ-11",
+        "REQ-15",
+        "issue-lifecycle",
+        "issue-delivery#issue",
+        "issue-delivery#task-lease",
+        "github-merge-sequence#m-stamp"
       ]
     },
     "jobs": {
@@ -410,6 +685,13 @@
         "jobEvents",
         "jobs",
         "promptBlobs"
+      ],
+      "serves": [
+        "REQ-15",
+        "agent-run-standing#claimed",
+        "agent-run-standing#running",
+        "issue-delivery#case-release",
+        "project-onboarding#analyse"
       ]
     },
     "knowledge": {
@@ -417,6 +699,12 @@
       "context": "knowledge",
       "owns": [
         "knowledgeEntries"
+      ],
+      "serves": [
+        "REQ-13",
+        "project-onboarding#mapped",
+        "project-onboarding#code-map",
+        "personal-data-flow#ds-memory"
       ]
     },
     "knowledge-edges": {
@@ -424,6 +712,9 @@
       "context": "knowledge",
       "owns": [
         "knowledgeEdges"
+      ],
+      "serves": [
+        "REQ-13"
       ]
     },
     "labels": {
@@ -431,11 +722,67 @@
       "context": "work",
       "owns": [
         "labels"
+      ],
+      "serves": [
+        "REQ-11"
       ]
     },
     "lib": {
       "kind": "platform",
-      "context": "platform"
+      "context": "platform",
+      "serves": [
+        "via:agent-reports",
+        "via:agent-sessions",
+        "via:assistant",
+        "via:auth",
+        "via:automation",
+        "via:comments",
+        "via:content-language",
+        "via:credentials",
+        "via:development",
+        "via:devices",
+        "via:ecosystem",
+        "via:embeddings",
+        "via:feedback",
+        "via:git",
+        "via:integration-door",
+        "via:integrations/embeddings",
+        "via:integrations/llm",
+        "via:integrations/sentry",
+        "via:issues",
+        "via:jobs",
+        "via:knowledge",
+        "via:labels",
+        "via:lifecycle",
+        "via:masters",
+        "via:me",
+        "via:memory",
+        "via:mockups",
+        "via:notifications",
+        "via:observability",
+        "via:onboarding",
+        "via:orgs",
+        "via:outbox",
+        "via:pat",
+        "via:permissions",
+        "via:pipeline",
+        "via:project-config",
+        "via:projects",
+        "via:prompt",
+        "via:questionnaires",
+        "via:questions",
+        "via:release-batch",
+        "via:requirements",
+        "via:runners",
+        "via:runs",
+        "via:schedules",
+        "via:skills",
+        "via:suggestions",
+        "via:uploads",
+        "via:webhooks",
+        "via:workflows",
+        "via:ws"
+      ]
     },
     "lifecycle": {
       "kind": "kernel",
@@ -443,6 +790,11 @@
       "owns": [
         "kernelTransitions",
         "unauditedTransitions"
+      ],
+      "serves": [
+        "issue-lifecycle",
+        "requirement-lifecycle",
+        "issue-delivery#rule-close"
       ]
     },
     "masters": {
@@ -450,11 +802,20 @@
       "context": "execution",
       "owns": [
         "masterPasses"
+      ],
+      "serves": [
+        "REQ-15",
+        "agent-run-standing#master",
+        "issue-delivery#rule-dispatch"
       ]
     },
     "mcp": {
       "kind": "door",
-      "context": "platform"
+      "context": "platform",
+      "serves": [
+        "personal-data-flow#src-mcp",
+        "personal-data-flow#pr-api"
+      ]
     },
     "me": {
       "kind": "read-model",
@@ -474,6 +835,11 @@
         "pipelineRuns",
         "projects",
         "runners"
+      ],
+      "serves": [
+        "REQ-11",
+        "REQ-16",
+        "automation#needs_you"
       ]
     },
     "memory": {
@@ -484,11 +850,18 @@
         "memoryChunks",
         "memoryRevisions",
         "retrievalAnalytics"
+      ],
+      "serves": [
+        "personal-data-flow#pr-memory",
+        "personal-data-flow#ds-memory"
       ]
     },
     "messaging": {
       "kind": "platform",
-      "context": "platform"
+      "context": "platform",
+      "serves": [
+        "personal-data-flow#pr-chat-out"
+      ]
     },
     "metrics": {
       "kind": "read-model",
@@ -502,17 +875,73 @@
         "queueSnapshots",
         "runnerEvents",
         "usageRecords"
+      ],
+      "serves": [
+        "REQ-24"
       ]
     },
     "middleware": {
       "kind": "platform",
-      "context": "platform"
+      "context": "platform",
+      "serves": [
+        "via:agent-reports",
+        "via:agent-sessions",
+        "via:assistant",
+        "via:auth",
+        "via:automation",
+        "via:comments",
+        "via:content-language",
+        "via:credentials",
+        "via:development",
+        "via:devices",
+        "via:ecosystem",
+        "via:feedback",
+        "via:git",
+        "via:integration-door",
+        "via:integrations",
+        "via:issues",
+        "via:jobs",
+        "via:knowledge",
+        "via:labels",
+        "via:masters",
+        "via:me",
+        "via:memory",
+        "via:mockups",
+        "via:notifications",
+        "via:onboarding",
+        "via:orgs",
+        "via:outbox",
+        "via:pat",
+        "via:permissions",
+        "via:pipeline",
+        "via:project-config",
+        "via:projects",
+        "via:prompt",
+        "via:questionnaires",
+        "via:questions",
+        "via:release-batch",
+        "via:requirements",
+        "via:runners",
+        "via:runs",
+        "via:schedules",
+        "via:skills",
+        "via:suggestions",
+        "via:uploads",
+        "via:webhooks",
+        "via:workflows",
+        "via:ws"
+      ]
     },
     "mockups": {
       "kind": "domain",
       "context": "design",
       "owns": [
         "mockups"
+      ],
+      "serves": [
+        "REQ-12",
+        "REQ-17",
+        "personal-data-flow#pr-api"
       ]
     },
     "notifications": {
@@ -522,17 +951,31 @@
         "notificationDeliveries",
         "notificationDeliveryMembers",
         "notifications"
+      ],
+      "serves": [
+        "REQ-11",
+        "REQ-14",
+        "personal-data-flow#pr-chat-out"
       ]
     },
     "observability": {
       "kind": "platform",
-      "context": "platform"
+      "context": "platform",
+      "serves": [
+        "feedback-triage#scrubber",
+        "personal-data-flow#pr-ingest",
+        "personal-data-flow#pr-errors"
+      ]
     },
     "onboarding": {
       "kind": "domain",
       "context": "knowledge",
       "owns": [
         "onboardings"
+      ],
+      "serves": [
+        "REQ-10",
+        "project-onboarding"
       ]
     },
     "orgs": {
@@ -543,6 +986,10 @@
         "orgInvitations",
         "organizations",
         "workspaceSshKeys"
+      ],
+      "serves": [
+        "personal-data-flow#ds-users",
+        "REQ-27"
       ]
     },
     "outbox": {
@@ -550,6 +997,11 @@
       "context": "platform",
       "owns": [
         "pipelineOutbox"
+      ],
+      "serves": [
+        "issue-delivery#core",
+        "issue-delivery#ev-transition",
+        "automation#file"
       ]
     },
     "pat": {
@@ -557,6 +1009,11 @@
       "context": "platform",
       "owns": [
         "patFenceChanges"
+      ],
+      "serves": [
+        "personal-data-flow#src-mcp",
+        "personal-data-flow#ds-audit",
+        "REQ-27"
       ]
     },
     "permissions": {
@@ -565,6 +1022,11 @@
       "owns": [
         "organizationMembers",
         "projectMembers"
+      ],
+      "serves": [
+        "issue-lifecycle#start",
+        "requirement-lifecycle#agreed",
+        "project-onboarding#approve-guard"
       ]
     },
     "pipeline": {
@@ -576,15 +1038,25 @@
         "phaseJournal",
         "pipelineRuns",
         "queueSnapshots"
+      ],
+      "serves": [
+        "REQ-1",
+        "agent-run-standing#done",
+        "issue-delivery#act-build",
+        "workflow-step-health#in-builds"
       ]
     },
     "plugins": {
       "kind": "platform",
-      "context": "platform"
+      "context": "platform",
+      "serves": [
+        "REQ-26"
+      ]
     },
     "pm": {
       "kind": "domain",
-      "context": "work"
+      "context": "work",
+      "serves": []
     },
     "preferences": {
       "kind": "domain",
@@ -592,6 +1064,9 @@
       "owns": [
         "preferenceChanges",
         "userPreferences"
+      ],
+      "serves": [
+        "REQ-19"
       ]
     },
     "project-config": {
@@ -604,6 +1079,11 @@
         "projectPolicies",
         "projectSecrets",
         "projectTestingProfiles"
+      ],
+      "serves": [
+        "issue-delivery#policy",
+        "workflow-step-health#in-threshold",
+        "REQ-13"
       ]
     },
     "projects": {
@@ -614,17 +1094,31 @@
         "projectInvitations",
         "projectMasterCharters",
         "projects"
+      ],
+      "serves": [
+        "issue-delivery#issue",
+        "project-onboarding#created"
       ]
     },
     "prompt": {
       "kind": "domain",
-      "context": "execution"
+      "context": "execution",
+      "serves": [
+        "REQ-1",
+        "REQ-13"
+      ]
     },
     "questionnaires": {
       "kind": "domain",
       "context": "work",
       "owns": [
         "questionnaireBatches"
+      ],
+      "serves": [
+        "REQ-10",
+        "project-onboarding#ask",
+        "project-onboarding#submitted",
+        "project-onboarding#card"
       ]
     },
     "questions": {
@@ -633,11 +1127,24 @@
       "owns": [
         "agentQuestions",
         "questionWaiters"
+      ],
+      "serves": [
+        "REQ-2",
+        "agent-run-standing#waiting_person",
+        "feedback-triage#ask"
       ]
     },
     "queue": {
       "kind": "platform",
-      "context": "platform"
+      "context": "platform",
+      "serves": [
+        "via:ecosystem",
+        "via:integrations",
+        "via:memory",
+        "via:outbox",
+        "via:release-batch",
+        "via:schedules"
+      ]
     },
     "release-batch": {
       "kind": "domain",
@@ -646,6 +1153,12 @@
         "releaseApprovals",
         "releaseAttempts",
         "releaseHolds"
+      ],
+      "serves": [
+        "issue-delivery#case-release",
+        "issue-delivery#task-release",
+        "issue-delivery#act-release",
+        "requirement-to-delivery#release-requested"
       ]
     },
     "requirements": {
@@ -662,6 +1175,13 @@
         "requirementRevisions",
         "requirementWorkflows",
         "requirements"
+      ],
+      "serves": [
+        "REQ-4",
+        "REQ-1",
+        "requirement-lifecycle",
+        "requirement-to-delivery#req-head",
+        "requirement-to-delivery#agreed"
       ]
     },
     "runners": {
@@ -670,6 +1190,10 @@
       "owns": [
         "runnerEvents",
         "runners"
+      ],
+      "serves": [
+        "issue-delivery#box",
+        "REQ-15"
       ]
     },
     "runs": {
@@ -692,6 +1216,11 @@
         "pipelineRuns",
         "releaseApprovals",
         "releaseAttempts"
+      ],
+      "serves": [
+        "REQ-15",
+        "agent-run-standing#queued",
+        "agent-run-standing#stuck"
       ]
     },
     "schedules": {
@@ -700,15 +1229,27 @@
       "owns": [
         "scheduleRuns",
         "schedules"
+      ],
+      "serves": [
+        "REQ-16",
+        "automation#declare",
+        "automation#tick",
+        "automation#route"
       ]
     },
     "security": {
       "kind": "platform",
-      "context": "platform"
+      "context": "platform",
+      "serves": [
+        "via:skills"
+      ]
     },
     "skill-facts": {
       "kind": "domain",
-      "context": "execution"
+      "context": "execution",
+      "serves": [
+        "REQ-13"
+      ]
     },
     "skills": {
       "kind": "domain",
@@ -716,17 +1257,30 @@
       "owns": [
         "skillActivityEvents",
         "skills"
+      ],
+      "serves": [
+        "REQ-1",
+        "REQ-13"
       ]
     },
     "storage": {
       "kind": "adapter",
-      "context": "adapters"
+      "context": "adapters",
+      "serves": [
+        "personal-data-flow#ds-uploads"
+      ]
     },
     "suggestions": {
       "kind": "domain",
       "context": "design",
       "owns": [
         "suggestions"
+      ],
+      "serves": [
+        "REQ-8",
+        "suggestion-lifecycle",
+        "requirement-to-delivery#approve",
+        "feedback-triage#suggest"
       ]
     },
     "tasks": {
@@ -734,7 +1288,8 @@
       "context": "work",
       "owns": [
         "tasks"
-      ]
+      ],
+      "serves": []
     },
     "uploads": {
       "kind": "domain",
@@ -742,6 +1297,10 @@
       "owns": [
         "downloadTickets",
         "uploadTickets"
+      ],
+      "serves": [
+        "personal-data-flow#ds-uploads",
+        "feedback-triage#ask"
       ]
     },
     "usage-records": {
@@ -749,11 +1308,18 @@
       "context": "execution",
       "owns": [
         "usageRecords"
+      ],
+      "serves": [
+        "REQ-24"
       ]
     },
     "webhooks": {
       "kind": "door",
-      "context": "ecosystem"
+      "context": "ecosystem",
+      "serves": [
+        "github-merge-sequence#m-webhook",
+        "github-merge-sequence#m-verify"
+      ]
     },
     "workflows": {
       "kind": "domain",
@@ -763,11 +1329,304 @@
         "projectWorkflowObservations",
         "projectWorkflows",
         "workflowBuilds"
+      ],
+      "serves": [
+        "REQ-17",
+        "REQ-18",
+        "workflow-step-health",
+        "design-reconciliation"
       ]
     },
     "ws": {
       "kind": "door",
-      "context": "platform"
+      "context": "platform",
+      "serves": [
+        "REQ-11"
+      ]
+    }
+  },
+  "web": {
+    "agent-accounts": {
+      "serves": [
+        "REQ-27"
+      ]
+    },
+    "agent-reports": {
+      "serves": [
+        "REQ-16"
+      ]
+    },
+    "agents": {
+      "serves": [
+        "REQ-15"
+      ]
+    },
+    "attention": {
+      "serves": [
+        "REQ-11"
+      ]
+    },
+    "auth": {
+      "serves": [
+        "personal-data-flow#pr-signin"
+      ]
+    },
+    "automation": {
+      "serves": [
+        "REQ-16",
+        "automation#screen"
+      ]
+    },
+    "chat": {
+      "serves": [
+        "project-onboarding#card",
+        "REQ-19"
+      ]
+    },
+    "comments": {
+      "serves": [
+        "REQ-3"
+      ]
+    },
+    "content-language": {
+      "serves": [
+        "REQ-13"
+      ]
+    },
+    "contracts": {
+      "serves": [
+        "REQ-5",
+        "REQ-11"
+      ]
+    },
+    "conversations": {
+      "serves": [
+        "project-onboarding#card",
+        "REQ-19"
+      ]
+    },
+    "development": {
+      "serves": [
+        "REQ-11",
+        "REQ-14"
+      ]
+    },
+    "docs": {
+      "serves": [
+        "REQ-23"
+      ]
+    },
+    "ecosystem": {
+      "serves": [
+        "REQ-5",
+        "REQ-9"
+      ]
+    },
+    "feedback": {
+      "serves": [
+        "REQ-7",
+        "feedback-triage"
+      ]
+    },
+    "guides": {
+      "serves": [
+        "REQ-23"
+      ]
+    },
+    "improvement-messages": {
+      "serves": []
+    },
+    "integrations": {
+      "serves": [
+        "github-merge-sequence#p-integrations"
+      ]
+    },
+    "issues": {
+      "serves": [
+        "REQ-11",
+        "REQ-2"
+      ]
+    },
+    "mockups": {
+      "serves": [
+        "REQ-12"
+      ]
+    },
+    "modules": {
+      "serves": [
+        "REQ-11"
+      ]
+    },
+    "needs-you": {
+      "serves": [
+        "REQ-11",
+        "REQ-16",
+        "automation#needs_you"
+      ]
+    },
+    "notifications": {
+      "serves": [
+        "REQ-11",
+        "REQ-14"
+      ]
+    },
+    "onboarding": {
+      "serves": [
+        "REQ-10",
+        "project-onboarding#running"
+      ]
+    },
+    "operator": {
+      "serves": [
+        "REQ-22"
+      ]
+    },
+    "orgs": {
+      "serves": [
+        "personal-data-flow#ds-users",
+        "REQ-27"
+      ]
+    },
+    "overview": {
+      "serves": [
+        "REQ-11"
+      ]
+    },
+    "pairing": {
+      "serves": [
+        "personal-data-flow#ds-box-creds",
+        "issue-delivery#box"
+      ]
+    },
+    "pipeline": {
+      "serves": [
+        "REQ-1",
+        "issue-delivery#act-build"
+      ]
+    },
+    "project-dashboard": {
+      "serves": [
+        "REQ-11",
+        "project-onboarding#running"
+      ]
+    },
+    "project-settings": {
+      "serves": [
+        "issue-delivery#policy"
+      ]
+    },
+    "projects": {
+      "serves": [
+        "project-onboarding#created"
+      ]
+    },
+    "questions": {
+      "serves": [
+        "REQ-2",
+        "agent-run-standing#waiting_person"
+      ]
+    },
+    "recent-changes": {
+      "serves": []
+    },
+    "releases": {
+      "serves": [
+        "REQ-11",
+        "REQ-14",
+        "issue-delivery#case-release"
+      ]
+    },
+    "requirements": {
+      "serves": [
+        "REQ-4",
+        "REQ-12"
+      ]
+    },
+    "resources": {
+      "serves": []
+    },
+    "runners": {
+      "serves": [
+        "REQ-15",
+        "issue-delivery#box"
+      ]
+    },
+    "schedules": {
+      "serves": [
+        "REQ-16"
+      ]
+    },
+    "session": {
+      "serves": [
+        "REQ-15",
+        "personal-data-flow#ds-transcripts"
+      ]
+    },
+    "sessions": {
+      "serves": [
+        "REQ-15",
+        "agent-run-standing"
+      ]
+    },
+    "settings": {
+      "serves": [
+        "REQ-27"
+      ]
+    },
+    "shell": {
+      "serves": [
+        "REQ-12"
+      ]
+    },
+    "skills": {
+      "serves": [
+        "REQ-13"
+      ]
+    },
+    "suggestions": {
+      "serves": [
+        "REQ-8"
+      ]
+    },
+    "version": {
+      "serves": [
+        "REQ-12"
+      ]
+    },
+    "whats-new": {
+      "serves": []
+    },
+    "workflows": {
+      "serves": [
+        "REQ-17",
+        "REQ-18",
+        "design-reconciliation#marked-canvas"
+      ]
+    }
+  },
+  "runner": {
+    "crates/forge-runner": {
+      "serves": [
+        "personal-data-flow#ds-box-creds"
+      ]
+    },
+    "crates/forge-runner-core": {
+      "serves": [
+        "REQ-15",
+        "agent-run-standing#master",
+        "issue-delivery#rule-dispatch",
+        "requirement-to-delivery#stalled",
+        "issue-delivery#rule-return",
+        "issue-delivery#rule-wedge",
+        "issue-delivery#ev-run-ended",
+        "agent-run-standing#handed_back",
+        "agent-run-standing#claimed",
+        "issue-delivery#task-release",
+        "project-onboarding#checkout",
+        "issue-delivery#act-build",
+        "design-reconciliation#build",
+        "personal-data-flow#ds-box-creds"
+      ]
     }
   }
 }
