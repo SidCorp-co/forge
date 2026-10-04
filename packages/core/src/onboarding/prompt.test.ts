@@ -7,7 +7,8 @@ const ctx: OnboardingPromptContext = {
   onboardingId: 'o1',
   conversationId: 'c1',
   sensitiveData: true,
-  hasRepository: false,
+  repository: null,
+  defaultBranch: null,
   roundsSent: 0,
 };
 
@@ -37,5 +38,12 @@ describe('onboarding prompt: draws the product, not the tooling that builds it',
     expect(analysePrompt({ ...ctx, sensitiveData: false })).toContain(
       "with the product's own trust boundaries",
     );
+  });
+
+  it('a project with a repository reads the fetched tree of its default branch, never the checkout as it stands', () => {
+    const text = analysePrompt({ ...ctx, repository: 'github.com/acme/app', defaultBranch: 'dev' });
+    expect(text).toContain('the tree at origin/dev, never the checkout as it stands');
+    expect(text).toContain('git worktree add --detach .claude/worktrees/onboarding-o1 origin/dev');
+    expect(analysePrompt(ctx)).toContain('it names no repository');
   });
 });
