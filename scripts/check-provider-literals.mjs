@@ -129,18 +129,17 @@ console.log(
 );
 if (egressScan.offenders.length > 0) {
   console.error(
-    `\ncheck-provider-literals: ${egressScan.offenders.length} external call(s) outside ` +
+    `\ncheck-provider-literals: ${egressScan.offenders.length} vendor SDK import(s) outside ` +
       `${egress.adapters}\n`,
   );
   for (const o of egressScan.offenders) {
-    const what = o.what === 'fetch' ? 'the global fetch' : `the vendor SDK '${o.what}'`;
-    console.error(`  ${o.path}:${o.line}  ${what}`);
+    console.error(`  ${o.path}:${o.line}  the vendor SDK '${o.what}'`);
   }
   console.error(
     '\nEvery external system is reached through one adapter under packages/core/src/integrations/\n' +
-      '(docs/adr/0006-every-external-system-is-reached-through-one-adapter-port.md). Move the call\n' +
+      '(docs/adr/0006-every-external-system-is-reached-through-one-adapter-port.md). Move the import\n' +
       "behind its port's typed function, or add a port; integrations/README.md lists them. A file\n" +
-      'that genuinely must call out itself is added to checkers["provider-literals"].egress.exceptions\n' +
+      'that genuinely must import the SDK itself is added to checkers["provider-literals"].egress.exceptions\n' +
       'in .forge/conformance.json WITH the sentence saying why. An entry with no reason is refused.\n',
   );
 }

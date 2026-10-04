@@ -13,7 +13,7 @@
 | Understand the system, and where it is going | [proposals/destination/](proposals/destination/) |
 | Know which CLI is mine — I write skills, or I write the daemon | [proposals/destination/plugin-core.html](proposals/destination/plugin-core.html) |
 | Know which surface answers which question | [proposals/destination/one-question-one-answer.md](proposals/destination/one-question-one-answer.md) |
-| Build a core module (its tables, routes and web module) the way every other one is built | [conventions/domain-entities.md](conventions/domain-entities.md) — the pattern, not a description: each rule names its reference code, `scripts/check-module-boundaries.mjs` blocks on its import rules, and `scripts/check-module-shape.mjs` reports the semantic ones |
+| Build a core module (its tables, routes and web module) the way every other one is built | [conventions/domain-entities.md](conventions/domain-entities.md) — the pattern, not a description: each rule names its reference code, `scripts/check-module-boundaries.mjs` blocks on its import rules, and `scripts/check-module-shape.mjs` on the semantic ones |
 
 ## Rules for this tree
 
