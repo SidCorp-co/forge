@@ -33,7 +33,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 };
 
 /** What a delivery names, read from the record's references by core, never from its text. */
-export const NOTIFICATION_SUBJECT_KINDS = ["issue", "project"] as const;
+const NOTIFICATION_SUBJECT_KINDS = ["issue", "project"] as const;
 export type NotificationSubjectKind =
 	(typeof NOTIFICATION_SUBJECT_KINDS)[number];
 
@@ -44,16 +44,16 @@ export interface NotificationSubject {
 	id: string;
 }
 
-export const NOTIFICATION_KINDS = ["signal", "condition", "task"] as const;
-export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+const NOTIFICATION_KINDS = ["signal", "condition", "task"] as const;
+type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
-export const NOTIFICATION_TIERS = ["page", "ticket", "log"] as const;
-export type NotificationTier = (typeof NOTIFICATION_TIERS)[number];
+const NOTIFICATION_TIERS = ["page", "ticket", "log"] as const;
+type NotificationTier = (typeof NOTIFICATION_TIERS)[number];
 
 export type NotificationSeverity = "info" | "success" | "warning" | "error";
-export type NotificationChannel = "bell" | "toast" | "browser";
+type NotificationChannel = "bell" | "toast" | "browser";
 
-export interface NotificationTypeContract {
+interface NotificationTypeContract {
 	/** Default severity; an emitter MAY override per-event (e.g.
 	 *  `issue_status_changed` derives severity from the `to` status). */
 	severity: NotificationSeverity;
@@ -72,7 +72,7 @@ export interface NotificationTypeContract {
  * The channel matrix (ISS-510). Browser is reserved for high-signal types so
  * the OS surface stays quiet; everything is still recorded in the bell.
  */
-export const NOTIFICATION_CONTRACT: Record<
+const NOTIFICATION_CONTRACT: Record<
 	NotificationType,
 	NotificationTypeContract
 > = {
@@ -158,23 +158,6 @@ export const NOTIFICATION_CONTRACT: Record<
 	},
 };
 
-export interface NotificationInhibitRule {
-	/** The firing type that suppresses. */
-	source: NotificationType;
-	/** The type that is suppressed while it does. */
-	target: NotificationType;
-	/**
-	 * What the two must share for the rule to apply. `project` is the only scope this
-	 * change needs: a wedge naming a project's runner pool suppresses that project's
-	 * stranded parks, because the parks are what the wedge is causing.
-	 */
-	scope: "project";
-}
-
-export const INHIBIT_RULES: readonly NotificationInhibitRule[] = [
-	{ source: "pipeline_wedge", target: "issue_stranded", scope: "project" },
-];
-
 /** Channels a type targets; defaults to bell-only for an unknown/legacy type. */
 export function channelsFor(type: string): NotificationChannel[] {
 	return NOTIFICATION_CONTRACT[type as NotificationType]?.channels ?? ["bell"];
@@ -183,14 +166,6 @@ export function channelsFor(type: string): NotificationChannel[] {
 /** Contract default severity; `info` for an unknown/legacy type. */
 export function defaultSeverityForType(type: string): NotificationSeverity {
 	return NOTIFICATION_CONTRACT[type as NotificationType]?.severity ?? "info";
-}
-
-/** Whether a type targets a given delivery channel. */
-export function targetsChannel(
-	type: string,
-	channel: NotificationChannel,
-): boolean {
-	return channelsFor(type).includes(channel);
 }
 
 export const NOTIFICATION_REFUSAL_CODES = [

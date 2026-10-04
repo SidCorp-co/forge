@@ -4,11 +4,6 @@
 
 import type { User } from './rows.js';
 
-export interface ListResponse<T> {
-  items: T[];
-  totalCount: number;
-}
-
 export interface MeResponse extends User {
   lastFreshAuthAt: string | null;
   hasPassword: boolean;
@@ -34,64 +29,8 @@ export interface RefreshResponse {
   token: string;
 }
 
-export interface MeRunnerAssignment {
-  projectId: string;
-  runnerId: string;
-  slug: string;
-  baseBranch: string | null;
-  repoPath: string | null;
-  branch: string | null;
-  status: string;
-  /** Prose: how to bring this repo's workspace to a usable state. */
-  workspaceSetup: string | null;
-  /** The `master-policy` projectFact: the owner's standing instruction for this
-   *  project's resident master, spliced into its standing brief (ISS-929). */
-  masterPolicy: string | null;
-  /** The project document's `source.git.repository` (`host/owner/name`), or null where none is declared. */
-  repository: string | null;
-  hostCredential: boolean;
-}
-
-export type MeRunnersResponse = MeRunnerAssignment[];
-
 // Returned by `POST /api/projects/:id/runners` and
 // `PATCH /api/projects/:id/runners/:runnerId`. Mirrors the runner row
 // projection both endpoints return.
-export interface BindRunnerResponse {
-  id: string;
-  projectId: string;
-  deviceId: string | null;
-  repoPath: string | null;
-  branch: string | null;
-  status: 'online' | 'offline' | 'draining' | 'disabled';
-}
-
-export interface SkillFile {
-  path: string;
-  content: string;
-  encoding: 'utf8' | 'base64';
-}
-
-export interface DeviceSkillManifestEntry {
-  skillId: string;
-  name: string;
-  version: number;
-  effectiveHash: string;
-  skillMd?: string;
-  files?: SkillFile[];
-}
-
-export interface DeviceSkillManifestResponse {
-  skills: DeviceSkillManifestEntry[];
-}
-
 // Full body for one skill from
 // `GET /api/devices/me/skills/:skillId/content?projectId=`.
-export interface DeviceSkillContent {
-  skillId: string;
-  name: string;
-  version: number;
-  effectiveHash: string;
-  skillMd: string;
-  files: SkillFile[];
-}

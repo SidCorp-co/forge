@@ -220,6 +220,7 @@ for the declared tables it SELECTs, a raw SQL `FROM` or `JOIN` naming one or a v
 from a schema file (`lib/module-shape.mjs:tableReads`), and each must be under the read model's
 `reads` (or its own `projections`) in `modules.json`. Its keys are `<file> -> <table>`. A declared
 read that no file of the read model SELECTs, and whose owner's read files it does not import, is a
+<!-- doc-citation: unchecked `read.ts` `read/` — file-name patterns a module may use, not paths in this tree -->
 declaration fault. A read model's import of an owner's read files (`read.ts`, `<x>-read.ts`,
 `read/`) for a table it declares is exempt from `face-only` and `context-direction`
 (`lib/module-boundaries.mjs:readFilePattern`).
@@ -552,7 +553,7 @@ frozen in `.forge/size-baseline.json` may stay over budget, they may not get wor
 **A frozen file has no headroom, and `--update-baseline` does not buy any.** One line added to a file
 already at its number — a comment, a column on `packages/core/src/db/schema.ts` — trips this,
 and re-freezing above it is then refused by `conformance-status`: the form axis declares
-`improves: down`, and `compareBaseline` in `scripts/lib/baseline-ratchet.mjs` faults on ANY per-key
+`improves: down`, and `COMPARE.down` in `scripts/lib/baseline-ratchet.mjs` faults on ANY per-key
 rise and on any per-area total rise. There is no waiver to buy and no amnesty to price. The way
 through is to make the file come in under the number it already holds — ISS-1136 moved the session
 vocabularies out to `packages/core/src/db/session-vocabulary.ts` to land two columns, ISS-1192 moved
@@ -917,7 +918,7 @@ the other. No published entry could be corrected at all, which is what held `mai
 job: `CHANGELOG.md` linked `docs/flows/issue-work.html`, a directory `c74d9b3f7` deleted, and the
 only edit that would fix it was the one edit the gate refused.
 
-`pairEdits` in `lib/release-record.mjs` matches each removed entry to at most one added entry.
+`matchEdges` in `lib/release-record.mjs` matches each removed entry to at most one added entry.
 **Two entries are the same entry when more than half the words of the longer one survive into the
 other in order, AND the change moved at most `CORRECTION_SPAN` words each way** — at most that many
 of the published entry's words gone, at most that many new ones standing where they were. A paired
@@ -982,7 +983,7 @@ of "already published" were tried and two of them were holes, so the shape is wo
 | any predecessor the rule admits, asked of the edges | pairwise feasibility is not a joint assignment: two added entries both borrow the one predecessor's paragraph, the matching pairs one, and the other is a brand-new unpaired entry whose prose is dropped in silence |
 
 What holds is the third question asked of the *assignment* rather than of edge existence.
-`correctionEdges` is split out of `pairEdits`, an edge from an orphan-carrying added entry survives
+`correctionEdges` is split out of `matchEdges`, an edge from an orphan-carrying added entry survives
 only where that removed entry already carried exactly that prose, and the matching is run over what
 is left. An orphan-carrying entry the matching does not pair is refused — so one predecessor exempts
 one correction, which is the same one-to-one rule corrections already answer to. What is NOT covered: prose orphaned under a `###` heading with no

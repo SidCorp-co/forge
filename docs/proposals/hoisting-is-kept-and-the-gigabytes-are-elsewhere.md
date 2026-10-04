@@ -155,68 +155,40 @@ Anyone measuring the cost of a worktree should start there and at `.next/`, not 
 
 ## What is kept, and what holds it up
 
-Six packages are imported by code that does not declare them, and reach a repository root that only
-hoisting puts them in:
+Six packages were imported by code that did not declare them, reaching a repository root that only
+hoisting put them in. ISS-207 declared each in the manifest of the code that uses it, except `hono`:
 
 | reached from | the package it needs | declared by |
 |---|---|---|
-| `scripts/verify.mjs`, in its `pnpm exec biome check scripts` check | `@biomejs/biome` | `@forge/core` |
-| `scripts/check-lint-budget.mjs`, running `npx biome` inside `packages/web-v2` | `@biomejs/biome` | `@forge/core` |
-| `scripts/check-integration-declarations.mjs`, spawning `node_modules/.bin/tsx` | `tsx` | `@forge/core` |
-| `.forge/archmap/src/providers/ts.mjs`, walking the root for its bin | `dependency-cruiser` | `@forge/core` |
-| `.arch-tsconfig.json`, mapping `hono/*` to `node_modules/hono/dist/*` | `hono` | `@forge/core` |
-| `scripts/check-lazy-module-init.mjs`, its opening `import ts from 'typescript'` | `typescript` | core, contracts, observability, web-v2 |
-| `packages/web-v2/src/vitest.setup.ts`, its `import { configure } from '@testing-library/dom'` | `@testing-library/dom` | **nobody** — a transitive of `@testing-library/react` |
+| `scripts/verify.mjs`, in its `pnpm exec biome check scripts` check | `@biomejs/biome` | root |
+| `scripts/check-lint-budget.mjs`, running `npx biome` inside `packages/web-v2` | `@biomejs/biome` | `web-v2` |
+| `scripts/check-integration-declarations.mjs`, spawning `node_modules/.bin/tsx` | `tsx` | root |
+| `.forge/archmap/src/providers/ts.mjs`, walking the root for its bin | `dependency-cruiser` | root |
+| `.arch-tsconfig.json`, mapping `hono/*` to `node_modules/hono/dist/*` | `hono` | `@forge/core` only |
+| `scripts/check-lazy-module-init.mjs`, its opening `import ts from 'typescript'` | `typescript` | root |
+| `packages/web-v2/src/vitest.setup.ts`, its `import { configure } from '@testing-library/dom'` | `@testing-library/dom` | `web-v2` |
 
 The census behind that table is every bare specifier imported by a file under `scripts/` or
 `.forge/`, every binary those files spawn, and `.arch-tsconfig.json`'s `paths`, each checked for
 `node_modules/<pkg>/package.json` at the repository root of an isolated install. It is a
 file-existence test rather than `require.resolve`, which is what makes it immune to the leak the
-first section describes. `vitest`, `eslint` and `typescript-eslint` come up in that sweep and are
-not on the list: `eslint` and `typescript-eslint` are declared by the root manifest, and `vitest`
-is reached only from `scripts/*.test.mjs`, which resolve from the package that runs them.
+first section describes. `eslint` and `typescript-eslint` come up in that sweep and are declared
+by the root manifest; `vitest` (imported by `scripts/lib/whole-tree-guard.mjs`) and `postgres`
+(required by `scripts/export-legacy-project-config.mjs`) are now declared there too.
 
-Remove the two settings and nothing else, and:
-
-- **`pnpm verify` loses seven verdicts.** `form scripts lint` goes red with `Command "biome" not
-  found`; `form lazy-module-init` goes red with `ERR_MODULE_NOT_FOUND: Cannot find package
-  'typescript'`; and `form lint-budget`, `form integration-declarations`, `relations archmap`,
-  `meta conformance levels` and `meta conformance audit` each report that they could not run.
-  Twenty-five verdicts pass under hoisting at the same head and in the same clone.
-- **`pnpm build` failed at `5b06318a5`**, at `web-v2`'s `next build`: `src/vitest.setup.ts(2,27):
-  error TS2307: Cannot find module '@testing-library/dom' or its corresponding type declarations.`
-  Run `--force` against an empty cache, `0 cached, 4 total`. This is the claim the first version of
-  this page got exactly backwards, and it got it backwards because the parent checkout supplied the
-  package. On dev, `next build` no longer runs its TypeScript pass (`452be8dce`), so this failure is
-  not reached there; the undeclared import in `src/vitest.setup.ts` stands.
-- **`pnpm test` failed at `5b06318a5`**, at `web-v2#test`, on the same import in the same setup file:
-  `Failed to resolve import "@testing-library/dom" from "src/vitest.setup.ts"`. Also `--force`,
-  `0 cached, 6 total`. On dev the TypeScript tests are deleted, so this is not reached there until
-  ISS-172 restores them.
-- **`pnpm deploy --filter=@forge/core --prod` succeeds.** The line `packages/core/Dockerfile`
-  builds the production image with is the one thing measured here that does not need hoisting.
-
-Declaring the three spawned tools at the root with `pnpm add -w -D` clears four of the seven verify
-verdicts and turns `meta conformance audit` from unable-to-run into a failure: R7 then runs and
-fails, its unresolvable-edge count having gone from 33 to 208 against a ceiling of 50, because the
-`hono/*` mapping above no longer resolves. It does nothing for `form lazy-module-init` or for the
-two web-v2 failures, which need `typescript` at the root and `@testing-library/dom` declared by
-`web-v2`.
-
-One diagnostic misleads while this is being measured. Under the isolated linker
-`check-archmap-ready` reports *"dependency-cruiser is installed but carries no
-bin/dependency-cruise.mjs … (dependency-cruiser 18.3.0 renamed it)"*. That string is a fixed
-prerequisite message keyed on the absence of `node_modules/dependency-cruiser/bin/dependency-cruise.mjs`
-at the root, and it fires whatever put the path out of reach. Here the version is 18.2.0 and the
-bin is present at `packages/core/node_modules/dependency-cruiser/bin/dependency-cruise.mjs`; what
-is absent is the hoisted copy. The message names a cause that is not the cause.
+Before those declarations, removing the two settings and nothing else cost seven `pnpm verify`
+verdicts and failed `pnpm build` and `pnpm test` on `web-v2` at `5b06318a5`; `pnpm deploy
+--filter=@forge/core --prod` was the one thing measured that did not need hoisting. It has not been
+re-measured with the declarations in place. What is known to remain is the `hono/*` mapping: without
+hoisting it no longer resolves, and R7's unresolvable-edge count went from 33 to 208 against a
+ceiling of 50 when this was last measured.
 
 ## The residual this leaves standing
 
 A flat `node_modules` lets any package import anything any other package declares, and nothing in
-this repository's gate catches it. The seven couplings above are that defect already realised,
-found only because this issue went looking twice; the reason they are named in `.npmrc` rather than
-repaired is that the comment naming them is what makes them visible at all. Whoever revisits this
+this repository's gate catches it. The couplings above were that defect already realised, found
+only because this issue went looking twice; six are now declared, and `hono` is named in `.npmrc`
+because the comment naming it is what makes it visible at all. Whoever revisits this
 should expect the list to have grown — it grew by three between the first measurement and the
 second, and the only thing that changed was where the measurement was taken.
 
@@ -224,14 +196,13 @@ second, and the only thing that changed was where the measurement was taken.
 `pnpm verify` runs, so the comment in `.npmrc` is true on the day it was written and unpoliced
 afterwards. A checker that fails when a root-level consumer imports a package no root manifest
 declares and `.npmrc` does not name is the shape that would end this, and it is not built here for
-one reason worth stating: it would land red on the seven rows above, so it needs a baseline and a
+one reason worth stating: it would land red on the `hono` row above, so it needs a baseline and a
 declared axis owner, and where a new gate rule goes is a decision this repository does not let a
 checker make. That is the next piece of work on this, and it is the one that stops the drift.
 
 The isolated linker is what would catch all of it, and this measurement says the disk cost is
 affordable — 13 MB and about five thousand directory entries per worktree, not gigabytes. What it
-is not is cheap in work: seven verify verdicts (and, wherever they run, `pnpm build`'s type pass and
-`pnpm test`) have to be repaired first, `@testing-library/dom` has to be declared by `web-v2`, and the `hono/*` repair means editing
+is not is cheap in work: the verdicts it costs have to be re-measured and repaired first, and the `hono/*` repair means editing
 the resolution map that `.arch-tsconfig.json`'s own opening records as having silently emptied
 three locked contracts once before.
 
@@ -240,11 +211,9 @@ three locked contracts once before.
 - **The unjustified setting is now a justified one, which makes it harder to remove later.** A
   comment naming seven consumers reads as a reason to keep it; the list is evidence of a defect, and
   a later reader may take it for a design.
-- **Six undeclared dependencies stay undeclared.** `@biomejs/biome`, `tsx`, `dependency-cruiser`,
-  `hono` and `typescript` are used from the root and declared only by packages beneath it, and
-  `@testing-library/dom` is imported by `web-v2` and declared by no manifest in this workspace at
-  all. Any version bump in those packages moves a tool the root gate runs, with nothing recording
-  the link.
+- **`hono` stays undeclared at the root.** `.arch-tsconfig.json` maps into it and only
+  `@forge/core` declares it, so a version bump there moves what the archmap resolves, with nothing
+  recording the link.
 - **The list is documented, not gated.** See the residual above: the next person to add a root-level
   consumer will not be told they have, and the comment in `.npmrc` will be wrong again in exactly
   the way it was wrong the first time.

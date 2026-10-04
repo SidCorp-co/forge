@@ -4,14 +4,6 @@
     "packages/core/src/db/schema.test.ts": {
       "declaration": 92,
       "mock": 0
-    },
-    "packages/core/src/integrations/rocketchat/agent-chat-bridge.test.ts": {
-      "declaration": 0,
-      "mock": 24
-    },
-    "packages/core/src/pipeline/orchestrator.test.ts": {
-      "declaration": 0,
-      "mock": 120
     }
   }
 }

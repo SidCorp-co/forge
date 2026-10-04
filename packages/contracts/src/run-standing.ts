@@ -11,7 +11,6 @@ import type { IssueLeaseVerdict } from "./issue-standing.js";
 import type { IssueStatus } from "./issue-machine.js";
 import type { WorkStep } from "./issue-vocabulary.js";
 import type { MasterStanding } from "./master-standing.js";
-import { pickFields } from "./projection.js";
 import type {
 	Standing,
 	StandingGroup,
@@ -50,8 +49,6 @@ export const RUN_FINAL_STATES = [
 	"cancelled",
 	"handed_back",
 ] as const satisfies readonly RunState[];
-export type RunFinalState = (typeof RUN_FINAL_STATES)[number];
-
 // cm:guard one source for the silence clocks (decision 7 on agent-run-standing rev 1): stuck shows at 3 min,
 // the master and run-session reapers fail at 10 min, and the loop monitor's job heartbeat reap defaults to
 // 3 min; `silent` counts only a run with no live job, so it never races the job reap, and core's
@@ -83,8 +80,8 @@ export type RunDisagreement = (typeof RUN_DISAGREEMENTS)[number];
 export const RUN_LANES = ["issue", "release", "deploy", "job"] as const;
 export type RunLane = (typeof RUN_LANES)[number];
 
-export const RUN_HOLDER_KINDS = ["run", "master", "person"] as const;
-export type RunHolderKind = (typeof RUN_HOLDER_KINDS)[number];
+const RUN_HOLDER_KINDS = ["run", "master", "person"] as const;
+type RunHolderKind = (typeof RUN_HOLDER_KINDS)[number];
 
 export const RUN_EXPIRY_SOURCES = [
 	"claim",
@@ -435,31 +432,6 @@ export interface RunStandingDetail {
 	events: RunEvent[];
 	eventsHasMore: boolean;
 }
-
-export const RUN_SUMMARY_FIELDS = [
-	"id",
-	"lane",
-	"state",
-	"since",
-	"title",
-	"issue",
-	"step",
-	"attempt",
-	"holder",
-	"waitingOn",
-	"attentionGroup",
-	"outcome",
-	"lastBeatAt",
-	"stuck",
-	"startedAt",
-] as const satisfies readonly (keyof RunStanding)[];
-export type RunSummaryView = Pick<
-	RunStanding,
-	(typeof RUN_SUMMARY_FIELDS)[number]
->;
-
-export const runSummaryOf = (run: RunStanding): RunSummaryView =>
-	pickFields(run, RUN_SUMMARY_FIELDS);
 
 /** Machine pause kinds a MACHINE clears: something in this build watches for the condition and resumes the run without anyone being asked. */
 export const MACHINE_RESUMED_PAUSE_KINDS: readonly string[] = [];

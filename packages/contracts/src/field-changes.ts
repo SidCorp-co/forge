@@ -8,15 +8,15 @@
  */
 
 /** `[field, ...keys]`: an object key is a string, an array index a number. */
-export type FieldPath = [string, ...(string | number)[]];
+type FieldPath = [string, ...(string | number)[]];
 
-export type FieldChange =
+type FieldChange =
 	| { path: FieldPath; op: "set"; before?: unknown; after: unknown }
 	| { path: FieldPath; op: "add"; after: unknown }
 	| { path: FieldPath; op: "remove"; before: unknown };
 
 /** The payload of an `issue.updated` row. */
-export interface IssueUpdatedPayload {
+interface IssueUpdatedPayload {
 	/** The fields at least one change sits under, in the order the writer listed them. */
 	fields: string[];
 	changes: FieldChange[];
@@ -34,7 +34,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** A value as it is stored: a `Date` is its ISO string and an `undefined` key is no key. */
-export function asStored(value: unknown): unknown {
+function asStored(value: unknown): unknown {
 	return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
@@ -118,74 +118,6 @@ export function issueUpdatedPayload(
 		changes.push(...found);
 	}
 	return changes.length === 0 ? null : { fields: moved, changes };
-}
-
-/** A value with `next` written at `path`, or the key removed where `next` is absent; never mutates. */
-function writeAt(
-	holder: unknown,
-	keys: readonly (string | number)[],
-	next: { value?: unknown },
-): unknown {
-	const [head, ...rest] = keys;
-	if (head === undefined) return "value" in next ? next.value : undefined;
-	if (typeof head === "number") {
-		const arr = Array.isArray(holder) ? [...holder] : [];
-		if (rest.length === 0 && !("value" in next)) {
-			arr.length = Math.min(arr.length, head);
-			return arr;
-		}
-		arr[head] = writeAt(arr[head], rest, next);
-		return arr;
-	}
-	const obj = isPlainObject(holder) ? { ...holder } : {};
-	if (rest.length === 0 && !("value" in next)) {
-		delete obj[head];
-		return obj;
-	}
-	obj[head] = writeAt(obj[head], rest, next);
-	return obj;
-}
-
-export class FieldChangeIrreversible extends Error {
-	constructor(readonly path: FieldPath) {
-		super(
-			`FIELD_CHANGE_IRREVERSIBLE: the change at ${JSON.stringify(path)} records no 'before', so the value it replaced cannot be recovered from this row`,
-		);
-		this.name = "FieldChangeIrreversible";
-	}
-}
-
-/**
- * One field's value on the far side of a row's changes: `forward` from the value before the row,
- * `backward` from the value after it. Removals and additions under an array are applied from the
- * end, so an index never shifts under the entry that names it.
- */
-export function applyFieldChanges(
-	field: string,
-	value: unknown,
-	changes: readonly FieldChange[],
-	direction: "forward" | "backward",
-): unknown {
-	const mine = changes.filter((c) => c.path[0] === field);
-	const ordered = direction === "forward" ? mine : [...mine].reverse();
-	let held: unknown = asStored(value) ?? null;
-	for (const change of ordered) {
-		const keys = change.path.slice(1);
-		const into = direction === "forward" ? afterOf(change) : beforeOf(change);
-		held = writeAt(held, keys, into);
-	}
-	return held;
-}
-
-function afterOf(change: FieldChange): { value?: unknown } {
-	return change.op === "remove" ? {} : { value: change.after };
-}
-
-function beforeOf(change: FieldChange): { value?: unknown } {
-	if (change.op === "add") return {};
-	if (change.op === "set" && !("before" in change))
-		throw new FieldChangeIrreversible(change.path);
-	return { value: change.before };
 }
 
 /** `sessionContext.lease.history[3]`: a path as a person reads it. */

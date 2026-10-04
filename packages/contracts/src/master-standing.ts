@@ -22,7 +22,7 @@ export type MasterVerb = (typeof MASTER_VERBS)[number];
 export const MASTER_STATES = ["in_pass", "idle", "silent", "none"] as const;
 export type MasterState = (typeof MASTER_STATES)[number];
 
-export const MASTER_REFUSAL_CODES = [
+const MASTER_REFUSAL_CODES = [
 	"MASTER_SLOTS_UNDECLARED",
 	"MASTER_PASS_ALREADY_OPEN",
 	"MASTER_PASS_NOT_OPEN",
@@ -37,10 +37,10 @@ export interface MasterRefusal {
 }
 
 export const MASTER_JOB_PANES_MAX = 64;
-export const MASTER_PASS_LIST_MAX = 200;
-export const MASTER_PASS_ITEM_MAX = 200;
-export const MASTER_PASS_REFUSAL_MAX = 1000;
-export const MASTER_ISSUE_KEY_MAX = 64;
+const MASTER_PASS_LIST_MAX = 200;
+const MASTER_PASS_ITEM_MAX = 200;
+const MASTER_PASS_REFUSAL_MAX = 1000;
+const MASTER_ISSUE_KEY_MAX = 64;
 export const MASTER_PASS_PAGE_DEFAULT = 20;
 export const MASTER_PASS_PAGE_MAX = 100;
 
@@ -49,7 +49,6 @@ export const masterSessionRequestSchema = z.strictObject({
 	name: z.string().min(1).max(120),
 	maxJobPanes: z.number().int().min(1).max(MASTER_JOB_PANES_MAX).optional(),
 });
-export type MasterSessionRequest = z.infer<typeof masterSessionRequestSchema>;
 export const MASTER_SESSION_SHAPE = `{ projectId: uuid, name: string (1-120), maxJobPanes: integer 1-${MASTER_JOB_PANES_MAX} }`;
 
 const passItem = z.string().trim().min(1).max(MASTER_PASS_ITEM_MAX);
@@ -82,7 +81,6 @@ export const masterPassRequestSchema = z.discriminatedUnion("op", [
 		parked: z.array(passItem).max(MASTER_PASS_LIST_MAX),
 	}),
 ]);
-export type MasterPassRequest = z.infer<typeof masterPassRequestSchema>;
 export const MASTER_PASS_SHAPE = `{ op: "open", sessionId: uuid, verb: ${MASTER_VERBS.join(" | ")}, issueKey?: string | null } or { op: "close", sessionId: uuid, passId: uuid (the id the open answered), dispatched: string[], skipped: { issueKey, refusal }[], parked: string[] }`;
 
 export interface MasterOpenPass {

@@ -16,7 +16,7 @@ import { SUGGESTION_REFUSAL_STATUSES } from "./suggestions.js";
 import { DESIGN_REFUSAL_STATUSES } from "./workflows.js";
 
 /** The request-shape answer core builds from a failed validator. */
-export const REQUEST_REFUSAL_STATUSES = { BAD_REQUEST: 400 } as const;
+const REQUEST_REFUSAL_STATUSES = { BAD_REQUEST: 400 } as const;
 
 const DECLARED: ReadonlyArray<Readonly<Record<string, Exclude<RefusalStatus, 422>>>> = [
 	REQUEST_REFUSAL_STATUSES,
@@ -50,7 +50,7 @@ function collect(): ReadonlyMap<string, Exclude<RefusalStatus, 422>> {
 	return out;
 }
 
-export const REFUSAL_STATUS = collect();
+const REFUSAL_STATUS = collect();
 
 /** The status a refusal code answers: as declared, 403 for any `_FORBIDDEN` code, else 422. */
 export function refusalStatusOf(code: string): RefusalStatus {

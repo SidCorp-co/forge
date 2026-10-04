@@ -1,9 +1,4 @@
 export type {
   LoginInput,
-  RegisterInput,
-  IssueCreateInput,
-  IssuePatchInput,
-  IssueFilters,
-  CreateProjectInput,
-  UpdateProjectInput,
+  RegisterInput
 } from '@forge/core/public';
