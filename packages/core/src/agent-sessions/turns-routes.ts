@@ -1,12 +1,12 @@
 import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, agentSessionTurns, projects } from '../db/schema.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { openOneShotRun } from '../pipeline/runs.js';
+import { refuseSession } from './refusals.js';
 import {
   broadcastSession,
   broadcastTurnAppended,
@@ -118,19 +118,13 @@ agentSessionTurnsRoutes.patch(
     assertSessionOwnerOrAdmin(session, access, userId);
 
     if (session.status === 'running' || session.status === 'queued') {
-      throw new HTTPException(409, {
-        message: 'abort the in-flight turn before editing it',
-        cause: { code: 'SESSION_RUNNING' },
-      });
+      throw refuseSession('SESSION_RUNNING', 'abort the in-flight turn before editing it');
     }
 
     const turn = await findTurnInSession(id, turnId);
     if (!turn) throw notFound('turn not found');
     if (turn.role !== 'user') {
-      throw new HTTPException(400, {
-        message: 'only user turns can be edited',
-        cause: { code: 'TURN_NOT_USER' },
-      });
+      throw refuseSession('TURN_NOT_USER', 'only user turns can be edited');
     }
     // Last-write-wins precondition: if the caller asserts it saw a specific
     // edited_at, reject when the row has changed since (ISO compare avoids
@@ -138,10 +132,7 @@ agentSessionTurnsRoutes.patch(
     if (expectedEditedAt !== undefined && expectedEditedAt !== null) {
       const current = turn.editedAt ? turn.editedAt.toISOString() : null;
       if (current !== expectedEditedAt) {
-        throw new HTTPException(409, {
-          message: 'turn was edited by someone else',
-          cause: { code: 'TURN_STALE' },
-        });
+        throw refuseSession('TURN_STALE', 'turn was edited by someone else');
       }
     }
 
@@ -204,10 +195,7 @@ agentSessionTurnsRoutes.post(
     assertSessionOwnerOrAdmin(session, access, userId);
 
     if (session.status === 'running' || session.status === 'queued') {
-      throw new HTTPException(409, {
-        message: 'abort the in-flight turn before regenerating',
-        cause: { code: 'SESSION_RUNNING' },
-      });
+      throw refuseSession('SESSION_RUNNING', 'abort the in-flight turn before regenerating');
     }
 
     const turn = await findTurnInSession(id, turnId);
@@ -220,10 +208,7 @@ agentSessionTurnsRoutes.post(
       | undefined;
     const targetMessage = extractPromptString(lastUserEntry?.content);
     if (!targetMessage) {
-      throw new HTTPException(409, {
-        message: 'no dispatchable prompt found before this turn',
-        cause: { code: 'NO_DISPATCHABLE_PROMPT' },
-      });
+      throw refuseSession('NO_DISPATCHABLE_PROMPT', 'no dispatchable prompt found before this turn');
     }
 
     const client = await resolveInteractiveClient(session, { scope: 'session' });
@@ -271,10 +256,7 @@ agentSessionTurnsRoutes.post(
       })
     ).rows;
     if (!locked) {
-      throw new HTTPException(409, {
-        message: 'session changed before regeneration could start',
-        cause: { code: 'SESSION_STALE' },
-      });
+      throw refuseSession('SESSION_STALE', 'session changed before regeneration could start');
     }
 
     broadcastTurnTruncated(locked, truncatedFromIndex);
@@ -371,20 +353,14 @@ agentSessionTurnsRoutes.post(
 
     const { session } = await ensureSessionOwnerOrAdmin(id, userId);
     if (session.status === 'running' || session.status === 'queued') {
-      throw new HTTPException(409, {
-        message: 'wait for the in-flight turn before rerunning',
-        cause: { code: 'SESSION_RUNNING' },
-      });
+      throw refuseSession('SESSION_RUNNING', 'wait for the in-flight turn before rerunning');
     }
 
     const messages = Array.isArray(session.messages) ? session.messages : [];
     const firstUser = messages.find(isUserEntry) as { content?: unknown } | undefined;
     const prompt = extractPromptString(firstUser?.content);
     if (!prompt) {
-      throw new HTTPException(400, {
-        message: 'no user prompt to rerun',
-        cause: { code: 'NO_PROMPT' },
-      });
+      throw refuseSession('NO_PROMPT', 'no user prompt to rerun');
     }
 
     const client = await resolveInteractiveClient(session, { scope: 'session' });

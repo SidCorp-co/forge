@@ -7,9 +7,9 @@
  * ever inserted; the latest per live criterion is the one the gate and the UI read.
  */
 
+import type { CriteriaRefusalCode } from '@forge/contracts/issues';
 import type { VerdictCorroboration, VerdictDraftReading } from '@forge/contracts/verdict-identity';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import type { Tx } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
 import {
@@ -19,6 +19,7 @@ import {
   type VerdictValue,
 } from '../../db/schema-issue-criteria.js';
 import { projectWorkflowDesigns } from '../../db/schema-workflows.js';
+import { RefusalError, refuser } from '../../lib/refusal.js';
 import { dbContractLookup } from '../../messaging/verdict-contract.js';
 import { dbDesignLookup } from '../../messaging/verdict-design.js';
 import { readProjectDocument } from '../../project-config/service.js';
@@ -44,32 +45,26 @@ import {
 } from './verdict-input.js';
 import { type VerdictColumns, verdictActor, verdictRecordFields } from './verdict-record.js';
 
-/**
- * A write refused by name. An `HTTPException`, so every REST door answers it with its code without
- * a mapping of its own; the message leads with the code for the MCP doors, which carry only text.
- */
-export class CriteriaRefused extends HTTPException {
-  constructor(
-    readonly code: 'CRITERIA_TEXT_UNPARSEABLE' | 'CRITERIA_LOCKED' | 'CRITERIA_INPUT_INVALID',
-    readonly detail: string,
-    details: Record<string, unknown> = {},
-  ) {
-    super(code === 'CRITERIA_LOCKED' ? 409 : 400, {
-      message: `${code}: ${detail}`,
-      cause: { code, details },
-    });
-    this.name = 'CriteriaRefused';
-  }
-}
+const refuseCriteria = refuser<CriteriaRefusalCode>('CRITERIA_REFUSED');
 
-export class VerdictRefused extends HTTPException {
-  constructor(readonly refusal: VerdictRefusal) {
-    super(400, {
-      message: `${refusal.code}: ${refusal.detail}`,
-      cause: { code: refusal.code, details: { criterion: refusal.criterion } },
-    });
-    this.name = 'VerdictRefused';
-  }
+const VERDICT_PATHS: Partial<Record<VerdictRefusal['code'], string>> = {
+  VERDICT_VALUE_UNKNOWN: '/verdict',
+  VERDICT_SKIP_REASON_REQUIRED: '/reason',
+  VERDICT_CRITERION_UNKNOWN: '/criterion',
+};
+
+/** A verdict refused by name, in the envelope both doors answer. */
+export function verdictRefused(refusal: VerdictRefusal): RefusalError {
+  return new RefusalError(
+    [
+      {
+        code: refusal.code,
+        path: VERDICT_PATHS[refusal.code] ?? '/identity',
+        detail: refusal.detail,
+      },
+    ],
+    'VERDICT_REFUSED',
+  );
 }
 
 // status-tuple: differs — not TERMINAL_FOR_DISPATCH: where verdicts were earned, so the wording is frozen
@@ -141,10 +136,9 @@ export async function applyCriteria(
   const live = await liveRows(tx, issue.id);
   const same = unchanged(live, desired);
   if (!same && LOCKED_STATUSES.has(issue.status)) {
-    throw new CriteriaRefused(
+    throw refuseCriteria(
       'CRITERIA_LOCKED',
       `this issue is at \`${issue.status}\`, where its criteria are the ones its verdicts were earned on; reopen it to change them`,
-      { status: issue.status },
     );
   }
   const keep = new Map<number, string>();
@@ -213,7 +207,7 @@ export async function putCriteria(
   desired: readonly CriterionInput[],
 ): Promise<boolean> {
   const fault = inputFault(desired);
-  if (fault) throw new CriteriaRefused('CRITERIA_INPUT_INVALID', fault);
+  if (fault) throw refuseCriteria('CRITERIA_INPUT_INVALID', fault, '/criteria');
   const issue = await lockIssue(tx, issueId);
   if (!issue) return false;
   await applyCriteria(tx, issue, desired);
@@ -246,10 +240,10 @@ export async function syncCriteriaFromText(
   if (!issue) return;
   const parsed = parseCriteriaText(text);
   if (parsed.faults.length > 0) {
-    throw new CriteriaRefused(
+    throw refuseCriteria(
       'CRITERIA_TEXT_UNPARSEABLE',
       `acceptanceCriteria cannot be read as numbered criteria: ${parsed.faults.map((f) => f.why).join('; ')}. Number each criterion once (\`1. …\`, \`2. …\`).`,
-      { faults: parsed.faults },
+      '/acceptanceCriteria',
     );
   }
   await applyCriteria(tx, issue, parsed.criteria as ParsedCriterion[]);
@@ -378,7 +372,7 @@ async function storefrontColumns(
   const document = (await readProjectDocument(projectId))?.document ?? null;
   const environment = identity.environment.trim();
   const unknown = environmentFault(criterion, document, environment);
-  if (unknown) throw new VerdictRefused(unknown);
+  if (unknown) throw verdictRefused(unknown);
   const workflowId = identity.workflowId.trim();
   const found = corroborationOf(identity, await readDraft(document, workflowId));
   return {
@@ -415,7 +409,7 @@ async function identityColumns(
         version: identity.version.trim(),
       });
       if (!held.named) {
-        throw new VerdictRefused({
+        throw verdictRefused({
           code: 'VERDICT_CONTRACT_UNKNOWN',
           criterion: draft.criterion,
           detail: `criterion ${draft.criterion} names contract \`${identity.ref}@${identity.version}\`, which this issue's project (\`${held.projectSlug}\`) has not recorded; versions recorded: ${held.versions.join(', ') || 'none'}.`,
@@ -434,7 +428,7 @@ async function identityColumns(
         found.design.projectId !== projectId ||
         !found.design.revisions.includes(identity.revision)
       ) {
-        throw new VerdictRefused({
+        throw verdictRefused({
           code: 'VERDICT_DESIGN_UNKNOWN',
           criterion: draft.criterion,
           detail: `criterion ${draft.criterion} names design \`${identity.workflow}\` rev ${identity.revision}, which this issue's project does not hold${found.kind === 'found' ? ` (revisions held: ${found.design.revisions.join(', ')})` : ''}.`,
@@ -453,7 +447,7 @@ async function identityColumns(
           ),
         );
       if (!approved) {
-        throw new VerdictRefused({
+        throw verdictRefused({
           code: 'VERDICT_DESIGN_UNAPPROVED',
           criterion: draft.criterion,
           detail: `criterion ${draft.criterion} names design \`${identity.workflow}\` rev ${identity.revision}, which was never approved; a verdict is judged against an approved revision.`,
@@ -481,7 +475,7 @@ export async function recordVerdict(
 ): Promise<{ id: string }> {
   const { issue, draft, author } = args;
   const fault = verdictDraftFault(draft);
-  if (fault) throw new VerdictRefused(fault);
+  if (fault) throw verdictRefused(fault);
   const [criterion] = await tx
     .select({ id: issueCriteria.id })
     .from(issueCriteria)
@@ -495,7 +489,7 @@ export async function recordVerdict(
     .limit(1);
   if (!criterion) {
     const live = await liveRows(tx, issue.id);
-    throw new VerdictRefused({
+    throw verdictRefused({
       code: 'VERDICT_CRITERION_UNKNOWN',
       criterion: draft.criterion,
       detail: `this issue has no criterion ${draft.criterion}; its criteria are ${

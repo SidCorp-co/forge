@@ -20,12 +20,13 @@ import {
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { badRequest, conflict } from '../middleware/route-errors.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { PARK_PROTECTIONS } from '../questions/protections.js';
 import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
-import { type AskAnswer, type AskInput, askQuestion, QuestionRefused } from '../questions/write.js';
+import { type AskAnswer, type AskInput, askQuestion } from '../questions/write.js';
 import { assertDeviceBoundToProject } from './device-project.js';
+import { refuseDevice } from './refusals.js';
 import { notFound, sessionParamsSchema } from './route-errors.js';
 
 const ASK_REQUIRED = 'id, projectId and prompt are required';
@@ -214,14 +215,13 @@ devicePoolRoutes.delete(
     // A delete that matched nothing is not a success: the box reads the ack as
     // the issue handed back and stops watching it (ISS-1139).
     if (outcome.reason === 'ambiguous') {
-      throw conflict(
+      throw refuseDevice(
         'ISSUE_LEASE_AMBIGUOUS',
         [
           `this box holds ${outcome.projectIds.length} leases on ${key.issueKey}, one per project, and nothing was given back.`,
           ...outcome.projectIds.map((id) => `  ${key.issueKey} in project ${id}`),
           "A lease is given back for the project it was taken for, so name one: send `?projectId=<id>`, or that project's own issue prefix in the key.",
         ].join('\n'),
-        { issueKey: key.issueKey, projectIds: outcome.projectIds },
       );
     }
     throw new HTTPException(404, {
@@ -357,28 +357,18 @@ devicePoolRoutes.post(
   async (c) => {
     const body = c.req.valid('json');
     await assertDeviceBoundToProject(c.get('device').id, body.projectId);
-    try {
-      const q = await askQuestion({
-        ...(body as Omit<AskInput, 'answer' | 'blockerKind'>),
-        id: body.id,
-        projectId: body.projectId,
-        prompt: body.prompt,
-        blockerKind: body.blockerKind ?? 'human',
-        answer: askAnswerOf(body),
-      });
-      if (body.runId) {
-        await registerWaiter({ questionId: q.id, deviceId: c.get('device').id, runId: body.runId });
-      }
-      return c.json({ questionId: q.id });
-    } catch (e) {
-      if (e instanceof QuestionRefused) {
-        throw new HTTPException(400, {
-          message: e.message,
-          cause: { code: e.code, details: e.message },
-        });
-      }
-      throw e;
+    const q = await askQuestion({
+      ...(body as Omit<AskInput, 'answer' | 'blockerKind'>),
+      id: body.id,
+      projectId: body.projectId,
+      prompt: body.prompt,
+      blockerKind: body.blockerKind ?? 'human',
+      answer: askAnswerOf(body),
+    });
+    if (body.runId) {
+      await registerWaiter({ questionId: q.id, deviceId: c.get('device').id, runId: body.runId });
     }
+    return c.json({ questionId: q.id });
   },
 );
 

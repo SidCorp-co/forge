@@ -51,15 +51,13 @@ export const USAGE = [
   'judge (--judge): FORGE_BENCH_JUDGE_URL and FORGE_BENCH_JUDGE_KEY; the verdict is stored beside the modes and never read into pass',
 ];
 
-class Refusal extends Error {}
-
 function flags(argv: string[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] ?? '';
-    if (!arg.startsWith('--')) throw new Refusal(`unexpected argument ${arg}`);
+    if (!arg.startsWith('--')) throw new Error(`unexpected argument ${arg}`);
     const value = argv[i + 1];
-    if (value === undefined || value.startsWith('--')) throw new Refusal(`${arg} needs a value`);
+    if (value === undefined || value.startsWith('--')) throw new Error(`${arg} needs a value`);
     out[arg.slice(2)] = value;
     i += 1;
   }
@@ -73,7 +71,7 @@ function pickTasks(spec: string | undefined): Task[] {
   const wanted = spec.split(',').map((s) => s.trim());
   const unknown = wanted.filter((id) => !ids.has(id));
   if (unknown.length > 0)
-    throw new Refusal(`unknown task id ${unknown.join(', ')}; shipped: ${[...ids].join(', ')}`);
+    throw new Error(`unknown task id ${unknown.join(', ')}; shipped: ${[...ids].join(', ')}`);
   return all.filter((t) => wanted.includes(t.id));
 }
 
@@ -86,7 +84,7 @@ async function signIn(client: ReturnType<typeof createClient>, env: Env): Promis
     await client.signIn(env.FORGE_BENCH_EMAIL, env.FORGE_BENCH_PASSWORD);
     return;
   }
-  throw new Refusal(
+  throw new Error(
     'no credential: set FORGE_BENCH_TOKEN, or both FORGE_BENCH_EMAIL and FORGE_BENCH_PASSWORD (read from the environment only)',
   );
 }
@@ -95,7 +93,7 @@ function positiveInt(name: string, raw: string | undefined, fallback: number): n
   if (raw === undefined) return fallback;
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1)
-    throw new Refusal(`--${name} must be a positive integer, got ${raw}`);
+    throw new Error(`--${name} must be a positive integer, got ${raw}`);
   return n;
 }
 
@@ -111,7 +109,7 @@ async function credentialCanRunTrials(client: BenchClient): Promise<void> {
     await client.readPreferences();
   } catch (err) {
     if (err instanceof DeploymentRefusal && err.status === 403)
-      throw new Refusal(
+      throw new Error(
         `this credential cannot run the benchmark: ${err.message}\nEvery trial reads and restores the person's preferences, so the run would fail each one after paying for its turns. Use FORGE_BENCH_EMAIL and FORGE_BENCH_PASSWORD for an account that holds this project, rather than FORGE_BENCH_TOKEN.`,
       );
     throw err;
@@ -121,7 +119,7 @@ async function credentialCanRunTrials(client: BenchClient): Promise<void> {
 async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
   const f = flags(argv);
   for (const need of ['api', 'project', 'out']) {
-    if (!f[need]) throw new Refusal(`--${need} is required\n${USAGE.join('\n')}`);
+    if (!f[need]) throw new Error(`--${need} is required\n${USAGE.join('\n')}`);
   }
   const trials = positiveInt('trials', f.trials, 3);
   const k = positiveInt('k', f.k, 3);
@@ -172,7 +170,7 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
       if (trial.judgeRefused) {
         results.push(row);
         await writeResult(deps, f, version, model, runId, k, results, judge, runProject);
-        throw new Refusal(
+        throw new Error(
           `${task.id} trial ${i + 1}: ${trial.judgeRefused}; no further trial started, partial results written to ${f.out}`,
         );
       }
@@ -180,7 +178,7 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
         results.push(row);
         await writeResult(deps, f, version, model, runId, k, results, judge, runProject);
         const { observed, expected } = trial.result.cleanup.preferences;
-        throw new Refusal(
+        throw new Error(
           `${task.id} trial ${i + 1}: preference restore failed (${JSON.stringify(observed)} read back against ${JSON.stringify(expected)}); no further trial started, partial results written to ${f.out}`,
         );
       }
@@ -236,7 +234,7 @@ async function writeResult(
 async function compareFiles(argv: string[], deps: CliDeps): Promise<number> {
   const acrossProjects = argv.includes('--across-projects');
   const [before, after] = argv.filter((a) => a !== '--across-projects');
-  if (!before || !after) throw new Refusal(`compare needs two result files\n${USAGE.join('\n')}`);
+  if (!before || !after) throw new Error(`compare needs two result files\n${USAGE.join('\n')}`);
   const a = readResult(await deps.readFile(before), before);
   const b = readResult(await deps.readFile(after), after);
   for (const line of compareLines(compare(a, b, { acrossProjects }))) deps.stdout(line);
@@ -252,15 +250,15 @@ async function ladder(argv: string[], deps: CliDeps): Promise<number> {
     const arg = argv[i] ?? '';
     if (arg === '--history' || arg === '--out') {
       const value = argv[i + 1];
-      if (value === undefined || value.startsWith('--')) throw new Refusal(`${arg} needs a value`);
+      if (value === undefined || value.startsWith('--')) throw new Error(`${arg} needs a value`);
       if (arg === '--history') historyFiles.push(value);
       else out = value;
       i += 1;
-    } else if (arg.startsWith('--')) throw new Refusal(`unknown flag ${arg}\n${USAGE.join('\n')}`);
+    } else if (arg.startsWith('--')) throw new Error(`unknown flag ${arg}\n${USAGE.join('\n')}`);
     else runFiles.push(arg);
   }
   if (runFiles.length === 0)
-    throw new Refusal(`ladder needs at least one run file\n${USAGE.join('\n')}`);
+    throw new Error(`ladder needs at least one run file\n${USAGE.join('\n')}`);
   const runs = rankRuns(
     await Promise.all(
       runFiles.map(async (name) => ({ name, result: readResult(await deps.readFile(name), name) })),
@@ -286,7 +284,7 @@ async function ladder(argv: string[], deps: CliDeps): Promise<number> {
 async function adviseFile(argv: string[], deps: CliDeps): Promise<number> {
   const [file, extra] = argv;
   if (!file || extra !== undefined)
-    throw new Refusal(`advise needs exactly one run or history file\n${USAGE.join('\n')}`);
+    throw new Error(`advise needs exactly one run or history file\n${USAGE.join('\n')}`);
   const text = await deps.readFile(file);
   let inputs: ReturnType<typeof adviceInputsOfRun>;
   try {
@@ -296,7 +294,7 @@ async function adviseFile(argv: string[], deps: CliDeps): Promise<number> {
       inputs = adviceInputsOfHistory(readHistoryResult(text, file));
     } catch (historyErr) {
       const why = (e: unknown): string => (e instanceof Error ? e.message : String(e));
-      throw new Refusal(
+      throw new Error(
         `${file} is neither a run file (${why(runErr)}) nor a history file (${why(historyErr)})`,
       );
     }
@@ -315,7 +313,7 @@ export async function main(argv: string[], env: Env, deps: CliDeps): Promise<num
     if (verb === 'advise') return await adviseFile(rest, deps);
     if (verb === 'history' || verb === 'compare-history' || verb === 'harvest')
       return await historyMain(verb, rest, env, deps);
-    throw new Refusal(USAGE.join('\n'));
+    throw new Error(USAGE.join('\n'));
   } catch (err) {
     deps.stderr(err instanceof Error ? err.message : String(err));
     return 1;

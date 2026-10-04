@@ -17,13 +17,15 @@ function decodeKey(raw: string): Buffer {
   if (/^[0-9a-fA-F]{64}$/.test(raw)) {
     const buf = Buffer.from(raw, 'hex');
     if (buf.length !== KEY_LEN) {
-      throw new Error('INTEGRATION_MASTER_KEY: hex must decode to 32 bytes');
+      throw new Error('the integration master key (env INTEGRATION_MASTER_KEY) in hex must decode to 32 bytes');
     }
     return buf;
   }
   const buf = Buffer.from(raw, 'base64');
   if (buf.length !== KEY_LEN) {
-    throw new Error(`INTEGRATION_MASTER_KEY: base64 must decode to 32 bytes (got ${buf.length})`);
+    throw new Error(
+      `the integration master key (env INTEGRATION_MASTER_KEY) in base64 must decode to 32 bytes (got ${buf.length})`,
+    );
   }
   return buf;
 }

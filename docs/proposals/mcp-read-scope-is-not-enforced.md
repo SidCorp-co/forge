@@ -17,10 +17,9 @@ token's scopes do not cover. On `/mcp` it does not. `mcp/request-class.ts:classi
 already sorts every JSON-RPC envelope into `read` or `write`, failing closed to `write`, but the
 only reader of that answer is the rate limiter in `middleware/require-pat.ts:authenticatePat`.
 No gate compares it with `principal.scopes`. The permission check refuses any non-read permission
-to a token without `write` (`packages/core/src/permissions/can.ts:holds`), and `/mcp` admin acts
-also need the `admin` scope (`mcp/tools/lib.ts:assertTokenHasScope`), but a tool that asks only
-`project.read` before writing still lets a token holding only `read` create issues, comment and
-change fields through `/mcp`.
+to a token without `write` (`packages/core/src/permissions/can.ts:holds`), but a tool that asks
+only `project.read` before writing still lets a token holding only `read` create issues, comment
+and change fields through `/mcp`. No `/mcp` tool reads the token's `admin` scope.
 
 ## Why it was not closed on ISS-1175
 

@@ -6,6 +6,7 @@ import type { PolicyDocument } from '../project-config/schema.js';
 import { wakeMastersForProject } from '../ws/master-wake.js';
 import type { Actor } from './activity.js';
 import { AUTONOMOUS_ENTRY_STATUS, autonomousStepFor, isAutonomous } from './autonomous-mode.js';
+import { refusePipeline } from './refuse.js';
 
 export {
   AUTONOMOUS_ENTRY_STATUS,
@@ -52,8 +53,9 @@ export async function dispatchDriveManual(args: {
   projectCreatedBy: string | null;
 }): Promise<{ startedAt: string }> {
   if (!autonomousStepFor(args.status)) {
-    throw new Error(
-      `AUTONOMOUS_NOT_AT_ENTRY: the driver is handed an issue at \`${AUTONOMOUS_ENTRY_STATUS}\`, this one is at \`${args.status}\``,
+    throw refusePipeline(
+      'NOT_AT_ENTRY_STATUS',
+      `the driver is handed an issue at \`${AUTONOMOUS_ENTRY_STATUS}\`, this one is at \`${args.status}\``,
     );
   }
   const rows = (await db.execute(sql`

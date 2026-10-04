@@ -26,6 +26,7 @@ import {
   requireUserOrDevice,
   restActor,
 } from '../middleware/auth.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import {
   canonicalSessionId,
@@ -49,6 +50,7 @@ import {
   countTranscriptToolCalls,
   isBlindScheduleRun,
 } from './schedule-evidence.js';
+import { refuseSession } from './refusals.js';
 import { agentSessionListColumns } from './service.js';
 import {
   assertAgentChatOwner,
@@ -58,7 +60,6 @@ import {
   ensureSessionMember,
   ensureSessionOwnerOrAdmin,
   ensureSessionRole,
-  forbidden,
   idParamSchema,
   loadSessionOr404,
   notFound,
@@ -550,10 +551,7 @@ agentSessionRoutes.patch(
     const isUserCancelled =
       existing.status === 'failed' && existing.failureReason === 'user_cancelled';
     if (isUserCancelled && (patch.status === 'running' || patch.status === 'queued')) {
-      throw new HTTPException(409, {
-        message: 'session was cancelled by user',
-        cause: { code: 'SESSION_CANCELLED' },
-      });
+      throw refuseSession('SESSION_CANCELLED', 'session was cancelled by user');
     }
     if (isWorkerActivity && !isUserCancelled) {
       updates.lastHeartbeatAt = patchNow;

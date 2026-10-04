@@ -17,12 +17,14 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { readJobGate } from './job-queries.js';
+import { refuseJob } from './refusals.js';
 import { scrubJobOutput } from './job-secret-scrub.js';
 import { maybeDeriveIncremental } from './session-transcript.js';
 import { TERMINAL_JOB_STATUSES } from '@forge/contracts/job-machine';
@@ -33,12 +35,6 @@ const badRequest = (details: unknown) =>
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-const conflict = (message: string, code: string) =>
-  new HTTPException(409, { message, cause: { code } });
 
 const jobIdParamSchema = z.object({ id: z.uuid() });
 
@@ -168,7 +164,7 @@ jobEventsRoutes.post(
     if (
       TERMINAL_STATUSES.has(job.status as typeof TERMINAL_STATUSES extends Set<infer T> ? T : never)
     ) {
-      throw conflict('job is in a terminal state', 'JOB_TERMINATED');
+      throw refuseJob('JOB_TERMINATED', 'job is in a terminal state');
     }
 
     const persisted = await scrubJobOutput(

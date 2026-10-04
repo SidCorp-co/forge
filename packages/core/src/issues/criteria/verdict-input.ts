@@ -14,12 +14,12 @@
  * `commit_unresolved` is not an identity a writer can name: it exists only on backfilled rows.
  */
 
+import type { VerdictRefusalCode } from '@forge/contracts/issues';
 import {
   STOREFRONT_DRAFT_SHAPE,
   STOREFRONT_DRAFT_VERSION,
   STOREFRONT_ENVIRONMENT,
   STOREFRONT_WORKFLOW_ID,
-  type StorefrontDraftRefusalCode,
 } from '@forge/contracts/verdict-identity';
 import { verdictValues } from '../../db/schema-issue-criteria.js';
 import {
@@ -49,22 +49,8 @@ export interface VerdictDraft {
   readonly evidence: readonly string[];
 }
 
-export type VerdictRefusalCode =
-  | 'VERDICT_VALUE_UNKNOWN'
-  | 'VERDICT_SKIP_REASON_REQUIRED'
-  | 'VERDICT_IDENTITY_REQUIRED'
-  | 'VERDICT_COMMIT_NOT_FULL'
-  | 'VERDICT_RUNTIME_NOT_FULL'
-  | 'VERDICT_DESIGN_SHAPE'
-  | 'VERDICT_CONTRACT_SHAPE'
-  | 'VERDICT_CRITERION_UNKNOWN'
-  | 'VERDICT_DESIGN_UNKNOWN'
-  | 'VERDICT_DESIGN_UNAPPROVED'
-  | 'VERDICT_CONTRACT_UNKNOWN'
-  | StorefrontDraftRefusalCode;
-
 export interface VerdictRefusal {
-  readonly code: VerdictRefusalCode;
+  readonly code: Exclude<VerdictRefusalCode, 'VERDICT_REFUSED'>;
   readonly criterion: number;
   readonly detail: string;
 }
@@ -74,7 +60,7 @@ const WHOLE_RUNTIME = /^[0-9a-f]{40,64}$/iu;
 
 const blank = (s: string | null | undefined) => !s?.trim();
 
-function refuse(code: VerdictRefusalCode, criterion: number, detail: string): VerdictRefusal {
+function refuse(code: VerdictRefusal['code'], criterion: number, detail: string): VerdictRefusal {
   return { code, criterion, detail };
 }
 

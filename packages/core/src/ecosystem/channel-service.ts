@@ -6,7 +6,7 @@ import type { Writer } from './channel-author.js';
 import { checked, parsedOrRefused } from './channel-checks.js';
 import { askGate } from './channel-gate-ask.js';
 import { addDays, today } from './channel-rules.js';
-import { DOCUMENT_SCHEMA_ID, type Gate, TYPE_CODES } from './channel-schema.js';
+import { DOCUMENT_SCHEMA_ID, type Gate, TYPE_ABBREVIATIONS } from './channel-schema.js';
 import { announceGatePending, announcePublished } from './channel-signals.js';
 import { insertDraft, insertEvent, reserveNumber, rewriteDocument } from './channel-store.js';
 import { serve } from './channel-world.js';
@@ -198,7 +198,7 @@ export async function submit(args: {
       const mode = eco.gate[row.type];
       const number =
         row.number ??
-        `${eco.channel.code}-${TYPE_CODES[row.type]}-${await reserveNumber(tx, row.ecosystemId, row.type)}`;
+        `${eco.channel.code}-${TYPE_ABBREVIATIONS[row.type]}-${await reserveNumber(tx, row.ecosystemId, row.type)}`;
       const now = new Date();
       const state = mode === 'publish' ? 'published' : 'submitted';
       const { gate: _was, ...rest } = stored;

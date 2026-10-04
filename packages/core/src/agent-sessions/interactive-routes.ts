@@ -1,6 +1,5 @@
 import { eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
@@ -9,6 +8,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
+import { refuseSession } from './refusals.js';
 import { broadcastSession } from './broadcast.js';
 import { createChatSessionRow } from './chat-turn.js';
 import {
@@ -179,11 +179,7 @@ agentSessionInteractiveRoutes.post(
 
     const { session } = await ensureSessionOwnerOrAdmin(input.sessionId, userId);
     if (session.status === 'running' || session.status === 'queued') {
-      throw new HTTPException(409, {
-        message:
-          'The agent is still working on this conversation, under the access of the person whose turn it is. Wait for it to finish or stop it, then send.',
-        cause: { code: 'SESSION_RUNNING' },
-      });
+      throw refuseSession('SESSION_RUNNING', 'The agent is still working on this conversation, under the access of the person whose turn it is. Wait for it to finish or stop it, then send.');
     }
 
     // Resolve the client through the SHARED path: honour an explicit runner pick

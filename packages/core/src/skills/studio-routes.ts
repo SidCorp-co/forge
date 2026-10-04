@@ -7,10 +7,9 @@ import { skills } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { globalEffectiveMd } from './effective.js';
-import { MetaSkillReservedError } from './meta-skills.js';
-import { applyGlobalSkillDefault, SkillAlreadyShadowedError } from './service.js';
 import { requireHeld } from '../permissions/index.js';
+import { globalEffectiveMd } from './effective.js';
+import { applyGlobalSkillDefault } from './service.js';
 
 /**
  * Skill Studio listing + apply-default (ISS-388). Global skills are immutable
@@ -108,23 +107,7 @@ skillStudioRoutes.post(
       throw badRequest({ globalSkillId: 'apply-default source must be a global skill' });
     }
 
-    try {
-      const created = await applyGlobalSkillDefault({ projectId, global });
-      return c.json(created, 201);
-    } catch (err) {
-      if (err instanceof SkillAlreadyShadowedError) {
-        throw new HTTPException(400, {
-          message: err.message,
-          cause: { code: 'ALREADY_SHADOWED' },
-        });
-      }
-      if (err instanceof MetaSkillReservedError) {
-        throw new HTTPException(400, {
-          message: err.message,
-          cause: { code: 'META_SKILL_RESERVED' },
-        });
-      }
-      throw err;
-    }
+    const created = await applyGlobalSkillDefault({ projectId, global });
+    return c.json(created, 201);
   },
 );

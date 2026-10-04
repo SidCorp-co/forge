@@ -1,0 +1,22 @@
+// The codes a label or module write, and a module diagram read, refuse under.
+
+export const LABEL_REFUSAL_CODES = [
+	"LABEL_REFUSED",
+	"LABEL_NAME_TAKEN",
+	"LABEL_IN_USE",
+	"MODULE_SLUG_TAKEN",
+	"INVALID_PARENT",
+	"PARENT_NOT_MODULE",
+	"CIRCULAR_HIERARCHY",
+	"MODULE_IN_USE",
+	"PARENT_ON_NON_MODULE",
+	"INVALID_KNOWLEDGE_NODE",
+	"KNOWLEDGE_NODE_NOT_IN_PROJECT",
+	"KNOWLEDGE_NODE_TAKEN",
+	"KNOWLEDGE_NODE_ON_NON_MODULE",
+	"NO_MODULES",
+	"NO_MODULE_FLOWS",
+	"UNPARSABLE_MODULE_FLOW",
+] as const;
+
+export type LabelRefusalCode = (typeof LABEL_REFUSAL_CODES)[number];

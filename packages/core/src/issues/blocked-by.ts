@@ -1,9 +1,11 @@
-import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
+import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
+import type { IssueTakeRefusalCode } from '@forge/contracts/issues';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { isRefusal, RefusalError } from '../lib/refusal.js';
 import { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } from './dependency-effects.js';
 import { designHeldSql, designHoldPhrase, designHoldsOf } from './design-delivery.js';
 import {
@@ -97,33 +99,22 @@ function heldPhrase(held: BlockedIssue): string {
   return `${issueKey}: ${edges} it, ${blockers.map(whyUnsettled).join('; ')}`;
 }
 
-export class IssueBlockedError extends Error {
-  readonly code = 'ISSUE_BLOCKED';
+const BLOCKED_REMEDY =
+  `A blocker releases its dependents once it reaches ${BLOCKER_SETTLED_STATUSES.map((s) => `\`${s}\``).join(' or ')} ` +
+  'with every design revision it delivers approved. Move the blocker there, or retract the edge on ' +
+  'the record (`validUntil` in the past) where it no longer holds; no claim, lease, run or status ' +
+  "move takes a blocked issue, a person's included.";
 
-  constructor(
-    readonly held: BlockedIssue[],
-    readonly door: string,
-  ) {
-    super(
-      `ISSUE_BLOCKED: ${door} is refused. ${held.map(heldPhrase).join('. ')}. A blocker releases its ` +
-        `dependents once it reaches ${BLOCKER_SETTLED_STATUSES.map((s) => `\`${s}\``).join(' or ')} ` +
-        'with every design revision it delivers approved. Move the blocker there, or retract the edge on ' +
-        'the record (`validUntil` in the past) where it no longer holds; no claim, lease, run or status ' +
-        "move takes a blocked issue, a person's included.",
-    );
-    this.name = 'IssueBlockedError';
-  }
-
-  get blocked() {
-    return this.held.map((h) => ({
-      issueKey: h.issueKey,
-      blockers: h.blockers.map((b) => ({
-        issueKey: b.issueKey,
-        status: b.status,
-        design: b.design,
-      })),
-    }));
-  }
+/** Every held issue a door would take, refused by name in one envelope. */
+function issueBlocked(held: BlockedIssue[], door: string): RefusalError {
+  return new RefusalError(
+    held.map((h) => ({
+      code: 'ISSUE_BLOCKED' satisfies IssueTakeRefusalCode,
+      path: '',
+      detail: `${door} is refused. ${heldPhrase(h)}. ${BLOCKED_REMEDY}`,
+    })),
+    'ISSUE_BLOCKED',
+  );
 }
 
 export const isTakeable = (status: IssueStatus) => TAKEABLE_STATUSES.includes(status);
@@ -163,7 +154,7 @@ export async function refuseBlockedTake(
 ): Promise<void> {
   const [issue] = await readTaken(executor, sql`i.id = ${issueId}`);
   const held = issue ? await blockedOf(executor, issue) : null;
-  if (held) throw new IssueBlockedError([held], door);
+  if (held) throw issueBlocked([held], door);
 }
 
 // cm:guard a door that hands out work and does not already ask the dispatch gates asks everything the
@@ -177,7 +168,7 @@ export async function refuseHeldTake(
   const [issue] = await readTaken(executor, sql`i.id = ${issueId}`);
   if (!issue || !isTakeable(issue.status)) return;
   const held = await blockedOf(executor, issue);
-  if (held) throw new IssueBlockedError([held], door);
+  if (held) throw issueBlocked([held], door);
   await assertDispatchGatesForIssue(issue.projectId, issue.id);
 }
 
@@ -201,7 +192,7 @@ export async function refuseBlockedTakeForSeqs(
     const blocked = await blockedOf(executor, issue);
     if (blocked) held.push(blocked);
   }
-  if (held.length > 0) throw new IssueBlockedError(held, door);
+  if (held.length > 0) throw issueBlocked(held, door);
 }
 
 export async function refuseHeldTakeForSeqs(
@@ -212,15 +203,17 @@ export async function refuseHeldTakeForSeqs(
   await assertDispatchGatesForSeqs(projectId, seqs);
 }
 
-export interface HeldTakeRefusal {
-  code: string;
-  message: string;
-  blocked: unknown;
-}
-
-export function heldTakeRefusal(err: unknown): HeldTakeRefusal | null {
-  if (err instanceof IssueBlockedError || isDispatchGateError(err)) {
-    return { code: err.code, message: err.message, blocked: err.blocked };
+/** A refused take in the envelope: a blocked issue as thrown, a dispatch gate's refusal named. */
+export function heldTakeRefusal(err: unknown): RefusalError | null {
+  if (
+    isRefusal(err, 'ISSUE_BLOCKED') ||
+    isRefusal(err, 'WORKFLOW_DESIGN_NOT_APPROVED') ||
+    isRefusal(err, 'CONTRACT_WAIT_UNSETTLED')
+  ) {
+    return err;
+  }
+  if (isDispatchGateError(err)) {
+    return new RefusalError([{ code: err.code, path: '', detail: err.message }], err.code);
   }
   return null;
 }

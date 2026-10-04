@@ -7,6 +7,7 @@ import { verifyUserToken } from '../auth/jwt.js';
 import { isPatLike } from '../auth/pat-format.js';
 import { parseBearerHeader } from '../middleware/bearer.js';
 import { authenticatePat, type PatPrincipal } from '../middleware/require-pat.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { resolveTestingSecrets, SELF_JOB } from '../project-config/testing-secrets.js';
 
@@ -23,11 +24,9 @@ const unauthenticated = (message: string, code = 'UNAUTHENTICATED') =>
   new HTTPException(401, { message, cause: { code } });
 
 const sessionRefused = () =>
-  new HTTPException(403, {
-    message:
-      'a browser or desktop session is a person signed in, and this route hands a testing secret only to the running job whose credential asks for it. A person reads a secret’s name at GET /api/projects/:id/secrets and its value nowhere.',
-    cause: { code: 'TESTING_SECRETS_SESSION_REFUSED' },
-  });
+  forbidden(
+    'a browser or desktop session is a person signed in, and this route hands a testing secret only to the running job whose credential asks for it. A person reads a secret’s name at GET /api/projects/:id/secrets and its value nowhere.',
+  );
 
 async function isSession(token: string): Promise<boolean> {
   try {

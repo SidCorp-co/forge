@@ -1,11 +1,6 @@
-import {
-  CONTENT_LANGUAGE_REFUSAL_CODES,
-  contentLanguageProblem,
-} from '@forge/contracts/content-language';
-import {
-  resolveProjectTemplates,
-  TEMPLATE_REFUSAL_CODES,
-} from '@forge/contracts/workflow-templates';
+import { contentLanguageProblem } from '@forge/contracts/content-language';
+import type { ConfigRefusalCode } from '@forge/contracts/project-config';
+import { resolveProjectTemplates } from '@forge/contracts/workflow-templates';
 import { REGISTERED_TOOLS } from '../mcp/registered-tools.js';
 import {
   type BindingRole,
@@ -14,62 +9,6 @@ import {
   type PolicyDocument,
   type ProjectDocument,
 } from './schema.js';
-
-// cm:why enumerating is the point: this list IS the refusal vocabulary callers switch on.
-export const PURE_REFUSAL_CODES = [
-  'DEFAULT_BRANCH_UNDECLARED',
-  'PROMOTIONS_NEED_GIT',
-  'PROMOTION_REF_UNDECLARED',
-  'PROMOTION_CYCLE',
-  'DEPLOYS_FROM_MISSING',
-  'DEPLOYS_FROM_UNDECLARED',
-  'DEPLOYS_FROM_NEEDS_GIT',
-  'PRODUCTION_NOT_UNIQUE',
-  'ISOLATION_UNSUPPORTED',
-  'GATE_UNSUPPORTED',
-  'BINDING_NOT_FOUND',
-  'BINDING_ROLE_MISMATCH',
-  'BINDING_IN_USE',
-  'BINDING_PROVIDER_MISMATCH',
-  'GITLESS_BINDING_ON_GIT_SOURCE',
-  'TRIGGER_UNSUPPORTED',
-  'TESTING_PROFILE_NOT_FOUND',
-  'PERMISSION_PROFILE_UNDEFINED',
-  'TOOL_PATTERN_INVALID',
-  'APPROVER_POLICY_RETIRED',
-] as const;
-
-// cm:why a project's own diagram templates (`workflows.templates`) are refused in this vocabulary;
-// the first five are the template resolver's own (`@forge/contracts/workflow-templates`), the last
-// needs the stored designs. Planted in `workflow-templates.test.ts`.
-export const WORKFLOW_TEMPLATE_CONFIG_CODES = [
-  ...TEMPLATE_REFUSAL_CODES,
-  'WORKFLOW_TEMPLATE_IN_USE',
-] as const;
-
-// cm:why these need storage, a registry or the request; S2 implements them. UNKNOWN_KEY is the
-// strict schema's own unrecognized_keys issue, named here so the API maps it to one code.
-export const STORED_REFUSAL_CODES = [
-  'UNKNOWN_KEY',
-  'VERSION_UNSUPPORTED',
-  'STALE_BASE',
-  'PROJECT_ID_IMMUTABLE',
-  'SLUG_TAKEN',
-  'CONNECTION_NOT_FOUND',
-  'CONNECTION_PROVIDER_MISMATCH',
-  'SECRET_NOT_FOUND',
-] as const;
-
-// cm:why the content language's own vocabulary (`@forge/contracts/content-language`), planted in
-// `content-language.test.ts`.
-export const CONFIG_REFUSAL_CODES = [
-  ...PURE_REFUSAL_CODES,
-  ...STORED_REFUSAL_CODES,
-  ...WORKFLOW_TEMPLATE_CONFIG_CODES,
-  ...CONTENT_LANGUAGE_REFUSAL_CODES,
-] as const;
-
-export type ConfigRefusalCode = (typeof CONFIG_REFUSAL_CODES)[number];
 
 export interface ConfigRefusal {
   code: ConfigRefusalCode;

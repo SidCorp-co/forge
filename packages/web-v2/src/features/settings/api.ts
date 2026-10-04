@@ -33,7 +33,7 @@ export const settingsApi = {
     }),
   listPreferenceChanges: () =>
     apiClient<{ items: PreferenceChange[] }>(`/auth/preferences/changes`).then((r) => r.items),
-  /** `POST /api/auth/preferences/changes/:id/restore` — 409 `PREFERENCE_CHANGE_SUPERSEDED` when a later change moved the field. */
+  /** `POST /api/auth/preferences/changes/:id/restore` — 422 `PREFERENCE_CHANGE_SUPERSEDED` when a later change moved the field. */
   restorePreferenceChange: (id: string) =>
     apiClient<AssistantPreferences>(`/auth/preferences/changes/${id}/restore`, { method: "POST" }),
 

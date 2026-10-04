@@ -1,3 +1,4 @@
+import type { CommentRefusalCode } from '@forge/contracts/comments';
 import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
@@ -13,10 +14,13 @@ import {
   mirrorCommentRecord,
   remirrorCommentRecord,
 } from '../issues/record-events/mirror.js';
+import { type RefusalError, refuser } from '../lib/refusal.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
 import type { Actor } from '../pipeline/activity.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
 import { screenAgentComment, screenRecordFence } from './screen.js';
+
+const refuse = refuser<CommentRefusalCode>('COMMENT_REFUSED');
 
 export type CommentThreadRow = {
   id: string;
@@ -154,14 +158,12 @@ export type NewComment = {
 export type WrittenComment = { row: CommentThreadRow; warnings: string[] };
 
 /** A comment intent outside the closed set, refused by name with the valid set. */
-export class CommentIntentRefused extends Error {
-  readonly code = 'COMMENT_INTENT_UNKNOWN' as const;
-  constructor(readonly intent: unknown) {
-    super(
-      `\`${String(intent)}\` is not a comment intent — send one of: ${COMMENT_INTENTS.join(', ')} (question is owed a reply, decision is pinned, note is neither)`,
-    );
-    this.name = 'CommentIntentRefused';
-  }
+export function intentRefusal(intent: unknown, path = '/intent'): RefusalError {
+  return refuse(
+    'COMMENT_INTENT_UNKNOWN',
+    `\`${String(intent)}\` is not a comment intent — send one of: ${COMMENT_INTENTS.join(', ')} (question is owed a reply, decision is pinned, note is neither)`,
+    path,
+  );
 }
 
 /**
@@ -185,7 +187,7 @@ export function resolveIntent(
   body: string,
 ): { intent: CommentIntent; warning: string | null } {
   if (sent !== undefined && sent !== null) {
-    if (!isCommentIntent(sent)) throw new CommentIntentRefused(sent);
+    if (!isCommentIntent(sent)) throw intentRefusal(sent);
     return { intent: sent, warning: null };
   }
   const intent = defaultIntent(byAnAgent, body);

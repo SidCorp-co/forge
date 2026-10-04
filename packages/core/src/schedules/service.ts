@@ -1,3 +1,4 @@
+import type { ScheduleRefusalCode } from '@forge/contracts/schedules';
 import { and, asc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { refusalError } from '../agent-sessions/interactive-credential.js';
@@ -5,11 +6,14 @@ import type { SessionAsker } from '../agent-sessions/session-credential.js';
 import { db } from '../db/client.js';
 import { projects, type ScheduleKind, schedules } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { refuser } from '../lib/refusal.js';
 import { nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
 import { type LastFire, lastFires } from './fires.js';
 import { getImprovementMessage } from './messages/registry.js';
 import { requireHeld } from '../permissions/index.js';
+
+const refuse = refuser<ScheduleRefusalCode>('SCHEDULE_REFUSED');
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -306,10 +310,10 @@ export async function runScheduleNow(
   if (!result.ok) {
     // ISS-244 — manual /run no longer queues; surface "no device online"
     // synchronously so the user knows nothing was started.
-    throw new HTTPException(409, {
-      message: result.reason,
-      cause: { code: 'SCHEDULE_DISPATCH_FAILED', reason: result.reason, fireId: result.fireId },
-    });
+    throw refuse(
+      'SCHEDULE_DISPATCH_FAILED',
+      `nothing was started: ${result.reason} (fire ${result.fireId})`,
+    );
   }
 
   return { fireId: result.fireId, sessionId: result.sessionId, message: 'Schedule triggered' };

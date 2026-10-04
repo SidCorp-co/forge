@@ -1,28 +1,33 @@
-import type { IssueStatus } from '../db/schema.js';
+import { POLICY_REFUSAL_CODES, type PolicyRefusalCode } from '@forge/contracts/project-config';
+import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
 import { AUTONOMOUS_ENTRY_STATUS } from '../pipeline/autonomous-mode.js';
 import { readEffectivePolicy } from './effective.js';
 import { POLICY_STATE_STATUSES, type PolicyDocument } from './schema.js';
 import type { Held } from './service.js';
 
-export type PolicyRefusalCode = 'POLICY_UNDECLARED' | 'POLICY_STATE_UNDECLARED';
+const refuse = refuser<PolicyRefusalCode>('POLICY_UNDECLARED');
 
 /** Dispatch refused because the project's policy cannot say how this work runs. */
-export class PolicyRefusedError extends Error {
-  readonly code: PolicyRefusalCode;
-  readonly projectId: string;
-  readonly status: IssueStatus | null;
+export function policyRefusal(
+  code: PolicyRefusalCode,
+  projectId: string,
+  status: string | null,
+): RefusalError {
+  return refuse(
+    code,
+    code === 'POLICY_UNDECLARED'
+      ? `project ${projectId} has no policy, so nothing dispatches there. Write one with PUT /api/projects/${projectId}/policy ({ baseRevision: null, document: <policy-v1> }); the schema is /api/schemas/policy-v1.json.`
+      : `the policy of project ${projectId} declares no state "${status}", so work at "${status}" has no model and no deny profile. Add states.${status} to the policy (PUT /api/projects/${projectId}/policy).`,
+  );
+}
 
-  constructor(code: PolicyRefusalCode, projectId: string, status: IssueStatus | null) {
-    super(
-      code === 'POLICY_UNDECLARED'
-        ? `POLICY_UNDECLARED: project ${projectId} has no policy, so nothing dispatches there. Write one with PUT /api/projects/${projectId}/policy ({ baseRevision: null, document: <policy-v1> }); the schema is /api/schemas/policy-v1.json.`
-        : `POLICY_STATE_UNDECLARED: the policy of project ${projectId} declares no state "${status}", so work at "${status}" has no model and no deny profile. Add states.${status} to the policy (PUT /api/projects/${projectId}/policy).`,
-    );
-    this.name = 'PolicyRefusedError';
-    this.code = code;
-    this.projectId = projectId;
-    this.status = status;
-  }
+/** A thrown policy refusal, with its code and sentence. */
+export function policyRefusalOf(err: unknown): { code: PolicyRefusalCode; detail: string } | null {
+  if (!isRefusal(err)) return null;
+  const hit = err.refusals.find((r) =>
+    (POLICY_REFUSAL_CODES as readonly string[]).includes(r.code),
+  );
+  return hit ? { code: hit.code as PolicyRefusalCode, detail: hit.detail } : null;
 }
 
 export type PolicyStatus = (typeof POLICY_STATE_STATUSES)[number];
@@ -45,7 +50,7 @@ export interface DispatchState {
 
 export async function requirePolicy(projectId: string): Promise<Held<PolicyDocument>> {
   const held = await readEffectivePolicy(projectId);
-  if (!held) throw new PolicyRefusedError('POLICY_UNDECLARED', projectId, null);
+  if (!held) throw policyRefusal('POLICY_UNDECLARED', projectId, null);
   return held;
 }
 
@@ -64,7 +69,7 @@ export function dispatchStateOf(
   const governed = wanted.status !== null && isPolicyStatus(wanted.status);
   const status: PolicyStatus = governed ? (wanted.status as PolicyStatus) : AUTONOMOUS_ENTRY_STATUS;
   const state = held.document.states[status];
-  if (!state) throw new PolicyRefusedError('POLICY_STATE_UNDECLARED', projectId, status);
+  if (!state) throw policyRefusal('POLICY_STATE_UNDECLARED', projectId, status);
   const profile = held.document.permissions[state.permissions];
   // cm:guard writePolicy refuses an undefined profile (PERMISSION_PROFILE_UNDEFINED); a stored
   // document that names one anyway is corrupt, and dispatching it would deny nothing.

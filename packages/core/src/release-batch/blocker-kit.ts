@@ -1,9 +1,9 @@
 import {
-  blockerHttpStatus,
   type ReleaseBlocker,
   type ReleaseBlockerCode,
   releaseBlockerSentence,
 } from './blocker-sentences.js';
+import { reasonOf } from './refuse.js';
 
 export function blocker(
   code: ReleaseBlockerCode,
@@ -12,7 +12,6 @@ export function blocker(
 ): ReleaseBlocker {
   return {
     code,
-    httpStatus: blockerHttpStatus(code),
     message: releaseBlockerSentence(code, details),
     evaluated: code !== 'RELEASE_CHECK_UNEVALUATED',
     ...(details ? { details } : {}),
@@ -39,7 +38,9 @@ export async function attempt<T>(
   try {
     return { value: await read(), failure: null };
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    return { value: undefined, failure: blocker('RELEASE_CHECK_UNEVALUATED', { check, detail }) };
+    return {
+      value: undefined,
+      failure: blocker('RELEASE_CHECK_UNEVALUATED', { check, detail: reasonOf(err) }),
+    };
   }
 }

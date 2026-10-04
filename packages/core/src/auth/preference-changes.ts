@@ -8,6 +8,7 @@
  * records it can offer one.
  */
 
+import type { AuthRefusalCode } from '@forge/contracts/auth';
 import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { type AnswerStyle, userPreferences } from '../db/schema.js';
@@ -16,6 +17,9 @@ import {
   type PreferenceChangeField,
   preferenceChanges,
 } from '../db/schema-agent-selves.js';
+import { refuser } from '../lib/refusal.js';
+
+const refuse = refuser<AuthRefusalCode>('AUTH_REFUSED');
 
 export const ASSISTANT_PREFERENCE_DEFAULTS = {
   answerStyle: 'default' as AnswerStyle,
@@ -172,18 +176,13 @@ export async function listPreferenceChanges(
     .limit(200);
 }
 
-export class PreferenceRestoreConflict extends Error {
-  constructor(
-    readonly change: PreferenceChange,
-    readonly later: PreferenceChange | null,
-  ) {
-    super(
-      later
-        ? `${change.field} no longer holds the value change ${change.id} set; change ${later.id} (${later.changedBy}, ${later.changedAt.toISOString()}) set it since, so restoring would undo that one and not this`
-        : `${change.field} no longer holds the value change ${change.id} set, so restoring would undo something this trail does not record`,
-    );
-    this.name = 'PreferenceRestoreConflict';
-  }
+function restoreSuperseded(change: PreferenceChange, later: PreferenceChange | null) {
+  return refuse(
+    'PREFERENCE_CHANGE_SUPERSEDED',
+    later
+      ? `${change.field} no longer holds the value change ${change.id} set; change ${later.id} (${later.changedBy}, ${later.changedAt.toISOString()}) set it since, so restoring would undo that one and not this`
+      : `${change.field} no longer holds the value change ${change.id} set, so restoring would undo something this trail does not record`,
+  );
 }
 
 /**
@@ -229,7 +228,7 @@ export async function restorePreferenceChange(args: {
         )
         .orderBy(desc(preferenceChanges.changedAt))
         .limit(1);
-      throw new PreferenceRestoreConflict(change, later ?? null);
+      throw restoreSuperseded(change, later ?? null);
     }
 
     const patch: AssistantPreferencePatch =

@@ -137,7 +137,7 @@ export const projectSettingsApi = {
 		apiClient<MemoryReindexEstimate>(`/app-config/${id}/memory-model/estimate`),
 
 	/** `POST /api/app-config/:id/memory-model { model }` (admin). `chunked` → 202 with the
-	 *  queued state, 409 `REINDEX_LIVE` while a reindex runs; `flat` → 200 at once. */
+	 *  queued state, 422 `REINDEX_LIVE` while a reindex runs; `flat` → 200 at once. */
 	setMemoryModel: (id: string, model: MemoryModel) =>
 		apiClient<MemoryModelStatus>(`/app-config/${id}/memory-model`, {
 			method: "POST",

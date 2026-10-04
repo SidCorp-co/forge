@@ -1,5 +1,7 @@
+import type { AttributeRefusalCode } from '@forge/contracts/issues';
 import { and, eq, type SQL } from 'drizzle-orm';
 import { issueAttributes } from '../../db/schema.js';
+import { refuser } from '../../lib/refusal.js';
 import { type AttributeDef, attributeDef, writableKeys } from './registry.js';
 
 export type AttributeValue = string | number | boolean | Date;
@@ -12,31 +14,8 @@ export interface AttributeWrite {
   readonly assertedByUserId?: string | null;
 }
 
-/**
- * Every way a write is refused, by name. One list, because the writer owns all
- * of them and a door renders whatever it is handed (ISS-1158) — a code here
- * that no door maps is a refusal a caller reads as an unexplained failure.
- */
-export type AttributeRefusalCode =
-  | 'UNREGISTERED_KEY'
-  | 'WRONG_TYPE'
-  | 'OBLIGATION_UNOWNED'
-  | 'EMPTY_TEXT'
-  | 'SOURCE_COMMENT_NOT_FOUND'
-  | 'SOURCE_COMMENT_OFF_ISSUE'
-  | 'ATTRIBUTE_DEF_MISSING';
-
-export class AttributeRefusal extends Error {
-  constructor(
-    readonly code: AttributeRefusalCode,
-    message: string,
-    /** What the refusal names, for a door that renders structured errors. */
-    readonly details?: unknown,
-  ) {
-    super(message);
-    this.name = 'AttributeRefusal';
-  }
-}
+/** Every way a write is refused, by name; a door renders whatever it is handed (ISS-1158). */
+export const refuseAttribute = refuser<AttributeRefusalCode>('ATTRIBUTE_REFUSED');
 
 type ValueColumns = Pick<
   typeof issueAttributes.$inferInsert,
@@ -54,9 +33,10 @@ function columnsFor(def: AttributeDef, value: AttributeValue): ValueColumns {
     valueRef: null,
   };
   const wrong = (want: string): never => {
-    throw new AttributeRefusal(
+    throw refuseAttribute(
       'WRONG_TYPE',
       `\`${def.key}\` is declared ${def.valueType}; ${want} was given \`${String(value)}\`. Register a different key or send the declared shape.`,
+      '/attributes',
     );
   };
 
@@ -64,9 +44,10 @@ function columnsFor(def: AttributeDef, value: AttributeValue): ValueColumns {
     case 'text': {
       if (typeof value !== 'string') return wrong('a non-string');
       if (value.trim() === '')
-        throw new AttributeRefusal(
+        throw refuseAttribute(
           'EMPTY_TEXT',
           `\`${def.key}\` was given an empty string. An attribute with nothing in it is not an assertion — omit the key instead.`,
+          '/attributes',
         );
       return { ...empty, valueText: value.trim() };
     }
@@ -95,9 +76,10 @@ function columnsFor(def: AttributeDef, value: AttributeValue): ValueColumns {
 export function checkWritable(key: string): AttributeDef {
   const def = attributeDef(key);
   if (!def)
-    throw new AttributeRefusal(
+    throw refuseAttribute(
       'UNREGISTERED_KEY',
       `\`${key}\` is not a registered attribute. Registered keys: ${attributeKeyList()}. A new key is a row in the registry, not a free-form field.`,
+      '/attributes',
     );
   return def;
 }
@@ -112,9 +94,10 @@ export function checkObligationPair(writes: readonly AttributeWrite[]): void {
     (w) => w.key === 'obligation_owner' || w.key === 'obligation_carrier',
   );
   if (hasObligation && !hasOwner)
-    throw new AttributeRefusal(
+    throw refuseAttribute(
       'OBLIGATION_UNOWNED',
       'An `obligation` was written with neither `obligation_owner` nor `obligation_carrier`. Name who owes it — a person, or the issue that carries it forward. An obligation nobody owns is not recorded, it is lost.',
+      '/attributes',
     );
 }
 

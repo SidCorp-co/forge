@@ -1,19 +1,11 @@
 import { z } from 'zod';
 import { memorySources } from '../../db/schema.js';
 import { EmbeddingUnavailableError } from '../../integrations/embeddings/index.js';
-import {
-  MemoryFeedbackValidationError,
-  memoryFeedbackInputSchema,
-  runMemoryFeedback,
-} from '../../memory/feedback-service.js';
+import { memoryFeedbackInputSchema, runMemoryFeedback } from '../../memory/feedback-service.js';
 import { getMemoryInputSchema, runMemoryGet } from '../../memory/get-service.js';
 import { deleteMemory } from '../../memory/indexer.js';
 import { memorySearchStrategies, runMemorySearch } from '../../memory/search-service.js';
-import {
-  MemoryWriteValidationError,
-  runMemoryWrite,
-  writeMemoryInputSchema,
-} from '../../memory/write-service.js';
+import { runMemoryWrite, writeMemoryInputSchema } from '../../memory/write-service.js';
 import {
   type ContextScopedMcpToolFactory,
   zodToMcpSchema,
@@ -111,12 +103,7 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
     if (action === 'feedback') {
       const input = memoryFeedbackInputSchema.parse(rest);
       await requireCan({ userId: principal.userId }, 'project.write', input.projectId);
-      try {
-        return await runMemoryFeedback(input);
-      } catch (err) {
-        if (err instanceof MemoryFeedbackValidationError) throw new Error(`INVALID: ${err.message}`);
-        throw err;
-      }
+      return await runMemoryFeedback(input);
     }
 
     const input = writeMemoryInputSchema.parse(rest);
@@ -125,7 +112,6 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
       return await runMemoryWrite(input);
     } catch (err) {
       if (err instanceof EmbeddingUnavailableError) throw new Error(`UNAVAILABLE: ${err.message}`);
-      if (err instanceof MemoryWriteValidationError) throw new Error(`INVALID: ${err.message}`);
       throw err;
     }
   },

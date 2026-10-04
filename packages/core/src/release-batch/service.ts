@@ -20,8 +20,9 @@ import { TransitionError, transitionIssueStatus } from '../issues/apply-transiti
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { setWorkStep } from '../issues/work-state.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { isRefusal } from '../lib/refusal.js';
 import { logger } from '../logger.js';
-import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
+import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import {
   announceOneShotRun,
   cancelConcludedRun,
@@ -36,7 +37,7 @@ import {
   settleAbortStamp,
   stampAbort,
 } from './abort-stamp.js';
-import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
+import { collectReleaseBlockers } from './blockers.js';
 import {
   type CloseVerification,
   closeVerification,
@@ -45,17 +46,18 @@ import {
   resolveReleasePlan,
 } from './channel.js';
 import { claimConflictAt, refuseLostReleaseClaim } from './claim-conflicts.js';
-import {
-  BatchInFlightError,
-  NoReleaseGateError,
-  ReleaseFinishFenceLostError,
-  ReleaseIssuesUnnamedError,
-  ReleaseNotVerifiedError,
-  ReleaseVersionMissingError,
-} from './errors.js';
+import { RELEASE_ROSTER_LIMIT } from './blocker-sentences.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
+import {
+  blockerRefusal,
+  FENCE_LOST,
+  notVerifiedRefusal,
+  reasonOf,
+  refuseRelease,
+  releaseBlockedRefusal,
+} from './refuse.js';
 import {
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
@@ -65,7 +67,6 @@ import { noteUnverifiedCloses, stampRunVerification } from './unverified-close.j
 import { liveCarriesRoster, readLiveCommit, verifyDeployed } from './verify.js';
 import { cutReleaseVersion, markReleaseShipped } from './version-store.js';
 
-export * from './errors.js';
 export interface CreateReleaseBatchArgs {
   projectId: string;
   issueIds: string[];
@@ -101,23 +102,26 @@ export async function createReleaseBatch(
 ): Promise<CreateReleaseBatchResult> {
   const { projectId, userId, recutOf } = args;
 
-  // ISS-1127 — one enumerator, and this door throws its FIRST answer. Every
-  // refusal keeps the class, the code and the wording it had; what is new is
-  // that the error carries the rest of the list, so an operator clearing this
-  // one already knows what else is standing.
+  // ISS-1127 — one enumerator, and this door refuses with every reason it found, the first first.
   const report = await collectReleaseBlockers(projectId, {
     issueIds: args.issueIds,
     door: 'batch',
   });
-  if (!report.projectExists) throw new NoReleaseGateError();
-  const refusal = releaseBlockerError(report);
+  if (!report.projectExists) throw blockerRefusal('NO_RELEASE_GATE');
+  const refusal = releaseBlockedRefusal(report, args.issueIds);
   if (refusal) throw refusal;
   // Every id is now an issue at this project's gate, so its lower-case spelling is the row's own.
   const issueIds = args.issueIds.map((id) => id.toLowerCase());
   // After the report, so every project reason outranks it. An empty gate is
   // already `RELEASE_ROSTER_EMPTY` above; reaching here, issues are waiting and
   // this call named none of them, which is the caller's list to fix.
-  if (issueIds.length === 0) throw new ReleaseIssuesUnnamedError();
+  if (issueIds.length === 0) {
+    throw refuseRelease(
+      'RELEASE_ISSUES_UNNAMED',
+      `This call names no issue to release, and issues are waiting at the release gate. Send the ids GET /api/projects/${projectId}/release-batches/roster lists, oldest merge first, at most ${RELEASE_ROSTER_LIMIT} in one release.`,
+      '/issueIds',
+    );
+  }
 
   const gateStatus = RELEASE_GATE_STATUS;
   const plan = await resolveReleasePlan(projectId);
@@ -130,7 +134,7 @@ export async function createReleaseBatch(
   }
 
   const decl = report.declaration;
-  if (decl?.kind !== 'gated') throw new NoReleaseGateError();
+  if (decl?.kind !== 'gated') throw blockerRefusal('NO_RELEASE_GATE');
   const { defaultBranch, promotePlanned } = releaseBranches(decl.path);
   const deployPlanned = plan.channels.length > 0;
   const verification = closeVerification(plan.channels);
@@ -241,13 +245,13 @@ export async function createReleaseBatch(
     });
     jobId = result.jobId;
   } catch (err) {
-    if (err instanceof ActiveJobConflictError) {
+    if (isRefusal(err, 'ACTIVE_JOB_CONFLICT')) {
       await recoverStrandedReleasing(run.id, {
         reason: 'another batch was already in flight, so this one never started',
         actorUserId: userId,
       });
       await closeRunIfOneShot(run.id, 'cancelled');
-      throw new BatchInFlightError(err.existingJobId);
+      throw blockerRefusal('BATCH_IN_FLIGHT');
     }
     throw err;
   }
@@ -326,7 +330,12 @@ export async function assertFinishable(
   // A release closes its roster claiming a ship; without a version nothing can name WHICH release
   // carried these issues, so it is refused by name. `createReleaseBatch` cuts the number in the
   // transaction that inserts the row, so a row reaching here without one was not opened by it.
-  if (!run.releaseVersion) throw new ReleaseVersionMissingError(runId);
+  if (!run.releaseVersion) {
+    throw refuseRelease(
+      'RELEASE_VERSION_MISSING',
+      `Release run ${runId} carries no version on its row, so it has no identity and nothing afterwards could name which release carried these issues. A release is given its version at the instant it is cut, so a run without one was never cut as a release. Abort this run and cut a new release.`,
+    );
+  }
 
   return closeVerification(await resolveReleaseChannels(run.projectId));
 }
@@ -364,7 +373,7 @@ export async function finishReleaseBatch(
         expected: options.commit ?? null,
         checkpoint: options.whileVerifying,
       });
-      if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
+      if (!outcome.ok) throw notVerifiedRefusal(outcome.reason, outcome.live);
       if (!outcome.moved) {
         logger.warn(
           { runId, identity: outcome.identity },
@@ -408,12 +417,12 @@ export async function finishReleaseBatch(
       );
       closed.push(issue.id);
     } catch (err) {
-      if (err instanceof ReleaseFinishFenceLostError) throw err;
+      if (isRefusal(err, FENCE_LOST)) throw err;
       if (err instanceof TransitionError && err.code === 'NO_OP') {
         closed.push(issue.id);
       } else {
         logger.warn({ err, issueId: issue.id, runId }, 'release-batch: failed to close issue');
-        failed.push({ id: issue.id, reason: err instanceof Error ? err.message : String(err) });
+        failed.push({ id: issue.id, reason: reasonOf(err) });
       }
     }
   }

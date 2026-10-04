@@ -3,17 +3,8 @@ import { type JobType, jobs } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { wakeMastersForProject } from '../ws/master-wake.js';
 import { AUTONOMOUS_ENTRY_STATUS } from './autonomous-mode.js';
+import { refusePipeline } from './refuse.js';
 import { setCurrentStep } from './runs.js';
-
-export class ActiveJobConflictError extends Error {
-  constructor(
-    public readonly existingJobId: string | null,
-    public readonly type: JobType,
-  ) {
-    super(`active ${type} job already exists for this issue`);
-    this.name = 'ActiveJobConflictError';
-  }
-}
 
 interface InsertAndEnqueueArgs {
   projectId: string;
@@ -34,7 +25,7 @@ interface InsertAndEnqueueArgs {
 /**
  * Insert a queued `jobs` row the pool will offer, link its `currentStep` on the
  * run, and wake the project's masters. A unique-violation on (issueId, type)
- * throws `ActiveJobConflictError`, which callers map to a 409 or a debug log.
+ * is refused `ACTIVE_JOB_CONFLICT`.
  */
 export async function insertAndEnqueueJob(args: InsertAndEnqueueArgs): Promise<{ jobId: string }> {
   let insertedId: string | null = null;
@@ -59,7 +50,10 @@ export async function insertAndEnqueueJob(args: InsertAndEnqueueArgs): Promise<{
   } catch (err) {
     if (isUniqueViolation(err)) {
       const racing = (await args.resolveRacingJobId?.()) ?? null;
-      throw new ActiveJobConflictError(racing, args.type);
+      throw refusePipeline(
+        'ACTIVE_JOB_CONFLICT',
+        `an active ${args.type} job already exists for this issue${racing ? ` (job ${racing})` : ''}; it finishes or is cancelled before another is queued`,
+      );
     }
     throw err;
   }

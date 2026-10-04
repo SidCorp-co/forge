@@ -1,12 +1,12 @@
 import { db } from '../../db/client.js';
 import { effectiveProjectRole } from '../../lib/authz.js';
-import { fencedBy } from '../access.js';
+import { holds } from '../../permissions/index.js';
+import { forbidden, notFound } from '../access.js';
 import { loadGraph } from '../graph.js';
 import { loadInterface } from '../interface-service.js';
 import { liveEdges } from '../party.js';
 import { activeEcosystemIdsOf, projectsWhere } from '../store.js';
 import { type MeasurementRow, measurementsOf, type StoredVersion, versionsOf } from './store.js';
-import { holds } from '../../permissions/index.js';
 
 // cm:why a consumer reads a provider's contract only through a live consumption edge in an ecosystem the provider still publishes it to, and only as the project it holds a role on
 export async function consumedContract(args: {
@@ -18,11 +18,9 @@ export async function consumedContract(args: {
   const { userId, consumerId, providerId, contract } = args;
   const access = await effectiveProjectRole(userId, consumerId);
   if (!(access ? holds(access, 'project.read') : false)) {
-    throw fencedBy({
-      code: 'CHANNEL_NO_ROLE',
-      path: '/project',
-      detail: `person ${userId} holds no role on project ${consumerId}, so nothing is read as that project; a project admin can add them.`,
-    });
+    throw forbidden(
+      `person ${userId} holds no role on project ${consumerId}, so nothing is read as that project; a project admin can add them.`,
+    );
   }
   const [provider] = await projectsWhere(db, { ids: [providerId] });
   const providerEcos = (await activeEcosystemIdsOf(db, [providerId])).map((m) => m.ecosystemId);
@@ -38,11 +36,9 @@ export async function consumedContract(args: {
     )
     .map((e) => e.ecosystemId);
   if (!provider || ecosystems.length === 0) {
-    throw fencedBy({
-      code: 'CONTRACT_NOT_A_PARTY',
-      path: '/contract',
-      detail: `project ${consumerId} does not consume ${contract} of project ${providerId} in an ecosystem both are active in and the provider publishes it to; a contract's versions are read by its provider's members and by the projects that consume it.`,
-    });
+    throw notFound(
+      `project ${consumerId} does not consume ${contract} of project ${providerId} in an ecosystem both are active in and the provider publishes it to; a contract's versions are read by its provider's members and by the projects that consume it.`,
+    );
   }
   return { provider: { id: provider.id, slug: provider.slug, name: provider.name }, ecosystems };
 }

@@ -39,6 +39,7 @@ import {
   fenceFor,
   withAgentFenceLock,
 } from './agent-fence.js';
+import { refuse } from './refuse.js';
 
 export interface CreateAgentAccountInput {
   orgId: string;
@@ -88,10 +89,11 @@ async function mapHandleCollision<T>(
       isUniqueViolation(err) &&
       uniqueViolationConstraint(err) === 'organization_members_org_handle_uniq'
     ) {
-      throw new HTTPException(409, {
-        message: `@${input.handle} is already an agent of organization ${input.orgId}; a handle is the address typed after @ and one org holds one of each, so give this agent a different handle or rename the one that has it`,
-        cause: { code: 'AGENT_HANDLE_TAKEN' },
-      });
+      throw refuse(
+        'AGENT_HANDLE_TAKEN',
+        `@${input.handle} is already an agent of organization ${input.orgId}; a handle is the address typed after @ and one org holds one of each, so give this agent a different handle or rename the one that has it`,
+        '/handle',
+      );
     }
     throw err;
   }
@@ -379,10 +381,10 @@ export async function setAgentProjects(
       .where(eq(organizationMembers.userId, agentUserId))
       .limit(1);
     if (p && me?.handle === handleNameForProject(p.slug, p.id)) {
-      throw new HTTPException(409, {
-        message: `agent ${agentUserId} carries the name project ${only}'s conversational handle is minted under (@${me.handle}) — widening it would leave that project unable to mint a replacement, so its rooms would stop opening; create a separate agent for the projects you want covered and leave this one where it is`,
-        cause: { code: 'AGENT_IS_A_PROJECT_HANDLE' },
-      });
+      throw refuse(
+        'AGENT_IS_A_PROJECT_HANDLE',
+        `agent ${agentUserId} carries the name project ${only}'s conversational handle is minted under (@${me.handle}) — widening it would leave that project unable to mint a replacement, so its rooms would stop opening; create a separate agent for the projects you want covered and leave this one where it is`,
+      );
     }
   }
 

@@ -1,26 +1,15 @@
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import type { OrgMemberRole } from '../db/schema.js';
 import { loadOrgRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { RefusalError } from '../lib/refusal.js';
-import type { EcosystemRefusal } from './refusals.js';
 import { requireOrgHeld } from '../permissions/index.js';
+import type { EcosystemRefusal } from './refusals.js';
 import { activeMembersOf } from './store.js';
 
-export const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-export const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
+export { forbidden, notFound } from '../middleware/route-errors.js';
 
 export const refusedBy = (refusal: EcosystemRefusal) =>
   new RefusalError([refusal], 'ECOSYSTEM_REFUSED');
-
-export const fencedBy = (refusal: EcosystemRefusal) =>
-  new HTTPException(403, {
-    message: refusal.detail,
-    cause: { code: refusal.code, details: { refusals: [refusal] } },
-  });
 
 export async function stewardRole(
   stewardOrgId: string,

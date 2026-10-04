@@ -3,7 +3,7 @@
 // Three properties the callers rely on: it never throws (a check that cannot be
 // evaluated becomes an answer in the position that check held); it makes no outbound
 // request, so what is checked here is the probe DECLARATION; and it reports in the order
-// the doors refuse in, a door throwing the FIRST blocker under its existing name.
+// the doors refuse in, a door refusing with every blocker in one envelope, the first first.
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -360,7 +360,7 @@ async function gatedBlockers(
   const { issueIds } = options;
   // Both groups are READ here and REPORTED in the order the door refuses in.
   // A channel read that failed must not outrank a roster reason the batch door
-  // reached first, or a 409 an operator already knows becomes a 503.
+  // reached first, or a reason an operator already knows is buried under an unread check.
   const ch = await attempt('channels', async () => await resolveReleaseChannels(projectId));
   const channels = ch.value ?? null;
 
@@ -399,5 +399,4 @@ async function gatedBlockers(
   return channels;
 }
 
-export * from './blocker-errors.js';
 export * from './blocker-kit.js';

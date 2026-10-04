@@ -1,11 +1,6 @@
 // Typed record events (ISS-56): a `forge-record` is a row of `activity_log` with action
 // `record.<kind>`, so a gate reads a table instead of parsing a thread.
 
-import { and, asc, eq, inArray, like, sql } from 'drizzle-orm';
-import { db, type Tx } from '../../db/client.js';
-import { activityLog } from '../../db/schema-activity.js';
-import { type ForgeRecord, overBudget, REQUESTED_FIELDS } from '../../messaging/forge-record.js';
-import type { Actor } from '../../pipeline/activity.js';
 import {
   isKernelOnlyRecordKind,
   isRecordEventKind,
@@ -15,8 +10,15 @@ import {
   type RECORD_DIGEST_KIND,
   RECORD_EVENT_KINDS,
   type RecordEventKind,
+  type RecordEventRefusalCode,
   recordAction,
 } from '@forge/contracts/record-events';
+import { and, asc, eq, inArray, like, sql } from 'drizzle-orm';
+import { db, type Tx } from '../../db/client.js';
+import { activityLog } from '../../db/schema-activity.js';
+import { refuser } from '../../lib/refusal.js';
+import { type ForgeRecord, overBudget, REQUESTED_FIELDS } from '../../messaging/forge-record.js';
+import type { Actor } from '../../pipeline/activity.js';
 
 /** The key shape a record field takes, the same one the comment fence reads (`forge-record.ts`). */
 const FIELD_KEY = /^[a-z][a-z0-9-]*$/u;
@@ -52,21 +54,7 @@ export interface RecordEvent {
   readonly createdAt: Date;
 }
 
-export type RecordEventRefusalCode =
-  | 'EVENT_KIND_UNKNOWN'
-  | 'EVENT_KIND_KERNEL_ONLY'
-  | 'EVENT_PAYLOAD_INVALID';
-
-/** A draft that cannot be stored, refused by name: what was wrong, where, and the valid shape. */
-export class RecordEventRefused extends Error {
-  constructor(
-    readonly code: RecordEventRefusalCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'RecordEventRefused';
-  }
-}
+const refuse = refuser<RecordEventRefusalCode>('EVENT_REFUSED');
 
 const KIND_LIST = RECORD_EVENT_KINDS.join(', ');
 
@@ -83,49 +71,56 @@ const KERNEL_ACTS: Record<KernelOnlyRecordKind, string> = {
 export function assertRecordEventDraft(draft: RecordEventDraft): void {
   assertRecordEventShape(draft);
   if (isKernelOnlyRecordKind(draft.kind)) {
-    throw new RecordEventRefused(
+    throw refuse(
       'EVENT_KIND_KERNEL_ONLY',
       `\`${draft.kind}\` is kernel evidence core writes in the transaction of the act it records (${KERNEL_ONLY_RECORD_KINDS.join(', ')}), and no caller may post one: core writes ${KERNEL_ACTS[draft.kind]}. Make the act; the record follows it.`,
+      '/kind',
     );
   }
 }
 
 function assertRecordEventShape(draft: RecordEventDraft): void {
   if (!isRecordEventKind(draft.kind)) {
-    throw new RecordEventRefused(
+    throw refuse(
       'EVENT_KIND_UNKNOWN',
       `\`${String(draft.kind)}\` is not a record kind — a record event carries one of: ${KIND_LIST}`,
+      '/kind',
     );
   }
   if (!Number.isInteger(draft.contract) || draft.contract < 1) {
-    throw new RecordEventRefused(
+    throw refuse(
       'EVENT_PAYLOAD_INVALID',
       `contract \`${String(draft.contract)}\` is not a contract number — send the positive whole number the record's fields are shaped by, e.g. 1`,
+      '/contract',
     );
   }
   if (draft.fields.length === 0) {
-    throw new RecordEventRefused(
+    throw refuse(
       'EVENT_PAYLOAD_INVALID',
       `a \`${draft.kind}\` record carries no fields — send them as [{ key, value }] in the order written`,
+      '/fields',
     );
   }
   if (draft.fields.length > RECORD_EVENT_MAX_FIELDS) {
-    throw new RecordEventRefused(
+    throw refuse(
       'EVENT_PAYLOAD_INVALID',
       `a record carries at most ${RECORD_EVENT_MAX_FIELDS} fields and this one carries ${draft.fields.length}`,
+      '/fields',
     );
   }
   for (const [at, field] of draft.fields.entries()) {
     if (typeof field?.key !== 'string' || !FIELD_KEY.test(field.key)) {
-      throw new RecordEventRefused(
+      throw refuse(
         'EVENT_PAYLOAD_INVALID',
         `fields[${at}].key \`${String(field?.key)}\` is not a field name — a key is lower-case letters, digits and hyphens, starting with a letter`,
+        `/fields/${at}/key`,
       );
     }
     if (typeof field.value !== 'string') {
-      throw new RecordEventRefused(
+      throw refuse(
         'EVENT_PAYLOAD_INVALID',
         `fields[${at}].value (\`${field.key}\`) is not text — every record field value is a string`,
+        `/fields/${at}/value`,
       );
     }
   }

@@ -90,7 +90,7 @@ export const issuesApi = {
     }),
 
   /** `POST /api/issues/:id/transition` — state-machine guarded status change.
-   *  Invalid transitions return 409 (ILLEGAL_TRANSITION). */
+   *  Invalid transitions answer 422 (ILLEGAL_TRANSITION) in the refusal envelope. */
   transition: (
     id: string,
     toStatus: IssueStatus,

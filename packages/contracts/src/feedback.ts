@@ -268,6 +268,7 @@ export const FEEDBACK_LIMITS = {
 
 /** Every refusal a feedback write answers with, by name. Who-may-act codes end `_FORBIDDEN`. */
 export const FEEDBACK_REFUSAL_CODES = [
+	"FEEDBACK_REFUSED",
 	"FEEDBACK_TARGET_UNKNOWN",
 	"FEEDBACK_TARGET_NOT_IN_PROJECT",
 	"FEEDBACK_TARGET_NOT_ONE",

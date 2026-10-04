@@ -3,6 +3,7 @@
  * explains it. Every door reads these, so none carries its own copy (ISS-1127).
  */
 
+import type { ReleaseBlockerCode } from '@forge/contracts/releases';
 import { type LiveShortfall, notLiveSentence } from '../ecosystem/waits/rules.js';
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { agrees, counted } from '../lib/plural.js';
@@ -16,22 +17,7 @@ import type { ServingReading } from './serving-reading.js';
 /** The most issues one release may carry; `resolveRoster` holds every door to it. */
 export const RELEASE_ROSTER_LIMIT = 50;
 
-export type ReleaseBlockerCode =
-  | 'NO_RELEASE_GATE'
-  | 'RELEASE_TARGET_UNDECLARED'
-  | 'CLAIM_CONFLICT'
-  | 'RELEASE_ROSTER_EMPTY'
-  | 'RELEASE_ROSTER_OVERSIZE'
-  | 'RELEASE_RECORD_MISSING'
-  | 'RELEASE_WORK_UNMERGED'
-  | 'CONTRACT_PROVIDER_NOT_LIVE'
-  | 'RELEASE_PROBES_UNREADABLE'
-  | 'RELEASE_POOL_EMPTY'
-  | 'NO_RUNNER_ONLINE'
-  | 'BATCH_IN_FLIGHT'
-  | 'RELEASE_CRITERIA_UNEARNED'
-  | 'RELEASE_RUNTIME_UNROUTED'
-  | 'RELEASE_CHECK_UNEVALUATED';
+export type { ReleaseBlockerCode };
 
 export type ReleaseWarningCode =
   | 'RELEASE_RUNNER_PREFERENCE_UNMET'
@@ -43,8 +29,6 @@ export type ReleaseReasonCode = ReleaseBlockerCode | ReleaseWarningCode;
 
 export interface ReleaseBlocker {
   code: ReleaseBlockerCode;
-  /** 409 where a declaration or roster must change, 503 where the fleet must. */
-  httpStatus: 409 | 503;
   message: string;
   details?: Record<string, unknown>;
   /** False only on `RELEASE_CHECK_UNEVALUATED`: this check could not be run. */
@@ -80,26 +64,6 @@ export interface CollectReleaseBlockersOptions {
   /** Read by the CALLER — this enumerator reaches no network; without one the criteria check
    *  reports itself unevaluated rather than guess (ISS-1286). */
   serving?: ServingReading | undefined;
-}
-
-/**
- * An error carrying every reason that stood when it was thrown. The first
- * blocker keeps its class, code and wording; the rest ride along, which is the
- * whole of ISS-1127.
- */
-export type ReleaseBlockedError = Error & { releaseBlockers?: ReleaseBlocker[] };
-
-export function blockersOf(err: unknown): ReleaseBlocker[] {
-  const carried = (err as ReleaseBlockedError | null)?.releaseBlockers;
-  return Array.isArray(carried) ? carried : [];
-}
-
-export function alsoBlocking(err: unknown, thrown: ReleaseBlockerCode): ReleaseBlocker[] {
-  // Only the FIRST match goes: two checks can fail to evaluate.
-  const rest = [...blockersOf(err)];
-  const at = rest.findIndex((b) => b.code === thrown);
-  if (at >= 0) rest.splice(at, 1);
-  return rest;
 }
 
 const REMEDY: Record<ReleaseBlockerCode, string> = {
@@ -177,15 +141,6 @@ export function remedyCostClause(cost: RemedyAct): string {
 function withCosts(code: ReleaseReasonCode, sentence: string): string {
   const costs = REMEDY_COST[code];
   return costs.length === 0 ? sentence : [sentence, ...costs.map(remedyCostClause)].join(' ');
-}
-
-/** One owner, so no two doors disagree about whose problem a reason is. */
-export function blockerHttpStatus(code: ReleaseBlockerCode): 409 | 503 {
-  return code === 'RELEASE_POOL_EMPTY' ||
-    code === 'NO_RUNNER_ONLINE' ||
-    code === 'RELEASE_CHECK_UNEVALUATED'
-    ? 503
-    : 409;
 }
 
 /** One issue the release sweep will not carry, and what it still owes. */

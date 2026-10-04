@@ -11,12 +11,8 @@ import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
 import { logger } from '../logger.js';
-import { releaseBlockerSentence } from '../release-batch/blocker-sentences.js';
-import {
-  RELEASE_GATE_STATUS,
-  ReleaseTargetUndeclaredError,
-  resolveReleaseGate,
-} from '../release-batch/gate.js';
+import { isRefusal } from '../lib/refusal.js';
+import { RELEASE_GATE_STATUS, resolveReleaseGate } from '../release-batch/gate.js';
 import {
   readServingNow,
   servingClause,
@@ -272,10 +268,8 @@ async function readGate(
     const gate = await resolveReleaseGate(projectId);
     return gate ? { ok: true } : { ok: false, hold: NO_RELEASE_GATE_HOLD };
   } catch (err) {
-    if (err instanceof ReleaseTargetUndeclaredError) {
-      // The card's sentence, not the error's: a person reads this, and a uuid is on no screen.
-      const said = releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { reason: err.reason });
-      return { ok: false, hold: targetUndeclaredHold(said) };
+    if (isRefusal(err, 'RELEASE_TARGET_UNDECLARED')) {
+      return { ok: false, hold: targetUndeclaredHold(err.refusals[0]?.detail ?? '') };
     }
     logger.error({ err, projectId }, 'release-sweep: the release gate could not be read');
     return {

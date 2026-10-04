@@ -7,7 +7,8 @@ import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { readWorkState, setWorkStep } from '../issues/work-state.js';
 import { logger } from '../logger.js';
-import { ReleaseFinishFenceLostError } from './errors.js';
+import { isRefusal } from '../lib/refusal.js';
+import { FENCE_LOST } from './refuse.js';
 import { resolveReleaseGate } from './gate.js';
 
 export interface RecoverStrandedReleasingResult {
@@ -162,7 +163,7 @@ export async function recoverStrandedReleasing(
       );
       recovered.push(issue.id);
     } catch (err) {
-      if (err instanceof ReleaseFinishFenceLostError) throw err;
+      if (isRefusal(err, FENCE_LOST)) throw err;
       if (!(err instanceof TransitionError && err.code === 'NO_OP')) {
         logger.warn(
           { err, issueId: issue.id, runId },

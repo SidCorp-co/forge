@@ -10,7 +10,6 @@ import { hooks } from '../pipeline/hooks.js';
 import {
   ASSISTANT_PREFERENCE_DEFAULTS,
   listPreferenceChanges,
-  PreferenceRestoreConflict,
   restorePreferenceChange,
   writeAssistantPreferences,
 } from './preference-changes.js';
@@ -92,28 +91,18 @@ preferenceRoutes.post(
   }),
   async (c) => {
     const userId = c.get('userId');
-    try {
-      const restored = await restorePreferenceChange({
-        userId,
-        changeId: c.req.valid('param').id,
-        actor: { kind: 'person', userId },
+    const restored = await restorePreferenceChange({
+      userId,
+      changeId: c.req.valid('param').id,
+      actor: { kind: 'person', userId },
+    });
+    if (!restored) {
+      throw new HTTPException(404, {
+        message: 'no such preference change of yours',
+        cause: { code: 'NOT_FOUND' },
       });
-      if (!restored) {
-        throw new HTTPException(404, {
-          message: 'no such preference change of yours',
-          cause: { code: 'NOT_FOUND' },
-        });
-      }
-      return c.json(await readFull(userId));
-    } catch (err) {
-      if (err instanceof PreferenceRestoreConflict) {
-        throw new HTTPException(409, {
-          message: err.message,
-          cause: { code: 'PREFERENCE_CHANGE_SUPERSEDED', laterChangeId: err.later?.id ?? null },
-        });
-      }
-      throw err;
     }
+    return c.json(await readFull(userId));
   },
 );
 

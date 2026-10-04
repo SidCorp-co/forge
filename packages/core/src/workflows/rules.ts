@@ -1,4 +1,5 @@
 import type { WorkflowTemplate } from '@forge/contracts/workflow-templates';
+import type { WorkflowRefusalCode } from '@forge/contracts/workflows';
 import { REPO_PATH_MESSAGE } from '../ecosystem/link-schema.js';
 import {
   type ApiRefusal,
@@ -14,44 +15,6 @@ import {
   workflowWriteV2Schema,
 } from './schema.js';
 import { type ProjectDesigns, templateOf, templateRefusals } from './template-check.js';
-
-export type WorkflowRefusalCode =
-  | 'WORKFLOW_KIND_UNKNOWN'
-  | 'WORKFLOW_STEP_DUPLICATE'
-  | 'WORKFLOW_AFTER_DANGLING'
-  | 'WORKFLOW_AFTER_CYCLE'
-  | 'WORKFLOW_EDGE_DANGLING'
-  | 'WORKFLOW_EDGE_UNDRAWN'
-  | 'WORKFLOW_EDGE_DUPLICATE'
-  | 'WORKFLOW_EDGE_RETURN_FORWARD'
-  | 'WORKFLOW_EDGE_REEVALUATES_FORWARD'
-  | 'WORKFLOW_EDGE_FIELD_MISSING'
-  | 'WORKFLOW_EDGE_KIND_NOT_IN_TEMPLATE'
-  | 'WORKFLOW_TEMPLATE_MISSING'
-  | 'WORKFLOW_TEMPLATE_UNKNOWN'
-  | 'WORKFLOW_NODE_TYPE_NOT_IN_TEMPLATE'
-  | 'WORKFLOW_NODE_FIELD_MISSING'
-  | 'WORKFLOW_BAND_MISMATCH'
-  | 'WORKFLOW_TEMPLATE_RULE'
-  | 'WORKFLOW_EDGE_ENDPOINT_NOT_IN_KIND'
-  | 'WORKFLOW_EDGE_KIND_NONE'
-  | 'WORKFLOW_EDGE_KIND_AMBIGUOUS'
-  | 'WORKFLOW_NODE_NOT_ENTRY'
-  | 'WORKFLOW_NODE_TYPE_COUNT'
-  | 'WORKFLOW_NODE_LINES'
-  | 'WORKFLOW_NODE_FIELD_NOT_UNIQUE'
-  | 'WORKFLOW_NODE_VALUE_NOT_IN_VOCABULARY'
-  | 'WORKFLOW_REF_NOT_ALLOWED'
-  | 'WORKFLOW_REF_DANGLING'
-  | 'WORKFLOW_REF_TARGET_MISMATCH'
-  | 'WORKFLOW_REF_MISSING'
-  | 'WORKFLOW_BASE_SELF'
-  | 'WORKFLOW_BASE_DUPLICATE'
-  | 'WORKFLOW_BASE_UNKNOWN'
-  | 'WORKFLOW_DUPLICATE'
-  | 'WORKFLOW_IDENTITY_IMMUTABLE'
-  | 'PATH_OUTSIDE_REPO'
-  | 'PROJECT_ID_IMMUTABLE';
 
 export interface WorkflowRefusal {
   code: WorkflowRefusalCode | ApiRefusal['code'];

@@ -1,3 +1,4 @@
+import type { TestingSecretsRefusalCode } from '@forge/contracts/project-config';
 import { SCRUB_MIN_SECRET_LENGTH } from '@forge/observability';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -29,24 +30,6 @@ export const JUDGING_JOB_TYPES = [
 ] as const satisfies readonly JobType[];
 
 export const SELF_JOB = 'self';
-
-export type TestingSecretsRefusalCode =
-  | 'TESTING_SECRETS_NOT_A_JOB_CREDENTIAL'
-  | 'TESTING_SECRETS_JOB_AMBIGUOUS'
-  | 'TESTING_SECRETS_FOREIGN_JOB'
-  | 'TESTING_SECRETS_JOB_NOT_JUDGING'
-  | 'TESTING_SECRETS_NO_PROJECT_DOCUMENT'
-  | 'TESTING_SECRETS_NOT_LANDED'
-  | 'TESTING_SECRETS_NO_ENVIRONMENT_FOR_TARGET'
-  | 'TESTING_SECRETS_ENVIRONMENT_AMBIGUOUS'
-  | 'TESTING_SECRETS_NO_TESTING_PROFILE'
-  | 'TESTING_PROFILE_NOT_NAMED'
-  | 'TESTING_PROFILE_NOT_DECLARED'
-  | 'SECRET_NOT_NAMED'
-  | 'SECRET_VALUE_MISSING'
-  | 'SECRET_VALUE_UNREADABLE'
-  | 'SECRET_TOO_SHORT_TO_SCRUB'
-  | 'VAULT_NOT_CONFIGURED';
 
 export interface TestingSecretsRefusal {
   status: 403 | 404 | 409 | 503;

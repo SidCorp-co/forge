@@ -1,4 +1,5 @@
 import { describeProbeReading, readRuntimeProbe } from '../integrations/deploy/runtime-probe.js';
+import { isRefusal } from '../lib/refusal.js';
 import type {
   DeploymentRecord,
   DeploymentStatus,
@@ -25,20 +26,6 @@ export interface EnvironmentStateDeps {
 
 export interface EnvironmentStateContext {
   readonly sourceType: ProjectDocument['source']['type'];
-}
-
-export type EnvironmentStateRefusal =
-  | 'BINDING_NOT_FOUND'
-  | 'BINDING_ROLE_MISMATCH'
-  | 'DEPLOY_HISTORY_UNSUPPORTED';
-
-export class EnvironmentStateError extends Error {
-  readonly code: EnvironmentStateRefusal;
-  constructor(code: EnvironmentStateRefusal, message: string) {
-    super(message);
-    this.name = 'EnvironmentStateError';
-    this.code = code;
-  }
 }
 
 const STATE_OF: Readonly<Record<DeploymentStatus, RecordedEnvironmentState['state']>> = {
@@ -122,12 +109,16 @@ async function latestRecord(
   try {
     bound = await deps.deployAdapterFor(bindingId);
   } catch (err) {
-    if (!(err instanceof EnvironmentStateError)) {
+    if (!isRefusal(err)) {
       return { ok: false, state: unknown(environment, 'adapter-error', why(err)) };
     }
     return {
       ok: false,
-      state: unknown(environment, 'binding-refused', `${err.code}: ${err.message}`),
+      state: unknown(
+        environment,
+        'binding-refused',
+        err.refusals.map((r) => `${r.code}: ${r.detail}`).join('; '),
+      ),
     };
   }
   if (!bound) {

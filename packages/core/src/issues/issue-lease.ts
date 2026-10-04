@@ -16,17 +16,19 @@
  */
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import type { IssueTakeRefusalCode } from '@forge/contracts/issues';
+import { TERMINAL_JOB_STATUSES, UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
+import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
-import { TERMINAL_JOB_STATUSES, UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import {
   canonicalIssueKey,
   issueRefPrefixOf,
   LEGACY_ISSUE_PREFIX,
   parseIssueRef,
 } from '../lib/issue-ref.js';
-import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
+import { refuser } from '../lib/refusal.js';
 import { issuePrefixHolder } from './issue-prefix-read.js';
 
 const terminalSessionList = sql.join(
@@ -126,17 +128,7 @@ export interface IssueLeaseHolder {
   acquiredAt: string;
 }
 
-/** Refused: somebody live holds a key. Carries holders, not a count. */
-export class IssueLeaseHeldError extends Error {
-  readonly code = 'ISSUE_LEASE_HELD';
-  readonly holders: IssueLeaseHolder[];
-
-  constructor(holders: IssueLeaseHolder[], askingDeviceId: string) {
-    super(refusalText(holders, askingDeviceId));
-    this.name = 'IssueLeaseHeldError';
-    this.holders = holders;
-  }
-}
+const refuse = refuser<IssueTakeRefusalCode>('ISSUE_TAKE_REFUSED');
 
 /** What a refused box is told, which differs by who holds. */
 function refusalText(holders: IssueLeaseHolder[], askingDeviceId: string): string {
@@ -230,17 +222,20 @@ export async function takeIssueLeases(
   if (lost.length === 0) return;
 
   const holders = await holdersOf(executor, { projectId: args.projectId, issueKeys: lost });
-  throw new IssueLeaseHeldError(
-    holders.length > 0
-      ? holders
-      : lost.map((issueKey) => ({
-          issueKey,
-          deviceId: 'unknown',
-          sessionId: 'unknown',
-          runId: 'unknown',
-          acquiredAt: new Date(0).toISOString(),
-        })),
-    args.deviceId,
+  throw refuse(
+    'ISSUE_LEASE_HELD',
+    refusalText(
+      holders.length > 0
+        ? holders
+        : lost.map((issueKey) => ({
+            issueKey,
+            deviceId: 'unknown',
+            sessionId: 'unknown',
+            runId: 'unknown',
+            acquiredAt: new Date(0).toISOString(),
+          })),
+      args.deviceId,
+    ),
   );
 }
 

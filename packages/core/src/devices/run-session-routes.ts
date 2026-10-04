@@ -10,17 +10,14 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { IssueBlockedError } from '../issues/blocked-by.js';
 import { isDispatchGateError } from '../issues/dispatch-gates.js';
-import { IssueLeaseHeldError } from '../issues/issue-lease.js';
+import { RefusalError } from '../lib/refusal.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { badRequest, conflict } from '../middleware/route-errors.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { PolicyRefusedError } from '../project-config/dispatch-policy.js';
 import { gateConditionSchema } from './gate-report.js';
-import { RunnerNotAdmittedError } from './pool-admission.js';
-import { forbidden, notFound, sessionParamsSchema } from './route-errors.js';
+import { notFound, sessionParamsSchema } from './route-errors.js';
 import {
   heldWorktreeSchema,
   resumeChoiceSchema,
@@ -66,21 +63,11 @@ deviceRunSessionRoutes.post(
     } catch (err) {
       // The refusal IS the deliverable here: a box told only that the open
       // failed retries against the same holder until the lease lapses.
-      if (err instanceof IssueLeaseHeldError) {
-        throw conflict(err.code, err.message, { holders: err.holders });
-      }
-      if (err instanceof PolicyRefusedError) {
-        throw conflict(err.code, err.message, { projectId: err.projectId });
-      }
-      if (isDispatchGateError(err) || err instanceof IssueBlockedError) {
-        throw conflict(err.code, err.message, { blocked: err.blocked });
-      }
-      if (err instanceof RunnerNotAdmittedError) {
-        throw forbidden(err.code, err.message, {
-          reason: err.reason,
-          projectId: err.projectId,
-          deviceId: err.deviceId,
-        });
+      if (isDispatchGateError(err)) {
+        throw new RefusalError(
+          [{ code: err.code, path: '/issueKeys', detail: err.message }],
+          'RUN_SESSION_REFUSED',
+        );
       }
       throw err;
     }

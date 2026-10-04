@@ -35,14 +35,10 @@ export interface TaskComparison {
 }
 
 /** A comparison across two projects, refused unless the caller asked for one (ISS-1066). */
-export class ProjectMismatch extends Error {
-  constructor(before: string, after: string) {
-    super(
-      `these two runs are of different projects — before is ${before}, after is ${after}. A task's pass rate is about the project it was walked on, so putting the two on one row compares two questions rather than two builds. Pass --across-projects to do it anyway.`,
-    );
-    this.name = 'ProjectMismatch';
-  }
-}
+const projectMismatch = (before: string, after: string): Error =>
+  new Error(
+    `these two runs are of different projects — before is ${before}, after is ${after}. A task's pass rate is about the project it was walked on, so putting the two on one row compares two questions rather than two builds. Pass --across-projects to do it anyway.`,
+  );
 
 export interface Comparison {
   k: number;
@@ -154,7 +150,7 @@ export function assertSameProject(
   const a = before.project?.slug;
   const b = after.project?.slug;
   if (acrossProjects || !a || !b || a === b) return;
-  throw new ProjectMismatch(a, b);
+  throw projectMismatch(a, b);
 }
 
 /** The two files compared per task; `k` is the after file's unless the before file names a larger one. */

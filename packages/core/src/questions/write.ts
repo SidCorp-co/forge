@@ -6,6 +6,7 @@
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
+import type { QuestionRefusalCode } from '@forge/contracts/questions';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
@@ -23,11 +24,12 @@ import { decideChannelGate } from '../ecosystem/channel-gate.js';
 import type { PersonVia } from '../ecosystem/channel-schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
+import { refuser } from '../lib/refusal.js';
 import { type KernelActor, transition } from '../lifecycle/transition.js';
+import { notFound } from '../middleware/route-errors.js';
 import { holds, type PermissionFacts, requireHeld } from '../permissions/index.js';
 import { hooks } from '../pipeline/hooks.js';
 import { wakeMastersForAnswer } from '../ws/master-wake.js';
-import { batchItemRefusal } from './batch-item.js';
 import { resolveAskOrigin } from './origin.js';
 import { screenRound } from './screen.js';
 
@@ -59,35 +61,7 @@ export type AskInput = {
   origin?: Extract<QuestionOrigin, { kind: 'channel_gate' }>;
 };
 
-export class QuestionRefused extends Error {
-  readonly code: QuestionRefusalCode;
-  constructor(message: string, code: QuestionRefusalCode = 'QUESTION_REFUSED') {
-    super(message);
-    this.code = code;
-  }
-}
-
-export const questionRefusalCodes = [
-  'QUESTION_REFUSED',
-  'QUESTION_NOT_FOUND',
-  'QUESTION_NOT_OPEN',
-  'QUESTION_EXPIRED',
-  'QUESTION_ROUND_STALE',
-  'QUESTION_OPTION_UNKNOWN',
-  'QUESTION_REASON_REQUIRED',
-  'QUESTION_ISSUE_ELSEWHERE',
-  'QUESTION_ISSUE_TERMINAL',
-  'QUESTION_OPTIONS_REQUIRED',
-  'QUESTION_RECOMMENDED_UNKNOWN',
-  'QUESTION_OPTION_IDS_DUPLICATE',
-  'QUESTION_SHAPE_INVALID',
-  'QUESTION_ANSWER_WRONG_SHAPE',
-  'QUESTION_MESSAGE_REFUSED',
-  'QUESTION_CURSOR_INVALID',
-  'QUESTION_NOTE_NOT_TAKEN',
-  'QUESTION_IN_QUESTIONNAIRE',
-] as const;
-export type QuestionRefusalCode = (typeof questionRefusalCodes)[number];
+export const refuseQuestion = refuser<QuestionRefusalCode>('QUESTION_REFUSED');
 
 /** An option's authority is the permission choosing it takes. */
 const optionPermission = (option: QuestionOption) =>
@@ -99,28 +73,29 @@ export function mayChoose(option: QuestionOption, facts: PermissionFacts | null)
 
 function checkOptions(options: QuestionOption[], recommendedOptionId: string) {
   if (options.length === 0) {
-    throw new QuestionRefused(
-      'a question with no options is not a question',
+    throw refuseQuestion(
       'QUESTION_OPTIONS_REQUIRED',
+      'a question with no options is not a question',
     );
   }
   if (new Set(options.map((o) => o.id)).size !== options.length) {
-    throw new QuestionRefused(
-      'two options on this round carry the same id — an answer names an option by id, so a repeated one records a choice nobody can read back',
+    throw refuseQuestion(
       'QUESTION_OPTION_IDS_DUPLICATE',
+      'two options on this round carry the same id — an answer names an option by id, so a repeated one records a choice nobody can read back',
     );
   }
   for (const o of options) {
     if (o.bindsTo === 'this_call' && !o.fingerprint?.trim()) {
-      throw new QuestionRefused(
+      throw refuseQuestion(
+        'QUESTION_REFUSED',
         `option ${o.id} binds to one call and carries no fingerprint of it — a permission that names no call allows the next call instead of the blocked one`,
       );
     }
   }
   if (!recommendedOptionId || !options.some((o) => o.id === recommendedOptionId)) {
-    throw new QuestionRefused(
-      'every question carries a recommended option, and it must be one of this question own options — a human facing a queue owes a click, not a decision',
+    throw refuseQuestion(
       'QUESTION_RECOMMENDED_UNKNOWN',
+      'every question carries a recommended option, and it must be one of this question own options — a human facing a queue owes a click, not a decision',
     );
   }
 }
@@ -131,9 +106,9 @@ export function checkAnswer(answer: AskAnswer): void {
     return;
   }
   if (!answer.needed.trim()) {
-    throw new QuestionRefused(
-      'a free-text round states what would settle it — the credential, the missing paragraph, which reading was meant. Without that the person is asked to guess what counts as an answer',
+    throw refuseQuestion(
       'QUESTION_SHAPE_INVALID',
+      'a free-text round states what would settle it — the credential, the missing paragraph, which reading was meant. Without that the person is asked to guess what counts as an answer',
     );
   }
 }
@@ -141,7 +116,7 @@ export function checkAnswer(answer: AskAnswer): void {
 function step(round: number, prompt: string, answer: AskAnswer, sensitive?: boolean): QuestionStep {
   const built = buildStep(round, prompt, answer, sensitive);
   screenRound(built, (message, code) => {
-    throw new QuestionRefused(message, code);
+    throw refuseQuestion(code, message);
   });
   return built;
 }
@@ -176,12 +151,12 @@ async function checkIssueBelongsToProject(
     .where(eq(issues.id, issueId))
     .limit(1);
   if (!issue) {
-    throw new QuestionRefused(`no issue ${issueId}`, 'QUESTION_ISSUE_ELSEWHERE');
+    throw refuseQuestion('QUESTION_ISSUE_ELSEWHERE', `no issue ${issueId}`);
   }
   if (issue.projectId !== projectId) {
-    throw new QuestionRefused(
-      `issue ${issueId} belongs to project ${issue.projectId}, not to ${projectId} — ask it under the issue's own project`,
+    throw refuseQuestion(
       'QUESTION_ISSUE_ELSEWHERE',
+      `issue ${issueId} belongs to project ${issue.projectId}, not to ${projectId} — ask it under the issue's own project`,
     );
   }
 }
@@ -197,9 +172,9 @@ async function refuseFinishedWork(executor: QuestionExecutor, issueId: string | 
   );
   const status = (rows[0] as { status?: IssueStatus } | undefined)?.status;
   if (status && ISSUE_TERMINAL_STATUSES.includes(status)) {
-    throw new QuestionRefused(
-      `issue ${issueId} is \`${status}\` — the work this would ask about is finished, so no answer could reach it. Reopen the issue first if the question still stands`,
+    throw refuseQuestion(
       'QUESTION_ISSUE_TERMINAL',
+      `issue ${issueId} is \`${status}\` — the work this would ask about is finished, so no answer could reach it. Reopen the issue first if the question still stands`,
     );
   }
 }
@@ -262,7 +237,7 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
       parkDeadlineAt: input.parkDeadlineAt,
     })
     .returning();
-  if (!row) throw new QuestionRefused('the question was not written');
+  if (!row) throw new Error('the question was not written');
   return view(row);
 }
 
@@ -310,43 +285,48 @@ export async function answerQuestion(args: AnswerInput) {
       .where(eq(agentQuestions.id, args.questionId))
       .limit(1)
       .for('update');
-    if (!row) throw new QuestionRefused(`no question ${args.questionId}`, 'QUESTION_NOT_FOUND');
-    if (row.batchId) throw new QuestionRefused(...batchItemRefusal(row.id, row.batchId));
+    if (!row) throw notFound(`no question ${args.questionId}`);
+    if (row.batchId) {
+      throw refuseQuestion(
+        'QUESTION_IN_QUESTIONNAIRE',
+        `question ${row.id} is an item of questionnaire ${row.batchId}; answer it with its batch (POST …/questionnaires/${row.batchId}/answers)`,
+      );
+    }
     const now = new Date();
     if (row.status !== 'open') {
-      throw new QuestionRefused(
-        `this question is ${row.status} — only an open question takes an answer`,
+      throw refuseQuestion(
         'QUESTION_NOT_OPEN',
+        `this question is ${row.status} — only an open question takes an answer`,
       );
     }
     if (row.parkDeadlineAt && row.parkDeadlineAt.getTime() <= now.getTime()) {
-      throw new QuestionRefused(
-        `this question's park deadline passed at ${row.parkDeadlineAt.toISOString()}`,
+      throw refuseQuestion(
         'QUESTION_EXPIRED',
+        `this question's park deadline passed at ${row.parkDeadlineAt.toISOString()}`,
       );
     }
     const current = row.steps[row.steps.length - 1];
-    if (!current) throw new QuestionRefused('this question has no round to answer');
+    if (!current) throw new Error(`question ${row.id} has no round to answer`);
     const note = args.note?.trim() || undefined;
     if (args.note !== undefined && row.origin?.kind !== 'channel_gate') {
-      throw new QuestionRefused(
-        'a note travels only with an answer that carries it somewhere, and this question carries none — a channel gate takes one; here, answer with the option alone',
+      throw refuseQuestion(
         'QUESTION_NOTE_NOT_TAKEN',
+        'a note travels only with an answer that carries it somewhere, and this question carries none — a channel gate takes one; here, answer with the option alone',
       );
     }
     if (current.round !== args.round) {
-      throw new QuestionRefused(
-        `this answer names round ${args.round} and the question is on round ${current.round} — the round you were shown has been superseded`,
+      throw refuseQuestion(
         'QUESTION_ROUND_STALE',
+        `this answer names round ${args.round} and the question is on round ${current.round} — the round you were shown has been superseded`,
       );
     }
     const choice = isChoiceStep(current);
     if (choice !== (args.answer.kind === 'option')) {
-      throw new QuestionRefused(
+      throw refuseQuestion(
+        'QUESTION_ANSWER_WRONG_SHAPE',
         choice
           ? `round ${current.round} offers options and this answer carries text — reply with the number of the option you mean`
           : `round ${current.round} asks for text and this answer names an option — it has none to name`,
-        'QUESTION_ANSWER_WRONG_SHAPE',
       );
     }
     let answered: QuestionStep;
@@ -355,9 +335,9 @@ export async function answerQuestion(args: AnswerInput) {
       const optionId = args.answer.optionId;
       const option = current.options.find((o) => o.id === optionId);
       if (!option) {
-        throw new QuestionRefused(
-          `option ${optionId} is not on round ${current.round} of this question`,
+        throw refuseQuestion(
           'QUESTION_OPTION_UNKNOWN',
+          `option ${optionId} is not on round ${current.round} of this question`,
         );
       }
       requireHeld(args.facts, optionPermission(option), `choosing option ${option.id}`);
@@ -381,9 +361,9 @@ export async function answerQuestion(args: AnswerInput) {
     } else if (!isChoiceStep(current) && args.answer.kind === 'text') {
       const text = args.answer.text.trim();
       if (!text) {
-        throw new QuestionRefused(
-          `round ${current.round} asks for text and this answer carries none`,
+        throw refuseQuestion(
           'QUESTION_ANSWER_WRONG_SHAPE',
+          `round ${current.round} asks for text and this answer carries none`,
         );
       }
       requireHeld(args.facts, 'project.write', 'answering a free-text round');
@@ -394,9 +374,9 @@ export async function answerQuestion(args: AnswerInput) {
         answeredBy: args.by,
       };
     } else {
-      throw new QuestionRefused(
-        `round ${current.round} and this answer do not name the same shape`,
+      throw refuseQuestion(
         'QUESTION_ANSWER_WRONG_SHAPE',
+        `round ${current.round} and this answer do not name the same shape`,
       );
     }
     const steps = row.steps.map((s, i) => (i === row.steps.length - 1 ? answered : s));
@@ -429,9 +409,9 @@ export async function voidQuestion(args: {
   actor: KernelActor;
 }) {
   if (!args.reason?.trim()) {
-    throw new QuestionRefused(
-      'a question is voided WITH a reason — removed silently it is indistinguishable from one nobody answered',
+    throw refuseQuestion(
       'QUESTION_REASON_REQUIRED',
+      'a question is voided WITH a reason — removed silently it is indistinguishable from one nobody answered',
     );
   }
   const { rows: voided } = await transition(db, QUESTION_MACHINE, {
@@ -445,10 +425,10 @@ export async function voidQuestion(args: {
     returning: ['id'],
   });
   if (voided.length > 0) return;
-  const row = await load(args.questionId, 'QUESTION_NOT_FOUND');
-  throw new QuestionRefused(
-    `this question is ${row.status} — only an open question can be voided, and voiding an answered one would erase the answer`,
+  const row = await load(args.questionId);
+  throw refuseQuestion(
     'QUESTION_NOT_OPEN',
+    `this question is ${row.status} — only an open question can be voided, and voiding an answered one would erase the answer`,
   );
 }
 
@@ -461,19 +441,20 @@ export async function checkPermission(args: { questionId: string; fingerprint: s
     | ChoiceStep
     | undefined;
   const chosen = answered?.options.find((o) => o.id === answered.chosenOptionId);
-  if (!chosen) throw new QuestionRefused('this question carries no answer to check');
+  if (!chosen) throw refuseQuestion('QUESTION_REFUSED', 'this question carries no answer to check');
   if (chosen.bindsTo !== 'this_call') return true;
   if (chosen.fingerprint !== args.fingerprint) {
-    throw new QuestionRefused(
+    throw refuseQuestion(
+      'QUESTION_REFUSED',
       `fingerprint mismatch: this permission was given for \`${chosen.fingerprint}\` and is being presented for \`${args.fingerprint}\``,
     );
   }
   return true;
 }
 
-async function load(id: string, code: QuestionRefusalCode = 'QUESTION_REFUSED') {
+async function load(id: string) {
   const [row] = await db.select().from(agentQuestions).where(eq(agentQuestions.id, id)).limit(1);
-  if (!row) throw new QuestionRefused(`no question ${id}`, code);
+  if (!row) throw notFound(`no question ${id}`);
   return row;
 }
 

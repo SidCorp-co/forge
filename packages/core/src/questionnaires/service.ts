@@ -27,8 +27,9 @@ import { conversations } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionOrigin, type QuestionStep } from '../db/schema-questions.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { dataPolicyOf, storedAnswers } from '../lib/data-egress.js';
+import { RefusalError } from '../lib/refusal.js';
+import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { permissionFactsOf } from '../permissions/index.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import {
@@ -64,12 +65,6 @@ export type QuestionnaireOutcome =
   | { ok: true; questionnaire: QuestionnaireView; created?: boolean }
   | { ok: false; refusals: NamedRefusal[] };
 
-export class Refused extends Error {
-  constructor(readonly refusals: NamedRefusal[]) {
-    super(refusals.map((r) => r.code).join(', '));
-  }
-}
-
 /** Runs `body` in a transaction; refusals it returns or throws roll everything back and come out. */
 export async function inTx(
   body: (tx: TxOnly) => Promise<NamedRefusal[] | null | undefined>,
@@ -77,11 +72,11 @@ export async function inTx(
   try {
     return await db.transaction(async (tx) => {
       const refusals = await body(tx);
-      if (refusals?.length) throw new Refused(refusals);
+      if (refusals?.length) throw new RefusalError(refusals, 'QUESTIONNAIRE_REFUSED');
       return null;
     });
   } catch (err) {
-    if (err instanceof Refused) return err.refusals;
+    if (err instanceof RefusalError) return [...err.refusals];
     throw err;
   }
 }

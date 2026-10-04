@@ -5,6 +5,7 @@
 // what an unset key means, and how a room with several handles folds their
 // values into the one set of thresholds `decideProactivity` reads.
 
+import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
   type AnswerInGroupMode,
@@ -73,13 +74,12 @@ export const presenceConfigSchema = z
   })
   .strict();
 
-export class PresenceValidationError extends Error {
-  readonly issues: string[];
-  constructor(issues: string[]) {
-    super(issues.join('; '));
-    this.name = 'PresenceValidationError';
-    this.issues = issues;
-  }
+/** A presence document that does not fit its shape: request shape, so a 400 naming each key. */
+function presenceInvalid(issues: string[]): HTTPException {
+  return new HTTPException(400, {
+    message: issues.join('; '),
+    cause: { code: 'PRESENCE_INVALID', details: { issues } },
+  });
 }
 
 /** The shape, or a refusal that says which key or bound was wrong. */
@@ -94,7 +94,7 @@ export function validatePresence(input: unknown): PresenceConfig {
     }
     return `${path}: ${i.message}`;
   });
-  throw new PresenceValidationError(issues);
+  throw presenceInvalid(issues);
 }
 
 /** What `decideProactivity` reads: every key resolved, none optional. */
@@ -173,7 +173,7 @@ export function validateRoomPresence(input: unknown): RoomPresence {
     }
     return `${path}: ${i.message}`;
   });
-  throw new PresenceValidationError(issues);
+  throw presenceInvalid(issues);
 }
 
 /**

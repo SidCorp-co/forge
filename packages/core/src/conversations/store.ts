@@ -21,6 +21,7 @@ import type { Executor, TxOnly } from './db-executor.js';
 import { resolveProjectHandle } from './handles.js';
 import { attachOpeningHandle } from './participants.js';
 import type { ConversationVenue } from './ports.js';
+import { refuseConversation } from './refusals.js';
 import { derivedScope } from './scope.js';
 
 export { asBlocks, toCanonicalEntry } from './canonical-entry.js';
@@ -41,9 +42,6 @@ export {
 import { type ConversationRow, findConversation, selection } from './rooms.js';
 
 export { type ConversationRow, findConversation };
-
-const conflict = (message: string, code: string) =>
-  new HTTPException(409, { message, cause: { code } });
 
 export interface ConversationImage {
   name: string;
@@ -79,16 +77,16 @@ async function assertVenueMatches(
   venue: ConversationVenue,
 ): Promise<void> {
   if (row.shape !== venue.shape) {
-    throw conflict(
-      `conversation ${row.id} was opened as a ${row.shape} room and this message arrives as ${venue.shape}; a venue's shape is settled when it is first seen`,
+    throw refuseConversation(
       'CONVERSATION_SHAPE_CONFLICT',
+      `conversation ${row.id} was opened as a ${row.shape} room and this message arrives as ${venue.shape}; a venue's shape is settled when it is first seen`,
     );
   }
   const scope = await derivedScope(row.id, tx);
   if (!scope.includes(venue.projectId)) {
-    throw conflict(
-      `conversation ${row.id} (${row.adapter} ${row.externalId}) is about ${scope.join(', ') || 'no project'} and this message arrives bound to project ${venue.projectId}; rebind the room deliberately rather than widening it here`,
+    throw refuseConversation(
       'CONVERSATION_PROJECT_CONFLICT',
+      `conversation ${row.id} (${row.adapter} ${row.externalId}) is about ${scope.join(', ') || 'no project'} and this message arrives bound to project ${venue.projectId}; rebind the room deliberately rather than widening it here`,
     );
   }
 }

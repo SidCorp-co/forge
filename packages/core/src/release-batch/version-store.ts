@@ -9,12 +9,7 @@
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { readProjectDocument } from '../project-config/service.js';
-import {
-  ReleaseRecutRefusedError,
-  ReleaseVersionConflictError,
-  ReleaseVersionExhaustedError,
-  ReleaseVersionLineBehindError,
-} from './errors.js';
+import { refuseRelease } from './refuse.js';
 import {
   compareReleaseVersions,
   formatReleaseVersion,
@@ -25,6 +20,20 @@ import {
   RELEASE_VERSION_SHAPE,
   type ReleaseVersion,
 } from './version.js';
+
+/** The four ways a re-cut can be wrong, each refused by its own reason. */
+const recutRefused = (recutOf: string, reason: string) =>
+  refuseRelease('RELEASE_RECUT_REFUSED', `${recutOf} cannot be re-cut: ${reason}`, '/recutOf');
+
+/** Allocation is serialized per project, so a second writer of the column is refused, not retried. */
+const versionConflict = (projectId: string, version: string) =>
+  refuseRelease(
+    'RELEASE_VERSION_CONFLICT',
+    `${version} could not be cut for project ${projectId}: the row already carried a version, or ` +
+      'another release on this project already wears that number. Allocation is serialized per ' +
+      'project, so this means a writer other than `cutReleaseVersion` set ' +
+      '`pipeline_runs.release_version`. Nothing was cut.',
+  );
 
 /** Statuses a release run is still open at, which `queries.ts` reads the same way. */
 const OPEN_RUN_STATUSES = ['running', 'paused'] as const;
@@ -67,7 +76,7 @@ export async function highestCutVersion(
   for (const row of rows) {
     const version = parseReleaseVersion(row.release_version);
     if (!version) {
-      throw new ReleaseVersionConflictError(
+      throw versionConflict(
         projectId,
         `${row.release_version} (stored on run ${row.id}, which is not ${RELEASE_VERSION_SHAPE})`,
       );
@@ -110,20 +119,20 @@ export async function currentReleaseVersion(projectId: string): Promise<string |
 export function ruleOnRecut(recutOf: string, highest: ReleaseRowReading | null): ReleaseVersion {
   const asked = parseReleaseVersion(recutOf);
   if (!asked) {
-    throw new ReleaseRecutRefusedError(
+    throw recutRefused(
       recutOf,
       `it is not a version. Send ${RELEASE_VERSION_SHAPE}`,
     );
   }
   if (asked.pre) {
-    throw new ReleaseRecutRefusedError(
+    throw recutRefused(
       recutOf,
       'a prerelease is never re-cut: the next cut on its line takes the next number, the failed ' +
         'one stays burned. Omit `recutOf`',
     );
   }
   if (!highest) {
-    throw new ReleaseRecutRefusedError(
+    throw recutRefused(
       recutOf,
       'this project has cut no release at all, so there is nothing to re-cut. Omit `recutOf` and ' +
         'the first release cuts 0.1.0',
@@ -131,7 +140,7 @@ export function ruleOnRecut(recutOf: string, highest: ReleaseRowReading | null):
   }
   const highestText = formatReleaseVersion(highest.version);
   if (highestText !== formatReleaseVersion(asked)) {
-    throw new ReleaseRecutRefusedError(
+    throw recutRefused(
       recutOf,
       `this project's highest release is ${highestText}, and the patch digit is reserved for ` +
         'a re-cut of the LAST release. Re-cutting anything older would put a lower version after a ' +
@@ -139,14 +148,14 @@ export function ruleOnRecut(recutOf: string, highest: ReleaseRowReading | null):
     );
   }
   if ((OPEN_RUN_STATUSES as readonly string[]).includes(highest.status)) {
-    throw new ReleaseRecutRefusedError(
+    throw recutRefused(
       recutOf,
       `release run ${highest.runId} is still ${highest.status}, so that release has not failed ` +
         'yet. Abort it first, then re-cut',
     );
   }
   if (highest.shipped) {
-    throw new ReleaseRecutRefusedError(
+    throw recutRefused(
       recutOf,
       `release run ${highest.runId} SHIPPED, and the patch digit is reserved for a re-cut after a ` +
         'FAILED release. Omit `recutOf` to cut a new release',
@@ -161,10 +170,13 @@ export function ruleAboveHighest(
   highest: ReleaseRowReading | null,
 ): void {
   if (!highest || compareReleaseVersions(next, highest.version) > 0) return;
-  throw new ReleaseVersionLineBehindError(
-    projectId,
-    formatReleaseVersion(next),
-    formatReleaseVersion(highest.version),
+  // A prerelease line declared below what this project already cut would hand out a lower version
+  // after a higher one; the line is the operator's to raise, never skipped forward here.
+  throw refuseRelease(
+    'RELEASE_VERSION_LINE_BEHIND',
+    `the next version for project ${projectId} would be ${formatReleaseVersion(next)}, and this ` +
+      `project already cut ${formatReleaseVersion(highest.version)}. Nothing was cut. Raise ` +
+      '`release.prerelease.of` in the project document to the release the line now previews.',
   );
 }
 
@@ -186,7 +198,7 @@ export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Pr
   const highest = await highestCutVersion(tx, projectId);
   const line = await releaseLineOf(projectId);
   if (line && recutOf !== undefined) {
-    throw new ReleaseRecutRefusedError(
+    throw recutRefused(
       recutOf,
       `this project numbers every release as a prerelease of ${formatReleaseVersion(line.of)} ` +
         '(project document `release.prerelease`), so a failed one is followed by the next number ' +
@@ -199,7 +211,12 @@ export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Pr
   const next = nextReleaseVersion(highest?.version ?? null, recutFrom, line);
   // Refused here rather than at the column, which would name itself instead of the rule.
   if (!isStorableReleaseVersion(next)) {
-    throw new ReleaseVersionExhaustedError(projectId, formatReleaseVersion(next));
+    throw refuseRelease(
+      'RELEASE_VERSION_EXHAUSTED',
+      `the next version for project ${projectId} would be ${formatReleaseVersion(next)}, and a ` +
+        'release version holds at most nine digits per component. Nothing was cut. Raise the ' +
+        'major digit by hand on the next release row to start a fresh sequence.',
+    );
   }
   ruleAboveHighest(projectId, next, highest);
   const version = formatReleaseVersion(next);
@@ -211,7 +228,7 @@ export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Pr
       AND release_version IS NULL
     RETURNING id
   `);
-  if (written.length !== 1) throw new ReleaseVersionConflictError(projectId, version);
+  if (written.length !== 1) throw versionConflict(projectId, version);
   return version;
 }
 

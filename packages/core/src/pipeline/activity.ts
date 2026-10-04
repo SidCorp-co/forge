@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import { type Db, db } from '../db/client.js';
 import { type ActorType, activityLog } from '../db/schema.js';
-import { type ActorAgency, ActorAgencyUndetermined } from '../issues/actor-agency.js';
+import { type ActorAgency, agencyUndetermined } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
 
 export type Actor = { type: ActorType; id: string; agency: ActorAgency };
@@ -66,7 +66,7 @@ export function resolveActor(c: Context): Actor {
   const userId = (c.get('userId' as never) as string | undefined) ?? undefined;
   if (userId) {
     const agency = c.get('agency' as never) as ActorAgency | undefined;
-    if (!agency) throw new ActorAgencyUndetermined();
+    if (!agency) throw agencyUndetermined();
     return { type: 'user', id: userId, agency };
   }
   const device = (c.get('device' as never) as { id: string } | undefined) ?? undefined;

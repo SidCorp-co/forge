@@ -1,3 +1,4 @@
+import type { MergeRefusalCode } from '@forge/contracts/issues';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { comments } from '../db/schema.js';
@@ -6,6 +7,8 @@ import {
   landingDriftRefusal,
   landingWorld,
 } from '../ecosystem/contract/drift.js';
+import { refuser } from '../lib/refusal.js';
+import { notFound } from '../middleware/route-errors.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
@@ -77,26 +80,7 @@ export async function writeAuditComment(
   return row ?? null;
 }
 
-export class MergeMarkerError extends Error {
-  constructor(
-    readonly code:
-      | 'NO_WORK_EVIDENCE'
-      | 'ISSUE_NOT_FOUND'
-      | 'UNMARK_REQUIRES_NOT_CLOSED'
-      | 'LANDING_REQUIRED'
-      | 'LANDING_NOT_THIS_SHAPE'
-      | 'MARK_ALREADY_STANDS'
-      | 'TARGET_REQUIRED'
-      | 'PROJECT_DOCUMENT_NOT_FOUND'
-      | DriftRefusal['code']
-      | Exclude<CommitLanding, { ok: true }>['code'],
-    message: string,
-    readonly details?: Record<string, unknown>,
-  ) {
-    super(message);
-    this.name = 'MergeMarkerError';
-  }
-}
+const refuse = refuser<MergeRefusalCode | DriftRefusal['code']>('MERGE_MARK_REFUSED');
 
 export type MergeMarkerActor = {
   agency: ActorAgency;
@@ -136,7 +120,7 @@ export async function applyMergeMarker(args: {
 }> {
   const before = args.issue;
   const prior = await findIssueById(before.id);
-  if (!prior) throw new MergeMarkerError('ISSUE_NOT_FOUND', 'issue not found');
+  if (!prior) throw notFound('issue not found');
 
   let stampResult: MergeRecord = { wrote: true, mergedAt: null, commitSha: null, landing: null };
   /** The commit the caller claimed, where Forge has no merge of its own to put in the column. */
@@ -146,31 +130,34 @@ export async function applyMergeMarker(args: {
   let readFrom: Extract<CommitLanding, { ok: true }> | null = null;
   if (args.op === 'mark') {
     const shape = await readLandingShape(db, before.projectId);
-    if (shape === null) throw new MergeMarkerError('PROJECT_DOCUMENT_NOT_FOUND', SOURCE_UNDECLARED);
+    if (shape === null) throw refuse('PROJECT_DOCUMENT_NOT_FOUND', SOURCE_UNDECLARED);
     // A landing on a git project is refused below whatever the target, and that refusal names the
     // real fault, so the missing target is not reported ahead of it.
     if (markTargetRequired(shape) && !args.target && !args.landing) {
-      throw new MergeMarkerError('TARGET_REQUIRED', 'target is required');
+      throw refuse(
+        'TARGET_REQUIRED',
+        'target is required: this project lands through git, so name the branch the work merged into',
+        '/target',
+      );
     }
     const landed = args.contracts ?? [];
     const drift = landingDriftRefusal(landed, await landingWorld(prior, landed));
-    if (drift) throw new MergeMarkerError(drift.code, drift.detail, drift.details);
+    if (drift) throw refuse(drift.code, drift.detail, '/contracts');
     // An agent with nothing else behind it may still have landed on the base branch itself, where
     // the commit is the only trace: it counts once the repository says it is this issue's landing.
     if (args.actor.agency === 'agent') {
       const missing = await findMissingWorkEvidence(before.id);
       if (missing) {
-        if (!args.commit || shape !== 'git')
-          throw new MergeMarkerError('NO_WORK_EVIDENCE', missing);
+        if (!args.commit || shape !== 'git') throw refuse('NO_WORK_EVIDENCE', missing);
         const read = await readCommitLanding({ issueId: before.id, commit: args.commit });
-        if (!read.ok) throw new MergeMarkerError(read.code, read.detail, read.details);
+        if (!read.ok) throw refuse(read.code, read.detail, '/commit');
         fromRepository = read;
       }
     }
     const observed = await observedMergeForIssue(db, before.id);
     const landing = args.landing ?? null;
     const refused = landingMarkRefusal({ shape, landing, observed: observed !== null });
-    if (refused) throw new MergeMarkerError(refused.code, refused.detail);
+    if (refused) throw refuse(refused.code, refused.detail, '/landing');
     if (observed) {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
@@ -218,7 +205,7 @@ export async function applyMergeMarker(args: {
         mergedLanding: stampResult.landing,
       },
     });
-    if (standing) throw new MergeMarkerError(standing.code, standing.detail, standing.details);
+    if (standing) throw refuse(standing.code, standing.detail, '/landing');
     if (args.target) await recordMergeTarget(db, before.id, args.target);
   } else {
     // The `closed` guard is the UPDATE's own WHERE, so nothing can close the row between the
@@ -226,7 +213,7 @@ export async function applyMergeMarker(args: {
     // gone, or it is closed, and anything else is a state those two conditions cannot produce.
     if (!(await clearIssueMerge(db, before.id))) {
       const still = await findIssueById(before.id);
-      if (!still) throw new MergeMarkerError('ISSUE_NOT_FOUND', 'issue not found');
+      if (!still) throw notFound('issue not found');
       const refusal = refuseUnmarkOnClosed(still.status);
       if (!refusal) {
         throw new Error(
@@ -235,7 +222,7 @@ export async function applyMergeMarker(args: {
             `clearIssueMerge cannot produce and must not be reported as either of them.`,
         );
       }
-      throw new MergeMarkerError('UNMARK_REQUIRES_NOT_CLOSED', refusal.detail);
+      throw refuse('UNMARK_REQUIRES_NOT_CLOSED', refusal.detail);
     }
   }
 
@@ -287,7 +274,7 @@ export async function applyMergeMarker(args: {
   }
 
   const issue = await findIssueById(before.id);
-  if (!issue) throw new MergeMarkerError('ISSUE_NOT_FOUND', 'issue not found');
+  if (!issue) throw notFound('issue not found');
   await hooks.emit('issueUpdated', {
     issueId: before.id,
     projectId: before.projectId,

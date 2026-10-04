@@ -7,9 +7,9 @@ import { skillRegistrations, skills, skillTargets } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { SkillContentBlockedError } from '../security/findings.js';
+import { requireHeld } from '../permissions/index.js';
 import { MANAGED_META_SKILLS, resolveRegisteredEffectiveSkills } from './effective.js';
-import { MetaSkillReservedError } from './meta-skills.js';
+import { refuse } from './refuse.js';
 import {
   createProjectSkill,
   deleteProjectSkill,
@@ -17,7 +17,6 @@ import {
   updateProjectSkill,
 } from './service.js';
 import { isSlashCommandSkillName } from './skill-name.js';
-import { requireHeld } from '../permissions/index.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -89,8 +88,12 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
+const globalReadOnly = (act: string) =>
+  refuse(
+    'SKILL_GLOBAL_READ_ONLY',
+    `global skills cannot be ${act} via this endpoint; a global skill is managed through the admin skills route`,
+    '/isGlobal',
+  );
 
 export const skillCrudRoutes = new Hono<{ Variables: AuthVars }>();
 skillCrudRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -209,7 +212,7 @@ skillCrudRoutes.post(
     // Without this gate any authenticated user could broadcast a skill to
     // every project by sending isGlobal=true.
     if (isGlobal) {
-      throw forbidden('global skills cannot be created via this endpoint');
+      throw globalReadOnly('created');
     }
 
     if (!input.projectId) {
@@ -219,32 +222,16 @@ skillCrudRoutes.post(
     const access = await loadProjectAccess(input.projectId, userId);
     requireHeld(access, 'project.admin');
 
-    try {
-      const inserted = await createProjectSkill({
-        projectId: input.projectId,
-        name: input.name,
-        description: input.description,
-        skillMd: input.skillMd,
-        target: input.target ?? null,
-        files: input.files,
-        localGuide: input.localGuide ?? null,
-      });
-      return c.json(inserted, 201);
-    } catch (err) {
-      if (err instanceof SkillContentBlockedError) {
-        throw new HTTPException(400, {
-          message: 'SKILL_CONTENT_BLOCKED',
-          cause: { code: 'SKILL_CONTENT_BLOCKED', details: { findings: err.findings } },
-        });
-      }
-      if (err instanceof MetaSkillReservedError) {
-        throw new HTTPException(400, {
-          message: err.message,
-          cause: { code: 'META_SKILL_RESERVED' },
-        });
-      }
-      throw err;
-    }
+    const inserted = await createProjectSkill({
+      projectId: input.projectId,
+      name: input.name,
+      description: input.description,
+      skillMd: input.skillMd,
+      target: input.target ?? null,
+      files: input.files,
+      localGuide: input.localGuide ?? null,
+    });
+    return c.json(inserted, 201);
   },
 );
 
@@ -269,27 +256,11 @@ skillCrudRoutes.put(
       requireHeld(access, 'project.admin');
     } else {
       // Global skills: only allow CEO/admin via existing admin route.
-      throw forbidden('global skills cannot be updated via this endpoint');
+      throw globalReadOnly('updated');
     }
 
-    try {
-      const updated = await updateProjectSkill(row, patch);
-      return c.json(updated);
-    } catch (err) {
-      if (err instanceof SkillContentBlockedError) {
-        throw new HTTPException(400, {
-          message: 'SKILL_CONTENT_BLOCKED',
-          cause: { code: 'SKILL_CONTENT_BLOCKED', details: { findings: err.findings } },
-        });
-      }
-      if (err instanceof MetaSkillReservedError) {
-        throw new HTTPException(400, {
-          message: err.message,
-          cause: { code: 'META_SKILL_RESERVED' },
-        });
-      }
-      throw err;
-    }
+    const updated = await updateProjectSkill(row, patch);
+    return c.json(updated);
   },
 );
 
@@ -313,7 +284,7 @@ skillCrudRoutes.delete(
       const access = await loadProjectAccess(row.projectId, userId);
       requireHeld(access, 'project.admin');
     } else {
-      throw forbidden('global skills cannot be deleted via this endpoint');
+      throw globalReadOnly('deleted');
     }
 
     await deleteProjectSkill(id);

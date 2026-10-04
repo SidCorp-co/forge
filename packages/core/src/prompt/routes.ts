@@ -1,18 +1,15 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import type { PromptRefusalCode } from '@forge/contracts/prompt';
 import { z } from 'zod';
 import { type JobType, jobTypes } from '../db/schema.js';
-import { buildJobSystemPrompt, JobContextRefused } from '../jobs/job-system-prompt.js';
+import { buildJobSystemPrompt } from '../jobs/job-system-prompt.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
-import {
-  type DispatchState,
-  dispatchStateOf,
-  PolicyRefusedError,
-  requirePolicy,
-} from '../project-config/dispatch-policy.js';
+import { dispatchStateOf, requirePolicy } from '../project-config/dispatch-policy.js';
 import { loadIssueSnapshot } from './issue-snapshot.js';
 import { buildJobPromptString } from './user.js';
 import { requireHeld } from '../permissions/index.js';
@@ -21,6 +18,8 @@ const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 const notFound = (m: string) =>
   new HTTPException(404, { message: m, cause: { code: 'NOT_FOUND' } });
+
+const refuse = refuser<PromptRefusalCode>('PROMPT_REFUSED');
 
 const PREVIEWABLE_STATES = [...new Set(Object.values(RUNNER_CAPABILITIES).flat())].sort();
 
@@ -57,13 +56,11 @@ promptRoutes.post(
     requireHeld(access, 'project.read');
 
     if (!PREVIEWABLE_STATES.includes(body.state)) {
-      throw new HTTPException(400, {
-        message: `no runner can claim a \`${body.state}\` job, so there is no prompt it would see: a job of that type is refused \`runner_unsupported_type\` before a prompt is built. It is still in the job-type enum only so historical \`jobs\` rows stay readable. Previewable states: ${PREVIEWABLE_STATES.join(', ')}.`,
-        cause: {
-          code: 'STATE_NOT_CLAIMABLE',
-          details: { state: body.state, previewableStates: PREVIEWABLE_STATES },
-        },
-      });
+      throw refuse(
+        'STATE_NOT_CLAIMABLE',
+        `no runner can claim a \`${body.state}\` job, so there is no prompt it would see: a job of that type is refused \`runner_unsupported_type\` before a prompt is built. It is still in the job-type enum only so historical \`jobs\` rows stay readable. Previewable states: ${PREVIEWABLE_STATES.join(', ')}.`,
+        '/state',
+      );
     }
 
     // Scope the issue lookup to body.projectId (the caller is gated as a member
@@ -75,37 +72,21 @@ promptRoutes.post(
       throw notFound('issue not found');
     }
 
-    let policy: DispatchState;
-    try {
-      const held = await requirePolicy(body.projectId);
-      policy = dispatchStateOf(body.projectId, held, {
-        status: issueSnapshot?.status ?? null,
-        from: 'issue',
-      });
-    } catch (err) {
-      if (err instanceof PolicyRefusedError) {
-        throw new HTTPException(409, { message: err.message, cause: { code: err.code } });
-      }
-      throw err;
-    }
+    const held = await requirePolicy(body.projectId);
+    const policy = dispatchStateOf(body.projectId, held, {
+      status: issueSnapshot?.status ?? null,
+      from: 'issue',
+    });
 
     // cm:why the preview calls the builder prepare calls (jobs/job-system-prompt.ts), so the
     // requirement, design and contract blocks a claimed job is given are the ones shown here
-    let built: Awaited<ReturnType<typeof buildJobSystemPrompt>>;
-    try {
-      built = await buildJobSystemPrompt({
-        projectId: body.projectId,
-        issueId: body.issueId ?? null,
-        step: body.state as JobType,
-        policy,
-        subject: `preview refused issue ${body.issueId ?? 'none'}`,
-      });
-    } catch (err) {
-      if (err instanceof JobContextRefused) {
-        throw new HTTPException(409, { message: err.message, cause: { code: err.code } });
-      }
-      throw err;
-    }
+    const built = await buildJobSystemPrompt({
+      projectId: body.projectId,
+      issueId: body.issueId ?? null,
+      step: body.state as JobType,
+      policy,
+      subject: `preview refused issue ${body.issueId ?? 'none'}`,
+    });
     const { systemPrompt, blocks } = built;
 
     const userPrompt = buildJobPromptString({

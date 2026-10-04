@@ -1,27 +1,13 @@
+import type { ProjectConfigRefusalCode } from '@forge/contracts/project-config';
 import type { z } from 'zod';
-import type { BindingTargetRefusal } from '../integrations/types.js';
-import type { ConfigRefusal, ConfigRefusalCode } from './rules.js';
+import type { ConfigRefusal } from './rules.js';
 import { TOOL_PATTERN } from './schema.js';
 
 const BINDING_ROLLBACK_MOVED =
   "rollback is not a binding's: how a release is undone is the project document's `rollback.strategy` (`PUT /api/projects/:id/config`).";
 
-export type ApiRefusalCode =
-  | ConfigRefusalCode
-  | 'SCHEMA_VIOLATION'
-  | 'TESTING_PROFILE_ID_MISMATCH'
-  | 'TESTING_PROFILE_IN_USE'
-  | 'BINDING_ID_MISMATCH'
-  | 'BINDING_TARGET_UNSUPPORTED'
-  | 'BINDING_NOT_REPRESENTABLE'
-  | 'BINDING_LABEL_UNSUPPORTED'
-  | 'BINDING_ROLLBACK_MOVED'
-  | 'AGENT_ACCESS_UNSUPPORTED'
-  | 'AGENT_ACCESS_NEEDS_ORG_ADMIN'
-  | BindingTargetRefusal['code'];
-
 export interface ApiRefusal extends Omit<ConfigRefusal, 'code'> {
-  code: ApiRefusalCode;
+  code: ProjectConfigRefusalCode;
 }
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; refusals: ApiRefusal[] };

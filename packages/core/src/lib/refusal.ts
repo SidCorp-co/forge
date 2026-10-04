@@ -7,7 +7,7 @@ export class RefusalError extends Error {
     readonly refusals: readonly Refusal[],
     readonly fallbackCode: string,
   ) {
-    super(refusals.map((r) => r.code).join(', '));
+    super(refusals.map((r) => `${r.code}: ${r.detail}`).join('; '));
     this.name = 'RefusalError';
   }
 }
