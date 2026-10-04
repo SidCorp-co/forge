@@ -7,7 +7,6 @@ import {
   drainRoomQuestions,
   drainRoomWindows,
   drainWebConversationWindows,
-  runAssistantWeeklyOnce,
   runTranscriptIndexSweepOnce,
 } from './assistant/index.js';
 import { runHeartbeatTick } from './conversations/index.js';
@@ -203,19 +202,6 @@ export function coreTimers(): Timer[] {
       name: 'conversations.heartbeat',
       cron: '* * * * *',
       run: () => runHeartbeatTick(),
-    },
-    {
-      kind: 'cluster',
-      name: 'assistant-weekly-report',
-      cron: '0 4 * * *',
-      run: async () => {
-        const outcomes = await runAssistantWeeklyOnce();
-        const count = (o: string) => outcomes.filter((x) => x.outcome === o).length;
-        logger.info(
-          { posted: count('posted'), skipped: count('skipped'), failed: count('failed') },
-          'assistant.weekly: tick complete',
-        );
-      },
     },
     {
       kind: 'cluster',

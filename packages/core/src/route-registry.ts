@@ -21,7 +21,6 @@ import {
 import { agentRoutes } from './agents/routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
 import {
-  assistantWeeklyRoutes,
   baDoorRoutes,
   conversationRoutes,
   speakerLinkMeRoutes,
@@ -286,7 +285,6 @@ function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void
   // No auth of their own: they answer under projectRoutes' gate, mounted just above on the same prefix.
   app.route('/api/projects', projectRunnerRoutes);
   app.route('/api/projects', projectOnboardRoutes);
-  app.route('/api/projects', assistantWeeklyRoutes);
   app.route('/api/orgs', orgRoutes);
   // No auth of their own: they answer under orgRoutes' gate, mounted just above on the same prefix.
   app.route('/api/orgs', deviceOrgRoutes);

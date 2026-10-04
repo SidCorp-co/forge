@@ -1,20 +1,8 @@
 import { z } from 'zod';
 import { pluginDesignationSchema } from '../plugins/designation.js';
 
-export const assistantWeeklySchema = z
-  .object({
-    enabled: z.boolean(),
-    pinnedIssue: z.string().regex(/^[A-Z]{2,6}-\d+$/, 'an issue key such as ISS-1060'),
-    judgeProviderId: z.string().min(1),
-    judgeModel: z.string().min(1),
-    source: z.string().min(1).optional(),
-  })
-  .strict();
-
 export const agentConfigSchema = z
   .object({
-    /** Read by `assistant/weekly/config.ts:readAssistantWeekly` — the weekly reading's opt-in. */
-    assistantWeekly: assistantWeeklySchema.optional(),
     /** Read by `plugins/designation.ts:readPluginDesignations`, unioned per device by `GET /api/devices/me/plugins`. */
     plugins: z.array(pluginDesignationSchema).optional(),
   })
@@ -28,7 +16,6 @@ export type AgentConfigKey = keyof AgentConfigDocument;
 export const AGENT_CONFIG_KEYS = Object.keys(agentConfigSchema.shape) as AgentConfigKey[];
 
 export const AGENT_CONFIG_DOORS: Record<AgentConfigKey, string> = {
-  assistantWeekly: 'the `assistantWeekly` field on `PATCH /api/projects/:id`',
   plugins: '`PATCH /api/projects/:id/plugins`',
 };
 
@@ -58,7 +45,7 @@ export function agentConfigDoorMessage(key: AgentConfigKey): string {
 }
 
 export const AGENT_CONFIG_CLEAR_GUIDE =
-  'agentConfig is no longer a field on PATCH /api/projects/:id, and it cannot be cleared wholesale. Clear each value through its own door instead: send `assistantWeekly` as null on PATCH /api/projects/:id, or `plugins` as null on PATCH /api/projects/:id/plugins.';
+  'agentConfig is no longer a field on PATCH /api/projects/:id, and it cannot be cleared wholesale. Clear each value through its own door instead: send `plugins` as null on PATCH /api/projects/:id/plugins.';
 
 export function agentConfigUndeclaredMessage(key: string): string {
   return `agentConfig.${key} is not a key this project's configuration declares, so nothing would ever read it. The declared keys are ${AGENT_CONFIG_KEYS.join(', ')}, each written through its own door. Refused by name rather than stored, and rather than answered 200 and dropped.`;

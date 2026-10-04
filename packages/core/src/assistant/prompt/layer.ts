@@ -13,8 +13,6 @@ export type LayerId = (typeof LAYER_IDS)[number];
 
 export interface PromptLayer {
   readonly id: LayerId;
-  readonly benchTasks: readonly string[];
-  readonly whyUnmeasured?: string;
   /** The layer's whole text. `{token}` marks a value the composer fills. */
   readonly text: string;
 }

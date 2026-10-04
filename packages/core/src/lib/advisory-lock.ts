@@ -17,7 +17,6 @@ export const LOCK_NAMESPACES = {
   job: 2,
   issueDependencies: 3,
   questionnaire: 4,
-  assistantWeekly: 5,
   commentTarget: 6,
   commentOnce: 7,
   conversationHandle: 8,

@@ -145,16 +145,6 @@ export async function speakerLabelOf(userId: string): Promise<string | null> {
   return me?.displayName ?? me?.email ?? null;
 }
 
-/** The project fields the weekly reading runs on, or null. */
-export async function weeklyProjectOf(projectId: string) {
-  const [row] = await db
-    .select({ id: projects.id, slug: projects.slug, agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return row ?? null;
-}
-
 /** A person's speaker links, newest first. */
 export async function listSpeakerLinks(userId: string) {
   return db

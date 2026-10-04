@@ -32,4 +32,3 @@ export { buildChatToolContext } from './tools/principal.js';
 export { buildProjectToolset, provideChatTools } from './tools/registry.js';
 export { withTurnImages } from './tools/turn-images.js';
 export type { ImageResolver, TurnImage } from './vision.js';
-export { runAssistantWeeklyOnce } from './weekly/run.js';

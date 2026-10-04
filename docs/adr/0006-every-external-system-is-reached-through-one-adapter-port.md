@@ -90,7 +90,6 @@ sentence that justifies it, and an exception with no reason is refused.
   system for a port to name, and the sandbox is the boundary.
 - **`packages/core/src/observability/sentry.ts`** — Forge's own crash reporting, initialised at boot before any domain
   loads. It is the one module importing `@sentry/node`.
-- **`packages/core/src/assistant/bench-assistant.ts`** — a command-line harness driving Forge's own API as a client.
 - **The runner protocol** (the `ws`, `devices` and `runners` modules of core) is not under `integrations`: the paired box
   dials in to Forge over Forge's own contract in `packages/contracts`, so nothing there reaches out.
 - **The git binary** (`packages/core/src/git/remote-divergence.ts`) speaks the git protocol to the source host with a
