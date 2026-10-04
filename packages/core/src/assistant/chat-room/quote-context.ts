@@ -131,6 +131,25 @@ function fitToBudget(
   return { kept, tokens, cut };
 }
 
+const QUOTE_CONTEXT_TOOL: ChatTool = {
+  type: 'function',
+  function: {
+    name: QUOTE_CONTEXT_TOOL_NAME,
+    description: `Read the two messages before and after a QUOTED message in THIS room (the quote itself is already in your context). Use when a quote like "this is still wrong" only makes sense with what was said around it. At most ${QUOTE_TARGETS_PER_TURN} quoted messages per turn and ${QUOTE_MESSAGES_PER_TURN} messages in total; neighbours' own quotes are not expanded.`,
+    parameters: {
+      type: 'object',
+      properties: {
+        messageId: {
+          type: 'string',
+          description: 'The id of the quoted message — the `msg=` value of its quote link.',
+        },
+      },
+      required: ['messageId'],
+      additionalProperties: false,
+    },
+  },
+};
+
 /**
  * Expand a quoted message to the two messages either side of it, bounded per turn.
  */
@@ -138,25 +157,6 @@ export function buildRocketChatQuoteContextToolset(
   auth: RocketChatRestAuth,
   rid: string,
 ): ChatToolset {
-  const tool: ChatTool = {
-    type: 'function',
-    function: {
-      name: QUOTE_CONTEXT_TOOL_NAME,
-      description: `Read the two messages before and after a QUOTED message in THIS room (the quote itself is already in your context). Use when a quote like "this is still wrong" only makes sense with what was said around it. At most ${QUOTE_TARGETS_PER_TURN} quoted messages per turn and ${QUOTE_MESSAGES_PER_TURN} messages in total; neighbours' own quotes are not expanded.`,
-      parameters: {
-        type: 'object',
-        properties: {
-          messageId: {
-            type: 'string',
-            description: 'The id of the quoted message — the `msg=` value of its quote link.',
-          },
-        },
-        required: ['messageId'],
-        additionalProperties: false,
-      },
-    },
-  };
-
   const targets = new Set<string>();
   let messagesUsed = 0;
   let tokensUsed = 0;
@@ -221,5 +221,5 @@ export function buildRocketChatQuoteContextToolset(
     };
   }
 
-  return { tools: [tool], execute, ranAs: () => null };
+  return { tools: [QUOTE_CONTEXT_TOOL], execute, ranAs: () => null };
 }
