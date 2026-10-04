@@ -252,7 +252,6 @@ export async function readIssueModuleSets(projectId: string): Promise<Map<string
 
 interface LevelCouplingInput {
   nodes: readonly { id: string; parentId: string | null }[];
-  declared: readonly { fromId: string; toId: string }[];
   issueModules: ReadonlyMap<string, readonly string[]>;
 }
 
@@ -302,16 +301,15 @@ function meetingOf(chains: Map<string, string[]>, x: string, y: string): Meeting
 }
 
 /**
- * ISS-183 — the couplings a module map draws at each level of the tree. Every declared edge and
- * every issue carrying two modules lands on exactly one sibling pair, so a level's edges are the
+ * ISS-183 — the couplings a module map draws at each level of the tree. Every issue carrying two
+ * modules lands on exactly one sibling pair, so a level's edges are the
  * couplings of everything beneath its modules, and nothing is counted at two levels.
  */
 export function levelCouplings(input: LevelCouplingInput): ModuleLevelCoupling[] {
   const chains = chainsOf(input.nodes);
   const byKey = new Map<string, ModuleLevelCoupling>();
-  const entry = (m: Meeting): { row: ModuleLevelCoupling; forward: boolean } => {
-    const forward = m.from < m.to;
-    const [aId, bId] = forward ? [m.from, m.to] : [m.to, m.from];
+  const entry = (m: Meeting): ModuleLevelCoupling => {
+    const [aId, bId] = m.from < m.to ? [m.from, m.to] : [m.to, m.from];
     const key = `${m.parentId ?? ''}|${aId}|${bId}`;
     let row = byKey.get(key);
     if (!row) {
@@ -327,23 +325,15 @@ export function levelCouplings(input: LevelCouplingInput): ModuleLevelCoupling[]
       };
       byKey.set(key, row);
     }
-    return { row, forward };
+    return row;
   };
-
-  for (const e of input.declared) {
-    const m = meetingOf(chains, e.fromId, e.toId);
-    if (!m) continue;
-    const { row, forward } = entry(m);
-    if (forward) row.declaredAToB += 1;
-    else row.declaredBToA += 1;
-  }
 
   for (const moduleIds of input.issueModules.values()) {
     const touched = new Set<ModuleLevelCoupling>();
     for (let i = 0; i < moduleIds.length; i++) {
       for (let j = i + 1; j < moduleIds.length; j++) {
         const m = meetingOf(chains, moduleIds[i] as string, moduleIds[j] as string);
-        if (m) touched.add(entry(m).row);
+        if (m) touched.add(entry(m));
       }
     }
     for (const row of touched) row.sharedIssues += 1;
@@ -352,8 +342,7 @@ export function levelCouplings(input: LevelCouplingInput): ModuleLevelCoupling[]
   return [...byKey.values()]
     .map((r) => ({
       ...r,
-      weight: r.declaredAToB + r.declaredBToA + r.sharedIssues,
-      twoWay: r.declaredAToB > 0 && r.declaredBToA > 0,
+      weight: r.sharedIssues,
     }))
     .sort((x, y) => (x.parentId ?? '').localeCompare(y.parentId ?? '') || y.weight - x.weight);
 }

@@ -293,12 +293,6 @@ export function activityDays(
   return out;
 }
 
-interface DeclaredEdge {
-  fromId: string;
-  toId: string;
-  predicate: string;
-}
-
 interface ObservedCoupling {
   aId: string;
   bId: string;
@@ -309,25 +303,10 @@ interface ObservedCoupling {
 export function couplingsOf(
   id: string,
   refs: ReadonlyMap<string, ModuleRef>,
-  declared: readonly DeclaredEdge[],
   observed: readonly ObservedCoupling[],
 ): { declared: ModuleCoupling[]; observed: ModuleCoupling[] } {
   const byName = (a: ModuleCoupling, b: ModuleCoupling) =>
     a.module.path.localeCompare(b.module.path);
-  const declaredOut: ModuleCoupling[] = [];
-  for (const e of declared) {
-    if (e.fromId !== id && e.toId !== id) continue;
-    const other = refs.get(e.fromId === id ? e.toId : e.fromId);
-    if (!other) continue;
-    declaredOut.push({
-      module: other,
-      source: 'declared',
-      predicate: e.predicate,
-      direction: e.fromId === id ? 'out' : 'in',
-      issueCount: null,
-      recentIssueKeys: [],
-    });
-  }
   const observedOut: ModuleCoupling[] = [];
   for (const e of observed) {
     if (e.aId !== id && e.bId !== id) continue;
@@ -343,7 +322,7 @@ export function couplingsOf(
     });
   }
   return {
-    declared: declaredOut.sort(byName),
+    declared: [],
     observed: observedOut.sort((a, b) => (b.issueCount ?? 0) - (a.issueCount ?? 0) || byName(a, b)),
   };
 }

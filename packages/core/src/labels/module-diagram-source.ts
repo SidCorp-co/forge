@@ -7,16 +7,11 @@
  * issue admits; a generated diagram that read tags for anything else would be the wrong shape.
  */
 
-import { and, eq, gt, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, gt, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
-import { issueLabels, knowledgeEdges, knowledgeEntries, labels, projects } from '../db/schema.js';
-import type {
-  CoOccurrence,
-  DeclaredModuleEdge,
-  ModuleDiagramSnapshot,
-  ModuleSnapshot,
-} from './module-diagrams.js';
+import { issueLabels, knowledgeEntries, labels, projects } from '../db/schema.js';
+import type { CoOccurrence, ModuleDiagramSnapshot, ModuleSnapshot } from './module-diagrams.js';
 
 function readActor(metadata: unknown): string | null {
   const actor = (metadata as { actor?: unknown } | null)?.actor;
@@ -75,49 +70,6 @@ async function loadCoOccurrences(projectId: string): Promise<CoOccurrence[]> {
   return rows.map((r) => ({ aId: r.aId, bId: r.bId, issueCount: Number(r.issueCount) }));
 }
 
-/**
- * The declared half of the context diagram.
- *
- * `knowledge_edges` is a triple store of strings, so an edge names a module the only way it can —
- * by text. Both ends must resolve to a module of this project or the row is not an edge between
- * modules and is dropped; a triple resolving one end only would draw an arrow to a node that is
- * not on the diagram.
- */
-export async function loadDeclaredEdges(
-  projectId: string,
-  modules: ModuleSnapshot[],
-): Promise<DeclaredModuleEdge[]> {
-  if (modules.length === 0) return [];
-  const byText = new Map<string, string>();
-  for (const module of modules) {
-    byText.set(module.slug.toLowerCase(), module.id);
-    byText.set(module.name.toLowerCase(), module.id);
-  }
-
-  const rows = await db
-    .select({
-      subject: knowledgeEdges.subject,
-      predicate: knowledgeEdges.predicate,
-      object: knowledgeEdges.object,
-    })
-    .from(knowledgeEdges)
-    .where(
-      and(
-        eq(knowledgeEdges.projectId, projectId),
-        or(isNull(knowledgeEdges.validUntil), gt(knowledgeEdges.validUntil, new Date())),
-      ),
-    );
-
-  const edges: DeclaredModuleEdge[] = [];
-  for (const row of rows) {
-    const fromId = byText.get(row.subject.trim().toLowerCase());
-    const toId = byText.get(row.object.trim().toLowerCase());
-    if (!fromId || !toId || fromId === toId) continue;
-    edges.push({ fromId, toId, predicate: row.predicate });
-  }
-  return edges;
-}
-
 /** The whole of what the four generators read, taken at one moment from live rows. */
 export async function loadModuleDiagramSnapshot(projectId: string): Promise<ModuleDiagramSnapshot> {
   const [project] = await db
@@ -126,16 +78,14 @@ export async function loadModuleDiagramSnapshot(projectId: string): Promise<Modu
     .where(eq(projects.id, projectId))
     .limit(1);
 
-  const modules = await loadModules(projectId);
-  const [coOccurrences, declaredEdges] = await Promise.all([
+  const [modules, coOccurrences] = await Promise.all([
+    loadModules(projectId),
     loadCoOccurrences(projectId),
-    loadDeclaredEdges(projectId, modules),
   ]);
 
   return {
     projectName: project?.name ?? 'project',
     modules,
     coOccurrences,
-    declaredEdges,
   };
 }
