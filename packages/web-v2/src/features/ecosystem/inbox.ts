@@ -57,7 +57,8 @@ export function needsMe(read: WorkspaceRead, ecosystem?: string): number {
 }
 
 /** Whole days from today to a `YYYY-MM-DD` due date; negative when it has passed. */
-export function daysUntil(due: string, now = new Date()): number {
+export function daysUntil(due: string): number {
+  const now = new Date();
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const [y, m, d] = due.split("-").map(Number);
   return Math.round((Date.UTC(y, m - 1, d) - today) / 86_400_000);

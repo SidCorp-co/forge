@@ -24,7 +24,7 @@ import {
   unansweredView,
   viewOf,
 } from './channel-view.js';
-import { activeEcosystemIdsOf, isActiveMember } from './store.js';
+import { activeEcosystemIdsOf, isActiveMember } from './membership-store.js';
 import { namedRefusals, type SideCodes, sideOf } from './tool-side.js';
 
 const DESCRIPTION = [

@@ -1,9 +1,9 @@
 "use client";
-import { EnumBadge, Fact, FactsEmpty, FactsGroup, NotAvailable, } from "@/design";
+import { EnumBadge, Fact, FactsEmpty, FactsGroup, NotAvailable } from "@/design";
 import { FeedbackRailItem } from "@/features/feedback/components/feedback-rail-item";
 import { formatStamp } from "@/lib/utils/format";
 import type { ContractStandingDetail } from "../types";
-import { KindBadge, WindowText } from "./contract-bits";
+import { WindowText } from "./contract-bits";
 
 export function ContractFacts({ d, slug }: { d: ContractStandingDetail; slug: string }) {
   const c = d.contract;
@@ -32,7 +32,7 @@ export function ContractFacts({ d, slug }: { d: ContractStandingDetail; slug: st
 
       <FactsGroup title="Properties" testId="facts-properties">
         <Fact label="Kind">
-          <KindBadge kind={c.kind} />
+          <EnumBadge family="interfaceType" value={c.kind} />
         </Fact>
         <Fact label="Direction">{c.direction === "consumed" ? <span>From {c.provider.slug}</span> : <span>Provided by {c.provider.slug}</span>}</Fact>
         <Fact label="Version">

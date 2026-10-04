@@ -7,7 +7,7 @@ import { useProjects } from "@/features/projects/hooks";
 import { readingOf, refusalsOf } from "@/lib/api/refusals";
 import { cn } from "@/lib/utils/cn";
 import { ecosystemApi } from "../api";
-import { type Bus, busRows, type Tone } from "../bus";
+import { type Bus, busRows, STATE_MEANING, type Tone } from "../bus";
 import { useBus, useChannelWrite, useMyEcosystems } from "../hooks";
 import { ecosystemRoutes } from "../routes";
 import { BusDiagram, type Lens, type Selection } from "./bus-diagram";
@@ -17,8 +17,8 @@ import type { WorkspaceEcosystem } from "../types";
 
 const LEGEND: { tone: Tone; label: string; tip: string }[] = [
   { tone: "ok", label: "current", tip: "The link pins the contract's current version" },
-  { tone: "warn", label: "behind", tip: "A newer version of the contract exists" },
-  { tone: "bad", label: "breaking", tip: "The version in use no longer works against the contract" },
+  { tone: "warn", label: "behind", tip: STATE_MEANING.behind },
+  { tone: "bad", label: "breaking", tip: STATE_MEANING.breaking },
   { tone: "pend", label: "building", tip: "The builder found the call and is still writing its guide, or nothing has verified it yet" },
   { tone: "own", label: "provides", tip: "The provider's own chip, showing the contract's current version" },
 ];

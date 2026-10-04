@@ -74,7 +74,7 @@ export function useThread(projectId: string, number: string | null | undefined) 
 }
 
 /** The open approve-gate question waiting on one of this project's documents, if any. */
-export function useGateQuestion(projectId: string, documentId: string, enabled: boolean) {
+export function useGateQuestion(projectId: string, documentId: string) {
   return useQuery({
     queryKey: gateQuestionKey(projectId, documentId),
     queryFn: async () => {
@@ -89,7 +89,6 @@ export function useGateQuestion(projectId: string, documentId: string, enabled: 
       } while (cursor);
       return null;
     },
-    enabled,
   });
 }
 
