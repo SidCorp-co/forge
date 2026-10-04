@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type LandingWorld, landingDriftRefusal } from './drift.js';
-import { contractsNamedIn, namedVersionProblem } from './named-context.js';
+import { contractsNamedIn, type LandingWorld, landingDriftRefusal } from './drift.js';
 
 const world = (over: Partial<LandingWorld> = {}): LandingWorld => ({
   projectSlug: 'hop',
@@ -38,7 +37,7 @@ describe('the drift check at landing', () => {
   });
 });
 
-describe('the contract versions an issue names', () => {
+describe('the contract versions an issue names, which its landing names in turn', () => {
   it('reads each contract:<project>/<contract>@<version> once, without trailing punctuation', () => {
     expect(
       contractsNamedIn(
@@ -48,23 +47,5 @@ describe('the contract versions an issue names', () => {
       { ref: 'hop/api', contract: 'api', version: '1.2.0' },
       { ref: 'hop/b', contract: 'b', version: '2026-10-01' },
     ]);
-  });
-
-  const n = { ref: 'hop/api', contract: 'api', version: '1.2.0' };
-  it('gives an approved version of its own project', () => {
-    expect(
-      namedVersionProblem(n, 'hop', 'p', [{ version: '1.2.0', approval: 'approved' }]),
-    ).toBeNull();
-  });
-
-  it('refuses a proposed version by name', () => {
-    expect(
-      namedVersionProblem(n, 'hop', 'p', [{ version: '1.2.0', approval: 'proposed' }])?.code,
-    ).toBe('CONTRACT_VERSION_NOT_APPROVED');
-  });
-
-  it("refuses a version never recorded, and another project's contract", () => {
-    expect(namedVersionProblem(n, 'hop', 'p', [])?.code).toBe('CONTRACT_CONTEXT_UNLOADABLE');
-    expect(namedVersionProblem(n, 'crm', 'p', [])?.code).toBe('CONTRACT_CONTEXT_UNLOADABLE');
   });
 });

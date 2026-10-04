@@ -14,6 +14,7 @@
 
 import { estimateTokens } from '../lib/token-estimator.js';
 import type { DesignStatus } from './design.js';
+import { type LoadedPinnedContract, pinnedContractsRecord } from './pinned-contracts.js';
 import { type LoadedRequirement, requirementContextRecord } from './requirement-context.js';
 import { fetchLine } from './run-context-plan.js';
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
@@ -25,15 +26,22 @@ export const ARTIFACT_CONTEXT_KEY = 'artifactContext';
 
 export type ArtifactKind = 'workflow-design';
 
-/** A `workflow_builds` row joined to the design row of its workflow's approved revision. */
+/**
+ * A design a job is given, joined to the design row of the revision it is given: for an issue that
+ * delivers a requirement, the revision its latest baseline pins (`pinnedBy`); otherwise the approved
+ * revision of the workflow its issue builds (`workflow_builds`).
+ */
 export interface TracedDesignRow {
   workflowId: string;
   flow: string;
   designStatus: DesignStatus | null;
   workflowRevision: number;
+  /** The approved revision the job is given. */
   approvedRevision: number | null;
   /** The design row holding `approvedRevision`; null when no row holds it. */
   revisionRow: { document: unknown; decision: string | null } | null;
+  /** The requirement whose latest baseline pins `approvedRevision`, with the revision approved now. */
+  pinnedBy?: { key: string; currentApproved: number | null };
 }
 
 export interface ArtifactCut {
@@ -53,6 +61,8 @@ export interface LoadedArtifact {
   revision: number;
   designStatus: DesignStatus | null;
   workflowRevision: number;
+  /** The requirement whose baseline pins `revision`; null when the issue's build named it. */
+  pinnedBy: string | null;
   stepsGiven: number;
   edgesGiven: number;
   text: string;
@@ -61,7 +71,10 @@ export interface LoadedArtifact {
   cut: ArtifactCut;
 }
 
-export type ArtifactRefusalCode = 'ARTIFACT_CONTEXT_UNLOADABLE' | 'ARTIFACT_CONTEXT_OVER_BUDGET';
+export type ArtifactRefusalCode =
+  | 'ARTIFACT_CONTEXT_UNLOADABLE'
+  | 'ARTIFACT_CONTEXT_OVER_BUDGET'
+  | 'REQUIREMENT_REVISION_NOT_CURRENT';
 
 /** A traced artefact the job cannot be given, named `<kind> <ref>@<revision>`. */
 export class ArtifactContextError extends Error {
@@ -130,6 +143,13 @@ function readApproved(row: TracedDesignRow): { revision: number; doc: WorkflowWr
   }
   if (!row.revisionRow) {
     throw refuse(`no design revision row holds revision ${row.approvedRevision}`);
+  }
+  if (row.pinnedBy && row.pinnedBy.currentApproved !== row.approvedRevision) {
+    throw new ArtifactContextError(
+      'REQUIREMENT_REVISION_NOT_CURRENT',
+      artifact,
+      `${row.pinnedBy.key}'s latest baseline pins revision ${row.approvedRevision}, and the design is approved at revision ${row.pinnedBy.currentApproved ?? 'none'} now; a superseded revision is never given, so a person re-pins ${row.pinnedBy.key} first`,
+    );
   }
   if (row.revisionRow.decision !== 'approve') {
     throw refuse(
@@ -207,11 +227,19 @@ function renderDesign(
   cut: ArtifactCut,
 ): string {
   const head = [
-    `### ${slice.title} — \`${row.flow}\` at approved revision ${revision}`,
+    row.pinnedBy
+      ? `### ${slice.title} — \`${row.flow}\` at revision ${revision}, pinned by ${row.pinnedBy.key}'s latest baseline`
+      : `### ${slice.title} — \`${row.flow}\` at approved revision ${revision}`,
     `Workflow ${row.workflowId}${slice.template ? `, drawn in ${slice.template}` : ''}.`,
     slice.summary,
   ];
-  if (row.designStatus !== 'approved') {
+  if (row.pinnedBy) {
+    if (row.workflowRevision > revision) {
+      head.push(
+        `The workflow stands at revision ${row.workflowRevision}; revision ${revision} is the one approved and pinned, and it is what this job is given.`,
+      );
+    }
+  } else if (row.designStatus !== 'approved') {
     head.push(
       `This design is now ${row.designStatus ?? 'out of its design lifecycle'}; revision ${revision} is the last one its approver approved, and it is what this job is given.`,
     );
@@ -309,6 +337,7 @@ export function artifactContext(
         revision,
         designStatus: row.designStatus,
         workflowRevision: row.workflowRevision,
+        pinnedBy: row.pinnedBy?.key ?? null,
         stepsGiven: slice.steps.length,
         edgesGiven: slice.edges.length,
         text,
@@ -322,9 +351,12 @@ export function artifactContext(
 /** The prompt block a build job is given; null when its issue builds no design. */
 export function renderArtifactContext(loaded: readonly LoadedArtifact[]): string | null {
   if (loaded.length === 0) return null;
+  const pinned = loaded.find((a) => a.pinnedBy)?.pinnedBy;
   return [
-    '## The approved design this issue builds',
-    'Build to the revision below: it is what the approver approved. It holds the steps, edges and guards that bind the build. Read the full design and every revision on demand, never instead of this.',
+    pinned
+      ? `## The designs ${pinned}'s latest baseline pins`
+      : '## The approved design this issue builds',
+    `${pinned ? `Build to the revisions below: each is the approved revision ${pinned} was agreed or re-pinned against, never a newer one.` : 'Build to the revision below: it is what the approver approved.'} It holds the steps, edges and guards that bind the build. Read the full design and every revision on demand, never instead of this.`,
     ...loaded.map((a) => a.text),
   ].join('\n\n');
 }
@@ -334,10 +366,12 @@ export function artifactContextRecord(
   loaded: readonly LoadedArtifact[],
   source: string,
   requirement: LoadedRequirement | null = null,
+  contracts: readonly LoadedPinnedContract[] = [],
 ) {
   return {
     source,
     ...(requirement ? { requirement: requirementContextRecord(requirement) } : {}),
+    ...(contracts.length ? { contracts: pinnedContractsRecord(contracts) } : {}),
     loadedAt: new Date().toISOString(),
     capChars: ARTIFACT_CONTEXT_CAP_CHARS,
     artifacts: loaded.map((a) => ({
@@ -347,6 +381,7 @@ export function artifactContextRecord(
       revision: a.revision,
       designStatus: a.designStatus,
       workflowRevision: a.workflowRevision,
+      ...(a.pinnedBy ? { pinnedBy: a.pinnedBy } : {}),
       steps: a.stepsGiven,
       edges: a.edgesGiven,
       chars: a.chars,
