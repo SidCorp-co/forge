@@ -12,7 +12,7 @@ export const PROVIDER_HISTORY_WINDOW = 30;
 
 export const DEFAULT_CONTEXT_BUDGET_TOKENS = 80_000;
 
-export const IMAGE_PART_TOKENS = 1_000;
+const IMAGE_PART_TOKENS = 1_000;
 
 export interface ElisionReport {
   /** History messages dropped, oldest first. */
@@ -48,7 +48,7 @@ function estimateText(s: string): number {
 }
 
 /** chars/4 over everything the wire carries for the message, image parts flat. */
-export function estimateMessageTokens(m: ChatMessage): number {
+function estimateMessageTokens(m: ChatMessage): number {
   let n = 4;
   if (typeof m.content === 'string') n += estimateText(m.content);
   else if (Array.isArray(m.content)) {

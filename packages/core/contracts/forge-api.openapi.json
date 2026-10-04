@@ -4275,6 +4275,24 @@
         ]
       }
     },
+    "/api/code-trace": {
+      "get": {
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-input": "none",
+        "x-forge-validated": []
+      }
+    },
     "/api/comments/attachments/{id}": {
       "get": {
         "parameters": [

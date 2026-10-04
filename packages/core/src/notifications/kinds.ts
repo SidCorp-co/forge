@@ -1,22 +1,10 @@
 import type { NotificationType } from '../db/schema.js';
 
-export const notificationKinds = ['signal', 'condition', 'task'] as const;
+const notificationKinds = ['signal', 'condition', 'task'] as const;
 export type NotificationKind = (typeof notificationKinds)[number];
 
-export const notificationTiers = ['page', 'ticket', 'log'] as const;
+const notificationTiers = ['page', 'ticket', 'log'] as const;
 export type NotificationTier = (typeof notificationTiers)[number];
-
-/**
- * The states a record may hold, per kind. A `signal` cannot be resolved because an event
- * cannot stop having happened; a `condition` is resolved by the system re-evaluating it
- * and never by a person; a `task` does not self-clear and closes when the work is done.
- */
-export const STATES_BY_KIND: Record<NotificationKind, readonly string[]> = {
-  signal: ['emitted', 'expired'],
-  condition: ['pending', 'firing', 'inhibited', 'resolved'],
-  task: ['open', 'acknowledged', 'done', 'dismissed'],
-};
-
 /** The state a newly written record of each kind starts in. */
 export const INITIAL_STATE: Record<NotificationKind, string> = {
   signal: 'emitted',
@@ -31,7 +19,7 @@ export interface NotificationKindEntry {
   pendingEvaluations?: number;
 }
 
-export const NOTIFICATION_KIND_TABLE: Record<NotificationType, NotificationKindEntry> = {
+const NOTIFICATION_KIND_TABLE: Record<NotificationType, NotificationKindEntry> = {
   issue_status_changed: { kind: 'signal', tier: 'log' },
   mention: { kind: 'signal', tier: 'ticket' },
   pipeline_wedge: { kind: 'condition', tier: 'page' },

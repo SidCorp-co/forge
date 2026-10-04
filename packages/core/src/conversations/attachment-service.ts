@@ -40,7 +40,7 @@ export interface ConversationAttachmentRef {
   url: string;
 }
 
-export function conversationAttachmentUrl(conversationId: string, id: string): string {
+function conversationAttachmentUrl(conversationId: string, id: string): string {
   return `/api/conversations/${conversationId}/attachments/${id}/download`;
 }
 

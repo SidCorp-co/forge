@@ -7,19 +7,6 @@ import { IDENTITY_LAYER } from './identity.js';
 import type { PromptLayer } from './layer.js';
 import { LINKING_LAYER } from './linking.js';
 import { TOOLS_LAYER } from './tools.js';
-
-/** Every layer this repository ships. */
-export const ALL_LAYERS: readonly PromptLayer[] = [
-  IDENTITY_LAYER,
-  BASE_LAYER,
-  TOOLS_LAYER,
-  LINKING_LAYER,
-  WEB_DOOR_LAYER,
-  WEB_AGENT_DOOR_LAYER,
-  ROCKETCHAT_DOOR_LAYER,
-  BA_DOOR_LAYER,
-];
-
 export const METHOD_LAYERS: readonly PromptLayer[] = [BASE_LAYER, TOOLS_LAYER];
 
 /** What every door renders before its own layer. */

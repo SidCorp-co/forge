@@ -28,24 +28,22 @@ import type { Executor } from './db-executor.js';
 /**
  * How long a window waits for the next message before it settles.
  */
-export const WINDOW_SETTLE_MS = 4000;
+const WINDOW_SETTLE_MS = 4000;
 
 /**
  * How long a window may keep collecting before it is due whether or not it has settled.
  */
-export const WINDOW_HOLD_MS = 15_000;
+const WINDOW_HOLD_MS = 15_000;
 
 /** The hold in force: the deployment's override, else today's constant. */
-export function resolveHoldMs(
-  override: number | undefined = env.CONVERSATION_WINDOW_HOLD_MS,
-): number {
+function resolveHoldMs(override: number | undefined = env.CONVERSATION_WINDOW_HOLD_MS): number {
   return override ?? WINDOW_HOLD_MS;
 }
 
 /**
  * How long a claim holds before the window is claimable again.
  */
-export const CLAIM_LEASE_MS = 120_000;
+const CLAIM_LEASE_MS = 120_000;
 
 /** A window taken off the queue, with the venue it belongs to. */
 export interface ClaimedWindow extends ConversationWindowRow {
@@ -399,19 +397,6 @@ export async function releaseWindow(
       ),
     );
 }
-
-export async function getWindow(
-  windowId: string,
-  tx: Executor = defaultDb,
-): Promise<ConversationWindowRow | null> {
-  const [row] = await tx
-    .select(selection)
-    .from(conversationWindows)
-    .where(eq(conversationWindows.id, windowId))
-    .limit(1);
-  return (row as ConversationWindowRow | undefined) ?? null;
-}
-
 /**
  * This conversation's windows, oldest first, for a reader rather than a guard.
  */

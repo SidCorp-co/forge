@@ -1,6 +1,5 @@
 import type { Tx } from '../db/client.js';
 import { type NotificationType, notifications } from '../db/schema.js';
-import { emissionAllowed, noteSuppressed } from './emission-switch.js';
 import { INITIAL_STATE, kindOf, tierOf } from './kinds.js';
 import { createNotification } from './service.js';
 
@@ -59,7 +58,7 @@ export async function emitNotification(
  * One notification record written in the caller's transaction, for an act that raises it as part
  * of its own write; the caller delivers it once the transaction committed.
  */
-export async function insertNotificationRecord(
+async function insertNotificationRecord(
   tx: Tx,
   values: typeof notifications.$inferInsert,
 ): Promise<string | null> {
@@ -72,8 +71,7 @@ export async function insertNotificationRecord(
 
 /**
  * One record of `type` written in the caller's transaction, its kind, tier and state derived from
- * the type; null when the emission switch holds the type off. The caller delivers it once the
- * transaction committed.
+ * the type. The caller delivers it once the transaction committed.
  */
 export async function insertTypedNotificationRecord(
   tx: Tx,
@@ -86,10 +84,6 @@ export async function insertTypedNotificationRecord(
     agentSessionId: string | null;
   },
 ): Promise<string | null> {
-  if (!emissionAllowed(input.type)) {
-    noteSuppressed(input.type, input.title);
-    return null;
-  }
   const kind = kindOf(input.type);
   return insertNotificationRecord(tx, {
     ...input,

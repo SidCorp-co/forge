@@ -82,7 +82,7 @@ export async function listDeliveries(
   const slugs = new Map(slugRows.map((p) => [p.id, p.slug]));
   const items = rows.map((r) => {
     const subject = deliverySubject(r, issueKeys, slugs);
-    return { ...r, subject, line: deliveryLine(r.title, r.type, subject?.key ?? null) };
+    return { ...r, subject, line: deliveryLine(r.title, subject?.key ?? null) };
   });
   return { items, total: totalRow?.n ?? 0 };
 }

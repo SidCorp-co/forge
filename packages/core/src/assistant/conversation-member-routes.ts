@@ -46,7 +46,7 @@ conversationMemberRoutes.use('*', requireAuth(), assertEmailVerified());
 /**
  * A room's membership, as one answer.
  */
-export async function membershipOf(
+async function membershipOf(
   conversationId: string,
   userId: string,
 ): Promise<{
