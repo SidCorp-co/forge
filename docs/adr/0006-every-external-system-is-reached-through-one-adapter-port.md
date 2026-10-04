@@ -26,7 +26,7 @@ call sits now.
 | webhooks/outbound.ts | deleted in ISS-220, with no subscriber left | a customer's webhook URL |
 | install/fetch-release.ts, install/main-runner-head.ts | `packages/core/src/integrations/published-releases/fetch-release.ts`, `packages/core/src/integrations/published-releases/main-runner-head.ts`, over `packages/core/src/integrations/published-releases/public-releases.ts` | `api.github.com` releases and commits |
 | the download in ecosystem/contract/oasdiff.ts | `packages/core/src/integrations/published-releases/public-releases.ts` | a pinned binary download from `github.com` — not a remote spec |
-| lib/runtime-probe.ts, and the global `fetch` project-config/environment-state-read.ts handed it | `packages/core/src/integrations/deploy/runtime-probe.ts` | a project's deployed app, through its declared runtime probe — found by the rule below, not by the hand list |
+| lib/runtime-probe.ts, and the global `fetch` the environment-state read handed it | `packages/core/src/integrations/deploy/runtime-probe.ts` | a project's deployed app, through its declared runtime probe — found by the rule below, not by the hand list |
 | schedules/script/worker-entry.ts | unchanged: an exception | whatever URL a user's sandboxed script names |
 | observability/sentry.ts | unchanged: an exception | Forge's own crash reports, through `@sentry/node` |
 
