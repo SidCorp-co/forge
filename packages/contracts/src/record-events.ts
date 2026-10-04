@@ -19,6 +19,14 @@ export const KERNEL_RECORD_KINDS = [
 ] as const;
 export type KernelRecordKind = (typeof KERNEL_RECORD_KINDS)[number];
 
+// cm:why core alone writes these, in the act's transaction (EVENT_KIND_KERNEL_ONLY)
+export const KERNEL_ONLY_RECORD_KINDS = [
+	"transition",
+	"park",
+	"verdict",
+] as const satisfies readonly KernelRecordKind[];
+export type KernelOnlyRecordKind = (typeof KERNEL_ONLY_RECORD_KINDS)[number];
+
 /**
  * Agent narration: collapsed into one digest per issue once the issue has been terminal for
  * `NARRATION_COLLAPSE_DAYS` (req-feedback decision Q6).
@@ -76,13 +84,10 @@ export const RECORD_EVENT_KINDS = [
 ] as const;
 export type RecordEventKind = (typeof RECORD_EVENT_KINDS)[number];
 
-/** The row a collapse leaves behind in place of an issue's narration. Never written by a caller. */
 export const RECORD_DIGEST_KIND = "digest";
 
-/** `activity_log.action` of a record event: `record.<kind>`. */
 export const RECORD_ACTION_PREFIX = "record.";
 
-/** Days an issue stays terminal before its narration collapses (decision Q6). */
 export const NARRATION_COLLAPSE_DAYS = 180;
 
 export interface RecordEventFieldView {
@@ -90,7 +95,6 @@ export interface RecordEventFieldView {
 	readonly value: string;
 }
 
-/** One record event as `GET /api/issues/:id/events` serves it. */
 export interface RecordEventView {
 	readonly id: string;
 	readonly issueId: string;
@@ -98,10 +102,9 @@ export interface RecordEventView {
 	readonly contract: number;
 	readonly fields: readonly RecordEventFieldView[];
 	readonly lead: string | null;
-	/** The comment this event was mirrored from, while forge-plugin still posts records as comments. */
 	readonly commentId: string | null;
-	/** On a digest only: how many narration events of each kind it replaced. */
 	readonly counts?: Readonly<Record<string, number>>;
+	readonly writer: "core" | "client";
 	readonly actorType: string;
 	readonly actorId: string;
 	readonly createdAt: string;

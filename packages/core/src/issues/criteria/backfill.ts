@@ -188,6 +188,7 @@ export async function backfillCriteria(tx: Tx): Promise<CriteriaBackfillReport> 
       sql`SELECT id, issue_id, actor_type, actor_id, actor_agency, payload, created_at
             FROM activity_log
            WHERE action = 'record.verdict' AND issue_id IS NOT NULL AND NOT (payload ? 'commentId')
+             AND payload->>'writer' IS DISTINCT FROM 'core'
            ORDER BY created_at, id`,
     ),
   );

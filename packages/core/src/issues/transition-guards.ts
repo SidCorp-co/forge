@@ -10,7 +10,7 @@
  *                      the project document sets `plan.approval.required`
  *   awaiting_release   every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
  *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_UNCORROBORATED
- *   closed             shipped; from in_progress after a reopen, as above        CLOSE_REQUIRES_SHIPPED + the three above
+ *   closed             shipped; from in_progress, as awaiting_release           CLOSE_REQUIRES_SHIPPED + the codes above
  *
  *   needs_info         a question (the reason) and its kind                      TRANSITION_REASON_REQUIRED,
  *                                                                                WAITING_KIND_REQUIRED
@@ -195,15 +195,12 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
 }
 
 /**
- * awaiting_release: every criterion's latest verdict passes, says what it held in, and was recorded
- * after the issue's latest reopen. `onlyIfReopened` is the in_progress → closed move, which asks
- * this rule only of a reopened issue: there an earlier `merged_at` still stands, and without the
- * rule a reopen could close again on the evidence it rejected.
+ * awaiting_release, and in_progress → closed: every criterion's latest verdict passes, says what it
+ * held in, and was recorded after the issue's latest reopen.
  */
-async function verdictGuard(ctx: GuardContext, onlyIfReopened = false): Promise<GuardFault | null> {
+async function verdictGuard(ctx: GuardContext): Promise<GuardFault | null> {
   const source = (await readProjectDocument(ctx.issue.projectId))?.document.source.type ?? null;
   const found = await unpassedCriteria(ctx.executor, ctx.issue.id, source);
-  if (onlyIfReopened && found.reopenedAt === null) return null;
   const into = quote(ctx.to);
   if (found.kind === 'no-criteria') {
     return {
@@ -288,8 +285,10 @@ export async function guardFault(ctx: GuardContext): Promise<GuardFault | null> 
       return planGuard(ctx);
     case 'awaiting_release':
       return verdictGuard(ctx);
+    // cm:guard ISS-96 — a close from in_progress claims the proof awaiting_release asks for, on every
+    // issue whether or not it was ever reopened; an issue that is not work is dropped, never closed
     case 'closed':
-      return ctx.from === 'in_progress' ? verdictGuard(ctx, true) : null;
+      return ctx.from === 'in_progress' ? verdictGuard(ctx) : null;
     default:
       return null;
   }

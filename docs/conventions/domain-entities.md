@@ -187,8 +187,16 @@ no writer gets a fourth state.
 ## Records and audit
 
 - **Issue-scoped facts.** A fact about an issue that a gate or reader relies on is a typed event,
-  `record.<kind>` in `activity_log`. It is written by `packages/core/src/issues/record-events/store.ts:writeRecordEvent`,
+  `record.<kind>` in `activity_log`. A caller's record is written by `packages/core/src/issues/record-events/store.ts:writeRecordEvent`,
   and its kinds come from `packages/contracts/src/record-events.ts:RECORD_EVENT_KINDS`.
+- **Kernel evidence is core's.** A transition, a park and a verdict
+  (`packages/contracts/src/record-events.ts:KERNEL_ONLY_RECORD_KINDS`) are written only by core, by
+  `packages/core/src/issues/record-events/store.ts:writeKernelRecord`, in the transaction of the act
+  they record: the status move (`packages/core/src/issues/record-events/kernel-records.ts:recordMove`)
+  and the verdict row (`packages/core/src/issues/criteria/store.ts:recordVerdict`). A caller posting one
+  is refused `EVENT_KIND_KERNEL_ONLY`, and a kernel row cannot be evaluated or deleted
+  (`KERNEL_RECORD_IMMUTABLE`). `issue.statusChanged` stays as the feed's and the charts' activity
+  row; no gate reads it.
 - **Revisioned entities.** Their audit is their own rows: `<act>_by` / `<act>_at` / `reason` on the
   revision or decision row. A slice writes no untyped `activity_log` row of its own.
 - **Repeated acts.** A decision that can happen more than once on one item, such as a return
@@ -338,7 +346,7 @@ Read at `origin/dev` `0b3a1069a`.
 | Actor columns | `decided_by` (requirements, suggestions, contracts) against `decided_by_user` (workflow designs); FK `restrict` against `set null` (suggestions) | `packages/core/src/db/schema-workflows.ts:projectWorkflowDesigns` |
 | Immutability | A trigger only on requirement revisions and baselines; verdicts and criteria are insert-only by comment | `packages/core/src/db/schema-issue-criteria.ts:verdictValues` |
 | Keys | ISS-n by counter row and trigger; REQ-n by `max+1` under a lock; no shared counter | `packages/core/src/db/schema.ts:projectIssCounters` |
-| Audit | Typed events only for issue records; requirements, suggestions, designs and contracts audit in their own columns; a transition writes the untyped `issue.statusChanged` | `packages/core/src/issues/record-events/store.ts:writeRecordEvent` |
+| Audit | Typed events only for issue records; requirements, suggestions, designs and contracts audit in their own columns; a transition writes its typed `record.transition` and, after the commit, the untyped `issue.statusChanged` activity row | `packages/core/src/issues/record-events/kernel-records.ts:recordMove` |
 | Amnesties | Every ISS-54/55/56 hack writes its exit as prose ("Exit:", "Ends when"), not `ISS-n until:` | `packages/core/src/issues/apply-transition.ts:LegacyMove`, `packages/core/src/issues/criteria/store.ts:syncCriteriaFromText` |
 | Web badges | Four colour maps and a second badge primitive (a requirements `EnumBadge`, the criteria `BADGE`, `DESIGN_PILL`) | now `packages/web-v2/src/design/primitives/enum-badge.tsx:StatusBadge` and `:EnumBadge` everywhere but the Workflows page's `packages/web-v2/src/features/workflows/components/workflow-parts.tsx:DESIGN_PILL` |
 

@@ -20,6 +20,7 @@ import { heldRung, type LegacyRung, type LegacyTarget } from './legacy-status.js
 import { refuseUnshippedClose } from './merged-at.js';
 import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
+import { moveOf, recordMove } from './record-events/kernel-records.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
 import { refuseUnrecordedClose } from './release-record-required.js';
 import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
@@ -390,7 +391,7 @@ async function moveStepOnly(args: {
   };
 }
 
-type TransitionWriteInput = {
+export type TransitionWriteInput = {
   issue: TransitionIssueRow;
   fromStatus: IssueStatus;
   requestedStatus: IssueStatus;
@@ -526,6 +527,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
             source: 'issues',
           },
         ]);
+        await recordMove(t, moveOf(input, row.reopenCount));
         await writeWorkStateOfMove(t, input);
         const unblockedDependents =
           toStatus === 'dropped' ? await expireBlocksEdgesOnDrop(t, issue.projectId, issue.id) : [];

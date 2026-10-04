@@ -1,7 +1,8 @@
-// cm:hack — ISS-55's half of ISS-56's dual path: each `record.verdict` event
-// (`record-events/store.ts:writeRecordEvent`) is also written into `criterion_verdicts` in its
-// transaction, off the event's own fields; a block the table cannot hold refuses the whole write by
-// name. Ends when forge-plugin posts `POST /api/issues/:id/verdicts` (plugin-followups.md).
+// cm:hack — the verdict dual path (ISS-55, ISS-56): a comment carrying a `forge-record: verdict`
+// fence is a verdict act, so each block is written into `criterion_verdicts` in the comment's
+// transaction and core records each row (`store.ts:recordVerdict`); a block the table cannot hold
+// refuses the whole comment by name. Ends when forge-plugin posts `POST /api/issues/:id/verdicts`
+// (plugin-followups.md).
 
 import { eq } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
