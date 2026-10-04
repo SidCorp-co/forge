@@ -1,32 +1,31 @@
 import { diffFieldValue } from '@forge/contracts/field-changes';
+import type { Tx } from '../db/client.js';
+import { emitEvent } from '../outbox/index.js';
 import type { Actor } from '../pipeline/activity.js';
-import { hooks } from '../pipeline/hooks.js';
-import type { IssueRow } from './read-service.js';
+
+type IssueFields = { id: string; projectId: string } & Record<string, unknown>;
 
 /**
- * Emit `issueUpdated` for the fields a write moved, read off the row before and the row after, so
- * the activity log, the WS room and the memory index hear of an MCP write exactly as of a REST one.
- * A write that moved nothing emits nothing.
+ * Write the `issue.updated` event for the fields a write moved, read off the row before and the row
+ * after, on the write's own transaction. A write that moved nothing emits nothing.
  */
-export async function emitIssueFieldUpdate(input: {
-  before: IssueRow;
-  after: IssueRow;
-  written: readonly string[];
-  actor: Actor;
-}): Promise<void> {
+export async function emitIssueFieldUpdate(
+  tx: Tx,
+  input: { before: IssueFields; after: IssueFields; written: readonly string[]; actor: Actor },
+): Promise<void> {
   const fields: string[] = [];
   const before: Record<string, unknown> = {};
   const after: Record<string, unknown> = {};
   for (const field of input.written) {
-    const prev = input.before[field as keyof IssueRow];
-    const next = input.after[field as keyof IssueRow];
+    const prev = input.before[field];
+    const next = input.after[field];
     if (diffFieldValue(field, prev, next).length === 0) continue;
     fields.push(field);
     before[field] = prev;
     after[field] = next;
   }
   if (fields.length === 0) return;
-  await hooks.emit('issueUpdated', {
+  await emitEvent(tx, 'issue.updated', {
     issueId: input.after.id,
     projectId: input.after.projectId,
     actor: input.actor,

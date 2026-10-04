@@ -70,6 +70,10 @@
       "types": "./dist/master-standing.d.ts",
       "default": "./dist/master-standing.js"
     },
+    "./outbox-events": {
+      "types": "./dist/outbox-events.d.ts",
+      "default": "./dist/outbox-events.js"
+    },
     "./run-standing": {
       "types": "./dist/run-standing.d.ts",
       "default": "./dist/run-standing.js"

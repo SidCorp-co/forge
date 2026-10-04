@@ -10,19 +10,21 @@ import type { FeedbackTriageEffect } from '@forge/contracts/feedback';
 import { SUGGESTION_MACHINE } from '@forge/contracts/suggestion-machine';
 import { SUGGESTION_PAYLOADS, type SuggestionEffect } from '@forge/contracts/suggestions';
 import { and, eq, sql } from 'drizzle-orm';
-import { insertComment, type WrittenComment } from '../comments/index.js';
+import { insertComment } from '../comments/index.js';
 import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { requirementRevisions } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { rowIn as feedbackRowIn } from '../feedback/read.js';
-import { type TriageWritten, triageIn } from '../feedback/triage.js';
+import { triageIn } from '../feedback/triage.js';
 import { setIssueTriage } from '../issues/index.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import type { PendingIssueRelation } from '../issues/relations-service.js';
+import { emitIssueFieldUpdate } from '../issues/update-hook.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { Refusal } from '../lib/refusal.js';
 import { transition } from '../lifecycle/transition.js';
+import { emitEvent } from '../outbox/index.js';
 import { requirementKey, rowIn } from '../requirements/read.js';
 import {
   createRequirementIn,
@@ -39,14 +41,8 @@ export type AcceptChannel = 'web' | 'mcp';
 export interface EffectWritten {
   refusals: Refusal[] | null;
   effect?: Effect;
-  triage?: TriageWritten;
-  /** Issues the accept filed, announced once the transaction committed. */
-  createdIssueIds?: string[];
   /** Edges the accept landed, whose effects are flushed after the commit. */
   relations?: PendingIssueRelation[];
-  /** An issue whose fields the accept moved, announced after the commit. */
-  updatedIssue?: { before: typeof issues.$inferSelect; written: string[] };
-  routeComment?: { issueId: string; row: WrittenComment['row']; authored: 'human' | 'agent' };
 }
 
 export const undecided = (kind: string, path: string, what: string): Refusal => ({
@@ -117,6 +113,9 @@ async function issueTriageEffect(
   );
   const before = await issueRowOf(tx, projectId, targetOfRow(row).id);
   await setIssueTriage(tx, before.id, set);
+  const who = { type: 'user' as const, id: actor.userId, agency: actor.agency };
+  const after = await issueRowOf(tx, projectId, before.id);
+  await emitIssueFieldUpdate(tx, { before, after, written: Object.keys(set), actor: who });
   const note = routeNote
     ? await insertComment(
         {
@@ -131,18 +130,19 @@ async function issueTriageEffect(
         tx,
       )
     : null;
+  if (note) {
+    await emitEvent(tx, 'comment.created', {
+      issueId: before.id,
+      projectId,
+      actor: who,
+      authored: row.producerKind === 'person' ? 'human' : 'agent',
+      commentId: note.row.id,
+      body: note.row.body,
+      parentId: null,
+    });
+  }
   return {
     refusals: null,
-    updatedIssue: { before, written: Object.keys(set) },
-    ...(note
-      ? {
-          routeComment: {
-            issueId: before.id,
-            row: note.row,
-            authored: row.producerKind === 'person' ? ('human' as const) : ('agent' as const),
-          },
-        }
-      : {}),
     effect: {
       issueId: before.id,
       issue: formatIssueRef(await activeIssuePrefix(projectId), before.issSeq),
@@ -176,11 +176,7 @@ export async function writeEffect(
       fromSuggestionId: row.id,
     });
     if (written.refusals?.length) return { refusals: written.refusals };
-    return {
-      refusals: null,
-      ...(written.effect ? { effect: written.effect } : {}),
-      triage: written,
-    };
+    return { refusals: null, ...(written.effect ? { effect: written.effect } : {}) };
   }
   if (row.kind === 'revision_diff' && target.type === 'requirement') {
     const write = SUGGESTION_PAYLOADS.revision_diff.schema.parse(row.payload) as RevisionWrite;

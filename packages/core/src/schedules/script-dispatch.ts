@@ -1,6 +1,7 @@
+import { db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
-import { hooks } from '../pipeline/hooks.js';
+import { emitEvent } from '../outbox/index.js';
 import type { DispatchScheduleInput, RoutedFire } from './dispatch-types.js';
 import { resolveScheduleTargetProject } from './release-batch-dispatch.js';
 import { runScheduleScript } from './script/executor.js';
@@ -50,19 +51,12 @@ export async function routeScheduleScriptFire(
     }
   }
 
-  try {
-    await hooks.emit('scheduleRun', {
-      scheduleId: schedule.id,
-      projectId: resolvedProjectId,
-      sessionId: fireId,
-      actorUserId: userId,
-    });
-  } catch (err) {
-    logger.error(
-      { err, scheduleId: schedule.id, fireId },
-      'schedule.dispatch: scheduleRun hook threw',
-    );
-  }
+  await emitEvent(db, 'schedule.fired', {
+    scheduleId: schedule.id,
+    projectId: resolvedProjectId,
+    sessionId: fireId,
+    actorUserId: userId,
+  });
 
   if (outcome.status === 'failed') {
     return {

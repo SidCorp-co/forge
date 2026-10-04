@@ -9,7 +9,7 @@ import {
   userPreferences,
 } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { hooks } from '../pipeline/hooks.js';
+import { emitEvent } from '../outbox/index.js';
 import { emissionAllowed, noteSuppressed } from './emission-switch.js';
 import { INITIAL_STATE, inhibitorsOf, kindOf, pendingEvaluationsFor, tierOf } from './kinds.js';
 
@@ -145,59 +145,61 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
       .limit(1);
     if (already) continue;
 
-    let deliveryId: string | undefined;
-    if (input.groupKey) {
-      const [existing] = await db
-        .select({ id: notificationDeliveries.id })
-        .from(notificationDeliveries)
-        .where(
-          and(
-            eq(notificationDeliveries.userId, userId),
-            eq(notificationDeliveries.groupKey, input.groupKey),
-            eq(notificationDeliveries.resolvedNotice, false),
-          ),
-        )
-        .limit(1);
-      deliveryId = existing?.id;
-    }
-    let founded = false;
-    if (!deliveryId) {
-      founded = true;
-      const [created] = await db
-        .insert(notificationDeliveries)
-        .values({
-          userId,
-          channel: 'bell',
-          groupKey: input.groupKey ?? null,
-          // A grouped delivery names the cause; an ungrouped one is its record.
-          title: input.groupKey ? (input.groupTitle ?? input.title) : input.title,
-          createdAt: now,
-        })
-        .returning({ id: notificationDeliveries.id });
-      deliveryId = created?.id;
-    }
-    if (!deliveryId) continue;
-    await db
-      .insert(notificationDeliveryMembers)
-      .values({ deliveryId, notificationId: recordId })
-      .onConflictDoNothing();
-    told += 1;
-
-    await hooks.emit('notificationCreated', {
-      notificationId: recordId,
-      userId,
-      announce: founded,
-      projectId: input.projectId ?? null,
-      type: input.type,
-      title: input.groupKey ? (input.groupTitle ?? input.title) : input.title,
-      body: input.body ?? null,
-      severity: input.severity ?? null,
-      resolutionKey: input.resolutionKey ?? null,
-      issueId: input.issueId ?? null,
-      secondaryIssueId: input.secondaryIssueId ?? null,
-      agentSessionId: input.agentSessionId ?? null,
-      decisionId: input.decisionId ?? null,
+    const delivered = await db.transaction(async (tx) => {
+      let deliveryId: string | undefined;
+      if (input.groupKey) {
+        const [existing] = await tx
+          .select({ id: notificationDeliveries.id })
+          .from(notificationDeliveries)
+          .where(
+            and(
+              eq(notificationDeliveries.userId, userId),
+              eq(notificationDeliveries.groupKey, input.groupKey),
+              eq(notificationDeliveries.resolvedNotice, false),
+            ),
+          )
+          .limit(1);
+        deliveryId = existing?.id;
+      }
+      let founded = false;
+      if (!deliveryId) {
+        founded = true;
+        const [created] = await tx
+          .insert(notificationDeliveries)
+          .values({
+            userId,
+            channel: 'bell',
+            groupKey: input.groupKey ?? null,
+            // A grouped delivery names the cause; an ungrouped one is its record.
+            title: input.groupKey ? (input.groupTitle ?? input.title) : input.title,
+            createdAt: now,
+          })
+          .returning({ id: notificationDeliveries.id });
+        deliveryId = created?.id;
+      }
+      if (!deliveryId) return false;
+      await tx
+        .insert(notificationDeliveryMembers)
+        .values({ deliveryId, notificationId: recordId })
+        .onConflictDoNothing();
+      await emitEvent(tx, 'notification.created', {
+        notificationId: recordId,
+        userId,
+        announce: founded,
+        projectId: input.projectId ?? null,
+        type: input.type,
+        title: input.groupKey ? (input.groupTitle ?? input.title) : input.title,
+        body: input.body ?? null,
+        severity: input.severity ?? null,
+        resolutionKey: input.resolutionKey ?? null,
+        issueId: input.issueId ?? null,
+        secondaryIssueId: input.secondaryIssueId ?? null,
+        agentSessionId: input.agentSessionId ?? null,
+        decisionId: input.decisionId ?? null,
+      });
+      return true;
     });
+    if (delivered) told += 1;
   }
   return told;
 }

@@ -16,10 +16,8 @@
  * is the only record a driver lane leaves, and `worker` is where all three are answered —
  * including the arm that says no lane can.
  *
- * WS event `issue.pipelineHealth.changed` is published directly (NOT routed
- * through `pipeline/hooks.ts` -> `ws/broadcast-subscribers.ts`) because the
- * payload is a derived snapshot recomputed at publish time — the same pattern
- * `issue.statusChanged` uses. Keep it direct.
+ * WS event `issue.pipelineHealth.changed` is published directly rather than as an outbox event,
+ * because the payload is a derived snapshot recomputed at publish time.
  */
 
 import { sql } from 'drizzle-orm';

@@ -27,8 +27,8 @@ import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
 import { refuser } from '../lib/refusal.js';
 import { type KernelActor, transition } from '../lifecycle/transition.js';
 import { notFound } from '../middleware/route-errors.js';
+import { emitEvent } from '../outbox/index.js';
 import { holds, type PermissionFacts, requireHeld } from '../permissions/index.js';
-import { hooks } from '../pipeline/hooks.js';
 import { wakeMastersForAnswer } from '../ws/master-wake.js';
 import { resolveAskOrigin } from './origin.js';
 import { screenRound } from './screen.js';
@@ -389,14 +389,14 @@ export async function answerQuestion(args: AnswerInput) {
       source: 'questions',
       returning: ['id'],
     });
+    await emitEvent(tx, 'question.answered', {
+      questionId: args.questionId,
+      projectId: row.projectId,
+      issueId: row.issueId ?? null,
+      answeredBy: args.by,
+      body: answeredBody(answered),
+    });
     return { committed: { ...row, steps, status: 'answered' as const }, effect };
-  });
-  await hooks.emit('questionAnswered', {
-    questionId: args.questionId,
-    projectId: committed.projectId,
-    issueId: committed.issueId ?? null,
-    answeredBy: args.by,
-    body: answeredBody(committed.steps.at(-1)),
   });
   void wakeMastersForAnswer({ projectId: committed.projectId, questionId: args.questionId });
   if (effect) await effect();

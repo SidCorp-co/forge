@@ -20,9 +20,9 @@ import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { refusalEnvelope } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { listVisibleProjectsWithRole } from '../projects/service.js';
 import {
-  announceFiled,
   listReports,
   type ReportActor,
   readReport,
@@ -32,7 +32,6 @@ import {
   visibleIssue,
   writableProjectIds,
 } from './service.js';
-import { requireHeld } from '../permissions/index.js';
 
 const listQuerySchema = z
   .object({
@@ -72,7 +71,6 @@ function actorOf(c: Ctx): ReportActor {
 
 async function answer(c: Ctx, out: TriageOutcome) {
   if (!out.ok) return c.json(refusalEnvelope(out.refusals, 'AGENT_REPORT_REFUSED'), 422);
-  await announceFiled(out, actorOf(c));
   return c.json({ effect: out.effect });
 }
 

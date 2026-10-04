@@ -9,7 +9,6 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { hooks } from '../pipeline/hooks.js';
 import { isMetaSkillName, metaSkillReserved } from './meta-skills.js';
 import { registerSkillForProject } from './registration-service.js';
 import { getSkillForProject } from './service.js';
@@ -150,15 +149,6 @@ skillSyncRoutes.post(
         added: d.toInsert.map((m) => m.name),
         updated: d.toUpdate.map((m) => m.name),
       };
-    });
-
-    await hooks.emit('skillSynced', {
-      projectId,
-      deviceId: device.id,
-      added,
-      updated,
-      unchanged: diff.unchanged,
-      removed: diff.toRemove,
     });
 
     return c.json({ added, updated, unchanged: diff.unchanged, removed: diff.toRemove });

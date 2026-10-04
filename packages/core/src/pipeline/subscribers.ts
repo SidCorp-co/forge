@@ -2,145 +2,139 @@ import { issueUpdatedPayload } from '@forge/contracts/field-changes';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog } from '../db/schema.js';
-import { logger } from '../logger.js';
-import { safeRecordActivity } from './activity.js';
-import type { HooksBus } from './hooks.js';
+import { consume, type Delivery } from '../outbox/index.js';
+import { type RecordActivityInput, recordActivity } from './activity.js';
 
 const MAX_BODY_SNIPPET = 240;
 const snippet = (s: string): string => s.slice(0, MAX_BODY_SNIPPET);
 
-/**
- * ISS-849 — true when an `issue.statusChanged` row already carries this
- * outbox row's dedupe key, i.e. this delivery is a redelivery of one already
- * recorded. Best-effort: a lookup failure is logged and treated as "not a
- * duplicate" so a transient DB hiccup never blocks the activity write this
- * subscriber exists to make.
- */
-async function alreadyRecordedTransition(dedupeKey: string): Promise<boolean> {
-  try {
-    const [existing] = await db
-      .select({ id: activityLog.id })
-      .from(activityLog)
-      .where(
-        and(eq(activityLog.dedupeKey, dedupeKey), eq(activityLog.action, 'issue.statusChanged')),
-      )
-      .limit(1);
-    return Boolean(existing);
-  } catch (err) {
-    logger.error({ err, dedupeKey }, 'subscribers: transition dedupe lookup failed');
-    return false;
-  }
+/** True when this delivery's row is already written: a redelivery after a crash between the write
+ *  and the outbox recording it, which writes nothing again. */
+async function alreadyRecorded(dedupeKey: string, action: string): Promise<boolean> {
+  const [existing] = await db
+    .select({ id: activityLog.id })
+    .from(activityLog)
+    .where(and(eq(activityLog.dedupeKey, dedupeKey), eq(activityLog.action, action)))
+    .limit(1);
+  return Boolean(existing);
 }
 
+async function recordOnce(
+  delivery: Delivery,
+  input: Omit<RecordActivityInput, 'dedupeKey'>,
+): Promise<void> {
+  const dedupeKey = `outbox:${delivery.eventId}`;
+  if (await alreadyRecorded(dedupeKey, input.action)) return;
+  await recordActivity({ ...input, dedupeKey, at: input.at ?? delivery.createdAt });
+}
+
+const NAME = 'activity-feed';
+
 /**
- * Register the activity-log subscribers (F5 audit trail) on the given bus.
- * Called once at boot from `src/index.ts`. Handlers use `safeRecordActivity`
- * so a failing insert only logs — the originating mutation still succeeds.
- *
- * NOTE: label add/remove activity is emitted inline via `recordActivityTx`
- * inside the PATCH /issues/:id transaction (see `src/issues/routes.ts`).
- * It must roll back with the label delta on failure, so it does NOT flow
- * through the bus.
+ * The issue activity feed, a consumer of the outbox: each row is written once per event, at the
+ * time the act committed. Label add and remove are written inside the PATCH transaction instead
+ * (`issues/routes.ts`), because they roll back with the label delta.
  */
-export function registerActivitySubscribers(bus: HooksBus): void {
-  bus.on('issueCreated', async (p) => {
-    await safeRecordActivity({
-      issueId: p.issueId,
-      actor: p.actor,
-      action: 'issue.created',
-      payload: { snapshot: p.snapshot },
-    });
+export function registerActivitySubscribers(): void {
+  consume('issue.created', {
+    name: NAME,
+    handle: (p, d) =>
+      recordOnce(d, {
+        issueId: p.issueId,
+        actor: p.actor,
+        action: 'issue.created',
+        payload: { snapshot: p.snapshot },
+      }),
   });
 
   // cm:guard an `issue.updated` row records the changes a write made (`@forge/contracts`
   // `issueUpdatedPayload`), never a snapshot of the fields it touched, and a write that moved
   // nothing records nothing
-  bus.on('issueUpdated', async (p) => {
-    const nonAssignee = p.fields.filter((f) => f !== 'assigneeId');
-    const payload = issueUpdatedPayload(nonAssignee, p.before, p.after);
-    if (payload) {
-      await safeRecordActivity({
+  consume('issue.updated', {
+    name: NAME,
+    handle: async (p, d) => {
+      const nonAssignee = p.fields.filter((f) => f !== 'assigneeId');
+      const payload = issueUpdatedPayload(nonAssignee, p.before, p.after);
+      if (payload) {
+        await recordOnce(d, {
+          issueId: p.issueId,
+          actor: p.actor,
+          action: 'issue.updated',
+          payload: { ...payload },
+        });
+      }
+      if (p.fields.includes('assigneeId')) {
+        await recordOnce(d, {
+          issueId: p.issueId,
+          actor: p.actor,
+          action: 'issue.assigned',
+          payload: {
+            before: p.before.assigneeId ?? null,
+            after: p.after.assigneeId ?? null,
+          },
+        });
+      }
+    },
+  });
+
+  // The feed's and the charts' line for a move; its audit row is `kernel_transitions`.
+  consume('issue.transitioned', {
+    name: NAME,
+    handle: (p, d) =>
+      recordOnce(d, {
+        issueId: p.id,
+        actor: p.actor,
+        action: 'issue.statusChanged',
+        payload: { from: p.from, to: p.to, ...(p.reason ? { reason: p.reason } : {}) },
+        at: new Date(p.at),
+      }),
+  });
+
+  consume('comment.created', {
+    name: NAME,
+    handle: (p, d) =>
+      recordOnce(d, {
         issueId: p.issueId,
         actor: p.actor,
-        action: 'issue.updated',
-        payload: { ...payload },
-      });
-    }
-    if (p.fields.includes('assigneeId')) {
-      await safeRecordActivity({
-        issueId: p.issueId,
-        actor: p.actor,
-        action: 'issue.assigned',
+        action: 'comment.created',
         payload: {
-          before: p.before.assigneeId ?? null,
-          after: p.after.assigneeId ?? null,
+          commentId: p.commentId,
+          body: snippet(p.body),
+          ...(p.parentId != null ? { parentId: p.parentId } : {}),
         },
-      });
-    }
+      }),
   });
 
-  // cm:why ISS-96 — the feed's and the charts' activity row, written after the commit; no gate reads
-  // it. A move's evidence is `record.transition` and `kernel_transitions`, written in its transaction
-  bus.on('transition', async (p) => {
-    const dedupeKey = p.outboxId ? `transition:${p.outboxId}` : undefined;
-    if (dedupeKey && (await alreadyRecordedTransition(dedupeKey))) return;
-
-    await safeRecordActivity({
-      issueId: p.issueId,
-      actor: p.actor,
-      action: 'issue.statusChanged',
-      payload: {
-        from: p.from,
-        to: p.to,
-        reopenCount: p.reopenCount,
-        ...(p.reason ? { reason: p.reason } : {}),
-      },
-      ...(dedupeKey ? { dedupeKey } : {}),
-      ...(p.at ? { at: p.at } : {}),
-    });
+  consume('comment.updated', {
+    name: NAME,
+    handle: (p, d) =>
+      recordOnce(d, {
+        issueId: p.issueId,
+        actor: p.actor,
+        action: 'comment.updated',
+        payload: { commentId: p.commentId, before: snippet(p.before), after: snippet(p.after) },
+      }),
   });
 
-  bus.on('commentCreated', async (p) => {
-    await safeRecordActivity({
-      issueId: p.issueId,
-      actor: p.actor,
-      action: 'comment.created',
-      payload: {
-        commentId: p.commentId,
-        body: snippet(p.body),
-        ...(p.parentId != null ? { parentId: p.parentId } : {}),
-      },
-    });
+  consume('comment.deleted', {
+    name: NAME,
+    handle: (p, d) =>
+      recordOnce(d, {
+        issueId: p.issueId,
+        actor: p.actor,
+        action: 'comment.deleted',
+        payload: { commentId: p.commentId },
+      }),
   });
 
-  bus.on('commentUpdated', async (p) => {
-    await safeRecordActivity({
-      issueId: p.issueId,
-      actor: p.actor,
-      action: 'comment.updated',
-      payload: {
-        commentId: p.commentId,
-        before: snippet(p.before),
-        after: snippet(p.after),
-      },
-    });
-  });
-
-  bus.on('commentDeleted', async (p) => {
-    await safeRecordActivity({
-      issueId: p.issueId,
-      actor: p.actor,
-      action: 'comment.deleted',
-      payload: { commentId: p.commentId },
-    });
-  });
-
-  bus.on('commentMentioned', async (p) => {
-    await safeRecordActivity({
-      issueId: p.issueId,
-      actor: p.actor,
-      action: 'comment.mentioned',
-      payload: { commentId: p.commentId, mentionedUserIds: p.mentionedUserIds },
-    });
+  consume('comment.mentioned', {
+    name: NAME,
+    handle: (p, d) =>
+      recordOnce(d, {
+        issueId: p.issueId,
+        actor: p.actor,
+        action: 'comment.mentioned',
+        payload: { commentId: p.commentId, mentionedUserIds: p.mentionedUserIds },
+      }),
   });
 }

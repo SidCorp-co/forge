@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { runners } from '../db/schema.js';
 import { logger } from '../logger.js';
-import type { HooksBus } from '../pipeline/hooks.js';
+import { consume } from '../outbox/index.js';
 import { masterCharterPath } from '../projects/master-charter.js';
 import { deviceRoom } from './rooms.js';
 import { roomManager } from './server.js';
@@ -152,25 +152,34 @@ async function publishWake(
  * Wake a project's boxes when an issue arrives at, or returns to, a status
  * that means there is something to look at.
  */
-export function registerMasterWakeSubscribers(bus: HooksBus): void {
-  bus.on('transition', (p) => {
-    if (!isMasterWakeStatus(p.to)) return;
-    void wakeMastersForProject({ projectId: p.projectId, issueId: p.issueId, status: p.to });
+export function registerMasterWakeSubscribers(): void {
+  consume('issue.transitioned', {
+    name: 'master-wake',
+    handle: async (p) => {
+      if (!isMasterWakeStatus(p.to)) return;
+      await wakeMastersForProject({ projectId: p.projectId, issueId: p.id, status: p.to });
+    },
   });
 
-  bus.on('issueCreated', (p) => {
-    if (!isMasterWakeStatus(p.status)) return;
-    void wakeMastersForProject({ projectId: p.projectId, issueId: p.issueId, status: p.status });
+  consume('issue.created', {
+    name: 'master-wake',
+    handle: async (p) => {
+      if (!isMasterWakeStatus(p.status)) return;
+      await wakeMastersForProject({ projectId: p.projectId, issueId: p.issueId, status: p.status });
+    },
   });
 
   // cm:guard only a person's comment wakes: a master's own reply is agent-authored, so it can never
   // wake the master that wrote it, whatever status the issue is at.
-  bus.on('commentCreated', (p) => {
-    if (p.authored !== 'human') return;
-    void wakeMastersForComment({
-      projectId: p.projectId,
-      issueId: p.issueId,
-      commentId: p.commentId,
-    });
+  consume('comment.created', {
+    name: 'master-wake',
+    handle: async (p) => {
+      if (p.authored !== 'human') return;
+      await wakeMastersForComment({
+        projectId: p.projectId,
+        issueId: p.issueId,
+        commentId: p.commentId,
+      });
+    },
   });
 }

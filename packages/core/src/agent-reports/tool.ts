@@ -34,7 +34,6 @@ import {
 } from '../projects/index.js';
 import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../prompt/sanitize.js';
 import {
-  announceFiled,
   countReportsForJob,
   fireOfSession,
   insertReport,
@@ -345,7 +344,6 @@ async function triage(ctx: McpContext, input: z.infer<typeof inputSchema>) {
     linkIssue,
   });
   if (!out.ok) return refusedAnswer(out.refusals, 'AGENT_REPORT_REFUSED');
-  await announceFiled(out, actor);
   return { effect: out.effect };
 }
 

@@ -6,7 +6,6 @@ import { applyStatusTransition, type TransitionIssueRow } from '../issues/apply-
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { logger } from '../logger.js';
 import { classifyFailure } from '../pipeline/failure-classifier.js';
-import { hooks } from '../pipeline/hooks.js';
 import { classifyVerdict, JOB_TYPE_ENTRY_STATUS } from '../pipeline/recovery-verifier.js';
 import { closeOpenRunForIssue } from '../pipeline/runs.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
@@ -228,17 +227,6 @@ export async function finalizeFailedJob(
       exitCode: updated.exitCode,
       error: updated.error,
     },
-  });
-
-  // ISS-20 — emit hooks AFTER scheduleRetry so PM subscribers see the
-  // populated `failureKind`.
-  await hooks.emit('jobFailed', {
-    jobId: updated.id,
-    projectId: updated.projectId,
-    issueId: updated.issueId,
-    type: updated.type,
-    failureKind: updated.failureKind ?? null,
-    failureReason: updated.failureReason ?? null,
   });
 
   // ISS-164 — refresh pipelineHealth for the linked issue (activeSession

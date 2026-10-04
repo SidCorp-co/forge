@@ -22,9 +22,8 @@ import { formatIssueRef } from '../../lib/issue-ref.js';
 import { logger } from '../../logger.js';
 import { problemsOf } from '../../messaging/contract.js';
 import { proven, wholeAgentText } from '../../messaging/proven.js';
-import type { HooksBus } from '../../pipeline/hooks.js';
+import { consume } from '../../outbox/index.js';
 import { screenCarriedComment } from './comment-carry.js';
-import { drainOwedAnnouncements } from './comment-inbound.js';
 import { threadRootText } from './comment-render.js';
 import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
 import { type RoomBinding, roomForProject } from './project-room.js';
@@ -389,20 +388,13 @@ export async function drainCommentMirror(now: Date = new Date()): Promise<Commen
 
 let draining = false;
 
-/** One drain of owed comments and announcements; a drain already running is not doubled. */
-export function runCommentMirrorDrain(bus: HooksBus): Promise<void> {
+/** One drain of owed comments; a drain already running is not doubled. */
+export function runCommentMirrorDrain(): Promise<void> {
   if (draining) return Promise.resolve();
   draining = true;
-  return Promise.allSettled([drainCommentMirror(), drainOwedAnnouncements(bus)])
-    .then(([out, announced]) => {
-      if (out.status === 'rejected')
-        logger.error({ err: out.reason }, 'rocketchat: comment mirror drain failed');
-      else if (out.value.owed > 0)
-        logger.info({ ...out.value }, 'rocketchat: comment mirror drain');
-      if (announced.status === 'rejected')
-        logger.error({ err: announced.reason }, 'rocketchat: announcement drain failed');
-      else if (announced.value > 0)
-        logger.info({ announced: announced.value }, 'rocketchat: mirrored comments announced');
+  return drainCommentMirror()
+    .then((out) => {
+      if (out.owed > 0) logger.info({ ...out }, 'rocketchat: comment mirror drain');
     })
     .catch((err) => logger.error({ err }, 'rocketchat: comment mirror drain failed'))
     .finally(() => {
@@ -413,12 +405,11 @@ export function runCommentMirrorDrain(bus: HooksBus): Promise<void> {
 /**
  * Register the wake-up. A new comment drains now instead of on the next tick.
  */
-export function registerCommentMirror(bus: HooksBus): void {
-  bus.on(
-    'commentCreated',
-    async () => {
-      void runCommentMirrorDrain(bus);
+export function registerCommentMirror(): void {
+  consume('comment.created', {
+    name: 'rocketchat-comment-mirror',
+    handle: () => {
+      void runCommentMirrorDrain();
     },
-    { name: 'rocketchat-comment-mirror' },
-  );
+  });
 }

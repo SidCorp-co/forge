@@ -374,6 +374,12 @@
         "workspaceSshKeys"
       ]
     },
+    "outbox": {
+      "kind": "kernel",
+      "owns": [
+        "pipelineOutbox"
+      ]
+    },
     "pat": {
       "kind": "platform",
       "owns": [
@@ -393,7 +399,6 @@
         "deployLocks",
         "issueStepContexts",
         "phaseJournal",
-        "pipelineOutbox",
         "pipelineRuns",
         "queueSnapshots"
       ]

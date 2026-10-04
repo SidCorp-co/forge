@@ -25,7 +25,6 @@ import { isRefusal } from '../lib/refusal.js';
 import { logger } from '../logger.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import {
-  announceOneShotRun,
   cancelConcludedRun,
   closeRunIfOneShot,
   insertOneShotRun,
@@ -156,9 +155,8 @@ export async function createReleaseBatch(
     issueRows.map((r) => r.mergedCommitSha),
   );
 
-  // The row and its version in ONE transaction, and the announcement after it commits. Cutting
-  // the number after `openOneShotRun` returned would leave a window — a crash in it, and a
-  // subscriber reading the announcement during it — in which a committed release row has no
+  // The row and its version in ONE transaction: cutting the number after `openOneShotRun`
+  // returned would leave a window, a crash in it, in which a committed release row has no
   // identity. `insertOneShotRun` takes its executor for exactly this.
   const runSpec: OneShotRunSpec = {
     projectId,
@@ -180,7 +178,6 @@ export async function createReleaseBatch(
     const cut = await cutReleaseVersion(tx, { runId: row.id, projectId, recutOf });
     return { run: row, version: cut };
   });
-  await announceOneShotRun(run.id, runSpec);
 
   const claimed = await claimIssuesForRelease({ projectId, issueIds, gateStatus, runId: run.id });
 
