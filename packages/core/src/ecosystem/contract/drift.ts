@@ -10,8 +10,28 @@
 
 import { db } from '../../db/client.js';
 import { projectsWhere } from '../store.js';
-import { contractsNamedIn, type NamedContract } from './named-context.js';
 import { currentOf, versionsOf } from './store.js';
+
+export interface NamedContract {
+  /** `<project>/<contract>` as the issue wrote it. */
+  readonly ref: string;
+  readonly contract: string;
+  readonly version: string;
+}
+
+const NAMED =
+  /contract:\s*`?([a-z][a-z0-9-]{0,62})\/([a-z][a-z0-9-]{0,62})@([A-Za-z0-9][A-Za-z0-9._+-]{0,39})/g;
+
+/** Every `contract:<project>/<contract>@<version>` an issue's text names, once each, in order. */
+export function contractsNamedIn(text: string): NamedContract[] {
+  const out = new Map<string, NamedContract>();
+  for (const m of text.matchAll(NAMED)) {
+    const version = (m[3] as string).replace(/[.]+$/, '');
+    const ref = `${m[1]}/${m[2]}`;
+    out.set(`${ref}@${version}`, { ref, contract: m[2] as string, version });
+  }
+  return [...out.values()];
+}
 
 /** `<project slug>/<contract slug>@<version>`, the form a landing names an implemented version in. */
 export const LANDED_CONTRACT =
