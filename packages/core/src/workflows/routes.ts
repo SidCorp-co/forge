@@ -3,6 +3,7 @@ import { DESIGN_VIEWS } from '@forge/contracts/workflows';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { envelopeOf, refused } from '../project-config/respond.js';
@@ -100,7 +101,14 @@ workflowRoutes.post('/:id/workflows', idParam, envelope, async (c) => {
 });
 
 workflowRoutes.get('/:id/workflows', idParam, listView, async (c) => {
-  const listed = await listWorkflowsAs(c.get('userId'), c.req.valid('param').id);
+  const { id } = c.req.valid('param');
+  const listed = await egressForRequest(
+    c.get('agency'),
+    id,
+    'design',
+    await listWorkflowsAs(c.get('userId'), id),
+    'the workflows',
+  );
   const workflows =
     c.req.valid('query').view === 'summary' ? listed.map(workflowSummaryOf) : listed;
   return c.json({ workflows, returned: workflows.length });
@@ -108,7 +116,15 @@ workflowRoutes.get('/:id/workflows', idParam, listView, async (c) => {
 
 workflowRoutes.get('/:id/workflows/:workflow', workflowParam, async (c) => {
   const { id, workflow } = c.req.valid('param');
-  return c.json(await readWorkflowAs(c.get('userId'), id, workflow));
+  return c.json(
+    await egressForRequest(
+      c.get('agency'),
+      id,
+      'design',
+      await readWorkflowAs(c.get('userId'), id, workflow),
+      `workflow ${workflow}`,
+    ),
+  );
 });
 
 workflowRoutes.put('/:id/workflows/:workflow', workflowParam, envelope, async (c) => {
@@ -142,7 +158,13 @@ workflowRoutes.get('/:id/workflows/:workflow/design', workflowParam, designView,
       'invalid query: revision, stepFrom and stepTo bound view=steps; send view=steps with them',
     );
   }
-  const design = await readDesignAs(writerOf(c), id, workflow);
+  const design = await egressForRequest(
+    c.get('agency'),
+    id,
+    'design',
+    await readDesignAs(writerOf(c), id, workflow),
+    `workflow ${workflow}`,
+  );
   if (q.view === 'summary') return c.json(designSummaryOf(design));
   if (q.view === 'steps') {
     return c.json(designStepsOf(design, { revision: q.revision, from: q.stepFrom, to: q.stepTo }));

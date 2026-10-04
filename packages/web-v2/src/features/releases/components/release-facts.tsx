@@ -9,7 +9,6 @@ import {
   FactsGroup,
   PersonChip,
   StatusBadge,
-  ToneBadge,
   Tooltip,
   WaitingOn,
 } from "@/design";
@@ -22,7 +21,7 @@ function Decision({ a }: { a: ReleaseApprovalView }) {
   return (
     <span className="grid gap-0.5">
       <span className="flex flex-wrap items-center gap-1.5">
-        <ToneBadge tone={a.decision === "approved" ? "ready" : "err"} label={a.decision === "approved" ? "Approved" : "Returned"} title={a.decision} />
+        <StatusBadge family="release" value={a.decision} />
         {a.decidedBy ? <ActorChip name={a.decidedBy.name} kind={a.decidedBy.kind} /> : null}
       </span>
       {a.reason ? <span className="text-12-5 text-muted">{a.reason}</span> : null}

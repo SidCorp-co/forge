@@ -73,6 +73,15 @@ vi.mock('../pipeline/work-evidence.js', () => ({
   collectWorkEvidence: async () => ({ handoffCommitSha: null }),
 }));
 vi.mock('../pipeline/hooks.js', () => ({ hooks: { emit: async () => undefined } }));
+vi.mock('./landing-advance.js', () => ({
+  advanceLandedIssue: async () => ({
+    outcome: 'judge_owed',
+    status: 'in_progress',
+    step: 'test',
+    leaseEnded: null,
+    detail: 'Landing recorded; it waits at step `test` for a judge.',
+  }),
+}));
 /** The shape `landing-evidence.ts` reads off the project's kind, set per case. */
 let shape: 'git' | 'outside_git' = 'git';
 vi.mock('./landing-evidence.js', async (importOriginal) => ({
@@ -110,7 +119,13 @@ const call = (method: 'POST' | 'DELETE', body: unknown) => {
   });
 };
 
-type Answer = { id: string; action: string; mark: string; detail: string };
+type Answer = {
+  id: string;
+  action: string;
+  mark: string;
+  detail: string;
+  lifecycle: { outcome: string; step?: string } | null;
+};
 const mark = async (body: unknown = { target: 'main' }): Promise<Answer> => {
   const res = await call('POST', body);
   expect(res.status).toBe(200);
@@ -153,6 +168,11 @@ describe('POST /api/issues/:id/merge', () => {
     expect(witnessed.mark).toBe('observed');
     expect(claimed.detail).not.toBe(witnessed.detail);
     expect(claimed.action).toBe(witnessed.action);
+  });
+
+  it('answers what the landing did to the issue, so a caller reads who acts next (ISS-80)', async () => {
+    const answer = await mark();
+    expect(answer.lifecycle).toMatchObject({ outcome: 'judge_owed', step: 'test' });
   });
 
   it('tells a caller whose merge was not witnessed that what it wrote is a claim', async () => {

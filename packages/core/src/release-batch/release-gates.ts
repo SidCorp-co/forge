@@ -115,7 +115,8 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
   },
   BATCH_IN_FLIGHT: {
     title: 'A release is running',
-    plain: () => 'Another release is already running for this project. Let it finish before cutting another.',
+    plain: () =>
+      'Another release is already running for this project. Let it finish before cutting another.',
   },
   RELEASE_CRITERIA_UNEARNED: {
     title: 'Criteria still owed',
@@ -168,5 +169,8 @@ export function gateViews(
   blockers: readonly ReleaseBlocker[],
   warnings: readonly ReleaseWarning[],
 ): ReleaseGateView[] {
-  return [...blockers.map((b) => gateView(b, 'blocker')), ...warnings.map((w) => gateView(w, 'warning'))];
+  return [
+    ...blockers.map((b) => gateView(b, 'blocker')),
+    ...warnings.map((w) => gateView(w, 'warning')),
+  ];
 }

@@ -24,7 +24,10 @@ describe('a gate reads as a sentence', () => {
 
   it('keeps the code, the API route, a config hint and a backtick off the sentence', () => {
     for (const code of CODES) {
-      const { sentence, title } = gateView(blocker(code, { waits: [], held: [], displayIds: ['ISS-9'] }), 'blocker');
+      const { sentence, title } = gateView(
+        blocker(code, { waits: [], held: [], displayIds: ['ISS-9'] }),
+        'blocker',
+      );
       for (const text of [sentence, title]) {
         expect(text, code).not.toMatch(/[A-Z]{3,}_[A-Z_]{3,}/);
         expect(text, code).not.toMatch(/\/api\/|PUT |POST |`/);
@@ -43,8 +46,20 @@ describe('a gate reads as a sentence', () => {
     const v = gateView(
       blocker('CONTRACT_PROVIDER_NOT_LIVE', {
         waits: [
-          { issueId: 'x', issue: 'ISS-12', contract: 'clinic-crm/patient-lookup', needed: '2.1', live: '1.4' },
-          { issueId: 'y', issue: 'ISS-13', contract: 'clinic-crm/wards', needed: '1.0', live: null },
+          {
+            issueId: 'x',
+            issue: 'ISS-12',
+            contract: 'clinic-crm/patient-lookup',
+            needed: '2.1',
+            live: '1.4',
+          },
+          {
+            issueId: 'y',
+            issue: 'ISS-13',
+            contract: 'clinic-crm/wards',
+            needed: '1.0',
+            live: null,
+          },
         ],
       }),
       'blocker',

@@ -18,6 +18,7 @@ vi.mock('../logger.js', () => ({
 }));
 
 const { reapConcludedRuns, reapJoblessRuns } = await import('./runs-concluded.js');
+const { oneShotRunOutcome } = await import('../lifecycle/status-sets.js');
 
 type Row = {
   id: string;
@@ -108,6 +109,17 @@ describe('reapConcludedRuns (ISS-923)', () => {
     expect(res.reaped).toBe(0);
     expect(closeRunMock).not.toHaveBeenCalled();
     expect(loggerInfo).not.toHaveBeenCalled();
+  });
+});
+
+describe('oneShotRunOutcome (ISS-100)', () => {
+  it.each([
+    [{ anyCompleted: false, anyFailed: false }, 'cancelled'],
+    [{ anyCompleted: true, anyFailed: false }, 'completed'],
+    [{ anyCompleted: false, anyFailed: true }, 'failed'],
+    [{ anyCompleted: true, anyFailed: true }, 'failed'],
+  ] as const)('maps %o to `%s`', (read, outcome) => {
+    expect(oneShotRunOutcome(read)).toBe(outcome);
   });
 });
 

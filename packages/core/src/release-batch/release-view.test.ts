@@ -7,8 +7,8 @@ import {
   headlineOf,
   proofOf,
   sumTotals,
-  totalsOf,
   type TurnFacts,
+  totalsOf,
   turnOf,
   type ViewerFacts,
 } from './release-view.js';
@@ -62,7 +62,9 @@ describe('whom a draft waits on', () => {
   });
 
   it('is stuck for a viewer who cannot cut it as well: a gate outranks who may act', () => {
-    const t = turnOf(facts({ state: 'draft', viewer: member, gates: [{ title: 'No runner paired' }] }));
+    const t = turnOf(
+      facts({ state: 'draft', viewer: member, gates: [{ title: 'No runner paired' }] }),
+    );
     expect(t.attention).toBe('stuck');
   });
 });
@@ -99,7 +101,9 @@ describe('whom a release awaiting approval waits on', () => {
   });
 
   it('is stuck when the only admin is the asker, so nobody can decide', () => {
-    const t = turnOf(facts({ state: 'awaiting_approval', approval: pending, approvers: [], viewer: member }));
+    const t = turnOf(
+      facts({ state: 'awaiting_approval', approval: pending, approvers: [], viewer: member }),
+    );
     expect(t.attention).toBe('stuck');
     expect(t.waiting).toMatchObject({ kind: 'none', who: 'No approver' });
   });
@@ -141,19 +145,26 @@ describe('whom the other states wait on', () => {
   });
 
   it('reads an open run as moving, by the act in flight', () => {
-    expect(turnOf(facts({ state: 'in_progress', inFlight: 'deploy' })).waiting.act).toBe('deploying');
+    expect(turnOf(facts({ state: 'in_progress', inFlight: 'deploy' })).waiting.act).toBe(
+      'deploying',
+    );
     expect(turnOf(facts({ state: 'in_progress' })).waiting.act).toBe('starting');
     expect(turnOf(facts({ state: 'in_progress' })).attention).toBe('moving');
   });
 
   it('reads an open run that crossed a bound as stuck, never as moving', () => {
-    const t = turnOf(facts({ state: 'in_progress', inFlight: 'verify', crossedBounds: ['stall', 'regression'] }));
+    const t = turnOf(
+      facts({ state: 'in_progress', inFlight: 'verify', crossedBounds: ['stall', 'regression'] }),
+    );
     expect(t.attention).toBe('stuck');
     expect(t.waiting.act).toBe('crossed its stall and regression bound');
   });
 
   it('waits on nobody once shipped, and stops at a run that ended without shipping', () => {
-    expect(turnOf(facts({ state: 'shipped' }))).toMatchObject({ attention: 'done', waiting: { kind: 'none' } });
+    expect(turnOf(facts({ state: 'shipped' }))).toMatchObject({
+      attention: 'done',
+      waiting: { kind: 'none' },
+    });
     for (const state of ['failed', 'rolled_back', 'aborted'] as const) {
       expect(turnOf(facts({ state })).attention).toBe('stopped');
     }
@@ -262,7 +273,9 @@ describe('the requirements a release completes', () => {
 
   it('is partial while another live issue is still open, naming it', () => {
     const r = completionOf(
-      requirement({ live: [...requirement().live, { id: 'c', key: 'ISS-3', status: 'in_progress' }] }),
+      requirement({
+        live: [...requirement().live, { id: 'c', key: 'ISS-3', status: 'in_progress' }],
+      }),
       new Set(['a']),
     );
     expect(r.completes).toBe(false);
@@ -273,7 +286,11 @@ describe('the requirements a release completes', () => {
     const r = completionOf(
       requirement({
         coverage: [
-          { code: 'BC-1', verdict: 'failing', issues: [{ issueId: 'a', criterion: 1, stale: false }] },
+          {
+            code: 'BC-1',
+            verdict: 'failing',
+            issues: [{ issueId: 'a', criterion: 1, stale: false }],
+          },
           { code: 'BC-2', verdict: 'passing', issues: [] },
         ],
       }),
@@ -293,7 +310,9 @@ describe('the requirements a release completes', () => {
   it('counts a link to an earlier wording as no advance', () => {
     const r = completionOf(
       requirement({
-        coverage: [{ code: 'BC-1', verdict: 'stale', issues: [{ issueId: 'a', criterion: 1, stale: true }] }],
+        coverage: [
+          { code: 'BC-1', verdict: 'stale', issues: [{ issueId: 'a', criterion: 1, stale: true }] },
+        ],
       }),
       new Set(['a']),
     );

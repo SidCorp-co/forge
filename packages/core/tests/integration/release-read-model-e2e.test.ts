@@ -108,7 +108,10 @@ type Release = {
     key: string;
     criteria: Array<{ n: number; standing: string; bc: string | null; identity: string | null }>;
   }>;
-  contents: Array<{ requirement: { key: string } | null; issues: Array<{ key: string; proof: string }> }>;
+  contents: Array<{
+    requirement: { key: string } | null;
+    issues: Array<{ key: string; proof: string }>;
+  }>;
   criteria: { proven: number; failing: number; open: number; total: number };
 };
 
@@ -189,7 +192,10 @@ describe('a draft release reads its gate as words', () => {
     const draft = await detail('owner', '0.1.0');
     expect(draft.can).toEqual({ cut: false, decide: false });
     expect(draft.gates).toHaveLength(1);
-    expect(draft.gates[0]).toMatchObject({ code: 'RELEASE_RECORD_MISSING', title: 'Release note missing' });
+    expect(draft.gates[0]).toMatchObject({
+      code: 'RELEASE_RECORD_MISSING',
+      title: 'Release note missing',
+    });
     expect(draft.gates[0]?.sentence).toMatch(/have no release note/);
     expect(draft.gates[0]?.sentence).not.toMatch(/RELEASE_|\/api\//);
     expect(draft.gates[0]?.detail).toMatch(/RELEASE_RECORD_REMEDY|release note/);
@@ -279,7 +285,9 @@ describe('the requirements a release completes and the criteria of its issues', 
     expect(partial).toMatchObject({ key: 'REQ-1', completes: false });
     expect(partial?.advances.map((x) => x.code).sort()).toEqual(['BC-1', 'BC-2']);
     expect(partial?.remaining.issues).toHaveLength(1);
-    await harness.db.execute(sql`UPDATE issues SET merged_at = now(), status = 'closed' WHERE id = ${open}`);
+    await harness.db.execute(
+      sql`UPDATE issues SET merged_at = now(), status = 'closed' WHERE id = ${open}`,
+    );
     expect((await detail('owner', '0.1.0')).requirementsCompleted[0]).toMatchObject({
       completes: true,
       remaining: { issues: [], criteria: [] },

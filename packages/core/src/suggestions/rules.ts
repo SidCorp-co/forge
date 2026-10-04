@@ -15,6 +15,7 @@ import {
   type SuggestionStatus,
   type SuggestionTargetType,
 } from '@forge/contracts/suggestions';
+import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 
 export type { SuggestionRefusal, SuggestionRefusalCode } from '@forge/contracts/suggestions';
 
@@ -141,4 +142,106 @@ export function withdrawRefusal(
     path: '',
     detail: `${userId} did not produce this suggestion; its producer withdraws it, anybody else rejects it with a reason.`,
   };
+}
+
+type Breakdown = ReturnType<(typeof SUGGESTION_PAYLOADS)['breakdown']['schema']['parse']>;
+
+/** The first blockedBy entry that closes a cycle among the proposed issues, as [issue, entry]. */
+function cycleAt(p: Breakdown): [number, number] | null {
+  const state = new Map<number, 'open' | 'done'>();
+  const visit = (i: number): [number, number] | null => {
+    state.set(i, 'open');
+    for (const [j, k] of (p.issues[i]?.blockedBy ?? []).entries()) {
+      if (typeof k !== 'number' || k >= p.issues.length || k === i) continue;
+      if (state.get(k) === 'open') return [i, j];
+      const found = state.has(k) ? null : visit(k);
+      if (found) return found;
+    }
+    state.set(i, 'done');
+    return null;
+  };
+  for (let i = 0; i < p.issues.length; i++) {
+    const found = state.has(i) ? null : visit(i);
+    if (found) return found;
+  }
+  return null;
+}
+
+// cm:guard a breakdown's traces name BCs live at its base revision and its blockedBy edges name
+// other proposed issues without a cycle, at propose and at accept (SUGGESTION_PAYLOAD_INVALID by path)
+export function breakdownFaults(
+  p: Breakdown,
+  codes: ReadonlyMap<string, unknown>,
+  revision: number,
+): SuggestionRefusal[] {
+  const out: SuggestionRefusal[] = [];
+  const cycle = cycleAt(p);
+  if (cycle) {
+    out.push({
+      code: 'SUGGESTION_PAYLOAD_INVALID',
+      path: `/payload/issues/${cycle[0]}/blockedBy/${cycle[1]}`,
+      detail:
+        'the blockedBy edges among the proposed issues form a cycle, so none of them could ever start.',
+    });
+  }
+  p.issues.forEach((issue, i) => {
+    (issue.criteria ?? []).forEach((c, j) => {
+      if (c.tracesTo && !codes.has(c.tracesTo)) {
+        out.push({
+          code: 'SUGGESTION_PAYLOAD_INVALID',
+          path: `/payload/issues/${i}/criteria/${j}/tracesTo`,
+          detail: `${c.tracesTo} is not a business criterion of revision ${revision}; it holds ${[...codes.keys()].join(', ') || 'none'}.`,
+        });
+      }
+    });
+    (issue.blockedBy ?? []).forEach((k, j) => {
+      if (typeof k === 'number' && (k >= p.issues.length || k === i)) {
+        out.push({
+          code: 'SUGGESTION_PAYLOAD_INVALID',
+          path: `/payload/issues/${i}/blockedBy/${j}`,
+          detail: `blockedBy names issue index ${k}, which is ${k === i ? 'this issue itself' : `outside the ${p.issues.length} proposed issues`}.`,
+        });
+      }
+    });
+  });
+  return out;
+}
+
+/** An existing issue a breakdown names as a blocker, as it was read; null when nothing answers. */
+export interface BlockerFound {
+  key: string;
+  projectId: string;
+  status: string;
+  archived: boolean;
+}
+
+// cm:guard a blocker named by key or uuid is a live issue of this project: one that does not
+// resolve here is SUGGESTION_BLOCKER_UNKNOWN (another project's included), a closed, dropped or
+// archived one SUGGESTION_BLOCKER_TERMINAL, since a blocks edge on it holds nothing back (ISS-89)
+export function blockerRefusal(
+  path: string,
+  ref: string,
+  projectId: string,
+  found: BlockerFound | null,
+  unreadable: string | null = null,
+): SuggestionRefusal | null {
+  if (!found || found.projectId !== projectId) {
+    return {
+      code: 'SUGGESTION_BLOCKER_UNKNOWN',
+      path,
+      detail: unreadable
+        ? `blockedBy entry "${ref}" is neither an issue of this project nor an index: ${unreadable}`
+        : found
+          ? `blockedBy entry "${ref}" is an issue of another project; a blocks edge stays inside one project.`
+          : `blockedBy entry "${ref}" names no issue of this project; a string names an existing issue by key (ISS-12) or uuid, a number another issue of this breakdown.`,
+    };
+  }
+  if (found.archived || (ISSUE_TERMINAL_STATUSES as readonly string[]).includes(found.status)) {
+    return {
+      code: 'SUGGESTION_BLOCKER_TERMINAL',
+      path,
+      detail: `blockedBy entry ${found.key} is ${found.archived ? 'archived' : found.status}, so a blocks edge on it would hold nothing back; name a live issue, or leave it out.`,
+    };
+  }
+  return null;
 }

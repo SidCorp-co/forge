@@ -1,15 +1,9 @@
-import { criterionStandingOf, identityPhraseOf } from '@forge/contracts/verdict-identity';
 import type { ReleaseCriterionView, ReleasePerson } from '@forge/contracts/releases';
 import type { RequirementState } from '@forge/contracts/requirements';
+import { criterionStandingOf, identityPhraseOf } from '@forge/contracts/verdict-identity';
 import { and, asc, eq, inArray, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  issues,
-  jobs,
-  organizationMembers,
-  projectMembers,
-  projects,
-} from '../db/schema.js';
+import { issues, jobs, organizationMembers, projectMembers, projects } from '../db/schema.js';
 import { requirements } from '../db/schema-requirements.js';
 import { type CriterionWithVerdict, listCriteriaOf } from '../issues/criteria/store.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
@@ -39,7 +33,8 @@ export interface ReleaseFacts {
 }
 
 function criterionView(c: CriterionWithVerdict, voidedBy: Date | undefined): ReleaseCriterionView {
-  const stale = voidedBy && c.latest && new Date(c.latest.createdAt).getTime() <= voidedBy.getTime();
+  const stale =
+    voidedBy && c.latest && new Date(c.latest.createdAt).getTime() <= voidedBy.getTime();
   const latest = stale ? null : c.latest;
   return {
     n: c.n,
@@ -169,9 +164,7 @@ export async function loadReleaseFacts(
   for (const req of reqs.values()) {
     for (const bc of req.coverage) {
       for (const link of bc.issues) {
-        const view = byIssue
-          .get(link.issueId)
-          ?.criteria.find((c) => c.n === link.criterion);
+        const view = byIssue.get(link.issueId)?.criteria.find((c) => c.n === link.criterion);
         if (view && !link.stale) view.bc = bc.code;
       }
     }

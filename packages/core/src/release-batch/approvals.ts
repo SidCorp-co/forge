@@ -104,7 +104,11 @@ export interface ApprovalView extends ReleaseApprovalView {
 
 export async function approvalViews(rows: readonly ReleaseApprovalRow[]): Promise<ApprovalView[]> {
   const people = await peopleOf(rows.flatMap((r) => [r.requestedByUser, r.decidedByUser]));
-  const who = (id: string) => ({ id, name: people.get(id)?.name ?? 'Unknown', kind: people.get(id)?.kind ?? 'human' });
+  const who = (id: string) => ({
+    id,
+    name: people.get(id)?.name ?? 'Unknown',
+    kind: people.get(id)?.kind ?? 'human',
+  });
   return rows.map((r) => ({
     id: r.id,
     runId: r.runId,

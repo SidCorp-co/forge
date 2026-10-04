@@ -105,7 +105,10 @@ function turnFor(p: Part, s: Shared) {
 function ownerOf(p: Part, s: Shared): { owner: ReleasePerson | null; act: string | null } {
   const latest = p.approvals[0];
   if (latest?.decision && latest.decidedBy) {
-    return { owner: latest.decidedBy, act: latest.decision === 'approved' ? 'Approved' : 'Returned' };
+    return {
+      owner: latest.decidedBy,
+      act: latest.decision === 'approved' ? 'Approved' : 'Returned',
+    };
   }
   if (latest) return { owner: latest.requestedBy, act: 'Asked for approval' };
   const cutter = p.runId ? s.facts.cutters.get(p.runId) : undefined;
@@ -116,7 +119,10 @@ function lastChange(p: Part, s: Shared): string {
   const times = [
     p.openedAt,
     p.releasedAt,
-    ...p.approvals.flatMap((a) => [new Date(a.requestedAt), a.decidedAt ? new Date(a.decidedAt) : null]),
+    ...p.approvals.flatMap((a) => [
+      new Date(a.requestedAt),
+      a.decidedAt ? new Date(a.decidedAt) : null,
+    ]),
     ...p.attempts.flatMap((a) => [a.startedAt, a.settledAt]),
     ...(p.runId === null ? p.issueIds.map((id) => s.facts.issues.get(id)?.updatedAt ?? null) : []),
   ].filter((t): t is Date => t !== null);
@@ -142,7 +148,9 @@ function contentsOf(p: Part, s: Shared): ReleaseContentGroup[] {
     });
     groups.set(at, group);
   }
-  return [...groups.values()].sort((a, b) => Number(a.requirement === null) - Number(b.requirement === null));
+  return [...groups.values()].sort(
+    (a, b) => Number(a.requirement === null) - Number(b.requirement === null),
+  );
 }
 
 function summaryOf(p: Part, s: Shared): ReleaseSummary {
@@ -168,7 +176,8 @@ function summaryOf(p: Part, s: Shared): ReleaseSummary {
     headline: headlineOf(
       facts.map((i) => ({
         section: i.releaseNotes?.section ?? null,
-        text: i.releaseNotes && i.releaseNotes.section !== 'Skip' ? i.releaseNotes.userFacing : i.title,
+        text:
+          i.releaseNotes && i.releaseNotes.section !== 'Skip' ? i.releaseNotes.userFacing : i.title,
       })),
     ),
     issueCount: p.issueIds.length,
@@ -178,7 +187,10 @@ function summaryOf(p: Part, s: Shared): ReleaseSummary {
     owner,
     ownerAct: act,
     can: {
-      cut: p.state === 'draft' && s.viewer?.isAdmin === true && !p.gates.some((g) => g.kind === 'blocker'),
+      cut:
+        p.state === 'draft' &&
+        s.viewer?.isAdmin === true &&
+        !p.gates.some((g) => g.kind === 'blocker'),
       decide: canDecide(s.viewer, approvalFacts(p)),
     },
     openedAt: iso(p.openedAt),
@@ -187,7 +199,10 @@ function summaryOf(p: Part, s: Shared): ReleaseSummary {
   };
 }
 
-function attemptView(a: ReleaseAttemptRow, readers: ReadonlyMap<string, { name: string }>): ReleaseAttemptView {
+function attemptView(
+  a: ReleaseAttemptRow,
+  readers: ReadonlyMap<string, { name: string }>,
+): ReleaseAttemptView {
   return {
     id: a.id,
     stage: a.stage,
@@ -238,7 +253,9 @@ function issueViews(p: Part, s: Shared, waiting: ReleaseWaiting): ReleaseIssueVi
         title: i.title,
         status: i.status,
         section: i.releaseNotes?.section ?? null,
-        requirement: i.requirementId ? (s.facts.requirements.get(i.requirementId)?.key ?? null) : null,
+        requirement: i.requirementId
+          ? (s.facts.requirements.get(i.requirementId)?.key ?? null)
+          : null,
         proof: proofOf(criteria),
         criteria,
         waiting: i.status === 'closed' || p.state === 'shipped' ? NOBODY : waiting,
@@ -265,7 +282,11 @@ function detailOf(
     requirementsCompleted: [...reqIds]
       .flatMap((id) => s.facts.requirements.get(id) ?? [])
       .map((r) => completionOf(r, inRelease))
-      .sort((a, b) => Number(b.completes) - Number(a.completes) || a.key.localeCompare(b.key, 'en', { numeric: true })),
+      .sort(
+        (a, b) =>
+          Number(b.completes) - Number(a.completes) ||
+          a.key.localeCompare(b.key, 'en', { numeric: true }),
+      ),
     issueCriteria: facts.map((i) => ({ key: i.key, title: i.title, criteria: i.criteria })),
     notes: noteSections(p, s),
     gates: p.gates,
@@ -279,7 +300,8 @@ function detailOf(
       bounds: p.bounds?.bounds ?? [],
     },
     production,
-    head: latest?.evidence.commit ?? [...p.attempts].reverse().find((a) => a.commit)?.commit ?? null,
+    head:
+      latest?.evidence.commit ?? [...p.attempts].reverse().find((a) => a.commit)?.commit ?? null,
   };
 }
 
@@ -340,7 +362,12 @@ async function productionOf(projectId: string, current: string | null): Promise<
   const read = await readReleasePath(projectId);
   if (!read.ok) return { ok: false, reason: read.reason };
   const prod = read.path.production;
-  return { ok: true, name: prod?.name ?? null, url: prod?.declaration.url ?? null, serving: current };
+  return {
+    ok: true,
+    name: prod?.name ?? null,
+    url: prod?.declaration.url ?? null,
+    serving: current,
+  };
 }
 
 async function sharedFor(

@@ -71,6 +71,11 @@ describe('deriveAgentStatus', () => {
     expect(deriveAgentStatus([s('completed'), s('completed')])).toBe('completed');
   });
 
+  it('ISS-100: a cancelled session reads cancelled, never completed', () => {
+    expect(deriveAgentStatus([s('cancelled' as never)])).toBe('cancelled');
+    expect(deriveAgentStatus([s('cancelled' as never), s('completed')])).toBe('cancelled');
+  });
+
   it('ignores unknown statuses (returns null when nothing matches)', () => {
     expect(deriveAgentStatus([s('idle' as never)])).toBe(null);
   });

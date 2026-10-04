@@ -27,11 +27,16 @@ import { onboardings } from '../db/schema-onboarding.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
-import { dataPolicyOf, egressDeep } from '../lib/data-egress.js';
+import type { EgressReader } from '../lib/data-egress.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import type { NamedRefusal } from '../project-config/respond.js';
-import { type BatchRow, batchesOfConversation, batchView } from '../questionnaires/read.js';
+import {
+  type BatchRow,
+  batchesOfConversation,
+  batchView,
+  questionnairesAs,
+} from '../questionnaires/read.js';
 import { posterRefusal, roundsRefusal } from '../questionnaires/rules.js';
 import { announce, inTx, postQuestionnaireIn, supersedeOpenIn } from '../questionnaires/service.js';
 import { userNames } from '../workflows/service.js';
@@ -462,23 +467,12 @@ export async function afterOnboardingSubmit(batch: BatchRow, submittedBy: string
   await enqueueJob(row, 'revise', submittedBy, { batchId: batch.id });
 }
 
-export async function readAnswers(projectId: string, actor: OnboardingActor) {
+export async function readAnswers(projectId: string, actor: OnboardingActor & EgressReader) {
   await assertProjectAccess(projectId, actor.userId, 'viewer');
   const row = await onboardingOf(db, projectId);
   if (!row) return { ok: false as const, refusals: [notStarted()] };
   const questionnaires = await batchesOfConversation(row.conversationId);
-  // cm:guard a person's answers reach a model only as the project's data policy allows: an agent
-  // reader is provider-bound, so it reads them scrubbed at redact and at no_egress, where onboarding
-  // answers are the guard's one named exemption (`lib/data-egress.ts:egressDeep`, onboarding_answers)
-  const out =
-    actor.agency === 'agent'
-      ? egressDeep(
-          await dataPolicyOf(projectId),
-          questionnaires,
-          'the onboarding answers',
-          'onboarding_answers',
-        )
-      : { ok: true as const, value: questionnaires };
+  const out = await questionnairesAs(actor, projectId, questionnaires);
   if (!out.ok) return { ok: false as const, refusals: [out.refusal] };
   return {
     ok: true as const,

@@ -9,7 +9,8 @@ import type { Tx } from '../../db/client.js';
 import { activityLog } from '../../db/schema-activity.js';
 import { parseForgeRecord } from '../../messaging/forge-record.js';
 import type { Actor } from '../../pipeline/activity.js';
-import { isRecordEventKind } from './kinds.js';
+import { recordEventVerdicts } from '../criteria/event-verdicts.js';
+import { isKernelOnlyRecordKind, isRecordEventKind } from './kinds.js';
 import { commentMirrorKey, writeRecordEvent } from './store.js';
 
 export interface MirroredComment {
@@ -20,9 +21,8 @@ export interface MirroredComment {
 }
 
 /**
- * Write the event a comment's record stands for, and return the warning owed where it stands for
- * none: a fence naming no kind, or a kind outside the closed set, is stored as prose only and the
- * writer is told so rather than finding the record missing later.
+ * Write the event a comment's record stands for, or return the warning owed where it is stored as
+ * prose only: no kind, a kind outside the set, a kind core writes, or a verdict fence naming none.
  */
 export async function mirrorCommentRecord(
   comment: MirroredComment,
@@ -35,6 +35,23 @@ export async function mirrorCommentRecord(
     const named = record.kind ? `kind \`${record.kind}\`` : 'no kind';
     return [
       `RECORD_NOT_TYPED: this comment's \`forge-record\` carries ${named}, so no record event was written for it and no gate will read it — name a record kind on the fence (\`forge-record: <kind> · contract <n>\`), or write it to \`POST /api/issues/:id/events\``,
+    ];
+  }
+  if (record.kind === 'verdict') {
+    const written = await recordEventVerdicts(tx, {
+      issueId: comment.issueId,
+      record,
+      actor,
+      commentId: comment.id,
+    });
+    if (written > 0) return [];
+    return [
+      "VERDICT_RECORD_EMPTY: this comment's `forge-record: verdict` names no criterion with a verdict, so no verdict was recorded and no gate will read one — write `criterion: <n>` and `verdict: pass | short | fail | skipped` in each block, or record it with `POST /api/issues/:id/verdicts`",
+    ];
+  }
+  if (isKernelOnlyRecordKind(record.kind)) {
+    return [
+      `EVENT_KIND_KERNEL_ONLY: this comment's \`forge-record: ${record.kind}\` is stored as prose only — a ${record.kind} record is kernel evidence core writes in the transaction of the move itself, so no comment or caller writes one. Say what the move needs in the transition's \`reason\`, and core records it`,
     ];
   }
   await writeRecordEvent(
@@ -52,7 +69,6 @@ export async function mirrorCommentRecord(
   return [];
 }
 
-/** Drop the event a comment's record was mirrored into, where it was mirrored at all. */
 export async function dropCommentMirror(commentId: string, tx: Tx): Promise<void> {
   await tx.delete(activityLog).where(and(eq(activityLog.dedupeKey, commentMirrorKey(commentId))));
 }

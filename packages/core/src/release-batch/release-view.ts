@@ -48,10 +48,7 @@ const IN_FLIGHT_ACT: Record<ReleaseAttemptStage, string> = {
 
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
-export function canDecide(
-  viewer: ViewerFacts | null,
-  approval: TurnFacts['approval'],
-): boolean {
+export function canDecide(viewer: ViewerFacts | null, approval: TurnFacts['approval']): boolean {
   if (!viewer || !approval || approval.decision !== null) return false;
   return viewer.agency === 'human' && viewer.isAdmin && approval.requestedBy.id !== viewer.userId;
 }
@@ -69,9 +66,13 @@ function draftTurn(f: TurnFacts): Turn {
       },
     };
   }
-  const rule = 'merged issues wait at the release gate, no gate holds them, and an admin cuts the version';
+  const rule =
+    'merged issues wait at the release gate, no gate holds them, and an admin cuts the version';
   if (f.viewer?.isAdmin) {
-    return { attention: 'you', waiting: { kind: 'you', who: 'You', act: `cut ${f.version}`, rule } };
+    return {
+      attention: 'you',
+      waiting: { kind: 'you', who: 'You', act: `cut ${f.version}`, rule },
+    };
   }
   return {
     attention: 'others',
@@ -201,9 +202,7 @@ const clip = (s: string) => {
   return t.length > HEADLINE_WIDTH ? `${t.slice(0, HEADLINE_WIDTH - 1).trimEnd()}…` : t;
 };
 
-export function headlineOf(
-  items: readonly { section: string | null; text: string }[],
-): string {
+export function headlineOf(items: readonly { section: string | null; text: string }[]): string {
   const rank = (s: string | null) => {
     const at = s === null ? -1 : SECTION_ORDER.indexOf(s);
     return at === -1 ? SECTION_ORDER.length : at;
@@ -238,7 +237,9 @@ export function completionOf(
   const advances = req.coverage
     .filter((c) => c.issues.some((l) => !l.stale && inRelease.has(l.issueId)))
     .map((c) => ({ code: c.code, verdict: c.verdict }));
-  const issues = req.live.filter((i) => !inRelease.has(i.id) && i.status !== 'closed').map((i) => i.key);
+  const issues = req.live
+    .filter((i) => !inRelease.has(i.id) && i.status !== 'closed')
+    .map((i) => i.key);
   const criteria = req.coverage.filter((c) => c.verdict !== 'passing').map((c) => c.code);
   const agreed = req.status === 'agreed' || req.status === 'accepted';
   return {

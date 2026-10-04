@@ -7,7 +7,7 @@
 import { createHash } from 'node:crypto';
 import { db } from '../db/client.js';
 import { type ItemEmbeddingStatus, itemEmbeddings } from '../db/schema-item-embeddings.js';
-import { egressFor } from '../lib/data-egress.js';
+import { dataPolicyOf, type EgressSurface, egressText } from '../lib/data-egress.js';
 import { embeddingsConfigured, embedWithModel } from './index.js';
 
 export const EMBEDDING_PROVIDER_NOT_CONFIGURED =
@@ -48,8 +48,16 @@ async function upsert(
 }
 
 /** Embeds the item's head as its project's data policy allows, replacing whatever row it held. */
+const surfaceOf = (arc: ItemArc): EgressSurface =>
+  'requirementId' in arc ? 'requirement' : 'feedback';
+
 export async function writeItemEmbedding(head: ItemHead): Promise<ItemEmbeddingStatus> {
-  const egress = await egressFor(head.projectId, head.text, head.what);
+  const egress = egressText(
+    await dataPolicyOf(head.projectId),
+    surfaceOf(head.arc),
+    head.text,
+    head.what,
+  );
   if (!egress.ok) {
     const hash = createHash('sha256').update(head.text).digest('hex');
     await upsert(head, hash, { status: 'withheld_by_policy', error: egress.refusal.detail });

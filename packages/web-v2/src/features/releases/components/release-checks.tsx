@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Icon, ToneBadge, ViewHeading } from "@/design";
+import { Icon, StatusBadge, ToneBadge, ViewHeading } from "@/design";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import type { ReleaseApprovalView, ReleaseAttemptView, ReleaseDetail } from "../types";
 import { shortSha } from "./release-bits";
@@ -71,11 +71,7 @@ function Approval({ a }: { a: ReleaseApprovalView }) {
   return (
     <li className="grid gap-0.5 border-b border-line-subtle py-2.5 text-13" data-testid="release-approval">
       <span className="flex flex-wrap items-center gap-2">
-        {a.decision ? (
-          <ToneBadge tone={a.decision === "approved" ? "ready" : "err"} label={a.decision === "approved" ? "Approved" : "Returned"} title={a.decision} />
-        ) : (
-          <ToneBadge tone="you" label="Awaiting" title="no decision yet" />
-        )}
+        <StatusBadge family="release" value={a.decision ?? "pending"} />
         <span className="text-muted">
           Asked by {a.requestedBy.name}, <span title={formatStamp(a.requestedAt)}>{formatRelativeTime(a.requestedAt)}</span>
           {a.decidedBy && a.decidedAt ? (

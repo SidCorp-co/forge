@@ -11,9 +11,9 @@ import {
   parseDecision,
   requestApproval,
 } from './approvals.js';
-import { findReleaseBatchRun } from './service.js';
 import { listReleases, readRelease } from './release-read.js';
 import type { ViewerFacts } from './release-view.js';
+import { findReleaseBatchRun } from './service.js';
 
 export const releaseVersionRoutes = new Hono<{ Variables: AuthVars }>();
 releaseVersionRoutes.use('/:projectId/releases', requireAuth(), assertEmailVerified());

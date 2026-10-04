@@ -21,6 +21,10 @@ vi.mock('./lib.js', async (importOriginal) => ({
 }));
 
 const requirementOutcome = async () => ({ ok: true, requirement: requirementDetail() });
+vi.mock('../../project-config/service.js', () => ({
+  readProjectDocument: async () => null,
+}));
+
 vi.mock('../../requirements/read.js', () => ({
   listRequirementsAs: async () => requirementList(),
   readRequirementAs: async () => requirementDetail(),

@@ -71,6 +71,22 @@ async function insertIssue(status: string, merged = true): Promise<string> {
   return id;
 }
 
+async function earned(issueId: string): Promise<string> {
+  await harness.db.execute(sql`
+    WITH c AS (
+      INSERT INTO issue_criteria (issue_id, n, statement, position)
+      VALUES (${issueId}, 1, 'the tenant export carries every row', 0)
+      RETURNING id
+    )
+    INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, identity_kind, commit_sha,
+                                    author_user_id, author_agency)
+    SELECT c.id, ${issueId}, 'pass', 'commit', '33637c612ef15be6f924520c0d201a0889d8ed7e',
+           ${ownerId}, 'human'
+      FROM c
+  `);
+  return issueId;
+}
+
 async function load(id: string): Promise<IssueRow> {
   const rows = await harness.db.execute(sql`
     SELECT id, project_id AS "projectId", status, reopen_count AS "reopenCount"
@@ -132,7 +148,7 @@ async function refusalOf(p: Promise<unknown>) {
 describe('an issue cannot reach a terminal status while it holds an open question', () => {
   for (const terminal of ['closed', 'dropped'] as const) {
     it(`refuses ${terminal} by name, with the count and the ids, and moves nothing`, async () => {
-      const issueId = await insertIssue('in_progress');
+      const issueId = await earned(await insertIssue('in_progress'));
       const a = await openQuestion(issueId);
       const b = await openQuestion(issueId, 'master_or_peer');
 
@@ -158,7 +174,7 @@ describe('an issue cannot reach a terminal status while it holds an open questio
   }
 
   it('closes with voidQuestions and leaves every open question void with that reason', async () => {
-    const issueId = await insertIssue('in_progress');
+    const issueId = await earned(await insertIssue('in_progress'));
     await openQuestion(issueId);
     await openQuestion(issueId);
     const kept = await answeredQuestion(issueId);
@@ -199,7 +215,7 @@ describe('an issue cannot reach a terminal status while it holds an open questio
 
   for (const blank of ['', '   ']) {
     it(`refuses voidQuestions ${JSON.stringify(blank)} by name and changes nothing`, async () => {
-      const issueId = await insertIssue('in_progress');
+      const issueId = await earned(await insertIssue('in_progress'));
       await openQuestion(issueId);
 
       const err = await refusalOf(
@@ -215,7 +231,7 @@ describe('an issue cannot reach a terminal status while it holds an open questio
   }
 
   it('closes as it always did when every question is answered or void', async () => {
-    const issueId = await insertIssue('in_progress');
+    const issueId = await earned(await insertIssue('in_progress'));
     await answeredQuestion(issueId);
 
     await transition.transitionIssueStatus(await load(issueId), 'closed', person());

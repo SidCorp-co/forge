@@ -1,5 +1,6 @@
 import { and, desc, eq, like, lt } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
@@ -16,6 +17,7 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
+import { KERNEL_RECORD_KINDS, recordAction } from './record-events/kinds.js';
 
 const ACTIVITY_TYPES = ['issue', 'comment', 'member'] as const;
 
@@ -136,6 +138,7 @@ async function loadActivity(activityId: string) {
     .select({
       id: activityLog.id,
       issueId: activityLog.issueId,
+      action: activityLog.action,
       payload: activityLog.payload,
       projectId: issues.projectId,
     })
@@ -144,6 +147,18 @@ async function loadActivity(activityId: string) {
     .where(eq(activityLog.id, activityId))
     .limit(1);
   return row ?? null;
+}
+
+const KERNEL_RECORD_ACTIONS: ReadonlySet<string> = new Set(KERNEL_RECORD_KINDS.map(recordAction));
+
+// cm:guard ISS-96 — kernel evidence is kept as written for as long as its issue is: the activity
+// routes neither evaluate nor delete a verdict, transition, landing, park or correction row
+export function assertActivityMutable(action: string): void {
+  if (!KERNEL_RECORD_ACTIONS.has(action)) return;
+  throw new HTTPException(409, {
+    message: `\`${action}\` is kernel evidence, kept as written for as long as its issue is, so it cannot be evaluated or deleted. Say what is wrong with it in a comment, or record a \`correction\` (\`POST /api/issues/:id/events\`).`,
+    cause: { code: 'KERNEL_RECORD_IMMUTABLE', details: { action } },
+  });
 }
 
 issueActivityRoutes.patch(
@@ -164,6 +179,7 @@ issueActivityRoutes.patch(
 
     const access = await loadProjectAccess(activity.projectId, userId);
     assertProjectRole(access, 'member');
+    assertActivityMutable(activity.action);
 
     const previous = (activity.payload as Record<string, unknown> | null) ?? {};
     const nextPayload = {
@@ -203,6 +219,7 @@ issueActivityRoutes.delete(
 
     const access = await loadProjectAccess(activity.projectId, userId);
     assertProjectRole(access, 'admin', 'not a project admin');
+    assertActivityMutable(activity.action);
 
     await db.delete(activityLog).where(eq(activityLog.id, activityId));
     return c.body(null, 204);

@@ -9,6 +9,7 @@
  * row is written either way.
  */
 
+import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { eq } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { contentLanguageBlock } from '../content-language/block.js';
@@ -21,6 +22,7 @@ import {
   computeProjectProgress,
   type ProjectProgress,
 } from '../issues/progress.js';
+import { dataPolicyOf, EgressRefused, egressAt, egressText } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
 import { detectStateConfab } from './confab.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
@@ -136,6 +138,28 @@ export interface ExternalChatTurnResult {
   progress: ProjectProgress | null;
 }
 
+// cm:guard everything a chat turn's model reads is the conversation (surface `conversation`), the
+// tool results it calls for included: each text block leaves through the one egress rule, so a
+// tool that reads the room or the project hands it nothing the level forbids
+function egressedTools(level: SensitiveDataLevel, tools: ChatToolset, what: string): ChatToolset {
+  if (level === 'off') return tools;
+  return {
+    ...tools,
+    async execute(name, argsJson) {
+      const result = await tools.execute(name, argsJson);
+      return {
+        ...result,
+        content: result.content.map((block) => {
+          if (block.type !== 'text') return block;
+          const out = egressText(level, 'conversation', block.text, `${what}, tool ${name}`);
+          if (!out.ok) throw new EgressRefused(out.refusal);
+          return { ...block, text: out.text };
+        }),
+      };
+    },
+  };
+}
+
 export async function runExternalChatTurn(
   args: ExternalChatTurnArgs,
 ): Promise<ExternalChatTurnResult> {
@@ -228,12 +252,18 @@ export async function runExternalChatTurn(
     },
   );
 
+  const level = await dataPolicyOf(args.projectId);
+  const what = `conversation ${turn?.conversationId ?? 'turn'}`;
+  const [system, ...spoken] = providerMessages;
+  const sent = egressAt(level, 'conversation', spoken, what);
+  if (!sent.ok) throw new EgressRefused(sent.refusal);
+
   const startedAt = Date.now();
   const gen = runTurnEvents({
     provider: resolved.provider,
     model: resolved.model,
-    messages: providerMessages,
-    tools: args.tools,
+    messages: system ? [system, ...sent.value] : sent.value,
+    tools: args.tools && egressedTools(level, args.tools, what),
     preCall: memoryNoteGateFor(args.projectId),
     temperature: 0.2,
     requireInitialToolUse: args.tools !== undefined,

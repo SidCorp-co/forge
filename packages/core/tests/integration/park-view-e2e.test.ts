@@ -147,6 +147,23 @@ const parkRecord = (kind: string, left: string) =>
     '`forge-record: park · contract 1`',
   ].join('\n');
 
+async function parkEventOf(issueId: string): Promise<string> {
+  const rows = await harness.db.execute(sql`
+    SELECT id FROM activity_log
+     WHERE issue_id = ${issueId} AND action = 'record.park' AND payload->>'writer' = 'core'
+     ORDER BY created_at DESC, id DESC LIMIT 1
+  `);
+  return String((rows[0] as { id: unknown }).id);
+}
+
+async function parkAt(issueId: string, why: string, waitingKind = 'needs_answer') {
+  await transition.transitionIssueStatus(await load(issueId), 'needs_info', person(), {
+    reason: why,
+    transitionReason: why,
+    waitingKind: waitingKind as 'needs_answer',
+  });
+}
+
 async function openQuestion(issueId: string, blockerKind = 'human'): Promise<string> {
   const id = randomUUID();
   await harness.db.execute(sql`
@@ -182,11 +199,9 @@ async function getPark(issueId: string) {
 
 describe('GET /api/issues/:id/park reads the resume status off the work state', () => {
   it('answers ISS-529’s shape: a decision park set down from in_progress resumes there', async () => {
-    const issueId = await insertIssue('needs_info', 'needs_decision');
-    await leftFrom(issueId, 'in_progress');
-    await moved(issueId, 'open', 'in_progress', 30);
-    await moved(issueId, 'in_progress', 'needs_info', 20);
-    const recordId = await commented(issueId, parkRecord('screen-review', 'in_progress'), 19);
+    const issueId = await insertIssue('in_progress');
+    await parkAt(issueId, 'which layout ships?', 'needs_decision');
+    const recordId = await parkEventOf(issueId);
     const { status, body } = await getPark(issueId);
     expect(status).toBe(200);
     expect(body.park).toMatchObject({
@@ -194,27 +209,37 @@ describe('GET /api/issues/:id/park reads the resume status off the work state', 
       status: 'needs_info',
       owes: 'decision',
       resume: { at: 'in_progress', recordId },
+      record: {
+        eventId: recordId,
+        commentId: null,
+        kind: 'needs_decision',
+        why: 'which layout ships?',
+      },
     });
   });
 
-  it('resumes where the work state says, whatever the park record’s `left` line claims', async () => {
-    const issueId = await insertIssue('needs_info');
-    await leftFrom(issueId, 'approved');
-    await moved(issueId, 'approved', 'needs_info', 20);
-    const recordId = await commented(issueId, parkRecord('question', 'awaiting_release'), 19);
+  it('reads the park record core wrote on the move, never a fence a comment carries', async () => {
+    const issueId = await insertIssue('approved');
+    await parkAt(issueId, 'which tenant?');
+    const recordId = await parkEventOf(issueId);
+    await commented(issueId, parkRecord('screen-review', 'awaiting_release'), -1);
     const { body } = await getPark(issueId);
     expect(body.park?.resume).toEqual({ at: 'approved', recordId });
+    expect(body.park?.record).toMatchObject({ eventId: recordId, kind: 'needs_answer' });
   });
 
-  it('pairs a needs_info record written before the move and drops one from an earlier park', async () => {
-    const issueId = await insertIssue('needs_info');
-    await leftFrom(issueId, 'approved');
-    await commented(issueId, parkRecord('screen-review', 'in_progress'), 60);
-    await moved(issueId, 'on_hold', 'approved', 40);
-    const recordId = await commented(issueId, parkRecord('question', 'approved'), 21);
-    await moved(issueId, 'approved', 'needs_info', 20);
+  it('drops the record of an earlier park once the issue went back to work', async () => {
+    const issueId = await insertIssue('in_progress');
+    await transition.transitionIssueStatus(await load(issueId), 'on_hold', person(), {
+      transitionReason: 'paused for the freeze',
+    });
+    const earlier = await parkEventOf(issueId);
+    await transition.transitionIssueStatus(await load(issueId), 'in_progress', person());
+    await parkAt(issueId, 'which tenant?');
+    const recordId = await parkEventOf(issueId);
+    expect(recordId).not.toBe(earlier);
     const { body } = await getPark(issueId);
-    expect(body.park?.resume).toEqual({ at: 'approved', recordId });
+    expect(body.park?.resume).toEqual({ at: 'in_progress', recordId });
   });
 
   it('says no status was recorded rather than guessing one from the history', async () => {
@@ -250,32 +275,26 @@ describe('GET /api/issues/:id/park reads the resume status off the work state', 
     const issueId = await insertIssue('on_hold');
     await leftFrom(issueId, 'in_progress');
     await transition.transitionIssueStatus(await load(issueId), 'in_progress', person());
-    const recordId = await commented(issueId, parkRecord('question', 'in_progress'), 0);
-    await transition.transitionIssueStatus(await load(issueId), 'needs_info', person(), {
-      reason: 'the export order is not stated',
-      transitionReason: 'the export order is not stated',
-      waitingKind: 'needs_answer',
-    });
+    await parkAt(issueId, 'the export order is not stated');
+    const recordId = await parkEventOf(issueId);
     await historyRow(issueId, 'on_hold', 'in_progress', -10);
     await historyRow(issueId, 'in_progress', 'needs_info', -10);
     const { body } = await getPark(issueId);
     expect(body.park?.resume).toEqual({ at: 'in_progress', recordId });
   });
 
-  it('does not pair a record from an earlier park while the boundary’s history row is still unwritten', async () => {
+  it('never pairs a comment fence, from this park or an earlier one', async () => {
     const issueId = await insertIssue('on_hold');
     await leftFrom(issueId, 'in_progress');
     await commented(issueId, parkRecord('screen-review', 'in_progress'), 1);
     await transition.transitionIssueStatus(await load(issueId), 'in_progress', person());
-    await transition.transitionIssueStatus(await load(issueId), 'needs_info', person(), {
-      reason: 'stopped again',
-      transitionReason: 'stopped again',
-      waitingKind: 'needs_answer',
-    });
+    await parkAt(issueId, 'stopped again');
+    await commented(issueId, parkRecord('question', 'approved'), -1);
+    const recordId = await parkEventOf(issueId);
     const { body } = await getPark(issueId);
     expect(body.park).toMatchObject({
-      resume: { at: 'in_progress', recordId: null },
-      record: null,
+      resume: { at: 'in_progress', recordId },
+      record: { eventId: recordId, commentId: null, why: 'stopped again' },
     });
   });
 
@@ -292,11 +311,10 @@ describe('GET /api/issues/:id/park reads the resume status off the work state', 
     );
   });
 
-  it('pairs any record where the issue went into its park without an earlier move', async () => {
-    const issueId = await insertIssue('needs_info');
-    await leftFrom(issueId, 'open');
-    const recordId = await commented(issueId, parkRecord('question', 'open'), 30);
-    await moved(issueId, 'open', 'needs_info', 20);
+  it('pairs the record where the issue went into its park without an earlier move', async () => {
+    const issueId = await insertIssue('open');
+    await parkAt(issueId, 'which tenant?');
+    const recordId = await parkEventOf(issueId);
     const { body } = await getPark(issueId);
     expect(body.park?.resume).toEqual({ at: 'open', recordId });
   });
@@ -336,18 +354,16 @@ describe('the answer a question asked in the thread has', () => {
 
 describe('an answer behind a long thread', () => {
   it('is still the answer after more typed records than a page holds', async () => {
-    const issueId = await insertIssue('needs_info');
-    await moved(issueId, 'open', 'in_progress', 60);
-    await commented(issueId, parkRecord('question', 'in_progress'), 50);
-    await moved(issueId, 'in_progress', 'needs_info', 49);
-    const answerId = await commented(issueId, 'keep the legacy order', 40);
+    const issueId = await insertIssue('in_progress');
+    await parkAt(issueId, 'which column order?');
+    const answerId = await commented(issueId, 'keep the legacy order', -1);
     for (let i = 0; i < 60; i += 1) {
       await commented(
         issueId,
         ['```forge-record', `note: ${i}`, '```', '', '`forge-record: note · contract 1`'].join(
           '\n',
         ),
-        30 - i / 10,
+        -2 - i / 10,
       );
     }
     expect((await getPark(issueId)).body.park?.answer).toMatchObject({ commentId: answerId });

@@ -79,6 +79,8 @@ export function registerActivitySubscribers(bus: HooksBus): void {
     }
   });
 
+  // cm:why ISS-96 — the feed's and the charts' activity row, written after the commit; no gate reads
+  // it. A move's evidence is `record.transition` and `kernel_transitions`, written in its transaction
   bus.on('transition', async (p) => {
     const dedupeKey = p.outboxId ? `transition:${p.outboxId}` : undefined;
     if (dedupeKey && (await alreadyRecordedTransition(dedupeKey))) return;

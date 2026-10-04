@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { type FeedbackTriageEffect, feedbackTriageSchema } from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import { REGISTRY_ISSUE_COMPLEXITIES } from "./pipeline-registry.js";
 import { ANSWER_VIEWS, pickFields } from "./projection.js";
 
 /** The six kinds rev 2 names, and feedback_triage (workflow feedback-triage, ISS-59); cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
@@ -101,6 +102,8 @@ export const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_DECIDED",
 	"SUGGESTION_WITHDRAW_FORBIDDEN",
 	"SUGGESTION_EFFECT_UNDECIDED",
+	"SUGGESTION_BLOCKER_UNKNOWN",
+	"SUGGESTION_BLOCKER_TERMINAL",
 	"CLARIFICATION_ALREADY_OPEN",
 ] as const;
 export type SuggestionRefusalCode = (typeof SUGGESTION_REFUSAL_CODES)[number];
@@ -140,6 +143,14 @@ const revisionWrite = {
 };
 
 const bcCode = z.string().regex(/^BC-[1-9][0-9]*$/);
+
+/** A breakdown issue's blocker: a number is the index of another issue in the same payload; a
+ *  string names an existing live issue of the project by key (ISS-12) or uuid, so the order can
+ *  run after another requirement's work (ISS-89). */
+const breakdownBlocker = z.union([
+	z.number().int().min(0),
+	z.string().trim().min(1).max(200),
+]);
 
 /** Each kind's payload and the targets it may name; a payload that does not parse is refused. */
 export const SUGGESTION_PAYLOADS = {
@@ -186,7 +197,7 @@ export const SUGGESTION_PAYLOADS = {
 							)
 							.max(100)
 							.optional(),
-						blockedBy: z.array(z.number().int().min(0)).max(50).optional(),
+						blockedBy: z.array(breakdownBlocker).max(50).optional(),
 					}),
 				)
 				.min(1)
@@ -202,6 +213,7 @@ export const SUGGESTION_PAYLOADS = {
 		schema: z.strictObject({
 			priority: z.enum(["low", "medium", "high", "critical"]).optional(),
 			category: z.string().max(100).optional(),
+			complexity: z.enum(REGISTRY_ISSUE_COMPLEXITIES).optional(),
 			route: z.string().max(200).optional(),
 			note: z.string().trim().min(1).max(4_000),
 		}),
@@ -241,6 +253,16 @@ export type CreateSuggestionRequest = z.infer<
 	typeof createSuggestionRequestSchema
 >;
 export const CREATE_SUGGESTION_SHAPE = `{ kind: ${SUGGESTION_KINDS.join(" | ")}, requirement | issue | feedback, baseRevision, payload, model? }`;
+
+/** `POST /api/projects/:id/suggestions/:sid/accept` — the person's reason, kept on the row. */
+export const acceptSuggestionRequestSchema = z.strictObject({
+	reason: z.string().max(4_000).nullable().optional(),
+});
+export type AcceptSuggestionRequest = z.infer<
+	typeof acceptSuggestionRequestSchema
+>;
+export const ACCEPT_SUGGESTION_SHAPE =
+	"{ reason? } — why it is accepted, and on whose authority";
 
 /** `POST /api/projects/:id/suggestions/:sid/reject`. */
 export const rejectSuggestionRequestSchema = z.strictObject({
@@ -307,12 +329,13 @@ export interface SuggestionReadinessEffect {
 	failed: string[];
 }
 
-/** A triage accept on an issue: the priority and category it set. */
 export interface SuggestionIssueTriageEffect {
 	issueId: string;
 	issue: string;
 	priority: string | null;
 	category: string | null;
+	complexity: string | null;
+	routeCommentId: string | null;
 }
 
 /** A duplicate accept on an issue: dropped as a duplicate of its root, with a relates edge to it. */

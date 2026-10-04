@@ -5,9 +5,10 @@ import { ISSUE_STANDING_SCOPES } from '@forge/contracts/issue-standing';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
+import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { queryBadRequest } from '../lib/query-strict.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
@@ -37,7 +38,10 @@ issueStandingRoutes.get(
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
     if (!access.role) throw forbidden('not a project member');
-    return c.json(await listIssueStanding(projectId, scope, userId ? { userId } : null));
+    const listed = await listIssueStanding(projectId, scope, userId ? { userId } : null);
+    return c.json(
+      await egressForRequest(restActor(c).agency, projectId, 'issue', listed, 'the issue list'),
+    );
   },
 );
 
@@ -58,6 +62,6 @@ issueStandingRoutes.get(
     if (!parsed.ok) throw badRequest({ formErrors: [parsed.message], fieldErrors: {} });
     const row = await readIssueStanding(projectId, parsed.issSeq, userId ? { userId } : null);
     if (!row) throw notFound(`issue ${key} not found in this project`);
-    return c.json(row);
+    return c.json(await egressForRequest(restActor(c).agency, projectId, 'issue', row, key));
   },
 );

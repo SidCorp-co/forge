@@ -22,6 +22,7 @@ import { dbContractLookup } from '../../messaging/verdict-contract.js';
 import { dbDesignLookup } from '../../messaging/verdict-design.js';
 import { readProjectDocument } from '../../project-config/service.js';
 import type { ActorAgency } from '../actor-agency.js';
+import { writeKernelRecord } from '../record-events/store.js';
 import {
   normalizeStatement,
   type ParsedCriterion,
@@ -40,6 +41,7 @@ import {
   type VerdictRefusal,
   verdictDraftFault,
 } from './verdict-input.js';
+import { type VerdictColumns, verdictActor, verdictRecordFields } from './verdict-record.js';
 
 /**
  * A write refused by name. An `HTTPException`, so every REST door answers it with its code without
@@ -364,7 +366,7 @@ export interface VerdictAuthor {
   readonly agency: ActorAgency;
 }
 
-type Columns = Partial<typeof criterionVerdicts.$inferInsert>;
+type Columns = VerdictColumns;
 
 async function storefrontColumns(
   projectId: string,
@@ -508,5 +510,12 @@ export async function recordVerdict(
     })
     .returning({ id: criterionVerdicts.id });
   if (!row) throw new Error('criterion_verdicts insert returned no row');
+  await writeKernelRecord(tx, {
+    issueId: issue.id,
+    actor: verdictActor(author),
+    kind: 'verdict',
+    fields: verdictRecordFields({ id: row.id, draft, identity }),
+    commentId: args.commentId ?? null,
+  });
   return row;
 }

@@ -12,6 +12,7 @@ import {
   postUpdateRequestSchema,
 } from '@forge/contracts/onboarding';
 import { z } from 'zod';
+import { MCP_DOOR } from '../../lib/data-egress.js';
 import {
   markOnboardingDone,
   type OnboardingActor,
@@ -107,7 +108,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       return outcome.ok ? { questionnaire: outcome.questionnaire } : refusedBy(outcome.refusals);
     }
     case 'read_answers': {
-      const outcome = await readAnswers(projectId, actor);
+      const outcome = await readAnswers(projectId, { ...actor, ...MCP_DOOR });
       return outcome.ok
         ? { onboarding: outcome.onboarding, questionnaires: outcome.questionnaires }
         : refusedBy(outcome.refusals);

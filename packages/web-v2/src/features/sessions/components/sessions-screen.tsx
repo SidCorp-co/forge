@@ -532,7 +532,8 @@ function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: 
     display === "completed" ||
     display === "completed_via_recovery" ||
     display === "failed" ||
-    display === "cancelled_stale";
+    display === "cancelled_stale" ||
+    display === "cancelled";
 
   if (isLive || isQueued) {
     items.push({ label: "Cancel", icon: "x", danger: true, onSelect: () => a.cancel.mutate(row.id) });

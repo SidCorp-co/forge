@@ -16,8 +16,8 @@ import {
   ErrorState,
   Field,
   GroupedList,
-  Icon,
   Input,
+  ListSearch,
   LEGEND,
   type ListGroup,
   type ListRowView,
@@ -263,17 +263,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
             <ViewModeSwitcher modes={GROUP_MODES} value={grouping} onChange={setGrouping} placement="toolbar" />
-            <label className="flex h-[30px] min-w-[150px] max-w-[260px] flex-1 items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 text-12-5 text-subtle max-md:h-10 max-md:max-w-none max-md:basis-full">
-              <Icon name="search" size={14} />
-              <input
-                type="search"
-                aria-label="Search feedback"
-                placeholder="Search feedback…"
-                defaultValue={text}
-                onChange={(e) => setParams({ q: e.target.value || null })}
-                className="w-full min-w-0 border-0 bg-transparent text-fg outline-none"
-              />
-            </label>
+            <ListSearch noun="feedback" value={text} onChange={(q) => setParams({ q: q || null })} />
           </div>
           {all.length === 0 ? (
             <div className="px-5 py-10">

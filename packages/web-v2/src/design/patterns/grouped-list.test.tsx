@@ -32,6 +32,21 @@ describe("GroupedList", () => {
     expect(heads.map((h) => h.textContent)).toEqual(["Needs you1", "Done1"]);
   });
 
+  it("draws a row's key label in place of its key, and a list's own column words in the header", () => {
+    const labelled = (r: R): ListRowView => ({ ...view(r), keyLabel: <i data-testid="label">{`path/${r.key}`}</i> });
+    function Labelled() {
+      const fold = useGroupFold("test:labelled");
+      return (
+        <GroupedList ariaLabel="Things" groups={GROUPS} fold={fold} row={labelled} selected={null} onPeek={() => {}} columns={{ key: "Module", meta: "Last landing" }} />
+      );
+    }
+    render(<Labelled />);
+    expect(screen.getByTestId("label").textContent).toBe("path/ISS-1");
+    expect(screen.getByTestId("list-row").dataset.key).toBe("ISS-1");
+    const header = screen.getByTestId("grouped-list").firstElementChild as HTMLElement;
+    expect(header.textContent).toBe("ModuleTitleStateWaiting onLast landing");
+  });
+
   it("starts a collapsed group folded and keeps an unfold in session storage", () => {
     render(<List onPeek={() => {}} />);
     expect(screen.queryByText("Two")).toBeNull();

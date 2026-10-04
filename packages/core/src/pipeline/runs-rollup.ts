@@ -44,7 +44,13 @@ export type {
   ResidentMaster,
 } from './runs-lane.js';
 
-export type PipelineStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+export type PipelineStepStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'skipped';
 
 export interface PipelineRunStepSummary {
   jobType: string;
@@ -187,7 +193,7 @@ function toIsoRequired(value: Date | string): string {
 
 /**
  * Aggregate the agent_sessions for a single run into one step per `jobType`.
- * Status precedence: running > failed > completed > pending.
+ * Status precedence: running > failed > completed > cancelled > pending.
  */
 async function loadStepsForRun(runId: string): Promise<PipelineRunStepSummary[]> {
   const rows = await db
@@ -199,6 +205,7 @@ async function loadStepsForRun(runId: string): Promise<PipelineRunStepSummary[]>
       hasRunning: sql<number>`bool_or(${agentSessions.status} = 'running')::int`,
       hasFailed: sql<number>`bool_or(${agentSessions.status} = 'failed')::int`,
       hasCompleted: sql<number>`bool_or(${agentSessions.status} = 'completed')::int`,
+      hasCancelled: sql<number>`bool_or(${agentSessions.status} = 'cancelled')::int`,
       hasOpen: sql<number>`bool_or(${agentSessions.status} in ('queued','idle'))::int`,
     })
     .from(agentSessions)
@@ -210,11 +217,15 @@ async function loadStepsForRun(runId: string): Promise<PipelineRunStepSummary[]>
     if (Number(r.hasRunning) === 1) status = 'running';
     else if (Number(r.hasFailed) === 1) status = 'failed';
     else if (Number(r.hasCompleted) === 1) status = 'completed';
+    else if (Number(r.hasCancelled) === 1) status = 'cancelled';
     else if (Number(r.hasOpen) === 1) status = 'pending';
     else status = 'pending';
 
     const startedAt = toIso(r.startedAt);
-    const finishedAt = status === 'completed' || status === 'failed' ? toIso(r.finishedAt) : null;
+    const finishedAt =
+      status === 'completed' || status === 'failed' || status === 'cancelled'
+        ? toIso(r.finishedAt)
+        : null;
     const durationMs =
       startedAt && finishedAt
         ? new Date(finishedAt).getTime() - new Date(startedAt).getTime()

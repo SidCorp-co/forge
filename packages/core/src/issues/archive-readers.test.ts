@@ -84,6 +84,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/held-hydrator.ts': 'the ids passed in',
   'issues/list-projection.ts':
     'runs the where its callers build; the list and search routes compose the predicate into it',
+  'issues/landing-advance.ts':
+    'the one issue a recorded landing names, by id; an archived issue is refused by the transition it asks for',
   'issues/landing-evidence.ts': 'by issue id, a guard',
   'issues/merge-record.ts': 'by issue id',
   'issues/merge-routes.ts': 'by issue id',
@@ -169,6 +171,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'release-batch/release-read.ts': 'reads only the gate status, not yet in a release run',
   'release-batch/releasing-recovery.ts': 'rows of one release run',
   'release-batch/service.ts': 'the ids passed in, or rows of one release run',
+  'requirements/deferral.ts':
+    'reads only issues in work (not draft, closed or dropped), which an archived issue never is',
   'requirements/issue-links.ts':
     'by issue id: the requirement an issue names, and the issue a link or a plan write names',
   'requirements/read.ts':

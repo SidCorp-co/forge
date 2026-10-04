@@ -29,7 +29,7 @@ export const PIPELINE_JOB_TYPES = [
 export type PipelineJobType = (typeof PIPELINE_JOB_TYPES)[number];
 
 /** Per-step status precedence computed by the read-side rollup. */
-export type PipelineStepStatus = "pending" | "running" | "completed" | "failed" | "skipped";
+export type PipelineStepStatus = "pending" | "running" | "completed" | "failed" | "cancelled" | "skipped";
 
 export interface PipelineRunCostSummary {
   estimatedCost: number;

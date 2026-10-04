@@ -61,6 +61,16 @@ vi.mock('./landing-evidence.js', async (original) => ({
   readLandingShape: async () => 'git',
 }));
 
+vi.mock('./landing-advance.js', () => ({
+  advanceLandedIssue: async () => ({
+    outcome: 'judge_owed',
+    status: 'in_progress',
+    step: 'test',
+    leaseEnded: null,
+    detail: 'Landing recorded; it waits at step `test` for a judge.',
+  }),
+}));
+
 const { applyMergeMarker } = await import('./merge-marker.js');
 const { serialize, serializeListRow, serializeManifest } = await import(
   '../mcp/tools/forge-issues.js'

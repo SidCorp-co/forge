@@ -20,6 +20,7 @@ import {
   type StepStatus,
 } from "../bus";
 import { useBuilderRun, useLink } from "../hooks";
+import { contractHref, contractsHref } from "@/features/contracts/routes";
 import { ecosystemRoutes } from "../routes";
 import { ProjectMark, type Selection } from "./bus-diagram";
 import { Loading, UnreadNotice } from "./notices";
@@ -141,7 +142,7 @@ function ProjectDetail({
         </Tooltip>
         {mine.has(p.id) ? (
           <span className="ml-auto flex gap-3">
-            <PageLink href={ecosystemRoutes.contracts(p.slug)}>Contracts</PageLink>
+            <PageLink href={contractsHref(p.slug)}>Contracts</PageLink>
             <PageLink href={ecosystemRoutes.apiPage(p.slug)}>Project API</PageLink>
           </span>
         ) : null}
@@ -311,11 +312,11 @@ function Guide({ record }: { record: NonNullable<ReturnType<typeof useLink>["dat
   );
 }
 
-function contractPage(row: BusRow, mine: ReadonlyMap<string, string>): string | null {
-  const own = mine.get(row.ref.provider);
-  if (own) return ecosystemRoutes.contract(own, row.ref.slug);
-  const reader = row.links.map((l) => mine.get(l.consumer)).find(Boolean);
-  return reader ? ecosystemRoutes.contract(reader, row.ref.slug, row.ref.provider) : null;
+function contractPage(row: BusRow, mine: ReadonlyMap<string, string>, names: ReadonlyMap<string, string>): string | null {
+  const provider = names.get(row.ref.provider);
+  if (!provider) return null;
+  const reader = mine.get(row.ref.provider) ?? row.links.map((l) => mine.get(l.consumer)).find(Boolean);
+  return reader ? contractHref(reader, `${provider}/${row.ref.slug}`) : null;
 }
 
 function ContractDetail({
@@ -352,9 +353,9 @@ function ContractDetail({
         ) : (
           <Badge tone="amber">not published here</Badge>
         )}
-        {contractPage(row, mine) ? (
+        {contractPage(row, mine, names) ? (
           <span className="ml-auto">
-            <PageLink href={contractPage(row, mine) as string}>Versions and measurements</PageLink>
+            <PageLink href={contractPage(row, mine, names) as string}>Versions and adoption</PageLink>
           </span>
         ) : null}
       </Head>

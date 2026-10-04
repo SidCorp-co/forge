@@ -206,14 +206,14 @@ describe('ILLEGAL_TRANSITION: only the lifecycle edges are moves', () => {
     expect(String(res.body.message)).toContain('never entered again');
   });
 
-  it('maps a retired name it is sent, and says so in a warning', async () => {
+  it('refuses a retired name by name from a ten-status client, naming the ten (REQ-2 BC-1)', async () => {
     const w = await world();
     const id = await insertIssue(w, 'open');
     await holdLease(id);
     const res = await move(id, w.human, { toStatus: 'confirmed' });
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe('in_progress');
-    expect(String((res.body.warnings as string[])[0])).toContain('STATUS_RETIRED');
+    expectRefused(res, 400, 'STATUS_RETIRED');
+    expect(String(res.body.message)).toContain('`in_progress`');
+    expect((await statusOf(id)).status).toBe('open');
   });
 });
 

@@ -1,7 +1,11 @@
+import type {
+  ModuleAttributionCounts,
+  ModuleCounts,
+  ModuleRollupRow,
+} from '@forge/contracts/modules';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues, labels } from '../db/schema.js';
-import { TERMINAL_FOR_DISPATCH } from '../issues/apply-transition.js';
 
 /**
  * ISS-949 — the backlog read by module instead of by issue.
@@ -14,43 +18,15 @@ import { TERMINAL_FOR_DISPATCH } from '../issues/apply-transition.js';
 
 export const DEFAULT_ACTIVE_WITHIN_DAYS = 30;
 
-export interface ModuleCounts {
-  total: number;
-  open: number;
-  closed: number;
-  recentlyActive: number;
-}
+export type ModuleCountsRow = Omit<
+  ModuleRollupRow,
+  'path' | 'description' | 'knowledgeEntryId' | 'standing'
+>;
 
-/**
- * ISS-949 — primary and secondary attributions are counted apart and never summed. An issue
- * contributes to its primary module's `primary` and to each secondary module's `secondary`, so a
- * consumer reading one block knows which attribution it is looking at.
- */
-export interface ModuleAttributionCounts {
-  primary: ModuleCounts;
-  secondary: ModuleCounts;
-}
-
-export interface ModuleRollupRow {
-  id: string;
-  name: string;
-  slug: string | null;
-  color: string;
-  parentId: string | null;
-  depth: number;
-  /** Issues attributed to this module itself. */
-  own: ModuleAttributionCounts;
-  /** Issues attributed to a descendant and not already in `own` for the same attribution kind. */
-  inherited: ModuleAttributionCounts;
-  /** `own + inherited`, which holds exactly because `inherited` excludes what `own` already has. */
-  rollup: ModuleAttributionCounts;
-}
-
-export interface ModuleRollupResponse {
+export interface ModuleCountsResponse {
   activeWithinDays: number;
   generatedAt: string;
-  modules: ModuleRollupRow[];
-  /** Issues carrying no module attribution at all — their own bucket, never assigned anywhere. */
+  modules: ModuleCountsRow[];
   unassigned: ModuleCounts;
 }
 
@@ -58,11 +34,21 @@ type AttributionRow = {
   issueId: string;
   labelId: string | null;
   isPrimary: boolean | null;
-  closed: boolean;
+  state: CountedState;
   recentlyActive: boolean;
 };
 
-const emptyCounts = (): ModuleCounts => ({ total: 0, open: 0, closed: 0, recentlyActive: 0 });
+// cm:why closed is shipped and dropped is not work (workflow `issue-lifecycle`); every other status,
+// `awaiting_release` and `draft` among them, is open, as `issues/standing-read.ts:scopeCounts` counts.
+type CountedState = 'open' | 'closed' | 'dropped';
+
+const emptyCounts = (): ModuleCounts => ({
+  total: 0,
+  open: 0,
+  closed: 0,
+  dropped: 0,
+  recentlyActive: 0,
+});
 
 async function readAttributions(
   projectId: string,
@@ -78,7 +64,7 @@ async function readAttributions(
       issueId: issues.id,
       labelId: issueLabels.labelId,
       isPrimary: issueLabels.isPrimary,
-      closed: sql<boolean>`${issues.status} in ${[...TERMINAL_FOR_DISPATCH]}`,
+      state: sql<CountedState>`CASE ${issues.status} WHEN 'closed' THEN 'closed' WHEN 'dropped' THEN 'dropped' ELSE 'open' END`,
       recentlyActive: sql<boolean>`${issues.updatedAt} >= now() - make_interval(days => ${activeWithinDays})`,
     })
     .from(issues)
@@ -91,8 +77,7 @@ async function readAttributions(
 
 function add(counts: ModuleCounts, row: AttributionRow): void {
   counts.total += 1;
-  if (row.closed) counts.closed += 1;
-  else counts.open += 1;
+  counts[row.state] += 1;
   if (row.recentlyActive) counts.recentlyActive += 1;
 }
 
@@ -179,6 +164,7 @@ function sumCounts(a: ModuleCounts, b: ModuleCounts): ModuleCounts {
     total: a.total + b.total,
     open: a.open + b.open,
     closed: a.closed + b.closed,
+    dropped: a.dropped + b.dropped,
     recentlyActive: a.recentlyActive + b.recentlyActive,
   };
 }
@@ -186,7 +172,7 @@ function sumCounts(a: ModuleCounts, b: ModuleCounts): ModuleCounts {
 export async function moduleRollup(
   projectId: string,
   activeWithinDays = DEFAULT_ACTIVE_WITHIN_DAYS,
-): Promise<ModuleRollupResponse> {
+): Promise<ModuleCountsResponse> {
   const moduleRows = await db
     .select({
       id: labels.id,
@@ -215,7 +201,7 @@ export async function moduleRollup(
   }
 
   const byId = new Map(moduleRows.map((m) => [m.id, m]));
-  const modules = orderModules(moduleRows).map(({ id, depth }): ModuleRollupRow => {
+  const modules = orderModules(moduleRows).map(({ id, depth }): ModuleCountsRow => {
     const module = byId.get(id) as (typeof moduleRows)[number];
     const ownRows = byModule.get(id) ?? [];
     const own = attributionsFor([id], byModule, { primary: new Set(), secondary: new Set() });

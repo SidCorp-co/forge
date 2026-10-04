@@ -17,6 +17,7 @@ import {
   projectMembers,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
@@ -56,6 +57,7 @@ import {
   issueForReader,
   legacyFilterWarnings,
   readerOnSeventeen,
+  refuseRetiredFromTenStatusClient,
   STATUS_COMPAT_HEADER,
   statusFilterSql,
 } from './legacy-status.js';
@@ -244,8 +246,9 @@ issueProjectRoutes.get(
       issueRefNeedsHeldPrefixes(displayId) ? await heldIssuePrefixes(projectId) : [],
     );
     if (!parsed.ok) throw badRequest({ formErrors: [parsed.message], fieldErrors: {} });
-    const issue = await findIssueByDisplaySeq(projectId, parsed.issSeq);
-    if (!issue) throw notFound('issue not found');
+    const found = await findIssueByDisplaySeq(projectId, parsed.issSeq);
+    if (!found) throw notFound('issue not found');
+    const issue = await egressForRequest(restActor(c).agency, projectId, 'issue', found, displayId);
 
     const labelRows = await listIssueLabels(issue.id);
 
@@ -293,6 +296,7 @@ issueProjectRoutes.get(
     const conditions = [eq(issues.projectId, projectId)];
     const client17 = readerOnSeventeen(c);
     if (q.status) {
+      refuseRetiredFromTenStatusClient([q.status], client17);
       conditions.push(statusFilterSql(q.status, client17));
       const retired = legacyFilterWarnings([q.status]);
       if (retired.length > 0) c.header(STATUS_COMPAT_HEADER, retired.join(' '));
@@ -313,12 +317,18 @@ issueProjectRoutes.get(
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
 
-    const rows = await issueListPageQuery({
-      where,
-      orderBy: buildIssueOrderBy(q.sort),
-      limit: q.limit,
-      offset: q.offset,
-    });
+    const rows = await egressForRequest(
+      restActor(c).agency,
+      projectId,
+      'issue',
+      await issueListPageQuery({
+        where,
+        orderBy: buildIssueOrderBy(q.sort),
+        limit: q.limit,
+        offset: q.offset,
+      }),
+      'the issue list',
+    );
 
     const total = Number(n);
 
@@ -395,7 +405,14 @@ issueRoutes.get(
     const { projectId: projectIdQuery } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
+    const resolved = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
+    const issue = await egressForRequest(
+      restActor(c).agency,
+      resolved.projectId,
+      'issue',
+      resolved,
+      rawId,
+    );
     const id = issue.id;
 
     const labelRows = await listIssueLabels(id);

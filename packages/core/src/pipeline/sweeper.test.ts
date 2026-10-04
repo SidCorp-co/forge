@@ -428,7 +428,7 @@ describe('reapOrphanedOneShotRuns (ISS-445 — still an ACTIVE reaper)', () => {
   it('force-fails a lingering stale session then closes the run as failed', async () => {
     dbExecute.mockResolvedValueOnce([{ id: 'run-stale' }]);
     sessionsWhere.mockResolvedValueOnce([{ id: 'sess-1', projectId: 'p1', deviceId: 'd1' }]);
-    selectWhere.mockResolvedValueOnce([{ status: 'failed' }]);
+    selectWhere.mockResolvedValue([{ status: 'failed' }]);
 
     const result = await reapOrphanedOneShotRuns(new Date('2026-06-12T00:00:00Z'));
 
@@ -444,15 +444,13 @@ describe('reapOrphanedOneShotRuns (ISS-445 — still an ACTIVE reaper)', () => {
     expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-stale', 'failed');
   });
 
-  it('closes a run as completed when the session already finished (missed /desktop/status)', async () => {
+  it.each(['completed', 'cancelled'])('closes a run as %s once its sessions ended', async (to) => {
     dbExecute.mockResolvedValueOnce([{ id: 'run-done' }]);
     sessionsWhere.mockResolvedValueOnce([]);
-    selectWhere.mockResolvedValueOnce([{ status: 'completed' }]);
-
+    selectWhere.mockResolvedValueOnce([{ status: to }]);
     const result = await reapOrphanedOneShotRuns(new Date('2026-06-12T00:00:00Z'));
-
     expect(result.reaped).toBe(1);
-    expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-done', 'completed');
+    expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-done', to);
   });
 
   it('does not let one failing run abort the pass', async () => {

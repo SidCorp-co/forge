@@ -5,6 +5,11 @@
  * nothing written.
  */
 
+import {
+  type BaselineReadiness,
+  DEFERRABLE_STATUSES,
+  type RequirementReadinessGate,
+} from '@forge/contracts/requirements';
 import type { ProjectMemberRole } from '../db/schema.js';
 import type { CriterionForm, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
@@ -20,8 +25,15 @@ export type RequirementRefusalCode =
   | 'REQUIREMENT_DESIGN_UNAPPROVED'
   | 'REQUIREMENT_NOT_AGREED'
   | 'REQUIREMENT_ALREADY_AGREED'
+  | 'REQUIREMENT_NOT_READY'
   | 'REQUIREMENT_ISSUE_LINKED_ELSEWHERE'
   | 'REQUIREMENT_NO_PLAN_TO_ADOPT'
+  | 'REQUIREMENT_DEFERRED'
+  | 'REQUIREMENT_DEFER_REASON_REQUIRED'
+  | 'REQUIREMENT_NOT_DEFERRABLE'
+  | 'REQUIREMENT_NOT_DEFERRED'
+  | 'REQUIREMENT_HAS_LIVE_ISSUES'
+  | 'REQUIREMENT_PINS_CURRENT'
   | 'REVISION_REASON_REQUIRED'
   | 'CRITERION_CODE_UNKNOWN'
   | 'CRITERION_CODE_DUPLICATE'
@@ -158,9 +170,45 @@ export function agreeRefusals(input: {
   return out;
 }
 
+export interface ReadinessAtHead {
+  suggestionId: string;
+  failed: string[];
+}
+
+export function baselineReadiness(
+  gate: RequirementReadinessGate,
+  read: ReadinessAtHead | null,
+): BaselineReadiness | null {
+  if (gate === 'off') return null;
+  return {
+    gate,
+    suggestionId: read?.suggestionId ?? null,
+    ready: read !== null && read.failed.length === 0,
+    failed: read?.failed ?? [],
+  };
+}
+
+// cm:guard at `requirements.readinessGate: block` an agree needs an accepted readiness result at the
+// head with every check passing; one missing or failing is refused by name (REQUIREMENT_NOT_READY)
+export function readinessRefusal(
+  recorded: BaselineReadiness | null,
+  head: number | null,
+): RequirementRefusal | null {
+  if (recorded?.gate !== 'block' || recorded.ready) return null;
+  return {
+    code: 'REQUIREMENT_NOT_READY',
+    path: '/revision',
+    detail:
+      recorded.suggestionId === null
+        ? `this project's requirements.readinessGate is block, and revision ${head ?? '(none)'} has no accepted readiness result; accept a readiness suggestion on it first.`
+        : `this project's requirements.readinessGate is block, and the readiness result at revision ${head ?? '(none)'} (suggestion ${recorded.suggestionId}) failed: ${recorded.failed.join(', ')}.`,
+  };
+}
+
 /** Linking an issue reads an agreed requirement: a draft or dropped one has nothing to deliver. */
 export function linkIssueRefusal(status: RequirementStatus): RequirementRefusal | null {
   if (status === 'agreed' || status === 'accepted') return null;
+  if (status === 'deferred') return deferredRefusal(status, 'linking an issue', '/issue');
   return {
     code: 'REQUIREMENT_NOT_AGREED',
     path: '/issue',
@@ -264,13 +312,150 @@ export function planCriteria(
   return { ok: true, plan };
 }
 
-// cm:why the flag is read, never stored: an issue's plan names the revision it was written against,
-// and the requirement has changed since when its head is another (REQUIREMENT_CHANGED_SINCE_PLAN)
+// cm:why the flag is read, never stored: an issue's plan names the revision and the baseline it was
+// written against, and the requirement has changed since when its head is another revision, or
+// when that revision was re-pinned onto newly approved designs after the plan (ISS-86)
 export function changedSincePlan(input: {
   plan: string | null;
   plannedRevision: number | null;
   currentRevision: number | null;
+  plannedBaselineSeq?: number | null | undefined;
+  latestBaselineSeq?: number | null | undefined;
 }): boolean {
   if (!input.plan?.trim()) return false;
-  return input.plannedRevision !== input.currentRevision;
+  if (input.plannedRevision !== input.currentRevision) return true;
+  return (input.latestBaselineSeq ?? 1) > (input.plannedBaselineSeq ?? 1);
+}
+
+export interface BaselinePin {
+  workflowId: string;
+  designRevision: number;
+}
+
+export interface PinPosition {
+  flow: string;
+  pinned: number | null;
+  approved: number | null;
+}
+
+// cm:why the one detector of a pin that has fallen behind (D14, ISS-86): the standing reads it to
+// say "re-pin" and the re-pin act reads it to refuse when nothing moved, so the two cannot disagree
+export function stalePinsOf(
+  positions: readonly PinPosition[],
+): { flow: string; pinned: number; approved: number }[] {
+  return positions.flatMap((p) =>
+    p.approved !== null && p.pinned !== null && p.approved > p.pinned
+      ? [{ flow: p.flow, pinned: p.pinned, approved: p.approved }]
+      : [],
+  );
+}
+
+// cm:guard a re-pin writes a baseline of the head with no text revision (ISS-86): an agreed
+// requirement (an accepted one is delivered, and a draft has nothing to move), the head named and
+// current, every linked design approved (the agree's own guards), and at least one design approved
+// past what the latest baseline pins, else REQUIREMENT_PINS_CURRENT
+export function repinRefusals(input: {
+  status: RequirementStatus;
+  named: number;
+  head: number | null;
+  headState: RevisionState | null;
+  designs: readonly LinkedDesign[];
+  pins: readonly BaselinePin[] | null;
+}): RequirementRefusal[] {
+  const deferred = deferredRefusal(input.status, 're-pinning it', '/revision');
+  if (deferred) return [deferred];
+  if (input.status !== 'agreed') {
+    return [
+      {
+        code: 'REQUIREMENT_NOT_AGREED',
+        path: '/revision',
+        detail: `the requirement is ${input.status}; a re-pin moves the baseline of an agreed requirement, so a draft is agreed first and an accepted one is delivered.`,
+      },
+    ];
+  }
+  const guards = agreeRefusals({ ...input, rebaseline: true });
+  if (guards.length) return guards;
+  if (input.pins === null) {
+    return [
+      {
+        code: 'REQUIREMENT_NOT_AGREED',
+        path: '/revision',
+        detail: `revision ${input.named} has no baseline to re-pin; accepting it re-baselines.`,
+      },
+    ];
+  }
+  const pins = input.pins;
+  const positions = input.designs.flatMap((d) => {
+    const pin = pins.find((p) => p.workflowId === d.workflowId);
+    return pin ? [{ flow: d.flow, pinned: pin.designRevision, approved: d.approvedRevision }] : [];
+  });
+  if (stalePinsOf(positions).length === 0) {
+    return [
+      {
+        code: 'REQUIREMENT_PINS_CURRENT',
+        path: '/revision',
+        detail: `the latest baseline of revision ${input.named} already pins every linked design at its approved revision; there is nothing to re-pin.`,
+      },
+    ];
+  }
+  return [];
+}
+
+// cm:guard a deferred requirement is out of the current release: nothing is signed off, agreed,
+// re-pinned or linked to it until a person undefers it (REQUIREMENT_DEFERRED, ISS-85)
+export function deferredRefusal(
+  status: RequirementStatus,
+  act: string,
+  path = '',
+): RequirementRefusal | null {
+  if (status !== 'deferred') return null;
+  return {
+    code: 'REQUIREMENT_DEFERRED',
+    path,
+    detail: `the requirement is deferred out of the current release, so ${act} waits; a person undefers it first.`,
+  };
+}
+
+// cm:guard a defer is a person's act with a reason, from draft or agreed only, and never while a
+// linked issue is in work: those are dropped, unlinked or left at draft first, each one named
+export function deferRefusals(input: {
+  status: RequirementStatus;
+  reason: string | null | undefined;
+  workingIssues: readonly string[];
+}): RequirementRefusal[] {
+  const out: RequirementRefusal[] = [];
+  const deferred = deferredRefusal(input.status, 'deferring it again');
+  if (deferred) return [deferred];
+  if (!(DEFERRABLE_STATUSES as readonly string[]).includes(input.status)) {
+    out.push({
+      code: 'REQUIREMENT_NOT_DEFERRABLE',
+      path: '',
+      detail: `the requirement is ${input.status}; only a draft or agreed requirement is deferred out of the current release.`,
+    });
+  }
+  if (!input.reason?.trim()) {
+    out.push({
+      code: 'REQUIREMENT_DEFER_REASON_REQUIRED',
+      path: '/reason',
+      detail:
+        'a deferred requirement says why it left the current release, so nobody re-proposes it.',
+    });
+  }
+  if (input.workingIssues.length) {
+    out.push({
+      code: 'REQUIREMENT_HAS_LIVE_ISSUES',
+      path: '',
+      detail: `linked issues are past draft and not closed: ${input.workingIssues.join(', ')}; drop or unlink them, or leave them at draft, before the requirement leaves the release.`,
+    });
+  }
+  return out;
+}
+
+export function undeferRefusal(status: RequirementStatus): RequirementRefusal | null {
+  if (status === 'deferred') return null;
+  return {
+    code: 'REQUIREMENT_NOT_DEFERRED',
+    path: '',
+    detail: `the requirement is ${status}, not deferred; only a deferred requirement is undeferred.`,
+  };
 }

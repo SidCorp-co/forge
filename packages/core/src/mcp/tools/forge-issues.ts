@@ -33,11 +33,13 @@ import { mergeMarkFields } from '../../issues/merge-record.js';
 import { parkQuestionNotMinted } from '../../issues/park-question.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from '../../issues/patch-fields.js';
 import { findIssueById, findIssueProjectId, type IssueRow } from '../../issues/read-service.js';
+import { recoveryField, transitionNamingRecovery } from '../../issues/recovery-move.js';
 import { applyIssueRelations, issueRelationInputSchema } from '../../issues/relations-service.js';
 import { ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { sessionContextExpectSchema, sessionContextSchema } from '../../issues/session-context.js';
 import { emitIssueFieldUpdate } from '../../issues/update-hook.js';
 import { updateIssueFields } from '../../issues/update-service.js';
+import { egressShown } from '../../lib/data-egress.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
 import { requirementOfIssue } from '../../requirements/issue-links.js';
@@ -156,6 +158,7 @@ const dataObject = z
       .describe(
         'What a person must supply for a `needs_info` park to start again — NOT `reason`, which is why the work stopped. Sending it mints the free-text question that person answers; omitting it mints one saying the run did not say what would settle this. Minted only for an agent-held credential.',
       ),
+    recovery: recoveryField,
     voidQuestions: z
       .string()
       .max(2_000)
@@ -473,6 +476,9 @@ async function loadTaskForAccess(taskId: string): Promise<TaskRow> {
   return row;
 }
 
+const issueEgress = <T>(projectId: string, value: T, what: string) =>
+  egressShown(projectId, 'issue', value, what);
+
 async function resolveProjectId(input: Input, ctx: McpContext): Promise<string> {
   return resolveEffectiveProjectId(ctx, input.projectId);
 }
@@ -576,18 +582,20 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         );
 
         const listPrefix = await activeIssuePrefix(projectId);
+        const shownRows = await issueEgress(projectId, rows, 'the issue list');
         return buildListEnvelope({
           key: 'issues',
           limit: issuesLimit,
           hint: 'add status/priority/category/label filters',
-          items: rows.map((r) => serializeListRow(r, listPrefix)),
+          items: shownRows.map((r) => serializeListRow(r, listPrefix)),
         });
       }
 
       case 'get': {
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for get');
-        const issue = await loadIssue(await refs.issue('documentId', input.documentId));
-        await assertPrincipalIsMember(principal, issue.projectId);
+        const loaded = await loadIssue(await refs.issue('documentId', input.documentId));
+        await assertPrincipalIsMember(principal, loaded.projectId);
+        const issue = await issueEgress(loaded.projectId, loaded, loaded.id);
         if (input.fields && input.fields.length > 0) {
           const full = serialize(issue, await activeIssuePrefix(issue.projectId));
           // ISS-1126 — `fields` narrows the heavy BODIES; the mark rides with the identity, so a
@@ -612,7 +620,14 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             proposesWorkflowOf(issue.id),
             requirementOfIssue(issue.id),
           ]);
-        return { ...full, relations, attributes, ...gates, proposesWorkflow, requirement };
+        return {
+          ...full,
+          ...(await issueEgress(
+            issue.projectId,
+            { relations, attributes, ...gates, proposesWorkflow, requirement },
+            issue.id,
+          )),
+        };
       }
 
       case 'setAttributes': {
@@ -772,7 +787,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           });
         }
 
-        const fresh = await loadIssue(issue.id);
+        const fresh = await issueEgress(issue.projectId, await loadIssue(issue.id), issue.id);
         const updateResult: Record<string, unknown> = {
           ...(await serializeWithAttachments(fresh)),
           action: 'updated',
@@ -790,13 +805,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
         const issue = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, issue.projectId);
-        await transitionIssueStatus(issue, target, principalActor(principal), {
-          transitionReason: input.data?.reason ?? input.data?.note,
-          waitingKind: input.data?.waitingKind,
-          needs: input.data?.needs,
-          voidQuestions: input.data?.voidQuestions,
-        });
-        const fresh = await loadIssue(issue.id);
+        await transitionNamingRecovery(issue, target, principalActor(principal), input.data);
+        const fresh = await issueEgress(issue.projectId, await loadIssue(issue.id), issue.id);
         const transitionOutput: Record<string, unknown> = await serializeWithAttachments(fresh);
         const unheard = parkQuestionNotMinted({
           issue,
@@ -819,9 +829,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         try {
           const {
             issue: fresh,
-            action,
-            mark,
             markDetail: detail,
+            ...said
           } = await applyMergeMarker({
             issue,
             op: marking ? 'mark' : 'unmark',
@@ -839,7 +848,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
               hookActor: principalHookActor(principal),
             },
           });
-          return { ...(await serializeWithAttachments(fresh)), action, mark, detail };
+          const shown = await issueEgress(issue.projectId, fresh, issue.id);
+          return { ...(await serializeWithAttachments(shown)), ...said, detail };
         } catch (err) {
           if (err instanceof MergeMarkerError) {
             // Owed on a git-shape project only (`landing-evidence.ts`), in this door's own words.

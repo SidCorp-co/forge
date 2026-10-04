@@ -15,6 +15,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses } from '../db/schema.js';
+import type { WorkStep } from '../db/schema-issue-work-state.js';
 import { ADMITTED_RUNNER } from '../devices/pool-admission.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -33,6 +34,7 @@ import {
 import { isTerminalPlacement } from './status-assertions.js';
 import {
   heldReleaseWait,
+  landedWait,
   SHORTEST_GRACE_MS,
   STRAND_RULES,
   type StrandEvidence,
@@ -94,6 +96,7 @@ interface CandidateRow {
   /** Text, not a `Date`: `db.execute` hands raw SQL results back unparsed. */
   updated_at: string;
   merged_at: string | null;
+  step: WorkStep | null;
   lease: unknown;
   strand: unknown;
   release_hold: unknown;
@@ -215,10 +218,13 @@ function judge(
     poolHasRunner: pooled.has(row.project_id),
     lease,
     releaseHold: readReleaseHold(row.release_hold),
+    step: row.step,
   };
   const { reason, owes } = strandReason({ status: row.status, rule, evidence });
   const waitingFor =
-    heldReleaseWait(row.status, evidence.releaseHold)?.waitingFor ?? rule.waitingFor;
+    heldReleaseWait(row.status, evidence.releaseHold)?.waitingFor ??
+    landedWait(row.status, evidence)?.waitingFor ??
+    rule.waitingFor;
   return {
     lease,
     unclassified: false,
@@ -279,6 +285,7 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
     SELECT i.id, i.project_id, i.iss_seq, i.status, i.title, i.updated_at, i.merged_at,
            p.issue_prefix, p.name AS project_name,
            (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id)  AS lease,
+           (SELECT w.step FROM issue_work_state w WHERE w.issue_id = i.id)   AS step,
            i.session_context -> 'strand' AS strand,
            i.session_context -> 'releaseHold' AS release_hold,
            i.updated_at::text AS cursor_ts,

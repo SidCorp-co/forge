@@ -136,6 +136,18 @@ describe('release record required E2E', () => {
   it('leaves a human close alone — the claim is theirs to make', async () => {
     const { transitionIssueStatus } = await import('../../src/issues/apply-transition.js');
     const id = await insertIssue('in_progress', null, true);
+    await harness.db.execute(sql`
+      WITH c AS (
+        INSERT INTO issue_criteria (issue_id, n, statement, position)
+        VALUES (${id}, 1, 'the change ships', 0)
+        RETURNING id
+      )
+      INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, identity_kind, commit_sha,
+                                      author_user_id, author_agency)
+      SELECT c.id, ${id}, 'pass', 'commit', '33637c612ef15be6f924520c0d201a0889d8ed7e',
+             ${ownerId}, 'human'
+        FROM c
+    `);
 
     await transitionIssueStatus(await load(id), 'closed', human());
 

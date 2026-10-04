@@ -20,6 +20,7 @@ export const STATE_READINGS = {
 		running: ["Running", "run", "●"],
 		completed: ["Completed", "ready", "✓"],
 		failed: ["Failed", "err", "×"],
+		cancelled: ["Cancelled", "done", "–"],
 		skipped: ["Skipped", "done", "–"],
 	},
 	/** An agent session (core `db/session-vocabulary.ts:agentSessionStatuses`). */
@@ -219,8 +220,12 @@ export const STATE_READINGS = {
 	},
 	/** A release approval's decision (contracts `releases.ts:ReleaseApprovalView`). */
 	release: {
+		pending: ["Awaiting approval", "you", "●"],
 		approved: ["Approved", "ready", "✓"],
 		returned: ["Returned", "err", "↺"],
+	},
+	contractWait: {
+		unsettled: ["Waiting for a version", "blocked", "○"],
 	},
 } as const satisfies Record<string, Record<string, Reading>>;
 

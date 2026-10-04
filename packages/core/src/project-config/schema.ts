@@ -3,6 +3,7 @@ import {
   keepTermsInEnglishSchema,
 } from '@forge/contracts/content-language';
 import { SENSITIVE_DATA_LEVELS } from '@forge/contracts/data-policy';
+import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
 import {
   projectWorkflowTemplateSchema,
   TEMPLATE_LIMITS,
@@ -200,6 +201,14 @@ export const projectDocumentSchema = z.strictObject({
   // owner ruling 2026-10-03): `redact` scrubs on write and lets only redacted text out, `no_egress`
   // scrubs on write and lets nothing out. One guard reads it (`lib/data-egress.ts`). Absent is `off`.
   sensitiveData: z.enum(SENSITIVE_DATA_LEVELS).optional(),
+  // cm:why what a requirement's agree reads of its readiness result (decision on ISS-58,
+  // 2026-10-04): `warn` records it on the baseline, `block` refuses an agree that is not ready
+  // (`requirements/rules.ts:readinessRefusal`, REQUIREMENT_NOT_READY). Absent is `off`.
+  requirements: z
+    .strictObject({
+      readinessGate: z.enum(REQUIREMENT_READINESS_GATES).optional(),
+    })
+    .optional(),
   // cm:why the language agents write this project's prose in (owner, 2026-10-04): a BCP-47 tag,
   // absent is `en`. Policy over the kernel: no write is refused for its language, only a tag that
   // is not one (`rules.ts:checkContentLanguage`, CONTENT_LANGUAGE_INVALID). Code, identifiers,

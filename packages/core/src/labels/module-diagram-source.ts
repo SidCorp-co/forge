@@ -83,7 +83,7 @@ async function loadCoOccurrences(projectId: string): Promise<CoOccurrence[]> {
  * modules and is dropped; a triple resolving one end only would draw an arrow to a node that is
  * not on the diagram.
  */
-async function loadDeclaredEdges(
+export async function loadDeclaredEdges(
   projectId: string,
   modules: ModuleSnapshot[],
 ): Promise<DeclaredModuleEdge[]> {

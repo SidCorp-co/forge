@@ -54,3 +54,25 @@ describe("ActivityFeed — issue.updated", () => {
     expect(screen.getByText("Updated (no change recorded)")).toBeInTheDocument();
   });
 });
+
+describe("ActivityFeed — a status move", () => {
+  it("draws a move once, from its status line, never again from its transition record", () => {
+    const at = new Date().toISOString();
+    const base = { issueId: "i1", actorType: "user", actorId: "u1", createdAt: at } as const;
+    render(
+      <ActivityFeed
+        items={[
+          { ...base, id: "a1", action: "issue.statusChanged", payload: { from: "in_progress", to: "closed" } },
+          {
+            ...base,
+            id: "a2",
+            action: "record.transition",
+            payload: { writer: "core", fields: [{ key: "from", value: "in_progress" }] },
+          },
+        ]}
+      />,
+    );
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.queryByText(/record\.transition/i)).not.toBeInTheDocument();
+  });
+});

@@ -45,7 +45,8 @@ export async function loadArtifactContext(issueId: string): Promise<LoadedArtifa
 /** The requirement `issueId` delivers, at its head, with the criteria of that revision and its latest baseline. */
 export async function requirementRowOf(issueId: string): Promise<RequirementContextRow | null> {
   const [r] = (await db.execute(sql`
-    SELECT r.id, r.req_seq, r.title, r.status, r.current_revision, i.planned_revision, i.plan,
+    SELECT r.id, r.req_seq, r.title, r.status, r.current_revision, i.planned_revision,
+           i.planned_baseline_seq, i.plan,
            rv.state AS head_state, rv.tldr, rv.spec->>'goal' AS goal
     FROM issues i
     JOIN requirements r ON r.id = i.requirement_id
@@ -66,14 +67,16 @@ export async function requirementRowOf(issueId: string): Promise<RequirementCont
           ORDER BY substring(code from 4)::int
         `) as unknown as Promise<Array<Record<string, unknown>>>),
     db.execute(sql`
-      SELECT b.revision, b.agreed_at, p.workflow_id, w.flow, p.design_revision,
+      SELECT b.revision, b.seq, b.agreed_at, p.workflow_id, w.flow, p.design_revision,
              p.provider_project_id, p.contract_slug, p.contract_version
       FROM requirement_baselines b
       LEFT JOIN requirement_baseline_pins p
-        ON p.requirement_id = b.requirement_id AND p.revision = b.revision
+        ON p.requirement_id = b.requirement_id AND p.revision = b.revision AND p.baseline_seq = b.seq
       LEFT JOIN project_workflows w ON w.id = p.workflow_id
       WHERE b.requirement_id = ${id}
-        AND b.revision = (SELECT max(revision) FROM requirement_baselines WHERE requirement_id = ${id})
+        AND (b.revision, b.seq) = (
+          SELECT revision, seq FROM requirement_baselines WHERE requirement_id = ${id}
+           ORDER BY revision DESC, seq DESC LIMIT 1)
       ORDER BY w.flow NULLS LAST, p.contract_slug
     `) as unknown as Promise<Array<Record<string, unknown>>>,
   ]);
@@ -97,6 +100,7 @@ export async function requirementRowOf(issueId: string): Promise<RequirementCont
     baseline: first
       ? {
           revision: Number(first.revision),
+          seq: Number(first.seq),
           agreedAt: new Date(String(first.agreed_at)).toISOString(),
           pins: baselines
             .filter((p) => p.workflow_id != null || p.contract_slug != null)
@@ -111,6 +115,7 @@ export async function requirementRowOf(issueId: string): Promise<RequirementCont
         }
       : null,
     plannedRevision: r.planned_revision == null ? null : Number(r.planned_revision),
+    plannedBaselineSeq: r.planned_baseline_seq == null ? null : Number(r.planned_baseline_seq),
     plan: str(r.plan),
   };
 }

@@ -33,6 +33,8 @@ export interface ModuleAxisFixture {
     name: string,
     extra?: Record<string, unknown>,
   ): Promise<{ id: string; name: string }>;
+  /** A GET on the REST route project-settings drives, signed in as the project's admin. */
+  get(path: string): Promise<Response>;
   createIssue(title: string): Promise<string>;
   setLabels(issueId: string, labels: unknown[]): Promise<unknown>;
   labelsOf(issueId: string): Promise<IssueLabel[]>;
@@ -134,6 +136,10 @@ export function installModuleAxisFixture(): ModuleAxisFixture {
     db: () => harness,
     projectId: () => project.id,
     defineLabel,
+    get: async (path) =>
+      (await rest.request(`/api/projects/${project.id}${path}`, {
+        headers: { authorization: `Bearer ${token}` },
+      })) as Response,
     defineModule: (name, extra = {}) => defineLabel({ name, kind: 'module', ...extra }),
     createIssue,
     setLabels: (issueId, labels) =>

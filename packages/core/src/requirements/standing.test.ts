@@ -128,6 +128,23 @@ describe('whose turn it is', () => {
     }
   });
 
+  it('rule 1: deferred waits on nobody, never reads stuck, and offers no breakdown, even with a proposal open (ISS-85)', () => {
+    const s = deriveStanding(
+      base({
+        status: 'deferred',
+        phase: null,
+        owner: null,
+        issues: [],
+        openSuggestionKinds: ['breakdown'],
+        revisions: [rev(3, 'proposed', { proposedAt: daysAgo(1) }), rev(2, 'current')],
+        updatedAt: daysAgo(90),
+      }),
+    );
+    expect(s.state).toBe('deferred');
+    expect(s.attentionGroup).toBe('deferred');
+    expect(s.waitingOn).toMatchObject({ kind: 'none', act: '' });
+  });
+
   it('rule 2: a proposed revision needs a viewer who may sign off, and is someone else’s turn otherwise', () => {
     const revisions = [rev(3, 'proposed', { proposedAt: daysAgo(1) }), rev(2, 'current')];
     const mine = deriveStanding(base({ revisions }));
@@ -264,6 +281,45 @@ describe('whose turn it is', () => {
     expect(s.waitingOn).toMatchObject({ kind: 'issues', act: 'Running 1 of 2' });
     const idle = deriveStanding(base({ issues: [issue('1', 'open'), issue('2', 'closed')] }));
     expect(idle.waitingOn.act).toBe('Done 1 of 2');
+  });
+});
+
+describe('a pin behind its design (ISS-86)', () => {
+  it('a pin behind its design waits on a signer to re-pin it, naming each design (ISS-86)', () => {
+    const pins = [
+      { flow: 'hop-system-context', pinned: 4, approved: 5 },
+      { flow: 'hop-booking', pinned: 1, approved: 2 },
+    ];
+    const mine = deriveStanding(base({ stalePins: pins }));
+    expect(mine.attentionGroup).toBe('needs_you');
+    expect(mine.waitingOn).toMatchObject({
+      kind: 'you',
+      act: 're-pin hop-system-context r5, hop-booking r2',
+    });
+    expect(mine.waitingOn.rule).toContain('approved past the revision the agreed baseline pins');
+    const theirs = deriveStanding(base({ stalePins: pins, viewer: VIEWER_ONLY }));
+    expect(theirs.attentionGroup).toBe('others');
+    expect(theirs.waitingOn).toMatchObject({ kind: 'person', who: 'Lan' });
+    expect(theirs.waitingOn.act).toContain('re-pin');
+  });
+
+  it('a pin behind its design is a re-pin before delivery is accepted, and after nothing once re-pinned', () => {
+    const pins = [{ flow: 'hop-system-context', pinned: 4, approved: 5 }];
+    const delivered = { phase: 'delivered' as const, issues: [issue('2', 'closed')] };
+    expect(deriveStanding(base({ ...delivered, stalePins: pins })).waitingOn.act).toContain(
+      're-pin',
+    );
+    expect(deriveStanding(base({ ...delivered })).waitingOn.act).not.toContain('re-pin');
+  });
+
+  it('a deferred requirement with a stale pin still waits on nobody (ISS-85 outranks ISS-86)', () => {
+    const s = deriveStanding(
+      base({
+        status: 'deferred',
+        stalePins: [{ flow: 'hop-system-context', pinned: 4, approved: 5 }],
+      }),
+    );
+    expect(s.waitingOn).toMatchObject({ kind: 'none', act: '' });
   });
 });
 

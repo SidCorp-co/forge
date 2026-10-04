@@ -28,6 +28,7 @@ const SESSION_LABELS: Partial<Record<StatusKey, string>> = {
   paused: "Idle",
   passed: "Verified",
   waiting: "Waiting for me",
+  archived: "Cancelled",
 };
 
 export function StatusChip({

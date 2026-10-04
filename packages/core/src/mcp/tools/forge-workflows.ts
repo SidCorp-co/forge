@@ -6,6 +6,7 @@
 
 import { DESIGN_VIEWS } from '@forge/contracts/workflows';
 import { z } from 'zod';
+import { egressShown } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
 import { DESIGN_DECISIONS, DESIGN_REASON_MAX } from '../../workflows/design.js';
 import {
@@ -175,12 +176,14 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
     agency: principalAgency(ctx.principal),
   };
   const view = answerView(input);
+  const what = input.workflowId ? `workflow ${input.workflowId}` : 'the workflows';
+  const shown = <T>(value: T) => egressShown(projectId, 'design', value, what);
   switch (input.action) {
     case 'list':
       return {
         workflows: projectMany(
           view,
-          await listWorkflowsAs(actor.userId, projectId),
+          await shown(await listWorkflowsAs(actor.userId, projectId)),
           workflowSummaryOf,
         ),
         ...summaryNotice(
@@ -189,11 +192,13 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         ),
       };
     case 'get': {
-      const read = await readWorkflowAs(actor.userId, projectId, need(input, 'workflowId'));
+      const read = await shown(
+        await readWorkflowAs(actor.userId, projectId, need(input, 'workflowId')),
+      );
       return input.view === 'summary' ? workflowSummaryOf(read) : read;
     }
     case 'design': {
-      const design = await readDesignAs(actor, projectId, need(input, 'workflowId'));
+      const design = await shown(await readDesignAs(actor, projectId, need(input, 'workflowId')));
       if (input.view === 'full') return design;
       if (input.view === 'steps') {
         return designStepsOf(design, {
@@ -224,7 +229,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       if (!outcome.ok) return refusedBy(outcome.refusals);
       return projectOne(
         view,
-        { ...workflowView(outcome.row, outcome.document), created: outcome.created },
+        await shown({ ...workflowView(outcome.row, outcome.document), created: outcome.created }),
         (full) => workflowWriteAnswerOf(full, full.created),
       );
     }
@@ -237,7 +242,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         issue: input.issue,
       });
       if (!outcome.ok) return refusedBy(outcome.refusals);
-      return projectOne(view, outcome.design, (d) =>
+      return projectOne(view, await shown(outcome.design), (d) =>
         designActAnswerOf(d, 'propose', input.revision),
       );
     }
@@ -251,7 +256,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         reason: input.reason ?? null,
       });
       if (!outcome.ok) return refusedBy(outcome.refusals);
-      return projectOne(view, outcome.design, (d) =>
+      return projectOne(view, await shown(outcome.design), (d) =>
         designActAnswerOf(d, 'decide', input.revision),
       );
     }
@@ -274,7 +279,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         issue: need(input, 'issue'),
       });
       if (!outcome.ok) return refusedBy(outcome.refusals);
-      return projectOne(view, outcome.design, (d) =>
+      return projectOne(view, await shown(outcome.design), (d) =>
         designActAnswerOf(d, input.action as 'link' | 'unlink'),
       );
     }

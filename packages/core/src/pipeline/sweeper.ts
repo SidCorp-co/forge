@@ -13,7 +13,7 @@ import {
 import { parkedOnAHuman } from '../jobs/park-deadline.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { CLIENT_SESSION_KINDS, kindTuple, PIPELINE_SESSION_KINDS } from '../jobs/session-kinds.js';
-import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
+import { LIVE_SESSION_STATUSES, oneShotRunOutcome } from '../lifecycle/status-sets.js';
 import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
@@ -513,7 +513,7 @@ export async function reapOrphanedOneShotRuns(
       const anyFailed = sessions.some(
         (s) => s.status === 'failed' || s.status === 'cancelled_stale',
       );
-      const outcome: 'completed' | 'failed' = anyCompleted && !anyFailed ? 'completed' : 'failed';
+      const outcome = oneShotRunOutcome({ anyCompleted, anyFailed });
 
       await closeRunIfOneShot(row.id, outcome);
       reaped++;
