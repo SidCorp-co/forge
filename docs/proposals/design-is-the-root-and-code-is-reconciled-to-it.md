@@ -175,7 +175,6 @@ a decision clears it; "Absorbed by" names the issue whose rule covers it, else t
 | 24 | The `answer` route stores its text on `feedback.answer`, not a decision comment; comments gained the feedback arc in ISS-83, and nothing moved the answer onto one | review |
 | 25 | Feedback gaps the POC left: an agent's clarification answer is not turned into a triage suggestion; a high or critical item does not wake the master; deleting a reporter's data does not reach text already copied into a filed draft issue; a person on the MCP door is treated as provider-bound; the scrubber recognises an unlabelled name only when it opens with a common Vietnamese surname (`packages/observability/src/personal-data.ts:scrubPersonalData` names the trade-off), so a name with a rarer surname still passes; a clarification answer (written by the questions module) and a triage suggestion's note are stored unscrubbed | review |
 | 26 | The conversation detail carries the room's questionnaire batches, and the list each room's `kind` and `threadStatus` (`packages/core/src/assistant/conversation-routes.ts`): a conversation route reading the onboarding and questionnaire rows instead of the client reading `/questionnaires/:bid` | review |
-| 27 | `onboardings.status` is set by each writer (start, post, submit, done), not derived on read from the batches and the job; the dashboard hint is derived (`packages/core/src/onboarding/read.ts:hintOf`) | ISS-161 |
 | 28 | `POST /api/projects/:id/onboarding/join` adds the caller to the onboarding room, which can turn a direct room into a group; no rule decides who may join beyond project access | ISS-159 |
 | 30 | Answering a questionnaire row through the questions route is refused `QUESTION_IN_QUESTIONNAIRE` as a thrown 409 in the questions slice's own shape (`packages/core/src/questions/write.ts:answerQuestion`), not the envelope | ISS-162 |
 | 31 | The data-flow guard reads the level itself (`packages/core/src/onboarding/read.ts:projectHoldsSensitiveData`) to decide whether a data-flow design is owed, which is not an egress decision | review |
@@ -243,7 +242,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 | `build` | Wrong | behaviour, data | `workflows/run-context-service.ts:tracedDesignsOf` | **rewrite** (due): Load the pinned design and contract revisions, not the latest approved and issue-text refs (REQ-1 BC-7, REQ-4 BC-12); delete the second path. |
 | `check` | Wrong | behaviour, data | `requirements/standing.ts:coverageOf` | **rewrite** (due): Build the acceptance task with its SLA on the coverage read that exists. |
 | `contract-recorded` | Wrong | data | `ecosystem/contract/record.ts:recordVersion` | **keep**: Same as drafted. |
-| `delivered` | Wrong | behaviour | `requirements/read.ts:deliveryOf` | **rewrite**: Write the requirement.delivered notice the acceptance case opens from. |
+| `delivered` | Wrong | behaviour | `requirements/standing.ts:deliveryOf` | **rewrite**: Write the requirement.delivered notice the acceptance case opens from. |
 | `drafted` | Wrong | data | `requirements/service.ts:writeRevision` | **keep**: The row is the record and nothing consumes the event; revise the design to say so (one revision for the four event nodes). |
 | `fb-case` | Wrong | behaviour, wiring | `feedback/rules.ts:phaseOf` | **rewrite** (due): Threshold reached; build the case the design draws, or the orchestrator revises the design to make the FB-n row the case. |
 | `fb-filed` | Wrong | data | `feedback/service.ts:createFeedback` | **keep**: Same as drafted. |
@@ -253,7 +252,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 | `release-gate` | Wrong | behaviour | `release-batch/blockers.ts:rosterBlockers` | **rewrite**: Small: record gate off on the batch. |
 | `release-requested` | Wrong | data | `release-batch/service.ts:createReleaseBatch` | **keep**: Same as drafted; also drop environment, a batch is production only. |
 | `req-head` | Wrong | data | `requirements/read.ts:detailOf` | **rewrite**: Add the requirement-to-contract link; agreed and pins cannot pin contracts without it (REQ-5). |
-| `rollup` | Wrong | behaviour | `requirements/standing.ts:provenPhase` | **rewrite**: One phase computation: the view, not the view plus TypeScript; decide short. |
+| `rollup` | Wrong | behaviour | `requirements/standing.ts:deliveryOf` | **rewrite**: The phase is one TypeScript computation since ISS-164 (view dropped); short-as-pass is left to the passing predicate (ISS-165). |
 | `route` | Wrong | wiring | `feedback/triage.ts:triageIn` | **keep**: Its only divergence is that triage and route are one act; settled by the fb-case decision. |
 | `route-result` | Wrong | data | `feedback.ts:FEEDBACK_ROUTES` | **keep**: Same revision as routed: take the route values from feedback-triage. |
 | `routed` | Wrong | behaviour | `feedback/triage.ts:triageIn` | **keep**: feedback-triage r3 draws decline and answer as the code does; revise this design to reference it. |
