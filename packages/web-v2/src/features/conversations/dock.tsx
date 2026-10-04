@@ -6,7 +6,7 @@ import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { type AboutKind, aboutDraft } from "./ask-about";
 import { type ChatTarget, clampDockWidth, defaultDockWidth, targetInScope } from "./dock-target";
 
-export const DOCK_OPEN_KEY = "web-v2:chat-dock-open";
+export const DOCK_OPEN_ON_KEY = "web-v2:chat-dock-open-on";
 export const DOCK_WIDTH_KEY = "web-v2:chat-dock-width";
 export const DOCK_PINNED_KEY = "web-v2:chat-dock-pinned";
 
@@ -37,23 +37,32 @@ export type DockDoor = () => Promise<ChatTarget | null>;
 const ChatDockContext = createContext<ChatDockApi | null>(null);
 
 export function useChatDockState(projectId: string | null): ChatDockApi {
-  const [open, setOpen] = usePersistedState(DOCK_OPEN_KEY, false, { syncTabs: false });
+  const [openOn, setOpenOn] = usePersistedState<string | null>(DOCK_OPEN_ON_KEY, null, { syncTabs: false });
   const [storedWidth, setStoredWidth] = usePersistedState(DOCK_WIDTH_KEY, defaultDockWidth(), { syncTabs: false });
-  const [pinned, setPinned] = usePersistedState(DOCK_PINNED_KEY, false, { syncTabs: false });
-  const pathname = usePathname();
-  const shownOn = useRef(pathname);
+  const [pinned, setPinnedState] = usePersistedState(DOCK_PINNED_KEY, false, { syncTabs: false });
+  const pathname = usePathname() ?? "";
   const [picked, setPicked] = useState<ChatTarget | null>(null);
   const [generation, setGeneration] = useState(0);
   const door = useRef<DockDoor | null>(null);
   const target = targetInScope(picked, projectId);
 
-  // cm:why a dock left open follows the person to every page they visit, so a new page closes it unless
-  // they pinned it (REQ-11 BC-8); a query change (a peek opening) is the same page and keeps it
+  // cm:why the dock remembers the page it was opened on, so a new page — reached in the app or loaded
+  // afresh — finds it closed unless pinned (REQ-11 BC-8); a query change (a peek opening) is the same page
+  const open = openOn !== null && (pinned || openOn === pathname);
   useEffect(() => {
-    if (shownOn.current === pathname) return;
-    shownOn.current = pathname;
-    if (!pinned) setOpen(false);
-  }, [pathname, pinned, setOpen]);
+    if (openOn !== null && !pinned && openOn !== pathname) setOpenOn(null);
+  }, [openOn, pinned, pathname, setOpenOn]);
+  const setOpen = useCallback(
+    (next: boolean) => setOpenOn(next ? pathname : null),
+    [pathname, setOpenOn],
+  );
+  const setPinned = useCallback(
+    (next: boolean) => {
+      setPinnedState(next);
+      if (!next && open) setOpenOn(pathname);
+    },
+    [open, pathname, setOpenOn, setPinnedState],
+  );
 
   const select = useCallback((t: ChatTarget) => {
     setPicked(t);
@@ -99,7 +108,7 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
       // which leaves the dock on its own target
       toggle: () => {
         const opening = !open;
-        setOpen((o) => !o);
+        setOpen(opening);
         if (opening && door.current) void door.current().then((t) => t && select(t));
       },
       select,
