@@ -14,7 +14,7 @@ requirements and workflow designs.
   This page says only what to build.
 - **Code that breaks a rule is Wrong**, and is rebuilt to the rule rather than patched.
   `scripts/check-module-shape.mjs` measures the rules a script can read, and `--markers` writes its
-  findings as Wrong markers. It is report-only until ISS-120's Phase 5 flips each rule to a gate.
+  findings as Wrong markers. It is report-only until ISS-157's Phase 5 flips each rule to a gate.
   There is no hand-kept list of divergences on this page.
 - **The API comes first.** The CLI wraps the routes, and MCP keeps only what neither covers
   ([api-first.md](../proposals/destination/api-first.md)), so every rule below is stated for the

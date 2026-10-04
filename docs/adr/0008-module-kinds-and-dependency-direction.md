@@ -83,7 +83,7 @@ on dev on 2026-10-04 ("build trước đi đã test gọi QA test sau"), and QA 
 direction, public face, cycles, table writers, database calls in routes, refusal shape and status
 writes outside the kernel transition. It runs in `pnpm verify` **report-only**,
 its first reading frozen in `.forge/module-shape-baseline.json` under a priced amnesty in
-`.forge/conformance.json` that ISS-120 ends; `--markers` writes its findings as the Wrong markers of
+`.forge/conformance.json` that ISS-157 ends; `--markers` writes its findings as the Wrong markers of
 the reconciliation checklist. A rule flips to a gate once it reads zero across core.
 
 Two rules have no script yet: read models (web derivations) and permission. They are judged by the
