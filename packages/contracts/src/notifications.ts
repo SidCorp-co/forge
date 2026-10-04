@@ -1,7 +1,6 @@
 export const NOTIFICATION_TYPES = [
 	"issue_status_changed",
 	"mention",
-	"pm_escalation",
 	"pipeline_wedge",
 	"invitation_received",
 	"intake_pending",
@@ -20,7 +19,6 @@ export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 	issue_status_changed: "Status change",
 	mention: "Mention",
-	pm_escalation: "Escalation",
 	pipeline_wedge: "Pipeline stuck",
 	invitation_received: "Invitation",
 	intake_pending: "Intake",
@@ -89,12 +87,6 @@ export const NOTIFICATION_CONTRACT: Record<
 		channels: ["bell", "toast", "browser"],
 		kind: "signal",
 		tier: "ticket",
-	},
-	pm_escalation: {
-		severity: "warning",
-		channels: ["bell", "toast", "browser"],
-		kind: "task",
-		tier: "page",
 	},
 	pipeline_wedge: {
 		severity: "error",

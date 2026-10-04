@@ -18,7 +18,6 @@ import {
   registerPhaseJournalClose,
   registerPipelineOrchestrator,
 } from './pipeline/index.js';
-import { registerPmSubscribers } from './pm/index.js';
 import { registerLiveReadingInvalidation } from './projects/index.js';
 import { registerReleaseBatchClaimSubscriber } from './release-batch/index.js';
 import { registerWebhookSubscribers } from './webhooks/index.js';
@@ -38,7 +37,6 @@ export function registerOutboxConsumers(): void {
   registerTransitionNotifications();
   registerNotifyMentionsSubscriber();
   registerWebhookSubscribers();
-  registerPmSubscribers();
   registerPhaseJournalClose();
   registerPausedRunWedgeResolve();
   registerReleaseBatchClaimSubscriber();

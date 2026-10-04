@@ -228,8 +228,6 @@ export interface OutboxEventPayloads {
 		/** The actionable blocker or child of a dependency-stall wedge, beside the wedged `issueId`. */
 		secondaryIssueId?: string | null;
 		agentSessionId: string | null;
-		/** Set on a `pm_escalation`. */
-		decisionId?: string | null;
 	};
 	"notification.read": { notificationId: string; userId: string };
 	"user.preferencesChanged": {

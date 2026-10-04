@@ -34,7 +34,6 @@ export interface NotificationKindEntry {
 export const NOTIFICATION_KIND_TABLE: Record<NotificationType, NotificationKindEntry> = {
   issue_status_changed: { kind: 'signal', tier: 'log' },
   mention: { kind: 'signal', tier: 'ticket' },
-  pm_escalation: { kind: 'task', tier: 'page' },
   pipeline_wedge: { kind: 'condition', tier: 'page' },
   invitation_received: { kind: 'task', tier: 'ticket' },
   intake_pending: { kind: 'task', tier: 'ticket' },

@@ -349,7 +349,9 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       actual: lead.actual,
     });
   }
-  const refused = lead as (Refusal & { code: GuardCode; details?: Record<string, unknown> }) | undefined;
+  const refused = lead as
+    | (Refusal & { code: GuardCode; details?: Record<string, unknown> })
+    | undefined;
   if (refused) throw new TransitionError(refused.code, refused.detail, refused.details ?? {});
   const [row] = moved.rows;
   if (!row) {

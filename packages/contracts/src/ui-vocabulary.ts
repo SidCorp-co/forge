@@ -445,19 +445,6 @@ export const ENUM_LABELS = {
 	},
 	/** A connection binding's role (core `project-config/schema.ts:BINDING_ROLES`). */
 	bindingRole: { deploy: "Deploy", source: "Source", service: "Service" },
-	/** What woke the PM (core `pm/decisions-service.ts:PM_DECISION_CAUSES`). */
-	pmCause: {
-		"job-failed": "Job failed",
-		"pipeline-stalled": "Pipeline stalled",
-		"needs-info": "Issue needs info",
-		"queue-pressure": "Queue pressure",
-		"graph-changed": "Knowledge graph changed",
-		operator: "Operator",
-		"operator-reply": "Operator reply",
-		tick: "Scheduled tick",
-		"escalation-timeout": "Escalation timed out",
-		"pm-failure": "PM failure",
-	},
 	/** An agent report's kind and target (web `agent-reports/types.ts`). */
 	agentReportKind: {
 		friction: "Friction",

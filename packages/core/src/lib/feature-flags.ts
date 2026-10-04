@@ -14,8 +14,6 @@ const flagDefs = {
 
   socialAuth: true,
 
-  pmAgent: true,
-
   runnerGitCredProvision: false,
 } as const;
 

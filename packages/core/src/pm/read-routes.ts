@@ -1,6 +1,6 @@
 /**
- * The three PM reads: snapshot, graph and runner load. The writes (config,
- * policies, decisions, escalations, run) are in `pm/routes.ts`.
+ * The three project reads the forge CLI's `forge_project_pm` serves: snapshot, graph and runner
+ * load.
  */
 
 import { Hono } from 'hono';

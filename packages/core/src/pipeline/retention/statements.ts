@@ -94,4 +94,3 @@ export function truncatedHistories(days: number, limit: number): SQL {
     LIMIT ${limit}
   `;
 }
-

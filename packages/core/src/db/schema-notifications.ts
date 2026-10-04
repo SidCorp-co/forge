@@ -16,7 +16,6 @@ import { scheduleRuns } from './schema-schedule-runs.js';
 export const notificationTypes = [
   'issue_status_changed',
   'mention',
-  'pm_escalation',
   // ISS-452 (ISS-442 C6 / I7) — a loop-monitor hop miss / non-progressing
   // pipeline state surfaced to the project owner (see pipeline/wedge.ts).
   'pipeline_wedge',

@@ -378,10 +378,6 @@
       "types": "./dist/repo-path.d.ts",
       "default": "./dist/repo-path.js"
     },
-    "./pm": {
-      "types": "./dist/pm.d.ts",
-      "default": "./dist/pm.js"
-    },
     "./refusal-statuses": {
       "types": "./dist/refusal-statuses.d.ts",
       "default": "./dist/refusal-statuses.js"

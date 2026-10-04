@@ -21,12 +21,11 @@ export const OUTBOX_CONSUMERS = {
 		"master-wake",
 		"notify-transitions",
 		"outbound-webhooks",
-		"pm",
 		"memory-reconcile",
 	],
-	"job.transitioned": ["pm", "phase-journal-close", "memory-extraction"],
+	"job.transitioned": ["phase-journal-close", "memory-extraction"],
 	"run.transitioned": ["paused-run-wedge-resolve", "release-batch-claims"],
-	"dependency.changed": ["pm"],
+	"dependency.changed": [],
 	"comment.created": ["activity-feed", "master-wake"],
 	"comment.updated": ["activity-feed"],
 	"comment.deleted": ["activity-feed"],
@@ -50,7 +49,7 @@ export const OUTBOX_CONSUMERS = {
 	"integration.changed": ["ws-broadcast"],
 	"workflow.designDecided": ["master-wake"],
 } as const satisfies {
-	readonly [T in OutboxEventType]: readonly [string, ...string[]];
+	readonly [T in OutboxEventType]: readonly string[];
 };
 
 export type OutboxConsumerOf<T extends OutboxEventType> =

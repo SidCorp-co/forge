@@ -36,7 +36,6 @@ import {
   runReconcilerOnce,
   runRetentionSweep,
 } from './pipeline/index.js';
-import { runPmEscalationSweep, runPmQueuePressureSweepOnce } from './pm/index.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
@@ -146,21 +145,6 @@ export function coreTimers(): Timer[] {
       name: 'release-batch-finish-resume',
       cron: '* * * * *',
       run: () => resumeStrandedFinishes(),
-    },
-    {
-      kind: 'cluster',
-      name: 'pm.escalation-sweeper',
-      cron: '*/5 * * * *',
-      run: logged('pm-escalation-sweeper: actioned', runPmEscalationSweep, (r) => {
-        const { executed, errors } = r as { executed: number; errors: number };
-        return executed > 0 || errors > 0;
-      }),
-    },
-    {
-      kind: 'cluster',
-      name: 'pm.queue-pressure',
-      cron: '* * * * *',
-      run: () => runPmQueuePressureSweepOnce(),
     },
     {
       kind: 'cluster',

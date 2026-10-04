@@ -123,7 +123,6 @@ export async function createNotification(input: {
   severity?: string | null;
   resolutionKey?: string | null;
   dedupeKey?: string | null;
-  decisionId?: string | null;
   groupKey?: string | null;
   groupTitle?: string | null;
 }): Promise<{ id: string; delivered: number } | null> {

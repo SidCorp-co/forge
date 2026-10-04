@@ -40,7 +40,6 @@ export interface DeliverInput {
   /** The condition's identity. Two emissions sharing it are one condition. */
   resolutionKey?: string | null;
   dedupeKey?: string | null;
-  decisionId?: string | null;
   /** Records raised by one evaluation share this and reach a reader as one delivery. */
   groupKey?: string | null;
   /** What that one delivery is called. Ignored when `groupKey` is absent. */
@@ -195,7 +194,6 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
         issueId: input.issueId ?? null,
         secondaryIssueId: input.secondaryIssueId ?? null,
         agentSessionId: input.agentSessionId ?? null,
-        decisionId: input.decisionId ?? null,
       });
       return true;
     });
@@ -222,12 +220,8 @@ async function wantsDelivery(userId: string, type: NotificationType): Promise<bo
 }
 
 /**
- * Deliver a record that already exists, to a recipient list.
- *
- * The one producer that needs this is `pm/auto-disable.ts`, whose record must land inside
- * the transaction that disables the cadence while the delivery must not: a delivery that
- * fails should not roll back the disable it was announcing. Everything else goes through
- * {@link recordAndDeliver}, which writes both.
+ * Deliver a record that already exists, to a recipient list. Everything that writes the record
+ * and its delivery together goes through {@link recordAndDeliver}.
  */
 export async function deliverExisting(
   recordId: string,

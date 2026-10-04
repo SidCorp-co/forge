@@ -138,19 +138,6 @@ export function registerWsBroadcastSubscribers(): void {
         },
       });
     }
-
-    if (p.type === 'pm_escalation' && p.projectId) {
-      roomManager.publish(projectRoom(p.projectId), {
-        event: 'pm.escalation',
-        data: {
-          notificationId: p.notificationId,
-          projectId: p.projectId,
-          decisionId: p.decisionId ?? null,
-          title: p.title,
-          userId: p.userId,
-        },
-      });
-    }
   });
 
   on('notification.read', (p) => {

@@ -37,7 +37,6 @@ import { useAutomationStanding } from "../hooks";
 import { AUTOMATION_LIST, AUTOMATION_TABS, type AutomationTab, fireHref, reportHref, scheduleHref } from "../routes";
 import type { AutomationStandingResponse, FireStanding, ReportStanding, ScheduleStanding } from "../types";
 import { FirePeek, fireRow } from "./fire-views";
-import { PmSettings } from "./pm-settings";
 import { ReportPeek, reportRow } from "./report-views";
 import { type AutomationAccess, SchedulePeek, scheduleRow } from "./schedule-views";
 
@@ -68,14 +67,6 @@ const NOUN: Record<AutomationTab, string> = { schedules: "schedules", fires: "fi
 function Configure({ access }: { access: AutomationAccess }) {
   return (
     <div className="grid gap-4 border-t border-line-subtle px-5 py-6 max-md:px-3" data-testid="automation-configure">
-      <details>
-        <summary className="cursor-pointer text-14 font-bold text-accent-text">
-          PM sweep <span className="text-12-5 font-medium text-muted">Whether the PM sweeps this project, how often and on which events</span>
-        </summary>
-        <div className="mt-3">
-          <PmSettings projectId={access.projectId} canManage={access.canManage} />
-        </div>
-      </details>
       <details>
         <summary className="cursor-pointer text-14 font-bold text-accent-text">
           Improvement loop{" "}

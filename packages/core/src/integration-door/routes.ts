@@ -62,7 +62,11 @@ async function projectBinding(
   userId: string,
   need?: 'admin',
 ): Promise<BindingWithConnection> {
-  await requireCan(actorFor(userId), need === 'admin' ? 'project.admin' : 'project.read', projectResource(projectId));
+  await requireCan(
+    actorFor(userId),
+    need === 'admin' ? 'project.admin' : 'project.read',
+    projectResource(projectId),
+  );
   const existing = await findBindingWithConnectionById(id);
   if (!existing || existing.binding.projectId !== projectId) throw notFound();
   return existing;

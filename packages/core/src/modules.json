@@ -605,12 +605,7 @@
     },
     "pm": {
       "kind": "domain",
-      "context": "work",
-      "owns": [
-        "pmConfig",
-        "pmDecisions",
-        "pmPolicies"
-      ]
+      "context": "work"
     },
     "preferences": {
       "kind": "domain",

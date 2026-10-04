@@ -114,7 +114,6 @@ import {
 import { knowledgeIngestRoutes, knowledgeRoutes } from './knowledge/routes.js';
 import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { labelProjectRoutes, labelRoutes, moduleDiagramRoutes } from './labels/routes.js';
-import { isEnabled } from './lib/feature-flags.js';
 import { deviceMasterRoutes, masterStandingRoutes } from './masters/routes.js';
 import { mcpHandler, mcpRequestClass } from './mcp/index.js';
 import { meAttentionRoutes, mePulseRoutes, meRecentChangesRoutes } from './me/routes.js';
@@ -144,7 +143,7 @@ import {
   projectCostAnalyticsRoutes,
   stepHandoffRoutes,
 } from './pipeline/routes.js';
-import { pmReadRoutes, pmRoutes } from './pm/routes.js';
+import { pmReadRoutes } from './pm/read-routes.js';
 import { orgMemberPreferenceRoutes, preferenceRoutes } from './preferences/routes.js';
 import {
   environmentStateRoutes,
@@ -406,7 +405,6 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/app-config', appConfigRoutes);
   app.route('/api/runners', runnerRoutes);
 
-  if (isEnabled('pmAgent')) app.route('/api/projects', pmRoutes);
   app.route('/api/projects', pmReadRoutes);
   app.route('/api/projects', agentSessionProjectReadRoutes);
 }
