@@ -38,7 +38,6 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { requireCan } from '../permissions/index.js';
 import { announceIntegrationChanged } from '../project-config/index.js';
 import {
-  CoolifyCommandError,
   coolifyDeliveryStatus,
   listCoolifyIntegrations,
   listCoolifyRollbackImages,
@@ -108,9 +107,6 @@ const coolifyRun =
   };
 
 const asHttp = (err: unknown): never => {
-  if (err instanceof CoolifyCommandError) {
-    throw new HTTPException(400, { message: err.message, cause: { code: 'BAD_REQUEST' } });
-  }
   // Coolify's own answer, named: unmapped it reached the caller as a bare INTERNAL_ERROR (ISS-1346).
   if (err instanceof CoolifyApiError) {
     const said =

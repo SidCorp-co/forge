@@ -1,11 +1,11 @@
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { and, eq, type SQL, sql } from 'drizzle-orm';
+import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { agentQuestions } from '../db/schema-questions.js';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { transition } from '../lifecycle/transition.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import type { LoopScope } from './loop-monitor.js';
 import { kindTuple, NEVER_PARKED_SESSION_KINDS } from './session-kinds.js';
 

@@ -12,9 +12,9 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { logger } from '../logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { logger } from '../observability/logger.js';
 import { mintGitCredentialForDevice } from './host-credential.js';
 
 export const deviceGitCredentialRoutes = new Hono<{ Variables: DeviceVars }>();

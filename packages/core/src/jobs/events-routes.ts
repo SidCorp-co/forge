@@ -1,6 +1,8 @@
+import { TERMINAL_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { maybeDeriveIncremental, setSessionRuntimeState } from '../agent-sessions/index.js';
 import type { JobStatus } from '../db/schema.js';
 import {
   DEVICE_POSTED_JOB_EVENT_KINDS,
@@ -8,22 +10,20 @@ import {
   sessionRuntimeStates,
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { logger } from '../observability/logger.js';
+import { requireHeld } from '../permissions/index.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { readJobGate } from './job-queries.js';
-import { listJobEvents } from './read.js';
-import { appendJobEvents, beatLinkedSession, stampJobAckFromEvents } from './service.js';
-import { refuseJob } from './refusals.js';
 import { scrubJobOutput } from './job-secret-scrub.js';
-import { maybeDeriveIncremental, setSessionRuntimeState } from '../agent-sessions/index.js';
-import { TERMINAL_JOB_STATUSES } from '@forge/contracts/job-machine';
-import { requireHeld } from '../permissions/index.js';
+import { listJobEvents } from './read.js';
+import { refuseJob } from './refusals.js';
+import { appendJobEvents, beatLinkedSession, stampJobAckFromEvents } from './service.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });

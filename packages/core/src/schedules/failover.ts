@@ -10,14 +10,14 @@
 
 import { eq } from 'drizzle-orm';
 import { createChatSessionRow } from '../agent-sessions/chat-turn.js';
+import { setSessionFailureDetail } from '../agent-sessions/index.js';
 import { dispatchInteractiveTurn } from '../agent-sessions/interactive-credential.js';
 import { readSessionAsker } from '../agent-sessions/session-credential.js';
-import { setSessionFailureDetail } from '../agent-sessions/index.js';
 import { firstUserMessageText } from '../agent-sessions/turns-helpers.js';
 import { db } from '../db/client.js';
 import { agentSessions, projects } from '../db/schema.js';
-import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
+import { logger } from '../observability/logger.js';
 import { handFireToRetry, recordFireDisposition, scheduleRunIdOf } from './fires.js';
 import { authorizeScheduledRun, failUndeliveredRun } from './scheduled-session.js';
 

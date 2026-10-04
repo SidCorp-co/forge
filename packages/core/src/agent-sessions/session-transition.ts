@@ -5,16 +5,16 @@ import {
 } from '@forge/contracts/session-machine';
 import { eq } from 'drizzle-orm';
 import { agentSessions } from '../db/schema.js';
+import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
+import type { MachineRow } from '../lifecycle/machine-tables.js';
 import {
   type KernelExecutor,
   type TransitionArgs,
   type TransitionResult,
   transition,
 } from '../lifecycle/transition.js';
-import type { MachineRow } from '../lifecycle/machine-tables.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { settleSessionFires } from '../schedules/fires.js';
-import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { fireTerminalSessionBridges, sessionCarriesBridgeMarker } from './terminal-effects.js';
 
 type SessionRow = MachineRow<'session'>;

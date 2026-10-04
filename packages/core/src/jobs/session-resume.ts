@@ -1,6 +1,6 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 /** The context an issue's sessions may have reached and still be resumed into, in tokens. */
 export const MAX_RESUME_TOKENS = 150_000;

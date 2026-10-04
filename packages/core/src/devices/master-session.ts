@@ -14,7 +14,7 @@ import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { insertOneShotRun, type OneShotRunSpec } from '../pipeline/runs.js';
 
 export { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';

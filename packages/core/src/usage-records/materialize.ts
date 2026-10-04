@@ -1,7 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobEvents, usageRecords } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { extractUsageFromEvents } from './from-job-events.js';
 
 /** Just the fields needed to attribute a usage row. */

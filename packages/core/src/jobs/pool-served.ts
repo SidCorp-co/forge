@@ -11,7 +11,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { transition } from '../lifecycle/transition.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
 import { failReconcileRunForFailedJob } from '../skills/reconcile-service.js';
 

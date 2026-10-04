@@ -5,12 +5,12 @@ import { z } from 'zod';
 import { deriveSessionFinal } from '../agent-sessions/index.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { assertPlatformAdmin } from '../middleware/require-admin.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { logger } from '../observability/logger.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import { clearRunnerLimit } from '../runners/apply-runner-limit.js';
 import { clearRunnerQuarantine } from '../runners/quarantine.js';
@@ -23,11 +23,11 @@ import { cancelJob } from './cancel-job.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { isResumeFailedError, reclassifyAbortedResume } from './handle-resume-failed.js';
 import { readJobGate } from './job-queries.js';
-import { refuseJob } from './refusals.js';
 import { salvageSchema, salvageSet } from './prior-attempts.js';
+import { refuseJob } from './refusals.js';
 import { resumeHeldJob } from './resume-job.js';
-import { ackJob, confirmJobKill, finishJobFromRunner, reclaimReapedJob } from './service.js';
 import type { RetryOutcome } from './retry.js';
+import { ackJob, confirmJobKill, finishJobFromRunner, reclaimReapedJob } from './service.js';
 import { jobTurnVerdictRoutes } from './turn-verdict-routes.js';
 
 const badRequest = (details: unknown) =>

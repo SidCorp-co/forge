@@ -10,7 +10,7 @@ import {
   loadConversationAttachment,
 } from '../conversations/attachment-service.js';
 import type { ConversationImage } from '../conversations/store.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { getStorage } from '../storage/index.js';
 import type { ImageResolver } from './vision.js';
 

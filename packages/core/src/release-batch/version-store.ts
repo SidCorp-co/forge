@@ -119,10 +119,7 @@ export async function currentReleaseVersion(projectId: string): Promise<string |
 export function ruleOnRecut(recutOf: string, highest: ReleaseRowReading | null): ReleaseVersion {
   const asked = parseReleaseVersion(recutOf);
   if (!asked) {
-    throw recutRefused(
-      recutOf,
-      `it is not a version. Send ${RELEASE_VERSION_SHAPE}`,
-    );
+    throw recutRefused(recutOf, `it is not a version. Send ${RELEASE_VERSION_SHAPE}`);
   }
   if (asked.pre) {
     throw recutRefused(

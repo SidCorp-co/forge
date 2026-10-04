@@ -27,7 +27,7 @@ import { derivePublicFromPrivate, generateSshKeypair, testSshConnection } from '
 import { decryptSecret, encryptSecret, isVaultConfigured } from '../integrations/index.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { RefusalError } from '../lib/refusal.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { refuse } from './refuse.js';
 
 const vaultUnavailable = () =>

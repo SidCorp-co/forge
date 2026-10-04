@@ -12,7 +12,7 @@ import { and, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { jobs, type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import { transition } from '../lifecycle/transition.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { markCloseDeferred, readDeployHolds, resolveDeployGate } from './deploy-confirmations.js';
 import {
   cascadeCancelChildJobs,

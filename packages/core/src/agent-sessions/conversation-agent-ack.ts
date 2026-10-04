@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { codeAuthored, conversationTransport } from '../conversations/ports.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { type ConversationAgentMeta, readConversationAgentMeta } from './conversation-agent.js';
 
 /**

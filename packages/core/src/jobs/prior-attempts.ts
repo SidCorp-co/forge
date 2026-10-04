@@ -8,7 +8,7 @@ import { eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessionTurns, jobs } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 export interface PriorAttempt {
   attempt: number;

@@ -1,4 +1,4 @@
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { traceStep } from '../observability/sentry.js';
 import { globalRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';

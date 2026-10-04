@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { emitPipelineWedge, resolvePipelineWedge } from '../pipeline/wedge.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';

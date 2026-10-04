@@ -1,9 +1,9 @@
 import { sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
 import { postIssueNotice } from '../comments/index.js';
+import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { traceStep } from '../observability/sentry.js';
 import { holdsOpenHumanQuestion, personOwesAnAnswer } from '../questions/issue-coupling.js';
 import { wakeMastersForProject } from '../ws/master-wake.js';

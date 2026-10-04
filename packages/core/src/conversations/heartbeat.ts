@@ -18,7 +18,7 @@ import {
   conversations,
   conversationWindows,
 } from '../db/schema-conversations.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import type { Executor } from './db-executor.js';
 import { heartbeatOf } from './presence.js';
 import { GUARD_WINDOW } from './proactivity.js';

@@ -4,11 +4,11 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { type ReleaseApprovalRow, releaseApprovals } from '../db/schema-release-ledger.js';
-import { permissionRefusalFor } from '../permissions/index.js';
 import { peopleOf } from '../lib/people.js';
 import { agrees } from '../lib/plural.js';
 import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
+import { permissionRefusalFor } from '../permissions/index.js';
 import { environmentsOf, readReleasePath } from '../project-config/release-path.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { refuseRelease } from './refuse.js';
@@ -40,18 +40,21 @@ export function parseDecision(raw: unknown): Decision {
   }
   const extra = Object.keys(body).filter((k) => k !== 'decision' && k !== 'reason');
   if (extra.length > 0) {
-    throw refuseRelease('RELEASE_APPROVAL_SHAPE',
+    throw refuseRelease(
+      'RELEASE_APPROVAL_SHAPE',
       `unknown ${agrees(extra.length, 'key', 'keys')} ${extra.join(', ')}; a decision is { decision: "approve" } or { decision: "return", reason }`,
     );
   }
   if (body.decision !== 'approve' && body.decision !== 'return') {
-    throw refuseRelease('RELEASE_DECISION_UNKNOWN',
+    throw refuseRelease(
+      'RELEASE_DECISION_UNKNOWN',
       `decision ${JSON.stringify(body.decision)} is not one of ${DECISIONS.join(' | ')}`,
     );
   }
   if (body.decision === 'approve') {
     if (body.reason !== undefined) {
-      throw refuseRelease('RELEASE_APPROVAL_SHAPE',
+      throw refuseRelease(
+        'RELEASE_APPROVAL_SHAPE',
         'an approval carries no reason; a reason is what a return owes the master',
       );
     }
@@ -59,7 +62,8 @@ export function parseDecision(raw: unknown): Decision {
   }
   const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
   if (reason.length < 1 || reason.length > 1000) {
-    throw refuseRelease('RELEASE_RETURN_WITHOUT_REASON',
+    throw refuseRelease(
+      'RELEASE_RETURN_WITHOUT_REASON',
       'a return says why, in 1 to 1000 characters: the master reads it before it asks again',
     );
   }
@@ -107,7 +111,8 @@ export async function approvalsOfRuns(runIds: readonly string[]): Promise<Releas
 async function evidenceEnvironment(projectId: string, name: string): Promise<void> {
   const read = await readReleasePath(projectId);
   if (!read.ok) {
-    throw refuseRelease('RELEASE_APPROVAL_PATH_UNREADABLE',
+    throw refuseRelease(
+      'RELEASE_APPROVAL_PATH_UNREADABLE',
       `the project document cannot be read as a release path (${read.reason}), so the environment the evidence names cannot be checked`,
     );
   }
@@ -115,7 +120,8 @@ async function evidenceEnvironment(projectId: string, name: string): Promise<voi
   const env = envs.find((e) => e.name === name);
   const before = envs.filter((e) => e.declaration.tier !== 'production').map((e) => e.name);
   if (!env || env.declaration.tier === 'production') {
-    throw refuseRelease('RELEASE_APPROVAL_EVIDENCE_ENVIRONMENT',
+    throw refuseRelease(
+      'RELEASE_APPROVAL_EVIDENCE_ENVIRONMENT',
       `evidence names environment ${JSON.stringify(name)}, which ${env ? 'is production itself' : 'the project document does not declare'}; approval rests on a reading from an environment before production (declared: ${before.join(', ') || 'none'})`,
     );
   }
@@ -148,7 +154,8 @@ export async function requestApproval(input: {
     throw notFound('release batch not found');
   }
   if (run.status !== 'running' || run.releasedAt !== null) {
-    throw refuseRelease('RELEASE_RUN_CONCLUDED',
+    throw refuseRelease(
+      'RELEASE_RUN_CONCLUDED',
       `release run ${runId} is ${run.releasedAt ? 'shipped' : run.status}; approval is asked for an open run before production`,
     );
   }
@@ -167,7 +174,8 @@ export async function requestApproval(input: {
     .onConflictDoNothing()
     .returning();
   if (!row) {
-    throw refuseRelease('RELEASE_APPROVAL_PENDING',
+    throw refuseRelease(
+      'RELEASE_APPROVAL_PENDING',
       `release run ${runId} already has a request waiting for an admin; it is decided before another is asked`,
     );
   }
@@ -214,10 +222,10 @@ export async function decideApproval(input: {
       .where(and(eq(releaseApprovals.id, approvalId), eq(releaseApprovals.runId, runId)))
       .limit(1);
     if (!held || held.projectId !== projectId) {
-      throw notFound(`run ${runId} holds no approval request ${approvalId}`,
-      );
+      throw notFound(`run ${runId} holds no approval request ${approvalId}`);
     }
-    throw refuseRelease('RELEASE_APPROVAL_NOT_PENDING',
+    throw refuseRelease(
+      'RELEASE_APPROVAL_NOT_PENDING',
       `approval request ${approvalId} was already ${held.decision} at ${held.decidedAt?.toISOString()}; a request is decided once`,
     );
   }
@@ -246,17 +254,20 @@ export async function assertApprovalAllowsAttempt(runId: string, projectId: stri
   const required = await approvalRequired(projectId);
   if (!latest) {
     if (!required) return;
-    throw refuseRelease('RELEASE_APPROVAL_REQUIRED',
+    throw refuseRelease(
+      'RELEASE_APPROVAL_REQUIRED',
       `project ${projectId} requires release approval (project document \`release.approval.required\`), and release run ${runId} has none: ask with POST /api/projects/${projectId}/release-batches/${runId}/approvals and wait for an admin to approve it`,
     );
   }
   if (latest.decision === 'approved') return;
   if (latest.decision === null) {
-    throw refuseRelease('RELEASE_AWAITING_APPROVAL',
+    throw refuseRelease(
+      'RELEASE_AWAITING_APPROVAL',
       `release run ${runId} waits for an admin to approve it; no production act is recorded before the decision`,
     );
   }
-  throw refuseRelease('RELEASE_APPROVAL_RETURNED',
+  throw refuseRelease(
+    'RELEASE_APPROVAL_RETURNED',
     `release run ${runId} was returned (${latest.reason}); ask for approval again once that is answered`,
   );
 }

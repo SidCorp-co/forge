@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type AgentSessionStatus, runners } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { clearRunnerLimit, stampRunnerLimit } from '../runners/apply-runner-limit.js';
 import { detectRunnerLimit } from '../runners/limit-detect.js';
 import { clearRunnerQuarantine } from '../runners/quarantine.js';

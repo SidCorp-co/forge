@@ -7,7 +7,7 @@
 
 import type { ConversationAdapter } from '../db/schema-conversations.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { handleForProject } from './participants.js';
 import type { DeliveryReceipt } from './ports.js';
 import { appendMessage, findConversation } from './store.js';

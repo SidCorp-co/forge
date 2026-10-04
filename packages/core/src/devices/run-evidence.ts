@@ -19,15 +19,11 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from '../comments/index.js';
 import { db } from '../db/client.js';
-import {
-  latestIssueCommentWith,
-  postIssueNotice,
-  postIssueNoticeOnce,
-} from '../comments/index.js';
 import { agentSessions, devices, issues, pipelineRuns } from '../db/schema.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import {
   BOX_RUN_ID_METADATA_KEY,
   RUN_ISSUES_METADATA_KEY,

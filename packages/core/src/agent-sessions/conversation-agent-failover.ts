@@ -10,7 +10,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type agentSessions, type MemberLens, projects } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
 import {
   CONVERSATION_AGENT_MARKER,

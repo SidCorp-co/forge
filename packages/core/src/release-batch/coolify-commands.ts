@@ -35,14 +35,6 @@ import { isOpenReleaseBatchRun } from './service.js';
 /** A Coolify rule refused by name, in the one 422 envelope. */
 export const refuseCoolify = refuser<CoolifyRefusalCode>('COOLIFY_REFUSED');
 
-/** A call that names the wrong integration or target: the request's to correct, answered 400. */
-export class CoolifyCommandError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'CoolifyCommandError';
-  }
-}
-
 /**
  * Active Coolify bindings for a project, flattened to the shape the commands
  * consume. `id` is the BINDING id (== old project_integration id for
@@ -85,10 +77,16 @@ export function resolveIntegrationRow<T extends { id: string }>(
       : undefined;
   if (row) return row;
   if (input.integrationId) {
-    throw new CoolifyCommandError('no active Coolify integration with that integrationId');
+    throw refuseCoolify(
+      'COOLIFY_INTEGRATION_UNRESOLVED',
+      'no active Coolify integration with that integrationId',
+    );
   }
   if (rows.length === 0) return null;
-  throw new CoolifyCommandError('multiple active Coolify integrations — pass integrationId');
+  throw refuseCoolify(
+    'COOLIFY_INTEGRATION_UNRESOLVED',
+    'multiple active Coolify integrations — pass integrationId',
+  );
 }
 
 export async function listCoolifyIntegrations(projectId: string) {

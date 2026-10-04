@@ -1,6 +1,6 @@
 import { env } from '../config/env.js';
 import { mailDeliveryEnabled, sendMail } from '../integrations/mail/index.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 export function buildInvitationLink(token: string): string {
   return `${env.APP_BASE_URL}/invite/accept?token=${encodeURIComponent(token)}`;

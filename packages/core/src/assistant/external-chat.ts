@@ -31,7 +31,7 @@ import {
   type ProjectProgress,
 } from '../issues/progress.js';
 import { dataPolicyOf, EgressRefused, egressAt, egressText } from '../lib/data-egress.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { detectStateConfab } from './confab.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
 import { STOPPED_BY_A_PERSON } from './conversation-stops.js';

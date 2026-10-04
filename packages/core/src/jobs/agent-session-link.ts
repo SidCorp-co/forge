@@ -1,4 +1,6 @@
 import { and, eq, ne } from 'drizzle-orm';
+import { insertSessionRow } from '../agent-sessions/index.js';
+import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { db } from '../db/client.js';
 import {
   type AgentSessionKind,
@@ -8,9 +10,7 @@ import {
   jobs,
 } from '../db/schema.js';
 import { masterSessionIfOwned } from '../devices/master-owner.js';
-import { insertSessionRow } from '../agent-sessions/index.js';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import type { FailureCause } from '../pipeline/failure-causes.js';
 import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';

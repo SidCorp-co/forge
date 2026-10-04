@@ -14,7 +14,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { chatWithheld, placeBody, stoppedMessage } from './forge-cli-argv.js';
 
 const TIMEOUT_MS = 180_000;

@@ -11,7 +11,7 @@
 import { RELEASE_BLOCKER_CODES } from '@forge/contracts/releases';
 import { counted } from '../lib/plural.js';
 import { RefusalError } from '../lib/refusal.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { RELEASE_ROSTER_LIMIT } from '../release-batch/blocker-sentences.js';
 import { loadReleaseRoster } from '../release-batch/queries.js';
 import { heldBackByProviders } from '../release-batch/refuse.js';

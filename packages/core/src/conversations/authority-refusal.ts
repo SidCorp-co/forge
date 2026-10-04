@@ -6,7 +6,7 @@
  * its line ceiling; nothing here changed in the move.
  */
 
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { type ConversationVenue, codeAuthored, conversationTransport } from './ports.js';
 import type { RoutedWindow, RouteWindowArgs } from './route-window.js';
 import { recordDeliveredReply } from './transcript.js';

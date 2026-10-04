@@ -17,7 +17,7 @@ import {
   requireLandingShape,
 } from '../issues/landing-evidence.js';
 import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { releaseIneligibleRunners } from '../runners/ineligible.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';

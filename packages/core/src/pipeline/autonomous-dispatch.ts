@@ -1,6 +1,6 @@
-import { stampRunStarted } from '../issues/index.js';
 import type { IssueStatus } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { stampRunStarted } from '../issues/index.js';
+import { logger } from '../observability/logger.js';
 import type { PolicyDocument } from '../project-config/schema.js';
 import { wakeMastersForProject } from '../ws/master-wake.js';
 import type { Actor } from './activity.js';

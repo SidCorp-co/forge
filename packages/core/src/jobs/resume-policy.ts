@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
-import { logger } from '../logger.js';
 import { recordResumeDrop } from '../observability/hold-metrics.js';
+import { logger } from '../observability/logger.js';
 import { traceStep } from '../observability/sentry.js';
 import { getTrippedDeviceIds } from '../runners/select.js';
 import { readAutoRetryPayload } from './retry.js';

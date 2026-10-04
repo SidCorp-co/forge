@@ -16,7 +16,7 @@ import {
 import { deviceHolderUserId } from '../devices/workspace-credential.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { findAvailableDeviceForProject } from '../lib/device-pool.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import {
   heldPermissions,
   holds,

@@ -5,6 +5,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
 import { resolveReleaseChannels } from './channel.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
@@ -30,7 +31,6 @@ import {
 import { readServingDeployment } from './serving.js';
 import { assertRunNotHolding, readReleaseRunState } from './state.js';
 import { releaseVersionRoutes } from './version-routes.js';
-import { requireHeld } from '../permissions/index.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 

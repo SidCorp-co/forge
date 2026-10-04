@@ -19,7 +19,7 @@ import {
 } from '../embeddings/item-writer.js';
 import { embeddingsConfigured, embedWithModel } from '../integrations/embeddings/index.js';
 import { dataPolicyOf, type EgressSurface, egressAt, egressText } from '../lib/data-egress.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { requirementKey } from './read.js';
 
 export { EMBEDDING_PROVIDER_NOT_CONFIGURED };

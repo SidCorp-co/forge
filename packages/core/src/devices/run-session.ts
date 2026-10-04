@@ -27,7 +27,7 @@ import {
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { closeRunIfOneShot, insertOneShotRun, type OneShotRunSpec } from '../pipeline/runs.js';
 import { requirePolicy } from '../project-config/dispatch-policy.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';

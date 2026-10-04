@@ -24,9 +24,8 @@ import { db } from '../db/client.js';
 import { agentSessions, type MemberLens } from '../db/schema.js';
 import { buildProgressFactsBlock, computeProjectProgress } from '../issues/progress.js';
 import { egressShown } from '../lib/data-egress.js';
-import { transitionSessions } from './session-transition.js';
-import { logger } from '../logger.js';
 import type { ProgressFacts } from '../messaging/facts.js';
+import { logger } from '../observability/logger.js';
 import { getStorage } from '../storage/index.js';
 import { persistSessionAttachment } from './attachment-service.js';
 import { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
@@ -39,6 +38,7 @@ import {
   resolveSessionAuthority,
   type SessionAsker,
 } from './session-credential.js';
+import { transitionSessions } from './session-transition.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 

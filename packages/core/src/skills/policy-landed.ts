@@ -1,7 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects, skillActivityEvents } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import {
   buildPlatformInvariantSet,
   describeInvariantDelta,

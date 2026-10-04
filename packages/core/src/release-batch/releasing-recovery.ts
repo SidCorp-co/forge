@@ -1,17 +1,17 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { db, type Tx } from '../db/client.js';
 import { postIssueNotice } from '../comments/index.js';
-import { releaseRunClaims } from '../issues/index.js';
+import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, projects } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import { accountActor } from '../issues/account-actor.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
+import { releaseRunClaims } from '../issues/index.js';
 import { readWorkState, setWorkStep } from '../issues/work-state.js';
-import { logger } from '../logger.js';
 import { isRefusal } from '../lib/refusal.js';
-import { FENCE_LOST } from './refuse.js';
+import { logger } from '../observability/logger.js';
 import { resolveReleaseGate } from './gate.js';
+import { FENCE_LOST } from './refuse.js';
 
 export interface RecoverStrandedReleasingResult {
   /** Issues whose claim was cleared, closed ones included: the claim is a lock, not a status. */

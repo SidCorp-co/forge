@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, projects } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { consume, MAX_REDELIVERIES } from '../outbox/index.js';
 import { policyRefusal } from '../project-config/dispatch-policy.js';
 import { readEffectivePolicy } from '../project-config/effective.js';

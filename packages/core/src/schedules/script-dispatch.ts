@@ -1,6 +1,6 @@
 import { db } from '../db/client.js';
-import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
+import { logger } from '../observability/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import type { DispatchScheduleInput, RoutedFire } from './dispatch-types.js';
 import { resolveScheduleTargetProject } from './release-batch-dispatch.js';

@@ -1,11 +1,11 @@
-import { and, eq, inArray } from 'drizzle-orm';
-import type { Db } from '../db/client.js';
-import { agentSessions, jobs } from '../db/schema.js';
 import { JOB_MACHINE, LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
-import { transition } from '../lifecycle/transition.js';
+import { and, eq, inArray } from 'drizzle-orm';
 import { transitionSessions } from '../agent-sessions/session-transition.js';
-import { logger } from '../logger.js';
+import type { Db } from '../db/client.js';
+import { agentSessions, jobs } from '../db/schema.js';
+import { transition } from '../lifecycle/transition.js';
+import { logger } from '../observability/logger.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 export type JobRow = typeof jobs.$inferSelect;

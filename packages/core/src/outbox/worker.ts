@@ -1,7 +1,7 @@
 import type { OutboxEventType } from '@forge/contracts/outbox-events';
 import { sql } from 'drizzle-orm';
 import { db, listen } from '../db/client.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { traceStep } from '../observability/sentry.js';
 import { consumersOf, type Delivery } from './consumers.js';
 import { OUTBOX_CHANNEL } from './emit.js';

@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
 import { postIssueNotice } from '../comments/index.js';
+import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import type { TransitionActor } from './actor-agency.js';
 import type { TransitionIssueRow } from './apply-transition.js';
 import type { UnblockedDependent } from './drop-cascade.js';

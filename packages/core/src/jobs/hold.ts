@@ -3,7 +3,7 @@ import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type JobType, jobs } from '../db/schema.js';
 import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/transition.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { resolvePipelineWedge } from '../pipeline/wedge.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';

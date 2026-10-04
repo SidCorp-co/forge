@@ -1,6 +1,6 @@
 import { env } from '../config/env.js';
 import { mailDeliveryEnabled, sendMail } from '../integrations/mail/index.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 export function buildVerificationLink(token: string): string {
   // Link must hit the API origin (where /api/auth/verify lives), NOT the web

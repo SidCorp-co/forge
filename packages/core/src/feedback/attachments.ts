@@ -13,13 +13,13 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { allowedSetForTarget, resolveAttachmentMime, safeName } from '../lib/attachment-mime.js';
 import { dataPolicyOf, egressAs } from '../lib/data-egress.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
+import { requireCan } from '../permissions/index.js';
 import { askQuestion } from '../questions/write.js';
 import { getStorage } from '../storage/index.js';
 import { type FeedbackActor, feedbackKey, phaseOfRow, rowIn } from './read.js';
 import { clarificationRefusal, redactedRefusal } from './rules.js';
 import { answer, type FeedbackOutcome, inTx, lockFeedback } from './service.js';
-import { requireCan } from '../permissions/index.js';
 
 /** The BA assistant asks the reporter one clarification (Q5); the answer becomes a suggestion, never an edit. */
 export async function askClarification(input: {

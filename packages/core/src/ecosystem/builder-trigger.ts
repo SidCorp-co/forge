@@ -1,7 +1,7 @@
 /** A push to a member project's default branch reopens its builder runs (ISS-39). */
 
 import { db } from '../db/client.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { wakeMastersForBuild } from '../ws/master-wake.js';
 import { openOwedRun } from './link-service.js';
 import { membershipsWhere } from './store.js';

@@ -14,10 +14,10 @@ import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { refusalEnvelope, refuser } from '../lib/refusal.js';
-import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { logger } from '../observability/logger.js';
 import { requirementOfIssue } from '../requirements/issue-links.js';
 import { proposesWorkflowOf } from '../workflows/design-issue.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
@@ -55,8 +55,8 @@ import {
 } from './read-service.js';
 import { issueRelationInputSchema } from './relations-service.js';
 import { issueFiltersSchema, issuePatchSchema } from './request-schemas.js';
-import { refuseLegacyStatusFields } from './status-input.js';
 import { deleteIssue } from './service.js';
+import { refuseLegacyStatusFields } from './status-input.js';
 import { updateIssueFields } from './update-service.js';
 
 export {

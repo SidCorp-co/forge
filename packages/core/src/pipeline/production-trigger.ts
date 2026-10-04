@@ -1,4 +1,4 @@
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { productionOf } from '../project-config/release-path.js';
 import { readProjectDocument } from '../project-config/service.js';
 

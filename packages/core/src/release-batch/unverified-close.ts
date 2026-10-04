@@ -2,12 +2,12 @@
 // closed 42 issues on a release that was not running (ISS-1042, ISS-1321).
 
 import { and, eq, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
 import { postIssueNoticeOnce } from '../comments/index.js';
+import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { issueArchiveSide } from '../issues/archive.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import type { ReleaseVerification } from './plan.js';
 
 /** The line a reader, or a query, finds an unverified close by. One per issue per release run. */

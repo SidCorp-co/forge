@@ -2,7 +2,7 @@ import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects, runners, type SkillTarget, skills } from '../db/schema.js';
 import { RefusalError } from '../lib/refusal.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import type { Finding } from '../security/findings.js';
 import { scanSkillContent } from '../security/skill-content-scanner.js';

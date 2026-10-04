@@ -24,17 +24,17 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { provisionGitCredential } from '../git/provision-credential.js';
-import { logger } from '../logger.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { logger } from '../observability/logger.js';
 import { reportFailure } from '../observability/sentry.js';
+import { requireOrgCan } from '../permissions/index.js';
 import { issueDeviceCredential } from './credential.js';
 import { loginCodeState, userExists, userKindAndOrg } from './read.js';
 import { registerDevice } from './register.js';
 import { approveLoginCode, consumeLoginCode, insertLoginCode } from './service.js';
-import { requireOrgCan } from '../permissions/index.js';
 
 type LoginPlatform = 'windows' | 'macos' | 'linux';
 

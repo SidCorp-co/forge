@@ -23,13 +23,13 @@ import {
   servesRunnerReleases,
 } from './integrations/published-releases/index.js';
 import { probePgBossBackstop, runStaleSweep } from './jobs/index.js';
-import { logger } from './logger.js';
 import {
   runChunkBackfill,
   runConsolidationSweep,
   runEmbeddingBackfill,
   runMemoryDecay,
 } from './memory/index.js';
+import { logger } from './observability/logger.js';
 import {
   backfillPhaseJournal,
   runPipelineSweep,

@@ -3,7 +3,7 @@ import type { Db } from '../db/client.js';
 import type { ActorType } from '../db/schema.js';
 import { type ActorAgency, agencyUndetermined } from '../issues/actor-agency.js';
 import { insertActivityRow } from '../issues/index.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 export type Actor = { type: ActorType; id: string; agency: ActorAgency };
 

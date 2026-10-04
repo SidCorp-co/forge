@@ -10,9 +10,9 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type ModelTier, pmDecisions, projects } from '../db/schema.js';
-import { logger } from '../logger.js';
 import { indexMemory } from '../memory/indexer.js';
 import { emitNotification } from '../notifications/emit.js';
+import { logger } from '../observability/logger.js';
 
 export const PM_DECISION_CAUSES = [
   'job-failed',

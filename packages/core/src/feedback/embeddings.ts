@@ -13,10 +13,10 @@ import { feedback } from '../db/schema-feedback.js';
 import { itemEmbeddings } from '../db/schema-item-embeddings.js';
 import { writeItemEmbedding } from '../embeddings/item-writer.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
+import { requireCan } from '../permissions/index.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
 import { type FeedbackActor, feedbackKey, phaseOfRow, rowIn } from './read.js';
-import { requireCan } from '../permissions/index.js';
 
 /** Embeds the item's text, replacing whatever row it held; a redacted item holds none. */
 export async function embedFeedback(feedbackId: string) {

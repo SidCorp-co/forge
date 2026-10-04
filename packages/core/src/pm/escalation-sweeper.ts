@@ -27,8 +27,8 @@ import { type JobType, pmDecisions, projects } from '../db/schema.js';
 import { insertJobRow } from '../jobs/index.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { logger } from '../logger.js';
 import { indexMemory } from '../memory/indexer.js';
+import { logger } from '../observability/logger.js';
 import { reportFailure } from '../observability/sentry.js';
 import { openIssueRun } from '../pipeline/runs.js';
 

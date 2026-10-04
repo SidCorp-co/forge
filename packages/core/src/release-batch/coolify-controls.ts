@@ -33,7 +33,6 @@ import { DEPLOY_CONFIRM_WINDOW_MS } from '../pipeline/deploy-confirmations.js';
 import { liveActionNeedsHumanConfirm } from '../pipeline/release-coolify.js';
 import {
   activeCoolifyIntegrations,
-  CoolifyCommandError,
   type CoolifyIntegrationRow,
   refuseCoolify,
   resolveIntegrationRow,
@@ -83,7 +82,12 @@ export async function listApplicationsForIntegration(input: {
 
 function requireRow(rows: CoolifyIntegrationRow[], input: { integrationId?: string | undefined }) {
   const row = resolveIntegrationRow(rows, input);
-  if (!row) throw new CoolifyCommandError('project has no active Coolify integration');
+  if (!row) {
+    throw refuseCoolify(
+      'COOLIFY_INTEGRATION_UNRESOLVED',
+      'project has no active Coolify integration',
+    );
+  }
   return row;
 }
 
@@ -106,12 +110,16 @@ function targetsOf(row: CoolifyIntegrationRow): CoolifyTarget[] {
 function requireTarget(row: CoolifyIntegrationRow, resourceUuid?: string): CoolifyTarget {
   const targets = targetsOf(row);
   if (targets.length === 0) {
-    throw new CoolifyCommandError('integration has no deploy targets configured');
+    throw refuseCoolify(
+      'COOLIFY_TARGET_UNRESOLVED',
+      'integration has no deploy targets configured',
+    );
   }
   if (!resourceUuid) {
     const sole = targets.length === 1 ? targets[0] : undefined;
     if (!sole) {
-      throw new CoolifyCommandError(
+      throw refuseCoolify(
+        'COOLIFY_TARGET_UNRESOLVED',
         `integration has ${targets.length} targets — pass resourceUuid (${targets.map((t) => `${t.label}=${t.resourceUuid}`).join(', ')})`,
       );
     }
@@ -119,7 +127,8 @@ function requireTarget(row: CoolifyIntegrationRow, resourceUuid?: string): Cooli
   }
   const match = targets.find((t) => t.resourceUuid === resourceUuid);
   if (!match) {
-    throw new CoolifyCommandError(
+    throw refuseCoolify(
+      'COOLIFY_TARGET_UNRESOLVED',
       `resourceUuid ${resourceUuid} is not a deploy target of this integration`,
     );
   }
@@ -278,7 +287,8 @@ export async function runCoolifyCancel(input: {
     deploymentUuid = response?.deployment_uuid ?? null;
   }
   if (!deploymentUuid) {
-    throw new CoolifyCommandError(
+    throw refuseCoolify(
+      'COOLIFY_DEPLOYMENT_UNNAMED',
       'no deployment to cancel — this integration has recorded none, pass deploymentUuid',
     );
   }
@@ -371,6 +381,6 @@ async function performControl(args: {
       durationMs: Date.now() - started,
       completedAt: new Date(),
     });
-    throw new CoolifyCommandError(message);
+    throw refuseCoolify('COOLIFY_CONTROL_FAILED', message);
   }
 }

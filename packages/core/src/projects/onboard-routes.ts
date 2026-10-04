@@ -9,13 +9,13 @@ import {
 } from '../agent-sessions/interactive-credential.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { resolveSessionRepoPathForDevice } from '../lib/device-pool.js';
-import { logger } from '../logger.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { logger } from '../observability/logger.js';
+import { requireHeld } from '../permissions/index.js';
 import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { requestSkillSync } from '../skills/service.js';
-import { requireHeld } from '../permissions/index.js';
 import { projectHead } from './read.js';
 
 // ISS-733 — the "Build Project Brain" trigger: web calls this once, after

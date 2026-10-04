@@ -2,11 +2,11 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
-import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { upsertKnowledgeEntries } from './service.js';
+import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
+import { upsertKnowledgeEntries } from './service.js';
 
 function toKebabSlug(id: string): string {
   return (

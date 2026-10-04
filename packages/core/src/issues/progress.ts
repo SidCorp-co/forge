@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { activityLog, type IssueStatus, issueStatuses, issues } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { BASE_MERGE_STATE } from './merged-at.js';
 
 export type ProgressBucket = 'shipped' | 'closed_unshipped' | 'in_flight' | 'remaining';

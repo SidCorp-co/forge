@@ -1,4 +1,4 @@
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { closeDanglingPhasesForJob } from './phase-journal.js';
 

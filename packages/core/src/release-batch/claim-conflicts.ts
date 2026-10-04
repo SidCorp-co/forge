@@ -1,12 +1,12 @@
 // Why each issue a release was asked to claim could not be claimed, and what frees it. The one
 // sentence `CLAIM_CONFLICT` answers from every door — the batch, the record, the race at the claim.
 
+import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { agrees, counted } from '../lib/plural.js';
-import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import type { RefusalError } from '../lib/refusal.js';
 import { blockerRefusal, refuseRelease } from './refuse.js';
 

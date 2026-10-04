@@ -8,7 +8,7 @@
  */
 
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { reportFailure } from '../observability/sentry.js';
 import { nothingPostedStatus, uncertainStatus } from './fallback-replies.js';
 import {

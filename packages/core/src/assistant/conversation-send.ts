@@ -39,7 +39,7 @@ import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import type { ConversationMode, ConversationShape } from '../db/schema-conversations.js';
 import { requirements } from '../db/schema-requirements.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import {
   publishToConversationReaders,
   WEB_CONVERSATION_ACCEPTED_EVENT,

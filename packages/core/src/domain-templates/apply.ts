@@ -1,10 +1,10 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { agents, domainTemplates, projects } from '../db/schema.js';
 import { insertAgent, updateAgent } from '../agents/service.js';
 import { upsertAppConfig } from '../app-config/service.js';
-import { logger } from '../logger.js';
+import { db } from '../db/client.js';
+import { agents, domainTemplates, projects } from '../db/schema.js';
 import { notFound } from '../middleware/route-errors.js';
+import { logger } from '../observability/logger.js';
 import { registerSkillForProject } from '../skills/registration-service.js';
 import { resolveOrAdoptProjectSkill } from '../skills/service.js';
 import type { DomainTemplateManifest } from './manifest.js';

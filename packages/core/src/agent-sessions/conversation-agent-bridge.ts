@@ -14,11 +14,11 @@ import { codeAuthored, conversationTransport, screened } from '../conversations/
 import { recordDeliveredReply } from '../conversations/transcript.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import { logger } from '../logger.js';
 import { type MessageVerdict, problemsOf } from '../messaging/contract.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
+import { logger } from '../observability/logger.js';
 import { resolveFailureCause } from '../pipeline/failure-causes.js';
 import {
   CONVERSATION_AGENT_MARKER,

@@ -8,7 +8,7 @@ import {
 } from '../agent-sessions/recovery-stats.js';
 import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { traceStep } from '../observability/sentry.js';
 import { classifyFailure, deriveActionFromKind } from '../pipeline/failure-classifier.js';
 import { verifyRecovery } from '../pipeline/recovery-verifier.js';

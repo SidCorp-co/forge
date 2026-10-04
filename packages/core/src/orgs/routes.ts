@@ -4,14 +4,13 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { memberLenses, orgMemberRoles } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { logger } from '../observability/logger.js';
 import { requireOrgCan, requireOrgHeld } from '../permissions/index.js';
 import { sendOrgInvitationEmail } from '../projects/invitation-email.js';
 import { agentAccountRoutes } from './agent-accounts-routes.js';
 import { issueOrgInvitationToken } from './invitations.js';
-import { refuse } from './refuse.js';
 import {
   listOrgProjects,
   listPendingOrgInvitations,
@@ -21,6 +20,7 @@ import {
   orgProjectCount,
   userIdByEmail,
 } from './read.js';
+import { refuse } from './refuse.js';
 import {
   addExistingOrgMember,
   changeOrgMember,
@@ -314,8 +314,7 @@ orgRoutes.patch(
     // NOT be blocked on an owner-tier target.
     if (role !== undefined) {
       // Touching the owner tier (granting or revoking) is owner-only.
-      if (role === 'owner' || targetRole === 'owner')
-        requireOrgHeld(orgId, caller.role, 'org.own');
+      if (role === 'owner' || targetRole === 'owner') requireOrgHeld(orgId, caller.role, 'org.own');
       if (targetRole === 'owner' && role !== 'owner') {
         if ((await orgOwnerCount(orgId)) <= 1) {
           throw refuse(

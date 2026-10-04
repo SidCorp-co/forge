@@ -8,9 +8,9 @@
  * holds the one definition of blind and intermittent, and this module only reads it.
  */
 
-import { storeRunnerPoolReads } from '../runners/index.js';
 import { z } from 'zod';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
+import { storeRunnerPoolReads } from '../runners/index.js';
 import { WIRE_UNITS } from './gate-report.js';
 
 export const poolReadVerdicts = ['blind', 'intermittent'] as const;

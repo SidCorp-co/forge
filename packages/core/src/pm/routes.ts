@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { postIssueNotice } from '../comments/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
-import { logger } from '../logger.js';
+import { refuser } from '../lib/refusal.js';
 import { deleteMemory, indexMemoryBestEffort } from '../memory/indexer.js';
 import {
   type AuthVars,
@@ -16,13 +16,9 @@ import {
 } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { closeEscalationTasks } from '../notifications/close-escalation.js';
-import { refuser } from '../lib/refusal.js';
-import {
-  decisionInProject,
-  issueIsInProject,
-  listPmDecisions,
-  listPmPolicies,
-} from './read.js';
+import { logger } from '../observability/logger.js';
+import { requireHeld } from '../permissions/index.js';
+import { decisionInProject, issueIsInProject, listPmDecisions, listPmPolicies } from './read.js';
 import {
   createPmPolicy,
   deletePmPolicy,
@@ -31,7 +27,6 @@ import {
   updatePmPolicy,
 } from './service.js';
 import { PM_NO_PROMPT_MESSAGE, type SpawnPmSessionResult, spawnPmSession } from './spawner.js';
-import { requireHeld } from '../permissions/index.js';
 
 const projectIdParam = z.object({ projectId: z.uuid() });
 

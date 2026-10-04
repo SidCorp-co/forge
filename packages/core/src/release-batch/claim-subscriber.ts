@@ -1,5 +1,5 @@
 import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 

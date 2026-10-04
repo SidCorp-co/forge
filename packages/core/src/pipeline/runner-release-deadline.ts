@@ -5,7 +5,7 @@ import {
   repositoryTruth,
   settleFailed,
 } from '../integrations/github/index.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 export { RUNNER_RELEASE_DEADLINE_MS };
 

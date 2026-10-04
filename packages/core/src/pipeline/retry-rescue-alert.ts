@@ -2,9 +2,9 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications, projects } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { logger } from '../logger.js';
 import { retryRescuesSince } from '../metrics/queries.js';
 import { emitNotification } from '../notifications/emit.js';
+import { logger } from '../observability/logger.js';
 
 export const RETRY_RESCUE_ALERT_THRESHOLD = 5;
 export const RETRY_RESCUE_ALERT_WINDOW_MS = 24 * 60 * 60 * 1000;

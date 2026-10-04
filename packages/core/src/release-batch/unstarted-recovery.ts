@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { syncAgentSessionLifecycle } from '../jobs/agent-session-link.js';
 import { transition } from '../lifecycle/transition.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
 import { recoverStrandedReleasing, runRecordedPromotion } from './releasing-recovery.js';
 

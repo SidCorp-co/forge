@@ -39,9 +39,6 @@ async function say(transport: ReplyTransport, text: string): Promise<void> {
 export const RETIRED_THREAD_REPLY =
   'This thread belonged to an issue whose project is now bound to a different room, so nothing written here reaches it. Open the issue in Forge, or say it in the room this project is bound to now.';
 
-/** Raised inside the transaction when another delivery of this message already owns a comment. */
-class DuplicateDelivery extends Error {}
-
 export interface MirroredComment {
   commentId: string;
   /** False when this message had already been written as a comment. */
@@ -60,6 +57,9 @@ export async function writeMirroredComment(args: {
   externalMessageId: string;
   body: string;
 }): Promise<MirroredComment> {
+  // Thrown inside the transaction to undo the comment when another delivery of this message
+  // already owns one; told apart from every other failure by identity.
+  const duplicate = new Error('this message was already written as a comment');
   try {
     return await db.transaction(async (tx) => {
       const { row } = await insertComment(
@@ -83,7 +83,7 @@ export async function writeMirroredComment(args: {
         })
         .onConflictDoNothing()
         .returning({ commentId: rocketchatCommentMirrors.commentId });
-      if (!mirror) throw new DuplicateDelivery();
+      if (!mirror) throw duplicate;
       await emitEvent(tx, 'comment.created', {
         issueId: args.issueId,
         projectId: args.projectId,
@@ -96,7 +96,7 @@ export async function writeMirroredComment(args: {
       return { commentId: row.id, created: true };
     });
   } catch (err) {
-    if (!(err instanceof DuplicateDelivery)) throw err;
+    if (err !== duplicate) throw err;
     const [existing] = await db
       .select({ commentId: rocketchatCommentMirrors.commentId })
       .from(rocketchatCommentMirrors)

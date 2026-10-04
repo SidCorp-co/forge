@@ -1,5 +1,8 @@
+import { oneShotRunOutcome } from '@forge/contracts/run-machine';
 import { SESSION_SILENCE_REAP_MS } from '@forge/contracts/run-standing';
+import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/session-transition.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
@@ -19,10 +22,11 @@ import {
   PIPELINE_SESSION_KINDS,
   RUN_SESSION_KIND,
 } from '../jobs/session-kinds.js';
-import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
-import { oneShotRunOutcome } from '@forge/contracts/run-machine';
-import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/session-transition.js';
-import { logger } from '../logger.js';
+import {
+  type ReevaluateResult,
+  reevaluateConditions,
+} from '../notifications/reevaluate-conditions.js';
+import { logger } from '../observability/logger.js';
 import { reportFailure } from '../observability/sentry.js';
 import { type IdleIssuesResult, reconcileIdleIssues } from './idle-issues.js';
 import {
@@ -36,7 +40,6 @@ import {
   detectOrphanedRunAssertions,
   type IssueRunInvariantResult,
 } from './issue-run-invariant.js';
-import { type ReevaluateResult, reevaluateConditions } from '../notifications/reevaluate-conditions.js';
 import { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 import { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 import { type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';

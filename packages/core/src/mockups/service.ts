@@ -6,19 +6,19 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { MOCKUP_MACHINE } from '@forge/contracts/mockup-machine';
 import type { MockupTargetInput, MockupView, ProposeMockupRequest } from '@forge/contracts/mockups';
 import type { RevisionState } from '@forge/contracts/requirements';
-import { MOCKUP_MACHINE } from '@forge/contracts/mockup-machine';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { mockups } from '../db/schema-mockups.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import { issueRefIn, requirementRefIn } from '../feedback/refs.js';
-import { permissionFactsOf, requireCan } from '../permissions/index.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { notAnEdgeError, transition } from '../lifecycle/transition.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
+import { permissionFactsOf, requireCan } from '../permissions/index.js';
 import { getStorage } from '../storage/index.js';
 import { mockupContent } from './content.js';
 import { type MockupActor, type MockupRow, mockupKey, mockupViews, rowIn } from './read.js';

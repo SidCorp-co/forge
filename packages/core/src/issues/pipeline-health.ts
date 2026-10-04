@@ -24,7 +24,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { freshRunnerAvailability } from '../jobs/queued-gates.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { holderFanout, readClaim } from '../pipeline/lease-fanout.js';
 import type { LeaseReading } from '../pipeline/session-claim.js';
 import { projectRoom } from '../ws/rooms.js';

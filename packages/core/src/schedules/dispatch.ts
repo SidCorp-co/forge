@@ -7,7 +7,7 @@ import {
 import { db } from '../db/client.js';
 import type { ScheduleMode } from '../db/schema.js';
 import { type agentSessions, projects } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import type {
   DispatchScheduleInput,

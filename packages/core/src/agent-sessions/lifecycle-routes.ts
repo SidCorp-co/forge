@@ -8,9 +8,9 @@ import {
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
 import { notAnEdgeError } from '../lifecycle/transition.js';
-import { logger } from '../logger.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { logger } from '../observability/logger.js';
 import { holds } from '../permissions/index.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';

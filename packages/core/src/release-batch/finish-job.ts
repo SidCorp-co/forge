@@ -17,7 +17,7 @@ import { db, type Tx } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { isRefusal, refusalCodeOf } from '../lib/refusal.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { abortedError, batchAborted, rewordStoredAbort } from './abort-stamp.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';

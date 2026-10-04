@@ -16,15 +16,12 @@
  */
 
 import { JOB_MACHINE } from '@forge/contracts/job-machine';
+import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { heldTakeRefusal, refuseBlockedTake } from '../issues/blocked-by.js';
-import { refusalCodeOf } from '../lib/refusal.js';
-import {
-  assertDispatchGatesForIssue,
-  type DispatchGateCode,
-} from '../issues/dispatch-gates.js';
+import { assertDispatchGatesForIssue, type DispatchGateCode } from '../issues/dispatch-gates.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { holdQueuedJob, releaseJobHold } from '../jobs/index.js';
 import { resolveJobPolicy } from '../jobs/job-policy.js';
@@ -37,9 +34,9 @@ import {
   resolveRunnerForDevice,
 } from '../jobs/prepare-claimed-job.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { refusalCodeOf } from '../lib/refusal.js';
 import { transition } from '../lifecycle/transition.js';
-import type { PolicyRefusalCode } from '@forge/contracts/project-config';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { type DispatchState, policyRefusalOf } from '../project-config/dispatch-policy.js';
 import { runnerAdmission } from './pool-admission.js';
 import { releaseLabelVerdict } from './release-label.js';
@@ -306,4 +303,3 @@ export async function startJobForMaster(args: {
   }
   return { ok: true };
 }
-

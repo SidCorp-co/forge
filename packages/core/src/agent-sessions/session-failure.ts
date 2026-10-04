@@ -1,5 +1,5 @@
 import type { agentSessions } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import type { FailureCause } from '../pipeline/failure-causes.js';
 import {
   classifyFailure,

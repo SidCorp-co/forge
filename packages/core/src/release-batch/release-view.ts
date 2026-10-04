@@ -9,8 +9,8 @@ import type {
   ReleaseState,
   ReleaseWaitingKind,
 } from '@forge/contracts/releases';
-import { nobodyWaits, type Standing } from '@forge/contracts/standing';
 import type { BcVerdict } from '@forge/contracts/requirements';
+import { nobodyWaits, type Standing } from '@forge/contracts/standing';
 import { agrees, counted } from '../lib/plural.js';
 
 export interface ViewerFacts {
@@ -74,7 +74,14 @@ function draftTurn(f: TurnFacts): Turn {
   }
   return {
     attentionGroup: 'waiting',
-    waitingOn: { kind: 'person', who: 'A project admin', act: `cut ${f.version}`, rule, ref: null, dueAt: null },
+    waitingOn: {
+      kind: 'person',
+      who: 'A project admin',
+      act: `cut ${f.version}`,
+      rule,
+      ref: null,
+      dueAt: null,
+    },
   };
 }
 
@@ -97,7 +104,14 @@ function approvalTurn(f: TurnFacts): Turn {
   if (f.viewer?.mayApprove && a.decision === null) {
     return {
       attentionGroup: 'needs_you',
-      waitingOn: { kind: 'you', who: 'You', act: `approve or return ${f.version}`, rule, ref: null, dueAt: null },
+      waitingOn: {
+        kind: 'you',
+        who: 'You',
+        act: `approve or return ${f.version}`,
+        rule,
+        ref: null,
+        dueAt: null,
+      },
     };
   }
   const [only] = f.approvers;

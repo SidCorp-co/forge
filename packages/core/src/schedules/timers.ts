@@ -8,7 +8,7 @@ import { CronExpressionParser } from 'cron-parser';
 import { and, eq, lte, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { schedules } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { boss } from '../queue/boss.js';
 import { nextRunFor } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';

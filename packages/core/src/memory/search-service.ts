@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { type MemorySource, retrievalAnalytics } from '../db/schema.js';
 import { EmbeddingUnavailableError, embedQuery } from '../integrations/embeddings/index.js';
 import { fastModelConfigured } from '../integrations/llm/index.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { expandIssueRelations } from './expand-relations.js';
 import { inRerankHoldout, rerankHits, rerankPoolSize } from './rerank.js';
 import { loadRetrievalFlags, type RetrievalFlags } from './retrieval-flags.js';

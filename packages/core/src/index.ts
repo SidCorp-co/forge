@@ -29,12 +29,12 @@ import {
 import { startRocketChatManager, stopRocketChatManager } from './integrations/rocketchat/index.js';
 import { closeBacklogStreams, resolveIssueForHeadRef } from './issues/index.js';
 import { provideProjectOrg } from './lib/authz.js';
-import { logger } from './logger.js';
 import { registerChunkReindex, registerMemoryReconcileWorker } from './memory/index.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
+import { logger } from './observability/logger.js';
 import { emitEvents, startOutboxWorker, stopOutboxWorker } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
 import { readDeclaredSource } from './project-config/index.js';

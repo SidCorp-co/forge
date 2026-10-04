@@ -1,6 +1,6 @@
+import { isRefusal } from '../lib/refusal.js';
 import { collectReleaseBlockers } from './blockers.js';
 import { type CloseVerification, closeVerification, refusedVerifyBindings } from './channel.js';
-import { isRefusal } from '../lib/refusal.js';
 import type { VerifySource } from './plan.js';
 import { readLiveState } from './verify.js';
 

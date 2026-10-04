@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { skills } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { hashSkillBody } from './hash.js';
 import { parseManifest } from './parse-manifest.js';
 

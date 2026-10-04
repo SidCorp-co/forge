@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import type { PreambleBlock } from '../lib/chat-preamble.js';
 import { estimateTokens } from '../lib/token-estimator.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 export interface PersistPromptSnapshotArgs {
   jobId: string;

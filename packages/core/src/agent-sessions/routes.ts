@@ -12,7 +12,6 @@ import { isPipelineSessionKind } from '../jobs/session-kinds.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { notAnEdgeError } from '../lifecycle/transition.js';
-import { logger } from '../logger.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -21,6 +20,7 @@ import {
 } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
 import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';

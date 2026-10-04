@@ -7,7 +7,7 @@ import {
   findDeliveryByRequestId,
   listActiveDeployBindingsForProvider,
 } from '../integrations/index.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { traceStep } from '../observability/sentry.js';
 import { type DeployMap, readDeployMap } from '../project-config/release-path.js';
 import { abandonDeployDispatchHold, openDeployDispatchHold } from './deploy-confirmations.js';

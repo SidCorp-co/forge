@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { type IssueStatus, knowledgeEntries, type knowledgeKinds } from '../db/schema.js';
 import type { MasterVerb } from '../db/schema-master-charter.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { parseReadWhen, type ReadWhenCondition, readWhenRefusal } from './read-when.js';
 
 export { parseReadWhen, type ReadWhenCondition, type ReadWhenRefusal } from './read-when.js';

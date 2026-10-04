@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { spawnPmSession } from './spawner.js';
 
 // v1: hardcoded threshold per ISS-20 acceptance criteria. A configurable

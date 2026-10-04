@@ -15,7 +15,7 @@ import {
   projects,
 } from '../db/schema.js';
 import { estimateTokens } from '../lib/token-estimator.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { NO_PROGRESS_ROUNDS } from '../pipeline/reopen-policy.js';
 import type { DispatchState } from '../project-config/dispatch-policy.js';
 import { promotedBranch, readReleasePath } from '../project-config/release-path.js';
@@ -148,10 +148,7 @@ function formatProjectContext(projectId: string): string {
 ${fetch} A testing profile names \`secret://\` references, never values. Do NOT echo passwords in commits, PR descriptions, or tool output beyond the immediate authentication step.`;
 }
 
-export function formatProjectConfig(
-  baseBranch: string | null,
-  deploysFrom: string | null,
-): string {
+export function formatProjectConfig(baseBranch: string | null, deploysFrom: string | null): string {
   const b = baseBranch ?? BRANCH_SENTINEL;
   const park = 'needs_info';
   const liveLine =

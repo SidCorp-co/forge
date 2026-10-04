@@ -2,10 +2,10 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectMembers, projects, users } from '../db/schema.js';
 import { userLabel } from '../issues/actor-resolution.js';
-import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { emitNotification } from '../notifications/emit.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
+import { logger } from '../observability/logger.js';
 import { wakeMastersForChannel } from '../ws/master-wake.js';
 import type { ChannelDocument, ThreadHold } from './channel-schema.js';
 

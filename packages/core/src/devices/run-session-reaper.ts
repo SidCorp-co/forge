@@ -8,10 +8,10 @@
  */
 
 import { and, eq, sql } from 'drizzle-orm';
+import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_KIND } from './run-session.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';

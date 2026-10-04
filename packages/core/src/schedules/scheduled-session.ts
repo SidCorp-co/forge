@@ -24,12 +24,12 @@ import {
   pickTurnCredentialDevice,
   type SessionAsker,
 } from '../agent-sessions/session-credential.js';
+import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 type AgentSessionRow = typeof agentSessions.$inferSelect;
 

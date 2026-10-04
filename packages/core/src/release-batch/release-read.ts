@@ -1,3 +1,4 @@
+import { releaseNotesSections } from '@forge/contracts/release-notes';
 import type {
   ReleaseApprovalView,
   ReleaseAttemptView,
@@ -18,7 +19,6 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
-import { releaseNotesSections } from '@forge/contracts/release-notes';
 import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { readReleasePath } from '../project-config/release-path.js';
@@ -431,7 +431,8 @@ export async function readRelease(
   viewer: ViewerFacts | null,
 ): Promise<ReleaseDetail> {
   if (!parseReleaseVersion(version)) {
-    throw refuseRelease('RELEASE_VERSION_SHAPE',
+    throw refuseRelease(
+      'RELEASE_VERSION_SHAPE',
       `${JSON.stringify(version)} is not a release version: ${RELEASE_VERSION_SHAPE}`,
     );
   }

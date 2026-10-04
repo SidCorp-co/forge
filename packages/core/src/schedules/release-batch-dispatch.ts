@@ -7,7 +7,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import type { DispatchScheduleInput, RoutedFire } from './dispatch-types.js';
 import { runScheduledReleaseCut } from './release-batch-run.js';
 

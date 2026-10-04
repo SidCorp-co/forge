@@ -2,9 +2,9 @@ import { and, asc, eq, inArray, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
+import { logger } from '../observability/logger.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 

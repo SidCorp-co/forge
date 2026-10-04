@@ -1,11 +1,11 @@
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, pmConfig, projects } from '../db/schema.js';
-import { logger } from '../logger.js';
 import { deliverExisting } from '../notifications/deliver.js';
-import { insertNotificationRecord } from '../notifications/emit.js';
 import { emissionAllowed, noteSuppressed } from '../notifications/emission-switch.js';
+import { insertNotificationRecord } from '../notifications/emit.js';
 import { INITIAL_STATE, kindOf, tierOf } from '../notifications/kinds.js';
+import { logger } from '../observability/logger.js';
 
 const WINDOW_MS = 60 * 60 * 1000;
 const FAILURE_LIMIT = 3;

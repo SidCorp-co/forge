@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, isNotNull, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, runners } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { emitPipelineWedge, resolvePipelineWedge } from '../pipeline/wedge.js';
 import { broadcastRunnerChanged } from './apply-runner-limit.js';
 import { classifyBoxFault } from './attribute-failure.js';

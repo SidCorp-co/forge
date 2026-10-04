@@ -1,4 +1,4 @@
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 export const JOB_AXIS_SCAN_LIMIT = 200;
 

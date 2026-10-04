@@ -2,7 +2,7 @@ import postgres from 'postgres';
 import { runCanonicalBackfillOnce } from './agent-sessions/index.js';
 import { env } from './config/env.js';
 import { runCriteriaBackfillOnce } from './issues/index.js';
-import { logger } from './logger.js';
+import { logger } from './observability/logger.js';
 
 /**
  * The one-time data backfills, each gated by its `backfill_markers` row. They read domain code, so

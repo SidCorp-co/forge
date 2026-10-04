@@ -13,7 +13,7 @@ import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.j
 import type { ActorAgency, TransitionActor } from '../issues/actor-agency.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { type KernelActor, transition } from '../lifecycle/transition.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { refusePipeline } from './refuse.js';

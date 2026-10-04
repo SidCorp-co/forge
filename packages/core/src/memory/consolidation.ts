@@ -8,7 +8,7 @@ import { memoryOfLiveIssue } from '../issues/archive.js';
 import { canonicalIssueKey, issueRefFormatter } from '../issues/issue-prefix-read.js';
 import { BASE_MERGE_STATE } from '../issues/merged-at.js';
 import { searchKnowledge } from '../knowledge/search.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { boss } from '../queue/boss.js';
 import { runMemoryFeedback } from './feedback-service.js';

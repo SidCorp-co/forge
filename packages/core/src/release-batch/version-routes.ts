@@ -11,9 +11,9 @@ import {
   parseDecision,
   requestApproval,
 } from './approvals.js';
+import { refuseRelease } from './refuse.js';
 import { listReleases, readRelease } from './release-read.js';
 import type { ViewerFacts } from './release-view.js';
-import { refuseRelease } from './refuse.js';
 import { findReleaseBatchRun } from './service.js';
 
 export const releaseVersionRoutes = new Hono<{ Variables: AuthVars }>();
@@ -52,7 +52,8 @@ const approvalParam = zValidator(
 );
 const requestBody = zValidator('json', approvalRequestSchema, (r) => {
   if (!r.success) {
-    throw refuseRelease('RELEASE_APPROVAL_SHAPE',
+    throw refuseRelease(
+      'RELEASE_APPROVAL_SHAPE',
       `the request is { evidence: { environment, commit, reading }, note? }: ${r.error.issues
         .map((i) => `${i.path.join('.') || '(body)'} ${i.message}`)
         .join('; ')}`,

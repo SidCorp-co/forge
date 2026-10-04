@@ -14,7 +14,7 @@ import { accountActor } from '../issues/account-actor.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { readWorkState } from '../issues/work-state.js';
 import type { LoopScope } from '../jobs/loop-monitor.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
 import { isAutonomousProject } from './autonomous-project.js';

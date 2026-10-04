@@ -19,11 +19,11 @@ import type { WorkStep } from '../db/schema-issue-work-state.js';
 import { ADMITTED_RUNNER } from '../devices/pool-admission.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
-import { holderFanout, readClaim } from './lease-fanout.js';
+import { logger } from '../observability/logger.js';
 import type { ReleaseHold } from '../release-batch/index.js';
+import { holderFanout, readClaim } from './lease-fanout.js';
 import {
   type LeaseReading,
   leaseHolderOf,

@@ -6,7 +6,6 @@ import { env } from '../config/env.js';
 import { projectMemberRoles } from '../db/schema.js';
 import { loadOrgRole, loadProjectAccess } from '../lib/authz.js';
 import { RefusalError } from '../lib/refusal.js';
-import { logger } from '../logger.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -16,6 +15,7 @@ import {
 import { badRequest, forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { emitNotification } from '../notifications/emit.js';
+import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';

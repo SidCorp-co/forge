@@ -20,7 +20,7 @@ import {
   selectAlwaysInjectFromKnowledge,
   selectOnDemandSlugsFromKnowledge,
 } from '../../knowledge/service.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { promotedBranch, readDeployMap, releasePathOf } from '../../project-config/release-path.js';
 import type { ProjectDocument, TestingProfile } from '../../project-config/schema.js';
 import { listTestingProfiles, readProjectDocument } from '../../project-config/service.js';

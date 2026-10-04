@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, knowledgeEntries, labels } from '../db/schema.js';
 import { updateKnowledgeLinks } from '../knowledge/service.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { type Actor, safeRecordActivity } from '../pipeline/activity.js';
 
 /**

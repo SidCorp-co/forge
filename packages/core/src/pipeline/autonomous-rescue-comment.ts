@@ -1,6 +1,6 @@
 import { postIssueNoticeOnce } from '../comments/index.js';
 import type { IssueStatus } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 export function buildCapReachedCommentBody(args: {
   fromStatus: IssueStatus;
@@ -30,7 +30,12 @@ export async function postCapReachedComment(args: {
 }): Promise<void> {
   try {
     const body = buildCapReachedCommentBody(args);
-    await postIssueNoticeOnce({ issueId: args.issueId, authorId: args.authorId, body, marker: body });
+    await postIssueNoticeOnce({
+      issueId: args.issueId,
+      authorId: args.authorId,
+      body,
+      marker: body,
+    });
   } catch (err) {
     logger.error({ err, issueId: args.issueId }, 'autonomous-rescue-cap: failed to post comment');
   }

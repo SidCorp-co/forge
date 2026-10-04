@@ -28,7 +28,6 @@ import { requireCan } from '../permissions/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
 import {
   activeCoolifyIntegrations,
-  CoolifyCommandError,
   coolifyDeliveryStatus,
   listApplicationsForIntegration,
   listCoolifyIntegrations,
@@ -193,12 +192,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     const input = inputSchema.parse(args);
     const { principal } = ctx;
 
-    try {
-      return await dispatchAction(input, ctx, principal);
-    } catch (err) {
-      if (err instanceof CoolifyCommandError) throw new Error(`BAD_REQUEST: ${err.message}`);
-      throw err;
-    }
+    return dispatchAction(input, ctx, principal);
   },
 });
 

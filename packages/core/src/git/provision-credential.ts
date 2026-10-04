@@ -1,6 +1,6 @@
 import { stampGitCredentialRef } from '../devices/index.js';
 import { isEnabled } from '../lib/feature-flags.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 export type GitTransport = 'https' | 'ssh' | 'unknown';
 

@@ -4,7 +4,7 @@ import { issues, type jobs, projects } from '../db/schema.js';
 import type { DeviceLite } from '../issues/actor-agency.js';
 import { applyStatusTransition, type TransitionIssueRow } from '../issues/apply-transition.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { classifyVerdict, JOB_TYPE_ENTRY_STATUS } from '../pipeline/recovery-verifier.js';
 import { closeOpenRunForIssue } from '../pipeline/runs.js';

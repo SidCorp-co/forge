@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { domainTemplates } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import type { BuiltinTemplate } from './manifest.js';
 import { builtinTemplates } from './seeds/index.js';
 

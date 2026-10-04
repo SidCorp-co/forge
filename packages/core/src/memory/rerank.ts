@@ -8,7 +8,7 @@
 import { createHash, randomInt } from 'node:crypto';
 import { env } from '../config/env.js';
 import { callFastModel, fastModelName } from '../integrations/llm/index.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import type { MemoryHit } from './search.js';
 
 export const RERANK_POOL_FACTOR = 3;

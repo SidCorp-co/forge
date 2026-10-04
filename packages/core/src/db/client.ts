@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { env } from '../config/env.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import * as baseSchema from './schema.js';
 import * as activitySchema from './schema-activity.js';
 import * as adminThresholdsSchema from './schema-admin-thresholds.js';

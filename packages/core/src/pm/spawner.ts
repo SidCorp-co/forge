@@ -2,7 +2,7 @@ import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pmConfig, pmDecisions } from '../db/schema.js';
 import { noPromptMessage, POOL_JOB_NO_PROMPT } from '../jobs/pool-served.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 export type SpawnCause =
   | 'job-failed'

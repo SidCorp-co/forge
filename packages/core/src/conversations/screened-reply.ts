@@ -1,9 +1,9 @@
 import type { ExternalChatTurnResult } from '../assistant/external-chat.js';
-import { logger } from '../logger.js';
 import { type DoorId, type MessageVerdict, problemsOf } from '../messaging/contract.js';
 import { doorPolicy } from '../messaging/doors.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
+import { logger } from '../observability/logger.js';
 import {
   CORRECTIVE_PREFIX,
   emptyFallbackReply,

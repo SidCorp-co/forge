@@ -2,8 +2,8 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { callFastModel } from '../integrations/llm/index.js';
-import { logger } from '../logger.js';
 import { foreignScriptChars } from '../memory/script-guard.js';
+import { logger } from '../observability/logger.js';
 import { broadcastSession } from './broadcast.js';
 import { isSystemNoise, stripSystemNoise } from './content-filter.js';
 

@@ -4,12 +4,12 @@
 // only ever asks for rows whose current generation has no published chunk set.
 
 import { and, asc, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
+import { mergeMemoryReindex, stampLastBackfill } from '../app-config/service.js';
 import { db } from '../db/client.js';
 import { appConfig, memories } from '../db/schema.js';
 import { type MemoryReindexState, memoryChunks } from '../db/schema-memory-chunks.js';
-import { mergeMemoryReindex, stampLastBackfill } from '../app-config/service.js';
 import { EmbeddingUnavailableError } from '../integrations/embeddings/index.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { boss } from '../queue/boss.js';
 import { chunkAndPublish, loadChunkParent } from './chunk-writer.js';
 import {

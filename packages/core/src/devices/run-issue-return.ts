@@ -31,7 +31,7 @@ import {
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import {
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_ISSUES_METADATA_KEY,

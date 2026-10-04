@@ -19,12 +19,12 @@
  * The whole flow, both directions: the run/job invariant in CLAUDE.md.
  */
 
+import { oneShotRunOutcome } from '@forge/contracts/run-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { LoopScope } from '../jobs/loop-monitor.js';
 import { RESULT_QUIET_MINUTES } from '../jobs/loop-monitor.js';
-import { oneShotRunOutcome } from '@forge/contracts/run-machine';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { closeRun } from './runs.js';
 
 export interface ConcludedRunReapResult {

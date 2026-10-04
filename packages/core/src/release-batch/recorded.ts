@@ -11,25 +11,20 @@
 // instead, and the residual is priced on ISS-1129.
 
 import { and, eq, inArray } from 'drizzle-orm';
-import { db } from '../db/client.js';
 import { postIssueNotice } from '../comments/index.js';
-import { claimIssuesForRelease, releaseRunClaims } from '../issues/index.js';
+import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import { accountActor } from '../issues/account-actor.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { logger } from '../logger.js';
+import { claimIssuesForRelease, releaseRunClaims } from '../issues/index.js';
+import { logger } from '../observability/logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { collectReleaseBlockers } from './blockers.js';
 import { closeVerification, type ReleaseVerification } from './channel.js';
 import { claimConflictAt, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
-import {
-  blockerRefusal,
-  notVerifiedRefusal,
-  reasonOf,
-  releaseBlockedRefusal,
-} from './refuse.js';
+import { blockerRefusal, notVerifiedRefusal, reasonOf, releaseBlockedRefusal } from './refuse.js';
 import { type ServingNowOutcome, verifyServingNow } from './verify.js';
 
 /** The one ledger key a recorded release writes under. */

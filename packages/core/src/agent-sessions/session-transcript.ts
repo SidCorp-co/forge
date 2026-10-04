@@ -1,10 +1,4 @@
 import { and, eq, getTableColumns, sql } from 'drizzle-orm';
-import {
-  broadcastSession,
-  broadcastTurnAppended,
-  broadcastTurnTruncated,
-} from './broadcast.js';
-import { syncTurnsWithMessages } from './turns-helpers.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { attemptedMerge, finalizedMerge } from '../db/transcript-marker.js';
@@ -13,13 +7,15 @@ import {
   createDeriveState,
   type DeriveState,
 } from '../lib/agent-stream-parser.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
+import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
 import {
   applyCarrierRows,
   carrierLog,
   readCarrierRows,
   type TranscriptCarrier,
 } from './session-transcript-carrier.js';
+import { syncTurnsWithMessages } from './turns-helpers.js';
 
 export type { CarrierRow, TranscriptCarrier } from './session-transcript-carrier.js';
 export { contiguousPrefix } from './session-transcript-carrier.js';

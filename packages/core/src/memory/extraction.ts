@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import { comments, issues, type JobType, jobs, memories } from '../db/schema.js';
 import { callFastModel, fastModelConfigured } from '../integrations/llm/index.js';
 import { insertKnowledgeEdgeOnce } from '../knowledge-edges/service.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { indexMemory } from './indexer.js';
 import { foreignScriptChars } from './script-guard.js';

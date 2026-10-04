@@ -1,6 +1,6 @@
 import type { ChatStreamEvent } from '../integrations/llm/index.js';
 import type { AgentMessage, ContentBlock } from '../lib/agent-stream-parser.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import {
   publishToConversationReaders,
   WEB_CONVERSATION_PROGRESS_EVENT,

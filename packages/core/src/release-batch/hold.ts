@@ -7,12 +7,12 @@
  * table's one writer.
  */
 
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { ReleaseHoldOwer, ReleaseHoldView } from '@forge/contracts/releases';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { releaseHolds } from '../db/schema-release-ledger.js';
 import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { type ServingReading, servingClause } from './serving-reading.js';
 
 /** What holds a row back, as the sweep decided it. */
@@ -324,7 +324,10 @@ export async function readReleaseHolds(
     .from(releaseHolds)
     .where(and(inArray(releaseHolds.issueId, [...issueIds]), isNull(releaseHolds.clearedAt)));
   return new Map(
-    rows.map(({ issueId, heldAt, ...hold }) => [issueId, { ...hold, heldAt: heldAt.toISOString() }]),
+    rows.map(({ issueId, heldAt, ...hold }) => [
+      issueId,
+      { ...hold, heldAt: heldAt.toISOString() },
+    ]),
   );
 }
 

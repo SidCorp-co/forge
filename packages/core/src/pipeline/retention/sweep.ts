@@ -1,10 +1,10 @@
 import { and, inArray, sql } from 'drizzle-orm';
+import { deriveSessionFinal, stampFinalizeAttempt } from '../../agent-sessions/index.js';
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
 import { TRANSCRIPT_FINALIZED_KEY } from '../../db/transcript-marker.js';
 import { type CollapseResult, collapseNarration } from '../../issues/record-events/collapse.js';
-import { deriveSessionFinal, stampFinalizeAttempt } from '../../agent-sessions/index.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { type SuggestionSweepResult, sweepSuggestions } from '../../suggestions/stale.js';
 import {
   finalizeRepairMax,
@@ -12,11 +12,7 @@ import {
   type RetentionRule,
   resolveRetention,
 } from './policy.js';
-import {
-  RETENTION_STATEMENTS,
-  repairCandidates,
-  truncatedHistories,
-} from './statements.js';
+import { RETENTION_STATEMENTS, repairCandidates, truncatedHistories } from './statements.js';
 
 const BATCH_SIZE = 10_000;
 /** Cap the loop defensively so a statement that never shortens cannot spin. */

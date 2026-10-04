@@ -12,7 +12,7 @@ import { db } from '../db/client.js';
 import { agentSessions, devices, runners } from '../db/schema.js';
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 export interface RunLedgerIssue {
   issueKey: string;

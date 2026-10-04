@@ -1,7 +1,6 @@
 export { registerReleaseBatchClaimSubscriber } from './claim-subscriber.js';
 export {
   activeCoolifyIntegrations,
-  CoolifyCommandError,
   coolifyDeliveryStatus,
   listCoolifyIntegrations,
   refuseCoolify,

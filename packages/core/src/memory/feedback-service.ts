@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 export const FEEDBACK_SOURCES = ['note', 'knowledge'] as const;
 

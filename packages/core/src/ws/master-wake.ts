@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { runners } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { masterCharterPath } from '../projects/master-charter.js';
 import { deviceRoom } from './rooms.js';

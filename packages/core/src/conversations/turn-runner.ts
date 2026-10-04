@@ -26,8 +26,8 @@ import {
 import type { ChatStreamEvent } from '../integrations/llm/index.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { egressDeep } from '../lib/data-egress.js';
-import { logger } from '../logger.js';
 import type { DoorId } from '../messaging/contract.js';
+import { logger } from '../observability/logger.js';
 import { reportFailure } from '../observability/sentry.js';
 import { errorFallbackReply } from './fallback-replies.js';
 import {

@@ -4,7 +4,7 @@
 
 import type { WebSocket } from 'ws';
 import { z } from 'zod';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { applyRunLedgerSnapshot } from './run-ledger.js';
 
 interface LedgerWs extends WebSocket {

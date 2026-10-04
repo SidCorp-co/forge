@@ -1,10 +1,10 @@
-import { JOB_MACHINE } from '@forge/contracts/job-machine';
+import { JOB_MACHINE, OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, eq, inArray, isNotNull, lt, or, type SQL, sql } from 'drizzle-orm';
+import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/session-transition.js';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
 import { transition } from '../lifecycle/transition.js';
-import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/session-transition.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { resumeLapsedAnswers } from '../pipeline/answer-resume.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
 import { emitPipelineWedge, type WedgeHop } from '../pipeline/wedge.js';
@@ -30,7 +30,6 @@ import { broadcastZombieTransition, lookupIssueForRun, reapQueueHop } from './qu
 import { RESULT_EVENT_LATERAL, RESULT_GUARD } from './resident-session.js';
 import { CLIENT_SESSION_KINDS, PIPELINE_SESSION_KINDS } from './session-kinds.js';
 import { type SessionLostCause, sessionLostCause } from './session-lost-cause.js';
-import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 
 type RedispatchFn = (
   sessionId: string,

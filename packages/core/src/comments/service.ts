@@ -14,9 +14,9 @@ import {
   mirrorCommentRecord,
   remirrorCommentRecord,
 } from '../issues/record-events/mirror.js';
-import { logger } from '../logger.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
+import { logger } from '../observability/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import type { Actor } from '../pipeline/activity.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';

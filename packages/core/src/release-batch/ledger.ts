@@ -5,14 +5,13 @@ import {
   type ReleaseAttemptStage,
   releaseAttempts,
 } from '../db/schema-release-ledger.js';
-
+import { isRefusal } from '../lib/refusal.js';
 import {
   type CloseVerification,
   closeVerification,
   type ReleaseChannel,
   refusedVerifyBindings,
 } from './channel.js';
-import { isRefusal } from '../lib/refusal.js';
 import { readLiveState } from './verify.js';
 
 export type { ReleaseAttemptRow, ReleaseAttemptStage };

@@ -17,7 +17,7 @@ import type {
   ConversationWindowCutReason,
   ConversationWindowDecision,
 } from '../db/schema-conversations.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { readSelvesFor } from '../orgs/agent-selves.js';
 import { resolveTurnAuthority } from '../permissions/index.js';
 import { acknowledgeRequest } from './acknowledgement.js';

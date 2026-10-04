@@ -22,7 +22,7 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { setWorkStep } from '../issues/work-state.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { isRefusal } from '../lib/refusal.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import {
   cancelConcludedRun,
@@ -37,6 +37,7 @@ import {
   settleAbortStamp,
   stampAbort,
 } from './abort-stamp.js';
+import { RELEASE_ROSTER_LIMIT } from './blocker-sentences.js';
 import { collectReleaseBlockers } from './blockers.js';
 import {
   type CloseVerification,
@@ -46,7 +47,6 @@ import {
   resolveReleasePlan,
 } from './channel.js';
 import { claimConflictAt, refuseLostReleaseClaim } from './claim-conflicts.js';
-import { RELEASE_ROSTER_LIMIT } from './blocker-sentences.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
