@@ -1,7 +1,7 @@
 import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter } from './registry.js';
 import { type BindingWithConnection, buildContextFromBinding } from './store.js';

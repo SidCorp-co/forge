@@ -8,7 +8,7 @@
  * the same archetype `sentry/adapter.ts` has.
  */
 
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import { findConnectionById, updateConnection } from '../store.js';
 import {

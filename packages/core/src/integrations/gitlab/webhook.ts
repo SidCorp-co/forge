@@ -6,7 +6,7 @@
  * not something to swallow.
  */
 
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import {
   applyCheckRunEvent,
   applyPullRequestEvent,

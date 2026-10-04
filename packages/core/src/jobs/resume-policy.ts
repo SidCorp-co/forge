@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { recordResumeDrop } from '../observability/hold-metrics.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { traceStep } from '../observability/sentry.js';
 import { getTrippedDeviceIds } from '../runners/select.js';
 import { readAutoRetryPayload } from './retry.js';
 import { estimateIssueContextTokens, MAX_RESUME_TOKENS } from './session-resume.js';
@@ -106,12 +106,10 @@ async function exceedsResumeBounds(args: {
     },
     'resume-policy: resume bound exceeded — dispatching fresh session',
   );
-  if (isSentryEnabled()) {
-    Sentry.addBreadcrumb({
-      category: 'pipeline.resume_bound',
-      data: { reason, estTokens },
-    });
-  }
+  traceStep({
+    category: 'pipeline.resume_bound',
+    data: { reason, estTokens },
+  });
   return reason;
 }
 

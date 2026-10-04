@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, projects } from '../db/schema.js';
 import { applyStatusTransition } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { traceStep } from '../observability/sentry.js';
 import { AUTONOMOUS_JOB_TYPE, AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
 import { postCapReachedComment } from './autonomous-rescue-comment.js';
 
@@ -139,13 +139,11 @@ async function parkForHuman(args: {
     { issueId: args.issueId, runId: args.runId, from: args.status, cap: AUTONOMOUS_RESCUE_CAP },
     'autonomous-rescue-cap: rescues exhausted — parked the issue for a human',
   );
-  if (isSentryEnabled()) {
-    Sentry.addBreadcrumb({
-      category: 'pipeline.autonomous.rescue_cap_reached',
-      level: 'warning',
-      data: { issueId: args.issueId, runId: args.runId, from: args.status },
-    });
-  }
+  traceStep({
+    category: 'pipeline.autonomous.rescue_cap_reached',
+    level: 'warning',
+    data: { issueId: args.issueId, runId: args.runId, from: args.status },
+  });
 }
 
 /** Charge one rescue to the run. Called only once a rescue actually happened. */

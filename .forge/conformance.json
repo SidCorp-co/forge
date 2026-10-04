@@ -280,7 +280,7 @@
           },
           {
             "glob": "packages/core/src/observability/sentry.ts",
-            "why": "Forge's own crash reporting, initialised at boot before any domain module loads, and the one module that imports @sentry/node. Callers still take the vendor's Sentry namespace from it, which ADR 0006 prices until it exports role-typed capture functions."
+            "why": "Forge's own crash reporting, initialised at boot before any domain module loads, and the one module that imports @sentry/node. Callers reach it through its role-typed functions (reportFailure, reportCondition, traceStep, flushReports) and never name the vendor's namespace."
           },
           {
             "glob": "packages/core/src/assistant/bench-assistant.ts",

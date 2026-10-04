@@ -19,7 +19,7 @@ import {
   rocketchatThreadOpenings,
 } from '../../db/schema-rocketchat.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { problemsOf } from '../../messaging/contract.js';
 import { proven, wholeAgentText } from '../../messaging/proven.js';
 import { consume } from '../../outbox/index.js';

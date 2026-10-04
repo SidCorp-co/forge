@@ -23,7 +23,7 @@ import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { oneShotRunOutcome } from '@forge/contracts/run-machine';
 import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { reportFailure } from '../observability/sentry.js';
 import { type IdleIssuesResult, reconcileIdleIssues } from './idle-issues.js';
 import {
   alarmAgedHolds,
@@ -139,9 +139,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
         { err, pass: name },
         `pipeline-sweeper: pass '${name}' threw (isolated — remaining passes still run)`,
       );
-      if (isSentryEnabled()) {
-        Sentry.captureException(err, { tags: { area: 'pipeline-sweeper', sweep_pass: name } });
-      }
+      reportFailure(err, { tags: { area: 'pipeline-sweeper', sweep_pass: name } });
       return undefined;
     }
   };

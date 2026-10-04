@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { withoutQueryParams } from '../lib/db-errors.js';
 import { RefusalError, refusalEnvelope } from '../lib/refusal.js';
 import { getLogger } from '../logger.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { reportFailure } from '../observability/sentry.js';
 import type { RequestIdVars } from './request-id.js';
 
 type ErrorBody = { code: string; message: string; details?: unknown };
@@ -76,9 +76,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
 
     // 5xx HTTPExceptions still represent server-side failures we want to
     // see in Sentry; 4xx are expected client errors and stay out.
-    if (isSentryEnabled() && status >= 500) {
-      captureToSentry(err, c, body.code);
-    }
+    if (status >= 500) reportRequestFailure(err, c, body.code);
 
     if (status === 401 && wwwAuthenticate) {
       c.header('WWW-Authenticate', wwwAuthenticate);
@@ -99,24 +97,23 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
   }
 
   log.error({ err }, 'http.unhandled');
-  if (isSentryEnabled()) {
-    captureToSentry(err, c, 'INTERNAL_ERROR');
-  }
+  reportRequestFailure(err, c, 'INTERNAL_ERROR');
   return c.json(body, 500);
 };
 
-function captureToSentry(
+function reportRequestFailure(
   err: unknown,
   c: Context<{ Variables: RequestIdVars }>,
   code: string,
 ): void {
-  Sentry.withScope((scope) => {
-    scope.setTag('http.method', c.req.method);
-    scope.setTag('http.path', c.req.path);
-    scope.setTag('error.code', code);
-    const requestId = c.get('requestId');
-    if (requestId) scope.setTag('request.id', requestId);
-    Sentry.captureException(err);
+  const requestId = c.get('requestId');
+  reportFailure(err, {
+    tags: {
+      'http.method': c.req.method,
+      'http.path': c.req.path,
+      'error.code': code,
+      ...(requestId ? { 'request.id': requestId } : {}),
+    },
   });
 }
 

@@ -1,5 +1,5 @@
-import { logger } from '../../logger.js';
-import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
+import { logger } from '../../observability/logger.js';
+import { traceStep } from '../../observability/sentry.js';
 import {
   DEPLOY_CONFIRM_WINDOW_MS,
   type DeployConfirmationStatus,
@@ -277,20 +277,18 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
         });
         if (!firstDeliveryId) firstDeliveryId = deliveryId;
 
-        if (isSentryEnabled()) {
-          Sentry.addBreadcrumb({
-            category: BREADCRUMB_OUT,
-            level: 'info',
-            message: `coolify deploy dispatch: ${input.eventName} (${target.label})`,
-            data: {
-              connectionId: ctx.connectionId,
-              bindingId: ctx.bindingId,
-              deliveryId,
-              runId,
-              targetId: target.id,
-            },
-          });
-        }
+        traceStep({
+          category: BREADCRUMB_OUT,
+          level: 'info',
+          message: `coolify deploy dispatch: ${input.eventName} (${target.label})`,
+          data: {
+            connectionId: ctx.connectionId,
+            bindingId: ctx.bindingId,
+            deliveryId,
+            runId,
+            targetId: target.id,
+          },
+        });
 
         const started = Date.now();
         let accepted: string | undefined;

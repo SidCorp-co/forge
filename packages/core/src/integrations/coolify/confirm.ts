@@ -1,5 +1,5 @@
 import { INTEGRATIONS_QUEUE_NAME } from '../../jobs/queue-name.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import {
   isCloseDeferred,
   resolveDeployGate,

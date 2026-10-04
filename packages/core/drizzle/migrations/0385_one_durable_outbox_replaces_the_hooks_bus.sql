@@ -4,6 +4,8 @@
 -- consumers already through, so a redelivery runs only the ones that failed.
 ALTER TABLE "pipeline_outbox" ADD COLUMN "type" text;--> statement-breakpoint
 ALTER TABLE "pipeline_outbox" ADD COLUMN "delivered" text[] DEFAULT '{}'::text[] NOT NULL;--> statement-breakpoint
+-- The actor check goes before any row is rewritten: rows the old trigger wrote do not all satisfy it.
+ALTER TABLE "pipeline_outbox" DROP CONSTRAINT IF EXISTS "pipeline_outbox_user_actor_has_agency";--> statement-breakpoint
 
 -- Every row so far is an issue move the status trigger wrote; its columns become the payload the
 -- `issue.transitioned` consumers read.
@@ -37,7 +39,6 @@ ALTER TABLE "pipeline_outbox" ALTER COLUMN "type" SET NOT NULL;--> statement-bre
 ALTER TABLE "pipeline_outbox" ALTER COLUMN "payload" DROP DEFAULT;--> statement-breakpoint
 ALTER TABLE "pipeline_outbox" ALTER COLUMN "issue_id" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "pipeline_outbox" ALTER COLUMN "project_id" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "pipeline_outbox" DROP CONSTRAINT IF EXISTS "pipeline_outbox_user_actor_has_agency";--> statement-breakpoint
 ALTER TABLE "pipeline_outbox" DROP COLUMN "from_status";--> statement-breakpoint
 ALTER TABLE "pipeline_outbox" DROP COLUMN "to_status";--> statement-breakpoint
 ALTER TABLE "pipeline_outbox" DROP COLUMN "actor_id";--> statement-breakpoint

@@ -8,7 +8,7 @@
 import { inArray } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { listBindingsForConnection } from '../store.js';
 import type { RocketChatBindingConfig } from './types.js';
 
