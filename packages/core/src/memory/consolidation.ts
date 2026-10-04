@@ -740,6 +740,8 @@ export function registerMemoryReconcileTrigger(): void {
   });
 }
 
+type ReconcileJob = { projectId?: string; issueId?: string };
+
 let reconcileWorkerRegistered = false;
 
 /** Event-driven worker for `MEMORY_RECONCILE_QUEUE` — no schedule, unlike the
@@ -747,13 +749,10 @@ let reconcileWorkerRegistered = false;
  *  transition (enqueued by `registerMemoryReconcileTrigger`). */
 export async function registerMemoryReconcileWorker(): Promise<void> {
   if (reconcileWorkerRegistered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(MEMORY_RECONCILE_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss handler arg type varies across versions
-  await (boss as any).work(MEMORY_RECONCILE_QUEUE, { batchSize: 1 }, async (arg: any) => {
-    const entries = Array.isArray(arg) ? arg : [arg];
-    for (const entry of entries) {
-      const data = entry?.data as { projectId?: string; issueId?: string } | undefined;
+  await boss.createQueue(MEMORY_RECONCILE_QUEUE);
+  await boss.work<ReconcileJob>(MEMORY_RECONCILE_QUEUE, { batchSize: 1 }, async (jobs) => {
+    for (const entry of jobs) {
+      const data = entry.data;
       if (!data?.projectId || !data.issueId) continue;
       try {
         const result = await reconcileForReleasedIssue(data.projectId, data.issueId);

@@ -1,4 +1,4 @@
-import PgBoss from 'pg-boss';
+import { PgBoss } from 'pg-boss';
 import { env } from '../config/env.js';
 
 let instance: PgBoss | null = null;

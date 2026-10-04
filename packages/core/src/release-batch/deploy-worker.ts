@@ -122,21 +122,13 @@ let workerId: string | null = null;
  */
 export async function registerDeployWorker(): Promise<void> {
   if (workerId) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(INTEGRATIONS_QUEUE_NAME);
-  // biome-ignore lint/suspicious/noExplicitAny: handler arity / arg shape stabilised at runtime
-  const id = (await (boss as any).work(
+  await boss.createQueue(INTEGRATIONS_QUEUE_NAME);
+  const id = await boss.work<OutboundDispatchJob | CoolifyConfirmJob | CoolifyHealthGateJob>(
     INTEGRATIONS_QUEUE_NAME,
     { batchSize: 1 },
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss job shape stabilised at runtime
-    async (arg: any) => {
-      const entries = Array.isArray(arg) ? arg : [arg];
-      for (const entry of entries) {
-        const data = entry?.data as
-          | OutboundDispatchJob
-          | CoolifyConfirmJob
-          | CoolifyHealthGateJob
-          | undefined;
+    async (jobs) => {
+      for (const entry of jobs) {
+        const data = entry.data;
         if (!data) continue;
         try {
           if (data.jobKind === 'coolify.dispatch') {
@@ -167,7 +159,7 @@ export async function registerDeployWorker(): Promise<void> {
         }
       }
     },
-  )) as string;
+  );
   workerId = id;
   logger.info({ workerId, queue: INTEGRATIONS_QUEUE_NAME }, 'deploy worker registered');
 }
