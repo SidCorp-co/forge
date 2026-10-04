@@ -7,13 +7,12 @@ import { formatRelativeTime } from "@/lib/utils/format";
 import { useDocument, useThread } from "../hooks";
 import { readingOf } from "@/lib/api/refusals";
 import { ecosystemRoutes } from "../routes";
-import type { DocumentEvent, DocumentView } from "../types";
+import { type DocumentEvent, type DocumentView, TYPE_LABEL, type ThreadHold } from "../types";
 import { DocumentActions, type Role } from "./document-actions";
 import { DocumentBody } from "./document-body";
 import { GatePanel } from "./gate-panel";
 import { Loading, UnreadNotice } from "./notices";
 import { AuthorLine, HoldLine, type Names, PeopleNames, useProjectNames } from "./people";
-import { TYPE_LABEL } from "../types";
 
 function EventLine({ e }: { e: DocumentEvent }) {
   return (
@@ -71,17 +70,86 @@ function Conversation({ projectId, slug, thread, names }: { projectId: string; s
   );
 }
 
-export function DocumentScreen({
-  projectId,
-  slug,
-  role,
-  docRef,
-}: {
-  projectId: string;
-  slug: string;
-  role: Role;
-  docRef: string;
-}) {
+function DocumentHeader({ view, slug, docRef, held, names }: { view: DocumentView; slug: string; docRef: string; held: ThreadHold | null; names: Names }) {
+  const d = view.document;
+  return (
+    <header className="space-y-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-13 font-semibold">{d.number ?? "draft"}</span>
+        <Badge>{TYPE_LABEL[d.type] ?? d.type}</Badge>
+        <StatusBadge family="document" value={d.state} />
+        {view.standing?.overdue ? <Badge tone="red">Overdue</Badge> : null}
+        {held ? <Badge tone="amber">Held</Badge> : null}
+        <span className="fg-caption">{view.side === "sender" ? "you sent this" : "sent to you"}</span>
+        <AskAboutThis kind="document" refId={d.number ?? docRef} />
+      </div>
+      <h2 className="break-words text-16 font-semibold text-fg">{d.subject}</h2>
+      <p className="fg-caption break-words">
+        {names(d.from)} → {d.to.map(names).join(", ")}
+        {d.inReplyTo ? (
+          <>
+            {" "}· in reply to{" "}
+            <Link href={ecosystemRoutes.document(slug, d.inReplyTo)} className="font-mono hover:underline">
+              {d.inReplyTo}
+            </Link>
+          </>
+        ) : null}
+        {d.dueBy ? <> · due {d.dueBy}</> : null}
+        {d.publishedAt ? <> · published {formatRelativeTime(d.publishedAt)}</> : null}
+      </p>
+      <p className="text-13">
+        <AuthorLine author={d.authoredBy} party={d.authoredBy.kind === "agent" ? names(d.from) : undefined} />
+      </p>
+    </header>
+  );
+}
+
+function StateNotes({ view, slug, held, names }: { view: DocumentView; slug: string; held: ThreadHold | null; names: Names }) {
+  const d = view.document;
+  return (
+    <>
+      {held ? (
+        <div role="status" className="rounded-md border px-3 py-2 text-13" style={{ borderColor: "var(--amber-50)", background: "var(--amberw-50)", color: "var(--amberw-600)" }}>
+          This conversation is held: no agent adds to it until a person releases it. <HoldLine hold={held} names={names} />
+        </div>
+      ) : null}
+      {d.state === "withdrawn" ? (
+        <p className="text-13" role="status">Withdrawn: “{d.withdrawnReason}”</p>
+      ) : null}
+      {d.state === "superseded" && d.supersededBy ? (
+        <p className="text-13" role="status">
+          Superseded by{" "}
+          <Link href={ecosystemRoutes.document(slug, d.supersededBy)} className="font-mono hover:underline">
+            {d.supersededBy}
+          </Link>
+        </p>
+      ) : null}
+      {d.state === "returned" && d.gate?.note ? (
+        <p className="text-13" role="status">Returned at the gate: “{d.gate.note}”</p>
+      ) : null}
+      {view.standing && view.standing.recipients.length > 0 ? (
+        <section aria-label="Replies owed" className="space-y-1">
+          <h2 className="fg-label text-fg">Replies</h2>
+          <ul className="space-y-1">
+            {view.standing.recipients.map((r) => (
+              <li key={r.project} className="flex flex-wrap items-center gap-2 text-13">
+                <span>{names(r.project)}</span>
+                <StatusBadge family="replyOwed" value={r.status} />
+                {r.answeredBy ? (
+                  <Link href={ecosystemRoutes.document(slug, r.answeredBy)} className="font-mono hover:underline">
+                    {r.answeredBy}
+                  </Link>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </>
+  );
+}
+
+export function DocumentScreen({ projectId, slug, role, docRef }: { projectId: string; slug: string; role: Role; docRef: string }) {
   const names = useProjectNames(projectId);
   const reading = readingOf(useDocument(projectId, docRef));
   if (reading.kind === "loading") return <Loading what={`document ${docRef}`} />;
@@ -92,73 +160,8 @@ export function DocumentScreen({
   return (
     <PeopleNames projectId={projectId}>
       <article className="min-w-0 space-y-4">
-        <header className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-13 font-semibold">{d.number ?? "draft"}</span>
-            <Badge>{TYPE_LABEL[d.type] ?? d.type}</Badge>
-            <StatusBadge family="document" value={d.state} />
-            {view.standing?.overdue ? <Badge tone="red">Overdue</Badge> : null}
-            {held ? <Badge tone="amber">Held</Badge> : null}
-            <span className="fg-caption">{view.side === "sender" ? "you sent this" : "sent to you"}</span>
-            <AskAboutThis kind="document" refId={d.number ?? docRef} />
-          </div>
-          <h2 className="break-words text-16 font-semibold text-fg">{d.subject}</h2>
-          <p className="fg-caption break-words">
-            {names(d.from)} → {d.to.map(names).join(", ")}
-            {d.inReplyTo ? (
-              <>
-                {" "}· in reply to{" "}
-                <Link href={ecosystemRoutes.document(slug, d.inReplyTo)} className="font-mono hover:underline">
-                  {d.inReplyTo}
-                </Link>
-              </>
-            ) : null}
-            {d.dueBy ? <> · due {d.dueBy}</> : null}
-            {d.publishedAt ? <> · published {formatRelativeTime(d.publishedAt)}</> : null}
-          </p>
-          <p className="text-13">
-            <AuthorLine author={d.authoredBy} party={d.authoredBy.kind === "agent" ? names(d.from) : undefined} />
-          </p>
-        </header>
-
-        {held ? (
-          <div role="status" className="rounded-md border px-3 py-2 text-13" style={{ borderColor: "var(--amber-50)", background: "var(--amberw-50)", color: "var(--amberw-600)" }}>
-            This conversation is held: no agent adds to it until a person releases it. <HoldLine hold={held} names={names} />
-          </div>
-        ) : null}
-        {d.state === "withdrawn" ? (
-          <p className="text-13" role="status">Withdrawn: “{d.withdrawnReason}”</p>
-        ) : null}
-        {d.state === "superseded" && d.supersededBy ? (
-          <p className="text-13" role="status">
-            Superseded by{" "}
-            <Link href={ecosystemRoutes.document(slug, d.supersededBy)} className="font-mono hover:underline">
-              {d.supersededBy}
-            </Link>
-          </p>
-        ) : null}
-        {d.state === "returned" && d.gate?.note ? (
-          <p className="text-13" role="status">Returned at the gate: “{d.gate.note}”</p>
-        ) : null}
-
-        {view.standing && view.standing.recipients.length > 0 ? (
-          <section aria-label="Replies owed" className="space-y-1">
-            <h2 className="fg-label text-fg">Replies</h2>
-            <ul className="space-y-1">
-              {view.standing.recipients.map((r) => (
-                <li key={r.project} className="flex flex-wrap items-center gap-2 text-13">
-                  <span>{names(r.project)}</span>
-                  <StatusBadge family="replyOwed" value={r.status} />
-                  {r.answeredBy ? (
-                    <Link href={ecosystemRoutes.document(slug, r.answeredBy)} className="font-mono hover:underline">
-                      {r.answeredBy}
-                    </Link>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+        <DocumentHeader view={view} slug={slug} docRef={docRef} held={held} names={names} />
+        <StateNotes view={view} slug={slug} held={held} names={names} />
 
         {view.side === "sender" && d.state === "submitted" ? (
           <GatePanel projectId={projectId} slug={slug} documentId={view.id} />

@@ -12,9 +12,6 @@ import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { memoryFeedbackInputSchema, runMemoryFeedback } from './feedback-service.js';
 import { runMemoryWrite, writeMemoryInputSchema } from './write-service.js';
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
 export const memoryWriteRoutes = new Hono<{ Variables: AuthVars }>();
 // rateLimit after requireAuth so the bucket keys on the authenticated user.
 memoryWriteRoutes.use(
@@ -24,45 +21,33 @@ memoryWriteRoutes.use(
   rateLimit(() => RULES.memoryWrite, { name: 'memory-write' }),
 );
 
-memoryWriteRoutes.post(
-  '/',
-  zValidator('json', writeMemoryInputSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const body = c.req.valid('json');
-    const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.write', projectResource(body.projectId));
+memoryWriteRoutes.post('/', zValidator('json', writeMemoryInputSchema), async (c) => {
+  const body = c.req.valid('json');
+  const userId = c.get('userId');
+  await requireCan(actorFor(userId), 'project.write', projectResource(body.projectId));
 
-    try {
-      const result = await runMemoryWrite(body);
-      return c.json(result, 201);
-    } catch (err) {
-      if (err instanceof EmbeddingUnavailableError) {
-        throw new HTTPException(503, {
-          message: 'embeddings service unavailable',
-          cause: { code: EMBEDDING_UNAVAILABLE },
-        });
-      }
-      throw err;
+  try {
+    const result = await runMemoryWrite(body);
+    return c.json(result, 201);
+  } catch (err) {
+    if (err instanceof EmbeddingUnavailableError) {
+      throw new HTTPException(503, {
+        message: 'embeddings service unavailable',
+        cause: { code: EMBEDDING_UNAVAILABLE },
+      });
     }
-  },
-);
+    throw err;
+  }
+});
 
 // Recall-feedback loop (ISS-603): where agents report the outcome of
 // verifying a memory hit against live code. Shares the memory-write rate
 // bucket — feedback is a write-path mutation.
-memoryWriteRoutes.post(
-  '/feedback',
-  zValidator('json', memoryFeedbackInputSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const body = c.req.valid('json');
-    const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.write', projectResource(body.projectId));
+memoryWriteRoutes.post('/feedback', zValidator('json', memoryFeedbackInputSchema), async (c) => {
+  const body = c.req.valid('json');
+  const userId = c.get('userId');
+  await requireCan(actorFor(userId), 'project.write', projectResource(body.projectId));
 
-    const result = await runMemoryFeedback(body);
-    return c.json(result, result.found ? 200 : 404);
-  },
-);
+  const result = await runMemoryFeedback(body);
+  return c.json(result, result.found ? 200 : 404);
+});

@@ -3,12 +3,21 @@ import { db } from '../db/client.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
 import { forbidden, notFound, readerProjects } from './access.js';
+import { stepsStale } from './builder-run-rules.js';
 import { type LinkImpact, linkImpact } from './contract/impact.js';
 import { currentVersion, type StoredVersion, versionsOf } from './contract/store.js';
 import { loadGraph } from './graph.js';
 import { heldInterface } from './interface-service.js';
-import { stepsStale } from './link-rules.js';
-import { type Held, impactLink, sourceOf, storedBuilderRun, storedLink } from './link-service.js';
+import type { EdgeRow } from './interface-store.js';
+import { readInterfaces } from './interface-store.js';
+import {
+  type Held,
+  impactLink,
+  type RecordOutcome,
+  sourceOf,
+  storedBuilderRun,
+  storedLink,
+} from './link-service.js';
 import {
   builderRunsIn,
   builderRunsOf,
@@ -20,8 +29,7 @@ import {
 } from './link-store.js';
 import { readableEcosystem } from './membership-service.js';
 import { edgeVisible, visibleMembers } from './party.js';
-import type { EdgeRow } from './store.js';
-import { projectsWhere, readInterfaces, recordedVersions } from './store.js';
+import { projectsWhere, recordedVersions } from './store.js';
 
 const stamped = <W extends object>(held: Held<W>) => ({
   ...held.document,
@@ -32,6 +40,12 @@ const stamped = <W extends object>(held: Held<W>) => ({
 
 export function recordView<W extends object>(held: Held<W>) {
   return { revision: held.row.revision, writer: held.row.writtenByUser, document: stamped(held) };
+}
+
+/** The answer both doors give a written link or builder run. */
+export function writtenView<W extends object>(outcome: Extract<RecordOutcome<W>, { ok: true }>) {
+  const report = outcome.report ? { report: outcome.report } : {};
+  return { ...recordView(outcome.held), created: outcome.created, ...report };
 }
 
 const asEdge = (l: StoredLink, ecosystemId: string): EdgeRow => ({

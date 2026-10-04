@@ -17,14 +17,8 @@ import {
 import { deriveToc, searchDocs } from "@/features/docs/reader";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import { AUDIENCES, type Audience, DOORS, ONE_CORPUS } from "../audience";
-import {
-  INDEX_PATH,
-  type PublicDoc,
-  docsBehind,
-  doorHref,
-  doorSections,
-} from "../corpus";
-import type { Refusal } from "../missing";
+import { type PublicDoc, docsBehind, doorHref, doorSections } from "../corpus";
+import { INDEX_HREF, type Refusal } from "../missing";
 
 /** What the reader shows: a door's page list, or one page by its href, unique across both homes. */
 type ReaderView = { kind: "door"; audience: Audience } | { kind: "page"; href: string };
@@ -190,7 +184,7 @@ export function PublicReader({ corpus, view }: { corpus: readonly PublicDoc[]; v
               {DOORS[a].label}
             </Link>
           ))}
-          <Link href={INDEX_PATH} className="rounded-md px-2 py-1 text-13 text-muted hover:bg-hover hover:text-fg">
+          <Link href={INDEX_HREF} className="rounded-md px-2 py-1 text-13 text-muted hover:bg-hover hover:text-fg">
             Both ways in
           </Link>
         </nav>
@@ -212,7 +206,7 @@ export function PublicReader({ corpus, view }: { corpus: readonly PublicDoc[]; v
       <DocsArticle
         body={doc.body}
         docBasePath={doc.audience === "agent" ? undefined : doc.slug}
-        docRoute={INDEX_PATH}
+        docRoute={INDEX_HREF}
       >
         <AudienceNotice doc={doc} />
       </DocsArticle>
@@ -239,7 +233,7 @@ export function PublicRefusal({ refusal }: { refusal: Refusal }) {
             {DOORS[a].label}
           </Link>
         ))}
-        <Link href={INDEX_PATH} className={LINK_CLASS}>
+        <Link href={INDEX_HREF} className={LINK_CLASS}>
           Both ways in
         </Link>
       </nav>

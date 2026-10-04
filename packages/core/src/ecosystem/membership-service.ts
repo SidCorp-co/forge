@@ -5,23 +5,22 @@ import { assertStewardAdmin, forbidden, notFound, readerProjects, stewardRole } 
 import { owedTrigger } from './builder-head.js';
 import { type HeldEcosystem, loadEcosystem, storedAs } from './ecosystem-service.js';
 import { loadGraph } from './graph.js';
+import { readInterface } from './interface-store.js';
 import type { BuilderRunWrite } from './link-schema.js';
 import { openOwedRun, sourceOf } from './link-service.js';
 import { type MembershipRow, type MembershipVerb, TRANSITIONS } from './membership-rules.js';
+import {
+  applyTransition,
+  insertInvitation,
+  membershipsWhere,
+  openMembership,
+  readMembership,
+} from './membership-store.js';
 import { visibleMembers } from './party.js';
 import { ecosystemSignals } from './ports.js';
 import type { EcosystemRefusal } from './refusals.js';
 import { type InterfaceDocument, interfaceDocumentSchema } from './schema.js';
-import {
-  applyTransition,
-  insertInvitation,
-  lockKeys,
-  membershipsWhere,
-  openMembership,
-  projectsWhere,
-  readInterface,
-  readMembership,
-} from './store.js';
+import { lockKeys, projectsWhere } from './store.js';
 
 export type MembershipOutcome =
   | { ok: true; membership: MembershipRow }

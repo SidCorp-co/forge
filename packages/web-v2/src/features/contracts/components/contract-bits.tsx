@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { type BannerTone, Button, EnumBadge, LEGEND, MarkStrip, StatusBadge, statusReading, WaitBanner } from "@/design";
+import { type BannerTone, Button, LEGEND, MarkStrip, statusReading, WaitBanner } from "@/design";
 import { feedbackHref } from "@/features/feedback/routes";
 import { issueHref } from "@/features/issues/routes";
 import { requirementHref } from "@/features/requirements/routes";
@@ -13,16 +13,8 @@ import type { ContractAttentionGroup, ContractConsumerView, ContractStandingRow 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
-export function ContractStateBadge({ row }: { row: Pick<ContractStandingRow, "state"> }) {
-  return <StatusBadge family="contractState" value={row.state} />;
-}
-
-export function KindBadge({ kind }: { kind: string }) {
-  return <EnumBadge family="interfaceType" value={kind} />;
-}
-
-function windowLeft(dueAt: string, now: number = Date.now()): string {
-  const ms = new Date(dueAt).getTime() - now;
+function windowLeft(dueAt: string): string {
+  const ms = new Date(dueAt).getTime() - Date.now();
   if (ms <= 0) {
     const ago = Math.max(1, Math.floor(-ms / DAY));
     return `Ended ${ago}d ago`;
@@ -34,12 +26,12 @@ function windowLeft(dueAt: string, now: number = Date.now()): string {
   return `${Math.max(1, h)}h`;
 }
 
-export function WindowText({ row, now }: { row: ContractStandingRow; now?: number }) {
+export function WindowText({ row }: { row: ContractStandingRow }) {
   const w = row.window;
   if (w?.open) {
     return (
       <span className="font-mono text-12-5 font-semibold" style={{ color: LEGEND.you.fg }} title={`${w.version}: consumers adapt before ${formatStamp(w.dueAt)}`} data-testid="window-left">
-        {windowLeft(w.dueAt, now)}
+        {windowLeft(w.dueAt)}
       </span>
     );
   }
@@ -100,7 +92,7 @@ function contractActionOf(row: ContractStandingRow): { label: string; kind: "fee
   return { label: `Decide ${ref}`, kind: "versions" };
 }
 
-export function ContractAction({ row, slug, onVersions }: { row: ContractStandingRow; slug: string; onVersions?: () => void }) {
+export function ContractAction({ row, slug, onVersions }: { row: ContractStandingRow; slug: string; onVersions: () => void }) {
   const router = useRouter();
   const act = contractActionOf(row);
   const ref = row.waitingOn.ref;
@@ -108,9 +100,8 @@ export function ContractAction({ row, slug, onVersions }: { row: ContractStandin
   const go = () => {
     if (act.kind === "feedback") router.push(feedbackHref(slug, ref));
     else if (act.kind === "requirement") router.push(requirementHref(slug, ref));
-    else onVersions?.();
+    else onVersions();
   };
-  if (act.kind === "versions" && !onVersions) return null;
   return (
     <Button type="button" variant="primary" size="sm" onClick={go} data-testid="contract-action">
       {act.label}

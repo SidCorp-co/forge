@@ -54,8 +54,8 @@ entry differs. It describes inputs and auth gates (`x-forge-auth`), not outputs:
 response reads `api-contract/openapi.ts:UNDECLARED_RESPONSE`. Nothing in core serves the reference.
 
 **MCP is cut to nine tools** (`packages/contracts/src/mcp-tools.ts:MCP_TOOL_NAMES`, registered by
-`mcp/registry.ts`, each in its module's `tool.ts`); the REST API is the primary door. One
-registered tool, `ecosystem/tool.ts`, imports the database client directly. What it must end at is one path per capability: a tool calls what the route calls.
+`mcp/registry.ts`, each in its module's `tool.ts`); the REST API is the primary door. What it
+must end at is one path per capability: a tool calls what the route calls.
 
 ## What this direction owes
 

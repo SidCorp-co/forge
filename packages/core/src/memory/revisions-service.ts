@@ -46,7 +46,7 @@ export async function runMemoryRevisions(
   if (input.memoryId) conditions.push(eq(memoryRevisions.memoryId, input.memoryId));
   if (input.source) conditions.push(eq(memoryRevisions.source, input.source));
   if (input.sourceRef) conditions.push(eq(memoryRevisions.sourceRef, input.sourceRef));
-  const where = conditions.length === 1 ? conditions[0] : and(...conditions);
+  const where = and(...conditions);
 
   const [{ n } = { n: 0 }] = await db
     .select({ n: sql<number>`count(*)::int` })

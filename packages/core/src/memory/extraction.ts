@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues, type JobType, jobs, memories } from '../db/schema.js';
@@ -6,6 +5,7 @@ import { callFastModel, fastModelConfigured } from '../integrations/llm/index.js
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { indexMemory } from './indexer.js';
+import { factCategory, parseFencedJson, shortHash } from './model-output.js';
 import { foreignScriptChars } from './script-guard.js';
 
 const EXTRACTION_JOB_TYPES: ReadonlySet<JobType> = new Set(['review', 'test', 'fix']);
@@ -13,7 +13,6 @@ const MAX_FACTS = 3;
 const MAX_COMMENTS = 8;
 const MAX_COMMENT_CHARS = 500;
 const MAX_EXISTING_FOR_PROMPT = 20;
-const VALID_CATEGORIES = ['preference', 'correction', 'convention', 'tool_pattern'] as const;
 
 // Ported Vietnamese prompt examples — the original deployment served
 // Vietnamese-speaking teams and the "preserve the original language" rule
@@ -76,16 +75,8 @@ interface ParsedExtraction {
 
 /** Tolerant parse of the model output; returns null on garbage. */
 function parseExtractionOutput(raw: string): ParsedExtraction | null {
-  const jsonStr = raw
-    .trim()
-    .replace(/^```json?\s*/, '')
-    .replace(/\s*```$/, '');
-  let parsed: { facts?: unknown };
-  try {
-    parsed = JSON.parse(jsonStr) as { facts?: unknown };
-  } catch {
-    return null;
-  }
+  const parsed = parseFencedJson<{ facts?: unknown }>(raw.trim());
+  if (parsed === undefined) return null;
   const facts = (Array.isArray(parsed.facts) ? parsed.facts : [])
     .filter(
       (f): f is { fact: string; category?: string } =>
@@ -95,9 +86,7 @@ function parseExtractionOutput(raw: string): ParsedExtraction | null {
     .slice(0, MAX_FACTS)
     .map((f) => ({
       fact: f.fact.trim(),
-      category: VALID_CATEGORIES.includes(f.category as (typeof VALID_CATEGORIES)[number])
-        ? (f.category as string)
-        : 'convention',
+      category: factCategory(f.category),
     }));
   return { facts };
 }
@@ -127,21 +116,67 @@ function refuseForeignScript(
   source: string,
 ): { kept: ParsedExtraction; refused: RefusedItem[] } {
   const refused: RefusedItem[] = [];
-  const keep = <T>(items: T[], textOf: (item: T) => string): T[] =>
-    items.filter((item) => {
-      const text = textOf(item);
-      const chars = foreignScriptChars(text, source);
-      if (chars.length === 0) return true;
-      refused.push({ text: text.slice(0, 60), chars });
-      return false;
-    });
+  const facts = parsed.facts.filter(({ fact }) => {
+    const chars = foreignScriptChars(fact, source);
+    if (chars.length === 0) return true;
+    refused.push({ text: fact.slice(0, 60), chars });
+    return false;
+  });
+  return { kept: { facts }, refused };
+}
 
-  return {
-    kept: {
-      facts: keep(parsed.facts, (f) => f.fact),
-    },
-    refused,
-  };
+/** Existing knowledge as dedup context — the prompt-level guard; the indexer's semantic dedup is the hard guard behind it. */
+async function existingMemoriesSection(projectId: string): Promise<string> {
+  const existing = await db
+    .select({ textContent: memories.textContent })
+    .from(memories)
+    .where(and(eq(memories.projectId, projectId), eq(memories.source, 'knowledge')))
+    .orderBy(desc(memories.updatedAt))
+    .limit(MAX_EXISTING_FOR_PROMPT);
+  return existing.length > 0
+    ? `Existing memories (don't duplicate):\n${existing
+        .map((m) => `- ${m.textContent.slice(0, 150)}`)
+        .join('\n')}\n`
+    : '';
+}
+
+async function storeFacts(
+  projectId: string,
+  issueId: string,
+  facts: ParsedExtraction['facts'],
+): Promise<number> {
+  let factsWritten = 0;
+  for (const f of facts) {
+    try {
+      const result = await indexMemory(
+        {
+          projectId,
+          source: 'knowledge',
+          sourceRef: `extracted:${shortHash(f.fact)}`,
+          text: f.fact,
+          metadata: { category: f.category, origin: 'extraction', issueId },
+        },
+        { nearDuplicateProbe: true },
+      );
+      factsWritten++;
+      logger.info(
+        {
+          projectId,
+          issueId,
+          category: f.category,
+          nearDuplicateOf: result.nearDuplicateOf,
+          fact: f.fact.slice(0, 60),
+        },
+        'memory.extraction: fact stored',
+      );
+    } catch (err) {
+      logger.warn(
+        { err: (err as Error).message, issueId, fact: f.fact.slice(0, 60) },
+        'memory.extraction: fact write failed',
+      );
+    }
+  }
+  return factsWritten;
 }
 
 async function runExtractionForIssue(
@@ -165,21 +200,7 @@ async function runExtractionForIssue(
   if (bodies.length === 0) return { facts: 0, refused: 0, skipped: 'no-signal' };
   if (!hasMemoryWorthyContent(bodies)) return { facts: 0, refused: 0, skipped: 'gated' };
 
-  // Existing knowledge as dedup context — the prompt-level guard; the
-  // indexer's semantic dedup is the hard guard behind it.
-  const existing = await db
-    .select({ textContent: memories.textContent })
-    .from(memories)
-    .where(and(eq(memories.projectId, projectId), eq(memories.source, 'knowledge')))
-    .orderBy(desc(memories.updatedAt))
-    .limit(MAX_EXISTING_FOR_PROMPT);
-  const existingStr =
-    existing.length > 0
-      ? `Existing memories (don't duplicate):\n${existing
-          .map((m) => `- ${m.textContent.slice(0, 150)}`)
-          .join('\n')}\n`
-      : '';
-
+  const existingStr = await existingMemoriesSection(projectId);
   const commentsStr = bodies
     .slice()
     .reverse()
@@ -206,40 +227,7 @@ async function runExtractionForIssue(
     );
   }
 
-  let factsWritten = 0;
-  for (const f of kept.facts) {
-    const refHash = crypto.createHash('sha1').update(f.fact).digest('hex').slice(0, 12);
-    try {
-      const result = await indexMemory(
-        {
-          projectId,
-          source: 'knowledge',
-          sourceRef: `extracted:${refHash}`,
-          text: f.fact,
-          metadata: { category: f.category, origin: 'extraction', issueId },
-        },
-        { nearDuplicateProbe: true },
-      );
-      factsWritten++;
-      logger.info(
-        {
-          projectId,
-          issueId,
-          category: f.category,
-          nearDuplicateOf: result.nearDuplicateOf,
-          fact: f.fact.slice(0, 60),
-        },
-        'memory.extraction: fact stored',
-      );
-    } catch (err) {
-      logger.warn(
-        { err: (err as Error).message, issueId, fact: f.fact.slice(0, 60) },
-        'memory.extraction: fact write failed',
-      );
-    }
-  }
-
-  return { facts: factsWritten, refused: refused.length };
+  return { facts: await storeFacts(projectId, issueId, kept.facts), refused: refused.length };
 }
 
 /** After a review, test or fix job on an issue completes, extract its facts, handed off so the
