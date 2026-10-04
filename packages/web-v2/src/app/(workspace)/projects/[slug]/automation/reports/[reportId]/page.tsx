@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { ReportItemScreen } from "@/features/automation/components/automation-item-screens";
 import { canWriteProject } from "@/features/projects/write-access";
-import { ProjectGate } from "../../project-gate";
+import { ProjectGate } from "@/features/projects/components/project-gate";
 
 export default function Page() {
   const params = useParams<{ reportId: string }>();

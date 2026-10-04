@@ -245,6 +245,9 @@ export async function writeEffect(
   if (row.kind === 'triage' && target.type === 'issue') {
     return issueTriageEffect(tx, projectId, row, actor);
   }
+  // an accepted design_change writes nothing into the design: the acceptance is the record that the
+  // design owes a revision touching those nodes (REQ-17 BC-12)
+  if (row.kind === 'design_change' && target.type === 'workflow') return { refusals: null };
   if (row.kind === 'duplicate' && target.type === 'requirement') {
     return {
       refusals: [undecided('duplicate', '/target', 'marking a requirement a duplicate of another')],

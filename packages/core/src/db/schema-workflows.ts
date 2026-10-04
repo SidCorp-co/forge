@@ -120,6 +120,8 @@ export const workflowBuilds = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+    /** The steps the issue builds, for an issue whose criteria trace no business criterion naming them. */
+    stepIds: text('step_ids').array(),
   },
   (t) => ({
     workflowIdx: index('workflow_builds_workflow_idx').on(t.workflowId),

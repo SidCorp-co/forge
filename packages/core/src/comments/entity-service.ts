@@ -1,3 +1,4 @@
+import { designNodesIn, nodeRefRefusal } from '../workflows/node-refs.js';
 import type {
   CommentRefusal,
   CreateEntityCommentRequest,
@@ -65,7 +66,30 @@ function scrubbedDecision(level: SensitiveDataLevel, d: DecisionFields): Decisio
     ...(d.options ? { options: d.options.map(s) } : {}),
     ...(d.authority ? { authority: s(d.authority) } : {}),
     ...(d.reversedWhen ? { reversedWhen: s(d.reversedWhen) } : {}),
+    ...(d.node ? { node: d.node } : {}),
   };
+}
+
+// cm:guard a node decision sits on a workflow and names a node of its latest revision (REQ-17 BC-26)
+async function nodeDecisionRefusals(
+  tx: Tx,
+  target: CommentTarget,
+  decision: DecisionFields | undefined,
+): Promise<CommentRefusal[]> {
+  const node = decision?.node;
+  if (!node) return [];
+  if (target.scope !== 'workflow') {
+    return [
+      {
+        code: 'COMMENT_DECISION_NODE_SCOPE',
+        path: '/decision/node',
+        detail: `decision.node names a step or edge of a workflow; this decision sits on a ${target.scope} (${target.key}). Post it on the workflow, or drop the node`,
+      },
+    ];
+  }
+  const nodes = await designNodesIn(tx, target.projectId, target.id);
+  const wrong = nodes ? nodeRefRefusal(nodes, node, '/decision/node') : null;
+  return wrong ? [wrong as CommentRefusal] : [];
 }
 
 async function depthOf(tx: Tx, parentId: string): Promise<number> {
@@ -136,6 +160,7 @@ export async function postEntityComment(input: {
       scopeRefusal(arc),
       ...contentRefusals(request),
       ...(await parentRefusals(tx, request.parentId, target)),
+      ...(await nodeDecisionRefusals(tx, target, request.decision)),
     ].filter(present);
     if (refusals.length > 0) return { ok: false, refusals };
 
@@ -198,6 +223,7 @@ export async function editEntityComment(input: {
     const refusals = [
       editorRefusal(facts, row.authorId, target.key),
       ...editRefusals(row.intent, request),
+      ...(await nodeDecisionRefusals(tx, target, request.decision)),
     ].filter(present);
     if (refusals.length > 0) return { ok: false, refusals };
 

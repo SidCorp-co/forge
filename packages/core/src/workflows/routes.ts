@@ -1,5 +1,6 @@
 import { ANSWER_VIEWS } from '@forge/contracts/projection';
 import { DESIGN_VIEWS } from '@forge/contracts/workflows';
+import { WORKFLOW_STEP_ID } from '@forge/contracts/workflow-health';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -259,18 +260,23 @@ workflowRoutes.post(
   '/:id/workflows/:workflow/builds',
   workflowParam,
   strictBody(
-    z.strictObject({ issue: z.string().trim().min(1).max(200) }),
-    '{ issue } names the issue that builds this workflow, by uuid or key',
+    z.strictObject({
+      issue: z.string().trim().min(1).max(200),
+      steps: z.array(z.string().regex(WORKFLOW_STEP_ID)).max(40).optional(),
+    }),
+    '{ issue, steps? } names the issue that builds this workflow, by uuid or key, and the steps it builds when its criteria trace none',
   ),
   async (c) => {
     const { id, workflow } = c.req.valid('param');
+    const body = c.req.valid('json');
     return answerDesign(
       c,
       await linkBuildAs({
         projectId: id,
         id: workflow,
         actor: writerOf(c),
-        issue: c.req.valid('json').issue,
+        issue: body.issue,
+        steps: body.steps,
       }),
     );
   },
