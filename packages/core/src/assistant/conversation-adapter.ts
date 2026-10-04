@@ -1,14 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { listParticipants } from '../conversations/participants.js';
 import type {
   ConversationAdapterPorts,
   ConversationHistoryMessage,
   ConversationVenue,
   DeliveryReceipt,
   ScreenedMessage,
-} from '../conversations/ports.js';
-import { assertConversationReadable } from '../conversations/scope.js';
-import { findConversation } from '../conversations/store.js';
+} from '../conversations/index.js';
+import {
+  assertConversationReadable,
+  findConversation,
+  listParticipants,
+} from '../conversations/index.js';
 import type { ConversationShape } from '../db/schema-conversations.js';
 import { roomManager, userRoom } from '../lib/rooms.js';
 import type { SpeakerResolution } from './identity/speaker-link.js';

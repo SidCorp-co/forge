@@ -9,16 +9,19 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { readConversationAgentTurns } from '../agent-sessions/conversation-agent.js';
-import { loadConversationAttachment } from '../conversations/attachment-service.js';
-import { refuseConversation } from '../conversations/refusals.js';
-import { listWindowsForConversation } from '../conversations/windows.js';
+import {
+  listWindowsForConversation,
+  loadConversationAttachment,
+  readableConversation,
+  refuseConversation,
+  writableConversation,
+} from '../conversations/index.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
 import type { RefusalError } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { getStorage } from '../storage/index.js';
-import { createUploadTicket, UPLOAD_TICKET_TTL_MS } from '../uploads/ticket-service.js';
-import { readableConversation, writableConversation } from './conversation-access.js';
+import { createUploadTicket, UPLOAD_TICKET_TTL_MS } from '../uploads/index.js';
 import { isTurnRunning, stopConversationTurns } from './conversation-stops.js';
 
 const idParamSchema = z.object({ id: z.uuid() });

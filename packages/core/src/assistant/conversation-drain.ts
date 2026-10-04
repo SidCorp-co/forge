@@ -1,5 +1,4 @@
-import { registerConversationTransport } from '../conversations/ports.js';
-import { claimDueWindows, claimOf } from '../conversations/windows.js';
+import { claimDueWindows, claimOf, registerConversationTransport } from '../conversations/index.js';
 import { logger } from '../observability/logger.js';
 import { webConversationPorts } from './conversation-adapter.js';
 import { routeWebWindow } from './conversation-send.js';

@@ -6,10 +6,14 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { readThresholds } from './admin-thresholds/index.js';
-import { registerRoomBridges, registerWebConversationAdapter } from './assistant/index.js';
+import {
+  provideChatTools,
+  registerRoomBridges,
+  registerRoomChat,
+  registerWebConversationAdapter,
+} from './assistant/index.js';
 import { runOnceBackfills } from './boot-backfills.js';
 import { env } from './config/env.js';
-import { registerRoomChat } from './conversations/index.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { stampGitCredentialRef } from './devices/index.js';
@@ -28,6 +32,7 @@ import {
 import { startRocketChatManager, stopRocketChatManager } from './integrations/rocketchat/index.js';
 import { closeBacklogStreams, resolveIssueForHeadRef } from './issues/index.js';
 import { provideProjectOrg } from './lib/authz.js';
+import { CHAT_READ_MODEL_TOOLS } from './mcp/index.js';
 import { registerChunkReindex, registerMemoryReconcileWorker } from './memory/index.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
@@ -53,6 +58,7 @@ import { coreTimers } from './timer-registry.js';
 import { attachWs, closeWs } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
+provideChatTools(CHAT_READ_MODEL_TOOLS);
 provideGitCredentialStamp(stampGitCredentialRef);
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,

@@ -2,7 +2,7 @@
  * Which of a transcript's images are re-sent to the model this turn, and the budget that bounds them. A conversation lives as long as its venue and the model only ever sees a window of it, so "the picture the user is asking about" is not always the one that arrived this turn — a design review is three questions about one screenshot. Images are stored by reference (see `conversations/store.ts`), so replaying them means paying a fetch; this module decides how many fetches are worth it.
  */
 
-import type { ConversationImage } from '../conversations/store.js';
+import type { ConversationImage } from '../conversations/index.js';
 
 /** Just enough of a stored turn for the lookback: what images it carried. */
 export interface ImageBearingMessage {

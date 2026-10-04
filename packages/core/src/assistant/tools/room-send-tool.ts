@@ -1,5 +1,5 @@
-import type { ChatToolset } from '../assistant/tools/mcp-adapter.js';
-import { toolError } from '../assistant/tools/mcp-adapter.js';
+import type { ChatToolset } from './mcp-adapter.js';
+import { toolError } from './mcp-adapter.js';
 
 export const ROOM_SEND_TOOL_NAME = 'room_send';
 

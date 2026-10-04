@@ -268,11 +268,7 @@
         },
         {
           "glob": "packages/core/src/assistant/chat-room/**",
-          "why": "The assistant's chat-room door (ISS-167, split out of `integrations/rocketchat/`): the escalation and agent-chat bridges, the question and comment lanes of a Rocket.Chat room. `rocketchat` here is the `conversations.source` and question-origin `adapter` value rows already carry, and the provider a room binding is looked up under; the vendor itself is reached only through the `integrations/rocketchat` port."
-        },
-        {
-          "glob": "packages/core/src/conversations/chat-room/**",
-          "why": "The conversations side of the same split (ISS-167): a Rocket.Chat room's conversation ports, window drain and turn inputs. `rocketchat` is the `ConversationAdapter` value the conversations table stores and the provider its bindings are read under; the socket and the REST calls stay in the `integrations/rocketchat` port."
+          "why": "The assistant's chat-room door (ISS-167, split out of `integrations/rocketchat/`): the escalation and agent-chat bridges, the question and comment lanes of a Rocket.Chat room, and its conversation ports, window drain and turn inputs (moved from `conversations/chat-room/` by ISS-203). `rocketchat` here is the `conversations.source` and question-origin `adapter` value rows already carry, and the provider a room binding is looked up under; the vendor itself is reached only through the `integrations/rocketchat` port."
         },
         {
           "glob": "packages/core/src/pipeline/release-coolify.ts",

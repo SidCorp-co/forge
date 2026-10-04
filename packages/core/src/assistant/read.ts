@@ -1,9 +1,13 @@
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { chatLogs, projects, users } from '../db/schema.js';
-import { conversationPins, conversationParticipants, conversations } from '../db/schema-conversations.js';
+import {
+  conversationParticipants,
+  conversationPins,
+  conversations,
+} from '../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../db/schema-speaker-links.js';
-import { isActiveMember } from '../ecosystem/store.js';
+import { isActiveMember } from '../ecosystem/index.js';
 
 export const TOOL_CALL_TURNS = 200;
 

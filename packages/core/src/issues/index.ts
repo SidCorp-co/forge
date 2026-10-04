@@ -4,6 +4,7 @@ export { TransitionError, transitionIssueStatus } from './apply-transition.js';
 export { closeBacklogStreams } from './backlog/open-streams.js';
 export { runCriteriaBackfillOnce } from './criteria/backfill.js';
 export { isValidDetectorKey } from './detector-key.js';
+export { issueDisplayIds } from './display-ids.js';
 export {
   fileDetectedIssue,
   type IssueTriage,
@@ -14,9 +15,12 @@ export {
 export { referenceInHeadRef, resolveIssueForHeadRef } from './head-ref-link.js';
 export { registerHostMergeStamp, stampHostMerge } from './host-merge.js';
 export { issueWorkInFlightSql } from './issue-lease.js';
-export { activeIssuePrefix } from './issue-prefix-read.js';
+export { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
 export { resolveIssueRouteRef } from './issue-route-ref.js';
 export { recordIssueMerge } from './merge-record.js';
+export type { ProjectProgress } from './progress.js';
+export { buildProgressFactsBlock, computeProjectProgress } from './progress.js';
+export { findIssueByDisplaySeq } from './read-service.js';
 export { claimIssuesForRelease, releaseEndedRunClaims, releaseRunClaims } from './release-claim.js';
 export {
   type IssueCreateInput,

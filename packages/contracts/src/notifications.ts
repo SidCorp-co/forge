@@ -209,5 +209,19 @@ export function targetsChannel(
 	return channelsFor(type).includes(channel);
 }
 
-export const NOTIFICATION_REFUSAL_CODES = ["NOTIFICATION_REFUSED", "CONDITION_STILL_TRUE"] as const;
-export type NotificationRefusalCode = (typeof NOTIFICATION_REFUSAL_CODES)[number];
+export const NOTIFICATION_REFUSAL_CODES = [
+	"NOTIFICATION_REFUSED",
+	"CONDITION_STILL_TRUE",
+] as const;
+export type NotificationRefusalCode =
+	(typeof NOTIFICATION_REFUSAL_CODES)[number];
+
+/** The resolution key of an issue's stranded condition: raised by the pipeline sweep, resolved by any move but to needs_info. */
+export function strandedResolutionKey(issueId: string): string {
+	return `issue:${issueId}:stranded`;
+}
+
+/** The resolution key of an issue's owed-close condition, resolved once the issue reaches a terminal status. */
+export function owedCloseResolutionKey(issueId: string): string {
+	return `issue:${issueId}:owed-close`;
+}

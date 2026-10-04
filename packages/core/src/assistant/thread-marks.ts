@@ -9,9 +9,9 @@ import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { conversationWindows } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
-import { onboardingStatusesOf } from '../onboarding/read.js';
 import { requirements } from '../db/schema-requirements.js';
-import { requirementKey } from '../requirements/read.js';
+import { onboardingStatusesOf } from '../onboarding/index.js';
+import { requirementKey } from '../requirements/index.js';
 
 export interface ThreadMark {
   kind: 'onboarding' | 'requirement' | null;

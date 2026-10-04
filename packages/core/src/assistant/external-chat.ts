@@ -11,10 +11,9 @@
 
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { eq } from 'drizzle-orm';
-import { insertChatLog } from '../chat-logs/service.js';
+import { insertChatLog } from '../chat-logs/index.js';
 import { env } from '../config/env.js';
-import { contentLanguageBlock } from '../content-language/block.js';
-import { readContentLanguage } from '../content-language/read.js';
+import { contentLanguageBlock, readContentLanguage } from '../content-language/index.js';
 import { db as defaultDb } from '../db/client.js';
 import { appConfig, projects } from '../db/schema.js';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
@@ -29,7 +28,7 @@ import {
   buildProgressFactsBlock,
   computeProjectProgress,
   type ProjectProgress,
-} from '../issues/progress.js';
+} from '../issues/index.js';
 import { dataPolicyOf, EgressRefused, egressAt, egressText } from '../lib/data-egress.js';
 import { logger } from '../observability/logger.js';
 import { detectStateConfab } from './confab.js';
