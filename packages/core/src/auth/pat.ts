@@ -241,16 +241,25 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
   const tokenHash = await hashPatPlaintext(plaintext);
 
   return db.transaction(async (tx) => {
-    const [existing] = await tx
-      .select()
-      .from(personalAccessTokens)
-      .where(
-        and(eq(personalAccessTokens.id, input.id), eq(personalAccessTokens.userId, input.userId)),
-      )
-      .limit(1);
-    if (!existing) return null;
+    const readOwned = async () =>
+      (
+        await tx
+          .select()
+          .from(personalAccessTokens)
+          .where(
+            and(
+              eq(personalAccessTokens.id, input.id),
+              eq(personalAccessTokens.userId, input.userId),
+            ),
+          )
+          .limit(1)
+      )[0];
+    const seen = await readOwned();
+    if (!seen) return null;
 
-    await lockPatName(tx, existing.name);
+    await lockPatName(tx, seen.name);
+    const existing = await readOwned();
+    if (!existing) return null;
 
     // A device-bound row names a box, and a box has one holder. Rotating one the
     // box has superseded would mint a second live credential for a machine this

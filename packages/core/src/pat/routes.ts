@@ -1,3 +1,4 @@
+import { SET_PAT_FENCE_SHAPE, setPatFenceRequestSchema } from '@forge/contracts/pat-fence';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -16,12 +17,16 @@ import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { mcpAuditLog, personalAccessTokens } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
+import { RefusalError } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { refused } from '../project-config/respond.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { fenceEditorRefusal, fenceOf } from './fence-rules.js';
+import { listPatFenceChanges, setPatFence } from './fence-service.js';
 
 const SCOPES = ['read', 'write', 'admin'] as const;
 
@@ -326,6 +331,65 @@ patRoutes.post(
       data: { tokenId: id, userId, ts: new Date().toISOString() },
     });
     return c.json({ ...publicShape(minted.row), plaintext: minted.plaintext });
+  },
+);
+
+patRoutes.put(
+  '/pat/:id/fence',
+  async (c, next) => {
+    const refusal = fenceEditorRefusal(c.get('principal'));
+    if (refusal) throw new RefusalError([refusal], refusal.code);
+    await next();
+  },
+  requireFreshAuth(5),
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  strictBody(setPatFenceRequestSchema, SET_PAT_FENCE_SHAPE),
+  async (c) => {
+    const userId = c.get('userId');
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const outcome = await setPatFence({
+      tokenId: id,
+      ownerId: userId,
+      fence: fenceOf(body),
+      reason: body.reason,
+    });
+    if (!outcome) {
+      throw new HTTPException(404, {
+        message: `no token ${id} of yours`,
+        cause: { code: 'NOT_FOUND' },
+      });
+    }
+    if (!outcome.ok) return refused(c, outcome.refusals);
+    roomManager.publish(userRoom(userId), {
+      event: 'pat.fence_changed',
+      data: { tokenId: id, userId, changeId: outcome.change.id, ts: outcome.change.changedAt },
+    });
+    return c.json({ token: publicShape(outcome.token), change: outcome.change });
+  },
+);
+
+patRoutes.get(
+  '/pat/:id/fence-changes',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', auditQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { limit } = c.req.valid('query');
+    const changes = await listPatFenceChanges(id, c.get('userId'), limit);
+    if (!changes) {
+      throw new HTTPException(404, {
+        message: `no token ${id} of yours`,
+        cause: { code: 'NOT_FOUND' },
+      });
+    }
+    return c.json({ changes });
   },
 );
 

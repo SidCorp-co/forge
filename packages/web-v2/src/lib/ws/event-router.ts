@@ -309,6 +309,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		}
 		case "pat.created":
 		case "pat.revoked":
+		case "pat.fence_changed":
 		case "pat.used": {
 			// ISS-160 — keep the /settings/tokens list in sync. The `pat.used`
 			// event is throttled to 1/min/token in the dispatcher; we still
