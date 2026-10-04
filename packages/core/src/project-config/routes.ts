@@ -2,6 +2,8 @@ import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { verifyDeviceCredential } from '../credentials/device-credential.js';
+import { refused } from '../lib/refusal.js';
+import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { readBearerToken } from '../middleware/bearer.js';
 import { badRequest } from '../middleware/route-errors.js';
@@ -9,8 +11,6 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { requireCan } from '../permissions/index.js';
 import { listBindings, readBinding, removeBinding, writeBinding } from './bindings.js';
 import { buildEffectiveConfig } from './effective.js';
-import { refused } from '../lib/refusal.js';
-import { envelopeOf } from '../lib/write-envelope.js';
 import {
   deleteTestingProfile,
   type Held,
@@ -262,13 +262,17 @@ projectConfigRoutes.get('/:id/bindings/:bindingId', paramOf(bindingParam), async
   const read = await readBinding(id, bindingId);
   if (!read) return c.json(UNDECLARED);
   if (!read.ok) {
-    return refused(c, [
-      {
-        code: 'BINDING_NOT_REPRESENTABLE',
-        path: '',
-        detail: `binding ${bindingId} has no binding-document form: ${read.unrepresentable}`,
-      },
-    ], 'CONFIG_REFUSED');
+    return refused(
+      c,
+      [
+        {
+          code: 'BINDING_NOT_REPRESENTABLE',
+          path: '',
+          detail: `binding ${bindingId} has no binding-document form: ${read.unrepresentable}`,
+        },
+      ],
+      'CONFIG_REFUSED',
+    );
   }
   return c.json({ declared: true as const, ...read.held });
 });

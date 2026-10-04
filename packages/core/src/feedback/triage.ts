@@ -21,10 +21,11 @@ import { announceIssueCreated, insertIssueRow } from '../issues/create-service.j
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { findIssueById } from '../issues/read-service.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
-import { transition } from '../lifecycle/transition.js';
 import { dataPolicyOf, egressAt, storedText } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { Refusal } from '../lib/refusal.js';
+import { transition } from '../lifecycle/transition.js';
+import { requireCan } from '../permissions/index.js';
 import { requirementKey, rowIn as requirementRowIn } from '../requirements/read.js';
 import { linkIssueRefusal } from '../requirements/rules.js';
 import { createRequirementIn, lockRequirements } from '../requirements/service.js';
@@ -67,7 +68,6 @@ import {
   lockFeedback,
   roleFacts,
 } from './service.js';
-import { requireCan } from '../permissions/index.js';
 
 /** What a triage or a route write did, which its caller announces once the transaction committed. */
 export interface TriageWritten {
@@ -147,10 +147,7 @@ async function markRoutedIn(tx: Tx, caseId: string, actor: FeedbackActor): Promi
 }
 
 /** An existing carrier the write names, resolved inside the item's project. */
-async function namedCarrierIn(
-  tx: Tx,
-  input: RouteInput,
-): Promise<{ refusal: Refusal } | Carrier> {
+async function namedCarrierIn(tx: Tx, input: RouteInput): Promise<{ refusal: Refusal } | Carrier> {
   const { row, route, write: w, actor } = input;
   const projectId = row.projectId;
   const none: Carrier = {

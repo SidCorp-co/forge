@@ -5,10 +5,11 @@ import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { egressForRequest } from '../lib/data-egress.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { requireCan } from '../permissions/index.js';
 import { DESIGN_DECISIONS, DESIGN_REASON_MAX } from './design.js';
 import {
   type DesignOutcome,
@@ -32,7 +33,6 @@ import {
 } from './service.js';
 import { readSystemGraphAs } from './system-graph-read.js';
 import { listProjectTemplatesAs, readProjectTemplateAs } from './template-service.js';
-import { requireCan } from '../permissions/index.js';
 
 export const workflowRoutes = new Hono<{ Variables: AuthVars }>();
 

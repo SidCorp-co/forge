@@ -28,9 +28,10 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { finalizeJobDone } from '../jobs/finalize-done.js';
 import type { EgressReader } from '../lib/data-egress.js';
+import type { Refusal } from '../lib/refusal.js';
+import { permissionFactsOf, requireCan } from '../permissions/index.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
-import type { Refusal } from '../lib/refusal.js';
 import { readDeclaredSource } from '../project-config/source.js';
 import {
   type BatchRow,
@@ -62,7 +63,6 @@ import {
   settlesPhaseJob,
   startRefusal,
 } from './rules.js';
-import { permissionFactsOf, requireCan } from '../permissions/index.js';
 
 export interface OnboardingActor {
   userId: string;

@@ -14,11 +14,11 @@ import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
+import { requireCan } from '../permissions/index.js';
 import { embedFeedbackLater } from './embeddings.js';
 import { detailAs, type FeedbackActor, feedbackKey, notFound, rowIn } from './read.js';
 import { promoteRefusal } from './rules.js';
 import { decide, insertFeedbackIn, inTx, lockFeedback, preparedFeedback } from './service.js';
-import { requireCan } from '../permissions/index.js';
 
 export type PromoteOutcome =
   | { ok: true; feedback: FeedbackView; effect: FeedbackPromoteEffect }

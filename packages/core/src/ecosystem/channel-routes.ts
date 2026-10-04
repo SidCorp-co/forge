@@ -1,9 +1,9 @@
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { refused } from '../lib/refusal.js';
 import { uuid } from '../project-config/schema.js';
 import { forbidden, refusedBy } from './access.js';
 import type { ChannelOutcome } from './channel-act.js';
@@ -70,13 +70,17 @@ const editBody = zValidator('json', z.strictObject(draftFields), (r) => {
 const reasonBody = (code: ChannelRefusalCode, act: string) =>
   zValidator('json', z.strictObject({ reason: z.string().trim().min(1).max(500) }), (r, c) => {
     if (!r.success) {
-      return refused(c, [
-        {
-          code,
-          path: '/reason',
-          detail: `${act} says why: the body is { "reason": 1 to 500 characters }, and both sides read it.`,
-        },
-      ], 'ECOSYSTEM_REFUSED');
+      return refused(
+        c,
+        [
+          {
+            code,
+            path: '/reason',
+            detail: `${act} says why: the body is { "reason": 1 to 500 characters }, and both sides read it.`,
+          },
+        ],
+        'ECOSYSTEM_REFUSED',
+      );
     }
   });
 
@@ -88,14 +92,18 @@ const supersedeBody = zValidator(
   }),
   (r, c) => {
     if (!r.success) {
-      return refused(c, [
-        {
-          code: 'SUPERSEDE_WITHOUT_REASON',
-          path: '/reason',
-          detail:
-            'a supersession names its replacement and says why: the body is { "by": <the number of the published replacement>, "reason": 1 to 500 characters }.',
-        },
-      ], 'ECOSYSTEM_REFUSED');
+      return refused(
+        c,
+        [
+          {
+            code: 'SUPERSEDE_WITHOUT_REASON',
+            path: '/reason',
+            detail:
+              'a supersession names its replacement and says why: the body is { "by": <the number of the published replacement>, "reason": 1 to 500 characters }.',
+          },
+        ],
+        'ECOSYSTEM_REFUSED',
+      );
     }
   },
 );

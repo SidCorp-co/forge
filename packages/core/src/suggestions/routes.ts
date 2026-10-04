@@ -14,9 +14,9 @@ import {
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { refused } from '../lib/refusal.js';
 import { listSuggestions, type SuggestionActor, type SuggestionTargetRef } from './read.js';
 import {
   acceptSuggestion,

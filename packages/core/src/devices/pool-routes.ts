@@ -75,10 +75,9 @@ import {
   readDeviceIssueLease,
   resolveLeaseKey,
 } from '../issues/issue-lease.js';
-import { deviceMasterRoutes } from '../masters/device-routes.js';
+import { releaseHoldsOf, releaseJobHold } from '../jobs/index.js';
 import { readAdmissibleIssues } from './admissible.js';
 import { deviceChannelInboxRoutes } from './channel-inbox-routes.js';
-import { releaseHoldsOf, releaseJobHold } from '../jobs/index.js';
 import { prepareJobForMaster, startJobForMaster } from './claim.js';
 import { deviceCommentInboxRoutes } from './comment-inbox-routes.js';
 import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
@@ -90,12 +89,10 @@ import { deviceRunSessionRoutes } from './run-session-routes.js';
 
 export const devicePoolRoutes = new Hono<{ Variables: DeviceVars }>();
 
-// The run-session family lives in its own module; it is mounted here so the paths it
-// serves are unchanged and no caller can tell the two apart.
+// The device's run-session and inbox routes live in their own files and mount here.
 devicePoolRoutes.route('/', deviceRunSessionRoutes);
 devicePoolRoutes.route('/', deviceChannelInboxRoutes);
 devicePoolRoutes.route('/', deviceCommentInboxRoutes);
-devicePoolRoutes.route('/', deviceMasterRoutes);
 
 const poolQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),

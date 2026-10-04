@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
+import { refused } from '../../lib/refusal.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -9,7 +10,7 @@ import {
   restActor,
 } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
-import { refused } from '../../lib/refusal.js';
+import { requireCan } from '../../permissions/index.js';
 import { slug } from '../../project-config/schema.js';
 import { CONTRACT_DECISION_REASON_MAX, CONTRACT_DECISIONS } from './approval.js';
 import { decideContractVersion } from './decide.js';
@@ -18,7 +19,6 @@ import { consumedContract, consumedMeasurements, consumedVersions } from './part
 import { publishContractVersion } from './publish.js';
 import { approvalView, currentOf, measurementsOf, readArtifact, versionsOf } from './store.js';
 import { SOURCE_REF } from './version-schema.js';
-import { requireCan } from '../../permissions/index.js';
 
 export const contractRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -89,6 +89,7 @@ const uploadBody = zValidator('json', uploadSchema, (r, c) => {
         path: `/${i.path.map(String).join('/')}`,
         detail: `${i.message}; the body is { version?, kind?, artifact?: <the contract text>, sourceRef?: <repo path>@<commit sha>, semantic?: { classification, reason, elements } }`,
       })),
+      'ECOSYSTEM_REFUSED',
     );
   }
 });
@@ -137,13 +138,17 @@ contractRoutes.get(
     const text = hit.artifactSha256 ? await readArtifact(db, hit.artifactSha256) : null;
     const media = ARTIFACT_MEDIA[hit.contractType];
     if (text === null || !media) {
-      return refused(c, [
-        {
-          code: 'CONTRACT_ARTIFACT_NOT_MOCKABLE',
-          path: '/',
-          detail: `${hit.document.contract}@${version} is ${hit.contractType}${text === null ? ' and holds no stored artifact' : ''}; a mock is generated from the stored artifact of an openapi, json-schema, mcp-tools or graphql version.`,
-        },
-      ], 'ECOSYSTEM_REFUSED');
+      return refused(
+        c,
+        [
+          {
+            code: 'CONTRACT_ARTIFACT_NOT_MOCKABLE',
+            path: '/',
+            detail: `${hit.document.contract}@${version} is ${hit.contractType}${text === null ? ' and holds no stored artifact' : ''}; a mock is generated from the stored artifact of an openapi, json-schema, mcp-tools or graphql version.`,
+          },
+        ],
+        'ECOSYSTEM_REFUSED',
+      );
     }
     c.header('Content-Type', media);
     c.header('X-Forge-Contract-Approval', hit.approval);
@@ -167,6 +172,7 @@ const decisionBody = zValidator(
           path: `/${i.path.map(String).join('/')}`,
           detail: `${i.message}; the body is { decision: approve | return, reason?: why, required to return }`,
         })),
+        'ECOSYSTEM_REFUSED',
       );
     }
   },

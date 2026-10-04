@@ -1,10 +1,10 @@
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { REGISTER_STATUSES, readRegister } from './channel-register.js';
 import {
   createEcosystem,
@@ -77,13 +77,17 @@ function answerMembership(c: Context, outcome: MembershipOutcome) {
 ecosystemRoutes.post('/', zValidator('json', z.unknown()), async (c) => {
   const { baseRevision, document } = envelopeOf(c.req.valid('json'));
   if (baseRevision !== null) {
-    return refused(c, [
-      {
-        code: 'STALE_BASE',
-        path: '/baseRevision',
-        detail: `this creates an ecosystem, which has no revision to base on; send baseRevision null, not ${baseRevision}.`,
-      },
-    ], 'ECOSYSTEM_REFUSED');
+    return refused(
+      c,
+      [
+        {
+          code: 'STALE_BASE',
+          path: '/baseRevision',
+          detail: `this creates an ecosystem, which has no revision to base on; send baseRevision null, not ${baseRevision}.`,
+        },
+      ],
+      'ECOSYSTEM_REFUSED',
+    );
   }
   return answerEcosystem(c, await createEcosystem({ userId: c.get('userId'), raw: document }));
 });
@@ -153,14 +157,18 @@ const reasonBody = zValidator(
   z.strictObject({ reason: z.string().trim().min(1).max(500) }),
   (r, c) => {
     if (!r.success) {
-      return refused(c, [
-        {
-          code: 'MEMBERSHIP_REASON_REQUIRED',
-          path: '/reason',
-          detail:
-            'leaving or removing a membership says why: the body is { "reason": 1 to 500 characters }, and the reason is kept on the membership.',
-        },
-      ], 'ECOSYSTEM_REFUSED');
+      return refused(
+        c,
+        [
+          {
+            code: 'MEMBERSHIP_REASON_REQUIRED',
+            path: '/reason',
+            detail:
+              'leaving or removing a membership says why: the body is { "reason": 1 to 500 characters }, and the reason is kept on the membership.',
+          },
+        ],
+        'ECOSYSTEM_REFUSED',
+      );
     }
   },
 );
@@ -217,6 +225,7 @@ const registerQuery = zValidator(
           ? `the register's \`${key}\` filter is ${REGISTER_FILTER_SHAPE[key]}`
           : `\`${key}\` is not a register filter: the register is filtered by ${Object.keys(REGISTER_FILTER_SHAPE).join(', ')}`,
       })),
+      'ECOSYSTEM_REFUSED',
     );
   },
 );

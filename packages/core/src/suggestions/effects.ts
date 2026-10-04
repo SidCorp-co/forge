@@ -7,8 +7,8 @@
  */
 
 import type { FeedbackTriageEffect } from '@forge/contracts/feedback';
-import { SUGGESTION_PAYLOADS, type SuggestionEffect } from '@forge/contracts/suggestions';
 import { SUGGESTION_MACHINE } from '@forge/contracts/suggestion-machine';
+import { SUGGESTION_PAYLOADS, type SuggestionEffect } from '@forge/contracts/suggestions';
 import { and, eq, sql } from 'drizzle-orm';
 import { insertComment, type WrittenComment } from '../comments/index.js';
 import type { Tx } from '../db/client.js';
@@ -21,8 +21,8 @@ import { setIssueTriage } from '../issues/index.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import type { PendingIssueRelation } from '../issues/relations-service.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { transition } from '../lifecycle/transition.js';
 import type { Refusal } from '../lib/refusal.js';
+import { transition } from '../lifecycle/transition.js';
 import { requirementKey, rowIn } from '../requirements/read.js';
 import {
   createRequirementIn,

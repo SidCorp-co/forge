@@ -7,9 +7,9 @@ import {
   masterSessionRequestSchema,
 } from '@forge/contracts/master-standing';
 import { Hono } from 'hono';
+import { refused } from '../lib/refusal.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { strictBody } from '../middleware/zod-validator.js';
-import { refused } from '../lib/refusal.js';
 import { closeMasterPass, declareMasterSession, openMasterPass } from './service.js';
 
 export const deviceMasterRoutes = new Hono<{ Variables: DeviceVars }>();

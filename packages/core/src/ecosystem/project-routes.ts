@@ -2,10 +2,11 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
+import { requireCan } from '../permissions/index.js';
 import { readApiPage } from './api-page.js';
 import { heldEcosystem } from './ecosystem-service.js';
 import {
@@ -18,7 +19,6 @@ import { membershipDocument } from './membership-rules.js';
 import type { CommitmentsSetter } from './provider-writer-rules.js';
 import { serialiseRevisions } from './routes.js';
 import { listInterfaceRevisions, membershipsWhere, readEcosystems } from './store.js';
-import { requireCan } from '../permissions/index.js';
 
 export const ecosystemProjectRoutes = new Hono<{ Variables: AuthVars }>();
 
