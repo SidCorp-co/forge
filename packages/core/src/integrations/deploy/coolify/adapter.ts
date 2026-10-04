@@ -1,6 +1,7 @@
 import { logger } from '../../../observability/logger.js';
 import { traceStep } from '../../../observability/sentry.js';
 import {
+  type AdapterContext,
   type DeployTargetDispatch,
   type DispatchingAdapterMethods,
   declareIntegration,
@@ -76,6 +77,114 @@ function describeCoolifyFailure(err: unknown): string {
   return err instanceof Error ? err.message : 'unknown error';
 }
 
+interface TargetOutcome {
+  confirmation: DeployTargetDispatch;
+  durationMs: number;
+}
+
+/**
+ * One target's deploy: its own delivery row, a forced rebuild (a release must build fresh even when
+ * Coolify thinks the commit is unchanged, ISS-290), and a refusal recorded rather than thrown so the
+ * remaining targets still deploy. A deploy Coolify accepted is recorded before its delivery row is
+ * written and is never rewritten as a refusal: a write failing afterwards ends the fan-out loudly
+ * instead of reporting a running deploy as absent (ISS-1279).
+ */
+async function deployTarget(
+  args: {
+    ctx: AdapterContext<CoolifyConfig, CoolifySecrets>;
+    input: OutboundDispatchInput;
+    client: ReturnType<typeof buildClient>;
+    payload: Partial<DeployPayload>;
+    runId: string | null;
+    target: CoolifyConfig['targets'] extends readonly (infer T)[] | undefined ? T : never;
+  },
+  outcomes: TargetOutcome[],
+): Promise<void> {
+  const { ctx, input, client, payload, runId, target } = args;
+  const requestId = input.requestId ? `${input.requestId}:${target.id}` : undefined;
+  const deliveryId = await recordDelivery({
+    bindingId: ctx.bindingId,
+    direction: 'outbound',
+    eventName: input.eventName,
+    payload: {
+      ...payload,
+      runId,
+      targetId: target.id,
+      targetLabel: target.label,
+      resourceUuid: target.resourceUuid,
+    },
+    ...(requestId ? { requestId } : {}),
+    status: 'pending',
+  });
+  traceStep({
+    category: BREADCRUMB_OUT,
+    level: 'info',
+    message: `coolify deploy dispatch: ${input.eventName} (${target.label})`,
+    data: {
+      connectionId: ctx.connectionId,
+      bindingId: ctx.bindingId,
+      deliveryId,
+      runId,
+      targetId: target.id,
+    },
+  });
+
+  const started = Date.now();
+  let accepted = false;
+  try {
+    const res = await client.deploy({ resourceUuid: target.resourceUuid, force: true });
+    // Coolify v4 answers `deployments[]`; older versions a top-level deployment_uuid.
+    const deploymentUuid = res.deployments?.[0]?.deployment_uuid ?? res.deployment_uuid;
+    if (!deploymentUuid) throw new Error('coolify deploy: response carried no deployment_uuid');
+    accepted = true;
+    const durationMs = Date.now() - started;
+    outcomes.push({
+      confirmation: { deliveryId, targetLabel: target.label, deploymentUuid, status: 'pending' },
+      durationMs,
+    });
+    await updateDelivery(deliveryId, {
+      status: 'ok',
+      response: {
+        deployment_uuid: deploymentUuid,
+        targetId: target.id,
+        message: res.message ?? null,
+      },
+      durationMs,
+      completedAt: new Date(),
+    });
+  } catch (err) {
+    if (accepted) throw err;
+    const durationMs = Date.now() - started;
+    const status = err instanceof CoolifyApiError ? err.status : null;
+    const message = describeCoolifyFailure(err);
+    await updateDelivery(deliveryId, {
+      status: 'failed',
+      errorMessage: message,
+      response:
+        status !== null ? { httpStatus: status, targetId: target.id } : { targetId: target.id },
+      durationMs,
+      completedAt: new Date(),
+    });
+    const verdict = classifyCoolifyFailure(err);
+    if (verdict.health !== 'error') {
+      await updateConnection(ctx.connectionId, {
+        lastHealthStatus: verdict.health,
+        lastHealthAt: new Date(),
+      });
+    }
+    outcomes.push({
+      confirmation: {
+        deliveryId,
+        targetLabel: target.label,
+        deploymentUuid: null,
+        status: 'failed',
+        detail: message,
+      },
+      durationMs,
+    });
+  }
+}
+
 const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySecrets> = {
   verifyBindingTarget: verifyCoolifyBindingTarget,
   async healthcheck(ctx) {
@@ -138,148 +247,31 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
   },
 
   async dispatchOutbound(ctx, input: OutboundDispatchInput): Promise<OutboundDispatchResult> {
-    // Refresh the connection to honour any breaker state changes since context
-    // was built. If the breaker is open we abort without contacting Coolify.
+    // The breaker is read fresh: closed, or a half-open trial once the cooldown has elapsed (a
+    // successful trial resets it). Still cooling aborts without contacting Coolify.
     const connection = await findConnectionById(ctx.connectionId);
-    if (!connection) {
-      throw new Error(`coolify: connection ${ctx.connectionId} not found`);
-    }
-    // Breaker gate: allow when closed, or as a half-open trial once the cooldown
-    // has elapsed (a successful trial below resets the breaker). Still-cooling →
-    // abort. This is what lets an open breaker ever recover via dispatch.
-    const gate = await breakerAllowsDispatch(connection);
-    if (!gate.allow) {
+    if (!connection) throw new Error(`coolify: connection ${ctx.connectionId} not found`);
+    if (!(await breakerAllowsDispatch(connection)).allow) {
       throw new Error(
         `coolify: connection ${ctx.connectionId} is inactive (circuit breaker open; retry after cooldown or Test-connection to reset)`,
       );
     }
 
     const payload = (input.payload ?? {}) as Partial<DeployPayload>;
-    // `runId` is purely a tracking key for the deployment_uuid → run mapping.
-    // A run-less resource redeploy (ISS-312) legitimately carries no run, so we
-    // coalesce to null and record the delivery with runId:null rather than
-    // throwing. The inbound webhook handler already no-ops on a null-run match.
+    // A run-less resource redeploy (ISS-312) carries no run; the delivery records runId null.
     const runId = payload.runId ?? input.runId ?? null;
-
     const targets = ctx.config.targets ?? [];
     if (targets.length === 0) {
       throw new Error(`coolify: binding ${ctx.bindingId} has no deploy targets configured`);
     }
 
     const client = buildClient(ctx);
-    let firstDeliveryId = '';
-    let firstDeploymentUuid: string | undefined;
-    let totalDurationMs = 0;
-    const failures: { targetLabel: string; message: string; status: number | null }[] = [];
-
-    const confirmations: DeployTargetDispatch[] = [];
-
-    // Held rather than thrown, so the bookkeeping below runs on this path too.
+    const outcomes: TargetOutcome[] = [];
+    // Held rather than thrown, so the outcome is reported on this path too.
     let fanOutError: unknown;
     try {
       for (const target of targets) {
-        const targetRequestId = input.requestId ? `${input.requestId}:${target.id}` : undefined;
-        const deliveryId = await recordDelivery({
-          bindingId: ctx.bindingId,
-          direction: 'outbound',
-          eventName: input.eventName,
-          payload: {
-            ...payload,
-            runId,
-            targetId: target.id,
-            targetLabel: target.label,
-            resourceUuid: target.resourceUuid,
-          },
-          ...(targetRequestId ? { requestId: targetRequestId } : {}),
-          status: 'pending',
-        });
-        if (!firstDeliveryId) firstDeliveryId = deliveryId;
-
-        traceStep({
-          category: BREADCRUMB_OUT,
-          level: 'info',
-          message: `coolify deploy dispatch: ${input.eventName} (${target.label})`,
-          data: {
-            connectionId: ctx.connectionId,
-            bindingId: ctx.bindingId,
-            deliveryId,
-            runId,
-            targetId: target.id,
-          },
-        });
-
-        const started = Date.now();
-        let accepted: string | undefined;
-        try {
-          // Always force-rebuild: a release/re-deploy should produce a fresh build
-          // even when Coolify thinks the commit is unchanged (ISS-290).
-          const res = await client.deploy({ resourceUuid: target.resourceUuid, force: true });
-          // Coolify v4 returns a `deployments[]` array; older versions a top-level
-          // deployment_uuid. Resolve either and fail loudly if neither is present.
-          const deploymentUuid = res.deployments?.[0]?.deployment_uuid ?? res.deployment_uuid;
-          if (!deploymentUuid) {
-            throw new Error('coolify deploy: response carried no deployment_uuid');
-          }
-          // Coolify is building it from here, so the outcome records it BEFORE the delivery row is
-          // persisted: a write that fails afterwards must not leave the dispatch reporting a set of
-          // targets that omits a deploy now running, which reads as an idle environment and frees
-          // the hold under it (ISS-1279).
-          accepted = deploymentUuid;
-          confirmations.push({
-            deliveryId,
-            targetLabel: target.label,
-            deploymentUuid,
-            status: 'pending',
-          });
-          const durationMs = Date.now() - started;
-          totalDurationMs += durationMs;
-          if (!firstDeploymentUuid) firstDeploymentUuid = deploymentUuid;
-          await updateDelivery(deliveryId, {
-            status: 'ok',
-            response: {
-              deployment_uuid: deploymentUuid,
-              targetId: target.id,
-              message: res.message ?? null,
-            },
-            durationMs,
-            completedAt: new Date(),
-          });
-        } catch (err) {
-          // A deploy Coolify accepted cannot be re-recorded as a refusal: the failure is the
-          // delivery row's, and it ends the fan-out loudly rather than rewriting what is running.
-          if (accepted) throw err;
-          const durationMs = Date.now() - started;
-          totalDurationMs += durationMs;
-          const status = err instanceof CoolifyApiError ? err.status : null;
-          const message = describeCoolifyFailure(err);
-          await updateDelivery(deliveryId, {
-            status: 'failed',
-            errorMessage: message,
-            response:
-              status !== null
-                ? { httpStatus: status, targetId: target.id }
-                : { targetId: target.id },
-            durationMs,
-            completedAt: new Date(),
-          });
-          const verdict = classifyCoolifyFailure(err);
-          if (verdict.health !== 'error') {
-            await updateConnection(ctx.connectionId, {
-              lastHealthStatus: verdict.health,
-              lastHealthAt: new Date(),
-            });
-          }
-          confirmations.push({
-            deliveryId,
-            targetLabel: target.label,
-            deploymentUuid: null,
-            status: 'failed',
-            detail: message,
-          });
-          failures.push({ targetLabel: target.label, message, status });
-          // Keep deploying the remaining targets — a BE failure shouldn't strand
-          // an FE deploy. Aggregate failure is raised after the loop.
-        }
+        await deployTarget({ ctx, input, client, payload, runId, target }, outcomes);
       }
     } catch (err) {
       fanOutError = err;
@@ -288,43 +280,36 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
     await input.onDeployOutcome?.({
       runId,
       bindingId: ctx.bindingId,
-      targets: confirmations,
+      targets: outcomes.map((o) => o.confirmation),
       ...(input.requestId ? { requestId: input.requestId } : {}),
     });
     if (fanOutError) throw fanOutError;
 
+    const failures = outcomes.filter((o) => o.confirmation.status === 'failed');
     if (failures.length > 0) {
-      const tripped = await maybeTripBreaker({
-        bindingId: ctx.bindingId,
-        connectionId: ctx.connectionId,
-      });
-      if (tripped) {
+      if (await maybeTripBreaker({ bindingId: ctx.bindingId, connectionId: ctx.connectionId })) {
         logger.error(
-          {
-            connectionId: ctx.connectionId,
-            bindingId: ctx.bindingId,
-          },
+          { connectionId: ctx.connectionId, bindingId: ctx.bindingId },
           'coolify: circuit breaker tripped — ops follow-up required',
         );
       }
-      const detail = failures.map((f) => `${f.targetLabel}: ${f.message}`).join('; ');
+      const detail = failures
+        .map((f) => `${f.confirmation.targetLabel}: ${f.confirmation.detail}`)
+        .join('; ');
       throw new Error(
         `coolify deploy failed for ${failures.length}/${targets.length} target(s): ${detail}`,
       );
     }
 
     await maybeResetBreaker(ctx.connectionId);
-    // A successful deploy dispatch IS a health signal (API reachable + token
-    // accepted) — record it so the card can't stay stuck on a stale `error`
-    // from a one-off healthcheck while deploys keep succeeding (ISS-429).
-    await updateConnection(ctx.connectionId, {
-      lastHealthStatus: 'ok',
-      lastHealthAt: new Date(),
-    });
+    // A deploy Coolify accepted is a health signal too, so the card cannot stay on a stale `error`
+    // from a one-off healthcheck while deploys succeed (ISS-429).
+    await updateConnection(ctx.connectionId, { lastHealthStatus: 'ok', lastHealthAt: new Date() });
+    const first = outcomes.find((o) => o.confirmation.deploymentUuid)?.confirmation.deploymentUuid;
     return {
-      deliveryId: firstDeliveryId,
-      ...(firstDeploymentUuid ? { externalId: firstDeploymentUuid } : {}),
-      durationMs: totalDurationMs,
+      deliveryId: outcomes[0]?.confirmation.deliveryId ?? '',
+      ...(first ? { externalId: first } : {}),
+      durationMs: outcomes.reduce((sum, o) => sum + o.durationMs, 0),
     };
   },
 

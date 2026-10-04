@@ -38,7 +38,7 @@ import {
   runCoolifyDeploy,
   runCoolifyRollback,
 } from '../release-batch/index.js';
-import { requireCoolifyRun } from './coolify-access.js';
+import { given, requireCoolifyRun } from './coolify-access.js';
 
 const inputSchema = z
   .object({
@@ -77,10 +77,6 @@ const inputSchema = z
   .strict();
 
 type Input = z.infer<typeof inputSchema>;
-
-async function resolveProjectId(input: Input, ctx: McpContext): Promise<string> {
-  return resolveEffectiveProjectId(ctx, input.projectId);
-}
 
 export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_coolify_deploy',
@@ -188,177 +184,47 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). ' +
     'Authorization: project membership; deploy, cancel and rollback need deploys.run.',
   inputSchema: zodToMcpSchema(inputSchema),
-  handler: async (args) => {
-    const input = inputSchema.parse(args);
-    const { principal } = ctx;
-
-    return dispatchAction(input, ctx, principal);
-  },
+  handler: (args) => dispatchAction(inputSchema.parse(args), ctx),
 });
 
-async function dispatchAction(
-  input: z.infer<typeof inputSchema>,
-  ctx: McpContext,
-  principal: McpContext['principal'],
-): Promise<unknown> {
-  const control = await dispatchControlAction(input, ctx, principal);
-  if (control !== NOT_A_CONTROL_ACTION) return control;
-  switch (input.action) {
-    case 'list': {
-      const projectId = await resolveProjectId(input, ctx);
-      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
+async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
+  const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
+  const { principal } = ctx;
+  const { action } = input;
+  if (action === 'deploy' || action === 'cancel' || action === 'rollback') {
+    await requireCoolifyRun(actorFor(principal.userId, principal.agency), projectId, action);
+  } else {
+    await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
+  }
+  const scope = given({ integrationId: input.integrationId });
+  switch (action) {
+    case 'list':
       return listCoolifyIntegrations(projectId);
-    }
-
-    case 'deploy': {
-      const projectId = await resolveProjectId(input, ctx);
-      await requireCoolifyRun(actorFor(principal.userId, principal.agency), projectId, 'deploy');
+    case 'deploy':
       return runCoolifyDeploy({
         projectId,
-        ...(input.issueId ? { issueId: input.issueId } : {}),
-        ...(input.pipelineRunId ? { pipelineRunId: input.pipelineRunId } : {}),
-        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
+        ...given({ issueId: input.issueId, pipelineRunId: input.pipelineRunId }),
+        ...scope,
       });
-    }
-
-    case 'status': {
-      const projectId = await resolveProjectId(input, ctx);
-      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
-      return coolifyDeliveryStatus({
-        projectId,
-        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
-      });
-    }
-
-    case 'logs': {
-      const projectId = await resolveProjectId(input, ctx);
-      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
-
-      // Resolve the integration row. Explicit integrationId wins; otherwise
-      // require exactly one active Coolify integration (multiple is ambiguous).
-      const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
-      if (!row) {
-        return {
-          integrationId: null,
-          deploymentUuid: null,
-          logs: null,
-          reason: 'no-integration',
-        };
-      }
-
-      // Resolve the deploymentUuid: explicit param, else the integration's
-      // last outbound delivery (its Coolify response carries deployment_uuid).
-      let deploymentUuid = input.deploymentUuid ?? null;
-      if (!deploymentUuid) {
-        const last = await findLastOutbound(row.id);
-        const response = (last?.response ?? null) as { deployment_uuid?: string } | null;
-        deploymentUuid = response?.deployment_uuid ?? null;
-      }
-      if (!deploymentUuid) {
-        return {
-          integrationId: row.id,
-          deploymentUuid: null,
-          logs: null,
-          reason: 'no-deployment',
-        };
-      }
-
-      try {
-        const result = await fetchCoolifyDeploymentLogs(row.pair, deploymentUuid, input.lines);
-        return { integrationId: row.id, ...result };
-      } catch (err) {
-        if (err instanceof CoolifyApiError) {
-          return {
-            integrationId: row.id,
-            deploymentUuid,
-            logs: null,
-            error: 'coolify API error',
-            httpStatus: err.status,
-          };
-        }
-        throw err;
-      }
-    }
-
-    case 'runtime-logs': {
-      const projectId = await resolveProjectId(input, ctx);
-      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
-
-      const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
-      if (!row) {
-        return { integrationId: null, resourceUuid: null, logs: null, reason: 'no-integration' };
-      }
-
-      // Resolve the target application to tail: explicit resourceUuid wins;
-      // else the integration's sole target. Multiple targets is ambiguous —
-      // require the caller to name one (and the compose caveat means even the
-      // named target may only expose a single container's logs).
-      const targets = (row.config as CoolifyConfig | null)?.targets ?? [];
-      const resourceUuid =
-        input.resourceUuid ?? (targets.length === 1 ? targets[0]?.resourceUuid : undefined);
-      if (!resourceUuid) {
-        if (targets.length === 0) {
-          return { integrationId: row.id, resourceUuid: null, logs: null, reason: 'no-target' };
-        }
-        throw new Error(
-          'BAD_REQUEST: integration has multiple targets — pass resourceUuid (see list action)',
-        );
-      }
-
-      try {
-        const result = await fetchCoolifyRuntimeLogs(row.pair, resourceUuid, input.lines);
-        return { integrationId: row.id, ...result };
-      } catch (err) {
-        if (err instanceof CoolifyApiError) {
-          return {
-            integrationId: row.id,
-            resourceUuid,
-            logs: null,
-            error: 'coolify API error',
-            httpStatus: err.status,
-          };
-        }
-        throw err;
-      }
-    }
-  }
-}
-
-/** Sentinel so a control action returning `undefined` is still a handled one. */
-const NOT_A_CONTROL_ACTION = Symbol('not-a-control-action');
-
-/**
- * ISS-925's five actions, split off `dispatchAction` rather than added to it:
- * that function is at its frozen function-length budget, and the deploy path
- * and the controls read better apart anyway.
- */
-async function dispatchControlAction(
-  input: Input,
-  ctx: McpContext,
-  principal: McpContext['principal'],
-): Promise<unknown> {
-  switch (input.action) {
-    case 'cancel': {
-      const projectId = await resolveProjectId(input, ctx);
-      await requireCoolifyRun(actorFor(principal.userId, principal.agency), projectId, 'cancel');
+    case 'status':
+      return coolifyDeliveryStatus({ projectId, ...scope });
+    case 'logs':
+      return deploymentLogs(projectId, input);
+    case 'runtime-logs':
+      return runtimeLogs(projectId, input);
+    case 'cancel':
       return runCoolifyCancel({
         projectId,
-        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
-        ...(input.deploymentUuid ? { deploymentUuid: input.deploymentUuid } : {}),
+        ...scope,
+        ...given({ deploymentUuid: input.deploymentUuid }),
       });
-    }
-    case 'rollback-images': {
-      const projectId = await resolveProjectId(input, ctx);
-      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
+    case 'rollback-images':
       return listCoolifyRollbackImages({
         projectId,
-        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
-        ...(input.resourceUuid ? { resourceUuid: input.resourceUuid } : {}),
+        ...scope,
+        ...given({ resourceUuid: input.resourceUuid }),
       });
-    }
-    case 'rollback': {
-      const projectId = await resolveProjectId(input, ctx);
-      await requireCoolifyRun(actorFor(principal.userId, principal.agency), projectId, 'rollback');
+    case 'rollback':
       if (!input.commit) {
         throw new Error(
           'BAD_REQUEST: rollback needs `commit` — the image tag from rollback-images',
@@ -367,27 +233,77 @@ async function dispatchControlAction(
       return runCoolifyRollback({
         projectId,
         commit: input.commit,
-        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
-        ...(input.resourceUuid ? { resourceUuid: input.resourceUuid } : {}),
+        ...scope,
+        ...given({ resourceUuid: input.resourceUuid }),
       });
-    }
-    case 'applications': {
-      const projectId = await resolveProjectId(input, ctx);
-      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
-      return listApplicationsForIntegration({
-        projectId,
-        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
-      });
-    }
-    case 'targets': {
-      const projectId = await resolveProjectId(input, ctx);
-      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
-      return resolveCoolifyTargets({
-        projectId,
-        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
-      });
-    }
-    default:
-      return NOT_A_CONTROL_ACTION;
+    case 'applications':
+      return listApplicationsForIntegration({ projectId, ...scope });
+    case 'targets':
+      return resolveCoolifyTargets({ projectId, ...scope });
+  }
+}
+
+/** A deployment's build log: the named deployment, else the integration's last outbound one. */
+async function deploymentLogs(projectId: string, input: Input) {
+  const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
+  if (!row)
+    return { integrationId: null, deploymentUuid: null, logs: null, reason: 'no-integration' };
+  const last = input.deploymentUuid ? null : await findLastOutbound(row.id);
+  const deploymentUuid =
+    input.deploymentUuid ??
+    (last?.response as { deployment_uuid?: string } | null)?.deployment_uuid ??
+    null;
+  if (!deploymentUuid) {
+    return { integrationId: row.id, deploymentUuid: null, logs: null, reason: 'no-deployment' };
+  }
+  try {
+    return {
+      integrationId: row.id,
+      ...(await fetchCoolifyDeploymentLogs(row.pair, deploymentUuid, input.lines)),
+    };
+  } catch (err) {
+    if (!(err instanceof CoolifyApiError)) throw err;
+    return {
+      integrationId: row.id,
+      deploymentUuid,
+      logs: null,
+      error: 'coolify API error',
+      httpStatus: err.status,
+    };
+  }
+}
+
+/**
+ * The live container log of one target: the named resourceUuid, else the integration's sole target.
+ * For a docker-compose application Coolify returns one container's log, whichever target is named.
+ */
+async function runtimeLogs(projectId: string, input: Input) {
+  const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
+  if (!row)
+    return { integrationId: null, resourceUuid: null, logs: null, reason: 'no-integration' };
+  const targets = (row.config as CoolifyConfig | null)?.targets ?? [];
+  const resourceUuid =
+    input.resourceUuid ?? (targets.length === 1 ? targets[0]?.resourceUuid : undefined);
+  if (!resourceUuid) {
+    if (targets.length === 0)
+      return { integrationId: row.id, resourceUuid: null, logs: null, reason: 'no-target' };
+    throw new Error(
+      'BAD_REQUEST: integration has multiple targets — pass resourceUuid (see list action)',
+    );
+  }
+  try {
+    return {
+      integrationId: row.id,
+      ...(await fetchCoolifyRuntimeLogs(row.pair, resourceUuid, input.lines)),
+    };
+  } catch (err) {
+    if (!(err instanceof CoolifyApiError)) throw err;
+    return {
+      integrationId: row.id,
+      resourceUuid,
+      logs: null,
+      error: 'coolify API error',
+      httpStatus: err.status,
+    };
   }
 }

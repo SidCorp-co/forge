@@ -17,7 +17,7 @@
  * Coolify route that happened to live in the provider-agnostic file.
  */
 
-import type { Hono, MiddlewareHandler } from 'hono';
+import type { Context, Hono, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
@@ -47,7 +47,7 @@ import {
   runCoolifyDeploy,
   runCoolifyRollback,
 } from '../release-batch/index.js';
-import { requireCoolifyRun } from './coolify-access.js';
+import { given, requireCoolifyRun } from './coolify-access.js';
 
 const deployBodySchema = z
   .object({
@@ -93,7 +93,7 @@ const invalidInput = (result: { success: boolean; error?: z.core.$ZodError }) =>
   }
 };
 
-// cm:why membership is refused before the input is read, so a stranger learns nothing from a 400
+// Membership is refused before the input is read, so a stranger learns nothing from a 400.
 const projectMember: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
   await requireCan(
     actorFor(c.get('userId')),
@@ -110,170 +110,117 @@ const coolifyRun =
     await next();
   };
 
-const asHttp = (err: unknown): never => {
-  // Coolify's own answer, named: unmapped it reached the caller as a bare INTERNAL_ERROR (ISS-1346).
-  if (err instanceof CoolifyApiError) {
+/** Coolify's own answer, named: unmapped it reached the caller as a bare INTERNAL_ERROR (ISS-1346). */
+async function answer(c: Context, run: () => Promise<unknown>): Promise<Response> {
+  try {
+    return c.json(await run());
+  } catch (err) {
+    if (!(err instanceof CoolifyApiError)) throw err;
     const said =
       err.status === 403
         ? describeCoolifyForbidden(err)
         : `Coolify answered HTTP ${err.status} to ${err.route ?? 'the request Forge made'}`;
     throw new HTTPException(502, { message: said, cause: { code: 'COOLIFY_API_ERROR' } });
   }
-  throw err;
-};
+}
 
-export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }>): void {
+type Routes = Hono<{ Variables: AuthVars }>;
+
+export function registerCoolifyDeployRoutes(routes: Routes): void {
+  registerCommandRoutes(routes);
+  registerSetupRoutes(routes);
+}
+
+/** Deploy, cancel and roll back, and the reads that show where they stand. */
+function registerCommandRoutes(routes: Routes): void {
+  routes.get(
+    '/:projectId/integrations/coolify/status',
+    projectMember,
+    zValidator('query', integrationQuerySchema, invalidInput),
+    (c) => {
+      const { integrationId } = c.req.valid('query');
+      const projectId = c.req.param('projectId');
+      return answer(c, () => coolifyDeliveryStatus({ projectId, ...given({ integrationId }) }));
+    },
+  );
+  routes.post(
+    '/:projectId/integrations/coolify/deploy',
+    coolifyRun('deploy'),
+    zValidator('json', deployBodySchema, invalidInput),
+    (c) =>
+      answer(c, () =>
+        runCoolifyDeploy({ projectId: c.req.param('projectId'), ...c.req.valid('json') }),
+      ),
+  );
+  routes.post(
+    '/:projectId/integrations/coolify/cancel',
+    coolifyRun('cancel'),
+    zValidator('json', cancelBodySchema, invalidInput),
+    (c) =>
+      answer(c, () =>
+        runCoolifyCancel({ projectId: c.req.param('projectId'), ...c.req.valid('json') }),
+      ),
+  );
+  routes.get(
+    '/:projectId/integrations/coolify/rollback-images',
+    projectMember,
+    zValidator('query', rollbackImagesQuerySchema, invalidInput),
+    (c) => {
+      const { integrationId, resourceUuid } = c.req.valid('query');
+      const projectId = c.req.param('projectId');
+      return answer(c, () =>
+        listCoolifyRollbackImages({
+          projectId,
+          ...given({ integrationId, resourceUuid }),
+        }),
+      );
+    },
+  );
+  routes.post(
+    '/:projectId/integrations/coolify/rollback',
+    coolifyRun('rollback'),
+    zValidator('json', rollbackBodySchema, invalidInput),
+    (c) =>
+      answer(c, () =>
+        runCoolifyRollback({ projectId: c.req.param('projectId'), ...c.req.valid('json') }),
+      ),
+  );
+}
+
+/** What a binding is set up with: its integrations, the applications to pick, the bound targets. */
+function registerSetupRoutes(routes: Routes): void {
   routes.get('/:projectId/integrations/coolify', async (c) => {
     const projectId = c.req.param('projectId');
     await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(projectId));
     return c.json(await listCoolifyIntegrations(projectId));
   });
-
-  routes.get(
-    '/:projectId/integrations/coolify/status',
-    projectMember,
-    zValidator('query', integrationQuerySchema, invalidInput),
-    async (c) => {
-      const projectId = c.req.param('projectId');
-      const { integrationId } = c.req.valid('query');
-      try {
-        return c.json(
-          await coolifyDeliveryStatus({
-            projectId,
-            ...(integrationId ? { integrationId } : {}),
-          }),
-        );
-      } catch (err) {
-        return asHttp(err);
-      }
-    },
-  );
-
-  routes.post(
-    '/:projectId/integrations/coolify/deploy',
-    coolifyRun('deploy'),
-    zValidator('json', deployBodySchema, invalidInput),
-    async (c) => {
-      const projectId = c.req.param('projectId');
-      const body = c.req.valid('json');
-
-      try {
-        return c.json(await runCoolifyDeploy({ projectId, ...body }));
-      } catch (err) {
-        return asHttp(err);
-      }
-    },
-  );
-
-  routes.post(
-    '/:projectId/integrations/coolify/cancel',
-    coolifyRun('cancel'),
-    zValidator('json', cancelBodySchema, invalidInput),
-    async (c) => {
-      const projectId = c.req.param('projectId');
-      const body = c.req.valid('json');
-      try {
-        return c.json(await runCoolifyCancel({ projectId, ...body }));
-      } catch (err) {
-        return asHttp(err);
-      }
-    },
-  );
-
-  routes.get(
-    '/:projectId/integrations/coolify/rollback-images',
-    projectMember,
-    zValidator('query', rollbackImagesQuerySchema, invalidInput),
-    async (c) => {
-      const projectId = c.req.param('projectId');
-      const { integrationId, resourceUuid } = c.req.valid('query');
-      try {
-        return c.json(
-          await listCoolifyRollbackImages({
-            projectId,
-            ...(integrationId ? { integrationId } : {}),
-            ...(resourceUuid ? { resourceUuid } : {}),
-          }),
-        );
-      } catch (err) {
-        return asHttp(err);
-      }
-    },
-  );
-
-  routes.post(
-    '/:projectId/integrations/coolify/rollback',
-    coolifyRun('rollback'),
-    zValidator('json', rollbackBodySchema, invalidInput),
-    async (c) => {
-      const projectId = c.req.param('projectId');
-      const body = c.req.valid('json');
-      try {
-        return c.json(await runCoolifyRollback({ projectId, ...body }));
-      } catch (err) {
-        return asHttp(err);
-      }
-    },
-  );
-
   routes.post(
     '/:projectId/integrations/coolify/applications',
     projectMember,
     zValidator('json', applicationsBodySchema, invalidInput),
     async (c) => {
-      const projectId = c.req.param('projectId');
       const body = c.req.valid('json');
-      let auth: { baseUrl: string; apiToken: string; previousApiToken?: string };
-      if ('integrationId' in body) {
-        const existing = await findBindingWithConnectionById(body.integrationId);
-        if (
-          !existing ||
-          existing.binding.projectId !== projectId ||
-          existing.binding.provider !== 'coolify'
-        ) {
-          throw notFound();
-        }
-        const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(existing);
-        if (!ctx.config?.baseUrl || !ctx.secrets?.apiToken) {
-          throw refuseCoolify(
-            'MISSING_CREDENTIALS',
-            'this Coolify connection is missing its baseUrl or apiToken; reconnect it with both',
-          );
-        }
-        auth = credentialFromSecrets(ctx.config, ctx.secrets);
-      } else {
-        auth = { baseUrl: body.baseUrl, apiToken: body.apiToken };
-      }
+      const auth =
+        'integrationId' in body
+          ? await boundCredential(c.req.param('projectId'), body.integrationId)
+          : { baseUrl: body.baseUrl, apiToken: body.apiToken };
       return c.json({ applications: (await fetchCoolifyApplications(auth)).slice(0, 500) });
     },
   );
-
   routes.get(
     '/:projectId/integrations/coolify/targets',
     projectMember,
     zValidator('query', integrationQuerySchema, invalidInput),
-    async (c) => {
-      const projectId = c.req.param('projectId');
+    (c) => {
       const { integrationId } = c.req.valid('query');
-      try {
-        return c.json(
-          await resolveCoolifyTargets({
-            projectId,
-            ...(integrationId ? { integrationId } : {}),
-          }),
-        );
-      } catch (err) {
-        return asHttp(err);
-      }
+      const projectId = c.req.param('projectId');
+      return answer(c, () => resolveCoolifyTargets({ projectId, ...given({ integrationId }) }));
     },
   );
-
   routes.post('/:projectId/integrations/:id/confirm-prod-deploy', async (c) => {
     const projectId = c.req.param('projectId');
     const id = c.req.param('id');
-    const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.admin', projectResource(projectId));
-
+    await requireCan(actorFor(c.get('userId')), 'project.admin', projectResource(projectId));
     const existing = await findBindingWithConnectionById(id);
     if (!existing || existing.binding.projectId !== projectId) throw notFound();
     const { bindingReachesProduction, confirmPendingProdDeploy } = await import(
@@ -293,4 +240,23 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
     });
     return c.json(result);
   });
+}
+
+async function boundCredential(projectId: string, integrationId: string) {
+  const existing = await findBindingWithConnectionById(integrationId);
+  if (
+    !existing ||
+    existing.binding.projectId !== projectId ||
+    existing.binding.provider !== 'coolify'
+  ) {
+    throw notFound();
+  }
+  const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(existing);
+  if (!ctx.config?.baseUrl || !ctx.secrets?.apiToken) {
+    throw refuseCoolify(
+      'MISSING_CREDENTIALS',
+      'this Coolify connection is missing its baseUrl or apiToken; reconnect it with both',
+    );
+  }
+  return credentialFromSecrets(ctx.config, ctx.secrets);
 }
