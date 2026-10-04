@@ -1,8 +1,7 @@
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { db, type Tx } from '../db/client.js';
 import { permissionFactsOf } from '../permissions/index.js';
-import { staleBase } from '../project-config/index.js';
-import { readProjectDocument } from '../project-config/service.js';
+import { readProjectDocument, staleBase } from '../project-config/index.js';
 import { notFound } from './access.js';
 import type { ImpactLink } from './contract/impact.js';
 import { storedAs } from './ecosystem-service.js';
