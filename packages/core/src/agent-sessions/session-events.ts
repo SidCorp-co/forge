@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessionEvents } from '../db/schema-agent-session-events.js';
-import { toCanonicalMessages } from './canonical-legacy.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { toCanonicalMessages } from './canonical-legacy.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type DbOrTx = typeof db | Tx;

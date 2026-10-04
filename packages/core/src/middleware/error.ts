@@ -1,9 +1,9 @@
 import { PROBLEM_CONTENT_TYPE, refusalTitle, refusalType } from '@forge/contracts';
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HTTPException } from 'hono/http-exception';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { withoutQueryParams } from '../lib/db-errors.js';
-import { RefusalError, problem, refusalEnvelope, requestRefusals } from '../lib/refusal.js';
+import { problem, RefusalError, refusalEnvelope, requestRefusals } from '../lib/refusal.js';
 import { getLogger } from '../observability/logger.js';
 import { reportFailure } from '../observability/sentry.js';
 import type { RequestIdVars } from './request-id.js';
@@ -74,7 +74,10 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
 
   if (err instanceof RefusalError) {
     const envelope = refusalEnvelope(err.refusals, err.fallbackCode);
-    log.warn({ status: envelope.status, code: envelope.error.code, err: err.message }, 'http.error');
+    log.warn(
+      { status: envelope.status, code: envelope.error.code, err: err.message },
+      'http.error',
+    );
     return problem(c, envelope);
   }
 

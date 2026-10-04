@@ -75,7 +75,11 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
 
     if (action === 'search') {
       const input = searchInputSchema.parse(rest);
-      await requireCan(actorFor(principal.userId), 'project.read', projectResource(input.projectId));
+      await requireCan(
+        actorFor(principal.userId),
+        'project.read',
+        projectResource(input.projectId),
+      );
       try {
         return await runMemorySearch({ ...input, surface: 'agent' });
       } catch (err) {
@@ -87,20 +91,32 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
 
     if (action === 'get') {
       const input = getMemoryInputSchema.parse(rest);
-      await requireCan(actorFor(principal.userId), 'project.read', projectResource(input.projectId));
+      await requireCan(
+        actorFor(principal.userId),
+        'project.read',
+        projectResource(input.projectId),
+      );
       return runMemoryGet(input);
     }
 
     if (action === 'delete') {
       const input = deleteInputSchema.parse(rest);
-      await requireCan(actorFor(principal.userId), 'project.write', projectResource(input.projectId));
+      await requireCan(
+        actorFor(principal.userId),
+        'project.write',
+        projectResource(input.projectId),
+      );
       const removed = await deleteMemory(input.projectId, input.source, input.sourceRef);
       return { deleted: removed > 0 };
     }
 
     if (action === 'feedback') {
       const input = memoryFeedbackInputSchema.parse(rest);
-      await requireCan(actorFor(principal.userId), 'project.write', projectResource(input.projectId));
+      await requireCan(
+        actorFor(principal.userId),
+        'project.write',
+        projectResource(input.projectId),
+      );
       return await runMemoryFeedback(input);
     }
 

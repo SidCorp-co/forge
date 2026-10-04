@@ -126,7 +126,8 @@ export interface TransitionResult<R> {
  */
 export function movedRow<R>(
   result: TransitionResult<R>,
-  gone: () => Error = () => new Error('transition: the row a compare-and-set moves matched nothing'),
+  gone: () => Error = () =>
+    new Error('transition: the row a compare-and-set moves matched nothing'),
 ): R {
   const [lead] = result.refusals;
   if (lead) throw new RefusalError(result.refusals, lead.code);
@@ -155,7 +156,9 @@ function startingStates<E extends MachineEntity>(
   const entries = entriesOf<StateOf<E>>(machine, args.to, args.recovery === true);
   if (args.expect !== undefined) {
     if (args.from !== undefined) {
-      throw new Error(`transition: ${args.source} names both \`from\` and \`expect\`; a move takes one`);
+      throw new Error(
+        `transition: ${args.source} names both \`from\` and \`expect\`; a move takes one`,
+      );
     }
     return entries.includes(args.expect) ? [args.expect] : [];
   }
@@ -211,7 +214,11 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   const prior = (await tx
     .select({ id: idColumn, status: statusColumn })
     .from(table as PgTable)
-    .where(expected === undefined ? and(args.where, inArray(statusColumn, from as string[])) : args.where)
+    .where(
+      expected === undefined
+        ? and(args.where, inArray(statusColumn, from as string[]))
+        : args.where,
+    )
     .for('update')) as PriorRow<E>[];
   if (prior.length === 0) return { rows: [], refusals: [] };
   if (expected !== undefined) {

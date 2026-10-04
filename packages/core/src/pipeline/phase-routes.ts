@@ -5,9 +5,9 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { endPhase, listPhases, resumePoint, startPhase } from './phase-journal.js';
 import { readPipelineRun } from './runs.js';
-import { requireHeld } from '../permissions/index.js';
 
 const startBodySchema = z
   .object({

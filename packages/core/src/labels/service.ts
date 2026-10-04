@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type LabelKind, labels } from '../db/schema.js';
-import { labelColumns } from './read.js';
 import { autoModuleColor, deriveModuleSlug } from './module-service.js';
+import { labelColumns } from './read.js';
 
 /** A label or module, created on the project; a module takes a derived slug. */
 export async function createLabel(

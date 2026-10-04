@@ -33,6 +33,7 @@ export interface RadioProps {
 
 export function Radio({ value, label, disabled }: RadioProps) {
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: RadioGroupItem renders the radio control inside this label
     <label className="inline-flex cursor-pointer items-center gap-2.5">
       <RadioGroupItem
         value={value}

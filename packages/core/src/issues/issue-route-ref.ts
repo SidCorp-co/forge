@@ -6,9 +6,9 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
+import { requireHeld } from '../permissions/index.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
-import { requireHeld } from '../permissions/index.js';
 
 const uuidSchema = z.uuid();
 

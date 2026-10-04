@@ -12,6 +12,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { readPipelineRun } from './runs.js';
 import {
   cancelPipelineRun,
@@ -19,7 +20,6 @@ import {
   pausePipelineRun,
   resumePipelineRun,
 } from './runs-control.js';
-import { requireHeld } from '../permissions/index.js';
 
 const cancelBodySchema = z.object({ parkIssue: z.boolean().optional() });
 

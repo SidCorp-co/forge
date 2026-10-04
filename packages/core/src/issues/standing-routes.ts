@@ -11,9 +11,9 @@ import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
 import { listIssueStanding, readIssueStanding } from './standing-read.js';
-import { requireHeld } from '../permissions/index.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const keyParam = z.object({

@@ -28,7 +28,11 @@ export async function applyBatchFieldEdit(
       .update(issues)
       .set({ ...set, updatedAt: sql`now()` })
       .where(eq(issues.id, issue.id));
-    await emitEvent(tx, 'issue.updated', { issueId: issue.id, projectId: issue.projectId, ...change });
+    await emitEvent(tx, 'issue.updated', {
+      issueId: issue.id,
+      projectId: issue.projectId,
+      ...change,
+    });
   });
 }
 
@@ -36,11 +40,7 @@ export async function applyBatchFieldEdit(
  * Replace an issue's metadata with `next`, an expression over the stored `metadata` (a merge or a
  * `jsonb_set`), so a writer that owns one key leaves the others as they stand.
  */
-export async function rewriteIssueMetadata(
-  issueId: string,
-  next: SQL,
-  tx: Tx = db,
-): Promise<void> {
+export async function rewriteIssueMetadata(issueId: string, next: SQL, tx: Tx = db): Promise<void> {
   await tx.update(issues).set({ metadata: next }).where(eq(issues.id, issueId));
 }
 

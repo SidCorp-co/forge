@@ -230,7 +230,14 @@
     "**/*.d.ts",
     "packages/runner/**",
     "packages/observability/**",
-    "packages/contracts/**"
+    "packages/contracts/**",
+    "packages/core/src/index.ts",
+    "packages/core/src/route-registry.ts",
+    "packages/core/src/work-ports.ts",
+    "packages/core/src/execution-ports.ts",
+    "packages/core/src/integration-registry.ts",
+    "packages/core/src/timer-registry.ts",
+    "packages/core/src/outbox-consumers.ts"
   ],
   "contracts": [
     {
@@ -271,7 +278,7 @@
       "scope": "file",
       "max_modules": 6,
       "status": "locked",
-      "description": "Threshold from the measured distribution: 480 of 530 source files reach 1-3 modules; 6 leaves the 11 real outliers visible without flagging ordinary route files."
+      "description": "Threshold from the measured distribution: 480 of 530 source files reach 1-3 modules; 6 leaves the 11 real outliers visible without flagging ordinary route files. The composition roots (packages/core/src/index.ts, route-registry, work-ports, execution-ports, integration-registry, timer-registry, outbox-consumers) are excluded by name: each exists to wire every module at boot, so their fan-out is their purpose, not a blob; a file that is not a composition root is still held to 6 (ISS-225)."
     },
     {
       "id": "web-design-is-presentational",
@@ -287,7 +294,7 @@
       "from": "web-design",
       "to": "web-lib-api",
       "status": "locked",
-      "description": "a kit component renders what it is handed; resolving a URL against the API client makes the kit depend on a deploy's origin. Measured 2026-08-23: 0 edges, once `coreFileUrl` moved out of lib/api/client.ts to lib/utils/core-url.ts \u2014 it is a string function over one env value and was never part of the client."
+      "description": "a kit component renders what it is handed; resolving a URL against the API client makes the kit depend on a deploy's origin. Measured 2026-08-23: 0 edges, once `coreFileUrl` moved out of lib/api/client.ts to lib/utils/core-url.ts — it is a string function over one env value and was never part of the client."
     },
     {
       "id": "web-features-do-not-reach-into-routes",

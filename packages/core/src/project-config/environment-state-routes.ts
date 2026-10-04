@@ -3,9 +3,9 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readEnvironmentState } from './environment-state-read.js';
 import { readProjectDocument } from './service.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const environmentParam = z.object({

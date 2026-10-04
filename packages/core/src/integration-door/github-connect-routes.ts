@@ -61,7 +61,11 @@ const installedQuerySchema = z.object({
 
 // cm:why the admin check runs before the query is read, so a non-admin learns nothing from a 400
 const projectAdmin: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  await requireCan(actorFor(c.get('userId')), 'project.admin', projectResource(c.req.param('projectId') ?? ''));
+  await requireCan(
+    actorFor(c.get('userId')),
+    'project.admin',
+    projectResource(c.req.param('projectId') ?? ''),
+  );
   await next();
 };
 

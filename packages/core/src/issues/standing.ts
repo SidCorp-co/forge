@@ -39,7 +39,6 @@ import { landedWait } from './strand-rules.js';
 const SETTLED: readonly string[] = ISSUE_RESOLVED_STATUSES;
 const DONE: readonly string[] = ISSUE_TERMINAL_STATUSES;
 
-
 const STEP_WORD: Record<WorkStep, string> = {
   triage: 'Triage',
   clarify: 'Clarify',
@@ -354,10 +353,7 @@ export function wavesOf(nodes: readonly WaveNode[]): Map<string, number | null> 
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const out = new Map<string, number | null>();
   const visiting = new Set<string>();
-  const open = (id: string) => {
-    const n = byId.get(id);
-    return n !== undefined && n.holds;
-  };
+  const open = (id: string) => byId.get(id)?.holds === true;
   const visit = (id: string): number | null => {
     if (out.has(id)) return out.get(id) ?? null;
     if (visiting.has(id)) return null;
@@ -449,7 +445,13 @@ function parkBlocker(park: IssuePark, refs: readonly IssueEdgeRef[]): IssueBlock
   const at = park.resume.at;
   if (at) {
     return blocker(
-      { tone: 'attention', reason: copy.reason, whoMustAct: copy.who, act: resumeAct(at), resumeAt: at },
+      {
+        tone: 'attention',
+        reason: copy.reason,
+        whoMustAct: copy.who,
+        act: resumeAct(at),
+        resumeAt: at,
+      },
       refs,
     );
   }
@@ -572,7 +574,14 @@ const truncate = (s: string, max: number) => {
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 };
 
-const OUTCOME_KEYS = ['outcome', 'summary', 'verdict', 'result', 'planSummary', 'rootCauseHypothesis'];
+const OUTCOME_KEYS = [
+  'outcome',
+  'summary',
+  'verdict',
+  'result',
+  'planSummary',
+  'rootCauseHypothesis',
+];
 
 /** A short line from a free-form handoff payload: the stable fields first, then any string. */
 function outcomeLabelOf(payload: Record<string, unknown> | null): string | null {
@@ -619,7 +628,8 @@ export function stepOutcomesOf(input: {
   for (const step of new Set([...handoffByStep.keys(), ...runsByStep.keys()])) {
     const handoff = handoffByStep.get(step) ?? null;
     let pick: { seconds: number; cost: number; at: string } | undefined;
-    for (const acc of runsByStep.get(step)?.values() ?? []) if (!pick || acc.at > pick.at) pick = acc;
+    for (const acc of runsByStep.get(step)?.values() ?? [])
+      if (!pick || acc.at > pick.at) pick = acc;
     out.push({
       step,
       state: input.failedStep === step ? 'failed' : input.activeStep === step ? 'running' : 'done',

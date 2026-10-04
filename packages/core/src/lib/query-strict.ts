@@ -32,7 +32,11 @@ export function queryBadRequest<T>(
     })),
     ...error.issues
       .filter((issue) => issue.code !== 'unrecognized_keys')
-      .map((issue) => ({ code: 'BAD_REQUEST', path: jsonPointer(issue.path), detail: issue.message })),
+      .map((issue) => ({
+        code: 'BAD_REQUEST',
+        path: jsonPointer(issue.path),
+        detail: issue.message,
+      })),
   ];
   return new HTTPException(400, {
     message: `Unknown query parameter${unknown.length > 1 ? 's' : ''}: ${named}. ${takes}`,

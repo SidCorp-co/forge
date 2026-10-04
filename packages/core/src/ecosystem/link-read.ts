@@ -1,6 +1,7 @@
 import { fencedProjectIds } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import { effectiveProjectRole } from '../lib/authz.js';
+import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
 import { forbidden, notFound, readerProjects } from './access.js';
 import { type LinkImpact, linkImpact } from './contract/impact.js';
 import { currentVersion, type StoredVersion, versionsOf } from './contract/store.js';
@@ -21,7 +22,6 @@ import { readableEcosystem } from './membership-service.js';
 import { edgeVisible, visibleMembers } from './party.js';
 import type { EdgeRow } from './store.js';
 import { projectsWhere, readInterfaces, recordedVersions } from './store.js';
-import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
 
 const stamped = <W extends object>(held: Held<W>) => ({
   ...held.document,

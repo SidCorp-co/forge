@@ -6,8 +6,10 @@ import { type PermissionFacts, permissionRefusal } from '../permissions/index.js
 import type { EcosystemRefusal } from './refusals.js';
 
 /** A provider's interface and contract versions are written by a holder of contracts.write on it. */
-export const providerWriterRefusal = (facts: PermissionFacts, what: string): EcosystemRefusal | null =>
-  permissionRefusal(facts, 'contracts.write', what);
+export const providerWriterRefusal = (
+  facts: PermissionFacts,
+  what: string,
+): EcosystemRefusal | null => permissionRefusal(facts, 'contracts.write', what);
 
 export interface RevisionBy {
   revision: number;

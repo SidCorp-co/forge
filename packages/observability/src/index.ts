@@ -1,5 +1,5 @@
 /** Header names whose values must be replaced before send. Compared case-insensitively. */
-export const SCRUB_HEADER_KEYS: ReadonlySet<string> = new Set([
+const SCRUB_HEADER_KEYS: ReadonlySet<string> = new Set([
 	"authorization",
 	"cookie",
 	"x-device-token",

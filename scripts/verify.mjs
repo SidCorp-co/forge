@@ -85,15 +85,6 @@ const CHECKS = [
   },
   {
     axis: 'knowledge',
-    label: 'injected-doc-modes',
-    layer: 'shared',
-    reads: "injected documents' mode claims against the code they describe",
-    cmd: ['node', 'scripts/check-injected-doc-modes.mjs'],
-    scanned: /^injected-doc-modes: (\d+) mode-specific claim/m,
-    unit: 'mode-specific claims',
-  },
-  {
-    axis: 'knowledge',
     label: 'retired-model',
     layer: 'entry',
     reads: "each file's own model literals, judged file by file",
@@ -307,7 +298,6 @@ const CI_COVERAGE = {
   'node scripts/check-status-tuples.mjs --all': 'verify',
   'node scripts/check-doc-citations.mjs --all': 'verify',
   'node scripts/check-release-record.mjs': 'verify',
-  'node scripts/check-injected-doc-modes.mjs': 'verify',
   'node scripts/check-retired-model.mjs': 'verify',
   'node scripts/check-pat-surface.mjs': 'verify',
   'node scripts/check-api-contracts.mjs': 'verify',

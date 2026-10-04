@@ -1,4 +1,4 @@
-import { type PipelineControl, type PipelineHealth } from '@forge/contracts/pipeline-control';
+import type { PipelineControl, PipelineHealth } from '@forge/contracts/pipeline-control';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { safeRecordActivity } from '../issues/index.js';

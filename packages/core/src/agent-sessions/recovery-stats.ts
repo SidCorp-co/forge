@@ -1,4 +1,4 @@
-import { type PipelineHealth, type RecoveryStats } from '@forge/contracts/pipeline-control';
+import type { PipelineHealth, RecoveryStats } from '@forge/contracts/pipeline-control';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';

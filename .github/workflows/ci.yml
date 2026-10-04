@@ -233,14 +233,9 @@ jobs:
       # still be perfectly conformant, which is the hole it exists to close.
       - run: node scripts/conformance-audit.mjs
 
-  # Knowledge axis, node and nothing else. Holds the DOC surfaces injected into every session —
-  # guide bodies and the mandatory facts, which reach every project whatever its pipeline mode.
-  # Two rules: a status transition names the mode it belongs to, and a pipeline STEP named as the
-  # actor of something the reader is told about does too — staged and autonomous share no step.
-  # It cannot tell whether the prose around a qualified claim is true, and it never sees a
-  # project's own knowledge entries: those live in the database, and "node and nothing else" is
-  # precisely why they are out of reach here rather than merely unwritten.
-  injected-docs:
+  # Knowledge axis, node and nothing else: the readers of the retired release model that no type
+  # can see (ISS-1046).
+  retired-model:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -249,8 +244,6 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
-      - run: node scripts/check-injected-doc-modes.mjs
-      # ISS-1046 — the readers of the retired release model that no type can see.
       - run: node scripts/check-retired-model.mjs
 
   archmap:
@@ -338,7 +331,7 @@ jobs:
       # times in that same window. `scripts/lib/proved-step.test.mjs` runs this
       # shell as written.
       # The cheap always-on jobs (lang-check, conformance, archmap, docs,
-      # injected-docs, install-check) are NOT gated on this: they cost seconds,
+      # retired-model, install-check) are NOT gated on this: they cost seconds,
       # they are ungated by paths-filter on purpose, and `docs` walks the whole
       # tree so a merge CAN break a link no PR run saw.
       - name: Whether a pull_request run already proved this exact tree
@@ -692,7 +685,7 @@ jobs:
   # makes CI — not the local pre-push hook, which contributors may not have
   # installed and can bypass — the authoritative merge gate. The blocking
   # signals it enforces today: install-check, lang-check, conformance,
-  # archmap, injected-docs, the affected package build(s)+test(s) — the Rust
+  # archmap, retired-model, the affected package build(s)+test(s) — the Rust
   # runner gate on ubuntu among them — and markdown-link integrity. It does
   # NOT need `core-integration`, `images`, `whole-tree` or `runner-platforms`:
   # those run after the merge (ISS-1370), a red there is fixed forward, and
@@ -713,7 +706,7 @@ jobs:
         core,
         runner,
         docs,
-        injected-docs,
+        retired-model,
         archmap,
         conformance,
       ]
@@ -729,7 +722,7 @@ jobs:
             "core:${{ needs.core.result }}" \
             "runner:${{ needs.runner.result }}" \
             "docs:${{ needs.docs.result }}" \
-            "injected-docs:${{ needs.injected-docs.result }}" \
+            "retired-model:${{ needs.retired-model.result }}" \
             "archmap:${{ needs.archmap.result }}" \
             "conformance:${{ needs.conformance.result }}"; do
             echo "$r"

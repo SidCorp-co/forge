@@ -24,7 +24,7 @@ import { RESULT_QUIET_MINUTES } from '@forge/contracts/run-standing';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { logger } from '../observability/logger.js';
-import { type LoopScope } from './ports.js';
+import type { LoopScope } from './ports.js';
 import { closeRun } from './runs.js';
 
 export interface ConcludedRunReapResult {

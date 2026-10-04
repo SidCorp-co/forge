@@ -1,3 +1,4 @@
+import { OBSERVATION_SOURCES } from '@forge/contracts/workflow-health';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -11,7 +12,6 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { OBSERVATION_SOURCES } from '@forge/contracts/workflow-health';
 import { issues, projects, users } from './schema.js';
 
 export const projectWorkflows = pgTable(

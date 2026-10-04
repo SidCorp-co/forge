@@ -22,11 +22,7 @@ import {
   servesRunnerReleases,
 } from './integrations/published-releases/index.js';
 import { probePgBossBackstop, runStaleSweep } from './jobs/index.js';
-import {
-  runConsolidationSweep,
-  runEmbeddingBackfill,
-  runMemoryDecay,
-} from './memory/index.js';
+import { runConsolidationSweep, runEmbeddingBackfill, runMemoryDecay } from './memory/index.js';
 import { logger } from './observability/logger.js';
 import { pruneOutbox } from './outbox/index.js';
 import { backfillPhaseJournal, runReconcilerOnce, runRetentionSweep } from './pipeline/index.js';

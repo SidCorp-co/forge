@@ -136,7 +136,9 @@ function readPark(input: ParkInput): IssuePark | null {
   const threadQuestion = threadQuestionOf(view);
   return {
     ...view,
-    asks: view.openQuestionIds.length > 0 || (threadQuestion !== null && threadQuestion.answer === null),
+    asks:
+      view.openQuestionIds.length > 0 ||
+      (threadQuestion !== null && threadQuestion.answer === null),
     threadQuestion,
   };
 }

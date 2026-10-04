@@ -5,9 +5,9 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { loadIssuePark } from './park-view.js';
 import { issueScopeOf } from './read-service.js';
-import { requireHeld } from '../permissions/index.js';
 
 export const issueParkRoutes = new Hono<{ Variables: AuthVars }>();
 

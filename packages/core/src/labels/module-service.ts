@@ -55,10 +55,7 @@ export async function assertParentIsLegal(
 
   const parent = await loadModuleRow(parentId);
   if (!parent || parent.projectId !== projectId) {
-    throw refuse(
-      'INVALID_PARENT',
-      'parentId does not name a label in this project',
-    );
+    throw refuse('INVALID_PARENT', 'parentId does not name a label in this project');
   }
   if (parent.kind !== 'module') {
     throw refuse('PARENT_NOT_MODULE', 'parentId must name a module');
@@ -69,10 +66,7 @@ export async function assertParentIsLegal(
   let cursor = parent.parentId;
   while (cursor !== null) {
     if (cursor === labelId) {
-      throw refuse(
-        'CIRCULAR_HIERARCHY',
-        'that parent is a descendant of this module',
-      );
+      throw refuse('CIRCULAR_HIERARCHY', 'that parent is a descendant of this module');
     }
     if (seen.has(cursor)) return;
     seen.add(cursor);
@@ -183,10 +177,7 @@ export async function assertKnowledgeNodeIsLegal(
     .where(eq(knowledgeEntries.id, knowledgeEntryId))
     .limit(1);
   if (!node) {
-    throw refuse(
-      'INVALID_KNOWLEDGE_NODE',
-      'knowledgeEntryId does not name a knowledge entry',
-    );
+    throw refuse('INVALID_KNOWLEDGE_NODE', 'knowledgeEntryId does not name a knowledge entry');
   }
   if (node.projectId !== projectId) {
     throw refuse(
@@ -201,10 +192,7 @@ export async function assertKnowledgeNodeIsLegal(
     .where(eq(labels.knowledgeEntryId, knowledgeEntryId))
     .limit(1);
   if (owner && owner.id !== labelId) {
-    throw refuse(
-      'KNOWLEDGE_NODE_TAKEN',
-      'another module is already bound to that knowledge entry',
-    );
+    throw refuse('KNOWLEDGE_NODE_TAKEN', 'another module is already bound to that knowledge entry');
   }
 }
 
