@@ -409,14 +409,6 @@ fn roots_for(
     roots
 }
 
-/// Read every root and keep the one with least left, naming which it was.
-///
-/// The box is as short as its shortest filesystem, so a reading that averaged
-/// them, or took the first, would report room the box does not have.
-pub fn tightest(roots: &[PathBuf]) -> (PathBuf, Reading) {
-    pick(roots.iter().map(|at| (at.clone(), read(at))).collect())
-}
-
 /// One tick's reading of the box: the root with least left, and every other
 /// root that is also not clear.
 ///

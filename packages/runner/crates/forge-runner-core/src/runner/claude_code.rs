@@ -17,7 +17,7 @@ use tokio::sync::{mpsc, Mutex};
 
 use super::inflight;
 use super::process::{build_command, graceful_kill};
-use super::{FailureKind, JobSpec, Runner, RunnerEvent, RunnerKind, RunnerStatus, SessionId};
+use super::{JobSpec, Runner, RunnerEvent, SessionId};
 use crate::error::{Error, Result};
 use crate::mcp;
 
@@ -30,7 +30,6 @@ fn user_message_line(text: &str) -> String {
 }
 
 struct Session {
-    status: RunnerStatus,
     child: Option<tokio::process::Child>,
     claude_session_id: Option<String>,
     /// Held open for the life of a DUPLEX session — dropping it is EOF, which
@@ -47,9 +46,6 @@ struct Session {
     /// Raised after each turn's verdict is sent. The only signal a caller
     /// outside the turn loop has that a turn it started has finished.
     turn_done: Arc<tokio::sync::Notify>,
-    /// Which door this session's state is reported by — a pipeline session is
-    /// keyed by `job_id` here and cannot be PATCHed session-side.
-    is_issue_job: bool,
     /// What this session was spawned with, and where its checkout stood at the
     /// last turn — the two facts a caller needs to decide whether the resident
     /// session can serve the next turn as-is.
@@ -120,15 +116,6 @@ struct Outcome {
     result_seen: bool,
     /// Error detail from a `{type:result}` with `is_error=true`.
     result_error: Option<String>,
-    /// `num_turns` from the `{type:result}` event. `Some(0)` on an
-    /// `is_error=false` result means the CLI produced ZERO turns — the model
-    /// was never invoked (e.g. `Unknown command: /forge-plan` when the skill
-    /// is not installed on this device). For a pipeline job that is a no-op,
-    /// not a success (ISS-626).
-    num_turns: Option<i64>,
-    /// The `result` text of the terminal event (used to surface WHY a no-op
-    /// result had zero turns — carries the "Unknown command …" line).
-    result_text: Option<String>,
     /// MCP servers that did NOT reach a connected status at `system/init`.
     mcp_failed: Vec<String>,
     /// Captured child exit status (carries exit code / terminating signal).
@@ -141,8 +128,6 @@ impl Outcome {
         self.usage_limit = None;
         self.result_seen = false;
         self.result_error = None;
-        self.num_turns = None;
-        self.result_text = None;
     }
 }
 
@@ -157,7 +142,6 @@ struct TurnLoop<'a> {
     turn_tx: &'a TurnTx,
     turn_started: &'a Arc<tokio::sync::Notify>,
     turn_done: &'a Arc<tokio::sync::Notify>,
-    is_issue_job: bool,
     residency: Duration,
 }
 
@@ -168,16 +152,8 @@ async fn join_reader(reader: &mut tokio::task::JoinHandle<()>, within: Duration)
     let _ = tokio::time::timeout(within, reader).await;
 }
 
-async fn report_session_closed(
-    is_issue_job: bool,
-    turn_tx: &TurnTx,
-    core: Option<&crate::transport::CoreClient>,
-    job_id: &str,
-) {
-    if is_issue_job {
-        let tx = turn_tx.lock().await;
-        let _ = tx.send(RunnerEvent::StateChanged("closed")).await;
-    } else if let Some(client) = core {
+async fn report_session_closed(core: Option<&crate::transport::CoreClient>, job_id: &str) {
+    if let Some(client) = core {
         crate::transport::agent_sessions::report_runtime_state(client, job_id, "closed").await;
     }
 }
@@ -192,7 +168,6 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
         turn_tx,
         turn_started,
         turn_done,
-        is_issue_job,
         residency,
     } = r;
     let mut reported = false;
@@ -201,7 +176,7 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
             _ = result_notify.notified() => {
                 let ev = {
                     let mut o = outcome.lock().await;
-                    let ev = turn_verdict(&o, is_issue_job);
+                    let ev = turn_verdict(&o);
                     o.reset_turn();
                     ev
                 };
@@ -216,27 +191,13 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                 if let (Some((sid, seq, turn)), Some(client)) = (consumed, core) {
                     crate::transport::inbox::applied(client, &sid, seq, turn).await;
                 }
-                let job_ended = match (is_issue_job, core) {
-                    (true, Some(client)) => {
-                        crate::transport::lifecycle::turn_is_job_end(client, job_id).await
-                    }
-                    _ => true,
-                };
                 {
                     let tx = turn_tx.lock().await;
                     let _ = tx.send(RunnerEvent::StateChanged("awaiting_input")).await;
-                    if job_ended {
-                        let _ = tx.send(ev).await;
-                    }
+                    let _ = tx.send(ev).await;
                 }
                 turn_done.notify_waiters();
-                reported = job_ended;
-                if is_issue_job && job_ended {
-                    if let Some(s) = sessions.lock().await.get_mut(job_id) {
-                        s.stdin = None;
-                    }
-                    return reported;
-                }
+                reported = true;
             }
             _ = &mut *reader => return reported,
         }
@@ -245,7 +206,7 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
             _ = &mut *reader => return reported,
             _ = tokio::time::sleep(residency) => {
                 tracing::info!("[claude] job={job_id} idle past the session ceiling — closing");
-                report_session_closed(is_issue_job, turn_tx, core, job_id).await;
+                report_session_closed(core, job_id).await;
                 if let Some(s) = sessions.lock().await.get_mut(job_id) {
                     s.stdin = None;
                 }
@@ -255,24 +216,14 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
     }
 }
 
-fn turn_verdict(o: &Outcome, is_issue_job: bool) -> RunnerEvent {
+fn turn_verdict(o: &Outcome) -> RunnerEvent {
     if let Some(msg) = o.usage_limit.clone() {
         return RunnerEvent::Failed {
             error: format!("[USAGE_LIMIT] {msg}"),
-            kind: FailureKind::UsageLimit,
-        };
-    }
-    if is_issue_job && o.succeeded == Some(true) && o.num_turns == Some(0) {
-        let detail = o.result_text.clone().unwrap_or_default();
-        return RunnerEvent::Failed {
-            error: format!(
-                "[NO_WORK] claude produced 0 turns — no work done (skill likely not installed on this device): {detail}"
-            ),
-            kind: FailureKind::Transient,
         };
     }
     if o.succeeded == Some(true) {
-        return RunnerEvent::Done { exit_code: 0 };
+        return RunnerEvent::Done;
     }
     RunnerEvent::Failed {
         error: o
@@ -280,7 +231,6 @@ fn turn_verdict(o: &Outcome, is_issue_job: bool) -> RunnerEvent {
             .clone()
             .map(|e| format!("[RESULT_ERROR] {e}"))
             .unwrap_or_else(|| "[NO_RESULT] the turn ended without a result event".into()),
-        kind: FailureKind::Transient,
     }
 }
 
@@ -418,38 +368,7 @@ fn classify_failure_reason(
     "[NO_RESULT_EXIT] terminal with no success signal".to_string()
 }
 
-/// Is the required `forge` MCP server among the ones that TERMINALLY failed to
-/// connect at init? (`mcp_failed` already excludes transient `pending` — see
-/// [`mcp_failed_servers`].) A pipeline step reads attachments and reaches its
-/// connected integrations through forge tools (`forge_uploads`, `forge_source`, ...). A job that
-/// ran without them can only emit pseudocode — it must FAIL (not Done) so core
-/// routes it through bounded auto-retry instead of leaving the issue unchanged
-/// and letting the reconciler re-dispatch forever (ISS-570 / ISS-563 loop).
-///
-/// Scope is intentionally narrow: only servers whose name starts with `forge(`
-/// are considered required. Override servers (playwright, …) are
-/// opt-in per state and may legitimately be absent without invalidating the job.
-fn required_mcp_down(mcp_failed: &[String]) -> bool {
-    mcp_failed.iter().any(|s| s.starts_with("forge("))
-}
 
-/// Whether a missing `forge` MCP server should be treated as FATAL for this run.
-///
-/// ISS-570's hard-fail exists to stop the *reconciler re-dispatch loop*: an
-/// issue pipeline job that ran without forge tools can only emit pseudocode,
-/// leaves its issue unchanged, and the reconciler re-dispatches it forever.
-/// That loop is impossible without an issue behind the run, so the hard-fail is
-/// scoped to issue-bound pipeline jobs (`issue_id = Some`).
-///
-/// Interactive runs — chat (`daemon/chat.rs` sets `step="chat"`, `issue_id=None`)
-/// and schedule ticks — have no reconciler driving them. A transient `pending`
-/// at the single init snapshot must NOT nuke them; at worst they answer the turn
-/// without forge tools instead of failing the whole session and wedging a slot.
-/// (For issue jobs that hit the same transient race, the failure is emitted as
-/// `FailureKind::Transient`, so core's bounded auto-retry self-heals it.)
-fn mcp_failure_is_fatal(is_issue_job: bool, mcp_failed: &[String]) -> bool {
-    is_issue_job && required_mcp_down(mcp_failed)
-}
 
 pub struct ClaudeCodeRunner {
     core_url: String,
@@ -689,14 +608,10 @@ impl ClaudeCodeRunner {
         let core =
             crate::transport::CoreClient::new(self.core_url.clone(), self.device_token.clone());
         for id in &closed {
-            let (turn_tx, is_issue_job) = {
-                let map = self.sessions.lock().await;
-                match map.get(id) {
-                    Some(s) => (s.turn_tx.clone(), s.is_issue_job),
-                    None => continue,
-                }
-            };
-            report_session_closed(is_issue_job, &turn_tx, Some(&core), id).await;
+            if !self.sessions.lock().await.contains_key(id) {
+                continue;
+            }
+            report_session_closed(Some(&core), id).await;
         }
         closed
     }
@@ -715,10 +630,6 @@ impl ClaudeCodeRunner {
 
 #[async_trait]
 impl Runner for ClaudeCodeRunner {
-    fn kind(&self) -> RunnerKind {
-        RunnerKind::ClaudeCode
-    }
-
     async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId> {
         let job_id = spec.job_id.clone();
 
@@ -742,10 +653,6 @@ impl Runner for ClaudeCodeRunner {
         };
 
         let invoked_with_resume = spec.resume_id.is_some();
-        // ISS-570 hard-fail on a down `forge` server is scoped to reconciler-driven
-        // issue jobs (see mcp_failure_is_fatal). Chat / schedule runs carry no
-        // issue_id and must not be nuked by a transient `pending` at init.
-        let is_issue_job = spec.issue_id.is_some();
         let timeout = spec
             .timeout_seconds
             .filter(|s| *s > 0)
@@ -838,7 +745,6 @@ impl Runner for ClaudeCodeRunner {
         self.sessions.lock().await.insert(
             job_id.clone(),
             Session {
-                status: RunnerStatus::Running,
                 child: Some(child),
                 claude_session_id: None,
                 stdin: session_stdin,
@@ -847,7 +753,6 @@ impl Runner for ClaudeCodeRunner {
                 pending_inbox: None,
                 turns: 0,
                 turn_done: turn_done.clone(),
-                is_issue_job,
                 model: spec.model.clone(),
                 head_sha: None,
                 permit: session_permit,
@@ -930,11 +835,6 @@ impl Runner for ClaudeCodeRunner {
                             let mut o = outcome.lock().await;
                             o.succeeded = Some(!is_error);
                             o.result_seen = true;
-                            o.num_turns = json.get("num_turns").and_then(Value::as_i64);
-                            o.result_text = json
-                                .get("result")
-                                .and_then(Value::as_str)
-                                .map(|s| s.chars().take(300).collect());
                             if is_error {
                                 o.result_error = Some(result_error_detail(&json));
                             }
@@ -975,7 +875,6 @@ impl Runner for ClaudeCodeRunner {
                     turn_tx: &turn_tx_for_turns,
                     turn_started: &turn_started_for_turns,
                     turn_done: &turn_done_for_turns,
-                    is_issue_job,
                     residency: SESSION_IDLE_TIMEOUT,
                 },
                 &mut reader,
@@ -1054,8 +953,6 @@ impl Runner for ClaudeCodeRunner {
                 result_error,
                 mcp_failed,
                 polled_exit,
-                num_turns,
-                result_text,
             ) = {
                 let o = outcome.lock().await;
                 (
@@ -1065,8 +962,6 @@ impl Runner for ClaudeCodeRunner {
                     o.result_error.clone(),
                     o.mcp_failed.clone(),
                     o.exit,
-                    o.num_turns,
-                    o.result_text.clone(),
                 )
             };
             let outcome_exit = polled_exit.or(killed_exit);
@@ -1083,19 +978,9 @@ impl Runner for ClaudeCodeRunner {
                     .contains("out of extra usage")
                     .then(|| stderr.trim().chars().take(500).collect())
             });
-            // ISS-626 — a pipeline result with ZERO turns did no work: the CLI
-            // short-circuited before invoking the model (the classic case is
-            // `Unknown command: /forge-<skill>` when the skill is not installed
-            // on this device). The result is `is_error=false`, so without this
-            // guard the job records Done and the reconciler re-dispatches the
-            // no-op forever. Fail it → core routes the cc-startup signal to a
-            // different-device failover (a device that HAS the skill).
-            let no_work = is_issue_job && succeeded_opt == Some(true) && num_turns == Some(0);
 
             let succeeded = usage_limit.is_none()
-                && succeeded_opt.unwrap_or(false)
-                && !mcp_failure_is_fatal(is_issue_job, &mcp_failed)
-                && !no_work;
+                && succeeded_opt.unwrap_or(false);
 
             let resume_failed = invoked_with_resume && !succeeded && {
                 let b = stderr.to_lowercase();
@@ -1106,25 +991,17 @@ impl Runner for ClaudeCodeRunner {
                     || b.contains("session id not found")
             };
 
-            // Final status + emit terminal event.
-            if let Some(s) = sessions.lock().await.get_mut(&job_id) {
-                s.status = if succeeded {
-                    RunnerStatus::Completed
-                } else {
-                    RunnerStatus::Failed
-                };
-            }
+            // Emit the terminal event.
             let _ = std::fs::remove_file(&mcp_path);
 
             let emit = turn_tx.lock().await.clone();
             if !already_reported {
                 if succeeded {
-                    let _ = emit.send(RunnerEvent::Done { exit_code: 0 }).await;
+                    let _ = emit.send(RunnerEvent::Done).await;
                 } else if let Some(msg) = usage_limit {
                     let _ = tx
                         .send(RunnerEvent::Failed {
                             error: format!("[USAGE_LIMIT] {msg}"),
-                            kind: FailureKind::UsageLimit,
                         })
                         .await;
                 } else if resume_failed {
@@ -1132,22 +1009,6 @@ impl Runner for ClaudeCodeRunner {
                     let _ = tx
                         .send(RunnerEvent::Failed {
                             error: format!("[RESUME_FAILED] {body}"),
-                            kind: FailureKind::ResumeFailed,
-                        })
-                        .await;
-                } else if no_work {
-                    // ISS-626 — zero-turn pipeline result (CLI short-circuited, e.g.
-                    // an unknown /forge-<skill> command). Carry the result text so
-                    // core's classifier routes it (an "Unknown command" line matches
-                    // the cc-startup patterns → transient-cc → different-device
-                    // failover to a runner that HAS the skill).
-                    let detail = result_text.unwrap_or_default();
-                    let _ = tx
-                        .send(RunnerEvent::Failed {
-                            error: format!(
-                                "[NO_WORK] claude produced 0 turns — no work done (skill likely not installed on this device): {detail}"
-                            ),
-                            kind: FailureKind::Transient,
                         })
                         .await;
                 } else {
@@ -1166,7 +1027,6 @@ impl Runner for ClaudeCodeRunner {
                     let _ = tx
                         .send(RunnerEvent::Failed {
                             error,
-                            kind: FailureKind::Transient,
                         })
                         .await;
                 }
@@ -1213,19 +1073,10 @@ impl Runner for ClaudeCodeRunner {
             if let Some(mut child) = sess.child.take() {
                 graceful_kill(&mut child).await;
             }
-            sess.status = RunnerStatus::Failed;
             Ok(())
         } else {
             Err(Error::Other("session not found".into()))
         }
-    }
-
-    fn status(&self, session: &SessionId) -> RunnerStatus {
-        self.sessions
-            .try_lock()
-            .ok()
-            .and_then(|s| s.get(session).map(|x| x.status))
-            .unwrap_or(RunnerStatus::Idle)
     }
 }
 

@@ -16,4 +16,4 @@ pub mod transport;
 pub mod update;
 pub mod workspace;
 
-pub use error::{Error, Result};
+pub use error::Result;

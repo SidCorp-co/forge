@@ -341,7 +341,6 @@ pub async fn is_terminal(client: &CoreClient, session_id: &str) -> Result<bool> 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LeaseState {
-    pub held: bool,
     pub held_by_this_device: bool,
     /// The issue itself has reached a terminal status at core. `None` is *not
     /// known to be over* — an older core that does not send the field, or a key
@@ -425,7 +424,6 @@ pub async fn lease_state(
                 "[lease] read {issue_key}: core answers {code}; no lease stands under that key, so this box holds none"
             );
             return Ok(LeaseState {
-                held: false,
                 held_by_this_device: false,
                 issue_over: None,
             });

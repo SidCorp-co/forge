@@ -196,11 +196,6 @@ impl JobPanes {
         &self.session_id
     }
 
-    /// A pane this daemon opened just now.
-    pub fn note(&self, job_id: &str, pane: &str, watch: Watch) {
-        self.hold(job_id, pane, watch, None, None, Some(now_ms()));
-    }
-
     /// The same, carrying what a previous daemon's sweep read of this agent,
     /// where its conversation is written and when the pane was opened, where
     /// anything knows.
@@ -513,7 +508,7 @@ pub async fn take_one(
             return Took::Unread(e);
         }
     };
-    let Some(entry) = entries.into_iter().find(|e| e.held_by.is_none()) else {
+    let Some(entry) = entries.into_iter().next() else {
         return Took::NothingClaimable;
     };
 

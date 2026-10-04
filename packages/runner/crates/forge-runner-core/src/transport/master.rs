@@ -16,8 +16,6 @@ use crate::error::{Error, Result};
 pub struct MasterSession {
     pub session_id: String,
     pub name: String,
-    #[serde(default)]
-    pub created: bool,
 }
 
 pub async fn register(

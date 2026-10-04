@@ -43,7 +43,6 @@ pub mod run_exit;
 pub mod run_record;
 pub mod serving;
 pub mod session_tokens;
-pub mod setup_agent;
 pub mod skill_pull;
 pub mod subagent_end;
 pub mod subagent_host;

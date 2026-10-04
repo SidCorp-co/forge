@@ -42,14 +42,6 @@ pub struct WorkspaceGit {
 }
 
 impl WorkspaceGit {
-    /// True when the tree is known to be behind its base — the state in which
-    /// nothing the agent reads may be trusted as "what is on the base branch".
-    pub fn is_stale(&self) -> bool {
-        match (&self.head_sha, &self.base_sha) {
-            (Some(head), Some(base)) => head != base,
-            _ => false,
-        }
-    }
 }
 
 async fn git(repo: &Path, args: &[&str]) -> Option<std::process::Output> {

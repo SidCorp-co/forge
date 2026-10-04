@@ -290,12 +290,6 @@ pub const MAX_REASONS: usize = 24;
 /// the file keeps the whole of it.
 pub const WIRE_UNITS: usize = 300;
 
-/// The widest any string in a condition can be: `WIRE_UNITS` of the original
-/// plus the clause that says what was cut. The consumer declares THIS number,
-/// and `a_clipped_string_stays_inside_the_declared_ceiling` is what stops the
-/// clause outgrowing it.
-pub const WIRE_UNITS_CEILING: usize = WIRE_UNITS + 120;
-
 /// A string's length in the unit the consumer measures.
 fn units(s: &str) -> usize {
     s.chars().map(char::len_utf16).sum()
@@ -348,21 +342,6 @@ pub struct ReasonCount {
 }
 
 impl Condition {
-    /// A kind this box has never marked.
-    pub fn none() -> Self {
-        Self {
-            verdict: Verdict::Clear,
-            count: 0,
-            trimmed: false,
-            first_at: None,
-            last_at: None,
-            window_ms: None,
-            per_day: None,
-            since_last_ms: None,
-            last: None,
-            by_reason: Vec::new(),
-        }
-    }
 }
 
 pub fn condition(t: &Tally, now_ms: i64) -> Condition {

@@ -38,15 +38,6 @@ pub enum Outcome {
 }
 
 impl Outcome {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Pushed => "pushed",
-            Self::CommittedNotPushed => "committed_not_pushed",
-            Self::None => "none",
-            Self::Refused => "refused",
-            Self::Failed => "failed",
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -85,28 +76,6 @@ impl Salvage {
         }
     }
 
-    /// The `salvage` object on `POST /api/jobs/:id/fail`. Fields core's schema
-    /// declares optional are omitted rather than sent null.
-    pub fn to_json(&self) -> serde_json::Value {
-        let mut v = serde_json::json!({ "outcome": self.outcome.as_str() });
-        let obj = v.as_object_mut().expect("json! object");
-        if let Some(b) = &self.branch {
-            obj.insert("branch".into(), b.clone().into());
-        }
-        if let Some(s) = &self.sha {
-            obj.insert("sha".into(), s.clone().into());
-        }
-        if let Some(f) = self.files {
-            obj.insert("files".into(), f.into());
-        }
-        if let Some(i) = self.insertions {
-            obj.insert("insertions".into(), i.into());
-        }
-        if let Some(d) = &self.detail {
-            obj.insert("detail".into(), truncate(d, 2000).into());
-        }
-        v
-    }
 }
 
 fn truncate(s: &str, max: usize) -> String {

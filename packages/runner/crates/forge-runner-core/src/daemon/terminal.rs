@@ -21,8 +21,6 @@ use crate::error::{Error, Result};
 
 pub const MASTER_PREFIX: &str = "forge-master";
 
-pub const RUN_PREFIX: &str = "forge-run";
-
 pub const JOB_PREFIX: &str = "forge-job";
 
 pub async fn names_with_prefix(prefix: &str) -> Vec<String> {

@@ -17,18 +17,6 @@ pub async fn ack(
     send(client, &url, body).await
 }
 
-/// Complete a job. `exit_code` 0 = done, -1 = cancelled, else failed (core maps).
-pub async fn complete(
-    client: &CoreClient,
-    job_id: &str,
-    exit_code: i32,
-    error: Option<&str>,
-) -> Result<()> {
-    let url = client.url(&format!("/api/jobs/{job_id}/complete"));
-    let body = serde_json::json!({ "exitCode": exit_code, "error": error });
-    send(client, &url, body).await
-}
-
 /// Force-fail a job with an error message.
 pub async fn fail(client: &CoreClient, job_id: &str, error: &str) -> Result<()> {
     fail_with_salvage(client, job_id, error, None).await
@@ -86,36 +74,3 @@ async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result
     Ok(())
 }
 
-pub async fn turn_is_job_end(client: &CoreClient, job_id: &str) -> bool {
-    let url = client.url(&format!("/api/jobs/{job_id}/turn-verdict"));
-    let resp = match client
-        .http()
-        .get(&url)
-        .bearer_auth(client.device_token())
-        .send()
-        .await
-    {
-        Ok(r) if r.status().is_success() => r,
-        Ok(r) => {
-            tracing::warn!(
-                "[job {job_id}] turn-verdict {}: finishing the job",
-                r.status()
-            );
-            return true;
-        }
-        Err(e) => {
-            tracing::warn!("[job {job_id}] turn-verdict: {e} — finishing the job");
-            return true;
-        }
-    };
-    match resp.json::<serde_json::Value>().await {
-        Ok(v) => v
-            .get("done")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(true),
-        Err(e) => {
-            tracing::warn!("[job {job_id}] turn-verdict body: {e} — finishing the job");
-            true
-        }
-    }
-}

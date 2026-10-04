@@ -229,10 +229,6 @@ pub async fn list_within(
     Ok(parsed.items)
 }
 
-pub async fn prepare(client: &CoreClient, job_id: &str, session_id: &str) -> Result<Prepared> {
-    prepare_within(client, job_id, session_id, CALL_DEADLINE).await
-}
-
 /// [`prepare`], with the deadline a test can shorten.
 pub async fn prepare_within(
     client: &CoreClient,

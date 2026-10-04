@@ -506,7 +506,6 @@ pub enum Release {
     Refusing {
         why: String,
         first: bool,
-        standing_secs: i64,
     },
     /// Refused for longer than any retry can help. The leases are back, the run
     /// is over, and the checkout is still on disk with nobody's permission to
@@ -575,7 +574,6 @@ pub async fn release(
                 return Ok(Release::Refusing {
                     why,
                     first: refusal.opened_the_streak,
-                    standing_secs,
                 });
             };
             // The leases first and the decision second: a run ended over a

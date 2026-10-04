@@ -76,21 +76,6 @@ impl ProcHosts {
         }
     }
 
-    /// A tree shaped like `/proc`, for a test.
-    pub fn at(root: &Path) -> Self {
-        Self {
-            root: Some(root.to_path_buf()),
-        }
-    }
-
-    /// The start time `pid` carries now, which is what [`Hosts::read`] is
-    /// asked to match.
-    pub fn start_of(&self, pid: u32) -> Option<String> {
-        match stat(self.root.as_deref()?, pid) {
-            StatRead::Read(s) => Some(s.start),
-            _ => None,
-        }
-    }
 }
 
 impl Hosts for ProcHosts {

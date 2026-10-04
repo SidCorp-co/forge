@@ -208,10 +208,6 @@ pub struct Record {
 }
 
 impl Record {
-    /// Every line recorded for `slug`.
-    pub fn of<'a>(&'a self, slug: &'a str) -> impl Iterator<Item = &'a Entry> + 'a {
-        self.entries.iter().filter(move |e| e.slug == slug)
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

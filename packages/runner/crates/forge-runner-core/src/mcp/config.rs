@@ -281,19 +281,6 @@ fn write_servers_at(path: &Path, servers: &serde_json::Map<String, Value>) -> Re
     Ok(())
 }
 
-/// A pool job pane's own copy of its project's declared servers, beside the master's.
-///
-/// Its own file because a master pane's is the record [`session_matches`] reads to say whether
-/// that LIVE pane still carries what core resolves: a job rewriting it with a newer declaration
-/// would make a master started on an older one read as current (ISS-1347). An empty declaration
-/// writes nothing, so the pane is started with no `--mcp-config` at all.
-pub fn write_job_session(
-    pane: &str,
-    servers: &serde_json::Map<String, Value>,
-) -> Result<Option<PathBuf>> {
-    write_job_session_in(&mcp_config_dir(), pane, servers)
-}
-
 pub(crate) fn write_job_session_in(
     dir: &Path,
     pane: &str,

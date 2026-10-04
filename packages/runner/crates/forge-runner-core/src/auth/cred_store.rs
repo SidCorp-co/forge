@@ -118,20 +118,6 @@ pub fn load_device_token() -> Result<Option<String>> {
     Ok(None)
 }
 
-pub fn clear_device_token() -> Result<()> {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        if let Ok(entry) = keyring::Entry::new(SERVICE, DEVICE_ACCOUNT) {
-            let _ = entry.delete_credential();
-        }
-    }
-    let p = file_path()?;
-    if p.exists() {
-        std::fs::remove_file(p)?;
-    }
-    Ok(())
-}
-
 pub fn load_pat() -> Result<Option<String>> {
     if let Ok(tok) = std::env::var("FORGE_PAT") {
         let tok = tok.trim();
@@ -165,21 +151,6 @@ pub fn store_pat(token: &str) -> Result<()> {
         }
     }
     file_store_pat(token)
-}
-
-pub fn clear_pat() -> Result<()> {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        if let Ok(entry) = keyring::Entry::new(SERVICE, PAT_ACCOUNT) {
-            let _ = entry.delete_credential();
-        }
-    }
-    let mut cred = read_cred_file()?;
-    if cred.pat.is_some() {
-        cred.pat = None;
-        write_cred_file(&cred)?;
-    }
-    Ok(())
 }
 
 /// Load from the keychain, treating any error as "absent" so the caller falls

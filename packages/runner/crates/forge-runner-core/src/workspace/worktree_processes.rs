@@ -149,8 +149,8 @@ fn moved(before: &Option<String>, now: &Option<String>) -> bool {
 /// A zombie answers `kill(0)` for as long as its parent has not waited, and
 /// holds no working directory, no port and no connection — so counting one as
 /// standing would refuse a removal over a process that has already gone.
-/// `runner::doorbell::incarnation` reads the same field for the same reason,
-/// and says so in its own words: *a pid does not name a process*.
+/// `daemon::serving::start_ticks` reads the same field for the same reason:
+/// a pid does not name a process.
 #[cfg(target_os = "linux")]
 fn is_zombie(pid: u32) -> bool {
     let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {

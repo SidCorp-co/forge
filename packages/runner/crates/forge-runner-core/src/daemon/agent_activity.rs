@@ -272,10 +272,4 @@ impl Activities {
             .cloned()
     }
 
-    pub fn forget(&self, session_id: &str) {
-        self.0
-            .lock()
-            .expect("activities poisoned")
-            .remove(session_id);
-    }
 }

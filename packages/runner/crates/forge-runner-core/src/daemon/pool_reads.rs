@@ -36,13 +36,6 @@ pub const WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
 /// is stated as a floor rather than left looking exact.
 pub const MAX_FAILURES: usize = 200;
 
-/// The most projects a heartbeat may carry; the consumer declares the same
-/// number and `pool-read-report.fixture.json` holds it for both sides. The box
-/// never truncates to it: the list is its whole picture, so a project cut from
-/// it would be cleared at core while it was failing. Past it core refuses the
-/// whole report by name and the box logs that refusal.
-pub const MAX_PROJECTS: usize = 256;
-
 /// `<config dir>/pool-reads.json`.
 pub fn path(config_dir: &Path) -> PathBuf {
     config_dir.join("pool-reads.json")

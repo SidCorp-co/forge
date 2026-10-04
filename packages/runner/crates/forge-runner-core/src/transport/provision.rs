@@ -86,8 +86,6 @@ struct ReportBody<'a> {
 #[serde(rename_all = "camelCase")]
 pub struct ProvisionFailure {
     pub slug: String,
-    pub project_id: String,
-    pub runner_id: String,
     pub kind: String,
     pub reason: String,
 }

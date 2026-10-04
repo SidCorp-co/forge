@@ -2013,7 +2013,6 @@ async fn release_held_tree(
         Ok(terminate::Release::Refusing {
             why,
             first,
-            standing_secs: _,
         }) => {
             if first {
                 tracing::warn!(

@@ -327,8 +327,6 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         job_id: session_id.to_string(),
         project_id: String::new(),
         project_slug: turn.project_slug.clone(),
-        issue_id: None,
-        step: "chat".into(),
         repo_path: turn.repo_path.clone().into(),
         prompt: Some(prompt.to_string()),
         system_prompt: turn.system_prompt.clone(),
@@ -337,7 +335,6 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         timeout_seconds: None,
         mcp_servers_override: turn.mcp_servers_override.clone(),
         resume_id: turn.resume_id.clone(),
-        agent_session_id: Some(session_id.to_string()),
         counts_against_session_cap: false,
         credential: turn.credential.clone(),
     }
@@ -501,9 +498,8 @@ async fn consume(
                     seq += 1;
                     pending.push(agent_sessions::LineEvent::stdout(seq, json));
                 }
-                Some(RunnerEvent::Done { .. }) => { terminal = Some(Terminal::Done); break; }
-                Some(RunnerEvent::Failed { error, .. }) => { terminal = Some(Terminal::Failed(error)); break; }
-                Some(_) => {}
+                Some(RunnerEvent::Done) => { terminal = Some(Terminal::Done); break; }
+                Some(RunnerEvent::Failed { error }) => { terminal = Some(Terminal::Failed(error)); break; }
                 None => break,
             },
             _ = flush.tick() => {

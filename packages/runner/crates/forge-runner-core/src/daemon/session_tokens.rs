@@ -102,12 +102,6 @@ pub enum Holder {
 }
 
 impl Holder {
-    pub fn session(&self) -> &str {
-        match self {
-            Holder::Minted(m) => &m.session,
-            Holder::Legacy { session } => session,
-        }
-    }
 }
 
 const SHAPES: &str = "each entry is `\"<token>\": {\"session\": \"<id>\", \"project\": \"<id>\", \"slug\": \"<slug>\", \"pane\": \"<tmux session>\"}`, `slug` absent from one 0.17.72 wrote, or, written by forge-runner before 0.17.72, `\"<token>\": \"<session id>\"`";
@@ -312,11 +306,6 @@ impl SessionTokens {
         }
         *last = now;
         true
-    }
-
-    /// The session `token` resolves to, whichever shape its entry is.
-    pub fn session_for(&self, token: &str) -> Option<String> {
-        self.resolve(token).map(|h| h.session().to_string())
     }
 
     /// Whether any capability on this box names `session_id`.
