@@ -117,3 +117,33 @@ export async function deleteTask(task: TaskRow, actor: Actor): Promise<void> {
     actor,
   });
 }
+
+/** An issue's tasks take the given order; each task whose position moved emits `taskUpdated`. */
+export async function reorderTasks(
+  issue: { id: string; projectId: string },
+  taskIds: readonly string[],
+  previous: ReadonlyMap<string, number>,
+  actor: Actor,
+): Promise<void> {
+  const changed: string[] = [];
+  await db.transaction(async (tx) => {
+    for (let i = 0; i < taskIds.length; i++) {
+      const id = taskIds[i] as string;
+      if (previous.get(id) === i) continue;
+      await tx.update(tasks).set({ sortOrder: i, updatedAt: new Date() }).where(eq(tasks.id, id));
+      changed.push(id);
+    }
+  });
+
+  await Promise.all(
+    changed.map((id) =>
+      hooks.emit('taskUpdated', {
+        taskId: id,
+        issueId: issue.id,
+        projectId: issue.projectId,
+        actor,
+        fields: ['sortOrder'],
+      }),
+    ),
+  );
+}

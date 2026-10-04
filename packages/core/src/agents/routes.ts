@@ -1,14 +1,14 @@
-import { and, asc, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { agentApprovalModes, agents } from '../db/schema.js';
+import { agentApprovalModes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { wholeList } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
+import { agentById, listAgents } from './read.js';
+import { createAgent, deleteAgent, patchAgent } from './service.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -82,15 +82,8 @@ agentRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const conditions = [eq(agents.projectId, projectId)];
-    if (type) conditions.push(eq(agents.type, type));
-    if (enabled !== undefined) conditions.push(eq(agents.enabled, enabled));
-
-    const where = and(...conditions);
-
-    const [totalRow] = await db.select({ n: count() }).from(agents).where(where);
-    const rows = await db.select().from(agents).where(where).orderBy(asc(agents.createdAt));
-    return c.json(wholeList(c, rows, totalRow?.n ?? 0));
+    const { rows, total } = await listAgents(projectId, { type, enabled });
+    return c.json(wholeList(c, rows, total));
   },
 );
 
@@ -106,28 +99,24 @@ agentRoutes.post(
     const access = await loadProjectAccess(input.projectId, userId);
     requireHeld(access, 'project.write');
 
-    const [inserted] = await db
-      .insert(agents)
-      .values({
-        projectId: input.projectId,
-        name: input.name,
-        type: input.type,
-        description: input.description ?? null,
-        enabled: input.enabled ?? false,
-        ...(input.focusAreas !== undefined ? { focusAreas: input.focusAreas } : {}),
-        customInstructions: input.customInstructions ?? null,
-        ...(input.approvalMode !== undefined ? { approvalMode: input.approvalMode } : {}),
-        ...(input.maxProposals !== undefined ? { maxProposals: input.maxProposals } : {}),
-        ...(input.excludeCategories !== undefined
-          ? { excludeCategories: input.excludeCategories }
-          : {}),
-        promptTemplate: input.promptTemplate ?? null,
-        reindexPromptTemplate: input.reindexPromptTemplate ?? null,
-        knowledge: input.knowledge ?? null,
-        memory: input.memory ?? null,
-      })
-      .returning();
-    if (!inserted) throw new Error('agents: insert returned no row');
+    const inserted = await createAgent({
+      projectId: input.projectId,
+      name: input.name,
+      type: input.type,
+      description: input.description ?? null,
+      enabled: input.enabled ?? false,
+      ...(input.focusAreas !== undefined ? { focusAreas: input.focusAreas } : {}),
+      customInstructions: input.customInstructions ?? null,
+      ...(input.approvalMode !== undefined ? { approvalMode: input.approvalMode } : {}),
+      ...(input.maxProposals !== undefined ? { maxProposals: input.maxProposals } : {}),
+      ...(input.excludeCategories !== undefined
+        ? { excludeCategories: input.excludeCategories }
+        : {}),
+      promptTemplate: input.promptTemplate ?? null,
+      reindexPromptTemplate: input.reindexPromptTemplate ?? null,
+      knowledge: input.knowledge ?? null,
+      memory: input.memory ?? null,
+    });
 
     return c.json(inserted, 201);
   },
@@ -142,7 +131,7 @@ agentRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [row] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
+    const row = await agentById(id);
     if (!row) throw notFound('agent not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
@@ -165,7 +154,7 @@ agentRoutes.patch(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
 
-    const [existing] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
+    const existing = await agentById(id);
     if (!existing) throw notFound('agent not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
@@ -188,7 +177,7 @@ agentRoutes.patch(
     if (patch.knowledge !== undefined) updates.knowledge = patch.knowledge;
     if (patch.memory !== undefined) updates.memory = patch.memory;
 
-    const [updated] = await db.update(agents).set(updates).where(eq(agents.id, id)).returning();
+    const updated = await patchAgent(id, updates);
     if (!updated) throw notFound('agent not found');
 
     return c.json(updated);
@@ -204,17 +193,13 @@ agentRoutes.delete(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [existing] = await db
-      .select({ id: agents.id, projectId: agents.projectId })
-      .from(agents)
-      .where(eq(agents.id, id))
-      .limit(1);
+    const existing = await agentById(id);
     if (!existing) throw notFound('agent not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
     requireHeld(access, 'project.admin');
 
-    await db.delete(agents).where(eq(agents.id, id));
+    await deleteAgent(id);
     return c.body(null, 204);
   },
 );

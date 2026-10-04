@@ -1,16 +1,7 @@
-import { and, asc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import {
-  issuePriorities,
-  issues,
-  projectMembers,
-  taskAgentStatuses,
-  taskStatuses,
-  tasks,
-} from '../db/schema.js';
+import { issuePriorities, taskAgentStatuses, taskStatuses } from '../db/schema.js';
 import {
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
@@ -19,9 +10,9 @@ import {
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { hooks } from '../pipeline/hooks.js';
-import { createTask, deleteTask, findTaskById, updateTask } from './task-service.js';
 import { requireHeld } from '../permissions/index.js';
+import { isProjectMember, issueTaskOrder, listIssueTasks, taskParentIssue } from './read.js';
+import { createTask, deleteTask, findTaskById, reorderTasks, updateTask } from './task-service.js';
 
 const issueIdParamSchema = z.object({ id: z.uuid() });
 const taskIdParamSchema = z.object({ taskId: z.uuid() });
@@ -81,12 +72,7 @@ const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 async function assertAssigneeIsMember(projectId: string, assigneeId: string): Promise<void> {
-  const [row] = await db
-    .select({ userId: projectMembers.userId })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, assigneeId)))
-    .limit(1);
-  if (!row) {
+  if (!(await isProjectMember(projectId, assigneeId))) {
     throw new HTTPException(400, {
       message: 'assignee must be a project member',
       cause: { code: 'ASSIGNEE_NOT_MEMBER' },
@@ -111,11 +97,7 @@ taskIssueRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    const [issue] = await db
-      .select({ id: issues.id, projectId: issues.projectId })
-      .from(issues)
-      .where(eq(issues.id, issueId))
-      .limit(1);
+    const issue = await taskParentIssue(issueId);
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
@@ -158,11 +140,7 @@ taskIssueRoutes.get(
 
     const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
 
-    const rows = await db
-      .select()
-      .from(tasks)
-      .where(eq(tasks.issueId, issue.id))
-      .orderBy(asc(tasks.sortOrder), asc(tasks.createdAt));
+    const rows = await listIssueTasks(issue.id);
 
     return c.json(rows);
   },
@@ -183,21 +161,13 @@ taskIssueRoutes.post(
     const { taskIds } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const [issue] = await db
-      .select({ id: issues.id, projectId: issues.projectId })
-      .from(issues)
-      .where(eq(issues.id, issueId))
-      .limit(1);
+    const issue = await taskParentIssue(issueId);
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
     requireHeld(access, 'project.write');
 
-    const existing = await db
-      .select({ id: tasks.id, sortOrder: tasks.sortOrder })
-      .from(tasks)
-      .where(eq(tasks.issueId, issueId))
-      .orderBy(asc(tasks.sortOrder));
+    const existing = await issueTaskOrder(issueId);
 
     if (existing.length !== taskIds.length) {
       throw new HTTPException(400, {
@@ -218,27 +188,7 @@ taskIssueRoutes.post(
     }
 
     const previous = new Map(existing.map((r) => [r.id, r.sortOrder]));
-    const changed: string[] = [];
-    await db.transaction(async (tx) => {
-      for (let i = 0; i < taskIds.length; i++) {
-        const id = taskIds[i] as string;
-        if (previous.get(id) === i) continue;
-        await tx.update(tasks).set({ sortOrder: i, updatedAt: new Date() }).where(eq(tasks.id, id));
-        changed.push(id);
-      }
-    });
-
-    await Promise.all(
-      changed.map((id) =>
-        hooks.emit('taskUpdated', {
-          taskId: id,
-          issueId: issue.id,
-          projectId: issue.projectId,
-          actor: restActor(c),
-          fields: ['sortOrder'],
-        }),
-      ),
-    );
+    await reorderTasks(issue, taskIds, previous, restActor(c));
 
     return c.body(null, 204);
   },

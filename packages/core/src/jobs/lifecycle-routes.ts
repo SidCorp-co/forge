@@ -1,13 +1,9 @@
-import { JOB_MACHINE, OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { jobEvents, jobs, skills } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { assertPlatformAdmin } from '../middleware/require-admin.js';
@@ -17,7 +13,6 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { clearRunnerLimit } from '../runners/apply-runner-limit.js';
 import { clearRunnerQuarantine } from '../runners/quarantine.js';
-import { recordSkillActivityEvent, resolvePacketIdForHash } from '../skills/activity.js';
 import { failReconcileRunIfNoVerdictRecorded } from '../skills/reconcile-service.js';
 import { materializeJobUsage } from '../usage-records/materialize.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -30,6 +25,7 @@ import { readJobGate } from './job-queries.js';
 import { refuseJob } from './refusals.js';
 import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { resumeHeldJob } from './resume-job.js';
+import { ackJob, confirmJobKill, finishJobFromRunner, reclaimReapedJob } from './service.js';
 import type { RetryOutcome } from './retry.js';
 import { deriveSessionFinal } from '../agent-sessions/index.js';
 import { jobTurnVerdictRoutes } from './turn-verdict-routes.js';
@@ -116,66 +112,7 @@ jobLifecycleDeviceRoutes.post(
     }
 
     const now = new Date();
-    const skillsRanWith = body.skillsRanWith ?? null;
-    const skillLookups =
-      skillsRanWith && Object.keys(skillsRanWith).length > 0
-        ? await Promise.all(
-            Object.entries(skillsRanWith).map(async ([name, hash]) => {
-              const [skill] = await db
-                .select({ id: skills.id })
-                .from(skills)
-                .where(
-                  and(
-                    eq(skills.scope, 'project'),
-                    eq(skills.projectId, job.projectId),
-                    eq(skills.name, name),
-                  ),
-                )
-                .limit(1);
-              const packetId = skill
-                ? await resolvePacketIdForHash(db, job.projectId, skill.id, hash)
-                : undefined;
-              return { name, hash, skillId: skill?.id, packetId };
-            }),
-          )
-        : [];
-    const updated = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .update(jobs)
-        .set({
-          ackedAt: now,
-          killRequestedAt: null,
-          killConfirmedAt: null,
-          killOutcome: null,
-          ...(skillsRanWith !== null ? { skillsRanWith } : {}),
-        })
-        .where(
-          and(
-            eq(jobs.id, id),
-            isNull(jobs.ackedAt),
-            inArray(jobs.status, [...OCCUPYING_JOB_STATUSES]),
-          ),
-        )
-        .returning({ id: jobs.id, status: jobs.status, ackedAt: jobs.ackedAt });
-      if (row) {
-        for (const lookup of skillLookups) {
-          await recordSkillActivityEvent(tx, {
-            eventType: 'job.ran.with',
-            actor: `runner:${device.id}`,
-            trigger: 'push',
-            projectId: job.projectId,
-            deviceId: device.id,
-            ...(lookup.skillId ? { skillId: lookup.skillId } : {}),
-            ...(lookup.packetId ? { packetId: lookup.packetId } : {}),
-            afterHash: lookup.hash,
-            reason: `jobId=${id}`,
-            deltaSummary: lookup.name,
-            outcome: 'ok',
-          });
-        }
-      }
-      return row;
-    });
+    const updated = await ackJob(job, device.id, body.skillsRanWith ?? null, now);
     if (!updated) {
       const fresh = await loadJob(id);
       return c.json({
@@ -226,60 +163,39 @@ jobLifecycleDeviceRoutes.post(
       typeof job.error === 'string' &&
       SYNTHETIC_REAP_ERRORS.has(job.error)
     ) {
-      const activeRetry = await db
-        .select({ id: jobs.id })
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.retryOf, job.id),
-            inArray(jobs.status, ['queued', 'dispatched', 'running', 'done']),
-          ),
-        )
-        .limit(1);
-      if (activeRetry.length === 0) {
-        const [reclaimed] = (
-          await transition(db, JOB_MACHINE, {
-            to: 'done',
-            set: { exitCode: 0, error: null, finishedAt: new Date() },
-            where: and(eq(jobs.id, id), eq(jobs.status, 'failed'), eq(jobs.error, job.error)),
-            reason: 'reconciled_late_complete',
-            actor: { type: 'runner', id: device.id },
-            source: 'lifecycle',
-          })
-        ).rows;
-        if (reclaimed) {
-          logger.warn(
-            { jobId: reclaimed.id, reapedError: job.error },
-            'lifecycle: reconciled a late successful completion — job had been reaped (work would otherwise be lost)',
-          );
-          if (reclaimed.agentSessionId) {
-            void deriveSessionFinal(reclaimed.id, reclaimed.agentSessionId);
-          }
-          void materializeJobUsage(reclaimed);
-          await syncAgentSessionLifecycle(reclaimed, 'done');
-          roomManager.publish(projectRoom(reclaimed.projectId), {
-            event: 'job.completed',
-            data: { jobId: reclaimed.id, status: 'done', exitCode: 0 },
-          });
-          await hooks.emit('jobCompleted', {
-            jobId: reclaimed.id,
-            projectId: reclaimed.projectId,
-            issueId: reclaimed.issueId,
-            type: reclaimed.type,
-          });
-          void clearRunnerLimit(reclaimed.runnerId, reclaimed.projectId);
-          void clearRunnerQuarantine(reclaimed.runnerId, reclaimed.projectId);
-          if (reclaimed.issueId) {
-            await publishPipelineHealthChanged(reclaimed.projectId, [reclaimed.issueId]);
-          }
-          return c.json({
-            jobId: reclaimed.id,
-            status: 'done',
-            exitCode: 0,
-            retry: null,
-            reconciled: true,
-          });
+      const reclaimed = await reclaimReapedJob({ ...job, error: job.error }, device.id);
+      if (reclaimed) {
+        logger.warn(
+          { jobId: reclaimed.id, reapedError: job.error },
+          'lifecycle: reconciled a late successful completion — job had been reaped (work would otherwise be lost)',
+        );
+        if (reclaimed.agentSessionId) {
+          void deriveSessionFinal(reclaimed.id, reclaimed.agentSessionId);
         }
+        void materializeJobUsage(reclaimed);
+        await syncAgentSessionLifecycle(reclaimed, 'done');
+        roomManager.publish(projectRoom(reclaimed.projectId), {
+          event: 'job.completed',
+          data: { jobId: reclaimed.id, status: 'done', exitCode: 0 },
+        });
+        await hooks.emit('jobCompleted', {
+          jobId: reclaimed.id,
+          projectId: reclaimed.projectId,
+          issueId: reclaimed.issueId,
+          type: reclaimed.type,
+        });
+        void clearRunnerLimit(reclaimed.runnerId, reclaimed.projectId);
+        void clearRunnerQuarantine(reclaimed.runnerId, reclaimed.projectId);
+        if (reclaimed.issueId) {
+          await publishPipelineHealthChanged(reclaimed.projectId, [reclaimed.issueId]);
+        }
+        return c.json({
+          jobId: reclaimed.id,
+          status: 'done',
+          exitCode: 0,
+          retry: null,
+          reconciled: true,
+        });
       }
     }
 
@@ -291,20 +207,18 @@ jobLifecycleDeviceRoutes.post(
       input.exitCode === 0 ? 'done' : input.exitCode === -1 ? 'cancelled' : 'failed';
     const effectiveError: string | null = input.error ?? null;
 
-    let [updated] = (
-      await transition(db, JOB_MACHINE, {
-        to: status,
-        set: {
-          exitCode: input.exitCode,
-          error: effectiveError,
-          finishedAt: new Date(),
-        },
-        where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
-        reason: status === 'failed' ? (effectiveError ?? 'exit nonzero') : `lifecycle_${status}`,
-        actor: { type: 'runner', id: device.id },
-        source: 'lifecycle',
-      })
-    ).rows;
+    let updated = await finishJobFromRunner({
+      jobId: id,
+      from: job.status,
+      to: status,
+      set: {
+        exitCode: input.exitCode,
+        error: effectiveError,
+        finishedAt: new Date(),
+      },
+      reason: status === 'failed' ? (effectiveError ?? 'exit nonzero') : `lifecycle_${status}`,
+      deviceId: device.id,
+    });
 
     if (!updated) throw refuseJob('INVALID_STATE', 'job state changed mid-request');
 
@@ -402,16 +316,14 @@ jobLifecycleDeviceRoutes.post(
       throw refuseJob('INVALID_STATE', 'job is not in a runnable state');
     }
 
-    let [updated] = (
-      await transition(db, JOB_MACHINE, {
-        to: 'failed',
-        set: { error: input.error, finishedAt: new Date(), ...salvageSet(input.salvage) },
-        where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
-        reason: input.error,
-        actor: { type: 'runner', id: device.id },
-        source: 'lifecycle',
-      })
-    ).rows;
+    let updated = await finishJobFromRunner({
+      jobId: id,
+      from: job.status,
+      to: 'failed',
+      set: { error: input.error, finishedAt: new Date(), ...salvageSet(input.salvage) },
+      reason: input.error,
+      deviceId: device.id,
+    });
 
     if (!updated) throw refuseJob('INVALID_STATE', 'job state changed mid-request');
 
@@ -468,48 +380,11 @@ jobLifecycleDeviceRoutes.post(
     if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
 
     const recorded = job.killRequestedAt !== null;
-    const now = new Date();
-    await db.transaction(async (tx) => {
-      if (recorded) {
-        await tx
-          .update(jobs)
-          .set({ killConfirmedAt: now, killOutcome: outcome })
-          .where(and(eq(jobs.id, id), isNull(jobs.killConfirmedAt)));
-      }
-      await insertKillAckEvent(tx, id, outcome, device.id, recorded);
-    });
+    await confirmJobKill(id, outcome, device.id, recorded);
 
     return c.json({ jobId: id, killOutcome: outcome, acked: true, recorded });
   },
 );
-
-/**
- * Append the audited `kill_ack` event inside an open transaction. Mirrors
- * `cancel-job.ts`'s `insertInterventionEvent` — same advisory-lock +
- * `MAX(seq)+1` frontier as the job_events POST route so the server-assigned
- * seq stays monotonic under concurrent inserts.
- */
-async function insertKillAckEvent(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  jobId: string,
-  outcome: 'killed' | 'not_found',
-  deviceId: string,
-  recorded: boolean,
-): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`);
-  const maxRows = await tx.execute<{ max_seq: number | string | null }>(
-    sql`SELECT COALESCE(MAX(seq), 0) AS max_seq FROM job_events WHERE job_id = ${jobId}`,
-  );
-  const first = maxRows[0] as { max_seq: number | string | null } | undefined;
-  const nextSeq = Number(first?.max_seq ?? 0) + 1;
-
-  await tx.insert(jobEvents).values({
-    jobId,
-    kind: 'kill_ack',
-    data: { outcome, deviceId, recorded },
-    seq: nextSeq,
-  });
-}
 
 // Auth applied per-handler — see comment in jobs/routes.ts on why a bare
 // `.use('*')` would 401 device-only sibling routes.
