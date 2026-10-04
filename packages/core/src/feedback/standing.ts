@@ -1,7 +1,7 @@
 /**
  * Where a feedback item stands for one viewer (workflows `feedback-lifecycle`, `feedback-triage` r3,
  * requirement-to-delivery r2 step `fb-case`): the group the list draws it under and whom it waits
- * on. Pure over what `read.ts` read.
+ * on, and the phase a reader sees. Pure over what `read.ts` read.
  */
 
 import {
@@ -10,12 +10,56 @@ import {
   type FeedbackCaseView,
   type FeedbackPhase,
   type FeedbackRoute,
+  type FeedbackStatus,
   type FeedbackTriageRoute,
   type FeedbackWaitingKind,
 } from '@forge/contracts/feedback';
 import type { Standing, WaitingOn } from '@forge/contracts/standing';
+import type { SuggestionStatus } from '@forge/contracts/suggestions';
 
 type FeedbackWaitingOn = WaitingOn<FeedbackWaitingKind>;
+
+/** What the linked work reads, for the phase of a triaged item. */
+export interface PhaseFacts {
+  status: FeedbackStatus;
+  route: FeedbackRoute | null;
+  routedIssueStatus: string | null;
+  suggestion: { status: SuggestionStatus; revisionLive: boolean; delivered: boolean } | null;
+  routedRequirementStatus: string | null;
+  /** The routed requirement reads delivered (`requirements/standing.ts:deliveryOf`) or was accepted. */
+  routedRequirementDelivered: boolean;
+  rootPhase: FeedbackPhase | null;
+}
+
+// planned and resolved are computed on read from the linked work (Q1); a route whose
+// carrier died (issue dropped, suggestion rejected, requirement dropped) reads triaged, so a person
+// routes it again. verified is only ever the stored decision of a person
+export function phaseOf(f: PhaseFacts): FeedbackPhase {
+  if (f.status !== 'triaged') return f.status;
+  switch (f.route) {
+    case 'issue':
+      if (f.routedIssueStatus === 'closed') return 'resolved';
+      return f.routedIssueStatus === 'dropped' ? 'triaged' : 'planned';
+    case 'revision':
+      if (!f.suggestion) return 'triaged';
+      if (f.suggestion.status === 'accepted') {
+        return f.suggestion.revisionLive && f.suggestion.delivered ? 'resolved' : 'planned';
+      }
+      return f.suggestion.status === 'proposed' ? 'planned' : 'triaged';
+    // workflow feedback-lifecycle edge planned → resolved: the linked requirement reads
+    // delivered; agreeing it only plans the work, so an agreed requirement keeps the item planned
+    case 'new_requirement':
+      if (f.routedRequirementDelivered) return 'resolved';
+      return f.routedRequirementStatus === 'dropped' ? 'triaged' : 'planned';
+    case 'answer':
+      return 'resolved';
+    case 'duplicate':
+      if (f.rootPhase === 'resolved' || f.rootPhase === 'verified') return 'resolved';
+      return f.rootPhase === 'declined' ? 'declined' : 'planned';
+    default:
+      return 'triaged';
+  }
+}
 
 const ROUTE_ACTS: Record<FeedbackTriageRoute, string> = {
   issue: 'create or link the issue',
