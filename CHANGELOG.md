@@ -3391,6 +3391,12 @@
 
 ### Fixed
 
+- **An onboarding job ends done when its agent posts its last act, and an answer sent right after
+  it is read.** The questionnaire or the hand-over that ends a phase now settles the job that ran it.
+  Before, nothing did: the runner concluded the job failed a quarter hour after the agent stopped,
+  and a person who answered the questionnaire inside that window found the job still live, so no job
+  ever read the answers.
+
 - **Onboarding reads the project's code as it is on its default branch, not as a runner's checkout
   last left it.** The analysis job opened in the device binding's checkout and read it as it stood,
   which on the forge project was 519 commits behind, so the drafts described a product that no

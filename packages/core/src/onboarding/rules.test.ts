@@ -9,6 +9,7 @@ import {
   doneRefusal,
   personActRefusal,
   reanalyzeRefusal,
+  settlesPhaseJob,
   startRefusal,
 } from './rules.js';
 
@@ -147,5 +148,16 @@ describe('the dashboard hint (non-blocking, derived)', () => {
       hintOf(view({ status: 'done', designs: [design('proposed'), design('approved')] }))?.text,
     ).toBe('1 design wait on your approval.');
     expect(hintOf(view({ status: 'done', designs: [design('approved')] }))).toBeNull();
+  });
+});
+
+describe("a phase job is settled by the agent's last act", () => {
+  it('settles a job still out with a runner when the agent posts its last act, and nothing else', () => {
+    expect(settlesPhaseJob('agent', 'dispatched')).toBe(true);
+    expect(settlesPhaseJob('agent', 'running')).toBe(true);
+    expect(settlesPhaseJob('human', 'running')).toBe(false);
+    expect(settlesPhaseJob('agent', 'failed')).toBe(false);
+    expect(settlesPhaseJob('agent', 'queued')).toBe(false);
+    expect(settlesPhaseJob('agent', null)).toBe(false);
   });
 });
