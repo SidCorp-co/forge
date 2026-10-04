@@ -66,8 +66,10 @@ until it is upgraded, which is this change's one deploy coupling. Its close loop
 writes what core said to its own log rather than discarding it: a run that will
 not close is legible only while the sentence naming the way out survives.
 
-`releaseIssueLease` takes an executor rather than reaching for `db`, because the
-lease and the run's membership have to drop in one transaction. Between two
+`releaseIssueLeaseRow` takes an executor rather than reaching for `db`, and
+`releaseIssueLease` in `packages/core/src/devices/run-session.ts` calls it inside
+the transaction that also strips the run's membership, because the lease and the
+membership have to drop in one transaction. Between two
 autonomous writes, a replacement open on the same device can take the lease back
 and then have its membership stripped by the second half of the earlier release.
 The membership `UPDATE` is narrowed to the project whose row went, for the same

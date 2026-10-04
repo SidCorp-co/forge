@@ -8,7 +8,7 @@ import type { PromptLayer } from './layer.js';
 import { LINKING_LAYER } from './linking.js';
 import { TOOLS_LAYER } from './tools.js';
 
-/** Every layer, for the tests and the docs that read them all. */
+/** Every layer this repository ships. */
 export const ALL_LAYERS: readonly PromptLayer[] = [
   IDENTITY_LAYER,
   BASE_LAYER,

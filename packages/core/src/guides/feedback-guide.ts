@@ -6,7 +6,7 @@ export const FEEDBACK_TRIAGE_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Feedback: filing, triage, resolution and verification',
   summary:
-    'How a product feedback item (FB-n) is filed about one target, why its planned and resolved phases are read from the work it was routed to, how an agent proposes a route a person accepts, the one clarification question, duplicates, decline, verify and reopen, and what a sensitive project withholds.',
+    'How a product feedback item (FB-n) is filed about one target, why its planned and resolved phases are read from the work it was routed to, how an agent proposes a route a holder of feedback.approve accepts, the one clarification question, duplicates, decline, verify and reopen, and what a sensitive project withholds.',
   version: 1,
   body: `## Feedback: filing, triage, resolution and verification
 
@@ -59,7 +59,7 @@ Nothing ever reads an item as \`verified\` on its own.
   link one, or \`createIssue\` to file a draft, which takes the requirement of the item's target, or of
   its target issue), \`revision\` (\`suggestion\`), \`new_requirement\` (\`requirement\`, a draft, or
   \`title\` to start one) and \`answer\` (the text the reporter reads). Otherwise the owner writes it
-  later with \`route\` \`{ feedback, write: { … } }\` (REST \`POST …/feedback/:fb/route\`), with the same
+  later with \`POST …/feedback/:fb/route\`, whose body is that carrier alone, with the same
   permission as triage, and only while the case waits (\`FEEDBACK_CASE_NOT_OPEN\`). A carrier of another route is
   \`FEEDBACK_ROUTE_TARGET_MISMATCH\`, two alternatives at once or a write naming none
   \`FEEDBACK_ROUTE_INCOMPLETE\`.

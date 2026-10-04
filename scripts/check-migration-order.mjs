@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Whether the migrations this tree is landing can be applied alongside every open branch's.
- * `migrations-journal.test.ts` reads only its own journal, so the set is measured by nothing;
- * this reads the set. Origin and rules: `scripts/README.md`.
+ * Whether the migrations this tree is landing can be applied alongside every open branch's: this
+ * reads the set of open branches, not one journal. Origin and rules: `scripts/README.md`.
  * Exit 0 applicable · 1 a refusal naming the branches and numbers · 2 could not run, never a pass.
  */
 

@@ -19,8 +19,8 @@ requirements and workflow designs.
 - **The API comes first.** The CLI wraps the routes, and MCP keeps only what neither covers
   ([api-first.md](../proposals/destination/api-first.md)), so every rule below is stated for the
   route first.
-- **Code only on dev, QA later.** On dev the only check before a push is `tsc --noEmit` on the
-  packages a change touched. Tests, verify, checkers and CI are not run while building; QA is a
+- **Code only on dev, QA later.** On dev the only check before a push is `pnpm tc:changed`
+  (`scripts/tc-changed.mjs`), which typechecks the packages a change touched and their importers. Tests, verify, checkers and CI are not run while building; QA is a
   later phase (owner, 2026-10-04: "build trước đi đã test gọi QA test sau").
 
 ## Module kinds (BC-11)
@@ -36,7 +36,7 @@ a door.
 | **domain** | One product entity family: requirements, feedback, release, chat, and so on | Compute a fact another module also computes |
 | **read-model** | Derived facts only: standing, waiting-on, needs-you, coverage, counts, the system graph | Write any table |
 | **adapter** | One external system behind a role-named port ([ADR 0006](../adr/0006-every-external-system-is-reached-through-one-adapter-port.md)) | Import a domain, a kernel module or a read model |
-| **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, the CLI shapes, and the auth door (sign-in, which reaches the identity adapter through its port) | Hold a rule or a query |
+| **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, and the auth door (sign-in, which reaches the identity adapter through its port) | Hold a rule or a query |
 | **platform** | The db client and schema, `lib`, middleware, queue, config, observability | Import any other kind |
 
 ## Dependency direction (BC-12)
@@ -223,7 +223,8 @@ A write a rule refuses answers **422** with one body, and nothing is written:
   history.
 - **A fact another module reacts to is an outbox event**, written in the act's transaction to the
   one durable outbox (`packages/core/src/db/schema.ts:pipelineOutbox`) and typed in contracts. The
-  in-memory bus (`packages/core/src/pipeline/hooks.ts:HooksBus`) is retired.
+  in-memory bus (`packages/core/src/pipeline/hooks.ts:HooksBus`) is not that outbox, and a new
+  reaction is not built on it.
 - **An event nobody consumes is not emitted**, and a subscription to an event nobody emits is
   removed. Each event node of an approved design maps to an event kind or to "the row is the
   record".

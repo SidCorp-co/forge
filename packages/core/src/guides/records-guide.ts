@@ -33,24 +33,15 @@ the person's share of the thread was 98 and 123 characters against 26,000 and 46
 | What you have | Where it goes | Format |
 |---|---|---|
 | A sentence a person needs to read | \`comments\` | prose, no fence, no field list. Say what happened and what it means |
-| A verdict on a step, per attempt | ${route('verdict')} → \`issue_step_contexts\` | the handoff payload, keyed \`(issue, step, attempt)\`, \`verdict\` typed |
-| A review of a head, per attempt | ${route('review')} → \`issue_step_contexts\` | the same key; the findings are the payload |
+| A verdict on an acceptance criterion | \`POST /api/issues/:id/verdicts\` → \`criterion_verdicts\` | \`{ criterion, verdict, reason?, identity?, evidence? }\`, one row per criterion judged |
+| A step's handoff, per attempt | \`POST /api/issue-step-contexts\` → \`issue_step_contexts\` | the handoff payload, keyed \`(issue, step, attempt)\` |
+| A run's own record — a review, a decision, a baseline, a correction, a finding | ${route('review')} → \`activity_log\` | a typed record event of one kind in the closed set; a kind outside it is refused \`EVENT_KIND_UNKNOWN\` |
 | An assertion about the issue itself — blocking, delivered, obligation, supersedes, human_required | \`${ISSUE_ASSERTION_ROUTE}\` → \`issue_attributes\` | typed value under a registered key, \`sourceCommentId\` pointing at the line that asserted it |
 | A transcript, a tool result, what the agent said | \`agent_session_turns\` | written by the session; never copied into a comment |
 | A log, a diff, an evidence file | an attachment | the file, uploaded. A comment names it, does not paste it |
 | Who moved this issue and when, and why it parked | \`kernel_transitions\`, and \`record.transition\` / \`record.park\` on \`GET /api/issues/:id/events\` | written by core in the move's own transaction, never posted: a posted transition, park or verdict is refused \`EVENT_KIND_KERNEL_ONLY\` |
 | A lesson a *different* issue would reuse | project memory (\`POST /api/memory\`) | one entry, natural key, refined not duplicated |
 | Project prose — a rule, a build command, a guide | \`knowledge_entries\` | one slug, \`injection\` decides reach |
-
-### What core has no store for, said plainly
-
-A run's own records — a baseline, a decision, a correction, a park, a merged mark — have no store
-here that holds them whole. \`issue_attributes\` takes ten registered keys of issue assertions and
-refuses anything else by name, so a baseline's gate/result/commit does not fit it and a route that
-would reject the write is not somewhere to be sent. Until one exists: put the assertions such a
-record makes ABOUT the issue at \`${ISSUE_ASSERTION_ROUTE}\` under a registered key, and keep the
-sentence in the comment. The rule says so rather than naming a route you would be refused at —
-pointing somewhere that cannot hold it is the substitution this whole rule exists to refuse.
 
 ### Two rules
 
@@ -133,8 +124,8 @@ block names what that criterion was judged against before the next \`criterion\`
   each time the verdict is read or weighed, never trusting what it read when the verdict was
   written: corroborated while the source holds that draft version, superseded once the draft has
   moved, uncorroborated with the reason when the source cannot be read. Only a corroborated draft
-  on a project whose \`source.type\` is \`storefront\` counts toward \`awaiting_release\` and a
-  close (\`VERDICT_DRAFT_SUPERSEDED\`, \`VERDICT_UNCORROBORATED\`,
+  on a project whose \`source.type\` is \`storefront\` counts toward \`awaiting_release\` and the
+  release cut (\`VERDICT_DRAFT_SUPERSEDED\`, \`VERDICT_UNCORROBORATED\`,
   \`VERDICT_IDENTITY_NOT_ADMISSIBLE\`), and the release hold earns neither of the other two.
 
 A block carrying a verdict and naming none of the five is refused at the write door under

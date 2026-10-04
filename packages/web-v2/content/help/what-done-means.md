@@ -7,8 +7,8 @@ audience: user
 
 # Tell when an issue is done
 
-An issue is done when its status reads **Closed**. Forge refuses to close an issue
-unless the work shipped, so Closed means the change was released — not only written.
+An issue is done when its status reads **Closed**. Forge closes an issue only through
+the release that shipped it, so Closed means the change was released — not only written.
 The side panel of a closed issue shows **Merged** with the date the change went in.
 An issue closed before that rule existed may have no **Merged** row: its comments
 are then the only record of what happened.
