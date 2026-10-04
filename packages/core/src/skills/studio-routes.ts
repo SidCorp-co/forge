@@ -1,14 +1,12 @@
-import { and, asc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { skills } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { globalEffectiveMd } from './effective.js';
+import { skillById, studioSkillsOf } from './read.js';
 import { applyGlobalSkillDefault } from './service.js';
 
 /**
@@ -46,17 +44,7 @@ skillStudioRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const globals = await db
-      .select()
-      .from(skills)
-      .where(eq(skills.scope, 'global'))
-      .orderBy(asc(skills.name));
-
-    const projectSkills = await db
-      .select()
-      .from(skills)
-      .where(and(eq(skills.scope, 'project'), eq(skills.projectId, projectId)))
-      .orderBy(asc(skills.name));
+    const { globals, projectSkills } = await studioSkillsOf(projectId);
 
     const globalByName = new Map(globals.map((g) => [g.name, g]));
     const projectByName = new Map(projectSkills.map((p) => [p.name, p]));
@@ -101,7 +89,7 @@ skillStudioRoutes.post(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.admin');
 
-    const [global] = await db.select().from(skills).where(eq(skills.id, globalSkillId)).limit(1);
+    const global = await skillById(globalSkillId);
     if (!global) throw notFound('skill not found');
     if (global.scope !== 'global') {
       throw badRequest({ globalSkillId: 'apply-default source must be a global skill' });

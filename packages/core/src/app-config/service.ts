@@ -22,6 +22,28 @@ export async function upsertAppConfig(
   return row.id;
 }
 
+/** A project's app config takes these values, created where it has none; answers the whole row. */
+export async function saveAppConfig(projectId: string, values: AppConfigValues) {
+  const [row] = await db
+    .insert(appConfig)
+    .values({ projectId, ...values })
+    .onConflictDoUpdate({
+      target: appConfig.projectId,
+      set: { ...values, updatedAt: sql`now()` },
+    })
+    .returning();
+  if (!row) throw new Error('app_config: upsert returned no row');
+  return row;
+}
+
+/** A project's memory model, and with it a fresh reindex progress when one is queued. */
+export async function setMemoryModel(
+  projectId: string,
+  values: Pick<AppConfigValues, 'memoryModel' | 'memoryReindex'>,
+): Promise<void> {
+  await upsertAppConfig(db, projectId, values);
+}
+
 /** Merge keys into the project's memory reindex progress. */
 export async function mergeMemoryReindex(
   projectId: string,
