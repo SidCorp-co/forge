@@ -186,7 +186,9 @@ describe('what the release path may not reach', () => {
 
   it('does not import the ingestion half, which does hold a token', () => {
     for (const { name, text } of sources) {
-      expect(`${name}: ${/from '[^']*(install\/|github\/)?(fetch-release|main-runner-head|public-releases)/.test(text)}`).toBe(`${name}: false`);
+      expect(
+        `${name}: ${/from '[^']*(install\/|github\/)?(fetch-release|main-runner-head|public-releases)/.test(text)}`,
+      ).toBe(`${name}: false`);
     }
   });
 });

@@ -1,6 +1,6 @@
+import { getPublishedRunnerBuild } from '../install/routes.js';
 import { cmpVersion } from '../integrations/github/fetch-release.js';
 import { mainRunnerHead } from '../integrations/github/main-runner-head.js';
-import { getPublishedRunnerBuild } from '../install/routes.js';
 
 /**
  * Whether a box is running the runner `main` holds. Two questions, each between

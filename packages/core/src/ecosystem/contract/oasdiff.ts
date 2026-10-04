@@ -5,7 +5,10 @@ import { chmod, mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { downloadReleaseAsset, releaseDownloadUrl } from '../../integrations/github/public-releases.js';
+import {
+  downloadReleaseAsset,
+  releaseDownloadUrl,
+} from '../../integrations/github/public-releases.js';
 
 const run = promisify(execFile);
 

@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { oauthAccounts } from '../../db/schema.js';
+import type { ProviderId } from '../../integrations/identity/types.js';
 import { isEnabled } from '../../lib/feature-flags.js';
 import { type AuthVars, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
@@ -16,7 +17,6 @@ import {
   refuseStartQuery,
   startQuery,
 } from './handler.js';
-import type { ProviderId } from '../../integrations/identity/types.js';
 import { getEnabledProviders, toPublic } from './providers.js';
 
 export const oauthRoutes = new Hono<{ Variables: AuthVars }>();

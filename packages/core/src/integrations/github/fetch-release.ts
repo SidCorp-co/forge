@@ -2,13 +2,12 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { argv } from 'node:process';
 import { pathToFileURL } from 'node:url';
-
+import { refreshMainRunnerHead } from './main-runner-head.js';
 import {
   downloadReleaseAsset,
   listRepoReleases,
   type PublicRelease as Release,
 } from './public-releases.js';
-import { refreshMainRunnerHead } from './main-runner-head.js';
 
 const REPO = process.env.RUNNER_RELEASE_REPO ?? 'SidCorp-co/forge';
 const TAG_PREFIX = 'runner-v';

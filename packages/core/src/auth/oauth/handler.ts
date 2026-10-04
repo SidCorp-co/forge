@@ -13,13 +13,19 @@ import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { oauthAccounts, users } from '../../db/schema.js';
+import { githubProvider } from '../../integrations/identity/github.js';
+import { googleProvider, oidcProvider } from '../../integrations/identity/oidc-provider.js';
+import type {
+  OAuthIdentity,
+  OAuthProvider,
+  ProviderConfig,
+  ProviderId,
+} from '../../integrations/identity/types.js';
 import { logger } from '../../logger.js';
 import { ensurePersonalOrg } from '../../orgs/service.js';
 import { assertNotAgentUser } from '../agent-login-gate.js';
 import { setAuthCookie } from '../cookie.js';
 import { signUserToken } from '../jwt.js';
-import { githubProvider } from '../../integrations/identity/github.js';
-import { googleProvider, oidcProvider } from '../../integrations/identity/oidc-provider.js';
 import { getCallbackUrl, getProvider } from './providers.js';
 import {
   clearStateCookie,
@@ -31,12 +37,6 @@ import {
   signState,
   verifyState,
 } from './state.js';
-import type {
-  OAuthIdentity,
-  OAuthProvider,
-  ProviderConfig,
-  ProviderId,
-} from '../../integrations/identity/types.js';
 
 const providerImpls: Record<ProviderId, OAuthProvider> = {
   github: githubProvider,
