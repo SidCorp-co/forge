@@ -18,7 +18,7 @@ export function pointerOf(segments: readonly (string | number)[]): string {
 		.join("");
 }
 
-export function segmentsOf(pointer: string): string[] {
+function segmentsOf(pointer: string): string[] {
 	if (pointer === "") return [];
 	return pointer
 		.slice(1)

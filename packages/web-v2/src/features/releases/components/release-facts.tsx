@@ -28,6 +28,47 @@ function Decision({ a }: { a: ReleaseApprovalView }) {
   );
 }
 
+function ApprovalFacts({ r }: { r: ReleaseDetail }) {
+  const a = r.approval;
+  return (
+    <FactsGroup title="Approval" testId="facts-approval">
+      <Fact label="Policy">
+        <Tooltip label="Set by the project document: no production act is taken until a person other than the asker approves" multiline>
+          <span>{r.approvalRequired ? "Required" : "Asked for by the run"}</span>
+        </Tooltip>
+      </Fact>
+      {a ? (
+        <>
+          <Fact label="Asked by">
+            <span className="flex flex-wrap items-center gap-1.5">
+              <ActorChip name={a.requestedBy.name} kind={a.requestedBy.kind} />
+              <span className="text-muted" title={formatStamp(a.requestedAt)}>
+                {formatRelativeTime(a.requestedAt)}
+              </span>
+            </span>
+          </Fact>
+          <Fact label="Decision">
+            <Decision a={a} />
+          </Fact>
+        </>
+      ) : null}
+      {!a || a.decision === null ? (
+        <Fact label="Can decide">
+          {r.approvers.length === 0 ? (
+            <span className="text-muted">No other admin</span>
+          ) : (
+            <span className="grid gap-1">
+              {r.approvers.map((p) => (
+                <PersonChip key={p.id} name={p.name} />
+              ))}
+            </span>
+          )}
+        </Fact>
+      ) : null}
+    </FactsGroup>
+  );
+}
+
 export function ReleaseFacts({ r }: { r: ReleaseDetail }) {
   const c = r.criteria;
   const a = r.approval;
@@ -55,43 +96,7 @@ export function ReleaseFacts({ r }: { r: ReleaseDetail }) {
         </Fact>
       </FactsGroup>
 
-      {r.approvalRequired || a ? (
-        <FactsGroup title="Approval" testId="facts-approval">
-          <Fact label="Policy">
-            <Tooltip label="Set by the project document: no production act is taken until a person other than the asker approves" multiline>
-              <span>{r.approvalRequired ? "Required" : "Asked for by the run"}</span>
-            </Tooltip>
-          </Fact>
-          {a ? (
-            <>
-              <Fact label="Asked by">
-                <span className="flex flex-wrap items-center gap-1.5">
-                  <ActorChip name={a.requestedBy.name} kind={a.requestedBy.kind} />
-                  <span className="text-muted" title={formatStamp(a.requestedAt)}>
-                    {formatRelativeTime(a.requestedAt)}
-                  </span>
-                </span>
-              </Fact>
-              <Fact label="Decision">
-                <Decision a={a} />
-              </Fact>
-            </>
-          ) : null}
-          {!a || a.decision === null ? (
-            <Fact label="Can decide">
-              {r.approvers.length === 0 ? (
-                <span className="text-muted">No other admin</span>
-              ) : (
-                <span className="grid gap-1">
-                  {r.approvers.map((p) => (
-                    <PersonChip key={p.id} name={p.name} />
-                  ))}
-                </span>
-              )}
-            </Fact>
-          ) : null}
-        </FactsGroup>
-      ) : null}
+      {r.approvalRequired || a ? <ApprovalFacts r={r} /> : null}
 
       <FactsGroup title="Run" testId="facts-run">
         {r.owner && r.ownerAct === "Cut" ? (

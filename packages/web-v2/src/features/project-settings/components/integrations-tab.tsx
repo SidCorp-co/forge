@@ -6,19 +6,14 @@
 // connection" Card. The workspace `/integrations` page is the owner-scoped
 // connection directory; everything project-scoped lives here.
 import { useMemo, useState } from "react";
-import {
-  Banner,
-  Button,
-  Card,
-  CardContent,
-  Field,
-  SectionTitle,
-  Select,
-  type SelectOption,
-} from "@/design";
+import { Banner, Button, Card, CardContent, Field, SectionTitle, Select, type SelectOption } from "@/design";
 import {
   AGENT_ACCESS_CLOSED,
-  AgentAccessChoice, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess} from "@/features/integrations/components/agent-access-control";
+  AgentAccessChoice,
+  agentAccessBody,
+  agentAccessDeniedReason,
+  mayWriteAgentAccess,
+} from "@/features/integrations/components/agent-access-control";
 import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
 import { useBindConnection, useConnections, useIsOrgAdmin } from "@/features/integrations/hooks";
 import { providerLabel, providerModule } from "@/features/integrations/providers/registry";
@@ -67,13 +62,6 @@ function applicationsOf(targets: CoolifyTargetInput[]): CoolifyTargetInput[] {
 
 function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const connectionsQ = useConnections();
-  const bind = useBindConnection(projectId);
-  const [connectionId, setConnectionId] = useState<string>("");
-  const [role, setRole] = useState<BindingRole>("service");
-  const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
-  const [applications, setApplications] = useState<CoolifyTargetInput[]>([NO_APPLICATION]);
-  const [formError, setFormError] = useState<string | null>(null);
-
   // Only active connections with a stored credential are eligible to share —
   // a soft-deleted or secret-less row would fail server-side (loadOwnedConnection
   // rejects active=false). Filtering here keeps the picker honest.
@@ -81,13 +69,44 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
     () => (connectionsQ.data?.items ?? []).filter((c) => c.active && c.hasSecrets),
     [connectionsQ.data],
   );
-
-  const connectionOptions: SelectOption[] = useMemo(
-    () => eligible.map((c) => ({ value: c.id, label: connectionLabel(c) })),
-    [eligible],
+  return (
+    <Card>
+      <CardContent>
+        <SectionTitle className="fg-h3 mb-1">Share an existing connection</SectionTitle>
+        <p className="fg-body-sm mb-4 text-muted">
+          Bind one of your connections to this project without re-entering the credential. The
+          connection&apos;s owner keeps it; this project gets a webhook secret of its own.
+        </p>
+        {!canEdit ? (
+          <Banner tone="info">Only the project owner can share a connection with this project.</Banner>
+        ) : !connectionsQ.isLoading && eligible.length === 0 ? (
+          <Banner tone="info">
+            You don&apos;t have any connections yet. Create one on the Integrations hub first.
+          </Banner>
+        ) : (
+          <ShareForm projectId={projectId} eligible={eligible} loading={connectionsQ.isLoading} />
+        )}
+      </CardContent>
+    </Card>
   );
+}
 
-  const isEmpty = !connectionsQ.isLoading && eligible.length === 0;
+function ShareForm({
+  projectId,
+  eligible,
+  loading,
+}: {
+  projectId: string;
+  eligible: ConnectionSummary[];
+  loading: boolean;
+}) {
+  const bind = useBindConnection(projectId);
+  const isOrgAdmin = useIsOrgAdmin(projectId);
+  const [connectionId, setConnectionId] = useState<string>("");
+  const [role, setRole] = useState<BindingRole>("service");
+  const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
+  const [applications, setApplications] = useState<CoolifyTargetInput[]>([NO_APPLICATION]);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const selected = eligible.find((c) => c.id === connectionId);
   const provider = selected?.provider;
@@ -97,12 +116,6 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   // No binding exists yet, so the risk class comes off the provider's own module. `none` renders no
   // control at all — that provider has no agent path for a grant to open.
   const agentPathKind = provider ? (providerModule(provider)?.agentPathKind ?? "none") : "none";
-  const isOrgAdmin = useIsOrgAdmin(projectId);
-
-  function chooseRole(next: BindingRole) {
-    setRole(next);
-    setFormError(null);
-  }
 
   function submit() {
     if (!connectionId) return;
@@ -114,11 +127,8 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
     }
     if (!selected) return;
     const missing = namesApplications ? applicationsRefusal(applications) : null;
-    if (missing) {
-      setFormError(missing);
-      return;
-    }
-    setFormError(null);
+    setFormError(missing);
+    if (missing) return;
     bind.mutate(
       {
         connectionId,
@@ -139,105 +149,76 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   }
 
   return (
-    <Card>
-      <CardContent>
-        <SectionTitle className="fg-h3 mb-1">Share an existing connection</SectionTitle>
-        <p className="fg-body-sm mb-4 text-muted">
-          Bind one of your connections to this project without re-entering the credential. The
-          connection&apos;s owner keeps it; this project gets a webhook secret of its own.
+    <div className="flex flex-col gap-4">
+      <Field label="Connection" required>
+        <Select
+          options={eligible.map((c) => ({ value: c.id, label: connectionLabel(c) }))}
+          value={connectionId}
+          onChange={(v) => {
+            setConnectionId(v);
+            setApplications([NO_APPLICATION]);
+            setFormError(null);
+          }}
+          placeholder={loading ? "Loading…" : "Select a connection…"}
+          disabled={loading || bind.isPending}
+        />
+      </Field>
+      <Field label="What is it for" required>
+        <Select
+          options={ROLE_SELECT_OPTIONS}
+          value={role}
+          onChange={(v) => {
+            setRole(v as BindingRole);
+            setFormError(null);
+          }}
+          disabled={!connectionId || bind.isPending}
+        />
+      </Field>
+      {role === "deploy" && !canDeploy && (
+        <Banner tone="attention">
+          Forge cannot deploy to {providerName} — it has no deploy adapter. Share it as a service instead.
+        </Banner>
+      )}
+      {role === "deploy" && canDeploy && (
+        <p className="fg-body-sm text-muted">
+          Which environment this binding deploys is the project document&apos;s: name the binding in{" "}
+          <code>environments.&lt;name&gt;.deployment.binding</code> and write the document on the Configuration
+          tab.
         </p>
-
-        {!canEdit ? (
-          <Banner tone="info">
-            Only the project owner can share a connection with this project.
-          </Banner>
-        ) : isEmpty ? (
-          <Banner tone="info">
-            You don&apos;t have any connections yet. Create one on the Integrations hub first.
-          </Banner>
-        ) : (
-          <div className="flex flex-col gap-4">
-            <Field label="Connection" required>
-              <Select
-                options={connectionOptions}
-                value={connectionId}
-                onChange={(v) => {
-                  setConnectionId(v);
-                  setApplications([NO_APPLICATION]);
-                  setFormError(null);
-                }}
-                placeholder={connectionsQ.isLoading ? "Loading…" : "Select a connection…"}
-                disabled={connectionsQ.isLoading || bind.isPending}
-              />
-            </Field>
-            <Field label="What is it for" required>
-              <Select
-                options={ROLE_SELECT_OPTIONS}
-                value={role}
-                onChange={(v) => chooseRole(v as BindingRole)}
-                disabled={!connectionId || bind.isPending}
-              />
-            </Field>
-            {role === "deploy" && !canDeploy && (
-              <Banner tone="attention">
-                Forge cannot deploy to {providerName} — it has no deploy adapter. Share it as a
-                service instead.
-              </Banner>
-            )}
-            {role === "deploy" && canDeploy && (
-              <p className="fg-body-sm text-muted">
-                Which environment this binding deploys is the project document&apos;s: name the
-                binding in <code>environments.&lt;name&gt;.deployment.binding</code> and write the
-                document on the Configuration tab.
-              </p>
-            )}
-            {namesApplications && (
-              <CoolifyTargetsField
-                projectId={projectId}
-                integrationId={undefined}
-                baseUrl=""
-                apiToken=""
-                targets={applications}
-                onChange={(next) => {
-                  setApplications(next);
-                  setFormError(null);
-                }}
-                inherited={false}
-              />
-            )}
-            <AgentAccessChoice
-              value={agentAccess}
-              onChange={setAgentAccess}
-              pathKind={agentPathKind}
-              canEdit={mayWriteAgentAccess(agentPathKind, { canEditProject: canEdit, isOrgAdmin }) && !bind.isPending}
-              disabledReason={agentAccessDeniedReason(agentPathKind)}
-            />
-            {formError && <Banner tone="attention">{formError}</Banner>}
-            {bind.isError && <Banner tone="danger">{bindingRefusalText(bind.error)}</Banner>}
-            <div>
-              <Button
-                variant="primary"
-                onClick={submit}
-                loading={bind.isPending}
-                disabled={!connectionId || bind.isPending}
-              >
-                Share with this project
-              </Button>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      )}
+      {namesApplications && (
+        <CoolifyTargetsField
+          projectId={projectId}
+          integrationId={undefined}
+          baseUrl=""
+          apiToken=""
+          targets={applications}
+          onChange={(next) => {
+            setApplications(next);
+            setFormError(null);
+          }}
+          inherited={false}
+        />
+      )}
+      <AgentAccessChoice
+        value={agentAccess}
+        onChange={setAgentAccess}
+        pathKind={agentPathKind}
+        canEdit={mayWriteAgentAccess(agentPathKind, { canEditProject: true, isOrgAdmin }) && !bind.isPending}
+        disabledReason={agentAccessDeniedReason(agentPathKind)}
+      />
+      {formError && <Banner tone="attention">{formError}</Banner>}
+      {bind.isError && <Banner tone="danger">{bindingRefusalText(bind.error)}</Banner>}
+      <div>
+        <Button variant="primary" onClick={submit} loading={bind.isPending} disabled={!connectionId || bind.isPending}>
+          Share with this project
+        </Button>
+      </div>
+    </div>
   );
 }
 
-export function IntegrationsTab({
-  projectId,
-  canEdit,
-}: {
-  projectId: string;
-  canEdit: boolean;
-}) {
+export function IntegrationsTab({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   return (
     <div className="flex flex-col gap-4">
       <ProjectIntegrationsPanel projectId={projectId} canEdit={canEdit} />

@@ -6,7 +6,7 @@
 //   1. Generate per-client config snippets (token rendered as a placeholder —
 //      secrets are never echoed here; the plaintext shows once, on Tokens).
 //   2. Test the connection live via JSON-RPC `tools/list`.
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Badge,
@@ -23,13 +23,12 @@ import {
   Select,
   Skeleton,
   Tabs,
-  type SelectOption,
-  type TabItem,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { useCurrentProject } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
+import type { ProjectListItem } from "@/features/projects/types";
 import {
   CLIENTS,
   type ClientKind,
@@ -41,60 +40,24 @@ import {
   type TestConnectionResult,
 } from "../mcp";
 
-const CLIENT_TABS: TabItem[] = CLIENTS.map((c) => ({ value: c.kind, label: c.label }));
-
 const TOKENS_TAB_HREF = "/settings?tab=tokens";
 
 export function McpTab() {
   const projectsQ = useProjects();
-  const { toast } = useToast();
-
-  // The MCP endpoint is same-origin with core; resolve client-side.
+  // Resolved after mount: where core shares the browser's origin, the URL reads `window`.
   const [endpoint, setEndpoint] = useState("/mcp");
   useEffect(() => setEndpoint(getMcpUrl()), []);
-
   const projects = projectsQ.data ?? [];
   const currentProject = useCurrentProject();
   const [projectId, setProjectId] = useState<string | null>(null);
   // A pick, else the project the person is working in — never the list's first
   // entry: the snippet is pasted unread, so a guessed project is a wrong config.
-  const selectedProject = useMemo(
-    () =>
-      projects.find((p) => p.id === projectId) ??
-      projects.find((p) => p.id === currentProject?.id) ??
-      null,
-    [projects, projectId, currentProject?.id],
-  );
-  const projectSlug = selectedProject?.slug ?? "";
+  const selectedProject =
+    projects.find((p) => p.id === projectId) ??
+    projects.find((p) => p.id === currentProject?.id) ??
+    null;
 
-  const projectOptions: SelectOption[] = projects.map((p) => ({
-    value: p.id,
-    label: `${p.name} · ${p.slug}`,
-  }));
-
-  const [client, setClient] = useState<ClientKind>("claude-cli");
-  const snippet = useMemo(
-    () => generateSnippet(client, { projectSlug, mcpUrl: endpoint }),
-    [client, projectSlug, endpoint],
-  );
-
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 2000);
-    return () => clearTimeout(t);
-  }, [copied]);
-
-  async function copySnippet() {
-    try {
-      await navigator.clipboard.writeText(snippet.content);
-      setCopied(true);
-    } catch {
-      toast({ title: "Copy failed", description: "Select and copy it manually.", tone: "error" });
-    }
-  }
-
-  if (projectsQ.isLoading) {
+  if (projectsQ.isLoading)
     return (
       <div className="space-y-3">
         <Skeleton className="h-24 w-full rounded-lg" />
@@ -102,26 +65,17 @@ export function McpTab() {
         <Skeleton className="h-48 w-full rounded-lg" />
       </div>
     );
-  }
-
-  if (projectsQ.isError) {
+  if (projectsQ.isError)
     return (
-      <ErrorState
-        title="Couldn't load projects"
-        message={formatApiError(projectsQ.error)}
-        onRetry={() => projectsQ.refetch()}
-      />
+      <ErrorState title="Couldn't load projects" message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
     );
-  }
-
-  if (projects.length === 0) {
+  if (projects.length === 0)
     return (
       <EmptyState
         title="No projects yet"
         message="MCP clients connect to a specific project. Create or join a project, then come back for a config snippet."
       />
     );
-  }
 
   return (
     <div className="space-y-6">
@@ -143,9 +97,9 @@ export function McpTab() {
             </div>
             <Field label="Project" hint="Sets the X-Forge-Project-Slug header — the project this client's tool calls are scoped to.">
               <Select
-                options={projectOptions}
+                options={projects.map((p) => ({ value: p.id, label: `${p.name} · ${p.slug}` }))}
                 value={selectedProject?.id ?? ""}
-                onChange={(v) => setProjectId(v)}
+                onChange={setProjectId}
                 placeholder="Choose a project…"
               />
             </Field>
@@ -155,58 +109,8 @@ export function McpTab() {
 
       {selectedProject ? (
         <>
-          <Card>
-            <CardContent>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <SectionTitle className="fg-h3">Config snippet</SectionTitle>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={copySnippet}
-                  className="min-h-11"
-                  aria-live="polite"
-                >
-                  {copied ? "Copied ✓" : "Copy"}
-                </Button>
-              </div>
-              <p className="fg-body-sm mb-4 text-fg" data-testid="mcp-snippet-target">
-                This snippet configures <strong>{selectedProject.name}</strong>{" "}
-                <MonoTag>{selectedProject.slug}</MonoTag>
-                {currentProject && currentProject.id !== selectedProject.id ? (
-                  <> — not {currentProject.name}, the project you are working in.</>
-                ) : currentProject ? (
-                  <>, the project you are working in.</>
-                ) : (
-                  "."
-                )}
-              </p>
-
-              <div className="mb-3 overflow-x-auto">
-                <Tabs tabs={CLIENT_TABS} value={client} onChange={(v) => setClient(v as ClientKind)} />
-              </div>
-
-              <p className="fg-caption mb-2" data-testid="mcp-snippet-how">
-                {snippet.howTo === "command" ? (
-                  <>
-                    Replace <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token, then
-                    run this line once in a terminal.
-                  </>
-                ) : (
-                  <>
-                    Add to <MonoTag>{snippet.filePath}</MonoTag> and replace{" "}
-                    <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token.
-                  </>
-                )}
-              </p>
-              <pre className="overflow-x-auto rounded-md border border-line bg-sunken p-3 text-12-5 leading-relaxed text-fg">
-                <code>
-                  <SnippetCode content={snippet.content} />
-                </code>
-              </pre>
-            </CardContent>
-          </Card>
-
-          <TestConnectionPanel mcpUrl={endpoint} projectSlug={projectSlug} />
+          <SnippetPanel project={selectedProject} currentProject={currentProject} endpoint={endpoint} />
+          <TestConnectionPanel mcpUrl={endpoint} projectSlug={selectedProject.slug} />
         </>
       ) : (
         <EmptyState
@@ -218,6 +122,89 @@ export function McpTab() {
   );
 }
 
+function SnippetPanel({
+  project,
+  currentProject,
+  endpoint,
+}: {
+  project: ProjectListItem;
+  currentProject: ProjectListItem | null;
+  endpoint: string;
+}) {
+  const { toast } = useToast();
+  const [client, setClient] = useState<ClientKind>("claude-cli");
+  const snippet = generateSnippet(client, { projectSlug: project.slug, mcpUrl: endpoint });
+
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  async function copySnippet() {
+    try {
+      await navigator.clipboard.writeText(snippet.content);
+      setCopied(true);
+    } catch {
+      toast({ title: "Copy failed", description: "Select and copy it manually.", tone: "error" });
+    }
+  }
+
+  return (
+      <Card>
+        <CardContent>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <SectionTitle className="fg-h3">Config snippet</SectionTitle>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={copySnippet}
+              className="min-h-11"
+              aria-live="polite"
+            >
+              {copied ? "Copied ✓" : "Copy"}
+            </Button>
+          </div>
+          <p className="fg-body-sm mb-4 text-fg" data-testid="mcp-snippet-target">
+            This snippet configures <strong>{project.name}</strong>{" "}
+            <MonoTag>{project.slug}</MonoTag>
+            {currentProject && currentProject.id !== project.id ? (
+              <> — not {currentProject.name}, the project you are working in.</>
+            ) : currentProject ? (
+              <>, the project you are working in.</>
+            ) : (
+              "."
+            )}
+          </p>
+
+          <div className="mb-3 overflow-x-auto">
+            <Tabs tabs={CLIENTS} value={client} onChange={(v) => setClient(v as ClientKind)} />
+          </div>
+
+          <p className="fg-caption mb-2" data-testid="mcp-snippet-how">
+            {snippet.howTo === "command" ? (
+              <>
+                Replace <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token, then
+                run this line once in a terminal.
+              </>
+            ) : (
+              <>
+                Add to <MonoTag>{snippet.filePath}</MonoTag> and replace{" "}
+                <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token.
+              </>
+            )}
+          </p>
+          <pre className="overflow-x-auto rounded-md border border-line bg-sunken p-3 text-12-5 leading-relaxed text-fg">
+            <code>
+              <SnippetCode content={snippet.content} />
+            </code>
+          </pre>
+        </CardContent>
+      </Card>
+  );
+}
+
 /** Snippet body with the token placeholder highlighted — it's the one part of
  *  the config the user must edit, so it shouldn't blend into the JSON. */
 function SnippetCode({ content }: { content: string }) {
@@ -225,7 +212,7 @@ function SnippetCode({ content }: { content: string }) {
   return (
     <>
       {parts.map((part, i) => (
-        // Index keys are safe: parts derive solely from `content` and re-render together.
+        // biome-ignore lint/suspicious/noArrayIndexKey: parts derive solely from `content` and re-render together.
         <Fragment key={i}>
           {part}
           {i < parts.length - 1 && (
@@ -269,35 +256,58 @@ function recoveryHint(err: unknown): ReactNode | null {
   return "The endpoint couldn't be reached from this browser. Check that the server is up and the URL is correct.";
 }
 
+type TestState =
+  | { status: "idle" | "testing" }
+  | { status: "ok"; result: TestConnectionResult }
+  | { status: "error"; error: string; hint: ReactNode | null };
+
+function TestOutcome({ test }: { test: TestState }) {
+  if (test.status === "ok")
+    return (
+      <div className="mt-4" role="status">
+        <Badge tone="accent">Connected · {test.result.toolsCount} tools</Badge>
+        {test.result.sampleNames.length > 0 && (
+          <div className="fg-caption mt-2 flex flex-wrap items-center gap-1.5">
+            <span>e.g.</span>
+            {test.result.sampleNames.map((n) => (
+              <MonoTag key={n}>{n}</MonoTag>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  if (test.status === "error" && test.error)
+    return (
+      <div className="mt-4">
+        <Banner tone="danger">
+          <span className="font-mono text-12-5">{test.error}</span>
+          {test.hint && <p className="mt-1">{test.hint}</p>}
+        </Banner>
+      </div>
+    );
+  return null;
+}
+
 /** Live connection test. The token is typed by the user per-test and is never
  *  stored or rendered back — it only rides the one request to `/mcp`. */
 function TestConnectionPanel({ mcpUrl, projectSlug }: { mcpUrl: string; projectSlug: string }) {
   const [token, setToken] = useState("");
-  const [status, setStatus] = useState<"idle" | "testing" | "ok" | "error">("idle");
-  const [result, setResult] = useState<TestConnectionResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [hint, setHint] = useState<ReactNode | null>(null);
+  const [test, setTest] = useState<TestState>({ status: "idle" });
 
   async function run() {
     if (!token.trim()) return;
-    setStatus("testing");
-    setResult(null);
-    setError(null);
-    setHint(null);
+    setTest({ status: "testing" });
     try {
-      const res = await testConnection({ url: mcpUrl, token: token.trim(), projectSlug });
-      setResult(res);
-      setStatus("ok");
+      const result = await testConnection({ url: mcpUrl, token: token.trim(), projectSlug });
+      setTest({ status: "ok", result });
     } catch (err) {
-      const msg =
+      const error =
         err instanceof McpTestError
           ? `${err.status}${err.code ? ` ${err.code}` : ""} — ${err.message}`
           : err instanceof Error
             ? err.message
             : "Connection failed";
-      setError(msg);
-      setHint(recoveryHint(err));
-      setStatus("error");
+      setTest({ status: "error", error, hint: recoveryHint(err) });
     }
   }
 
@@ -329,36 +339,15 @@ function TestConnectionPanel({ mcpUrl, projectSlug }: { mcpUrl: string; projectS
           <Button
             type="submit"
             variant="primary"
-            disabled={!token.trim() || status === "testing"}
-            loading={status === "testing"}
+            disabled={!token.trim() || test.status === "testing"}
+            loading={test.status === "testing"}
             className="min-h-11"
           >
             Test
           </Button>
         </form>
 
-        {status === "ok" && result && (
-          <div className="mt-4" role="status">
-            <Badge tone="accent">Connected · {result.toolsCount} tools</Badge>
-            {result.sampleNames.length > 0 && (
-              <div className="fg-caption mt-2 flex flex-wrap items-center gap-1.5">
-                <span>e.g.</span>
-                {result.sampleNames.map((n) => (
-                  <MonoTag key={n}>{n}</MonoTag>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {status === "error" && error && (
-          <div className="mt-4">
-            <Banner tone="danger">
-              <span className="font-mono text-12-5">{error}</span>
-              {hint && <p className="mt-1">{hint}</p>}
-            </Banner>
-          </div>
-        )}
+        <TestOutcome test={test} />
       </CardContent>
     </Card>
   );

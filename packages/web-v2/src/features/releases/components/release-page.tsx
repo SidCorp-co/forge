@@ -18,8 +18,6 @@ import { ChecksPane } from "./release-checks";
 import { ReleaseFacts } from "./release-facts";
 import { CriteriaPane, IssuesPane, NotesPane, OverviewPane, RELEASE_TABS, type ReleaseTab } from "./release-panes";
 
-export const useReleaseTab = () => useUrlTab(RELEASE_TABS);
-
 const LABEL: Record<ReleaseTab, string> = {
   overview: "Overview",
   issues: "Issues",
@@ -28,19 +26,8 @@ const LABEL: Record<ReleaseTab, string> = {
   notes: "Notes",
 };
 
-export function ReleasePage({
-  projectId,
-  slug,
-  version,
-  tab,
-  onTab,
-}: {
-  projectId: string;
-  slug: string;
-  version: string;
-  tab: ReleaseTab;
-  onTab: (t: ReleaseTab) => void;
-}) {
+export function ReleasePage({ projectId, slug, version }: { projectId: string; slug: string; version: string }) {
+  const [tab, onTab] = useUrlTab(RELEASE_TABS);
   const q = useRelease(projectId, version);
   const list = useReleases(projectId);
   if (q.isLoading) {

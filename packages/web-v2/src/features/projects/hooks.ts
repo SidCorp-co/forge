@@ -6,14 +6,6 @@ import { useActiveOrg } from '@/features/orgs/active-org';
 import { projectApi } from './api';
 import { inActiveOrg, mergeProjects, workspaceTotals } from './derive';
 import { usePinnedProjects } from './pins';
-import type {
-  CreatedProject,
-  CreateProjectInput,
-  OnboardResult,
-  ProjectConsoleItem,
-  ProjectListItem,
-  WorkspaceTotals,
-} from './types';
 
 /** Project console list. Keyed `['projects']` — see the WS contract above. */
 export function useProjects() {
@@ -23,16 +15,7 @@ export function useProjects() {
   });
 }
 
-interface OrgScopedProjects {
-  projects: ProjectListItem[];
-  projectIds: Set<string>;
-  projectSlugs: Set<string>;
-  activeOrgId: string | null;
-  isLoading: boolean;
-  error: unknown;
-}
-
-export function useOrgScopedProjects(): OrgScopedProjects {
+export function useOrgScopedProjects() {
   const { activeOrgId } = useActiveOrg();
   const q = useProjects();
   const projects = useMemo(
@@ -41,7 +24,7 @@ export function useOrgScopedProjects(): OrgScopedProjects {
   );
   const projectIds = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
   const projectSlugs = useMemo(() => new Set(projects.map((p) => p.slug)), [projects]);
-  return { projects, projectIds, projectSlugs, activeOrgId, isLoading: q.isLoading, error: q.error };
+  return { projects, projectIds, projectSlugs, isLoading: q.isLoading, error: q.error };
 }
 
 /**
@@ -58,24 +41,12 @@ export function useProjectsIncludingArchived() {
   });
 }
 
-const PROJECT_HEALTH_STALE_MS = 300_000;
-
 export function useProjectHealth() {
   return useQuery({
     queryKey: ['projects', 'health'],
-    queryFn: () => projectApi.health(),
-    staleTime: PROJECT_HEALTH_STALE_MS,
+    queryFn: projectApi.health,
+    staleTime: 300_000,
   });
-}
-
-export interface ProjectsConsole {
-  items: ProjectConsoleItem[];
-  totals: WorkspaceTotals;
-  isLoading: boolean;
-  isError: boolean;
-  error: unknown;
-  refetch: () => void;
-  toggle: (id: string) => void;
 }
 
 /**
@@ -84,7 +55,7 @@ export interface ProjectsConsole {
  * totals. Query keys are unchanged, so the WS event-router invalidations drive
  * live updates with no extra wiring.
  */
-export function useProjectsConsole(): ProjectsConsole {
+export function useProjectsConsole() {
   const projects = useProjects();
   const health = useProjectHealth();
   const { pinnedIds, toggle } = usePinnedProjects();
@@ -118,8 +89,8 @@ export function useProjectsConsole(): ProjectsConsole {
  */
 export function useCreateProject() {
   const qc = useQueryClient();
-  return useMutation<CreatedProject, unknown, CreateProjectInput>({
-    mutationFn: (body) => projectApi.create(body),
+  return useMutation({
+    mutationFn: projectApi.create,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['projects'] });
     },
@@ -128,7 +99,7 @@ export function useCreateProject() {
 
 export function useOnboardProject(projectId: string | undefined) {
   const qc = useQueryClient();
-  return useMutation<OnboardResult, unknown, void>({
+  return useMutation({
     mutationFn: () => projectApi.onboard(projectId as string),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['agent-sessions'] });

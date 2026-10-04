@@ -19,6 +19,7 @@ export function MemberStack({ members, total, size = 24 }: MemberStackProps) {
     <div className="flex items-center">
       {members.map((m, i) => (
         <span
+          // biome-ignore lint/suspicious/noArrayIndexKey: initials repeat, and the stack only ever re-renders whole.
           key={`${m}-${i}`}
           className="rounded-pill ring-2 ring-[color:var(--bg-surface)]"
           style={{ marginLeft: i ? -7 : 0 }}

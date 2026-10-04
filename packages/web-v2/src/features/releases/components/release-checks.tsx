@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Icon, StatusBadge, ToneBadge, ViewHeading } from "@/design";
+import { StatusBadge, ToneBadge, ViewHeading } from "@/design";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import type { ReleaseApprovalView, ReleaseAttemptView, ReleaseDetail } from "../types";
-import { shortSha } from "./release-bits";
+import { DisclosureToggle, shortSha } from "./release-bits";
 
 const STAGE_LABEL: Record<ReleaseAttemptView["stage"], string> = {
   promote: "Promote",
@@ -38,10 +38,9 @@ function Attempt({ a }: { a: ReleaseAttemptView }) {
           {formatRelativeTime(a.startedAt)}
         </span>
         {hasMore ? (
-          <button type="button" className="inline-flex items-center gap-1 text-12 font-medium text-link" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-            <Icon name="chevronDown" size={12} className={open ? "" : "-rotate-90"} />
+          <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12">
             Details
-          </button>
+          </DisclosureToggle>
         ) : null}
       </div>
       {a.verdictReason ? <p className="mt-1 text-12-5 text-muted">{a.verdictReason}</p> : null}

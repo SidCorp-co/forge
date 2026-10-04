@@ -1,16 +1,31 @@
 "use client";
 
-import { Badge, Button, Card, CardContent, CardTitle, ErrorState, Field, IconButton, Input, SectionTitle, Select, Skeleton, type SelectOption, EnumBadge } from "@/design";
-import { useOrgMembers } from "@/features/orgs/hooks";
-import { useProjectsIncludingArchived } from "@/features/projects/hooks";
-import { formatApiError } from "@/lib/api/error";
 // Project settings → Members. List (email + role) + direct-add from the org +
 // invite by email + remove + inline role change, plus a pending-invitations
 // list (cancel). Invite / remove / role-change / invitation controls are
 // owner-gated by core; we surface them only when the caller is the owner
 // (`canEdit`). The "Add from organization" block direct-adds a same-org user
 // (no email round trip) and is hidden for personal-org projects.
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardTitle,
+  EnumBadge,
+  ErrorState,
+  Field,
+  IconButton,
+  Input,
+  SectionTitle,
+  Select,
+  type SelectOption,
+  Skeleton,
+} from "@/design";
+import { useOrgMembers } from "@/features/orgs/hooks";
+import { useProjectsIncludingArchived } from "@/features/projects/hooks";
+import { formatApiError } from "@/lib/api/error";
 import {
   useDirectAddMember,
   useInvitations,
@@ -20,6 +35,7 @@ import {
   useRevokeInvitation,
   useUpdateMemberRole,
 } from "../hooks";
+import type { ProjectRole } from "../types";
 
 const ROLE_OPTIONS: SelectOption[] = [
   { value: "viewer", label: "Viewer" },
@@ -27,89 +43,38 @@ const ROLE_OPTIONS: SelectOption[] = [
   { value: "admin", label: "Admin" },
 ];
 
-export function MembersTab({
-  projectId,
-  canEdit,
-}: { projectId: string; canEdit: boolean }) {
+const ROW = "flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2";
+
+export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const membersQ = useMembers(projectId);
-  const invitationsQ = useInvitations(canEdit ? projectId : undefined);
-  const invite = useInviteMember(projectId);
   const remove = useRemoveMember(projectId);
-  const revoke = useRevokeInvitation(projectId);
   const updateRole = useUpdateMemberRole(projectId);
-
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"admin" | "member">("member");
-
   // Direct-add from the project's org (hidden for personal-org projects).
-  const projectsQ = useProjectsIncludingArchived();
-  const listItem = (projectsQ.data ?? []).find((p) => p.id === projectId);
-  const orgId =
-    listItem && !listItem.orgIsPersonal ? listItem.orgId : undefined;
-  const orgMembersQ = useOrgMembers(canEdit ? orgId : undefined);
-  const directAdd = useDirectAddMember(projectId);
-  const [addUserId, setAddUserId] = useState("");
-  const [addRole, setAddRole] = useState<"admin" | "member" | "viewer">(
-    "member",
-  );
-
-  const memberIds = new Set((membersQ.data ?? []).map((m) => m.userId));
-  const orgCandidates = (orgMembersQ.data ?? []).filter(
-    (m) => !memberIds.has(m.userId),
-  );
-  const orgCandidateOptions: SelectOption[] = orgCandidates.map((m) => ({
-    value: m.userId,
-    label: m.email,
-  }));
-
-  function send() {
-    const trimmed = email.trim();
-    if (!trimmed) return;
-    invite.mutate({ email: trimmed, role }, { onSuccess: () => setEmail("") });
-  }
-
-  function addFromOrg() {
-    if (!addUserId) return;
-    directAdd.mutate(
-      { userId: addUserId, role: addRole },
-      { onSuccess: () => setAddUserId("") },
-    );
-  }
+  const listItem = (useProjectsIncludingArchived().data ?? []).find((p) => p.id === projectId);
+  const orgId = listItem && !listItem.orgIsPersonal ? listItem.orgId : undefined;
 
   return (
     <Card>
       <CardContent>
         <SectionTitle className="fg-h3 mb-4">Members</SectionTitle>
-
         {membersQ.isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-9 w-full rounded-md" />
             <Skeleton className="h-9 w-3/4 rounded-md" />
           </div>
         ) : membersQ.isError ? (
-          <ErrorState
-            message={formatApiError(membersQ.error)}
-            onRetry={() => membersQ.refetch()}
-          />
+          <ErrorState message={formatApiError(membersQ.error)} onRetry={() => membersQ.refetch()} />
         ) : (
           <ul className="space-y-1.5">
             {(membersQ.data ?? []).map((m) => (
-              <li
-                key={m.userId}
-                className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
-              >
+              <li key={m.userId} className={ROW}>
                 <span className="min-w-0 truncate text-fg">{m.email}</span>
                 <span className="flex shrink-0 items-center gap-2">
                   {canEdit ? (
                     <Select
                       options={ROLE_OPTIONS}
                       value={m.role}
-                      onChange={(v) =>
-                        updateRole.mutate({
-                          userId: m.userId,
-                          role: v as "admin" | "member" | "viewer",
-                        })
-                      }
+                      onChange={(v) => updateRole.mutate({ userId: m.userId, role: v as ProjectRole })}
                       disabled={updateRole.isPending}
                     />
                   ) : (
@@ -128,127 +93,155 @@ export function MembersTab({
             ))}
           </ul>
         )}
-
         {canEdit && (
-          <div className="mt-4 space-y-3 border-t border-line pt-4">
-            <CardTitle className="fg-label text-fg">Pending invitations</CardTitle>
-            {invitationsQ.isLoading ? (
-              <Skeleton className="h-9 w-full rounded-md" />
-            ) : invitationsQ.isError ? (
-              <ErrorState
-                message={formatApiError(invitationsQ.error)}
-                onRetry={() => invitationsQ.refetch()}
-              />
-            ) : (invitationsQ.data ?? []).length === 0 ? (
-              <p className="fg-body-sm text-subtle">No pending invitations.</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {(invitationsQ.data ?? []).map((inv) => (
-                  <li
-                    key={inv.email}
-                    className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
-                  >
-                    <span className="min-w-0 truncate text-fg">
-                      {inv.email}
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      {inv.expired && <Badge tone="amber">Expired</Badge>}
-                      <EnumBadge family="role" value={inv.role} />
-                      <IconButton
-                        icon="trash"
-                        aria-label={`Cancel invitation for ${inv.email}`}
-                        onClick={() => revoke.mutate(inv.email)}
-                        disabled={revoke.isPending}
-                      />
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {canEdit && orgId && orgCandidates.length > 0 && (
-          <div className="mt-4 space-y-3 border-t border-line pt-4">
-            <CardTitle className="fg-label text-fg">Add from organization</CardTitle>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <Field label="Org member">
-                  <Select
-                    options={orgCandidateOptions}
-                    value={addUserId}
-                    onChange={(v) => setAddUserId(v)}
-                    placeholder="Select an org member…"
-                  />
-                </Field>
-              </div>
-              <div className="sm:w-40">
-                <Field label="Role">
-                  <Select
-                    options={ROLE_OPTIONS}
-                    value={addRole}
-                    onChange={(v) =>
-                      setAddRole(v as "admin" | "member" | "viewer")
-                    }
-                  />
-                </Field>
-              </div>
-              <Button
-                variant="primary"
-                icon="plus"
-                loading={directAdd.isPending}
-                disabled={!addUserId}
-                onClick={addFromOrg}
-                className="min-h-11"
-              >
-                Add
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {canEdit && (
-          <div className="mt-4 space-y-3 border-t border-line pt-4">
-            <CardTitle className="fg-label text-fg">
-              Invite by email (outside the org)
-            </CardTitle>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <Field label="Email">
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="teammate@example.com"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") send();
-                    }}
-                  />
-                </Field>
-              </div>
-              <div className="sm:w-40">
-                <Field label="Role">
-                  <Select
-                    options={ROLE_OPTIONS}
-                    value={role}
-                    onChange={(v) => setRole(v as "admin" | "member")}
-                  />
-                </Field>
-              </div>
-              <Button
-                variant="primary"
-                icon="mail"
-                loading={invite.isPending}
-                disabled={email.trim() === ""}
-                onClick={send}
-                className="min-h-11"
-              >
-                Invite
-              </Button>
-            </div>
-          </div>
+          <>
+            <PendingInvitations projectId={projectId} />
+            {orgId && <AddFromOrg projectId={projectId} orgId={orgId} memberIds={(membersQ.data ?? []).map((m) => m.userId)} />}
+            <InviteByEmail projectId={projectId} />
+          </>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function Subsection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="mt-4 space-y-3 border-t border-line pt-4">
+      <CardTitle className="fg-label text-fg">{title}</CardTitle>
+      {children}
+    </div>
+  );
+}
+
+function PendingInvitations({ projectId }: { projectId: string }) {
+  const invitationsQ = useInvitations(projectId);
+  const revoke = useRevokeInvitation(projectId);
+  const invitations = invitationsQ.data ?? [];
+  return (
+    <Subsection title="Pending invitations">
+      {invitationsQ.isLoading ? (
+        <Skeleton className="h-9 w-full rounded-md" />
+      ) : invitationsQ.isError ? (
+        <ErrorState message={formatApiError(invitationsQ.error)} onRetry={() => invitationsQ.refetch()} />
+      ) : invitations.length === 0 ? (
+        <p className="fg-body-sm text-subtle">No pending invitations.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {invitations.map((inv) => (
+            <li key={inv.email} className={ROW}>
+              <span className="min-w-0 truncate text-fg">{inv.email}</span>
+              <span className="flex shrink-0 items-center gap-2">
+                {inv.expired && <Badge tone="amber">Expired</Badge>}
+                <EnumBadge family="role" value={inv.role} />
+                <IconButton
+                  icon="trash"
+                  aria-label={`Cancel invitation for ${inv.email}`}
+                  onClick={() => revoke.mutate(inv.email)}
+                  disabled={revoke.isPending}
+                />
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Subsection>
+  );
+}
+
+/** The two add forms share one shape: who, at which role, and the button that sends it. */
+function AddRow({ who, role, onRole, action }: { who: ReactNode; role: ProjectRole; onRole: (r: ProjectRole) => void; action: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+      <div className="flex-1">{who}</div>
+      <div className="sm:w-40">
+        <Field label="Role">
+          <Select options={ROLE_OPTIONS} value={role} onChange={(v) => onRole(v as ProjectRole)} />
+        </Field>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function AddFromOrg({ projectId, orgId, memberIds }: { projectId: string; orgId: string; memberIds: string[] }) {
+  const orgMembersQ = useOrgMembers(orgId);
+  const directAdd = useDirectAddMember(projectId);
+  const [userId, setUserId] = useState("");
+  const [role, setRole] = useState<ProjectRole>("member");
+  const candidates = (orgMembersQ.data ?? []).filter((m) => !memberIds.includes(m.userId));
+  if (candidates.length === 0) return null;
+  return (
+    <Subsection title="Add from organization">
+      <AddRow
+        who={
+          <Field label="Org member">
+            <Select
+              options={candidates.map((m) => ({ value: m.userId, label: m.email }))}
+              value={userId}
+              onChange={setUserId}
+              placeholder="Select an org member…"
+            />
+          </Field>
+        }
+        role={role}
+        onRole={setRole}
+        action={
+          <Button
+            variant="primary"
+            icon="plus"
+            loading={directAdd.isPending}
+            disabled={!userId}
+            onClick={() => directAdd.mutate({ userId, role }, { onSuccess: () => setUserId("") })}
+            className="min-h-11"
+          >
+            Add
+          </Button>
+        }
+      />
+    </Subsection>
+  );
+}
+
+function InviteByEmail({ projectId }: { projectId: string }) {
+  const invite = useInviteMember(projectId);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<ProjectRole>("member");
+  function send() {
+    const trimmed = email.trim();
+    if (trimmed) invite.mutate({ email: trimmed, role }, { onSuccess: () => setEmail("") });
+  }
+  return (
+    <Subsection title="Invite by email (outside the org)">
+      <AddRow
+        who={
+          <Field label="Email">
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="teammate@example.com"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") send();
+              }}
+            />
+          </Field>
+        }
+        role={role}
+        onRole={setRole}
+        action={
+          <Button
+            variant="primary"
+            icon="mail"
+            loading={invite.isPending}
+            disabled={email.trim() === ""}
+            onClick={send}
+            className="min-h-11"
+          >
+            Invite
+          </Button>
+        }
+      />
+    </Subsection>
   );
 }

@@ -18,10 +18,8 @@ import {
   type TabItem,
 } from "@/design";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
-import {
-	useProject,
-	useProjectsIncludingArchived,
-} from "@/features/projects/hooks";
+import { useProject, useProjectsIncludingArchived } from "@/features/projects/hooks";
+import type { ProjectDetail, ProjectListItem } from "@/features/projects/types";
 import { ProjectRunnersScreen } from "@/features/runners/components/project-runners-screen";
 import { formatApiError } from "@/lib/api/error";
 import { useTabParam } from "@/lib/utils/use-tab-param";
@@ -35,21 +33,7 @@ import { ModulesTab } from "./modules-tab";
 import { PipelineTab } from "./pipeline-tab";
 import { RepoTab } from "./repo-tab";
 
-const TAB_VALUES = [
-	"basics",
-	"repo",
-	"config",
-	"runners",
-	"pipeline",
-	"labels",
-	"modules",
-	"members",
-	"integrations",
-	"advanced",
-] as const;
-type ProjectSettingsTab = (typeof TAB_VALUES)[number];
-
-const TABS: TabItem[] = [
+const TABS = [
 	{ value: "basics", label: "Basics" },
 	{ value: "repo", label: "Repository" },
 	{ value: "config", label: "Configuration" },
@@ -60,7 +44,9 @@ const TABS: TabItem[] = [
 	{ value: "members", label: "Members" },
 	{ value: "integrations", label: "Integrations" },
 	{ value: "advanced", label: "Advanced" },
-];
+] as const satisfies TabItem[];
+type ProjectSettingsTab = (typeof TABS)[number]["value"];
+const TAB_VALUES = TABS.map((t) => t.value);
 
 export function ProjectSettingsScreen({ slug }: { slug: string }) {
 	// Resolve slug → id/role from the projects list, then fetch the full detail
@@ -72,144 +58,85 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 	const projectsQ = useProjectsIncludingArchived();
 	const listItem = projectsQ.data?.find((p) => p.slug === slug);
 	const detailQ = useProject(listItem?.id);
-
 	const [tab, setTab] = useTabParam<ProjectSettingsTab>(TAB_VALUES, "basics");
 
-	if (projectsQ.isLoading || (listItem && detailQ.isLoading)) {
-		return (
-			<div className="grid min-h-[60vh] place-items-center">
-				<ProjectLoader label="loading settings…" />
-			</div>
-		);
-	}
-
-	if (projectsQ.isError) {
-		return (
-			<div className="grid min-h-[60vh] place-items-center">
-				<ErrorState
-					message={formatApiError(projectsQ.error)}
-					onRetry={() => projectsQ.refetch()}
-				/>
-			</div>
-		);
-	}
-
-	if (!listItem) {
-		return (
-			<div className="grid min-h-[60vh] place-items-center">
-				<EmptyState
-					title="Project not found"
-					message="This project doesn't exist or you don't have access to it."
-					mascot
-				/>
-			</div>
-		);
-	}
-
-	if (detailQ.isError) {
-		return (
-			<div className="grid min-h-[60vh] place-items-center">
-				<ErrorState
-					message={formatApiError(detailQ.error)}
-					onRetry={() => detailQ.refetch()}
-				/>
-			</div>
-		);
-	}
+	const unready =
+		projectsQ.isLoading || (listItem && detailQ.isLoading) ? (
+			<ProjectLoader label="loading settings…" />
+		) : projectsQ.isError ? (
+			<ErrorState message={formatApiError(projectsQ.error)} onRetry={() => projectsQ.refetch()} />
+		) : !listItem ? (
+			<EmptyState title="Project not found" message="This project doesn't exist or you don't have access to it." mascot />
+		) : detailQ.isError ? (
+			<ErrorState message={formatApiError(detailQ.error)} onRetry={() => detailQ.refetch()} />
+		) : null;
+	if (unready) return <div className="grid min-h-[60vh] place-items-center">{unready}</div>;
 
 	const project = detailQ.data;
-	if (!project) return null;
-
-	const glyph = projectGlyph(project.id);
+	if (!listItem || !project) return null;
 	// Settings-level edits require org owner/admin on the project's org; member
 	// and label management only needs the effective project admin role.
 	const canEdit = listItem.orgRole === "owner" || listItem.orgRole === "admin";
 	const isProjectAdmin = listItem.role === "admin";
+	const canManage = canEdit || isProjectAdmin;
 
 	return (
 		<div className="flex min-h-full flex-col">
 			<ScreenTabs
-				tabs={TABS}
+				tabs={[...TABS]}
 				value={tab}
 				onChange={(v) => setTab(v as ProjectSettingsTab)}
-				header={
-					<>
-						<header className="mb-6 flex items-center gap-4">
-							<ProjectMark
-								tint={glyph.tint}
-								ink={glyph.ink}
-								initials={projectInitials(project.name)}
-								size={40}
-							/>
-							<div className="min-w-0 flex-1">
-								<PageTitle className="fg-h2 truncate">Project settings</PageTitle>
-								<div className="mt-1 flex items-center gap-2">
-									<MonoTag>{project.slug}</MonoTag>
-									<Badge tone={canEdit ? "accent" : "neutral"}>
-										{listItem.role ?? "org"}
-									</Badge>
-								</div>
-							</div>
-						</header>
-
-						{!canEdit && (
-							<p className="fg-body-sm mb-4 rounded-md border border-line bg-surface px-3 py-2 text-muted">
-								{isProjectAdmin
-									? "Basics, Repo, Configuration, Pipeline, Integrations and Advanced need an org owner/admin — you can still manage Members and Labels."
-									: "You have read-only access to these settings."}
-							</p>
-						)}
-					</>
-				}
+				header={<SettingsHeader project={project} role={listItem.role} canEdit={canEdit} isProjectAdmin={isProjectAdmin} />}
 			/>
-
 			<PageContainer>
 				<div className="max-w-4xl">
-					{tab === "basics" && (
-						<BasicsTab project={project} canEdit={canEdit} />
-					)}
-					{tab === "repo" && <RepoTab project={project} canEdit={canEdit} />}
+					{tab === "basics" && <BasicsTab project={project} canEdit={canEdit} />}
+					{tab === "repo" && <RepoTab project={project} />}
 					{tab === "config" && <ConfigTab project={project} canEdit={canEdit} />}
-					{tab === "runners" && (
-						<ProjectRunnersScreen
-							projectId={project.id}
-							canEdit={canEdit || isProjectAdmin}
-							embedded
-						/>
-					)}
-					{tab === "pipeline" && (
-						<PipelineTab
-							projectId={project.id}
-							canEdit={canEdit}
-							slug={project.slug}
-						/>
-					)}
-					{tab === "labels" && (
-						<LabelsTab
-							projectId={project.id}
-							canEdit={canEdit || isProjectAdmin}
-						/>
-					)}
-					{tab === "modules" && (
-						<ModulesTab
-							projectId={project.id}
-							canEdit={canEdit || isProjectAdmin}
-						/>
-					)}
-					{tab === "members" && (
-						<MembersTab
-							projectId={project.id}
-							canEdit={canEdit || isProjectAdmin}
-						/>
-					)}
-					{tab === "integrations" && (
-						<IntegrationsTab projectId={project.id} canEdit={canEdit} />
-					)}
-					{tab === "advanced" && (
-						<AdvancedTab project={project} canEdit={canEdit} />
-					)}
+					{tab === "runners" && <ProjectRunnersScreen projectId={project.id} canEdit={canManage} embedded />}
+					{tab === "pipeline" && <PipelineTab projectId={project.id} canEdit={canEdit} slug={project.slug} />}
+					{tab === "labels" && <LabelsTab projectId={project.id} canEdit={canManage} />}
+					{tab === "modules" && <ModulesTab projectId={project.id} canEdit={canManage} />}
+					{tab === "members" && <MembersTab projectId={project.id} canEdit={canManage} />}
+					{tab === "integrations" && <IntegrationsTab projectId={project.id} canEdit={canEdit} />}
+					{tab === "advanced" && <AdvancedTab project={project} canEdit={canEdit} />}
 				</div>
 			</PageContainer>
 		</div>
+	);
+}
+
+function SettingsHeader({
+	project,
+	role,
+	canEdit,
+	isProjectAdmin,
+}: {
+	project: ProjectDetail;
+	role: ProjectListItem["role"];
+	canEdit: boolean;
+	isProjectAdmin: boolean;
+}) {
+	const glyph = projectGlyph(project.id);
+	return (
+		<>
+			<header className="mb-6 flex items-center gap-4">
+				<ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(project.name)} size={40} />
+				<div className="min-w-0 flex-1">
+					<PageTitle className="fg-h2 truncate">Project settings</PageTitle>
+					<div className="mt-1 flex items-center gap-2">
+						<MonoTag>{project.slug}</MonoTag>
+						<Badge tone={canEdit ? "accent" : "neutral"}>{role ?? "org"}</Badge>
+					</div>
+				</div>
+			</header>
+			{!canEdit && (
+				<p className="fg-body-sm mb-4 rounded-md border border-line bg-surface px-3 py-2 text-muted">
+					{isProjectAdmin
+						? "Basics, Repo, Configuration, Pipeline, Integrations and Advanced need an org owner/admin — you can still manage Members and Labels."
+						: "You have read-only access to these settings."}
+				</p>
+			)}
+		</>
 	);
 }

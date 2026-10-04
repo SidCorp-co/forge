@@ -82,19 +82,15 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
   usePeekKeys(peek, openFull);
 
   const title = <PageTitle>Releases</PageTitle>;
-  if (q.isLoading) {
+  if (q.isLoading || q.isError || !q.data) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
         {title}
-        <ProjectLoader label="loading releases…" />
-      </div>
-    );
-  }
-  if (q.isError || !q.data) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        {title}
-        <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
+        {q.isLoading ? (
+          <ProjectLoader label="loading releases…" />
+        ) : (
+          <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
+        )}
       </div>
     );
   }
@@ -104,24 +100,11 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
       {title}
       <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
-            <label className="flex h-[30px] min-w-[150px] max-w-[260px] flex-1 items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 text-12-5 text-subtle max-md:h-10 max-md:max-w-none max-md:basis-full">
-              <Icon name="search" size={14} />
-              <input
-                type="search"
-                aria-label="Search releases"
-                placeholder="Search releases…"
-                defaultValue={text}
-                onChange={(e) => setParams({ q: e.target.value || null })}
-                className="w-full min-w-0 border-0 bg-transparent text-fg outline-none"
-              />
-            </label>
-            {production.ok ? null : (
-              <span className="text-12 text-muted" title={production.reason} data-testid="production-unreadable">
-                Production cannot be read right now, so what it serves is not shown.
-              </span>
-            )}
-          </div>
+          <SearchBar
+            text={text}
+            onText={(q) => setParams({ q: q || null })}
+            productionUnreadable={production.ok ? null : production.reason}
+          />
           {all.length === 0 ? (
             <div className="px-5 py-10">
               <EmptyState title="No release yet" message="A release is cut when merged issues are waiting at the release gate. None is waiting." />
@@ -144,6 +127,38 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
         </div>
         {peek.open ? <ReleasePeek key={peek.open} projectId={projectId} version={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} /> : null}
       </div>
+    </div>
+  );
+}
+
+function SearchBar({
+  text,
+  onText,
+  productionUnreadable,
+}: {
+  text: string;
+  onText: (q: string) => void;
+  /** Why production cannot be read, or null when it can. */
+  productionUnreadable: string | null;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
+      <label className="flex h-[30px] min-w-[150px] max-w-[260px] flex-1 items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 text-12-5 text-subtle max-md:h-10 max-md:max-w-none max-md:basis-full">
+        <Icon name="search" size={14} />
+        <input
+          type="search"
+          aria-label="Search releases"
+          placeholder="Search releases…"
+          defaultValue={text}
+          onChange={(e) => onText(e.target.value)}
+          className="w-full min-w-0 border-0 bg-transparent text-fg outline-none"
+        />
+      </label>
+      {productionUnreadable === null ? null : (
+        <span className="text-12 text-muted" title={productionUnreadable} data-testid="production-unreadable">
+          Production cannot be read right now, so what it serves is not shown.
+        </span>
+      )}
     </div>
   );
 }

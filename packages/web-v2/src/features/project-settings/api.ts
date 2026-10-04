@@ -1,13 +1,13 @@
-
 import type { ProjectDetail } from "@/features/projects/types";
 import { apiClient } from "@/lib/api/client";
 import type {
-	ProjectInvitationRow,
 	LabelCreateInput,
 	LabelPatchInput,
 	ProjectLabel,
 	ProjectMemberRow,
 	PluginDesignation,
+	ProjectInvitationRow,
+	ProjectRole,
 	ProjectUpdateInput,
 	ReleaseReadiness,
 } from "./types";
@@ -46,22 +46,14 @@ export const projectSettingsApi = {
 	listMembers: (id: string) =>
 		apiClient<ProjectMemberRow[]>(`/projects/${id}/members`),
 
-	directAddMember: (
-		id: string,
-		userId: string,
-		role: "admin" | "member" | "viewer",
-	) =>
+	directAddMember: (id: string, userId: string, role: ProjectRole) =>
 		apiClient<ProjectMemberRow>(`/projects/${id}/members`, {
 			method: "POST",
 			body: JSON.stringify({ userId, role }),
 		}),
 
 	/** `POST /api/projects/:id/members/invite` — invite by email (owner/admin). */
-	inviteMember: (
-		id: string,
-		email: string,
-		role: "admin" | "member" | "viewer",
-	) =>
+	inviteMember: (id: string, email: string, role: ProjectRole) =>
 		apiClient<unknown>(`/projects/${id}/members/invite`, {
 			method: "POST",
 			body: JSON.stringify({ email, role }),
@@ -74,11 +66,7 @@ export const projectSettingsApi = {
 		}),
 
 	/** `PATCH /api/projects/:id/members/:userId` — change a member's role (owner only). */
-	updateMemberRole: (
-		id: string,
-		userId: string,
-		role: "admin" | "member" | "viewer",
-	) =>
+	updateMemberRole: (id: string, userId: string, role: ProjectRole) =>
 		apiClient<unknown>(`/projects/${id}/members/${userId}`, {
 			method: "PATCH",
 			body: JSON.stringify({ role }),

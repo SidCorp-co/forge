@@ -4,15 +4,7 @@ import { Card, CardContent, SectionTitle } from "@/design";
 import { PluginsSection } from "./plugins-section";
 import { ReleaseSection } from "./release-section";
 
-export function PipelineTab({
-  projectId,
-  canEdit,
-  slug,
-}: {
-  projectId: string;
-  canEdit: boolean;
-  slug?: string;
-}) {
+export function PipelineTab({ projectId, canEdit, slug }: { projectId: string; canEdit: boolean; slug: string }) {
   return (
     <Card>
       <CardContent>

@@ -1,306 +1,135 @@
 "use client";
 
-// web-v2 feature module: project-settings — React Query hooks. Every mutation invalidates the
-// SHARED keys `['project', id]` and `['projects']` rather than a key of its own: those are what
-// the dashboard, the console and the WS reconnect-replay read, and a private key updates none.
+// Every mutation invalidates the SHARED keys `['project', id]` and `['projects']` rather than a key
+// of its own: those are what the dashboard, the console and the WS reconnect-replay read, and a
+// private key updates none.
 
-import { formatApiError } from "@/lib/api/error";
-import { useToast } from "@/providers/toast-provider";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import type { ProjectDetail } from "@/features/projects/types";
 import { projectSettingsApi } from "./api";
-import { releaseReadinessKey } from "./config-hooks";
-import type {
-	LabelCreateInput,
-	LabelPatchInput,
-	PluginDesignation,
-	ProjectUpdateInput,
-} from "./types";
+import { releaseReadinessKey, useToastedMutation } from "./config-hooks";
+import type { LabelCreateInput, LabelPatchInput, PluginDesignation, ProjectRole, ProjectUpdateInput } from "./types";
 
-/** PATCH the project row (org, issue prefix, weekly assistant). Invalidates the detail + console list. */
-export function useUpdateProject(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: (patch: ProjectUpdateInput) =>
-			projectSettingsApi.update(id as string, patch),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["project", id] });
-			qc.invalidateQueries({ queryKey: ["projects"] });
-			toast({ title: "Project saved", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't save project",
-				description: formatApiError(err),
-				tone: "error",
-			}),
-	});
+const project = (id: string | undefined) => ["project", id];
+const members = (id: string | undefined) => ["project", id, "members"];
+const invitations = (id: string | undefined) => ["project", id, "invitations"];
+const labels = (id: string | undefined) => ["project", id, "labels"];
+
+function useProjectQuery<T>(key: readonly unknown[], id: string | undefined, read: (id: string) => Promise<T>) {
+	return useQuery({ queryKey: key, queryFn: () => read(id as string), enabled: Boolean(id) });
 }
 
-/** Soft archive a project (owner only). Invalidates the detail + console list
- *  so the archived project drops out of the default list (ISS-353). */
-export function useArchiveProject(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
+/** PATCH the project row (its org). Invalidates the detail + console list. */
+export const useUpdateProject = (id: string | undefined) =>
+	useToastedMutation({
+		mutationFn: (patch: ProjectUpdateInput) => projectSettingsApi.update(id as string, patch),
+		invalidates: [project(id), ["projects"]],
+		saved: "Project saved",
+		failed: "Couldn't save project",
+	});
+
+/** Soft archive (owner only): the archived project drops out of the default list (ISS-353). */
+export const useArchiveProject = (id: string | undefined) =>
+	useToastedMutation<void, ProjectDetail>({
 		mutationFn: () => projectSettingsApi.archive(id as string),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["project", id] });
-			qc.invalidateQueries({ queryKey: ["projects"] });
-			toast({ title: "Project archived", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't archive project",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+		invalidates: [project(id), ["projects"]],
+		saved: "Project archived",
+		failed: "Couldn't archive project",
 	});
-}
 
-/** Unarchive a project (owner only); it reappears in the default list. */
-export function useUnarchiveProject(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
+export const useUnarchiveProject = (id: string | undefined) =>
+	useToastedMutation<void, ProjectDetail>({
 		mutationFn: () => projectSettingsApi.unarchive(id as string),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["project", id] });
-			qc.invalidateQueries({ queryKey: ["projects"] });
-			toast({ title: "Project unarchived", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't unarchive project",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+		invalidates: [project(id), ["projects"]],
+		saved: "Project unarchived",
+		failed: "Couldn't unarchive project",
 	});
-}
 
-export function useUpdatePlugins(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: (plugins: PluginDesignation[]) =>
-			projectSettingsApi.updatePlugins(id as string, plugins),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["project", id] });
-			toast({ title: "Plugins saved", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't save plugins",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+export const useUpdatePlugins = (id: string | undefined) =>
+	useToastedMutation({
+		mutationFn: (plugins: PluginDesignation[]) => projectSettingsApi.updatePlugins(id as string, plugins),
+		invalidates: [project(id)],
+		saved: "Plugins saved",
+		failed: "Couldn't save plugins",
 	});
-}
 
 /** What this project still owes before its first issue runs. */
-export function useReleaseReadiness(id: string | undefined) {
-	return useQuery({
-		queryKey: releaseReadinessKey(id),
-		queryFn: () => projectSettingsApi.getReleaseReadiness(id as string),
-		enabled: Boolean(id),
-	});
-}
-export function useMembers(id: string | undefined) {
-	return useQuery({
-		queryKey: ["project", id, "members"],
-		queryFn: () => projectSettingsApi.listMembers(id as string),
-		enabled: !!id,
-	});
-}
+export const useReleaseReadiness = (id: string | undefined) =>
+	useProjectQuery(releaseReadinessKey(id), id, projectSettingsApi.getReleaseReadiness);
 
-export function useInviteMember(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: ({
-			email,
-			role,
-		}: { email: string; role: "admin" | "member" | "viewer" }) =>
+export const useMembers = (id: string | undefined) => useProjectQuery(members(id), id, projectSettingsApi.listMembers);
+
+export const useInviteMember = (id: string | undefined) =>
+	useToastedMutation({
+		mutationFn: ({ email, role }: { email: string; role: ProjectRole }) =>
 			projectSettingsApi.inviteMember(id as string, email, role),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["project", id, "members"] });
-			qc.invalidateQueries({ queryKey: ["project", id, "invitations"] });
-			toast({ title: "Invitation sent", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't invite member",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+		invalidates: [members(id), invitations(id)],
+		saved: "Invitation sent",
+		failed: "Couldn't invite member",
 	});
-}
 
 /** Direct-add a same-org user to the project (no email round trip). */
-export function useDirectAddMember(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: ({
-			userId,
-			role,
-		}: { userId: string; role: "admin" | "member" | "viewer" }) =>
+export const useDirectAddMember = (id: string | undefined) =>
+	useToastedMutation({
+		mutationFn: ({ userId, role }: { userId: string; role: ProjectRole }) =>
 			projectSettingsApi.directAddMember(id as string, userId, role),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["project", id, "members"] });
-			toast({ title: "Member added", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't add member",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+		invalidates: [members(id)],
+		saved: "Member added",
+		failed: "Couldn't add member",
 	});
-}
 
-/** GET pending invitations (owner/admin). */
-export function useInvitations(id: string | undefined) {
-	return useQuery({
-		queryKey: ["project", id, "invitations"],
-		queryFn: () => projectSettingsApi.listInvitations(id as string),
-		enabled: !!id,
+export const useInvitations = (id: string | undefined) =>
+	useProjectQuery(invitations(id), id, projectSettingsApi.listInvitations);
+
+export const useRevokeInvitation = (id: string | undefined) =>
+	useToastedMutation({
+		mutationFn: (email: string) => projectSettingsApi.revokeInvitation(id as string, email),
+		invalidates: [invitations(id)],
+		saved: "Invitation cancelled",
+		failed: "Couldn't cancel invitation",
 	});
-}
 
-/** Revoke a pending invitation by email. */
-export function useRevokeInvitation(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: (email: string) =>
-			projectSettingsApi.revokeInvitation(id as string, email),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["project", id, "invitations"] });
-			toast({ title: "Invitation cancelled", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't cancel invitation",
-				description: formatApiError(err),
-				tone: "error",
-			}),
-	});
-}
-
-/** Change a member's role (owner only). */
-export function useUpdateMemberRole(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: ({
-			userId,
-			role,
-		}: { userId: string; role: "admin" | "member" | "viewer" }) =>
+export const useUpdateMemberRole = (id: string | undefined) =>
+	useToastedMutation({
+		mutationFn: ({ userId, role }: { userId: string; role: ProjectRole }) =>
 			projectSettingsApi.updateMemberRole(id as string, userId, role),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["project", id, "members"] });
-			toast({ title: "Role updated", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't update role",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+		invalidates: [members(id)],
+		saved: "Role updated",
+		failed: "Couldn't update role",
 	});
-}
 
-export function useRemoveMember(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: (userId: string) =>
-			projectSettingsApi.removeMember(id as string, userId),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["project", id, "members"] });
-			qc.invalidateQueries({ queryKey: ["project", id] });
-			toast({ title: "Member removed", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't remove member",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+export const useRemoveMember = (id: string | undefined) =>
+	useToastedMutation({
+		mutationFn: (userId: string) => projectSettingsApi.removeMember(id as string, userId),
+		invalidates: [members(id), project(id)],
+		saved: "Member removed",
+		failed: "Couldn't remove member",
 	});
-}
 
-export function useLabels(id: string | undefined) {
-	return useQuery({
-		queryKey: ["project", id, "labels"],
-		queryFn: () => projectSettingsApi.listLabels(id as string),
-		enabled: !!id,
-	});
-}
+export const useLabels = (id: string | undefined) => useProjectQuery(labels(id), id, projectSettingsApi.listLabels);
 
-export function useCreateLabel(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: (body: LabelCreateInput) =>
-			projectSettingsApi.createLabel(id as string, body),
-		onSuccess: (_row, body) => {
-			qc.invalidateQueries({ queryKey: ["project", id, "labels"] });
-			qc.invalidateQueries({ queryKey: ["project", id] });
-			toast({
-				title: body.kind === "module" ? "Module created" : "Label created",
-				tone: "success",
-			});
-		},
-		onError: (err, body) =>
-			toast({
-				title: body.kind === "module" ? "Couldn't create module" : "Couldn't create label",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+export const useCreateLabel = (id: string | undefined) =>
+	useToastedMutation({
+		mutationFn: (body: LabelCreateInput) => projectSettingsApi.createLabel(id as string, body),
+		invalidates: [labels(id), project(id)],
+		saved: (_row, body) => (body.kind === "module" ? "Module created" : "Label created"),
+		failed: (body) => (body.kind === "module" ? "Couldn't create module" : "Couldn't create label"),
 	});
-}
 
 /** Rename / recolour / re-parent / re-describe a label or module (`PATCH /api/labels/:id`). */
-export function useUpdateLabel(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
+export const useUpdateLabel = (id: string | undefined) =>
+	useToastedMutation({
 		mutationFn: (args: { labelId: string; patch: LabelPatchInput }) =>
 			projectSettingsApi.updateLabel(args.labelId, args.patch),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["project", id, "labels"] });
-			qc.invalidateQueries({ queryKey: ["project", id] });
-			qc.invalidateQueries({ queryKey: ["issues"] });
-			toast({ title: "Saved", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't save",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+		invalidates: [labels(id), project(id), ["issues"]],
+		saved: "Saved",
+		failed: "Couldn't save",
 	});
-}
 
-export function useDeleteLabel(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
+export const useDeleteLabel = (id: string | undefined) =>
+	useToastedMutation({
 		mutationFn: (labelId: string) => projectSettingsApi.deleteLabel(labelId),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["project", id, "labels"] });
-			qc.invalidateQueries({ queryKey: ["project", id] });
-			qc.invalidateQueries({ queryKey: ["issues"] });
-			toast({ title: "Deleted", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't delete",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+		invalidates: [labels(id), project(id), ["issues"]],
+		saved: "Deleted",
+		failed: "Couldn't delete",
 	});
-}
-

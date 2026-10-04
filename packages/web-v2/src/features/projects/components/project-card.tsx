@@ -1,7 +1,5 @@
 'use client';
 
-// Single project card for the Cards view. The whole card links into the
-// project; the pin star is an inline button that doesn't trigger navigation.
 import Link from 'next/link';
 import { HealthDot, Icon, ProjectMark, Stat } from '@/design';
 import { cn } from '@/lib/utils/cn';
@@ -10,6 +8,30 @@ import { projectGlyph, projectInitials } from '../glyph';
 import type { ProjectConsoleItem } from '../types';
 import { LiveCount } from './live-count';
 import { MemberStack } from './member-stack';
+
+/** The pin toggle inside a row that navigates: it must not trigger the navigation. */
+export function PinStar({ pinned, size, onToggle }: { pinned: boolean; size: number; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={pinned ? 'Unpin project' : 'Pin project'}
+      aria-pressed={pinned}
+      className="flex-none rounded-sm p-0.5 text-subtle hover:text-amber"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle();
+      }}
+    >
+      <Icon
+        name="star"
+        size={size}
+        className={pinned ? 'text-amber' : ''}
+        style={pinned ? { fill: 'currentColor' } : undefined}
+      />
+    </button>
+  );
+}
 
 interface ProjectCardProps {
   project: ProjectConsoleItem;
@@ -33,24 +55,7 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="truncate font-mono text-14 font-semibold text-fg">{project.name}</span>
-            <button
-              type="button"
-              aria-label={project.pinned ? 'Unpin project' : 'Pin project'}
-              aria-pressed={project.pinned}
-              className="flex-none rounded-sm p-0.5 text-subtle hover:text-amber"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onTogglePin(project.id);
-              }}
-            >
-              <Icon
-                name="star"
-                size={13}
-                className={project.pinned ? 'text-amber' : ''}
-                style={project.pinned ? { fill: 'currentColor' } : undefined}
-              />
-            </button>
+            <PinStar pinned={project.pinned} size={13} onToggle={() => onTogglePin(project.id)} />
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-subtle">
             {!project.orgIsPersonal && (

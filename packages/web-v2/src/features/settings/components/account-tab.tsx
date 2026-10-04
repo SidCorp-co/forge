@@ -31,23 +31,6 @@ const LANGUAGE_OPTIONS: SelectOption[] = [
 
 export function AccountTab() {
   const { user } = useAuth();
-  const prefsQ = usePreferences();
-  const update = useUpdatePreferences();
-
-  const [theme, setTheme] = useState<ThemePref>("system");
-  const [language, setLanguage] = useState<LanguagePref>("en");
-
-  // Hydrate the local form once the server preferences load.
-  useEffect(() => {
-    if (prefsQ.data) {
-      setTheme(prefsQ.data.theme);
-      setLanguage(prefsQ.data.language);
-    }
-  }, [prefsQ.data]);
-
-  const dirty =
-    !!prefsQ.data && (theme !== prefsQ.data.theme || language !== prefsQ.data.language);
-
   return (
     <div className="space-y-6">
       <Card>
@@ -65,48 +48,67 @@ export function AccountTab() {
           </dl>
         </CardContent>
       </Card>
-
-      <Card>
-        <CardContent>
-          <SectionTitle className="fg-h3 mb-4">Preferences</SectionTitle>
-          {prefsQ.isLoading ? (
-            <div className="space-y-4">
-              <Skeleton className="h-10 w-full rounded-md" />
-              <Skeleton className="h-10 w-full rounded-md" />
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <Field label="Theme" hint="Applies the next time the app loads.">
-                <Select
-                  options={THEME_OPTIONS}
-                  value={theme}
-                  onChange={(v) => setTheme(v as ThemePref)}
-                />
-              </Field>
-              <Field label="Language">
-                <Select
-                  options={LANGUAGE_OPTIONS}
-                  value={language}
-                  onChange={(v) => setLanguage(v as LanguagePref)}
-                />
-              </Field>
-              <div>
-                <Button
-                  variant="primary"
-                  loading={update.isPending}
-                  disabled={!dirty}
-                  onClick={() => update.mutate({ theme, language })}
-                  className="min-h-11"
-                >
-                  Save preferences
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
+      <PreferencesCard />
       <AssistantPreferencesCard />
     </div>
+  );
+}
+
+function PreferencesCard() {
+  const prefsQ = usePreferences();
+  const update = useUpdatePreferences();
+  const [theme, setTheme] = useState<ThemePref>("system");
+  const [language, setLanguage] = useState<LanguagePref>("en");
+
+  // Hydrate the local form once the server preferences load.
+  useEffect(() => {
+    if (prefsQ.data) {
+      setTheme(prefsQ.data.theme);
+      setLanguage(prefsQ.data.language);
+    }
+  }, [prefsQ.data]);
+
+  const dirty = !!prefsQ.data && (theme !== prefsQ.data.theme || language !== prefsQ.data.language);
+
+  return (
+    <Card>
+      <CardContent>
+        <SectionTitle className="fg-h3 mb-4">Preferences</SectionTitle>
+        {prefsQ.isLoading ? (
+          <div className="space-y-4">
+            <Skeleton className="h-10 w-full rounded-md" />
+            <Skeleton className="h-10 w-full rounded-md" />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <Field label="Theme" hint="Applies the next time the app loads.">
+              <Select
+                options={THEME_OPTIONS}
+                value={theme}
+                onChange={(v) => setTheme(v as ThemePref)}
+              />
+            </Field>
+            <Field label="Language">
+              <Select
+                options={LANGUAGE_OPTIONS}
+                value={language}
+                onChange={(v) => setLanguage(v as LanguagePref)}
+              />
+            </Field>
+            <div>
+              <Button
+                variant="primary"
+                loading={update.isPending}
+                disabled={!dirty}
+                onClick={() => update.mutate({ theme, language })}
+                className="min-h-11"
+              >
+                Save preferences
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

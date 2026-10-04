@@ -6,7 +6,7 @@
 import { Card, CardContent, Field, SectionTitle } from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
 
-export function RepoTab({ project }: { project: ProjectDetail; canEdit: boolean }) {
+export function RepoTab({ project }: { project: ProjectDetail }) {
   return (
     <Card>
       <CardContent>

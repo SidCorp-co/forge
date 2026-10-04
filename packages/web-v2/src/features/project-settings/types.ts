@@ -7,18 +7,20 @@ export interface ProjectUpdateInput {
 	orgId?: string;
 }
 
+export type ProjectRole = "admin" | "member" | "viewer";
+
 /** One row of `GET /api/projects/:id/members` — includes the member email. */
 export interface ProjectMemberRow {
 	userId: string;
 	email: string;
-	role: "admin" | "member" | "viewer";
+	role: ProjectRole;
 	createdAt: string;
 }
 
 /** One row of `GET /api/projects/:id/members/invitations` — a pending invite. */
 export interface ProjectInvitationRow {
 	email: string;
-	role: "admin" | "member" | "viewer";
+	role: ProjectRole;
 	expiresAt: string;
 	createdAt: string;
 	inviterEmail: string;
@@ -70,7 +72,7 @@ export interface PluginDesignation {
 
 /** One reason a release will not start, and what to do about it — mirrors
  *  `ReleaseBlocker` in core `release-batch/blocker-sentences.ts`. */
-export interface ReleaseBlocker {
+interface ReleaseBlocker {
 	code: string;
 	/** The one sentence an operator reads, carrying its own remedy. */
 	message: string;
@@ -80,7 +82,7 @@ export interface ReleaseBlocker {
 }
 
 /** Something that changes how a release runs without being a reason it will not. */
-export interface ReleaseWarning {
+interface ReleaseWarning {
 	code: string;
 	message: string;
 	details?: Record<string, unknown>;
@@ -93,7 +95,7 @@ interface ReleasePromotion {
 	via: "merge" | "cherry-pick";
 }
 
-export interface ReleaseProduction {
+interface ReleaseProduction {
 	environment: string;
 	/** The branch it deploys from where a promotion crosses into it; null where none does. */
 	deploysFrom: string | null;
@@ -145,5 +147,3 @@ export interface ReleaseReadiness {
 export interface ProjectAgentConfig {
 	plugins?: PluginDesignation[];
 }
-
-

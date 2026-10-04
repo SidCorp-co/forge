@@ -46,7 +46,7 @@ export interface BindingList {
 
 export type EffectiveLayer = "project" | "policy" | "testing-profile" | "device-binding" | "binding";
 
-export interface EffectiveValue {
+interface EffectiveValue {
 	value: unknown;
 	from: EffectiveLayer;
 	revision?: number;

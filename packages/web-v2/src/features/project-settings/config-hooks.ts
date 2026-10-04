@@ -1,7 +1,8 @@
 "use client";
 
-import { useToast } from "@/providers/toast-provider";
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { formatApiError } from "@/lib/api/error";
+import { useToast } from "@/providers/toast-provider";
 import { configApi } from "./config-api";
 import type { V1Write, V1Written } from "./config-types";
 
@@ -18,6 +19,35 @@ const keys = {
 	environments: (id: string | undefined) => ["project", id, "environment-state"] as const,
 	readiness: (id: string | undefined) => releaseReadinessKey(id),
 };
+
+/** A mutation that refreshes `invalidates` and toasts `saved` on success. With `failed` it toasts the
+ *  refusal too; without it the caller renders the error itself. */
+export function useToastedMutation<V, R>(o: {
+	mutationFn: (vars: V) => Promise<R>;
+	invalidates: readonly (readonly unknown[])[];
+	saved: string | ((result: R, vars: V) => string);
+	failed?: string | ((vars: V) => string);
+}) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	const { saved, failed } = o;
+	return useMutation({
+		mutationFn: o.mutationFn,
+		onSuccess: (result, vars) => {
+			for (const queryKey of o.invalidates) qc.invalidateQueries({ queryKey });
+			toast({ title: typeof saved === "string" ? saved : saved(result, vars), tone: "success" });
+		},
+		onError:
+			failed === undefined
+				? undefined
+				: (err, vars) =>
+						toast({
+							title: typeof failed === "string" ? failed : failed(vars),
+							description: formatApiError(err),
+							tone: "error",
+						}),
+	});
+}
 
 /** Every read a written document changes: its own list, and the reads composed from it. */
 function documentWrittenKeys(id: string | undefined, owner: readonly unknown[]) {
@@ -53,18 +83,13 @@ export const useBindingDocuments = (id: string | undefined) =>
 export const useSecretNames = (id: string | undefined) =>
 	useRead(keys.secrets(id), id, configApi.listSecretNames);
 
-export function useWriteSecret(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
+export const useWriteSecret = (id: string | undefined) =>
+	useToastedMutation({
 		mutationFn: (write: { scope: string; name: string; value: string }) =>
 			configApi.putSecret(id as string, write.scope, write.name, write.value),
-		onSuccess: (saved) => {
-			qc.invalidateQueries({ queryKey: keys.secrets(id) });
-			toast({ title: `A value is stored for ${saved.ref}`, tone: "success" });
-		},
+		invalidates: [keys.secrets(id)],
+		saved: (saved) => `A value is stored for ${saved.ref}`,
 	});
-}
 
 export const useEffectiveConfig = (id: string | undefined) =>
 	useRead(keys.effective(id), id, configApi.getEffective);
@@ -72,24 +97,18 @@ export const useEffectiveConfig = (id: string | undefined) =>
 export const useEnvironmentState = (id: string | undefined) =>
 	useRead(keys.environments(id), id, configApi.getEnvironmentState);
 
-function useDocumentWrite(
+const useDocumentWrite = (
 	id: string | undefined,
 	owner: readonly unknown[],
 	what: string,
 	send: (id: string, write: V1Write) => Promise<V1Written>,
 	alsoChanges: readonly (readonly unknown[])[] = [],
-) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
+) =>
+	useToastedMutation({
 		mutationFn: (write: V1Write) => send(id as string, write),
-		onSuccess: (saved) => {
-			for (const key of [...documentWrittenKeys(id, owner), ...alsoChanges])
-				qc.invalidateQueries({ queryKey: key });
-			toast({ title: `${what} saved at revision ${saved.revision}`, tone: "success" });
-		},
+		invalidates: [...documentWrittenKeys(id, owner), ...alsoChanges],
+		saved: (saved) => `${what} saved at revision ${saved.revision}`,
 	});
-}
 
 /** The project's slug and name are projected from this document, so every read of the project
  *  row — its detail and the console list — changes with it. */
@@ -112,15 +131,9 @@ export const useWriteBinding = (id: string | undefined, bindingId: string) =>
 		configApi.putBinding(project, bindingId, write),
 	);
 
-export function useDeleteTestingProfile(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
+export const useDeleteTestingProfile = (id: string | undefined) =>
+	useToastedMutation({
 		mutationFn: (profileId: string) => configApi.deleteTestingProfile(id as string, profileId),
-		onSuccess: (out) => {
-			qc.invalidateQueries({ queryKey: keys.profiles(id) });
-			qc.invalidateQueries({ queryKey: keys.effective(id) });
-			toast({ title: `Testing profile ${out.profileId} deleted`, tone: "success" });
-		},
+		invalidates: [keys.profiles(id), keys.effective(id)],
+		saved: (out) => `Testing profile ${out.profileId} deleted`,
 	});
-}
