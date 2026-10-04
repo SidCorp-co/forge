@@ -141,6 +141,15 @@ const CHECKS = [
     needs: ['deps', 'archmap-resolver', 'observability-build', 'contracts-build'],
   },
   {
+    axis: 'relations',
+    label: 'module-boundaries',
+    layer: 'shared',
+    reads: "packages/core's whole import graph against the rules modules.json generates",
+    cmd: ['node', 'scripts/check-module-boundaries.mjs'],
+    scanned: /^module-boundaries: (\d+) file\(s\) cruised/m,
+    needs: ['deps'],
+  },
+  {
     axis: 'form',
     label: 'core lint',
     layer: 'entry',
@@ -306,6 +315,7 @@ const CI_COVERAGE = {
   'node scripts/check-archmap-ready.mjs':
     'verify, as the `archmap-resolver` prerequisite the archmap check declares in `needs`',
   './.forge/archmap/archmap check': 'verify',
+  'node scripts/check-module-boundaries.mjs': 'verify',
   'node scripts/check-test-reachability.mjs': 'verify',
   'pnpm exec biome check scripts': 'verify',
   'pnpm --filter @forge/core lint': 'verify',

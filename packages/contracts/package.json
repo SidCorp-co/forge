@@ -74,6 +74,10 @@
       "types": "./dist/outbox-events.d.ts",
       "default": "./dist/outbox-events.js"
     },
+    "./outbox-consumers": {
+      "types": "./dist/outbox-consumers.d.ts",
+      "default": "./dist/outbox-consumers.js"
+    },
     "./run-standing": {
       "types": "./dist/run-standing.d.ts",
       "default": "./dist/run-standing.js"

@@ -15,6 +15,7 @@ export default defineConfig({
     './src/db/schema-workflows.ts',
     './src/db/schema-requirements.ts',
     './src/db/schema-suggestions.ts',
+    './src/db/schema-outbox.ts',
     './src/db/schema-onboarding.ts',
     './src/db/schema-feedback.ts',
     './src/db/schema-mockups.ts',

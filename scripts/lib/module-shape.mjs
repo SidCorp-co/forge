@@ -1,49 +1,80 @@
-// Pattern v2's module rules (docs/conventions/domain-entities.md, ADR 0008), measured over
-// packages/core/src. Pure functions: the CLI hands in the declaration, the file texts and the import
-// graph archmap built, and gets findings back. Nothing here reads the disk.
+// Pattern v2's declaration checks and semantic module rules (docs/conventions/domain-entities.md,
+// ADR 0008), measured over packages/core/src. The import rules are dependency-cruiser's
+// (module-boundaries.mjs). Pure functions: the CLI hands in the declaration and the file texts, and
+// gets findings back. Nothing here reads the disk.
 
 export const KINDS = ['kernel', 'domain', 'read-model', 'adapter', 'door', 'platform'];
 
-/** What each kind may import, besides itself. The order is the dependency direction. */
-export const MAY_IMPORT = {
-  door: ['door', 'read-model', 'domain', 'kernel', 'adapter', 'platform'],
-  'read-model': ['read-model', 'domain', 'kernel', 'platform'],
-  domain: ['domain', 'kernel', 'adapter', 'platform'],
-  kernel: ['kernel', 'platform'],
-  adapter: ['adapter', 'platform'],
-  platform: ['platform'],
-};
-
-export const RULES = [
-  'kind',
-  'direction',
-  'public-face',
-  'cycle',
-  'table-writer',
-  'route-query',
-  'refusal',
-  'status-write',
-];
+export const RULES = ['kind', 'table-writer', 'route-query', 'refusal', 'status-write'];
 
 export const ROOT_MODULE = '(root)';
 const SRC = 'packages/core/src/';
 
+/** The kinds that may own a table; a read model derives and a door composes. */
+export const OWNING_KINDS = ['kernel', 'domain', 'adapter', 'platform'];
+
+/** The technical layers, each defined by one kind. */
+export const LAYER_OF_KIND = { platform: 'platform', adapter: 'adapters' };
+
+const SHAPE =
+  'shape { contexts: [{ name, label }], modules: { "<dir>": { kind, context, owns? } } }';
+
+/** The declared contexts in dependency order, or the faults that stop them being read. */
+function parseContexts(list) {
+  if (!Array.isArray(list) || list.length === 0)
+    return { faults: [`modules.json: no \`contexts\` list — ${SHAPE}`], order: [] };
+  const faults = [];
+  const order = [];
+  for (const [i, c] of list.entries()) {
+    if (typeof c?.name !== 'string' || !/^[a-z][a-z-]*$/.test(c.name))
+      faults.push(`modules.json: contexts[${i}] has no kebab-case \`name\` — ${SHAPE}`);
+    else if (order.includes(c.name)) faults.push(`modules.json: context ${c.name} is listed twice`);
+    else order.push(c.name);
+    if (typeof c?.label !== 'string' || !c.label.trim())
+      faults.push(`modules.json: contexts[${i}] has no \`label\`, its root module label`);
+  }
+  for (const layer of Object.values(LAYER_OF_KIND))
+    if (!order.includes(layer)) faults.push(`modules.json: the ${layer} layer is not a context`);
+  return { faults, order };
+}
+
 /** Refuses a declaration it cannot read whole, naming the entry and the valid shape. */
 export function parseDeclaration(doc) {
-  const faults = [];
   const modules = doc?.modules;
   if (!modules || typeof modules !== 'object') {
-    return {
-      faults: [
-        'modules.json: no `modules` object — shape { modules: { "<dir>": { kind, owns? } } }',
-      ],
-    };
+    return { faults: [`modules.json: no \`modules\` object — ${SHAPE}`] };
   }
+  const { faults, order } = parseContexts(doc.contexts);
   const owners = new Map();
   for (const [path, spec] of Object.entries(modules)) {
     if (!KINDS.includes(spec?.kind)) {
       faults.push(
         `modules.json: ${path} declares kind ${JSON.stringify(spec?.kind)}, not one of ${KINDS.join(', ')}`,
+      );
+    }
+    if (spec?.context === undefined) {
+      faults.push(`modules.json: ${path} declares no context — one of ${order.join(', ')}`);
+    } else if (!order.includes(spec.context)) {
+      faults.push(
+        `modules.json: ${path} declares context ${JSON.stringify(spec.context)}, not one of ${order.join(', ')}`,
+      );
+    } else {
+      const layer = LAYER_OF_KIND[spec.kind];
+      if (layer && spec.context !== layer)
+        faults.push(
+          `modules.json: ${path} is a ${spec.kind} module in ${spec.context}; every ${spec.kind} module is in ${layer}`,
+        );
+      if (
+        Object.values(LAYER_OF_KIND).includes(spec.context) &&
+        ['domain', 'read-model'].includes(spec.kind)
+      )
+        faults.push(
+          `modules.json: ${path} is a ${spec.kind} in the ${spec.context} layer, which holds no domain or read model`,
+        );
+    }
+    if (spec?.owns?.length && KINDS.includes(spec.kind) && !OWNING_KINDS.includes(spec.kind)) {
+      faults.push(
+        `modules.json: ${path} is a ${spec.kind} and owns ${spec.owns.join(', ')}; only ${OWNING_KINDS.join(', ')} modules own tables`,
       );
     }
     for (const table of spec?.owns ?? []) {
@@ -55,7 +86,7 @@ export function parseDeclaration(doc) {
       else owners.set(table, path);
     }
   }
-  return { faults, modules, owners };
+  return { faults, modules, owners, contexts: order };
 }
 
 export function isTestFile(file) {
@@ -89,113 +120,6 @@ export function kindFindings(dirs, modules) {
       file: `${SRC}${d}`,
       detail: `${d} declares no kind in modules.json`,
     }));
-}
-
-function crossEdges(edges, modules) {
-  const out = [];
-  for (const e of edges) {
-    if (!e.fromFile || !e.toFile || isTestFile(e.fromFile) || isTestFile(e.toFile)) continue;
-    const from = moduleOf(e.fromFile, modules);
-    const to = moduleOf(e.toFile, modules);
-    if (!from || !to || from === to) continue;
-    out.push({ ...e, from, to });
-  }
-  return out;
-}
-
-/** An import from a kind to a kind it may not reach. */
-export function directionFindings(edges, modules) {
-  const out = [];
-  for (const e of crossEdges(edges, modules)) {
-    const fk = kindOf(e.from, modules);
-    const tk = kindOf(e.to, modules);
-    if (!fk || !tk || MAY_IMPORT[fk].includes(tk)) continue;
-    out.push({
-      rule: 'direction',
-      module: e.from,
-      file: e.fromFile,
-      detail: `${fk} ${e.from} imports ${tk} ${e.to} (${e.toFile.slice(SRC.length)})`,
-    });
-  }
-  return out;
-}
-
-/** An import that lands anywhere in a non-platform module but its index.ts. */
-export function publicFaceFindings(edges, modules) {
-  const out = [];
-  for (const e of crossEdges(edges, modules)) {
-    const tk = kindOf(e.to, modules);
-    if (!tk || tk === 'platform') continue;
-    const face = e.to === ROOT_MODULE ? `${SRC}index.ts` : `${SRC}${e.to}/index.ts`;
-    if (e.toFile === face) continue;
-    out.push({
-      rule: 'public-face',
-      module: e.from,
-      file: e.fromFile,
-      detail: `imports ${e.toFile.slice(SRC.length)}, an internal of ${e.to}`,
-    });
-  }
-  return out;
-}
-
-/** Strongly connected components of a directed graph, largest first. */
-export function components(graph) {
-  const index = new Map();
-  const low = new Map();
-  const stack = [];
-  const on = new Set();
-  const out = [];
-  let i = 0;
-  const visit = (v) => {
-    index.set(v, i);
-    low.set(v, i);
-    i += 1;
-    stack.push(v);
-    on.add(v);
-    for (const w of graph.get(v) ?? []) {
-      if (!index.has(w)) {
-        visit(w);
-        low.set(v, Math.min(low.get(v), low.get(w)));
-      } else if (on.has(w)) {
-        low.set(v, Math.min(low.get(v), index.get(w)));
-      }
-    }
-    if (low.get(v) === index.get(v)) {
-      const comp = [];
-      let w;
-      do {
-        w = stack.pop();
-        on.delete(w);
-        comp.push(w);
-      } while (w !== v);
-      out.push(comp.sort());
-    }
-  };
-  for (const v of graph.keys()) if (!index.has(v)) visit(v);
-  return out.sort((a, b) => b.length - a.length);
-}
-
-/** Each module inside an import cycle, with the cycle it sits in. */
-export function cycleFindings(edges, modules) {
-  const graph = new Map();
-  for (const e of crossEdges(edges, modules)) {
-    if (!graph.has(e.from)) graph.set(e.from, new Set());
-    if (!graph.has(e.to)) graph.set(e.to, new Set());
-    graph.get(e.from).add(e.to);
-  }
-  const cycles = components(graph).filter((c) => c.length > 1);
-  const findings = [];
-  for (const c of cycles) {
-    for (const m of c) {
-      findings.push({
-        rule: 'cycle',
-        module: m,
-        file: m === ROOT_MODULE ? `${SRC}index.ts` : `${SRC}${m}`,
-        detail: `sits in an import cycle of ${c.length} modules`,
-      });
-    }
-  }
-  return { findings, cycles };
 }
 
 function lineAt(text, offset) {
@@ -383,7 +307,7 @@ export function totals(byModule) {
 }
 
 /** The reconciliation markers: one node per module, Wrong while any rule fails. */
-export function markers(byModule, { atSha, cycles, multiWriter, rewriteAt = 2 }) {
+export function markers(byModule, { atSha, multiWriter, rewriteAt = 2 }) {
   const nodes = {};
   for (const [m, row] of Object.entries(byModule)) {
     const aspects = RULES.filter((r) => row.counts[r] > 0);
@@ -412,7 +336,6 @@ export function markers(byModule, { atSha, cycles, multiWriter, rewriteAt = 2 })
     atSha: atSha ?? null,
     rules: RULES,
     totals: totals(byModule),
-    cycles,
     multiWriterTables: multiWriter,
     nodes,
   };

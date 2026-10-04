@@ -11,13 +11,14 @@
  */
 
 import { inArray, sql } from 'drizzle-orm';
+import { readThresholds } from '../admin-thresholds/index.js';
 import { db } from '../db/client.js';
 import { schedules } from '../db/schema.js';
 import { runnerMayTakeJob } from '../devices/release-label.js';
 import { buildBarrierFragments } from '../jobs/queued-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
+import { tallyDeadDeliveries } from '../outbox/index.js';
 import { readScheduleStreaks, type ScheduleStreak, streakFails } from '../schedules/streak.js';
-import { readThresholds } from './thresholds.js';
 import type { AdminAlert, AdminAlertId, AdminAlertStatus, AdminThresholds } from './types.js';
 import { ADMIN_THRESHOLD_DEFAULTS } from './types.js';
 
@@ -506,17 +507,41 @@ async function alertAutomationFailing(thresholds: AdminThresholds, now: Date): P
   };
 }
 
-/** Always returns exactly 5 items, ordered A1..A5. Shared by the pull route and the push sweeper. */
+/**
+ * A6 — outbox deliveries that ran out of attempts. Any dead delivery is crit: a reaction that will
+ * not happen until somebody replays it (`POST /api/projects/:id/outbox/deliveries/:did/replay`).
+ */
+async function alertDeadDeliveries(): Promise<AdminAlert> {
+  const { count, oldestDeadAt, sample } = await tallyDeadDeliveries(ENTITY_LIMIT);
+  return {
+    id: 'A6',
+    key: 'outbox_dead',
+    status: count > 0 ? 'crit' : 'ok',
+    count,
+    detail:
+      count > 0
+        ? `${count} outbox deliver${count === 1 ? 'y' : 'ies'} dead after every retry`
+        : 'No dead outbox deliveries',
+    since: oldestIso([oldestDeadAt]),
+    entities: sample.map((d) => ({
+      ref: d.id,
+      kind: 'outbox_delivery',
+      label: `${d.type} → ${d.consumer}`,
+    })),
+  };
+}
+
+/** Always returns exactly 6 items, ordered A1..A6. Shared by the pull route and the push sweeper. */
 export async function computeAlerts(opts: AlertQueryOptions = {}): Promise<AdminAlert[]> {
   const thresholds = opts.thresholds ?? (await readThresholds());
   const staleSeconds = opts.staleSeconds ?? thresholds.stuckJobSeconds;
   const now = opts.now ?? new Date();
-  const [a1, a2, a3, a4, a5] = await Promise.all([
+  return Promise.all([
     alertOrphanJobs(),
     alertStuckJobs(staleSeconds),
     alertRunnerStarved(thresholds.runnerStarvedSeconds),
     alertSpendSpike(now, thresholds),
     alertAutomationFailing(thresholds, now),
+    alertDeadDeliveries(),
   ]);
-  return [a1, a2, a3, a4, a5];
 }

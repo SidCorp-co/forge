@@ -12,16 +12,59 @@ requirements and workflow designs.
   so a verdict or a Wrong marker can name the rule it judges.
 - **Why each rule exists** is in [ADR 0008](../adr/0008-module-kinds-and-dependency-direction.md).
   This page says only what to build.
-- **Code that breaks a rule is Wrong**, and is rebuilt to the rule rather than patched.
-  `scripts/check-module-shape.mjs` measures the rules a script can read, and `--markers` writes its
-  findings as Wrong markers. The orchestrator or QA runs it on demand; nothing runs it before a
-  push. There is no hand-kept list of divergences on this page.
+- **Code that breaks a rule is Wrong**, and is rebuilt to the rule rather than patched. There is
+  no hand-kept list of divergences on this page.
+- **The import rules block.** `scripts/check-module-boundaries.mjs` runs dependency-cruiser over
+  `packages/core/src` with rules generated from `packages/core/src/modules.json`: context direction,
+  kind direction, runtime cycles between modules, face-only access and adapters through their port.
+  Today's violations are frozen in `.forge/module-boundaries-baseline.json`; a new violation, an
+  entry that no longer occurs, or a rule whose frozen count rose fails, so the baseline only
+  shrinks. It runs in `pnpm verify` and CI.
+- **The semantic rules are reported on demand.** `scripts/check-module-shape.mjs` refuses a
+  declaration that contradicts itself and reports table writers, database calls in routes, the
+  refusal shape and status writes; `--markers` writes its findings as Wrong markers. The
+  orchestrator or QA runs it; nothing runs it before a push.
 - **The API comes first.** The CLI wraps the routes, and MCP keeps only what neither covers
   ([api-first.md](../proposals/destination/api-first.md)), so every rule below is stated for the
   route first.
 - **Code only on dev, QA later.** On dev the only check before a push is `pnpm tc:changed`
   (`scripts/tc-changed.mjs`), which typechecks the packages a change touched and their importers. Tests, verify, checkers and CI are not run while building; QA is a
   later phase (owner, 2026-10-04: "build trước đi đã test gọi QA test sau").
+
+## Business contexts
+
+Every module also belongs to one **context**, declared as `context` on its entry in
+`packages/core/src/modules.json`. The contexts are listed once, in order, under `contexts` in the
+same file; each carries the name of its root module label on the Forge project (`label`). Ten are
+business contexts and two are technical layers.
+
+| # | Context | Label | Holds |
+|---|---|---|---|
+| 1 | `platform` | Platform | Every platform-kind module, the outbox, and the three composition doors: the root, `mcp`, `ws` |
+| 2 | `adapters` | Adapters | Every adapter (each `integrations/<port>`, the registry, `git`, `storage`) and the integration door |
+| 3 | `access` | Identity & access | Sign-in and users (`auth`), orgs, the permission kernel, install |
+| 4 | `project-config` | Projects & config | Projects, the project document and its revisions, assistant settings, preferences |
+| 5 | `knowledge` | Knowledge | Knowledge entries and edges, memory, guides, onboarding |
+| 6 | `work` | Work & delivery | Issues, the transition engine, the pipeline, comments, tasks, questions, PM, labels, uploads, error intake |
+| 7 | `execution` | Execution | Agents, sessions, jobs, runs, masters, runners, devices, prompts, skills, schedules, usage records |
+| 8 | `design` | Product design | Requirements, workflow designs, mockups, suggestions, feedback |
+| 9 | `release` | Release & deploy | Release batches |
+| 10 | `ecosystem` | Ecosystem | Ecosystems, contracts, channels, inbound webhooks |
+| 11 | `conversations` | Conversations | The assistant, conversations, chat logs, notifications |
+| 12 | `operations` | Operations | Metrics, health, the admin views and their thresholds |
+
+- **Direction between contexts comes first.** A module imports modules of its own context or of a
+  context listed above it in this table, never one listed below it. The order is the reading of
+  the real import graph: each context sits above the contexts it imports most, and every import
+  that runs the other way is a back edge to cut (ADR 0008, Amendment of ISS-184).
+- **A door is exempt from context direction**, because a door is an entry that composes contexts.
+  Its kind still holds: only a door imports a door.
+- **The technical layers are defined by kind.** A platform-kind module is in `platform`, an
+  adapter is in `adapters`, and neither layer holds a domain or a read model.
+- **Work is upstream of execution.** A job carries out an issue's step and moves the issue through
+  the work kernel's transition, so execution imports work. Work learns what execution did from
+  execution's outbox events; the pipeline does not call into jobs, sessions or runners.
+- **Inside a context the six kinds are the rule.** A context is rebuilt to the kinds as one unit.
 
 ## Module kinds (BC-11)
 
@@ -32,12 +75,17 @@ a door.
 
 | Kind | Holds | Must not |
 |---|---|---|
-| **kernel** | The job, session, run and issue machines, the transition engine, leases, evidence and records, retry, escalation, the outbox, and memberships with their roles and grants (the permission kernel's own data) | Hold a product rule; call an adapter |
-| **domain** | One product entity family: requirements, feedback, release, chat, and so on | Compute a fact another module also computes |
+| **kernel** | The job, session, run and issue machines, the transition engine, leases, evidence and records (a job's usage records among them), retry, escalation, the outbox, and memberships with their roles and grants (the permission kernel's own data) | Hold a product rule; call an adapter |
+| **domain** | One product entity family: requirements, feedback, release, chat, users and sign-in, and so on | Compute a fact another module also computes |
 | **read-model** | Derived facts only: standing, waiting-on, needs-you, coverage, counts, the system graph | Write any table |
 | **adapter** | One external system behind a role-named port ([ADR 0006](../adr/0006-every-external-system-is-reached-through-one-adapter-port.md)) | Import a domain, a kernel module or a read model |
-| **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, the integration door (a provider's routes and MCP tools, which reach its adapter through the port), and the auth door (sign-in, which reaches the identity adapter through its port) | Hold a rule or a query |
+| **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, and the integration door (a provider's routes and MCP tools, which reach its adapter through the port) | Hold a rule or a query |
 | **platform** | The db client and schema, `lib`, middleware, queue, config, observability, the credential helpers (`credentials`) | Import any other kind |
+
+**Who owns tables.** A kernel, a domain, an adapter or a platform module may own tables; a read
+model and a door own none. An adapter owns only its own bookkeeping with the vendor (connections,
+deliveries, mirrored vendor state), never a product entity. A platform module owns only its own
+bookkeeping (backfill markers, tokens, the embedding index).
 
 ## Dependency direction (BC-12)
 
@@ -59,7 +107,9 @@ door ──▶ read-model ──▶ domain ──▶ kernel ──▶ platform
 - **Nothing points back up.** The schema and `lib` import no domain; a kernel module never imports
   the domain that reacts to it.
 - **No cycle between modules.** Two modules that need each other both ways are one module, or one
-  of them reacts to the other's outbox event.
+  of them reacts to the other's outbox event. A cycle counts only runtime imports: a type-only
+  import is erased at build and a dynamic import evaluates on call, so neither orders module
+  loading.
 - **Inbound vendor traffic** (a webhook, a chat socket, a poll) enters through a door and calls the
   module that owns the effect. The adapter only speaks the vendor's protocol.
 - **A domain that gates on a derived fact** applies the fact's predicate from contracts to its own
@@ -67,10 +117,20 @@ door ──▶ read-model ──▶ domain ──▶ kernel ──▶ platform
 
 ## Public face (BC-13)
 
-- Each kernel, domain, read-model, adapter and door module has exactly one **index.ts**. It exports
-  the module's services, read functions, types, `routes` and, when it has one, `tool`, and nothing
-  else.
-- Another module imports that **index.ts** and never a file behind it.
+A face is split in two, because importing a file evaluates everything it imports: a constant read
+through a face that also builds routers loads every service, and inside an import cycle that order
+throws "Cannot access X before initialization" (ISS-168).
+
+- **The light face.** Each kernel, domain, read-model, adapter and door module has exactly one
+  **index.ts**. It exports the module's services, read functions and types, and nothing else. It
+  constructs nothing at import: no router, no tool, no timer, no registration.
+- **The heavy face.** A module's routers are exported from its **routes.ts** and its MCP tool from
+  its **tool.ts**. Only `packages/core/src/route-registry.ts` imports a **routes.ts**, and only
+  `packages/core/src/mcp/registry.ts` a **tool.ts**.
+- Another module imports the **index.ts** and never a file behind it.
+- **Shared constants and types come from `@forge/contracts`**, not through a core face.
+- **A type-only edge is written `import type`.** Core and contracts compile with
+  `verbatimModuleSyntax`, so a type import is erased and only a value import is a runtime edge.
 - Platform modules are leaves and are imported file by file.
 
 ## Module layout
@@ -85,9 +145,9 @@ One file per responsibility, under `packages/core/src/<module>/`. The references
 | **service.ts** | Writes. Each runs in one transaction under the entity's advisory lock (`packages/core/src/requirements/service.ts:lockRequirements`) and returns `{ ok: true, … } \| { ok: false; refusals }` | Throw a refusal. It throws only a 404 and invariant `Error`s |
 | **standing.ts** | The module's derived facts, when it has any, extending `packages/contracts/src/standing.ts:Standing` | Write |
 | **events.ts** | The outbox events this module emits, typed in contracts | Emit an event no module consumes |
-| **routes.ts** | Hono routes: param validators, `strictBody`, the actor, `answer` | Hold a rule or a database call (BC-15) |
-| **tool.ts** | The MCP door, only when an agent needs what the CLI and the API do not cover (BC-21) | Re-implement a rule |
-| **index.ts** | The public face (BC-13) | Mount anything |
+| **routes.ts** | Hono routes: param validators, `strictBody`, the actor, `answer`. It is the heavy face: every router the module serves is exported from it | Hold a rule or a database call (BC-15); be imported by anything but the route registry |
+| **tool.ts** | The MCP door, only when an agent needs what the CLI and the API do not cover (BC-21) | Re-implement a rule; be imported by anything but the MCP registry |
+| **index.ts** | The light face (BC-13): services, read functions, types | Mount anything; export a router or a tool; construct anything at import |
 
 - **Routes hold no queries (BC-15).** A route file validates, calls one service or read function,
   and answers. A `db` or `tx` call in a route file is a finding. A route file is one named
@@ -111,9 +171,9 @@ và CLI hơn thì không cần MCP".
   routes, lives in its module (**tool.ts**), and calls the same service and read functions as the
   route. Its input is one `z.strictObject`; it declares `grant`, `reach` and `route`, and both doors
   refuse a call through `packages/core/src/lib/tool-call-guard.ts:toolCallRefusal`.
-- **One route-mount registry** in the HTTP door mounts every module's exported `routes`
-  (`packages/core/src/route-registry.ts:mountRoutes`), and one MCP registry registers the remaining
-  tools (`packages/core/src/mcp/registry.ts:MCP_TOOLS`, keyed by
+- **One route-mount registry** in the HTTP door mounts the routers each module's **routes.ts**
+  exports (`packages/core/src/route-registry.ts:mountRoutes`), and one MCP registry registers the
+  remaining tools from each module's **tool.ts** (`packages/core/src/mcp/registry.ts:MCP_TOOLS`, keyed by
   `packages/contracts/src/mcp-tools.ts:MCP_TOOL_NAMES`). Nothing else mounts another module's
   router; `packages/core/src/index.ts` only boots.
 - **Answers.** A list answers summaries and a write answers what it changed: `act`, the entity's
@@ -226,12 +286,36 @@ A write a rule refuses answers **422** with one body, and nothing is written:
   (`packages/core/src/db/schema-feedback.ts:feedbackDecisions`); overwriting the last one loses
   history.
 - **A fact another module reacts to is an outbox event**, written in the act's transaction to the
-  one durable outbox (`packages/core/src/db/schema.ts:pipelineOutbox`) by
+  one durable outbox (`packages/core/src/db/schema-outbox.ts:pipelineOutbox`) by
   `packages/core/src/outbox/emit.ts:emitEvent`, its types in
-  `packages/contracts/src/outbox-events.ts:OUTBOX_EVENT_TYPES`. A reaction is a named consumer
-  (`packages/core/src/outbox/consumers.ts:consume`), registered in
-  `packages/core/src/outbox-consumers.ts:registerOutboxConsumers` and delivered by the outbox worker,
-  which retries only the consumers that failed. There is no in-memory bus.
+  `packages/contracts/src/outbox-events.ts:OUTBOX_EVENT_TYPES`. There is no in-memory bus.
+- **Every consumer is declared in contracts** (`packages/contracts/src/outbox-consumers.ts:OUTBOX_CONSUMERS`)
+  and registered under that name (`packages/core/src/outbox/consumers.ts:consume`, from
+  `packages/core/src/outbox-consumers.ts:registerOutboxConsumers`). The worker refuses to start
+  while the two disagree.
+- **One delivery row per event and consumer** (`packages/core/src/db/schema-outbox.ts:outboxDeliveries`),
+  written with the event, holds that consumer's status (`pending`, `delivered`, `dead`), attempts,
+  next attempt, lease and last error. Consumers are independent: one failing never retries or holds
+  back another.
+- **The delivery row is the consumer's inbox.** A consumer whose effect is rows writes them inside
+  `Delivery.inbox(tx => …)`, which marks the delivery `delivered` in the same transaction, so a
+  redelivery after the commit writes nothing again. A consumer whose effect leaves the database (a
+  push, a queue send) is marked by the worker when it returns, and is delivered at least once.
+- **Retries back off over hours** (`OUTBOX_MAX_ATTEMPTS` starts, doubling from
+  `OUTBOX_RETRY_BASE_MS` to `OUTBOX_RETRY_CAP_MS`, jittered), then the delivery is `dead`. Dead
+  deliveries are listed at `GET /api/projects/:id/outbox/dead` (and every project's, project-less
+  events included, at `GET /api/admin/outbox/dead`), replayed by
+  `POST /api/projects/:id/outbox/deliveries/:did/replay` under `outbox.replay`, and raised as the
+  `A6` ops alert (`packages/core/src/admin/alert-queries.ts:computeAlerts`). A consumer with a row
+  of its own waiting on the delivery settles it in `onDeadLetter`.
+- **An issue's events reach each consumer in order**: a delivery waits while an earlier event of the
+  same issue is still pending for the same consumer, backoff included. A dead one no longer holds
+  the issue back; replaying it delivers it after its successors.
+- **The lease is renewed while a consumer runs**, so a slow consumer is never claimed twice.
+- **The worker is woken in-process after the emitting transaction commits**
+  (`packages/core/src/db/client.ts:afterCommit`); nothing is signalled from inside the transaction,
+  and polling backs it up. Delivered rows, and events left with no delivery, are pruned after
+  `OUTBOX_RETENTION_DAYS` by the `outbox-retention` timer (`packages/core/src/timer-registry.ts`).
 - **An event nobody consumes is not emitted**, and a subscription to an event nobody emits is
   removed. Each event node of an approved design maps to an event kind or to "the row is the
   record".
@@ -390,15 +474,17 @@ Take feedback (`FB-n`) as the example, under `packages/`.
 contracts/src/feedback.ts         FEEDBACK_STATUSES, FEEDBACK_REFUSAL_CODES, limits, request schemas
                                   + their SHAPE strings, views, events, the machine if it has one
 core/src/db/schema-feedback.ts    the tables; each listed under feedback's `owns` in modules.json
-core/src/modules.json             "feedback": { "kind": "domain", "owns": [...] }
+core/src/modules.json             "feedback": { "kind": "domain", "context": "design", "owns": [...] }
 core/src/feedback/rules.ts        pure guards → FeedbackRefusal | null
 core/src/feedback/read.ts         rowIn (uuid | FB-n | n), feedbackKey, list and detail views
 core/src/feedback/service.ts      lockFeedback; createFeedback / declineFeedback → Outcome
 core/src/feedback/standing.ts     its derived facts, if any, in the contracts standing shape
 core/src/feedback/events.ts       the outbox events it emits, each with a consumer
-core/src/feedback/routes.ts       strictBody(...); answer(outcome) → refused | c.json(view)
-core/src/feedback/tool.ts         only if an agent needs what the CLI and API do not cover
-core/src/feedback/index.ts        { routes, tool, services, read functions, types }
+core/src/feedback/routes.ts       strictBody(...); answer(outcome) → refused | c.json(view);
+                                  imported only by route-registry.ts
+core/src/feedback/tool.ts         only if an agent needs what the CLI and API do not cover;
+                                  imported only by mcp/registry.ts
+core/src/feedback/index.ts        { services, read functions, types }
 web-v2/src/features/feedback/     api.ts, hooks.ts, types.ts, routes.ts, components/
 ```
 
@@ -408,8 +494,11 @@ web-v2/src/features/feedback/     api.ts, hooks.ts, types.ts, routes.ts, compone
 |---|---|
 | One kind per directory and a direction | Most of core breaks it on the first reading; every module is rebuilt through the reconciliation flow rather than refactored in place, and a rebuild loses what the old code handled that no rule or design stated |
 | One index.ts per module | A barrel per module, and an internal import that used to be free is now a finding until the module exposes it |
+| A light face and a heavy face | Two entry files per module instead of one, and a constant another module needs moves to contracts rather than riding the face |
+| Direction between twelve contexts first | A back edge between two contexts is cut by an outbox event or a port filled at boot rather than a direct call, and each cut is a change of its own; the order was read from today's graph, so a context whose code is wrongly placed reads as a back edge until it moves |
 | One owner per table | A cross-module write becomes a call into the owner's service, one more function and one more transaction boundary to get right |
 | The machine as data and one kernel transition | Every status write in core moves into one engine, and a slice can no longer set its own status in a one-line update |
-| One durable outbox | Every reaction is asynchronous and survives a crash, at the price of a table write per event and a consumer that must be idempotent |
+| One durable outbox | Every reaction is asynchronous and survives a crash, at the price of a table write per event plus one per consumer, and a consumer whose effect leaves the database must be idempotent |
 | One 422 for every rule refusal | A client reads `error.code` and never branches on 403 or 409 |
-| The checker runs on demand, not before a push | New code can break a rule and land; the break shows only when the orchestrator or QA next runs the checker |
+| The semantic rules run on demand, not before a push | New code can break a table-writer, route-query, refusal or status-write rule and land; the break shows only when the orchestrator or QA next runs the script |
+| A shrink-only baseline for the import rules | A file move rewrites its baseline keys, so the move carries `--update-baseline` with it; a violation can never be admitted by re-freezing, only fixed |

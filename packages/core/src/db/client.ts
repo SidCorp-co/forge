@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { env } from '../config/env.js';
@@ -98,8 +99,36 @@ function currentDb(): Db {
   return instance;
 }
 
+const commitHooks = new AsyncLocalStorage<Array<() => void>>();
+
+/**
+ * Runs `fn` after the `db.transaction` it is called inside commits, or at once outside any. A
+ * transaction that rolls back runs none of its hooks.
+ */
+export function afterCommit(fn: () => void): void {
+  const hooks = commitHooks.getStore();
+  if (hooks) hooks.push(fn);
+  else runHook(fn);
+}
+
+function runHook(fn: () => void): void {
+  try {
+    fn();
+  } catch (err) {
+    logger.error({ err }, 'db: an after-commit hook threw');
+  }
+}
+
+const transactionWithHooks = (async (...args: Parameters<Db['transaction']>) => {
+  const hooks: Array<() => void> = [];
+  const result = await commitHooks.run(hooks, () => currentDb().transaction(...args));
+  for (const fn of hooks) runHook(fn);
+  return result;
+}) as Db['transaction'];
+
 export const db: Db = new Proxy({} as Db, {
   get(_target, prop) {
+    if (prop === 'transaction') return transactionWithHooks;
     const real = currentDb();
     const value = Reflect.get(real as object, prop, real);
     if (typeof value !== 'function') return value;
@@ -115,16 +144,6 @@ export const db: Db = new Proxy({} as Db, {
 });
 
 export type Tx = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
-
-/** LISTEN on a channel over the client's own dedicated connection, which reconnects by itself. */
-export async function listen(
-  channel: string,
-  onNotify: (payload: string) => void,
-): Promise<{ unlisten: () => Promise<void> }> {
-  currentDb();
-  if (queryClient === undefined) throw new Error('db: no client to listen on');
-  return queryClient.listen(channel, onNotify);
-}
 
 export async function closeDb(): Promise<void> {
   if (queryClient === undefined) return;

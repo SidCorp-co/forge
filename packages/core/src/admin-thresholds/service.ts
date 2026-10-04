@@ -1,7 +1,7 @@
 import { db } from '../db/client.js';
+import type { AdminThresholds } from '../db/schema-admin-thresholds.js';
 import { ADMIN_THRESHOLDS_ID, adminThresholds } from '../db/schema-admin-thresholds.js';
-import { readThresholds } from './thresholds.js';
-import type { AdminThresholds } from './types.js';
+import { readThresholds } from './read.js';
 
 /** Merges `patch` over the stored thresholds and upserts the singleton; answers what is stored. */
 export async function saveThresholds(

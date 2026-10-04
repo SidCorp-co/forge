@@ -47,9 +47,12 @@ const PROBES = {
     ],
   },
   relations: {
-    gate: 'archmap check',
+    gate: 'archmap check + check-module-boundaries',
     probe: ['./.forge/archmap/archmap', 'check'],
     needs: ['deps'],
+    also: [
+      { from: 'none', needs: ['deps'], probe: ['node', 'scripts/check-module-boundaries.mjs'] },
+    ],
   },
   behaviour: {
     gate: 'check-test-signal + check-test-reachability',

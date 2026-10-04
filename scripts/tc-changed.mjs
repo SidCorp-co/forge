@@ -23,7 +23,8 @@ function die(msg) {
 
 const known = new Set(['--base', '--all', '--tsc']);
 for (const [i, arg] of args.entries()) {
-  if (arg.startsWith('--') && !known.has(arg)) die(`unknown flag ${arg}; takes --base <ref>, --all, --tsc`);
+  if (arg.startsWith('--') && !known.has(arg))
+    die(`unknown flag ${arg}; takes --base <ref>, --all, --tsc`);
   if (!arg.startsWith('--') && args[i - 1] !== '--base') die(`unexpected argument ${arg}`);
 }
 const baseAt = args.indexOf('--base');
@@ -40,10 +41,17 @@ const git = (...a) => {
 const packages = readdirSync(join(ROOT, 'packages'), { withFileTypes: true })
   .filter((d) => d.isDirectory())
   .map((d) => `packages/${d.name}`)
-  .filter((dir) => existsSync(join(ROOT, dir, 'tsconfig.json')) && existsSync(join(ROOT, dir, 'package.json')))
+  .filter(
+    (dir) =>
+      existsSync(join(ROOT, dir, 'tsconfig.json')) && existsSync(join(ROOT, dir, 'package.json')),
+  )
   .map((dir) => {
     const manifest = JSON.parse(readFileSync(join(ROOT, dir, 'package.json'), 'utf8'));
-    return { dir, name: manifest.name, deps: Object.keys({ ...manifest.dependencies, ...manifest.devDependencies }) };
+    return {
+      dir,
+      name: manifest.name,
+      deps: Object.keys({ ...manifest.dependencies, ...manifest.devDependencies }),
+    };
   });
 
 let selected;
@@ -56,7 +64,9 @@ if (args.includes('--all')) {
     ...git('ls-files', '--others', '--exclude-standard').split('\n'),
   ].filter(Boolean);
   const lockChanged = changed.includes('pnpm-lock.yaml');
-  selected = new Set(packages.filter((p) => lockChanged || changed.some((f) => f.startsWith(`${p.dir}/`))));
+  selected = new Set(
+    packages.filter((p) => lockChanged || changed.some((f) => f.startsWith(`${p.dir}/`))),
+  );
   const touched = [...selected].map((p) => p.name);
   for (let grew = true; grew; ) {
     grew = false;
@@ -83,10 +93,14 @@ const lockfile = join(ROOT, 'pnpm-lock.yaml');
 const installed = join(ROOT, 'node_modules', '.modules.yaml');
 if (!existsSync(installed) || statSync(installed).mtimeMs < statSync(lockfile).mtimeMs) {
   console.log('tc-changed: node_modules is missing or older than pnpm-lock.yaml, installing');
-  const r = spawnSync('pnpm', ['install', '--frozen-lockfile', '--prefer-offline', '--ignore-scripts'], {
-    cwd: ROOT,
-    stdio: 'inherit',
-  });
+  const r = spawnSync(
+    'pnpm',
+    ['install', '--frozen-lockfile', '--prefer-offline', '--ignore-scripts'],
+    {
+      cwd: ROOT,
+      stdio: 'inherit',
+    },
+  );
   if (r.status !== 0) die('pnpm install failed (see above)');
 }
 
@@ -102,13 +116,22 @@ const check = (p) =>
     const buildInfo = join(cacheDir, `${p.dir.split('/').pop()}.${engine}.tsbuildinfo`);
     const child = spawn(
       bin,
-      ['--noEmit', '-p', join(p.dir, 'tsconfig.json'), '--incremental', '--tsBuildInfoFile', buildInfo],
+      [
+        '--noEmit',
+        '-p',
+        join(p.dir, 'tsconfig.json'),
+        '--incremental',
+        '--tsBuildInfoFile',
+        buildInfo,
+      ],
       { cwd: ROOT },
     );
     let out = '';
     child.stdout.on('data', (b) => (out += b));
     child.stderr.on('data', (b) => (out += b));
-    child.on('close', (code) => done({ p, code, out, seconds: ((Date.now() - started) / 1000).toFixed(1) }));
+    child.on('close', (code) =>
+      done({ p, code, out, seconds: ((Date.now() - started) / 1000).toFixed(1) }),
+    );
   });
 
 const results = await Promise.all([...selected].map(check));

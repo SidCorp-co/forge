@@ -2500,6 +2500,13 @@
       "when": 1816473600000,
       "tag": "0388_room_deliveries_move_through_the_kernel",
       "breakpoints": true
+    },
+    {
+      "idx": 389,
+      "version": "7",
+      "when": 1816560000000,
+      "tag": "0389_outbox_deliveries_per_consumer",
+      "breakpoints": true
     }
   ]
 }

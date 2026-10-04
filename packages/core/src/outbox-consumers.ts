@@ -26,8 +26,9 @@ import { registerWebhookSubscribers } from './webhooks/index.js';
 import { registerMasterWakeSubscribers, registerWsBroadcastSubscribers } from './ws/index.js';
 
 /**
- * Every consumer of the outbox, registered once before the worker starts. Order is delivery order
- * within one event: the push and the feed first, so a slow consumer behind them delays neither.
+ * Every consumer of the outbox, registered once before the worker starts, each under a name
+ * `@forge/contracts/outbox-consumers:OUTBOX_CONSUMERS` declares. Each consumer has its own delivery
+ * row per event, so the order here decides nothing.
  */
 export function registerOutboxConsumers(): void {
   registerWsBroadcastSubscribers();

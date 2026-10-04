@@ -1,6 +1,7 @@
 import { NON_OPEN_STATUSES } from '@forge/contracts/issue-machine';
 import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, count, desc, eq, gte, ilike, inArray, isNull, sql } from 'drizzle-orm';
+import { readThresholds } from '../admin-thresholds/index.js';
 import { db } from '../db/client.js';
 import {
   activityLog,
@@ -30,7 +31,6 @@ import {
   toGlance,
   WINDOW_SPECS,
 } from './metric-series.js';
-import { readThresholds } from './thresholds.js';
 import {
   type AdminAdoptionBucket,
   type AdminGlanceMetric,

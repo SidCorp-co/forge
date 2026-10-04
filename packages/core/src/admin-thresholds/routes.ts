@@ -2,20 +2,20 @@
  * ISS-654 — GET/PUT /api/admin/thresholds, the write surface for the Ops
  * Console's Tier 1 thresholds and spend ceiling.
  *
- * Own `requireAdmin()` router (mirrors `alert-routes.ts`) so it is importable
- * standalone in an integration test. Reading lives in `thresholds.ts`, the
- * upsert in `service.ts`; this file only validates the body.
+ * Own `requireAdmin()` router so it is importable standalone in an
+ * integration test. Reading lives in `read.ts`, the upsert in `service.ts`;
+ * this file only validates the body.
  */
 
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { SENTRY_THRESHOLD_MAX, SENTRY_THRESHOLD_MIN } from '../db/schema-admin-thresholds.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { readThresholds } from './read.js';
 import { saveThresholds } from './service.js';
-import { readThresholds } from './thresholds.js';
-import { SENTRY_THRESHOLD_MAX, SENTRY_THRESHOLD_MIN } from './types.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });

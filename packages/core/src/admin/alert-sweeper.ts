@@ -1,6 +1,6 @@
 /**
  * The push half of the Tier 1 alert engine: a cluster timer every five minutes
- * (`timer-registry.ts`), computing the same 5 alerts the GET route serves
+ * (`timer-registry.ts`), computing the same 6 alerts the GET route serves
  * (`alert-queries.ts` is the shared source) and writing `notifications` rows
  * when one crosses into warn/crit.
  */
@@ -25,6 +25,7 @@ const ALERT_TITLES: Record<AdminAlert['id'], string> = {
   A3: 'Runner starvation detected',
   A4: 'Spend spike detected',
   A5: 'Automation failing',
+  A6: 'Outbox deliveries dead',
 };
 
 /** Never throws — same contract as `detectStrandedIssues`. */
