@@ -42,6 +42,7 @@ const WHO: Record<IssueWaitingKind, WhoKind | "none"> = {
   person: "person",
   run: "agent",
   master: "agent",
+  judge: "agent",
   issue: "issue",
   release: "release",
   none: "none",

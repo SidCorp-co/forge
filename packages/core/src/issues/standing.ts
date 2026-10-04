@@ -21,10 +21,12 @@ import {
   type KernelIssueStatus,
   type WorkStep,
 } from '@forge/contracts/issue-vocabulary';
+import { landedWait } from '../pipeline/strand-rules.js';
+import { ISSUE_RESOLVED_STATUSES, ISSUE_TERMINAL_STATUSES } from './status-sets.js';
 
-/** Settled blockers release their dependents (`dependency-effects.ts:BLOCKER_SETTLED`). */
-const SETTLED: readonly string[] = ['awaiting_release', 'closed'];
-const DONE: readonly string[] = ['closed', 'dropped'];
+/** Settled blockers release their dependents (`dependency-effects.ts:BLOCKER_SETTLED_STATUSES`). */
+const SETTLED: readonly string[] = ISSUE_RESOLVED_STATUSES;
+const DONE: readonly string[] = ISSUE_TERMINAL_STATUSES;
 
 const STEP_WORD: Record<WorkStep, string> = {
   triage: 'Triage',
@@ -47,11 +49,14 @@ export interface StandingEdge {
   key: string;
   title: string;
   status: KernelIssueStatus;
+  merged: boolean;
+  step: WorkStep | null;
 }
 
 export interface IssueStandingInput {
   status: KernelIssueStatus;
   waitingKind: string | null;
+  merged: boolean;
   step: WorkStep | null;
   stepStartedAt: Date | null;
   lease: IssueLeaseView | null;
@@ -110,8 +115,10 @@ const held = (lease: IssueLeaseView | null) =>
 // needs_info → a person answers; an open human question at a working status → a person answers it;
 // draft → a person takes it on or drops it; awaiting_release → a person approves where the project
 // requires it, else queued for the release; a live lease or a job in flight → moving, on the run and
-// its step; a live unsettled blocker → stuck on the first; in_progress with no holder → stuck;
-// reopen → stuck, the master re-runs it; open or approved → queued for a master slot.
+// its step; a live unsettled blocker → stuck on the first, worded as waiting on its judge where its
+// change landed; a landed row nothing holds → queued for whoever judges what landed (ISS-80,
+// `pipeline/strand-rules.ts:landedWait`); in_progress with no holder → stuck; reopen → stuck, the
+// master re-runs it; open or approved → queued for a master slot.
 function turnOf(input: IssueStandingInput): {
   group: IssueAttentionGroup;
   waitingOn: IssueWaitingOn;
@@ -195,11 +202,17 @@ function turnOf(input: IssueStandingInput): {
       waitingOn: wait(
         'issue',
         blocker.key,
-        blockerAct(blocker.status),
-        `a live blocks edge from ${blocker.key}, not yet settled`,
+        awaitsJudge(blocker) ? LANDED_BLOCKER : blockerAct(blocker.status),
+        awaitsJudge(blocker)
+          ? `a live blocks edge from ${blocker.key}, which has landed and is not settled until a judge passes every criterion`
+          : `a live blocks edge from ${blocker.key}, not yet settled`,
         blocker.key,
       ),
     };
+  }
+  const landed = landedWait(status, { merged: input.merged, step: input.step });
+  if (landed) {
+    return { group: 'queued', waitingOn: wait('judge', landed.who, landed.act, landed.reason) };
   }
   if (status === 'in_progress') {
     return {
@@ -236,6 +249,10 @@ function turnOf(input: IssueStandingInput): {
   };
 }
 
+const LANDED_BLOCKER = 'landed, waits on a judge';
+
+const awaitsJudge = (e: StandingEdge) => landedWait(e.status, e) !== null;
+
 function blockerAct(status: KernelIssueStatus): string {
   if (status === 'in_progress') return 'running';
   if (status === 'needs_info' || status === 'draft') return 'needs a person';
@@ -255,6 +272,7 @@ export function deriveIssueStanding(
     title: e.title,
     status: e.status,
     group: edgeGroups.get(e.id) ?? null,
+    landed: awaitsJudge(e),
   });
   return {
     state: input.status,

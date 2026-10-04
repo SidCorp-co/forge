@@ -122,14 +122,17 @@ export function heldReleaseWait(
 
 // cm:why a landed row nothing holds waits on whoever judges what landed (ISS-80): at `in_progress`
 // step `test` a judge recording verdicts, at `open` the run that claims it, and the expired claim of
-// the run that landed it is not what it waits for.
+// the run that landed it is not what it waits for. The sweep's reason and the board's standing
+// (`issues/standing.ts`) both read it here, so the two cannot name different owners.
 export function landedWait(
   status: string,
   evidence: Pick<StrandEvidence, 'merged' | 'step'>,
-): { waitingFor: string; owes: StrandOwner; reason: string } | null {
+): { waitingFor: string; owes: StrandOwner; reason: string; who: string; act: string } | null {
   if (!evidence.merged) return null;
   if (status === 'in_progress' && evidence.step === 'test') {
     return {
+      who: 'Judge',
+      act: 'landed · a verdict on each criterion',
       waitingFor: 'a judge to record a verdict on each criterion',
       owes: 'agent',
       reason:
@@ -138,6 +141,8 @@ export function landedWait(
   }
   if (status === 'open') {
     return {
+      who: 'Next run',
+      act: 'landed · claim it and judge what landed',
       waitingFor: 'a run to claim it and judge what landed',
       owes: 'agent',
       reason:

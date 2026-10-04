@@ -67,7 +67,6 @@ const isParentEdge = (k: IssueDependencyEdge["kind"]) =>
 function edgeToMenuItem(
   e: IssueDependencyEdge,
   dir: "in" | "out",
-  slug: string,
   navigate: (id: string) => void,
 ): MenuItem {
   const isIncoming = dir === "in";
@@ -168,7 +167,7 @@ export function DepBadges({
           tone="danger"
           label={
             openBlockers.length === 1
-              ? `Blocked by ${openBlockers[0].displayId}${openBlockers[0].landed ? " · landed" : ""}`
+              ? `Blocked by ${openBlockers[0].displayId}${openBlockers[0].merged ? " · landed" : ""}`
               : `Blocked by ${openBlockers.length}`
           }
           items={openBlockers.map(refToMenuItem)}
@@ -177,25 +176,25 @@ export function DepBadges({
         <RelationChip
           icon="lock"
           label={`Blocked by ${blockedBy.length}`}
-          items={blockedBy.map((e) => edgeToMenuItem(e, "in", slug, navigate))}
+          items={blockedBy.map((e) => edgeToMenuItem(e, "in", navigate))}
         />
       )}
       <RelationChip
         icon="arrowRight"
         label={`Blocks ${blocks.length}`}
-        items={blocks.map((e) => edgeToMenuItem(e, "out", slug, navigate))}
+        items={blocks.map((e) => edgeToMenuItem(e, "out", navigate))}
       />
       <RelationChip
         icon="grid"
         label={`${subtasks.length} subtask${subtasks.length === 1 ? "" : "s"}`}
-        items={subtasks.map((e) => edgeToMenuItem(e, "out", slug, navigate))}
+        items={subtasks.map((e) => edgeToMenuItem(e, "out", navigate))}
       />
       <RelationChip
         icon="fork"
         label={
           parents.length > 1 ? `Subtask of ${parents.length}` : "Subtask of"
         }
-        items={parents.map((e) => edgeToMenuItem(e, "in", slug, navigate))}
+        items={parents.map((e) => edgeToMenuItem(e, "in", navigate))}
       />
     </span>
   );

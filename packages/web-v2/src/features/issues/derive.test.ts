@@ -31,6 +31,7 @@ import {
 	heartbeatState,
 	initials,
 	memberLabel,
+	NO_PARK,
 	openBlockingRefs,
 	PRIORITY_LABELS,
 	parseChecklist,
@@ -1180,22 +1181,33 @@ describe("deriveBlockerState", () => {
 		expect(b?.blockingRefs?.[0]?.displayId).toBe("ISS-9");
 	});
 
-	it("names a landed blocker's judge rather than asking for it to be finished (ISS-80)", () => {
+	it("names a landed blocker's judge, read from core's standing, rather than asking for it to be finished (ISS-80)", () => {
 		const b = deriveBlockerState(
 			blockerIssue({ status: "open" }),
 			undefined,
 			incomingBlocks({ fromMergedAt: "2026-10-03T15:43:13.577Z" }),
+			NO_PARK,
+			{ blockedBy: [{ key: "ISS-9", title: "t", status: "in_progress", group: "queued", landed: true }] },
 		);
 		expect(b?.reason).toBe("Blocked by ISS-9, which has landed and waits on a judge.");
 		expect(b?.whoMustAct).toContain("A judge records a verdict on each criterion of ISS-9");
 		expect(b?.whoMustAct).not.toContain("Finish");
-		expect(b?.blockingRefs?.[0]?.landed).toBe(true);
+		expect(b?.blockingRefs?.[0]?.merged).toBe(true);
+	});
+
+	it("keeps no copy of the landed rule: a merged blocker core does not call landed is still to be finished", () => {
+		const merged = incomingBlocks({ fromMergedAt: "2026-10-03T15:43:13.577Z" });
+		const notLanded = { blockedBy: [{ key: "ISS-9", title: "t", status: "in_progress" as const, group: "moving" as const, landed: false }] };
+		expect(deriveBlockerState(blockerIssue({ status: "open" }), undefined, merged, NO_PARK, notLanded)?.reason).toBe(
+			"Blocked by 1 open issue.",
+		);
+		expect(deriveBlockerState(blockerIssue({ status: "open" }), undefined, merged)?.reason).toBe("Blocked by 1 open issue.");
 	});
 
 	it("keeps asking for an unlanded blocker to be finished", () => {
 		const b = deriveBlockerState(blockerIssue({ status: "open" }), undefined, incomingBlocks());
 		expect(b?.reason).toBe("Blocked by 1 open issue.");
-		expect(b?.blockingRefs?.[0]?.landed).toBe(false);
+		expect(b?.blockingRefs?.[0]?.merged).toBe(false);
 	});
 
 	it("ignores a blocks edge whose blocker is already released", () => {

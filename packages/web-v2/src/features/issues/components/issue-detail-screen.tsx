@@ -47,7 +47,7 @@ import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   allowedTransitions,
   canonicalIssueId,
@@ -249,7 +249,7 @@ export function IssueDetailScreen({
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
     patch.mutate({ id: issue.id, body }, { onSuccess: refreshIssue });
 
-  const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data, park);
+  const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data, park, standingQ.data?.standing ?? null);
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
   const stepOutcomes = deriveStepOutcomes(handoffsQ.data, durationsQ.data, {
     activeStep: runningStepOf(issue.pipelineHealth),
