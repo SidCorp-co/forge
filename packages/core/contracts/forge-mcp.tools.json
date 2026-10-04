@@ -479,60 +479,6 @@
       "name": "forge_ecosystem"
     },
     {
-      "description": "Read and write the Google Sheets this project's service account is granted. Actions: list | info | read | update | append. MODEL: the credential is a Google SERVICE ACCOUNT held by Forge, never by you — core resolves the project's binding and makes the Google call itself, so there is no key to fetch and none is returned. A sheet is reachable only if it has been SHARED with the account's client_email (Viewer for reads, Editor for writes); `info` is how you find out. spreadsheetId is the segment between /d/ and /edit in the sheet URL, and is OPTIONAL: omitted, it resolves to the spreadsheet this project's binding declares as its default. Naming one overrides that default for the call. If neither is present the call is REFUSED — no sheet is guessed. list: the project's Google bindings — { id, role, active, clientEmail, defaultSpreadsheetId, lastHealthStatus }. An empty array means this project has no Google connection; that is the answer, not an error. info: { spreadsheetId, title, sheetTitles[] } — read this BEFORE a range, because a range naming a tab that does not exist is refused by Google rather than returning empty. read: { spreadsheetId, range, values[][] } for a range in A1 notation (`Sheet1!A1:D50`, or a bare tab name for everything in it). Trailing empty cells are not padded — a short row is a short array. update: OVERWRITES the cells of `range` with `values` and returns { spreadsheetId, range, updatedCells }. It does not insert rows: writing 3 rows over a 10-row range leaves rows 4-10 as they were. To add rows without disturbing anything, use append. append: adds `values` as new rows AFTER the last non-empty row of the table `range` names, and returns the range it actually wrote. Values are entered as a person typing them would be: `2026-09-16` lands as a date and `=SUM(A1:A9)` as a formula. Scopes are per operation: read and info mint a READ-ONLY Google token, update and append mint a read-write one, and nothing ever asks for Drive access. Refusals name their cause and nothing is half-done: no Google connection on this project, the binding switched off, no spreadsheet named and no default declared, Google rejecting the service account, and Google refusing the sheet (share it with client_email) are five different messages. A call that could not act does not return an empty success. Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). Authorization: project membership; update and append need writer.",
-      "inputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false,
-        "properties": {
-          "action": {
-            "enum": [
-              "list",
-              "info",
-              "read",
-              "update",
-              "append"
-            ],
-            "type": "string"
-          },
-          "projectId": {
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "type": "string"
-          },
-          "range": {
-            "maxLength": 500,
-            "minLength": 1,
-            "type": "string"
-          },
-          "spreadsheetId": {
-            "maxLength": 200,
-            "minLength": 1,
-            "type": "string"
-          },
-          "values": {
-            "items": {
-              "items": {
-                "type": [
-                  "string",
-                  "number",
-                  "boolean",
-                  "null"
-                ]
-              },
-              "type": "array"
-            },
-            "maxItems": 5000,
-            "type": "array"
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "type": "object"
-      },
-      "name": "forge_google_sheets"
-    },
-    {
       "description": "Read this project's Sentry error stream. Actions: list | get. READ-ONLY: it reads Sentry and changes nothing there — no resolving, ignoring or assigning — and it files nothing in the Forge tracker. That is the scheduled `sentry_pull` intake, which is a different question and is not this tool. MODEL: the credential is the Sentry connection Forge holds, never yours — core resolves the project's binding and makes the Sentry call itself, so there is no token to fetch, none is returned, and nothing here accepts a Sentry host, organization or token from you. NO THRESHOLDS: the intake exists to decide what is worth FILING and applies minimum event and user counts; a read does not, so the error nobody has seen twice yet is answered like any other. list: { ok:true, target, organizationSlug, projectSlug, query, window, issues[], refused[], pages, truncated }. Each issue is { id, shortId, title, culprit, metadataValue, level, status, substatus, count, userCount, firstSeen, lastSeen, permalink, projectSlug }. `query` is the search Sentry was actually asked, so a surprising answer can be read back to its question. `truncated:true` means Sentry still had more and this adapter stopped at its own page bound, so the reading is a floor. `refused` on a SUCCESSFUL answer is the per-issue confinement list: answers that belong to another Sentry project under the same organization, reported rather than dropped in silence. It is not a refusal of the call — a call that was refused has `ok:false`, one `refusal` object, and no `issues` key at all. A listing Sentry answered where this target is scoped to NONE of the answers is itself refused, `confined_out`, naming them: that is a project filter that did not bind, not a quiet night. Filters, all optional and all ANDed: `release` (core tags every event with the source commit, so this is how you ask whether the commit you just deployed is erroring), `window` (a relative Sentry period — 1h, 24h, 7d, up to 90d; a value Sentry does not take is REFUSED, never silently replaced by the default), `path`, `method`, `errorCode` and `requestId` (the http.path, http.method, error.code and request.id tags core sets on every captured event), `status` (unresolved by default; `any` asks Sentry for every status, dropping the `is:` term rather than falling back to unresolved), `limit` (1..100) and `query` for raw Sentry search syntax, which is ADDED to the filters rather than replacing them. get: one issue in the same shape, for an `issueId` list returned. An id belonging to another project under the same organization is refused and its detail is NOT in the answer. REFUSALS: a call that could not read Sentry answers { ok:false, refusal:{ reason, message, bindingId, httpStatus } } and carries NO `issues` key — an empty `issues` array only ever means Sentry returned no issues. Switch on `reason`, never on the wording: no_binding, binding_disabled, connection_disabled, not_granted (an org owner or admin turns agent access on under Settings → Integrations), no_credential, credential_rejected, scope_missing, sentry_http_error, sentry_unreachable, no_targets, target_ambiguous (the binding declares several — pass `target`, the message lists them), target_unknown, target_no_org, target_old_shape (the binding still carries the top-level slugs ISS-526 retired — name each Sentry project under `targets`), confined_out, bad_argument. The envelope covers reaching Sentry for a project you may ask about; everything BEFORE that is an ordinary MCP error and not this shape — a call the input schema rejects (a wrong type, an unknown key), a call naming no project, and a caller who holds no role on the project named. Those are the caller breaking the contract rather than Sentry being unreadable, and the loudest refusal is the right one for them. Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). Authorization: project membership, plus the binding granted to agents.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",

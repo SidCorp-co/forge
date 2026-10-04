@@ -4,11 +4,7 @@
   "trace-empty": [
    "core:improvement-messages",
    "core:pm",
-   "core:tasks",
-   "web:improvement-messages",
-   "web:recent-changes",
-   "web:resources",
-   "web:whats-new"
+   "web:improvement-messages"
   ],
   "trace-unknown": [],
   "trace-via": []
