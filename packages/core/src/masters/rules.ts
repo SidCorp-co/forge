@@ -39,17 +39,24 @@ export function passAlreadyOpenRefusal(open: MasterOpenPass | null): MasterRefus
   return {
     code: 'MASTER_PASS_ALREADY_OPEN',
     path: '/op',
-    detail: `this master already has ${passName(open)} open; close it ({ op: "close", sessionId, dispatched, skipped, parked }) before opening the next`,
+    detail: `this master already has ${passName(open)} open, id ${open.id}; close it ({ op: "close", sessionId, passId, dispatched, skipped, parked }) before opening the next`,
   };
 }
 
-export function passNotOpenRefusal(last: MasterClosedPass | null): MasterRefusal {
+export function passNotOpenRefusal(args: {
+  passId: string;
+  named: MasterClosedPass | null;
+  open: MasterOpenPass | null;
+}): MasterRefusal {
+  const now = args.open
+    ? ` The pass open now is ${passName(args.open)}, id ${args.open.id}.`
+    : ' No pass is open; open one with { op: "open", sessionId, verb } first.';
   return {
     code: 'MASTER_PASS_NOT_OPEN',
-    path: '/op',
-    detail: last
-      ? `this master has no pass open to close: its last, ${passName(last)}, ended ${last.endedAt}. Open one with { op: "open", sessionId, verb } first`
-      : 'this master has never opened a pass, so there is none to close. Open one with { op: "open", sessionId, verb } first',
+    path: '/passId',
+    detail: args.named
+      ? `${passName(args.named)} ended ${args.named.endedAt}, and a closed pass is final, so this close changed nothing.${now}`
+      : `this master has no pass ${args.passId}.${now}`,
   };
 }
 

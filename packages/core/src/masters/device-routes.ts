@@ -51,6 +51,7 @@ deviceMasterRoutes.post(
     const closed = await closeMasterPass({
       deviceId,
       sessionId: body.sessionId,
+      passId: body.passId,
       dispatched: body.dispatched,
       skipped: body.skipped,
       parked: body.parked,

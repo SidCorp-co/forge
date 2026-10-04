@@ -90,13 +90,21 @@ describe('region master: a pass is opened and closed by the runner', () => {
     expect(refusal?.detail).toContain('ISS-1414');
   });
 
-  it('a close with none open is MASTER_PASS_NOT_OPEN, naming the last pass or saying there was none', () => {
-    const after = passNotOpenRefusal(closed);
-    expect(after.code).toBe('MASTER_PASS_NOT_OPEN');
-    expect(after.detail).toContain(closed.endedAt);
-    const never = passNotOpenRefusal(null);
-    expect(never.code).toBe('MASTER_PASS_NOT_OPEN');
-    expect(never.detail).toContain('never opened');
+  it('a close of a pass that is not open is MASTER_PASS_NOT_OPEN: a replay names the ended pass and the one open now', () => {
+    const replay = passNotOpenRefusal({
+      passId: closed.id,
+      named: closed,
+      open: { ...open, id: 'p2' },
+    });
+    expect(replay.code).toBe('MASTER_PASS_NOT_OPEN');
+    expect(replay.path).toBe('/passId');
+    expect(replay.detail).toContain(closed.endedAt);
+    expect(replay.detail).toContain('changed nothing');
+    expect(replay.detail).toContain('id p2');
+    const unknown = passNotOpenRefusal({ passId: 'p9', named: null, open: null });
+    expect(unknown.code).toBe('MASTER_PASS_NOT_OPEN');
+    expect(unknown.detail).toContain('no pass p9');
+    expect(unknown.detail).toContain('No pass is open');
   });
 
   it('a pass on a master that has ended is MASTER_SESSION_ENDED; a live one opens', () => {
@@ -118,11 +126,22 @@ describe('region master: a pass is opened and closed by the runner', () => {
       masterPassRequestSchema.safeParse({
         op: 'close',
         sessionId,
+        passId: sessionId,
         dispatched: [],
         skipped: [],
         parked: [],
       }).success,
     ).toBe(true);
+    expect(
+      masterPassRequestSchema.safeParse({
+        op: 'close',
+        sessionId,
+        dispatched: [],
+        skipped: [],
+        parked: [],
+      }).success,
+      'a close names the pass it closes',
+    ).toBe(false);
     expect(
       masterPassRequestSchema.safeParse({ op: 'close', sessionId, dispatched: [] }).success,
     ).toBe(false);
@@ -130,6 +149,7 @@ describe('region master: a pass is opened and closed by the runner', () => {
       masterPassRequestSchema.safeParse({
         op: 'close',
         sessionId,
+        passId: sessionId,
         dispatched: [],
         skipped: [{ issueKey: 'ISS-1' }],
         parked: [],

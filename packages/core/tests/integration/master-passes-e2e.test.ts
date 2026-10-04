@@ -83,6 +83,14 @@ const register = (body: Record<string, unknown>, headers = box) =>
 const pass = (body: Record<string, unknown>, headers = box) =>
   post('/api/devices/me/master-session/pass', body, headers);
 
+const nothing = { dispatched: [], skipped: [], parked: [] };
+
+async function openPass(sessionId: string, verb: string): Promise<string> {
+  const opened = await pass({ op: 'open', sessionId, verb });
+  expect(opened.status, JSON.stringify(opened.body)).toBe(201);
+  return String((opened.body.pass as { id: string }).id);
+}
+
 async function standing(): Promise<Json> {
   const res = await app.request(`/api/projects/${projectId}/masters/standing`, { headers: viewer });
   expect(res.status, 'a project member reads the master standing').toBe(200);
@@ -171,26 +179,56 @@ describe('POST /api/devices/me/master-session/pass opens and closes a pass', () 
     expect(await count(sql`SELECT count(*)::int AS n FROM master_passes`)).toBe(1);
   });
 
-  it('closes the open pass with what it did, and refuses a close with none open MASTER_PASS_NOT_OPEN', async () => {
+  it('closes the pass it names with what it did, and refuses a close of a pass that is not open MASTER_PASS_NOT_OPEN', async () => {
     const sessionId = await liveMaster();
-    const never = await pass({ op: 'close', sessionId, dispatched: [], skipped: [], parked: [] });
+    const never = await pass({ op: 'close', sessionId, passId: randomUUID(), ...nothing });
     expect(never.status).toBe(422);
     expect(never.body.error?.code).toBe('MASTER_PASS_NOT_OPEN');
-    expect(never.body.error?.refusals[0]?.detail).toContain('never opened');
+    expect(never.body.error?.refusals[0]?.detail).toContain('No pass is open');
 
-    await pass({ op: 'open', sessionId, verb: 'dispatch' });
+    const passId = await openPass(sessionId, 'dispatch');
     const closed = await pass({
       op: 'close',
       sessionId,
+      passId,
       dispatched: ['ISS-1413'],
       skipped: [{ issueKey: 'ISS-1405', refusal: 'ISS-1402 blocks it (blocks edge)' }],
       parked: ['ISS-1409'],
     });
     expect(closed.status).toBe(200);
-    const again = await pass({ op: 'close', sessionId, dispatched: [], skipped: [], parked: [] });
+    const again = await pass({ op: 'close', sessionId, passId, ...nothing });
     expect(again.status).toBe(422);
     expect(again.body.error?.code).toBe('MASTER_PASS_NOT_OPEN');
     expect(again.body.error?.refusals[0]?.detail).toContain('dispatch pass');
+  });
+
+  it('refuses a replayed close of an ended pass and leaves the pass opened after it untouched', async () => {
+    const sessionId = await liveMaster();
+    const first = await openPass(sessionId, 'dispatch');
+    const close = {
+      op: 'close',
+      sessionId,
+      passId: first,
+      dispatched: ['ISS-1'],
+      skipped: [],
+      parked: [],
+    };
+    expect((await pass(close)).status).toBe(200);
+    const second = await openPass(sessionId, 'fold');
+    const replay = await pass(close);
+    expect(replay.status).toBe(422);
+    expect(replay.body.error?.code).toBe('MASTER_PASS_NOT_OPEN');
+    expect(replay.body.error?.refusals[0]?.detail).toContain(second);
+    const rows = (await harness.db.execute(sql`
+      SELECT id, ended_at, dispatched FROM master_passes ORDER BY started_at`)) as unknown as Array<{
+      id: string;
+      ended_at: Date | null;
+      dispatched: string[];
+    }>;
+    expect(rows.map((r) => [r.id, r.ended_at === null, r.dispatched])).toEqual([
+      [first, false, ['ISS-1']],
+      [second, true, []],
+    ]);
   });
 
   it('answers 404 for a master another box registered, and MASTER_SESSION_ENDED for one that ended', async () => {
@@ -207,8 +245,8 @@ describe('POST /api/devices/me/master-session/pass opens and closes a pass', () 
 
   it('keeps a closed pass final: the trigger refuses an update and a delete by hand', async () => {
     const sessionId = await liveMaster();
-    await pass({ op: 'open', sessionId, verb: 'judge' });
-    await pass({ op: 'close', sessionId, dispatched: [], skipped: [], parked: [] });
+    const passId = await openPass(sessionId, 'judge');
+    await pass({ op: 'close', sessionId, passId, ...nothing });
     await expect(
       harness.db.execute(sql`UPDATE master_passes SET dispatched = ARRAY['ISS-9']::text[]`),
     ).rejects.toMatchObject({ cause: { message: expect.stringMatching(/MASTER_PASS_IMMUTABLE/) } });
@@ -248,6 +286,7 @@ describe('GET /api/projects/:id/masters/standing', () => {
     await pass({
       op: 'close',
       sessionId,
+      passId: open.id,
       dispatched: ['ISS-1413'],
       skipped: [{ issueKey: 'ISS-1405', refusal: 'WORKFLOW_DESIGN_NOT_APPROVED' }],
       parked: ['ISS-1409'],

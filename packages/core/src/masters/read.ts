@@ -5,7 +5,7 @@ import type {
   MasterStanding,
   MasterVerb,
 } from '@forge/contracts/master-standing';
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { OCCUPYING } from '../devices/load.js';
@@ -71,14 +71,7 @@ export async function readOpenPass(
   return row ? openPassOf(row) : null;
 }
 
-export async function readLastPass(
-  executor: Tx,
-  scope: { projectId: string } | { sessionId: string },
-): Promise<MasterClosedPass | null> {
-  const where =
-    'projectId' in scope
-      ? sql`project_id = ${scope.projectId}`
-      : sql`master_session_id = ${scope.sessionId}`;
+async function closedPassWhere(executor: Tx, where: SQL): Promise<MasterClosedPass | null> {
   const [row] = rowsOf<PassRow & { ended_at: string | Date }>(
     await executor.execute(sql`
       SELECT ${PASS_COLUMNS} FROM master_passes
@@ -87,6 +80,20 @@ export async function readLastPass(
        LIMIT 1`),
   );
   return row ? closedPassOf(row) : null;
+}
+
+export function readLastPass(executor: Tx, projectId: string): Promise<MasterClosedPass | null> {
+  return closedPassWhere(executor, sql`project_id = ${projectId}`);
+}
+
+export function readClosedPass(
+  executor: Tx,
+  args: { sessionId: string; passId: string },
+): Promise<MasterClosedPass | null> {
+  return closedPassWhere(
+    executor,
+    sql`id = ${args.passId} AND master_session_id = ${args.sessionId}`,
+  );
 }
 
 export async function slotsInUse(deviceId: string): Promise<number> {
@@ -140,7 +147,7 @@ async function liveMaster(projectId: string): Promise<MasterRow | null> {
 export async function readMasterStanding(projectId: string): Promise<MasterStanding> {
   const [master, lastPass] = await Promise.all([
     liveMaster(projectId),
-    readLastPass(db, { projectId }),
+    readLastPass(db, projectId),
   ]);
   const base = {
     generatedAt: new Date().toISOString(),

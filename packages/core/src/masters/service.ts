@@ -12,7 +12,7 @@ import { db, type Tx } from '../db/client.js';
 import { agentSessions, devices, terminalAgentSessionStatuses } from '../db/schema.js';
 import { ensureMasterSession } from '../devices/master-session.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
-import { closedPassOf, openPassOf, readLastPass, readOpenPass } from './read.js';
+import { closedPassOf, openPassOf, readClosedPass, readOpenPass } from './read.js';
 import {
   passAlreadyOpenRefusal,
   passNotOpenRefusal,
@@ -119,6 +119,7 @@ export async function openMasterPass(args: {
 export async function closeMasterPass(args: {
   deviceId: string;
   sessionId: string;
+  passId: string;
   dispatched: string[];
   skipped: MasterPassSkip[];
   parked: string[];
@@ -139,14 +140,15 @@ export async function closeMasterPass(args: {
                  args.parked.map((p) => sql`${p}`),
                  sql`, `,
                )}]::text[]`}
-         WHERE master_session_id = ${master.id} AND ended_at IS NULL
+         WHERE id = ${args.passId} AND master_session_id = ${master.id} AND ended_at IS NULL
         RETURNING id, master_session_id, verb, issue_key, started_at, ended_at, dispatched, skipped, parked`),
     );
     if (!row) {
-      return {
-        ok: false,
-        refusals: [passNotOpenRefusal(await readLastPass(tx, { sessionId: master.id }))],
-      };
+      const [named, open] = await Promise.all([
+        readClosedPass(tx, { sessionId: master.id, passId: args.passId }),
+        readOpenPass(tx, master.id),
+      ]);
+      return { ok: false, refusals: [passNotOpenRefusal({ passId: args.passId, named, open })] };
     }
     return { ok: true, pass: closedPassOf(row) };
   });

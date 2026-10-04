@@ -69,13 +69,14 @@ export const masterPassRequestSchema = z.discriminatedUnion("op", [
 	z.strictObject({
 		op: z.literal("close"),
 		sessionId: z.uuid(),
+		passId: z.uuid(),
 		dispatched: z.array(passItem).max(MASTER_PASS_LIST_MAX),
 		skipped: z.array(masterPassSkipSchema).max(MASTER_PASS_LIST_MAX),
 		parked: z.array(passItem).max(MASTER_PASS_LIST_MAX),
 	}),
 ]);
 export type MasterPassRequest = z.infer<typeof masterPassRequestSchema>;
-export const MASTER_PASS_SHAPE = `{ op: "open", sessionId: uuid, verb: ${MASTER_VERBS.join(" | ")}, issueKey?: string | null } or { op: "close", sessionId: uuid, dispatched: string[], skipped: { issueKey, refusal }[], parked: string[] }`;
+export const MASTER_PASS_SHAPE = `{ op: "open", sessionId: uuid, verb: ${MASTER_VERBS.join(" | ")}, issueKey?: string | null } or { op: "close", sessionId: uuid, passId: uuid (the id the open answered), dispatched: string[], skipped: { issueKey, refusal }[], parked: string[] }`;
 
 export interface MasterOpenPass {
 	id: string;
