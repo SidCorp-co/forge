@@ -29,7 +29,7 @@ import { db } from '../db/client.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { refused } from '../project-config/respond.js';
+import { refused } from '../lib/refusal.js';
 import { createSuggestion } from '../suggestions/service.js';
 import { addAttachment, askClarification, attachmentBytes } from './attachments.js';
 import { similarFeedbackAs } from './embeddings.js';
@@ -82,7 +82,7 @@ function actorOf(c: Context<{ Variables: AuthVars }>): FeedbackActor {
 }
 
 function answer(c: Context, outcome: FeedbackOutcome) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return refused(c, outcome.refusals, 'FEEDBACK_REFUSED');
   const body: FeedbackResponse & { effect?: unknown } = {
     feedback: outcome.feedback,
     ...(outcome.effect ? { effect: outcome.effect } : {}),
@@ -106,7 +106,7 @@ feedbackRoutes.get(
       q: q.q,
       requirement: q.requirement,
     });
-    return out.ok ? c.json(out.list) : refused(c, out.refusals);
+    return out.ok ? c.json(out.list) : refused(c, out.refusals, 'FEEDBACK_REFUSED');
   },
 );
 
@@ -135,7 +135,7 @@ feedbackRoutes.post(
       actor: actorOf(c),
       request: c.req.valid('json'),
     });
-    if (!out.ok) return refused(c, out.refusals);
+    if (!out.ok) return refused(c, out.refusals, 'FEEDBACK_REFUSED');
     return c.json({ feedback: out.feedback, effect: out.effect }, 201);
   },
 );
@@ -190,7 +190,7 @@ feedbackRoutes.post(
       payload: body.triage,
       model: body.model ?? null,
     });
-    if (!outcome.ok) return refused(c, outcome.refusals);
+    if (!outcome.ok) return refused(c, outcome.refusals, 'FEEDBACK_REFUSED');
     const answerBody: SuggestionResponse = { suggestion: outcome.suggestion };
     return c.json(answerBody, 201);
   },
@@ -300,7 +300,7 @@ feedbackRoutes.get('/:id/feedback/:fb/attachments/:aid', attachmentParam, async 
       cause: { code: 'NOT_FOUND' },
     });
   }
-  if (!file.ok) return refused(c, [file.refusal]);
+  if (!file.ok) return refused(c, [file.refusal], 'FEEDBACK_REFUSED');
   setInertAttachmentHeaders(c, file.mime, file.name);
   c.header('Cache-Control', 'private, no-store');
   return c.body(new Uint8Array(file.bytes), 200);

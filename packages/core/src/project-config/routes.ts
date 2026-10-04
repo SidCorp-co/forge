@@ -9,7 +9,8 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { requireCan } from '../permissions/index.js';
 import { listBindings, readBinding, removeBinding, writeBinding } from './bindings.js';
 import { buildEffectiveConfig } from './effective.js';
-import { envelopeOf, refused } from './respond.js';
+import { refused } from '../lib/refusal.js';
+import { envelopeOf } from '../lib/write-envelope.js';
 import {
   deleteTestingProfile,
   type Held,
@@ -82,7 +83,7 @@ const secretView = (s: { ref: string; scope: string; name: string; updatedAt: Da
 });
 
 function answer<T>(c: Context, outcome: WriteOutcome<T>) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return refused(c, outcome.refusals, 'CONFIG_REFUSED');
   return c.json({ ...serialise(outcome.held), created: outcome.created });
 }
 
@@ -200,7 +201,7 @@ projectConfigRoutes.delete('/:id/testing-profiles/:profileId', paramOf(profilePa
       cause: { code: 'TESTING_PROFILE_NOT_FOUND' },
     });
   }
-  return refused(c, outcome.refusals);
+  return refused(c, outcome.refusals, 'CONFIG_REFUSED');
 });
 
 projectConfigRoutes.get('/:id/secrets', paramOf(idParam), async (c) => {
@@ -267,7 +268,7 @@ projectConfigRoutes.get('/:id/bindings/:bindingId', paramOf(bindingParam), async
         path: '',
         detail: `binding ${bindingId} has no binding-document form: ${read.unrepresentable}`,
       },
-    ]);
+    ], 'CONFIG_REFUSED');
   }
   return c.json({ declared: true as const, ...read.held });
 });
@@ -288,7 +289,7 @@ projectConfigRoutes.put(
       baseRevision,
       raw: document,
     });
-    if (!outcome.ok) return refused(c, outcome.refusals);
+    if (!outcome.ok) return refused(c, outcome.refusals, 'CONFIG_REFUSED');
     return c.json({
       declared: true as const,
       ...outcome.held,
@@ -328,6 +329,6 @@ projectConfigRoutes.delete(
         cause: { code: 'NOT_FOUND' },
       });
     }
-    return refused(c, outcome.refusals);
+    return refused(c, outcome.refusals, 'CONFIG_REFUSED');
   },
 );

@@ -13,7 +13,7 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import type { NamedRefusal } from '../project-config/respond.js';
+import type { Refusal } from '../lib/refusal.js';
 import { embedFeedbackLater } from './embeddings.js';
 import { detailAs, type FeedbackActor, feedbackKey, notFound, rowIn } from './read.js';
 import { promoteRefusal } from './rules.js';
@@ -22,7 +22,7 @@ import { requireCan } from '../permissions/index.js';
 
 export type PromoteOutcome =
   | { ok: true; feedback: FeedbackView; effect: FeedbackPromoteEffect }
-  | { ok: false; refusals: NamedRefusal[] };
+  | { ok: false; refusals: Refusal[] };
 
 async function slugsOf(ids: string[]) {
   const rows = await db

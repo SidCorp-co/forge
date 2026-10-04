@@ -9,7 +9,7 @@ import {
 import { Hono } from 'hono';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { strictBody } from '../middleware/zod-validator.js';
-import { refused } from '../project-config/respond.js';
+import { refused } from '../lib/refusal.js';
 import { closeMasterPass, declareMasterSession, openMasterPass } from './service.js';
 
 export const deviceMasterRoutes = new Hono<{ Variables: DeviceVars }>();
@@ -26,7 +26,7 @@ deviceMasterRoutes.post(
       name: body.name,
       maxJobPanes: body.maxJobPanes,
     });
-    if (!outcome.ok) return refused(c, outcome.refusals);
+    if (!outcome.ok) return refused(c, outcome.refusals, 'MASTER_REFUSED');
     return c.json(outcome.session satisfies MasterSessionResponse);
   },
 );
@@ -45,7 +45,7 @@ deviceMasterRoutes.post(
         verb: body.verb,
         issueKey: body.issueKey ?? null,
       });
-      if (!opened.ok) return refused(c, opened.refusals);
+      if (!opened.ok) return refused(c, opened.refusals, 'MASTER_REFUSED');
       return c.json({ pass: opened.pass } satisfies MasterPassResponse, 201);
     }
     const closed = await closeMasterPass({
@@ -56,7 +56,7 @@ deviceMasterRoutes.post(
       skipped: body.skipped,
       parked: body.parked,
     });
-    if (!closed.ok) return refused(c, closed.refusals);
+    if (!closed.ok) return refused(c, closed.refusals, 'MASTER_REFUSED');
     return c.json({ pass: closed.pass } satisfies MasterPassResponse);
   },
 );

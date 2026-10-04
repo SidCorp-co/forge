@@ -30,7 +30,7 @@ import { finalizeJobDone } from '../jobs/finalize-done.js';
 import type { EgressReader } from '../lib/data-egress.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
-import type { NamedRefusal } from '../project-config/respond.js';
+import type { Refusal } from '../lib/refusal.js';
 import { readDeclaredSource } from '../project-config/source.js';
 import {
   type BatchRow,
@@ -71,11 +71,11 @@ export interface OnboardingActor {
 
 export type OnboardingOutcome =
   | { ok: true; onboarding: OnboardingView; created?: boolean }
-  | { ok: false; refusals: NamedRefusal[] };
+  | { ok: false; refusals: Refusal[] };
 
 export type OnboardingQuestionnaireOutcome =
   | { ok: true; questionnaire: QuestionnaireView; created: true }
-  | { ok: false; refusals: NamedRefusal[] };
+  | { ok: false; refusals: Refusal[] };
 
 /** Serialises every onboarding write on one project. */
 async function lockOnboarding(tx: TxOnly, projectId: string) {

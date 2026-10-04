@@ -28,11 +28,10 @@ import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionOrigin, type QuestionStep } from '../db/schema-questions.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { dataPolicyOf, storedAnswers } from '../lib/data-egress.js';
-import { RefusalError } from '../lib/refusal.js';
+import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { permissionFactsOf } from '../permissions/index.js';
 import { insertBatchQuestions } from '../questions/index.js';
-import type { NamedRefusal } from '../project-config/respond.js';
 import {
   type BatchRow,
   batchIn,
@@ -64,12 +63,12 @@ export interface QuestionnaireActor {
 
 export type QuestionnaireOutcome =
   | { ok: true; questionnaire: QuestionnaireView; created?: boolean }
-  | { ok: false; refusals: NamedRefusal[] };
+  | { ok: false; refusals: Refusal[] };
 
 /** Runs `body` in a transaction; refusals it returns or throws roll everything back and come out. */
 export async function inTx(
-  body: (tx: TxOnly) => Promise<NamedRefusal[] | null | undefined>,
-): Promise<NamedRefusal[] | null> {
+  body: (tx: TxOnly) => Promise<Refusal[] | null | undefined>,
+): Promise<Refusal[] | null> {
   try {
     return await db.transaction(async (tx) => {
       const refusals = await body(tx);
@@ -137,7 +136,7 @@ export interface PostInput {
 export async function postQuestionnaireIn(
   tx: TxOnly,
   input: PostInput,
-): Promise<NamedRefusal[] | { batchId: string; messageId: string }> {
+): Promise<Refusal[] | { batchId: string; messageId: string }> {
   const shape = itemRefusals(input.items);
   if (shape.length) return shape;
   const open = await openBatchOf(tx, input.conversationId);

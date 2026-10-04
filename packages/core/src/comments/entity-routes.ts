@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { COMMENT_INTENTS } from '@forge/contracts/record-events';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { refused } from '../project-config/respond.js';
+import { refused } from '../lib/refusal.js';
 import { type EntityCommentActor, listDecisionsAs, listEntityCommentsAs } from './entity-read.js';
 import {
   type EntityCommentOutcome,
@@ -54,7 +54,7 @@ function actorOf(c: Context<{ Variables: AuthVars }>): EntityCommentActor {
 }
 
 function answer(c: Context, outcome: EntityCommentOutcome) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return refused(c, outcome.refusals, 'COMMENT_REFUSED');
   const body: EntityCommentResponse = { comment: outcome.comment };
   return c.json(body, outcome.created ? 201 : 200);
 }

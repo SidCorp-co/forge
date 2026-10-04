@@ -84,40 +84,6 @@ export function parseVersionedDocument<T>(
   return { ok: false, refusals: result.error.issues.flatMap(issueRefusals) };
 }
 
-export type WriteEnvelope = { baseRevision: number | null; document: unknown };
-
-export function parseWriteEnvelope(raw: unknown):
-  | { ok: true; value: WriteEnvelope }
-  | {
-      ok: false;
-      message: string;
-    } {
-  if (!isRecord(raw)) return { ok: false, message: 'the body must be { baseRevision, document }' };
-  const extra = Object.keys(raw).filter((k) => k !== 'baseRevision' && k !== 'document');
-  if (extra.length > 0) {
-    return {
-      ok: false,
-      message: `unknown body key(s) ${extra.join(', ')}; the body is { baseRevision, document }`,
-    };
-  }
-  if (!('baseRevision' in raw)) {
-    return {
-      ok: false,
-      message:
-        'baseRevision is required: the revision this write was read at, or null for a first write',
-    };
-  }
-  const base = raw.baseRevision;
-  if (base !== null && !(typeof base === 'number' && Number.isInteger(base) && base >= 1)) {
-    return {
-      ok: false,
-      message: 'baseRevision must be a positive integer, or null for a first write',
-    };
-  }
-  if (!('document' in raw)) return { ok: false, message: 'document is required' };
-  return { ok: true, value: { baseRevision: base, document: raw.document } };
-}
-
 export function staleBase(baseRevision: number | null, storedRevision: number | null): ApiRefusal {
   const stored = storedRevision === null ? 'nothing (never written)' : `revision ${storedRevision}`;
   const base = baseRevision === null ? 'null (a first write)' : `revision ${baseRevision}`;

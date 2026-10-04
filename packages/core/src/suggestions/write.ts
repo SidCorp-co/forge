@@ -9,8 +9,7 @@ import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { lockFeedback } from '../feedback/service.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
-import { RefusalError } from '../lib/refusal.js';
-import type { NamedRefusal } from '../project-config/respond.js';
+import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { lockRequirements } from '../requirements/service.js';
 import type { Effect } from './effects.js';
 import { type Row, type SuggestionActor, type SuggestionTarget, viewOf } from './read.js';
@@ -18,12 +17,12 @@ import { baseStaleRefusal } from './rules.js';
 
 export type SuggestionOutcome =
   | { ok: true; suggestion: SuggestionView; effect?: Effect; created?: boolean }
-  | { ok: false; refusals: NamedRefusal[] };
+  | { ok: false; refusals: Refusal[] };
 
 /** Runs `body` in a transaction; refusals it returns or throws roll everything back and come out. */
 export async function inTx(
-  body: (tx: Tx) => Promise<NamedRefusal[] | null | undefined>,
-): Promise<NamedRefusal[] | null> {
+  body: (tx: Tx) => Promise<Refusal[] | null | undefined>,
+): Promise<Refusal[] | null> {
   try {
     return await db.transaction(async (tx) => {
       const refusals = await body(tx);

@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { envelopeOf, refused } from '../project-config/respond.js';
+import { refused } from '../lib/refusal.js';
+import { envelopeOf } from '../lib/write-envelope.js';
 import { readApiPage } from './api-page.js';
 import { heldEcosystem } from './ecosystem-service.js';
 import {
@@ -68,7 +69,7 @@ ecosystemProjectRoutes.put(
       baseRevision,
       raw: document,
     });
-    if (!outcome.ok) return refused(c, outcome.refusals);
+    if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
     const setBy = await commitmentsSetter(id);
     return c.json({ ...serialise(outcome.held, setBy), created: outcome.created });
   },

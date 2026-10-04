@@ -16,7 +16,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { refused } from '../project-config/respond.js';
+import { refused } from '../lib/refusal.js';
 import { listSuggestions, type SuggestionActor, type SuggestionTargetRef } from './read.js';
 import {
   acceptSuggestion,
@@ -51,7 +51,7 @@ function actorOf(c: Context<{ Variables: AuthVars }>): SuggestionActor {
 }
 
 function answer(c: Context, outcome: SuggestionOutcome) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return refused(c, outcome.refusals, 'SUGGESTION_REFUSED');
   const body: SuggestionResponse = {
     suggestion: outcome.suggestion,
     ...(outcome.effect ? { effect: outcome.effect } : {}),

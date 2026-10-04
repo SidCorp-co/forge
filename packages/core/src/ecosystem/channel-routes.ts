@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { refused } from '../project-config/respond.js';
+import { refused } from '../lib/refusal.js';
 import { uuid } from '../project-config/schema.js';
 import { forbidden, refusedBy } from './access.js';
 import type { ChannelOutcome } from './channel-act.js';
@@ -76,7 +76,7 @@ const reasonBody = (code: ChannelRefusalCode, act: string) =>
           path: '/reason',
           detail: `${act} says why: the body is { "reason": 1 to 500 characters }, and both sides read it.`,
         },
-      ]);
+      ], 'ECOSYSTEM_REFUSED');
     }
   });
 
@@ -95,7 +95,7 @@ const supersedeBody = zValidator(
           detail:
             'a supersession names its replacement and says why: the body is { "by": <the number of the published replacement>, "reason": 1 to 500 characters }.',
         },
-      ]);
+      ], 'ECOSYSTEM_REFUSED');
     }
   },
 );
@@ -105,7 +105,7 @@ const holdBody = zValidator('json', z.strictObject({ reason: z.string().optional
 });
 
 function answer(c: Context, outcome: ChannelOutcome) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
   return c.json(viewOf(outcome.served));
 }
 
@@ -241,7 +241,7 @@ const holdHandler =
       writer: await writerOf(c),
       reason,
     });
-    if (!outcome.ok) return refused(c, outcome.refusals);
+    if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
     return c.json(holdView(number, outcome));
   };
 

@@ -3,7 +3,8 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { envelopeOf, refused } from '../project-config/respond.js';
+import { refused } from '../lib/refusal.js';
+import { envelopeOf } from '../lib/write-envelope.js';
 import { REGISTER_STATUSES, readRegister } from './channel-register.js';
 import {
   createEcosystem,
@@ -64,12 +65,12 @@ export const serialiseMembership = (row: MembershipRow) => ({
 });
 
 function answerEcosystem(c: Context, outcome: EcosystemOutcome) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
   return c.json({ ...serialiseEcosystem(outcome.held), created: outcome.created });
 }
 
 function answerMembership(c: Context, outcome: MembershipOutcome) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
   return c.json(serialiseMembership(outcome.membership));
 }
 
@@ -82,7 +83,7 @@ ecosystemRoutes.post('/', zValidator('json', z.unknown()), async (c) => {
         path: '/baseRevision',
         detail: `this creates an ecosystem, which has no revision to base on; send baseRevision null, not ${baseRevision}.`,
       },
-    ]);
+    ], 'ECOSYSTEM_REFUSED');
   }
   return answerEcosystem(c, await createEcosystem({ userId: c.get('userId'), raw: document }));
 });
@@ -159,7 +160,7 @@ const reasonBody = zValidator(
           detail:
             'leaving or removing a membership says why: the body is { "reason": 1 to 500 characters }, and the reason is kept on the membership.',
         },
-      ]);
+      ], 'ECOSYSTEM_REFUSED');
     }
   },
 );

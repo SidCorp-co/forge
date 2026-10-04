@@ -3,7 +3,8 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { envelopeOf, refused } from '../project-config/respond.js';
+import { refused } from '../lib/refusal.js';
+import { envelopeOf } from '../lib/write-envelope.js';
 import { supersedeBuilderRun } from './builder-supersede.js';
 import {
   listBuilderRunsAs,
@@ -55,7 +56,7 @@ function writerOf(c: Context<{ Variables: AuthVars }>): RecordWriter {
 }
 
 function answer<W extends object>(c: Context, outcome: RecordOutcome<W>) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
   const report = outcome.report ? { report: outcome.report } : {};
   return c.json({ ...recordView(outcome.held), created: outcome.created, ...report });
 }
@@ -141,6 +142,6 @@ busRoutes.post('/:id/builder-runs/:run/supersede', supersedeParam, supersedeBody
     actor: writerOf(c),
     reason: body && typeof body === 'object' ? (body as { reason?: unknown }).reason : undefined,
   });
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
   return c.json({ superseded: recordView(outcome.superseded), opened: recordView(outcome.opened) });
 });

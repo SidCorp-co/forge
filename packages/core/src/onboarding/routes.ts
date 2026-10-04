@@ -13,10 +13,9 @@ import {
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { refusalEnvelope } from '../lib/refusal.js';
+import { type Refusal, refusalEnvelope } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import type { NamedRefusal } from '../project-config/respond.js';
 import { readOnboardingState } from './read.js';
 import {
   joinOnboarding,
@@ -51,7 +50,7 @@ export function actorOf(c: Context<{ Variables: AuthVars }>): OnboardingActor {
 }
 
 /** 422 in the one envelope, `ONBOARDING_REFUSED` when the codes differ. */
-export function refusedOnboarding(c: Context, refusals: readonly NamedRefusal[]) {
+export function refusedOnboarding(c: Context, refusals: readonly Refusal[]) {
   return c.json(refusalEnvelope(refusals, 'ONBOARDING_REFUSED'), 422);
 }
 

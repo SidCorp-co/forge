@@ -22,7 +22,7 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import type { PendingIssueRelation } from '../issues/relations-service.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { transition } from '../lifecycle/transition.js';
-import type { NamedRefusal } from '../project-config/respond.js';
+import type { Refusal } from '../lib/refusal.js';
 import { requirementKey, rowIn } from '../requirements/read.js';
 import {
   createRequirementIn,
@@ -37,7 +37,7 @@ export type Effect = SuggestionEffect | FeedbackTriageEffect;
 export type AcceptChannel = 'web' | 'mcp';
 
 export interface EffectWritten {
-  refusals: NamedRefusal[] | null;
+  refusals: Refusal[] | null;
   effect?: Effect;
   triage?: TriageWritten;
   /** Issues the accept filed, announced once the transaction committed. */
@@ -49,7 +49,7 @@ export interface EffectWritten {
   routeComment?: { issueId: string; row: WrittenComment['row']; authored: 'human' | 'agent' };
 }
 
-export const undecided = (kind: string, path: string, what: string): NamedRefusal => ({
+export const undecided = (kind: string, path: string, what: string): Refusal => ({
   code: 'SUGGESTION_EFFECT_UNDECIDED',
   path,
   detail: `the approved designs name no effect for ${what}, so accepting this ${kind} suggestion would write nothing; reject it with a reason, or have its producer propose it without that part.`,

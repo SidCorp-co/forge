@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { refused } from '../project-config/respond.js';
+import { refused } from '../lib/refusal.js';
 import { getMockupAs, listMockupsAs, mockupBytes } from './list.js';
 import type { MockupActor } from './read.js';
 import {
@@ -59,7 +59,7 @@ function actorOf(c: Context<{ Variables: AuthVars }>): MockupActor {
 }
 
 function answer(c: Context, outcome: MockupOutcome) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return refused(c, outcome.refusals, 'MOCKUP_REFUSED');
   return c.json({ mockup: outcome.mockup }, outcome.created ? 201 : 200);
 }
 
@@ -89,7 +89,7 @@ mockupRoutes.get('/:id/mockups/:mk', mockupParam, async (c) => {
 mockupRoutes.get('/:id/mockups/:mk/content', mockupParam, async (c) => {
   const { id, mk } = c.req.valid('param');
   const file = await mockupBytes(actorOf(c), id, mk);
-  if (!file.ok) return refused(c, [file.refusal]);
+  if (!file.ok) return refused(c, [file.refusal], 'MOCKUP_REFUSED');
   setInertAttachmentHeaders(c, file.row.mime, file.row.name);
   c.header('Cache-Control', 'private, no-store');
   return c.body(new Uint8Array(file.bytes), 200);

@@ -19,7 +19,7 @@ import {
   restActor,
 } from '../../middleware/auth.js';
 import { strictBody, zValidator } from '../../middleware/zod-validator.js';
-import { refused } from '../../project-config/respond.js';
+import { refused } from '../../lib/refusal.js';
 import { issueContractWaitsOf } from './read.js';
 import { addContractWait, retractContractWait, type WaitOutcome } from './service.js';
 import { requireCan } from '../../permissions/index.js';
@@ -66,7 +66,7 @@ const actorOf = (c: Context<{ Variables: AuthVars }>) => {
 };
 
 function answer(c: Context, outcome: WaitOutcome) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
   const body: ContractWaitResponse = { wait: outcome.wait };
   return c.json(body, outcome.created ? 201 : 200);
 }

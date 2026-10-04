@@ -9,7 +9,7 @@ import { and, eq } from 'drizzle-orm';
 import type { db, Tx } from '../db/client.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { isUuid } from '../issues/issue-route-ref.js';
-import type { NamedRefusal } from '../project-config/respond.js';
+import type { Refusal } from '../lib/refusal.js';
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
 
 export interface DesignNodes {
@@ -69,7 +69,7 @@ export function edgesMatching(nodes: DesignNodes, e: EdgeRef) {
   );
 }
 
-export function edgeRefusal(nodes: DesignNodes, e: EdgeRef, path: string): NamedRefusal | null {
+export function edgeRefusal(nodes: DesignNodes, e: EdgeRef, path: string): Refusal | null {
   const hits = edgesMatching(nodes, e);
   if (hits.length === 1) return null;
   if (hits.length === 0) {
@@ -86,7 +86,7 @@ export function edgeRefusal(nodes: DesignNodes, e: EdgeRef, path: string): Named
   };
 }
 
-export function stepRefusal(nodes: DesignNodes, step: string, path: string): NamedRefusal | null {
+export function stepRefusal(nodes: DesignNodes, step: string, path: string): Refusal | null {
   if (nodes.steps.has(step)) return null;
   return {
     code: 'WORKFLOW_NODE_UNKNOWN',
@@ -96,8 +96,8 @@ export function stepRefusal(nodes: DesignNodes, step: string, path: string): Nam
 }
 
 /** Every step and edge of `set` the design does not hold, each refused at its own path under `base`. */
-export function nodeSetRefusals(nodes: DesignNodes, set: NodeSet, base = ''): NamedRefusal[] {
-  const out: NamedRefusal[] = [];
+export function nodeSetRefusals(nodes: DesignNodes, set: NodeSet, base = ''): Refusal[] {
+  const out: Refusal[] = [];
   (set.steps ?? []).forEach((s, i) => {
     const r = stepRefusal(nodes, s, `${base}/steps/${i}`);
     if (r) out.push(r);
@@ -109,7 +109,7 @@ export function nodeSetRefusals(nodes: DesignNodes, set: NodeSet, base = ''): Na
   return out;
 }
 
-export function nodeRefRefusal(nodes: DesignNodes, ref: NodeRef, base = ''): NamedRefusal | null {
+export function nodeRefRefusal(nodes: DesignNodes, ref: NodeRef, base = ''): Refusal | null {
   return 'step' in ref
     ? stepRefusal(nodes, ref.step, `${base}/step`)
     : edgeRefusal(nodes, ref.edge, `${base}/edge`);

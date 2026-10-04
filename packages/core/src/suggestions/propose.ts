@@ -15,7 +15,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { nearestFeedbackOf } from '../feedback/embeddings.js';
 import { permissionRefusalFor, permissionFactsOf, requireCan } from '../permissions/index.js';
 import { notAnEdgeError, transition } from '../lifecycle/transition.js';
-import type { NamedRefusal } from '../project-config/respond.js';
+import type { Refusal } from '../lib/refusal.js';
 import { designNodesIn, nodeSetRefusals } from '../workflows/node-refs.js';
 import { breakdownGuardIn } from './breakdown.js';
 import {
@@ -71,7 +71,7 @@ async function proposeIn(
   tx: Tx,
   p: Proposal,
   head: number | null,
-): Promise<{ refusals: NamedRefusal[] } | { id: string }> {
+): Promise<{ refusals: Refusal[] } | { id: string }> {
   if (p.kind === 'breakdown' && p.target.type === 'requirement') {
     const guard = await breakdownGuardIn(
       tx,

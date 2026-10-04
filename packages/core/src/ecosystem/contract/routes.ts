@@ -9,7 +9,7 @@ import {
   restActor,
 } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
-import { refused } from '../../project-config/respond.js';
+import { refused } from '../../lib/refusal.js';
 import { slug } from '../../project-config/schema.js';
 import { CONTRACT_DECISION_REASON_MAX, CONTRACT_DECISIONS } from './approval.js';
 import { decideContractVersion } from './decide.js';
@@ -143,7 +143,7 @@ contractRoutes.get(
           path: '/',
           detail: `${hit.document.contract}@${version} is ${hit.contractType}${text === null ? ' and holds no stored artifact' : ''}; a mock is generated from the stored artifact of an openapi, json-schema, mcp-tools or graphql version.`,
         },
-      ]);
+      ], 'ECOSYSTEM_REFUSED');
     }
     c.header('Content-Type', media);
     c.header('X-Forge-Contract-Approval', hit.approval);
@@ -188,7 +188,7 @@ contractRoutes.post(
       reason: reason ?? null,
       actor: { userId: actor.id, agency: actor.agency },
     });
-    if (!out.ok) return refused(c, out.refusals);
+    if (!out.ok) return refused(c, out.refusals, 'ECOSYSTEM_REFUSED');
     return c.json({
       version: out.version.document,
       approval: approvalView(out.version),
@@ -252,6 +252,6 @@ contractRoutes.post('/:id/contracts/:contract/versions', contractParam, uploadBo
     writer: { userId: actor.id, agency: actor.agency },
     ...c.req.valid('json'),
   });
-  if (!out.ok) return refused(c, out.refusals);
+  if (!out.ok) return refused(c, out.refusals, 'ECOSYSTEM_REFUSED');
   return c.json({ recorded: out.recorded, version: out.version }, out.recorded ? 201 : 200);
 });
