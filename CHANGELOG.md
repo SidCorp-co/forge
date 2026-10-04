@@ -8,6 +8,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- **A requirement, a feedback item or an issue can carry mockups (ISS-78).** A wireframe board, a
+  sketch, an image, an HTML page or an API example is proposed as MK-n about exactly one target
+  (`POST /api/projects/:id/mockups`, `forge_mockups`, the BA assistant's `ba_draw_mockup`, the
+  Mockups tab and the chat board's Propose). A person other than its author accepts it, or any
+  person returns it with a reason. The next agree or re-pin of a requirement pins its accepted
+  mockups beside the designs, and every job on an issue built from it, or on the issue a mockup was
+  accepted on, is given each one with its fetch. Bytes never change once proposed, and on a
+  no_egress project they are withheld from agents (surface `mockup.content`).
+
 ## [0.4.0-dev.1] - 2026-10-04
 
 Requirements, feedback and suggestions get homes; issue statuses say who acts next
