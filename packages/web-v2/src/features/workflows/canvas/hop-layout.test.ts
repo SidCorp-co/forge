@@ -4,7 +4,7 @@ import type { WorkflowBody } from "../types";
 import design from "./hop-discharge.fixture.json";
 import { layoutView } from "./layout";
 import { readCanvas, templateFor } from "./model";
-import { buildView } from "./view";
+import { buildView, mergedLabel } from "./view";
 
 // The HOP discharge design as dev stores it: 16 steps, 23 contracts, ordered by `after`.
 const doc = design as unknown as WorkflowBody;
@@ -49,7 +49,7 @@ describe("the HOP discharge design on the canvas", () => {
     const placed = await layoutView({
       view,
       sizes: new Map(view.nodes.map((n) => [n.key, { width: 340, height: 96 }])),
-      labels: new Map(view.edges.map((e) => [e.key, `${e.src.length} links`])),
+      labels: new Map(view.edges.map((e) => [e.key, mergedLabel(e, c).text])),
       partition: (key) => rows.get(bandOfKey(key)) ?? 0,
       direction: "down",
     });
