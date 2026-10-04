@@ -108,7 +108,6 @@ function rerankEligible(input: RunMemorySearchInput, flags: RetrievalFlags): boo
 async function retrieve(
   input: RunMemorySearchInput,
   poolTopK: number,
-  flags: RetrievalFlags,
 ): Promise<{
   hits: MemoryHit[];
   resolved: MemorySearchStrategy;
@@ -190,7 +189,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
   const holdout = eligible && inRerankHoldout();
   const willRerank = eligible && !holdout;
 
-  const retrieved = await retrieve(input, willRerank ? rerankPoolSize(topK) : topK, flags);
+  const retrieved = await retrieve(input, willRerank ? rerankPoolSize(topK) : topK);
   let hits = retrieved.hits;
   const outcome: SearchOutcome = { reranked: false, expanded: false };
   if (holdout) outcome.rerankHoldout = true;
