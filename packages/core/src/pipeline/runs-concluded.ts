@@ -23,6 +23,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { LoopScope } from '../jobs/loop-monitor.js';
 import { RESULT_QUIET_MINUTES } from '../jobs/loop-monitor.js';
+import { oneShotRunOutcome } from '../lifecycle/status-sets.js';
 import { logger } from '../logger.js';
 import { closeRun } from './runs.js';
 
@@ -187,13 +188,10 @@ export async function reapJoblessRuns(
 
   let reaped = 0;
   for (const row of candidates) {
-    const outcome: 'completed' | 'failed' | 'cancelled' = row.any_completed
-      ? row.any_failed
-        ? 'failed'
-        : 'completed'
-      : row.any_failed
-        ? 'failed'
-        : 'cancelled';
+    const outcome = oneShotRunOutcome({
+      anyCompleted: row.any_completed,
+      anyFailed: row.any_failed,
+    });
     try {
       logger.info(
         { runId: row.id, projectId: row.project_id, issueId: row.issue_id, outcome },

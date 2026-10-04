@@ -105,9 +105,8 @@ vi.mock('../ws/rooms.js', () => ({
   projectRoom: (id: string) => `project:${id}`,
 }));
 
-const { ensureAgentSessionForJob, syncAgentSessionLifecycle } = await import(
-  './agent-session-link.js'
-);
+const { ensureAgentSessionForJob, SESSION_STATUS_OF_JOB_OUTCOME, syncAgentSessionLifecycle } =
+  await import('./agent-session-link.js');
 
 function pushSelect(row: Row) {
   // The mock pulls two values per select — the first is a sentinel, the
@@ -308,12 +307,12 @@ describe('jobs/agent-session-link', () => {
       expect(updateCalls[0]?.set.failureDetail).toBeNull();
     });
 
-    it('ISS-759: the cancelled→completed mapping clears it too', async () => {
+    it('ISS-100: a cancelled job leaves its session cancelled, its failure columns cleared', async () => {
       await syncAgentSessionLifecycle(
         { ...baseJob, agentSessionId: 'sess-1' } as never,
         'cancelled',
       );
-      expect(updateCalls[0]?.set.status).toBe('completed');
+      expect(updateCalls[0]?.set.status).toBe('cancelled');
       expect(updateCalls[0]?.set.failureReason).toBeNull();
     });
 
@@ -323,13 +322,25 @@ describe('jobs/agent-session-link', () => {
       expect(updateCalls[0]?.set.failureReason).toBeTruthy();
     });
 
-    it('maps cancelled → completed (enum has no cancelled); closes run as cancelled', async () => {
+    it('ISS-100: maps cancelled → cancelled, never completed, and closes the run as cancelled', async () => {
       await syncAgentSessionLifecycle(
         { ...baseJob, agentSessionId: 'sess-1' } as never,
         'cancelled',
       );
-      expect(updateCalls[0]?.set.status).toBe('completed');
+      expect(updateCalls[0]?.set.status).toBe('cancelled');
+      expect(updateCalls[0]?.set.status).not.toBe('completed');
       expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-1', 'cancelled');
+    });
+
+    it('ISS-100: every job outcome maps to a session status the session set holds', () => {
+      for (const to of Object.values(SESSION_STATUS_OF_JOB_OUTCOME)) {
+        expect(TERMINAL).toContain(to);
+      }
+      expect(SESSION_STATUS_OF_JOB_OUTCOME).toEqual({
+        done: 'completed',
+        failed: 'failed',
+        cancelled: 'cancelled',
+      });
     });
 
     it('maps failed → failed and closes one-shot run as failed', async () => {

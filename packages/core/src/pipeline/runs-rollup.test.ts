@@ -246,6 +246,39 @@ describe('loadPipelineRunSummary', () => {
     expect(step.agentSessionId).toBe(SESS_A);
   });
 
+  it('ISS-100: a step whose sessions were only cancelled reads cancelled, not pending or completed', async () => {
+    runRowQueue.push([runRow]);
+    stepsQueue.push([
+      {
+        jobType: 'drive',
+        latestId: SESS_A,
+        startedAt: new Date('2026-05-12T00:01:00.000Z'),
+        finishedAt: new Date('2026-05-12T00:02:00.000Z'),
+        hasRunning: 0,
+        hasFailed: 0,
+        hasCompleted: 0,
+        hasCancelled: 1,
+        hasOpen: 0,
+      },
+    ]);
+    costQueue.push([
+      {
+        estimatedCost: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        requests: 0,
+        sampleCount: 0,
+      },
+    ]);
+
+    const step = (await loadPipelineRunSummary(RUN_ID))!.steps[0]!;
+    expect(step.status).toBe('cancelled');
+    expect(step.finishedAt).toBe('2026-05-12T00:02:00.000Z');
+    expect(step.durationMs).toBe(60_000);
+  });
+
   it('terminal step computes durationMs from startedAt → finishedAt', async () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([

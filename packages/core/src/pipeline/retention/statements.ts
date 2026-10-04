@@ -1,4 +1,5 @@
 import { type SQL, sql } from 'drizzle-orm';
+import { terminalAgentSessionStatuses } from '../../db/session-vocabulary.js';
 import {
   attemptedMerge,
   TRANSCRIPT_ATTEMPTED_KEY,
@@ -11,8 +12,11 @@ const JOB_TERMINAL = sql`(${sql.join(
   TERMINAL_JOB_STATUSES.map((s) => sql`${s}`),
   sql`, `,
 )})`;
-/** Terminal `agent_sessions.status`. */
-const SESSION_TERMINAL = sql`('completed', 'failed', 'completed_via_recovery', 'cancelled_stale')`;
+/** Terminal `agent_sessions.status`, from the one constant that answers it. */
+const SESSION_TERMINAL = sql`(${sql.join(
+  terminalAgentSessionStatuses.map((s) => sql`${s}`),
+  sql`, `,
+)})`;
 /** Terminal `pipeline_runs.status`. */
 const RUN_TERMINAL = sql`('completed', 'failed', 'cancelled')`;
 /**

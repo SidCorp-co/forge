@@ -1,6 +1,12 @@
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type AgentSessionKind, agentSessions, issues, jobs } from '../db/schema.js';
+import {
+  type AgentSessionKind,
+  type AgentSessionStatus,
+  agentSessions,
+  issues,
+  jobs,
+} from '../db/schema.js';
 import { masterSessionIfOwned } from '../devices/master-owner.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -227,6 +233,14 @@ function deriveSessionFailure(job: JobRow): {
   };
 }
 
+// cm:why a job's terminal status is its session's: a cancelled job whose session read `completed`
+// told every reader counting finished sessions that work was done which never ran (ISS-100).
+export const SESSION_STATUS_OF_JOB_OUTCOME = {
+  done: 'completed',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const satisfies Record<'done' | 'failed' | 'cancelled', AgentSessionStatus>;
+
 /**
  * Mirror a job lifecycle transition (done / failed / cancelled) onto its
  * linked `agent_sessions` row. Best-effort — swallows errors so a failure to
@@ -252,10 +266,7 @@ export async function syncAgentSessionLifecycle(
     return;
   }
   try {
-    // agent_sessions enum has no 'cancelled' — map to 'completed' so the row
-    // leaves the running state. The job row keeps the precise terminal status.
-    const status: 'completed' | 'failed' =
-      outcome === 'done' || outcome === 'cancelled' ? 'completed' : 'failed';
+    const status = SESSION_STATUS_OF_JOB_OUTCOME[outcome];
     await applyKernelTransition(db, {
       entity: 'session',
       to: status,
