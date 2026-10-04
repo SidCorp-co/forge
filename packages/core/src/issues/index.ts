@@ -23,7 +23,7 @@ export {
   type TransitionIssueRow,
   transitionIssueStatus,
 } from './apply-transition.js';
-export { issueArchiveSide, memoryOfLiveIssue, memoryOfLiveIssueAs } from './archive.js';
+export { issueArchiveSide } from './archive.js';
 export { findIssueAttachmentByName, persistIssueAttachment } from './attachment-service.js';
 export { closeBacklogStreams } from './backlog/open-streams.js';
 export {
@@ -87,7 +87,6 @@ export { landingShapeOf, landingShortfall, requireLandingShape } from './landing
 export { holderFanout, readClaim } from './lease-fanout.js';
 export { mergedCommitShaSchema } from './merge-marker.js';
 export { recordIssueMerge } from './merge-record.js';
-export { BASE_MERGE_STATE } from './merged-at.js';
 export { publishPipelineHealthChanged } from './pipeline-health.js';
 export { provideIssuePorts } from './ports.js';
 export {
