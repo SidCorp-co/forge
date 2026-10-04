@@ -164,9 +164,6 @@
     "core-usage-records": [
       "packages/core/src/usage-records/**"
     ],
-    "core-webhooks": [
-      "packages/core/src/webhooks/**"
-    ],
     "core-ws": [
       "packages/core/src/ws/**"
     ],

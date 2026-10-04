@@ -202,7 +202,7 @@ export const RULES = [
       words('GENERIC_SIGNATURE_HEADERS', 'resolveProjectSecret'),
       /handler:\s*['"`]generic['"`]|webhook: generic receive/.source,
     ),
-    why: "ISS-16 removed the generic inbound webhook: `POST /api/webhooks/in/:slug` with no provider header verified a project secret and then reached nothing, and now answers 410 `WEBHOOK_ROUTE_REMOVED` (`webhooks/inbound-routes.ts:routeRemoved`). A provider's webhook is verified with its integration binding's secret; there is no project webhook secret to read.",
+    why: "ISS-16 removed the generic inbound webhook: `POST /api/webhooks/in/:slug` with no provider header verified a project secret and then reached nothing, and now answers 410 `WEBHOOK_ROUTE_REMOVED` (`integration-door/webhook-inbound-routes.ts:routeRemoved`). A provider's webhook is verified with its integration binding's secret; there is no project webhook secret to read.",
   },
   {
     id: 'tag-mr-strategy',

@@ -14,7 +14,7 @@ A domain imports a port's **index.ts**, never a file behind it.
 protocol and nothing else:
 
 - What a vendor delivers is reported, not acted on. `handleInbound` returns `facts` (`types.ts:InboundFact`),
-  the webhook door (`webhooks/inbound-routes.ts`) writes them to the outbox, and the module that owns
+  the webhook door (`integration-door/webhook-inbound-routes.ts`) writes them to the outbox, and the module that owns
   each effect consumes them: `source.pushed` (ecosystem, projects), `source.merged` (issues),
   `source.reviewed` (comments), `error.sighted` (error-intake).
 - What an adapter must know about Forge's own rows (a project's declared repository, the issue a branch

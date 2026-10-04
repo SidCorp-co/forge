@@ -276,7 +276,6 @@
         "via:skills",
         "via:suggestions",
         "via:uploads",
-        "via:webhooks",
         "via:workflows",
         "via:ws"
       ]
@@ -598,7 +597,6 @@
         "via:skills",
         "via:suggestions",
         "via:uploads",
-        "via:webhooks",
         "via:workflows",
         "via:ws"
       ]
@@ -714,7 +712,6 @@
         "via:skills",
         "via:suggestions",
         "via:uploads",
-        "via:webhooks",
         "via:workflows",
         "via:ws"
       ]
@@ -957,11 +954,6 @@
       "context": "execution",
       "owns": ["usageRecords"],
       "serves": ["REQ-24"]
-    },
-    "webhooks": {
-      "kind": "door",
-      "context": "ecosystem",
-      "serves": ["github-merge-sequence#m-webhook", "github-merge-sequence#m-verify"]
     },
     "workflows": {
       "kind": "domain",

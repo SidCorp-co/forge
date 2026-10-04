@@ -235,7 +235,7 @@ export interface IntegrationCapabilities {
    * The request header that identifies an inbound webhook as this provider's.
    *
    * Declared rather than mapped, because the map it replaced lived in
-   * `webhooks/inbound-routes.ts` — a file with no other reason to know a provider exists, and one
+   * `integration-door/webhook-inbound-routes.ts` — a file with no other reason to know a provider exists, and one
    * that would keep routing correctly for the providers it already listed while silently dropping a
    * new one on the floor. Only meaningful where `canReceiveWebhook` is true.
    */
