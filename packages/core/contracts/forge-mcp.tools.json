@@ -529,6 +529,73 @@
                     "minLength": 1,
                     "type": "string"
                   },
+                  "node": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "step": {
+                            "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                            "type": "string"
+                          },
+                          "verdict": {
+                            "enum": [
+                              "keep",
+                              "rewrite",
+                              "delete"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "step",
+                          "verdict"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "edge": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "from": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              },
+                              "label": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "to": {
+                                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "from",
+                              "to"
+                            ],
+                            "type": "object"
+                          },
+                          "verdict": {
+                            "enum": [
+                              "keep",
+                              "rewrite",
+                              "delete"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "edge",
+                          "verdict"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
                   "options": {
                     "items": {
                       "maxLength": 1000,
@@ -6263,7 +6330,7 @@
       "name": "forge_storefront_target"
     },
     {
-      "description": "Suggestions (forge_guide get suggestions): a proposed change that waits on a person instead of changing anything. Actions: list | create | accept | reject | revise | withdraw. create: { kind: requirement_draft | revision_diff | readiness | breakdown | triage | duplicate | feedback_triage, requirement | issue, baseRevision, payload } — baseRevision is the requirement head you read (null for an issue, or a requirement with no current revision); a moved head is SUGGESTION_BASE_STALE, an open twin SUGGESTION_DUPLICATE, a 6th open on one target SUGGESTION_QUEUE_FULL, a payload that does not parse for its kind SUGGESTION_PAYLOAD_INVALID. revision_diff takes { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } on a requirement; requirement_draft takes { title, reason, … } on an issue; readiness { checks: [{ check, passed, detail? }] }; breakdown { issues: [{ title, description?, complexity: xs | s | m | l | xl, priority?, category?, builds?: flow | null, criteria?: [{ body, tracesTo? }], blockedBy?: [index | issue key] }], uncovered? } — priority defaults to medium and category to feature, and the accept effect names each issue it defaulted; builds names the pinned design the issue builds (left out: the one design the latest baseline pins; several pinned is SUGGESTION_BUILD_UNNAMED, a flow it does not pin SUGGESTION_BUILD_UNPINNED), linked as the issue’s build so the build gate holds it; a blockedBy number is another issue of this breakdown, a string an existing live issue of the project (ISS-12 or uuid), so the order can run after another requirement’s work; checked at create and at accept (SUGGESTION_PAYLOAD_INVALID for a BC the base revision lacks or a blocker cycle, SUGGESTION_BLOCKER_UNKNOWN, SUGGESTION_BLOCKER_TERMINAL), and accepting it files every issue at draft, linked, traced and edged, in one transaction; triage { note, priority?, category?, route? } on an issue; duplicate { duplicateOf, similarity?, note? }; feedback_triage on `feedback` (FB-n), baseRevision null: { route: issue | revision | new_requirement | answer | duplicate, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }; accepting it writes the route (forge_feedback_items). accept { suggestionId, reason? } and reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); an accept’s reason is kept on the suggestion, and is where the authority behind it is named. revise { suggestionId, payload, reason } is a reviewer’s edit: the original is rejected with the reason and a new suggestion carrying the whole new payload is proposed by the reviewer, naming the original (revises); the reviewer then cannot accept it (SUGGESTION_ACCEPT_FORBIDDEN), and its producer cannot revise its own (SUGGESTION_REVISE_FORBIDDEN, withdraw instead); an unchanged payload is SUGGESTION_REVISION_UNCHANGED. accepting a revision_diff writes a new DRAFT revision, never a current one. withdraw: the producer retracts its own. list: { requirement | issue, status? } answers each suggestion as { id, kind, status, target, baseRevision, revises, producerKind, producerId, model, decidedBy, decidedAt, createdAt, payloadPurgedAt }, without its payload, fingerprint or decision reason; a write answers the same summary of the suggestion it wrote, and the effect. view: 'summary' (the default) answers a list as summaries and a write as what it changed; view: 'full' answers the whole document, which get answers by default (get with view: 'summary' answers the summary).",
+      "description": "Suggestions (forge_guide get suggestions): a proposed change that waits on a person instead of changing anything. Actions: list | create | accept | reject | revise | withdraw. create: { kind: requirement_draft | revision_diff | readiness | breakdown | triage | duplicate | feedback_triage | design_change, requirement | issue, baseRevision, payload } — baseRevision is the requirement head you read (null for an issue, or a requirement with no current revision); a moved head is SUGGESTION_BASE_STALE, an open twin SUGGESTION_DUPLICATE, a 6th open on one target SUGGESTION_QUEUE_FULL, a payload that does not parse for its kind SUGGESTION_PAYLOAD_INVALID. revision_diff takes { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } on a requirement; requirement_draft takes { title, reason, … } on an issue; readiness { checks: [{ check, passed, detail? }] }; breakdown { issues: [{ title, description?, complexity: xs | s | m | l | xl, priority?, category?, builds?: flow | null, criteria?: [{ body, tracesTo? }], blockedBy?: [index | issue key] }], uncovered? } — priority defaults to medium and category to feature, and the accept effect names each issue it defaulted; builds names the pinned design the issue builds (left out: the one design the latest baseline pins; several pinned is SUGGESTION_BUILD_UNNAMED, a flow it does not pin SUGGESTION_BUILD_UNPINNED), linked as the issue’s build so the build gate holds it; a blockedBy number is another issue of this breakdown, a string an existing live issue of the project (ISS-12 or uuid), so the order can run after another requirement’s work; checked at create and at accept (SUGGESTION_PAYLOAD_INVALID for a BC the base revision lacks or a blocker cycle, SUGGESTION_BLOCKER_UNKNOWN, SUGGESTION_BLOCKER_TERMINAL), and accepting it files every issue at draft, linked, traced and edged, in one transaction; triage { note, priority?, category?, route? } on an issue; duplicate { duplicateOf, similarity?, note? }; design_change on `workflow` (uuid or flow), baseRevision null: { steps?, edges?: [{ from, to, label? }], change: change | remove | rewire, reason }; a node the latest revision does not hold is WORKFLOW_NODE_UNKNOWN, and accepting it writes nothing into the design. feedback_triage on `feedback` (FB-n), baseRevision null: { route: issue | revision | new_requirement | answer | duplicate, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }; accepting it writes the route (forge_feedback_items). accept { suggestionId, reason? } and reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); an accept’s reason is kept on the suggestion, and is where the authority behind it is named. revise { suggestionId, payload, reason } is a reviewer’s edit: the original is rejected with the reason and a new suggestion carrying the whole new payload is proposed by the reviewer, naming the original (revises); the reviewer then cannot accept it (SUGGESTION_ACCEPT_FORBIDDEN), and its producer cannot revise its own (SUGGESTION_REVISE_FORBIDDEN, withdraw instead); an unchanged payload is SUGGESTION_REVISION_UNCHANGED. accepting a revision_diff writes a new DRAFT revision, never a current one. withdraw: the producer retracts its own. list: { requirement | issue, status? } answers each suggestion as { id, kind, status, target, baseRevision, revises, producerKind, producerId, model, decidedBy, decidedAt, createdAt, payloadPurgedAt }, without its payload, fingerprint or decision reason; a write answers the same summary of the suggestion it wrote, and the effect. view: 'summary' (the default) answers a list as summaries and a write as what it changed; view: 'full' answers the whole document, which get answers by default (get with view: 'summary' answers the summary).",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -6309,7 +6376,8 @@
               "breakdown",
               "triage",
               "duplicate",
-              "feedback_triage"
+              "feedback_triage",
+              "design_change"
             ],
             "type": "string"
           },
@@ -6355,6 +6423,11 @@
               "summary",
               "full"
             ],
+            "type": "string"
+          },
+          "workflow": {
+            "maxLength": 200,
+            "minLength": 1,
             "type": "string"
           }
         },
