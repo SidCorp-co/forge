@@ -110,7 +110,7 @@ async function connectionBinding(
   return candidates[0] ?? null;
 }
 
-export interface DestinationInput {
+interface DestinationInput {
   questionId: string;
   projectId: string;
   origin: QuestionOrigin | null;

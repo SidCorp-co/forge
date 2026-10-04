@@ -212,7 +212,7 @@ async function handleQuestionThreadReply(args: {
  * The connection manager's half: build the transport, hand the reply over, and
  * say nothing back — the message is consumed either way.
  */
-export interface QuestionReplySocket {
+interface QuestionReplySocket {
   serverUrl: string;
   authToken: string;
   client?: RocketChatDdpClient | undefined;

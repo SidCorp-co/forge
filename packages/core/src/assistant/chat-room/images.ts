@@ -62,7 +62,7 @@ function makeImageResolver(auth: RocketChatRestAuth): ImageResolver {
   };
 }
 
-export interface FastTurnInputs {
+interface FastTurnInputs {
   tools: ChatToolset;
   images: TurnImage[];
   resolveImage: ImageResolver;

@@ -31,13 +31,13 @@ import type { RoomReplyMeta } from './room-replies.js';
 
 type SessionRow = typeof agentSessionsTable.$inferSelect;
 
-export interface EscalationIssueProposal {
+interface EscalationIssueProposal {
   title: string;
   description: string;
   reason: string;
 }
 
-export interface EscalationPayload {
+interface EscalationPayload {
   answer: string;
   issueProposal?: EscalationIssueProposal;
 }

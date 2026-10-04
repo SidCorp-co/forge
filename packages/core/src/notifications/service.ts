@@ -32,7 +32,7 @@ export async function setDeliveryRead(deliveryId: string, userId: string, read: 
   });
 }
 
-export type DeleteDeliveryOutcome =
+type DeleteDeliveryOutcome =
   | { ok: true }
   | { ok: false; code: 'NOT_FOUND' }
   | { ok: false; code: 'CONDITION_STILL_TRUE'; live: { title: string; type: string } };

@@ -23,7 +23,7 @@ function defaultSeverityForType(type: NotificationType): string {
   return DEFAULT_SEVERITY_BY_TYPE[type] ?? 'info';
 }
 
-export interface EmitNotificationInput {
+interface EmitNotificationInput {
   userId?: string;
   recipients?: string[];
   projectId?: string | null;

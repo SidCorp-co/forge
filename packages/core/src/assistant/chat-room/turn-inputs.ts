@@ -35,7 +35,7 @@ import { prepareFastTurn } from './images.js';
 import { rocketChatPersona } from './persona.js';
 
 /** What the turn needs of the connection it arrived on. */
-export interface TurnBot {
+interface TurnBot {
   botName: string;
   serverUrl: string;
   authToken: string;
@@ -43,7 +43,7 @@ export interface TurnBot {
 }
 
 /** The messages one window collected, in the terms this transport needs them in. */
-export interface RocketChatTurnSubject {
+interface RocketChatTurnSubject {
   rid: string;
   tmid: string | undefined;
   /** Everything the window collected, as one body — what the diversions and the quote scan read. */
@@ -56,7 +56,7 @@ export interface RocketChatTurnSubject {
   images: readonly RocketChatImageRef[];
 }
 
-export interface RocketChatTurnArgs {
+interface RocketChatTurnArgs {
   bot: TurnBot;
   route: Route;
   subject: RocketChatTurnSubject;
@@ -81,7 +81,7 @@ export interface RocketChatTurnArgs {
 }
 
 /** Everything the neutral turn takes bar what the window and its venue settle. */
-export type RocketChatTurn = WindowTurnInputs;
+type RocketChatTurn = WindowTurnInputs;
 
 interface Seed {
   persona: string;

@@ -206,7 +206,7 @@ async function releaseTakenAnchor(
   });
 }
 
-export interface QuestionDrainResult {
+interface QuestionDrainResult {
   owed: number;
   delivered: number;
   failed: number;

@@ -23,7 +23,7 @@ const EVALUATION_MS = 60_000;
 /** A pending record unseen for this long cleared before it earned a delivery. */
 export const PENDING_STALE_MS = 3 * EVALUATION_MS;
 
-export interface DeliverInput {
+interface DeliverInput {
   type: NotificationType;
   /** Everybody who should be told. One record, one delivery each. */
   recipients: string[];
