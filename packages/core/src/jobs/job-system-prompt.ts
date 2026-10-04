@@ -1,6 +1,6 @@
 /**
  * The system prompt a job on an issue runs under: the pipeline preamble, then the artifact,
- * contract and named-contract blocks its issue reaches. `prepare-claimed-job.ts` and the prompt
+ * contract and pinned-contract blocks its issue reaches. `prepare-claimed-job.ts` and the prompt
  * preview (`prompt/routes.ts`) both call `buildJobSystemPrompt`, so what a preview shows is what a
  * claimed job is given. Nothing here writes; recording the loads on a session is prepare's.
  */
@@ -9,13 +9,6 @@ import type { ContentLanguageRecord } from '@forge/contracts/content-language';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues, type JobType, labels } from '../db/schema.js';
-import {
-  contractsNamedIn,
-  type LoadedNamedContract,
-  loadNamedContracts,
-  NamedContractError,
-  renderNamedContracts,
-} from '../ecosystem/contract/named-context.js';
 import {
   type LoadedContract,
   pathsNamedIn,
@@ -27,6 +20,12 @@ import { dataPolicyOf, type EgressSurface, egressText, withheldAt } from '../lib
 import { estimateTokens } from '../lib/token-estimator.js';
 import { logger } from '../logger.js';
 import type { DispatchState } from '../project-config/dispatch-policy.js';
+import {
+  type LoadedPinnedContract,
+  loadPinnedContracts,
+  PinnedContractError,
+  renderPinnedContracts,
+} from '../workflows/pinned-contracts.js';
 import {
   type LoadedRequirement,
   RequirementContextError,
@@ -63,7 +62,7 @@ export interface JobSystemPrompt {
   designs: LoadedArtifact[];
   requirement: LoadedRequirement | null;
   contracts: LoadedContract[];
-  namedContracts: LoadedNamedContract[];
+  pinnedContracts: LoadedPinnedContract[];
 }
 
 type IssueText = {
@@ -137,28 +136,27 @@ async function contractsNamedBy(
   }
 }
 
-// cm:why a job is given the contract versions its issue names, the provider's and the in-project consumer's view alike, where path matching reaches only a link's call sites
-async function contractVersionsNamedBy(
-  projectId: string,
-  issue: IssueText | undefined,
+// A job on an issue that delivers a requirement is given every contract version the requirement's
+// latest baseline pins, the provider's and the consumer's issue alike (requirement-to-delivery,
+// edge delivery -> build); a pinned version that cannot be given refuses the job by name.
+async function contractsPinnedFor(
+  requirement: LoadedRequirement | null,
   subject: string,
-): Promise<LoadedNamedContract[]> {
-  if (!issue) return [];
-  const text = [issue.description, issue.plan, issue.acceptanceCriteria].filter(Boolean).join('\n');
+): Promise<LoadedPinnedContract[]> {
+  if (!requirement) return [];
   try {
-    return await loadNamedContracts(projectId, contractsNamedIn(text));
+    return await loadPinnedContracts(requirement.key, requirement.pins);
   } catch (err) {
-    // cm:guard a named contract version that cannot be given, or is not approved, refuses the job by name: it would build against a contract nobody agreed
-    const code = err instanceof NamedContractError ? err.code : 'CONTRACT_CONTEXT_UNLOADABLE';
+    const code = err instanceof PinnedContractError ? err.code : 'ARTIFACT_CONTEXT_UNLOADABLE';
     throw new JobContextRefused(
       code,
-      `${code}: ${subject}: the contract versions its issue names could not be given (${errText(err)})`,
+      `${code}: ${subject}: the contract versions its requirement pins could not be given (${errText(err)})`,
       { cause: err },
     );
   }
 }
 
-// cm:why a build job is given the design revision its approver approved, so it builds the journey it was held for rather than one it guesses at; an issue that builds no workflow is given nothing
+// cm:why a build job is given the design revisions its requirement's baseline pins, or for an issue with no requirement the revision its approver approved, so it builds the journey it was held for rather than one it guesses at; an issue that reaches no design is given nothing
 async function designsBuiltBy(issueId: string | null, subject: string): Promise<LoadedArtifact[]> {
   if (!issueId) return [];
   try {
@@ -261,7 +259,7 @@ export async function buildJobSystemPrompt(input: {
   const requirement = await requirementServedBy(issueId, subject, withheld);
   const issueMockups = issueId ? renderIssueMockups(await issueMockupsOf(issueId), withheld) : null;
   const contracts = await contractsNamedBy(projectId, issueRow, subject);
-  const namedContracts = await contractVersionsNamedBy(projectId, issueRow, subject);
+  const pinnedContracts = await contractsPinnedFor(requirement, subject);
   const artifactBlock =
     [
       await givenToAgent(projectId, 'requirement', requirement?.text ?? null, subject),
@@ -280,8 +278,13 @@ export async function buildJobSystemPrompt(input: {
       'contract-context',
       renderContractContext(contracts),
     ),
-    'named-contract-context',
-    renderNamedContracts(projectId, namedContracts),
+    'pinned-contract-context',
+    await givenToAgent(
+      projectId,
+      'requirement',
+      requirement ? renderPinnedContracts(requirement.key, pinnedContracts) : null,
+      subject,
+    ),
   );
   return {
     systemPrompt,
@@ -291,6 +294,6 @@ export async function buildJobSystemPrompt(input: {
     designs,
     requirement,
     contracts,
-    namedContracts,
+    pinnedContracts,
   };
 }

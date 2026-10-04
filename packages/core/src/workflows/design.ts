@@ -44,8 +44,8 @@ export interface DesignRefusal {
  * Written defaults fingerprint as absent — an edge of the kind its endpoint types imply, a node in its
  * type's home band, a design in `operational-flow@1` — so a design stored before kinds, bands or
  * templates keeps the fingerprint it was approved at when its writer spells the default out.
- * Status, evidence, coverage, drift and the commit a reading was taken at are the code's reading
- * of itself, so a refresh after the build moves none of this and needs no new approval.
+ * What the code holds is an observation stored apart (observations.ts), so reading the code moves
+ * none of this and needs no new approval.
  */
 export function designFingerprint(doc: WorkflowWrite, template: WorkflowTemplate | null): string {
   const nodeShape = (

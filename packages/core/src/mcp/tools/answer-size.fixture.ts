@@ -14,7 +14,6 @@ export function dischargeDocument() {
   const steps = Array.from({ length: 15 }, (_, i) => ({
     id: `step-${i + 1}`,
     does: words(220, `does${i}`),
-    status: 'designed',
     node: {
       type: 'TASK',
       label: `Step ${i + 1}`,
@@ -40,13 +39,10 @@ export function dischargeDocument() {
     flow: 'discharge-post-care',
     kind: 'flow',
     title: 'Discharge to post-discharge care',
-    status: 'designed',
     project: PROJECT,
     summary: words(80, 'summary'),
     template: { id: 'operational-flow', version: 1 },
     writtenBy: {},
-    drift: null,
-    refreshedAtSha: null,
     steps,
     edges,
   };

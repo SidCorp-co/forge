@@ -1,6 +1,7 @@
 import { COMMENT_REFUSAL_CODES, createEntityCommentRequestSchema } from '@forge/contracts/comments';
 import { describe, expect, it } from 'vitest';
 import type { ActorFacts } from '../lib/person-act.js';
+import { type DesignNodes, nodeRefRefusal } from '../workflows/node-refs.js';
 import {
   arcOf,
   contentRefusals,
@@ -8,6 +9,7 @@ import {
   depthRefusal,
   editorRefusal,
   editRefusals,
+  nodeDecisionScopeRefusal,
   parentRefusal,
   posterRefusal,
   preparedBody,
@@ -21,6 +23,17 @@ const agent: ActorFacts = { userId: 'a1', agency: 'agent', role: 'member' };
 const viewer: ActorFacts = { userId: 'v1', agency: 'human', role: 'viewer' };
 const admin: ActorFacts = { userId: 'ad', agency: 'human', role: 'admin' };
 const decided = { decision: 'Keep D1', reason: 'the owner ruled it' };
+
+const nodes: DesignNodes = {
+  workflowId: 'w',
+  flow: 'flow',
+  revision: 1,
+  steps: new Set(['a', 'b']),
+  edges: [
+    { from: 'a', to: 'b', label: 'one' },
+    { from: 'a', to: 'b', label: 'two' },
+  ],
+};
 
 describe('a comment sits on exactly one target (kernel)', () => {
   it('lets exactly one arm through, for every scope', () => {
@@ -143,6 +156,12 @@ describe('bodies and records', () => {
       posterRefusal(viewer, 'FB-1'),
       editorRefusal(person, 'other', 'FB-1'),
       recordKeptRefusal('c', 'feedback'),
+      nodeDecisionScopeRefusal('requirement', 'REQ-1', {
+        ...decided,
+        node: { step: 'a', verdict: 'keep' },
+      }),
+      nodeRefRefusal(nodes, { step: 'nowhere' }),
+      nodeRefRefusal(nodes, { edge: { from: 'a', to: 'b' } }),
     ].map((r) => (r && 'refusal' in r ? r.refusal.code : r && 'code' in r ? r.code : null));
     expect(new Set(planted)).toEqual(new Set(COMMENT_REFUSAL_CODES));
   });

@@ -21,11 +21,8 @@ export const head = (
   kind,
   title,
   summary,
-  status: 'designed' as const,
   template: { id, version: 1 },
-  drift: null,
   writtenBy: {},
-  refreshedAtSha: null,
 });
 
 export const step = (
@@ -33,7 +30,7 @@ export const step = (
   does: string,
   after: string[],
   node: NonNullable<WorkflowWriteV2['steps'][number]['node']>,
-) => ({ id, does, status: 'designed' as const, after, evidence: null, node });
+) => ({ id, does, after, node });
 
 export const ref = (template: string, flow: string, stepId: string) => ({
   template,

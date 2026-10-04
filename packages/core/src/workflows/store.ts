@@ -14,7 +14,6 @@ export interface StoredWorkflow {
   projectId: string;
   flow: string;
   kind: string;
-  status: string;
   revision: number;
   document: unknown;
   designStatus: DesignStatus | null;
@@ -36,7 +35,6 @@ const columns = {
   projectId: projectWorkflows.projectId,
   flow: projectWorkflows.flow,
   kind: projectWorkflows.kind,
-  status: projectWorkflows.status,
   revision: projectWorkflows.revision,
   document: projectWorkflows.document,
   designStatus: sql<DesignStatus | null>`${projectWorkflows.designStatus}`,
@@ -51,8 +49,6 @@ const values = (doc: WorkflowWrite) => ({
   projectId: doc.project,
   flow: doc.flow,
   kind: doc.kind,
-  status: doc.status,
-  refreshedAtSha: doc.refreshedAtSha,
   document: doc,
 });
 

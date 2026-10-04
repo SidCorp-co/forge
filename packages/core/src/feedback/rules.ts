@@ -5,7 +5,6 @@
  * Who may act is `actMiss` against a declared rule (`lib/person-act.ts`).
  */
 
-import type { NodeRef } from '@forge/contracts/workflow-health';
 import type {
   FeedbackAttention,
   FeedbackKind,
@@ -19,6 +18,7 @@ import type {
   FeedbackWaiting,
 } from '@forge/contracts/feedback';
 import type { SuggestionKind, SuggestionStatus } from '@forge/contracts/suggestions';
+import type { NodeRef } from '@forge/contracts/workflow-health';
 import { approvalRefusal } from '../lib/approval.js';
 import { type ActorFacts, actMiss, PERSON_ADMIN_ACT } from '../lib/person-act.js';
 

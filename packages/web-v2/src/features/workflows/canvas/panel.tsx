@@ -165,7 +165,6 @@ function StepPanel({ c, step, onEdge }: { c: Canvas; step: WorkflowStep; onEdge:
             ) : null,
           ],
           ["Design id", <span key="id" className="font-mono">{step.id}</span>],
-          ["Status", step.status],
         ]}
       />
       {n?.conditions?.length ? (

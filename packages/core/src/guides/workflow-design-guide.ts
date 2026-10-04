@@ -24,7 +24,7 @@ names the workflow it builds is not dispatched while that design is not approved
    what the business does, service-blueprint, ux-flow for screens, state-machine, integration-sequence,
    decision-model, data-flow, system-context). The template fixes the node types, the bands, the fields each
    type requires, the edge kinds and the cross-links to the project's other designs. \`forge_workflows action=write\` with a workflow-v2 document (\`GET /api/schemas/workflow-v2.json\`).
-   Steps nothing has built yet are \`designed\` and owe no evidence. Give each step its \`node\` (its type,
+   A design holds the plan only: no step status, evidence or commit. Give each step its \`node\` (its type,
    a short business \`label\`, a \`purpose\`, and what its type requires) and each line \`after\` draws the
    contract its kind owes. A new v2 workflow is a **draft**.
 2. **Propose.** \`action=propose\` with the revision you wrote and \`issue\`, the issue the design is
@@ -40,9 +40,11 @@ names the workflow it builds is not dispatched while that design is not approved
    \`WORKFLOW_DESIGN_NOT_APPROVED\`; \`forge_issues get\` shows why under \`buildsWorkflow\`. Linking
    the issue the design itself is drawn under is refused \`WORKFLOW_DESIGN_ISSUE_IS_BUILD\`: it would wait
    on itself.
-5. **Build the approved revision only.** Build what the approved revision draws. When the code exists,
-   refresh the workflow — steps \`current\`, evidence filled — which is a write that does not change the
-   design and keeps it approved.
+5. **Build the approved revision only.** Build what the approved revision draws. What the code holds is
+   then read into an **observation** — \`POST /api/projects/:id/workflows/:workflow/observations\` with the
+   commit read, each observed step naming the planned step it \`matches\` (or null) and citing
+   \`{ kind: "repo", file, symbol }\`. It is stored apart and never touches the design or its approval; an
+   uncited node is refused \`WORKFLOW_OBSERVATION_UNCITED\`.
 
 ### A loop is a return edge, not a step
 \`after\` orders the steps, so a loop in it is refused \`WORKFLOW_AFTER_CYCLE\`. A design whose later step
@@ -82,13 +84,13 @@ dependents.
 A write that changes the design — its template, a step added, removed, renamed or re-described, its order,
 its node (label and band included), an edge contract, a return edge added or removed, its \`basedOn\` — moves an approved design back to \`proposed\`, and its linked issues stop dispatching
 until it is approved again. The approved revision stays readable, so the approver sees what changed.
-Status, evidence and coverage are the code's reading of itself and move nothing.
+An observation of the code moves nothing.
 
-### Evidence follows the project's source
-A storefront project has no repository: its evidence is the provider's artefact,
+### An observation cites the project's source
+A storefront project has no repository: an observed node cites the provider's artefact,
 \`{ kind: "storefront", provider, ref: workflow | route | node, id }\` — an Autoflow workflow code, route
-or node id. A repository project cites \`{ kind: "repo", file, coverage }\`. The other kind is refused
-\`WORKFLOW_EVIDENCE_KIND_MISMATCH\`.
+or node id. A repository project cites \`{ kind: "repo", file, symbol }\`. The other kind is refused
+\`WORKFLOW_OBSERVATION_CITATION_KIND_MISMATCH\`.
 
 ### Who approves
 Whoever holds \`workflow-designs.approve\` on the project (project admin, or an org owner or admin),

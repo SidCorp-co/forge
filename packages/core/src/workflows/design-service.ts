@@ -268,7 +268,12 @@ export async function linkBuildAs(input: {
     }
     const steps = input.steps ? [...new Set(input.steps)] : null;
     if (steps) {
-      const nodes = nodesOfDocument(row.id, row.flow, row.revision, readStoredWorkflow(row.document));
+      const nodes = nodesOfDocument(
+        row.id,
+        row.flow,
+        row.revision,
+        readStoredWorkflow(row.document),
+      );
       const [wrong] = nodeSetRefusals(nodes, { steps }, '');
       if (wrong) return wrong as DesignRefusal;
     }
