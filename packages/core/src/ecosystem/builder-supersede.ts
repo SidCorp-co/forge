@@ -1,7 +1,7 @@
 /** Replace an open builder run that cannot finish truly with a fresh one, as a join would open it. */
 
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { db } from '../db/client.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { permissionFactsOf } from '../permissions/index.js';
 import { wakeMastersForBuild } from '../ws/master-wake.js';
 import { notFound, stewardRole } from './access.js';

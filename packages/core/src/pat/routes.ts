@@ -18,12 +18,11 @@ import {
 import type { personalAccessTokens } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { RefusalError, refused, refuser } from '../lib/refusal.js';
+import { roomManager, userRoom } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { userRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 import { fenceEditorRefusal, fenceOf } from './fence-rules.js';
 import { listPatFenceChanges, setPatFence } from './fence-service.js';
 import { hasLivePatNamed, listPatsOf, ownsPat, patAuditOf } from './read.js';

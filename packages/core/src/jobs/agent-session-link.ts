@@ -10,12 +10,11 @@ import {
   jobs,
 } from '../db/schema.js';
 import { masterSessionIfOwned } from '../devices/master-owner.js';
+import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
 import { logger } from '../observability/logger.js';
 import type { FailureCause } from '../pipeline/failure-causes.js';
 import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
-import { deviceRoom, projectRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 import type { ResumeRecord } from './resume-policy.js';
 
 type JobRow = typeof jobs.$inferSelect;

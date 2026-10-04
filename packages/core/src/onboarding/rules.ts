@@ -3,9 +3,9 @@
  * `approve-guard`), as pure functions over what the service read. Who may act is a permission.
  */
 
-import type { OnboardingRefusal } from '@forge/contracts/onboarding';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
+import type { OnboardingRefusal } from '@forge/contracts/onboarding';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
 export type { OnboardingRefusal };

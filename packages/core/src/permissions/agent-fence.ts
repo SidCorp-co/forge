@@ -6,9 +6,6 @@ import { db, type Tx } from '../db/client.js';
 import { projectMembers, users } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
 
-export const badRequest = (message: string, code: string) =>
-  new HTTPException(400, { message, cause: { code } });
-
 export interface AgentCredentialFence {
   boundProjectId: string | null;
   projectIds: string[] | null;
@@ -43,10 +40,10 @@ export async function agentCredentialFence(
     .from(projectMembers)
     .where(eq(projectMembers.userId, agentUserId));
   if (rows.length === 0) {
-    throw badRequest(
-      `agent ${agentUserId} is a member of no project, so a credential minted for it would be fenced to nothing; give it a project membership first`,
-      'AGENT_HAS_NO_PROJECT',
-    );
+    throw new HTTPException(400, {
+      message: `agent ${agentUserId} is a member of no project, so a credential minted for it would be fenced to nothing; give it a project membership first`,
+      cause: { code: 'AGENT_HAS_NO_PROJECT' },
+    });
   }
   return fenceFor(rows.map((r) => r.projectId));
 }

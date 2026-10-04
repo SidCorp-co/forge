@@ -1,15 +1,14 @@
 import { JOB_MACHINE, LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
+import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
 import { transition } from '../lifecycle/transition.js';
 import { notFound } from '../middleware/route-errors.js';
 import { logger } from '../observability/logger.js';
 import { failReconcileRunForFailedJob } from '../skills/reconcile-service.js';
-import { deviceRoom, projectRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { insertInterventionEvent } from './intervention-event.js';
 import { refuseJob } from './refusals.js';

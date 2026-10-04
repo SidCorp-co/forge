@@ -1,5 +1,5 @@
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type { UserKind } from '../db/schema.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
 import type { VerifiedPat } from './pat.js';
 

@@ -41,7 +41,7 @@ agent access token holding the permission approves too).
   token (`POST /api/pat { permissions }`). A credential core mints for an agent (its account
   token, its box's and its checkouts') names the explicit permissions its memberships grant, and
   changing a membership's grant re-grants the agent's live credentials in the same transaction
-  (`packages/core/src/orgs/agent-fence.ts:regrantAgentCredentials`). A turn's token, which acts for
+  (`packages/core/src/permissions/agent-fence.ts:regrantAgentCredentials`). A turn's token, which acts for
   the person whose message it answers, names none, so a turn never approves. This attenuates the
   token; it is not a person-only rule, and an agent token holding the grant approves.
 - **Who acted, with which credential, for whom.** The actor is

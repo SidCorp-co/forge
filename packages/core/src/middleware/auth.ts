@@ -1,3 +1,4 @@
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { eq } from 'drizzle-orm';
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -7,7 +8,6 @@ import { isPatLike } from '../credentials/pat-format.js';
 import { runWithPatScope } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { readBearerToken } from './bearer.js';
 import { declareGate } from './declared-gate.js';
 import { beginPatRequest } from './pat-rest-surface.js';

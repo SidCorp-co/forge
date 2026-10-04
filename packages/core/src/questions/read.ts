@@ -5,6 +5,7 @@
 // latency and nothing else (ISS-964 criterion 12).
 
 import { randomUUID } from 'node:crypto';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -20,7 +21,6 @@ import {
   questionWaiters,
 } from '../db/schema-questions.js';
 import type { PersonVia } from '../ecosystem/channel-schema.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import type { EgressSurface } from '../lib/data-egress.js';
 import { notFound } from '../middleware/route-errors.js';

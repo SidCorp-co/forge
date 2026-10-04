@@ -9,18 +9,15 @@ import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
 import { handleRunnerSessions } from '../devices/run-ledger-ws.js';
 import { effectiveProjectRole } from '../lib/authz.js';
+import { GLOBAL_ROOM, roomManager } from '../lib/rooms.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import {
   handleRunnerRegister,
   handleRunnerUnregister,
   handleRunnerUpdate,
 } from '../runners/heartbeat-ws.js';
-import { roomManager } from './room-manager.js';
-import { GLOBAL_ROOM } from './rooms.js';
 
 type AnyServer = HttpServer | HttpsServer;
-
-export { roomManager };
 
 let wss: WebSocketServer | null = null;
 let heartbeatTimer: NodeJS.Timeout | null = null;
