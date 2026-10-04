@@ -1602,9 +1602,6 @@ export const knowledgeEntriesRelations = relations(knowledgeEntries, ({ one }) =
   project: one(projects, { fields: [knowledgeEntries.projectId], references: [projects.id] }),
 }));
 
-export const scheduleModes = ['propose', 'auto'] as const;
-export type ScheduleMode = (typeof scheduleModes)[number];
-
 export const scheduleKinds = SCHEDULE_KINDS;
 
 export type ScheduleKind = (typeof scheduleKinds)[number];
@@ -1625,9 +1622,7 @@ export const schedules = pgTable(
     targetProjectSlug: text('target_project_slug'),
     nextRunAt: timestamp('next_run_at', { withTimezone: true }),
     metadata: jsonb('metadata'),
-    templateKey: text('template_key'),
     params: jsonb('params'),
-    mode: text('mode', { enum: scheduleModes }),
     kind: text('kind', { enum: scheduleKinds }).notNull().default('prompt'),
     script: text('script'),
     /**
@@ -1641,9 +1636,6 @@ export const schedules = pgTable(
   (t) => ({
     projectEnabledIdx: index('schedules_project_enabled_idx').on(t.projectId, t.enabled),
     nextRunAtIdx: index('schedules_next_run_at_idx').on(t.nextRunAt).where(sql`enabled = true`),
-    templateKeyIdx: index('schedules_template_key_idx')
-      .on(t.projectId, t.templateKey)
-      .where(sql`template_key is not null`),
   }),
 );
 
