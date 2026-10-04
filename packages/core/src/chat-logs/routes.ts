@@ -1,15 +1,21 @@
-import { and, count, desc, eq, gte, inArray, lte, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { chatLogs, projects, qaRatings } from '../db/schema.js';
+import { qaRatings } from '../db/schema.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { type ProjectPermission, requireHeld } from '../permissions/index.js';
 import { findProjectIdBySlug } from '../projects/service.js';
+import {
+  chatLogById,
+  flaggedChatLogs,
+  listChatLogs,
+  projectSlugsOf,
+  recentChatLogs,
+} from './read.js';
+import { rateChatLog } from './service.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -76,11 +82,9 @@ chatLogRoutes.get(
       c.req.valid('query');
     const userId = c.get('userId');
 
-    const conditions: SQL[] = [];
-
+    let projectSlugs: string[] | null = null;
     if (projectSlug) {
       await assertChatLogAccess(projectSlug, userId);
-      conditions.push(eq(chatLogs.projectSlug, projectSlug));
     } else {
       // Cross-project view: restrict to caller-visible projects (explicit
       // membership at any role, or org owner/admin) via the single authz
@@ -89,46 +93,19 @@ chatLogRoutes.get(
       if (visibleIds.length === 0) {
         return c.json(listResponse(c, [], 0, fromPage(page, pageSize)));
       }
-
-      const visible = await db
-        .select({ slug: projects.slug })
-        .from(projects)
-        .where(inArray(projects.id, visibleIds));
-
-      if (visible.length === 0) {
+      projectSlugs = await projectSlugsOf(visibleIds);
+      if (projectSlugs.length === 0) {
         return c.json(listResponse(c, [], 0, fromPage(page, pageSize)));
       }
-
-      conditions.push(
-        inArray(
-          chatLogs.projectSlug,
-          visible.map((v) => v.slug),
-        ),
-      );
     }
 
-    if (source) conditions.push(eq(chatLogs.source, source));
-    if (qaRating) conditions.push(eq(chatLogs.qaRating, qaRating));
-    if (dateFrom) conditions.push(gte(chatLogs.createdAt, dateFrom));
-    if (dateTo) conditions.push(lte(chatLogs.createdAt, dateTo));
-
     const offset = (page - 1) * pageSize;
+    const { rows, total } = await listChatLogs(
+      { projectSlug, projectSlugs, source, qaRating, dateFrom, dateTo },
+      { limit: pageSize, offset },
+    );
 
-    const [rows, [totalRow]] = await Promise.all([
-      db
-        .select()
-        .from(chatLogs)
-        .where(and(...conditions))
-        .orderBy(desc(chatLogs.createdAt))
-        .limit(pageSize)
-        .offset(offset),
-      db
-        .select({ n: count() })
-        .from(chatLogs)
-        .where(and(...conditions)),
-    ]);
-
-    return c.json(listResponse(c, rows, totalRow?.n ?? 0, { limit: pageSize, offset }));
+    return c.json(listResponse(c, rows, total, { limit: pageSize, offset }));
   },
 );
 
@@ -143,12 +120,7 @@ chatLogRoutes.get(
 
     await assertChatLogAccess(projectSlug, userId);
 
-    const rows = await db
-      .select()
-      .from(chatLogs)
-      .where(eq(chatLogs.projectSlug, projectSlug))
-      .orderBy(desc(chatLogs.createdAt))
-      .limit(limit);
+    const rows = await recentChatLogs(projectSlug, limit);
 
     return c.json(
       rows.map((r) => ({
@@ -170,14 +142,7 @@ chatLogRoutes.get(
 
     await assertChatLogAccess(projectSlug, userId);
 
-    const rows = await db
-      .select()
-      .from(chatLogs)
-      .where(
-        and(eq(chatLogs.projectSlug, projectSlug), inArray(chatLogs.qaRating, ['bad', 'flagged'])),
-      )
-      .orderBy(desc(chatLogs.createdAt))
-      .limit(limit);
+    const rows = await flaggedChatLogs(projectSlug, limit);
 
     return c.json(rows);
   },
@@ -192,7 +157,7 @@ chatLogRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [row] = await db.select().from(chatLogs).where(eq(chatLogs.id, id)).limit(1);
+    const row = await chatLogById(id);
     if (!row) throw notFound('chat log not found');
 
     await assertChatLogAccess(row.projectSlug, userId);
@@ -213,20 +178,15 @@ chatLogRoutes.patch(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
 
-    const [row] = await db
-      .select({ id: chatLogs.id, projectSlug: chatLogs.projectSlug })
-      .from(chatLogs)
-      .where(eq(chatLogs.id, id))
-      .limit(1);
+    const row = await chatLogById(id);
     if (!row) throw notFound('chat log not found');
 
     await assertChatLogAccess(row.projectSlug, userId, 'project.admin');
 
-    const updates: Record<string, unknown> = {};
-    if (patch.qaRating !== undefined) updates.qaRating = patch.qaRating;
-    if (patch.qaNotes !== undefined) updates.qaNotes = patch.qaNotes;
-
-    const [updated] = await db.update(chatLogs).set(updates).where(eq(chatLogs.id, id)).returning();
+    const updated = await rateChatLog(id, {
+      ...(patch.qaRating !== undefined ? { qaRating: patch.qaRating } : {}),
+      ...(patch.qaNotes !== undefined ? { qaNotes: patch.qaNotes } : {}),
+    });
     if (!updated) throw notFound('chat log not found');
 
     return c.json(updated);
