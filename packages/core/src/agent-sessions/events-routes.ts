@@ -13,25 +13,23 @@
  * uses.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
-import { agentSessionEvents } from '../db/schema-agent-session-events.js';
 import { jobsOfSession, scrubJobOutput } from '../jobs/job-secret-scrub.js';
-import { maybeDeriveIncrementalFor } from './session-transcript.js';
 import type { AuthVars } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
 import { forbidden } from '../middleware/route-errors.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { refuseSession } from './refusals.js';
+import { appendChatLines } from './service.js';
 import {
   assertDeviceOwnsSession,
   badRequest,
   idParamSchema,
   loadSessionOr404,
 } from './session-access.js';
+import { maybeDeriveIncrementalFor } from './session-transcript.js';
 
 /** How many lines one POST may carry, matching the runner's own chunking. */
 const MAX_BATCH = 100;
@@ -129,43 +127,15 @@ agentSessionEventsRoutes.post(
 
     const lines = await scrubJobOutput(await jobsOfSession(sessionId), events);
 
-    const inserted = await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${sessionId}))`);
-      const claimed = await tx
-        .select({ seq: agentSessionEvents.seq, kind: agentSessionEvents.kind })
-        .from(agentSessionEvents)
-        .where(
-          and(
-            eq(agentSessionEvents.agentSessionId, sessionId),
-            inArray(
-              agentSessionEvents.seq,
-              events.map((e) => e.seq),
-            ),
-          ),
-        );
-      const taken = claimed.find((row) => row.kind !== 'stdout');
-      if (taken) {
-        throw refuseSession(
-          'SEQ_TAKEN_BY_CORE',
-          `seq ${taken.seq} is already held by a \`${taken.kind}\` row core wrote; this turn's lines were numbered from a base that is no longer free`,
-        );
-      }
-      return tx
-        .insert(agentSessionEvents)
-        .values(
-          lines.map((e) => ({
-            agentSessionId: sessionId,
-            kind: e.kind,
-            data: e.data,
-            seq: e.seq,
-            ...(e.ts ? { ts: new Date(e.ts) } : {}),
-          })),
-        )
-        .onConflictDoNothing({
-          target: [agentSessionEvents.agentSessionId, agentSessionEvents.seq],
-        })
-        .returning({ seq: agentSessionEvents.seq });
-    });
+    const appended = await appendChatLines(sessionId, lines);
+    if (!appended.ok) {
+      const { taken } = appended;
+      throw refuseSession(
+        'SEQ_TAKEN_BY_CORE',
+        `seq ${taken.seq} is already held by a \`${taken.kind}\` row core wrote; this turn's lines were numbered from a base that is no longer free`,
+      );
+    }
+    const { inserted } = appended;
 
     void maybeDeriveIncrementalFor({ kind: 'chat' }, sessionId, events.length);
 
