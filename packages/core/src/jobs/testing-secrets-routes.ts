@@ -9,6 +9,7 @@ import { parseBearerHeader } from '../middleware/bearer.js';
 import { authenticatePat, type PatPrincipal } from '../middleware/require-pat.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { RefusalError } from '../lib/refusal.js';
 import { resolveTestingSecrets, SELF_JOB } from '../project-config/testing-secrets.js';
 
 export const jobTestingSecretsRoutes = new Hono();
@@ -94,6 +95,7 @@ jobTestingSecretsRoutes.get(
     });
     if (!outcome.ok) {
       const { status, code, message, details } = outcome.refusal;
+      if (status === 422) throw new RefusalError([{ code, path: '', detail: message }], code);
       throw new HTTPException(status, {
         message,
         cause: { code, ...(details ? { details } : {}) },

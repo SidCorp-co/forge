@@ -180,7 +180,8 @@ A write a rule refuses answers **422** with one body, and nothing is written:
   `packages/core/src/project-config/respond.ts:refused` (moving into platform beside the envelope),
   MCP through `packages/core/src/mcp/tools/lib.ts:refusedAnswer`, flagged `isError`.
 - **A service returns its refusals; it never throws them.** A guard that runs before the service
-  throws `packages/core/src/lib/refusal.ts:RefusalError`, which `packages/core/src/middleware/error.ts`
+  throws `packages/core/src/lib/refusal.ts:RefusalError`, built by the module's typed
+  `packages/core/src/lib/refusal.ts:refuser`, which `packages/core/src/middleware/error.ts`
   answers with the same body.
 - **A rule refusal is never an error class, an `HTTPException` or thrown text.** 400 (request
   shape), 401 and 403 (no session, no membership, a fenced token) and 404 (a row the caller cannot

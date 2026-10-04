@@ -153,15 +153,13 @@ a decision clears it; "Absorbed by" names the issue whose rule covers it, else t
 
 | # | Divergence | Absorbed by |
 |---|---|---|
-| 2 | `packages/core/src/workflows/service.ts:assertWriter` throws a 403 instead of returning `WORKFLOW_WRITER_NOT_PROJECT` | ISS-162 |
-| 4 | Requirement codes, statuses and views are declared in core (`packages/core/src/requirements/rules.ts:RequirementRefusalCode`, `packages/core/src/db/schema-requirements.ts:REVISION_STATES`) and redeclared in `packages/web-v2/src/features/requirements/types.ts`; the requirement spec and criterion schemas live in `packages/contracts/src/suggestions.ts` instead of a requirements module of its own in contracts; route bodies are built inline (`packages/core/src/requirements/routes.ts:revisionFields`) | ISS-162 (codes) |
+| 4 | Requirement statuses and views are declared in core (`packages/core/src/db/schema-requirements.ts:REVISION_STATES`) and redeclared in `packages/web-v2/src/features/requirements/types.ts`; the requirement spec and criterion schemas live in `packages/contracts/src/suggestions.ts` instead of a requirements module of its own in contracts; route bodies are built inline (`packages/core/src/requirements/routes.ts:revisionFields`) | review |
 | 5 | Criteria verdict values are declared in core and redeclared in web (`packages/core/src/db/schema-issue-criteria.ts:verdictValues`). Design statuses moved to `packages/contracts/src/design-status.ts:DESIGN_STATUSES` and agent-report kinds to `packages/contracts/src/agent-reports.ts:AGENT_REPORT_KINDS` (ISS-93), which core re-exports | review |
 | 6 | Record-event kinds are declared twice, held by `packages/core/src/issues/record-events/kinds.test.ts` | review |
 | 7 | Workflow design state is one head status, not per-revision `REVISION_STATES`; a revision's state is derived on read (`packages/core/src/workflows/design-standing.ts:revisionStateOf`), never stored; `decided_by_user` / `proposed_by_user` naming | review (migration) |
 | 8 | `contract_versions.decided_as` says `person` (and carries `before-approval`); `actor_agency` and `author_agency` have no CHECK | review (migration) |
 | 9 | Criteria and verdict rows are insert-only by comment, with no trigger | review (migration) |
 | 10 | A re-proposal of a returned requirement revision overwrites `proposed_at` / `proposed_by`, with no row per proposal; returns have their own rows (walkthrough D6) | review |
-| 11 | Refusals name another requirement by uuid (`REQUIREMENT_ISSUE_LINKED_ELSEWHERE`, walkthrough D10) | ISS-162 |
 | 12 | Who-may-act codes predating the suffix: `WORKFLOW_DESIGN_APPROVER_NOT_*`, `CONTRACT_APPROVER_NOT_*`, `CONTRACT_BREAKING_NEEDS_PERSON`, `WORKFLOW_WRITER_NOT_PROJECT`, `LINK_WRITER_NOT_CONSUMER` | ISS-159 |
 | 14 | Agency checks older than the redesign: `packages/core/src/issues/transition-guards.ts`, `packages/core/src/issues/merge-marker.ts`, `packages/core/src/release-batch/approvals.ts`, `packages/core/src/issues/release-gate-hold.ts`, `packages/core/src/projects/master-charter-routes.ts` | ISS-159 |
 | 15 | Body validation outside `strictBody`: criteria and record events use `zValidator` + `flattenError` with no shape hint; agent-report triage bodies take `strictBody` since ISS-113 | review |

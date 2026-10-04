@@ -39,10 +39,14 @@ export function refuser<C extends string>(fallbackCode: C) {
 
 /** A thrown refusal, optionally naming one of its codes. */
 export function isRefusal(err: unknown, code?: string): err is RefusalError {
-  return err instanceof RefusalError && (code === undefined || err.refusals.some((r) => r.code === code));
+  return (
+    err instanceof RefusalError && (code === undefined || err.refusals.some((r) => r.code === code))
+  );
 }
 
 /** The code a thrown refusal answers under, or null for anything else. */
 export function refusalCodeOf(err: unknown): string | null {
-  return err instanceof RefusalError ? refusalEnvelope(err.refusals, err.fallbackCode).error.code : null;
+  return err instanceof RefusalError
+    ? refusalEnvelope(err.refusals, err.fallbackCode).error.code
+    : null;
 }

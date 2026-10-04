@@ -84,11 +84,12 @@ export async function linkIssue(input: {
       return null;
     }
     if (held?.requirementId) {
+      const elsewhere = await rowIn(tx, projectId, held.requirementId);
       return [
         {
           code: 'REQUIREMENT_ISSUE_LINKED_ELSEWHERE',
           path: '/issue',
-          detail: `${input.issue} already delivers requirement ${held.requirementId}; an issue serves one requirement, so unlink it there first.`,
+          detail: `${input.issue} already delivers ${requirementKey(elsewhere.reqSeq)}; an issue serves one requirement, so unlink it there first.`,
         },
       ];
     }

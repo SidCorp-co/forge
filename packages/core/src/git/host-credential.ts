@@ -11,12 +11,17 @@
  * nothing else.
  */
 
+import type { GitRefusalCode } from '@forge/contracts/git';
 import { and, asc, eq, inArray } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { integrationBindings, integrationConnections, runners } from '../db/schema.js';
 import { listIntegrations } from '../integrations/registry.js';
 import { decryptConnectionSecrets, effectiveConfig } from '../integrations/store.js';
 import type { GitCredentialMint } from '../integrations/types.js';
+import { refuser } from '../lib/refusal.js';
+
+const refuse = refuser<GitRefusalCode>('GIT_REFUSED');
 
 export interface GitCredentialGrant {
   username: string;
@@ -24,15 +29,6 @@ export interface GitCredentialGrant {
   expiresAt: string;
   repository: string;
   projectId: string;
-}
-
-export class GitCredentialError extends Error {
-  readonly status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = 'GitCredentialError';
-    this.status = status;
-  }
 }
 
 function mints(): Map<string, GitCredentialMint> {
@@ -55,10 +51,10 @@ export async function mintGitCredentialForDevice(args: {
 }): Promise<GitCredentialGrant> {
   const path = args.path.trim().replace(/^\/+/, '').replace(/\/+$/, '');
   if (!path.includes('/')) {
-    throw new GitCredentialError(
-      400,
-      `"${args.path}" is not a repository path — git must be configured with credential.useHttpPath=true for this helper to resolve a repository`,
-    );
+    throw new HTTPException(400, {
+      message: `"${args.path}" is not a repository path — git must be configured with credential.useHttpPath=true for this helper to resolve a repository`,
+      cause: { code: 'BAD_REQUEST' },
+    });
   }
   const byProvider = mints();
   const providers = [...byProvider.keys()];
@@ -87,25 +83,28 @@ export async function mintGitCredentialForDevice(args: {
   );
   const asked = `${args.host}/${path.replace(/\.git$/i, '')}`;
   if (!pair) {
-    throw new GitCredentialError(
-      404,
-      `no active source host binding reaching ${asked} on any project this device runs — bind the repository on the project's Integrations page, and assign this device a runner there`,
-    );
+    throw new HTTPException(404, {
+      message: `no active source host binding reaching ${asked} on any project this device runs — bind the repository on the project's Integrations page, and assign this device a runner there`,
+      cause: { code: 'NOT_FOUND' },
+    });
   }
   const mint = byProvider.get(pair.binding.provider) as GitCredentialMint;
   const config = effectiveConfig(pair);
   const repository = mint.repositoryOf(config);
   if (!pair.connection.active) {
-    throw new GitCredentialError(
-      409,
-      `the ${pair.binding.provider} connection behind ${repository} is gone or deactivated`,
+    throw refuse(
+      'GIT_CONNECTION_INACTIVE',
+      `the ${pair.binding.provider} connection behind ${repository} is gone or deactivated; reconnect it on the project's Integrations page.`,
     );
   }
   let minted: { username: string; password: string; expiresAt: string };
   try {
     minted = await mint.mint({ config, secrets: decryptConnectionSecrets(pair.connection) });
   } catch (err) {
-    throw new GitCredentialError(409, err instanceof Error ? err.message : String(err));
+    throw new HTTPException(502, {
+      message: `${pair.binding.provider} did not mint a credential for ${repository}: ${err instanceof Error ? err.message : String(err)}`,
+      cause: { code: 'GIT_CREDENTIAL_MINT_FAILED' },
+    });
   }
   return { ...minted, repository, projectId: pair.binding.projectId };
 }

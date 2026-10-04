@@ -349,6 +349,14 @@
     "./integrations": {
       "types": "./src/integrations.ts",
       "default": "./src/integrations.ts"
+    },
+    "./git": {
+      "types": "./dist/git.d.ts",
+      "default": "./dist/git.js"
+    },
+    "./pm": {
+      "types": "./dist/pm.d.ts",
+      "default": "./dist/pm.js"
     }
   },
   "types": "./src/index.ts",
