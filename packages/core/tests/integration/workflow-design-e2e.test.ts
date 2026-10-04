@@ -146,6 +146,55 @@ async function designProjections() {
   expect(junk.status).toBe(400);
 }
 
+async function requirementLinks() {
+  const created = await call('owner', 'POST', at('/requirements'), {
+    title: 'Post-discharge reminders',
+    reason: 'planted',
+    criteria: [{ body: 'A nurse sees the reminder' }],
+  });
+  expect(created.status, JSON.stringify(created.body)).toBe(201);
+  const key = String(created.body.key);
+  const link = await call('owner', 'POST', at(`/requirements/${key}/workflows`), { workflowId });
+  expect(link.status, JSON.stringify(link.body)).toBe(200);
+  const draft = await call('owner', 'GET', at(`/workflows/${workflowId}/design`));
+  expect(draft.body.requirements).toEqual([
+    { key, title: 'Post-discharge reminders', status: 'draft', pinnedRevision: null },
+  ]);
+  for (const [path, body] of [
+    [`/requirements/${key}/revisions/1/propose`, {}],
+    [`/requirements/${key}/revisions/1/accept`, {}],
+    [`/requirements/${key}/agree`, { revision: 1 }],
+  ] as const) {
+    const r = await call('owner', 'POST', at(path), body);
+    expect(r.status, `${path} ${JSON.stringify(r.body)}`).toBe(200);
+  }
+  const agreed = await call('owner', 'GET', at(`/workflows/${workflowId}/design`));
+  expect(agreed.body.requirements).toEqual([
+    { key, title: 'Post-discharge reminders', status: 'agreed', pinnedRevision: 1 },
+  ]);
+  expect(agreed.body.gate.open).toBe(true);
+  expect(agreed.body.waitingOn.kind).toBe('none');
+}
+
+async function standingWhileProposed(design: { body: Doc }) {
+  expect(design.body.waitingOn).toMatchObject({
+    kind: 'you',
+    act: 'approve or return revision 3',
+  });
+  expect(design.body.revisions.map((r: Doc) => r.state)).toEqual(['proposed', 'current']);
+  expect(design.body.gate.open).toBe(false);
+  expect(design.body.requirements.map((r: Doc) => r.pinnedRevision)).toEqual([1]);
+  const asMaster = await call('master', 'GET', at(`/workflows/${workflowId}/design`));
+  expect(asMaster.body.waitingOn).toMatchObject({ kind: 'you', who: 'You' });
+  await setApprover('owner');
+  const ownerPolicy = await call('master', 'GET', at(`/workflows/${workflowId}/design`));
+  expect(ownerPolicy.body.waitingOn).toMatchObject({
+    kind: 'person',
+    who: 'An org owner or admin',
+  });
+  await setApprover('master');
+}
+
 describe('a workflow design is approved before anything builds it', () => {
   it('starts a v2 design as a draft the master proposes', async () => {
     const made = await call('master', 'POST', at('/workflows'), {
@@ -241,6 +290,11 @@ describe('a workflow design is approved before anything builds it', () => {
     await harness.db.execute(sql`DELETE FROM issue_leases WHERE project_id = ${projectId}`);
   });
 
+  it(
+    'names the requirement drawn with it and the revision its agreed baseline pins',
+    requirementLinks,
+  );
+
   it('keeps it approved through a refresh of evidence, and sends a design change back to proposed', async () => {
     const refreshed = await call('master', 'PUT', at(`/workflows/${workflowId}`), {
       baseRevision: 1,
@@ -277,6 +331,7 @@ describe('a workflow design is approved before anything builds it', () => {
       [1, 'approve'],
     ]);
     expect(design.body.canDecide).toBe(true);
+    await standingWhileProposed(design);
     await expect(runOver()).rejects.toMatchObject({ code: 'WORKFLOW_DESIGN_NOT_APPROVED' });
   });
 
@@ -306,7 +361,9 @@ describe('a workflow design is approved before anything builds it', () => {
     expect(returned.body.revisions[0]).toMatchObject({
       decision: 'return',
       reason: 'the SLA is 48h by contract',
+      state: 'returned',
     });
+    expect(returned.body.waitingOn).toMatchObject({ kind: 'agent', act: 'revise revision 3' });
   });
 
   it('refuses unlinking the build to anyone but the approver', async () => {
