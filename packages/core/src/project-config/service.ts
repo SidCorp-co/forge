@@ -331,19 +331,7 @@ export async function putSecret(input: {
   return { ok: true, secret: { ...row, ref: secretRefOf(row.scope, row.name) } };
 }
 
-export async function readSecretValues(projectId: string, refs: readonly string[]) {
-  return drizzleConfigStore.secretValues(projectId, refs);
-}
-
 export async function listSecretNames(projectId: string) {
   const rows = await drizzleConfigStore.listSecretNames(projectId);
   return rows.map((r) => ({ ...r, ref: secretRefOf(r.scope, r.name) }));
-}
-
-export async function readDeviceCheckout(projectId: string, deviceId: string) {
-  return drizzleConfigStore.deviceCheckout(projectId, deviceId);
-}
-
-export async function listActiveBindings(projectId: string) {
-  return drizzleConfigStore.listActiveBindings(projectId);
 }

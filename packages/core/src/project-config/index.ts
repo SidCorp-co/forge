@@ -6,7 +6,6 @@ export {
   requirePolicy,
 } from './dispatch-policy.js';
 export { type ApiRefusal, isRecord, parseVersionedDocument, staleBase } from './documents.js';
-export { readEffectivePolicy } from './effective.js';
 export { readEnvironmentState } from './environment-state-read.js';
 export { announceIntegrationChanged } from './integration-changed.js';
 export { emitJsonSchema } from './json-schema.js';
@@ -39,8 +38,10 @@ export {
   unique,
   uuid,
 } from './schema.js';
+/** The policy layer of the effective config, on its own: dispatch reads it before any project document. */
 export {
   listTestingProfiles,
+  readPolicy as readEffectivePolicy,
   readProjectConfig,
   readProjectDocument,
   type WriteOutcome,

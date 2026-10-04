@@ -8,7 +8,7 @@ import type { TransitionActor } from '../issues/index.js';
 import { TransitionError, transitionIssueStatus } from '../issues/index.js';
 import { isRefusal } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
-import { closeRunIfOneShot } from '../pipeline/index.js';
+import { closeRunIfOneShot, stampReleaseShipped } from '../pipeline/index.js';
 import { abortedError, batchAborted } from './abort-stamp.js';
 import {
   type CloseVerification,
@@ -21,7 +21,6 @@ import { FENCE_LOST, notVerifiedRefusal, reasonOf, refuseRelease } from './refus
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { noteUnverifiedCloses, stampRunVerification } from './unverified-close.js';
 import { verifyDeployed } from './verify.js';
-import { markReleaseShipped } from './version-store.js';
 
 interface FinishReleaseBatchResult {
   closed: string[];
@@ -230,10 +229,10 @@ export async function finishReleaseBatch(
   if (fence) {
     await db.transaction(async (tx) => {
       await fence(tx);
-      await markReleaseShipped(runId, tx);
+      await stampReleaseShipped(runId, tx);
     });
   } else {
-    await markReleaseShipped(runId);
+    await stampReleaseShipped(runId);
   }
 
   const result = { closed, failed };

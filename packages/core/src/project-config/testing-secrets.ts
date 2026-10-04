@@ -9,12 +9,8 @@ import type { PatPrincipal } from '../middleware/require-pat.js';
 import { projectConfigPorts } from './ports.js';
 import { environmentsOf } from './release-path.js';
 import type { ProjectDocument } from './schema.js';
-import {
-  credentialRefs,
-  readProjectConfig,
-  readSecretValues,
-  readTestingProfile,
-} from './service.js';
+import { credentialRefs, readProjectConfig, readTestingProfile } from './service.js';
+import { drizzleConfigStore } from './store.js';
 
 interface TestingSecretsRefusal {
   status: 403 | 404 | 422 | 503;
@@ -146,7 +142,7 @@ async function decryptedValues(
   profileId: string,
   wanted: string[],
 ): Promise<Refused | { ok: true; secrets: { ref: string; value: string }[] }> {
-  const stored = await readSecretValues(projectId, wanted);
+  const stored = await drizzleConfigStore.secretValues(projectId, wanted);
   const missing = wanted.filter((r) => !stored.has(r));
   if (missing.length > 0) {
     return refuse(

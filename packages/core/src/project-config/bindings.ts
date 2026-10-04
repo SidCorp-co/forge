@@ -1,13 +1,13 @@
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import type { BindingRole as RowRole } from '../db/release-axes.js';
 import { bindEffects } from './bind-effects.js';
-import { type BindingStore, drizzleBindingStore, type StoredBinding } from './binding-store.js';
+import { drizzleBindingStore, type StoredBinding } from './binding-store.js';
 import { decodeTarget, encodeTarget } from './binding-target-codec.js';
 import { type ApiRefusal, isRecord, parseVersionedDocument, staleBase } from './documents.js';
 import { type BindingDocument, bindingDocumentSchema } from './schema.js';
 import { readProjectConfig } from './service.js';
 
-const store: BindingStore = drizzleBindingStore;
+const store = drizzleBindingStore;
 
 type HeldBinding = { revision: number; document: BindingDocument };
 

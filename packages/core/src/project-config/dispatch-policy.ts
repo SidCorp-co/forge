@@ -6,9 +6,9 @@ import {
   type PolicyStateSource,
 } from '@forge/contracts/project-config';
 import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
-import { readEffectivePolicy } from './effective.js';
 import { POLICY_STATE_STATUSES, type PolicyDocument } from './policy-schema.js';
 import type { Held } from './service.js';
+import { readPolicy } from './service.js';
 
 const refuse = refuser<PolicyRefusalCode>('POLICY_UNDECLARED');
 
@@ -43,7 +43,7 @@ const isPolicyStatus = (status: string): status is PolicyStatus =>
 export type { DispatchState, PolicyStateSource };
 
 export async function requirePolicy(projectId: string): Promise<Held<PolicyDocument>> {
-  const held = await readEffectivePolicy(projectId);
+  const held = await readPolicy(projectId);
   if (!held) throw policyRefusal('POLICY_UNDECLARED', projectId, null);
   return held;
 }
