@@ -130,8 +130,10 @@ describe('alert A5 counts streaks from the fires alone', () => {
   }
 
   async function failingSchedules(): Promise<string[]> {
-    const alerts = await g.m.alerts.computeAlerts({
-      thresholds: { ...g.m.thresholds.ADMIN_THRESHOLD_DEFAULTS, scheduleFailStreak: 2 },
+    const { computeAlerts } = await import('../../src/admin/alert-queries.js');
+    const { ADMIN_THRESHOLD_DEFAULTS } = await import('../../src/admin/types.js');
+    const alerts = await computeAlerts({
+      thresholds: { ...ADMIN_THRESHOLD_DEFAULTS, scheduleFailStreak: 2 },
     });
     const a5 = alerts.find((a) => a.key === 'automation_failing');
     return (a5?.entities ?? []).filter((e) => e.kind === 'schedule').map((e) => e.ref);

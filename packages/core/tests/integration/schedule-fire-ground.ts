@@ -26,8 +26,6 @@ interface FireGround {
     schema: typeof import('../../src/db/schema.js');
     routes: typeof import('../../src/schedules/routes.js');
     failover: typeof import('../../src/schedules/failover.js');
-    alerts: typeof import('../../src/admin/alert-queries.js');
-    thresholds: typeof import('../../src/admin/types.js');
   };
   adminId: string;
   projectId: string;
@@ -56,8 +54,6 @@ export function useFireGround(): void {
       schema: await import('../../src/db/schema.js'),
       routes: await import('../../src/schedules/routes.js'),
       failover: await import('../../src/schedules/failover.js'),
-      alerts: await import('../../src/admin/alert-queries.js'),
-      thresholds: await import('../../src/admin/types.js'),
     };
   }, 180_000);
 
