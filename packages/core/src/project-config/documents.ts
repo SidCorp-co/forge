@@ -19,7 +19,7 @@ export function pointer(segments: readonly PropertyKey[]): string {
 export const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
-function issueRefusals(issue: z.core.$ZodIssue): ApiRefusal[] {
+function issueRefusals(issue: z.core.$ZodIssue, version: unknown): ApiRefusal[] {
   if (issue.code === 'unrecognized_keys') {
     return issue.keys.map((key): ApiRefusal => {
       if (key === 'rollback' && issue.path[0] === 'target') {
@@ -32,7 +32,9 @@ function issueRefusals(issue: z.core.$ZodIssue): ApiRefusal[] {
       return {
         code: 'UNKNOWN_KEY',
         path: pointer([...issue.path, key]),
-        detail: `"${key}" is not a key of this document; version 1 refuses keys it does not define.`,
+        detail: `"${key}" is not a key of this document; ${
+          typeof version === 'number' ? `version ${version}` : 'a version'
+        } refuses keys it does not define.`,
       };
     });
   }
@@ -81,7 +83,7 @@ export function parseVersionedDocument<T>(
   }
   const result = schema.safeParse(raw);
   if (result.success) return { ok: true, value: result.data };
-  return { ok: false, refusals: result.error.issues.flatMap(issueRefusals) };
+  return { ok: false, refusals: result.error.issues.flatMap((i) => issueRefusals(i, raw.version)) };
 }
 
 export function staleBase(baseRevision: number | null, storedRevision: number | null): ApiRefusal {

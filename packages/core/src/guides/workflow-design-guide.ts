@@ -23,7 +23,7 @@ names the workflow it builds is not dispatched while that design is not approved
    \`template: { id, version }\` — \`GET /api/guides/workflow-templates.md\` says which (operational-flow for
    what the business does, service-blueprint, ux-flow for screens, state-machine, integration-sequence,
    decision-model, data-flow, system-context). The template fixes the node types, the bands, the fields each
-   type requires, the edge kinds and the cross-links to the project's other designs. \`POST /api/projects/:id/workflows\` creates one with a workflow-v2 document (\`GET /api/schemas/workflow-v2.json\`), \`PUT …/workflows/:workflow\` with the \`baseRevision\` you read writes the next revision.
+   type requires, the edge kinds and the cross-links to the project's other designs. \`POST /api/projects/:id/workflows\` creates one with a workflow-v2 document (\`GET /api/schemas/workflow-v2.json\`), \`PUT …/workflows/:workflow\` with the \`baseRevision\` you read writes the next revision. A PUT takes what GET returned as it stands: \`revision\` is the base, and \`writer\`, \`writerName\`, \`design\` and the document's \`id\`, \`createdAt\` and \`updatedAt\` are the server's, dropped and listed in the answer's \`ignored\`.
    A design holds the plan only: no step status, evidence or commit. Give each step its \`node\` (its type,
    a short business \`label\`, a \`purpose\`, and what its type requires) and each line \`after\` draws the
    contract its kind owes. A new v2 workflow is a **draft**.
