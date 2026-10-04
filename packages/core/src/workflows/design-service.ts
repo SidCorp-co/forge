@@ -14,6 +14,7 @@ import {
   designApproverRefusal,
   proposeRefusal,
 } from './design.js';
+import { baseApprovalRefusal, basesOfStored, readBases } from './design-bases.js';
 import { type DesignIssueOutcome, settleDesignIssue } from './design-issue.js';
 import { assertWriter, storedWorkflow, userNames, type WorkflowWriter } from './service.js';
 import {
@@ -28,6 +29,7 @@ import {
   type StoredWorkflow,
   setDesignState,
   unlinkBuild,
+  workflowsOf,
 } from './store.js';
 
 export type DesignView = Awaited<ReturnType<typeof designView>> & {
@@ -227,6 +229,12 @@ export async function decideDesignAs(input: {
       reason,
     });
     if (refusals.length > 0) return { refusals };
+    const bases = decision === 'approve' ? basesOfStored(latest?.document) : [];
+    const unapproved =
+      bases.length > 0
+        ? baseApprovalRefusal(revision, readBases(bases, await workflowsOf(tx, projectId)))
+        : null;
+    if (unapproved) return { refusals: [unapproved] };
     await decideDesign(tx, { workflowId: id, revision, decision, userId: decider.userId, reason });
     await setDesignState(
       tx,

@@ -48,6 +48,7 @@ describe('evaluateCriteria (ISS-55: the awaiting_release gate off criterion_verd
       unidentified: [],
       predateReopen: [],
       inadmissible: [],
+      superseded: [],
       uncorroborated: [],
     });
   });
@@ -71,6 +72,7 @@ describe('evaluateCriteria (ISS-55: the awaiting_release gate off criterion_verd
       unidentified: [],
       predateReopen: [],
       inadmissible: [],
+      superseded: [],
       uncorroborated: [],
     });
   });
@@ -88,6 +90,7 @@ describe('evaluateCriteria (ISS-55: the awaiting_release gate off criterion_verd
       unidentified: [1],
       predateReopen: [],
       inadmissible: [],
+      superseded: [],
       uncorroborated: [],
     });
   });
@@ -109,6 +112,7 @@ describe('evaluateCriteria (ISS-55: the awaiting_release gate off criterion_verd
       unidentified: [],
       predateReopen: [1, 2],
       inadmissible: [],
+      superseded: [],
       uncorroborated: [],
     });
   });
@@ -121,6 +125,7 @@ describe('evaluateCriteria (ISS-55: the awaiting_release gate off criterion_verd
       unidentified: [],
       predateReopen: [],
       inadmissible: [],
+      superseded: [],
       uncorroborated: [],
     });
   });
@@ -143,6 +148,7 @@ describe('evaluateCriteria: a storefront draft (ISS-91)', () => {
     expect(evaluateCriteria([criterion(1, draft({}))], null, 'storefront')).toEqual({
       ...clean,
       inadmissible: [],
+      superseded: [],
       uncorroborated: [],
     });
   });
@@ -153,6 +159,7 @@ describe('evaluateCriteria: a storefront draft (ISS-91)', () => {
     ).toEqual({
       ...clean,
       inadmissible: [1],
+      superseded: [],
       uncorroborated: [],
     });
   });
@@ -169,6 +176,7 @@ describe('evaluateCriteria: a storefront draft (ISS-91)', () => {
     );
     expect(found).toMatchObject({
       inadmissible: [],
+      superseded: [],
       uncorroborated: [{ criterion: 3, note: 'http_502' }],
     });
   });
@@ -182,6 +190,23 @@ describe('evaluateCriteria: a storefront draft (ISS-91)', () => {
       null,
       'git',
     );
-    expect(found).toEqual({ ...clean, inadmissible: [], uncorroborated: [] });
+    expect(found).toEqual({ ...clean, inadmissible: [], superseded: [], uncorroborated: [] });
+  });
+
+  it('refuses a draft the storefront has moved past as superseded, never as corroborated (FB-56)', () => {
+    const found = evaluateCriteria(
+      [
+        criterion(1, draft({ corroboration: 'superseded', corroborationNote: 'moved to bbb' })),
+        criterion(2, draft({})),
+      ],
+      null,
+      'storefront',
+    );
+    expect(found).toEqual({
+      ...clean,
+      inadmissible: [],
+      superseded: [{ criterion: 1, note: 'moved to bbb' }],
+      uncorroborated: [],
+    });
   });
 });

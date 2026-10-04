@@ -46,6 +46,7 @@ const VERDICT_SHORT: ReadonlySet<GuardCode> = new Set([
   'VERDICT_PREDATES_REOPEN',
   'VERDICT_IDENTITY_NOT_ADMISSIBLE',
   'VERDICT_UNCORROBORATED',
+  'VERDICT_DRAFT_SUPERSEDED',
 ]);
 
 const UNMOVED_BECAUSE: Partial<Record<IssueStatus, string>> = {

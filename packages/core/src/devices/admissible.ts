@@ -19,6 +19,7 @@ import {
   readPullRequestsForIssues,
 } from '../integrations/repo-projection.js';
 import { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } from '../issues/dependency-effects.js';
+import { designHeldSql } from '../issues/design-delivery.js';
 import { dispatchGateHeldSql } from '../issues/dispatch-gates.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { TAKEABLE_STATUSES } from '../issues/status-sets.js';
@@ -155,8 +156,9 @@ export async function readAdmissibleIssues(args: {
       WHERE i.project_id = ${a.projectId}
         AND i.status IN (${takeableList})
         ${a.entryOnRelease ? sql`AND (i.status <> ${AUTONOMOUS_ENTRY_STATUS} OR i.session_context ? 'runRelease')` : sql``}
-        -- a live blocks edge whose blocker has not reached one of BLOCKER_SETTLED_STATUSES holds
-        -- this row out of the set. It is correlated on the ADMITTING project and not on
+        -- a live blocks edge whose blocker has not reached one of BLOCKER_SETTLED_STATUSES, or
+        -- delivers a design revision not yet approved (issues/design-delivery.ts), holds this row
+        -- out of the set. It is correlated on the ADMITTING project and not on
         -- d.to_issue_id alone, because issue_dependencies carries only the composite indexes
         -- (project_id, from_issue_id) and (project_id, to_issue_id): an endpoint-only filter
         -- constrains the non-leading column of both and Postgres degrades to a sequential scan of
@@ -169,7 +171,7 @@ export async function readAdmissibleIssues(args: {
             AND d.to_issue_id = i.id
             AND d.kind = ${DISPATCH_GATING_KIND}
             AND (d.valid_until IS NULL OR d.valid_until > now())
-            AND b.status NOT IN (${settledList})
+            AND (b.status NOT IN (${settledList}) OR ${designHeldSql(sql`b.id`)})
         )
         -- an issue that builds a workflow whose design is not approved, or waits on a contract version
         -- not yet published, waits; the issue read names which (issues/dispatch-gates.ts)

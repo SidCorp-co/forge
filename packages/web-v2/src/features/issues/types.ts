@@ -190,6 +190,7 @@ export interface IssueDependencyEdge {
   fromTitle?: string | null;
   fromStatus?: IssueStatus | null;
   fromMergedAt?: string | null;
+  fromDesignHold?: string | null;
   toDisplayId?: string | null;
   toTitle?: string | null;
   toStatus?: IssueStatus | null;

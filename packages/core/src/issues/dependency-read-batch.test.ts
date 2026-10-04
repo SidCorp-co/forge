@@ -31,7 +31,7 @@ const selectLeftJoin = vi.fn(
 );
 const selectFrom = vi.fn(() => ({ leftJoin: selectLeftJoin, where: selectWhere }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
-vi.mock('../db/client.js', () => ({ db: { select: dbSelect } }));
+vi.mock('../db/client.js', () => ({ db: { select: dbSelect, execute: async () => [] } }));
 
 const { loadIssueDependencyEdgesForIssues, loadIssueDependencyEdges } = await import(
   './dependency-read.js'

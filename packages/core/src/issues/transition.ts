@@ -78,6 +78,7 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
     case 'NO_WORK_EVIDENCE':
     case 'VERDICT_PREDATES_REOPEN':
     case 'VERDICT_UNCORROBORATED':
+    case 'VERDICT_DRAFT_SUPERSEDED':
     case 'NO_HOLDER':
     case 'ILLEGAL_TRANSITION':
       return new HTTPException(409, { message: err.detail, cause });

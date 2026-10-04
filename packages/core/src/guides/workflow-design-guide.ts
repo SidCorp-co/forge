@@ -62,9 +62,25 @@ operational-flow it is \`feeds-back\`:
   \`WORKFLOW_EDGE_REEVALUATES_FORWARD\`.
 - The canvas draws it as a dashed line curving back, styled by its kind, with its contract on hover.
 
+### A design built on another declares it
+A design that builds on another design of the project — a state machine over an audit layer's steps, a
+decision model's permissions — names it in \`basedOn: [{ workflow: <flow>, revision: <n> }]\`, the revision
+it builds on. A base naming the design itself, a flow the project does not hold, a revision that workflow
+never held, or one flow twice is refused at the write (\`WORKFLOW_BASE_SELF\`, \`WORKFLOW_BASE_UNKNOWN\`,
+\`WORKFLOW_BASE_DUPLICATE\`). Approving a revision is refused \`WORKFLOW_DESIGN_BASE_UNAPPROVED\` while any
+base it declares is not approved at the revision it names — returned, still proposed, never approved, or
+approved at another revision — and the refusal names each base and its state. Approve the base first, or
+write the design again naming the base revision that is approved. Prose that cites another design is
+never read as a base.
+
+An issue that delivers a design revision — the issue the revision is drawn under, or one whose criteria
+are judged against a design revision — holds the issues it \`blocks\` until that revision is approved,
+whatever its own status: proposing the design moves the issue on, and only the approval releases its
+dependents.
+
 ### What sends a design back to its approver
 A write that changes the design — its template, a step added, removed, renamed or re-described, its order,
-its node (label and band included), an edge contract, a return edge added or removed — moves an approved design back to \`proposed\`, and its linked issues stop dispatching
+its node (label and band included), an edge contract, a return edge added or removed, its \`basedOn\` — moves an approved design back to \`proposed\`, and its linked issues stop dispatching
 until it is approved again. The approved revision stays readable, so the approver sees what changed.
 Status, evidence and coverage are the code's reading of itself and move nothing.
 

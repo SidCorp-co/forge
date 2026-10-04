@@ -3,6 +3,7 @@
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { type CriterionWithVerdict, listCriteria } from './criteria/store.js';
+import { type DraftReader, withCurrentDrafts } from './criteria/storefront-draft.js';
 
 const PASSING: ReadonlySet<string> = new Set(['pass', 'short']);
 
@@ -16,6 +17,7 @@ export type CriteriaEvidence =
       /** Passing, but recorded at or before the issue's latest reopen: not current evidence. */
       predateReopen: number[];
       inadmissible: number[];
+      superseded: Array<{ criterion: number; note: string }>;
       uncorroborated: Array<{ criterion: number; note: string }>;
     };
 
@@ -24,10 +26,11 @@ export type SourceType = 'git' | 'storefront' | 'none' | null;
 function draftFinding(
   latest: NonNullable<CriterionWithVerdict['latest']>,
   source: SourceType,
-): 'inadmissible' | 'uncorroborated' | null {
+): 'inadmissible' | 'superseded' | 'uncorroborated' | null {
   if (latest.identityKind !== 'storefront_draft') return null;
   if (source !== 'storefront') return 'inadmissible';
-  return latest.corroboration === 'corroborated' ? null : 'uncorroborated';
+  if (latest.corroboration === 'corroborated') return null;
+  return latest.corroboration === 'superseded' ? 'superseded' : 'uncorroborated';
 }
 
 /**
@@ -46,6 +49,7 @@ export function evaluateCriteria(
   const unidentified: number[] = [];
   const predateReopen: number[] = [];
   const inadmissible: number[] = [];
+  const superseded: Array<{ criterion: number; note: string }> = [];
   const uncorroborated: Array<{ criterion: number; note: string }> = [];
   for (const { n, latest } of criteria) {
     if (!latest || !PASSING.has(latest.verdict)) {
@@ -62,14 +66,19 @@ export function evaluateCriteria(
     }
     const draft = draftFinding(latest, source);
     if (draft === 'inadmissible') inadmissible.push(n);
-    if (draft === 'uncorroborated') {
-      uncorroborated.push({
-        criterion: n,
-        note: latest.corroborationNote ?? 'no reading recorded',
-      });
-    }
+    const note = { criterion: n, note: latest.corroborationNote ?? 'no reading recorded' };
+    if (draft === 'superseded') superseded.push(note);
+    if (draft === 'uncorroborated') uncorroborated.push(note);
   }
-  return { kind: 'criteria', unpassed, unidentified, predateReopen, inadmissible, uncorroborated };
+  return {
+    kind: 'criteria',
+    unpassed,
+    unidentified,
+    predateReopen,
+    inadmissible,
+    superseded,
+    uncorroborated,
+  };
 }
 
 /**
@@ -97,12 +106,17 @@ export async function reopenedAtOf(
 
 export async function unpassedCriteria(
   executor: Pick<Tx, 'execute'>,
-  issueId: string,
+  issue: { id: string; projectId: string },
   source: SourceType = null,
+  readDraft?: DraftReader,
 ): Promise<CriteriaEvidence & { reopenedAt: Date | null }> {
   // Sequential: inside the transition's transaction both reads share one connection.
-  const criteria = await listCriteria(executor, issueId);
-  const reopened = await reopenedAtOf(executor, [issueId]);
-  const reopenedAt = reopened.get(issueId) ?? null;
+  const criteria = await withCurrentDrafts(
+    issue.projectId,
+    await listCriteria(executor, issue.id),
+    readDraft,
+  );
+  const reopened = await reopenedAtOf(executor, [issue.id]);
+  const reopenedAt = reopened.get(issue.id) ?? null;
   return { ...evaluateCriteria(criteria, reopenedAt, source), reopenedAt };
 }

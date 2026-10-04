@@ -5,6 +5,7 @@
  * naming nothing leaves a source verdict to the issue's own source. Shapes: `messaging/verdict-identity.ts`.
  */
 
+import type { VerdictDraftReading } from '@forge/contracts/verdict-identity';
 import {
   parseContractIdentity,
   parseDesignIdentity,
@@ -17,6 +18,7 @@ import { type ServingReading, servedCommits } from '../release-batch/serving-rea
 export interface VerdictIdentity {
   readonly kind: 'runtime' | 'source' | 'design' | 'contract' | 'storefront_draft';
   readonly value: string;
+  readonly corroboration?: VerdictDraftReading | null;
   readonly corroborationNote?: string | null;
 }
 
@@ -110,7 +112,8 @@ export function verdictStanding(
 ): VerdictStanding {
   if (!at) return 'unanchored';
   if (at.kind === 'storefront_draft') {
-    return at.corroborationNote == null ? 'stands' : 'uncorroborated';
+    if (at.corroboration === 'corroborated') return 'stands';
+    return at.corroboration === 'superseded' ? 'superseded' : 'uncorroborated';
   }
   if (at.kind === 'design') return designStanding(at.value, identities);
   if (at.kind === 'contract') return contractStanding(at.value, identities);
@@ -192,8 +195,11 @@ export function standingSentence(
   if (at?.kind === 'design') return designSentence(standing, at.value, identities);
   if (at?.kind === 'contract') return contractSentence(standing, at.value, identities);
   if (at?.kind === 'storefront_draft') {
-    return standing === 'stands'
-      ? `judged on storefront draft ${at.value}, which the storefront source held when the verdict was recorded`
+    if (standing === 'stands') {
+      return `judged on storefront draft ${at.value}, which the storefront source holds now`;
+    }
+    return standing === 'superseded'
+      ? `judged on storefront draft ${at.value}, which the storefront source no longer holds: ${at.corroborationNote}`
       : `judged on storefront draft ${at.value}, which the storefront source could not be read back as holding: ${at.corroborationNote}`;
   }
   if (standing === 'stands') {

@@ -30,6 +30,7 @@ export type DesignRefusalCode =
   | 'WORKFLOW_DESIGN_ALREADY_APPROVED'
   | 'WORKFLOW_DESIGN_UNCHANGED'
   | 'WORKFLOW_DESIGN_NOT_APPROVED'
+  | 'WORKFLOW_DESIGN_BASE_UNAPPROVED'
   | 'WORKFLOW_DESIGN_ISSUE_IS_BUILD'
   | 'WORKFLOW_BUILD_ALREADY_LINKED'
   | 'WORKFLOW_BUILD_NOT_LINKED';
@@ -90,6 +91,7 @@ export function designFingerprint(doc: WorkflowWrite, template: WorkflowTemplate
     edges,
     ...(legacy || doc.version !== 2 ? {} : { template: doc.template }),
     ...(doc.version === 2 && doc.lanes ? { lanes: doc.lanes } : {}),
+    ...(doc.version === 2 && doc.basedOn ? { basedOn: doc.basedOn } : {}),
   };
   return createHash('sha256').update(JSON.stringify(shape)).digest('hex');
 }

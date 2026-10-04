@@ -24,6 +24,10 @@ import { idParamSchema } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { criteriaPutSchema, verdictPostSchema } from './input-schemas.js';
 import { listCriteria, putCriteria, recordVerdict } from './store.js';
+import { withCurrentDrafts } from './storefront-draft.js';
+
+const readCriteria = async (issue: { id: string; projectId: string }) =>
+  withCurrentDrafts(issue.projectId, await listCriteria(db, issue.id));
 
 const badInput = (r: { success: boolean; error?: z.core.$ZodError }) => {
   if (!r.success) {
@@ -55,8 +59,8 @@ issueCriteriaRoutes.get(
   zValidator('param', idParamSchema, badInput),
   async (c) => {
     const { id } = c.req.valid('param');
-    await issueFor(id, c.get('userId'), 'viewer');
-    return c.json({ criteria: await listCriteria(db, id) });
+    const issue = await issueFor(id, c.get('userId'), 'viewer');
+    return c.json({ criteria: await readCriteria(issue) });
   },
 );
 
@@ -67,9 +71,9 @@ issueCriteriaRoutes.put(
   async (c) => {
     const { id } = c.req.valid('param');
     const { criteria } = c.req.valid('json');
-    await issueFor(id, c.get('userId'), 'member');
+    const issue = await issueFor(id, c.get('userId'), 'member');
     await db.transaction((tx) => putCriteria(tx, id, criteria));
-    return c.json({ criteria: await listCriteria(db, id) });
+    return c.json({ criteria: await readCriteria(issue) });
   },
 );
 
@@ -98,7 +102,7 @@ issueCriteriaRoutes.post(
         },
       }),
     );
-    const criterion = (await listCriteria(db, id)).find((row) => row.n === body.criterion);
+    const criterion = (await readCriteria(issue)).find((row) => row.n === body.criterion);
     return c.json({ verdictId: written.id, criterion }, 201);
   },
 );

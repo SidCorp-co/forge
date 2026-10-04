@@ -7,7 +7,7 @@
  * ever inserted; the latest per live criterion is the one the gate and the UI read.
  */
 
-import type { VerdictCorroboration } from '@forge/contracts/verdict-identity';
+import type { VerdictCorroboration, VerdictDraftReading } from '@forge/contracts/verdict-identity';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { Tx } from '../../db/client.js';
@@ -95,7 +95,7 @@ export interface LatestVerdict {
   readonly storefrontWorkflowId: string | null;
   readonly storefrontDraftVersion: string | null;
   readonly storefrontEnvironment: string | null;
-  readonly corroboration: VerdictCorroboration | null;
+  readonly corroboration: VerdictDraftReading | null;
   readonly corroborationNote: string | null;
   readonly evidence: readonly string[];
   readonly authorAgency: ActorAgency;

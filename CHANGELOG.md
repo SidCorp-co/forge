@@ -3296,6 +3296,14 @@
 
 ### Fixed
 
+- **A storefront-draft verdict counts only while the storefront still holds that draft (FB-56).**
+  A moved draft now reads `superseded`, an unreadable one `uncorroborated`, and both are refused at
+  `awaiting_release` and close (`VERDICT_DRAFT_SUPERSEDED`, `VERDICT_UNCORROBORATED`).
+- **A `blocks` edge from an issue that delivers a design holds until that design is approved
+  (FB-57)**, whatever the blocker's status; the dependent reads as waiting on the approval.
+- **A design is approved only on approved bases (FB-51).** A design declares
+  `basedOn: [{ workflow, revision }]`; approving it before each base is approved at that revision is
+  refused `WORKFLOW_DESIGN_BASE_UNAPPROVED`.
 - **A client on the ten statuses is refused a retired status by name.** Naming `tested`,
   `developed` or another retired status, as a move or a filter, answers which ten statuses exist
   instead of mapping it. Only forge-plugin 3.36.542 still may.

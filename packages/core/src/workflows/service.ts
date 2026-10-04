@@ -11,6 +11,7 @@ import { peopleOf } from '../lib/people.js';
 import { staleBase } from '../project-config/documents.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { designFingerprint, designStatusAfterWrite, designStatusAtCreate } from './design.js';
+import { baseRefusals } from './design-bases.js';
 import {
   checkWorkflow,
   duplicateWorkflowRefusal,
@@ -146,6 +147,7 @@ export async function createWorkflow(input: {
         designs: await designsOf(tx, projectId, doc.flow, facts.templates),
       }),
       ...evidenceSourceRefusals(doc, facts.source),
+      ...baseRefusals(doc, await workflowsOf(tx, projectId)),
     ];
     if (refusals.length > 0) return { ok: false, refusals };
     const holding = await workflowHolding(tx, projectId, doc.flow);
@@ -189,6 +191,7 @@ export async function updateWorkflow(input: {
         designs: await designsOf(tx, projectId, doc.flow, facts.templates),
       }),
       ...evidenceSourceRefusals(doc, facts.source),
+      ...baseRefusals(doc, await workflowsOf(tx, projectId)),
     ];
     if (refusals.length > 0) return { ok: false, refusals };
     if (JSON.stringify(stored) === JSON.stringify(doc)) {

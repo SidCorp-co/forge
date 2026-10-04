@@ -62,6 +62,7 @@ export const WORKFLOW_LIMITS = {
   tests: 30,
   lanes: 16,
   refs: 8,
+  bases: 8,
   route: 200,
   values: 20,
   code: 40,
@@ -270,6 +271,11 @@ const workflowV2Fields = {
   /** The personas a ux-flow's screens are for. */
   personas: z.array(laneSchema).min(1).max(WORKFLOW_LIMITS.lanes).optional(),
   edges: z.array(edgeSchema).max(WORKFLOW_LIMITS.edges).optional(),
+  basedOn: z
+    .array(z.strictObject({ workflow: slug(), revision: z.number().int().min(1) }))
+    .min(1)
+    .max(WORKFLOW_LIMITS.bases)
+    .optional(),
   writtenBy: z.strictObject({
     runId: uuid().optional(),
     sessionId: uuid().optional(),

@@ -59,7 +59,8 @@ export function forgeIssuesDescription(refClause: string): string {
     'plan and criteria (PLAN_REQUIRED), awaiting_release a passing verdict on every criterion ' +
     '(NO_WORK_EVIDENCE, VERDICT_IDENTITY_REQUIRED), recorded after the latest reopen ' +
     '(VERDICT_PREDATES_REOPEN); a storefront_draft verdict counts only on a storefront-source project ' +
-    '(VERDICT_IDENTITY_NOT_ADMISSIBLE) and once its source read the draft back (VERDICT_UNCORROBORATED); ' +
+    '(VERDICT_IDENTITY_NOT_ADMISSIBLE) and only while its source reads back that draft as the one it holds now ' +
+    '(VERDICT_DRAFT_SUPERSEDED once the draft moved, VERDICT_UNCORROBORATED when it cannot be read); ' +
     'needs_info needs reason + waitingKind ' +
     '(needs_answer, needs_decision, needs_resource), on_hold and reopen a reason, dropped a reason ' +
     '(VOID_REASON_REQUIRED); a park returns only to the status it left. A retired name (confirmed, ' +

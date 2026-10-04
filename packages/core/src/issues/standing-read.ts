@@ -23,6 +23,7 @@ import { peopleOf } from '../lib/people.js';
 import { classifyLease } from '../pipeline/session-claim.js';
 import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 import { approvalRequired } from '../release-batch/approvals.js';
+import { designHoldPhrase, designHoldsOf } from './design-delivery.js';
 import { issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import {
@@ -272,10 +273,15 @@ async function standingRows(
     approvalRequired(projectId),
     viewerOf(viewer, projectId),
   ]);
-  const [requirements, people] = await Promise.all([
+  const [requirements, people, designHolds] = await Promise.all([
     requirementsOf([...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))]),
     peopleOf(raws.flatMap((r) => [r.assignee_id, r.created_by_id])),
+    designHoldsOf([...ids, ...edges.map((e) => e.from_id)]),
   ]);
+  const designHold = (id: string) => {
+    const holds = designHolds.get(id);
+    return holds ? designHoldPhrase(holds) : null;
+  };
   const key = (seq: number) => formatIssueRef(prefix, seq);
   const edge = (
     id: string,
@@ -287,6 +293,7 @@ async function standingRows(
     key: key(seq),
     title,
     status,
+    designHold: designHold(id),
   });
 
   const inputs = raws.map((r): [IssueRowRaw, IssueStandingInput] => {
@@ -298,6 +305,7 @@ async function standingRows(
       r,
       {
         status: r.status,
+        designHold: designHold(r.id),
         waitingKind: r.waiting_kind,
         step: r.step,
         stepStartedAt: r.step_started_at ? new Date(r.step_started_at) : null,
@@ -352,12 +360,18 @@ async function standingRows(
     ...inputs.map(([r, input]) => ({
       id: r.id,
       status: r.status,
+      designHeld: designHolds.has(r.id),
       blockedBy: input.blockedBy.map((b) => b.id),
     })),
     // a blocker outside the page still decides its dependents' wave by its status
     ...edges
       .filter((e) => !groups.has(e.from_id))
-      .map((e) => ({ id: e.from_id, status: e.from_status, blockedBy: [] as string[] })),
+      .map((e) => ({
+        id: e.from_id,
+        status: e.from_status,
+        designHeld: designHolds.has(e.from_id),
+        blockedBy: [] as string[],
+      })),
   ]);
   return inputs.map(([r, input]) => ({
     id: r.id,

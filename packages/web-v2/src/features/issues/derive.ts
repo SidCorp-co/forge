@@ -511,6 +511,7 @@ export interface BlockingRef {
 	title: string | null;
 	status: IssueStatus | null;
 	landed: boolean;
+	designHold: string | null;
 }
 
 /** Single server-derived "why is it stuck" verdict for the blocker banner
@@ -658,7 +659,11 @@ export function openBlockingRefs(
 		.incoming.filter(
 			(e) =>
 				e.kind === "blocks" &&
-				!(e.fromStatus && SETTLED_BLOCKERS.has(e.fromStatus)),
+				!(
+					e.fromStatus &&
+					SETTLED_BLOCKERS.has(e.fromStatus) &&
+					!e.fromDesignHold
+				),
 		)
 		.map((e) => ({
 			id: e.fromIssueId,
@@ -666,6 +671,7 @@ export function openBlockingRefs(
 			title: e.fromTitle ?? null,
 			status: e.fromStatus ?? null,
 			landed: Boolean(e.fromMergedAt),
+			designHold: e.fromDesignHold ?? null,
 		}));
 }
 
@@ -674,6 +680,15 @@ export function openBlockingRefs(
 function blocksBlocker(blockingRefs: BlockingRef[]): BlockerState {
 	const keys = blockingRefs.map((r) => r.displayId).join(", ");
 	const one = blockingRefs.length === 1;
+	if (blockingRefs.every((r) => r.designHold)) {
+		return {
+			tone: "info",
+			reason: `Blocked by ${keys}, which ${one ? "delivers a design" : "deliver designs"} not yet approved: ${blockingRefs.map((r) => r.designHold).join("; ")}.`,
+			whoMustAct: `The design approver decides the revision ${keys} ${one ? "delivers" : "deliver"}; this issue is released once it is approved.`,
+			cta: { label: "Open blocking issue", kind: "open-blocker" },
+			blockingRefs,
+		};
+	}
 	if (blockingRefs.every((r) => r.landed)) {
 		return {
 			tone: "info",

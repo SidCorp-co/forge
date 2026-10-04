@@ -110,7 +110,9 @@ const DESCRIPTION =
   'the document is workflow-v1 (a flow the code already has) or workflow-v2 (a design: steps may be ' +
   '`designed` with no evidence and carry `node` { type, label, band, purpose, inputs, outputs, owner, ' +
   'sla, conditions, refs, … } whose type and required fields come from the template, and whose ' +
-  "`refs` [{ template, flow, step }] link steps of the project's other designs; `edges` carry " +
+  "`refs` [{ template, flow, step }] link steps of the project's other designs; `basedOn` " +
+  '[{ workflow, revision }] names the designs it builds on, each a flow this project holds at a revision it held ' +
+  '(WORKFLOW_BASE_SELF, WORKFLOW_BASE_UNKNOWN, WORKFLOW_BASE_DUPLICATE); `edges` carry ' +
   'the contract of a line — a forward kind is a line `after` draws (its kind read from its endpoint ' +
   'types unless named), a return kind (operational-flow `feeds-back`, state-machine `back`) goes back to an earlier step, is never drawn in `after` ' +
   '(WORKFLOW_AFTER_CYCLE) and carries what its kind requires). ' +
@@ -137,7 +139,8 @@ const DESCRIPTION =
   'decide: { workflowId, revision, decision: approve|return, reason } — only the approver the ' +
   "project's `workflows.designApprover` names: `owner` (default) is an org admin person, and an " +
   "agent is refused WORKFLOW_DESIGN_APPROVER_NOT_PERSON; `master` lets this project's own master " +
-  'decide too. A return carries its reason. ' +
+  'decide too. A return carries its reason. Approving is refused WORKFLOW_DESIGN_BASE_UNAPPROVED while a ' +
+  'design the revision declares in `basedOn` is not approved at the revision it names, naming each base and its state. ' +
   'link: { workflowId, issue } names the issue that builds the workflow; dispatching that issue is ' +
   'then refused WORKFLOW_DESIGN_NOT_APPROVED until the design is approved, and forge_issues get ' +
   'shows why under `buildsWorkflow`. unlink lifts the gate, so only the approver may. ' +

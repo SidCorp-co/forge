@@ -5,7 +5,7 @@ import { type GuardContext, storefrontDraftFault } from './transition-guards.js'
 
 const ctx = { from: 'in_progress', to: 'awaiting_release' } as unknown as GuardContext;
 const draftCriterion = (
-  corroboration: 'corroborated' | 'uncorroborated',
+  corroboration: 'corroborated' | 'uncorroborated' | 'superseded',
 ): CriterionWithVerdict => ({
   id: 'c1',
   n: 1,
@@ -28,7 +28,12 @@ const draftCriterion = (
     storefrontDraftVersion: 'a'.repeat(64),
     storefrontEnvironment: 'preview',
     corroboration,
-    corroborationNote: corroboration === 'corroborated' ? null : 'http_502',
+    corroborationNote:
+      corroboration === 'corroborated'
+        ? null
+        : corroboration === 'superseded'
+          ? 'the storefront source holds workflow `wf-1` at draft version `bbb` now'
+          : 'http_502',
     evidence: [],
     authorAgency: 'agent',
     backfilled: false,
@@ -57,5 +62,14 @@ describe('the awaiting_release guard on a storefront draft (ISS-91)', () => {
     const refused = fault(draftCriterion('uncorroborated'), 'storefront');
     expect(refused?.code).toBe('VERDICT_UNCORROBORATED');
     expect(refused?.detail).toContain('1 (http_502)');
+  });
+
+  it('refuses a draft the storefront moved past VERDICT_DRAFT_SUPERSEDED, naming the draft held now (FB-56)', () => {
+    const refused = fault(draftCriterion('superseded'), 'storefront');
+    expect(refused?.code).toBe('VERDICT_DRAFT_SUPERSEDED');
+    expect(refused?.detail).toContain(
+      '1 (the storefront source holds workflow `wf-1` at draft version `bbb` now)',
+    );
+    expect(refused?.details).toMatchObject({ superseded: [{ criterion: 1 }] });
   });
 });

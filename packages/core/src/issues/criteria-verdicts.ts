@@ -15,6 +15,7 @@ import {
 } from '../messaging/verdict-identity.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
 import { type CriterionWithVerdict, type LatestVerdict, listCriteria } from './criteria/store.js';
+import { withCurrentDrafts } from './criteria/storefront-draft.js';
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
 import {
   type IssueIdentities,
@@ -97,6 +98,7 @@ function identityOfRow(row: LatestVerdict): VerdictIdentity | null {
         ? {
             kind: 'storefront_draft',
             value: `${row.storefrontWorkflowId}@draft:${row.storefrontDraftVersion} on \`${row.storefrontEnvironment}\``,
+            corroboration: row.corroboration,
             corroborationNote:
               row.corroboration === 'corroborated'
                 ? null
@@ -123,12 +125,6 @@ export function latestByNumber(
     });
   }
   return latest;
-}
-
-export async function latestCriterionVerdicts(
-  issueId: string,
-): Promise<Map<number, CriterionVerdict>> {
-  return latestByNumber(await listCriteria(db, issueId));
 }
 
 /** One criterion an issue does not carry an earned, standing verdict on. */
@@ -174,6 +170,11 @@ export async function heldAttachmentNames(issueId: string): Promise<Set<string>>
 
 const NEVER_JUDGED = 'no verdict was recorded for it';
 
+// cm:guard a storefront draft nothing could read back is not earned, unlike a runtime: the
+// awaiting_release guard refuses it (VERDICT_UNCORROBORATED), and the hold reads it alike (FB-56)
+const unconfirmedDraft = (pair: CriterionVerdict, standing: VerdictStanding) =>
+  pair.at?.kind === 'storefront_draft' && standing === 'uncorroborated';
+
 /** Every reason this criterion is not shown earned, in the order they are read. */
 function reasonsAgainst(
   pair: CriterionVerdict,
@@ -185,7 +186,7 @@ function reasonsAgainst(
   const out: string[] = [];
   if (!EARNED_VERDICTS.has(pair.verdict)) {
     out.push(`its verdict is \`${pair.verdict}\`, which is not earned`);
-  } else if (!EARNED_STANDINGS.has(standing)) {
+  } else if (!EARNED_STANDINGS.has(standing) || unconfirmedDraft(pair, standing)) {
     out.push(standingSentence(standing, pair.at, serving, identities));
   }
   if (unresolved.length > 0) out.push(citationSentence(unresolved));
@@ -218,7 +219,7 @@ function spokenAt(
   return (pair, standing) => {
     if (!pair.at) return null;
     const spelled = longestSpelling(pools.get(pool(pair.at, standing)) ?? []);
-    return { kind: pair.at.kind, value: spelled(pair.at.value) };
+    return { ...pair.at, value: spelled(pair.at.value) };
   };
 }
 
@@ -338,7 +339,7 @@ async function reportFor(
 ): Promise<IssueCriteriaReport> {
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
   const identities = { ...issueIdentities(row), designs, contracts };
-  const criteria = await listCriteria(db, row.id);
+  const criteria = await withCurrentDrafts(row.projectId, await listCriteria(db, row.id));
   const numbers = criteria.map((c) => c.n);
   if (numbers.length === 0) {
     return { issueId: row.id, unearned: [], broken: [], serving, uncorroborated: [] };

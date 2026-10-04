@@ -25,6 +25,7 @@ vi.mock('../db/client.js', () => ({
       chain.where = async () => edgeRows;
       return chain;
     },
+    execute: async () => [],
   },
 }));
 
@@ -114,6 +115,7 @@ describe('loadIssueRelationsForIssues', () => {
       'fromIssueId',
       'gatesDispatch',
       'kind',
+      'otherDesignHold',
       'otherDisplayId',
       'otherIssueId',
       'otherMergedAt',

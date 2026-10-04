@@ -9,7 +9,7 @@
  *   approved           plan and criteria written; a person made the move where   PLAN_REQUIRED
  *                      the project document sets `plan.approval.required`
  *   awaiting_release   every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
- *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_UNCORROBORATED
+ *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_DRAFT_SUPERSEDED, VERDICT_UNCORROBORATED
  *   closed             shipped; from in_progress, as awaiting_release           CLOSE_REQUIRES_SHIPPED + the codes above
  *
  *   needs_info         a question (the reason) and its kind                      TRANSITION_REASON_REQUIRED,
@@ -29,6 +29,7 @@ import {
 } from '../pipeline/state-machine.js';
 import { readProjectDocument } from '../project-config/service.js';
 import type { ActorAgency } from './actor-agency.js';
+import type { DraftReader } from './criteria/storefront-draft.js';
 import { type CriteriaEvidence, type SourceType, unpassedCriteria } from './release-evidence.js';
 import { isBlankPlan } from './transition-evidence.js';
 import { issueHolder } from './work-state.js';
@@ -42,6 +43,7 @@ export type GuardCode =
   | 'VERDICT_PREDATES_REOPEN'
   | 'VERDICT_IDENTITY_NOT_ADMISSIBLE'
   | 'VERDICT_UNCORROBORATED'
+  | 'VERDICT_DRAFT_SUPERSEDED'
   | 'TRANSITION_REASON_REQUIRED'
   | 'WAITING_KIND_REQUIRED'
   | 'VOID_REASON_REQUIRED';
@@ -99,6 +101,7 @@ export interface GuardContext {
   transitionReason?: string | undefined;
   waitingKind?: WaitingKind | undefined;
   executor: Pick<Tx, 'select' | 'execute'>;
+  readDraft?: DraftReader | undefined;
 }
 
 const hasText = (s: string | undefined) => Boolean(s?.trim());
@@ -200,7 +203,7 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
  */
 async function verdictGuard(ctx: GuardContext): Promise<GuardFault | null> {
   const source = (await readProjectDocument(ctx.issue.projectId))?.document.source.type ?? null;
-  const found = await unpassedCriteria(ctx.executor, ctx.issue.id, source);
+  const found = await unpassedCriteria(ctx.executor, ctx.issue, source, ctx.readDraft);
   const into = quote(ctx.to);
   if (found.kind === 'no-criteria') {
     return {
@@ -253,6 +256,14 @@ export function storefrontDraftFault(
       code: 'VERDICT_IDENTITY_NOT_ADMISSIBLE',
       detail: `the latest verdict on criteria ${found.inadmissible.join(', ')} names a storefront draft, and this project ${held}: a draft stands in for a landed commit only where the work lives on a storefront (\`source.type: "storefront"\`). Record each against the commit or runtime it was judged at, then move it.`,
       details: { from: ctx.from, to: ctx.to, source, inadmissible: found.inadmissible },
+    };
+  }
+  if (found.superseded.length > 0) {
+    const named = found.superseded.map((u) => `${u.criterion} (${u.note})`).join('; ');
+    return {
+      code: 'VERDICT_DRAFT_SUPERSEDED',
+      detail: `a storefront draft counts only while it is the draft the storefront source holds, and the latest verdict on criteria ${named}. Judge each again at the draft \`forge_storefront_target\` reports now, record it naming that draft version, then move it.`,
+      details: { from: ctx.from, to: ctx.to, superseded: found.superseded },
     };
   }
   if (found.uncorroborated.length > 0) {

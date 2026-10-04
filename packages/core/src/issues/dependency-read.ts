@@ -16,6 +16,7 @@ import {
 } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { DISPATCH_GATING_KIND } from './dependency-effects.js';
+import { designHoldPhrase, designHoldsOf } from './design-delivery.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 
 export type IssueDependencyEdge = {
@@ -33,6 +34,7 @@ export type IssueDependencyEdge = {
   fromTitle: string | null;
   fromStatus: string | null;
   fromMergedAt: Date | null;
+  fromDesignHold: string | null;
   toTitle: string | null;
   toStatus: string | null;
   toMergedAt: Date | null;
@@ -113,13 +115,20 @@ export async function loadIssueDependencyEdgesForIssues(
       ),
     );
 
-  const prefixOf = await readPrefixes(
-    rows.flatMap((r) => [r.fromProjectId, r.toProjectId]).concat(projectId),
-  );
+  const [prefixOf, holds] = await Promise.all([
+    readPrefixes(rows.flatMap((r) => [r.fromProjectId, r.toProjectId]).concat(projectId)),
+    designHoldsOf(rows.filter((r) => r.kind === DISPATCH_GATING_KIND).map((r) => r.fromIssueId)),
+  ]);
+  const holdOf = (id: string) => {
+    const held = holds.get(id);
+    return held ? designHoldPhrase(held) : null;
+  };
   const now = Date.now();
   const enrich = <
     T extends {
       validUntil: Date | null;
+      fromIssueId: string;
+      kind: IssueDependencyKind;
       fromIssSeq: number | null;
       toIssSeq: number | null;
       fromProjectId: string | null;
@@ -132,6 +141,7 @@ export async function loadIssueDependencyEdgesForIssues(
     return {
       ...rest,
       expired: rest.validUntil != null && rest.validUntil.getTime() <= now,
+      fromDesignHold: rest.kind === DISPATCH_GATING_KIND ? holdOf(rest.fromIssueId) : null,
       fromDisplayId:
         fromIssSeq != null
           ? formatIssueRef(prefixOf.get(fromProjectId ?? '') ?? null, fromIssSeq)
@@ -158,6 +168,7 @@ export type IssueRelationDigest = {
   otherDisplayId: string | null;
   otherStatus: string | null;
   otherMergedAt: Date | null;
+  otherDesignHold: string | null;
   validUntil: Date | null;
   expired: boolean;
   /** Whether this edge's KIND gates dispatch — only `blocks` does, whatever list it sits in. */
@@ -178,6 +189,7 @@ function digest(edge: IssueDependencyEdge, issueId: string): IssueRelationDigest
     otherDisplayId: outgoing ? edge.toDisplayId : edge.fromDisplayId,
     otherStatus: outgoing ? edge.toStatus : edge.fromStatus,
     otherMergedAt: outgoing ? edge.toMergedAt : edge.fromMergedAt,
+    otherDesignHold: outgoing ? null : edge.fromDesignHold,
     validUntil: edge.validUntil,
     expired: edge.expired,
     gatesDispatch,

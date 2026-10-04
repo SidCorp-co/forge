@@ -21,6 +21,7 @@ export const BATCH_SKIP_BY_CODE = {
   VERDICT_PREDATES_REOPEN: 'verdict_predates_reopen',
   VERDICT_IDENTITY_NOT_ADMISSIBLE: 'verdict_identity_not_admissible',
   VERDICT_UNCORROBORATED: 'verdict_uncorroborated',
+  VERDICT_DRAFT_SUPERSEDED: 'verdict_draft_superseded',
 } as const satisfies Record<TransitionErrorCode, string>;
 
 export type BatchSkipReason =

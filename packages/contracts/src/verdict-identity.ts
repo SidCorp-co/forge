@@ -12,6 +12,12 @@ export const VERDICT_CORROBORATIONS = [
 ] as const;
 export type VerdictCorroboration = (typeof VERDICT_CORROBORATIONS)[number];
 
+export const VERDICT_DRAFT_READINGS = [
+	...VERDICT_CORROBORATIONS,
+	"superseded",
+] as const;
+export type VerdictDraftReading = (typeof VERDICT_DRAFT_READINGS)[number];
+
 export const STOREFRONT_WORKFLOW_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/u;
 export const STOREFRONT_DRAFT_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 export const STOREFRONT_ENVIRONMENT = /^[a-z][a-z0-9-]{0,62}$/u;
@@ -40,6 +46,6 @@ export interface StorefrontDraftVerdictView {
 	storefrontWorkflowId: string | null;
 	storefrontDraftVersion: string | null;
 	storefrontEnvironment: string | null;
-	corroboration: VerdictCorroboration | null;
+	corroboration: VerdictDraftReading | null;
 	corroborationNote: string | null;
 }

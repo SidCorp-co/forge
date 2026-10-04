@@ -57,7 +57,7 @@ export function identityPhrase(v: CriterionVerdict): string {
     case "contract":
       return `contract ${v.contractRef}@${v.contractVersion}`;
     case "storefront_draft":
-      return `storefront draft ${v.storefrontWorkflowId}@${v.storefrontDraftVersion?.slice(0, 12)} on ${v.storefrontEnvironment}${v.corroboration === "corroborated" ? "" : ` (uncorroborated: ${v.corroborationNote})`}`;
+      return `storefront draft ${v.storefrontWorkflowId}@${v.storefrontDraftVersion?.slice(0, 12)} on ${v.storefrontEnvironment}${v.corroboration === "corroborated" ? "" : ` (${v.corroboration ?? "uncorroborated"}: ${v.corroborationNote})`}`;
     default:
       return "no identity";
   }

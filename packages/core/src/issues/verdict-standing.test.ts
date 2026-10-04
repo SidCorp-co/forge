@@ -361,24 +361,39 @@ describe('a design verdict', () => {
   });
 });
 
-describe('verdictStanding — a storefront draft (ISS-91)', () => {
-  const draft = (note: string | null): VerdictIdentity => ({
+describe('verdictStanding — a storefront draft (ISS-91, FB-56)', () => {
+  const draft = (
+    corroboration: VerdictIdentity['corroboration'],
+    note: string | null,
+  ): VerdictIdentity => ({
     kind: 'storefront_draft',
     value: 'wf-1@draft:abc on `preview`',
+    ...(corroboration === undefined ? {} : { corroboration }),
     corroborationNote: note,
   });
 
-  it('stands on the reading taken when it was recorded, whatever the production reading says', () => {
-    expect(verdictStanding(draft(null), serving(OTHER), has(null))).toBe('stands');
-    expect(standingSentence('stands', draft(null), undeclared, has(null))).toContain(
-      'which the storefront source held',
+  it('stands while the storefront holds that draft now, whatever the production reading says', () => {
+    expect(verdictStanding(draft('corroborated', null), serving(OTHER), has(null))).toBe('stands');
+    expect(
+      standingSentence('stands', draft('corroborated', null), undeclared, has(null)),
+    ).toContain('which the storefront source holds now');
+  });
+
+  it('is superseded once the draft moved, and the sentence names the draft held now', () => {
+    const moved = draft('superseded', 'held at draft version `bbb` now');
+    expect(verdictStanding(moved, undeclared, has(null))).toBe('superseded');
+    expect(standingSentence('superseded', moved, undeclared, has(null))).toContain(
+      'no longer holds: held at draft version `bbb` now',
     );
   });
 
   it('is uncorroborated where the source was not read back, and the sentence says why', () => {
-    expect(verdictStanding(draft('http_502'), undeclared, has(null))).toBe('uncorroborated');
-    expect(standingSentence('uncorroborated', draft('http_502'), undeclared, has(null))).toContain(
-      'http_502',
-    );
+    const unread = draft('uncorroborated', 'http_502');
+    expect(verdictStanding(unread, undeclared, has(null))).toBe('uncorroborated');
+    expect(standingSentence('uncorroborated', unread, undeclared, has(null))).toContain('http_502');
+  });
+
+  it('planted shape: a draft that names no reading never stands on a missing note alone', () => {
+    expect(verdictStanding(draft(undefined, null), undeclared, has(null))).toBe('uncorroborated');
   });
 });
