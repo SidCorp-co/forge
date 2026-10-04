@@ -1,12 +1,10 @@
 "use client";
 
-// Attention / Inbox (ISS-307) — a cross-project list of items that need the
-// caller: issues to review, issues awaiting input (waiting/needs_info — never
-// `on_hold`, a pause nobody must answer, ISS-970), @-mentions, failed jobs
-// (incl. deploy), and offline runners. Each row links to its source. Live via
-// WS: cross-project events only arrive on subscribed rooms, so we fan out a
-// `useRoom` per project (the Ops-monitor pattern) — the `['attention']`
-// invalidations in `lib/ws/event-router.ts` then refetch.
+// Attention / Inbox (ISS-307): a cross-project list of what needs the caller. Each project's
+// needs-you rows come from core's one needs-you read model; beside them @-mentions, failed jobs
+// (incl. deploy), skill updates, channel gates and offline runners. Live via WS: cross-project
+// events only arrive on subscribed rooms, so a `useRoom` fans out per project and the
+// `['attention']` invalidations in `lib/ws/event-router.ts` refetch.
 
 import { type ReactNode, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -26,6 +24,7 @@ import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { NeedsYouList } from "@/features/needs-you/components/needs-you-list";
 import { useAttention } from "../hooks";
 import type { AttentionItem, AttentionKind } from "../types";
 import { PageTitle, SectionTitle } from "@/design/primitives/heading";
@@ -35,23 +34,17 @@ import { PageTitle, SectionTitle } from "@/design/primitives/heading";
  *  runner (infra/slate) are no longer the same red; color is paired with an icon
  *  + label so status is never conveyed by color alone (a11y: color-not-only). */
 const KIND_TONE: Record<AttentionKind, SemanticTone> = {
-  needs_review: "active",
-  awaiting_input: "attention",
   mention: "neutral",
   failed_job: "failure",
   pending_skill_update: "attention",
-  unseen_draft: "attention",
   runner_offline: "infra",
   channel_gate: "attention",
 };
 
 const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: string; bg: string }> = {
-  needs_review: { label: "Needs review", icon: "check", ...tone("needs_review") },
-  awaiting_input: { label: "Awaiting input", icon: "clock", ...tone("awaiting_input") },
   mention: { label: "Mention", icon: "mail", ...tone("mention") },
   failed_job: { label: "Failed", icon: "alert", ...tone("failed_job") },
   pending_skill_update: { label: "Skill update", icon: "clock", ...tone("pending_skill_update") },
-  unseen_draft: { label: "Unseen draft", icon: "inbox", ...tone("unseen_draft") },
   runner_offline: { label: "Runner offline", icon: "server", ...tone("runner_offline") },
   channel_gate: { label: "Approve gate", icon: "check", ...tone("channel_gate") },
 };
@@ -190,26 +183,19 @@ export function AttentionScreen() {
   const { projects, projectSlugs } = useOrgScopedProjects();
   const keep = (it: AttentionItem) => !it.projectSlug || projectSlugs.has(it.projectSlug);
   const scoped = {
-    needsReview: view.needsReview.filter(keep),
-    awaitingInput: view.awaitingInput.filter(keep),
     mentions: view.mentions.filter(keep),
     failedJobs: view.failedJobs.filter(keep),
     pendingSkillUpdates: view.pendingSkillUpdates.filter(keep),
-    unseenDrafts: view.unseenDrafts.filter(keep),
     channelGates: view.channelGates.filter(keep),
     offlineRunners: view.offlineRunners.filter(keep),
   };
-  const unseenDraftsTotal =
-    scoped.unseenDrafts.length === view.unseenDrafts.length
-      ? view.unseenDraftsTotal
-      : scoped.unseenDrafts.length;
+  const needsYou = view.needsYou.filter((n) => projectSlugs.has(n.projectSlug));
+  const needsYouProjects = projects.filter((p) => needsYou.some((n) => n.projectSlug === p.slug));
   const total =
-    scoped.needsReview.length +
-    scoped.awaitingInput.length +
+    needsYou.length +
     scoped.mentions.length +
     scoped.failedJobs.length +
     scoped.pendingSkillUpdates.length +
-    scoped.unseenDrafts.length +
     scoped.channelGates.length +
     scoped.offlineRunners.length;
 
@@ -238,7 +224,7 @@ export function AttentionScreen() {
       ))}
 
       <PageTitle
-          hint="Cross-project items waiting on you — reviews, blocked work, mentions, failures, unseen drafts, and offline runners."
+          hint="Cross-project items waiting on you: every project's needs-you rows, mentions, failures and offline runners."
         >
           Attention
       </PageTitle>
@@ -249,19 +235,21 @@ export function AttentionScreen() {
         </div>
       ) : (
         <div className="flex flex-col gap-6">
-          <Group title="Needs review" items={scoped.needsReview} onOpen={open} />
-          <Group title="Awaiting input" items={scoped.awaitingInput} onOpen={open} />
+          {needsYouProjects.map((p) => (
+            <section key={p.id} className="flex flex-col gap-2" aria-label={`Needs you in ${p.name}`}>
+              <SectionTitle className="fg-label text-fg">Needs you · {p.name}</SectionTitle>
+              <NeedsYouList
+                items={needsYou.filter((n) => n.projectSlug === p.slug)}
+                slug={p.slug}
+                foldKey={`web-v2:attention:${p.slug}`}
+                empty="Nothing waits on you here."
+              />
+            </section>
+          ))}
           <Group title="Channel gates" items={scoped.channelGates} onOpen={open} />
           <Group title="Mentions" items={scoped.mentions} onOpen={open} />
           <Group title="Failed jobs" items={scoped.failedJobs} onOpen={open} />
           <Group title="Skill updates" items={scoped.pendingSkillUpdates} onOpen={open} />
-          <Group
-            title="Unseen drafts"
-            items={scoped.unseenDrafts}
-            onOpen={open}
-            total={unseenDraftsTotal}
-            collapsible
-          />
           <Group title="Offline runners" items={scoped.offlineRunners} onOpen={open} />
         </div>
       )}

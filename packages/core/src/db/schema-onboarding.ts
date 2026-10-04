@@ -1,5 +1,4 @@
 import {
-  ONBOARDING_STATUSES,
   QUESTIONNAIRE_MAX_ROUNDS,
   QUESTIONNAIRE_STATUSES,
 } from '@forge/contracts/onboarding';
@@ -22,8 +21,6 @@ import { conversationMessages, conversations } from './schema-conversations.js';
 import { requirements } from './schema-requirements.js';
 
 export {
-  ONBOARDING_STATUSES,
-  type OnboardingStatus,
   QUESTIONNAIRE_STATUSES,
   type QuestionnaireStatus,
 } from '@forge/contracts/onboarding';
@@ -44,7 +41,6 @@ export const onboardings = pgTable(
     conversationId: uuid('conversation_id')
       .notNull()
       .references(() => conversations.id, { onDelete: 'cascade' }),
-    status: text('status', { enum: ONBOARDING_STATUSES }).notNull().default('in_progress'),
     roundsSent: integer('rounds_sent').notNull().default(0),
     /** The workflow ids onboarding drafted: they take only a person's approval. */
     designs: jsonb('designs').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
@@ -64,17 +60,13 @@ export const onboardings = pgTable(
   (t) => ({
     projectUq: uniqueIndex('onboardings_project_uq').on(t.projectId),
     conversationUq: uniqueIndex('onboardings_conversation_uq').on(t.conversationId),
-    statusChk: check(
-      'onboardings_status_chk',
-      sql`${t.status} IN (${inList(ONBOARDING_STATUSES)})`,
-    ),
     roundsChk: check(
       'onboardings_rounds_chk',
       sql`${t.roundsSent} BETWEEN 0 AND ${sql.raw(String(QUESTIONNAIRE_MAX_ROUNDS))}`,
     ),
     doneChk: check(
       'onboardings_done_chk',
-      sql`(${t.status} = 'done') = (${t.doneAt} IS NOT NULL AND ${t.doneBy} IS NOT NULL)`,
+      sql`(${t.doneAt} IS NULL) = (${t.doneBy} IS NULL)`,
     ),
     doneAgencyChk: check(
       'onboardings_done_agency_chk',

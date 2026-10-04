@@ -6,7 +6,7 @@ import { FEEDBACK_MACHINE } from "./feedback-machine.js";
 import { ISSUE_MACHINE } from "./issue-machine.js";
 import { JOB_MACHINE } from "./job-machine.js";
 import { MOCKUP_MACHINE } from "./mockup-machine.js";
-import { ONBOARDING_MACHINE, QUESTIONNAIRE_MACHINE } from "./onboarding-machine.js";
+import { QUESTIONNAIRE_MACHINE } from "./onboarding-machine.js";
 import { QUESTION_MACHINE } from "./question-machine.js";
 import { RECONCILE_RUN_MACHINE } from "./reconcile-run-machine.js";
 import { REQUIREMENT_MACHINE } from "./requirement-machine.js";
@@ -24,7 +24,6 @@ export const MACHINE_ENTITIES = [
 	"feedback",
 	"requirement",
 	"mockup",
-	"onboarding",
 	"questionnaire",
 	"question",
 	"schedule_run",
@@ -44,7 +43,6 @@ export const MACHINES = {
 	feedback: FEEDBACK_MACHINE,
 	requirement: REQUIREMENT_MACHINE,
 	mockup: MOCKUP_MACHINE,
-	onboarding: ONBOARDING_MACHINE,
 	questionnaire: QUESTIONNAIRE_MACHINE,
 	question: QUESTION_MACHINE,
 	schedule_run: SCHEDULE_RUN_MACHINE,

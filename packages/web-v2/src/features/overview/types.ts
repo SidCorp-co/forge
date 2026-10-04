@@ -1,3 +1,4 @@
+import type { PulseActionRow } from "@forge/contracts/needs-you";
 
 /** A set the response counts in full and names only the first `shown.length` of. */
 export interface PulseCapped<T> {
@@ -140,6 +141,7 @@ export interface PulseResponse {
   work: PulseWork;
   flow: PulseFlowWeek[];
   quality: PulseQuality;
+  actions: PulseActionRow[];
 }
 
 /** The statuses each work bucket is drawn from — a bucket cell's destination. Core's

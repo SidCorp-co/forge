@@ -4,6 +4,7 @@
  * person, which way is the flow going, is the output any good.
  */
 
+import type { PulseActionRow } from '@forge/contracts/needs-you';
 import type { FailureCause } from '../pipeline/failure-causes.js';
 
 /** A set the response counts in full and names only the first `shown.length` of. */
@@ -151,6 +152,8 @@ export interface PulseResponse {
   work: PulseWork;
   flow: PulseFlowWeek[];
   quality: PulseQuality;
+  /** What needs a person or the machine, ranked (`pulse-actions.ts:pulseActionsOf`). */
+  actions: PulseActionRow[];
 }
 
 export const PULSE_THRESHOLDS: PulseThresholds = {

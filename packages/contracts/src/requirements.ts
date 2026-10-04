@@ -312,9 +312,23 @@ export interface RequirementCoverage {
 	issues: CoverageIssue[];
 }
 
+/** Where an agreed or accepted requirement is in delivery, read from its live issues and its BC
+ *  coverage (workflow requirement-to-delivery step `rollup`); null for any other status. */
+export const DELIVERY_PHASES = ["agreed", "in_delivery", "delivered"] as const;
+export type DeliveryPhase = (typeof DELIVERY_PHASES)[number];
+
+export interface RequirementDelivery {
+	phase: DeliveryPhase | null;
+	liveIssues: number;
+	startedIssues: number;
+	closedIssues: number;
+	criteriaCoverage: { criteria: number; passing: number; judged: number };
+}
+
 export interface RequirementStanding
 	extends Standing<RequirementAttentionGroup, RequirementWaitingKind> {
 	state: RequirementState;
+	delivery: RequirementDelivery;
 	facts: RequirementFacts;
 	/** The open tasks of the delivery journey, each with its owner and SLA. */
 	tasks: RequirementTask[];

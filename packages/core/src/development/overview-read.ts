@@ -14,12 +14,9 @@ import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { listIssueStanding, STANDING_LIMIT, type StandingViewer } from '../issues/standing-read.js';
-import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { peopleOf } from '../lib/people.js';
 import { readMasterStanding } from '../masters/read.js';
 import { slotsNoteOf } from '../masters/rules.js';
-import { holds } from '../permissions/index.js';
 import {
   type ContractChangeFact,
   type ContractWaitFact,
@@ -28,10 +25,8 @@ import {
   type ModuleFact,
   modulesOf,
   movingOf,
-  needsOf,
   OPEN_CONTRACT_CHANGE,
   type ProposedVersionFact,
-  type ReleaseAskFact,
   stuckOf,
 } from './overview.js';
 
@@ -203,58 +198,7 @@ async function masterSignal(projectId: string): Promise<OverviewMasterSignal> {
   };
 }
 
-interface Viewer {
-  userId: string;
-  isAdmin: boolean;
-  isMember: boolean;
-  access: Awaited<ReturnType<typeof effectiveProjectRole>>;
-}
-
-async function viewerFacts(projectId: string, userId: string | null): Promise<Viewer | null> {
-  if (!userId) return null;
-  const access = await effectiveProjectRole(userId, projectId);
-  return {
-    userId,
-    isAdmin: access !== null && holds(access, 'project.admin'),
-    isMember: access !== null && holds(access, 'project.write'),
-    access,
-  };
-}
-
-async function releaseAsks(projectId: string, viewer: Viewer | null): Promise<ReleaseAskFact[]> {
-  const found = rowsOf<{
-    run_id: string;
-    requested_at: string;
-    evidence_environment: string;
-    requested_by_user: string;
-    release_version: string | null;
-  }>(
-    await db.execute(sql`
-      SELECT a.run_id, a.requested_at, a.evidence_environment, a.requested_by_user, r.release_version
-        FROM release_approvals a
-        JOIN pipeline_runs r ON r.id = a.run_id
-       WHERE a.project_id = ${projectId} AND a.decision IS NULL
-         AND r.status = 'running' AND r.release_released_at IS NULL
-       ORDER BY a.requested_at`),
-  );
-  if (found.length === 0) return [];
-  const names = await peopleOf(found.map((f) => f.requested_by_user));
-  return found.map((f) => ({
-    runId: f.run_id,
-    version: f.release_version,
-    requestedAt: new Date(f.requested_at).toISOString(),
-    requestedBy: names.get(f.requested_by_user)?.name ?? 'someone',
-    environment: f.evidence_environment,
-    decidable:
-      viewer !== null &&
-      viewer.access !== null && holds(viewer.access, 'releases.approve'),
-  }));
-}
-
-async function proposedVersions(
-  projectId: string,
-  viewer: Viewer | null,
-): Promise<ProposedVersionFact[]> {
+async function proposedVersions(projectId: string): Promise<ProposedVersionFact[]> {
   const found = rowsOf<{
     slug: string;
     contract_slug: string;
@@ -276,17 +220,11 @@ async function proposedVersions(
       version: v.version,
       classification: v.classification,
       recordedAt: new Date(v.recorded_at).toISOString(),
-      decidable:
-        viewer !== null &&
-        viewer.access !== null && holds(viewer.access, 'contracts.approve'),
     };
   });
 }
 
-async function contractChanges(
-  projectId: string,
-  viewer: Viewer | null,
-): Promise<ContractChangeFact[]> {
+async function contractChanges(projectId: string): Promise<ContractChangeFact[]> {
   const found = rowsOf<{
     fb_seq: number;
     title: string;
@@ -302,9 +240,6 @@ async function contractChanges(
        WHERE f.project_id = ${projectId} AND f.kind = 'contract_change' AND f.due_at IS NOT NULL
        ORDER BY f.due_at`),
   );
-  const actable =
-    viewer !== null &&
-    viewer.access !== null && holds(viewer.access, 'feedback.approve');
   return found.map((f) => ({
     feedback: `FB-${f.fb_seq}`,
     contract: `${f.slug}/${f.contract_slug}`,
@@ -312,7 +247,6 @@ async function contractChanges(
     title: f.title,
     dueAt: new Date(f.due_at).toISOString(),
     status: f.status,
-    actable,
   }));
 }
 
@@ -338,20 +272,18 @@ export async function readDevelopmentOverview(
   viewer: StandingViewer | null,
   now: Date = new Date(),
 ): Promise<DevelopmentOverview> {
-  const [open, closed, who] = await Promise.all([
+  const [open, closed] = await Promise.all([
     listIssueStanding(projectId, 'open', viewer, now),
     listIssueStanding(projectId, 'closed', viewer, now),
-    viewerFacts(projectId, viewer?.userId ?? null),
   ]);
   const rows = [...open.issues, ...closed.issues];
-  const [lanes, waits, mods, master, asks, proposed, changes] = await Promise.all([
+  const [lanes, waits, mods, master, proposed, changes] = await Promise.all([
     laneFacts(projectId, open.issues),
     contractWaits(projectId),
     moduleFacts(projectId),
     masterSignal(projectId),
-    releaseAsks(projectId, who),
-    proposedVersions(projectId, who),
-    contractChanges(projectId, who),
+    proposedVersions(projectId),
+    contractChanges(projectId),
   ]);
   const oldest = closed.issues.at(-1);
   const cutoff = now.getTime() - OVERVIEW_WINDOW_DAYS * 86_400_000;
@@ -367,7 +299,6 @@ export async function readDevelopmentOverview(
     moving: movingOf(open.issues, lanes, now),
     stuck: stuckOf(open.issues, waits),
     modules: modulesOf(open.issues, mods.modules, mods.unassigned),
-    needsYou: needsOf(open.issues, asks, proposed, changes),
     coverage: {
       open: open.counts.open,
       openRead: open.returned,
