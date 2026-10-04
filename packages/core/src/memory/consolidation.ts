@@ -9,7 +9,7 @@ import { canonicalIssueKey, issueRefFormatter } from '../issues/issue-prefix-rea
 import { BASE_MERGE_STATE } from '../issues/merged-at.js';
 import { searchKnowledge } from '../knowledge/search.js';
 import { logger } from '../logger.js';
-import type { HooksBus } from '../pipeline/hooks.js';
+import { consume } from '../outbox/index.js';
 import { boss } from '../queue/boss.js';
 import { runMemoryFeedback } from './feedback-service.js';
 import {
@@ -719,51 +719,25 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
   return { contradicted, possiblyStale, refused: guard.count, summary };
 }
 
-let reconcileTriggerRegistered = false;
-
 /**
- * Subscribe to the `transition` hook: whenever a status change lands the
- * issue's `merged_at` (leaving {@link BASE_MERGE_STATE}, or reaching `closed`
- * — the same cross-project "code landed" predicate `merged-at.ts` uses),
- * enqueue a durable pg-boss reconcile job. Detached via `queueMicrotask`
- * (mirrors `registerMemoryIndexer`/`registerCiFixPatternLearner`) so the
- * `boss.send` never adds latency to the transition path.
+ * Whenever an issue move lands its `merged_at` (leaving {@link BASE_MERGE_STATE}, or reaching
+ * `closed` — the "code landed" predicate `merged-at.ts` uses), enqueue a durable pg-boss reconcile
+ * job, once per issue by its singleton key.
  */
-export function registerMemoryReconcileTrigger(bus: HooksBus): () => void {
-  if (reconcileTriggerRegistered) return () => undefined;
-  reconcileTriggerRegistered = true;
-
-  const detach = (fn: () => Promise<void>) =>
-    queueMicrotask(() => {
-      fn().catch((err) => {
-        logger.warn({ err: (err as Error).message }, 'memory.reconcile: trigger failed');
-      });
-    });
-
-  const unsub = bus.on('transition', (payload) => {
-    detach(async () => {
+export function registerMemoryReconcileTrigger(): void {
+  consume('issue.transitioned', {
+    name: 'memory-reconcile',
+    handle: async (p) => {
       const mergeLanded =
-        (payload.from === BASE_MERGE_STATE && payload.to !== BASE_MERGE_STATE) ||
-        payload.to === 'closed';
+        (p.from === BASE_MERGE_STATE && p.to !== BASE_MERGE_STATE) || p.to === 'closed';
       if (!mergeLanded) return;
-
       await boss.send(
         MEMORY_RECONCILE_QUEUE,
-        { projectId: payload.projectId, issueId: payload.issueId },
-        { singletonKey: `${payload.issueId}:reconcile` },
+        { projectId: p.projectId, issueId: p.id },
+        { singletonKey: `${p.id}:reconcile` },
       );
-    });
+    },
   });
-
-  return () => {
-    unsub();
-    reconcileTriggerRegistered = false;
-  };
-}
-
-/** Test-only. */
-export function resetMemoryReconcileTriggerForTest(): void {
-  reconcileTriggerRegistered = false;
 }
 
 let reconcileWorkerRegistered = false;

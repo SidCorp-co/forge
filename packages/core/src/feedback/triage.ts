@@ -17,9 +17,8 @@ import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackCases } from '../db/schema-feedback.js';
-import { announceIssueCreated, insertIssueRow } from '../issues/create-service.js';
+import { insertIssueRow } from '../issues/create-service.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { findIssueById } from '../issues/read-service.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
 import { dataPolicyOf, egressAt, storedText } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -241,20 +240,24 @@ async function fileIssueIn(tx: Tx, input: RouteInput): Promise<{ id: string; key
       ];
   const linkable =
     target && !linkIssueRefusal(target.status as Parameters<typeof linkIssueRefusal>[0]);
-  const issue = await insertIssueRow(tx, {
-    projectId: row.projectId,
-    title: w.createIssue?.title ?? (copied.ok ? copied.value.title : `Feedback ${key}`),
-    description: w.createIssue?.description ?? carried.filter(Boolean).join('\n\n'),
-    descriptionFormat: 'markdown',
-    status: 'draft',
-    priority: row.severity,
-    category: row.kind === 'bug' ? 'bug' : 'feature',
-    createdById: actor.userId,
-    createdByDeviceId: null,
-    createdVia: input.channel,
-    requirementId: linkable ? target.id : null,
-    fromSuggestionId: input.fromSuggestionId,
-  });
+  const issue = await insertIssueRow(
+    tx,
+    {
+      projectId: row.projectId,
+      title: w.createIssue?.title ?? (copied.ok ? copied.value.title : `Feedback ${key}`),
+      description: w.createIssue?.description ?? carried.filter(Boolean).join('\n\n'),
+      descriptionFormat: 'markdown',
+      status: 'draft',
+      priority: row.severity,
+      category: row.kind === 'bug' ? 'bug' : 'feature',
+      createdById: actor.userId,
+      createdByDeviceId: null,
+      createdVia: input.channel,
+      requirementId: linkable ? target.id : null,
+      fromSuggestionId: input.fromSuggestionId,
+    },
+    { actor: { type: 'user', id: actor.userId, agency: actor.agency } },
+  );
   return {
     id: issue.id,
     key: formatIssueRef(await activeIssuePrefix(row.projectId), issue.issSeq),
@@ -416,14 +419,6 @@ export async function triageIn(
   };
 }
 
-/** After the transaction that filed a draft issue committed: the hook every issue create emits. */
-export async function announceTriage(written: TriageWritten, actor: FeedbackActor) {
-  if (!written.createdIssueId) return;
-  const issue = await findIssueById(written.createdIssueId);
-  if (!issue) return;
-  await announceIssueCreated(issue, { type: 'user', id: actor.userId, agency: actor.agency });
-}
-
 /** A holder of feedback.approve picks the route, an agent included (ADR 0007). */
 export async function triageFeedback(input: {
   projectId: string;
@@ -450,7 +445,6 @@ export async function triageFeedback(input: {
     return written.refusals;
   });
   if (refusals) return { ok: false, refusals };
-  await announceTriage(written, actor);
   return answer(projectId, first.id, actor, written.effect ? { effect: written.effect } : {});
 }
 
@@ -507,6 +501,5 @@ export async function routeFeedback(input: {
     return null;
   });
   if (refusals) return { ok: false, refusals };
-  await announceTriage(written, actor);
   return answer(projectId, first.id, actor, written.effect ? { effect: written.effect } : {});
 }

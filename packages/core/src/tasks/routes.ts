@@ -19,9 +19,9 @@ import {
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { hooks } from '../pipeline/hooks.js';
-import { createTask, deleteTask, findTaskById, updateTask } from './task-service.js';
+import { emitEvents } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
+import { createTask, deleteTask, findTaskById, updateTask } from './task-service.js';
 
 const issueIdParamSchema = z.object({ id: z.uuid() });
 const taskIdParamSchema = z.object({ taskId: z.uuid() });
@@ -226,19 +226,20 @@ taskIssueRoutes.post(
         await tx.update(tasks).set({ sortOrder: i, updatedAt: new Date() }).where(eq(tasks.id, id));
         changed.push(id);
       }
+      await emitEvents(
+        tx,
+        changed.map((id) => ({
+          type: 'task.updated' as const,
+          payload: {
+            taskId: id,
+            issueId: issue.id,
+            projectId: issue.projectId,
+            actor: restActor(c),
+            fields: ['sortOrder'],
+          },
+        })),
+      );
     });
-
-    await Promise.all(
-      changed.map((id) =>
-        hooks.emit('taskUpdated', {
-          taskId: id,
-          issueId: issue.id,
-          projectId: issue.projectId,
-          actor: restActor(c),
-          fields: ['sortOrder'],
-        }),
-      ),
-    );
 
     return c.body(null, 204);
   },

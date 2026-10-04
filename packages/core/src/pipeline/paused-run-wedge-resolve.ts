@@ -1,20 +1,18 @@
 import { logger } from '../logger.js';
-import type { HooksBus } from './hooks.js';
+import { consume } from '../outbox/index.js';
 import { pausedRunWedgeEntityId, resolvePipelineWedge } from './wedge.js';
 
-/**
- * Resolve on every `pipelineRunStatusChanged` that lands anywhere but `paused`.
- */
-export function registerPausedRunWedgeResolve(bus: HooksBus): void {
-  bus.on('pipelineRunStatusChanged', async (payload) => {
-    if (payload.toStatus === 'paused') return;
-    try {
-      await resolvePipelineWedge(pausedRunWedgeEntityId(payload.runId));
-    } catch (err) {
-      logger.warn(
-        { err, runId: payload.runId, toStatus: payload.toStatus },
-        'paused-run-wedge-resolve: resolve failed',
-      );
-    }
+/** Resolve the paused-run wedge on every run move that lands anywhere but `paused`. */
+export function registerPausedRunWedgeResolve(): void {
+  consume('run.transitioned', {
+    name: 'paused-run-wedge-resolve',
+    handle: async (p) => {
+      if (p.to === 'paused') return;
+      try {
+        await resolvePipelineWedge(pausedRunWedgeEntityId(p.id));
+      } catch (err) {
+        logger.warn({ err, runId: p.id, to: p.to }, 'paused-run-wedge-resolve: resolve failed');
+      }
+    },
   });
 }

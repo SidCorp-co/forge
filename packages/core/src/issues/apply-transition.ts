@@ -9,14 +9,11 @@ import { eq, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
+import type { Refusal } from '../lib/refusal.js';
 import { type KernelActor, transition } from '../lifecycle/transition.js';
-import { logger } from '../logger.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import { settleOpenQuestions } from '../questions/issue-coupling.js';
-import { projectRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
-import type { Refusal } from '../lib/refusal.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
@@ -76,9 +73,8 @@ export interface ApplyStatusTransitionOptions {
   /** The run a recovery move hands the issue back from: its own hold is the one ending, not a holder. */
   recoveringRunId?: string;
   /**
-   * ISS-596 — operator/tooling unblock sentinel or human-supplied reason.
-   * Carried as the `pipeline.reason` outbox session setting AND echoed on the WS
-   * `issue.statusChanged` payload.
+   * ISS-596 — operator/tooling unblock sentinel or human-supplied reason, recorded on the move and
+   * carried by its outbox event.
    */
   reason?: string | undefined;
   /**
@@ -118,26 +114,6 @@ export interface StatusTransitionResult {
   verdictsWaived?: true;
 }
 
-/** WS `issue.statusChanged` publish. The bus subscriber for `transition` deliberately does NOT
- *  broadcast it, so writers publish inline to avoid a double-emit on the single-issue path. */
-export function publishIssueStatusChange(
-  projectId: string,
-  payload: {
-    issueId: string;
-    from: IssueStatus;
-    to: IssueStatus;
-    reopenCount: number;
-    actorId: string;
-    reason: string | null;
-    at: Date;
-  },
-): void {
-  roomManager.publish(projectRoom(projectId), {
-    event: 'issue.statusChanged',
-    data: payload,
-  });
-}
-
 const authorOf = (actor: TransitionActor) => (actor.type === 'user' ? actor.id : actor.ownerId);
 
 /**
@@ -158,7 +134,8 @@ function stepAfter(from: IssueStatus, to: IssueStatus, held: WorkStep | null): W
  * THE issue state-machine writer. Every surface — REST `/transition`,
  * REST `PATCH /batch`, the reconciler, the release batch — routes through here so
  * the lifecycle's edges and guards (`transition-guards.ts`), the conditional UPDATE, the work state,
- * WS broadcast, pipeline-health refresh and run close cannot drift apart.
+ * pipeline-health refresh and run close cannot drift apart. The broadcast is a consumer of the
+ * move's outbox event.
  *
  * Throws `TransitionError`; callers map it onto their own error surface.
  */
@@ -218,16 +195,6 @@ export async function transitionIssueStatus(
     leftStatus,
   });
   const updated = txResult.row;
-
-  publishIssueStatusChange(issue.projectId, {
-    issueId: updated.id,
-    from: fromStatus,
-    to: toStatus,
-    reopenCount: updated.reopenCount,
-    actorId: authorOf(actor),
-    reason: options.reason ?? null,
-    at: updated.updatedAt,
-  });
 
   if (txResult.unblockedDependents.length > 0) {
     await recordDropUnblock(issue, txResult.unblockedDependents, actor);

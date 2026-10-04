@@ -1,22 +1,20 @@
 // A reply in an issue's thread becomes a comment on that issue, by the person who typed it.
 //
-// The reply is written through `insertComment` and announced on `commentCreated`,
-// so `pipeline/answer-resume.ts` sees a room reply exactly as it sees one typed
-// on the web — which is the whole point: that subscriber is what carries a
-// human's words into a parked agent session, and it is already load-bearing.
+// The reply is written through `insertComment` with its `comment.created` outbox event in the same
+// transaction, so every consumer sees a room reply exactly as it sees one typed on the web.
 //
 // Every path here consumes the message. A registered thread never falls through
 // to the conversation handler, refusals included.
 
-import { and, eq, isNull, lte, or } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { resolveSpeaker } from '../../assistant/identity/speaker-link.js';
 import { insertComment } from '../../comments/index.js';
 import { db } from '../../db/client.js';
-import { comments, issues } from '../../db/schema.js';
+import { issues } from '../../db/schema.js';
 import { rocketchatCommentMirrors } from '../../db/schema-rocketchat.js';
 import { logger } from '../../observability/logger.js';
-import type { HooksBus } from '../../pipeline/hooks.js';
+import { emitEvent } from '../../outbox/index.js';
 import type { RocketChatDdpClient, RocketChatIncomingMessage } from './ddp-client.js';
 import { FIXED_REPLY_CONSTANT, type ReplyTransport, sendFixedReply } from './outbound.js';
 
@@ -41,8 +39,6 @@ export interface MirroredComment {
   commentId: string;
   /** False when this message had already been written as a comment. */
   created: boolean;
-  /** True when nobody has announced this comment on the bus yet. */
-  announcementOwed: boolean;
 }
 
 /**
@@ -51,6 +47,7 @@ export interface MirroredComment {
  */
 export async function writeMirroredComment(args: {
   issueId: string;
+  projectId: string;
   authorId: string;
   connectionId: string;
   externalMessageId: string;
@@ -80,15 +77,21 @@ export async function writeMirroredComment(args: {
         .onConflictDoNothing()
         .returning({ commentId: rocketchatCommentMirrors.commentId });
       if (!mirror) throw new DuplicateDelivery();
-      return { commentId: row.id, created: true, announcementOwed: true };
+      await emitEvent(tx, 'comment.created', {
+        issueId: args.issueId,
+        projectId: args.projectId,
+        actor: { type: 'user', id: args.authorId, agency: 'human' },
+        authored: 'human',
+        commentId: row.id,
+        body: args.body,
+        parentId: null,
+      });
+      return { commentId: row.id, created: true };
     });
   } catch (err) {
     if (!(err instanceof DuplicateDelivery)) throw err;
     const [existing] = await db
-      .select({
-        commentId: rocketchatCommentMirrors.commentId,
-        announcedAt: rocketchatCommentMirrors.announcedAt,
-      })
+      .select({ commentId: rocketchatCommentMirrors.commentId })
       .from(rocketchatCommentMirrors)
       .where(
         and(
@@ -98,11 +101,7 @@ export async function writeMirroredComment(args: {
       )
       .limit(1);
     if (!existing) throw err;
-    return {
-      commentId: existing.commentId,
-      created: false,
-      announcementOwed: existing.announcedAt === null,
-    };
+    return { commentId: existing.commentId, created: false };
   }
 }
 
@@ -116,7 +115,6 @@ export async function handleIssueThreadReply(args: {
   serverUrl: string;
   m: RocketChatIncomingMessage;
   transport: ReplyTransport;
-  hooks: HooksBus;
 }): Promise<void> {
   const { m, transport } = args;
   if (args.retired) {
@@ -154,10 +152,10 @@ export async function handleIssueThreadReply(args: {
     return;
   }
 
-  let written: MirroredComment;
   try {
-    written = await writeMirroredComment({
+    await writeMirroredComment({
       issueId: issue.id,
+      projectId: issue.projectId,
       authorId: resolution.userId,
       connectionId: args.connectionId,
       externalMessageId: m.id,
@@ -169,116 +167,7 @@ export async function handleIssueThreadReply(args: {
       'rocketchat.comment-inbound: writing the comment failed',
     );
     await say(transport, 'That could not be written as a comment. Nothing has changed.');
-    return;
   }
-
-  if (!written.announcementOwed) return;
-  await announceComment(
-    { commentId: written.commentId, issueId: issue.id, projectId: issue.projectId },
-    { userId: resolution.userId, body: m.text },
-    args.hooks,
-  );
-}
-
-const ANNOUNCE_LEASE_MS = 60_000;
-
-/**
- * Take the announcement of this comment, if nobody holds it and nobody made it.
- */
-async function claimAnnouncement(commentId: string, now: Date): Promise<boolean> {
-  const claimed = await db
-    .update(rocketchatCommentMirrors)
-    .set({ announceLeaseUntil: new Date(now.getTime() + ANNOUNCE_LEASE_MS) })
-    .where(
-      and(
-        eq(rocketchatCommentMirrors.commentId, commentId),
-        isNull(rocketchatCommentMirrors.announcedAt),
-        or(
-          isNull(rocketchatCommentMirrors.announceLeaseUntil),
-          lte(rocketchatCommentMirrors.announceLeaseUntil, now),
-        ),
-      ),
-    )
-    .returning({ commentId: rocketchatCommentMirrors.commentId });
-  return claimed.length > 0;
-}
-
-interface AnnounceTarget {
-  commentId: string;
-  issueId: string;
-  projectId: string;
-}
-
-async function announceComment(
-  target: AnnounceTarget,
-  speaker: { userId: string; body: string },
-  hooks: HooksBus,
-  now: Date = new Date(),
-): Promise<void> {
-  if (!(await claimAnnouncement(target.commentId, now))) return;
-  await hooks.emit('commentCreated', {
-    issueId: target.issueId,
-    projectId: target.projectId,
-    actor: { type: 'user', id: speaker.userId, agency: 'human' },
-    authored: 'human',
-    commentId: target.commentId,
-    body: speaker.body,
-    parentId: null,
-  });
-  await db
-    .update(rocketchatCommentMirrors)
-    .set({ announcedAt: new Date() })
-    .where(eq(rocketchatCommentMirrors.commentId, target.commentId));
-}
-
-/**
- * Announce every mirrored comment whose announcement nobody completed.
- */
-export async function drainOwedAnnouncements(
-  hooks: HooksBus,
-  now: Date = new Date(),
-): Promise<number> {
-  const rows = await db
-    .select({
-      commentId: rocketchatCommentMirrors.commentId,
-      issueId: issues.id,
-      projectId: issues.projectId,
-      authorId: comments.authorId,
-      body: comments.body,
-    })
-    .from(rocketchatCommentMirrors)
-    .innerJoin(comments, eq(comments.id, rocketchatCommentMirrors.commentId))
-    .innerJoin(issues, eq(issues.id, comments.issueId))
-    .where(
-      and(
-        eq(rocketchatCommentMirrors.direction, 'inbound'),
-        isNull(rocketchatCommentMirrors.announcedAt),
-        or(
-          isNull(rocketchatCommentMirrors.announceLeaseUntil),
-          lte(rocketchatCommentMirrors.announceLeaseUntil, now),
-        ),
-      ),
-    );
-
-  let announced = 0;
-  for (const row of rows) {
-    if (!row.authorId) continue;
-    try {
-      await announceComment(
-        { commentId: row.commentId, issueId: row.issueId, projectId: row.projectId },
-        { userId: row.authorId, body: row.body },
-        hooks,
-        now,
-      );
-      announced += 1;
-    } catch (err) {
-      logger.error(
-        { err, commentId: row.commentId },
-        'rocketchat.comment-inbound: announcing a mirrored comment failed',
-      );
-    }
-  }
-  return announced;
 }
 
 /**
@@ -297,7 +186,6 @@ export function consumeIssueThreadReply(args: {
   connectionId: string;
   ac: CommentReplySocket;
   m: RocketChatIncomingMessage;
-  hooks: HooksBus;
 }): void {
   const { ac, m } = args;
   const at = { connectionId: args.connectionId, rid: m.rid, issueId: args.issueId };
@@ -313,6 +201,5 @@ export function consumeIssueThreadReply(args: {
     serverUrl: ac.serverUrl,
     m,
     transport: { kind: 'ddp', client, rid: m.rid, tmid: m.tmid, authToken: ac.authToken },
-    hooks: args.hooks,
   }).catch((err) => logger.error({ ...at, err }, 'rocketchat: answering an issue reply failed'));
 }

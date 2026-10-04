@@ -90,8 +90,6 @@ export const rocketchatCommentMirrors = pgTable(
     direction: text('direction', { enum: commentMirrorDirections }).notNull(),
     status: text('status', { enum: commentMirrorStatuses }).notNull(),
     externalMessageId: text('external_message_id'),
-    announcedAt: timestamp('announced_at', { withTimezone: true }),
-    announceLeaseUntil: timestamp('announce_lease_until', { withTimezone: true }),
     attempts: integer('attempts').notNull().default(0),
     lastError: text('last_error'),
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),

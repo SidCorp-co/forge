@@ -11,7 +11,6 @@ import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { seedDomainTemplates } from './domain-templates/index.js';
-import { registerEagerSubscribers } from './eager-subscribers.js';
 import { registerContractMeasureWorker } from './ecosystem/index.js';
 import { refreshMainRunnerHead, servesRunnerReleases } from './integrations/github/index.js';
 import {
@@ -21,11 +20,7 @@ import {
 } from './integrations/index.js';
 import { bootstrapChatProviders } from './integrations/llm/index.js';
 import { registerOutboundDeliveryWorker } from './integrations/outbound-webhooks/index.js';
-import {
-  registerCommentMirror,
-  startRocketChatManager,
-  stopRocketChatManager,
-} from './integrations/rocketchat/index.js';
+import { startRocketChatManager, stopRocketChatManager } from './integrations/rocketchat/index.js';
 import { closeBacklogStreams } from './issues/index.js';
 import { provideProjectOrg } from './lib/authz.js';
 import { logger } from './logger.js';
@@ -34,15 +29,8 @@ import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
-import {
-  hooks,
-  registerAnswerResume,
-  registerOutboxWorker,
-  registerPausedRunWedgeResolve,
-  registerPhaseJournalClose,
-  registerPipelineOrchestrator,
-  stopOutboxWorker,
-} from './pipeline/index.js';
+import { emitEvents, startOutboxWorker, stopOutboxWorker } from './outbox/index.js';
+import { registerOutboxConsumers } from './outbox-consumers.js';
 import { findProjectOrgId } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import { registerReleaseBatchFinish } from './release-batch/index.js';
@@ -51,7 +39,6 @@ import { bootstrapRunnerAdapters } from './runners/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { coreTimers } from './timer-registry.js';
-import { registerWebhookSubscribers } from './webhooks/index.js';
 import { attachWs, closeWs } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
@@ -125,8 +112,6 @@ export async function runShutdown(
   return 0;
 }
 
-registerEagerSubscribers(hooks);
-
 mountRoutes(app);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
@@ -145,14 +130,18 @@ if (isMain) {
   registerAllIntegrations();
   await registerIntegrationsWorker();
   const skillSeed = await seedBuiltinSkills(db);
-  for (const change of skillSeed.changes) {
-    await hooks.emit('globalSkillUpdated', {
-      name: change.name,
-      oldVersion: change.oldVersion,
-      newVersion: change.newVersion,
-      contentHash: change.contentHash,
-    });
-  }
+  await emitEvents(
+    db,
+    skillSeed.changes.map((change) => ({
+      type: 'skill.globalUpdated' as const,
+      payload: {
+        name: change.name,
+        oldVersion: change.oldVersion,
+        newVersion: change.newVersion,
+        contentHash: change.contentHash,
+      },
+    })),
+  );
   await runOnceBackfills();
   await sweepPolicyLanded();
   await seedDomainTemplates(db);
@@ -164,13 +153,8 @@ if (isMain) {
   await registerContractMeasureWorker();
   await registerReleaseBatchFinish();
   await registerOutboundDeliveryWorker();
-  registerWebhookSubscribers(hooks);
-  registerPipelineOrchestrator(hooks);
-  registerAnswerResume(hooks);
-  registerCommentMirror(hooks);
-  registerPhaseJournalClose(hooks);
-  registerPausedRunWedgeResolve(hooks);
-  registerOutboxWorker();
+  registerOutboxConsumers();
+  await startOutboxWorker();
 
   const server = serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, '@forge/core listening');

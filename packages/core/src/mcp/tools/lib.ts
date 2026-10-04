@@ -108,7 +108,7 @@ export function principalAgency(principal: McpPrincipal): ActorAgency {
   return actorAgency(principalActor(principal));
 }
 
-/** The same decision, in the shape the hooks bus and `activity_log` take. */
+/** The same decision, in the shape outbox events and `activity_log` take. */
 export function principalHookActor(principal: McpPrincipal): Actor {
   const actor = principalActor(principal);
   return { type: actor.type, id: actor.id, agency: actorAgency(actor) };

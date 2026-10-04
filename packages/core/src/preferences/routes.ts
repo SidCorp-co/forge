@@ -7,7 +7,7 @@ import { answerStyles, userPreferences } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireOrgCan } from '../permissions/index.js';
-import { hooks } from '../pipeline/hooks.js';
+import { emitEvent } from '../outbox/index.js';
 import {
   ASSISTANT_PREFERENCE_DEFAULTS,
   listPreferenceChanges,
@@ -129,29 +129,30 @@ preferenceRoutes.patch(
     // INSERT … ON CONFLICT DO UPDATE upsert. The defaults from the column
     // definitions kick in when this is the user's first PATCH and they only
     // sent one field — the other column lands at its default.
-    const [row] = await db
-      .insert(userPreferences)
-      .values({
-        userId,
-        ...(theme !== undefined ? { theme } : {}),
-        ...(language !== undefined ? { language } : {}),
-      })
-      .onConflictDoUpdate({
-        target: userPreferences.userId,
-        set: {
+    const row = await db.transaction(async (tx) => {
+      const [upserted] = await tx
+        .insert(userPreferences)
+        .values({
+          userId,
           ...(theme !== undefined ? { theme } : {}),
           ...(language !== undefined ? { language } : {}),
-          updatedAt: sql`now()`,
-        },
-      })
-      .returning(FULL);
-
-    if (!row) throw new Error('user_preferences: upsert returned no row');
-
-    await hooks.emit('userPreferencesChanged', {
-      userId: row.userId,
-      theme: row.theme,
-      language: row.language,
+        })
+        .onConflictDoUpdate({
+          target: userPreferences.userId,
+          set: {
+            ...(theme !== undefined ? { theme } : {}),
+            ...(language !== undefined ? { language } : {}),
+            updatedAt: sql`now()`,
+          },
+        })
+        .returning(FULL);
+      if (!upserted) throw new Error('user_preferences: upsert returned no row');
+      await emitEvent(tx, 'user.preferencesChanged', {
+        userId: upserted.userId,
+        theme: upserted.theme,
+        language: upserted.language,
+      });
+      return upserted;
     });
 
     return c.json(row);

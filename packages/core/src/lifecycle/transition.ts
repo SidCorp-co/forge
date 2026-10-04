@@ -1,11 +1,18 @@
 /**
  * The one kernel transition: every status write, on every machine, goes through `transition`. It
  * finds the machine's edge for the move, runs the guards that edge names, writes the status as a
- * compare-and-set, and records the move in `kernel_transitions`, all in one transaction. A side
- * effect beyond that (a broadcast, a cascade, a dispatch tick) is the caller's, after it returns.
+ * compare-and-set, records the move in `kernel_transitions` and writes its outbox event, all in one
+ * transaction. Every reaction to a move (the activity feed, a broadcast, a dispatch) is a consumer of
+ * that event.
  */
 
 import type { MachineEntity, MachineOf, StateOf } from '@forge/contracts/machines';
+import {
+  emitsTransition,
+  type OutboxActor,
+  type TransitionEventEntity,
+  transitionEventType,
+} from '@forge/contracts/outbox-events';
 import {
   edgeBetween,
   entriesOf,
@@ -13,12 +20,13 @@ import {
   notAnEdgeRefusal,
   type StatusMachine,
 } from '@forge/contracts/state-machine';
-import { and, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, inArray, type SQL } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { type KernelExecutor, stampKernelTxn } from '../db/kernel-marker.js';
 import { type KernelTransitionActorType, kernelTransitions } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
+import { emitEvents } from '../outbox/index.js';
 import { type MachineRow, machineTable } from './machine-tables.js';
 
 export type { KernelExecutor };
@@ -114,18 +122,6 @@ function startingStates<E extends MachineEntity>(
   return declared;
 }
 
-/** The outbox actor as the issues trigger copies it: a runner box records as the device it is. */
-async function setActorContext(tx: Tx, actor: KernelActor, reason: string | null): Promise<void> {
-  const type = actor.type === 'user' ? 'user' : actor.type === 'runner' ? 'device' : 'system';
-  await tx.execute(sql`
-    SELECT
-      set_config('pipeline.actor_id', ${actor.id ?? ''}, true),
-      set_config('pipeline.actor_type', ${type}, true),
-      set_config('pipeline.actor_agency', ${agencyOf(actor)}, true),
-      set_config('pipeline.reason', ${reason ?? ''}, true)
-  `);
-}
-
 function projectionOf(
   table: PgTable,
   idKey: string,
@@ -156,7 +152,6 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   const onEdge = and(args.where, inArray(statusColumn, from as string[]));
 
   await stampKernelTxn(tx);
-  await setActorContext(tx, args.actor, args.reason ?? null);
 
   const prior = (await tx
     .select({ id: idColumn, status: statusColumn })
@@ -189,9 +184,6 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   if (refusals.length > 0) return { rows: [], refusals };
 
   await args.beforeWrite?.(tx, prior);
-  // A move nested inside `beforeWrite` set its own actor and reason; this move's are put back before
-  // its UPDATE, which the issues outbox trigger reads them from.
-  await setActorContext(tx, args.actor, args.reason ?? null);
 
   const projection = projectionOf(table as PgTable, idKey, args.returning);
   const write = tx
@@ -225,17 +217,87 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   if (records.length > 0) await tx.insert(kernelTransitions).values(records);
 
   await args.afterWrite?.(tx, rows);
-  await emitTransitionEvents(tx, records);
+  await emitTransitionEvents(tx, machine.entity, records, args.actor);
   return { rows, refusals: [] };
 }
 
-/** Where a move's outbox event is written, in the move's own transaction. Today the issues table's
- *  AFTER UPDATE trigger writes it from the actor context set above; ISS-166 writes every
- *  machine's event here and retires that trigger. */
+function outboxActorOf(actor: KernelActor): OutboxActor {
+  if (actor.type === 'user' && actor.id)
+    return { type: 'user', id: actor.id, agency: actor.agency };
+  if (actor.type === 'runner' && actor.id) return { type: 'device', id: actor.id, agency: 'agent' };
+  return { type: 'device', id: '<system>', agency: agencyOf(actor) };
+}
+
+/** The project and issue of each moved row, which the event carries and the record does not. */
+async function subjectsOf(
+  tx: Tx,
+  entity: TransitionEventEntity,
+  ids: readonly string[],
+): Promise<Map<string, { projectId: string; issueId: string | null }>> {
+  const { table } = machineTable(entity);
+  const columns = table as unknown as Record<string, PgColumn>;
+  const idColumn = columns.id as PgColumn;
+  const rows = (await tx
+    .select({
+      id: idColumn,
+      projectId: columns.projectId as PgColumn,
+      issueId: (entity === 'issue' ? idColumn : columns.issueId) as PgColumn,
+    })
+    .from(table as PgTable)
+    .where(inArray(idColumn, [...ids]))) as Array<{
+    id: string;
+    projectId: string;
+    issueId: string | null;
+  }>;
+  return new Map(rows.map((r) => [r.id, { projectId: r.projectId, issueId: r.issueId }]));
+}
+
+/** One outbox event per move, for the machines and targets a consumer reads
+ *  (`@forge/contracts/outbox-events:TRANSITION_EVENTS`), in the move's own transaction. */
 async function emitTransitionEvents(
-  _tx: Tx,
-  _records: ReadonlyArray<{ entity: string; entityId: string; toStatus: string }>,
-): Promise<void> {}
+  tx: Tx,
+  entity: MachineEntity,
+  records: ReadonlyArray<{
+    entityId: string;
+    fromStatus: string | null;
+    toStatus: string;
+    reason: string | null;
+  }>,
+  actor: KernelActor,
+): Promise<void> {
+  const emitted = records.filter((r) => emitsTransition(entity, r.toStatus));
+  if (emitted.length === 0) return;
+  const evented = entity as TransitionEventEntity;
+  const subjects = await subjectsOf(
+    tx,
+    evented,
+    emitted.map((r) => r.entityId),
+  );
+  const at = new Date().toISOString();
+  const by = outboxActorOf(actor);
+  await emitEvents(
+    tx,
+    emitted.map((r) => {
+      const subject = subjects.get(r.entityId);
+      if (!subject)
+        throw new Error(`transition: moved ${entity} ${r.entityId} has no row to report`);
+      return {
+        type: transitionEventType(evented),
+        payload: {
+          entity: evented,
+          id: r.entityId,
+          projectId: subject.projectId,
+          issueId: subject.issueId,
+          from: r.fromStatus,
+          to: r.toStatus,
+          reason: r.reason,
+          actor: by,
+          at,
+        },
+      } as never;
+    }),
+  );
+}
 
 /** A move a caller asked for that the machine does not draw, refused by name with the moves it does. */
 export function notAnEdgeError(machine: StatusMachine, from: string, to: string): RefusalError {

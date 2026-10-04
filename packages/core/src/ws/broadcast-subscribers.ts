@@ -1,18 +1,33 @@
-import type { HooksBus } from '../pipeline/hooks.js';
+import type { OutboxEventPayload, OutboxEventType } from '@forge/contracts/outbox-events';
+import { consume } from '../outbox/index.js';
 import { deviceRoom, globalRoom, projectRoom, userRoom } from './rooms.js';
 import { roomManager } from './server.js';
 
 /**
- * Bridges the internal hooks bus onto the WebSocket room manager so browser
- * clients receive cache-invalidation events. Web's event router
- * (src/lib/ws/event-router.ts) reacts to these exact event names — do not
- * rename without updating both sides in lockstep.
- *
- * Scope: publish-only. Does not mutate domain data. Publish failures are
- * swallowed by the bus (see HooksBus.emit).
+ * The WebSocket push, a consumer of the outbox: each event becomes the cache-invalidation message
+ * web's event router (web-v2 `src/lib/ws/event-router.ts`) reacts to, under the same names on both
+ * sides. Publish-only; it writes no data.
  */
-export function registerWsBroadcastSubscribers(bus: HooksBus): void {
-  bus.on('issueCreated', (p) => {
+function on<T extends OutboxEventType>(type: T, publish: (p: OutboxEventPayload<T>) => void): void {
+  consume(type, { name: 'ws-broadcast', handle: publish });
+}
+
+export function registerWsBroadcastSubscribers(): void {
+  on('issue.transitioned', (p) => {
+    roomManager.publish(projectRoom(p.projectId), {
+      event: 'issue.statusChanged',
+      data: {
+        issueId: p.id,
+        from: p.from,
+        to: p.to,
+        actorId: p.actor.id,
+        reason: p.reason,
+        at: p.at,
+      },
+    });
+  });
+
+  on('issue.created', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
       event: 'issue.created',
       data: {
@@ -23,7 +38,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
-  bus.on('issueUpdated', (p) => {
+  on('issue.updated', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
       event: 'issue.updated',
       data: {
@@ -35,7 +50,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
-  bus.on('taskCreated', (p) => {
+  on('task.created', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
       event: 'task.created',
       data: {
@@ -47,7 +62,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
-  bus.on('taskUpdated', (p) => {
+  on('task.updated', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
       event: 'task.updated',
       data: {
@@ -60,7 +75,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
-  bus.on('taskDeleted', (p) => {
+  on('task.deleted', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
       event: 'task.deleted',
       data: {
@@ -72,7 +87,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
-  bus.on('scheduleRun', (p) => {
+  on('schedule.fired', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
       event: 'schedule.run',
       data: {
@@ -84,7 +99,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
-  bus.on('notificationCreated', (p) => {
+  on('notification.created', (p) => {
     roomManager.publish(userRoom(p.userId), {
       event: 'notification.created',
       data: {
@@ -135,7 +150,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     }
   });
 
-  bus.on('notificationRead', (p) => {
+  on('notification.read', (p) => {
     roomManager.publish(userRoom(p.userId), {
       event: 'notification.read',
       data: {
@@ -145,7 +160,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
-  bus.on('userPreferencesChanged', (p) => {
+  on('user.preferencesChanged', (p) => {
     roomManager.publish(userRoom(p.userId), {
       event: 'user.preferencesChanged',
       data: {
@@ -156,26 +171,10 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
-  bus.on('skillUpdated', (p) => {
-    roomManager.publish(projectRoom(p.projectId), {
-      event: 'skill.updated',
-      data: {
-        projectId: p.projectId,
-        skillId: p.skillId,
-        name: p.name,
-        action: p.action,
-        contentHash: p.contentHash,
-        actorId: p.actorUserId,
-      },
-    });
-  });
-
-  // Explicit skill push → one `skill.sync` command per targeted device room.
-  // This is the ONLY path that tells a device to pull skills; `skill.updated`
-  // above is project-room cache-invalidation for the web UI only and must NOT
-  // trigger a device to sync. Carries no skill bodies — the device pulls its
-  // effective manifest over REST and reports installed hashes back.
-  bus.on('skillSyncRequested', (p) => {
+  // Explicit skill push → one `skill.sync` command per targeted device room, the ONLY path that
+  // tells a device to pull skills. Carries no skill bodies — the device pulls its effective
+  // manifest over REST and reports installed hashes back.
+  on('skill.syncRequested', (p) => {
     for (const id of p.deviceIds) {
       roomManager.publish(deviceRoom(id), {
         event: 'skill.sync',
@@ -188,7 +187,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     }
   });
 
-  bus.on('runnerProvisionRequested', (p) => {
+  on('runner.provisionRequested', (p) => {
     roomManager.publish(deviceRoom(p.deviceId), {
       event: 'provision.request',
       data: { projectId: p.projectId, runnerId: p.runnerId },
@@ -196,7 +195,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
   });
 
   // Device reported provision progress → project room live stepper.
-  bus.on('runnerProvisionStatus', (p) => {
+  on('runner.provisionStatus', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
       event: 'runner.provision',
       data: {
@@ -214,7 +213,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
   // from the pipeline registry. Broadcast `pipeline.registry_changed` so
   // subscribers refetch /api/pipeline/registry and pick up the new bindings
   // without a manual refresh.
-  bus.on('skillRegistered', (p) => {
+  on('skill.registered', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
       event: 'pipeline.registry_changed',
       data: {
@@ -227,7 +226,7 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
-  bus.on('globalSkillUpdated', (p) => {
+  on('skill.globalUpdated', (p) => {
     roomManager.publish(globalRoom(), {
       event: 'skill.updated',
       data: {

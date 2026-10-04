@@ -12,12 +12,12 @@ import { transition } from '../lifecycle/transition.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { hooks } from '../pipeline/hooks.js';
+import { emitEvent } from '../outbox/index.js';
+import { requireHeld } from '../permissions/index.js';
 import { clearRunnerFaultFlags } from '../runners/clear-fault-flags.js';
 import { deleteProjectRunner, patchProjectRunner, upsertDeviceRunner } from '../runners/index.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { defaultRunnerCapabilities } from '../runners/select.js';
-import { requireHeld } from '../permissions/index.js';
 
 // ISS-172 Slice A — runner-shaped binding endpoints. `POST /:id/runners`
 // upserts a (project, device, 'claude-code') runner row; `DELETE
@@ -167,6 +167,15 @@ projectRunnerRoutes.post(
         source: 'runner-bind',
         returning: ['id'],
       });
+      // Wake the device room so an online device pulls its queued provision now; an offline
+      // device picks it up from the `queued` row on reconnect.
+      if (row.deviceId) {
+        await emitEvent(tx, 'runner.provisionRequested', {
+          projectId: row.projectId,
+          deviceId: row.deviceId,
+          runnerId: row.id,
+        });
+      }
       return live.rows.length > 0 ? { ...row, status } : row;
     });
     const runner = bound;
@@ -188,16 +197,6 @@ projectRunnerRoutes.post(
       newStatus: runner.status,
       reason: 'bind',
     });
-
-    // Wake the device room so an online device pulls its queued provision now;
-    // an offline device picks it up from the `queued` row on reconnect.
-    if (runner.deviceId) {
-      await hooks.emit('runnerProvisionRequested', {
-        projectId: runner.projectId,
-        deviceId: runner.deviceId,
-        runnerId: runner.id,
-      });
-    }
 
     return c.json(runner, 201);
   },

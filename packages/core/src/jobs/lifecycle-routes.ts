@@ -3,6 +3,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { deriveSessionFinal } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { jobEvents, jobs, skills } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
@@ -14,7 +15,7 @@ import { assertPlatformAdmin } from '../middleware/require-admin.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { hooks } from '../pipeline/hooks.js';
+import { holds, requireHeld } from '../permissions/index.js';
 import { clearRunnerLimit } from '../runners/apply-runner-limit.js';
 import { clearRunnerQuarantine } from '../runners/quarantine.js';
 import { recordSkillActivityEvent, resolvePacketIdForHash } from '../skills/activity.js';
@@ -31,9 +32,7 @@ import { refuseJob } from './refusals.js';
 import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
-import { deriveSessionFinal } from '../agent-sessions/index.js';
 import { jobTurnVerdictRoutes } from './turn-verdict-routes.js';
-import { holds, requireHeld } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -261,12 +260,6 @@ jobLifecycleDeviceRoutes.post(
             event: 'job.completed',
             data: { jobId: reclaimed.id, status: 'done', exitCode: 0 },
           });
-          await hooks.emit('jobCompleted', {
-            jobId: reclaimed.id,
-            projectId: reclaimed.projectId,
-            issueId: reclaimed.issueId,
-            type: reclaimed.type,
-          });
           void clearRunnerLimit(reclaimed.runnerId, reclaimed.projectId);
           void clearRunnerQuarantine(reclaimed.runnerId, reclaimed.projectId);
           if (reclaimed.issueId) {
@@ -355,14 +348,7 @@ jobLifecycleDeviceRoutes.post(
       data: { jobId: updated.id, status, exitCode: updated.exitCode },
     });
 
-    // Cancelled jobs do not emit a completion hook.
     if (status === 'done') {
-      await hooks.emit('jobCompleted', {
-        jobId: updated.id,
-        projectId: updated.projectId,
-        issueId: updated.issueId,
-        type: updated.type,
-      });
       void clearRunnerLimit(updated.runnerId, updated.projectId);
       void clearRunnerQuarantine(updated.runnerId, updated.projectId);
     }

@@ -1,14 +1,14 @@
 import type { CommentRefusalCode } from '@forge/contracts/comments';
-import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
-import type { BodyFormat } from '../body/formats.js';
-import { prepareBody } from '../body/prepare.js';
-import { db, type Tx } from '../db/client.js';
-import { commentMentions, comments, issues, users } from '../db/schema.js';
 import {
   COMMENT_INTENTS,
   type CommentIntent,
   isCommentIntent,
 } from '@forge/contracts/record-events';
+import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import type { BodyFormat } from '../body/formats.js';
+import { prepareBody } from '../body/prepare.js';
+import { db, type Tx } from '../db/client.js';
+import { commentMentions, comments, issues, users } from '../db/schema.js';
 import {
   dropCommentMirror,
   mirrorCommentRecord,
@@ -17,8 +17,8 @@ import {
 import { logger } from '../logger.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
+import { emitEvent } from '../outbox/index.js';
 import type { Actor } from '../pipeline/activity.js';
-import { hooks } from '../pipeline/hooks.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import { screenAgentComment, screenRecordFence } from './screen.js';
@@ -155,6 +155,11 @@ export type NewComment = {
    * same way; absent is decided by `defaultIntent` and the caller is warned.
    */
   intent?: string | null | undefined;
+  /**
+   * Who the door says posted it: given, the comment's `comment.created` outbox event is written in
+   * its transaction. A notice Forge posts on its own act passes none and emits no event.
+   */
+  announce?: { actor: Actor; authored: 'human' | 'agent' } | undefined;
 };
 
 /** A written comment, whatever the sanitizer removed on the way in, and who it mentioned. */
@@ -255,7 +260,13 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
     await screenAgentComment(context.projectId, input.body, tx);
   }
 
-  const { format: _ignored, declaresRecordRoute: _declared, intent: _intent, ...rest } = input;
+  const {
+    format: _ignored,
+    declaresRecordRoute: _declared,
+    intent: _intent,
+    announce,
+    ...rest
+  } = input;
   const actor = commentActor(input, byAnAgent);
   const result = await tx.transaction(async (t) => {
     const [row] = await t
@@ -272,18 +283,29 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
     const written = onIssue(row);
     const untyped = await mirrorCommentRecord(written, actor, t);
     const mentioned = context ? await recordMentions(written, context.projectId, t) : [];
+    if (context && announce) {
+      await emitEvent(t, 'comment.created', {
+        issueId: written.issueId,
+        projectId: context.projectId,
+        actor: announce.actor,
+        authored: announce.authored,
+        commentId: written.id,
+        body: written.body,
+        parentId: written.parentId,
+      });
+    }
+    if (context && mentioned.length > 0) {
+      await emitEvent(t, 'comment.mentioned', {
+        issueId: written.issueId,
+        projectId: context.projectId,
+        commentId: written.id,
+        actor,
+        mentionedUserIds: mentioned,
+      });
+    }
     const warnings = [...prepared.warnings, ...fence, ...untyped, ...(warning ? [warning] : [])];
     return { row: written, warnings, mentioned };
   });
-  if (context && result.mentioned.length > 0) {
-    await hooks.emit('commentMentioned', {
-      issueId: result.row.issueId,
-      projectId: context.projectId,
-      commentId: result.row.id,
-      actor,
-      mentionedUserIds: result.mentioned,
-    });
-  }
   return result;
 }
 
@@ -314,6 +336,7 @@ export type IssueNotice = {
   body: string;
   intent?: CommentIntent | undefined;
   parentId?: string | null | undefined;
+  announce?: NewComment['announce'];
 };
 
 /**
@@ -329,6 +352,7 @@ export async function postIssueNotice(notice: IssueNotice, tx: Tx = db): Promise
       body: notice.body,
       parentId: notice.parentId ?? null,
       intent: notice.intent ?? 'note',
+      announce: notice.announce,
     },
     tx,
   );
@@ -351,7 +375,9 @@ export async function postIssueNoticeOnce(
     const [existing] = await t
       .select({ id: comments.id })
       .from(comments)
-      .where(and(eq(comments.issueId, notice.issueId), sql`strpos(${comments.body}, ${marker}) > 0`))
+      .where(
+        and(eq(comments.issueId, notice.issueId), sql`strpos(${comments.body}, ${marker}) > 0`),
+      )
       .limit(1);
     if (existing) return null;
     return postIssueNotice(rest, t);
@@ -393,6 +419,8 @@ export async function updateCommentBody(
     body: string;
     format?: BodyFormat | null | undefined;
     declaresRecordRoute?: boolean | undefined;
+    /** Who edited it, through a door; given, the edit's `comment.updated` event is written with it. */
+    announce?: { actor: Actor; projectId: string; before: string } | undefined;
   },
 ): Promise<WrittenComment | null> {
   const prepared = prepareBody({ raw: input.body, format: input.format });
@@ -429,14 +457,29 @@ export async function updateCommentBody(
     if (!row) return null;
     const edited = onIssue(row);
     const untyped = await remirrorCommentRecord(edited, commentActor(existing, byAnAgent), t);
+    if (input.announce) {
+      await emitEvent(t, 'comment.updated', {
+        issueId: edited.issueId,
+        projectId: input.announce.projectId,
+        actor: input.announce.actor,
+        commentId: edited.id,
+        before: input.announce.before,
+        after: edited.body,
+      });
+    }
     return { row: edited, warnings: [...prepared.warnings, ...fence, ...untyped], mentioned: [] };
   });
 }
 
-/** Remove one comment, and the event its record was mirrored into. Emitting `commentDeleted` belongs to the caller. */
-export async function deleteComment(commentId: string): Promise<void> {
+/** Remove one comment, and the event its record was mirrored into; a door's delete passes who
+ *  removed it, and its `comment.deleted` event is written with the delete. */
+export async function deleteComment(
+  commentId: string,
+  announce?: { actor: Actor; issueId: string; projectId: string },
+): Promise<void> {
   await db.transaction(async (t) => {
     await dropCommentMirror(commentId, t);
     await t.delete(comments).where(eq(comments.id, commentId));
+    if (announce) await emitEvent(t, 'comment.deleted', { ...announce, commentId });
   });
 }

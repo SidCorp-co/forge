@@ -1,9 +1,9 @@
 import { logger } from '../logger.js';
-import type { HooksBus } from './hooks.js';
+import { consume } from '../outbox/index.js';
 import { closeDanglingPhasesForJob } from './phase-journal.js';
 
 /** Register the dangling-phase closer. Called once at boot from `src/index.ts`. */
-export function registerPhaseJournalClose(bus: HooksBus): void {
+export function registerPhaseJournalClose(): void {
   const close = async (jobId: string, outcome: 'ok' | 'failed') => {
     try {
       const n = await closeDanglingPhasesForJob(jobId, outcome);
@@ -18,6 +18,8 @@ export function registerPhaseJournalClose(bus: HooksBus): void {
     }
   };
 
-  bus.on('jobCompleted', async (p) => close(p.jobId, 'ok'), { name: 'phase-journal-close' });
-  bus.on('jobFailed', async (p) => close(p.jobId, 'failed'), { name: 'phase-journal-close' });
+  consume('job.transitioned', {
+    name: 'phase-journal-close',
+    handle: (p) => close(p.id, p.to === 'done' ? 'ok' : 'failed'),
+  });
 }

@@ -1,8 +1,6 @@
 export { pipelineAnalyticsRoutes, projectCostAnalyticsRoutes } from './analytics-routes.js';
 export { registerAnswerResume } from './answer-resume.js';
-export { hooks } from './hooks.js';
 export { registerPipelineOrchestrator } from './orchestrator.js';
-export { registerOutboxWorker, stopOutboxWorker } from './outbox-worker.js';
 export { registerPausedRunWedgeResolve } from './paused-run-wedge-resolve.js';
 export { registerPhaseJournalClose } from './phase-journal-close.js';
 export { phaseRoutes } from './phase-routes.js';
@@ -10,3 +8,4 @@ export { pipelineRegistryRoutes } from './registry-routes.js';
 export { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './runs-read-routes.js';
 export { pipelineRunRoutes } from './runs-routes.js';
 export { stepHandoffRoutes } from './step-handoff-routes.js';
+export { registerActivitySubscribers } from './subscribers.js';

@@ -17,9 +17,9 @@ import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { emitEvent } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
-import { hooks } from '../pipeline/hooks.js';
 import { loadIssueDependencyEdges } from './dependency-read.js';
 import { type SetIssueDependencyInput, setIssueDependency } from './dependency-service.js';
 import {
@@ -162,14 +162,15 @@ issueDependencyRoutes.delete(
       throw badRequest({ message: 'edge does not involve this issue' }, 'EDGE_MISMATCH');
     }
 
-    await db.delete(issueDependencies).where(eq(issueDependencies.id, edgeId));
-
-    await hooks.emit('dependencyChanged', {
-      projectId: edge.projectId,
-      edgeId,
-      fromIssueId: edge.fromIssueId,
-      toIssueId: edge.toIssueId,
-      kind: edge.kind,
+    await db.transaction(async (tx) => {
+      await tx.delete(issueDependencies).where(eq(issueDependencies.id, edgeId));
+      await emitEvent(tx, 'dependency.changed', {
+        projectId: edge.projectId,
+        edgeId,
+        fromIssueId: edge.fromIssueId,
+        toIssueId: edge.toIssueId,
+        kind: edge.kind,
+      });
     });
 
     const removedPayload = {

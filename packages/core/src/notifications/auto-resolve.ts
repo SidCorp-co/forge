@@ -6,7 +6,7 @@ import {
   notifications,
 } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { hooks } from '../pipeline/hooks.js';
+import { emitEvent } from '../outbox/index.js';
 
 /**
  * Auto-resolve (ISS-510): mark every UNRESOLVED notification carrying
@@ -95,32 +95,34 @@ export async function sendResolvedNotice(
 
   const recipients = [...new Set(told.map((t) => t.userId))];
   for (const userId of recipients) {
-    const [delivery] = await db
-      .insert(notificationDeliveries)
-      .values({
+    await db.transaction(async (tx) => {
+      const [delivery] = await tx
+        .insert(notificationDeliveries)
+        .values({
+          userId,
+          channel: 'bell',
+          resolvedNotice: true,
+          title,
+        })
+        .returning({ id: notificationDeliveries.id });
+      if (!delivery) return;
+      await tx
+        .insert(notificationDeliveryMembers)
+        .values({ deliveryId: delivery.id, notificationId })
+        .onConflictDoNothing();
+      await emitEvent(tx, 'notification.created', {
+        notificationId,
         userId,
-        channel: 'bell',
-        resolvedNotice: true,
+        projectId: record.projectId,
+        type: record.type,
         title,
-      })
-      .returning({ id: notificationDeliveries.id });
-    if (!delivery) continue;
-    await db
-      .insert(notificationDeliveryMembers)
-      .values({ deliveryId: delivery.id, notificationId })
-      .onConflictDoNothing();
-    await hooks.emit('notificationCreated', {
-      notificationId,
-      userId,
-      projectId: record.projectId,
-      type: record.type,
-      title,
-      body: null,
-      severity: 'success',
-      resolutionKey: record.resolutionKey,
-      issueId: record.issueId,
-      secondaryIssueId: record.secondaryIssueId,
-      agentSessionId: record.agentSessionId,
+        body: null,
+        severity: 'success',
+        resolutionKey: record.resolutionKey,
+        issueId: record.issueId,
+        secondaryIssueId: record.secondaryIssueId,
+        agentSessionId: record.agentSessionId,
+      });
     });
   }
   return recipients.length;

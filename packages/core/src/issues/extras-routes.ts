@@ -19,8 +19,8 @@ import { RefusalError } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { emitEvent } from '../outbox/index.js';
 import { holds, requireHeld } from '../permissions/index.js';
-import { hooks } from '../pipeline/hooks.js';
 import { triggerPipelineStepManual } from '../pipeline/orchestrator.js';
 import {
   EMPTY_USAGE_TOTALS,
@@ -207,19 +207,21 @@ issueExtrasRoutes.patch(
           }
         }
         if (changedFields.length > 0) {
-          await db
-            .update(issues)
-            .set({ ...plainUpdates, updatedAt: sql`now()` })
-            .where(eq(issues.id, row.id));
-          touched = true;
-          await hooks.emit('issueUpdated', {
-            issueId: row.id,
-            projectId: row.projectId,
-            actor,
-            fields: changedFields,
-            before,
-            after,
+          await db.transaction(async (tx) => {
+            await tx
+              .update(issues)
+              .set({ ...plainUpdates, updatedAt: sql`now()` })
+              .where(eq(issues.id, row.id));
+            await emitEvent(tx, 'issue.updated', {
+              issueId: row.id,
+              projectId: row.projectId,
+              actor,
+              fields: changedFields,
+              before,
+              after,
+            });
           });
+          touched = true;
         }
       } catch (err) {
         result.failed.push({
