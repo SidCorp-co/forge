@@ -10,6 +10,7 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { IssueBlockedError } from '../issues/blocked-by.js';
 import { isDispatchGateError } from '../issues/dispatch-gates.js';
 import { IssueLeaseHeldError } from '../issues/issue-lease.js';
 import { utf16String } from '../lib/utf16-string.js';
@@ -71,7 +72,7 @@ deviceRunSessionRoutes.post(
       if (err instanceof PolicyRefusedError) {
         throw conflict(err.code, err.message, { projectId: err.projectId });
       }
-      if (isDispatchGateError(err)) {
+      if (isDispatchGateError(err) || err instanceof IssueBlockedError) {
         throw conflict(err.code, err.message, { blocked: err.blocked });
       }
       if (err instanceof RunnerNotAdmittedError) {

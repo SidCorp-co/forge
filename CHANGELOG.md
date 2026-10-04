@@ -3321,6 +3321,13 @@
 
 ### Fixed
 
+- **A blocked issue can no longer be claimed directly (ISS-104).** The list a master reads already held back an
+  issue waiting on another, but taking it by hand still worked: a claim, a run session, a pool job
+  and the move to in progress now each refuse it, naming every issue it waits on and why that one
+  has not finished (its status, or a design revision not yet approved). A person is refused as an
+  agent is; retract the dependency on the record if it no longer holds. A dependency on a dropped
+  issue holds nothing, in the list and at every door alike.
+
 - **A storefront-draft verdict counts only while the storefront still holds that draft (FB-56).**
   A moved draft now reads `superseded`, an unreadable one `uncorroborated`, and both are refused at
   `awaiting_release` and close (`VERDICT_DRAFT_SUPERSEDED`, `VERDICT_UNCORROBORATED`).

@@ -52,6 +52,11 @@ export function leaseIsUnexpired(lease: unknown, now: Date): boolean {
   return read.ok && read.stopped === null && read.expiresAt.getTime() > now.getTime();
 }
 
+export function leaseWriteTakes(prior: unknown, next: unknown, now: Date): boolean {
+  if (!leaseIsUnexpired(next, now)) return false;
+  return !leaseIsUnexpired(prior, now) || leaseHolderOf(prior) !== leaseHolderOf(next);
+}
+
 /** `fanout` separates `live` from `shared`; `shared` is an observation and claims no liveness. */
 export function classifyLease(args: { lease: unknown; now: Date; fanout: number }): LeaseReading {
   const { lease, now, fanout } = args;

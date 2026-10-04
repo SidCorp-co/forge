@@ -6,6 +6,7 @@ import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
+import { leaseWriteTakes } from '../pipeline/session-claim.js';
 import {
   type AttachmentErrorEntry,
   type Base64AttachmentInput,
@@ -14,6 +15,7 @@ import {
   type PersistedIssueAttachment,
   persistDecodedIssueAttachments,
 } from './attachment-service.js';
+import { refuseHeldTake } from './blocked-by.js';
 import { syncCriteriaFromText } from './criteria/store.js';
 import { claimDetectorKey, isValidDetectorKey } from './detector-key.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
@@ -245,6 +247,11 @@ export async function createIssue(
       input.relations,
       tx,
     );
+    // cm:guard an issue filed with a live lease is claimed at birth, so the edges filed with it are
+    // read before the claim stands (issues/blocked-by.ts:refuseHeldTake)
+    if (split?.lease.present && leaseWriteTakes(null, split.lease.value, new Date())) {
+      await refuseHeldTake(tx, inserted.id, 'filing it with a live lease');
+    }
     return { created: inserted, pendingRelations };
   });
 

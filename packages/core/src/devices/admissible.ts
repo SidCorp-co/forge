@@ -18,8 +18,7 @@ import {
   type IssuePullRequest,
   readPullRequestsForIssues,
 } from '../integrations/repo-projection.js';
-import { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } from '../issues/dependency-effects.js';
-import { designHeldSql } from '../issues/design-delivery.js';
+import { blockedByUnsettledSql } from '../issues/blocked-by.js';
 import { dispatchGateHeldSql } from '../issues/dispatch-gates.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { TAKEABLE_STATUSES } from '../issues/status-sets.js';
@@ -125,9 +124,8 @@ const RELATIONS = sql`
 /**
  * The admissible issues for one device, across every project it serves.
  *
- * `limit` is per project, so this is one query per admitting project rather
- * than one windowed query — a device serves a handful of projects, and a
- * per-project cap expressed in SQL windows is unreadable for no gain.
+ * `limit` is per project, so this is one query per admitting project rather than one windowed
+ * query: a device serves a handful of projects, and a per-project SQL window buys nothing.
  */
 export async function readAdmissibleIssues(args: {
   deviceId: string;
@@ -136,10 +134,6 @@ export async function readAdmissibleIssues(args: {
   const { admissions, refused } = await readAdmissions(args);
   const out: AdmissibleIssue[] = [];
   for (const a of admissions) {
-    const settledList = sql.join(
-      BLOCKER_SETTLED_STATUSES.map((s) => sql`${s}`),
-      sql`, `,
-    );
     const takeableList = sql.join(
       TAKEABLE_STATUSES.map((s) => sql`${s}`),
       sql`, `,
@@ -156,23 +150,7 @@ export async function readAdmissibleIssues(args: {
       WHERE i.project_id = ${a.projectId}
         AND i.status IN (${takeableList})
         ${a.entryOnRelease ? sql`AND (i.status <> ${AUTONOMOUS_ENTRY_STATUS} OR i.session_context ? 'runRelease')` : sql``}
-        -- a live blocks edge whose blocker has not reached one of BLOCKER_SETTLED_STATUSES, or
-        -- delivers a design revision not yet approved (issues/design-delivery.ts), holds this row
-        -- out of the set. It is correlated on the ADMITTING project and not on
-        -- d.to_issue_id alone, because issue_dependencies carries only the composite indexes
-        -- (project_id, from_issue_id) and (project_id, to_issue_id): an endpoint-only filter
-        -- constrains the non-leading column of both and Postgres degrades to a sequential scan of
-        -- every edge in the table. setIssueDependency refuses an edge whose endpoints are not both
-        -- in that project, so the correlation narrows nothing a master could take.
-        AND NOT EXISTS (
-          SELECT 1 FROM issue_dependencies d
-          JOIN issues b ON b.id = d.from_issue_id
-          WHERE d.project_id = ${a.projectId}
-            AND d.to_issue_id = i.id
-            AND d.kind = ${DISPATCH_GATING_KIND}
-            AND (d.valid_until IS NULL OR d.valid_until > now())
-            AND (b.status NOT IN (${settledList}) OR ${designHeldSql(sql`b.id`)})
-        )
+        AND NOT ${blockedByUnsettledSql({ issueId: sql`i.id`, projectId: a.projectId })}
         -- an issue that builds a workflow whose design is not approved, or waits on a contract version
         -- not yet published, waits; the issue read names which (issues/dispatch-gates.ts)
         AND NOT ${dispatchGateHeldSql(sql`i.id`)}

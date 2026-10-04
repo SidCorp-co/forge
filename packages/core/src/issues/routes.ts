@@ -71,12 +71,8 @@ import { issueRelationInputSchema } from './relations-service.js';
 import { issueFiltersSchema, issuePatchSchema } from './request-schemas.js';
 import { jobHistoryForStep } from './search.js';
 import { buildIssueOrderBy } from './sort.js';
-import {
-  IssueUpdateNotFound,
-  SessionContextDropsUnreadKeys,
-  SessionContextExpectMismatch,
-  updateIssueFields,
-} from './update-service.js';
+import { heldTakeHttp, toHttpUpdateError } from './update-errors-http.js';
+import { updateIssueFields } from './update-service.js';
 
 export {
   branchConfigOverrideSchema,
@@ -117,23 +113,6 @@ export {
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const issueIdParamSchema = z.object({ id: z.uuid() });
-
-const sessionContextDrops = (err: SessionContextDropsUnreadKeys) =>
-  new HTTPException(409, {
-    message:
-      `this write replaces \`sessionContext\` whole and would remove ${err.dropped.join(', ')}, ` +
-      'which it never read. Read the field, add your key to what is there, and send it back complete — ' +
-      'or send `expect: { sessionContext: <what you read> }` to say the removal is deliberate.',
-    cause: { code: 'SESSION_CONTEXT_DROPS_UNREAD_KEYS', dropped: err.dropped },
-  });
-
-const sessionContextMoved = (err: SessionContextExpectMismatch) =>
-  new HTTPException(409, {
-    message:
-      '`sessionContext` no longer holds the value this write expected — another writer moved it. ' +
-      'Re-read it from `details.current`, decide whether your claim still stands, and send the write again with the new `expect`.',
-    cause: { code: 'SESSION_CONTEXT_MISMATCH', details: { current: err.current } },
-  });
 
 async function assertAssigneeIsMember(projectId: string, assigneeId: string): Promise<void> {
   const [row] = await db
@@ -204,6 +183,8 @@ issueProjectRoutes.post(
 
 function toHttpCreateError(err: unknown): unknown {
   if (err instanceof BodyInvalidError) return bodyInvalidHttp(err);
+  const held = heldTakeHttp(err);
+  if (held) return held;
   if (err instanceof IssueDependencyError) return toHttpDependencyError(err);
   if (err instanceof LabelResolutionError) {
     return new HTTPException(400, {
@@ -546,10 +527,7 @@ issueRoutes.patch(
         actor,
       });
     } catch (err) {
-      if (err instanceof IssueUpdateNotFound) throw notFound('issue not found');
-      if (err instanceof SessionContextDropsUnreadKeys) throw sessionContextDrops(err);
-      if (err instanceof SessionContextExpectMismatch) throw sessionContextMoved(err);
-      throw err;
+      throw toHttpUpdateError(err);
     }
 
     if (changedFields.length > 0) {
