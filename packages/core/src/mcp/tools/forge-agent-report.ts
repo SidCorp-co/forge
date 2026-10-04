@@ -354,29 +354,3 @@ export const forgeAgentReportTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: (args) => handleAgentReport(ctx, args),
 });
-
-/** What every `forge_feedback` result carries, so a caller of the old name is told the new one. */
-export const FORGE_FEEDBACK_DEPRECATION = {
-  tool: 'forge_feedback',
-  replacement: 'forge_agent_report',
-  reason:
-    'agent friction reports are `agent_reports` now; the word `feedback` belongs to a person reporting on the product',
-  endsWhen: 'forge-plugin no longer calls forge_feedback',
-} as const;
-
-// cm:hack the pinned forge-plugin's `forge feedback` verb still calls `forge_feedback`, so the old
-// name runs the same handler and says it is deprecated — ends when forge-plugin moves to
-// `forge_agent_report` (logged in forge-local-docs/plugin-followups.md); then delete this tool.
-export const forgeFeedbackAliasTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_feedback',
-  reach: 'project',
-  route: '/api/agent-reports',
-  grant: GRANT,
-  description: `[DEPRECATED alias — use forge_agent_report; every result carries a \`deprecation\` field] ${DESCRIPTION}`,
-  inputSchema: zodToMcpSchema(inputSchema),
-  handler: async (args) => {
-    if (ctx.deprecations) ctx.deprecations.add('forge_feedback');
-    const result = await handleAgentReport(ctx, args);
-    return { ...result, deprecation: FORGE_FEEDBACK_DEPRECATION };
-  },
-});

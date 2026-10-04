@@ -21,6 +21,8 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 
+const ACTIONS = ['search', 'write', 'get', 'delete', 'feedback'] as const;
+
 const deleteInputSchema = z.object({
   projectId: z.uuid(),
   source: z.enum(memorySources),
@@ -35,123 +37,96 @@ const searchInputSchema = z.object({
   strategy: z.enum(memorySearchStrategies).default('semantic'),
 });
 
-/**
- * `forge_memory.search` — semantic memory query via MCP. Wraps the same
- * service function used by `POST /api/memory/search` (ISS-198) so the
- * response shape is identical across REST and MCP.
- */
-export const forgeMemorySearchTool: ContextScopedMcpToolFactory = ({ principal }) => ({
-  name: 'forge_memory.search',
+/** What the tool lists: every field any action takes, each optional but `action` and `projectId`. */
+const listedSchema = z
+  .object({
+    action: z.enum(ACTIONS),
+    ...searchInputSchema.partial().shape,
+    ...getMemoryInputSchema.partial().shape,
+    ...writeMemoryInputSchema.partial().shape,
+    ...memoryFeedbackInputSchema.partial().shape,
+    projectId: z.uuid(),
+    source: z.enum(memorySources).optional(),
+  })
+  .strict();
+
+const actionOf = z.object({ action: z.enum(ACTIONS) }).loose();
+
+function withoutAction(args: Record<string, unknown>): Record<string, unknown> {
+  const { action: _action, ...rest } = args;
+  return rest;
+}
+
+const DESCRIPTION =
+  `Project memory, the same service \`/api/memory\` serves. Actions: ${ACTIONS.join(' | ')}. ` +
+  '`search` { query, topK?, sourceFilter?, strategy? }: semantic (default, cosine scores), keyword (Postgres FTS — exact identifiers, error codes) or hybrid (RRF fusion; scores are fused ranks). A semantic or hybrid search costs one embedding call (`embedMs`). When the question names an issue key, a status or a count, answer from the tracker (`forge issue …`) and do not search. Rows carrying `via` are one-hop neighbours of an issue hit (score 0, context, not matches); a hit with `stale: true` was superseded (`supersededBy`). Hits are point-in-time: verify, then report with `feedback`. ' +
+  '`write` { source, sourceRef, textContent, metadata? }: upsert under (projectId, source, sourceRef) — the ref you name is the ref written, and a rewrite REPLACES its body (the old one stays readable at `GET /api/memory/revisions`). Answers {id, embeddedAt, truncated, degraded, nearDuplicateOf?, dedupeScore?}; nearDuplicateOf is advisory — refine that record by writing under its sourceRef. Agent-authored sources (note/knowledge/policy): textContent ≤8192 chars and no fenced code block over 5 lines. ' +
+  '`get` { source?, sourceRef?, metadataFilter?, includeArchived?, limit?, offset?, orderBy?, orderDir? }: natural-key lookup, no embedding; includeArchived also answers soft-deleted rows, each carrying archivedAt. ' +
+  '`delete` { source, sourceRef }: idempotent, answers {deleted}. ' +
+  '`feedback` { source, sourceRef, verdict: confirmed | outdated, evidence? }: confirmed protects the row from usage decay; outdated archives it now and needs evidence. note/knowledge only. ' +
+  'search and get need project membership; write, delete and feedback need writer access.';
+
+export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => ({
+  name: 'forge_memory',
   reach: 'project',
   route: '/api/memory',
-  grant: 'knowledge:read',
-  description:
-    'Search project memory (issues, comments, jobs, notes, knowledge, decisions, policies). A semantic or hybrid search costs one embedding call (`embedMs` in the result names what it took, `took_ms` the whole); a keyword search costs none. When the question names an issue key, a status or a count, answer from the tracker (`forge issue …`) and do not search. strategy: "semantic" (default, cosine scores), "keyword" (Postgres FTS — exact identifiers, error codes), "hybrid" (RRF fusion; scores are fused ranks). With rerank on, a hybrid result may be `reranked: true` — read hits in list order. Rows carrying `via` are one-hop neighbours of an issue hit, appended with score 0 — context, not matches. A hit with `stale: true` was superseded (`supersededBy`); read it after the fresh ones. Hits are point-in-time: verify, then report via `forge_memory.feedback`. Step handoffs live in their own table — `forge_step_handoff.get`.',
-  inputSchema: zodToMcpSchema(searchInputSchema),
+  grant: {
+    byAction: {
+      search: 'knowledge:read',
+      get: 'knowledge:read',
+      write: 'knowledge:write',
+      delete: 'knowledge:write',
+      feedback: 'knowledge:write',
+    },
+  },
+  description: DESCRIPTION,
+  inputSchema: zodToMcpSchema(listedSchema),
   handler: async (args) => {
-    const input = searchInputSchema.parse(args);
-    await assertPrincipalIsMember(principal, input.projectId);
-    try {
-      return await runMemorySearch({ ...input, surface: 'agent' });
-    } catch (err) {
-      if (err instanceof EmbeddingUnavailableError) {
-        throw new Error(`UNAVAILABLE: ${err.message}`);
+    const { action } = actionOf.parse(args);
+    const rest = withoutAction(args);
+
+    if (action === 'search') {
+      const input = searchInputSchema.parse(rest);
+      await assertPrincipalIsMember(principal, input.projectId);
+      try {
+        return await runMemorySearch({ ...input, surface: 'agent' });
+      } catch (err) {
+        if (err instanceof EmbeddingUnavailableError) throw new Error(`UNAVAILABLE: ${err.message}`);
+        throw err;
       }
-      throw err;
     }
-  },
-});
 
-/**
- * `forge_memory.get` — direct (non-semantic) memory query. Filters by source,
- * sourceRef exact, and JSONB metadata containment. Use for "fetch this
- * specific handoff" or "list all handoffs for run X" type queries — not for
- * similarity search (use `forge_memory.search`).
- */
-export const forgeMemoryGetTool: ContextScopedMcpToolFactory = ({ principal }) => ({
-  name: 'forge_memory.get',
-  reach: 'project',
-  route: '/api/memory',
-  grant: 'knowledge:read',
-  description:
-    'List memory rows for a project, filtered by source / sourceRef / metadata containment. Returns rows sorted by createdAt|updatedAt|embeddedAt + a total count. Does NOT embed — use for natural-key lookups (e.g. step handoff by run_id+step+attempt). Live rows only unless includeArchived:true, which also returns soft-deleted rows (decay, consolidation, feedback verdict=outdated, and pre-ISS-876 `<ref>__superseded-<timestamp>` dedup snapshots) — every row carries archivedAt so an archived one is never mistaken for current memory. Requires project membership.',
-  inputSchema: zodToMcpSchema(getMemoryInputSchema),
-  handler: async (args) => {
-    const input = getMemoryInputSchema.parse(args);
-    await assertPrincipalIsMember(principal, input.projectId);
-    return runMemoryGet(input);
-  },
-});
+    if (action === 'get') {
+      const input = getMemoryInputSchema.parse(rest);
+      await assertPrincipalIsMember(principal, input.projectId);
+      return runMemoryGet(input);
+    }
 
-/**
- * `forge_memory.delete` — remove a memory row by its natural key. Idempotent:
- * succeeds and returns `{deleted: false}` when no row matches. Equivalent to
- * REST `DELETE /api/memory/by-source?...` in tool form.
- */
-export const forgeMemoryDeleteTool: ContextScopedMcpToolFactory = ({ principal }) => ({
-  name: 'forge_memory.delete',
-  reach: 'project',
-  route: '/api/memory',
-  grant: 'knowledge:write',
-  description:
-    'Delete a memory row by (projectId, source, sourceRef). Idempotent — returns {deleted:false} when no row matches. Requires project membership.',
-  inputSchema: zodToMcpSchema(deleteInputSchema),
-  handler: async (args) => {
-    const input = deleteInputSchema.parse(args);
-    await assertPrincipalIsWriter(principal, input.projectId);
-    const removed = await deleteMemory(input.projectId, input.source, input.sourceRef);
-    return { deleted: removed > 0 };
-  },
-});
+    if (action === 'delete') {
+      const input = deleteInputSchema.parse(rest);
+      await assertPrincipalIsWriter(principal, input.projectId);
+      const removed = await deleteMemory(input.projectId, input.source, input.sourceRef);
+      return { deleted: removed > 0 };
+    }
 
-/**
- * `forge_memory.feedback` — recall-feedback loop (ISS-603). The write-back
- * half of "verify hits against live code before trusting": a confirmed
- * verification protects the row from usage decay, a disproved one archives
- * it immediately instead of letting it stay searchable for months.
- */
-export const forgeMemoryFeedbackTool: ContextScopedMcpToolFactory = ({ principal }) => ({
-  name: 'forge_memory.feedback',
-  reach: 'project',
-  route: '/api/memory',
-  grant: 'knowledge:write',
-  description:
-    'Report the outcome of verifying a memory row against live code/state. verdict=confirmed stamps last_verified_at (protects the row from usage decay); verdict=outdated archives the row immediately (evidence required — what disproved it; a fresh write to the same sourceRef revives it). Agent-curated sources only (note/knowledge) — lifecycle mirrors track their source records. Call after acting on a forge_memory.search hit. Requires project write access.',
-  inputSchema: zodToMcpSchema(memoryFeedbackInputSchema),
-  handler: async (args) => {
-    const input = memoryFeedbackInputSchema.parse(args);
-    await assertPrincipalIsWriter(principal, input.projectId);
-    try {
-      return await runMemoryFeedback(input);
-    } catch (err) {
-      if (err instanceof MemoryFeedbackValidationError) {
-        throw new Error(`INVALID: ${err.message}`);
+    if (action === 'feedback') {
+      const input = memoryFeedbackInputSchema.parse(rest);
+      await assertPrincipalIsWriter(principal, input.projectId);
+      try {
+        return await runMemoryFeedback(input);
+      } catch (err) {
+        if (err instanceof MemoryFeedbackValidationError) throw new Error(`INVALID: ${err.message}`);
+        throw err;
       }
-      throw err;
     }
-  },
-});
 
-export const forgeMemoryWriteTool: ContextScopedMcpToolFactory = ({ principal }) => ({
-  name: 'forge_memory.write',
-  reach: 'project',
-  route: '/api/memory',
-  grant: 'knowledge:write',
-  description:
-    'Write (upsert) a memory row for a project. Embeds textContent via the configured embedding model and stores under the unique key (projectId, source, sourceRef) — the ref you name is ALWAYS the ref that is written, and no other row is ever modified. Re-writing an existing ref REPLACES its body; the body you replaced is kept and readable via `GET /api/memory/revisions`. Returns {id, embeddedAt, truncated, degraded, nearDuplicateOf?, dedupeScore?}. nearDuplicateOf is advisory: for note/knowledge, an existing row whose text is near-identical to yours, reported so you can decide to refine THAT record instead — to do so, re-issue the write under that exact sourceRef. degraded:true means embeddings were down and the row is keyword-searchable only until the backfill re-embeds it. Agent-authored sources (note/knowledge/policy) are quality-gated: textContent ≤8192 chars (the embedding window) and no fenced code block >5 lines — write the invariant + a file:line/SHA pointer instead of code; one-line runnable commands are fine. Requires project membership.',
-  inputSchema: zodToMcpSchema(writeMemoryInputSchema),
-  handler: async (args) => {
-    const input = writeMemoryInputSchema.parse(args);
+    const input = writeMemoryInputSchema.parse(rest);
     await assertPrincipalIsWriter(principal, input.projectId);
     try {
       return await runMemoryWrite(input);
     } catch (err) {
-      if (err instanceof EmbeddingUnavailableError) {
-        throw new Error(`UNAVAILABLE: ${err.message}`);
-      }
-      if (err instanceof MemoryWriteValidationError) {
-        throw new Error(`INVALID: ${err.message}`);
-      }
+      if (err instanceof EmbeddingUnavailableError) throw new Error(`UNAVAILABLE: ${err.message}`);
+      if (err instanceof MemoryWriteValidationError) throw new Error(`INVALID: ${err.message}`);
       throw err;
     }
   },

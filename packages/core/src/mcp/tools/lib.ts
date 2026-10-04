@@ -64,7 +64,6 @@ export type McpContext = {
   requestId?: string;
   ip?: string | null;
   userAgent?: string | null;
-  deprecations?: Set<string>;
 };
 
 /**

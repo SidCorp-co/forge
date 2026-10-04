@@ -34,7 +34,6 @@ import {
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   type McpContext,
-  type McpTool,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
@@ -197,24 +196,6 @@ export const forgeSourceTool: ContextScopedMcpToolFactory = (ctx) => ({
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
   handler: (args) => run(args, ctx),
-});
-
-// cm:hack ISS-50 until:no project document's tool policy and no runner settings allowlist names mcp__forge__forge_github, and forge-plugin calls forge_source — the GitHub-era name stays served so a grant or deny written against it keeps meaning the same capability; its one legacy action name is translated here and nowhere else.
-export const forgeGithubAliasTool: ContextScopedMcpToolFactory = (ctx): McpTool => ({
-  name: 'forge_github',
-  reach: 'project',
-  route: '/api/projects',
-  grant: { byAction: { ...GRANTS.byAction, 'open-pull-request': 'projects:write' } },
-  description: `The former name of \`forge_source\`, kept for grants written against it — call \`forge_source\`; \`open-pull-request\` here is its \`open-change-request\`. ${DESCRIPTION}`,
-  inputSchema: zodToMcpSchema(
-    inputSchema.extend({
-      action: z.enum([...inputSchema.shape.action.options, 'open-pull-request']),
-    }),
-  ),
-  handler: (args) => {
-    const legacy = (args as { action?: unknown } | null)?.action === 'open-pull-request';
-    return run(legacy ? { ...(args as object), action: 'open-change-request' } : args, ctx);
-  },
 });
 
 /** Every source host binding's report, from each host provider's own reader. */

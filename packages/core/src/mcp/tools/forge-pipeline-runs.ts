@@ -21,15 +21,11 @@ import {
 } from '../../pipeline/runs-control.js';
 import { laneOf } from '../../pipeline/runs-lane.js';
 import { loadRunLivenessByRunIds, residentMasterOn } from '../../pipeline/runs-liveness.js';
-import { deprecationFor } from '../deprecation.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
-  type ContextScopedMcpToolFactory,
-  type McpContext,
   principalAgency,
   principalUserId,
-  zodToMcpSchema,
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
 
@@ -132,22 +128,3 @@ export async function pipelineRunsCancelHandler(
     ...(input.parkIssue !== undefined ? { parkIssue: input.parkIssue } : {}),
   });
 }
-
-function recordDeprecation(ctx: McpContext | { deprecations?: Set<string> }, toolName: string) {
-  if (deprecationFor(toolName) && ctx.deprecations) ctx.deprecations.add(toolName);
-}
-
-export const forgePipelineRunsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_pipeline_runs.get',
-  reach: 'project',
-  route: '/api/pipeline-runs',
-  grant: 'pipeline:read',
-  description:
-    '[DEPRECATED — use forge_project_pipeline_runs (action=get)] Fetch a single pipeline run plus a per-status job count breakdown. Requires the principal to be a member of the run’s project; PAT principals must additionally have the run’s project in their allowlist.',
-  inputSchema: zodToMcpSchema(pipelineRunsRunIdInputSchema),
-  handler: async (args) => {
-    recordDeprecation(ctx, 'forge_pipeline_runs.get');
-    const input = pipelineRunsRunIdInputSchema.parse(args);
-    return pipelineRunsGetHandler(ctx.principal, input);
-  },
-});
