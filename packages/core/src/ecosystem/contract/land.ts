@@ -1,7 +1,7 @@
 import { db } from '../../db/client.js';
 import { resolveSourceHost, type SourceHost } from '../../integrations/source-host/index.js';
 import { logger } from '../../observability/logger.js';
-import { readProjectConfig } from '../../project-config/index.js';
+import { readProjectConfig } from '../../project-config/service.js';
 import { boss } from '../../queue/boss.js';
 import { loadInterface } from '../interface-service.js';
 import { projectsWhere } from '../store.js';
