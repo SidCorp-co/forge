@@ -1,36 +1,91 @@
 "use client";
 
-import { Button, EmptyState, ErrorState, PageTitle, ProjectLoader } from "@/design";
+import { RELEASE_ATTENTION, RELEASE_ATTENTION_LABELS } from "@forge/contracts/releases";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo } from "react";
+import {
+  ActorChip,
+  EmptyState,
+  ErrorState,
+  GroupedList,
+  Icon,
+  type ListGroup,
+  type ListRowView,
+  PageTitle,
+  ProjectLoader,
+  rememberListOrigin,
+  StatusBadge,
+  useGroupFold,
+  usePeek,
+  usePeekKeys,
+  useUrlParams,
+  visibleRows,
+  WaitingOn,
+} from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
-import { useQueryParam } from "@/lib/utils/use-query-param";
-import { FILTER_LABEL, filterCount, matchesFilter } from "../version-status";
-import { useCutRelease, useReleaseVersions } from "../versions-hooks";
-import { VERSION_FILTERS, type ReleaseVersionFilter } from "../versions-types";
-import { flowOf, placeOf } from "../flow";
-import { FlowStrip } from "./flow-strip";
-import { DraftDetail, VersionDetail } from "./version-detail";
-import { VersionList } from "./version-list";
-import { TopBarActions } from "@/design/primitives/top-bar-slot";
+import { formatAge, formatStamp } from "@/lib/utils/format";
+import { useReleases } from "../hooks";
+import { RELEASES_LIST, releaseHref } from "../routes";
+import type { ReleaseSummary } from "../types";
+import { waitingView } from "./release-bits";
+import { ReleasePeek } from "./release-peek";
+import { ReleaseTrain } from "./release-train";
 
-export interface ReleasesScreenProps {
-  projectId: string;
-  isAdmin: boolean;
-}
+const groupsOf = (rows: ReleaseSummary[]): ListGroup<ReleaseSummary>[] =>
+  RELEASE_ATTENTION.map((a) => ({ id: a, ...RELEASE_ATTENTION_LABELS[a], rows: rows.filter((r) => r.attention === a) }));
 
-export function ReleasesScreen({ projectId, isAdmin }: ReleasesScreenProps) {
-  const q = useReleaseVersions(projectId);
-  const cut = useCutRelease(projectId);
-  const [rawFilter, setFilter] = useQueryParam("f");
-  const [picked, setPicked] = useQueryParam("v");
-  const [stage, setStage] = useQueryParam("s");
-  const filter: ReleaseVersionFilter = (VERSION_FILTERS as readonly string[]).includes(rawFilter ?? "")
-    ? (rawFilter as ReleaseVersionFilter)
-    : "all";
+const requirementsOf = (r: ReleaseSummary) => (r.requirements.length > 0 ? r.requirements.join(", ") : "Maintenance");
 
+const rowOf =
+  (slug: string) =>
+  (r: ReleaseSummary): ListRowView => ({
+    key: r.version,
+    href: releaseHref(slug, r.version),
+    title: r.headline || `Release ${r.version}`,
+    facts: [
+      `Issues ${r.issueCount}`,
+      requirementsOf(r),
+      r.criteria.total === 0 ? "No criteria recorded" : `Criteria ${r.criteria.proven} of ${r.criteria.total} proven`,
+      ...(r.current ? ["Serving production"] : []),
+    ],
+    state: <StatusBadge family="releaseState" value={r.state} />,
+    waitingOn: <WaitingOn w={waitingView(r.waiting)} />,
+    owner: r.owner ? <ActorChip name={r.owner.name} kind={r.owner.kind} size={20} /> : null,
+    age: { text: formatAge(r.at), title: `Last changed ${formatStamp(r.at)}` },
+    dim: r.attention === "done" || r.attention === "stopped",
+  });
+
+export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: string }) {
+  const q = useReleases(projectId);
+  const router = useRouter();
+  const [params, setParams] = useUrlParams();
+  const text = params.get("q") ?? "";
+  const fold = useGroupFold("web-v2:releases-fold");
+  const all = q.data?.releases ?? [];
+  const rows = useMemo(() => {
+    const t = text.trim().toLowerCase();
+    return t ? all.filter((r) => `${r.version} ${r.headline} ${r.requirements.join(" ")}`.toLowerCase().includes(t)) : all;
+  }, [all, text]);
+  const groups = useMemo(() => groupsOf(rows), [rows]);
+  const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.version), [groups, fold]);
+  const allKeys = useMemo(() => all.map((r) => r.version), [all]);
+  const peek = usePeek(visible, allKeys);
+  const row = useMemo(() => rowOf(slug), [slug]);
+  const openFull = useCallback(
+    (version: string) => {
+      rememberListOrigin(RELEASES_LIST);
+      router.push(releaseHref(slug, version));
+    },
+    [router, slug],
+  );
+  usePeekKeys(peek, openFull);
+
+  const title = <PageTitle>Releases</PageTitle>;
   if (q.isLoading) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
+        {title}
         <ProjectLoader label="loading releases…" />
       </div>
     );
@@ -38,89 +93,56 @@ export function ReleasesScreen({ projectId, isAdmin }: ReleasesScreenProps) {
   if (q.isError || !q.data) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
+        {title}
         <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
       </div>
     );
   }
-  const list = q.data;
-  const flow = flowOf(list);
-  const atStage = stage && flow.stages.some((s) => s.key === stage) ? stage : null;
-  const shown = list.versions.filter((v) =>
-    atStage ? placeOf(v, flow).at === atStage : matchesFilter(v, filter),
-  );
-  const draft = atStage ? (atStage === "draft" ? list.draft : null) : filter === "all" ? list.draft : null;
-  const pickStage = (key: string | null) => {
-    setFilter(null);
-    setStage(key);
-  };
-  const fallback = draft?.version ?? shown[0]?.version ?? null;
-  const selected =
-    picked && (picked === draft?.version || shown.some((v) => v.version === picked)) ? picked : fallback;
-  const draftCuttable = isAdmin && list.draft !== null && list.draft.blockers.length === 0;
-
+  const production = q.data.production;
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="releases-screen">
-      <PageTitle>Releases</PageTitle>
-      {list.draft && isAdmin ? (
-          <TopBarActions>
-            <Button
-              size="sm"
-              disabled={!draftCuttable || cut.isPending}
-              title={list.draft.blockers.map((b) => b.message).join("\n") || undefined}
-              onClick={() => list.draft && cut.mutate(list.draft.issues.map((i) => i.id))}
-            >
-              Cut {list.draft.version}
-            </Button>
-          </TopBarActions>
-        ) : null}
-      <FlowStrip list={list} flow={flow} active={atStage} onPick={pickStage} />
-      {!list.environmentsRead.ok ? (
-        <p className="px-4 pb-3 text-12 text-amber sm:px-7" data-testid="env-unread">
-          Environments cannot be read from the project document: {list.environmentsRead.reason}
-        </p>
-      ) : null}
-      <fieldset className="flex flex-wrap gap-1.5 border-0 px-4 pb-3 sm:px-7" aria-label="Filter versions" data-testid="version-filters">
-        {VERSION_FILTERS.map((f) => (
-          <button
-            key={f}
-            type="button"
-            aria-pressed={!atStage && filter === f}
-            onClick={() => {
-              setStage(null);
-              setFilter(f === "all" ? null : f);
-            }}
-            className={cn(
-              "rounded-pill border px-3 py-0.5 text-12 font-semibold",
-              !atStage && filter === f ? "border-fg bg-fg text-surface" : "border-line bg-surface text-muted hover:text-fg",
+    <div className="grid min-h-full content-start bg-app" data-testid="releases-screen">
+      {title}
+      <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
+            <label className="flex h-[30px] min-w-[150px] max-w-[260px] flex-1 items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 text-12-5 text-subtle max-md:h-10 max-md:max-w-none max-md:basis-full">
+              <Icon name="search" size={14} />
+              <input
+                type="search"
+                aria-label="Search releases"
+                placeholder="Search releases…"
+                defaultValue={text}
+                onChange={(e) => setParams({ q: e.target.value || null })}
+                className="w-full min-w-0 border-0 bg-transparent text-fg outline-none"
+              />
+            </label>
+            {production.ok ? null : (
+              <span className="text-12 text-muted" title={production.reason} data-testid="production-unreadable">
+                Production cannot be read right now, so what it serves is not shown.
+              </span>
             )}
-          >
-            {FILTER_LABEL[f]} {filterCount(list.counts, f)}
-          </button>
-        ))}
-      </fieldset>
-      {shown.length === 0 && !draft ? (
-        <div className="border-t border-line-subtle p-8">
-          <EmptyState
-            title={atStage ? `No version is at ${flow.stages.find((s) => s.key === atStage)?.label ?? atStage}` : filter === "all" ? "No version has been cut" : `No version is ${FILTER_LABEL[filter].toLowerCase()}`}
-            message={
-              atStage
-                ? "Pick another stage to see the versions standing in it."
-                : filter === "all"
-                ? "A version is cut when merged issues waiting at the release gate are released together. None is waiting, and none has been cut on this project."
-                : "Pick another filter to see the other versions."
-            }
-          />
+          </div>
+          {all.length === 0 ? (
+            <div className="px-5 py-10">
+              <EmptyState title="No release yet" message="A release is cut when merged issues are waiting at the release gate. None is waiting." />
+            </div>
+          ) : (
+            <>
+              <ReleaseTrain releases={all} slug={slug} selected={peek.open ?? undefined} />
+              <GroupedList
+                ariaLabel="Releases"
+                groups={groups}
+                fold={fold}
+                row={row}
+                selected={peek.open}
+                onPeek={(k) => peek.set(k === peek.open ? null : k)}
+                empty="Nothing matches this search."
+              />
+            </>
+          )}
         </div>
-      ) : (
-        <div className="grid min-h-0 flex-1 border-t border-line-subtle md:grid-cols-[400px_minmax(0,1fr)]">
-          <VersionList versions={shown} draft={draft} flow={flow} selected={selected} onSelect={(v) => setPicked(v)} />
-          {selected && draft && selected === draft.version ? (
-            <DraftDetail projectId={projectId} draft={draft} canCut={isAdmin} />
-          ) : selected ? (
-            <VersionDetail projectId={projectId} version={selected} canDecide={isAdmin} flow={flow} />
-          ) : null}
-        </div>
-      )}
+        {peek.open ? <ReleasePeek key={peek.open} projectId={projectId} version={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} /> : null}
+      </div>
     </div>
   );
 }

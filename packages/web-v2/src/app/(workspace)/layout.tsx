@@ -42,7 +42,7 @@ import {
 } from "@/features/shell";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
 import { ChatDockProvider, useChatDockState } from "@/features/conversations/dock";
-import { useAwaitingApprovalCount } from "@/features/releases/versions-hooks";
+import { useAwaitingApprovalCount } from "@/features/releases/hooks";
 import { useDesignsAwaitingCount } from "@/features/workflows/hooks";
 import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";
 import { SidebarSearch } from "@/features/shell/components/sidebar-search";

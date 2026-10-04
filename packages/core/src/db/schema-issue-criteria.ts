@@ -4,7 +4,11 @@
 // `criterion_verdicts` is insert-only: the latest row per criterion is what the
 // `awaiting_release` gate reads (`issues/criteria/store.ts:listCriteria`).
 
-import { VERDICT_CORROBORATIONS } from '@forge/contracts/verdict-identity';
+import {
+  VERDICT_CORROBORATIONS,
+  VERDICT_IDENTITY_KINDS,
+  VERDICT_VALUES,
+} from '@forge/contracts/verdict-identity';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -54,18 +58,11 @@ export const issueCriteria = pgTable(
 );
 
 /** pass/fail/skipped, plus `short`: forge-plugin's "met short of its wording, judged not to block". */
-export const verdictValues = ['pass', 'short', 'fail', 'skipped'] as const;
+export const verdictValues = VERDICT_VALUES;
 export type VerdictValue = (typeof verdictValues)[number];
 
 /** `commit_unresolved` exists only on backfilled rows (`backfilled = true`), never on a new one. */
-export const verdictIdentityKinds = [
-  'commit',
-  'runtime',
-  'design',
-  'contract',
-  'storefront_draft',
-  'commit_unresolved',
-] as const;
+export const verdictIdentityKinds = VERDICT_IDENTITY_KINDS;
 export type VerdictIdentityKind = (typeof verdictIdentityKinds)[number];
 
 export const criterionVerdicts = pgTable(

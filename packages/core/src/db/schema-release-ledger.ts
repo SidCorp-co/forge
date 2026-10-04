@@ -1,3 +1,4 @@
+import { RELEASE_ATTEMPT_STAGES, type ReleaseAttemptStage } from '@forge/contracts/releases';
 import { type InferSelectModel, sql } from 'drizzle-orm';
 import {
   boolean,
@@ -13,8 +14,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { pipelineRuns, projects, users } from './schema.js';
 
-export const RELEASE_ATTEMPT_STAGES = ['promote', 'deploy', 'verify', 'repair'] as const;
-export type ReleaseAttemptStage = (typeof RELEASE_ATTEMPT_STAGES)[number];
+export { RELEASE_ATTEMPT_STAGES, type ReleaseAttemptStage };
 
 export const releaseAttempts = pgTable(
   'release_attempts',

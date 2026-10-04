@@ -87,7 +87,7 @@ export const STATE_READINGS = {
 		withdrawn: ["Withdrawn", "done", "×"],
 		superseded: ["Superseded", "done", "–"],
 	},
-	/** A release attempt's health and its verdict (web `releases/types.ts`). */
+	/** A release attempt's health and its verdict (contracts `releases.ts:ReleaseAttemptView`). */
 	health: {
 		up: ["Up", "ready", "●"],
 		down: ["Down", "err", "●"],
@@ -177,18 +177,6 @@ export const STATE_READINGS = {
 		overdue: ["Overdue", "err", "!"],
 		"not-owed": ["Owes no reply", "neutral", "–"],
 	},
-	/** Where a version stands at one stage of its release flow (web `releases/flow.ts:StepState`). */
-	releaseStep: {
-		current: ["In progress", "run", "●"],
-		waiting: ["Waiting", "you", "●"],
-		failed: ["Failed", "err", "×"],
-		aborted: ["Aborted", "neutral", "–"],
-		done: ["Done", "ready", "✓"],
-		passed: ["Passed", "ready", "✓"],
-		pending: ["Not reached", "neutral", "○"],
-		untracked: ["Not recorded for a version", "neutral", "○"],
-		skipped: ["Not asked", "neutral", "–"],
-	},
 	/** A webhook or dispatch delivery (core `db/schema-integration-types.ts:integrationDeliveryStatuses`). */
 	delivery: {
 		pending: ["Pending", "neutral", "○"],
@@ -230,7 +218,7 @@ export const STATE_READINGS = {
 		observed: ["Observed", "ready", "✓"],
 		asserted: ["Claimed", "you", "!"],
 	},
-	/** A release approval: waiting on a decision, or what it decided (web `releases/types.ts`). */
+	/** A release approval's decision (contracts `releases.ts:ReleaseApprovalView`). */
 	release: {
 		pending: ["Awaiting approval", "you", "●"],
 		approved: ["Approved", "ready", "✓"],
@@ -337,7 +325,7 @@ export const ENUM_LABELS = {
 		supersede: "Superseded",
 		invite: "Invited",
 	},
-	/** One act of a release run (web `releases/types.ts:ReleaseAttemptStage`). */
+	/** One act of a release run (contracts `releases.ts:RELEASE_ATTEMPT_STAGES`). */
 	attemptStage: {
 		promote: "Promote",
 		deploy: "Deploy",

@@ -113,11 +113,9 @@ async function cutOne() {
   const draft = await call('owner', 'GET', '/releases');
   expect(draft.status).toBe(200);
   expect(draft.body).toMatchObject({
-    versions: [],
-    counts: { all: 0, awaitingApproval: 0, live: 0, rolledBack: 0 },
-    draft: { version: '0.1.0' },
+    releases: [{ version: '0.1.0', state: 'draft', issueCount: 3, attention: 'you' }],
+    counts: { you: 1, moving: 0, done: 0 },
   });
-  expect((draft.body.draft as { issues: unknown[] }).issues).toHaveLength(3);
   const cut = await call('owner', 'POST', '/release-batches', { issueIds: [added, fixed, bare] });
   expect(cut.status, JSON.stringify(cut.body)).toBe(201);
   return String(cut.body.runId);
@@ -125,14 +123,18 @@ async function cutOne() {
 
 const statusOf = async () => {
   const list = await call('owner', 'GET', '/releases');
-  const [row] = list.body.versions as Array<{ status: string }>;
-  return { status: row?.status, counts: list.body.counts, draft: list.body.draft };
+  const rows = list.body.releases as Array<{ state: string }>;
+  return {
+    status: rows.find((r) => r.state !== 'draft')?.state,
+    counts: list.body.counts,
+    draft: rows.some((r) => r.state === 'draft'),
+  };
 };
 
 describe('a version waits for an admin before its production acts', () => {
   it('lists the cut version, takes one request, and refuses every production act until it is approved', async () => {
     const runId = await cutOne();
-    expect(await statusOf()).toMatchObject({ status: 'in_progress', draft: null });
+    expect(await statusOf()).toMatchObject({ status: 'in_progress', draft: false });
 
     const approvals = `/release-batches/${runId}/approvals`;
     expect(refusedAs(await call('agent', 'POST', approvals, evidence('live')), 422)).toBe(
@@ -153,7 +155,7 @@ describe('a version waits for an admin before its production acts', () => {
     );
     expect(await statusOf()).toMatchObject({
       status: 'awaiting_approval',
-      counts: { awaitingApproval: 1 },
+      counts: { you: 1 },
     });
 
     const attempt = { stage: 'deploy', idempotencyKey: 'deploy-1' };
@@ -202,20 +204,24 @@ describe('a version waits for an admin before its production acts', () => {
     await call('agent', 'POST', `/release-batches/${runId}/approvals`, evidence());
     const v = await call('owner', 'GET', '/releases/0.1.0');
     expect(v.status, JSON.stringify(v.body)).toBe(200);
-    expect(v.body).toMatchObject({
+    const release = v.body.release as Record<string, unknown>;
+    expect(release).toMatchObject({
       version: '0.1.0',
       runId,
-      status: 'awaiting_approval',
+      state: 'awaiting_approval',
+      attention: 'you',
       issueCount: 3,
-      environment: 'live',
-      changelog: [
-        { section: 'Added', entries: [{ userFacing: 'Ecosystem links have a strict schema' }] },
-        { section: 'Fixed', entries: [{ userFacing: 'A create form posts once per submit' }] },
-      ],
-      withoutNotes: [],
+      notes: {
+        sections: [
+          { section: 'Added', entries: [{ userFacing: 'Ecosystem links have a strict schema' }] },
+          { section: 'Fixed', entries: [{ userFacing: 'A create form posts once per submit' }] },
+        ],
+        withoutNotes: [],
+      },
       attempts: [],
+      can: { decide: true },
     });
-    expect(v.body.approvals).toHaveLength(1);
+    expect(release.approvals).toHaveLength(1);
     expect(refusedAs(await call('owner', 'GET', '/releases/zero'), 422)).toBe(
       'RELEASE_VERSION_SHAPE',
     );
@@ -243,8 +249,8 @@ describe('a project whose document requires release approval', () => {
     const list = await call('owner', 'GET', '/releases');
     expect(list.body).toMatchObject({
       approvalRequired: true,
-      versions: [{ status: 'awaiting_approval', approvalRequired: true, approval: null }],
-      counts: { awaitingApproval: 1 },
+      releases: [{ state: 'awaiting_approval', attention: 'others' }],
+      counts: { others: 1 },
     });
     expect(refusedAs(await attempt(runId), 409)).toBe('RELEASE_APPROVAL_REQUIRED');
     expect(
@@ -304,7 +310,7 @@ describe('a project whose document requires release approval', () => {
     const list = await call('owner', 'GET', '/releases');
     expect(list.body).toMatchObject({
       approvalRequired: false,
-      versions: [{ status: 'in_progress', approvalRequired: false }],
+      releases: [{ state: 'in_progress', attention: 'moving' }],
     });
     expect((await attempt(runId)).status).toBe(201);
   });

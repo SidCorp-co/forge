@@ -1,0 +1,195 @@
+"use client";
+
+import { RELEASE_PROOF_LABELS } from "@forge/contracts/releases";
+import Link from "next/link";
+import { useMemo } from "react";
+import {
+  FieldLabel,
+  GroupedList,
+  type ListGroup,
+  type ListRowView,
+  StatusBadge,
+  Tooltip,
+  useGroupFold,
+  ViewHeading,
+  WaitingOn,
+} from "@/design";
+import { issueHref } from "@/features/issues/routes";
+import { requirementHref } from "@/features/requirements/routes";
+import type { ReleaseDetail, ReleaseIssueView, ReleaseSummary } from "../types";
+import { GateLine, waitingView } from "./release-bits";
+import { ReleaseTrain } from "./release-train";
+
+export const RELEASE_TABS = ["overview", "issues", "criteria", "checks", "notes"] as const;
+export type ReleaseTab = (typeof RELEASE_TABS)[number];
+
+const MAINTENANCE = "Maintenance";
+
+function Requirements({ r, slug }: { r: ReleaseDetail; slug: string }) {
+  if (r.requirementsCompleted.length === 0) {
+    return <p className="text-13 text-subtle">None of its issues belong to a requirement.</p>;
+  }
+  return (
+    <ul className="border-t border-line-subtle" data-testid="release-requirements">
+      {r.requirementsCompleted.map((q) => (
+        <li key={q.key} className="grid gap-0.5 border-b border-line-subtle py-2.5 text-13">
+          <span className="flex flex-wrap items-center gap-2">
+            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={requirementHref(slug, q.key)}>
+              {q.key}
+            </Link>
+            <span className="min-w-0 flex-1 truncate">{q.title}</span>
+            <StatusBadge family="requirement" value={q.state} />
+            <span className="text-12 font-semibold" data-testid="completes">
+              {q.completes ? "Completes it" : "Partial"}
+            </span>
+          </span>
+          <span className="text-12-5 text-muted">
+            {q.advances.length > 0 ? `Moves ${q.advances.map((a) => a.code).join(", ")}. ` : ""}
+            {q.completes
+              ? "Nothing else stands between it and done."
+              : [
+                  q.remaining.issues.length > 0 ? `Still open: ${q.remaining.issues.join(", ")}.` : "",
+                  q.remaining.criteria.length > 0 ? `Not yet passing: ${q.remaining.criteria.join(", ")}.` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function OverviewPane({ r, slug, all }: { r: ReleaseDetail; slug: string; all: ReleaseSummary[] }) {
+  return (
+    <div className="grid gap-8" data-testid="view-overview">
+      {r.gates.length > 0 ? (
+        <section aria-label="Why it cannot be cut">
+          <ViewHeading>{r.state === "draft" ? "What stands in the way" : "Worth knowing"}</ViewHeading>
+          <ul className="divide-y divide-line-subtle border-y border-line-subtle">
+            {r.gates.map((g) => (
+              <GateLine key={g.code} gate={g} />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      <section aria-label="Release train" className="-mx-5">
+        <ReleaseTrain releases={all} slug={slug} selected={r.key} />
+      </section>
+      <section aria-label="Requirements it completes">
+        <ViewHeading>Requirements it completes</ViewHeading>
+        <Requirements r={r} slug={slug} />
+      </section>
+    </div>
+  );
+}
+
+function issueGroups(issues: ReleaseIssueView[], titles: Map<string, string>): ListGroup<ReleaseIssueView>[] {
+  const by = new Map<string, ReleaseIssueView[]>();
+  for (const i of issues) by.set(i.requirement ?? MAINTENANCE, [...(by.get(i.requirement ?? MAINTENANCE) ?? []), i]);
+  return [...by.entries()].map(([id, rows]) => ({ id: `req:${id}`, label: id, mono: id !== MAINTENANCE, hint: titles.get(id), rows }));
+}
+
+const issueRow =
+  (slug: string) =>
+  (i: ReleaseIssueView): ListRowView => ({
+    key: i.key,
+    href: issueHref(slug, i.key),
+    title: i.title,
+    facts: [
+      i.section ?? "No section",
+      i.criteria.total === 0 ? RELEASE_PROOF_LABELS.unrecorded : `Criteria ${i.criteria.proven} of ${i.criteria.total} proven`,
+    ],
+    state: <StatusBadge family="issue" value={i.status} />,
+    waitingOn: <WaitingOn w={waitingView(i.waiting)} />,
+    owner: null,
+    age: null,
+  });
+
+export function IssuesPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
+  const fold = useGroupFold(`web-v2:release-issues-fold:${r.key}`);
+  const groups = useMemo(
+    () => issueGroups(r.issues, new Map(r.requirementsCompleted.map((q) => [q.key, q.title]))),
+    [r.issues, r.requirementsCompleted],
+  );
+  const row = useMemo(() => issueRow(slug), [slug]);
+  return (
+    <div className="pb-16" data-testid="view-issues">
+      <GroupedList ariaLabel="Issues in this release" groups={groups} fold={fold} row={row} selected={null} onPeek={(k) => window.location.assign(issueHref(slug, k))} empty="No issue is in this release." />
+    </div>
+  );
+}
+
+export function CriteriaPane({ r }: { r: ReleaseDetail }) {
+  const withCriteria = r.issueCriteria.filter((i) => i.criteria.length > 0);
+  if (withCriteria.length === 0) return <p className="text-13 text-subtle">No issue in this release records acceptance criteria.</p>;
+  return (
+    <div className="grid gap-7" data-testid="view-criteria">
+      {withCriteria.map((i) => (
+        <section key={i.key} aria-label={`${i.key} criteria`}>
+          <FieldLabel>
+            <span className="font-mono text-12 font-semibold text-link">{i.key}</span> <span className="text-fg">{i.title}</span>
+          </FieldLabel>
+          <ol className="border-t border-line-subtle">
+            {i.criteria.map((c) => (
+              <li key={c.n} className="flex items-start gap-3 border-b border-line-subtle py-2 text-13" data-testid="release-criterion">
+                <span className="w-6 flex-none tabular-nums text-muted">{c.n}.</span>
+                <span className="min-w-0 flex-1 whitespace-pre-wrap">
+                  {c.statement}
+                  {c.bc ? <span className="ml-2 font-mono text-12 text-subtle">{c.bc}</span> : null}
+                </span>
+                <Tooltip
+                  label={[c.identity, c.reason ? `Reason: ${c.reason}` : null, c.judgedAt ? `${c.judgedBy === "agent" ? "An agent" : "A person"}, ${new Date(c.judgedAt).toLocaleString()}` : null]
+                    .filter(Boolean)
+                    .join("\n") || "No verdict recorded yet"}
+                  multiline
+                >
+                  <span>
+                    <StatusBadge family="criterion" value={c.standing} />
+                  </span>
+                </Tooltip>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+export function NotesPane({ r }: { r: ReleaseDetail }) {
+  const { sections, withoutNotes } = r.notes;
+  if (sections.length === 0 && withoutNotes.length === 0) return <p className="text-13 text-subtle">No release notes yet.</p>;
+  return (
+    <div className="grid gap-6" data-testid="view-notes">
+      {sections.map((s) => (
+        <section key={s.section}>
+          <ViewHeading>{s.section}</ViewHeading>
+          <ul className="grid gap-1.5 text-13-5">
+            {s.entries.map((e) => (
+              <li key={e.key} className="flex gap-2">
+                <span className="w-[72px] flex-none font-mono text-12 text-link">{e.key}</span>
+                <span className="min-w-0 flex-1">
+                  {e.userFacing}
+                  {e.technical ? <span className="block text-12-5 text-muted">{e.technical}</span> : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+      {withoutNotes.length > 0 ? (
+        <section>
+          <ViewHeading>Without a note</ViewHeading>
+          <ul className="grid gap-1 text-13 text-muted">
+            {withoutNotes.map((w) => (
+              <li key={w.key}>
+                <span className="font-mono text-12 text-link">{w.key}</span> {w.title}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
+  );
+}

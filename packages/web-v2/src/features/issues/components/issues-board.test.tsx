@@ -60,8 +60,8 @@ const row = (key: string, over: Partial<IssueStandingRow["standing"]> & { status
 
 const ROWS = [
   row("ISS-1", { attentionGroup: "needs_you", tone: "you", status: "needs_info", module: { id: "m1", path: "storefront/publish", name: "publish" } }),
-  row("ISS-2", { attentionGroup: "stuck", tone: "blocked", wave: 1, blockedBy: [{ key: "ISS-3", title: "t", status: "in_progress", group: "moving" }] }),
-  row("ISS-3", { attentionGroup: "moving", tone: "run", status: "in_progress", blocks: [{ key: "ISS-2", title: "t", status: "open", group: "stuck" }], module: { id: "m1", path: "storefront/publish", name: "publish" } }),
+  row("ISS-2", { attentionGroup: "stuck", tone: "blocked", wave: 1, blockedBy: [{ key: "ISS-3", title: "t", status: "in_progress", group: "moving", landed: false }] }),
+  row("ISS-3", { attentionGroup: "moving", tone: "run", status: "in_progress", blocks: [{ key: "ISS-2", title: "t", status: "open", group: "stuck", landed: false }], module: { id: "m1", path: "storefront/publish", name: "publish" } }),
 ];
 const DATA: IssueStandingList = { issues: ROWS, counts: { open: 3, closed: 0, all: 3, needsYou: 1, blocked: 1, blocking: 1 }, returned: 3, limit: 500, releaseApproval: true };
 
@@ -110,8 +110,8 @@ describe("IssuesBoard", () => {
   });
 
   it("draws an edge from each blocker to what it holds back, and none to a card not shown", () => {
-    const hidden = row("ISS-9", { wave: null, blocks: [{ key: "ISS-1", title: "t", status: "open", group: "queued" }] });
-    const held = row("ISS-1", { wave: 1, blockedBy: [{ key: "ISS-9", title: "t", status: "closed", group: "done" }] });
+    const hidden = row("ISS-9", { wave: null, blocks: [{ key: "ISS-1", title: "t", status: "open", group: "queued", landed: false }] });
+    const held = row("ISS-1", { wave: 1, blockedBy: [{ key: "ISS-9", title: "t", status: "closed", group: "done", landed: false }] });
     expect(waveEdges(ROWS)).toEqual([{ from: "ISS-3", to: "ISS-2" }]);
     expect(waveEdges([hidden, held])).toEqual([]);
   });

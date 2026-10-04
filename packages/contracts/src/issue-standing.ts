@@ -39,7 +39,7 @@ export const ISSUE_ATTENTION_LABELS: Record<
 	},
 	queued: {
 		label: "Queued",
-		hint: "Nothing blocks it; waits for a master slot or a release",
+		hint: "Nothing blocks it; waits for a master slot, a judge or a release",
 		tone: "ready",
 		collapsed: false,
 	},
@@ -58,12 +58,13 @@ export const ISSUE_ATTENTION_LABELS: Record<
 };
 
 /** Whom an issue waits on: the viewer, another person, a run that holds it, the master that takes
- *  it next, another issue that blocks it, the release, or nobody. */
+ *  it next, the judge of a change that landed, another issue that blocks it, the release, or nobody. */
 export const ISSUE_WAITING_KINDS = [
 	"you",
 	"person",
 	"run",
 	"master",
+	"judge",
 	"issue",
 	"release",
 	"none",
@@ -72,7 +73,7 @@ export type IssueWaitingKind = (typeof ISSUE_WAITING_KINDS)[number];
 
 export interface IssueWaitingOn {
 	kind: IssueWaitingKind;
-	/** Sentence-case name: "You", "Run", "Master", "ISS-12", "A project writer", "Nobody". */
+	/** Sentence-case name: "You", "Run", "Master", "Judge", "ISS-12", "A project writer", "Nobody". */
 	who: string;
 	/** What they owe, lower-case after the name: "answer a question", "Test · 12 min", "running". */
 	act: string;
@@ -89,6 +90,7 @@ export interface IssueEdgeRef {
 	status: KernelIssueStatus;
 	/** The other issue's own attention group, so a chip can say "needs you" or "running". */
 	group: IssueAttentionGroup | null;
+	landed: boolean;
 }
 
 export interface IssueCriteriaTally {

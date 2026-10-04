@@ -102,6 +102,10 @@
       "types": "./dist/feedback.d.ts",
       "default": "./dist/feedback.js"
     },
+    "./releases": {
+      "types": "./dist/releases.d.ts",
+      "default": "./dist/releases.js"
+    },
     "./contract-waits": {
       "types": "./dist/contract-waits.d.ts",
       "default": "./dist/contract-waits.js"

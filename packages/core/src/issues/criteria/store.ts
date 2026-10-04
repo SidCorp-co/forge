@@ -254,8 +254,8 @@ export async function syncCriteriaFromText(
   await applyCriteria(tx, issue, parsed.criteria as ParsedCriterion[]);
 }
 
-const LIST_SQL = (issueId: string) => sql`
-  SELECT c.id, c.n, c.statement, c.position, c.requirement_criterion_id,
+const LIST_SQL = (issueIds: readonly string[]) => sql`
+  SELECT c.issue_id, c.id, c.n, c.statement, c.position, c.requirement_criterion_id,
          v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
          v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
          v.contract_version, v.storefront_workflow_id, v.storefront_draft_version,
@@ -268,10 +268,14 @@ const LIST_SQL = (issueId: string) => sql`
        LIMIT 1
     ) v ON true
     LEFT JOIN project_workflows w ON w.id = v.design_workflow_id
-   WHERE c.issue_id = ${issueId} AND c.retired_at IS NULL
-   ORDER BY c.position, c.n`;
+   WHERE c.issue_id IN (${sql.join(
+     issueIds.map((id) => sql`${id}::uuid`),
+     sql`, `,
+   )}) AND c.retired_at IS NULL
+   ORDER BY c.issue_id, c.position, c.n`;
 
 type ListRow = {
+  issue_id: string;
   id: string;
   n: number;
   statement: string;
@@ -325,20 +329,35 @@ function latestOf(row: ListRow): LatestVerdict | null {
   };
 }
 
-/** Every live criterion of an issue, in order, each with its latest verdict or null. */
-export async function listCriteria(
-  executor: Pick<Tx, 'execute'>,
-  issueId: string,
-): Promise<CriterionWithVerdict[]> {
-  const rows = (await executor.execute(LIST_SQL(issueId))) as unknown as ListRow[];
-  return [...rows].map((row) => ({
+function criterionOf(row: ListRow): CriterionWithVerdict {
+  return {
     id: row.id,
     n: row.n,
     statement: row.statement,
     position: row.position,
     requirementCriterionId: row.requirement_criterion_id,
     latest: latestOf(row),
-  }));
+  };
+}
+
+/** Every live criterion of an issue, in order, each with its latest verdict or null. */
+export async function listCriteria(
+  executor: Pick<Tx, 'execute'>,
+  issueId: string,
+): Promise<CriterionWithVerdict[]> {
+  const rows = (await executor.execute(LIST_SQL([issueId]))) as unknown as ListRow[];
+  return [...rows].map(criterionOf);
+}
+
+export async function listCriteriaOf(
+  executor: Pick<Tx, 'execute'>,
+  issueIds: readonly string[],
+): Promise<Map<string, CriterionWithVerdict[]>> {
+  const out = new Map<string, CriterionWithVerdict[]>(issueIds.map((id) => [id, []]));
+  if (issueIds.length === 0) return out;
+  const rows = (await executor.execute(LIST_SQL(issueIds))) as unknown as ListRow[];
+  for (const row of rows) out.get(row.issue_id)?.push(criterionOf(row));
+  return out;
 }
 
 export interface VerdictAuthor {

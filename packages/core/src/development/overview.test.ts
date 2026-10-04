@@ -35,6 +35,7 @@ const ref = (key: string, status: KernelIssueStatus = 'open'): IssueEdgeRef => (
   title: `title ${key}`,
   status,
   group: null,
+  landed: false,
 });
 
 const row = (key: string, o: Over = {}): IssueStandingRow => {

@@ -40,7 +40,7 @@ vi.mock("@/features/orgs/active-org", () => ({
 vi.mock("@/features/orgs/components/org-switcher", () => ({
   OrgSwitcher: ({ variant }: { variant: string }) => <button type="button" data-testid={`org-switcher-${variant}`}>Org</button>,
 }));
-vi.mock("@/features/releases/versions-hooks", () => ({ useAwaitingApprovalCount: () => 2 }));
+vi.mock("@/features/releases/hooks", () => ({ useAwaitingApprovalCount: () => 2 }));
 vi.mock("@/features/workflows/hooks", () => ({ useDesignsAwaitingCount: () => undefined }));
 vi.mock("@/features/conversations/components/conversation-chat", () => ({
   ConversationChat: ({ projectId, initialDraft }: { projectId: string; initialDraft?: string }) => (

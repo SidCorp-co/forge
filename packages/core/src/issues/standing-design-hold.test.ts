@@ -4,6 +4,7 @@ import { deriveIssueStanding, type IssueStandingInput, wavesOf } from './standin
 const base = (over: Partial<IssueStandingInput> = {}): IssueStandingInput => ({
   status: 'open',
   waitingKind: null,
+  merged: false,
   step: null,
   stepStartedAt: null,
   lease: null,
@@ -31,6 +32,8 @@ const blocker = (status: IssueStandingInput['status'], designHold: string | null
   key: 'ISS-64',
   title: 'access decision',
   status,
+  merged: false,
+  step: null,
   designHold,
 });
 
@@ -67,7 +70,14 @@ describe('a blocker that delivers a design (FB-57)', () => {
   });
 
   it('a settled issue still owed a design approval keeps listing what it blocks', () => {
-    const dependent = { id: 'd', key: 'ISS-33', title: 'identity', status: 'open' as const };
+    const dependent = {
+      id: 'd',
+      key: 'ISS-33',
+      title: 'identity',
+      status: 'open' as const,
+      merged: false,
+      step: null,
+    };
     const s = deriveIssueStanding(
       base({ status: 'awaiting_release', designHold: HOLD, blocks: [dependent] }),
     );

@@ -21,8 +21,6 @@ const PRESENTATION_AND_MAPPING: Record<string, string> = {
     'the project member list returns it beside the address, exactly as `orgs/service.ts` does for the org member list. The creator filter is built from this list and cannot name an agent it is only told the address of (ISS-1137)',
   'assistant/conversation-routes.ts':
     'the name a person’s own message is attributed by in a conversation transcript, which is a label read by whoever opens the room and by the model answering in it — it addresses nobody and resolves nothing',
-  'release-batch/approvals.ts':
-    'the name a release approval prints for who asked and who decided, attached on the way out of the request beside the id that is what is checked (ISS-45)',
   'lib/people.ts':
     'the one label a person or agent is PRINTED by in requirement, suggestion, feedback and workflow views, attached on the way out beside the user id the row stores; `users.kind`, read beside it, is what says agent (ISS-44, ISS-57)',
   'assistant/conversation-people.ts':

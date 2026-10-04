@@ -11,6 +11,7 @@ import {
 	WORK_STEP_LABELS,
 	type WorkStep,
 } from "@forge/contracts/issue-vocabulary";
+import type { IssueStanding } from "@forge/contracts/issue-standing";
 import {
 	REGISTRY_ISSUE_STATUSES,
 	type StatusExits,
@@ -510,7 +511,7 @@ export interface BlockingRef {
 	displayId: string;
 	title: string | null;
 	status: IssueStatus | null;
-	landed: boolean;
+	merged: boolean;
 	designHold: string | null;
 }
 
@@ -670,14 +671,15 @@ export function openBlockingRefs(
 			displayId: e.fromDisplayId ?? `#${e.fromIssueId.slice(0, 6)}`,
 			title: e.fromTitle ?? null,
 			status: e.fromStatus ?? null,
-			landed: Boolean(e.fromMergedAt),
+			merged: Boolean(e.fromMergedAt),
 			designHold: e.fromDesignHold ?? null,
 		}));
 }
 
 // cm:why a blocker whose change has landed holds its dependents until its criteria pass (ISS-54), so
-// what holds this issue is that blocker's judge, never "finish the blocking issue" (ISS-80).
-function blocksBlocker(blockingRefs: BlockingRef[]): BlockerState {
+// what holds this issue is that blocker's judge, never "finish the blocking issue" (ISS-80). Which
+// blocker waits on a judge is core's standing fact (`IssueEdgeRef.landed`), never re-derived here.
+function blocksBlocker(blockingRefs: BlockingRef[], judged: ReadonlySet<string>): BlockerState {
 	const keys = blockingRefs.map((r) => r.displayId).join(", ");
 	const one = blockingRefs.length === 1;
 	if (blockingRefs.every((r) => r.designHold)) {
@@ -689,7 +691,7 @@ function blocksBlocker(blockingRefs: BlockingRef[]): BlockerState {
 			blockingRefs,
 		};
 	}
-	if (blockingRefs.every((r) => r.landed)) {
+	if (blockingRefs.every((r) => judged.has(r.displayId))) {
 		return {
 			tone: "info",
 			reason: `Blocked by ${keys}, which ${one ? "has" : "have"} landed and ${one ? "waits" : "wait"} on a judge.`,
@@ -745,6 +747,7 @@ export function deriveBlockerState(
 	deps: IssueDependencies | undefined,
 	/** The park view: what a person owes this issue, read once for the banner and the status control. */
 	park: ParkReading = NO_PARK,
+	standing: Pick<IssueStanding, "blockedBy"> | null = null,
 ): BlockerState | null {
 	const blockingRefs = openBlockingRefs(deps);
 
@@ -796,7 +799,10 @@ export function deriveBlockerState(
 		};
 	}
 
-	if (blockingRefs.length) return blocksBlocker(blockingRefs);
+	if (blockingRefs.length) {
+		const judged = new Set((standing?.blockedBy ?? []).filter((b) => b.landed).map((b) => b.key));
+		return blocksBlocker(blockingRefs, judged);
+	}
 
 	return null;
 }
