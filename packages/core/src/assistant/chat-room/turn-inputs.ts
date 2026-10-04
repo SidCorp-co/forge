@@ -35,7 +35,7 @@ import { prepareFastTurn } from './images.js';
 import { rocketChatPersona } from './persona.js';
 
 /** What the turn needs of the connection it arrived on. */
-export interface TurnBot {
+interface TurnBot {
   botName: string;
   serverUrl: string;
   authToken: string;
@@ -43,7 +43,7 @@ export interface TurnBot {
 }
 
 /** The messages one window collected, in the terms this transport needs them in. */
-export interface RocketChatTurnSubject {
+interface RocketChatTurnSubject {
   rid: string;
   tmid: string | undefined;
   /** Everything the window collected, as one body — what the diversions and the quote scan read. */
@@ -56,7 +56,7 @@ export interface RocketChatTurnSubject {
   images: readonly RocketChatImageRef[];
 }
 
-export interface RocketChatTurnArgs {
+interface RocketChatTurnArgs {
   bot: TurnBot;
   route: Route;
   subject: RocketChatTurnSubject;
@@ -81,7 +81,7 @@ export interface RocketChatTurnArgs {
 }
 
 /** Everything the neutral turn takes bar what the window and its venue settle. */
-export type RocketChatTurn = WindowTurnInputs;
+type RocketChatTurn = WindowTurnInputs;
 
 interface Seed {
   persona: string;
@@ -120,8 +120,6 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
     return seed;
   };
 
-  const project = { id: route.projectId, slug: route.projectSlug };
-
   return {
     door: 'chat-sync',
     handleName: bot.botName,
@@ -159,51 +157,48 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       };
     },
 
-    divertAfterTurn: async (result, { setPhase, authority }): Promise<TurnReply | null> => {
-      const escalateCall = result.toolCalls.find((t) => t.name === ESCALATE_TOOL_NAME);
-      if (!escalateCall) return null;
-      setPhase('escalate');
-      if (args.beforeDivert && !(await args.beforeDivert()))
-        return { send: false, reason: 'superseded-before-escalation' };
-      const started = await startEscalation({
-        projectId: route.projectId,
-        project,
-        connectionId: args.connectionId,
-        rid: subject.rid,
-        tmid: subject.tmid,
-        botName: bot.botName,
-        question: escalationQuestion(escalateCall.arguments, subject.text),
-        askedByUsername: subject.username,
-        shape: args.shape,
-        asker: authority,
-      });
-      if (started.started)
-        return {
-          send: true,
-          message: codeAuthored(ESCALATION_ACK(bot.botName)),
-          screenReplaced: true,
-        };
-      if (started.reason === 'deduped')
-        return {
-          send: true,
-          message: codeAuthored(ESCALATION_DEDUP_REPLY(bot.botName)),
-          screenReplaced: true,
-        };
-      if (started.reason === 'no-device')
-        return {
-          send: true,
-          message: codeAuthored(ESCALATION_NO_DEVICE_REPLY(bot.botName)),
-          screenReplaced: true,
-        };
-      if (started.reason === 'runner-outdated' || started.reason === 'authority-refused')
-        return {
-          send: true,
-          message: codeAuthored(agentRefusalText(started)),
-          screenReplaced: true,
-        };
-      return { send: false, reason: 'escalation-dispatch-failed' };
-    },
+    divertAfterTurn: (result, phase) => divertToEscalation(args, result, phase),
   };
+}
+
+type Divert = NonNullable<RocketChatTurn['divertAfterTurn']>;
+
+/** A turn whose model called the escalate tool is answered by the escalation's own reply. */
+async function divertToEscalation(
+  args: RocketChatTurnArgs,
+  result: Parameters<Divert>[0],
+  { setPhase, authority }: Parameters<Divert>[1],
+): Promise<TurnReply | null> {
+  const { bot, route, subject } = args;
+  const escalateCall = result.toolCalls.find((t) => t.name === ESCALATE_TOOL_NAME);
+  if (!escalateCall) return null;
+  setPhase('escalate');
+  if (args.beforeDivert && !(await args.beforeDivert()))
+    return { send: false, reason: 'superseded-before-escalation' };
+  const started = await startEscalation({
+    projectId: route.projectId,
+    project: { id: route.projectId, slug: route.projectSlug },
+    connectionId: args.connectionId,
+    rid: subject.rid,
+    tmid: subject.tmid,
+    botName: bot.botName,
+    question: escalationQuestion(escalateCall.arguments, subject.text),
+    askedByUsername: subject.username,
+    shape: args.shape,
+    asker: authority,
+  });
+  const text = started.started
+    ? ESCALATION_ACK(bot.botName)
+    : started.reason === 'deduped'
+      ? ESCALATION_DEDUP_REPLY(bot.botName)
+      : started.reason === 'no-device'
+        ? ESCALATION_NO_DEVICE_REPLY(bot.botName)
+        : started.reason === 'runner-outdated' || started.reason === 'authority-refused'
+          ? agentRefusalText(started)
+          : null;
+  return text === null
+    ? { send: false, reason: 'escalation-dispatch-failed' }
+    : { send: true, message: codeAuthored(text), screenReplaced: true };
 }
 
 function escalationQuestion(rawArguments: string, fallback: string): string {

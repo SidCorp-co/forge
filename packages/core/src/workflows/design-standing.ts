@@ -1,11 +1,11 @@
-import type { DesignRevisionState } from '@forge/contracts/design-status';
+import type { DesignRevisionState, DesignStatus } from '@forge/contracts/design-status';
 import type { WaitingOn } from '@forge/contracts/standing';
 import type {
   DesignBuildGate,
   DesignListReading,
   DesignWaitingKind,
 } from '@forge/contracts/workflows';
-import type { DesignDecision, DesignStatus } from './design.js';
+import type { DesignDecision } from './design.js';
 
 type DesignWaitingOn = WaitingOn<DesignWaitingKind>;
 
@@ -40,7 +40,7 @@ function proposedWait(input: DesignStandingInput, revision: number): DesignWaiti
   );
 }
 
-// cm:why whose turn a design is, first rule wins: proposed → its approver (you when you may decide);
+// Whose turn a design is, first rule wins: proposed → its approver (you when you may decide);
 // returned or draft → the master that writes it (a holder of workflow-designs.write); approved or
 // not under approval → nobody
 export function designWaitingOn(input: DesignStandingInput): DesignWaitingOn {
@@ -75,7 +75,7 @@ export function designWaitingOn(input: DesignStandingInput): DesignWaitingOn {
   }
 }
 
-// cm:why an approved design with a newer revision proposed still reads as approved on the list; the
+// An approved design with a newer revision proposed still reads as approved on the list; the
 // newer revision is named as pending until its approver decides it
 export function designListReadingOf(
   input: DesignStandingInput,
@@ -90,7 +90,7 @@ export function designListReadingOf(
   };
 }
 
-// cm:why the gate is `build-gate.ts:designUnapprovedSql` read for one design: an issue that builds it
+// The gate is `build-gate.ts:designUnapprovedSql` read for one design: an issue that builds it
 // is dispatched only while its status is approved, so a newer proposal holds builds again
 export function buildGateOf(head: DesignHeadFacts): DesignBuildGate {
   if (head.status === 'approved') {

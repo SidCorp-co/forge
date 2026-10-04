@@ -7,7 +7,7 @@ export const WITHHELD =
 
 export type ReadDoor = Pick<EgressReader, 'providerBound'>;
 
-// cm:guard every provider-bound feedback read passes `lib/data-egress.ts:egressReading`
+// Every provider-bound feedback read passes `lib/data-egress.ts:egressReading`
 export function feedbackEgress(
   level: SensitiveDataLevel,
   agency: ActorAgency,

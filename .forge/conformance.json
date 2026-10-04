@@ -21,11 +21,10 @@
         "improves": "down",
         "$amnesty": {
           "files": [
-            "packages/core/src/agent-sessions/chat-turn.ts",
-            "packages/core/src/feedback/read.ts"
+            "packages/core/src/agent-sessions/chat-turn.ts"
           ],
-          "$what": "Two files the pattern-v2 rewrite and the cleanup lanes grew past the budget are frozen at their size on 2026-10-05 (ISS-225): chat-turn.ts's longest function at 152 lines and feedback/read.ts at 527.",
-          "$costs": "Each may stay over 500 lines (or 150 per function) and grow no further; a reader of these two pays the length, and a third file growing past the budget is still refused.",
+          "$what": "One file the pattern-v2 rewrite and the cleanup lanes grew past the budget is frozen at its size on 2026-10-05 (ISS-225): chat-turn.ts's longest function at 152 lines (issues/criteria/store.ts and issues/standing.ts left in ISS-218's work lane, feedback/read.ts in its design lane).",
+          "$costs": "It may stay over 150 lines per function and grow no further; a reader of it pays the length, and a second file growing past the budget is still refused.",
           "$ends": "ISS-218, the simplify phase, splits them; the entries leave the baseline in that change and this block is deleted."
         }
       },
@@ -56,9 +55,6 @@
         "improves": "down",
         "$amnesty": {
           "files": {
-            "packages/core/src/assistant/chat-room/escalation-bridge.ts": "7 modules: hands an escalated room turn to the external chat, so it reads config, credentials and the conversation, writes through messaging and the rocketchat port, and logs. The amnesty ends when ISS-218 simplify splits or slims it.",
-            "packages/core/src/assistant/chat-room/question-delivery.ts": "8 modules: delivers a parked question to the team chat and settles it against the issue, its lifecycle and the notification it raised. The amnesty ends when ISS-218 simplify splits or slims it.",
-            "packages/core/src/conversations/conversation-agent.ts": "7 modules: runs an agent turn over a conversation, with attachments in storage, the agent session it hands to and the issue it may name. The amnesty ends when ISS-218 simplify splits or slims it.",
             "packages/core/src/devices/claim.ts": "7 modules: a box claiming a job checks the runner, the job, the issue and its lifecycle in one admission. The amnesty ends when ISS-218 simplify splits or slims it.",
             "packages/core/src/jobs/finalize-done.ts": "7 modules: finishing a job closes its agent session link, records usage and moves the issue's lifecycle. The amnesty ends when ISS-218 simplify splits or slims it.",
             "packages/core/src/release-batch/release-sweep.ts": "7 modules: the release sweep reads pipeline runs and schedules and comments on the issues it releases. The amnesty ends when ISS-218 simplify splits or slims it."

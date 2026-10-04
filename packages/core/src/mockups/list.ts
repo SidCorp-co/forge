@@ -68,7 +68,7 @@ export async function getMockupAs(
   return view;
 }
 
-// cm:guard a mockup's bytes pass the one egress rule as surface `mockup.content` (operational): an
+// A mockup's bytes pass the one egress rule as surface `mockup.content` (operational): an
 // agent or the MCP door reading a no_egress project is refused CONTENT_EGRESS_FORBIDDEN by name
 export async function mockupBytes(
   viewer: MockupActor,

@@ -13,16 +13,15 @@ export {
   persistConversationAttachment,
 } from './attachment-service.js';
 export { collectInboundMessage } from './collect-inbound.js';
+export { startConversationAgentTurn } from './conversation-agent.js';
+export { registerConversationAgentBridge } from './conversation-agent-bridge.js';
+export { CONVERSATION_AGENT_MARKER, readConversationAgentMeta } from './conversation-agent-meta.js';
 export {
-  CONVERSATION_AGENT_MARKER,
   conversationAgentTurnForWindow,
   conversationAgentUnavailableReason,
-  readConversationAgentMeta,
   readConversationAgentTurns,
-  startConversationAgentTurn,
   turnState,
-} from './conversation-agent.js';
-export { registerConversationAgentBridge } from './conversation-agent-bridge.js';
+} from './conversation-agent-read.js';
 export type { TxOnly } from './db-executor.js';
 export {
   CORRECTIVE_PREFIX,
@@ -109,17 +108,14 @@ export {
 export { recordDeliveredReply, recordDeliveredReplyToVenue, recordSilence } from './transcript.js';
 export { conversationsNeedingIndex, indexConversationOnce } from './transcript-index.js';
 export { RETRIEVAL_MAX_RESULTS, searchConversationTranscript } from './transcript-search.js';
+export { closeWindow, releaseWindow, reserveDelivery, splitWindowTail } from './window-claim.js';
 export {
   type ClaimedWindow,
   type ConversationWindowRow,
   claimDueWindows,
   claimOf,
-  closeWindow,
   listWindowsForConversation,
   openOrExtendWindow,
-  releaseWindow,
-  reserveDelivery,
-  splitWindowTail,
   type WindowClaim,
   windowDeliveryKey,
 } from './windows.js';

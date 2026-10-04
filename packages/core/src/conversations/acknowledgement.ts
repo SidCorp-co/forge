@@ -11,19 +11,11 @@
 import { logger } from '../observability/logger.js';
 import type { ConversationTransport, ConversationVenue } from './ports.js';
 
-/**
- * How old a request must be before it is marked received.
- */
+/** How old a request must be before it is marked received. */
 const RECEIVED_FLOOR_MS = 5000;
-
-/**
- * How often `working` is renewed while the turn runs.
- */
+/** How often `working` is renewed while the turn runs. */
 const WORKING_RENEW_MS = 5000;
-
-/**
- * How long one acknowledgement call may take before the lifecycle moves on without it.
- */
+/** How long one acknowledgement call may take before the lifecycle moves on without it. */
 const ACK_TIMEOUT_MS = 5000;
 
 /** Settles `late` once `ms` passes with the call still out, so the caller can take it back later. */
@@ -44,74 +36,68 @@ function withDeadline(p: Promise<unknown>, ms: number): Promise<'done' | 'late'>
   });
 }
 
-export interface AcknowledgeArgs {
+interface AcknowledgeArgs {
   transport: Pick<ConversationTransport, 'acknowledge'> | undefined;
   venue: ConversationVenue;
   /** The message the request is anchored on, and when it arrived. */
   anchor: { messageId: string | null; receivedAt: Date };
-  now?: () => number;
   log?: Record<string, unknown>;
 }
 
-export interface RequestAcknowledgement {
+interface RequestAcknowledgement {
   /** Take every signal back; resolves once the transport has been told. */
   settle(): Promise<void>;
 }
 
 const NOOP: RequestAcknowledgement = { settle: async () => undefined };
 
-/**
- * Start acknowledging an admitted request.
- */
+type Ack = NonNullable<ConversationTransport['acknowledge']>;
+
+/** One transport call, bounded by {@link ACK_TIMEOUT_MS}; an `on` that lands late, after the settle, is taken back. */
+function tell(args: AcknowledgeArgs, ack: Ack, ackArg: Parameters<Ack>[1], settled: () => boolean) {
+  const transport = args.transport as ConversationTransport;
+  const warn = (err: unknown, msg: string) =>
+    logger.warn({ err, ...args.log, ack: ackArg, externalId: args.venue.externalId }, msg);
+  const call = ack.call(transport, args.venue, ackArg);
+  let abandoned = false;
+  if (ackArg.on) {
+    call.then(
+      () => {
+        if (abandoned && settled()) {
+          ack
+            .call(transport, args.venue, { ...ackArg, on: false })
+            .catch((err: unknown) =>
+              warn(err, 'conversations: a late acknowledgement could not be taken back'),
+            );
+        }
+      },
+      () => undefined,
+    );
+  }
+  return withDeadline(call, ACK_TIMEOUT_MS).then(
+    (outcome) => {
+      if (outcome === 'done') return;
+      abandoned = true;
+      warn(
+        new Error(`the acknowledgement did not return within ${ACK_TIMEOUT_MS}ms`),
+        'conversations: an acknowledgement could not be shown',
+      );
+    },
+    (err: unknown) => warn(err, 'conversations: an acknowledgement could not be shown'),
+  );
+}
+
+/** Start acknowledging an admitted request. */
 export function acknowledgeRequest(args: AcknowledgeArgs): RequestAcknowledgement {
   const ack = args.transport?.acknowledge;
   if (!ack) return NOOP;
-  const transport = args.transport as ConversationTransport;
-  const now = args.now ?? Date.now;
   let settled = false;
-  const warn = (err: unknown, ackArg: unknown, msg: string) =>
-    logger.warn({ err, ...args.log, ack: ackArg, externalId: args.venue.externalId }, msg);
-  const tell = (
-    ackArg: Parameters<NonNullable<ConversationTransport['acknowledge']>>[1],
-  ): Promise<void> => {
-    const call = ack.call(transport, args.venue, ackArg);
-    let abandoned = false;
-    if (ackArg.on) {
-      call.then(
-        () => {
-          if (abandoned && settled) {
-            ack
-              .call(transport, args.venue, { ...ackArg, on: false })
-              .catch((err: unknown) =>
-                warn(err, ackArg, 'conversations: a late acknowledgement could not be taken back'),
-              );
-          }
-        },
-        () => undefined,
-      );
-    }
-    return withDeadline(call, ACK_TIMEOUT_MS).then(
-      (outcome) => {
-        if (outcome === 'done') return;
-        abandoned = true;
-        warn(
-          new Error(`the acknowledgement did not return within ${ACK_TIMEOUT_MS}ms`),
-          ackArg,
-          'conversations: an acknowledgement could not be shown',
-        );
-      },
-      (err: unknown) => warn(err, ackArg, 'conversations: an acknowledgement could not be shown'),
-    );
-  };
-
   let chain: Promise<void> = Promise.resolve();
   let queued = 0;
-  const enqueue = (
-    ackArg: Parameters<NonNullable<ConversationTransport['acknowledge']>>[1],
-  ): void => {
+  const enqueue = (ackArg: Parameters<Ack>[1]): void => {
     queued += 1;
     chain = chain
-      .then(() => tell(ackArg))
+      .then(() => tell(args, ack, ackArg, () => settled))
       .finally(() => {
         queued -= 1;
       });
@@ -130,7 +116,7 @@ export function acknowledgeRequest(args: AcknowledgeArgs): RequestAcknowledgemen
   }, WORKING_RENEW_MS);
   renew.unref?.();
 
-  const wait = Math.max(0, RECEIVED_FLOOR_MS - (now() - args.anchor.receivedAt.getTime()));
+  const wait = Math.max(0, RECEIVED_FLOOR_MS - (Date.now() - args.anchor.receivedAt.getTime()));
   let receivedTimer: ReturnType<typeof setTimeout> | null = null;
   if (wait === 0) markReceived();
   else {

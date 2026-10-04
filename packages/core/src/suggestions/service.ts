@@ -44,6 +44,7 @@ import {
   targetOfRow,
 } from './read.js';
 import { decidedRefusal, rejectReasonRefusal, withdrawRefusal } from './rules.js';
+import { markMovedStale } from './stale.js';
 import {
   answer,
   inTx,
@@ -67,7 +68,7 @@ async function announceEffect(written: EffectWritten, projectId: string, actor: 
   );
 }
 
-// cm:why workflow issue-lifecycle step `dropped` ("not work: … a duplicate"): accepting a duplicate
+// Workflow issue-lifecycle step `dropped` ("not work: … a duplicate"): accepting a duplicate
 // on an issue drops it with the root named and a relates edge to it, through the one transition
 // writer; the accept is written inside that transition's transaction, so neither lands alone
 async function acceptDuplicateOfIssue(
@@ -226,18 +227,7 @@ export async function acceptSuggestion(input: {
     await recordDecision(tx, row, actor, 'accepted', reason);
     return null;
   });
-  if (stale.reason) {
-    await transition(db, SUGGESTION_MACHINE, {
-      to: 'stale',
-      from: 'proposed',
-      set: { decidedAt: new Date(), reason: stale.reason },
-      where: eq(suggestions.id, first.id),
-      reason: stale.reason,
-      actor: suggestionKernelActor(actor),
-      source: 'suggestions-stale',
-      returning: ['id'],
-    });
-  }
+  if (stale.reason) await markMovedStale(first.id, stale.reason, suggestionKernelActor(actor));
   if (refusals) return { ok: false, refusals };
   await announceEffect(written, projectId, actor);
   const effect: Effect | undefined = written.effect;

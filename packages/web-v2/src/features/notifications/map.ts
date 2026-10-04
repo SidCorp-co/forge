@@ -1,7 +1,12 @@
-import type { NotificationAction, NotificationItem } from "@/design";
+import type { NotificationAction, NotificationGroupMember, NotificationItem } from "@/design";
 import { enumLabel } from "@/design/vocabulary";
 import { formatRelativeTime } from "@/lib/utils/format";
-import type { NotificationRow, PendingInvitation } from "./types";
+import type { NotificationMember, NotificationRow, PendingInvitation } from "./types";
+
+/** One record a grouped delivery carries, as its expanded row reads (ISS-1063). */
+export function toMemberItem(m: NotificationMember): NotificationGroupMember {
+  return { id: m.id, text: m.title, time: formatRelativeTime(m.createdAt), open: m.open };
+}
 
 /** Red for trouble, amber for review gates, green for done, cobalt otherwise. */
 function hueFor(row: NotificationRow): NotificationItem["hue"] {

@@ -6,11 +6,12 @@
  * `feedback_decisions` row.
  */
 
-import type {
-  CreateFeedbackRequest,
-  FeedbackRoute,
-  FeedbackTriageEffect,
-  FeedbackView,
+import {
+  type CreateFeedbackRequest,
+  type FeedbackRoute,
+  type FeedbackTriageEffect,
+  type FeedbackView,
+  feedbackKey,
 } from '@forge/contracts/feedback';
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
@@ -19,7 +20,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
-import { deleteFeedbackEmbedding } from '../embeddings/index.js';
+import { deleteFeedbackEmbedding } from '../knowledge/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
@@ -31,7 +32,8 @@ import { getStorage } from '../storage/index.js';
 import { designNodesIn, nodeRefRefusal } from '../workflows/index.js';
 import { feedbackDependents } from './dependents.js';
 import { embedFeedbackLater } from './embeddings.js';
-import { detailAs, type FeedbackActor, feedbackKey, phaseOfRow, type Row, rowIn } from './read.js';
+import { phaseOfRow } from './list-read.js';
+import { detailAs, type FeedbackActor, type Row, rowIn } from './read.js';
 import { isRefusal, resolveTarget } from './refs.js';
 import {
   decideActRefusal,

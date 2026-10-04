@@ -12,16 +12,16 @@
  * alone exceed its share is refused (`ARTIFACT_CONTEXT_OVER_BUDGET`), never truncated.
  */
 
+import type { DesignStatus } from '@forge/contracts/design-status';
 import type { ArtifactContextRefusalCode } from '@forge/contracts/workflows';
 import { RefusalError } from '../lib/refusal.js';
 import { estimateTokens } from '../lib/token-estimator.js';
-import type { DesignStatus } from './design.js';
 import { type LoadedPinnedContract, pinnedContractsRecord } from './pinned-contracts.js';
 import { type LoadedRequirement, requirementContextRecord } from './requirement-context.js';
 import { fetchLine } from './run-context-plan.js';
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
 
-// cm:why a placeholder priced against the schema's own ceiling (40 steps, one design's header and cut manifest stay under 10k chars), until the record's chars/estTokens of the first twenty build jobs give a measured p90 to set it from — the design note asks for that measurement before a number
+// A placeholder priced against the schema's own ceiling (40 steps, one design's header and cut manifest stay under 10k chars), until the record's chars/estTokens of the first twenty build jobs give a measured p90 to set it from — the design note asks for that measurement before a number
 const ARTIFACT_CONTEXT_CAP_CHARS = 24_000;
 
 export const ARTIFACT_CONTEXT_KEY = 'artifactContext';
@@ -111,7 +111,7 @@ interface Slice {
   edges: Doc[];
 }
 
-// cm:why the order fields are shed in when a slice is over budget: rule test cases and wireframe pointers first (fetchable, and restated by the rule and screen they belong to), then descriptive prose; guards are in no tier
+// The order fields are shed in when a slice is over budget: rule test cases and wireframe pointers first (fetchable, and restated by the rule and screen they belong to), then descriptive prose; guards are in no tier
 const TRIM_TIERS: readonly { node: readonly string[]; edge: readonly string[] }[] = [
   { node: ['tests'], edge: [] },
   { node: ['wireframe'], edge: [] },
@@ -156,7 +156,7 @@ function readApproved(row: TracedDesignRow): { revision: number; doc: WorkflowWr
 
 function sliceOf(doc: WorkflowWrite): Slice {
   const steps = doc.steps.map((s): SliceStep => {
-    const node = 'node' in s && s.node ? ({ ...s.node } as Doc) : undefined;
+    const node = s.node ? ({ ...s.node } as Doc) : undefined;
     return {
       id: s.id,
       ...(s.title ? { title: s.title } : {}),

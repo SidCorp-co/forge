@@ -19,7 +19,7 @@ type LinkRow = {
   via: RequirementFeedbackVia;
 };
 
-// cm:why ISS-79: the one answer to "which feedback is about this requirement", read by the detail,
+// ISS-79: the one answer to "which feedback is about this requirement", read by the detail,
 // the standing's counts and the Feedback list's `requirement` filter alike, so the three never
 // disagree. An item belongs to a requirement through its target (the requirement, one of its issues,
 // a linked design, or a release that shipped one of its issues) or through its route (the issue, the

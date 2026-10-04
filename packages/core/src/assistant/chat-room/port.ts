@@ -60,7 +60,7 @@ export function rocketChatVenueId(namespace: string, rid: string, tmid?: string 
   return tmid ? `${namespace} ${rid} ${tmid}` : `${namespace} ${rid}`;
 }
 
-export interface RocketChatVenueParts {
+interface RocketChatVenueParts {
   namespace: string;
   rid: string;
   tmid: string | null;
@@ -75,7 +75,7 @@ export function parseRocketChatVenueId(externalId: string): RocketChatVenueParts
 }
 
 /** The connection a room is served through, and the REST credential it holds. */
-export interface VenueConnection {
+interface VenueConnection {
   connectionId: string;
   auth: RocketChatRestAuth;
 }

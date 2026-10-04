@@ -13,6 +13,7 @@ import {
   readBus,
   readLinkAs,
   recordView,
+  writtenView,
 } from './link-read.js';
 import {
   createBuilderRun,
@@ -57,8 +58,7 @@ function writerOf(c: Context<{ Variables: AuthVars }>): RecordWriter {
 
 function answer<W extends object>(c: Context, outcome: RecordOutcome<W>) {
   if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
-  const report = outcome.report ? { report: outcome.report } : {};
-  return c.json({ ...recordView(outcome.held), created: outcome.created, ...report });
+  return c.json(writtenView(outcome));
 }
 
 linkProjectRoutes.post('/:id/links', idParam, envelope, async (c) => {

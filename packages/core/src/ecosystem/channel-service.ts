@@ -11,8 +11,9 @@ import { announceGatePending, announcePublished } from './channel-signals.js';
 import { insertDraft, insertEvent, reserveNumber, rewriteDocument } from './channel-store.js';
 import { serve } from './channel-world.js';
 import { heldEcosystem } from './ecosystem-service.js';
+import { readInterfaces } from './interface-store.js';
 import { type EcosystemDocument, interfaceDocumentSchema } from './schema.js';
-import { readEcosystem, readInterfaces } from './store.js';
+import { readEcosystem } from './store.js';
 
 export interface DraftInput {
   type: unknown;

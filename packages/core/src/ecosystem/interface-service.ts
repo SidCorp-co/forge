@@ -14,6 +14,15 @@ import {
   versionKey,
 } from './interface-rules.js';
 import {
+  consumersOf,
+  type EdgeRow,
+  interfaceRevisionsBy,
+  putInterface,
+  readInterface,
+  readInterfaces,
+} from './interface-store.js';
+import { activeEcosystemIdsOf } from './membership-store.js';
+import {
   type CommitmentsSetter,
   commitmentsRefusal,
   commitmentsSetterOf,
@@ -26,17 +35,10 @@ import {
   interfaceDocumentSchema,
 } from './schema.js';
 import {
-  activeEcosystemIdsOf,
-  consumersOf,
-  type EdgeRow,
-  interfaceRevisionsBy,
   lockKeys,
   type ProjectRow,
   projectsWhere,
-  putInterface,
   readEcosystems,
-  readInterface,
-  readInterfaces,
   recordedVersions,
   type StoredDocument,
 } from './store.js';

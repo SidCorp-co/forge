@@ -5,26 +5,12 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { memories } from '../db/schema.js';
 
-const archivedIssueIds = (projectId: string) =>
-  sql`(SELECT ai.id::text FROM issues ai WHERE ai.project_id = ${projectId} AND ai.archived_at IS NOT NULL)`;
-
 /**
  * A memory row that is not the text of an archived issue, nor a fact extracted from one. `NOT IN`
  * over the project's archived ids is a hashed subplan, evaluated once per query rather than once
  * per memory row.
  */
-function liveIssueMemory(cols: { source: SQL; sourceRef: SQL; metadata: SQL }, projectId: string) {
-  const archived = archivedIssueIds(projectId);
-  return sql`((${cols.source} <> 'issue' OR ${cols.sourceRef} NOT IN ${archived}) AND coalesce(${cols.metadata}->>'issueId', '') NOT IN ${archived})`;
-}
-
 export function memoryOfLiveIssue(projectId: string): SQL {
-  return liveIssueMemory(
-    {
-      source: sql`${memories.source}`,
-      sourceRef: sql`${memories.sourceRef}`,
-      metadata: sql`${memories.metadata}`,
-    },
-    projectId,
-  );
+  const archived = sql`(SELECT ai.id::text FROM issues ai WHERE ai.project_id = ${projectId} AND ai.archived_at IS NOT NULL)`;
+  return sql`((${memories.source} <> 'issue' OR ${memories.sourceRef} NOT IN ${archived}) AND coalesce(${memories.metadata}->>'issueId', '') NOT IN ${archived})`;
 }

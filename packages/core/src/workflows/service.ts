@@ -6,15 +6,10 @@ import {
 } from '@forge/contracts/workflow-templates';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
-import { peopleOf } from '../lib/people.js';
+import { userNames } from '../lib/people.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { readProjectDocument, staleBase } from '../project-config/index.js';
-import {
-  designApproverRefusal,
-  designFingerprint,
-  designStatusAfterWrite,
-  designStatusAtCreate,
-} from './design.js';
+import { designApproverRefusal, designFingerprint, designStatusAfterWrite } from './design.js';
 import { baseRefusals } from './design-bases.js';
 import { designListReadingOf } from './design-standing.js';
 import {
@@ -153,7 +148,7 @@ export async function createWorkflow(input: {
     const holding = await workflowHolding(tx, projectId, doc.flow);
     if (holding) return { ok: false, refusals: [duplicateWorkflowRefusal(doc.flow, holding)] };
     const row = await insertWorkflow(tx, doc, writer.userId, {
-      designStatus: designStatusAtCreate(),
+      designStatus: 'draft',
       designFingerprint: designFingerprint(doc, templateFor(doc, facts.templates)),
       approvedRevision: null,
     });
@@ -273,7 +268,7 @@ export async function listWorkflowsAs(userId: string, projectId: string) {
   await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
   const rows = await workflowsOf(db, projectId);
   const [names, reasons, canDecide] = await Promise.all([
-    writerNames(rows),
+    userNames(rows.map((r) => r.writtenByUser)),
     returnReasonsOf(
       db,
       rows.filter((r) => r.designStatus === 'returned').map((r) => r.id),
@@ -292,17 +287,8 @@ export async function readWorkflowAs(userId: string, projectId: string, id: stri
     throw notFound(`project ${projectId} holds no workflow ${id}`);
   }
   const [names, canDecide] = await Promise.all([
-    writerNames([row]),
+    userNames([row.writtenByUser]),
     mayDecideDesigns(userId, projectId),
   ]);
   return listedView(row, canDecide, names.get(row.writtenByUser));
-}
-
-async function writerNames(rows: readonly StoredWorkflow[]): Promise<Map<string, string>> {
-  return userNames(rows.map((r) => r.writtenByUser));
-}
-
-export async function userNames(userIds: readonly (string | null)[]): Promise<Map<string, string>> {
-  const people = await peopleOf(userIds);
-  return new Map([...people].map(([id, p]) => [id, p.name]));
 }

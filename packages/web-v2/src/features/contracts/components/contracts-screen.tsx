@@ -10,8 +10,10 @@ import {
   type ListGroup,
   type ListRowView,
   ListSearch,
+  EnumBadge,
   PageTitle,
   ProjectLoader,
+  StatusBadge,
   rememberListOrigin,
   useGroupFold,
   usePeek,
@@ -28,7 +30,7 @@ import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useContractStanding } from "../hooks";
 import { CONTRACTS_LIST, contractHref } from "../routes";
 import type { ContractStandingRow } from "../types";
-import { ContractStateBadge, KindBadge, versionLine, WindowText } from "./contract-bits";
+import { versionLine, WindowText } from "./contract-bits";
 import { ContractPeek } from "./contract-peek";
 
 const GROUP_MODES = [
@@ -39,7 +41,7 @@ type GroupMode = (typeof GROUP_MODES)[number]["value"];
 
 const COLUMNS = { key: "Contract", title: "Title", state: "State", meta: "Window · last version" } as const;
 
-export function groupsOf(rows: ContractStandingRow[], mode: GroupMode, slug: string): ListGroup<ContractStandingRow>[] {
+function groupsOf(rows: ContractStandingRow[], mode: GroupMode, slug: string): ListGroup<ContractStandingRow>[] {
   if (mode === "direction") {
     return [
       { id: "provided", label: `Provided by ${slug}`, tone: null, rows: rows.filter((r) => r.direction === "provided") },
@@ -56,7 +58,7 @@ export function groupsOf(rows: ContractStandingRow[], mode: GroupMode, slug: str
 }
 
 function factsLine(r: ContractStandingRow): ReactNode[] {
-  const parts: ReactNode[] = [<KindBadge key="kind" kind={r.kind} />];
+  const parts: ReactNode[] = [<EnumBadge key="kind" family="interfaceType" value={r.kind} />];
   parts.push(r.direction === "consumed" ? `From ${r.provider.slug}` : "Provided");
   parts.push(versionLine(r));
   if (r.direction === "provided" && r.consumers.total > 0) parts.push(`Consumers ${r.consumers.total}${r.consumers.behind ? ` · behind ${r.consumers.behind}` : ""}`);
@@ -75,7 +77,7 @@ const rowOf =
     href: contractHref(slug, r.ref),
     title: r.title,
     facts: factsLine(r),
-    state: <ContractStateBadge row={r} />,
+    state: <StatusBadge family="contractState" value={r.state} />,
     waitingOn: <WaitingOn w={r.waitingOn} />,
     owner: <WindowText row={r} />,
     age: r.touchedAt ? { text: formatAge(r.touchedAt), title: `Last version recorded ${formatStamp(r.touchedAt)}` } : null,

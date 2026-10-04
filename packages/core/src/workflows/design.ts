@@ -10,8 +10,6 @@ import { type PermissionFacts, permissionRefusal } from '../permissions/index.js
 import { impliedKind } from './edges.js';
 import { stepsOf, type WorkflowWrite } from './schema.js';
 
-export type { DesignStatus } from '@forge/contracts/design-status';
-
 export const DESIGN_DECISIONS = ['approve', 'return'] as const;
 export type DesignDecision = (typeof DESIGN_DECISIONS)[number];
 
@@ -48,7 +46,7 @@ export function designFingerprint(doc: WorkflowWrite, template: WorkflowTemplate
     title: s.title ?? null,
     does: s.does,
     after: [...s.after].sort(),
-    node: 'node' in s && s.node ? nodeShape(s.node) : null,
+    node: s.node ? nodeShape(s.node) : null,
   }));
   const implied = (e: { from: string; to: string }) => {
     if (!template) return null;
@@ -84,7 +82,6 @@ export function designStatusAfterWrite(
 }
 
 /** The lifecycle a workflow enters when it is first written: every document is a design. */
-export const designStatusAtCreate = (): DesignStatus => 'draft';
 
 export function proposeRefusal(
   status: DesignStatus | null,

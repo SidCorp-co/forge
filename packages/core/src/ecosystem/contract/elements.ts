@@ -1,8 +1,9 @@
 import Ajv2020 from 'ajv/dist/2020.js';
 import { type SdlSchema, sdlElements } from './graphql-sdl.js';
+import { toolsOf } from './mcp-tools-diff.js';
 import { openApiElements } from './openapi-diff.js';
 import { boundedFormats, linearRegExp, unsafePatterns } from './safe-regex.js';
-import { jsonSchemaElements, toolsOf } from './schema-diff.js';
+import { jsonSchemaElements } from './schema-diff.js';
 
 export const INDEXED_TYPES = ['openapi', 'mcp-tools', 'json-schema', 'graphql'] as const;
 export type IndexedType = (typeof INDEXED_TYPES)[number];
