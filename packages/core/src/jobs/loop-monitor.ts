@@ -523,7 +523,7 @@ function resultMissCandidateQuery(scope: LoopScope = {}, limit?: number): SQL {
   });
 }
 
-export async function reapResultMisses(
+async function reapResultMisses(
   _now: Date = new Date(),
   scope: LoopScope = {},
 ): Promise<JobAxisReapResult> {

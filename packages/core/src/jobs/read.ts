@@ -11,17 +11,6 @@ export async function issueProjectId(issueId: string): Promise<string | null> {
     .limit(1);
   return row?.projectId ?? null;
 }
-
-/** An issue's status, or null when there is no such issue. */
-export async function issueStatusOf(issueId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ status: issues.status })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  return row?.status ?? null;
-}
-
 /** A project's jobs, newest queued first, one page with the filtered total. */
 export async function listProjectJobs(
   projectId: string,
@@ -69,16 +58,4 @@ export async function listJobEvents(
   if (sinceSeq !== undefined) whereClauses.push(gt(jobEvents.seq, sinceSeq));
   const where = whereClauses.length === 1 ? whereClauses[0] : and(...whereClauses);
   return db.select().from(jobEvents).where(where).orderBy(asc(jobEvents.seq)).limit(limit);
-}
-
-/** The device a job is dispatched to and the issue it serves, or null. */
-export async function jobDispatchOf(
-  jobId: string,
-): Promise<{ deviceId: string | null; issueId: string | null } | null> {
-  const [job] = await db
-    .select({ deviceId: jobs.deviceId, issueId: jobs.issueId })
-    .from(jobs)
-    .where(eq(jobs.id, jobId))
-    .limit(1);
-  return job ?? null;
 }

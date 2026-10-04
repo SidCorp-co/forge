@@ -24,7 +24,6 @@ import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { refuseJob } from './refusals.js';
 import type { RetryOutcome } from './retry.js';
 import { ackJob, confirmJobKill, finishJobFromRunner, reclaimReapedJob } from './service.js';
-import { jobTurnVerdictRoutes } from './turn-verdict-routes.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -71,7 +70,6 @@ async function loadJob(jobId: string) {
 }
 
 export const jobLifecycleDeviceRoutes = new Hono<{ Variables: DeviceVars }>();
-jobLifecycleDeviceRoutes.route('/', jobTurnVerdictRoutes);
 
 // ISS-449 (ISS-442 C3 / I3) — explicit runner ACK for the dispatch→ack hop.
 // The runner calls this right after its pre-claim preflight passes (ISS-451)

@@ -4,11 +4,6 @@ export { bootstrapRunnerAdapters } from './bootstrap.js';
 export { AGENT_NAMING_MIN_RUNNER, atLeastVersion, claimCapableSql } from './device-cap.js';
 export { reapGhostRunners } from './ghost-reaper.js';
 export { mirrorHeartbeatToRunners } from './heartbeat-mirror.js';
-export {
-  handleRunnerRegister,
-  handleRunnerUnregister,
-  handleRunnerUpdate,
-} from './heartbeat-ws.js';
 export { type RunnerHold, type RunnerHoldReason, releaseIneligibleRunners } from './ineligible.js';
 export {
   DEFAULT_LIMIT_COOLDOWN_MS,

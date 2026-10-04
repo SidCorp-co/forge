@@ -215,7 +215,7 @@ export async function installBuiltinSkill(
   return { skillId: existing.id };
 }
 
-export interface UpdateProjectSkillPatch {
+interface UpdateProjectSkillPatch {
   name?: string | undefined;
   description?: string | undefined;
   skillMd?: string | undefined;
