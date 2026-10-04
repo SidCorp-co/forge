@@ -46,9 +46,9 @@ import {
   buildContextFromBinding,
   findBindingWithConnectionById,
   listBindingsForProject,
-  setBindingInboundSecret,
   updateConnection,
 } from './store.js';
+import { setBindingInboundSecret } from '../project-config/binding-store.js';
 import { requireCan, requireOrgHeld } from '../permissions/index.js';
 
 // Owner-scoped connection CRUD lives in its own module; re-exported so

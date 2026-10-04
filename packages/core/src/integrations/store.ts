@@ -210,18 +210,6 @@ export async function softDeleteConnection(id: string): Promise<void> {
     .where(eq(integrationConnections.id, id));
 }
 
-export async function setBindingInboundSecret(
-  id: string,
-  integrationSecret: string,
-): Promise<IntegrationBindingRow | null> {
-  const [row] = await db
-    .update(integrationBindings)
-    .set({ integrationSecret, updatedAt: new Date() })
-    .where(eq(integrationBindings.id, id))
-    .returning();
-  return row ?? null;
-}
-
 /** A single binding (+ its connection) by binding id, regardless of active state. */
 export async function findBindingWithConnectionById(
   id: string,

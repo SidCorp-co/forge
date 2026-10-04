@@ -136,6 +136,16 @@ export async function setCurrentStep(runId: string, step: string): Promise<void>
     .where(and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])));
 }
 
+/** Record on a run's metadata, under `key`, the moment something happened to it. */
+export async function stampRunMetadataTime(runId: string, key: string): Promise<void> {
+  await db
+    .update(pipelineRuns)
+    .set({
+      metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object(${key}::text, to_jsonb(now()))`,
+    })
+    .where(eq(pipelineRuns.id, runId));
+}
+
 /**
  * Substep markers stamped on `current_step` while a deploy is being proved.
  * They live here rather than beside the dispatcher because the close path is

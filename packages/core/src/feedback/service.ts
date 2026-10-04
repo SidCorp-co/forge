@@ -15,14 +15,14 @@ import type {
 import type { NodeRef } from '@forge/contracts/workflow-health';
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
-import { SUGGESTION_MACHINE } from '@forge/contracts/suggestion-machine';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
-import { itemEmbeddings } from '../db/schema-item-embeddings.js';
-import { mockups } from '../db/schema-mockups.js';
+import { deleteFeedbackEmbedding } from '../embeddings/item-writer.js';
+import { deleteFeedbackMockups } from '../mockups/index.js';
 import { agentQuestions } from '../db/schema-questions.js';
-import { suggestions } from '../db/schema-suggestions.js';
+import { deleteFeedbackQuestions } from '../questions/index.js';
+import { redactFeedbackSuggestions } from '../suggestions/index.js';
 import { permissionFactsOf, requireCan } from '../permissions/index.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
@@ -357,33 +357,11 @@ export async function redactReporterData(input: {
       .where(eq(feedbackAttachments.feedbackId, row.id))
       .returning({ path: feedbackAttachments.storagePath });
     paths = gone.map((g) => g.path);
-    await tx.delete(itemEmbeddings).where(eq(itemEmbeddings.feedbackId, row.id));
-    await tx.delete(agentQuestions).where(eq(agentQuestions.feedbackId, row.id));
+    await deleteFeedbackEmbedding(tx, row.id);
+    await deleteFeedbackQuestions(tx, row.id);
     const now = new Date();
     const why = `reporter data of ${feedbackKey(row.fbSeq)} deleted`;
-    await transition(tx, SUGGESTION_MACHINE, {
-      to: 'withdrawn',
-      from: 'proposed',
-      set: { decidedAt: now, reason: why },
-      where: eq(suggestions.feedbackId, row.id),
-      reason: why,
-      actor: feedbackKernelActor(actor),
-      source: 'feedback-redact',
-      returning: ['id'],
-    });
-    await tx
-      .update(suggestions)
-      .set({ payload: null, payloadPurgedAt: now })
-      .where(
-        and(
-          eq(suggestions.feedbackId, row.id),
-          inArray(suggestions.status, ['rejected', 'stale', 'withdrawn']),
-        ),
-      );
-    await tx
-      .update(suggestions)
-      .set({ payload: { redacted: true } })
-      .where(and(eq(suggestions.feedbackId, row.id), eq(suggestions.status, 'accepted')));
+    await redactFeedbackSuggestions(tx, row.id, { why, now, actor: feedbackKernelActor(actor) });
     await tx
       .update(feedback)
       .set({
@@ -394,11 +372,7 @@ export async function redactReporterData(input: {
         updatedAt: now,
       })
       .where(eq(feedback.id, row.id));
-    const sketches = await tx
-      .delete(mockups)
-      .where(eq(mockups.feedbackId, row.id))
-      .returning({ path: mockups.storagePath });
-    paths.push(...sketches.map((g) => g.path));
+    paths.push(...(await deleteFeedbackMockups(tx, row.id)));
     await decide(tx, row, actor, { decision: 'redacted' });
     return null;
   });

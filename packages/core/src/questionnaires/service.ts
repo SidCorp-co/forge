@@ -30,6 +30,7 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { dataPolicyOf, storedAnswers } from '../lib/data-egress.js';
 import { permissionFactsOf } from '../permissions/index.js';
+import { insertBatchQuestions } from '../questions/index.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import {
   type BatchRow,
@@ -221,7 +222,8 @@ export async function postQuestionnaireIn(
     askedByLabel: input.authorLabel,
     askedByKey: null,
   };
-  await tx.insert(agentQuestions).values(
+  await insertBatchQuestions(
+    tx,
     input.items.map((item, position) => ({
       id: crypto.randomUUID(),
       projectId: input.projectId,

@@ -10,9 +10,9 @@
 
 import { SUGGESTION_PAYLOADS } from '@forge/contracts/suggestions';
 import { SUGGESTION_MACHINE } from '@forge/contracts/suggestion-machine';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { announceTriage } from '../feedback/triage.js';
@@ -28,7 +28,7 @@ import {
 import { emitIssueFieldUpdate } from '../issues/update-hook.js';
 import { permissionRefusalFor, requireCan } from '../permissions/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { notAnEdgeError, transition } from '../lifecycle/transition.js';
+import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { hooks } from '../pipeline/hooks.js';
 import { lockRequirements } from '../requirements/service.js';
 import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
@@ -346,4 +346,38 @@ export async function withdrawSuggestion(input: {
   });
   if (refusals) return { ok: false, refusals };
   return answer(input.id);
+}
+
+/**
+ * A feedback's reporter data is deleted (UC15): its proposed suggestions are withdrawn, a decided
+ * one's payload is purged, and an accepted one keeps only that it was redacted.
+ */
+export async function redactFeedbackSuggestions(
+  tx: Tx,
+  feedbackId: string,
+  args: { why: string; now: Date; actor: KernelActor },
+): Promise<void> {
+  await transition(tx, SUGGESTION_MACHINE, {
+    to: 'withdrawn',
+    from: 'proposed',
+    set: { decidedAt: args.now, reason: args.why },
+    where: eq(suggestions.feedbackId, feedbackId),
+    reason: args.why,
+    actor: args.actor,
+    source: 'feedback-redact',
+    returning: ['id'],
+  });
+  await tx
+    .update(suggestions)
+    .set({ payload: null, payloadPurgedAt: args.now })
+    .where(
+      and(
+        eq(suggestions.feedbackId, feedbackId),
+        inArray(suggestions.status, ['rejected', 'stale', 'withdrawn']),
+      ),
+    );
+  await tx
+    .update(suggestions)
+    .set({ payload: { redacted: true } })
+    .where(and(eq(suggestions.feedbackId, feedbackId), eq(suggestions.status, 'accepted')));
 }

@@ -5,7 +5,8 @@
  */
 
 import { createHash } from 'node:crypto';
-import { db } from '../db/client.js';
+import { eq } from 'drizzle-orm';
+import { db, type Tx } from '../db/client.js';
 import { type ItemEmbeddingStatus, itemEmbeddings } from '../db/schema-item-embeddings.js';
 import { embeddingsConfigured, embedWithModel } from '../integrations/embeddings/index.js';
 import { dataPolicyOf, type EgressSurface, egressText } from '../lib/data-egress.js';
@@ -80,4 +81,9 @@ export async function writeItemEmbedding(head: ItemHead): Promise<ItemEmbeddingS
     await upsert(head, hash, { status: 'failed', error });
     return 'failed';
   }
+}
+
+/** The embedding of a feedback, removed with what the reporter gave (UC15). */
+export async function deleteFeedbackEmbedding(tx: Tx, feedbackId: string): Promise<void> {
+  await tx.delete(itemEmbeddings).where(eq(itemEmbeddings.feedbackId, feedbackId));
 }

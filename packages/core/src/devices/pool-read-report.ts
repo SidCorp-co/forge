@@ -8,9 +8,8 @@
  * holds the one definition of blind and intermittent, and this module only reads it.
  */
 
-import { sql } from 'drizzle-orm';
+import { storeRunnerPoolReads } from '../runners/index.js';
 import { z } from 'zod';
-import { db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { WIRE_UNITS } from './gate-report.js';
 
@@ -99,15 +98,7 @@ export function readHeartbeatPool(pool: unknown): { report?: PoolReport; refused
  */
 async function storePoolReport(deviceId: string, report: PoolReport, now: Date): Promise<void> {
   const stamped = report.projects.map((p) => ({ ...p, receivedAt: now.toISOString() }));
-  await db.execute(sql`
-    UPDATE runners
-    SET pool_read = (
-      SELECT e.value FROM jsonb_array_elements(${JSON.stringify(stamped)}::jsonb) AS e
-      WHERE e.value->>'projectId' = runners.project_id::text
-      LIMIT 1
-    )
-    WHERE device_id = ${deviceId}
-  `);
+  await storeRunnerPoolReads(deviceId, stamped);
 }
 
 /**
