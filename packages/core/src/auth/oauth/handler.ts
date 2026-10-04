@@ -11,6 +11,8 @@ import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
+import { setAuthCookie } from '../../credentials/cookie.js';
+import { signUserToken } from '../../credentials/jwt.js';
 import { db } from '../../db/client.js';
 import { oauthAccounts, users } from '../../db/schema.js';
 import {
@@ -25,8 +27,6 @@ import {
 import { logger } from '../../logger.js';
 import { ensurePersonalOrg } from '../../orgs/service.js';
 import { assertNotAgentUser } from '../agent-login-gate.js';
-import { setAuthCookie } from '../../credentials/cookie.js';
-import { signUserToken } from '../../credentials/jwt.js';
 import { getCallbackUrl, getProvider } from './providers.js';
 import {
   clearStateCookie,

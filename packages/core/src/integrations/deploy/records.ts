@@ -1,9 +1,9 @@
-import type { RecordedEnvironmentState } from '../schema.js';
+// The deploy port's contract: what a provider's deployment history reads as. project-config records
+// it into an environment's state, whose schema must keep admitting every value named here.
 
-type RecordedDeployment = RecordedEnvironmentState['deployment'];
-export type DeploymentStatus = RecordedDeployment['status'];
-export type DeployProvider = RecordedDeployment['provider'];
-export type ArtifactKind = NonNullable<RecordedEnvironmentState['artifact']>['kind'];
+export type DeploymentStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type DeployProvider = 'coolify' | 'shopify' | 'epodsystem' | 'autoflow';
+export type ArtifactKind = 'container-image' | 'theme' | 'bundle';
 
 export interface DeploymentRecord {
   readonly id: string;

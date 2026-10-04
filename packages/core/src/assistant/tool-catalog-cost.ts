@@ -12,8 +12,11 @@
  */
 
 import postgres from 'postgres';
-import { countAnthropicInputTokens, toRequestBody } from '../integrations/llm/anthropic.js';
-import type { ChatTool } from '../integrations/llm/types.js';
+import {
+  type ChatTool,
+  countAnthropicInputTokens,
+  toRequestBody,
+} from '../integrations/llm/index.js';
 import { catalogOnlyContext } from './tools/principal.js';
 import { buildProjectToolset, CHAT_TOOL_ALLOWLIST } from './tools/registry.js';
 

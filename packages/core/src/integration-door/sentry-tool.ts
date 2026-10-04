@@ -16,20 +16,17 @@
 
 import { z } from 'zod';
 import {
-  type ContextScopedMcpToolFactory,
-  type McpContext,
-  zodToMcpSchema,
-} from '../../lib/tool.js';
-import { requireCan } from '../../permissions/index.js';
-import { resolveEffectiveProjectId } from '../../projects/index.js';
-import {
+  isSentryRefusal,
   readProjectSentryIssue,
   readProjectSentryIssues,
   SENTRY_AGENT_STATUSES,
+  SENTRY_LIST_MAX_LIMIT,
   type SentryAgentListRequest,
-} from './agent-read.js';
-import { SENTRY_LIST_MAX_LIMIT } from './listing.js';
-import { isSentryRefusal, SentryRefusal } from './refusals.js';
+  SentryRefusal,
+} from '../integrations/sentry/index.js';
+import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
+import { requireCan } from '../permissions/index.js';
+import { resolveEffectiveProjectId } from '../projects/index.js';
 
 const inputSchema = z
   .object({

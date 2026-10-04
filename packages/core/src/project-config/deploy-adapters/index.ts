@@ -1,11 +1,11 @@
 import type { EnvironmentStateRefusalCode } from '@forge/contracts/project-config';
-import { getAdapter } from '../../integrations/registry.js';
+import type { TargetedDeployAdapter } from '../../integrations/deploy/index.js';
 import {
   buildContextFromBinding,
   findBindingWithConnectionById,
-} from '../../integrations/store.js';
+  getAdapter,
+} from '../../integrations/index.js';
 import { refuser } from '../../lib/refusal.js';
-import type { TargetedDeployAdapter } from './types.js';
 
 const refuse = refuser<EnvironmentStateRefusalCode>('BINDING_ROLE_MISMATCH');
 

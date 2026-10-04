@@ -38,5 +38,11 @@ export {
   type SourceHostPurpose,
   sourceHostForBinding,
 } from './resolve.js';
-export { forgeSourceTool } from './tool.js';
 export type * from './types.js';
+export type {
+  HostCommit,
+  LiveDivergence,
+  ReviewEvent,
+  SourceHost,
+  WaitingCommit,
+} from './types.js';

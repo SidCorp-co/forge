@@ -14,35 +14,33 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { loadOrgRole } from '../../lib/authz.js';
-import { refuser } from '../../lib/refusal.js';
-import { logger } from '../../observability/logger.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
-import { badRequest } from '../../middleware/route-errors.js';
-import { zValidator } from '../../middleware/zod-validator.js';
-import { resolveApiBaseUrl } from '../inbound-door.js';
+import {
+  buildAppManifest,
+  connectProjectOf,
+  convertManifestCode,
+  findConnectionOwningInstallation,
+  listInstallationRepositories,
+  manifestPostUrl,
+  signConnectState,
+  verifyConnectState,
+} from '../integrations/github/index.js';
 import {
   assertVaultConfigured,
-  notFound,
-} from '../route-helpers.js';
-import {
   createConnection,
   decryptConnectionSecrets,
   type IntegrationConnectionRow,
   listBindingsForProject,
   listConnectionsForPrincipalUser,
-} from '../store.js';
-import {
-  buildAppManifest,
-  convertManifestCode,
-  manifestPostUrl,
-  signConnectState,
-  verifyConnectState,
-} from './connect.js';
-import { findConnectionOwningInstallation } from './install-resolve.js';
-import { listInstallationRepositories } from './repositories.js';
-import { connectProjectOf } from './read.js';
-import { requireCan, requireOrgHeld } from '../../permissions/index.js';
+  notFound,
+  resolveApiBaseUrl,
+} from '../integrations/index.js';
+import { loadOrgRole } from '../lib/authz.js';
+import { refuser } from '../lib/refusal.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { badRequest } from '../middleware/route-errors.js';
+import { zValidator } from '../middleware/zod-validator.js';
+import { logger } from '../observability/logger.js';
+import { requireCan, requireOrgHeld } from '../permissions/index.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 

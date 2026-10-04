@@ -3,7 +3,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
 import { projectSecrets } from '../db/schema-project-config.js';
-import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
+import { decryptSecret, isVaultConfigured } from '../integrations/index.js';
 import { parseSecretRef } from '../project-config/documents.js';
 
 export const SECRET_RESOLVE_KIND = 'secret_resolve' as const;

@@ -3,7 +3,7 @@
  * routes and the MCP tool both ask it here, so neither door decides it alone.
  */
 
-import { type PermissionActor, requireCan } from '../../permissions/index.js';
+import { type PermissionActor, requireCan } from '../permissions/index.js';
 
 export async function requireCoolifyRun(
   actor: PermissionActor,

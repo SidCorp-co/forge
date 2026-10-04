@@ -6,7 +6,7 @@
  * `allowedActions` allowlist plus an optional arg `guard`.
  */
 
-import type { ChatTool } from '../../integrations/llm/types.js';
+import type { ChatTool } from '../../integrations/llm/index.js';
 import { RefusalError } from '../../lib/refusal.js';
 import {
   type ContextScopedMcpToolFactory,

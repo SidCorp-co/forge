@@ -45,7 +45,7 @@ a vendor SDK, a `fetch` to a vendor host, or a vendor's types.
 | Port | Directory under `integrations` | Vendors | Bound to |
 |---|---|---|---|
 | source hosting | `source-host` over `github`, `gitlab` | GitHub, GitLab | a project's binding |
-| deploy | `coolify`, `deploy`; the contract is `packages/core/src/project-config/deploy-adapters/types.ts` | Coolify; a deployed app's runtime probe | a project's binding |
+| deploy | `coolify`, `deploy`; the contract is `packages/core/src/integrations/deploy/records.ts` | Coolify; a deployed app's runtime probe | a project's binding |
 | error tracking | `sentry` | Sentry | a project's binding |
 | storefront | `epodsystem`, `autoflow` | ePodSystem, Autoflow | a project's binding |
 | documents | `google` | Google Sheets | a project's binding |

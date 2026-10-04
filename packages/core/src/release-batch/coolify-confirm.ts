@@ -1,19 +1,26 @@
-import { INTEGRATIONS_QUEUE_NAME } from '../../jobs/queue-name.js';
-import { logger } from '../../observability/logger.js';
+import {
+  buildClient,
+  type CoolifyConfig,
+  type CoolifySecrets,
+} from '../integrations/coolify/index.js';
+import {
+  buildContextFromBinding,
+  findBindingById,
+  findConnectionById,
+  recordDelivery,
+} from '../integrations/index.js';
+import { logger } from '../observability/logger.js';
 import {
   isCloseDeferred,
   resolveDeployGate,
   settleDeployTarget,
   targetHoldKey,
-} from '../../pipeline/deploy-confirmations.js';
-import { deployHoldsLocks, releaseDeployLocksForRun } from '../../pipeline/deploy-lock.js';
-import { closeRun, RELEASE_DEPLOY_DONE_STEP, setCurrentStep } from '../../pipeline/runs.js';
-import { boss } from '../../queue/boss.js';
-import { recordDelivery } from '../deliveries.js';
-import { buildContextFromBinding, findBindingById, findConnectionById } from '../store.js';
-import { enqueueCoolifyHealthGate, healthGateFor } from './health-gate.js';
-import { buildClient } from './log-fetch.js';
-import type { CoolifyConfig, CoolifySecrets } from './types.js';
+} from '../pipeline/deploy-confirmations.js';
+import { deployHoldsLocks, releaseDeployLocksForRun } from '../pipeline/deploy-lock.js';
+import { closeRun, RELEASE_DEPLOY_DONE_STEP, setCurrentStep } from '../pipeline/runs.js';
+import { boss } from '../queue/boss.js';
+import { INTEGRATIONS_QUEUE_NAME } from '../queue/names.js';
+import { enqueueCoolifyHealthGate, healthGateFor } from './coolify-health-gate.js';
 
 export interface CoolifyConfirmJob {
   jobKind: 'coolify.confirm';

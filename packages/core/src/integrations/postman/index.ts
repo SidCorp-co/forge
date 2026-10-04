@@ -1,1 +1,1 @@
-export { integrationTargetRoutes } from './target-routes.js';
+export type { PostmanConfig } from './types.js';

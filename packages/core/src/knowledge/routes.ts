@@ -11,6 +11,7 @@ import {
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireCan } from '../permissions/index.js';
 import {
   ALWAYS_INJECT_GUARANTEE_NOTE,
   ALWAYS_INJECT_MAX_CHARS,
@@ -24,7 +25,6 @@ import {
   upsertKnowledgeInputSchema,
 } from './service.js';
 import { runUnifiedSearch } from './unified-search.js';
-import { requireCan } from '../permissions/index.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 /**

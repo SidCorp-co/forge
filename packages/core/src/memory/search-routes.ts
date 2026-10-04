@@ -10,8 +10,8 @@ import {
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { memorySearchStrategies, runMemorySearch } from './search-service.js';
 import { requireCan } from '../permissions/index.js';
+import { memorySearchStrategies, runMemorySearch } from './search-service.js';
 
 const searchBodySchema = z.object({
   projectId: z.uuid(),

@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { getIntegration } from '../integrations/registry.js';
-import { effectiveConfig } from '../integrations/store.js';
+import { effectiveConfig, getIntegration } from '../integrations/index.js';
 import { getKnowledgeEntry } from '../knowledge/service.js';
 import type { NamedEnvironment } from '../project-config/release-path.js';
 import { type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
@@ -12,8 +11,8 @@ import {
   type ReleasePlan,
   type ReleaseRollback,
 } from './plan.js';
-import type { VerifyConfig } from './verify.js';
 import { blockerRefusal } from './refuse.js';
+import type { VerifyConfig } from './verify.js';
 
 export type {
   CloseVerification,

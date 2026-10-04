@@ -13,39 +13,32 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { DEPLOY_CONFIRM_WINDOW_MS } from '../../pipeline/deploy-confirmations.js';
-import { liveActionNeedsHumanConfirm } from '../../pipeline/release-coolify.js';
-import { findLastOutbound, recordDelivery, updateDelivery } from '../deliveries.js';
-import { isPreviousCredentialValid } from '../rotation.js';
-import { buildContextFromBinding } from '../store.js';
-import { CoolifyApiError, CoolifyClient } from './client.js';
+import {
+  buildClient,
+  CoolifyApiError,
+  type CoolifyApplicationSummary,
+  type CoolifyConfig,
+  type CoolifyRollbackImage,
+  type CoolifySecrets,
+  type CoolifyTarget,
+  summarizeApplication,
+} from '../integrations/coolify/index.js';
+import {
+  buildContextFromBinding,
+  findLastOutbound,
+  recordDelivery,
+  updateDelivery,
+} from '../integrations/index.js';
+import { DEPLOY_CONFIRM_WINDOW_MS } from '../pipeline/deploy-confirmations.js';
+import { liveActionNeedsHumanConfirm } from '../pipeline/release-coolify.js';
 import {
   activeCoolifyIntegrations,
   CoolifyCommandError,
-  refuseCoolify,
   type CoolifyIntegrationRow,
+  refuseCoolify,
   resolveIntegrationRow,
-} from './commands.js';
-import { enqueueCoolifyConfirm } from './confirm.js';
-import { buildClient } from './log-fetch.js';
-import type {
-  CoolifyApplicationResponse,
-  CoolifyConfig,
-  CoolifyRollbackImage,
-  CoolifySecrets,
-  CoolifyTarget,
-} from './types.js';
-
-/** One application as the target picker shows it. */
-export interface CoolifyApplicationSummary {
-  uuid: string;
-  name: string | null;
-  fqdn: string | null;
-  gitRepository: string | null;
-  gitBranch: string | null;
-  gitCommitSha: string | null;
-  status: string | null;
-}
+} from './coolify-commands.js';
+import { enqueueCoolifyConfirm } from './coolify-confirm.js';
 
 /** A bound target with the identity Coolify reports for it. */
 export interface CoolifyTargetIdentity extends CoolifyApplicationSummary {
@@ -72,32 +65,6 @@ export interface CoolifyControlOutcome {
   detail?: string;
 }
 
-function summarize(app: CoolifyApplicationResponse): CoolifyApplicationSummary {
-  return {
-    uuid: app.uuid,
-    name: app.name ?? null,
-    fqdn: app.fqdn ?? null,
-    gitRepository: app.git_repository ?? null,
-    gitBranch: app.git_branch ?? null,
-    gitCommitSha: app.git_commit_sha ?? null,
-    status: app.status ?? null,
-  };
-}
-
-/**
- * The applications a Coolify credential can see. Takes the credential rather
- * than a binding so the settings picker works on the create form, before any
- * connection is persisted — the same two-mode shape `rocketchat/rooms` uses.
- */
-export async function fetchCoolifyApplications(auth: {
-  baseUrl: string;
-  apiToken: string;
-  previousApiToken?: string;
-}): Promise<CoolifyApplicationSummary[]> {
-  const client = new CoolifyClient(auth);
-  return (await client.listApplications()).map(summarize);
-}
-
 /**
  * The same list, for an integration Forge already holds the credential for —
  * what the MCP tool and the bound-target panel use.
@@ -110,7 +77,7 @@ export async function listApplicationsForIntegration(input: {
   const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(row.pair);
   return {
     integrationId: row.id,
-    applications: (await buildClient(ctx).listApplications()).map(summarize),
+    applications: (await buildClient(ctx).listApplications()).map(summarizeApplication),
   };
 }
 
@@ -178,7 +145,7 @@ export async function resolveCoolifyTargets(input: {
     targets: targetsOf(row).map((t) => {
       const app = byUuid.get(t.resourceUuid);
       const identity = app
-        ? summarize(app)
+        ? summarizeApplication(app)
         : {
             uuid: t.resourceUuid,
             name: null,
@@ -406,19 +373,4 @@ async function performControl(args: {
     });
     throw new CoolifyCommandError(message);
   }
-}
-
-/** Re-exported so a surface can build a picker client from stored secrets. */
-export function credentialFromSecrets(
-  config: CoolifyConfig,
-  secrets: CoolifySecrets,
-): { baseUrl: string; apiToken: string; previousApiToken?: string } {
-  const auth: { baseUrl: string; apiToken: string; previousApiToken?: string } = {
-    baseUrl: config.baseUrl,
-    apiToken: secrets.apiToken,
-  };
-  if (secrets.previousApiToken && isPreviousCredentialValid(secrets)) {
-    auth.previousApiToken = secrets.previousApiToken;
-  }
-  return auth;
 }

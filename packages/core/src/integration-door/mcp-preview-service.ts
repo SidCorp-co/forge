@@ -1,13 +1,19 @@
 import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import type { BindingRole } from '../db/schema.js';
+import {
+  type BindingWithConnection,
+  directMcpIntegrations,
+  effectiveConfig,
+  grantHolds,
+  type IntegrationDeclaration,
+  type IntegrationProvider,
+  listAgentGrantedBindings,
+  listBindingsForProject,
+  mcpServerNameFor,
+  toIso,
+} from '../integrations/index.js';
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { refuser } from '../lib/refusal.js';
-import { grantHolds } from './agent-access.js';
-import { listAgentGrantedBindings } from './agent-access-store.js';
-import { directMcpIntegrations, mcpServerNameFor } from './registry.js';
-import { toIso } from './route-helpers.js';
-import { type BindingWithConnection, effectiveConfig, listBindingsForProject } from './store.js';
-import type { IntegrationDeclaration, IntegrationProvider } from './types.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 

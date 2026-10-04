@@ -24,7 +24,7 @@ import {
 } from '../db/schema.js';
 import { assertSafeSshRepoUrl } from '../git/ssh-host-guard.js';
 import { derivePublicFromPrivate, generateSshKeypair, testSshConnection } from '../git/ssh-keys.js';
-import { decryptSecret, encryptSecret, isVaultConfigured } from '../integrations/vault.js';
+import { decryptSecret, encryptSecret, isVaultConfigured } from '../integrations/index.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { RefusalError } from '../lib/refusal.js';
 import { logger } from '../logger.js';

@@ -1,4 +1,4 @@
-import { PROBE_TIMEOUT_MS } from '../integrations/deploy/runtime-probe.js';
+import { PROBE_TIMEOUT_MS } from '../integrations/deploy/index.js';
 import { deployAdapterForBinding } from './deploy-adapters/index.js';
 import { type EnvironmentStateDeps, resolveEnvironmentState } from './environment-state.js';
 import type { NamedEnvironment } from './release-path.js';

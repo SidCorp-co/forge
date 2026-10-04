@@ -1,13 +1,20 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
+import {
+  type BindingWithConnection,
+  effectiveConfig,
+  getIntegration,
+  type IntegrationCapabilities,
+  type IntegrationProvider,
+  listBindingsForProject,
+  listIntegrations,
+  notFound,
+  toIso,
+} from '../integrations/index.js';
+import { hostOfRepository } from '../integrations/source-host/index.js';
 import { readDeployMap } from '../project-config/release-path.js';
 import { readDeclaredSource, webUrlOf } from '../project-config/source.js';
-import { getIntegration, listIntegrations } from './registry.js';
-import { notFound, toIso } from './route-helpers.js';
-import { hostOfRepository } from './source-host/resolve.js';
-import { type BindingWithConnection, effectiveConfig, listBindingsForProject } from './store.js';
-import type { IntegrationCapabilities, IntegrationProvider } from './types.js';
 
 type CardStatus =
   | 'connected'

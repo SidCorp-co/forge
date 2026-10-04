@@ -11,16 +11,20 @@
 
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { eq } from 'drizzle-orm';
+import { insertChatLog } from '../chat-logs/service.js';
 import { env } from '../config/env.js';
 import { contentLanguageBlock } from '../content-language/block.js';
 import { readContentLanguage } from '../content-language/read.js';
 import { db as defaultDb } from '../db/client.js';
-import { insertChatLog } from '../chat-logs/service.js';
 import { appConfig, projects } from '../db/schema.js';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
-import { defaultChatProviderId } from '../integrations/llm/bootstrap.js';
-import { type ChatTurnKind, resolveForProject } from '../integrations/llm/registry.js';
-import type { ChatResponseFormat, ChatStreamEvent } from '../integrations/llm/types.js';
+import {
+  type ChatResponseFormat,
+  type ChatStreamEvent,
+  type ChatTurnKind,
+  defaultChatProviderId,
+  resolveForProject,
+} from '../integrations/llm/index.js';
 import {
   buildProgressFactsBlock,
   computeProjectProgress,

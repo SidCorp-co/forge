@@ -79,10 +79,11 @@ import { installRoutes } from './install/index.js';
 import {
   githubCallbackRoutes,
   githubConnectRoutes,
+  integrationConnectionsRoutes,
+  integrationsRoutes,
+  integrationTargetRoutes,
   runnerReleaseRoutes,
-} from './integrations/github/index.js';
-import { integrationConnectionsRoutes, integrationsRoutes } from './integrations/index.js';
-import { integrationTargetRoutes } from './integrations/postman/index.js';
+} from './integration-door/index.js';
 import {
   attachmentRoutes,
   backlogStreamRoutes,

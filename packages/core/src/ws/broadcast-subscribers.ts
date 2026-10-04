@@ -226,6 +226,17 @@ export function registerWsBroadcastSubscribers(): void {
     });
   });
 
+  on('integration.changed', (p) => {
+    roomManager.publish(projectRoom(p.projectId), {
+      event: 'integration.changed',
+      data: {
+        projectId: p.projectId,
+        ...(p.bindingId ? { bindingId: p.bindingId } : {}),
+        ...(p.connectionId ? { connectionId: p.connectionId } : {}),
+      },
+    });
+  });
+
   on('skill.globalUpdated', (p) => {
     roomManager.publish(globalRoom(), {
       event: 'skill.updated',

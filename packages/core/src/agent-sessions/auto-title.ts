@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import { callFastModel } from '../integrations/llm/fast-model.js';
+import { callFastModel } from '../integrations/llm/index.js';
 import { logger } from '../logger.js';
 import { foreignScriptChars } from '../memory/script-guard.js';
 import { broadcastSession } from './broadcast.js';

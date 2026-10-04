@@ -4,7 +4,7 @@
  * the cached prefix `tools[]` sits in. Applied to the provider copy only, never persisted.
  */
 
-import type { ChatContentPart, ChatMessage } from '../integrations/llm/types.js';
+import type { ChatContentPart, ChatMessage } from '../integrations/llm/index.js';
 
 export interface TurnContext {
   conversationContext?: string | null | undefined;

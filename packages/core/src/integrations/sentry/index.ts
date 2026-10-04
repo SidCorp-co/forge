@@ -18,6 +18,5 @@ export {
 } from './listing.js';
 export { isSentryRefusal, SentryRefusal, type SentryRefusalReason } from './refusals.js';
 export { resolveSentryTargets } from './targets.js';
-export { forgeSentryTool } from './tool.js';
 export type { SentryConfig, SentryIssueDetail, SentrySecrets, SentryTarget } from './types.js';
 export { settleSentryDelivery } from './webhook.js';

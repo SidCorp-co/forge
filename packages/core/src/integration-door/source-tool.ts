@@ -13,20 +13,22 @@
  */
 
 import { z } from 'zod';
-import { noteReviewOnIssue } from '../../comments/index.js';
+import { noteReviewOnIssue } from '../comments/index.js';
+import { listIntegrations } from '../integrations/index.js';
 import {
-  type ContextScopedMcpToolFactory,
-  type McpContext,
-  zodToMcpSchema,
-} from '../../lib/tool.js';
-import { logger } from '../../observability/logger.js';
-import { requireCan } from '../../permissions/index.js';
-import { resolveEffectiveProjectId } from '../../projects/index.js';
-import { listIntegrations } from '../index.js';
-import { SourceHostCallError, SourceHostInputRefusal, SourceHostUnavailable } from './errors.js';
-import { OpenedPullRequestIncomplete, projectOpenedPullRequest } from './opened-change-request.js';
-import { resolveSourceHost } from './resolve.js';
-import type { ReviewEvent, SourceHost } from './types.js';
+  OpenedPullRequestIncomplete,
+  projectOpenedPullRequest,
+  type ReviewEvent,
+  resolveSourceHost,
+  type SourceHost,
+  SourceHostCallError,
+  SourceHostInputRefusal,
+  SourceHostUnavailable,
+} from '../integrations/source-host/index.js';
+import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
+import { logger } from '../observability/logger.js';
+import { requireCan } from '../permissions/index.js';
+import { resolveEffectiveProjectId } from '../projects/index.js';
 
 /**
  * The verbs this face refuses BY NAME rather than by schema. Nothing an agent does through it can

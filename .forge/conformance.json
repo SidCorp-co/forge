@@ -235,12 +235,36 @@
           "why": "The `ConversationAdapter` union: which surface a conversation happened on. It mirrors the `conversations.source` column, not `integration_bindings.provider`, and it carries 'web' and 'widget' which are not integrations at all."
         },
         {
-          "glob": "packages/core/src/integrations/status-service.ts",
+          "glob": "packages/core/src/integration-door/status-service.ts",
           "why": "The one hand-built card, keyed 'github', is derived from `projects.repoUrl` and NOT from any integration binding \u2014 which is exactly why `githubIntegration` declares `presentation: null`, so the registry loop cannot emit a second card that collides with it. Every other card in this file comes from a declaration."
         },
         {
-          "glob": "packages/core/src/integrations/tool.ts",
-          "why": "The `forge_storefront_target` MCP tool, living in the integrations module it reads through `integrations/registry.ts`. It answers only about the storefront providers (epodsystem, autoflow) and names them in the description a model reads; no other provider's request reaches it."
+          "glob": "packages/core/src/integration-door/storefront-tool.ts",
+          "why": "The `forge_storefront_target` MCP tool, living in the integration door and reading the registry through the integrations port face. It answers only about the storefront providers (epodsystem, autoflow) and names them in the description a model reads; no other provider's request reaches it."
+        },
+        {
+          "glob": "packages/core/src/integration-door/*-routes.ts",
+          "why": "The integration door's per-provider route modules (ISS-167): `coolify-routes.ts`, `github-connect-routes.ts` and `postman-target-routes.ts` are each ABOUT the provider they are named for, mounted by the route registry and read by no generic path. They left the provider directories because an adapter holds no HTTP door; the name came with them."
+        },
+        {
+          "glob": "packages/core/src/release-batch/coolify-*.ts",
+          "why": "The Coolify release commands, controls, confirmation and health gate (ISS-167), named for the provider because each is that provider's deploy as the release drives it, beside `pipeline/release-coolify.ts`. They moved out of the adapter because what a deploy means to a run is the release's; nothing generic reads them to learn a provider exists."
+        },
+        {
+          "glob": "packages/core/src/error-intake/**",
+          "why": "The error-intake slice (ISS-167) turns an error tracker's sightings into issues. `sentry` here is the `issues.source` value and the `issues.metadata` key rows already written carry, so the name is on disk rather than a branch in code; the vendor itself is reached only through `integrations/sentry`."
+        },
+        {
+          "glob": "packages/core/src/integrations/source-host/projection.ts",
+          "why": "The pull-request projection, moved from `integrations/github/` into the source-host port (ISS-167). A stored change request written before hosts were recorded is a GitHub one, so `github` is the default it reads such a row back under."
+        },
+        {
+          "glob": "packages/core/src/integrations/source-host/projection-health.ts",
+          "why": "The projection's health read, moved from `integrations/github/` with it (ISS-167). The webhook-fed projection exists only for a GitHub binding, so the query names the provider whose bindings feed it."
+        },
+        {
+          "glob": "packages/core/src/integrations/deploy/records.ts",
+          "why": "The deploy port's record contract (ISS-167, from `project-config/deploy-adapters/types.ts`): the provider union is the one the recorded environment state stores, mirrored here so the adapter side owns its contract without importing the domain's schema."
         },
         {
           "glob": "packages/core/src/pipeline/release-coolify.ts",

@@ -1,10 +1,11 @@
-import { describeProbeReading, readRuntimeProbe } from '../integrations/deploy/runtime-probe.js';
+import {
+  type DeploymentRecord,
+  type DeploymentStatus,
+  describeProbeReading,
+  readRuntimeProbe,
+  type TargetedDeployAdapter,
+} from '../integrations/deploy/index.js';
 import { isRefusal } from '../lib/refusal.js';
-import type {
-  DeploymentRecord,
-  DeploymentStatus,
-  TargetedDeployAdapter,
-} from './deploy-adapters/types.js';
 import {
   type EnvironmentDeclaration,
   type EnvironmentState,

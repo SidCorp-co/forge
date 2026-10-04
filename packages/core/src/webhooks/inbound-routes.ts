@@ -1,14 +1,15 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
-import { recordTurnedAwayInboundCall } from '../integrations/inbound-door.js';
-import { getAdapter, listIntegrations } from '../integrations/registry.js';
 import {
   type BindingWithConnection,
   buildContextFromBinding,
+  getAdapter,
+  type IntegrationProvider,
   listActiveBindingsForProjectProvider,
-} from '../integrations/store.js';
-import type { IntegrationProvider } from '../integrations/types.js';
+  listIntegrations,
+  recordTurnedAwayInboundCall,
+} from '../integrations/index.js';
 import { verifyHmacSignature, verifySharedToken } from '../lib/hmac.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { rawBody } from '../middleware/zod-validator.js';

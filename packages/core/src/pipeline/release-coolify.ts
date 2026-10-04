@@ -2,9 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
-import { findDeliveryByRequestId } from '../integrations/deliveries.js';
-import { enqueueOutboundDispatch } from '../integrations/queue.js';
-import { listActiveDeployBindingsForProvider } from '../integrations/store.js';
+import {
+  enqueueOutboundDispatch,
+  findDeliveryByRequestId,
+  listActiveDeployBindingsForProvider,
+} from '../integrations/index.js';
 import { logger } from '../logger.js';
 import { traceStep } from '../observability/sentry.js';
 import { type DeployMap, readDeployMap } from '../project-config/release-path.js';

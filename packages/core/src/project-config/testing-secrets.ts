@@ -3,7 +3,7 @@ import { SCRUB_MIN_SECRET_LENGTH } from '@forge/observability';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type JobType, jobs } from '../db/schema.js';
-import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
+import { decryptSecret, isVaultConfigured } from '../integrations/index.js';
 import { resolvePipelineContext } from '../jobs/active-job-context.js';
 import { appendJobEvent } from '../jobs/index.js';
 import {

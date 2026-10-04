@@ -20,10 +20,10 @@ import {
   CHAT_TURN_MENU,
   mintTurnCredential,
   type TurnAuthority,
-  turnAuthorityRefusalOf,
   type TurnCredential,
+  turnAuthorityRefusalOf,
 } from '../credentials/turn-credential.js';
-import type { ChatStreamEvent } from '../integrations/llm/types.js';
+import type { ChatStreamEvent } from '../integrations/llm/index.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { egressDeep } from '../lib/data-egress.js';
 import { logger } from '../logger.js';

@@ -1,11 +1,11 @@
 import type { VerdictCorroboration, VerdictDraftReading } from '@forge/contracts/verdict-identity';
-import { getIntegration } from '../../integrations/registry.js';
 import {
   decryptConnectionSecrets,
   effectiveConfig,
   findBindingWithConnectionById,
-} from '../../integrations/store.js';
-import type { StorefrontDraftReading } from '../../integrations/types.js';
+  getIntegration,
+  type StorefrontDraftReading,
+} from '../../integrations/index.js';
 import type { ProjectDocument } from '../../project-config/schema.js';
 import { readProjectDocument } from '../../project-config/service.js';
 import type { CriterionWithVerdict } from './store.js';

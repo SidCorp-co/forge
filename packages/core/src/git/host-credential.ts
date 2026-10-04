@@ -16,9 +16,12 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { integrationBindings, integrationConnections, runners } from '../db/schema.js';
-import { listIntegrations } from '../integrations/registry.js';
-import { decryptConnectionSecrets, effectiveConfig } from '../integrations/store.js';
-import type { GitCredentialMint } from '../integrations/types.js';
+import {
+  decryptConnectionSecrets,
+  effectiveConfig,
+  type GitCredentialMint,
+  listIntegrations,
+} from '../integrations/index.js';
 import { refuser } from '../lib/refusal.js';
 
 const refuse = refuser<GitRefusalCode>('GIT_REFUSED');

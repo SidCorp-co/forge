@@ -18,7 +18,7 @@ import type {
   ConversationShape,
 } from '../db/schema-conversations.js';
 import { conversations } from '../db/schema-conversations.js';
-import type { ChatContentPart, ChatMessage } from '../integrations/llm/types.js';
+import type { ChatContentPart, ChatMessage } from '../integrations/llm/index.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { forbidden } from '../middleware/route-errors.js';

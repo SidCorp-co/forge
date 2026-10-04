@@ -2486,6 +2486,13 @@
       "when": 1816300800000,
       "tag": "0386_source_and_error_facts_ride_the_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 387,
+      "version": "7",
+      "when": 1816387200000,
+      "tag": "0387_integration_change_rides_the_outbox",
+      "breakpoints": true
     }
   ]
 }

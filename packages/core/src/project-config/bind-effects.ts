@@ -5,17 +5,17 @@ import {
   type AgentAccess,
   agentAccessRefusedMessage,
   agentAccessTier,
-} from '../integrations/agent-access.js';
-import { getAdapter, getIntegration } from '../integrations/registry.js';
-import {
-  broadcastIntegrationChanged,
+  findBindingWithConnectionById,
+  findConnectionById,
+  getAdapter,
+  getIntegration,
   notifyConnectionChanged,
   runInitialHealthcheck,
-} from '../integrations/route-helpers.js';
-import { findBindingWithConnectionById, findConnectionById } from '../integrations/store.js';
+} from '../integrations/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import type { ApiRefusal } from './documents.js';
 import { holdsOrg } from '../permissions/index.js';
+import type { ApiRefusal } from './documents.js';
+import { announceIntegrationChanged } from './integration-changed.js';
 
 export interface BindEffects {
   refusals(input: {
@@ -99,7 +99,7 @@ export const bindEffects: BindEffects = {
       const pair = await findBindingWithConnectionById(bindingId);
       if (pair) effects = { ...effects, health: await runInitialHealthcheck(pair) };
     }
-    broadcastIntegrationChanged(projectId, { bindingId, connectionId });
+    await announceIntegrationChanged(projectId, { bindingId, connectionId });
     notifyConnectionChanged(provider, connectionId);
     return effects;
   },

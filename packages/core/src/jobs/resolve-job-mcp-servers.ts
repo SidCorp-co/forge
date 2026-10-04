@@ -1,4 +1,4 @@
-import { applyGrantedMcpServers, type ProducedMcpServer } from '../integrations/mcp-resolver.js';
+import { applyGrantedMcpServers, type ProducedMcpServer } from '../integrations/index.js';
 
 export type McpServersMap = Record<string, unknown> | null;
 

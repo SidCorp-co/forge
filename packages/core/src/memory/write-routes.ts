@@ -9,9 +9,9 @@ import {
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireCan } from '../permissions/index.js';
 import { memoryFeedbackInputSchema, runMemoryFeedback } from './feedback-service.js';
 import { runMemoryWrite, writeMemoryInputSchema } from './write-service.js';
-import { requireCan } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });

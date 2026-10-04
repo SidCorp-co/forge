@@ -4,7 +4,7 @@ import {
   probeAnswered,
   type RuntimeProbeTarget,
   readRuntimeProbe,
-} from '../integrations/deploy/runtime-probe.js';
+} from '../integrations/deploy/index.js';
 
 export interface VerifyProbe {
   url: string;

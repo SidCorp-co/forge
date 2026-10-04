@@ -5,7 +5,7 @@
  * and not every other one the device is waiting on (ISS-1184).
  */
 
-import { decryptSecret } from '../integrations/vault.js';
+import { decryptSecret } from '../integrations/index.js';
 import { isRefusal } from '../lib/refusal.js';
 
 const REASON_MAX = 200;

@@ -1,41 +1,37 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { loadOrgRole } from '../lib/authz.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
-import { raceWithTimeout } from './probe.js';
 import {
+  adapterOrRefuse,
   applySecretsPatch,
+  assertVaultConfigured,
+  bindingWriteMoved,
+  buildContextFromBinding,
   connectionConfigSchemaForProvider,
   connectionCreateSchema,
   connectionUpdateSchema,
-} from './provider-schemas.js';
-import { withdrawNulls } from './release-channel-schema.js';
-import {
-  adapterOrRefuse,
-  assertVaultConfigured,
-  bindingWriteMoved,
-  defaultConnectionDisplayName,
-  notFound,
-  notifyConnectionChanged,
-  summarizeBinding,
-  summarizeConnection,
-  summarizeConnectionWithUsage,
-  TEST_PROBE_TIMEOUT_MS,
-} from './route-helpers.js';
-import {
-  buildContextFromBinding,
   createConnection,
+  defaultConnectionDisplayName,
   findConnectionById,
   type IntegrationConnectionRow,
   listBindingsByConnectionIds,
   listBindingsForConnection,
   listConnectionsForPrincipalUser,
+  notFound,
+  notifyConnectionChanged,
+  raceWithTimeout,
   softDeleteConnection,
+  summarizeBinding,
+  summarizeConnection,
+  summarizeConnectionWithUsage,
+  TEST_PROBE_TIMEOUT_MS,
   updateConnection,
-} from './store.js';
+  withdrawNulls,
+} from '../integrations/index.js';
+import { loadOrgRole } from '../lib/authz.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { badRequest } from '../middleware/route-errors.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { requireOrgHeld } from '../permissions/index.js';
 
 /**

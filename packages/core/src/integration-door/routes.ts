@@ -12,42 +12,37 @@ import { randomBytes } from 'node:crypto';
 import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import {
+  adapterOrRefuse,
+  applySecretsPatch,
+  type BindingWithConnection,
+  bindingWriteMoved,
+  buildContextFromBinding,
+  configSchemaForProvider,
+  enqueueOutboundDispatch,
+  findBindingWithConnectionById,
+  findDeliveryById,
+  listBindingDeliveries,
+  listBindingsForProject,
+  notFound,
+  notifyConnectionChanged,
+  splitProviderConfig,
+  summarizeBinding,
+  updateConnection,
+  updateSchema,
+  withdrawNulls,
+} from '../integrations/index.js';
+import { fetchBotRooms, rocketChatBindingOfProject } from '../integrations/rocketchat/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { registerCoolifyDeployRoutes } from './coolify/routes.js';
-import { findDeliveryById, listBindingDeliveries } from './deliveries.js';
-import { buildMcpPreview } from './mcp-preview-service.js';
-import {
-  applySecretsPatch,
-  configSchemaForProvider,
-  splitProviderConfig,
-  updateSchema,
-} from './provider-schemas.js';
-import { enqueueOutboundDispatch } from './queue.js';
-import { withdrawNulls } from './release-channel-schema.js';
-import { rocketChatBindingOfProject } from './rocketchat/binding.js';
-import { fetchBotRooms } from './rocketchat/rest-client.js';
-import {
-  adapterOrRefuse,
-  bindingWriteMoved,
-  broadcastIntegrationChanged,
-  notFound,
-  notifyConnectionChanged,
-  summarizeBinding,
-} from './route-helpers.js';
-import { buildIntegrationsStatusCards } from './status-service.js';
-import {
-  type BindingWithConnection,
-  buildContextFromBinding,
-  findBindingWithConnectionById,
-  listBindingsForProject,
-  updateConnection,
-} from './store.js';
-import { setBindingInboundSecret } from '../project-config/binding-store.js';
 import { requireCan, requireOrgHeld } from '../permissions/index.js';
+import { announceIntegrationChanged, setBindingInboundSecret } from '../project-config/index.js';
+import { registerCoolifyDeployRoutes } from './coolify-routes.js';
+import { buildMcpPreview } from './mcp-preview-service.js';
+import { buildIntegrationsStatusCards } from './status-service.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
@@ -160,7 +155,7 @@ integrationsRoutes.patch(
 
     const refreshed = await findBindingWithConnectionById(id);
     if (!refreshed) throw notFound();
-    broadcastIntegrationChanged(projectId, { bindingId: id, connectionId: connection.id });
+    await announceIntegrationChanged(projectId, { bindingId: id, connectionId: connection.id });
     notifyConnectionChanged(binding.provider, connection.id);
     return c.json({ integration: summarizeBinding(refreshed) });
   },
@@ -248,7 +243,7 @@ integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) 
   await setBindingInboundSecret(id, newSecret);
   const refreshed = await findBindingWithConnectionById(id);
   if (!refreshed) throw notFound();
-  broadcastIntegrationChanged(projectId, {
+  await announceIntegrationChanged(projectId, {
     bindingId: id,
     connectionId: existing.connection.id,
   });

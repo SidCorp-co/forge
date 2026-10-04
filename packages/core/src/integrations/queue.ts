@@ -1,19 +1,9 @@
-import { INTEGRATIONS_QUEUE_NAME } from '../jobs/queue-name.js';
 import { logger } from '../observability/logger.js';
 import { boss } from '../queue/boss.js';
-import {
-  applyDeploySettlement,
-  type CoolifyConfirmJob,
-  runCoolifyConfirm,
-} from './coolify/confirm.js';
-import {
-  type CoolifyHealthGateJob,
-  probeHealth,
-  runCoolifyHealthGate,
-} from './coolify/health-gate.js';
+import { INTEGRATIONS_QUEUE_NAME } from '../queue/names.js';
 import { dispatchThrough } from './registry.js';
 import { buildContextFromBinding, findBindingById, findConnectionById } from './store.js';
-import { NonRetryableDispatchError } from './types.js';
+import { NonRetryableDispatchError, type OutboundDispatchInput } from './types.js';
 
 /**
  * One outbound dispatch, on whichever provider the binding names.
@@ -34,78 +24,6 @@ export interface OutboundDispatchJob {
   payload?: Record<string, unknown>;
 }
 
-let workerId: string | null = null;
-
-/**
- * Register the boss.work consumer for the integrations queue. Must be called
- * once at boot AFTER startBoss(). Idempotent.
- */
-export async function registerIntegrationsWorker(): Promise<void> {
-  if (workerId) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(INTEGRATIONS_QUEUE_NAME);
-  // biome-ignore lint/suspicious/noExplicitAny: handler arity / arg shape stabilised at runtime
-  const id = (await (boss as any).work(
-    INTEGRATIONS_QUEUE_NAME,
-    { batchSize: 1 },
-    async (arg: any) => {
-      const entries = Array.isArray(arg) ? arg : [arg];
-      for (const entry of entries) {
-        const data = entry?.data as
-          | OutboundDispatchJob
-          | CoolifyConfirmJob
-          | CoolifyHealthGateJob
-          | undefined;
-        if (!data) continue;
-        try {
-          if (data.jobKind === 'coolify.dispatch') {
-            await runOutboundDispatch(data);
-          } else if (data.jobKind === 'coolify.confirm') {
-            const outcome = await runCoolifyConfirm(data);
-            if (outcome.settled) {
-              logger.info(
-                { bindingId: data.bindingId, runId: data.runId, ...outcome },
-                'integrations worker: coolify deploy confirmation settled',
-              );
-            }
-          } else if (data.jobKind === 'coolify.health-gate') {
-            const outcome = await runCoolifyHealthGate(data, healthGateDeps(data));
-            if (outcome.verdict) {
-              logger.info(
-                { bindingId: data.bindingId, runId: data.runId, ...outcome },
-                'integrations worker: coolify post-deploy health gate resolved',
-              );
-            }
-          }
-        } catch (err) {
-          logger.error(
-            { err, bindingId: data.bindingId, runId: data.runId, jobKind: data.jobKind },
-            'integrations worker: coolify job threw — retry will be scheduled by pg-boss',
-          );
-          throw err;
-        }
-      }
-    },
-  )) as string;
-  workerId = id;
-  logger.info({ workerId, queue: INTEGRATIONS_QUEUE_NAME }, 'integrations worker registered');
-}
-
-/**
- * The collaborators the health gate calls out to, bound here so the gate
- * itself stays a decision function a test drives without a queue or a network.
- */
-function healthGateDeps(data: CoolifyHealthGateJob) {
-  return {
-    probe: (url: string) => probeHealth(url),
-    settle: async (verdict: 'succeeded' | 'failed', detail?: string) => {
-      const deliveryId = data.deliveryId;
-      if (!deliveryId) return;
-      await applyDeploySettlement({ ...data, deliveryId }, verdict, detail);
-    },
-  };
-}
-
 /**
  * Dispatch one outbound job through the binding's OWN provider.
  *
@@ -114,7 +32,10 @@ function healthGateDeps(data: CoolifyHealthGateJob) {
  * Retry button on a failed Sentry delivery would have handed that delivery to Coolify's client and
  * called it a deploy.
  */
-async function runOutboundDispatch(data: OutboundDispatchJob): Promise<void> {
+export async function runOutboundDispatch(
+  data: OutboundDispatchJob,
+  hooks: Pick<OutboundDispatchInput, 'onDeployOutcome'> = {},
+): Promise<void> {
   const binding = await findBindingById(data.bindingId);
   if (!binding?.active) {
     logger.warn(
@@ -138,6 +59,7 @@ async function runOutboundDispatch(data: OutboundDispatchJob): Promise<void> {
       payload: data.payload ?? { runId: data.runId, issueId: data.issueId },
       ...(data.requestId ? { requestId: data.requestId } : {}),
       runId: data.runId,
+      ...hooks,
     });
   } catch (err) {
     if (err instanceof NonRetryableDispatchError) {

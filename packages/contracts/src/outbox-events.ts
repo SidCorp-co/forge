@@ -32,6 +32,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"source.merged",
 	"source.reviewed",
 	"error.sighted",
+	"integration.changed",
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
@@ -304,6 +305,12 @@ export interface OutboxEventPayloads {
 		deliveryId: string;
 		issue: ErrorTrackerIssue;
 		target: ErrorTrackerTarget;
+	};
+	/** A project's integration binding or connection changed; open views refetch them. */
+	"integration.changed": {
+		projectId: string;
+		bindingId?: string;
+		connectionId?: string;
 	};
 }
 

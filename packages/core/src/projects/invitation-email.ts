@@ -1,5 +1,5 @@
 import { env } from '../config/env.js';
-import { mailDeliveryEnabled, sendMail } from '../integrations/mail/smtp.js';
+import { mailDeliveryEnabled, sendMail } from '../integrations/mail/index.js';
 import { logger } from '../logger.js';
 
 export function buildInvitationLink(token: string): string {

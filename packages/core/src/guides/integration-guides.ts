@@ -12,7 +12,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { integrationGuides } from '../db/schema.js';
-import type { IntegrationProvider } from '../integrations/types.js';
+import type { IntegrationProvider } from '../integrations/index.js';
 import { type ForgeGuide, getGuide as getCodeGuide, listGuides } from './registry.js';
 
 export const INTEGRATION_GUIDE_SLUG_PREFIX = 'integration-';

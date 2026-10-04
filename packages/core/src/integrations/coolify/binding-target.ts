@@ -1,7 +1,7 @@
 import { decryptConnectionSecrets, type IntegrationConnectionRow } from '../store.js';
 import type { BindingTargetRefusal, VerifyBindingTargetArgs } from '../types.js';
+import { credentialFromSecrets, fetchCoolifyApplications } from './applications.js';
 import { CoolifyApiError, describeCoolifyForbidden } from './client.js';
-import { credentialFromSecrets, fetchCoolifyApplications } from './controls.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
 
 function uuidsOf(config: Record<string, unknown> | null): string[] {

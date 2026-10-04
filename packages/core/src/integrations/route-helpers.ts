@@ -1,7 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole } from '../db/schema.js';
-import { projectRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 import type { AgentAccess } from './agent-access.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter, getIntegration } from './registry.js';
@@ -157,20 +155,6 @@ export function defaultConnectionDisplayName(
     str(config, 'organization') ??
     hostOf(config.url);
   return detail ? `${provider} · ${detail}` : null;
-}
-
-export function broadcastIntegrationChanged(
-  projectId: string,
-  extra: { bindingId?: string; connectionId?: string } = {},
-): void {
-  try {
-    roomManager.publish(projectRoom(projectId), {
-      event: 'integration.changed',
-      data: { projectId, ...extra },
-    });
-  } catch {
-    // Realtime is best-effort; window-focus refetch + reconnect replay backstop.
-  }
 }
 
 /** The create/bind 201 must not hang on a slow provider — past this the

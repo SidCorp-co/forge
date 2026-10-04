@@ -18,7 +18,6 @@ import {
   assertVaultBootSafety,
   provideForgeReads,
   registerAllIntegrations,
-  registerIntegrationsWorker,
 } from './integrations/index.js';
 import { bootstrapChatProviders } from './integrations/llm/index.js';
 import { registerOutboundDeliveryWorker } from './integrations/outbound-webhooks/index.js';
@@ -40,7 +39,7 @@ import { registerOutboxConsumers } from './outbox-consumers.js';
 import { readDeclaredSource } from './project-config/index.js';
 import { findProjectOrgId } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
-import { registerReleaseBatchFinish } from './release-batch/index.js';
+import { registerDeployWorker, registerReleaseBatchFinish } from './release-batch/index.js';
 import { mountRoutes } from './route-registry.js';
 import { bootstrapRunnerAdapters } from './runners/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
@@ -143,7 +142,7 @@ if (isMain) {
   await startBoss();
   await assertVaultBootSafety();
   registerAllIntegrations();
-  await registerIntegrationsWorker();
+  await registerDeployWorker();
   const skillSeed = await seedBuiltinSkills(db);
   await emitEvents(
     db,

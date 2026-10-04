@@ -36,7 +36,7 @@ a door.
 | **domain** | One product entity family: requirements, feedback, release, chat, and so on | Compute a fact another module also computes |
 | **read-model** | Derived facts only: standing, waiting-on, needs-you, coverage, counts, the system graph | Write any table |
 | **adapter** | One external system behind a role-named port ([ADR 0006](../adr/0006-every-external-system-is-reached-through-one-adapter-port.md)) | Import a domain, a kernel module or a read model |
-| **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, and the auth door (sign-in, which reaches the identity adapter through its port) | Hold a rule or a query |
+| **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, the integration door (a provider's routes and MCP tools, which reach its adapter through the port), and the auth door (sign-in, which reaches the identity adapter through its port) | Hold a rule or a query |
 | **platform** | The db client and schema, `lib`, middleware, queue, config, observability, the credential helpers (`credentials`) | Import any other kind |
 
 ## Dependency direction (BC-12)
@@ -296,7 +296,8 @@ their vendors and their callers are in `packages/core/src/integrations/README.md
   vendor's types, or calls the global `fetch`; `scripts/check-provider-literals.mjs` refuses the
   last two outside `packages/core/src/integrations/`.
 - **An adapter imports no domain, kernel module or read model.** What the vendor sends back enters
-  through a door.
+  through a door, and a provider's routes and tools are the integration door's
+  (`packages/core/src/integration-door/`), never the adapter's.
 - **Both adapter shapes are legal**: a project-bound port is reached through
   `packages/core/src/integrations/registry.ts` with its credential in the vault; a deployment-bound
   port reads its configuration from the environment and exports plain functions.

@@ -1,16 +1,19 @@
 // The one MCP registry: every tool this server serves, keyed by the name contracts declares for it
-// (`@forge/contracts/mcp-tools`). Each tool lives in its module's `tool.ts`. The REST API is the
-// primary door and the forge CLI sits on it; a tool is listed here only where an agent Forge runs
-// needs it and neither covers it.
+// (`@forge/contracts/mcp-tools`). Each tool lives in its module's `tool.ts`, and a provider's in
+// the integration door as `<port>-tool.ts`, never in the adapter. The REST API is the primary door
+// and the forge CLI sits on it; a tool is listed here only where an agent Forge runs needs it and
+// neither covers it.
 
 import type { McpToolName } from '@forge/contracts/mcp-tools';
 import { forgeAgentReportTool } from '../agent-reports/index.js';
 import { forgeChannelTool, forgeEcosystemTool } from '../ecosystem/index.js';
-import { forgeCoolifyDeployTool } from '../integrations/coolify/index.js';
-import { forgeGoogleSheetsTool } from '../integrations/google/index.js';
-import { forgeStorefrontTargetTool } from '../integrations/index.js';
-import { forgeSentryTool } from '../integrations/sentry/index.js';
-import { forgeSourceTool } from '../integrations/source-host/index.js';
+import {
+  forgeCoolifyDeployTool,
+  forgeGoogleSheetsTool,
+  forgeSentryTool,
+  forgeSourceTool,
+  forgeStorefrontTargetTool,
+} from '../integration-door/index.js';
 import type { ContextScopedMcpToolFactory } from '../lib/tool.js';
 import { forgeUploadsTool } from '../uploads/index.js';
 

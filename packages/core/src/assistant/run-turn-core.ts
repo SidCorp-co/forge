@@ -13,7 +13,7 @@ import type {
   ChatResponseFormat,
   ChatStreamEvent,
   ChatStreamUsage,
-} from '../integrations/llm/types.js';
+} from '../integrations/llm/index.js';
 import type { CallToolResult } from '../lib/tool-result.js';
 import {
   addElision,

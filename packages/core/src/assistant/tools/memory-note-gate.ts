@@ -1,5 +1,5 @@
 import type { NoteRefusalCode } from '@forge/contracts/assistant';
-import type { ChatMessage } from '../../integrations/llm/types.js';
+import type { ChatMessage } from '../../integrations/llm/index.js';
 import type { CallToolResult } from '../../lib/tool-result.js';
 import { NEAR_DUPLICATE_THRESHOLD } from '../../memory/thresholds.js';
 import type { PreCall } from '../run-turn-core.js';

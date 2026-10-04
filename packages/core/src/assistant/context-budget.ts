@@ -6,7 +6,7 @@
  * the oldest intra-turn tool results — and tells the model what it can no longer see.
  */
 
-import type { ChatContentPart, ChatMessage } from '../integrations/llm/types.js';
+import type { ChatContentPart, ChatMessage } from '../integrations/llm/index.js';
 
 export const PROVIDER_HISTORY_WINDOW = 30;
 

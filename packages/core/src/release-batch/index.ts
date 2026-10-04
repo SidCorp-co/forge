@@ -1,4 +1,21 @@
 export { registerReleaseBatchClaimSubscriber } from './claim-subscriber.js';
+export {
+  activeCoolifyIntegrations,
+  CoolifyCommandError,
+  coolifyDeliveryStatus,
+  listCoolifyIntegrations,
+  refuseCoolify,
+  resolveIntegrationRow,
+  runCoolifyDeploy,
+} from './coolify-commands.js';
+export {
+  listApplicationsForIntegration,
+  listCoolifyRollbackImages,
+  resolveCoolifyTargets,
+  runCoolifyCancel,
+  runCoolifyRollback,
+} from './coolify-controls.js';
+export { registerDeployWorker } from './deploy-worker.js';
 export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job.js';
 export {
   clearProjectReleaseHolds,

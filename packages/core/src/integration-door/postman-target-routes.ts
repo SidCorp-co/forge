@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
-import { effectiveConfig, listActiveBindingsForProjectProvider } from '../store.js';
-import type { PostmanConfig } from './types.js';
-import { requireCan } from '../../permissions/index.js';
+import { effectiveConfig, listActiveBindingsForProjectProvider } from '../integrations/index.js';
+import type { PostmanConfig } from '../integrations/postman/index.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { requireCan } from '../permissions/index.js';
 
 export const integrationTargetRoutes = new Hono<{ Variables: AuthVars }>();
 integrationTargetRoutes.use('*', requireAuth(), assertEmailVerified());

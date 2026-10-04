@@ -4,7 +4,7 @@ import { type IssueStatus, projects } from '../db/schema.js';
 import {
   type BindingWithConnection,
   findBindingWithConnectionById,
-} from '../integrations/store.js';
+} from '../integrations/index.js';
 import {
   bindingOf,
   type NamedEnvironment,

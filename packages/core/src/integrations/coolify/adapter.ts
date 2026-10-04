@@ -1,19 +1,9 @@
 import { logger } from '../../observability/logger.js';
 import { traceStep } from '../../observability/sentry.js';
-import {
-  DEPLOY_CONFIRM_WINDOW_MS,
-  type DeployConfirmationStatus,
-  readDeployHolds,
-  replaceDispatchHoldWithTargets,
-} from '../../pipeline/deploy-confirmations.js';
-import {
-  deployHoldsIdle,
-  deployHoldsLocks,
-  releaseDeployLocksForRun,
-} from '../../pipeline/deploy-lock.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { findConnectionById, updateConnection } from '../store.js';
 import {
+  type DeployTargetDispatch,
   type DispatchingAdapterMethods,
   declareIntegration,
   type HealthCheckResult,
@@ -23,7 +13,6 @@ import {
 import { verifyCoolifyBindingTarget } from './binding-target.js';
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
 import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
-import { type CoolifyConfirmJob, enqueueCoolifyConfirm } from './confirm.js';
 import { coolifyDeploymentRecords } from './deployment-records.js';
 import { buildClient } from './log-fetch.js';
 import {
@@ -83,71 +72,6 @@ function describeCoolifyFailure(err: unknown): string {
   const verdict = classifyCoolifyFailure(err);
   if (verdict.message) return verdict.message;
   return err instanceof Error ? err.message : 'unknown error';
-}
-
-interface DispatchOutcome {
-  runId: string | null;
-  requestId?: string;
-  bindingId: string;
-  targets: {
-    deliveryId: string;
-    targetLabel: string;
-    deploymentUuid: string | null;
-    status: DeployConfirmationStatus;
-    detail?: string;
-  }[];
-  pendingConfirms: CoolifyConfirmJob[];
-}
-
-/**
- * The bookkeeping one dispatch owes whatever became of it: the holds recording what it authorised,
- * the confirmations polling what Coolify accepted, and the environment it no longer needs.
- */
-async function recordDispatchOutcome(outcome: DispatchOutcome): Promise<void> {
-  const { runId, bindingId, pendingConfirms } = outcome;
-  let held = false;
-  if (runId) {
-    held = await replaceDispatchHoldWithTargets({
-      runId,
-      bindingId,
-      targets: outcome.targets,
-      ...(outcome.requestId ? { requestId: outcome.requestId } : {}),
-    }).catch((err: unknown) => {
-      // The placeholder stands where this could not be written, so the gate stays deferred rather
-      // than reading a run with no holds as proven, and the environment stays held to its expiry.
-      logger.error({ err, runId, bindingId }, 'coolify deploy: holds unwritable');
-      return false;
-    });
-    if (!held) {
-      logger.error(
-        { runId, bindingId, targets: outcome.targets.length },
-        'coolify deploy: the run refused its confirmation holds — this deploy will be polled and audited, but no run can witness its outcome',
-      );
-    }
-  }
-
-  // Outside the `runId` guard: a run-less resource redeploy is polled and audited exactly as a
-  // run-tracked one is, and only the holds are the run's. Each send stands alone, so one queue
-  // refusal cannot take the siblings' polling with it.
-  for (const job of pendingConfirms) {
-    try {
-      await enqueueCoolifyConfirm(job, { startAfterSeconds: 0 });
-    } catch (err) {
-      logger.error(
-        { err, runId, bindingId, deliveryId: job.deliveryId },
-        'coolify deploy: confirmation could not be queued — Coolify accepted a deploy nothing will poll',
-      );
-    }
-  }
-
-  // ISS-1279 — read off the holds and only where they were written: every target resolved means
-  // nothing is reaching the environment, while a refused hold says nothing at all about what
-  // Coolify is running, and freeing on that is how a second deploy joins the first one in flight.
-  if (!runId || !held) return;
-  const holds = await readDeployHolds(runId);
-  if (deployHoldsIdle(holds)) {
-    await releaseDeployLocksForRun(runId, deployHoldsLocks(holds));
-  }
 }
 
 const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySecrets> = {
@@ -241,20 +165,12 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
     }
 
     const client = buildClient(ctx);
-    const confirmDeadlineAt = new Date(Date.now() + DEPLOY_CONFIRM_WINDOW_MS).toISOString();
     let firstDeliveryId = '';
     let firstDeploymentUuid: string | undefined;
     let totalDurationMs = 0;
     const failures: { targetLabel: string; message: string; status: number | null }[] = [];
 
-    const confirmations: {
-      deliveryId: string;
-      targetLabel: string;
-      deploymentUuid: string | null;
-      status: DeployConfirmationStatus;
-      detail?: string;
-    }[] = [];
-    const pendingConfirms: CoolifyConfirmJob[] = [];
+    const confirmations: DeployTargetDispatch[] = [];
 
     // Held rather than thrown, so the bookkeeping below runs on this path too.
     let fanOutError: unknown;
@@ -302,26 +218,16 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
           if (!deploymentUuid) {
             throw new Error('coolify deploy: response carried no deployment_uuid');
           }
-          // Coolify is building it from here, so the bookkeeping records it BEFORE the delivery
-          // row is persisted: a write that fails afterwards must not leave the dispatch reporting
-          // a set of targets that omits a deploy now running, which reads as an idle environment
-          // and frees the hold under it (ISS-1279). Published only once the holds are installed —
-          // a target settling first is recorded against a hold that does not exist yet.
+          // Coolify is building it from here, so the outcome records it BEFORE the delivery row is
+          // persisted: a write that fails afterwards must not leave the dispatch reporting a set of
+          // targets that omits a deploy now running, which reads as an idle environment and frees
+          // the hold under it (ISS-1279).
           accepted = deploymentUuid;
           confirmations.push({
             deliveryId,
             targetLabel: target.label,
             deploymentUuid,
             status: 'pending',
-          });
-          pendingConfirms.push({
-            jobKind: 'coolify.confirm',
-            bindingId: ctx.bindingId,
-            runId,
-            deliveryId,
-            deploymentUuid,
-            targetLabel: target.label,
-            deadlineAt: confirmDeadlineAt,
           });
           const durationMs = Date.now() - started;
           totalDurationMs += durationMs;
@@ -377,11 +283,10 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
       fanOutError = err;
     }
 
-    await recordDispatchOutcome({
+    await input.onDeployOutcome?.({
       runId,
       bindingId: ctx.bindingId,
       targets: confirmations,
-      pendingConfirms,
       ...(input.requestId ? { requestId: input.requestId } : {}),
     });
     if (fanOutError) throw fanOutError;
@@ -425,7 +330,7 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
 
   async handleInbound() {
     throw new Error(
-      'coolify: inbound webhooks are not supported — Coolify sends no signed callback, so a deploy is confirmed by polling `GET /api/v1/deployments/{uuid}` (see integrations/coolify/confirm.ts)',
+      'coolify: inbound webhooks are not supported — Coolify sends no signed callback, so a deploy is confirmed by polling `GET /api/v1/deployments/{uuid}` (see release-batch/coolify-confirm.ts)',
     );
   },
 };

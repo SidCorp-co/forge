@@ -7,7 +7,7 @@
 
 import { createHash, randomInt } from 'node:crypto';
 import { env } from '../config/env.js';
-import { callFastModel, fastModelName } from '../integrations/llm/fast-model.js';
+import { callFastModel, fastModelName } from '../integrations/llm/index.js';
 import { logger } from '../logger.js';
 import type { MemoryHit } from './search.js';
 

@@ -2,7 +2,7 @@ import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import type { z } from 'zod';
 import type { BindingRole } from '../db/schema.js';
-import type { TargetedDeployAdapter } from '../project-config/deploy-adapters/types.js';
+import type { TargetedDeployAdapter } from './deploy/records.js';
 import type { SourceHostFactory } from './source-host/types.js';
 
 export type IntegrationProvider =
@@ -81,6 +81,29 @@ export interface OutboundDispatchInput<TPayload = unknown> {
   /** Pipeline-run correlation; allows inbound handler to advance the right run.
    *  `null` for a run-less resource redeploy (no pipeline run to advance). */
   runId?: string | null;
+  /**
+   * Called once a deploy's fan-out ends, thrown or not, with what each target became, before the
+   * dispatch answers or throws. The caller owns what a deploy means to a run; the adapter only
+   * reports it.
+   */
+  onDeployOutcome?: (outcome: DeployDispatchOutcome) => Promise<void>;
+}
+
+/** One deploy target's dispatch, as the deploy port reports it. */
+export interface DeployTargetDispatch {
+  deliveryId: string;
+  targetLabel: string;
+  /** The provider's id for the build it accepted; null where it refused. */
+  deploymentUuid: string | null;
+  status: 'pending' | 'failed';
+  detail?: string;
+}
+
+export interface DeployDispatchOutcome {
+  runId: string | null;
+  bindingId: string;
+  requestId?: string;
+  targets: DeployTargetDispatch[];
 }
 
 export class NonRetryableDispatchError extends Error {

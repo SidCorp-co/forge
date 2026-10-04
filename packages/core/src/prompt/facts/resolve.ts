@@ -9,9 +9,12 @@ import {
   projects,
 } from '../../db/schema.js';
 import { integrationGuideSlug, loadOrgGuideProviders } from '../../guides/integration-guides.js';
-import { grantHolds } from '../../integrations/agent-access.js';
-import { getIntegration } from '../../integrations/registry.js';
-import { effectiveConfig, listBindingsForProject } from '../../integrations/store.js';
+import {
+  effectiveConfig,
+  getIntegration,
+  grantHolds,
+  listBindingsForProject,
+} from '../../integrations/index.js';
 import {
   selectAllSlugsFromKnowledge,
   selectAlwaysInjectFromKnowledge,

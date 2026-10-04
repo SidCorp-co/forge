@@ -14,7 +14,7 @@
  * `agent-stream-parser.ts` and are imported rather than restated here.
  */
 
-import type { ChatStreamEvent } from '../integrations/llm/types.js';
+import type { ChatStreamEvent } from '../integrations/llm/index.js';
 import {
   type AgentMessage,
   type ContentBlock,

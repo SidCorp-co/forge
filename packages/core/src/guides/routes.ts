@@ -2,10 +2,12 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../config/env.js';
-import { INTEGRATION_PROVIDERS } from '../integrations/types.js';
+import { INTEGRATION_PROVIDERS } from '../integrations/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld, requireOrgCan } from '../permissions/index.js';
+import { findProjectOrgId } from '../projects/service.js';
 import {
   deleteIntegrationGuide,
   integrationGuideSlug,
@@ -13,9 +15,7 @@ import {
   resolveGuideIndex,
   upsertIntegrationGuide,
 } from './integration-guides.js';
-import { findProjectOrgId } from '../projects/service.js';
 import { getGuide, listGuides } from './registry.js';
-import { requireHeld, requireOrgCan } from '../permissions/index.js';
 
 /**
  * Public, read-only surface for Forge capability guides (D2 in the plan —
@@ -113,7 +113,10 @@ projectGuideRoutes.get('/:id/guides/:slug', async (c) => {
   requireHeld(await loadProjectAccess(projectId, c.get('userId')), 'project.read');
   const raw = c.req.param('slug');
   const isMarkdown = raw.endsWith('.md');
-  const guide = await resolveGuide(isMarkdown ? raw.slice(0, -3) : raw, await findProjectOrgId(projectId));
+  const guide = await resolveGuide(
+    isMarkdown ? raw.slice(0, -3) : raw,
+    await findProjectOrgId(projectId),
+  );
   if (!guide) {
     throw new HTTPException(404, { message: validSlugsMessage(), cause: { code: 'NOT_FOUND' } });
   }

@@ -1,6 +1,10 @@
 import type { z } from 'zod';
-import { getAdapter, providerCanDeploy } from '../integrations/registry.js';
-import { encryptSecret, isVaultConfigured } from '../integrations/vault.js';
+import {
+  encryptSecret,
+  getAdapter,
+  isVaultConfigured,
+  providerCanDeploy,
+} from '../integrations/index.js';
 import {
   type ApiRefusal,
   isRecord,

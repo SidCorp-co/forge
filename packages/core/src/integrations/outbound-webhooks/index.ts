@@ -1,1 +1,1 @@
-export { registerOutboundDeliveryWorker } from './delivery.js';
+export { enqueueDelivery, registerOutboundDeliveryWorker } from './delivery.js';

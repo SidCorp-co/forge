@@ -3,7 +3,7 @@ import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, comments, issues, memories, projects } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
-import { callFastModel, fastModelConfigured } from '../integrations/llm/fast-model.js';
+import { callFastModel, fastModelConfigured } from '../integrations/llm/index.js';
 import { memoryOfLiveIssue } from '../issues/archive.js';
 import { canonicalIssueKey, issueRefFormatter } from '../issues/issue-prefix-read.js';
 import { BASE_MERGE_STATE } from '../issues/merged-at.js';

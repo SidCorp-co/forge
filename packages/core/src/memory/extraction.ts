@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues, type JobType, jobs, memories } from '../db/schema.js';
-import { callFastModel, fastModelConfigured } from '../integrations/llm/fast-model.js';
+import { callFastModel, fastModelConfigured } from '../integrations/llm/index.js';
 import { insertKnowledgeEdgeOnce } from '../knowledge-edges/service.js';
 import { logger } from '../logger.js';
 import { consume } from '../outbox/index.js';

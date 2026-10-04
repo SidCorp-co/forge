@@ -1,4 +1,4 @@
-import { enqueueDelivery } from '../integrations/outbound-webhooks/delivery.js';
+import { enqueueDelivery } from '../integrations/outbound-webhooks/index.js';
 import { consume } from '../outbox/index.js';
 
 /** Outbound webhooks: each issue move is enqueued once for the project's endpoints. */

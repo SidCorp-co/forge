@@ -1,4 +1,4 @@
-import type { ChatStreamEvent } from '../integrations/llm/types.js';
+import type { ChatStreamEvent } from '../integrations/llm/index.js';
 import type { AgentMessage, ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
 import {
