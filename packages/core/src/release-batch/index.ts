@@ -35,5 +35,6 @@ export {
   targetUndeclaredHold,
   writeReleaseHolds,
 } from './hold.js';
-export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';
 export { provideReleaseBatchPorts } from './ports.js';
+export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';
+export { reportedCommit } from './verify.js';

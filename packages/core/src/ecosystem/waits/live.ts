@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { issueDisplayIds } from '../../issues/index.js';
-import { reportedCommit } from '../../release-batch/verify.js';
+import { reportedCommit } from '../../release-batch/index.js';
 import { heldEcosystem } from '../ecosystem-service.js';
 import { loadInterface } from '../interface-service.js';
 import { activeEcosystemIdsOf, readEcosystems } from '../store.js';
