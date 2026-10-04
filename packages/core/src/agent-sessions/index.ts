@@ -40,6 +40,13 @@ export { SWEEP_SESSION_COLUMNS, transitionSessions } from './session-transition.
 export { steerIssue } from './steer-session.js';
 export { provideTerminalSessionBridge } from './terminal-effects.js';
 export { firstUserMessageText, messageRoleToTurnRole } from './turns-helpers.js';
+export { materializeJobUsage } from './usage-materialize.js';
+export {
+  canonicalSessionId,
+  EMPTY_USAGE_TOTALS,
+  usageSessionMatch,
+  usageTotalsSelection,
+} from './usage-rollup.js';
 export {
   beatSession,
   claimSessionMarker,
@@ -51,10 +58,3 @@ export {
   setSessionRuntimeState,
   stampSessionMarker,
 } from './writes.js';
-export { materializeJobUsage } from './usage-materialize.js';
-export {
-  canonicalSessionId,
-  EMPTY_USAGE_TOTALS,
-  usageSessionMatch,
-  usageTotalsSelection,
-} from './usage-rollup.js';

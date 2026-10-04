@@ -1,25 +1,15 @@
-import { JOB_MACHINE, OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
-import { and, eq, inArray, isNotNull, lt, or, type SQL, sql } from 'drizzle-orm';
-import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/index.js';
+import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, jobs } from '../db/schema.js';
-import { transition } from '../lifecycle/index.js';
-import { logger } from '../observability/logger.js';
+import { jobs } from '../db/schema.js';
+import { resumeLapsedAnswers } from '../pipeline/index.js';
+import { JOB_AXIS_SCAN_LIMIT } from './hop-bounds.js';
 import {
-  CLASSIFIER_VERSION,
-  emitPipelineWedge,
-  resumeLapsedAnswers,
-  type WedgeHop,
-} from '../pipeline/index.js';
-import { finalizeFailedJob } from './finalize-failure.js';
-import { JOB_AXIS_SCAN_LIMIT, reportHopPage } from './hop-bounds.js';
-import {
-  isKillEpisodeLive,
-  type KillableJobRef,
-  killGraceMs,
-  requestJobKill,
-  resolveKillConfirmation,
-} from './kill-gate.js';
+  type JobAxisReapResult,
+  KILL_GATE_CANDIDATE_COLUMNS,
+  type KillGateCandidateRow,
+  reapJobAxis,
+} from './kill-gate-reap.js';
 import {
   countClaimHeldIssues,
   type LOOP_MONITOR_AXIS,
@@ -28,35 +18,14 @@ import {
 } from './loop-monitor-axis.js';
 import { getLoopThresholds, RESULT_QUIET_MINUTES } from './loop-monitor-thresholds.js';
 import { reapExpiredParks, reapUnansweredParks } from './park-deadline.js';
-import { jobsPorts } from './ports.js';
 import { quietJobCandidateQuery } from './progress-signal.js';
-import { broadcastZombieTransition, lookupIssueForRun, reapQueueHop } from './queue-hop.js';
 import { RESULT_EVENT_LATERAL, RESULT_GUARD } from './resident-session.js';
-import { CLIENT_SESSION_KINDS, heartbeatReapedSql } from './session-kinds.js';
-import { type SessionLostCause, sessionLostCause } from './session-lost-cause.js';
-
-type JobRow = typeof jobs.$inferSelect;
+import { sessionLostCause } from './session-lost-cause.js';
+import { reapZombieSessions, type ZombieSessionReapResult } from './session-reap.js';
 
 export interface LoopScope {
   projectId?: string;
 }
-
-interface ZombieSessionReapResult {
-  queueTimedOut: number;
-  /** ISS-1101 — claimed, reported, then silent with no turn ever reported. */
-  turnNeverReported: number;
-  heartbeatTimedOut: number;
-  noClientAcked: number;
-}
-
-interface JobAxisReapResult {
-  reaped: number;
-  killRequested: number;
-  awaitingKill: number;
-}
-
-export { LOOP_MONITOR_AXIS, type LoopMonitorOutOfAxis } from './loop-monitor-axis.js';
-export { getLoopThresholds, RESULT_QUIET_MINUTES };
 
 export interface LoopMonitorResult {
   /** ISS-1273 — the one axis every hop in this result sweeps, and what it therefore misses. */
@@ -76,145 +45,6 @@ export interface LoopMonitorResult {
   resultMisses: JobAxisReapResult;
   /** answers whose session turned out to be gone, returned to the driver as a dispatch. */
   lapsedAnswers: number;
-}
-
-/** Raw-execute candidate row shared by every job-axis hop — the columns the
- *  kill gate needs (`toKillableRef`) plus the identifiers a wedge needs.
- *  A `type` (not `interface`) — `db.execute<T>`'s `T extends Record<string,
- *  unknown>` constraint only structurally matches object-literal types. */
-type KillGateCandidateRow = {
-  id: string;
-  project_id: string;
-  issue_id: string | null;
-  device_id: string | null;
-  runner_id: string | null;
-  kill_requested_at: Date | string | null;
-  kill_confirmed_at: Date | string | null;
-  kill_outcome: JobRow['killOutcome'];
-  failure_reason: string | null;
-};
-
-const KILL_GATE_CANDIDATE_COLUMNS = sql`j.id, j.project_id, j.issue_id, j.device_id, j.runner_id,
-           j.kill_requested_at, j.kill_confirmed_at, j.kill_outcome`;
-
-function toKillableRef(row: KillGateCandidateRow): KillableJobRef {
-  return {
-    id: row.id,
-    deviceId: row.device_id,
-    runnerId: row.runner_id,
-    killRequestedAt: row.kill_requested_at ? new Date(row.kill_requested_at) : null,
-    killConfirmedAt: row.kill_confirmed_at ? new Date(row.kill_confirmed_at) : null,
-    killOutcome: row.kill_outcome,
-  };
-}
-
-type KillGateReapDecision =
-  | { phase: 'kill_requested' }
-  | { phase: 'awaiting_kill' }
-  | { phase: 'lost_race' }
-  | { phase: 'reaped'; updated: JobRow; confirmed: boolean };
-
-interface KillGateReapConfig {
-  hop: WedgeHop;
-  /** CAS predicate for the terminal flip — MUST include the same status
-   *  guard the candidate SELECT used. */
-  where: SQL | undefined;
-  fromStatus: string;
-  /** Written to `jobs.error` — also the SYNTHETIC_REAP_ERRORS marker the
-   *  late-`/complete` reconciler matches on, so keep it the short form. */
-  error: string;
-  /** Passed to `finalizeFailedJob`'s `error` option (logging / classifier
-   *  fallback only). Defaults to `error` when the hop has no longer text. */
-  finalizeError?: string;
-  failureKind: SessionLostCause['failureKind'];
-  failureReason: string;
-  /** What tripped the hop — true on both the confirmed and unconfirmed
-   *  branch, so the unconfirmed wedge extends it rather than replacing it. */
-  wedgeReason: string;
-  /** Action text for the CONFIRMED branch only (a retry is in flight). The
-   *  unconfirmed branch owns `UNCONFIRMED_WEDGE_ACTION`. */
-  confirmedWedgeAction: string;
-  forceConfirmAfterGrace?: boolean;
-}
-
-async function resolveKillGateDecision(
-  row: KillGateCandidateRow,
-  cfg: KillGateReapConfig,
-): Promise<KillGateReapDecision> {
-  const ref = toKillableRef(row);
-
-  const requestedAt = ref.killRequestedAt;
-  if (!requestedAt || !isKillEpisodeLive(ref)) {
-    await requestJobKill(ref, cfg.error);
-    return { phase: 'kill_requested' };
-  }
-
-  if (Date.now() - requestedAt.getTime() < killGraceMs()) {
-    await requestJobKill(ref, cfg.error);
-    return { phase: 'awaiting_kill' };
-  }
-
-  const { confirmed, outcome } = cfg.forceConfirmAfterGrace
-    ? { confirmed: true, outcome: ref.killOutcome ?? ('never_claimed' as const) }
-    : await resolveKillConfirmation(ref);
-
-  const set: Partial<Omit<JobRow, 'id' | 'status'>> = {
-    error: cfg.error,
-    finishedAt: new Date(),
-    failureKind: cfg.failureKind,
-    failureReason: cfg.failureReason,
-    classifierVersion: CLASSIFIER_VERSION,
-  };
-  if (confirmed) set.killConfirmedAt = new Date();
-  if (outcome) set.killOutcome = outcome;
-
-  const [updated] = (
-    await transition(db, JOB_MACHINE, {
-      to: 'failed',
-      set,
-      where: cfg.where,
-      reason: cfg.error,
-      actor: { type: 'sweeper' },
-      source: 'loop-monitor',
-    })
-  ).rows;
-  if (!updated) return { phase: 'lost_race' };
-
-  return { phase: 'reaped', updated, confirmed };
-}
-
-const UNCONFIRMED_WEDGE_ACTION =
-  'NO retry was scheduled and the job is held. Before resuming it, check the assigned device and kill any agent process still running for this job — resuming while it lives puts two agents on the same worktree.';
-
-async function finalizeKillGateReap(
-  updated: JobRow,
-  confirmed: boolean,
-  cfg: Pick<
-    KillGateReapConfig,
-    'hop' | 'error' | 'finalizeError' | 'wedgeReason' | 'confirmedWedgeAction'
-  >,
-): Promise<void> {
-  await emitPipelineWedge({
-    projectId: updated.projectId,
-    issueId: updated.issueId,
-    hop: cfg.hop,
-    entity: 'job',
-    entityId: updated.id,
-    reason: confirmed
-      ? cfg.wedgeReason
-      : `${cfg.wedgeReason} — and the runner never confirmed the kill, so its agent process may still be running on the device`,
-    action: confirmed ? cfg.confirmedWedgeAction : UNCONFIRMED_WEDGE_ACTION,
-  });
-  const finalizeError = cfg.finalizeError ?? cfg.error;
-  await finalizeFailedJob(
-    updated,
-    confirmed
-      ? { error: finalizeError }
-      : {
-          error: finalizeError,
-          precomputedRetry: { scheduled: false, reason: 'kill_unconfirmed' },
-        },
-  );
 }
 
 /**
@@ -250,199 +80,28 @@ export async function reapAckMisses(
     ORDER BY j.dispatched_at ASC LIMIT ${sql.raw(String(JOB_AXIS_SCAN_LIMIT))}
   `);
 
-  const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
-  for (const row of candidates) {
-    try {
-      const cfg: KillGateReapConfig = {
-        hop: 'ack',
-        where: and(eq(jobs.id, row.id), eq(jobs.status, 'dispatched')),
-        fromStatus: 'dispatched',
-        error: 'dispatch_unclaimed',
-        failureKind: 'infra',
-        failureReason:
-          'dispatch never claimed by a runner (no ack / no started event within grace window)',
-        wedgeReason:
-          'runner never acked the dispatch (no ack, zero job events) within the grace window',
-        confirmedWedgeAction:
-          'Check the assigned device is online and its forge-runner daemon is running. The job was auto-failed and routed to device-rotated retry; if it recurs, rotate or unbind the device.',
-        forceConfirmAfterGrace: true,
-      };
-      const decision = await resolveKillGateDecision(row, cfg);
-      if (decision.phase === 'kill_requested') result.killRequested++;
-      else if (decision.phase === 'awaiting_kill') result.awaitingKill++;
-      else if (decision.phase === 'reaped') {
-        result.reaped++;
-        await finalizeKillGateReap(decision.updated, decision.confirmed, cfg);
-      }
-    } catch (err) {
-      logger.error({ err, jobId: row.id }, 'loop-monitor: ack-miss reap failed (row skipped)');
-    }
-  }
-
-  if (result.reaped > 0) {
-    logger.info({ reaped: result.reaped }, 'loop-monitor: ack-hop misses reaped to failed');
-  }
-  return reportHopPage('ack', candidates.length, result);
-}
-
-/**
- * Hops 2–3a/b (session axis) — claim + heartbeat. The three zombie passes
- * moved verbatim from pipeline/sweeper.ts `sweepZombieSessions` (ISS-232 /
- * ISS-280 / ISS-420 semantics preserved), now emitting a wedge per reap.
- * Also serves the manual `/agent-sessions/sweep-zombies` endpoint via `scope`.
- */
-export async function reapZombieSessions(
-  now: Date = new Date(),
-  scope: LoopScope = {},
-): Promise<ZombieSessionReapResult> {
-  const { queueMs, heartbeatMs, ackFastMs } = getLoopThresholds();
-  const queueCutoff = new Date(now.getTime() - queueMs);
-  const heartbeatCutoff = new Date(now.getTime() - heartbeatMs);
-  const ackFastCutoffIso = new Date(now.getTime() - ackFastMs).toISOString();
-  const projectFilter = scope.projectId ? eq(agentSessions.projectId, scope.projectId) : undefined;
-
-  const { queueTimedOut, turnNeverReported } = await reapQueueHop({
-    now,
-    queueCutoff,
-    quietCutoff: heartbeatCutoff,
-    projectFilter,
-  });
-
-  const heartbeatFailed = (
-    await transitionSessions(db, {
-      returning: SWEEP_SESSION_COLUMNS,
-      to: 'failed',
-      set: { failureReason: 'heartbeat_timeout', updatedAt: now },
-      where: and(
-        eq(agentSessions.status, 'running'),
-        sql`${agentSessions.runtimeState} IS DISTINCT FROM 'awaiting_input'`,
-        or(
-          and(
-            isNotNull(agentSessions.lastHeartbeatAt),
-            lt(agentSessions.lastHeartbeatAt, heartbeatCutoff),
-          ),
-          and(
-            sql`${agentSessions.lastHeartbeatAt} IS NULL`,
-            isNotNull(agentSessions.startedAt),
-            lt(agentSessions.startedAt, heartbeatCutoff),
-            lt(agentSessions.updatedAt, heartbeatCutoff),
-          ),
-          and(
-            sql`${agentSessions.lastHeartbeatAt} IS NULL`,
-            sql`${agentSessions.startedAt} IS NULL`,
-            lt(agentSessions.updatedAt, heartbeatCutoff),
-            lt(agentSessions.createdAt, heartbeatCutoff),
-          ),
-        ),
-        heartbeatReapedSql(sql`${agentSessions}`),
-        ...(projectFilter ? [projectFilter] : []),
-      ),
-      reason: 'heartbeat_timeout',
-      actor: { type: 'sweeper' },
-      source: 'loop-monitor',
-    })
-  ).rows;
-
-  for (const z of heartbeatFailed) {
-    broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'heartbeat_timeout');
-    await emitPipelineWedge({
-      projectId: z.projectId,
-      issueId: await lookupIssueForRun(z.pipelineRunId),
-      hop: 'heartbeat',
-      entity: 'session',
-      entityId: z.id,
-      reason: 'worker claimed the session but its heartbeat went stale',
-      action:
-        'Check the device: is the forge-runner daemon alive, did the Claude CLI process die? The job axis recovers via session-lost reap + retry.',
-    });
-  }
-
-  // No-client hop (ISS-420): a chat/schedule/agent session created `running`
-  // that never got a working client — claudeSessionId still NULL and the
-  // heartbeat never advanced past creation. The arm is `kind IN
-  // CLIENT_SESSION_KINDS`, so a species a pipeline step drives is outside it.
-  const noClientFailed = (
-    await transitionSessions(db, {
-      returning: SWEEP_SESSION_COLUMNS,
-      to: 'failed',
-      set: { failureReason: 'no_client_ack', updatedAt: now },
-      where: and(
-        eq(agentSessions.status, 'running'),
-        sql`${agentSessions.claudeSessionId} IS NULL`,
-        inArray(agentSessions.kind, CLIENT_SESSION_KINDS),
-        or(
-          and(
-            sql`${agentSessions.metadata}->>'acked' = 'true'`,
-            sql`COALESCE(${agentSessions.dispatchedAt}, ${agentSessions.createdAt}) < ${ackFastCutoffIso}`,
-          ),
-          and(
-            isNotNull(agentSessions.lastHeartbeatAt),
-            lt(agentSessions.lastHeartbeatAt, heartbeatCutoff),
-          ),
-          and(
-            sql`${agentSessions.lastHeartbeatAt} IS NULL`,
-            lt(agentSessions.createdAt, heartbeatCutoff),
-          ),
-        ),
-        ...(projectFilter ? [projectFilter] : []),
-      ),
-      reason: 'no_client_ack',
-      actor: { type: 'sweeper' },
-      source: 'loop-monitor',
-    })
-  ).rows;
-
-  for (const z of noClientFailed) {
-    broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'no_client_ack');
-    // ISS-584 (B): a schedule run that never attached ran zero side effects, so
-    // it is safe to re-dispatch onto another runner (async failover, mirrors the
-    // job reaper→retry model). Plain chat returns `not-schedule` and is left for
-    // the user to retry. Best-effort: a throw here must not abort the sweep.
-    let failover: { ok: boolean; sessionId?: string; deviceId?: string } | null = null;
-    try {
-      failover = await jobsPorts().redispatchScheduleSessionOnFailover(z.id);
-      if (failover.ok) {
-        logger.info(
-          {
-            failedSessionId: z.id,
-            retrySessionId: failover.sessionId,
-            deviceId: failover.deviceId,
-          },
-          'loop-monitor: schedule no_client_ack re-dispatched to another runner',
-        );
-      }
-    } catch (err) {
-      logger.error({ err, sessionId: z.id }, 'loop-monitor: schedule failover threw (skipped)');
-    }
-    // A successful failover already re-queued the work, so the wedge would be
-    // noise; only flag the genuine dead-ends (no device left / chain exhausted /
-    // plain chat) that still need a human or device.
-    if (!failover?.ok) {
-      await emitPipelineWedge({
-        projectId: z.projectId,
-        issueId: await lookupIssueForRun(z.pipelineRunId),
-        hop: 'claim',
-        entity: 'session',
-        entityId: z.id,
-        reason: 'session was created running but no client ever attached (no claudeSessionId)',
-        action:
-          'Check that the target device is online and accepting agent:start. Re-run the schedule/chat turn once a device is available.',
-      });
-    }
-  }
-
-  const result: ZombieSessionReapResult = {
-    queueTimedOut,
-    turnNeverReported,
-    heartbeatTimedOut: heartbeatFailed.length,
-    noClientAcked: noClientFailed.length,
-  };
-
-  if (Object.values(result).some((n) => n > 0)) {
-    logger.info({ ...result, queueMs, heartbeatMs }, 'loop-monitor: zombie sessions failed');
-  }
-
-  return result;
+  return reapJobAxis(
+    'ack',
+    candidates,
+    (row) => ({
+      hop: 'ack',
+      where: and(eq(jobs.id, row.id), eq(jobs.status, 'dispatched')),
+      fromStatus: 'dispatched',
+      error: 'dispatch_unclaimed',
+      failureKind: 'infra',
+      failureReason:
+        'dispatch never claimed by a runner (no ack / no started event within grace window)',
+      wedgeReason:
+        'runner never acked the dispatch (no ack, zero job events) within the grace window',
+      confirmedWedgeAction:
+        'Check the assigned device is online and its forge-runner daemon is running. The job was auto-failed and routed to device-rotated retry; if it recurs, rotate or unbind the device.',
+      forceConfirmAfterGrace: true,
+    }),
+    {
+      skipped: 'loop-monitor: ack-miss reap failed (row skipped)',
+      reaped: 'loop-monitor: ack-hop misses reaped to failed',
+    },
+  );
 }
 
 /**
@@ -475,31 +134,20 @@ async function reapSessionLostJobs(
     ORDER BY j.dispatched_at ASC NULLS FIRST LIMIT ${sql.raw(String(JOB_AXIS_SCAN_LIMIT))}
   `);
 
-  const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
-  for (const row of candidates) {
-    try {
-      const cfg: KillGateReapConfig = {
-        hop: 'heartbeat',
-        where: and(eq(jobs.id, row.id), inArray(jobs.status, OCCUPYING_JOB_STATUSES)),
-        fromStatus: 'active',
-        ...sessionLostCause(row.failure_reason),
-      };
-      const decision = await resolveKillGateDecision(row, cfg);
-      if (decision.phase === 'kill_requested') result.killRequested++;
-      else if (decision.phase === 'awaiting_kill') result.awaitingKill++;
-      else if (decision.phase === 'reaped') {
-        result.reaped++;
-        await finalizeKillGateReap(decision.updated, decision.confirmed, cfg);
-      }
-    } catch (err) {
-      logger.error({ err, jobId: row.id }, 'loop-monitor: session-lost reap failed (row skipped)');
-    }
-  }
-
-  if (result.reaped > 0) {
-    logger.info({ reaped: result.reaped }, 'loop-monitor: session-lost jobs reconciled to failed');
-  }
-  return reportHopPage('session-lost', candidates.length, result);
+  return reapJobAxis(
+    'session-lost',
+    candidates,
+    (row) => ({
+      hop: 'heartbeat',
+      where: and(eq(jobs.id, row.id), inArray(jobs.status, OCCUPYING_JOB_STATUSES)),
+      fromStatus: 'active',
+      ...sessionLostCause(row.failure_reason),
+    }),
+    {
+      skipped: 'loop-monitor: session-lost reap failed (row skipped)',
+      reaped: 'loop-monitor: session-lost jobs reconciled to failed',
+    },
+  );
 }
 
 /**
@@ -531,37 +179,26 @@ async function reapResultMisses(
   const candidates = await db.execute<KillGateCandidateRow>(query);
 
   const STALE_REASON = `runner stale (no progress / no started event for >${RESULT_QUIET_MINUTES}min)`;
-  const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
-  for (const row of candidates) {
-    try {
-      const cfg: KillGateReapConfig = {
-        hop: 'result',
-        where: and(eq(jobs.id, row.id), inArray(jobs.status, OCCUPYING_JOB_STATUSES)),
-        fromStatus: 'active',
-        error: 'stale',
-        finalizeError: STALE_REASON,
-        failureKind: 'timeout',
-        failureReason: STALE_REASON,
-        wedgeReason: STALE_REASON,
-        confirmedWedgeAction:
-          'The job was failed and routed to a device-rotated retry. Check the original device for a hung Claude CLI / runaway step.',
-      };
-      const decision = await resolveKillGateDecision(row, cfg);
-      if (decision.phase === 'kill_requested') result.killRequested++;
-      else if (decision.phase === 'awaiting_kill') result.awaitingKill++;
-      else if (decision.phase === 'reaped') {
-        result.reaped++;
-        await finalizeKillGateReap(decision.updated, decision.confirmed, cfg);
-      }
-    } catch (err) {
-      logger.error({ err, jobId: row.id }, 'loop-monitor: result-miss reap failed (row skipped)');
-    }
-  }
-
-  if (result.reaped > 0) {
-    logger.info({ reaped: result.reaped }, 'loop-monitor: result-hop misses reaped to failed');
-  }
-  return reportHopPage('result', candidates.length, result);
+  return reapJobAxis(
+    'result',
+    candidates,
+    (row) => ({
+      hop: 'result',
+      where: and(eq(jobs.id, row.id), inArray(jobs.status, OCCUPYING_JOB_STATUSES)),
+      fromStatus: 'active',
+      error: 'stale',
+      finalizeError: STALE_REASON,
+      failureKind: 'timeout',
+      failureReason: STALE_REASON,
+      wedgeReason: STALE_REASON,
+      confirmedWedgeAction:
+        'The job was failed and routed to a device-rotated retry. Check the original device for a hung Claude CLI / runaway step.',
+    }),
+    {
+      skipped: 'loop-monitor: result-miss reap failed (row skipped)',
+      reaped: 'loop-monitor: result-hop misses reaped to failed',
+    },
+  );
 }
 
 /**

@@ -11,14 +11,14 @@ import {
   runners,
   usageRecords,
 } from '../db/schema.js';
+import { extractTurnPreview } from './chat-preview.js';
+import { agentSessionListColumns } from './service.js';
 import {
   canonicalSessionId,
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,
   usageTotalsSelection,
 } from './usage-rollup.js';
-import { extractTurnPreview } from './chat-preview.js';
-import { agentSessionListColumns } from './service.js';
 
 /** Where a session lives and which device it was dispatched to, or null when it does not exist. */
 export async function sessionPlacement(
