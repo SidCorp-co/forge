@@ -1,4 +1,4 @@
-// The refusal vocabulary of organizations, their members, agent accounts and the SSH key pool.
+// The refusal vocabulary of organizations, their members and agent accounts.
 
 export const ORG_REFUSAL_CODES = [
 	"ORG_REFUSED",
@@ -11,8 +11,6 @@ export const ORG_REFUSAL_CODES = [
 	"INVITATION_EMAIL_MISMATCH",
 	"AGENT_HANDLE_TAKEN",
 	"AGENT_IS_A_PROJECT_HANDLE",
-	"DUPLICATE_FINGERPRINT",
-	"KEY_IN_USE",
 ] as const;
 
 export type OrgRefusalCode = (typeof ORG_REFUSAL_CODES)[number];

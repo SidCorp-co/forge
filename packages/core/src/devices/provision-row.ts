@@ -6,7 +6,6 @@
  */
 
 import { isRefusal } from '../lib/refusal.js';
-import { devicesPorts } from './ports.js';
 
 const REASON_MAX = 200;
 
@@ -39,9 +38,6 @@ interface ProvisionRow {
   branch: string | null;
   repoUrl: string | null;
   baseBranch: string | null;
-  sshSource: string | null;
-  sshPublicKey: string | null;
-  sshPrivateKeyEnc: Buffer | null;
 }
 
 export interface Provision {
@@ -51,9 +47,6 @@ export interface Provision {
   repoPath: string | null;
   branch: string | null;
   repoUrl: string | null;
-  sshKeySource: string | null;
-  sshPublicKey: string | null;
-  sshPrivateKey: string | null;
   hostCredential: boolean;
   // cm:hack ISS-50 until:every paired runner is at or past the release reading hostCredential — runners released before it read only this name, so it carries the same value
   githubAppCredential: boolean;
@@ -72,7 +65,6 @@ interface ProvisionRowDeps {
     projectId: string;
     holderUserId: string;
   }): Promise<string>;
-  decrypt?(enc: Buffer): string;
 }
 
 interface ProvisionRowContext {
@@ -161,26 +153,6 @@ export async function buildProvisionRow(
     terminal,
   });
 
-  let sshPrivateKey: string | null = null;
-  if (row.sshPrivateKeyEnc) {
-    const decrypt = deps.decrypt ?? devicesPorts().decryptSecret;
-    try {
-      sshPrivateKey = decrypt(row.sshPrivateKeyEnc);
-    } catch (err) {
-      // Still served without the key — a project may clone over HTTPS or be set
-      // up by hand. The drop is reported rather than swallowed, because an
-      // undecryptable key and no key at all read alike otherwise (ISS-1184).
-      sshPrivateKey = null;
-      reports.push(
-        against(
-          'degraded',
-          `the stored workspace ssh key could not be decrypted, so the provision is served without it: ${messageOf(err)}`,
-          false,
-        ),
-      );
-    }
-  }
-
   let mcpCredential: string | null = null;
   if (ctx.holderUserId) {
     const minted = await mintWithOneRetry(deps, {
@@ -212,9 +184,6 @@ export async function buildProvisionRow(
       repoPath: row.repoPath,
       branch: row.branch ?? row.baseBranch,
       repoUrl: row.repoUrl,
-      sshKeySource: sshPrivateKey ? row.sshSource : null,
-      sshPublicKey: sshPrivateKey ? row.sshPublicKey : null,
-      sshPrivateKey,
       hostCredential: ctx.hostCredential,
       githubAppCredential: ctx.hostCredential,
       mcpCredential,

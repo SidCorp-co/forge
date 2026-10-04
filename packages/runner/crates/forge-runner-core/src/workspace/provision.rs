@@ -3,9 +3,8 @@
 //!
 //! Triggered by the `provision.request` WS event and by a periodic sweep. For
 //! each `queued` provision: resolve the target folder (server `repoPath`, else
-//! `projects_root/<slug>`), write the project git SSH key and pin git to it,
-//! bring the repo in, then seed `.claude/skills/`, a persistent `.mcp.json` and
-//! the Forge orientation, reporting each stage so web renders a live stepper.
+//! `projects_root/<slug>`), bring the repo in through the box credential, then
+//! seed `.claude/skills/`, a persistent `.mcp.json` and the Forge orientation, reporting each stage so web renders a live stepper.
 //!
 //! Git is OPTIONAL — see `classify_workspace` for the five shapes the target
 //! folder can take and which one earns `needs_manual_setup`. The load-bearing
@@ -89,18 +88,6 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
         }
     };
 
-    // 2. SSH key (optional). Write it + build the git ssh command.
-    let ssh_cmd = match &p.ssh_private_key {
-        Some(key) => match git_cred::write_project_ssh_key(&p.project_id, key) {
-            Ok(path) => Some(git_cred::ssh_command(&path)),
-            Err(e) => {
-                tracing::warn!("[provision] write ssh key failed: {e}");
-                None
-            }
-        },
-        None => None,
-    };
-
     let cred_host = credential_host(p);
     let git_cfg = cred_host
         .as_deref()
@@ -154,13 +141,7 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
                 .map(str::trim)
                 .expect("WorkspaceMode::Adopt implies a non-empty repo url");
             report(client, &p.runner_id, "cloning", None).await;
-            if let Err(detail) = adopt_repo(
-                repo_url,
-                &repo_path,
-                ssh_cmd.as_deref(),
-                &git_cfg,
-                p.branch.as_deref(),
-            ) {
+            if let Err(detail) = adopt_repo(repo_url, &repo_path, &git_cfg, p.branch.as_deref()) {
                 report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
                 return;
             }
@@ -172,24 +153,13 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
                 .map(str::trim)
                 .expect("WorkspaceMode::Clone implies a non-empty repo url");
             report(client, &p.runner_id, "cloning", None).await;
-            if let Err(detail) = clone_repo(
-                repo_url,
-                &repo_path,
-                ssh_cmd.as_deref(),
-                &git_cfg,
-                p.branch.as_deref(),
-            ) {
+            if let Err(detail) = clone_repo(repo_url, &repo_path, &git_cfg, p.branch.as_deref()) {
                 report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
                 return;
             }
         }
     }
 
-    // Pin future pushes to the deploy key (repo-local, so we never touch global
-    // git config). Applies whether we just cloned or the folder pre-existed.
-    if let Some(cmd) = ssh_cmd.as_deref() {
-        set_repo_ssh_command(&repo_path, cmd);
-    }
     if let Some(host) = cred_host.as_deref() {
         if let Err(e) = git_cred::set_repo_credential_helper(&repo_path, host) {
             tracing::error!("[provision] {e}");
@@ -390,7 +360,7 @@ fn resolve_path(cfg: &Config, p: &Provision) -> Option<PathBuf> {
     cfg.projects_root.as_ref().map(|root| root.join(&p.slug))
 }
 
-/// `git clone <url> <path>` with the deploy key (if any) via `GIT_SSH_COMMAND`.
+/// `git clone <url> <path>`.
 /// Returns the trimmed git stderr on failure. When `branch` is set (the
 /// project's base branch), check it out after cloning so the main worktree
 /// lands on the base branch rather than the repo's default HEAD — the job
@@ -398,7 +368,6 @@ fn resolve_path(cfg: &Config, p: &Provision) -> Option<PathBuf> {
 fn clone_repo(
     repo_url: &str,
     repo_path: &Path,
-    ssh_cmd: Option<&str>,
     git_cfg: &[String],
     branch: Option<&str>,
 ) -> std::result::Result<(), String> {
@@ -407,9 +376,6 @@ fn clone_repo(
     }
     let mut cmd = Command::new("git");
     cmd.args(git_cfg).arg("clone").arg(repo_url).arg(repo_path);
-    if let Some(ssh) = ssh_cmd {
-        cmd.env("GIT_SSH_COMMAND", ssh);
-    }
     let out = cmd.output().map_err(|e| format!("spawn git clone: {e}"))?;
     if !out.status.success() {
         return Err(format!(
@@ -445,16 +411,12 @@ fn clone_repo(
 fn adopt_repo(
     repo_url: &str,
     repo_path: &Path,
-    ssh_cmd: Option<&str>,
     git_cfg: &[String],
     branch: Option<&str>,
 ) -> std::result::Result<(), String> {
     let git = |args: &[&str]| -> std::result::Result<String, String> {
         let mut cmd = Command::new("git");
         cmd.arg("-C").arg(repo_path).args(git_cfg).args(args);
-        if let Some(ssh) = ssh_cmd {
-            cmd.env("GIT_SSH_COMMAND", ssh);
-        }
         let out = cmd
             .output()
             .map_err(|e| format!("spawn git {}: {e}", args.join(" ")))?;
@@ -488,23 +450,6 @@ fn adopt_repo(
     let remote_ref = format!("origin/{target}");
     git(&["checkout", "-f", "-B", &target, &remote_ref])?;
     Ok(())
-}
-
-/// Set repo-local `core.sshCommand` so pushes use the project deploy key.
-fn set_repo_ssh_command(repo_path: &Path, ssh_cmd: &str) {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo_path)
-        .args(["config", "core.sshCommand", ssh_cmd])
-        .output();
-    if let Ok(o) = out {
-        if !o.status.success() {
-            tracing::warn!(
-                "[provision] set core.sshCommand failed: {}",
-                String::from_utf8_lossy(&o.stderr).trim()
-            );
-        }
-    }
 }
 
 /// Process a single `provision.request` WS event (`{ runnerId, projectId }`).

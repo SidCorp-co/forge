@@ -395,7 +395,7 @@ pub async fn force_terminal(
     // at the path, so only once git has answered that the path is a checkout
     // of its own: at an enclosed one it would be the enclosing checkout's
     // configuration (consult on 9ecec0c09 F1).
-    let cred = RepoCred::of(run.project_id.as_deref(), worktree).await;
+    let cred = RepoCred::of(worktree).await;
 
     // A checkout whose branch this box cannot name is a DETACHED one, not an
     // unreadable one, and it is no longer fatal here. The branch name is what

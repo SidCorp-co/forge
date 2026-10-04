@@ -34,11 +34,7 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
   const settled = await Promise.allSettled(
     rows.map(async (r) => {
       const { repository, defaultBranch } = await devicesPorts().readDeclaredSource(r.projectId);
-      // cm:why the document names a repository, not a transport: an attached deploy key can only
-      // reach it over SSH, and every other credential (a host's minted one, public) reaches it over HTTPS.
-      const repoUrl = repository
-        ? devicesPorts().remoteOf(repository, r.sshPrivateKeyEnc ? 'ssh' : 'https')
-        : null;
+      const repoUrl = repository ? devicesPorts().remoteOf(repository) : null;
       return buildProvisionRow(
         { ...r, repoUrl, baseBranch: defaultBranch },
         {

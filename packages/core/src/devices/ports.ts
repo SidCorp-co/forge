@@ -43,7 +43,7 @@ interface DevicesPorts {
   readDeclaredSource(
     projectId: string,
   ): Promise<{ repository: string | null; defaultBranch: string | null }>;
-  remoteOf(repository: string, transport: 'ssh' | 'https'): string;
+  remoteOf(repository: string): string;
   withDeclaredSource<T extends { projectId: string }>(
     rows: readonly T[],
   ): Promise<
@@ -51,7 +51,6 @@ interface DevicesPorts {
   >;
   projectsWithHostCredential(projectIds: string[]): Promise<Set<string>>;
   isHttpsGitUrl(url: string | null | undefined): boolean;
-  decryptSecret(enc: Buffer): string;
   publishedRunnerBuild(): Promise<PublishedRunnerBuild | null>;
   mainRunnerHead(): string | null;
   cmpVersion(a: string, b: string): number;

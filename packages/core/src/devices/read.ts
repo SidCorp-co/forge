@@ -4,11 +4,9 @@ import {
   deviceLoginCodes,
   devices,
   organizationMembers,
-  projectGitCredentials,
   projects,
   runners,
   users,
-  workspaceSshKeys,
 } from '../db/schema.js';
 import { DEVICE_LIST_COLUMNS } from './device-columns.js';
 
@@ -100,7 +98,7 @@ export async function listOrgDevices(orgId: string, visibleIds: string[]) {
     .orderBy(desc(devices.pairedAt));
 }
 
-/** The queued claude-code runners on a device, with the deploy key attached to each project. */
+/** The queued claude-code runners on a device. */
 export async function queuedProvisionRows(deviceId: string) {
   return db
     .select({
@@ -109,14 +107,9 @@ export async function queuedProvisionRows(deviceId: string) {
       slug: projects.slug,
       repoPath: runners.repoPath,
       branch: runners.branch,
-      sshSource: workspaceSshKeys.source,
-      sshPublicKey: workspaceSshKeys.publicKey,
-      sshPrivateKeyEnc: workspaceSshKeys.privateKeyEnc,
     })
     .from(runners)
     .innerJoin(projects, eq(projects.id, runners.projectId))
-    .leftJoin(projectGitCredentials, eq(projectGitCredentials.projectId, runners.projectId))
-    .leftJoin(workspaceSshKeys, eq(workspaceSshKeys.id, projectGitCredentials.sshKeyId))
     .where(
       and(
         eq(runners.deviceId, deviceId),
