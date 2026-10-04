@@ -171,6 +171,10 @@
   these public guides instead of designs only Forge's own project could read, as do the issue
   status refusals.
 
+- **Automation is one area with Schedules, Fires and Reports (ISS-116).** Each tab lists what needs
+  you first and opens a peek and a page; members run schedules and triage reports there, and a
+  refusal shows its code.
+
 - **Every schedule kind and fire reads as words (ISS-115).** `forge_schedules` creates release
   batch and Sentry pull schedules, and schedule state, fire status, fire trigger and report triage
   each have one badge.
@@ -2728,6 +2732,9 @@
   (ISS-1313)
 
 ### Removed
+- **Comments are no longer gated, and codemap is gone.** The comment-budget check, its
+  baseline and the `comment` conformance axis are removed, and no rule asks for `cm:` annotations;
+  existing ones stay as plain comments.
 - **`GET /api/schedules/:id/runs` is gone (ISS-114).** A schedule's fires are read at
   `GET /api/projects/:id/automation/schedules/:scheduleId`.
 - **An agent report has no reviewed flag (ISS-113).** `POST /api/agent-reports/:id/reviewed`,

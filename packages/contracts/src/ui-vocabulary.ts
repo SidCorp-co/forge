@@ -10,6 +10,7 @@ import type { MasterState } from "./master-standing.js";
 import type { RunState } from "./run-standing.js";
 import type {
 	ScheduleKind,
+	ScheduleRunSkipReason,
 	ScheduleRunStatus,
 	ScheduleRunTrigger,
 } from "./schedules.js";
@@ -515,6 +516,14 @@ export const ENUM_LABELS = {
 		manual: "Manual",
 		scheduled: "Scheduled",
 	} satisfies Record<ScheduleRunTrigger, string>,
+	/** Why a fire ran nothing (contracts `schedules.ts:SCHEDULE_RUN_SKIP_REASONS`). */
+	fireSkipReason: {
+		"no-device": "No box could take it",
+		"project-not-found": "Its target project is gone",
+		"already-applied": "Already applied",
+		"nothing-to-do": "Nothing to do",
+		"gate-refused": "The gate refused it",
+	} satisfies Record<ScheduleRunSkipReason, string>,
 } as const satisfies Record<string, Record<string, string>>;
 
 export type EnumLabelFamily = keyof typeof ENUM_LABELS;

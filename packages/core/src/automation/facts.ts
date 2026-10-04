@@ -201,6 +201,16 @@ export async function reportRows(scope: {
   return reportViews([...fresh, ...triaged]);
 }
 
+export async function reportRow(projectId: string, reportId: string) {
+  const rows = await db
+    .select(reportColumns)
+    .from(agentReports)
+    .leftJoin(projects, eq(projects.id, agentReports.projectId))
+    .where(and(eq(agentReports.projectId, projectId), eq(agentReports.id, reportId)))
+    .limit(1);
+  return reportViews(rows);
+}
+
 export async function reportCounts(projectId: string): Promise<Record<AgentReportTriage, number>> {
   const rows = await db
     .select({ triage: agentReports.triage, n: count() })

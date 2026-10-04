@@ -15,3 +15,6 @@ export function planLine(
     ? `No plan has been written against it yet; a plan written now records revision ${currentRevision}.`
     : `This issue's plan was written against revision ${plannedRevision}, the current one.`;
 }
+
+export const fetchLine = (workflowId: string, revision: number | null) =>
+  `\`forge_workflows action=design workflowId=${workflowId} view=steps${revision === null ? '' : ` revision=${revision}`}\``;

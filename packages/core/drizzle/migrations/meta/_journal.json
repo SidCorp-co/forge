@@ -2388,6 +2388,13 @@
       "when": 1815091200000,
       "tag": "0372_a_release_version_may_be_a_prerelease",
       "breakpoints": true
+    },
+    {
+      "idx": 373,
+      "version": "7",
+      "when": 1815177600000,
+      "tag": "0373_a_mockup_is_a_proposal_pinned_beside_the_designs",
+      "breakpoints": true
     }
   ]
 }

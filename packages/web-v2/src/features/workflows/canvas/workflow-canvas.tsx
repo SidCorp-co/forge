@@ -3,7 +3,7 @@
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { ReactFlowProvider } from "@xyflow/react";
 import type { ReactNode } from "react";
-import { SYSTEM_CONTEXT_TEMPLATE } from "../c4/model";
+import { SYSTEM_CONTEXT_TEMPLATE } from "../c4/graph";
 import type { DesignDiff } from "../design-diff";
 import type { WorkflowBody } from "../types";
 import { C4Canvas } from "./c4-canvas";

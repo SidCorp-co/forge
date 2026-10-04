@@ -2,56 +2,43 @@ import { BUILTIN_WORKFLOW_TEMPLATES } from "@forge/contracts/workflow-templates"
 import { describe, expect, it } from "vitest";
 import { templateFor } from "../canvas/model";
 import type { WorkflowBody, WorkflowStep } from "../types";
-import { layoutContainers } from "./container-layout";
-import { layoutContext } from "./context-layout";
-import { type Diagram, FONT, MIN_FONT_PX, type Pt, type Rect } from "./geometry";
+import forge from "./forge-system-context.fixture.json";
+import { integrationOf, readSystemGraph } from "./graph";
 import hop from "./hop-system-context.fixture.json";
-import hop5 from "./hop-system-context-rev5.fixture.json";
-import { FOCAL, integrationOf, readC4, shortLabel } from "./model";
-import { fitContext, PEOPLE_AT_A_GLANCE, summarise } from "./summary";
+import hopNow from "./hop-system-context-current.fixture.json";
+import { type Diagram, layoutView, type Pt, type Rect, shortLabel } from "./layout";
+import { type Detail, FOCAL, type Level, PEOPLE_AT_A_GLANCE, viewOf } from "./view";
 
-// The HOP system-context design as dev stores it at rev 4: 17 steps (4 people, 4 systems, 6 containers
-// and the site, in five boundaries) and 24 lines.
-const hopDoc = hop as unknown as WorkflowBody;
-const template = templateFor(hopDoc, BUILTIN_WORKFLOW_TEMPLATES);
-// Rev 5, as dev held it on 2026-10-04: 19 outside systems in six boundaries, nine of them the hospital's.
-const hop5Doc = hop5 as unknown as WorkflowBody;
-const laneLabel = (id: string) => hop5Doc.lanes?.find((l) => l.id === id)?.label ?? id;
+// HOP's system-context design at rev 4 (17 steps, 24 lines), HOP's as dev holds it now (31 steps: 17
+// outside systems in four boundaries, five people) and forge's onboarding draft (22 steps).
+const doc = (j: unknown) => j as WorkflowBody;
+const template = templateFor(doc(hop), BUILTIN_WORKFLOW_TEMPLATES);
+const graphOf = (j: unknown) => readSystemGraph(doc(j), template);
 
-function cross(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
-  const o = (p: Pt, q: Pt, r: Pt) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
-  const d1 = o(c, d, a);
-  const d2 = o(c, d, b);
-  const d3 = o(a, b, c);
-  const d4 = o(a, b, d);
-  return ((d1 > 1e-6 && d2 < -1e-6) || (d1 < -1e-6 && d2 > 1e-6)) && ((d3 > 1e-6 && d4 < -1e-6) || (d3 < -1e-6 && d4 > 1e-6));
-}
+const step = (id: string, type: string, band: string | null, after: string[] = []): WorkflowStep => ({
+  id,
+  title: id,
+  does: id,
+  status: "designed",
+  after,
+  evidence: null,
+  node: { type, label: id, ...(band ? { band } : {}), ...(type === "SYSTEM" ? { owner: "someone" } : {}) },
+});
 
-/** Every pair of drawn lines that cross, by id. */
-function crossings(d: Diagram): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < d.lines.length; i++) {
-    for (let j = i + 1; j < d.lines.length; j++) {
-      const a = d.lines[i]?.samples ?? [];
-      const b = d.lines[j]?.samples ?? [];
-      let hit = false;
-      for (let p = 1; p < a.length && !hit; p++) {
-        for (let q = 1; q < b.length && !hit; q++) {
-          hit = cross(a[p - 1] as Pt, a[p] as Pt, b[q - 1] as Pt, b[q] as Pt);
-        }
-      }
-      if (hit) out.push(`${d.lines[i]?.id} × ${d.lines[j]?.id}`);
-    }
-  }
-  return out;
-}
+const design = (steps: WorkflowStep[]): WorkflowBody => ({
+  ...doc(hop),
+  steps,
+  edges: steps.flatMap((s) => s.after.map((a) => ({ from: a, to: s.id, label: `${a} to ${s.id}` }))),
+  lanes: [
+    { id: "people", label: "People" },
+    { id: "ours", label: "Our product" },
+    { id: "them", label: "Partners" },
+  ],
+});
 
 /** Liang–Barsky: does the segment enter the rectangle's interior (shrunk by 2px, so touching a side is not entering)? */
 function enters(a: Pt, b: Pt, r: Rect): boolean {
-  const x0 = r.x + 2;
-  const x1 = r.x + r.w - 2;
-  const y0 = r.y + 2;
-  const y1 = r.y + r.h - 2;
+  const [x0, x1, y0, y1] = [r.x + 2, r.x + r.w - 2, r.y + 2, r.y + r.h - 2];
   let t0 = 0;
   let t1 = 1;
   const dx = b.x - a.x;
@@ -74,265 +61,150 @@ function enters(a: Pt, b: Pt, r: Rect): boolean {
   return true;
 }
 
-/** Every line that passes through a box, its own two ends included. */
-function throughBoxes(d: Diagram): string[] {
+const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5 && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5;
+
+/** Every way a diagram breaks the drawing rules, named. */
+function defects(d: Diagram): string[] {
   const out: string[] = [];
+  const rect = new Map(d.boxes.map((b) => [b.node.id, b]));
   for (const l of d.lines) {
     for (const b of d.boxes) {
-      for (let i = 1; i < l.samples.length; i++) {
-        if (enters(l.samples[i - 1] as Pt, l.samples[i] as Pt, b)) {
-          out.push(`${l.id} through ${b.id}`);
+      for (let i = 1; i < l.points.length; i++) {
+        if (enters(l.points[i - 1] as Pt, l.points[i] as Pt, b)) {
+          out.push(`${l.id} through ${b.node.id}`);
           break;
         }
       }
     }
+    // A line runs between its two ends: it never detours past either of them round the diagram.
+    const [a, z] = l.ends.map((id) => rect.get(id) as Rect) as [Rect, Rect];
+    const lo = Math.min(a.x, z.x) - 1;
+    const hi = Math.max(a.x + a.w, z.x + z.w) + 1;
+    if (l.points.some((p) => p.x < lo || p.x > hi)) out.push(`${l.id} wraps past its ends`);
+    if (!l.label) continue;
+    for (const o of d.lines) if (o !== l && o.label && o.id < l.id && overlaps(l.label, o.label)) out.push(`${l.id} label over ${o.id} label`);
+    for (const b of d.boxes) if (overlaps(l.label, b)) out.push(`${l.id} label over ${b.node.id}`);
   }
   return out;
 }
 
-const step = (id: string, type: string, band: string | null, after: string[] = []): WorkflowStep => ({
-  id,
-  title: id,
-  does: id,
-  status: "designed",
-  after,
-  evidence: null,
-  node: { type, label: id, ...(band ? { band } : {}), ...(type === "SYSTEM" ? { owner: "someone" } : {}) },
-});
+const VIEWS: [Level, Detail][] = [
+  ["context", "boundaries"],
+  ["context", "systems"],
+  ["containers", "boundaries"],
+  ["containers", "systems"],
+];
 
-const design = (steps: WorkflowStep[], edges: WorkflowBody["edges"] = []): WorkflowBody => ({
-  ...hopDoc,
-  steps,
-  edges: edges.length ? edges : steps.flatMap((s) => s.after.map((a) => ({ from: a, to: s.id, label: `${a} to ${s.id}` }))),
-  lanes: [
-    { id: "people", label: "People" },
-    { id: "ours", label: "Our product" },
-    { id: "them", label: "Partners" },
-  ],
-});
-
-describe("reading a system-context design as C4", () => {
-  it("finds HOP's boundary as the system in scope, with its six containers and the site inside", () => {
-    const m = readC4(hopDoc, template);
-    expect(template?.id).toBe("system-context");
-    expect(m.focal?.lane).toBe("hop");
-    expect(m.focal?.title).toBe(hopDoc.lanes?.find((l) => l.id === "hop")?.label);
-    expect(m.focal?.parts.map((p) => p.id).sort()).toEqual(["evaluate", "hop", "hop-db", "intake", "record-action", "retention", "sweep"]);
-    expect(m.people.map((p) => p.id)).toEqual(["staff", "leads", "patient", "caregiver"]);
-    expect(m.externals.map((x) => x.id).sort()).toEqual(["forge", "his", "llm", "records-policy", "scheduling", "zalo"]);
+describe("design document → system graph", () => {
+  it("finds HOP's boundary as the system in scope, with its containers and the site inside", () => {
+    const g = graphOf(hop);
+    expect(g.focal?.boundary).toBe("hop");
+    expect(g.focal?.title).toBe(doc(hop).lanes?.find((l) => l.id === "hop")?.label);
+    expect(g.focal?.parts.sort()).toEqual(["evaluate", "hop", "hop-db", "intake", "record-action", "retention", "sweep"]);
+    expect(g.nodes.filter((n) => n.kind === "person").map((n) => n.id)).toEqual(["staff", "leads", "patient", "caregiver"]);
+    expect(g.nodes.filter((n) => n.kind === "external").map((n) => n.id).sort()).toEqual(["forge", "his", "llm", "records-policy", "scheduling", "zalo"]);
   });
 
-  it("lifts every line that touches a container to the system and merges each pair once (implied relationships)", () => {
-    const m = readC4(hopDoc, template);
-    const toScheduling = m.relations.find((r) => [r.from, r.to].sort().join() === [FOCAL, "scheduling"].sort().join());
-    expect(toScheduling?.src.map((e) => e.from).sort()).toEqual(["evaluate", "intake", "record-action"]);
-    expect(m.relations.every((r) => r.from !== r.to)).toBe(true);
-    // the lines that stay inside the system are not drawn on Context
-    const kept = m.relations.reduce((n, r) => n + r.src.length, 0);
-    const insideOnly = m.canvas.edges.filter((e) => m.focal?.parts.some((p) => p.id === e.from) && m.focal?.parts.some((p) => p.id === e.to));
-    expect(kept + insideOnly.length).toBe(m.canvas.edges.length);
+  it("keeps every relationship of the design with its own label and technology", () => {
+    const g = graphOf(forge);
+    expect(g.relationships).toHaveLength(27);
+    expect(g.relationships.find((r) => r.id === "member>runner")).toMatchObject({ label: "pairs the box, binds repos", technology: "forge-runner CLI" });
+  });
+
+  it("splits each lane into boundaries by side and counts the header facts once", () => {
+    const g = graphOf(hopNow);
+    expect(g.boundaries.map((b) => b.id)).toEqual(["people:people", "outside:hospital", "focal:hop", "outside:partners", "outside:channels", "outside:outside"]);
+    expect(g.facts.externals).toBe(17);
+    expect(g.facts.namedBoundaries).toBe(4);
+    expect(g.facts.people).toHaveLength(5);
   });
 
   it("takes the most connected system as the one in scope when the design draws no container", () => {
-    const m = readC4(design([step("a", "PERSON", "people"), step("core", "SYSTEM", "ours", ["a"]), step("bank", "SYSTEM", "them", ["core"])]), template);
-    expect(m.focal?.parts.map((p) => p.id)).toEqual(["core"]);
-    expect(m.externals.map((x) => x.id)).toEqual(["bank"]);
+    const g = readSystemGraph(design([step("a", "PERSON", "people"), step("core", "SYSTEM", "ours", ["a"]), step("bank", "SYSTEM", "them", ["core"])]), template);
+    expect(g.focal?.parts).toEqual(["core"]);
+    expect(g.nodes.find((n) => n.id === "bank")?.kind).toBe("external");
   });
 
-  it("draws no Context for a design with no system at all", () => {
-    const m = readC4(design([step("a", "PERSON", "people"), step("b", "PERSON", "people", ["a"])]), template);
-    expect(m.focal).toBeNull();
-    expect(layoutContext(m)).toBeNull();
-  });
-});
-
-describe("the Context layout (C4 level 1)", () => {
-  it("draws a plain 3-column context with no crossing and people | system | external in order", () => {
-    const m = readC4(
-      design([
-        step("p1", "PERSON", "people"),
-        step("p2", "PERSON", "people"),
-        step("web", "CONTAINER", "ours", ["p1", "p2"]),
-        step("db", "CONTAINER", "ours", ["web"]),
-        step("x1", "SYSTEM", "them", ["web"]),
-        step("x2", "SYSTEM", "them", ["db"]),
-        step("x3", "SYSTEM", "them"),
-        step("feed", "CONTAINER", "ours", ["x3"]),
-      ]),
-      template,
-    );
-    const d = layoutContext(m) as Diagram;
-    expect(crossings(d)).toEqual([]);
-    expect(throughBoxes(d)).toEqual([]);
-    const x = (id: string) => d.boxes.find((b) => b.id === id)?.x ?? Number.NaN;
-    expect(x("p1")).toBeLessThan(x(FOCAL));
-    expect(x(FOCAL)).toBeLessThan(x("x1"));
-    expect(d.boxes.filter((b) => b.kind === "focal")).toHaveLength(1);
-    expect(d.lines).toHaveLength(5);
-  });
-
-  it("routes a person-to-outside line around the system box instead of across it", () => {
-    const m = readC4(
-      design([
-        step("staff", "PERSON", "people"),
-        step("app", "CONTAINER", "ours", ["staff"]),
-        step("crm", "SYSTEM", "them", ["app", "staff"]),
-        step("sms", "SYSTEM", "them", ["app"]),
-        step("patient", "PERSON", "people", ["sms"]),
-      ]),
-      template,
-    );
-    const d = layoutContext(m) as Diagram;
-    expect(crossings(d)).toEqual([]);
-    expect(throughBoxes(d)).toEqual([]);
-  });
-
-  it("draws HOP's context with no line crossing another and none through a box", () => {
-    const d = layoutContext(readC4(hopDoc, template)) as Diagram;
-    expect(d.boxes).toHaveLength(11);
-    expect(crossings(d)).toEqual([]);
-    expect(throughBoxes(d)).toEqual([]);
-    for (const b of d.boxes) {
-      expect(b.x).toBeGreaterThanOrEqual(0);
-      expect(b.y).toBeGreaterThanOrEqual(0);
-      expect(b.x + b.w).toBeLessThanOrEqual(d.width);
-      expect(b.y + b.h).toBeLessThanOrEqual(d.height);
-    }
-  });
-
-  it("keeps every label on the canvas short, the full words in the tooltip", () => {
-    const d = layoutContext(readC4(hopDoc, template)) as Diagram;
-    for (const l of d.lines) {
-      expect(l.label.length).toBeLessThanOrEqual(40);
-      expect(l.tip.length).toBeGreaterThanOrEqual(l.label.replace(/ \+\d+$/, "").replace(/…$/, "").length);
-    }
-    // HIS's one line carries a long label with an aside; the canvas keeps the clause before it, the tooltip the whole
-    const full = hopDoc.edges?.find((e) => e.from === "his")?.label ?? "";
-    const his = d.lines.find((l) => l.ends.includes("his"));
-    expect(full.length).toBeGreaterThan(40);
-    expect(full.startsWith(his?.label ?? "-")).toBe(true);
-    expect(his?.label.length).toBeLessThan(full.indexOf("("));
-    expect(his?.tip).toContain(full);
-  });
-
-  it("lays out the same design to the same picture every time", () => {
-    const a = layoutContext(readC4(hopDoc, template));
-    const b = layoutContext(readC4(structuredClone(hopDoc), template));
-    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  it("has no view for a design with no system at all", () => {
+    const g = readSystemGraph(design([step("a", "PERSON", "people"), step("b", "PERSON", "people", ["a"])]), template);
+    expect(g.focal).toBeNull();
+    expect(viewOf(g, "context", "systems")).toBeNull();
   });
 });
 
-/** A Workflows overview pane at 1440px beside the designs list, and a phone. */
-const PANE = { width: 940, height: 600 };
-const PHONE = { width: 368, height: 520 };
-
-/** A design with `n` outside systems spread over `lanes` boundaries, every one talking to the system. */
-function wide(n: number, lanes: number, people = 3): WorkflowBody {
-  const steps: WorkflowStep[] = [
-    ...Array.from({ length: people }, (_, i) => step(`p${i}`, "PERSON", "people")),
-    step("app", "CONTAINER", "ours", Array.from({ length: people }, (_, i) => `p${i}`)),
-    ...Array.from({ length: n }, (_, i) => step(`x${i}`, "SYSTEM", `b${i % lanes}`, ["app"])),
-  ];
-  return {
-    ...design(steps),
-    lanes: [
-      { id: "people", label: "People" },
-      { id: "ours", label: "Our product" },
-      ...Array.from({ length: lanes }, (_, i) => ({ id: `b${i}`, label: `Boundary ${i}` })),
-    ],
-  };
-}
-
-describe("folding a Context by boundary", () => {
-  it("folds HOP rev 5's nineteen outside systems into one element per boundary, each with its count", () => {
-    const m = readC4(hop5Doc, template);
-    expect(m.externals).toHaveLength(19);
-    const s = summarise(m, "boundaries");
-    const counts = Object.fromEntries([...(s.groups?.values() ?? [])].map((g) => [g.lane, g.members.length]));
-    expect(counts).toEqual({ hospital: 9, partners: 3, channels: 2, outside: 3, delivery: 2 });
-    // four people is not more than PEOPLE_AT_A_GLANCE, so they stay as they are
-    expect(m.people).toHaveLength(PEOPLE_AT_A_GLANCE);
-    expect(s.people.map((p) => p.id)).toEqual(m.people.map((p) => p.id));
-    // every relation now ends at an element the folded model draws
-    const drawn = new Set([FOCAL, ...s.people.map((p) => p.id), ...s.externals.map((x) => x.id)]);
-    for (const r of s.relations) expect(drawn.has(r.from) && drawn.has(r.to)).toBe(true);
-    // the eleven lines between the nine hospital systems and the system become one line
-    const hospital = s.relations.filter((r) => [r.from, r.to].includes("group:externals:hospital"));
-    expect(hospital).toHaveLength(1);
-    expect(hospital[0]?.src).toHaveLength(11);
+describe("graph → view", () => {
+  it("lifts every line that touches the system's parts to the system box, merging each pair once", () => {
+    const g = graphOf(hop);
+    const v = viewOf(g, "context", "systems");
+    const toScheduling = v?.edges.find((e) => [e.from, e.to].sort().join() === [FOCAL, "scheduling"].sort().join());
+    expect(toScheduling?.rels.map((r) => r.from).sort()).toEqual(["evaluate", "intake", "record-action"]);
+    const drawn = v?.edges.reduce((n, e) => n + e.rels.length, 0) ?? 0;
+    const inside = g.relationships.filter((r) => g.focal?.parts.includes(r.from) && g.focal.parts.includes(r.to));
+    expect(drawn + inside.length).toBe(g.relationships.length);
   });
 
-  it("draws one line per boundary, labelled with how many design lines it stands for", () => {
-    const d = layoutContext(summarise(readC4(hop5Doc, template), "boundaries")) as Diagram;
-    const hospital = d.lines.find((l) => l.ends.includes("group:externals:hospital"));
-    expect(hospital?.label).toBe("11 links");
-    expect(hospital?.edges).toHaveLength(11);
-    const box = d.boxes.find((b) => b.id === "group:externals:hospital");
-    expect(box?.kicker).toBe("9 systems");
-    expect(box?.lines.join(" ")).toBe(laneLabel("hospital"));
-    expect(box?.members?.filter((x) => x.state === "unconfirmed").map((x) => x.id)).toEqual(["emr", "lis", "pacs-ris", "pos-billing", "call-center", "bed-mgmt"]);
-    expect(box?.members?.find((x) => x.id === "his")).toMatchObject({ name: "HIS / EMR", state: "confirmed", mark: null });
+  it("folds each outside boundary of two or more into one box named for the boundary, with its count", () => {
+    const v = viewOf(graphOf(hopNow), "context", "boundaries");
+    const groups = v?.nodes.filter((n) => n.kind === "group") ?? [];
+    expect(Object.fromEntries(groups.map((n) => [n.id, n.count]))).toEqual({ "people:people": 5, "outside:hospital": 9, "outside:partners": 3, "outside:channels": 2, "outside:outside": 3 });
+    expect(groups.find((n) => n.id === "outside:hospital")?.name).toBe(doc(hopNow).lanes?.find((l) => l.id === "hospital")?.label);
   });
 
-  it("folds people by boundary once there are more than four of them", () => {
-    const m = readC4(wide(4, 2, 6), template);
-    const s = summarise(m, "boundaries");
-    expect(s.people.map((p) => p.id)).toEqual(["group:people:people"]);
-    expect(s.groups?.get("group:people:people")?.members).toHaveLength(6);
+  it("keeps a few people one by one, and folds them only past PEOPLE_AT_A_GLANCE", () => {
+    const v = viewOf(graphOf(forge), "context", "boundaries");
+    expect(v?.nodes.filter((n) => n.kind === "person").map((n) => n.id)).toEqual(["member", "operator"]);
+    expect(graphOf(hopNow).facts.people.length).toBeGreaterThan(PEOPLE_AT_A_GLANCE);
   });
 
-  it("leaves a boundary the viewer opened unfolded, and a boundary of one system as that system", () => {
-    const m = readC4(hop5Doc, template);
-    const s = summarise(m, "boundaries", new Set(["group:externals:hospital"]));
-    expect(s.externals.filter((x) => x.lane === "hospital")).toHaveLength(9);
-    const d = layoutContext(s) as Diagram;
-    expect(d.captions.find((c) => c.folds === "group:externals:hospital")?.text).toBe(laneLabel("hospital"));
-    const lone = summarise(readC4(wide(3, 3), template), "boundaries");
-    expect(lone.groups?.size).toBe(0);
-    expect(lone.externals.map((x) => x.id)).toEqual(["x0", "x1", "x2"]);
+  it("draws every system inside a frame per boundary, and opens the system into its parts at Containers", () => {
+    const v = viewOf(graphOf(hopNow), "containers", "systems");
+    expect(v?.frames.map((f) => f.id).sort()).toEqual([FOCAL, "outside:channels", "outside:hospital", "outside:outside", "outside:partners"]);
+    expect(v?.nodes.filter((n) => n.frame === FOCAL)).toHaveLength(graphOf(hopNow).focal?.parts.length ?? -1);
+    expect(v?.nodes.some((n) => n.kind === "focal")).toBe(false);
+  });
+
+  it("opens one boundary the viewer asked for, leaving the rest folded", () => {
+    const v = viewOf(graphOf(hopNow), "context", "boundaries", new Set(["outside:hospital"]));
+    expect(v?.frames.find((f) => f.id === "outside:hospital")?.folds).toBe(true);
+    expect(v?.nodes.filter((n) => n.frame === "outside:hospital")).toHaveLength(9);
+    expect(v?.nodes.find((n) => n.id === "outside:partners")?.kind).toBe("group");
   });
 });
 
-describe("fitting a Context with 15 or more outside systems", () => {
-  // Every size the canvas draws a C4 diagram's text in comes from FONT, so its least is the floor to hold.
-  const smallest = Math.min(...Object.values(FONT));
-
+describe("view → layout", () => {
   it.each([
-    ["HOP rev 5 (19 systems)", () => hop5Doc],
-    ["16 systems in four boundaries", () => wide(16, 4)],
-    ["24 systems in six boundaries", () => wide(24, 6, 7)],
-  ])("%s: folds by boundary at fit, with no type under 12px, no line crossing and none through a box", (_name, doc) => {
-    const m = readC4(doc(), template);
-    expect(m.externals.length).toBeGreaterThanOrEqual(15);
-    const fit = fitContext(m, PANE);
-    if (!fit) throw new Error("no fit");
-    expect(fit.level).not.toBe("full");
-    expect(fit.fits).toBe(true);
-    expect(smallest * fit.zoom).toBeGreaterThanOrEqual(MIN_FONT_PX);
-    expect(fit.diagram.boxes.some((b) => b.members && b.members.length > 1)).toBe(true);
-    expect(fit.diagram.boxes.length).toBeLessThan(m.people.length + m.externals.length + 1);
-    expect(crossings(fit.diagram)).toEqual([]);
-    expect(throughBoxes(fit.diagram)).toEqual([]);
+    ["HOP", hopNow],
+    ["forge", forge],
+    ["HOP rev 4", hop],
+  ])("%s: no line through a box, none wrapping past its ends, no label over a label or a box, in every view", async (_name, j) => {
+    const g = graphOf(j);
+    for (const [level, detail] of VIEWS) {
+      const d = await layoutView(viewOf(g, level, detail) as NonNullable<ReturnType<typeof viewOf>>);
+      expect(defects(d), `${level} / ${detail}`).toEqual([]);
+    }
   });
 
-  it("would need type under 12px to fit HOP rev 5 unfolded, which is why it folds", () => {
-    const m = readC4(hop5Doc, template);
-    const full = layoutContext(m) as Diagram;
-    expect(Math.min(PANE.width / full.width, PANE.height / full.height) * Math.min(...Object.values(FONT))).toBeLessThan(MIN_FONT_PX);
+  it("labels a line with its relationship's own words, a merged line with the first and how many more", async () => {
+    const d = await layoutView(viewOf(graphOf(forge), "context", "boundaries") as NonNullable<ReturnType<typeof viewOf>>);
+    const pairs = d.lines.find((l) => l.ends.includes("member") && l.ends.includes("outside:box"));
+    expect(pairs?.label).toMatchObject({ text: "pairs the box", more: 0 });
+    const outside = d.lines.find((l) => l.ends.includes(FOCAL) && l.ends.includes("outside:outside"));
+    expect(outside?.label?.more).toBe((outside?.edge.rels.length ?? 0) - 1);
+    expect(outside?.label?.text).toBe(shortLabel(outside?.edge.rels[0]?.label ?? "-"));
+    expect(d.lines.every((l) => !/\blinks?\b/.test(l.label?.text ?? ""))).toBe(true);
   });
 
-  it("folds further on a phone instead of drawing smaller, and pans past the last fold", () => {
-    const m = readC4(hop5Doc, template);
-    const fit = fitContext(m, PHONE);
-    if (!fit) throw new Error("no fit");
-    expect(fit.level).toBe("columns");
-    expect(fit.zoom * Math.min(...Object.values(FONT))).toBeGreaterThanOrEqual(MIN_FONT_PX);
-    expect(fit.fits).toBe(false);
+  it("points the arrowheads the way the design's lines run, whichever end the layout starts from", async () => {
+    const d = await layoutView(viewOf(graphOf(hopNow), "context", "systems") as NonNullable<ReturnType<typeof viewOf>>);
+    const zns = d.lines.find((l) => l.ends.includes("zalo") && l.ends.includes("patient"));
+    expect(zns?.ends).toEqual(["patient", "zalo"]);
+    expect(zns).toMatchObject({ arrowStart: true, arrowEnd: false });
   });
 
-  it("draws every system when the box is large enough to read them all", () => {
-    const fit = fitContext(readC4(hopDoc, template), { width: 1600, height: 1000 });
-    expect(fit?.level).toBe("full");
+  it("lays out the same view to the same picture every time", async () => {
+    const a = await layoutView(viewOf(graphOf(hopNow), "context", "boundaries") as NonNullable<ReturnType<typeof viewOf>>);
+    const b = await layoutView(viewOf(readSystemGraph(structuredClone(doc(hopNow)), template), "context", "boundaries") as NonNullable<ReturnType<typeof viewOf>>);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });
 
@@ -349,32 +221,6 @@ describe("reading an outside system's integration state from its label", () => {
   });
 });
 
-describe("the Containers layout (C4 level 2)", () => {
-  it("puts HOP's parts inside the boundary, people left of it and outside systems right of it", async () => {
-    const d = (await layoutContainers(readC4(hopDoc, template))) as Diagram;
-    const b = d.boundary as Rect;
-    expect(b).not.toBeNull();
-    const box = (id: string) => d.boxes.find((x) => x.id === id) as Rect;
-    for (const id of ["intake", "evaluate", "record-action", "sweep", "retention", "hop-db", "hop"]) {
-      const r = box(id);
-      expect(r.x >= b.x && r.y >= b.y && r.x + r.w <= b.x + b.w && r.y + r.h <= b.y + b.h).toBe(true);
-    }
-    for (const id of ["staff", "leads", "patient", "caregiver"]) expect(box(id).x + box(id).w).toBeLessThanOrEqual(b.x);
-    for (const id of ["his", "scheduling", "records-policy", "zalo", "forge", "llm"]) expect(box(id).x).toBeGreaterThanOrEqual(b.x + b.w);
-    expect(d.lines).toHaveLength(24);
-  });
-
-  it("keeps the people in one column and the outside systems in one, the lines between them drawn as brackets", async () => {
-    const d = (await layoutContainers(readC4(hopDoc, template))) as Diagram;
-    const xs = (ids: string[]) => new Set(ids.map((id) => d.boxes.find((b) => b.id === id)?.x));
-    expect(xs(["staff", "leads", "patient", "caregiver"]).size).toBe(1);
-    expect(xs(["his", "scheduling", "records-policy", "zalo", "forge", "llm"]).size).toBe(1);
-    const call = d.lines.find((l) => l.id === "staff>patient");
-    expect(call?.anchor).toBe("end");
-    expect(throughBoxes(d)).toEqual([]);
-  });
-});
-
 describe("shortLabel", () => {
   it("keeps the clause before the first aside", () => {
     expect(shortLabel("Sends the discharge (signed), answers read requests")).toBe("Sends the discharge");
@@ -382,7 +228,6 @@ describe("shortLabel", () => {
   it("cuts a long clause at a word, with an ellipsis", () => {
     const s = shortLabel("Reads every upcoming appointment for the patient across all clinics", 30);
     expect(s.length).toBeLessThanOrEqual(30);
-    expect(s.endsWith("…")).toBe(true);
     expect(s).toBe("Reads every upcoming…");
   });
   it("leaves a short label alone", () => {

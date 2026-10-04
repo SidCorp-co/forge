@@ -1,9 +1,11 @@
 import { apiClient, apiClientList } from "@/lib/api/client";
 import type {
   AutomationStandingResponse,
+  FireDetailResponse,
   PmConfig,
   PmConfigPatch,
   PmDecision,
+  ReportDetailResponse,
   ScheduleDetailResponse,
 } from "./types";
 
@@ -45,4 +47,10 @@ export const automationApi = {
     apiClient<ScheduleDetailResponse>(
       `${projectPath(projectId)}/schedules/${encodeURIComponent(scheduleId)}?firesLimit=${firesLimit}`,
     ),
+
+  fire: (projectId: string, fireId: string) =>
+    apiClient<FireDetailResponse>(`${projectPath(projectId)}/fires/${encodeURIComponent(fireId)}`),
+
+  report: (projectId: string, reportId: string) =>
+    apiClient<ReportDetailResponse>(`${projectPath(projectId)}/reports/${encodeURIComponent(reportId)}`),
 };
