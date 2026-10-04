@@ -9,6 +9,7 @@
 //! the recorded pid is still the one that wrote it, since a pid names a process
 //! only until it is reused.
 
+use crate::proc::{pid_alive, start_ticks};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -112,39 +113,6 @@ pub fn read(dir: &Path) -> Result<Option<Record>, Unreadable> {
             path: p,
             reason: format!("does not parse: {e}"),
         })
-}
-
-#[cfg(target_os = "linux")]
-pub fn start_ticks(pid: u32) -> Option<String> {
-    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    // The command sits in parens and may hold spaces and parens of its own, so
-    // the fields are counted from the last `)` rather than from the start.
-    let mut fields = stat.rsplit_once(") ")?.1.split(' ');
-    if fields.next()? == "Z" {
-        return None;
-    }
-    fields.nth(18).map(str::to_string)
-}
-
-#[cfg(not(target_os = "linux"))]
-pub fn start_ticks(_pid: u32) -> Option<String> {
-    None
-}
-
-#[cfg(unix)]
-pub fn pid_alive(pid: u32) -> bool {
-    use nix::errno::Errno;
-    use nix::sys::signal::kill;
-    use nix::unistd::Pid;
-    let Ok(raw) = i32::try_from(pid) else {
-        return false;
-    };
-    !matches!(kill(Pid::from_raw(raw), None), Err(Errno::ESRCH))
-}
-
-#[cfg(not(unix))]
-pub fn pid_alive(_pid: u32) -> bool {
-    false
 }
 
 /// Which configuration a running process serves, as far as this box can tell.
@@ -358,7 +326,7 @@ pub fn scan_with(
 
 #[cfg(target_os = "linux")]
 pub fn running_daemons() -> Option<Vec<Running>> {
-    let ours = crate::daemon::control::config_dir();
+    let ours = crate::config::config_dir();
     scan(Path::new("/proc"), std::process::id(), ours.as_deref())
 }
 

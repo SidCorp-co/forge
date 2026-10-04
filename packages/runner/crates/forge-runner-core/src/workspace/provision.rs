@@ -251,7 +251,7 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
     let skill = install_master_skill(
         &p.slug,
         repo_path,
-        crate::daemon::control::config_dir().as_deref(),
+        crate::config::config_dir().as_deref(),
     );
     if !skill.installed() {
         let said = format!(

@@ -92,7 +92,7 @@ const ALLOW: &str = "{}";
 
 /// Where this box's config, socket and marks live.
 fn config_dir() -> Option<PathBuf> {
-    forge_runner_core::daemon::control::config_dir()
+    forge_runner_core::config::config_dir()
 }
 
 /// Why a mark this process writes never names a run: the registry of declared

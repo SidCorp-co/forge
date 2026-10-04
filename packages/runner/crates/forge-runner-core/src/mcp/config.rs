@@ -590,7 +590,7 @@ pub enum CliBorrow {
 /// The file a project's master pane hands its `forge` CLI under
 /// [`CLI_BORROW_VAR`], beside the pane's transcript and last exit.
 pub fn cli_borrow_path(slug: &str) -> Result<PathBuf> {
-    Ok(crate::daemon::pane_exit::master_dir(slug)?.join("forge-cli.json"))
+    Ok(crate::config::master_dir(slug)?.join("forge-cli.json"))
 }
 
 // cm:why one credential per checkout: the token core minted for it is what `.mcp.json` carries, so the pane's CLI borrows that same token and never the box's operator PAT, which reaches the projects one person pasted it for

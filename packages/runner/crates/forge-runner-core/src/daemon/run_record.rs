@@ -25,7 +25,7 @@ pub trait SessionOpener {
         run_id: &str,
         issue_keys: &[String],
         name: &str,
-        gate: Option<&crate::daemon::degraded::Condition>,
+        gate: Option<&crate::proto_gate::Condition>,
     ) -> crate::error::Result<(String, String)>;
 }
 
@@ -38,7 +38,7 @@ impl SessionOpener for CoreSessions<'_> {
         run_id: &str,
         issue_keys: &[String],
         name: &str,
-        gate: Option<&crate::daemon::degraded::Condition>,
+        gate: Option<&crate::proto_gate::Condition>,
     ) -> crate::error::Result<(String, String)> {
         run_sessions::open(self.0, project_id, run_id, issue_keys, name, gate).await
     }
@@ -62,7 +62,7 @@ pub async fn open_declared_runs(
     opener: &impl SessionOpener,
     ledger: &mut Option<Ledger>,
     boot_id: &str,
-    gate: Option<&crate::daemon::degraded::Condition>,
+    gate: Option<&crate::proto_gate::Condition>,
 ) -> usize {
     if boot_id.is_empty() {
         return 0;

@@ -123,7 +123,7 @@ pub async fn open(
     run_id: &str,
     issue_keys: &[String],
     name: &str,
-    gate: Option<&crate::daemon::degraded::Condition>,
+    gate: Option<&crate::proto_gate::Condition>,
 ) -> Result<(String, String)> {
     let url = client.url("/api/devices/me/run-sessions");
     let mut body = serde_json::json!({

@@ -337,3 +337,55 @@ impl Config {
         Ok(())
     }
 }
+
+pub fn unoverridden_config_dir() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        dirs_next::home_dir().map(|h| h.join(".config").join("forge-runner"))
+    }
+    // Only Linux has the user manager this unit is placed in, and `dirs_next`
+    // consults no XDG variable elsewhere, so the resolved dir IS the box's own.
+    #[cfg(not(target_os = "linux"))]
+    {
+        dirs_next::config_dir().map(|d| d.join("forge-runner"))
+    }
+}
+
+/// Whether `dir` is the config dir this box's user resolves with no override: the daemon that
+/// owns the box-wide names (the session unit, the OS data dir's ledger) rather than a second one.
+pub fn is_the_boxs_own_config_dir(dir: &std::path::Path) -> bool {
+    unoverridden_config_dir().is_none_or(|own| resolved(dir) == resolved(&own))
+}
+
+pub fn resolved(p: &std::path::Path) -> std::path::PathBuf {
+    if let Ok(whole) = p.canonicalize() {
+        return whole;
+    }
+    let mut missing: Vec<std::ffi::OsString> = Vec::new();
+    let mut cursor = p;
+    while let (Some(parent), Some(name)) = (cursor.parent(), cursor.file_name()) {
+        missing.push(name.to_os_string());
+        if let Ok(base) = parent.canonicalize() {
+            let mut out = base;
+            for part in missing.iter().rev() {
+                out.push(part);
+            }
+            return out;
+        }
+        cursor = parent;
+    }
+    p.to_path_buf()
+}
+
+/// The directory this box's marks and its plugin clones sit in.
+pub fn config_dir() -> Option<PathBuf> {
+    base_dir().ok()
+}
+
+/// The directory this box keeps `slug`'s master transcript and last exit in.
+/// The daemon writes the record here, so it resolves through
+/// [`crate::config::base_dir`], the one resolution a test build refuses outside
+/// a scratch (ISS-1344).
+pub fn master_dir(slug: &str) -> crate::error::Result<PathBuf> {
+    Ok(base_dir()?.join("master").join(slug))
+}

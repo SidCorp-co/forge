@@ -460,7 +460,7 @@ fn cmdline_of(proc_pid: &Path) -> String {
 /// Every pid under `proc_root` whose working directory is `worktree` or lies
 /// beneath it.
 pub fn residents_of(proc_root: &Path, worktree: &Path) -> Reading {
-    residents_of_with(proc_root, worktree, crate::daemon::serving::start_ticks)
+    residents_of_with(proc_root, worktree, crate::proc::start_ticks)
 }
 
 /// [`residents_of`], with the reading of a pid's identity supplied.
@@ -500,7 +500,7 @@ pub fn deleted_residents_under(proc_root: &Path, roots: &[PathBuf]) -> Reading {
     let wants: Vec<PathBuf> = roots.iter().map(|r| resolved(r)).collect();
     each_pid(
         proc_root,
-        crate::daemon::serving::start_ticks,
+        crate::proc::start_ticks,
         read_cwd,
         |at, gone| gone && wants.iter().any(|w| under(w, at)),
     )
@@ -789,11 +789,11 @@ impl Hand for ThisBox {
     }
 
     fn present(&self, pid: u32) -> bool {
-        crate::daemon::serving::pid_alive(pid) && !is_zombie(pid)
+        crate::proc::pid_alive(pid) && !is_zombie(pid)
     }
 
     fn identity(&self, pid: u32) -> Option<String> {
-        crate::daemon::serving::start_ticks(pid)
+        crate::proc::start_ticks(pid)
     }
 }
 

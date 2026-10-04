@@ -747,7 +747,7 @@ impl Ledger {
         let base = crate::config::base_dir()?;
         // cm:guard the OS data dir is per user, not per daemon: a second daemon reading it sweeps
         // the first one's runs and stamps them closed at its own core (ISS-10)
-        if !crate::daemon::terminal::is_the_boxs_own_config_dir(&base) {
+        if !crate::config::is_the_boxs_own_config_dir(&base) {
             return Ok(base.join("ledger.sqlite"));
         }
         let dir = dirs_next::data_dir()

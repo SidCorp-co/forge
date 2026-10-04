@@ -154,7 +154,7 @@ fn checkout_credential_host(
 }
 
 fn config_dir() -> Option<PathBuf> {
-    forge_runner_core::daemon::control::config_dir()
+    forge_runner_core::config::config_dir()
 }
 
 /// The master skill is written at bind, so a bound project carries it whether

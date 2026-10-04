@@ -97,7 +97,7 @@ pub(crate) enum Applied {
 fn restart_this_configurations_daemon(applied: Applied) {
     use forge_runner_core::daemon::serving;
 
-    let Some(dir) = forge_runner_core::daemon::control::config_dir() else {
+    let Some(dir) = forge_runner_core::config::config_dir() else {
         println!("  no config directory resolves on this box, so which build the daemon serves cannot be read — restart the service by hand if it lags");
         return;
     };
@@ -111,7 +111,7 @@ fn restart_this_configurations_daemon(applied: Applied) {
         .and_then(|r| r.as_ref())
         .and_then(|r| r.start_ticks.clone());
     let still_the_same = move |pid: u32| match &recorded {
-        Some(then) => serving::start_ticks(pid).as_ref() == Some(then),
+        Some(then) => forge_runner_core::proc::start_ticks(pid).as_ref() == Some(then),
         // No recorded identity is `unverified`, which never acts.
         None => false,
     };

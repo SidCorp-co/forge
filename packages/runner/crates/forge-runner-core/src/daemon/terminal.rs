@@ -10,6 +10,7 @@
 //! What this module does NOT do is decide anything about work. It is the
 //! transport; `daemon/master.rs` is the policy.
 
+use crate::config::{is_the_boxs_own_config_dir, resolved};
 use std::process::Stdio;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -69,19 +70,6 @@ fn session_config_dir() -> Option<std::path::PathBuf> {
     crate::config::Config::path()
         .ok()
         .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
-}
-
-fn unoverridden_config_dir() -> Option<std::path::PathBuf> {
-    #[cfg(target_os = "linux")]
-    {
-        dirs_next::home_dir().map(|h| h.join(".config").join("forge-runner"))
-    }
-    // Only Linux has the user manager this unit is placed in, and `dirs_next`
-    // consults no XDG variable elsewhere, so the resolved dir IS the box's own.
-    #[cfg(not(target_os = "linux"))]
-    {
-        dirs_next::config_dir().map(|d| d.join("forge-runner"))
-    }
 }
 
 pub fn socket_path() -> Option<std::path::PathBuf> {
@@ -259,12 +247,6 @@ pub async fn incarnation(name: &str) -> Option<String> {
 
 const SESSION_UNIT: &str = "forge-sessions";
 
-/// Whether `dir` is the config dir this box's user resolves with no override: the daemon that
-/// owns the box-wide names (the session unit, the OS data dir's ledger) rather than a second one.
-pub(crate) fn is_the_boxs_own_config_dir(dir: &std::path::Path) -> bool {
-    unoverridden_config_dir().is_none_or(|own| resolved(dir) == resolved(&own))
-}
-
 fn unit_for(dir: &std::path::Path) -> String {
     if is_the_boxs_own_config_dir(dir) {
         return SESSION_UNIT.to_string();
@@ -292,26 +274,6 @@ impl SessionIdentity {
             socket,
         })
     }
-}
-
-fn resolved(p: &std::path::Path) -> std::path::PathBuf {
-    if let Ok(whole) = p.canonicalize() {
-        return whole;
-    }
-    let mut missing: Vec<std::ffi::OsString> = Vec::new();
-    let mut cursor = p;
-    while let (Some(parent), Some(name)) = (cursor.parent(), cursor.file_name()) {
-        missing.push(name.to_os_string());
-        if let Ok(base) = parent.canonicalize() {
-            let mut out = base;
-            for part in missing.iter().rev() {
-                out.push(part);
-            }
-            return out;
-        }
-        cursor = parent;
-    }
-    p.to_path_buf()
 }
 
 fn path_bytes(p: &std::path::Path) -> Vec<u8> {

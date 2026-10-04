@@ -542,7 +542,7 @@ fn presence_detail(
 /// daemon keeps beside its transcript, with who holds a held conversation read
 /// from this box's process table now (ISS-1343).
 fn last_exit_line(slug: &str) -> String {
-    let found = match pane_exit::master_dir(slug) {
+    let found = match forge_runner_core::config::master_dir(slug) {
         Ok(dir) => pane_exit::read(&dir),
         Err(e) => pane_exit::Found::Unavailable(format!(
             "this box's config directory cannot be resolved: {e}"

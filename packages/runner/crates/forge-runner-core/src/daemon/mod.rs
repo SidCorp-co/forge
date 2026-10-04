@@ -95,8 +95,8 @@ fn warn_refused(refused: &heartbeat::Refused) {
 ///
 /// Returns whether it spoke, so the rule can be asserted rather than read off a
 /// log somebody has to capture.
-fn announce_gate(gate: &degraded::Condition, shouted: &mut Option<degraded::Verdict>) -> bool {
-    let speak = gate.verdict == degraded::Verdict::FailingOpen && *shouted != Some(gate.verdict);
+fn announce_gate(gate: &crate::proto_gate::Condition, shouted: &mut Option<crate::proto_gate::Verdict>) -> bool {
+    let speak = gate.verdict == crate::proto_gate::Verdict::FailingOpen && *shouted != Some(gate.verdict);
     if speak {
         tracing::warn!(
             "[gate] this box's declaration gate is FAILING OPEN: {} dispatch(es) admitted without \
@@ -254,7 +254,7 @@ fn live_runs<'a>(
 
 #[cfg(unix)]
 fn pid_alive(pid: u32) -> bool {
-    serving::pid_alive(pid)
+    crate::proc::pid_alive(pid)
 }
 
 #[cfg(not(unix))]
@@ -513,7 +513,7 @@ pub async fn run(
         server.as_deref(),
         &fresh,
         census_from,
-        control::config_dir().as_deref(),
+        crate::config::config_dir().as_deref(),
     );
 
     let (cancel_tx, cancel_rx) = watch::channel(false);
@@ -568,7 +568,7 @@ pub async fn run(
 
     // Whether this daemon admits long work, shared by everything that admits
     // it, and the record `forge-runner status` reads of the build it serves.
-    let drain = Arc::new(drain::Drain::new(control::config_dir()));
+    let drain = Arc::new(drain::Drain::new(crate::config::config_dir()));
 
     // Update check loop: warn when a newer release exists; auto-apply +
     // restart when `update.auto` is set. Checks ~30s after start, then every 6h.
@@ -785,12 +785,12 @@ pub async fn run(
             // what a new process owes an operator, and a second state file
             // beside the marks would buy one suppressed line at the cost of
             // another thing that can be unreadable exactly when it is owed.
-            let mut shouted: Option<degraded::Verdict> = None;
+            let mut shouted: Option<crate::proto_gate::Verdict> = None;
             loop {
                 tokio::select! {
                     _ = tick.tick() => {
-                        let conditions = heartbeat::Conditions::read(
-                            control::config_dir().as_deref(),
+                        let conditions = heartbeat_conditions(
+                            crate::config::config_dir().as_deref(),
                             agent_activity::now_ms(),
                         );
                         if let Some(g) = conditions.gate.as_ref() {
@@ -1078,7 +1078,7 @@ pub async fn run(
             masters: masters.clone(),
             ledger: ctl_ledger,
             boot_id: crate::runner::inflight::boot_identity().unwrap_or_default(),
-            config_dir: control::config_dir(),
+            config_dir: crate::config::config_dir(),
             promises: std::sync::Mutex::new(control::GateMemory::default()),
             drain: drain.clone(),
             hosts: Arc::new(subagent_host::ProcHosts::system()),
@@ -1275,4 +1275,16 @@ async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
         .collect();
 
     crate::workspace::plugin_sync::ensure_plugins(&cfg.plugins, &server).await;
+}
+
+/// Both heartbeat conditions off the files beside `config.toml`; nothing where
+/// there is no such directory to read.
+fn heartbeat_conditions(config_dir: Option<&std::path::Path>, now_ms: i64) -> heartbeat::Conditions {
+    let Some(dir) = config_dir else {
+        return heartbeat::Conditions::default();
+    };
+    heartbeat::Conditions {
+        gate: Some(degraded::report(dir, now_ms).degraded),
+        pool: pool_reads::report(dir, now_ms).ok(),
+    }
 }

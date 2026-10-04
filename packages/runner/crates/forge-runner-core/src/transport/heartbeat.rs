@@ -54,25 +54,11 @@ fn gate_refusal(parsed: Option<GateAck>) -> Option<String> {
 /// tick and a test build the same body.
 #[derive(Debug, Default)]
 pub struct Conditions {
-    pub gate: Option<crate::daemon::degraded::Condition>,
+    pub gate: Option<crate::proto_gate::Condition>,
     /// `None` sends no `pool` key, which core reads as "changes nothing"; a list,
     /// even an empty one, is the box's whole picture. A record that exists and
     /// cannot be read is no picture, so it is `None`, never an empty list.
-    pub pool: Option<Vec<crate::daemon::pool_reads::Condition>>,
-}
-
-impl Conditions {
-    /// Both conditions off the files beside `config.toml`; nothing where there
-    /// is no such directory to read.
-    pub fn read(config_dir: Option<&std::path::Path>, now_ms: i64) -> Self {
-        let Some(dir) = config_dir else {
-            return Self::default();
-        };
-        Self {
-            gate: Some(crate::daemon::degraded::report(dir, now_ms).degraded),
-            pool: crate::daemon::pool_reads::report(dir, now_ms).ok(),
-        }
-    }
+    pub pool: Option<Vec<crate::proto_pool::Condition>>,
 }
 
 /// Core's reasons for refusing either condition while taking the heartbeat.
@@ -144,7 +130,7 @@ async fn beat_with(client: &CoreClient, conditions: &Conditions) -> Result<(Stri
 
 /// The gate object exactly as it rides on the heartbeat body, separated from
 /// the request so the shape can be asserted without a server.
-pub fn gate_body(gate: &crate::daemon::degraded::Condition) -> serde_json::Value {
+pub fn gate_body(gate: &crate::proto_gate::Condition) -> serde_json::Value {
     serde_json::json!({ "degraded": gate })
 }
 
@@ -177,6 +163,6 @@ pub(crate) fn heartbeat_body(
 }
 
 /// The pool object exactly as it rides on the heartbeat body.
-pub fn pool_body(pool: &[crate::daemon::pool_reads::Condition]) -> serde_json::Value {
+pub fn pool_body(pool: &[crate::proto_pool::Condition]) -> serde_json::Value {
     serde_json::json!({ "projects": pool })
 }

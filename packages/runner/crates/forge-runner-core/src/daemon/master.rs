@@ -1644,7 +1644,7 @@ async fn sweep(
     // The condition the gate is in as this run is told to core, stamped on the
     // run itself. `None` where the box cannot read its own config directory,
     // which records none rather than a gate that was clear.
-    let gate = crate::daemon::control::config_dir().map(|dir| {
+    let gate = crate::config::config_dir().map(|dir| {
         crate::daemon::degraded::report(&dir, crate::daemon::agent_activity::now_ms()).degraded
     });
     let opened = run_record::open_declared_runs(&sessions, ledger, &boot, gate.as_ref()).await;
@@ -1917,7 +1917,7 @@ async fn take_pool_job(
     .await;
     // What this pass learned about the read itself, on disk where `status`, the
     // heartbeat and a restart all find it (ISS-1234).
-    if let Some(dir) = crate::daemon::control::config_dir() {
+    if let Some(dir) = crate::config::config_dir() {
         pool_reads::note(&dir, &runner.project_id, &took, agent_activity::now_ms());
     }
     if let pool_jobs::Took::AtBound = took {
@@ -3317,7 +3317,7 @@ async fn ensure_master(
     if let Err(e) = install_skill(
         &resolved.repo_path,
         &resolved.slug,
-        crate::daemon::control::config_dir().as_deref(),
+        crate::config::config_dir().as_deref(),
     ) {
         tracing::error!(
             "[master] {}: could not install the forge-master skill into {}: {e} — not starting a master",
@@ -4206,7 +4206,7 @@ fn record_exit(
         in_a_row,
         exit,
     };
-    let written = pane_exit::master_dir(slug)
+    let written = crate::config::master_dir(slug)
         .map_err(|e| e.to_string())
         .and_then(|dir| {
             pane_exit::write(&dir, &record).map_err(|e| format!("{}: {e}", dir.display()))

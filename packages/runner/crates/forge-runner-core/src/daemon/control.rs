@@ -648,11 +648,6 @@ fn run_close(
     }
 }
 
-/// The directory this box's marks and its plugin clones sit in.
-pub fn config_dir() -> Option<PathBuf> {
-    crate::config::base_dir().ok()
-}
-
 #[cfg(unix)]
 fn dispatch_gate_reply(
     ctl: &Arc<Control>,
