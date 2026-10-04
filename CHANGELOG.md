@@ -152,6 +152,13 @@
   started, ended and why, and links its session; older runs are rebuilt. A run skipped for want of a
   box now counts toward the failing-automation alert.
 
+- **A run nothing moves reads Stuck, from core (ISS-109).** After 3 min of silence, a lapsed claim or
+  a box and core disagreeing, a live run reads `stuck` with its rule and evidence; the Agents runs pane
+  reads that.
+
+- **Run, job, pipeline run and master states read as words (ISS-110).** Each has a badge family, so
+  the pipeline board, run drawer and dashboard say Cancelled or Paused rather than Blocked or Idle.
+
 - **Each run says where it stands (ISS-108).** `GET /api/projects/:id/runs/standing` gives every run
   its state, holder and when its hold ends, what it waits on, its outcome and attempt; master pass
   history pages at `masters/passes`, both also over MCP.
