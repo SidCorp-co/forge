@@ -6,7 +6,7 @@
 // Resolving live costs one round trip per call and is best-effort — a slow or
 // down Epodsystem must degrade this to "unknown", never fail the tool.
 
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { epodsystemGraphqlBase } from './endpoints.js';
 
 const THEME_QUERY_TIMEOUT_MS = 5_000;

@@ -23,7 +23,7 @@ import type {
 } from '../../conversations/ports.js';
 import { db } from '../../db/client.js';
 import { integrationBindings, integrationConnections } from '../../db/schema.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { reframed } from '../../messaging/proven.js';
 import { decryptConnectionSecrets } from '../store.js';
 import type { RocketChatIncomingMessage } from './ddp-client.js';

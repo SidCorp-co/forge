@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { projectWebhooks } from '../../db/schema.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { boss } from '../../queue/boss.js';
 import { signHmacSha256 } from '../../webhooks/hmac.js';
 

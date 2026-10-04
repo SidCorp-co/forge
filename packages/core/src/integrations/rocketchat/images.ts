@@ -6,7 +6,7 @@ import { withTurnImages } from '../../assistant/tools/turn-images.js';
 import type { ImageResolver, TurnImage } from '../../assistant/vision.js';
 import type { TurnCredential } from '../../credentials/turn-credential.js';
 import { buildTranscriptSearchToolset } from '../../conversations/transcript-search-tool.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import type { ChatTurnFacts } from '../../mcp/tools/lib.js';
 import { buildRocketChatHistoryToolset, buildRocketChatQuoteContextToolset } from './context.js';
 import {

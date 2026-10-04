@@ -4,7 +4,7 @@ import { postIssueNotice } from '../comments/index.js';
 import type { IssueStatus } from '../db/schema.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { traceStep } from '../observability/sentry.js';
 import { holdsOpenHumanQuestion, personOwesAnAnswer } from '../questions/issue-coupling.js';
 import { wakeMastersForProject } from '../ws/master-wake.js';
 import {
@@ -81,13 +81,11 @@ export async function runReconcilerOnce(): Promise<{
       if (autonomousRunId) await recordAutonomousRescue(autonomousRunId);
 
       rescued++;
-      if (isSentryEnabled()) {
-        Sentry.addBreadcrumb({
-          category: 'pipeline.reconciler.enqueued_missing',
-          level: 'warning',
-          data: { issueId: row.id, status: row.status },
-        });
-      }
+      traceStep({
+        category: 'pipeline.reconciler.enqueued_missing',
+        level: 'warning',
+        data: { issueId: row.id, status: row.status },
+      });
     } catch (err) {
       logger.error({ err, issueId: row.id, status: row.status }, 'reconciler: rescue failed');
     }
@@ -105,13 +103,11 @@ export async function runReconcilerOnce(): Promise<{
     if (n > 0) {
       stale = n;
       logger.warn({ stale: n }, 'reconciler: outbox has stale unprocessed rows');
-      if (isSentryEnabled()) {
-        Sentry.addBreadcrumb({
-          category: 'pipeline.outbox.stale_unprocessed',
-          level: 'warning',
-          data: { staleCount: n },
-        });
-      }
+      traceStep({
+        category: 'pipeline.outbox.stale_unprocessed',
+        level: 'warning',
+        data: { staleCount: n },
+      });
     }
   } catch (err) {
     logger.error({ err }, 'reconciler: stale-outbox probe failed');
@@ -279,13 +275,11 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
       { issueId: row.id, from: row.status, to: AUTONOMOUS_ENTRY_STATUS },
       'reconciler: reset autonomous driver wedge to the entry status',
     );
-    if (isSentryEnabled()) {
-      Sentry.addBreadcrumb({
-        category: 'pipeline.reconciler.autonomous_wedge_reset',
-        level: 'warning',
-        data: { issueId: row.id, from: row.status },
-      });
-    }
+    traceStep({
+      category: 'pipeline.reconciler.autonomous_wedge_reset',
+      level: 'warning',
+      data: { issueId: row.id, from: row.status },
+    });
     return true;
   } catch (err) {
     if (stood) {

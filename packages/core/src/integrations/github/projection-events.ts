@@ -1,4 +1,4 @@
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { forgetLiveReading } from '../../projects/live-reading.js';
 import { stampHostMerge } from '../source-host/merge.js';
 import { applyPushedBranch } from '../source-host/push.js';

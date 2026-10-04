@@ -1,10 +1,9 @@
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { traceStep } from '../observability/sentry.js';
 import type { HooksBus } from './hooks.js';
 
 export function registerPipelineSentryBreadcrumbs(bus: HooksBus): void {
   bus.on('pipelineRunStatusChanged', (p) => {
-    if (!isSentryEnabled()) return;
-    Sentry.addBreadcrumb({
+    traceStep({
       category: 'pipeline_run.status_changed',
       level: 'info',
       message: `${p.fromStatus ?? 'null'} -> ${p.toStatus}`,

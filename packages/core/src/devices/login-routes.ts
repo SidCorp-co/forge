@@ -32,7 +32,7 @@ import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { Sentry } from '../observability/sentry.js';
+import { reportFailure } from '../observability/sentry.js';
 import { issueDeviceCredential } from './credential.js';
 import { registerDevice } from './register.js';
 import { requireOrgCan } from '../permissions/index.js';
@@ -412,7 +412,7 @@ deviceLoginRoutes.get(
           { err, deviceId: device.id },
           'device login: git-cred provisioning failed (login still succeeds)',
         );
-        Sentry.captureException(err, {
+        reportFailure(err, {
           level: 'error',
           tags: { area: 'runner-login', phase: 'git-cred-provision' },
           extra: { deviceId: device.id },

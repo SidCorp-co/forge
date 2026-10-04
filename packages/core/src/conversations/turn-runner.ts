@@ -28,7 +28,7 @@ import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { egressDeep } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
 import type { DoorId } from '../messaging/contract.js';
-import { Sentry } from '../observability/sentry.js';
+import { reportFailure } from '../observability/sentry.js';
 import { errorFallbackReply } from './fallback-replies.js';
 import {
   type ConversationVenue,
@@ -469,7 +469,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
       return { kind: 'stopped', reason: STOPPED_BY_A_PERSON };
     }
     logger.error({ err, ...req.log, phase, timedOut }, 'conversations: turn failed');
-    Sentry.captureException(err, {
+    reportFailure(err, {
       tags: { area: 'conversations', phase, timed_out: String(timedOut) },
       extra: { adapter: req.venue.adapter, externalId: req.venue.externalId, ...req.log },
     });
@@ -532,7 +532,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
       { err, ...req.log, adapter: req.venue.adapter, externalId: req.venue.externalId },
       'conversations: delivered, but recording the reply failed; the outcome stays delivered',
     );
-    Sentry.captureException(err, { tags: { area: 'conversations', phase: 'record' } });
+    reportFailure(err, { tags: { area: 'conversations', phase: 'record' } });
   }
   return { kind: 'delivered', messageId: receipt.messageId };
 }

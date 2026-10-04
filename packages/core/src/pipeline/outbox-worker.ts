@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { traceStep } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
 import { assertHookDelivered, hooks } from './hooks.js';
 import { emitPipelineWedge } from './wedge.js';
@@ -114,17 +114,15 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
       assertHookDelivered(result, { owned: ['pipeline-orchestrator'] });
       delivered.push(row.id);
       processed++;
-      if (isSentryEnabled()) {
-        Sentry.addBreadcrumb({
-          category: 'pipeline.outbox.processed',
-          level: 'info',
-          data: {
-            outboxId: row.id,
-            issueId: row.issue_id,
-            latencyMs: Date.now() - new Date(row.created_at).getTime(),
-          },
-        });
-      }
+      traceStep({
+        category: 'pipeline.outbox.processed',
+        level: 'info',
+        data: {
+          outboxId: row.id,
+          issueId: row.issue_id,
+          latencyMs: Date.now() - new Date(row.created_at).getTime(),
+        },
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await db.execute(sql`
@@ -134,17 +132,15 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
       `);
       failed++;
       logger.error({ err, outboxId: row.id }, 'outbox-worker: dispatch failed');
-      if (isSentryEnabled()) {
-        Sentry.addBreadcrumb({
-          category: 'pipeline.outbox.failed',
-          level: 'warning',
-          data: {
-            outboxId: row.id,
-            attempts: row.attempts,
-            lastError: message,
-          },
-        });
-      }
+      traceStep({
+        category: 'pipeline.outbox.failed',
+        level: 'warning',
+        data: {
+          outboxId: row.id,
+          attempts: row.attempts,
+          lastError: message,
+        },
+      });
       if (row.attempts >= MAX_REDELIVERIES) {
         await emitPipelineWedge({
           projectId: row.project_id,

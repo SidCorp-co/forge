@@ -1,4 +1,4 @@
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import { updateConnection } from '../store.js';
 import {

@@ -20,7 +20,7 @@ import {
 import { recordDeliveredReplyToVenue } from '../../conversations/transcript.js';
 import { db } from '../../db/client.js';
 import { type agentSessions as agentSessionsTable, projects } from '../../db/schema.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { type MessageVerdict, problemsOf } from '../../messaging/contract.js';
 import { proven, wholeAgentText } from '../../messaging/proven.js';
 import { withRepairs } from '../../messaging/repairs.js';

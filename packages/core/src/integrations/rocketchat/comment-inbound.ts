@@ -15,7 +15,7 @@ import { insertComment } from '../../comments/index.js';
 import { db } from '../../db/client.js';
 import { comments, issues } from '../../db/schema.js';
 import { rocketchatCommentMirrors } from '../../db/schema-rocketchat.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import type { HooksBus } from '../../pipeline/hooks.js';
 import type { RocketChatDdpClient, RocketChatIncomingMessage } from './ddp-client.js';
 import { FIXED_REPLY_CONSTANT, type ReplyTransport, sendFixedReply } from './outbound.js';

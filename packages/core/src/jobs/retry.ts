@@ -9,7 +9,7 @@ import {
 import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { traceStep } from '../observability/sentry.js';
 import { classifyFailure, deriveActionFromKind } from '../pipeline/failure-classifier.js';
 import { verifyRecovery } from '../pipeline/recovery-verifier.js';
 import {
@@ -458,18 +458,16 @@ export async function scheduleAutoRetryWithVerify(
     }
   }
 
-  if (isSentryEnabled()) {
-    Sentry.addBreadcrumb({
-      category: 'session.recovery_attempted',
-      data: {
-        sessionId: job.agentSessionId,
-        attempt: job.attempts + 1,
-        round: next.round,
-        target: next.target,
-        cooldownUsed: cooldownMs / 1000,
-      },
-    });
-  }
+  traceStep({
+    category: 'session.recovery_attempted',
+    data: {
+      sessionId: job.agentSessionId,
+      attempt: job.attempts + 1,
+      round: next.round,
+      target: next.target,
+      cooldownUsed: cooldownMs / 1000,
+    },
+  });
 
   logger.info(
     {
