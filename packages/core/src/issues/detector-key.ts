@@ -1,9 +1,10 @@
-import { and, eq, ne } from 'drizzle-orm';
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import { and, eq, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 
 export interface DetectorKeyClaim {
-  /** An existing non-closed issue already owns this key — comment on it. */
+  /** An existing non-terminal issue already owns this key — comment on it. */
   existingIssueId: string | null;
 }
 
@@ -25,7 +26,7 @@ export async function claimDetectorKey(
       and(
         eq(issues.projectId, projectId),
         eq(issues.detectorKey, detectorKey),
-        ne(issues.status, 'closed'),
+        notInArray(issues.status, [...ISSUE_TERMINAL_STATUSES]),
       ),
     )
     .limit(1);

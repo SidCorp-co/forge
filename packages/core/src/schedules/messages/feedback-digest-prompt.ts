@@ -80,7 +80,7 @@ If there is at least one untriaged report, create exactly ONE draft issue via \`
 
 ### The create may come back deduped — that is the normal path, not an error
 
-\`detectorKey\` makes the kernel guarantee **at most one non-closed digest issue** on this project.
+\`detectorKey\` makes the kernel guarantee **at most one non-terminal (not closed, not dropped) digest issue** on this project.
 Once a digest is already open, your create writes nothing and returns
 \`{deduped:true, existingIssueId, existingIssueDisplayId}\`.
 

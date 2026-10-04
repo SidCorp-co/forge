@@ -3,8 +3,7 @@
 **Removed when:** every write-class `/mcp` request from a token without the `write` scope is refused
 at one gate in `requirePat`, which dev ISS-141 carries. The change that lands it deletes this file.
 
-**Status:** open, undecided. Found on ISS-1175 (2026-09-26) while writing the pages that tell a
-person which scopes to tick for their assistant. Not fixed there, because the fix is a behaviour
+**Status:** open, undecided. Found on ISS-1175 (2026-09-26). Not fixed there, because the fix is a behaviour
 change for live tokens whose extent nobody has measured.
 
 ## The mechanism
@@ -37,11 +36,6 @@ one is load-bearing is a production measurement:
 
 Zero on the second line means the gate lands as-is. Anything else means the gate lands with a
 named, dated amnesty for those tokens, and their owners are told.
-
-## What the connect-an-assistant pages say meanwhile
-
-They tell the reader to tick **read** and **write**, and they say what each is for. They promise
-nothing about a token holding `read` alone, so they stay true whichever way this is decided.
 
 ## Honest costs
 

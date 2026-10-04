@@ -20,7 +20,7 @@
   ],
   "replacementPatterns": [
     {
-      "comment": "The in-app help articles link each other as `?path=<slug>` — the deep-link form the viewer routes on (`/docs?path=…`, docs-screen.tsx), where the slug is the page's path under content/help/, so `connect-an-assistant/cursor` for a page in a subfolder. Rewritten to that file from the repository root, as the viewer resolves it, not muted: a dead slug must keep failing. Rewritten relative to the linking page instead, a link from a subfolder to a root page read dead and a link with a folder in it was never rewritten at all, so it passed unchecked (ISS-1175).",
+      "comment": "The in-app help articles link each other as `?path=<slug>` — the deep-link form the viewer routes on (`/docs?path=…`, docs-screen.tsx), where the slug is the page's path under content/help/, so `<folder>/<page>` for a page in a subfolder. Rewritten to that file from the repository root, as the viewer resolves it, not muted: a dead slug must keep failing. Rewritten relative to the linking page instead, a link from a subfolder to a root page read dead and a link with a folder in it was never rewritten at all, so it passed unchecked (ISS-1175).",
       "pattern": "^\\?path=([a-z0-9][a-z0-9-]*(?:/[a-z0-9][a-z0-9-]*)?)$",
       "replacement": "{{BASEURL}}/packages/web-v2/content/help/$1.md"
     },
