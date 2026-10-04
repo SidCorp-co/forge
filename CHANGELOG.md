@@ -2732,6 +2732,8 @@
   (ISS-1313)
 
 ### Removed
+- **The flow-coverage gate is gone.** `check-flow-coverage`, its baseline and its flow
+  declarations are removed; flow coverage returns anchored on the approved workflow designs.
 - **Comments are no longer gated, and codemap is gone.** The comment-budget check, its
   baseline and the `comment` conformance axis are removed, and no rule asks for `cm:` annotations;
   existing ones stay as plain comments.

@@ -52,10 +52,9 @@ const PROBES = {
     needs: ['deps'],
   },
   behaviour: {
-    gate: 'check-test-signal + check-flow-coverage + check-test-reachability',
+    gate: 'check-test-signal + check-test-reachability',
     probe: ['node', 'scripts/check-test-signal.mjs', '--all'],
     also: [
-      { from: 'alsoBaseline', probe: ['node', 'scripts/check-flow-coverage.mjs', '--all'] },
       { from: 'none', needs: ['deps'], probe: ['node', 'scripts/check-test-reachability.mjs'] },
     ],
   },

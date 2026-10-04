@@ -71,7 +71,7 @@ export const WORKFLOW_LIMITS = {
 
 // cm:why a step id is a status name as often as a verb, so it takes `_` (`in_progress`) where a flow slug does not
 export const STEP_ID = /^[a-z][a-z0-9_-]{0,62}$/;
-// cm:why the annotation is the `cm:flow <flow>/<step>` id written in the code, so evidence names the same string the flow-coverage checker reads
+// cm:why the annotation is the `cm:flow <flow>/<step>` id written in the code, so evidence names that same string
 export const FLOW_STEP_ID = /^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9_-]{0,62}$/;
 const SHA = /^[0-9a-f]{40}$/;
 

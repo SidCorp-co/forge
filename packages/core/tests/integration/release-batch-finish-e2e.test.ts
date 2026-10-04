@@ -11,8 +11,7 @@
  * The seeding lives in `tests/helpers/release-batch-fixture.ts`, shared with
  * the recovery suite next door.
  *
- * Integration rather than unit because `check-flow-coverage.mjs` counts only
- * this suite as authoritative, and because the sibling rule's first version
+ * Integration rather than unit because the sibling rule's first version
  * passed the mocked suite and was falsified here.
  */
 
