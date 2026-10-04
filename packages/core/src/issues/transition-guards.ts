@@ -21,6 +21,7 @@
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
+import { approvalRefusalFor } from '../lib/approval.js';
 import {
   canTransition,
   PARK_STATUSES,
@@ -43,6 +44,7 @@ export type GuardCode =
   | 'WORKFLOW_DESIGN_NOT_APPROVED'
   | 'CONTRACT_WAIT_UNSETTLED'
   | 'PLAN_REQUIRED'
+  | 'APPROVE_PERMISSION_REQUIRED'
   | 'NO_WORK_EVIDENCE'
   | 'VERDICT_IDENTITY_REQUIRED'
   | 'VERDICT_PREDATES_REOPEN'
@@ -103,6 +105,8 @@ export interface GuardContext {
   /** The status the park being left was entered from (`issue_work_state.left_status`), or null. */
   leftStatus?: IssueStatus | null | undefined;
   agency: ActorAgency;
+  /** The account the move is made as: the user, or the owner of the device making it. */
+  actorUserId: string;
   transitionReason?: string | undefined;
   waitingKind?: WaitingKind | undefined;
   executor: Pick<Tx, 'select' | 'execute'>;
@@ -113,7 +117,7 @@ const hasText = (s: string | undefined) => Boolean(s?.trim());
 
 /** Reasons and kinds: the guards that read only the request. Asked before the write begins. */
 export function reasonFault(
-  ctx: Omit<GuardContext, 'executor' | 'issue' | 'leftStatus'>,
+  ctx: Omit<GuardContext, 'executor' | 'issue' | 'leftStatus' | 'actorUserId'>,
 ): GuardFault | null {
   const details = { from: ctx.from, to: ctx.to };
   if (ctx.to === 'needs_info') {
@@ -197,7 +201,7 @@ async function planApprovalRequired(projectId: string): Promise<boolean> {
   return held?.document.plan?.approval.required === true;
 }
 
-/** approved, the plan checkpoint: a plan and criteria, and a person where the project says so. */
+/** approved, the plan checkpoint: a plan and criteria, and plans.approve where the project says so. */
 async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
   const rows = (await ctx.executor.execute(sqlPlanRow(ctx.issue.id))) as unknown as Array<{
     plan: string | null;
@@ -215,13 +219,26 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
       details: { from: ctx.from, to: ctx.to, missing },
     };
   }
-  if (ctx.agency !== 'human' && (await planApprovalRequired(ctx.issue.projectId))) {
-    return {
-      code: 'PLAN_REQUIRED',
-      detail:
-        'this project requires a person to approve a plan (project document `plan.approval.required`), so the move to `approved` is a person\'s to make. Ask for it: park at `needs_info` with `waitingKind: "needs_decision"` naming the plan, and the person who approves moves it once it is back.',
-      details: { from: ctx.from, to: ctx.to, requires: 'human', rule: 'plan.approval.required' },
-    };
+  if (await planApprovalRequired(ctx.issue.projectId)) {
+    const denied = await approvalRefusalFor(
+      { userId: ctx.actorUserId },
+      ctx.issue.projectId,
+      'plans',
+      'moving an issue to `approved` (project document `plan.approval.required`)',
+    );
+    if (denied) {
+      return {
+        code: denied.code,
+        detail: `${denied.detail} Ask for it: park at \`needs_info\` with \`waitingKind: "needs_decision"\` naming the plan, and a holder of ${denied.permission} moves it once it is back.`,
+        details: {
+          from: ctx.from,
+          to: ctx.to,
+          permission: denied.permission,
+          resource: denied.resource,
+          rule: 'plan.approval.required',
+        },
+      };
+    }
   }
   return null;
 }

@@ -39,10 +39,19 @@ const designDoc = (patch: (d: Doc) => void = () => {}): Doc => {
   return d;
 };
 
-async function setApprover(approver: 'owner' | 'master' | null) {
+let masterUserId: string;
+
+// workflow-designs.approve is held by project admin (ADR 0007): the master approves once its role grants it.
+async function setMasterRole(role: 'admin' | 'member') {
+  await harness.db.execute(sql`
+    UPDATE project_members SET role = ${role}
+     WHERE user_id = ${masterUserId} AND project_id = ${projectId}
+  `);
+}
+
+async function declareDocument() {
   const doc = read('../../src/project-config/fixtures/examples/hop.project.json');
   doc.project = { ...doc.project, id: projectId, slug: `hop-${projectId.slice(0, 8)}` };
-  if (approver) doc.workflows = { designApprover: approver };
   await harness.db.execute(sql`
     INSERT INTO project_config_documents (project_id, revision, document, updated_by)
     VALUES (${projectId}, 1, ${JSON.stringify(doc)}::jsonb, ${ownerId})
@@ -76,11 +85,12 @@ beforeAll(async () => {
       projectId: project,
       role: 'member',
     });
+    if (project === projectId) masterUserId = agent.id;
     return (await mintPat({ userId: agent.id, name: 'master', projectIds: [project] })).plaintext;
   };
   tokens.master = await masterOf(projectId);
   tokens.otherMaster = await masterOf(otherId);
-  await setApprover(null);
+  await declareDocument();
   deviceId = (await createTestDevice(harness.db, owner.id)).id;
   await bindTestRunner(harness.db, { projectId, deviceId });
 }, 120_000);
@@ -186,13 +196,13 @@ async function standingWhileProposed(design: { body: Doc }) {
   expect(design.body.requirements.map((r: Doc) => r.pinnedRevision)).toEqual([1]);
   const asMaster = await call('master', 'GET', at(`/workflows/${workflowId}/design`));
   expect(asMaster.body.waitingOn).toMatchObject({ kind: 'you', who: 'You' });
-  await setApprover('owner');
-  const ownerPolicy = await call('master', 'GET', at(`/workflows/${workflowId}/design`));
-  expect(ownerPolicy.body.waitingOn).toMatchObject({
+  await setMasterRole('member');
+  const withoutIt = await call('master', 'GET', at(`/workflows/${workflowId}/design`));
+  expect(withoutIt.body.waitingOn).toMatchObject({
     kind: 'person',
-    who: 'An org owner or admin',
+    who: 'A holder of workflow-designs.approve',
   });
-  await setApprover('master');
+  await setMasterRole('admin');
 }
 
 describe('a workflow design is approved before anything builds it', () => {
@@ -233,13 +243,14 @@ describe('a workflow design is approved before anything builds it', () => {
     expect(codesOf(r)).toEqual(['WORKFLOW_EVIDENCE_KIND_MISMATCH']);
   });
 
-  it('refuses the master deciding while the approver is the owner', async () => {
+  it('refuses the master deciding while it lacks workflow-designs.approve', async () => {
     const r = await call('master', 'POST', at(`/workflows/${workflowId}/design/decision`), {
       revision: 1,
       decision: 'approve',
     });
     expect(r.status, JSON.stringify(r.body)).toBe(422);
-    expect(r.body.error.code).toBe('WORKFLOW_DESIGN_APPROVER_NOT_PERSON');
+    expect(r.body.error.code).toBe('APPROVE_PERMISSION_REQUIRED');
+    expect(r.body.error.refusals[0]).toMatchObject({ permission: 'workflow-designs.approve' });
   });
 
   it('refuses a run over an issue that builds the proposed design, and says why on the issue', async () => {
@@ -266,8 +277,8 @@ describe('a workflow design is approved before anything builds it', () => {
     });
   });
 
-  it("refuses another project's master once the approver is master, and lets this one approve", async () => {
-    await setApprover('master');
+  it("refuses another project's master, and lets this one approve once it holds workflow-designs.approve", async () => {
+    await setMasterRole('admin');
     const other = await call(
       'otherMaster',
       'POST',
@@ -278,7 +289,7 @@ describe('a workflow design is approved before anything builds it', () => {
       },
     );
     expect(other.status, JSON.stringify(other.body)).toBe(422);
-    expect(other.body.error.code).toBe('WORKFLOW_DESIGN_APPROVER_NOT_PROJECT');
+    expect(other.body.error.code).toBe('APPROVE_PERMISSION_REQUIRED');
     const own = await call('master', 'POST', at(`/workflows/${workflowId}/design/decision`), {
       revision: 1,
       decision: 'approve',
@@ -366,10 +377,10 @@ describe('a workflow design is approved before anything builds it', () => {
     expect(returned.body.waitingOn).toMatchObject({ kind: 'agent', act: 'revise revision 3' });
   });
 
-  it('refuses unlinking the build to anyone but the approver', async () => {
-    await setApprover('owner');
+  it('refuses unlinking the build to anyone without workflow-designs.approve', async () => {
+    await setMasterRole('member');
     const r = await call('master', 'DELETE', at(`/workflows/${workflowId}/builds/${issueId}`));
     expect(r.status, JSON.stringify(r.body)).toBe(422);
-    expect(r.body.error.code).toBe('WORKFLOW_DESIGN_APPROVER_NOT_PERSON');
+    expect(r.body.error.code).toBe('APPROVE_PERMISSION_REQUIRED');
   });
 });

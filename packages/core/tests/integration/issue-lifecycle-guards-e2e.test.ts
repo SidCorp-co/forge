@@ -281,7 +281,7 @@ describe('PLAN_REQUIRED: approved is the plan checkpoint', () => {
     expect((await move(id, w.agent, { toStatus: 'approved' })).status).toBe(200);
   });
 
-  it('where the project requires a person, refuses an agent and takes a person', async () => {
+  it('where the project requires plan approval, refuses an account without plans.approve and takes one holding it (ADR 0007)', async () => {
     const w = await world();
     await seedProjectDocument(harness.db, w.projectId, w.humanId, { environments: {} });
     await harness.db.execute(sql`
@@ -291,7 +291,7 @@ describe('PLAN_REQUIRED: approved is the plan checkpoint', () => {
     `);
     const id = await insertIssue(w, 'in_progress', { plan: 'the plan', criteria: '1. it works' });
     const refused = await move(id, w.agent, { toStatus: 'approved' });
-    expectRefused(refused, 422, 'PLAN_REQUIRED');
+    expectRefused(refused, 422, 'APPROVE_PERMISSION_REQUIRED');
     expect((refused.body.details as { rule: string }).rule).toBe('plan.approval.required');
     expect((await move(id, w.human, { toStatus: 'approved' })).status).toBe(200);
   });

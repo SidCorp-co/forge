@@ -193,6 +193,19 @@ const CHECKS = [
     scanned: /^merged-at-writers: (\d+) file\(s\) scanned/m,
   },
   {
+    axis: 'relations',
+    label: 'module-shape',
+    layer: 'shared',
+    reads:
+      "every core module against pattern v2 over archmap's import graph; report-only, its findings are Wrong markers",
+    cmd: ['node', 'scripts/check-module-shape.mjs'],
+    exclusive: 'archmap',
+    scanned: /^module-shape: (\d+) file\(s\) scanned/m,
+    carries: /^module-shape: (\d+ module\(s\) Wrong[^;]*)/m,
+    needs: ['deps', 'archmap-resolver', 'observability-build', 'contracts-build'],
+    unit: 'files',
+  },
+  {
     axis: 'form',
     label: 'lazy-module-init',
     layer: 'shared',

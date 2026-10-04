@@ -308,14 +308,6 @@ export interface ContractChangeFact {
 
 export const OPEN_CONTRACT_CHANGE: readonly string[] = ['new', 'triaged', 'reopened'];
 
-// cm:guard a release is the viewer's to decide only as a person with admin on the project who did not ask for it (`release-batch/approvals.ts:decideApproval`), so no release is listed for someone the decision would refuse
-export function releaseDecidableBy(
-  viewer: { userId: string; isPerson: boolean; isAdmin: boolean },
-  askedBy: string,
-): boolean {
-  return viewer.isPerson && viewer.isAdmin && askedBy !== viewer.userId;
-}
-
 const youOwe = (act: string, rule: string): OverviewNeed['waitingOn'] => ({
   kind: 'you',
   who: 'You',

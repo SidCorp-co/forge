@@ -83,7 +83,7 @@ export const REQUIREMENT_STATE_HINTS: Record<RequirementState, string> = {
 	agreed: "agreed: a person agreed a revision; no linked issue has started",
 	in_delivery: "in_delivery: a linked issue has started",
 	delivered:
-		"delivered: every linked issue is closed; a person accepts the delivery",
+		"delivered: every linked issue is closed; an approver accepts the delivery",
 	accepted: "accepted: delivered and accepted",
 	deferred:
 		"deferred: out of the current release; nothing is planned or built against it until a person undefers it",

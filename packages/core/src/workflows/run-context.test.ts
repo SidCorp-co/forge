@@ -35,14 +35,8 @@ const traced = (over: Partial<TracedDesignRow> = {}, doc: Doc = design()): Trace
 });
 
 describe('a build job is given the approved design revision its issue builds', () => {
-  it('gives the steps, edges and guards of the approved revision, and none of the code reading itself', () => {
+  it('gives the steps, edges and guards of the approved revision, and none of its stamps', () => {
     const doc = design();
-    doc.steps[0].evidence = {
-      kind: 'storefront',
-      provider: 'autoflow',
-      ref: 'workflow',
-      id: 'SECRET_EVIDENCE_ID',
-    };
     const [loaded] = artifactContext([traced({}, doc)]);
     const text = renderArtifactContext(loaded ? [loaded] : []) ?? '';
 
@@ -60,8 +54,7 @@ describe('a build job is given the approved design revision its issue builds', (
     expect(text).toContain('"when":"episode.risk == high"');
     expect(text).toContain('"onFailure":"retry the feed, then raise to IT"');
     expect(text).toContain('- `his` → `discharged`');
-    expect(text).not.toContain('SECRET_EVIDENCE_ID');
-    expect(text).not.toContain('"status"');
+    expect(text).not.toContain('"createdAt"');
   });
 
   it('says when the design moved on past the revision it gives, never loading the newer one silently', () => {

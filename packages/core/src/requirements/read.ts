@@ -27,13 +27,14 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ReadDoor } from '../feedback/egress.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
+import { approverFactsOf } from '../lib/approval.js';
+import { assertProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { approvalRequired } from '../release-batch/approvals.js';
 import { linkedContracts } from './baselines.js';
-import { deferralOf } from './deferral-read.js';
 import { tracesOf } from './criterion-traces.js';
+import { deferralOf } from './deferral-read.js';
 import { requirementFeedbackAs } from './feedback-read.js';
 import { historyOf } from './history-read.js';
 import {
@@ -87,12 +88,7 @@ export async function rowIn(tx: Tx, projectId: string, ref: string): Promise<Row
 }
 
 export async function signerRefusal(actor: RequirementActor, projectId: string, act: string) {
-  const access = await effectiveProjectRole(actor.userId, projectId);
-  return signoffRefusal(
-    { userId: actor.userId, agency: actor.agency, role: access?.role ?? null },
-    projectId,
-    act,
-  );
+  return signoffRefusal(await approverFactsOf(actor.userId, projectId), projectId, act);
 }
 
 const rowsOfRevision = (rows: readonly CriterionRow[], revision: number) =>

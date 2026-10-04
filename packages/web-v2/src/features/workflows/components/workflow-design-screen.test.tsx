@@ -21,14 +21,12 @@ const doc = (over: Partial<WorkflowBody> = {}): WorkflowBody => ({
   kind: "flow",
   title: "Discharge to post-care",
   summary: "From a signed discharge to a recorded clinic visit.",
-  status: "designed",
+ 
   steps: [
-    { id: "s1", title: "Discharge signed", does: "d", status: "designed", after: [], evidence: null, node: { type: "EVENT", owner: "Ward nurse", sla: "same day" } },
-    { id: "s2", title: "Reminder sent", does: "d", status: "designed", after: ["s1"], evidence: null, node: { type: "ACTION" } },
+    { id: "s1", title: "Discharge signed", does: "d", after: [], node: { type: "EVENT", owner: "Ward nurse", sla: "same day" } },
+    { id: "s2", title: "Reminder sent", does: "d", after: ["s1"], node: { type: "ACTION" } },
   ],
-  drift: null,
   writtenBy: {},
-  refreshedAtSha: null,
   ...over,
 });
 
@@ -62,10 +60,10 @@ const proposedYou: WorkflowDesign = {
   revision: 4,
   proposedRevision: 4,
   approvedRevision: 3,
-  approver: "owner",
+  approver: "workflow-designs.approve",
   canDecide: true,
   waitingOn: { kind: "you", who: "You", act: "approve or return revision 4", rule: "revision 4 is proposed and you may decide it" },
-  revisions: [revision(4, { state: "proposed", document: doc({ steps: [...doc().steps, { id: "s3", title: "Roll back", does: "d", status: "designed", after: ["s2"], evidence: null }] }) }), revision(3, { state: "current", decision: "approve", decidedByName: "Lan", decidedAt: "2026-10-03T00:00:00.000Z" })],
+  revisions: [revision(4, { state: "proposed", document: doc({ steps: [...doc().steps, { id: "s3", title: "Roll back", does: "d", after: ["s2"] }] }) }), revision(3, { state: "current", decision: "approve", decidedByName: "Lan", decidedAt: "2026-10-03T00:00:00.000Z" })],
   builds: [{ issueId: "i1", displayId: "ISS-1402", title: "Publish only an approved revision", status: "in_progress" }],
   gate: { open: false, rule: "issues that build it are held out of dispatch until a revision is approved; revision 4 waits on its approver" },
   requirements: [{ key: "REQ-12", title: "Post-discharge follow-up", status: "agreed", pinnedRevision: 3 }],

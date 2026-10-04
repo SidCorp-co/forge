@@ -119,9 +119,9 @@ const DESCRIPTION =
   'FEEDBACK_SOURCE_ROUTED_ELSEWHERE. ' +
   'On a sensitive project the text is scrubbed on write; on a no_egress one every answer here carries metadata only. ' +
   `propose_triage: { feedback, triage: { route: ${FEEDBACK_ROUTES.join(' | ')}, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? } } ` +
-  'writes a feedback_triage suggestion a person accepts (forge_suggestions accept); an agent proposes, never routes. ' +
-  'triage / decline { reason } / duplicate { of } / verify { note? } / reopen { reason } are a person’s acts (FEEDBACK_DECIDE_FORBIDDEN, ' +
-  'FEEDBACK_VERIFY_FORBIDDEN for an agent). verify only follows resolved (FEEDBACK_NOT_RESOLVED): feedback is never verified automatically. ' +
+  'writes a feedback_triage suggestion a holder of feedback.approve accepts (forge_suggestions accept). ' +
+  'triage / decline { reason } / duplicate { of } / verify { note? } / reopen { reason } take feedback.approve (project admin, or an org owner or admin), person or agent alike ' +
+  '(APPROVE_PERMISSION_REQUIRED without it). verify only follows resolved (FEEDBACK_NOT_RESOLVED): feedback is never verified automatically. ' +
   'duplicate refuses FEEDBACK_DUPLICATE_CHAIN when the root is itself a duplicate. clarify { prompt, needed }: one open question to the ' +
   'reporter per item (FEEDBACK_CLARIFICATION_ALREADY_OPEN); its answer becomes a suggestion, never an edit. ' +
   'delete_reporter_data: a project admin person deletes text, attachments and embedding, keeping the row. ' +

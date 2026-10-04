@@ -5,7 +5,6 @@
  * Who may act is `actMiss` against a declared rule (`lib/person-act.ts`).
  */
 
-import type { NodeRef } from '@forge/contracts/workflow-health';
 import type {
   FeedbackAttention,
   FeedbackKind,
@@ -19,13 +18,9 @@ import type {
   FeedbackWaiting,
 } from '@forge/contracts/feedback';
 import type { SuggestionKind, SuggestionStatus } from '@forge/contracts/suggestions';
-import {
-  type ActorFacts,
-  type ActRule,
-  actMiss,
-  PERSON_ACT,
-  PERSON_ADMIN_ACT,
-} from '../lib/person-act.js';
+import type { NodeRef } from '@forge/contracts/workflow-health';
+import { approvalRefusal } from '../lib/approval.js';
+import { type ActorFacts, actMiss, PERSON_ADMIN_ACT } from '../lib/person-act.js';
 
 export type { FeedbackRefusal, FeedbackRefusalCode } from '@forge/contracts/feedback';
 
@@ -397,53 +392,24 @@ export function redactedRefusal(redactedAt: Date | null): FeedbackRefusal | null
   );
 }
 
-function actRefusal(
-  facts: ActorFacts,
-  rule: ActRule,
-  code: FeedbackRefusalCode,
-  act: string,
-  standing: string,
-): FeedbackRefusal | null {
-  const miss = actMiss(facts, rule);
-  if (!miss) return null;
-  return refusal(
-    code,
-    '',
-    miss.kind === 'agent-not-allowed'
-      ? `${facts.userId} acts as an agent; ${act} is a person's act. An agent or the BA assistant proposes it as a feedback_triage suggestion, and a person accepts.`
-      : `${facts.userId} holds ${facts.role ?? 'no role'} on this project; ${act} needs ${standing}.`,
-  );
-}
+/** Picking a route, declining, marking a duplicate, verifying, reopening: approvals (ADR 0007). */
+export const decideActRefusal = (facts: ActorFacts, projectId: string, act: string) =>
+  approvalRefusal(facts, 'feedback', projectId, act);
 
-/** Picking a route, declining, marking a duplicate: a person of the project (member or above). */
-export const decideActRefusal = (facts: ActorFacts, act: string) =>
-  actRefusal(
-    facts,
-    PERSON_ACT,
-    'FEEDBACK_DECIDE_FORBIDDEN',
-    act,
-    'a person of the project (member or above)',
-  );
-
-/** Verifying or reopening: the reporter or a BA naming them, so a person of the project. */
-export const verifyActRefusal = (facts: ActorFacts, act: string) =>
-  actRefusal(
-    facts,
-    PERSON_ACT,
-    'FEEDBACK_VERIFY_FORBIDDEN',
-    act,
-    'the reporter or a BA, a person of the project',
-  );
+export const verifyActRefusal = decideActRefusal;
 
 /** Deleting reporter data (UC15): a project admin person. */
-export const redactActRefusal = (facts: ActorFacts) =>
-  actRefusal(
-    facts,
-    PERSON_ADMIN_ACT,
+export function redactActRefusal(facts: ActorFacts): FeedbackRefusal | null {
+  const miss = actMiss(facts, PERSON_ADMIN_ACT);
+  if (!miss) return null;
+  return refusal(
     'FEEDBACK_REDACT_FORBIDDEN',
-    "deleting a reporter's data",
-    'a project admin person',
+    '',
+    miss.kind === 'person-not-allowed' || miss.kind === 'agent-not-allowed'
+      ? `${facts.userId} acts as an agent; deleting a reporter's data is a project admin person's act.`
+      : `${facts.userId} holds ${facts.role ?? 'no role'} on this project; deleting a reporter's data needs a project admin person.`,
   );
+}
 
 export interface PromoteFacts {
   reportId: string;

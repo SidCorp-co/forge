@@ -1,7 +1,6 @@
 import { db } from '../../db/client.js';
 import type { ActorAgency } from '../../issues/actor-agency.js';
-import { effectiveProjectRole } from '../../lib/authz.js';
-import { readProjectDocument } from '../../project-config/service.js';
+import { approverFactsOf } from '../../lib/approval.js';
 import { notFound } from '../access.js';
 import { loadInterface } from '../interface-service.js';
 import type { EcosystemRefusal } from '../refusals.js';
@@ -35,22 +34,11 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
     (await versionsOf(db, [projectId], contract)).find((v) => v.version === version) ?? null;
   const target = await read();
   if (!target) throw notFound(`${project.slug}/${contract} has no recorded version "${version}"`);
-  const [access, doc, iface] = await Promise.all([
-    effectiveProjectRole(actor.userId, projectId),
-    readProjectDocument(projectId),
+  const [facts, iface] = await Promise.all([
+    approverFactsOf(actor.userId, projectId),
     loadInterface(projectId),
   ]);
-  const denied = approverRefusal(
-    {
-      userId: actor.userId,
-      agency: actor.agency,
-      role: access?.role ?? null,
-      orgRole: access?.orgRole ?? null,
-    },
-    { ref, classification: target.document.diff.classification },
-    doc?.document.contracts?.approver ?? 'owner',
-    projectId,
-  );
+  const denied = approverRefusal(facts, { ref }, projectId);
   if (denied) return { ok: false, refusals: [denied] };
   const [outcome, approved] = await db.transaction(
     async (tx): Promise<[DecideOutcome, Approved | null]> => {

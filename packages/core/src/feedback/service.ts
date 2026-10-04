@@ -5,14 +5,13 @@
  * the clarification `attachments.ts`. Every decision is a `feedback_decisions` row.
  */
 
-import type { NodeRef } from '@forge/contracts/workflow-health';
-import { designNodesIn, nodeRefRefusal } from '../workflows/node-refs.js';
 import type {
   CreateFeedbackRequest,
   FeedbackTriage,
   FeedbackTriageEffect,
   FeedbackView,
 } from '@forge/contracts/feedback';
+import type { NodeRef } from '@forge/contracts/workflow-health';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
@@ -25,6 +24,7 @@ import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { getStorage } from '../storage/index.js';
+import { designNodesIn, nodeRefRefusal } from '../workflows/node-refs.js';
 import { embedFeedbackLater } from './embeddings.js';
 import { detailAs, type FeedbackActor, feedbackKey, phaseOfRow, type Row, rowIn } from './read.js';
 import { isRefusal, resolveTarget } from './refs.js';
@@ -156,7 +156,8 @@ async function nodeColumns(
       refusal: {
         code: 'FEEDBACK_NODE_NEEDS_WORKFLOW',
         path: '/node',
-        detail: 'a node names a step or edge of a workflow; send it with a workflow target, or drop it',
+        detail:
+          'a node names a step or edge of a workflow; send it with a workflow target, or drop it',
       },
     };
   }
@@ -251,7 +252,11 @@ export async function declineFeedback(input: {
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
   await assertProjectAccess(projectId, actor.userId, 'viewer');
-  const forbidden = decideActRefusal(await roleFacts(actor, projectId), 'declining feedback');
+  const forbidden = decideActRefusal(
+    await roleFacts(actor, projectId),
+    projectId,
+    'declining feedback',
+  );
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const first = await rowIn(db, projectId, input.ref);
   const refusals = await inTx(async (tx) => {
@@ -279,6 +284,7 @@ async function personalAct(
   await assertProjectAccess(projectId, actor.userId, 'viewer');
   const forbidden = verifyActRefusal(
     await roleFacts(actor, projectId),
+    projectId,
     act === 'verified' ? 'verifying feedback' : 'reopening feedback',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };

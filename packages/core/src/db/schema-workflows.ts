@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { OBSERVATION_SOURCES } from '@forge/contracts/workflow-health';
 import { issues, projects, users } from './schema.js';
 
 export const projectWorkflows = pgTable(
@@ -22,10 +23,6 @@ export const projectWorkflows = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     flow: text('flow').notNull(),
     kind: text('kind').notNull(),
-    status: text('status').notNull(),
-    // cm:why null only for a design drawn before any code: a storefront project has no git, and a
-    // design names no commit until something is built from it
-    refreshedAtSha: text('refreshed_at_sha'),
     revision: integer('revision').notNull(),
     document: jsonb('document').notNull(),
     // cm:why the design lifecycle is the server's, never the document's: the master writes the
@@ -43,14 +40,6 @@ export const projectWorkflows = pgTable(
     flowUq: uniqueIndex('project_workflows_flow_uq').on(t.projectId, t.flow),
     projectIdx: index('project_workflows_project_idx').on(t.projectId, t.kind),
     kindChk: check('project_workflows_kind_chk', sql`${t.kind} IN ('flow', 'state')`),
-    statusChk: check(
-      'project_workflows_status_chk',
-      sql`${t.status} IN ('writing', 'current', 'rechecking', 'designed')`,
-    ),
-    shaChk: check(
-      'project_workflows_sha_chk',
-      sql`${t.refreshedAtSha} IS NULL OR ${t.refreshedAtSha} ~ '^[0-9a-f]{40}$'`,
-    ),
     revisionChk: check('project_workflows_revision_chk', sql`${t.revision} >= 1`),
     designStatusChk: check(
       'project_workflows_design_status_chk',
@@ -125,5 +114,48 @@ export const workflowBuilds = pgTable(
   },
   (t) => ({
     workflowIdx: index('workflow_builds_workflow_idx').on(t.workflowId),
+  }),
+);
+
+// What the code holds, read by an agent at one commit against one design revision (REQ-17 BC-21):
+// its own layer, never written into project_workflows or project_workflow_designs; a reading at a
+// commit already read replaces the earlier one
+export const projectWorkflowObservations = pgTable(
+  'project_workflow_observations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    workflowId: uuid('workflow_id')
+      .notNull()
+      .references(() => projectWorkflows.id, { onDelete: 'cascade' }),
+    atSha: text('at_sha').notNull(),
+    revision: integer('revision').notNull(),
+    document: jsonb('document').notNull(),
+    source: text('source', { enum: OBSERVATION_SOURCES }).notNull(),
+    writtenBy: uuid('written_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    writtenByAgency: text('written_by_agency', { enum: ['human', 'agent'] }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    workflowShaUq: uniqueIndex('project_workflow_observations_sha_uq').on(t.workflowId, t.atSha),
+    projectIdx: index('project_workflow_observations_project_idx').on(
+      t.projectId,
+      t.workflowId,
+      t.createdAt,
+    ),
+    shaChk: check('project_workflow_observations_sha_chk', sql`${t.atSha} ~ '^[0-9a-f]{40}$'`),
+    revisionChk: check('project_workflow_observations_revision_chk', sql`${t.revision} >= 1`),
+    sourceChk: check(
+      'project_workflow_observations_source_chk',
+      sql`${t.source} IN ('observer', 'migrated')`,
+    ),
+    agencyChk: check(
+      'project_workflow_observations_agency_chk',
+      sql`${t.writtenByAgency} IN ('human', 'agent')`,
+    ),
   }),
 );

@@ -93,3 +93,49 @@ export function nodeKeyOf(ref: NodeRef): string {
 	const { from, to, label } = ref.edge;
 	return `edge:${from}>${to}${label ? `#${label}` : ""}`;
 }
+
+/** An observed layer may be larger than its design: code the design does not hold is drawn too. */
+export const OBSERVATION_LIMITS = { steps: 200, edges: 600, after: 24 } as const;
+
+export const OBSERVATION_SOURCES = ["observer", "migrated"] as const;
+export type ObservationSource = (typeof OBSERVATION_SOURCES)[number];
+
+/** Every refusal an observation write answers with, by name; nothing of a refused observation is stored. */
+export const OBSERVATION_REFUSAL_CODES = [
+	"WORKFLOW_OBSERVATION_UNCITED",
+	"WORKFLOW_OBSERVATION_STEP_DUPLICATE",
+	"WORKFLOW_OBSERVATION_MATCH_UNKNOWN",
+	"WORKFLOW_OBSERVATION_MATCH_DUPLICATE",
+	"WORKFLOW_OBSERVATION_EDGE_DANGLING",
+	"WORKFLOW_OBSERVATION_DRIFT_UNKNOWN",
+	"WORKFLOW_OBSERVATION_REVISION_UNKNOWN",
+	"WORKFLOW_OBSERVATION_CITATION_KIND_MISMATCH",
+	"WORKFLOW_WRITER_NOT_PROJECT",
+] as const;
+export type ObservationRefusalCode = (typeof OBSERVATION_REFUSAL_CODES)[number];
+
+/** One observation as a list serves it. */
+export interface ObservationSummaryView {
+	id: string;
+	workflowId: string;
+	flow: string;
+	atSha: string;
+	revision: number;
+	source: ObservationSource;
+	stepCount: number;
+	edgeCount: number;
+	matched: number;
+	writtenBy: string;
+	writtenByName: string | null;
+	createdAt: string;
+}
+
+/** One observation with its observed steps and edges. */
+export interface ObservationView extends ObservationSummaryView {
+	document: {
+		summary?: string | undefined;
+		steps: unknown[];
+		edges: unknown[];
+		drift: { steps: string[]; reason: string } | null;
+	};
+}

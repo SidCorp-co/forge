@@ -198,6 +198,6 @@ export async function approversOf(projectId: string): Promise<ReleasePerson[]> {
   const people = await peopleOf(ids);
   return ids.flatMap((id) => {
     const p = people.get(id);
-    return p && p.kind === 'human' ? [{ id, ...p }] : [];
+    return p ? [{ id, ...p }] : [];
   });
 }

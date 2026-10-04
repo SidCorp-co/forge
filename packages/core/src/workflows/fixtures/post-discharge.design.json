@@ -6,21 +6,16 @@
   "kind": "flow",
   "title": "Post-discharge follow-up",
   "summary": "A discharged patient who needs follow-up becomes one case with an owner and an SLA, and the outcome feeds back into what the rule reads.",
-  "status": "designed",
   "template": {
     "id": "operational-flow",
     "version": 1
   },
-  "drift": null,
   "writtenBy": {},
-  "refreshedAtSha": null,
   "steps": [
     {
       "id": "his",
       "does": "The hospital HIS records the discharge.",
-      "status": "designed",
       "after": [],
-      "evidence": null,
       "node": {
         "type": "SOURCE",
         "label": "Hospital HIS",
@@ -30,9 +25,7 @@
     {
       "id": "discharged",
       "does": "patient.discharged arrives from the HIS.",
-      "status": "designed",
       "after": ["his"],
-      "evidence": null,
       "node": {
         "type": "EVENT",
         "label": "Patient discharged",
@@ -43,9 +36,7 @@
     {
       "id": "context",
       "does": "The episode risk and care team are read.",
-      "status": "designed",
       "after": [],
-      "evidence": null,
       "node": {
         "type": "CONTEXT",
         "label": "Know the patient",
@@ -56,9 +47,7 @@
     {
       "id": "followup-rule",
       "does": "A high-risk discharge needs follow-up within 48 hours.",
-      "status": "designed",
       "after": ["discharged", "context"],
-      "evidence": null,
       "node": {
         "type": "RULE",
         "label": "Decide follow-up",
@@ -75,9 +64,7 @@
     {
       "id": "case",
       "does": "One follow-up case is opened for the episode.",
-      "status": "designed",
       "after": ["followup-rule"],
-      "evidence": null,
       "node": {
         "type": "CASE",
         "label": "Open follow-up case",
@@ -87,9 +74,7 @@
     {
       "id": "call-task",
       "does": "The coordinator is asked to call within 48 hours.",
-      "status": "designed",
       "after": ["case"],
-      "evidence": null,
       "node": {
         "type": "TASK",
         "label": "Call the patient",
@@ -101,9 +86,7 @@
     {
       "id": "call",
       "does": "The coordinator calls the patient.",
-      "status": "designed",
       "after": ["call-task"],
-      "evidence": null,
       "node": {
         "type": "ACTION",
         "label": "Call made",
@@ -113,9 +96,7 @@
     {
       "id": "outcome",
       "does": "The call is recorded as reached, unreachable or declined.",
-      "status": "designed",
       "after": ["call"],
-      "evidence": null,
       "node": {
         "type": "OUTCOME",
         "label": "Record the result",

@@ -16,6 +16,8 @@ export interface ViewerFacts {
   userId: string;
   agency: 'human' | 'agent';
   isAdmin: boolean;
+  /** Holds releases.approve (`lib/approval.ts:mayApprove`). */
+  mayApprove: boolean;
 }
 
 export interface TurnFacts {
@@ -48,11 +50,6 @@ const IN_FLIGHT_ACT: Record<ReleaseAttemptStage, string> = {
 };
 
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
-
-export function canDecide(viewer: ViewerFacts | null, approval: TurnFacts['approval']): boolean {
-  if (!viewer || !approval || approval.decision !== null) return false;
-  return viewer.agency === 'human' && viewer.isAdmin && approval.requestedBy.id !== viewer.userId;
-}
 
 function draftTurn(f: TurnFacts): Turn {
   if (f.gates.length > 0) {
@@ -94,8 +91,8 @@ function approvalTurn(f: TurnFacts): Turn {
       },
     };
   }
-  const rule = `an admin other than ${a.requestedBy.name}, who asked, approves or returns it`;
-  if (canDecide(f.viewer, a)) {
+  const rule = `${a.requestedBy.name} asked; a holder of releases.approve approves or returns it`;
+  if (f.viewer?.mayApprove && a.decision === null) {
     return {
       attention: 'you',
       waiting: { kind: 'you', who: 'You', act: `approve or return ${f.version}`, rule },

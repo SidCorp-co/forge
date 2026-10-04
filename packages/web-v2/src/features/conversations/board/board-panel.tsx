@@ -63,7 +63,7 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
           contentBase64: await fileBase64(new Blob([svg], { type: "image/svg+xml" })),
         });
       }
-      setState({ busy: false, said: `Proposed on ${made.mockup.target.key} as ${made.mockup.key}${svg ? " with its picture" : ""}; a person accepts it there.`, error: false });
+      setState({ busy: false, said: `Proposed on ${made.mockup.target.key} as ${made.mockup.key}${svg ? " with its picture" : ""}; an approver accepts it there.`, error: false });
     } catch (err) {
       setState({ busy: false, said: formatApiError(err), error: true });
     }

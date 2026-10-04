@@ -50,10 +50,11 @@ Nothing ever reads an item as \`verified\` on its own.
   the item is \`FEEDBACK_ROUTE_TARGET_MISMATCH\`: contract-change feedback goes to an issue only, a
   revision is a revision_diff of the item's own requirement, and a new-requirement route is carried by a
   draft (an agreed requirement's change is routed as a revision).
-- **An agent never routes.** It sends \`propose_triage\` \`{ feedback, triage }\`, which writes a
-  \`feedback_triage\` suggestion; a person accepts it (\`forge_suggestions accept\`), and the accept writes
-  the route (${guideRef('suggestions')}). Routing directly, declining and marking a duplicate are a
-  person's acts: an agent is refused \`FEEDBACK_DECIDE_FORBIDDEN\`.
+- **Routing is an approval.** Routing directly, declining and marking a duplicate take
+  \`feedback.approve\` on the project (project admin, or an org owner or admin), person or agent alike;
+  without it the call is refused \`APPROVE_PERMISSION_REQUIRED\` naming the permission. Without it, send
+  \`propose_triage\` \`{ feedback, triage }\`, which writes a \`feedback_triage\` suggestion a holder accepts
+  (\`forge_suggestions accept\`), and the accept writes the route (${guideRef('suggestions')}).
 - A route is picked while the item is \`new\`, \`reopened\`, or \`triaged\` with a dead carrier; any other
   phase is \`FEEDBACK_STATUS_INVALID\`.
 - **duplicate** names a root that is not itself a duplicate, and an item others point at stays a root
@@ -70,8 +71,8 @@ route or declining closes the open question.
 
 ### After it ships
 - \`verify\` follows \`resolved\` and nothing else (\`FEEDBACK_NOT_RESOLVED\`): an item is never verified
-  before its fix shipped, and never automatically. It is a person's act, the reporter's or a BA's
-  naming them (\`FEEDBACK_VERIFY_FORBIDDEN\` for an agent).
+  before its fix shipped, and never automatically. It takes \`feedback.approve\`
+  (\`APPROVE_PERMISSION_REQUIRED\` without it).
 - \`reopen\` \`{ reason }\` also follows \`resolved\`, says what the fix does not answer
   (\`FEEDBACK_REOPEN_REASON_REQUIRED\`), and sends the item back to triage.
 - Every triage, decline, verify, reopen, redaction and promotion is kept as its own decision record, so

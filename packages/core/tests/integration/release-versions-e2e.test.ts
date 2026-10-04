@@ -89,7 +89,7 @@ async function call(
 
 const refusedAs = (r: { status: number; body: Body }, status: number) => {
   expect(r.status, JSON.stringify(r.body)).toBe(status);
-  return r.body.code;
+  return r.body.code ?? (r.body.error as { code?: string } | undefined)?.code;
 };
 
 const evidence = (environment = 'beta') => ({
@@ -164,11 +164,8 @@ describe('a version waits for an admin before its production acts', () => {
     ).toBe('RELEASE_AWAITING_APPROVAL');
 
     const decide = `${approvals}/${String(asked.body.id)}/decision`;
-    expect(refusedAs(await call('agent', 'POST', decide, { decision: 'approve' }), 403)).toBe(
-      'RELEASE_APPROVER_IS_AGENT',
-    );
-    expect(refusedAs(await call('member', 'POST', decide, { decision: 'approve' }), 403)).toBe(
-      'RELEASE_APPROVER_NOT_ADMIN',
+    expect(refusedAs(await call('member', 'POST', decide, { decision: 'approve' }), 422)).toBe(
+      'APPROVE_PERMISSION_REQUIRED',
     );
     expect(refusedAs(await call('owner', 'POST', decide, { decision: 'ship' }), 422)).toBe(
       'RELEASE_DECISION_UNKNOWN',
@@ -269,7 +266,7 @@ describe('a project whose document requires release approval', () => {
     );
   });
 
-  it('refuses a returned run, then opens attempts once a person other than the asker approved', async () => {
+  it('refuses a returned run, then opens attempts once a holder of releases.approve approved, the asking agent included (ADR 0007)', async () => {
     await requireApproval();
     const runId = await cutOne();
     const approvals = `/release-batches/${runId}/approvals`;
@@ -281,28 +278,19 @@ describe('a project whose document requires release approval', () => {
     expect(refusedAs(await attempt(runId), 409)).toBe('RELEASE_APPROVAL_RETURNED');
     const again = await call('agent', 'POST', approvals, evidence());
     const decide = `${approvals}/${String(again.body.id)}/decision`;
-    expect(refusedAs(await call('agent', 'POST', decide, { decision: 'approve' }), 403)).toBe(
-      'RELEASE_APPROVER_IS_AGENT',
-    );
-    expect((await call('owner', 'POST', decide, { decision: 'approve' })).status).toBe(200);
+    expect((await call('agent', 'POST', decide, { decision: 'approve' })).status).toBe(200);
     expect((await attempt(runId)).status).toBe(201);
     expect((await statusOf()).status).toBe('in_progress');
   });
 
-  it('refuses a request decided by the principal that asked for it', async () => {
+  it('lets the principal that asked approve its own request when it holds releases.approve (ADR 0007)', async () => {
     await requireApproval();
     const runId = await cutOne();
     const approvals = `/release-batches/${runId}/approvals`;
     const asked = await call('owner', 'POST', approvals, evidence());
     const decide = `${approvals}/${String(asked.body.id)}/decision`;
-    expect(refusedAs(await call('owner', 'POST', decide, { decision: 'approve' }), 403)).toBe(
-      'RELEASE_APPROVAL_SELF',
-    );
-    // A self-approved row already standing (written before the refusal existed) does not count.
-    await harness.db.execute(sql`
-      UPDATE release_approvals SET decision = 'approved', decided_by_user = requested_by_user, decided_at = now()
-      WHERE id = ${String(asked.body.id)}`);
-    expect(refusedAs(await attempt(runId), 409)).toBe('RELEASE_APPROVAL_SELF');
+    expect((await call('owner', 'POST', decide, { decision: 'approve' })).status).toBe(200);
+    expect((await attempt(runId)).status).toBe(201);
   });
 
   it('leaves a project that does not require it as it was: an attempt with no request opens', async () => {

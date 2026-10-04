@@ -3,9 +3,8 @@
  * workflow the issue builds (`workflow_builds`), trimmed to the steps, edges and guards that bind
  * the build, and refused by name when that revision cannot be read.
  *
- * Trimming rule. What the code reads of itself (step status, evidence, coverage, drift, the commit
- * a reading was taken at) and the document's stamps are never given: they are not the design. The
- * rest is the slice. A slice over `ARTIFACT_CONTEXT_CAP_CHARS` sheds whole field groups in the fixed
+ * Trimming rule. The document's stamps are never given: they are not the design (what the code
+ * holds is an observation, never part of it). The rest is the slice. A slice over `ARTIFACT_CONTEXT_CAP_CHARS` sheds whole field groups in the fixed
  * order of `TRIM_TIERS`, then whole steps from the end of the document (with the edges that touch
  * them), each named in the block and in the record. Guards — an edge's condition, action, failure
  * path, mapping, payload and idempotency; a node's rule table, validation, permissions and closed
@@ -357,7 +356,7 @@ export function renderArtifactContext(loaded: readonly LoadedArtifact[]): string
     pinned
       ? `## The designs ${pinned}'s latest baseline pins`
       : '## The approved design this issue builds',
-    `${pinned ? `Build to the revisions below: each is the approved revision ${pinned} was agreed or re-pinned against, never a newer one.` : 'Build to the revision below: it is what the approver approved.'} It holds the steps, edges and guards that bind the build; step status, evidence and coverage are the code reading itself and are left out. Read the full design and every revision on demand, never instead of this.`,
+    `${pinned ? `Build to the revisions below: each is the approved revision ${pinned} was agreed or re-pinned against, never a newer one.` : 'Build to the revision below: it is what the approver approved.'} It holds the steps, edges and guards that bind the build. Read the full design and every revision on demand, never instead of this.`,
     ...loaded.map((a) => a.text),
   ].join('\n\n');
 }
