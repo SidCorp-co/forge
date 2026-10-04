@@ -17,9 +17,9 @@ import type {
   ConversationShape,
 } from '../db/schema-conversations.js';
 import { conversations } from '../db/schema-conversations.js';
+import type { ChatContentPart, ChatMessage } from '../integrations/llm/types.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
-import type { ChatContentPart, ChatMessage } from './providers/types.js';
 
 export type { ConversationImage };
 export { toCanonicalEntry };

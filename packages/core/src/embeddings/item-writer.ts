@@ -7,8 +7,8 @@
 import { createHash } from 'node:crypto';
 import { db } from '../db/client.js';
 import { type ItemEmbeddingStatus, itemEmbeddings } from '../db/schema-item-embeddings.js';
+import { embeddingsConfigured, embedWithModel } from '../integrations/embeddings/index.js';
 import { dataPolicyOf, type EgressSurface, egressText } from '../lib/data-egress.js';
-import { embeddingsConfigured, embedWithModel } from './index.js';
 
 export const EMBEDDING_PROVIDER_NOT_CONFIGURED =
   'embedding provider not configured: EMBEDDINGS_BASE_URL and EMBEDDINGS_API_KEY are unset, so no vector was written and dedup cannot compare this item';
@@ -52,12 +52,12 @@ const surfaceOf = (arc: ItemArc): EgressSurface =>
   'requirementId' in arc ? 'requirement' : 'feedback';
 
 export async function writeItemEmbedding(head: ItemHead): Promise<ItemEmbeddingStatus> {
-  const egress = egressText(
-    await dataPolicyOf(head.projectId),
-    surfaceOf(head.arc),
-    head.text,
-    head.what,
-  );
+  const scope = {
+    level: await dataPolicyOf(head.projectId),
+    surface: surfaceOf(head.arc),
+    what: head.what,
+  };
+  const egress = egressText(scope.level, scope.surface, head.text, scope.what);
   if (!egress.ok) {
     const hash = createHash('sha256').update(head.text).digest('hex');
     await upsert(head, hash, { status: 'withheld_by_policy', error: egress.refusal.detail });
@@ -72,7 +72,7 @@ export async function writeItemEmbedding(head: ItemHead): Promise<ItemEmbeddingS
     return 'provider_not_configured';
   }
   try {
-    const { vector, model } = await embedWithModel(egress.text);
+    const { vector, model } = await embedWithModel(scope, egress.text);
     await upsert(head, hash, { status: 'embedded', vector, model });
     return 'embedded';
   } catch (err) {

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { memorySources } from '../../db/schema.js';
-import { EmbeddingUnavailableError } from '../../embeddings/index.js';
+import { EmbeddingUnavailableError } from '../../integrations/embeddings/index.js';
 import {
   MemoryFeedbackValidationError,
   memoryFeedbackInputSchema,

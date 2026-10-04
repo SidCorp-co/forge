@@ -2732,6 +2732,8 @@
   (ISS-1313)
 
 ### Removed
+- **The flow-coverage gate is gone.** `check-flow-coverage`, its baseline and its flow
+  declarations are removed; flow coverage returns anchored on the approved workflow designs.
 - **Comments are no longer gated, and codemap is gone.** The comment-budget check, its
   baseline and the `comment` conformance axis are removed, and no rule asks for `cm:` annotations;
   existing ones stay as plain comments.
@@ -3390,6 +3392,13 @@
   set is now 59.
 
 ### Fixed
+
+- **Onboarding reads the project's code as it is on its default branch, not as a runner's checkout
+  last left it.** The analysis job opened in the device binding's checkout and read it as it stood,
+  which on the forge project was 519 commits behind, so the drafts described a product that no
+  longer existed. The job now fetches and reads the tree at `origin/<source.git.defaultBranch>` in
+  a worktree of its own. Its code-map entries are also named `onboarding-code-map-<section>`, a slug
+  the knowledge store accepts; the prompt asked for a slashed one it refuses.
 
 - **Rewriting a draft requirement revision keeps the BC codes the draft already holds (ISS-117).**
   Sending back the criteria read from the draft used to be refused `CRITERION_CODE_UNKNOWN`.

@@ -7,7 +7,7 @@ import { and, asc, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizz
 import { db } from '../db/client.js';
 import { appConfig, memories } from '../db/schema.js';
 import { type MemoryReindexState, memoryChunks } from '../db/schema-memory-chunks.js';
-import { EmbeddingUnavailableError } from '../embeddings/index.js';
+import { EmbeddingUnavailableError } from '../integrations/embeddings/index.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
 import { chunkAndPublish, loadChunkParent } from './chunk-writer.js';

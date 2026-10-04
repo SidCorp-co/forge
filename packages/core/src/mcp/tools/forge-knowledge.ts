@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { EmbeddingUnavailableError } from '../../embeddings/index.js';
+import { EmbeddingUnavailableError } from '../../integrations/embeddings/index.js';
 import {
   deleteKnowledgeEntry,
   getKnowledgeEntry,

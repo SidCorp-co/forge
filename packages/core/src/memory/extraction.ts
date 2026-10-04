@@ -2,10 +2,10 @@ import crypto from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues, type JobType, knowledgeEdges, memories } from '../db/schema.js';
+import { callFastModel, fastModelConfigured } from '../integrations/llm/fast-model.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { indexMemory } from './indexer.js';
-import { callFastModel, fastModelConfigured } from './llm.js';
 import { foreignScriptChars } from './script-guard.js';
 
 export const EXTRACTION_JOB_TYPES: ReadonlySet<JobType> = new Set(['review', 'test', 'fix']);
@@ -215,7 +215,7 @@ export async function runExtractionForIssue(
     .replace('{issue_title}', issue?.title ?? 'unknown')
     .replace('{comments}', commentsStr);
 
-  const raw = await callFastModel(prompt, 400);
+  const raw = await callFastModel({ surface: 'issue.comments' }, prompt, 400);
   if (!raw) return { facts: 0, edges: 0, refused: 0, skipped: 'llm-failed' };
   const parsed = parseExtractionOutput(raw);
   if (!parsed) {

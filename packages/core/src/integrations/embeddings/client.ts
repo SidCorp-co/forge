@@ -1,5 +1,5 @@
-import { openAiCompatUrl } from '../lib/openai-compat-url.js';
-import { logger } from '../logger.js';
+import { openAiCompatUrl } from '../../lib/openai-compat-url.js';
+import { logger } from '../../logger.js';
 
 /**
  * LiteLLM-compatible embeddings client with timeout, bounded retry, and a

@@ -3,7 +3,7 @@
 **Removed when:** every phase below is checked off on the pilot workflow and on the remaining
 forge workflows, and the reconciliation flow runs from the product (observed layer, markers,
 decisions) rather than from this page. The run that ticks the last box deletes this file in the
-same change. Tracked by the dev issue that carries the `design-reconciliation` workflow design.
+same change. Tracked by ISS-120.
 
 The owner's direction on dev, 2026-10-04: requirements, approved workflow designs and patterns are
 the source of truth that Forge now builds; code may be wrong or outdated. Code is drawn onto the

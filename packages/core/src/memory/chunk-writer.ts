@@ -7,7 +7,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type MemorySource, memories, projects } from '../db/schema.js';
 import { memoryChunks } from '../db/schema-memory-chunks.js';
-import { embedBatch } from '../embeddings/index.js';
+import { embedBatch } from '../integrations/embeddings/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { chunkText, contextPrefix, isChunkedSource } from './chunker.js';
 
@@ -97,6 +97,7 @@ export async function chunkAndPublish(
   const prefix = await chunkContextPrefix(parent);
   const passages = chunkText(parent.textContent);
   const vectors = await embedBatch(
+    { surface: 'memory' },
     passages.map((p) => `${prefix}\n${p}`.slice(0, MAX_CHUNK_EMBED_CHARS)),
   );
   const generation = parent.chunkGeneration;

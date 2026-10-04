@@ -27,14 +27,20 @@ export const FONT = { title: 13.5, focal: 15, label: 12, chip: 12, frame: 13 } a
 export const MIN_FONT_PX = 12;
 export const MIN_READABLE_ZOOM = MIN_FONT_PX / Math.min(...Object.values(FONT));
 
-export const BOX = { w: 184, h: 64 } as const;
-export const FOCAL_BOX = { w: 208, h: 96 } as const;
-const LABEL_MAX = 30;
-const LABEL_H = 20;
+export const BOX = { w: 156, h: 60 } as const;
+export const FOCAL_BOX = { w: 168, h: 88 } as const;
+const LABEL_MAX = 36;
+/** A line label wraps inside this width, onto at most two lines of words. */
+const LABEL_W = 128;
+const LABEL_LINE = 15;
 const FRAME_PAD = { top: 34, side: 16 } as const;
 
-/** A string's drawn width in the UI face, estimated: Vietnamese with its diacritics runs close to 0.56em. */
-export const textWidth = (s: string, size: number) => s.length * size * 0.56;
+/**
+ * A string's drawn width in the UI face, estimated: semibold titles with Vietnamese diacritics run close
+ * to 0.56em, the medium-weight line labels close to 0.52em.
+ */
+export const textWidth = (s: string, size: number, em = 0.56) => s.length * size * em;
+const labelWidth = (s: string, size: number) => textWidth(s, size, 0.52);
 
 /** A line's words on a diagram: the clause before its first aside, cut at a word inside `max` characters. */
 export function shortLabel(text: string, max = LABEL_MAX): string {
@@ -48,13 +54,13 @@ export function shortLabel(text: string, max = LABEL_MAX): string {
 }
 
 /** Words wrapped into at most `lines` lines inside `width`, the last one cut with an ellipsis. */
-export function wrap(text: string, width: number, size: number, lines = 2): string[] {
+export function wrap(text: string, width: number, size: number, lines = 2, em = 0.56): string[] {
   const words = text.trim().split(/\s+/);
   const out: string[] = [];
   let line = "";
   for (const w of words) {
     const next = line ? `${line} ${w}` : w;
-    if (textWidth(next, size) <= width || !line) {
+    if (textWidth(next, size, em) <= width || !line) {
       line = next;
       continue;
     }
@@ -64,9 +70,9 @@ export function wrap(text: string, width: number, size: number, lines = 2): stri
   }
   if (out.length < lines && line) out.push(line);
   const used = out.join(" ").split(/\s+/).length;
-  if (used < words.length || textWidth(out[out.length - 1] ?? "", size) > width) {
+  if (used < words.length || textWidth(out[out.length - 1] ?? "", size, em) > width) {
     let last = out[out.length - 1] ?? "";
-    while (last.length > 1 && textWidth(`${last}…`, size) > width) last = last.slice(0, -1);
+    while (last.length > 1 && textWidth(`${last}…`, size, em) > width) last = last.slice(0, -1);
     out[out.length - 1] = `${last.trimEnd()}…`;
   }
   return out;
@@ -85,6 +91,9 @@ export interface DFrame extends Rect {
 export interface DLabel extends Rect {
   text: string;
   more: number;
+  /** The words as wrapped, and whether the "+N more" chip takes a line of its own after them. */
+  lines: string[];
+  chipBelow: boolean;
 }
 
 export interface DLine {
@@ -117,19 +126,29 @@ export function lineStyle(rels: readonly Relationship[]): { dash: string | undef
   return only ? { dash: DASH[only.line], colour: edgeHue(only) } : { dash: undefined, colour: "var(--wf-edge)" };
 }
 
-export function labelOf(e: ViewEdge): { text: string; more: number } {
-  return { text: shortLabel(e.rels[0]?.label ?? ""), more: e.rels.length - 1 };
+type LabelWords = Omit<DLabel, keyof Rect>;
+
+export function labelOf(e: ViewEdge): LabelWords {
+  const text = shortLabel(e.rels[0]?.label ?? "");
+  const more = e.rels.length - 1;
+  const lines = text ? wrap(text, LABEL_W - 8, FONT.label, 2, 0.52) : [];
+  const last = labelWidth(lines[lines.length - 1] ?? "", FONT.label);
+  const chipBelow = more > 0 && last + chipWidth(more) > LABEL_W - 8;
+  return { text, more, lines, chipBelow };
 }
+
+const chipWidth = (more: number) => labelWidth(`+${more} more`, FONT.chip) + 14;
 
 const sizeOf = (n: ViewNode) => (n.kind === "focal" ? FOCAL_BOX : BOX);
 
 const linesOf = (n: ViewNode) => wrap(n.name, sizeOf(n).w - (n.count === null ? 24 : 56), n.kind === "focal" ? FONT.focal : FONT.title, n.kind === "focal" ? 3 : 2);
 
 function labelBox(e: ViewEdge): ElkLabel | null {
-  const { text, more } = labelOf(e);
+  const { text, more, lines, chipBelow } = labelOf(e);
   if (!text) return null;
-  const width = textWidth(text, FONT.label) + (more ? textWidth(`+${more} more`, FONT.chip) + 10 : 0) + 10;
-  return { id: `${e.id}:label`, text, width, height: LABEL_H };
+  const rows = lines.map((l, i) => labelWidth(l, FONT.label) + (more && !chipBelow && i === lines.length - 1 ? chipWidth(more) : 0));
+  if (chipBelow) rows.push(chipWidth(more));
+  return { id: `${e.id}:label`, text, width: Math.min(LABEL_W, Math.max(...rows) + 8), height: rows.length * LABEL_LINE + 4 };
 }
 
 /**
@@ -178,13 +197,13 @@ export async function layoutView(v: SystemView): Promise<Diagram> {
       "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
       "elk.edgeLabels.placement": "CENTER",
       "elk.spacing.nodeNode": "24",
-      "elk.layered.spacing.nodeNodeBetweenLayers": "36",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "14",
       "elk.spacing.edgeNode": "16",
       "elk.spacing.edgeEdge": "12",
-      "elk.spacing.edgeLabel": "4",
-      "elk.layered.spacing.edgeNodeBetweenLayers": "12",
+      "elk.spacing.edgeLabel": "2",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "8",
       "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
-      "elk.padding": "[top=12,left=12,bottom=12,right=12]",
+      "elk.padding": "[top=8,left=8,bottom=8,right=8]",
     },
     children,
     edges,

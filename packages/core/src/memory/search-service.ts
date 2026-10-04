@@ -1,10 +1,10 @@
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { type MemorySource, retrievalAnalytics } from '../db/schema.js';
-import { EmbeddingUnavailableError, embedQuery } from '../embeddings/index.js';
+import { EmbeddingUnavailableError, embedQuery } from '../integrations/embeddings/index.js';
+import { fastModelConfigured } from '../integrations/llm/fast-model.js';
 import { logger } from '../logger.js';
 import { expandIssueRelations } from './expand-relations.js';
-import { fastModelConfigured } from './llm.js';
 import { inRerankHoldout, rerankHits, rerankPoolSize } from './rerank.js';
 import { loadRetrievalFlags, type RetrievalFlags } from './retrieval-flags.js';
 import {
@@ -127,7 +127,7 @@ async function retrieve(
   const attempted = input.queryVec === undefined;
   const embedMsNow = () => (attempted ? { embedMs: Date.now() - embedStarted } : {});
   try {
-    const queryVec = input.queryVec ?? (await embedQuery(input.query));
+    const queryVec = input.queryVec ?? (await embedQuery({ surface: 'memory' }, input.query));
     const embedMs = embedMsNow();
     if (requested === 'hybrid') {
       const fused = await hybridSearchMemories({

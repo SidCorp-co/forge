@@ -3,7 +3,10 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { memorySources } from '../db/schema.js';
-import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../embeddings/index.js';
+import {
+  EMBEDDING_UNAVAILABLE,
+  EmbeddingUnavailableError,
+} from '../integrations/embeddings/index.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';

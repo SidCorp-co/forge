@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSseStream } from '../../assistant/providers/sse.js';
+import { parseSseStream } from '../../integrations/llm/sse.js';
 import { type BacklogFrame, frameData, SHUTTING_DOWN, sseMessage } from './frames.js';
 
 const FRAMES: BacklogFrame[] = [

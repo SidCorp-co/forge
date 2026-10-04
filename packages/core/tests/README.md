@@ -175,4 +175,4 @@ Rules:
 
 `.github/workflows/ci.yml` runs `pnpm --filter @forge/core test` (unit only) in
 the `core` job. The integration suite runs in `core-integration` as
-`TEST_DB_MODE=container pnpm --filter @forge/core test:integration:coverage`.
+`pnpm --filter @forge/core test:integration:ci`.
