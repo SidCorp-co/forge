@@ -75,7 +75,7 @@ export function ReleasePage({
         </FactsRail>
       }
     >
-      <DetailMobileTitle itemKey={r.version} title={r.headline || r.version} badge={<StatusBadge family="releaseState" value={r.state} />} />
+      <DetailMobileTitle title={`Release ${r.version}`} badge={<StatusBadge family="releaseState" value={r.state} />} />
       <ReleaseBanner r={r} className="px-8 py-2.5 max-md:px-4" />
       <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="release-tabs" />
       {tab === "issues" ? (

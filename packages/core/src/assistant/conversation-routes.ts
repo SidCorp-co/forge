@@ -52,7 +52,6 @@ import { assertProjectRole, effectiveProjectRole, loadProjectAccess } from '../l
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { threadMarks } from '../onboarding/read.js';
 import { batchesOfConversation } from '../questionnaires/read.js';
 import {
   mayChangeMembership,
@@ -73,6 +72,7 @@ import {
 } from './conversation-scope.js';
 import { ConversationModeSettledError, sendWebConversationMessage } from './conversation-send.js';
 import { conversationToolCallRoutes } from './conversation-tool-calls.js';
+import { threadMarks } from './thread-marks.js';
 import { rememberUiSnapshot } from './ui-snapshot.js';
 
 const READ_WINDOW = 200;
@@ -236,7 +236,10 @@ conversationRoutes.get(
     return c.json(
       listResponse(
         c,
-        pageRows.map((r) => ({ ...r, ...(marks.get(r.id) ?? { kind: null, threadStatus: null }) })),
+        pageRows.map((r) => ({
+          ...r,
+          ...(marks.get(r.id) ?? { kind: null, threadStatus: null, subjectKey: null }),
+        })),
         visible.length,
         fromPage(page, pageSize),
       ),
@@ -344,7 +347,7 @@ conversationRoutes.get(
       // cm:why a questionnaire block names its batch; the batches ride the detail read so the card
       // shows its live state and answers with the same socket invalidation as the messages
       questionnaires,
-      ...(marks.get(id) ?? { kind: null, threadStatus: null }),
+      ...(marks.get(id) ?? { kind: null, threadStatus: null, subjectKey: null }),
     });
   },
 );

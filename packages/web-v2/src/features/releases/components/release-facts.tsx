@@ -10,11 +10,10 @@ import {
   PersonChip,
   StatusBadge,
   Tooltip,
-  WaitingOn,
 } from "@/design";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import type { ReleaseApprovalView, ReleaseDetail } from "../types";
-import { shortSha, waitingView } from "./release-bits";
+import { shortSha } from "./release-bits";
 
 function Decision({ a }: { a: ReleaseApprovalView }) {
   if (!a.decision) return <span className="text-muted">Not decided</span>;
@@ -31,22 +30,10 @@ function Decision({ a }: { a: ReleaseApprovalView }) {
 
 export function ReleaseFacts({ r }: { r: ReleaseDetail }) {
   const c = r.criteria;
-  const ended = r.attention === "done" || r.attention === "stopped";
   const a = r.approval;
   return (
     <div data-testid="release-facts">
-      <FactsGroup title="Status">
-        <Fact label="State">
-          <StatusBadge family="releaseState" value={r.state} />
-        </Fact>
-        {ended ? null : (
-          <Fact label="Waiting on">
-            <WaitingOn w={waitingView(r.waiting)} />
-          </Fact>
-        )}
-        {r.state === "shipped" ? (
-          <Fact label="Production">{r.current ? "Serving now" : "Superseded"}</Fact>
-        ) : null}
+      <FactsGroup title="Proof" testId="facts-proof">
         <Fact label="Criteria">
           {c.total === 0 ? (
             <span className="text-muted">{RELEASE_PROOF_LABELS.unrecorded}</span>
@@ -137,6 +124,7 @@ export function ReleaseFacts({ r }: { r: ReleaseDetail }) {
       {r.production ? (
         <FactsGroup title="Production" testId="facts-production">
           <Fact label="Environment">{r.production.name ?? "Not declared"}</Fact>
+          {r.state === "shipped" ? <Fact label="Serving">{r.current ? "This release" : "A later release"}</Fact> : null}
           {r.production.url ? (
             <Fact label="Address">
               <a className="truncate text-link hover:underline" href={r.production.url} target="_blank" rel="noreferrer">

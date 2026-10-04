@@ -274,7 +274,7 @@ function interruptedDelivery(meta: ConversationAgentMeta): boolean {
   return Number.isFinite(at) && Date.now() - at > DELIVERY_INTERRUPTED_AFTER_MS;
 }
 
-function turnState(
+export function turnState(
   row: { status: string; runtimeState: string | null },
   meta: ConversationAgentMeta,
 ): ConversationAgentTurnState {

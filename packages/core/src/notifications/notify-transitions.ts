@@ -11,6 +11,7 @@ import { isTerminalPlacement } from '../pipeline/status-assertions.js';
 import { owedCloseResolutionKey, strandedResolutionKey } from '../pipeline/stranded-issues.js';
 import { resolveNotifications } from './auto-resolve.js';
 import { emitNotification } from './emit.js';
+import { statusWords } from './subject.js';
 
 const NOTIFY_ON_STATUS: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
   'awaiting_release',
@@ -127,7 +128,7 @@ export function registerTransitionNotifications(bus: HooksBus): void {
         userId: recipient,
         projectId: p.projectId,
         type: 'issue_status_changed',
-        title: `${label} moved to ${p.to}`,
+        title: `${label} moved to ${statusWords(p.to)}`,
         body: bodyForStatus(p.to, p.reason),
         issueId: p.issueId,
         severity: severityForStatus(p.to),

@@ -1,4 +1,5 @@
 import type { Hono } from 'hono';
+import { needsYouRoutes } from '../development/needs-you-routes.js';
 import { developmentOverviewRoutes } from '../development/overview-routes.js';
 import { contractWaitRoutes } from '../ecosystem/waits/routes.js';
 import type { RequestIdVars } from '../middleware/request-id.js';
@@ -24,10 +25,11 @@ export function mountIssueRoutes(app: Hono<{ Variables: RequestIdVars }>): void 
 
 /** The project-scoped issue reads under `/api/projects/:id/issues…`: the list, search, and the
  *  standing read model the Issues screen draws, in the order they are matched, then the Development
- *  overview built over it. */
+ *  overview built over it, and the waiting-on-you counts read from each list's own model. */
 export function mountIssueProjectRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', issueProjectRoutes);
   app.route('/api/projects', searchRoutes);
   app.route('/api/projects', issueStandingRoutes);
   app.route('/api/projects', developmentOverviewRoutes);
+  app.route('/api/projects', needsYouRoutes);
 }

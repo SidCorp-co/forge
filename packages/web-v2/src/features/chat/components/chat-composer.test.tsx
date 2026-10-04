@@ -186,3 +186,27 @@ describe("ChatComposer — one attach control, announced once", () => {
     expect(screen.getAllByRole("button", { name: /attach|upload/i })).toHaveLength(1);
   });
 });
+
+describe("ChatComposer — the keyboard hint never shares the footer row", () => {
+  it("keeps the hint off a narrow composer's footer, on the Send button's tooltip instead", () => {
+    render(
+      <ChatComposer
+        onSend={vi.fn()}
+        footerControl={<span data-testid="scope">This page</span>}
+      />,
+    );
+    expect(screen.queryByText("Enter sends · Shift+Enter for a new line")).toBeNull();
+    expect(screen.getByRole("button", { name: "Send message" })).toHaveAttribute(
+      "title",
+      "Send · Enter sends · Shift+Enter for a new line",
+    );
+  });
+
+  it("names staged files on a line of its own under the box, outside the footer row", async () => {
+    render(<ChatComposer onSend={vi.fn()} attachments={CONVERSATION_ATTACHMENTS} />);
+    pick([fileOf("plan.png", "image/png", 2048)]);
+    const hint = await screen.findByTestId("composer-hint");
+    expect(hint).toHaveTextContent("1 file");
+    expect(screen.getByTestId("chat-composer")).not.toContainElement(hint);
+  });
+});

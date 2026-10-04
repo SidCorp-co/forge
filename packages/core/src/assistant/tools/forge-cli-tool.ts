@@ -31,6 +31,7 @@ const DESCRIPTION = [
 
 export const forgeCliTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge',
+  reach: 'project',
   grant: {
     none: 'it runs the forge CLI under the turn token, whose own grant every door it reaches reads',
   },

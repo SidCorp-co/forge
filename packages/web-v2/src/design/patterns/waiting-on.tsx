@@ -25,10 +25,12 @@ export interface WaitingOnProps {
   whoNode?: ReactNode;
 }
 
+const fullText = (w: WaitingOnView) => [w.act ? `${w.who} · ${w.act}` : w.who, w.rule].filter(Boolean).join(" — ");
+
 export function WaitingOn({ w, whoNode }: WaitingOnProps) {
   if (w.kind === "none") {
     return (
-      <span className="truncate text-12-5 text-subtle" title={w.rule} data-testid="waiting-on" data-kind="none">
+      <span className="truncate text-12-5 text-subtle" title={fullText(w)} data-testid="waiting-on" data-kind="none">
         {w.act ? `${w.who} · ${w.act}` : w.who}
       </span>
     );
@@ -38,7 +40,7 @@ export function WaitingOn({ w, whoNode }: WaitingOnProps) {
     <span
       className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap text-12-5"
       style={{ color: you ? LEGEND.you.fg : "var(--fg-muted)" }}
-      title={w.rule}
+      title={fullText(w)}
       data-testid="waiting-on"
       data-kind={w.kind}
     >

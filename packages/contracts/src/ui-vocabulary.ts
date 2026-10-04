@@ -227,6 +227,10 @@ export const STATE_READINGS = {
 	contractWait: {
 		unsettled: ["Waiting for a version", "blocked", "○"],
 	},
+	buildGate: {
+		open: ["Open", "ready", "✓"],
+		held: ["Held", "blocked", "○"],
+	},
 } as const satisfies Record<string, Record<string, Reading>>;
 
 export type StateReadingFamily = keyof typeof STATE_READINGS;

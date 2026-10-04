@@ -16,6 +16,8 @@ export interface NavItem {
    *  small badge beside the label, or as a count dot on the icon when collapsed.
    *  Falsy / 0 hides it. */
   badge?: number;
+  /** What the count means, for its tooltip: "Requirements · waiting on you 3: accept r2 (2), …". */
+  badgeHint?: string;
   /** A short code shown in a tinted square in place of the icon (an ecosystem's document code). */
   mark?: string;
 }
@@ -101,11 +103,11 @@ function NavRow({
       aria-label={
         collapsed
           ? count > 0
-            ? `${item.label}, ${count} need attention`
+            ? (item.badgeHint ?? `${item.label}, ${count} need attention`)
             : item.label
           : undefined
       }
-      title={undefined}
+      title={count > 0 ? item.badgeHint : undefined}
       className={cn(
         "flex w-full items-center rounded-md text-13-5 font-semibold transition-colors duration-[120ms] focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
         // ≥44px touch target on small screens (drawer); compact on desktop rail.
@@ -146,7 +148,7 @@ function NavRow({
   // Tooltip surfaces the label in icon-only mode — but expanding the rail also
   // reveals labels, so discoverability is NOT hover-dependent.
   return collapsed ? (
-    <Tooltip label={count > 0 ? `${item.label} · ${count}` : item.label} side="bottom">
+    <Tooltip label={count > 0 ? (item.badgeHint ?? `${item.label} · ${count}`) : item.label} side="bottom">
       {btn}
     </Tooltip>
   ) : (
@@ -332,7 +334,7 @@ export function NavRail({
 }: NavRailProps) {
   const clusters: NavCluster[] =
     projectClusters ??
-    (projectItems && projectItems.length
+    (projectItems?.length
       ? [{ key: "project", kicker: "Project", items: projectItems }]
       : []);
 
@@ -414,7 +416,7 @@ export function NavRail({
       {/* Project-first (ISS-358): the switcher is pinned directly under the
           brand, with the PROJECT cluster above the WORKSPACE cluster. */}
       {project && (
-        <div onMouseEnter={onSwitcherEnter} onMouseLeave={onSwitcherLeave}>
+        <fieldset aria-label="Project switcher" className="m-0 min-w-0 border-0 p-0" onMouseEnter={onSwitcherEnter} onMouseLeave={onSwitcherLeave}>
           {collapsed ? (
             <Tooltip label={project.name} side="bottom">
               <button
@@ -440,7 +442,7 @@ export function NavRail({
               <Icon name="chevronUpDown" size={15} className="text-subtle" />
             </button>
           )}
-        </div>
+        </fieldset>
       )}
 
       {/* Scroll region: PROJECT clusters on top, WORKSPACE cluster demoted

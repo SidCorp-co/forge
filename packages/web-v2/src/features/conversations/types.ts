@@ -54,6 +54,7 @@ export interface ConversationRow {
   /** The thread's kind and badge (ISS-63). */
   kind?: "onboarding" | "requirement" | null;
   threadStatus?: OnboardingStatus | null;
+  subjectKey?: string | null;
 }
 
 export interface ConversationImage {

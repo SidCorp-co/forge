@@ -243,7 +243,7 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
     const held = report.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
 
     expect(held?.scope).toBe('roster');
-    expect(held?.message).toContain('`ISS-1127` owes criterion 3, 7');
+    expect(held?.message).toContain('`ISS-1127` owes criteria 3, 7');
     expect(held?.message).not.toContain(ISSUE_A);
     expect(held?.details?.held).toEqual([
       { issueId: ISSUE_A, displayId: 'ISS-1127', criteria: [3, 7] },
@@ -383,7 +383,7 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
     const warned = report.warnings.find((w) => w.code === 'RELEASE_CRITERIA_UNCORROBORATED');
 
     expect(report.blockers.map((b) => b.code)).not.toContain('RELEASE_CRITERIA_UNEARNED');
-    expect(warned?.message).toContain('`ISS-1286` on criterion 2, 5');
+    expect(warned?.message).toContain('`ISS-1286` on criteria 2, 5');
     expect(warned?.message).toContain('nothing here can read what this project is serving');
     expect(warned?.message).toContain('absence of a reading is not a failure');
     // The issue may still be held by another criterion: this warning says nothing about shipping.

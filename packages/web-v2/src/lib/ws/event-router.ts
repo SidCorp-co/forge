@@ -27,6 +27,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["issues", "list"]);
 			scheduleInvalidation(qc, ["issues", "search"]);
 			scheduleInvalidation(qc, ["issues", "standing"]);
+			scheduleInvalidation(qc, ["needs-you"]);
 			scheduleInvalidation(qc, ["attention"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			scheduleInvalidation(qc, ["recent-changes"]);
@@ -40,6 +41,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["issues", "list"]);
 			scheduleInvalidation(qc, ["issues", "search"]);
 			scheduleInvalidation(qc, ["issues", "standing"]);
+			scheduleInvalidation(qc, ["needs-you"]);
 			scheduleInvalidation(qc, ["projects", "health"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			scheduleInvalidation(qc, ["attention"]);
@@ -267,6 +269,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "dependencyChanged": {
 			scheduleInvalidation(qc, ["issues", "search"]);
 			scheduleInvalidation(qc, ["issues", "standing"]);
+			scheduleInvalidation(qc, ["needs-you"]);
 			if (data?.fromIssueId) {
 				scheduleInvalidation(qc, ["issue", data.fromIssueId, "dependencies"]);
 				scheduleInvalidation(qc, ["issue", data.fromIssueId]);

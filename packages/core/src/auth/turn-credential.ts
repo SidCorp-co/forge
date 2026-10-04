@@ -74,6 +74,7 @@ export interface TurnAuthority {
   viaTokenId: string | null;
   /** That token's grant, null where the person's project role is the whole bound. */
   grant: readonly string[] | null;
+  fence: readonly string[] | null;
   scopes: readonly string[];
   grantEpoch: number;
 }
@@ -106,6 +107,7 @@ export async function resolveTurnAuthority(args: {
   }
 
   let grant: readonly string[] | null = null;
+  let fence: readonly string[] | null = null;
   let scopes: readonly string[] = ['read', 'write'];
   let grantEpoch = PAT_GRANT_EPOCH;
   if (args.viaTokenId) {
@@ -126,14 +128,15 @@ export async function resolveTurnAuthority(args: {
         'I will not act on this: the access token it was sent with has been revoked or has expired since, and a message is acted on with the authority it arrived with. Send it again signed in, or with a live token.',
       );
     }
-    const fence = row.boundProjectId ? [row.boundProjectId] : (row.projectIds ?? null);
-    if (fence !== null && !fence.includes(args.projectId)) {
+    const tokenFence = row.boundProjectId ? [row.boundProjectId] : (row.projectIds ?? null);
+    if (tokenFence !== null && !tokenFence.includes(args.projectId)) {
       return refuse(
         'TURN_TOKEN_FENCED',
         'I will not act on this: the access token it was sent with does not reach this project, and acting here would reach past it.',
       );
     }
     grant = row.permissions ?? null;
+    fence = tokenFence;
     scopes = row.scopes;
     grantEpoch = row.grantEpoch;
   }
@@ -145,6 +148,7 @@ export async function resolveTurnAuthority(args: {
       projectId: args.projectId,
       viaTokenId: args.viaTokenId,
       grant,
+      fence,
       scopes,
       grantEpoch,
     },
@@ -158,6 +162,7 @@ export interface TurnCredential {
   readonly principal: PatPrincipal;
   /** The person's own grant, for a tool whose REST equivalent the minted token cannot hold. */
   readonly grant: readonly string[] | null;
+  readonly fence: readonly string[] | null;
   readonly revoke: () => Promise<void>;
 }
 
@@ -207,6 +212,7 @@ export async function mintTurnCredential(args: {
     tokenId,
     principal: patPrincipalOf({ row: minted.row, ownerKind: owner.kind }),
     grant: authority.grant,
+    fence: authority.fence,
     revoke: async () => {
       await revokePat(tokenId, authority.userId).catch((err: unknown) =>
         logger.error({ err, tokenId }, 'turn credential: the turn token could not be revoked'),

@@ -71,6 +71,8 @@ const readRequirement =
   (room: BaRoom): ContextScopedMcpToolFactory =>
   (ctx) => ({
     name: 'ba_read_requirement',
+    reach: 'project',
+    route: '/api/projects',
     grant: 'projects:read',
     description:
       'Read the requirement this room is about: its revisions (newest first) with criteria, the head (currentRevision), the suggestions waiting on it, the latest clarification question and its answer, and whether its head is embedded for dedup.',
@@ -137,6 +139,8 @@ const readIssue =
   (room: BaRoom): ContextScopedMcpToolFactory =>
   (ctx) => ({
     name: 'ba_read_issue',
+    reach: 'project',
+    route: '/api/issues',
     grant: 'issues:read',
     description:
       'Read one issue of this project by key (ISS-12) or id: title, status, description, acceptance criteria.',
@@ -170,6 +174,8 @@ const findSimilar =
   (room: BaRoom): ContextScopedMcpToolFactory =>
   () => ({
     name: 'ba_find_similar',
+    reach: 'project',
+    route: '/api/projects',
     grant: 'projects:read',
     description:
       "Find this project's requirements most similar to a text (dedup). Answers status provider_not_configured when no embedding provider is set, or withheld_by_policy when the text, which comes from a conversation with a person, may not leave on a no_egress project — then say so; it does not mean none are similar.",
@@ -218,6 +224,8 @@ const suggest =
   (room: BaRoom): ContextScopedMcpToolFactory =>
   (ctx) => ({
     name: 'ba_suggest',
+    reach: 'project',
+    route: '/api/projects',
     grant: 'projects:write',
     description:
       'Propose a change for a person to accept or reject. kind revision_diff: payload { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } — the whole criteria list of the new revision (a live code keeps it, no code takes the next, one left out is retired). readiness: { checks: [{ check, passed, detail? }] }. breakdown: { issues: [{ title, description?, criteria?: [{ body, tracesTo? }], blockedBy?: [index | issue key] }], uncovered? } — a blockedBy number is another issue of the breakdown, a string an existing live issue (ISS-12). duplicate: { duplicateOf, similarity?, note? }. requirement_draft / triage target an issue (pass `issue`). baseRevision is the currentRevision you read (null when there is none).',
@@ -259,6 +267,8 @@ const sendQuestionnaire =
   (room: BaRoom): ContextScopedMcpToolFactory =>
   (ctx) => ({
     name: 'ba_send_questionnaire',
+    reach: 'project',
+    route: '/api/projects',
     grant: 'projects:write',
     description: `Ask the requirement owner several things at once as ONE questionnaire card they answer inline and send once (partial allowed). Shape: ${POST_QUESTIONNAIRE_SHAPE}. Use group "clarification" for vague criteria, "question" for missing facts, "recommendation" (control accept_reject) for a change you propose. At most one ask is open per requirement: a batch over an open clarification is CLARIFICATION_ALREADY_OPEN, a second batch QUESTIONNAIRE_ALREADY_OPEN; at most ${QUESTIONNAIRE_MAX_ROUNDS} rounds. Their answers arrive as their next message.`,
     inputSchema: schema(postQuestionnaireRequestSchema),
@@ -330,6 +340,8 @@ const askClarification =
   (room: BaRoom): ContextScopedMcpToolFactory =>
   () => ({
     name: 'ba_ask_clarification',
+    reach: 'project',
+    route: '/api/projects',
     grant: 'projects:write',
     description:
       'Ask the requirement owner ONE clarification question (a repro step, a screenshot, an environment). `needed` says what would settle it. At most one question is open per requirement; a second is refused CLARIFICATION_ALREADY_OPEN.',

@@ -259,6 +259,12 @@ means `off`).
 - **Input** is one `z.strictObject`. A per-action `need(input, key)` throws
   `BAD_REQUEST: <action> needs <key>`.
 - **Refusals** come back through `packages/core/src/mcp/tools/lib.ts:refusedAnswer`, never as thrown text.
+- **Access.** A tool declares `grant` (the permission), `reach` (`project`, `public` or `{ account }`)
+  and `route` (the REST mount its rows are served at, one per resource its grants name). The route
+  dates the tool for the grant epoch. Registration on `/mcp` and in chat refuses a tool missing any
+  of them (`packages/core/src/mcp/tool-grant.ts:assertToolDeclaresAccess`). Both doors refuse a
+  call through `packages/core/src/mcp/tool-call-guard.ts:toolCallRefusal`, which reads the same epoch
+  rule as REST (`packages/core/src/auth/pat-permissions.ts:patEpochRefusal`).
 - **Answers.** A list answers summaries and a write answers what it changed: `act`, the entity's head,
   and the relation or revision it touched. A whole document comes only from `get` or `view: 'full'`.
   - The summary field set is declared in contracts beside the full shape
@@ -363,7 +369,7 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, 18 and 29 by the
 | 4 | Requirement codes, statuses and views are declared in core (`packages/core/src/requirements/rules.ts:RequirementRefusalCode`, `packages/core/src/db/schema-requirements.ts:REVISION_STATES`) and redeclared in `packages/web-v2/src/features/requirements/types.ts`; the requirement spec and criterion schemas live in `packages/contracts/src/suggestions.ts` instead of a requirements module of its own in contracts; route bodies are built inline (`packages/core/src/requirements/routes.ts:revisionFields`) | review |
 | 5 | Criteria verdict values and agent-report kinds are declared in core and redeclared in web (`packages/core/src/db/schema-issue-criteria.ts:verdictValues`, `packages/core/src/db/schema.ts:agentReportKinds`). Design statuses moved to `packages/contracts/src/design-status.ts:DESIGN_STATUSES`, which core re-exports | review |
 | 6 | Record-event kinds are declared twice, held by `packages/core/src/issues/record-events/kinds.test.ts` | review |
-| 7 | Workflow design state is one head status, not per-revision `REVISION_STATES`; `decided_by_user` / `proposed_by_user` naming | review (migration) |
+| 7 | Workflow design state is one head status, not per-revision `REVISION_STATES`; a revision's state is derived on read (`packages/core/src/workflows/design-standing.ts:revisionStateOf`), never stored; `decided_by_user` / `proposed_by_user` naming | review (migration) |
 | 8 | `contract_versions.decided_as` says `person` (and carries `before-approval`); `actor_agency` and `author_agency` have no CHECK | review (migration) |
 | 9 | Criteria and verdict rows are insert-only by comment, with no trigger | review (migration) |
 | 10 | A re-proposal of a returned requirement revision overwrites `proposed_at` / `proposed_by`, with no row per proposal; returns have their own rows (walkthrough D6) | review |
@@ -391,7 +397,7 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, 18 and 29 by the
 | 36 | A provider's live version is derived, not recorded: its newest verified release identity matched to a contract measurement's commit (`packages/core/src/ecosystem/waits/live.ts:providerLiveVersion`). An uploaded version, an unprobed provider or a stale land reads as no version, so E4 refuses until the ecosystem sets `releases.providerLive` to `off` | review |
 | 37 | Comments (ISS-83): an issue decision stays prose, held only off issues by `comments_decision_fields_chk` (`cm:hack ISS-83` in `packages/core/src/db/schema.ts:comments`); the issue door keeps its untyped `comment.created` activity rows and writes no `comment_events`; `comments` has no `project_id` and no `author_agency` (the agency is read from the device or `users.kind`, as ISS-1137 decided); a comment on another entity is not screened by `packages/core/src/comments/screen.ts:screenAgentComment` and takes no mentions or attachments | review |
 | 38 | REST and MCP answer different defaults: a REST read is full unless `?view=summary`, an MCP call a summary unless `view: 'full'`; REST writes take no view and answer the whole entity | review |
-| 39 | Workflows and designs carry no `waitingOn`, as requirements do; a design's `status` and `approver` say who is owed | review |
+| 39 | The workflows list carries no `waitingOn`; only the design read does (`packages/core/src/workflows/design-standing.ts:designWaitingOn`, ISS-72) | review |
 | 40 | `forge_issues`, `forge_feedback_items` and `forge_knowledge` take no `view`: their lists were already summaries and their writes answer one item, at most 3.5 KB as measured on dev on 2026-10-04. `forge_feedback_items` `propose_triage` answers the whole suggestion | review |
 | 41 | A projection runs after the whole read: a write still reads the full detail (`packages/core/src/requirements/read.ts:detailOf`, `packages/core/src/workflows/design-service.ts:designView`) and the door drops most of it | review |
 | 42 | `forge_suggestions` has no `get`: a suggestion's payload is read by `list` with `view: 'full'`, narrowed by target | review |

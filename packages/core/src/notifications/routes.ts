@@ -8,13 +8,16 @@ import {
   notificationDeliveries,
   notificationDeliveryMembers,
   notifications,
+  projects,
 } from '../db/schema.js';
+import { issueDisplayIds } from '../issues/display-ids.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { recordAndDeliver } from './deliver.js';
 import { silenceRoutes } from './silences-routes.js';
+import { deliveryLine, deliverySubject } from './subject.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -174,7 +177,26 @@ notificationRoutes.get(
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
-    return c.json(listResponse(c, rows, totalRow?.n ?? 0, fromPage(page, pageSize)));
+    const distinct = (ids: (string | null)[]) => [
+      ...new Set(ids.filter((i): i is string => i !== null)),
+    ];
+    const projectIds = distinct(rows.map((r) => r.projectId));
+    const [issueKeys, slugRows] = await Promise.all([
+      issueDisplayIds(distinct(rows.map((r) => (r.members === 1 ? r.issueId : null)))),
+      projectIds.length
+        ? db
+            .select({ id: projects.id, slug: projects.slug })
+            .from(projects)
+            .where(inArray(projects.id, projectIds))
+        : Promise.resolve([]),
+    ]);
+    const slugs = new Map(slugRows.map((p) => [p.id, p.slug]));
+    const items = rows.map((r) => {
+      const subject = deliverySubject(r, issueKeys, slugs);
+      return { ...r, subject, line: deliveryLine(r.title, r.type, subject?.key ?? null) };
+    });
+
+    return c.json(listResponse(c, items, totalRow?.n ?? 0, fromPage(page, pageSize)));
   },
 );
 

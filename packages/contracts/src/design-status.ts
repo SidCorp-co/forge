@@ -40,3 +40,48 @@ export const DESIGN_STATUS_HINTS: Record<DesignStatus, string> = {
 	approved: "approved: work that builds it may start",
 	returned: "returned: sent back to the master to revise",
 };
+
+// cm:why the design keeps one head status (domain-entities item 7), so a revision's own state is
+// derived on read from the head and that revision's decision (core `workflows/design-standing.ts:revisionStateOf`)
+export const DESIGN_REVISION_STATES = [
+	"proposed",
+	"current",
+	"returned",
+	"superseded",
+] as const;
+export type DesignRevisionState = (typeof DESIGN_REVISION_STATES)[number];
+
+export const DESIGN_REVISION_STATE_LABELS: Record<DesignRevisionState, string> =
+	{
+		proposed: "Awaiting approval",
+		current: "Approved",
+		returned: "Returned",
+		superseded: "Superseded",
+	};
+
+export const DESIGN_REVISION_STATE_TONES: Record<
+	DesignRevisionState,
+	IssueStatusTone
+> = {
+	proposed: "you",
+	current: "ready",
+	returned: "err",
+	superseded: "done",
+};
+
+export const DESIGN_REVISION_STATE_GLYPHS: Record<DesignRevisionState, string> =
+	{
+		proposed: "●",
+		current: "◆",
+		returned: "↺",
+		superseded: "×",
+	};
+
+export const DESIGN_REVISION_STATE_HINTS: Record<DesignRevisionState, string> =
+	{
+		proposed: "proposed: waiting on its approver to approve or return it",
+		current: "current: the approved revision work builds against",
+		returned: "returned: sent back with a reason; the master revises it",
+		superseded:
+			"superseded: a later revision replaced it, approved or proposed in its place",
+	};

@@ -5,6 +5,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { agrees, counted } from '../lib/plural.js';
 import { TERMINAL_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
 import { ClaimConflictError, ReleaseClaimLostError } from './errors.js';
 
@@ -110,7 +111,7 @@ function keys(list: ClaimConflict[]): string {
 }
 
 function isAre(list: unknown[]): string {
-  return list.length === 1 ? 'is' : 'are';
+  return agrees(list.length, 'is', 'are');
 }
 
 function groupBy<T>(list: T[], by: (item: T) => string): Map<string, T[]> {
@@ -142,14 +143,14 @@ function claimedSentences(projectId: string, runId: string, list: Standing<'clai
   const held = list.filter((c) => c.releasing);
   const stale = list.filter((c) => !c.releasing);
   if (held.length > 0) {
-    const them = held.length === 1 ? 'it' : 'them';
+    const them = agrees(held.length, 'it', 'them');
     out.push(
       `${keys(held)} ${isAre(held)} at \`awaiting_release\` held at the release step, still claimed by release batch ${runId}, which has ended: abort it with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which releases the claim and puts ${them} back at the release gate, then send ${them} again.`,
     );
   }
   if (stale.length > 0) {
     const kind = stale[0]?.claimer === 'record' ? 'release record' : 'release batch';
-    const them = stale.length === 1 ? 'it' : 'them';
+    const them = agrees(stale.length, 'it', 'them');
     out.push(
       `${keys(stale)} ${isAre(stale)} still claimed by ${kind} ${runId}, which has ended: the pipeline sweep clears a claim an ended run left on an issue at the release gate, once a minute, so send ${them} again after it has run.`,
     );
@@ -160,11 +161,11 @@ function claimedSentences(projectId: string, runId: string, list: Standing<'clai
 function statusSentence(status: string, gateStatus: string, list: ClaimConflict[]): string {
   const subject = `${keys(list)} ${isAre(list)} at \`${status}\``;
   if (status === 'closed') {
-    const it = list.length === 1 ? 'one' : 'any of them';
+    const it = agrees(list.length, 'one', 'any of them');
     return `${subject}: already shipped, and a release carries an issue once. If ${it} has to ship again, reopen it and bring it back through the pipeline to the release gate.`;
   }
   if (status === 'dropped') {
-    return `${subject}: set down as not work, so no release carries ${list.length === 1 ? 'it' : 'them'}.`;
+    return `${subject}: set down as not work, so no release carries ${agrees(list.length, 'it', 'them')}.`;
   }
   return `${subject}, not \`${gateStatus}\`: a release carries an issue only once it reaches the release gate.`;
 }
@@ -176,7 +177,7 @@ export function claimConflictSentence(
   conflicts: ClaimConflict[],
 ): string {
   const n = conflicts.length;
-  const parts = [`${n} issue${n === 1 ? '' : 's'} named here cannot be claimed for a release.`];
+  const parts = [`${counted(n, 'issue')} named here cannot be claimed for a release.`];
   for (const [runId, list] of groupBy(ofStanding(conflicts, 'claimed'), (c) => c.runId)) {
     parts.push(...claimedSentences(projectId, runId, list));
   }
@@ -186,7 +187,7 @@ export function claimConflictSentence(
   const absent = ofStanding(conflicts, 'absent');
   if (absent.length > 0) {
     parts.push(
-      `${keys(absent)} ${absent.length === 1 ? 'is no issue' : 'are no issues'} on this project.`,
+      `${keys(absent)} ${agrees(absent.length, 'is no issue', 'are no issues')} on this project.`,
     );
   }
   return parts.join(' ');

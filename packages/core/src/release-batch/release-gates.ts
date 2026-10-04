@@ -1,4 +1,5 @@
 import type { ReleaseGateView } from '@forge/contracts/releases';
+import { agrees, counted } from '../lib/plural.js';
 import {
   RELEASE_ROSTER_LIMIT,
   type ReleaseBlocker,
@@ -39,16 +40,37 @@ export function issuesNamed(d: Details): string[] {
   return waitsOf(d).map((w) => w.issue);
 }
 
-const these = (d: Details): string => {
+const NAMED_AT_MOST = 5;
+
+interface Subject {
+  text: string;
+  n: number;
+}
+
+function subjectOf(d: Details): Subject {
   const names = issuesNamed(d);
-  const n = Array.isArray(d?.issueIds) ? d.issueIds.length : names.length;
-  if (names.length > 0) return names.join(', ');
-  return n === 1 ? '1 issue' : `${n} issues`;
+  if (names.length === 0) {
+    const n = Array.isArray(d?.issueIds) ? d.issueIds.length : 0;
+    return { text: counted(n, 'issue'), n };
+  }
+  const shown = names.slice(0, NAMED_AT_MOST).join(', ');
+  const rest = names.length - NAMED_AT_MOST;
+  return { text: rest > 0 ? `${shown} and ${rest} more` : shown, n: names.length };
+}
+
+const these = (d: Details, one: string, many: string): string => {
+  const s = subjectOf(d);
+  return `${s.text} ${agrees(s.n, one, many)}`;
 };
+
+const theirs = (d: Details, one: string, many: string): string => agrees(subjectOf(d).n, one, many);
 
 const owes = (d: Details): string =>
   heldOf(d)
-    .map((h) => `${h.displayId} owes criterion ${h.criteria.join(', ')}`)
+    .map(
+      (h) =>
+        `${h.displayId} owes ${agrees(h.criteria.length, 'criterion', 'criteria')} ${h.criteria.join(', ')}`,
+    )
     .join('; ');
 
 const READINGS: Record<ReleaseReasonCode, Reading> = {
@@ -64,13 +86,13 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
   CLAIM_CONFLICT: {
     title: 'Issues already claimed',
     plain: (d) =>
-      `${these(d)} are not at the release gate, or another release already holds them. Pick the issues that are waiting.`,
+      `${these(d, 'is', 'are')} not at the release gate, or another release already holds ${theirs(d, 'it', 'them')}. Pick the issues that are waiting.`,
   },
   RELEASE_ROSTER_EMPTY: {
     title: 'Nothing at the gate',
     plain: (d) =>
       typeof d?.nearGate === 'number' && d.nearGate > 0
-        ? `No issue is waiting at the release gate. ${d.nearGate} stand one step short of it, at their test step.`
+        ? `No issue is waiting at the release gate. ${counted(d.nearGate, 'issue')} ${agrees(d.nearGate, 'stands', 'stand')} one step short of it, at ${agrees(d.nearGate, 'its', 'their')} test step.`
         : 'No issue is waiting at the release gate, so there is nothing to cut.',
   },
   RELEASE_ROSTER_OVERSIZE: {
@@ -81,12 +103,12 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
   RELEASE_RECORD_MISSING: {
     title: 'Release note missing',
     plain: (d) =>
-      `${these(d)} have no release note, so the release would claim a ship nobody described.`,
+      `${these(d, 'has', 'have')} no release note, so the release would claim a ship nobody described.`,
   },
   RELEASE_WORK_UNMERGED: {
     title: 'Work not marked merged',
     plain: (d) =>
-      `${these(d)} have no merge Forge saw land, so nothing says their work is in this release.`,
+      `${these(d, 'has', 'have')} no merge Forge saw land, so nothing says ${theirs(d, 'its', 'their')} work is in this release.`,
   },
   CONTRACT_PROVIDER_NOT_LIVE: {
     title: 'Provider not live yet',
@@ -141,12 +163,12 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
   RELEASE_CRITERIA_HELD_BACK: {
     title: 'Some issues held back',
     plain: (d) =>
-      `${owes(d) || 'Some issues'}. They are held back until their criteria are earned; the others ship.`,
+      `${owes(d) || 'Some issues'}. ${agrees(heldOf(d).length, 'It is', 'They are')} held back until ${agrees(heldOf(d).length, 'its', 'their')} criteria are earned; the others ship.`,
   },
   RELEASE_CRITERIA_UNCORROBORATED: {
     title: 'Verdicts not re-read',
     plain: (d) =>
-      `${issuesNamed(d).join(', ') || 'Some issues'} carry a verdict earned where nothing could re-read production. It counts, and it is weaker evidence.`,
+      `${issuesNamed(d).length > 0 ? these(d, 'carries', 'carry') : 'Some issues carry'} a verdict earned where nothing could re-read production. It counts, and it is weaker evidence.`,
   },
 };
 

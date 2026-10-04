@@ -325,6 +325,7 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
 export const forgeAgentReportTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_agent_report',
   reach: 'project',
+  route: '/api/agent-reports',
   grant: GRANT,
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
@@ -346,6 +347,7 @@ export const FORGE_FEEDBACK_DEPRECATION = {
 export const forgeFeedbackAliasTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_feedback',
   reach: 'project',
+  route: '/api/agent-reports',
   grant: GRANT,
   description: `[DEPRECATED alias — use forge_agent_report; every result carries a \`deprecation\` field] ${DESCRIPTION}`,
   inputSchema: zodToMcpSchema(inputSchema),

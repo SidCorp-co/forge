@@ -16,6 +16,8 @@ import {
 } from './design.js';
 import { baseApprovalRefusal, basesOfStored, readBases } from './design-bases.js';
 import { type DesignIssueOutcome, settleDesignIssue } from './design-issue.js';
+import { designRequirementsOf } from './design-requirements.js';
+import { buildGateOf, designWaitingOn, revisionStateOf } from './design-standing.js';
 import { assertWriter, storedWorkflow, userNames, type WorkflowWriter } from './service.js';
 import {
   buildOfIssue,
@@ -99,11 +101,12 @@ async function rowIn(projectId: string, id: string): Promise<StoredWorkflow> {
 }
 
 async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
-  const [designs, builds, approver, prefix] = await Promise.all([
+  const [designs, builds, approver, prefix, requirements] = await Promise.all([
     designsOf(db, row.id),
     buildsOf(db, [row.id]),
     designApproverOf(row.projectId, row.id),
     activeIssuePrefix(row.projectId),
+    designRequirementsOf(row.id),
   ]);
   const names = await userNames([
     ...designs.map((d) => d.proposedByUser),
@@ -111,6 +114,17 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
   ]);
   const name = (id: string | null) => (id === null ? null : (names.get(id) ?? id));
   const awaiting = row.designStatus === 'proposed' ? (designs[0]?.revision ?? null) : null;
+  const head = {
+    status: row.designStatus,
+    proposedRevision: awaiting,
+    approvedRevision: row.approvedRevision,
+  };
+  const canDecide = viewer
+    ? (await approverRefusalFor(viewer, row.projectId, approver)) === null
+    : false;
+  const latest = designs[0]
+    ? { revision: designs[0].revision, author: name(designs[0].proposedByUser) }
+    : null;
   return {
     workflowId: row.id,
     flow: row.flow,
@@ -119,9 +133,8 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
     proposedRevision: awaiting,
     approvedRevision: row.approvedRevision,
     approver,
-    canDecide: viewer
-      ? (await approverRefusalFor(viewer, row.projectId, approver)) === null
-      : false,
+    canDecide,
+    waitingOn: designWaitingOn({ ...head, latest, approver, canDecide }),
     revisions: designs.map((d) => ({
       revision: d.revision,
       designIssueId: d.designIssueId,
@@ -134,6 +147,7 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
       decidedByName: name(d.decidedByUser),
       decidedAt: d.decidedAt?.toISOString() ?? null,
       reason: d.reason,
+      state: revisionStateOf(d, head),
     })),
     builds: builds.map((b) => ({
       issueId: b.issueId,
@@ -141,6 +155,8 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
       title: b.title,
       status: b.status,
     })),
+    gate: buildGateOf(head),
+    requirements,
   };
 }
 

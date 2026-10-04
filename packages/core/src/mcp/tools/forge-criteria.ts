@@ -58,6 +58,7 @@ async function criteriaShown(issue: { id: string; projectId: string }) {
 export const forgeCriteriaTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_criteria',
   reach: 'project',
+  route: '/api/issues',
   grant: { byAction: { list: 'issues:read', put: 'issues:write', verdict: 'issues:write' } },
   description:
     "An issue's acceptance criteria as rows, and the verdicts on them — what the `awaiting_release` gate reads. " +

@@ -1,10 +1,13 @@
 import {
+  PAT_GRANT_PREDATES_ROUTE,
   PAT_PERMISSION_ALL,
   PAT_PERMISSION_GROUPS,
   PAT_PERMISSION_NAMES,
-  PAT_PERMISSION_RESOURCES,
   type PatPermission,
+  type PatPrefix,
+  patEpochRefusal,
   patGrantCovers,
+  patPrefixForPath,
 } from '../auth/pat-permissions.js';
 
 export type ToolGrantNone = { readonly none: string };
@@ -30,11 +33,16 @@ export type ToolReach =
   | ToolReachEntry
   | { readonly byAction: Readonly<Record<string, ToolReachEntry>> };
 
+// cm:why a tool is dated by the REST mount serving its rows, one per resource its grants name,
+// not by its resource's oldest prefix, so a token is refused a tool exactly where REST refuses it the route.
+export type ToolRoute = PatPrefix | readonly PatPrefix[];
+
 export interface GrantedTool {
   readonly name: string;
   readonly inputSchema: Record<string, unknown>;
   readonly grant?: ToolGrant;
   readonly reach?: ToolReach;
+  readonly route?: ToolRoute;
 }
 
 const MENU: ReadonlySet<string> = new Set(PAT_PERMISSION_NAMES);
@@ -220,28 +228,83 @@ export function toolAccountWork(tool: GrantedTool, args: Record<string, unknown>
   return `${tool.name}${action}, ${entry.account},`;
 }
 
-/** The grant epoch a permission joined the menu at: the earliest of its resource's prefixes. */
-export function permissionEpoch(permission: PatPermission): number {
-  const { resource } = PAT_PERMISSION_GROUPS[permission];
-  return Math.min(...Object.values(PAT_PERMISSION_RESOURCES[resource].prefixes));
+function permissionsOf(grant: ToolGrant | undefined): PatPermission[] {
+  if (grant === undefined || grant === null) return [];
+  const entries = hasByAction<ToolGrantEntry>(grant) ? Object.values(grant.byAction) : [grant];
+  return entries.filter((e): e is PatPermission => typeof e === 'string');
 }
 
-// cm:guard a token keeps the reach it was minted with on /mcp as on REST: a tool whose grant
-// joined the menu after the token's epoch is refused, whatever the token was granted.
+function routesOf(route: ToolRoute | undefined): readonly string[] {
+  if (route === undefined || route === null) return [];
+  return typeof route === 'string' ? [route] : route;
+}
+
+function routeFor(tool: GrantedTool, permission: PatPermission): string | undefined {
+  const { resource } = PAT_PERMISSION_GROUPS[permission];
+  return routesOf(tool.route).find((r) => patPrefixForPath(r)?.resource === resource);
+}
+
+// cm:guard every permission a tool names is dated by a REST mount it declares under that
+// permission's resource, so a tool cannot take an older epoch than the route serving its rows.
+export function assertToolDeclaresRoute(tool: GrantedTool): void {
+  const refuse = (why: string): never => {
+    throw new Error(`MCP tool ${tool.name} is not registered: ${why}`);
+  };
+  const permissions = permissionsOf(tool.grant);
+  const routes = routesOf(tool.route);
+  if (permissions.length === 0) {
+    if (routes.length > 0) refuse('it needs no grant, so no `route` dates it; drop the `route`');
+    return;
+  }
+  if (routes.length === 0) {
+    refuse(
+      "it declares no `route`, the REST mount its work is served at (a menu prefix such as '/api/agent-sessions', one per resource its grants name), which dates it for the grant epoch",
+    );
+  }
+  const byResource = new Map<string, string>();
+  for (const route of routes) {
+    const match = patPrefixForPath(route);
+    if (!match || match.prefix !== route) refuse(`route '${route}' is not a prefix on the menu`);
+    const resource = match?.resource ?? '';
+    const taken = byResource.get(resource);
+    if (taken) refuse(`routes '${taken}' and '${route}' are both under '${resource}'`);
+    byResource.set(resource, route);
+  }
+  const named = new Set<string>();
+  for (const permission of permissions) {
+    const { resource } = PAT_PERMISSION_GROUPS[permission];
+    if (!byResource.has(resource)) {
+      refuse(`it is granted '${permission}', and no route it declares is under '${resource}'`);
+    }
+    named.add(resource);
+  }
+  for (const [resource, route] of byResource) {
+    if (!named.has(resource)) {
+      refuse(`route '${route}' is under '${resource}', which none of its grants names`);
+    }
+  }
+}
+
+export function assertToolDeclaresAccess(tool: GrantedTool): void {
+  assertToolDeclaresGrant(tool);
+  assertToolDeclaresReach(tool);
+  assertToolDeclaresRoute(tool);
+}
+
 export function toolEpochRefusal(
   tool: GrantedTool,
   args: Record<string, unknown>,
-  held: number,
+  held: number | undefined,
 ): string | null {
   const action = calledAction(tool, args);
   const entry = pick(tool.grant, action);
   if (entry === undefined || isNone(entry)) return null;
-  const epoch = permissionEpoch(entry);
-  if (epoch <= held) return null;
   const what = hasByAction(tool.grant) ? `${tool.name} action '${action}'` : tool.name;
-  return (
-    `FORBIDDEN: PAT_GRANT_PREDATES_ROUTE: ${what} needs '${entry}', which joined the menu at ` +
-    `grant epoch ${epoch}, after this token was minted (epoch ${held}), and a token keeps the ` +
-    'reach it was minted with. Nothing was done. Mint a new token to reach it.'
-  );
+  const route = routeFor(tool, entry);
+  if (route === undefined) {
+    return `FORBIDDEN: ${what} needs '${entry}' and declares no route under its resource, so no token may call it`;
+  }
+  const refusal = patEpochRefusal(route, held);
+  if (!refusal) return null;
+  return `FORBIDDEN: ${PAT_GRANT_PREDATES_ROUTE}: ${what} is served at ${route}, and ${refusal.message} Nothing was done.`;
 }

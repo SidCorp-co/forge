@@ -2,10 +2,11 @@
 
 import { RELEASE_PROOF_LABELS } from "@forge/contracts/releases";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   FieldLabel,
   GroupedList,
+  Icon,
   type ListGroup,
   type ListRowView,
   StatusBadge,
@@ -16,7 +17,7 @@ import {
 } from "@/design";
 import { issueHref } from "@/features/issues/routes";
 import { requirementHref } from "@/features/requirements/routes";
-import type { ReleaseDetail, ReleaseIssueView, ReleaseSummary } from "../types";
+import type { ReleaseDetail, ReleaseIssueView, ReleaseNoteEntry, ReleaseSummary } from "../types";
 import { GateLine, waitingView } from "./release-bits";
 import { ReleaseTrain } from "./release-train";
 
@@ -65,7 +66,9 @@ export function OverviewPane({ r, slug, all }: { r: ReleaseDetail; slug: string;
     <div className="grid gap-8" data-testid="view-overview">
       {r.gates.length > 0 ? (
         <section aria-label="Why it cannot be cut">
-          <ViewHeading>{r.state === "draft" ? "What stands in the way" : "Worth knowing"}</ViewHeading>
+          <ViewHeading hint={r.state === "draft" ? "Each reason holds the cut until it is answered" : undefined}>
+            {r.state === "draft" ? "What stands in the way" : "Worth knowing"}
+          </ViewHeading>
           <ul className="divide-y divide-line-subtle border-y border-line-subtle">
             {r.gates.map((g) => (
               <GateLine key={g.code} gate={g} />
@@ -77,7 +80,7 @@ export function OverviewPane({ r, slug, all }: { r: ReleaseDetail; slug: string;
         <ReleaseTrain releases={all} slug={slug} selected={r.key} />
       </section>
       <section aria-label="Requirements it completes">
-        <ViewHeading>Requirements it completes</ViewHeading>
+        <ViewHeading hint="Done once this release ships, and what each still owes">Requirements it completes</ViewHeading>
         <Requirements r={r} slug={slug} />
       </section>
     </div>
@@ -97,7 +100,7 @@ const issueRow =
     href: issueHref(slug, i.key),
     title: i.title,
     facts: [
-      i.section ?? "No section",
+      ...(i.section ? [i.section] : []),
       i.criteria.total === 0 ? RELEASE_PROOF_LABELS.unrecorded : `Criteria ${i.criteria.proven} of ${i.criteria.total} proven`,
     ],
     state: <StatusBadge family="issue" value={i.status} />,
@@ -115,7 +118,16 @@ export function IssuesPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const row = useMemo(() => issueRow(slug), [slug]);
   return (
     <div className="pb-16" data-testid="view-issues">
-      <GroupedList ariaLabel="Issues in this release" groups={groups} fold={fold} row={row} selected={null} onPeek={(k) => window.location.assign(issueHref(slug, k))} empty="No issue is in this release." />
+      <GroupedList
+        ariaLabel="Issues in this release"
+        groups={groups}
+        fold={fold}
+        row={row}
+        selected={null}
+        onPeek={(k) => window.location.assign(issueHref(slug, k))}
+        empty="No issue is in this release."
+        columns={{ meta: "" }}
+      />
     </div>
   );
 }
@@ -157,6 +169,38 @@ export function CriteriaPane({ r }: { r: ReleaseDetail }) {
   );
 }
 
+function NoteLine({ e }: { e: ReleaseNoteEntry }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li className="flex gap-2" data-testid="release-note">
+      <span className="w-[72px] flex-none font-mono text-12 text-link">{e.key}</span>
+      <span className="min-w-0 flex-1">
+        {e.userFacing}
+        {e.technical ? (
+          <>
+            {" "}
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-12 font-medium text-link"
+              aria-expanded={open}
+              onClick={() => setOpen((o) => !o)}
+              data-testid="release-note-technical-toggle"
+            >
+              <Icon name="chevronDown" size={12} className={open ? "" : "-rotate-90"} />
+              Technical note
+            </button>
+            {open ? (
+              <span className="mt-1 block text-12-5 text-muted" data-testid="release-note-technical">
+                {e.technical}
+              </span>
+            ) : null}
+          </>
+        ) : null}
+      </span>
+    </li>
+  );
+}
+
 export function NotesPane({ r }: { r: ReleaseDetail }) {
   const { sections, withoutNotes } = r.notes;
   if (sections.length === 0 && withoutNotes.length === 0) return <p className="text-13 text-subtle">No release notes yet.</p>;
@@ -165,15 +209,9 @@ export function NotesPane({ r }: { r: ReleaseDetail }) {
       {sections.map((s) => (
         <section key={s.section}>
           <ViewHeading>{s.section}</ViewHeading>
-          <ul className="grid gap-1.5 text-13-5">
+          <ul className="grid gap-2.5 text-13-5">
             {s.entries.map((e) => (
-              <li key={e.key} className="flex gap-2">
-                <span className="w-[72px] flex-none font-mono text-12 text-link">{e.key}</span>
-                <span className="min-w-0 flex-1">
-                  {e.userFacing}
-                  {e.technical ? <span className="block text-12-5 text-muted">{e.technical}</span> : null}
-                </span>
-              </li>
+              <NoteLine key={e.key} e={e} />
             ))}
           </ul>
         </section>

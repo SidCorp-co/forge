@@ -1,6 +1,5 @@
 "use client";
 
-import { Play } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button, IconButton, Kicker, SectionTitle } from "@/design";
 import type { WorkflowStep } from "../types";
@@ -255,40 +254,12 @@ function EdgePanel({ c, edge, onStep }: { c: Canvas; edge: CanvasEdge; onStep: (
   );
 }
 
-function Overview({ c, walkLength, onWalk }: { c: Canvas; walkLength: number; onWalk: (at: number) => void }) {
-  const owned = c.doc.steps.filter((s) => s.node?.owner);
-  const deadlines = c.doc.steps.filter((s) => s.node?.sla).length;
-  return (
-    <>
-      <SectionTitle className="fg-h3 mb-1.5 mt-1">{c.doc.title}</SectionTitle>
-      <p className="mb-2.5 text-13-5 text-muted">{c.doc.summary}</p>
-      <p className="m-0 text-13 text-muted" data-testid="design-counts">
-        <b className="text-fg">{c.doc.steps.length}</b> steps · <b className="text-fg">{owned.length}</b> with an owner · <b className="text-fg">{deadlines}</b>{" "}
-        {deadlines === 1 ? "deadline" : "deadlines"}
-      </p>
-      <Button type="button" variant="secondary" onClick={() => onWalk(0)} className="mt-3.5 h-auto w-full justify-start gap-2.5 whitespace-normal rounded-lg border-accent bg-accent-tint px-3 py-2.5 text-left font-normal" data-testid="walk-start">
-        <Play size={20} className="flex-none text-accent" aria-hidden />
-        <span className="text-13">
-          <b className="text-accent-text">Walk through</b>
-          <br />
-          {walkLength} steps, one at a time
-        </span>
-      </Button>
-      {owned.length ? (
-        <Sec title="Who owns what">
-          <Facts rows={owned.map((s) => [titleOf(s), <>{s.node?.owner}{s.node?.sla ? <span className="block text-cobalt">{s.node.sla}</span> : null}</>])} />
-        </Sec>
-      ) : null}
-    </>
-  );
-}
-
 export function DetailPanel(p: PanelProps) {
   const { canvas: c, selection, walk } = p;
   const stepId = selection && "step" in selection ? selection.step : null;
   const step = stepId ? c.steps.get(stepId) : undefined;
   const walking = walk && walk.at < walk.order.length && step && walk.order[walk.at] === step.id;
-  let body: ReactNode;
+  let body: ReactNode = null;
   if (walk && walk.at >= walk.order.length) {
     body = (
       <>
@@ -369,10 +340,9 @@ export function DetailPanel(p: PanelProps) {
         <EdgePanel c={c} edge={edge} onStep={p.onStep} />
       </>
     ) : null;
-  } else {
-    // Approve / Return stays in the page header, once; the panel offers it again only where a walk-through ends.
-    body = <Overview c={c} walkLength={walk?.order.length ?? c.doc.steps.length} onWalk={p.onWalk} />;
   }
+  // cm:why with nothing selected the panel is closed: the page's facts rail carries the design's summary and counts, and the canvas toolbar its walk-through
+  if (!body) return null;
   return (
     <aside className="w-[370px] flex-none overflow-y-auto border-l border-line-subtle bg-surface px-4.5 pb-7 pt-4 max-lg:w-full max-lg:border-l-0 max-lg:border-t" aria-live="polite" data-testid="workflow-panel">
       {body}

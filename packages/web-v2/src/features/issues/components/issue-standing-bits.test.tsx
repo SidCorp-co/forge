@@ -55,7 +55,7 @@ describe("a landed issue at step test that nothing holds (ISS-80 criterion 8)", 
     const w = screen.getByTestId("waiting-on");
     expect(w).toHaveAttribute("data-kind", "agent");
     expect(w).toHaveTextContent("Judge · landed · a verdict on each criterion");
-    expect(w).toHaveAttribute("title", JUDGE_RULE);
+    expect(w).toHaveAttribute("title", `Judge · landed · a verdict on each criterion — ${JUDGE_RULE}`);
     expect(w).not.toHaveTextContent("No holder");
   });
 

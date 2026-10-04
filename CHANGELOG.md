@@ -15,6 +15,10 @@
   now refused by name. Full-access tokens are unchanged.
 - **Over MCP, a token limited to some projects can no longer create projects or read
   organisations**, and an older token reaches only what existed when it was made, as on the API.
+- **An older token is refused the same MCP tools it is refused on the API.** Agent sessions and the
+  step-duration, retry and session-failure reports now answer a token made before they could be
+  granted as their API routes do. Assistant chat applies the same checks, so a person's token
+  limited to projects can no longer change their reply preferences from a room.
 
 - **An agent session you start from the web acts as you, not as whoever paired the box.** Each
   turn carries a short-lived token for its sender, never wider than the box owner's. Viewers and
@@ -137,6 +141,18 @@
 
 ### Added
 
+- **The menu counts what waits on you.** Requirements, Releases, Feedback, Issues and Contracts
+  each show how many rows wait on you, with what they wait for in a tooltip, and the dashboard shows
+  requirements in delivery and untriaged feedback. All come from `GET /api/projects/:id/needs-you`,
+  which counts each list's own waiting-on-you group.
+
+- **A notification reads as its key and one line.** The bell shows the record it names, a one-line
+  summary and its type as a badge; the long body opens under Details.
+
+- **Ask Agent stays out of the page's way.** Its controls never take the page's primary colour, it
+  closes when you change page unless pinned, and past conversations replace the chat, grouped Project
+  and This page, each with its status.
+
 - **Development has a Modules list and a page for each module.** The list groups modules by what
   needs you, what is moving and what is stuck, or as a tree, and a click opens a peek. A module's
   page shows what is open in it, what landed, the paths and couplings its knowledge entry records
@@ -162,9 +178,14 @@
   `blockedBy` can name an existing issue of another requirement; an unknown or finished one is
   refused by name.
 
+- **A workflow design reads like the other detail pages.** It has a "← Workflows" back control, a
+  line saying whom it waits on, Approve in its header, tabs, and a rail naming its requirements and
+  build gate, read from core.
+
 - **Releases is a release train and a page of its own.** A release shows whom it waits on, the
   requirements it completes and each issue's criteria, with Approve release and Return with reason
-  in its header; a refused gate reads as a sentence, its code behind a tooltip.
+  in its header; a refused gate reads as a sentence, its code behind a tooltip. Release refusals
+  now agree with their count ("1 issue has no release note") and name at most five issues.
 
 - **A storefront project's work can be judged on an unpublished draft.** A verdict names an Autoflow
   workflow, its draft version and a preview environment; Forge reads the draft back, and only a

@@ -6,9 +6,11 @@
  * `allowedActions` allowlist plus an optional arg `guard`.
  */
 
-import { assertToolDeclaresGrant, toolGrantRefusal } from '../../mcp/tool-grant.js';
+import { toolCallRefusal } from '../../mcp/tool-call-guard.js';
+import { assertToolDeclaresAccess } from '../../mcp/tool-grant.js';
 import { type CallToolResult, toToolCallContent } from '../../mcp/tool-result.js';
 import type { ContextScopedMcpToolFactory, McpContext, McpTool } from '../../mcp/tools/lib.js';
+import { patEffectiveProjectIds } from '../../mcp/tools/project-scope.js';
 import type { ChatTool } from '../providers/types.js';
 
 /** One entry in the chat tool allowlist. */
@@ -101,7 +103,7 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
 
   for (const spec of specs) {
     const tool = spec.factory(ctx);
-    assertToolDeclaresGrant(tool);
+    assertToolDeclaresAccess(tool);
     const name = sanitizeName(tool.name);
     if (bySanitized.has(name)) continue;
     const props = (tool.inputSchema as { properties?: Record<string, unknown> }).properties;
@@ -143,11 +145,16 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     }
 
     dropUndeclaredKeys(args, entry.declared);
-    const grant = ctx.grant !== undefined ? ctx.grant : ctx.principal.permissions;
-    const refusal = toolGrantRefusal(
+    const { principal } = ctx;
+    const refusal = toolCallRefusal(
       entry.tool,
       args,
-      grant,
+      {
+        grant: ctx.grant !== undefined ? ctx.grant : principal.permissions,
+        fence: ctx.fence !== undefined ? ctx.fence : patEffectiveProjectIds(principal),
+        grantEpoch: principal.grantEpoch,
+        tokenId: principal.tokenId,
+      },
       'the access token the person asking reached Forge with',
     );
     if (refusal) return toolError(`${refusal} Tell them so.`);

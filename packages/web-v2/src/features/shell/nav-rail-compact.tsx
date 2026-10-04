@@ -24,6 +24,8 @@ export interface RailItem {
   icon: IconName;
   /** Count pill on actionable queues (Issues / Agents). Falsy/0 hides it. */
   badge?: number;
+  /** What the count means, for its tooltip. */
+  badgeHint?: string;
 }
 
 /** A titled run of project rows the rail folds under one head (Development). */
@@ -118,8 +120,8 @@ function RailButton({
       type="button"
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
-      aria-label={item.label}
-      title={item.label}
+      aria-label={count > 0 && item.badgeHint ? item.badgeHint : item.label}
+      title={count > 0 && item.badgeHint ? item.badgeHint : item.label}
       className={cn(
         'relative flex flex-col items-center gap-1 rounded-md px-1 pb-1.5 pt-2 transition-colors duration-[120ms]',
         nested ? 'w-[64px]' : 'w-[76px]',

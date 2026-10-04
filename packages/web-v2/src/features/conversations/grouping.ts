@@ -1,79 +1,43 @@
-// Recency grouping for the conversation list.
-//
-// It moved here from `features/sessions/` with ISS-1004 step 5: it was shared
-// with the chat-history popover, that popover read `agent_sessions`, and both
-// it and the session row this took went with the port.
-
-
-export type BucketKey = "today" | "yesterday" | "week" | "older";
-
-export interface Bucket<Row extends { updatedAt: string }> {
-  key: BucketKey;
-  label: string;
-  rows: Row[];
-}
-
-const BUCKET_LABEL: Record<BucketKey, string> = {
-  today: "Today",
-  yesterday: "Yesterday",
-  week: "Previous 7 days",
-  older: "Older",
-};
-
-export function bucketFor(iso: string, now: number): BucketKey {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "older";
-  const ageMs = now - then;
-  const dayMs = 24 * 60 * 60 * 1000;
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
-  if (then >= todayStart.getTime()) return "today";
-  if (then >= todayStart.getTime() - dayMs) return "yesterday";
-  if (ageMs <= 7 * dayMs) return "week";
-  return "older";
-}
-
-/** Partitions `rows` into recency buckets — does NOT reorder within a bucket,
- *  so callers relying on a pre-sorted `updatedAt DESC` input keep that order. */
-export function groupByRecency<Row extends { updatedAt: string }>(
-  rows: Row[],
-  now = Date.now(),
-): Array<Bucket<Row>> {
-  const buckets: Record<BucketKey, Bucket<Row>> = {
-    today: { key: "today", label: BUCKET_LABEL.today, rows: [] },
-    yesterday: { key: "yesterday", label: BUCKET_LABEL.yesterday, rows: [] },
-    week: { key: "week", label: BUCKET_LABEL.week, rows: [] },
-    older: { key: "older", label: BUCKET_LABEL.older, rows: [] },
-  };
-  for (const r of rows) {
-    const k = bucketFor(r.updatedAt, now);
-    buckets[k].rows.push(r);
-  }
-  return [buckets.today, buckets.yesterday, buckets.week, buckets.older].filter(
-    (b) => b.rows.length > 0,
-  );
-}
-
 export interface Section<Row> {
   key: string;
   label: string;
   rows: Row[];
 }
 
-// cm:why a room is shown once: pinned first, then the rooms with other people in them, then the rest by recency, so a pinned group room is not listed twice
-export function sidebarSections<
-  Row extends { updatedAt: string; pinned?: boolean; shape: string; kind?: string | null },
->(rows: Row[], now = Date.now()): Array<Section<Row>> {
-  // the project's onboarding thread leads the list, as the project's own conversation (ISS-63)
-  const project = rows.filter((r) => r.kind === "onboarding");
-  const others = rows.filter((r) => r.kind !== "onboarding");
-  const pinned = others.filter((r) => r.pinned);
-  const shared = others.filter((r) => !r.pinned && r.shape === "group");
-  const rest = others.filter((r) => !r.pinned && r.shape !== "group");
-  return [
-    ...(project.length ? [{ key: "project", label: "Project", rows: project }] : []),
-    ...(pinned.length ? [{ key: "pinned", label: "Pinned", rows: pinned }] : []),
-    ...(shared.length ? [{ key: "shared", label: "With other people", rows: shared }] : []),
-    ...groupByRecency(rest, now),
-  ];
+interface DockRow {
+  projectId: string;
+  pinned?: boolean;
+  kind?: string | null;
+  subjectKey?: string | null;
+}
+
+/** Inside a section: the project's onboarding thread, then pinned rooms, then the rest as core sent them. */
+function ordered<Row extends DockRow>(rows: Row[]): Row[] {
+  const rank = (r: Row) => (r.kind === "onboarding" ? 0 : r.pinned ? 1 : 2);
+  return rows
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => rank(a.r) - rank(b.r) || a.i - b.i)
+    .map(({ r }) => r);
+}
+
+// cm:why the dock lists the open project's rooms as the prototype groups them, Project then This page
+// (the rooms about the record this page shows), and any other project's rooms under that project's
+// name, so a room from one project never reads as another's (REQ-11 BC-8)
+export function dockSections<Row extends DockRow>(
+  rows: Row[],
+  opts: { projectId: string | null; pageKey: string | null; projectName: (id: string) => string },
+): Array<Section<Row>> {
+  const order = [...new Set([...(opts.projectId ? [opts.projectId] : []), ...rows.map((r) => r.projectId)])];
+  return order.flatMap((pid) => {
+    const own = rows.filter((r) => r.projectId === pid);
+    if (pid !== opts.projectId) {
+      return own.length ? [{ key: `project:${pid}`, label: opts.projectName(pid), rows: ordered(own) }] : [];
+    }
+    const page = own.filter((r) => opts.pageKey !== null && r.subjectKey === opts.pageKey);
+    const project = own.filter((r) => !page.includes(r));
+    return [
+      ...(project.length ? [{ key: "project", label: "Project", rows: ordered(project) }] : []),
+      ...(page.length ? [{ key: "page", label: "This page", rows: ordered(page) }] : []),
+    ];
+  });
 }

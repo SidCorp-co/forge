@@ -4,9 +4,11 @@ import { matchedRoutes } from 'hono/route';
 import { findTargetHandler, isMiddleware } from 'hono/utils/handler';
 import {
   PAT_GRANT_EPOCH,
+  PAT_GRANT_PREDATES_ROUTE,
   PAT_PERMISSION_ALL,
   type PatPermission,
   type PatPermissionLevel,
+  patEpochRefusal,
   patGrantCovers,
   patGrantIsStatedFull,
   patPermissionPrefixes,
@@ -128,19 +130,13 @@ function assertReach(path: string, fence: readonly string[] | null): void {
   });
 }
 
-/** A token reaches a prefix only where the prefix joined the menu at or before its mint. */
 function assertEpoch(principal: PatPrincipal, path: string): void {
-  const match = patPrefixForPath(path);
-  const held = principal.grantEpoch ?? 1;
-  if (!match || match.epoch <= held) return;
+  const refusal = patEpochRefusal(path, principal.grantEpoch);
+  if (!refusal) return;
+  const { prefix, routeEpoch, tokenEpoch } = refusal;
   throw new HTTPException(403, {
-    message:
-      `${match.prefix} joined '${match.resource}' after this token was minted, and a token ` +
-      'keeps the reach it was minted with. Mint a new token to reach it.',
-    cause: {
-      code: 'PAT_GRANT_PREDATES_ROUTE',
-      details: { prefix: match.prefix, routeEpoch: match.epoch, tokenEpoch: held },
-    },
+    message: refusal.message,
+    cause: { code: PAT_GRANT_PREDATES_ROUTE, details: { prefix, routeEpoch, tokenEpoch } },
   });
 }
 

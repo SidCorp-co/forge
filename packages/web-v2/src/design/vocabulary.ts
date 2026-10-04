@@ -4,8 +4,18 @@
 // each legend tone draws. A screen never declares a colour map.
 
 import { SENSITIVE_DATA_BADGES } from "@forge/contracts/data-policy";
-import { ONBOARDING_STATUS_LABELS, ONBOARDING_STATUS_TONES } from "@forge/contracts/onboarding";
-import { DESIGN_STATUS_GLYPHS, DESIGN_STATUS_HINTS, DESIGN_STATUS_LABELS, DESIGN_STATUS_TONES } from "@forge/contracts/design-status";
+import { NOTIFICATION_TYPE_LABELS } from "@forge/contracts/notifications";
+import { ONBOARDING_STATUS_LABELS, ONBOARDING_STATUS_TONES, THREAD_STATUS_HINTS } from "@forge/contracts/onboarding";
+import {
+  DESIGN_REVISION_STATE_GLYPHS,
+  DESIGN_REVISION_STATE_HINTS,
+  DESIGN_REVISION_STATE_LABELS,
+  DESIGN_REVISION_STATE_TONES,
+  DESIGN_STATUS_GLYPHS,
+  DESIGN_STATUS_HINTS,
+  DESIGN_STATUS_LABELS,
+  DESIGN_STATUS_TONES,
+} from "@forge/contracts/design-status";
 import {
   FEEDBACK_DECISION_LABELS,
   FEEDBACK_KIND_LABELS,
@@ -123,6 +133,7 @@ const CONTRACT_FAMILIES = {
   criterion: { labels: CRITERION_STANDING_LABELS, tones: CRITERION_STANDING_TONES, glyphs: CRITERION_STANDING_GLYPHS, hints: CRITERION_STANDING_HINTS },
   revision: { labels: REVISION_STATE_LABELS, tones: REVISION_STATE_TONES, glyphs: REVISION_STATE_GLYPHS, hints: REVISION_STATE_HINTS },
   design: { labels: DESIGN_STATUS_LABELS, tones: DESIGN_STATUS_TONES, glyphs: DESIGN_STATUS_GLYPHS, hints: DESIGN_STATUS_HINTS },
+  designRevision: { labels: DESIGN_REVISION_STATE_LABELS, tones: DESIGN_REVISION_STATE_TONES, glyphs: DESIGN_REVISION_STATE_GLYPHS, hints: DESIGN_REVISION_STATE_HINTS },
   releaseState: { labels: RELEASE_STATE_LABELS, tones: RELEASE_STATE_TONES, glyphs: RELEASE_STATE_GLYPHS, hints: RELEASE_STATE_HINTS },
   feedbackPhase: { labels: FEEDBACK_PHASE_LABELS, tones: FEEDBACK_PHASE_TONES, glyphs: FEEDBACK_PHASE_GLYPHS, hints: FEEDBACK_PHASE_HINTS },
   severity: { labels: FEEDBACK_SEVERITY_LABELS, tones: FEEDBACK_SEVERITY_TONES },
@@ -136,6 +147,12 @@ const CONTRACT_FAMILIES = {
   contractAdoption: { labels: CONTRACT_ADOPTION_LABELS, tones: CONTRACT_ADOPTION_TONES, glyphs: CONTRACT_ADOPTION_GLYPHS, hints: CONTRACT_ADOPTION_HINTS },
   contractApproval: { labels: CONTRACT_APPROVAL_LABELS, tones: CONTRACT_APPROVAL_TONES, glyphs: { proposed: "●", approved: "✓", returned: "↺" } },
   onboarding: { labels: ONBOARDING_STATUS_LABELS, tones: ONBOARDING_STATUS_TONES, glyphs: { in_progress: "•", waiting_on_you: "?", done: "✓" } },
+  thread: {
+    labels: ONBOARDING_STATUS_LABELS,
+    tones: ONBOARDING_STATUS_TONES,
+    glyphs: { in_progress: "•", waiting_on_you: "?", done: "✓" },
+    hints: THREAD_STATUS_HINTS,
+  },
   dataPolicy: {
     labels: Object.fromEntries(Object.entries(SENSITIVE_DATA_BADGES).map(([k, v]) => [k, v.label])),
     tones: Object.fromEntries(Object.entries(SENSITIVE_DATA_BADGES).map(([k, v]) => [k, POLICY_TONE[v.tone]])),
@@ -180,6 +197,7 @@ export const ENUM_FAMILIES = {
   feedbackTarget: FEEDBACK_TARGET_LABELS,
   contractDirection: CONTRACT_DIRECTION_LABELS,
   step: WORK_STEP_LABELS,
+  notificationType: NOTIFICATION_TYPE_LABELS,
   ...ENUM_LABELS,
 } as const satisfies Record<string, Record<string, string>>;
 

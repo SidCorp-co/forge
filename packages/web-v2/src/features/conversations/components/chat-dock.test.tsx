@@ -21,7 +21,7 @@ vi.mock("./conversation-chat", () => ({
 vi.mock("./conversation-list", () => ({ ConversationList: () => <div data-testid="list" /> }));
 vi.mock("./start-conversation", () => ({ StartConversation: () => <div data-testid="start" /> }));
 
-const { ChatDock, pageLabel } = await import("./chat-dock");
+const { ChatDock, pageLabel, pageSubjectKey, scopeLabel } = await import("./chat-dock");
 const { DOCK_WIDTH_KEY, useChatDockState } = await import("../dock");
 
 beforeEach(() => {
@@ -71,6 +71,26 @@ describe("the chat dock", () => {
     expect(screen.getByTestId("list")).toBeInTheDocument();
   });
 
+  it("lists past conversations in place of the chat, so nothing draws over the list", () => {
+    render(<Harness projectId="p1" />);
+    fireEvent.click(screen.getByText("toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "Past conversations" }));
+    expect(screen.getByTestId("list")).toBeInTheDocument();
+    expect(screen.queryByTestId("chat")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Conversations" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to the conversation" }));
+    expect(screen.getByTestId("chat")).toBeInTheDocument();
+  });
+
+  it("offers a pin that keeps it open across pages", () => {
+    render(<Harness projectId="p1" />);
+    fireEvent.click(screen.getByText("toggle"));
+    const pin = screen.getByRole("button", { name: "Pin: keep open across pages" });
+    expect(pin).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(pin);
+    expect(screen.getByRole("button", { name: "Unpin: close when you change page" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("resizes by keyboard within its bounds, and the next visit reopens it at that width", () => {
     const view = render(<Harness projectId="p1" />);
     fireEvent.click(screen.getByText("toggle"));
@@ -117,5 +137,20 @@ describe("pageLabel — the full-screen panel's way back names the page under it
     expect(pageLabel("/projects/hop/workflows/patient-data-flow")).toBe("Patient data flow");
     expect(pageLabel("/projects/hop/requirements/REQ-1")).toBe("REQ-1");
     expect(pageLabel(null)).toBe("Back");
+  });
+});
+
+describe("the dock's scope", () => {
+  it("reads the record a page shows from its last path segment", () => {
+    expect(pageSubjectKey("/projects/hop/requirements/REQ-1")).toBe("REQ-1");
+    expect(pageSubjectKey("/projects/hop/issues")).toBeNull();
+    expect(pageSubjectKey(null)).toBeNull();
+  });
+
+  it("calls a room about this page's record This page, another record by its key, and the rest Project", () => {
+    expect(scopeLabel("REQ-1", "REQ-1")).toBe("This page");
+    expect(scopeLabel("REQ-6", "REQ-1")).toBe("REQ-6");
+    expect(scopeLabel(null, "REQ-1")).toBe("Project");
+    expect(scopeLabel(null, null)).toBe("Project");
   });
 });

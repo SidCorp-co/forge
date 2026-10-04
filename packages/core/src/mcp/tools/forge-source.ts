@@ -192,6 +192,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
 export const forgeSourceTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_source',
   reach: 'project',
+  route: '/api/projects',
   grant: GRANTS,
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
@@ -202,6 +203,7 @@ export const forgeSourceTool: ContextScopedMcpToolFactory = (ctx) => ({
 export const forgeGithubAliasTool: ContextScopedMcpToolFactory = (ctx): McpTool => ({
   name: 'forge_github',
   reach: 'project',
+  route: '/api/projects',
   grant: { byAction: { ...GRANTS.byAction, 'open-pull-request': 'projects:write' } },
   description: `The former name of \`forge_source\`, kept for grants written against it — call \`forge_source\`; \`open-pull-request\` here is its \`open-change-request\`. ${DESCRIPTION}`,
   inputSchema: zodToMcpSchema(

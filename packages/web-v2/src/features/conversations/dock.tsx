@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { type AboutKind, aboutDraft } from "./ask-about";
@@ -7,10 +8,14 @@ import { type ChatTarget, clampDockWidth, defaultDockWidth, targetInScope } from
 
 export const DOCK_OPEN_KEY = "web-v2:chat-dock-open";
 export const DOCK_WIDTH_KEY = "web-v2:chat-dock-width";
+export const DOCK_PINNED_KEY = "web-v2:chat-dock-pinned";
 
 export interface ChatDockApi {
   projectId: string | null;
   open: boolean;
+  /** Pinned, the dock stays open across navigation; unpinned, a new page closes it. */
+  pinned: boolean;
+  setPinned: (pinned: boolean) => void;
   target: ChatTarget | null;
   generation: number;
   width: number;
@@ -34,10 +39,21 @@ const ChatDockContext = createContext<ChatDockApi | null>(null);
 export function useChatDockState(projectId: string | null): ChatDockApi {
   const [open, setOpen] = usePersistedState(DOCK_OPEN_KEY, false, { syncTabs: false });
   const [storedWidth, setStoredWidth] = usePersistedState(DOCK_WIDTH_KEY, defaultDockWidth(), { syncTabs: false });
+  const [pinned, setPinned] = usePersistedState(DOCK_PINNED_KEY, false, { syncTabs: false });
+  const pathname = usePathname();
+  const shownOn = useRef(pathname);
   const [picked, setPicked] = useState<ChatTarget | null>(null);
   const [generation, setGeneration] = useState(0);
   const door = useRef<DockDoor | null>(null);
   const target = targetInScope(picked, projectId);
+
+  // cm:why a dock left open follows the person to every page they visit, so a new page closes it unless
+  // they pinned it (REQ-11 BC-8); a query change (a peek opening) is the same page and keeps it
+  useEffect(() => {
+    if (shownOn.current === pathname) return;
+    shownOn.current = pathname;
+    if (!pinned) setOpen(false);
+  }, [pathname, pinned, setOpen]);
 
   const select = useCallback((t: ChatTarget) => {
     setPicked(t);
@@ -70,6 +86,8 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
     () => ({
       projectId,
       open,
+      pinned,
+      setPinned,
       target,
       generation,
       width: clampDockWidth(storedWidth),
@@ -91,7 +109,7 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
         door.current = d;
       },
     }),
-    [projectId, open, target, generation, storedWidth, setStoredWidth, show, setOpen, select, follow, askAbout],
+    [projectId, open, pinned, setPinned, target, generation, storedWidth, setStoredWidth, show, setOpen, select, follow, askAbout],
   );
 }
 

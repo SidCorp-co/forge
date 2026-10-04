@@ -229,7 +229,7 @@ describe('the criteria hold', () => {
   it('names each held issue and the criteria it owes', () => {
     const message = releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED', { held });
 
-    expect(message).toContain('ISS-1127` owes criterion 3, 7');
+    expect(message).toContain('ISS-1127` owes criteria 3, 7');
     expect(message).toContain('ISS-1142` owes criterion 1');
   });
 
@@ -264,21 +264,40 @@ describe('the codes this change did not touch', () => {
   it('keeps counting the issues named in a record refusal', () => {
     expect(
       releaseBlockerSentence('RELEASE_RECORD_MISSING', { issueIds: ['a', 'b', 'c'] }),
-    ).toContain('3 issue(s)');
+    ).toContain('3 issues named here have');
   });
 
   // ISS-1346 judge r2 finding 2: "2 issue(s) named here have no release note", naming neither.
   it('names each issue a record refusal is about by its display id', () => {
     const details = { issueIds: ['a', 'b'], displayIds: ['ISS-1', 'ISS-2'] };
     expect(releaseBlockerSentence('RELEASE_RECORD_MISSING', details)).toContain(
-      '2 issue(s) named here (`ISS-1`, `ISS-2`) have no release note',
+      '2 issues named here (`ISS-1`, `ISS-2`) have no release note',
     );
     expect(releaseBlockerSentence('RELEASE_WORK_UNMERGED', details)).toContain(
-      '2 issue(s) named here (`ISS-1`, `ISS-2`) have no merge',
+      '2 issues named here (`ISS-1`, `ISS-2`) have no merge',
     );
     expect(
       releaseBlockerSentence('RELEASE_WORK_UNMERGED', { ...details, shape: 'outside_git' }),
-    ).toContain('2 issue(s) named here (`ISS-1`, `ISS-2`) have no mark');
+    ).toContain('2 issues named here (`ISS-1`, `ISS-2`) have no mark');
+  });
+
+  it('agrees with one issue named in a refusal', () => {
+    const one = { issueIds: ['a'], displayIds: ['ISS-1'] };
+    expect(releaseBlockerSentence('RELEASE_RECORD_MISSING', one)).toContain(
+      '1 issue named here (`ISS-1`) has no release note, and closing it would claim',
+    );
+    expect(releaseBlockerSentence('RELEASE_WORK_UNMERGED', one)).toContain(
+      '1 issue named here (`ISS-1`) has no merge Forge watched land, so nothing says its work',
+    );
+    expect(releaseBlockerSentence('CLAIM_CONFLICT', { issueIds: ['a'] })).toMatch(
+      /^1 issue named here is not at the release gate, is not on this project, or is already/,
+    );
+  });
+
+  it('never prints a count token where the refusal named no issue', () => {
+    const sentence = releaseBlockerSentence('RELEASE_RECORD_MISSING', {});
+    expect(sentence).toMatch(/^The issues named here have no release note/);
+    expect(sentence).not.toMatch(/\{[a-z]+\}/);
   });
 
   it('keeps naming the check that could not be run', () => {
@@ -330,7 +349,7 @@ describe('what RELEASE_RUNTIME_UNROUTED tells a project nothing can read', () =>
   });
 
   it('names each held issue by its display id and what it owes, not a count', () => {
-    expect(sentence).toContain('`ISS-51` owes criterion 1, 2; `ISS-52` owes criterion 3.');
+    expect(sentence).toContain('`ISS-51` owes criteria 1, 2; `ISS-52` owes criterion 3.');
     expect(sentence).not.toContain('Held:');
   });
 });

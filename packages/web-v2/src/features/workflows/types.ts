@@ -1,3 +1,8 @@
+import type { DesignRevisionState } from "@forge/contracts/design-status";
+import type { DesignBuildGate, DesignRequirementLink, DesignWaitingOn } from "@forge/contracts/workflows";
+
+export type { DesignBuildGate, DesignRequirementLink, DesignRevisionState, DesignWaitingOn };
+
 export type WorkflowKind = "flow" | "state";
 export type WorkflowStatus = "writing" | "current" | "rechecking" | "designed";
 export type DesignStatus = "draft" | "proposed" | "approved" | "returned";
@@ -146,6 +151,7 @@ export interface DesignRevision {
   decidedByName: string | null;
   decidedAt: string | null;
   reason: string | null;
+  state: DesignRevisionState;
 }
 
 /** `GET /api/projects/:id/workflows/:workflow/design`. */
@@ -158,8 +164,11 @@ export interface WorkflowDesign {
   approvedRevision: number | null;
   approver: "owner" | "master";
   canDecide: boolean;
+  waitingOn: DesignWaitingOn;
   revisions: DesignRevision[];
   builds: { issueId: string; displayId: string; title: string; status: string }[];
+  gate: DesignBuildGate;
+  requirements: DesignRequirementLink[];
 }
 
 export type DesignDecisionBody =

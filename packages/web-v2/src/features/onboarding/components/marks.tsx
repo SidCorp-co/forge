@@ -55,7 +55,7 @@ export function ToneChip({
 }
 
 export function ThreadStatusChip({ status }: { status: OnboardingStatus }) {
-  return <StatusBadge family="onboarding" value={status} />;
+  return <StatusBadge family="thread" value={status} />;
 }
 
 export function DesignStatusChip({ status }: { status: string | null }) {

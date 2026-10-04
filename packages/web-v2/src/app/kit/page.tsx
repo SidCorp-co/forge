@@ -85,9 +85,9 @@ const COMMANDS: Command[] = [
 ];
 
 const NOTES: NotificationItem[] = [
-  { id: "FRG-238", label: "STATUS", text: "Review agent requested changes", sub: "missing index migration", time: "4m", unread: true, hue: "amber" },
-  { id: "FRG-224", label: "WEDGE", text: "Pipeline blocked on PM policy", sub: "prod deploy needs approval", time: "22m", unread: true, hue: "red" },
-  { id: "FRG-230", label: "STATUS", text: "Release agent opened PR #1284", sub: "ready to merge", time: "1h", unread: false, hue: "green" },
+  { id: "n-238", subjectKey: "FRG-238", type: "issue_status_changed", text: "Review agent requested changes", sub: "missing index migration", time: "4m", unread: true, hue: "amber" },
+  { id: "n-224", subjectKey: "FRG-224", type: "pipeline_wedge", text: "Pipeline blocked on PM policy", sub: "prod deploy needs approval", time: "22m", unread: true, hue: "red" },
+  { id: "n-230", subjectKey: "FRG-230", type: "issue_status_changed", resolved: true, text: "Release agent opened PR #1284", sub: "ready to merge", time: "1h", unread: false, hue: "green" },
 ];
 
 /** The kit's own sample columns — statuses and their tones, which is what a real board draws
