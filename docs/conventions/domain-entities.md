@@ -204,7 +204,7 @@ và CLI hơn thì không cần MCP".
 - **Answers.** A list answers summaries and a write answers what it changed: `act`, the entity's
   head, and the relation or revision it touched. A whole document comes only from `get` or
   `view: 'full'`, with the summary field set declared in contracts beside the full shape
-  (`packages/contracts/src/requirements.ts:REQUIREMENT_SUMMARY_FIELDS`).
+  (`packages/contracts/src/suggestions.ts:SUGGESTION_SUMMARY_FIELDS`).
 
 ## Where each schema lives
 
