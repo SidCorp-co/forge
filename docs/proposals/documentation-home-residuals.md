@@ -1,5 +1,8 @@
 # Documentation-home residuals
 
+**Removed when:** `STEP_RULE_EXEMPT` is empty and the no-audience branch of `coreAudience` is
+deleted, which dev ISS-135 carries. The change that lands it deletes this file.
+
 **ISS-1178, 2026-09-27. Two priced amnesties the audience rule leaves standing.**
 
 ISS-1178 made every served documentation page declare its `audience` and put each audience's voice

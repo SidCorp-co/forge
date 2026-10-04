@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { at, ctx, facts, flip, job, jobLane, session } from './standing.fixture.js';
-import { runStandingOf } from './standing.js';
+import { runGroupOf, runStandingOf } from './standing.js';
 
 describe('runStandingOf: one state per fixture, from the rows the design names', () => {
   it('queued: a queued job nobody holds waits on the master', () => {
@@ -74,6 +74,7 @@ describe('runStandingOf: the waiting states name who or what moves next', () => 
       since: at(-5).toISOString(),
     });
     expect(r.needsViewer).toBe(true);
+    expect(r.attentionGroup).toBe('needs_you');
   });
 
   it('waiting_person names a project writer, not the viewer, for a reader who cannot write', () => {
@@ -83,6 +84,7 @@ describe('runStandingOf: the waiting states name who or what moves next', () => 
     );
     expect(r.waitingOn).toMatchObject({ kind: 'person', who: 'A project writer', isViewer: false });
     expect(r.needsViewer).toBe(false);
+    expect(r.attentionGroup).toBe('waiting');
   });
 
   it('waiting_person: a parked issue waits since the transition that parked it, and says when none is recorded', () => {
@@ -330,5 +332,25 @@ describe('done never reads as cancelled', () => {
       ctx(),
     );
     expect(cancelled.state).toBe('cancelled');
+  });
+});
+
+describe('runGroupOf: the list group core serves for each state', () => {
+  it('a person wait is Needs you only for the viewer; a claim runs; every final state is finished', () => {
+    expect(runGroupOf('waiting_person', true)).toBe('needs_you');
+    expect(runGroupOf('waiting_person', false)).toBe('waiting');
+    expect(runGroupOf('claimed', false)).toBe('running');
+    expect(runGroupOf('waiting_gate', false)).toBe('waiting_gate');
+    expect(runGroupOf('stuck', false)).toBe('stuck');
+    expect(runGroupOf('queued', false)).toBe('queued');
+    for (const s of ['done', 'failed', 'cancelled', 'handed_back'] as const) {
+      expect(runGroupOf(s, false)).toBe('finished');
+    }
+  });
+
+  it('a job lane run carries its job type and status', () => {
+    const r = runStandingOf(jobLane(job({ status: 'dispatched', ackedAt: null })), ctx());
+    expect(r.job).toMatchObject({ status: 'dispatched' });
+    expect(r.attentionGroup).toBe('running');
   });
 });

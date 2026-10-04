@@ -2,7 +2,14 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { judge, judgeDocument, listProposals, selectProposals } from './honest-costs.mjs';
+import {
+  isProposal,
+  judge,
+  judgeDocument,
+  judgeRemoval,
+  listProposals,
+  selectProposals,
+} from './honest-costs.mjs';
 
 const PRICED = `# A proposal
 
@@ -138,7 +145,72 @@ describe('judgeDocument', () => {
   });
 });
 
+const REMOVED = `# A proposal
+
+**Removed when:** the retry budget is enforced by core, which ISS-42 carries. The change that
+lands it deletes this file.
+
+## Honest costs
+`;
+
+describe('judgeRemoval', () => {
+  it('passes a proposal that opens with the line and names an issue key on its second line', () => {
+    expect(judgeRemoval('docs/proposals/a.md', REMOVED)).toEqual([]);
+  });
+
+  it('names the document when the line is absent', () => {
+    const reasons = judgeRemoval('docs/proposals/a.md', PRICED);
+    expect(reasons).toHaveLength(1);
+    expect(reasons[0]).toContain('docs/proposals/a.md');
+    expect(reasons[0]).toContain('does not open with');
+  });
+
+  it('refuses the line further down, where nobody reads it as the opening', () => {
+    const buried = `${PRICED}\n**Removed when:** ISS-42 lands.\n`;
+    expect(judgeRemoval('a.md', buried).join(' ')).toContain('does not open with');
+  });
+
+  it('refuses a condition that names no issue key', () => {
+    const keyless = REMOVED.replace('which ISS-42 carries', 'which somebody carries');
+    expect(judgeRemoval('a.md', keyless).join(' ')).toContain('names no issue key');
+  });
+
+  it('does not take a key from the paragraph after the line', () => {
+    const later = '# A proposal\n\n**Removed when:** it lands.\n\nSee ISS-42.\n';
+    expect(judgeRemoval('a.md', later).join(' ')).toContain('names no issue key');
+  });
+
+  it('does not accept the line inside a comment', () => {
+    const commented = '# A proposal\n\n<!-- **Removed when:** ISS-42 lands. -->\n\nBody.\n';
+    expect(judgeRemoval('a.md', commented).join(' ')).toContain('does not open with');
+  });
+});
+
+describe('isProposal', () => {
+  it('holds a file directly under docs/proposals/ to the rule', () => {
+    expect(isProposal('docs/proposals/a.md')).toBe(true);
+  });
+
+  it('leaves destination/, VISION and the index out', () => {
+    expect(isProposal('docs/proposals/destination/coverage.md')).toBe(false);
+    expect(isProposal('docs/VISION.md')).toBe(false);
+    expect(isProposal('docs/proposals/README.md')).toBe(false);
+  });
+});
+
 describe('judge', () => {
+  it('asks a proposal for its Removed when line, and a destination document only for its price', () => {
+    const verdict = judge({
+      'docs/proposals/a.md': PRICED,
+      'docs/proposals/b.md': `${REMOVED}\n- one instance per team means you operate and upgrade it yourself, alone\n`,
+      'docs/proposals/destination/c.md': PRICED,
+    });
+    expect(verdict.code).toBe(1);
+    expect(verdict.violations).toEqual([
+      expect.stringContaining('docs/proposals/a.md: does not open with'),
+    ]);
+  });
+
   it('reports every failing document, not just the first', () => {
     const verdict = judge({ 'a.md': '# a\n', 'b.md': '# b\n', 'c.md': PRICED });
     expect(verdict.code).toBe(1);

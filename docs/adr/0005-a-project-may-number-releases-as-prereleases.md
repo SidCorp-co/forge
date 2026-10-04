@@ -14,8 +14,8 @@ deployed reported a version at all: `/version` answered a `package.json` constan
 - **A project document may declare `release.prerelease: { of, label }`.** Every release cut on that
   project is then `<of>-<label>.<N>` — `0.4.0-dev.1`, `0.4.0-dev.2` — instead of raising MINOR.
   `N` continues from the highest cut on that same line, failed ones included, so 0001's burn holds.
-- **The number is still allocated, never chosen** (`packages/core/src/release-batch/version-store.ts`), and ordered by
-  semver precedence: a prerelease sorts below the release it previews.
+- **The number is still allocated, never chosen** (`packages/core/src/release-batch/version-store.ts`),
+  and ordered by semver precedence: a prerelease sorts below the release it previews.
 - **A line declared below what the project already cut is refused** (`RELEASE_VERSION_LINE_BEHIND`),
   never skipped forward. Raising `of` once that release has shipped is the operator's act.
 - **A prerelease is never re-cut**; the next number replaces a failed one.

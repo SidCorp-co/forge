@@ -1,5 +1,8 @@
 # The comment cursor cannot carry an era, and the fix is a wire-format change
 
+**Removed when:** the comment cursor carries the era, so both keyset pagers read `created_at` the
+same way, which dev ISS-130 carries. The change that lands it deletes this file.
+
 Found by ISS-1173's page-boundary repair, which was looking for other keyset pagers over a
 `timestamptz` column and turned this one up. Not fixed there: the fix changes a token this API has
 already shipped to clients, which is a decision that issue does not get to take.

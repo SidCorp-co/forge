@@ -1,5 +1,9 @@
 # Twelve transport modules can hold the caller open for as long as the socket stays open
 
+**Removed when:** `CoreClient` cannot issue a request without a deadline: the client sets a default
+and the long routes name their own, which dev ISS-126 carries. The change that lands it deletes this
+file.
+
 Found while working ISS-1233, which owns the master sweep's two calls and now the heartbeat's.
 Left here rather than fixed, because the deadline each remaining call wants is a different number
 and several of the files are held by other runs' trees.

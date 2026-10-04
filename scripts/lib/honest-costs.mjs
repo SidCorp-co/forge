@@ -79,6 +79,45 @@ export function judgeDocument(rel, raw) {
   return reasons;
 }
 
+/** A proposal names how it leaves: once the issue carrying it lands, the landing change deletes it. */
+const REMOVED_WHEN_RE = /^\*\*Removed when:\*\*/;
+
+const ISSUE_KEY_RE = /\b[A-Z][A-Z0-9]+-\d+\b/;
+
+/** A file directly under `docs/proposals/`; `destination/` describes where the tree is going and never lands. */
+export function isProposal(rel) {
+  return /^docs\/proposals\/[^/]+\.md$/.test(rel) && !rel.endsWith(`/${INDEX}`);
+}
+
+/** The first paragraph after the title, which is where the reader looks for when the file goes. */
+function openingParagraph(text) {
+  const lines = text.split('\n');
+  let i = lines.findIndex((l) => /^#\s/.test(l));
+  i = i < 0 ? 0 : i + 1;
+  while (i < lines.length && lines[i].trim() === '') i += 1;
+  const para = [];
+  while (i < lines.length && lines[i].trim() !== '') para.push(lines[i++]);
+  return para.join(' ');
+}
+
+/**
+ * Returns the reasons `rel` does not say when it is removed, one string each. Empty means it passes.
+ */
+export function judgeRemoval(rel, raw) {
+  const opening = openingParagraph(withoutComments(withoutFences(raw)));
+  if (!REMOVED_WHEN_RE.test(opening)) {
+    return [
+      `${rel}: does not open with a \`**Removed when:**\` line — nothing says when this proposal leaves the docs`,
+    ];
+  }
+  if (!ISSUE_KEY_RE.test(opening)) {
+    return [
+      `${rel}: the \`**Removed when:**\` line names no issue key — a condition no issue carries is never landed, so the file is never deleted`,
+    ];
+  }
+  return [];
+}
+
 /**
  * `documents` maps repo-relative path -> file text.
  *
@@ -94,7 +133,10 @@ export function judge(documents) {
   if (unreadable.length > 0) {
     return { code: 2, reason: `could not read ${unreadable.join(', ')}` };
   }
-  const violations = paths.flatMap((p) => judgeDocument(p, documents[p]));
+  const violations = paths.flatMap((p) => [
+    ...judgeDocument(p, documents[p]),
+    ...(isProposal(p) ? judgeRemoval(p, documents[p]) : []),
+  ]);
   return violations.length > 0
     ? { code: 1, scanned: paths.length, violations }
     : { code: 0, scanned: paths.length };

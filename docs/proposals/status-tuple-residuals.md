@@ -1,5 +1,9 @@
 # The pipeline-run vocabulary answers the same question in twelve places, and the gate cannot see it
 
+**Removed when:** `check-status-tuples.mjs` reads `pipelineRunStatuses` and every inline live-run
+tuple is on `LIVE_PIPELINE_RUN_STATUSES`, the web-v2 copy included, which dev ISS-142 carries. The
+change that lands it deletes this file.
+
 Found by ISS-1106 criterion 13's second pass, which was closing the two holes that let
 `pipeline/runs-rollup.ts` hold a second `LIVE_JOB_STATUSES`. Not fixed there: it is a widening of
 the checker's *subject* rather than a gap that criterion exposed, and the collapse it lands is
