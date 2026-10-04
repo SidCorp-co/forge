@@ -36,7 +36,15 @@ export function ReleasePeek({
             noun="Release"
             itemKey={r.version}
             badge={<StatusBadge family="releaseState" value={r.state} />}
-            title={r.headline || `Release ${r.version}`}
+            title={
+              r.headline ? (
+                <span className="line-clamp-2" title={r.headline} data-testid="release-peek-headline">
+                  {r.headline}
+                </span>
+              ) : (
+                `Release ${r.version}`
+              )
+            }
             action={<ReleaseActions projectId={projectId} r={r} />}
           />
           <ReleaseBanner r={r} className="px-[18px]" />

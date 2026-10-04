@@ -189,6 +189,7 @@ async function run(principal: McpPrincipal, input: Input, projectId: string): Pr
 export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: RELEASE_BATCH_TOOL,
   reach: 'project',
+  route: '/api/pipeline-runs',
   grant: {
     byAction: {
       get: 'pipeline:read',

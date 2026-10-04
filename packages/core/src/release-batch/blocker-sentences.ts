@@ -5,6 +5,7 @@
 
 import { type LiveShortfall, notLiveSentence } from '../ecosystem/waits/rules.js';
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
+import { agrees, counted } from '../lib/plural.js';
 import { AGENT_NAMING_MIN_RUNNER } from '../runners/device-cap.js';
 import type { RunnerHold, RunnerHoldReason } from '../runners/ineligible.js';
 import { claimConflictSentence, readClaimConflictDetails } from './claim-conflicts.js';
@@ -107,17 +108,17 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   RELEASE_TARGET_UNDECLARED:
     'Nothing says where a release of this project lands: the project document is missing, or its production environment has no active deploy binding, or no promotion reaches the branch it deploys from. Correct the project document (`PUT /api/projects/:id/config`), or declare no production environment if Forge ships nothing here.',
   CLAIM_CONFLICT:
-    '{n} issue(s) named here are not at the release gate, are not on this project, or are already claimed by a batch. Read the roster and send the issues it lists.',
+    '{named} {are} not at the release gate, {are} not on this project, or {are} already claimed by a batch. Read the roster and send the issues it lists.',
   RELEASE_ROSTER_EMPTY:
     'Nothing is waiting at the release gate, so there is no release to cut. An issue reaches it by moving to `awaiting_release`, which is an act of its own.',
   RELEASE_ROSTER_OVERSIZE: `More issues are waiting than one release may carry. A release names at most ${RELEASE_ROSTER_LIMIT} issues, so cut this roster in parts, oldest merge first.`,
   RELEASE_RECORD_MISSING:
-    '{n} issue(s) named here have no release note, and closing them would claim a ship ' +
+    '{named} {have} no release note, and closing {them} would claim a ship ' +
     `nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
   RELEASE_WORK_UNMERGED:
-    '{n} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not.',
+    '{named} {have} no merge Forge watched land, so nothing says {their} work is on the branch this release deployed. Mark the merge on {each} first — a release records what shipped, and an issue nobody merged did not.',
   CONTRACT_PROVIDER_NOT_LIVE:
-    "{n} issue(s) named here wait on another project's contract version that its production does not serve yet, so this release would ship a consumer ahead of its provider. Release once the provider serves it, or take those issues out of this release.",
+    "{named} {wait} on another project's contract version that its production does not serve yet, so this release would ship a consumer ahead of its provider. Release once the provider serves it, or take {those} out of this release.",
   RELEASE_PROBES_UNREADABLE:
     'Every runtime probe the production environment declares identifies an artifact, so no reading can say which commit production serves and the release could never be proved. Declare a probe that identifies the source on the production environment.',
   RELEASE_POOL_EMPTY:
@@ -255,14 +256,17 @@ export function runnerHoldClause(hold: RunnerHold): string {
 
 function runnersHeldSentence(holds: RunnerHold[]): string | null {
   if (holds.length === 0) return null;
-  const count = `${holds.length} runner${holds.length === 1 ? '' : 's'}`;
+  const count = counted(holds.length, 'runner');
   const head = `This project has ${count} registered and not one of them can take a release right now.`;
   return `${head} ${holds.map(runnerHoldClause).join(' ')}`;
 }
 
 function heldIssuesSentence(remedy: string, held: HeldIssueRef[]): string {
   const each = held
-    .map((h) => `\`${h.displayId}\` owes criterion ${h.criteria.join(', ')}`)
+    .map(
+      (h) =>
+        `\`${h.displayId}\` owes ${agrees(h.criteria.length, 'criterion', 'criteria')} ${h.criteria.join(', ')}`,
+    )
     .join('; ');
   return `${remedy} ${each}.`;
 }
@@ -276,8 +280,8 @@ function nearGateSentence(nearGate: number): string {
   if (nearGate === 0) {
     return `Nothing is waiting at the release gate, and nothing stands one move short of it: no issue on this project is \`in_progress\` at its test step. An issue reaches the gate at \`awaiting_release\`, once every criterion holds a passing verdict. ${NEAR_GATE_ACT}`;
   }
-  const issues = `${nearGate} issue${nearGate === 1 ? '' : 's'}`;
-  return `Nothing is waiting at the release gate, so there is no release to cut. ${issues} on this project stand one move short of it, \`in_progress\` at their test step: a release carries an issue only once its status is \`awaiting_release\`. ${NEAR_GATE_ACT}`;
+  const issues = counted(nearGate, 'issue');
+  return `Nothing is waiting at the release gate, so there is no release to cut. ${issues} on this project ${agrees(nearGate, 'stands', 'stand')} one move short of it, \`in_progress\` at ${agrees(nearGate, 'its', 'their')} test step: a release carries an issue only once its status is \`awaiting_release\`. ${NEAR_GATE_ACT}`;
 }
 
 /**
@@ -294,7 +298,7 @@ export function releaseBlockerSentence(
 }
 
 function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>): string {
-  const remedy = REMEDY[code];
+  const remedy = fillNamed(REMEDY[code], details);
   if (code === 'NO_RUNNER_ONLINE') {
     const holds = (details?.runners as RunnerHold[] | undefined) ?? [];
     return runnersHeldSentence(holds) ?? remedy;
@@ -310,7 +314,9 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
     return unroutedSentence(remedy, details.missing, details);
   }
   if (code === 'RELEASE_WORK_UNMERGED' && details?.shape === 'outside_git') {
-    return `${namedHere(details)} have no mark saying where their work landed. This project's work lands outside git, so mark each one merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`;
+    return fillNamed('{named} {have} no mark saying where {their} work landed.', details).concat(
+      ` This project's work lands outside git, so mark each one merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`,
+    );
   }
   if (code === 'CONTRACT_PROVIDER_NOT_LIVE' && Array.isArray(details?.waits)) {
     return notLiveSentence(details.waits as LiveShortfall[]);
@@ -322,8 +328,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (standings) {
     return claimConflictSentence(standings.projectId, standings.gateStatus, standings.conflicts);
   }
-  if (Array.isArray(details?.issueIds))
-    return remedy.replace('{n} issue(s) named here', namedHere(details));
+  if (Array.isArray(details?.issueIds)) return remedy;
   if (code === 'RELEASE_PROBES_UNREADABLE') return unreadableSentence(remedy, details);
   const urls = details?.urls;
   if (Array.isArray(urls) && urls.length > 0) return `${urls.join(', ')} — ${remedy}`;
@@ -334,12 +339,30 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   return remedy;
 }
 
+const AGREEMENT: readonly (readonly [string, string, string])[] = [
+  ['{are}', 'is', 'are'],
+  ['{have}', 'has', 'have'],
+  ['{wait}', 'waits', 'wait'],
+  ['{them}', 'it', 'them'],
+  ['{their}', 'its', 'their'],
+  ['{each}', 'it', 'each of them'],
+  ['{those}', 'that issue', 'those issues'],
+];
+
 /** How many issues a refusal is about, and which, by the id a screen shows (ISS-1346). */
-function namedHere(details: Record<string, unknown>): string {
-  const ids = Array.isArray(details.issueIds) ? details.issueIds : [];
-  const shown = Array.isArray(details.displayIds) ? (details.displayIds as string[]) : [];
+function fillNamed(template: string, details?: Record<string, unknown>): string {
+  if (!template.includes('{named}')) return template;
+  const ids = Array.isArray(details?.issueIds) ? details.issueIds : null;
+  const shown = Array.isArray(details?.displayIds) ? (details.displayIds as string[]) : [];
   const which = shown.length === 0 ? '' : ` (${shown.map((id) => `\`${id}\``).join(', ')})`;
-  return `${ids.length} issue(s) named here${which}`;
+  const n = ids ? ids.length : 0;
+  const subject = ids
+    ? `${counted(ids.length, 'issue')} named here${which}`
+    : 'The issues named here';
+  return AGREEMENT.reduce(
+    (text, [token, one, many]) => text.replaceAll(token, agrees(n, one, many)),
+    template.replace('{named}', subject),
+  );
 }
 
 /** The route is read off the bindings the project has, so a provider that cannot report a commit is
@@ -368,20 +391,23 @@ function unreadableSentence(remedy: string, details?: Record<string, unknown>): 
 }
 
 export function uncorroboratedWarningSentence(held: HeldIssueRef[], why: string): string {
-  const issues = `${held.length} issue${held.length === 1 ? '' : 's'}`;
+  const issues = counted(held.length, 'issue');
   const each = held
-    .map((h) => `\`${h.displayId}\` on criterion ${h.criteria.join(', ')}`)
+    .map(
+      (h) =>
+        `\`${h.displayId}\` on ${agrees(h.criteria.length, 'criterion', 'criteria')} ${h.criteria.join(', ')}`,
+    )
     .join('; ');
   return withCosts(
     'RELEASE_CRITERIA_UNCORROBORATED',
-    `${issues} carry a criterion earned at a runtime nothing here could re-read: ${why} Those verdicts count — absence of a reading is not a failure — and they are weaker evidence than a reading would have made them. Whether each issue ships is decided by its own criteria, not by this. ${each}.`,
+    `${issues} ${agrees(held.length, 'carries', 'carry')} a criterion earned at a runtime nothing here could re-read: ${why} Those verdicts count — absence of a reading is not a failure — and they are weaker evidence than a reading would have made them. Whether each issue ships is decided by its own criteria, not by this. ${each}.`,
   );
 }
 
 /** Where nothing can read what the project serves, no judging run earns a criterion, so the remedy
  *  is the project's route and not a verdict (ISS-1346, judge r2 finding 1). */
 export function heldBackWarningSentence(held: HeldIssueRef[], serving: ServingReading): string {
-  const issues = `${held.length} issue${held.length === 1 ? '' : 's'}`;
+  const issues = counted(held.length, 'issue');
   const lead = `A release will still be cut, without ${issues} the sweep is holding back`;
   const why =
     serving.kind === 'undeclared'

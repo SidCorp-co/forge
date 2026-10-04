@@ -107,6 +107,7 @@ async function questionShown<
 export const forgeQuestionsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_questions',
   reach: 'project',
+  route: '/api/questions',
   grant: { byAction: { ask: 'questions:write', get: 'questions:read', list: 'questions:read' } },
   description:
     'Ask a person (or a peer agent) a question against an issue, and read questions back. ' +

@@ -15,6 +15,10 @@
   now refused by name. Full-access tokens are unchanged.
 - **Over MCP, a token limited to some projects can no longer create projects or read
   organisations**, and an older token reaches only what existed when it was made, as on the API.
+- **An older token is refused the same MCP tools it is refused on the API.** Agent sessions and the
+  step-duration, retry and session-failure reports now answer a token made before they could be
+  granted as their API routes do. Assistant chat applies the same checks, so a person's token
+  limited to projects can no longer change their reply preferences from a room.
 
 - **An agent session you start from the web acts as you, not as whoever paired the box.** Each
   turn carries a short-lived token for its sender, never wider than the box owner's. Viewers and
@@ -180,7 +184,8 @@
 
 - **Releases is a release train and a page of its own.** A release shows whom it waits on, the
   requirements it completes and each issue's criteria, with Approve release and Return with reason
-  in its header; a refused gate reads as a sentence, its code behind a tooltip.
+  in its header; a refused gate reads as a sentence, its code behind a tooltip. Release refusals
+  now agree with their count ("1 issue has no release note") and name at most five issues.
 
 - **A storefront project's work can be judged on an unpublished draft.** A verdict names an Autoflow
   workflow, its draft version and a preview environment; Forge reads the draft back, and only a

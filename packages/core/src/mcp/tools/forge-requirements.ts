@@ -344,6 +344,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
 export const forgeRequirementsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_requirements',
   reach: 'project',
+  route: '/api/projects',
   grant: GRANTS,
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),

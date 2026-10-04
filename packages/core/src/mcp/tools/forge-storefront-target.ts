@@ -61,6 +61,7 @@ async function resolveInjectionStatus(
 export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_storefront_target',
   reach: 'project',
+  route: '/api/projects',
   grant: 'projects:read',
   description:
     "Return the project's storefront target so a shop skill knows WHICH store to build against. " +

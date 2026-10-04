@@ -54,6 +54,7 @@ const cancelInputSchema = z
 export const forgeJobsListTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_jobs.list',
   reach: 'project',
+  route: '/api/jobs',
   grant: 'pipeline:read',
   description:
     'List jobs scoped to a project (default 25, max 200; ordered newest-first). Supports status/type/issueId filters. Returns a lightweight projection per job: the heavy fields (payload, promptBlocks, failureMeta jsonb and the unbounded userPromptSnapshot/error text) are OMITTED to stay under the response token cap — fetch them per-job via forge_jobs.get. Every `queued` row also carries `gateReason` — the exact dispatch gate holding it (`issue_busy`, `runner_stale`, `pipeline_run_not_running`, …) or null when it is dispatchable and merely awaiting its turn. READ IT before assuming a queued job is progressing: `queued` is the status both of a job about to run and of one blocked indefinitely. EVERY response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit looks exactly like a complete one. `truncated:true` + `truncatedBy` + a notice say which cap bit (your limit, or the hard response-size cap). Requires project membership.',
@@ -85,6 +86,7 @@ export const forgeJobsListTool: ContextScopedMcpToolFactory = ({ principal }) =>
 export const forgeJobsGetTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_jobs.get',
   reach: 'project',
+  route: '/api/jobs',
   grant: 'pipeline:read',
   description:
     'Fetch a single job by id including its linked agentSessionId. A `queued` job also carries `gate`: `{ ok: true }` when it is dispatchable and merely awaiting its turn, or `{ ok: false, reason }` naming the gate holding it — the answer to "why has this been queued for days?", which `status` alone cannot give. Requires the principal to be a member of the job’s project; PAT principals must additionally have the job’s project in their allowlist.',
@@ -120,6 +122,7 @@ function boundEventData<T extends { data: unknown }>(event: T): T {
 export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_jobs.events',
   reach: 'project',
+  route: '/api/jobs',
   grant: 'pipeline:read',
   description:
     'Stream-replay job_events for a job (paginated by sinceSeq). Read-only; returns { items, lastSeq, returned, limit, hasMore }. ' +
@@ -163,6 +166,7 @@ export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) 
 export const forgeJobsCancelTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_jobs.cancel',
   reach: 'project',
+  route: '/api/jobs',
   grant: 'pipeline:write',
   description:
     'Cancel a single job (audited manual intervention). queued/held → cancelled; dispatched/running → cancellation requested + device push. Cancelling a `held` step leaves its issue and run untouched — reach for this instead of cancelling the whole run, which additionally parks the issue at on_hold. Works even when the parent pipeline_run is already terminal (orphan escape hatch). Requires writer access (member/admin; PAT write scope).',
@@ -194,6 +198,7 @@ export const forgeJobsCancelTool: ContextScopedMcpToolFactory = ({ principal }) 
 export const forgeJobsResumeTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_jobs.resume',
   reach: 'project',
+  route: '/api/jobs',
   grant: 'pipeline:write',
   description:
     "Put a `held` job back in the queue (audited manual intervention). Use this when the hold's cause is FIXED — `retry_rounds_exhausted` and `non_retryable_terminal` never clear on their own, so without a resume the only way out of one is to cancel the step and lose it. The resume does not re-check the condition: you are asserting it cleared, and the audit row records that. Fails with NOT_HELD on any other status. Requires writer access (member/admin; PAT write scope).",

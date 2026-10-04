@@ -140,6 +140,7 @@ function recordDeprecation(ctx: McpContext | { deprecations?: Set<string> }, too
 export const forgePipelineRunsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_pipeline_runs.get',
   reach: 'project',
+  route: '/api/pipeline-runs',
   grant: 'pipeline:read',
   description:
     '[DEPRECATED — use forge_project_pipeline_runs (action=get)] Fetch a single pipeline run plus a per-status job count breakdown. Requires the principal to be a member of the run’s project; PAT principals must additionally have the run’s project in their allowlist.',

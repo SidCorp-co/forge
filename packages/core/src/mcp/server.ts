@@ -5,21 +5,14 @@ import {
   ListPromptsRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { HTTPException } from 'hono/http-exception';
 import pkg from '../../package.json' with { type: 'json' };
 import { forgeChannelTool } from '../assistant/tools/forge-channel-tool.js';
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
 import { runWithPatScope } from '../auth/pat-scope.js';
-import { assertUnfenced } from '../lib/authz.js';
 import { resolveManagedMetaPrompts } from '../skills/effective.js';
 import { forgeMcpInstructions } from './instructions.js';
-import {
-  assertToolDeclaresGrant,
-  assertToolDeclaresReach,
-  toolAccountWork,
-  toolEpochRefusal,
-  toolGrantRefusal,
-} from './tool-grant.js';
+import { toolCallRefusal } from './tool-call-guard.js';
+import { assertToolDeclaresAccess } from './tool-grant.js';
 import { toToolCallContent } from './tool-result.js';
 import { forgeAgentReportTool, forgeFeedbackAliasTool } from './tools/forge-agent-report.js';
 import {
@@ -112,18 +105,6 @@ function classifyError(err: unknown): { code: AuditResultCode; message: string }
   if (message.startsWith('NOT_FOUND')) return { code: 'not_found', message };
   if (message.startsWith('FORBIDDEN')) return { code: 'forbidden', message };
   return { code: 'error', message };
-}
-
-function accountRefusal(work: string | null): string | null {
-  if (work === null) return null;
-  try {
-    assertUnfenced(work);
-    return null;
-  } catch (err) {
-    if (!(err instanceof HTTPException)) throw err;
-    const code = (err.cause as { code?: string } | undefined)?.code;
-    return `FORBIDDEN: ${code}: ${err.message}`;
-  }
 }
 
 function projectIdFromArgs(args: Record<string, unknown>): string | null {
@@ -219,10 +200,7 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     forgeChannelTool(ctx),
     forgeEcosystemTool(ctx),
   ];
-  for (const tool of tools) {
-    assertToolDeclaresGrant(tool);
-    assertToolDeclaresReach(tool);
-  }
+  for (const tool of tools) assertToolDeclaresAccess(tool);
   return tools;
 }
 
@@ -308,13 +286,12 @@ export function createMcpServer(ctx: McpContext): Server {
     }
 
     return runWithPatScope({ projectIds: allow, tokenId: principal.tokenId }, async () => {
-      // cm:guard reach, epoch and grant are read here, before any handler, in REST's order: a
-      // tool's role check alone would let a token granted `issues:read` call every tool its
-      // user's role allows, and a token fenced to one project do work belonging to none.
-      const refusal =
-        accountRefusal(toolAccountWork(tool, args)) ??
-        toolEpochRefusal(tool, args, principal.grantEpoch ?? 1) ??
-        toolGrantRefusal(tool, args, principal.permissions);
+      const refusal = toolCallRefusal(tool, args, {
+        grant: principal.permissions,
+        fence: allow,
+        grantEpoch: principal.grantEpoch,
+        tokenId: principal.tokenId,
+      });
       if (refusal) {
         writeMcpAudit({ ...auditBase, resultCode: 'forbidden' });
         return { content: [{ type: 'text', text: `Error: ${refusal}` }], isError: true };

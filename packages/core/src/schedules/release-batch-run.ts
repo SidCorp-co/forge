@@ -8,6 +8,7 @@
 // normal state of a healthy project, and a nightly cron that reports failure on
 // a quiet night trains everyone to ignore it.
 
+import { counted } from '../lib/plural.js';
 import { logger } from '../logger.js';
 import { blockersOf, RELEASE_ROSTER_LIMIT } from '../release-batch/blocker-sentences.js';
 import { loadReleaseRoster } from '../release-batch/queries.js';
@@ -68,7 +69,7 @@ export async function cutWaitingRelease(args: {
     });
     return {
       status: 'success',
-      output: `cut ${result.issueIds.length} issue(s) as run ${result.runId}`,
+      output: `cut ${counted(result.issueIds.length, 'issue')} as run ${result.runId}`,
       named,
     };
   } catch (err) {

@@ -16,6 +16,7 @@ export function buildChatToolContext(opts: {
     boundProjectId: principal.boundProjectId,
     turnToken: opts.credential.token,
     grant: opts.credential.grant,
+    fence: opts.credential.fence,
     ...(opts.turn ? { turn: opts.turn } : {}),
   };
 }
@@ -33,5 +34,5 @@ export function catalogOnlyContext(projectId: string, projectSlug: string): McpC
       throw new Error(NO_AUTHORITY);
     },
   });
-  return { principal, projectSlug, boundProjectId: projectId, grant: null };
+  return { principal, projectSlug, boundProjectId: projectId, grant: null, fence: null };
 }

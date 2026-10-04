@@ -259,6 +259,12 @@ means `off`).
 - **Input** is one `z.strictObject`. A per-action `need(input, key)` throws
   `BAD_REQUEST: <action> needs <key>`.
 - **Refusals** come back through `packages/core/src/mcp/tools/lib.ts:refusedAnswer`, never as thrown text.
+- **Access.** A tool declares `grant` (the permission), `reach` (`project`, `public` or `{ account }`)
+  and `route` (the REST mount its rows are served at, one per resource its grants name). The route
+  dates the tool for the grant epoch. Registration on `/mcp` and in chat refuses a tool missing any
+  of them (`packages/core/src/mcp/tool-grant.ts:assertToolDeclaresAccess`). Both doors refuse a
+  call through `packages/core/src/mcp/tool-call-guard.ts:toolCallRefusal`, which reads the same epoch
+  rule as REST (`packages/core/src/auth/pat-permissions.ts:patEpochRefusal`).
 - **Answers.** A list answers summaries and a write answers what it changed: `act`, the entity's head,
   and the relation or revision it touched. A whole document comes only from `get` or `view: 'full'`.
   - The summary field set is declared in contracts beside the full shape

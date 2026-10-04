@@ -259,6 +259,41 @@ export function patPrefixForPath(path: string): PatPrefixMatch | null {
   return null;
 }
 
+export type PatPrefix = {
+  [R in PatPermissionResource]: keyof (typeof PAT_PERMISSION_RESOURCES)[R]['prefixes'] & string;
+}[PatPermissionResource];
+
+export const PAT_GRANT_PREDATES_ROUTE = 'PAT_GRANT_PREDATES_ROUTE';
+
+export type PatEpochRefusal = {
+  readonly resource: PatPermissionResource;
+  readonly prefix: string;
+  readonly routeEpoch: number;
+  readonly tokenEpoch: number;
+  readonly message: string;
+};
+
+// cm:guard the one epoch rule: REST reads it for the request path, /mcp for the route a tool
+// declares, so a token minted before a prefix joined the menu is refused it on both.
+export function patEpochRefusal(
+  path: string,
+  tokenEpoch: number | undefined,
+): PatEpochRefusal | null {
+  const match = patPrefixForPath(path);
+  const held = tokenEpoch ?? 1;
+  if (!match || match.epoch <= held) return null;
+  return {
+    resource: match.resource,
+    prefix: match.prefix,
+    routeEpoch: match.epoch,
+    tokenEpoch: held,
+    message:
+      `${match.prefix} joined '${match.resource}' at grant epoch ${match.epoch}, after this ` +
+      `token was minted (epoch ${held}), and a token keeps the reach it was minted with. ` +
+      'Mint a new token to reach it.',
+  };
+}
+
 /** The resource whose prefixes cover this path, or null when the menu does not. */
 export function patResourceForPath(path: string): PatPermissionResource | null {
   return patPrefixForPath(path)?.resource ?? null;

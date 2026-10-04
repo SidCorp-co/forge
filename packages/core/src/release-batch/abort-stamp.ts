@@ -8,6 +8,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
+import { agrees } from '../lib/plural.js';
 import { type AbortAccount, ReleaseBatchAbortedError } from './errors.js';
 import { closedOnRoster, runRecordedPromotion } from './releasing-recovery.js';
 
@@ -239,9 +240,8 @@ export function abortedSentence(err: ReleaseBatchAbortedError): string {
 
 /** The issues a finish closed before the abort landed, by the key a person knows each by. */
 function closedBeforeAbortSentence(ids: string[], shown: ReadonlyMap<string, string>): string {
-  const one = ids.length === 1;
   const names = ids
     .map((id) => shown.get(id) ?? id)
     .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
-  return `Its finish had already closed ${names.join(', ')} before the abort, and ${one ? 'it stays' : 'they stay'} closed.`;
+  return `Its finish had already closed ${names.join(', ')} before the abort, and ${agrees(ids.length, 'it stays', 'they stay')} closed.`;
 }

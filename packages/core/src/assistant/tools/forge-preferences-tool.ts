@@ -44,6 +44,8 @@ const DESCRIPTION = [
 
 export const forgePreferencesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_preferences',
+  reach: { account: "setting the speaking person's own reply preferences" },
+  route: '/api/auth/preferences',
   grant: 'account:write',
   description: DESCRIPTION,
   inputSchema: z.toJSONSchema(input) as Record<string, unknown>,

@@ -36,6 +36,8 @@ const DESCRIPTION = [
 
 export const forgeMemoryNoteTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_memory.note',
+  reach: 'project',
+  route: '/api/memory',
   grant: 'knowledge:write',
   description: DESCRIPTION,
   inputSchema: z.toJSONSchema(input) as Record<string, unknown>,

@@ -42,6 +42,7 @@ type ListedProject = {
 export const forgeProjectsListTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.list',
   reach: 'project',
+  route: '/api/projects',
   grant: 'projects:read',
   description:
     "List projects visible to the principal (explicit project membership of any role, plus org owner/admin implicit access). For PAT principals, results are additionally narrowed to the token's projectIds allowlist when set. Returns id, slug, name, orgId, role (effective: admin|member|viewer).",
@@ -93,6 +94,7 @@ const createInputSchema = z.strictObject(
 export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.create',
   reach: { account: 'creating a project' },
+  route: '/api/projects',
   grant: 'projects:write',
   description:
     "Create a new project in an org (orgId optional — defaults to the caller's personal org; the caller becomes a project admin). Accepts slug and name; the branch work is cut from is the project document's `source.git.defaultBranch`, and `baseBranch` is refused by name. A checkout is not a project setting: it is the device binding's (`forge-runner bind <slug> --path <dir>`). Where its work lands, its environments, promotions and deployments are its project document, written with PUT /api/projects/:id/config. PAT principals must carry the `write` scope and reach no narrower than their owner: a token fenced to projects, by a project list or a bound project, is refused with PAT_ACCOUNT_ROUTE. Returns id/slug/name/orgId/createdBy/createdAt.",
@@ -177,6 +179,7 @@ const updateInputSchema = z
 export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.update',
   reach: 'project',
+  route: '/api/projects',
   grant: 'projects:write',
   description:
     "Update project settings (name). The name is the project document's `project.name`: this writes that document at the revision it reads, with every check PUT /api/projects/:id/config makes, and a project with no document yet is refused PROJECT_NOT_DECLARED (declare one with PUT /api/projects/:id/config). A checkout is not a project setting: it is the device binding's (`forge-runner bind <slug> --path <dir>`). Whether the project's work lands in git (`source.type`), its environments, promotions, deployments and testing profiles are NOT settings here: they are its project document, read with forge_config (action `get`, field `projectDocument`) and written with PUT /api/projects/:id/config, and a patch naming any other key is refused by name. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. The repository and the workspace setup procedure are the project document's `source.git.repository` and `workspace.setup`: a patch naming `repoUrl`, `workspaceSetup` or `baseBranch` is refused by name. A project holds no webhook secret: each provider's webhook is verified with its integration binding's own.",
@@ -242,6 +245,7 @@ const getInputSchema = z.object({ projectId: z.uuid() }).strict();
 export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.get',
   reach: 'project',
+  route: '/api/projects',
   grant: 'projects:read',
   description:
     'Fetch project detail visible to the principal — id, slug, name, orgId, createdBy, role (effective: admin|member|viewer), baseBranch (`source.git.defaultBranch` of the project document, where an ISS-* branch is cut from; null where the document declares none), createdAt. A checkout path is not a project fact: every device binding names its own. Where work lands, what each environment is and deploys from, its address and the testing profile its testers get in through are the project document — forge_config (action `get`, field `projectDocument`) — and what an environment runs now is GET /api/projects/:id/environments/:name/state. The repository and the setup procedure a checkout follows when it will not build are `source.git.repository` and `workspace.setup` in that document. Any effective project role can read. PAT principals must carry the `read` scope. agentConfig stays on REST.',

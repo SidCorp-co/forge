@@ -33,6 +33,10 @@ let projectId: string;
 let orgId: string;
 let issueId: string;
 let tokens: Record<TokenKind, string>;
+let userId: string;
+let preEpochTokenId: string;
+let fencedTokenId: string;
+let fencedToken: string;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -47,6 +51,7 @@ beforeAll(async () => {
 
   await truncateAll(harness.db);
   const user = await createTestUser(harness.db, { emailVerifiedAt: new Date() });
+  userId = user.id;
   const org = await seedOrg(harness.db, user.id);
   orgId = org.id;
   projectId = (await createTestProject(harness.db, user.id, { orgId })).id;
@@ -103,12 +108,23 @@ beforeAll(async () => {
     ttlMs: 60_000,
   });
 
+  const preEpoch = await mintPat({ userId: user.id, name: 'pre-epoch' });
+  preEpochTokenId = preEpoch.row.id;
+  const fenced = await mintPat({
+    userId: user.id,
+    name: 'fenced-person',
+    projectIds: [projectId],
+    ...now,
+  });
+  fencedTokenId = fenced.row.id;
+  fencedToken = fenced.plaintext;
+
   tokens = {
     whole: await mint('whole', { permissions: ['*'], ...now }),
     legacy: legacy.plaintext,
     bound: await mint('bound', { permissions: ['*'], boundProjectId: projectId, ...now }),
     listed: await mint('listed', { permissions: ['*'], projectIds: [projectId], ...now }),
-    preEpoch: await mint('pre-epoch', {}),
+    preEpoch: preEpoch.plaintext,
     box,
     workspace,
     agent: agent.plaintext,
@@ -211,7 +227,7 @@ describe('a token minted before its grant joined the menu', () => {
     const out = await call(tokens.preEpoch, 'forge_runners', { action: 'list' });
     expect(out.isError, out.text).toBe(true);
     expect(out.text).toMatch(
-      /FORBIDDEN: PAT_GRANT_PREDATES_ROUTE: forge_runners action 'list' needs 'runners:read', which joined the menu at grant epoch 2, after this token was minted \(epoch 1\)/,
+      /FORBIDDEN: PAT_GRANT_PREDATES_ROUTE: forge_runners action 'list' is served at \/api\/runners, and \/api\/runners joined 'runners' at grant epoch 2, after this token was minted \(epoch 1\)/,
     );
 
     const rest = await app.request(`/api/runners?projectId=${projectId}`, {
@@ -219,6 +235,64 @@ describe('a token minted before its grant joined the menu', () => {
     });
     expect(rest.status).toBe(403);
     expect(await rest.text()).toContain('PAT_GRANT_PREDATES_ROUTE');
+  });
+
+  const rest = async (path: string) => {
+    const res = await app.request(path, {
+      headers: { authorization: `Bearer ${tokens.preEpoch}` },
+    });
+    return { status: res.status, text: await res.text() };
+  };
+
+  it('is refused the agent-session tools, by the code REST refuses /api/agent-sessions', async () => {
+    for (const [name, args, path] of [
+      ['forge_agent_sessions.list', { projectId }, `/api/agent-sessions?projectId=${projectId}`],
+      [
+        'forge_agent_sessions.get',
+        { sessionId: randomUUID() },
+        `/api/agent-sessions/${randomUUID()}`,
+      ],
+    ] as const) {
+      const out = await call(tokens.preEpoch, name, args);
+      expect(out.isError, `${name}: ${out.text}`).toBe(true);
+      expect(out.text).toContain(
+        `PAT_GRANT_PREDATES_ROUTE: ${name} is served at /api/agent-sessions`,
+      );
+      const answer = await rest(path);
+      expect(answer.status, answer.text).toBe(403);
+      expect(answer.text).toContain('PAT_GRANT_PREDATES_ROUTE');
+    }
+  });
+
+  it('is refused the pipeline analytics tools REST serves under /api/pipeline', async () => {
+    for (const [name, path] of [
+      [
+        'forge_metrics.project_step_durations',
+        `/api/pipeline/step-durations?projectId=${projectId}`,
+      ],
+      ['forge_metrics.project_retry_rescues', `/api/pipeline/retry-rescues?projectId=${projectId}`],
+    ] as const) {
+      const out = await call(tokens.preEpoch, name, { projectId });
+      expect(out.isError, `${name}: ${out.text}`).toBe(true);
+      expect(out.text).toContain(`PAT_GRANT_PREDATES_ROUTE: ${name} is served at /api/pipeline,`);
+      const answer = await rest(path);
+      expect(answer.status, answer.text).toBe(403);
+      expect(answer.text).toContain('PAT_GRANT_PREDATES_ROUTE');
+    }
+    const failures = await call(tokens.preEpoch, 'forge_metrics.session_failures', { projectId });
+    expect(failures.text).toContain('PAT_GRANT_PREDATES_ROUTE');
+  });
+
+  it('keeps the pipeline and usage reads whose REST route it was minted with', async () => {
+    const jobs = await call(tokens.preEpoch, 'forge_jobs.list', { projectId });
+    expect(jobs.isError, jobs.text).toBe(false);
+    const usage = await call(tokens.preEpoch, 'forge_metrics.project_timeseries', {
+      projectId,
+      metric: 'cost',
+    });
+    expect(usage.isError, usage.text).toBe(false);
+    const twin = await rest(`/api/projects/${projectId}/metrics/timeseries?metric=cost`);
+    expect(twin.status, twin.text).toBe(200);
   });
 
   it('keeps every tool whose grant it was minted with', async () => {
@@ -267,5 +341,70 @@ describe('the credentials core mints for itself', () => {
     });
     expect(rest.status).toBe(403);
     expect(await rest.text()).toContain('PAT_ACCOUNT_ROUTE');
+  });
+});
+
+describe('a chat turn, through the same check as /mcp', () => {
+  async function chatAs(viaTokenId: string | null) {
+    const { CHAT_TURN_MENU, mintTurnCredential, resolveTurnAuthority } = await import(
+      '../../src/auth/turn-credential.js'
+    );
+    const { buildChatToolContext } = await import('../../src/assistant/tools/principal.js');
+    const { buildProjectToolset } = await import('../../src/assistant/tools/registry.js');
+    const authority = await resolveTurnAuthority({ userId, projectId, viaTokenId });
+    if (!authority.ok) throw new Error(authority.refusal.message);
+    const credential = await mintTurnCredential({
+      authority: authority.authority,
+      menu: CHAT_TURN_MENU,
+      name: `turn:${randomUUID()}`,
+      ttlMs: 60_000,
+    });
+    const ctx = buildChatToolContext({
+      credential,
+      projectSlug: 'reach',
+      turn: { conversationId: null, speakerUserId: userId, handleUserId: null },
+    });
+    return buildProjectToolset(ctx);
+  }
+  const textOf = (r: { content: Array<{ type: string; text?: string }> }) =>
+    r.content.map((b) => b.text ?? '').join('');
+
+  it('refuses a person who reached Forge with an epoch-1 token a tool whose route joined later', async () => {
+    const set = await chatAs(preEpochTokenId);
+    const out = await set.execute(
+      'forge_metrics_project_step_durations',
+      JSON.stringify({ projectId }),
+    );
+    expect(out.isError, textOf(out)).toBe(true);
+    expect(textOf(out)).toContain('PAT_GRANT_PREDATES_ROUTE');
+    const kept = await set.execute(
+      'forge_metrics_project_timeseries',
+      JSON.stringify({ projectId, metric: 'cost' }),
+    );
+    expect(kept.isError, textOf(kept)).toBeFalsy();
+  });
+
+  it('refuses account work to a person whose own token is fenced to projects, as REST refuses it', async () => {
+    const set = await chatAs(fencedTokenId);
+    const out = await set.execute('forge_preferences', JSON.stringify({ answerStyle: 'concise' }));
+    expect(out.isError, textOf(out)).toBe(true);
+    expect(textOf(out)).toContain('PAT_ACCOUNT_ROUTE');
+    const rows = await harness.db.execute(
+      sql`SELECT 1 FROM user_preferences WHERE user_id = ${userId} AND answer_style = 'concise'`,
+    );
+    expect(rows.length).toBe(0);
+    const rest = await app.request('/api/auth/preferences', {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${fencedToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ answerStyle: 'concise' }),
+    });
+    expect(rest.status).toBe(403);
+    expect(await rest.text()).toContain('PAT_ACCOUNT_ROUTE');
+  });
+
+  it('lets a person signed in with a session set their own preferences from the room', async () => {
+    const set = await chatAs(null);
+    const out = await set.execute('forge_preferences', JSON.stringify({ answerStyle: 'detailed' }));
+    expect(out.isError, textOf(out)).toBeFalsy();
   });
 });

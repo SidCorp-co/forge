@@ -476,11 +476,13 @@ const INPUT_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
 };
 
+const BUS_REACH = "an ecosystem's bus spans every member project, not the one a token reaches";
 // cm:why each action takes the permission its REST route takes: the project's records are projects:*, and the bus is the account-wide ecosystems:read a project-fenced token does not reach, on /mcp as on REST
 export const forgeEcosystemTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_ecosystem',
   description: DESCRIPTION,
   inputSchema: INPUT_SCHEMA,
+  route: ['/api/projects', '/api/ecosystems'],
   grant: {
     byAction: {
       ...Object.fromEntries(READS.map((a) => [a, 'projects:read' as const])),
@@ -491,9 +493,7 @@ export const forgeEcosystemTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: {
     byAction: {
       ...Object.fromEntries(ACTIONS.map((a) => [a, 'project' as const])),
-      bus: {
-        account: "an ecosystem's bus spans every member project, not the one a token reaches",
-      },
+      bus: { account: BUS_REACH },
     } as Record<Action, 'project' | { account: string }>,
   },
   handler: (raw) => run(ctx, raw),

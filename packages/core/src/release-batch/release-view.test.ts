@@ -61,6 +61,18 @@ describe('whom a draft waits on', () => {
     });
   });
 
+  it('says one reason stands, and two reasons stand', () => {
+    const one = turnOf(facts({ state: 'draft', gates: [{ title: 'Release note missing' }] }));
+    expect(one.waiting.rule).toBe('1 reason stands against cutting 0.4.0');
+    const two = turnOf(
+      facts({
+        state: 'draft',
+        gates: [{ title: 'Release note missing' }, { title: 'No runner paired' }],
+      }),
+    );
+    expect(two.waiting.rule).toBe('2 reasons stand against cutting 0.4.0');
+  });
+
   it('is stuck for a viewer who cannot cut it as well: a gate outranks who may act', () => {
     const t = turnOf(
       facts({ state: 'draft', viewer: member, gates: [{ title: 'No runner paired' }] }),

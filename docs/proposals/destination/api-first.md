@@ -43,7 +43,8 @@ reach.
 
 A token keeps the reach it was minted with: each prefix carries the grant epoch it joined at and
 each token the epoch it was minted at, so a token issued before a prefix joined the menu is refused
-there, whatever it was granted.
+there, whatever it was granted. An MCP tool names the prefix its rows are served at and is dated by
+it, through the same rule (`auth/pat-permissions.ts:patEpochRefusal`).
 
 **No API reference exists.** No OpenAPI or other machine-readable description of any route is in
 `packages/core/src` or `docs/`. A route's input and output are read today from its handler.
