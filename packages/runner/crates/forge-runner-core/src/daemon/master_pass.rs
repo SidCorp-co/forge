@@ -780,4 +780,28 @@ mod tests {
         assert!(production.contains("master_api::register(client, project_id, &name, carry.slots)"));
         assert_eq!(production.matches("master_api::register(").count(), 1);
     }
+
+    #[test]
+    fn the_pass_tick_never_restarts_the_sweeps_wait() {
+        let production = sweep_source();
+        let run = production
+            .split("\npub async fn run(")
+            .nth(1)
+            .and_then(|r| r.split("\n}\n").next())
+            .expect("the master loop is findable");
+        assert!(
+            run.contains("passes.tick()"),
+            "the loop ticks the passes beside the sweep"
+        );
+        assert!(
+            !run.contains("_ = tokio::time::sleep(delay) =>"),
+            "a sleep built inside select! starts over each time the 5 s tick re-enters the loop, so the 30 s sweep never fires"
+        );
+        assert!(run.contains("tokio::pin!(sweep_due);"));
+        assert_eq!(
+            run.matches("sweep_due.as_mut().reset(").count(),
+            2,
+            "both the timed and the woken sweep set the next deadline"
+        );
+    }
 }
