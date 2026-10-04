@@ -1,10 +1,10 @@
+import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { z } from 'zod';
 import {
   bindingDocumentSchema,
   environmentStateSchema,
   policyDocumentSchema,
   projectDocumentSchema,
-  SCHEMA_BASE,
   testingProfileSchema,
 } from './schema.js';
 

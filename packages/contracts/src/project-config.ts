@@ -161,3 +161,6 @@ export const JUDGING_JOB_TYPES = ["test", "smoke", "staging", "drive"] as const;
 
 /** The job id a running job's credential names itself by. */
 export const SELF_JOB = "self";
+
+// The base every Forge document schema id hangs off.
+export const SCHEMA_BASE = "https://forge.sidcorp.co/schemas";

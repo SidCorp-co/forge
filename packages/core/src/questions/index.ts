@@ -4,5 +4,6 @@ export {
   type AskInput,
   askQuestion,
   deleteFeedbackQuestions,
+  insertAskedQuestion,
   insertBatchQuestions,
 } from './write.js';

@@ -1,5 +1,6 @@
+import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { z } from 'zod';
-import { SCHEMA_BASE, unique, uuid } from '../project-config/schema.js';
+import { unique, uuid } from '../project-config/index.js';
 import type { DocumentType } from './schema.js';
 
 export const DOCUMENT_SCHEMA_ID = `${SCHEMA_BASE}/document-v1.json`;

@@ -1,4 +1,4 @@
-import { pointer } from '../project-config/documents.js';
+import { jsonPointer as pointer } from '../lib/refusal.js';
 import { missingElements } from './contract/upload-rules.js';
 import type { EcosystemRefusal } from './refusals.js';
 import { CONTRACT_REF, type EcosystemDocument, type InterfaceDocument } from './schema.js';

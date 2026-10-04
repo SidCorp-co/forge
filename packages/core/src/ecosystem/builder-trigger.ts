@@ -2,8 +2,8 @@
 
 import { db } from '../db/client.js';
 import { logger } from '../observability/logger.js';
-import { wakeMastersForBuild } from '../ws/master-wake.js';
 import { openOwedRun } from './link-service.js';
+import { ecosystemSignals } from './ports.js';
 import { membershipsWhere } from './store.js';
 
 const COMMIT = /^[0-9a-f]{40}$/;
@@ -42,6 +42,6 @@ export async function openPushedRuns(input: {
     );
     if (run.opened) opened += 1;
   }
-  if (opened > 0) await wakeMastersForBuild(projectId);
+  if (opened > 0) await ecosystemSignals().wakeForBuild(projectId);
   return opened;
 }

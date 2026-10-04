@@ -7,7 +7,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireHeld, requireOrgCan } from '../permissions/index.js';
-import { findProjectOrgId } from '../projects/service.js';
+import { findProjectOrgId } from '../projects/index.js';
 import {
   deleteIntegrationGuide,
   integrationGuideSlug,

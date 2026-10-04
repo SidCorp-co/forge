@@ -5,7 +5,7 @@ import { queryBadRequest } from '../../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { badRequest, forbidden } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
-import { slug } from '../../project-config/schema.js';
+import { slug } from '../../project-config/index.js';
 import { readContractDetail, readContractStanding } from './read.js';
 
 const projectParam = z.object({ id: z.uuid() });

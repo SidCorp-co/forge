@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { isPlainObject as isRecord } from '@forge/contracts/document-patch';
 import { db, type Tx } from '../db/client.js';
-import { isRecord } from '../project-config/documents.js';
 import { type ChannelOutcome, lockedSender, notIn, refuse, served, settle } from './channel-act.js';
 import type { Writer } from './channel-author.js';
 import { checked, parsedOrRefused } from './channel-checks.js';

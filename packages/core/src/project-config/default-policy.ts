@@ -1,5 +1,6 @@
+import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { checkPolicy } from './rules.js';
-import { type PolicyDocument, policyDocumentSchema, SCHEMA_BASE } from './schema.js';
+import { type PolicyDocument, policyDocumentSchema } from './schema.js';
 
 // cm:why each outlives the run that calls it — a cron, a workflow, a trigger, a wake-up.
 export const DRIVER_DENY = [

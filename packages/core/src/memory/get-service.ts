@@ -2,7 +2,7 @@ import { and, asc, desc, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories, memorySources } from '../db/schema.js';
-import { memoryOfLiveIssue } from '../issues/archive.js';
+import { memoryOfLiveIssue } from './live-issue.js';
 
 /**
  * Direct (non-semantic) memory query, behind REST `GET /api/memory`. Filters

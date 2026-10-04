@@ -30,9 +30,10 @@ export type { ProjectDocument, TestingProfile } from './schema.js';
 export {
   type DeploymentTrigger,
   type EnvironmentState,
-  SCHEMA_BASE,
   STOREFRONT_PROVIDERS,
+  sized,
   slug,
+  unique,
   uuid,
 } from './schema.js';
 export type { WriteOutcome } from './service.js';

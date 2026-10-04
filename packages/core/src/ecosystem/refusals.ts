@@ -1,6 +1,6 @@
 import type { EcosystemRefusalCode } from '@forge/contracts/ecosystem';
 import { refuser } from '../lib/refusal.js';
-import type { ApiRefusal } from '../project-config/documents.js';
+import type { ApiRefusal } from '../project-config/index.js';
 
 export type {
   ChannelRefusalCode,

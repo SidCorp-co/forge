@@ -29,11 +29,12 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import { finalizeJobDone } from '../jobs/finalize-done.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import type { EgressReader } from '../lib/data-egress.js';
+import { peopleOf } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
-import { readDeclaredSource } from '../project-config/source.js';
+import { readDeclaredSource } from '../project-config/index.js';
 import {
   type BatchRow,
   batchesOfConversation,
@@ -42,7 +43,6 @@ import {
 } from '../questionnaires/read.js';
 import { posterRefusal, roundsRefusal } from '../questionnaires/rules.js';
 import { announce, inTx, postQuestionnaireIn, supersedeOpenIn } from '../questionnaires/service.js';
-import { userNames } from '../workflows/service.js';
 import { analysePrompt, type OnboardingPromptContext, revisePrompt } from './prompt.js';
 import {
   designsOf,
@@ -87,7 +87,7 @@ const factsOf = (actor: OnboardingActor, projectId: string) =>
   permissionFactsOf(actor.userId, projectId);
 
 async function nameOf(userId: string) {
-  return (await userNames([userId])).get(userId) ?? 'Someone';
+  return (await peopleOf([userId])).get(userId)?.name ?? 'Someone';
 }
 
 async function settled(

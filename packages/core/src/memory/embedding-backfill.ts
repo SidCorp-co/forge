@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { appConfig, knowledgeEntries, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
-import { fillKnowledgeEmbedding, knowledgeEmbedInput } from '../knowledge/service.js';
+import { fillKnowledgeEmbedding, knowledgeEmbedInput } from '../knowledge/index.js';
 import { logger } from '../observability/logger.js';
 import { chunkAndPublish, loadChunkParent } from './chunk-writer.js';
 import { CHUNKED_SOURCES } from './chunker.js';

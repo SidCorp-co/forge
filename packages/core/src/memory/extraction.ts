@@ -3,7 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues, type JobType, jobs, memories } from '../db/schema.js';
 import { callFastModel, fastModelConfigured } from '../integrations/llm/index.js';
-import { insertKnowledgeEdgeOnce } from '../knowledge-edges/service.js';
+import { insertKnowledgeEdgeOnce } from '../knowledge-edges/index.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { indexMemory } from './indexer.js';

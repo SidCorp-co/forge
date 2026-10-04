@@ -3,7 +3,6 @@
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { db } from '../db/client.js';
 import { permissionFactsOf } from '../permissions/index.js';
-import { wakeMastersForBuild } from '../ws/master-wake.js';
 import { notFound, stewardRole } from './access.js';
 import { owedTrigger } from './builder-head.js';
 import {
@@ -17,6 +16,7 @@ import { openedRun } from './link-rules.js';
 import type { BuilderRunWrite } from './link-schema.js';
 import { type Held, sourceOf, storedBuilderRun } from './link-service.js';
 import { insertBuilderRun, readBuilderRun, replaceBuilderRun } from './link-store.js';
+import { ecosystemSignals } from './ports.js';
 import type { EcosystemRefusal } from './refusals.js';
 import { activeEcosystemIdsOf, lockKeys } from './store.js';
 
@@ -100,6 +100,6 @@ export async function supersedeBuilderRun(input: {
       opened: { row: opened, document: fresh },
     };
   });
-  if (outcome.ok) await wakeMastersForBuild(projectId);
+  if (outcome.ok) await ecosystemSignals().wakeForBuild(projectId);
   return outcome;
 }

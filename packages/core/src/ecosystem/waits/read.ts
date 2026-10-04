@@ -4,8 +4,8 @@ import type {
   IssueContractWaits,
 } from '@forge/contracts/contract-waits';
 import { CONTRACT_WAIT_UNSETTLED } from '@forge/contracts/contract-waits';
-import { requirementKey } from '@forge/contracts/requirements';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import { requirementKey } from '@forge/contracts/requirements';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import { issues, projects } from '../../db/schema.js';

@@ -4,7 +4,7 @@
 // only ever asks for rows whose current generation has no published chunk set.
 
 import { and, asc, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
-import { mergeMemoryReindex, stampLastBackfill } from '../app-config/service.js';
+import { mergeMemoryReindex, stampLastBackfill } from '../app-config/index.js';
 import { db } from '../db/client.js';
 import { appConfig, memories } from '../db/schema.js';
 import { type MemoryReindexState, memoryChunks } from '../db/schema-memory-chunks.js';

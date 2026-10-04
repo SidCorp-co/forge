@@ -1,4 +1,4 @@
-import { SCHEMA_BASE } from '../project-config/schema.js';
+import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import type { MembershipDocument, MembershipState } from './schema.js';
 
 export const MEMBERSHIP_VERBS = ['accept', 'decline', 'leave', 'remove'] as const;

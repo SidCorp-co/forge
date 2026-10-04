@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { type MemoryModel, type MemorySource, memories } from '../db/schema.js';
 import { identifierTsQuery } from '../db/schema-types.js';
-import { memoryOfLiveIssue, memoryOfLiveIssueAs } from '../issues/archive.js';
+import { memoryOfLiveIssue, memoryOfLiveIssueAs } from './live-issue.js';
 
 interface BaseSearchInput {
   projectId: string;

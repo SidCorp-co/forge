@@ -1,1 +1,1 @@
-export {};
+export { insertKnowledgeEdgeOnce } from './service.js';
