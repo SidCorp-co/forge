@@ -30,6 +30,9 @@ importers:
 
   .:
     devDependencies:
+      '@biomejs/biome':
+        specifier: ^2.5.14
+        version: 2.5.14
       '@typescript/native-preview':
         specifier: 7.0.0-dev.20260707.2
         version: 7.0.0-dev.20260707.2
@@ -39,21 +42,30 @@ importers:
       eslint:
         specifier: ^10.11.0
         version: 10.11.0(jiti@2.7.0)
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
       turbo:
         specifier: ^2.11.4
         version: 2.11.4
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
       typescript-eslint:
         specifier: ^8.70.1
         version: 8.70.1(eslint@10.11.0(jiti@2.7.0))(typescript@5.9.3)
+      vitest:
+        specifier: ^5.0.2
+        version: 5.0.2(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(@vitest/coverage-v8@5.0.2)(jsdom@30.1.1(@noble/hashes@1.8.0)(canvas@3.2.3))(vite@6.4.3(@types/node@26.6.3)(jiti@2.7.0)(lightningcss@1.32.0)(sass@1.51.0)(terser@5.48.0)(tsx@4.23.15)(yaml@2.9.0))
 
   packages/contracts:
     dependencies:
       '@forge/core':
         specifier: workspace:*
         version: link:../core
-      drizzle-orm:
-        specifier: ^0.45.3
-        version: 0.45.3(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.23.1)(better-sqlite3@12.9.0)(knex@3.0.1(better-sqlite3@12.9.0)(pg@8.23.1))(pg@8.23.1)(postgres@3.4.9)
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -200,9 +212,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^5.0.2
         version: 5.0.2(vitest@5.0.2)
-      dependency-cruiser:
-        specifier: 18.2.0
-        version: 18.2.0
       drizzle-kit:
         specifier: ^0.31.11
         version: 0.31.11
@@ -236,9 +245,6 @@ importers:
       '@codemirror/lang-markdown':
         specifier: ^6.5.2
         version: 6.5.2
-      '@codemirror/language':
-        specifier: ^6.12.4
-        version: 6.12.4
       '@codemirror/state':
         specifier: ^6.7.6
         version: 6.7.6
@@ -324,9 +330,15 @@ importers:
         specifier: ^1.4.0
         version: 1.4.0
     devDependencies:
+      '@biomejs/biome':
+        specifier: ^2.5.14
+        version: 2.5.14
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.3
+      '@testing-library/dom':
+        specifier: ^10.4.1
+        version: 10.4.1
       '@testing-library/jest-dom':
         specifier: ^7.0.1
         version: 7.0.1(@testing-library/dom@10.4.1)(vitest@5.0.2)
@@ -9948,16 +9960,6 @@ snapshots:
       pg: 8.23.0
       postgres: 3.4.9
 
-  drizzle-orm@0.45.3(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.23.1)(better-sqlite3@12.9.0)(knex@3.0.1(better-sqlite3@12.9.0)(pg@8.23.1))(pg@8.23.1)(postgres@3.4.9):
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.1
-      '@types/better-sqlite3': 7.6.13
-      '@types/pg': 8.23.1
-      better-sqlite3: 12.9.0
-      knex: 3.0.1(better-sqlite3@12.9.0)(pg@8.23.1)
-      pg: 8.23.1
-      postgres: 3.4.9
-
   dunder-proto@1.0.1:
     dependencies:
       call-bind-apply-helpers: 1.0.2
@@ -10818,29 +10820,6 @@ snapshots:
     optionalDependencies:
       better-sqlite3: 12.9.0
       pg: 8.23.0
-    transitivePeerDependencies:
-      - supports-color
-    optional: true
-
-  knex@3.0.1(better-sqlite3@12.9.0)(pg@8.23.1):
-    dependencies:
-      colorette: 2.0.19
-      commander: 10.0.1
-      debug: 4.3.4
-      escalade: 3.2.0
-      esm: 3.2.25
-      get-package-type: 0.1.0
-      getopts: 2.3.0
-      interpret: 2.2.0
-      lodash: 4.18.1
-      pg-connection-string: 2.6.1
-      rechoir: 0.8.0
-      resolve-from: 5.0.0
-      tarn: 3.1.2
-      tildify: 2.0.0
-    optionalDependencies:
-      better-sqlite3: 12.9.0
-      pg: 8.23.1
     transitivePeerDependencies:
       - supports-color
     optional: true
