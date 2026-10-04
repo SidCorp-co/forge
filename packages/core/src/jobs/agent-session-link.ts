@@ -8,7 +8,7 @@ import {
   jobs,
 } from '../db/schema.js';
 import { masterSessionIfOwned } from '../devices/master-owner.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
 import type { FailureCause } from '../pipeline/failure-causes.js';
 import { classifyFailure } from '../pipeline/failure-classifier.js';
@@ -267,8 +267,7 @@ export async function syncAgentSessionLifecycle(
   }
   try {
     const status = SESSION_STATUS_OF_JOB_OUTCOME[outcome];
-    await applyKernelTransition(db, {
-      entity: 'session',
+    await transitionSessions(db, {
       to: status,
       set:
         status === 'failed'

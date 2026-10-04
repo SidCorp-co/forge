@@ -1,8 +1,8 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
-import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
-import { OCCUPYING_JOB_STATUSES } from './status-sets.js';
+import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
+import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 
 export type ActiveJobContext = {
   /** Always present: the session IS the context, and a job is what it may be running. */

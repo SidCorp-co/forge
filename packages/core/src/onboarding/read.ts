@@ -18,7 +18,7 @@ import { jobs } from '../db/schema.js';
 import { onboardings, questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
+import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import type { LiveJob } from './rules.js';

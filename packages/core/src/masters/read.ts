@@ -15,7 +15,7 @@ import { masterLastBeatSql } from '../devices/master-silence.js';
 import { SESSION_SILENCE_TIMEOUT_S } from '../devices/session-silence.js';
 import { NOT_PARKED } from '../jobs/resident-session.js';
 import { MASTER_SESSION_KIND, RUN_SESSION_KIND } from '../jobs/session-kinds.js';
-import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
+import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { slotsOf } from './rules.js';
 
 const rowsOf = <T>(r: unknown) => [...(r as Iterable<T>)];

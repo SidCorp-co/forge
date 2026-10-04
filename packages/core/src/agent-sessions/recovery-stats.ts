@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { transitionSessions } from './session-transition.js';
 import type { FailureKind } from '../pipeline/failure-classifier.js';
 import {
   DEFAULT_RECOVERY_STATS,
@@ -96,8 +96,7 @@ export async function markSessionTerminal(
   sessionId: string,
   terminal: 'completed_via_recovery' | 'cancelled_stale',
 ): Promise<void> {
-  await applyKernelTransition(db, {
-    entity: 'session',
+  await transitionSessions(db, {
     to: terminal,
     set: { updatedAt: new Date() },
     where: eq(agentSessions.id, sessionId),

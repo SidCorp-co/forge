@@ -5,7 +5,7 @@ import {
   TRANSCRIPT_ATTEMPTED_KEY,
   TRANSCRIPT_FINALIZED_KEY,
 } from '../../db/transcript-marker.js';
-import { TERMINAL_JOB_STATUSES } from '../../jobs/status-sets.js';
+import { TERMINAL_JOB_STATUSES } from '@forge/contracts/job-machine';
 
 /** Terminal `jobs.status`, from the one constant that answers it. */
 const JOB_TERMINAL = sql`(${sql.join(

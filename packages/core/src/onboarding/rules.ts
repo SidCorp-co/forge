@@ -6,7 +6,7 @@
 
 import type { OnboardingRefusal, OnboardingStatus } from '@forge/contracts/onboarding';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { OCCUPYING_JOB_STATUSES } from '../jobs/status-sets.js';
+import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import {
   type ActorFacts,
   type ActRule,

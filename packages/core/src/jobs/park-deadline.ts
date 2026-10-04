@@ -2,7 +2,7 @@ import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { agentQuestions } from '../db/schema-questions.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
 import type { LoopScope } from './loop-monitor.js';
 import { kindTuple, NEVER_PARKED_SESSION_KINDS } from './session-kinds.js';
@@ -39,8 +39,7 @@ export async function reapExpiredParks(
   now: Date = new Date(),
   scope: LoopScope = {},
 ): Promise<number> {
-  const reaped = await applyKernelTransition(db, {
-    entity: 'session',
+  const reaped = (await transitionSessions(db, {
     to: 'failed',
     set: { failureReason: 'residency_expired', updatedAt: now },
     where: and(
@@ -50,11 +49,10 @@ export async function reapExpiredParks(
       NOT_A_PROCESSLESS_PARK,
       ...(scope.projectId ? [eq(agentSessions.projectId, scope.projectId)] : []),
     ),
-    fromStatus: 'running',
     reason: 'residency_expired',
     actor: { type: 'sweeper' },
     source: 'loop-monitor',
-  });
+  })).rows;
 
   if (reaped.length > 0) {
     logger.info({ reaped: reaped.length }, 'loop-monitor: parks past their residency deadline');
@@ -110,16 +108,14 @@ export async function reapUnansweredParks(
 
   for (const park of parks) {
     const endedReason = `unanswered_${park.days}d`;
-    const moved = await applyKernelTransition(db, {
-      entity: 'session',
+    const moved = (await transitionSessions(db, {
       to: 'failed',
       set: { failureReason: 'park_unanswered', updatedAt: now },
       where: and(eq(agentSessions.id, park.sessionId), eq(agentSessions.status, 'running')),
-      fromStatus: 'running',
       reason: endedReason,
       actor: { type: 'sweeper' },
       source: 'loop-monitor',
-    });
+    })).rows;
     if (moved.length === 0) continue;
 
     await db

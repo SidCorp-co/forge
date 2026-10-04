@@ -16,7 +16,7 @@ import type { SQL } from 'drizzle-orm';
 import { and, eq, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, pipelineRuns } from '../db/schema.js';
-import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
+import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/session-transition.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { PIPELINE_SESSION_KINDS } from './session-kinds.js';
@@ -67,8 +67,7 @@ export interface QueueHopResult {
 export async function reapQueueHop(input: QueueHopInput): Promise<QueueHopResult> {
   const { now, queueCutoff, quietCutoff, projectFilter } = input;
 
-  const queuedFailed = await applyKernelTransition(db, {
-    entity: 'session',
+  const queuedFailed = (await transitionSessions(db, {
     returning: SWEEP_SESSION_COLUMNS,
     to: 'failed',
     set: { failureReason: 'queue_timeout', updatedAt: now },
@@ -82,11 +81,10 @@ export async function reapQueueHop(input: QueueHopInput): Promise<QueueHopResult
       inArray(agentSessions.kind, PIPELINE_SESSION_KINDS),
       ...(projectFilter ? [projectFilter] : []),
     ),
-    fromStatus: 'queued',
     reason: 'queue_timeout',
     actor: { type: 'sweeper' },
     source: 'loop-monitor',
-  });
+  })).rows;
 
   for (const z of queuedFailed) {
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'queue_timeout');
@@ -102,8 +100,7 @@ export async function reapQueueHop(input: QueueHopInput): Promise<QueueHopResult
     });
   }
 
-  const neverReportedFailed = await applyKernelTransition(db, {
-    entity: 'session',
+  const neverReportedFailed = (await transitionSessions(db, {
     returning: SWEEP_SESSION_COLUMNS,
     to: 'failed',
     set: { failureReason: 'turn_never_reported', updatedAt: now },
@@ -114,11 +111,10 @@ export async function reapQueueHop(input: QueueHopInput): Promise<QueueHopResult
       inArray(agentSessions.kind, PIPELINE_SESSION_KINDS),
       ...(projectFilter ? [projectFilter] : []),
     ),
-    fromStatus: 'queued',
     reason: 'turn_never_reported',
     actor: { type: 'sweeper' },
     source: 'loop-monitor',
-  });
+  })).rows;
 
   for (const z of neverReportedFailed) {
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'turn_never_reported');

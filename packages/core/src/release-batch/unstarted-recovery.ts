@@ -1,8 +1,9 @@
+import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { syncAgentSessionLifecycle } from '../jobs/agent-session-link.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
 import { recoverStrandedReleasing, runRecordedPromotion } from './releasing-recovery.js';
@@ -63,8 +64,7 @@ async function fenceOrResume(jobId: string): Promise<typeof jobs.$inferSelect | 
  * Make the job unstartable, or answer that somebody else got there first.
  */
 async function fenceJob(jobId: string): Promise<typeof jobs.$inferSelect | null> {
-  const [row] = await applyKernelTransition(db, {
-    entity: 'job',
+  const [row] = (await transition(db, JOB_MACHINE, {
     to: 'cancelled',
     set: { finishedAt: new Date(), error: REASON },
     where: and(
@@ -73,11 +73,10 @@ async function fenceJob(jobId: string): Promise<typeof jobs.$inferSelect | null>
       isNull(jobs.heldBy),
       isNull(jobs.dispatchedAt),
     ),
-    fromStatus: 'queued',
     reason: REASON,
     actor: { type: 'system' },
     source: 'sweeper',
-  });
+  })).rows;
   return row ?? null;
 }
 

@@ -20,8 +20,9 @@ import {
   PIPELINE_SESSION_KINDS,
   RUN_SESSION_KIND,
 } from '../jobs/session-kinds.js';
-import { LIVE_SESSION_STATUSES, oneShotRunOutcome } from '../lifecycle/status-sets.js';
-import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
+import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
+import { oneShotRunOutcome } from '@forge/contracts/run-machine';
+import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
@@ -496,8 +497,7 @@ export async function reapOrphanedOneShotRuns(
     try {
       // A session already completed or failed is left as-is — the run still
       // needs closing (the missed-`/desktop/status` case).
-      const flipped = await applyKernelTransition(db, {
-        entity: 'session',
+      const flipped = (await transitionSessions(db, {
         returning: SWEEP_SESSION_COLUMNS,
         to: 'failed',
         set: { failureReason: 'heartbeat_timeout', updatedAt: now },
@@ -505,11 +505,10 @@ export async function reapOrphanedOneShotRuns(
           eq(agentSessions.pipelineRunId, row.id),
           inArray(agentSessions.status, LIVE_SESSION_STATUSES),
         ),
-        fromStatus: 'active',
         reason: 'heartbeat_timeout',
         actor: { type: 'sweeper' },
         source: 'sweeper',
-      });
+      })).rows;
       for (const s of flipped) {
         broadcastSessionEvent(s.id, s.projectId, s.deviceId, 'agent-session.status', {
           status: 'failed',
@@ -587,8 +586,7 @@ export async function closeIdleChatSessions(
   const ids = candidates.map((row) => row.id);
   if (ids.length === 0) return { closed: 0 };
 
-  const flipped = await applyKernelTransition(db, {
-    entity: 'session',
+  const flipped = (await transitionSessions(db, {
     returning: SWEEP_SESSION_COLUMNS,
     to: 'completed',
     set: { failureReason: null, failureDetail: null, updatedAt: now },
@@ -596,11 +594,10 @@ export async function closeIdleChatSessions(
       inArray(agentSessions.id, ids),
       inArray(agentSessions.status, LIVE_SESSION_STATUSES),
     ),
-    fromStatus: 'active',
     reason: 'chat_idle_timeout',
     actor: { type: 'sweeper' },
     source: 'sweeper',
-  });
+  })).rows;
 
   for (const s of flipped) {
     broadcastSessionEvent(s.id, s.projectId, s.deviceId, 'agent-session.status', {

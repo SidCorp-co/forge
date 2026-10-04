@@ -1,3 +1,4 @@
+import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -6,7 +7,7 @@ import { db } from '../db/client.js';
 import { jobEvents, jobs, skills } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { assertPlatformAdmin } from '../middleware/require-admin.js';
@@ -29,7 +30,7 @@ import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { JobResumeError, resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
 import { deriveSessionFinal } from './session-transcript.js';
-import { OCCUPYING_JOB_STATUSES } from './status-sets.js';
+import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { jobTurnVerdictRoutes } from './turn-verdict-routes.js';
 
 const badRequest = (details: unknown) =>
@@ -240,16 +241,14 @@ jobLifecycleDeviceRoutes.post(
         )
         .limit(1);
       if (activeRetry.length === 0) {
-        const [reclaimed] = await applyKernelTransition(db, {
-          entity: 'job',
+        const [reclaimed] = (await transition(db, JOB_MACHINE, {
           to: 'done',
           set: { exitCode: 0, error: null, finishedAt: new Date() },
           where: and(eq(jobs.id, id), eq(jobs.status, 'failed'), eq(jobs.error, job.error)),
-          fromStatus: 'failed',
           reason: 'reconciled_late_complete',
           actor: { type: 'runner', id: device.id },
           source: 'lifecycle',
-        });
+        })).rows;
         if (reclaimed) {
           logger.warn(
             { jobId: reclaimed.id, reapedError: job.error },
@@ -294,8 +293,7 @@ jobLifecycleDeviceRoutes.post(
       input.exitCode === 0 ? 'done' : input.exitCode === -1 ? 'cancelled' : 'failed';
     const effectiveError: string | null = input.error ?? null;
 
-    let [updated] = await applyKernelTransition(db, {
-      entity: 'job',
+    let [updated] = (await transition(db, JOB_MACHINE, {
       to: status,
       set: {
         exitCode: input.exitCode,
@@ -303,11 +301,10 @@ jobLifecycleDeviceRoutes.post(
         finishedAt: new Date(),
       },
       where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
-      fromStatus: job.status,
       reason: status === 'failed' ? (effectiveError ?? 'exit nonzero') : `lifecycle_${status}`,
       actor: { type: 'runner', id: device.id },
       source: 'lifecycle',
-    });
+    })).rows;
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
 
@@ -405,16 +402,14 @@ jobLifecycleDeviceRoutes.post(
       throw conflict('job is not in a runnable state', 'INVALID_STATE');
     }
 
-    let [updated] = await applyKernelTransition(db, {
-      entity: 'job',
+    let [updated] = (await transition(db, JOB_MACHINE, {
       to: 'failed',
       set: { error: input.error, finishedAt: new Date(), ...salvageSet(input.salvage) },
       where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
-      fromStatus: job.status,
       reason: input.error,
       actor: { type: 'runner', id: device.id },
       source: 'lifecycle',
-    });
+    })).rows;
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
 

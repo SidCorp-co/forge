@@ -7,7 +7,7 @@ import {
   skillRegistrations,
   skills,
 } from '../db/schema.js';
-import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
+import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';

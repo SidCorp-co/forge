@@ -25,7 +25,7 @@ import { broadcastSessionEvent } from './agent-session-link.js';
 import { readJobGate } from './job-queries.js';
 import { scrubJobOutput } from './job-secret-scrub.js';
 import { maybeDeriveIncremental } from './session-transcript.js';
-import { TERMINAL_JOB_STATUSES } from './status-sets.js';
+import { TERMINAL_JOB_STATUSES } from '@forge/contracts/job-machine';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });

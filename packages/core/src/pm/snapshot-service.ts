@@ -9,7 +9,7 @@ import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
+import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readRunnerLoad } from './runner-load-service.js';
 

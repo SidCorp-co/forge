@@ -3,7 +3,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { withKernelMarker } from '../db/kernel-marker.js';
 import { agentSessions, agentSessionTurns, projects } from '../db/schema.js';
 import { assertProjectRole } from '../lib/authz.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
@@ -32,6 +31,7 @@ import {
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 import { recordReportedTranscript } from './session-events.js';
+import { transitionSessions } from './session-transition.js';
 import {
   extractPromptString,
   findTurnInSession,
@@ -243,29 +243,28 @@ agentSessionTurnsRoutes.post(
     const priorMessages = replayMessages.slice(0, -1);
     const truncatedFromIndex = priorMessages.length;
     const regenNow = new Date();
-    const locked = await withKernelMarker(db, async (tx) => {
-      const [row] = await tx
-        .update(agentSessions)
-        .set({
+    const [locked] = (
+      await transitionSessions(db, {
+        to: 'queued',
+        set: {
           messages: priorMessages as never,
-          status: 'queued',
           failureReason: null,
           dispatchedAt: regenNow,
           updatedAt: regenNow,
-        })
-        .where(
-          and(
-            eq(agentSessions.id, id),
-            eq(agentSessions.status, session.status),
-            eq(agentSessions.updatedAt, session.updatedAt),
-          ),
-        )
-        .returning();
-      if (!row) return null;
-      await truncateTurnsAfter(id, priorMessages.length - 1, tx);
-      await recordReportedTranscript(tx, id, priorMessages as Record<string, unknown>[], regenNow);
-      return row;
-    });
+        },
+        where: and(
+          eq(agentSessions.id, id),
+          eq(agentSessions.status, session.status),
+          eq(agentSessions.updatedAt, session.updatedAt),
+        ),
+        actor: restActor(c),
+        source: 'session-regenerate',
+        afterWrite: async (tx) => {
+          await truncateTurnsAfter(id, priorMessages.length - 1, tx);
+          await recordReportedTranscript(tx, id, priorMessages as Record<string, unknown>[], regenNow);
+        },
+      })
+    ).rows;
     if (!locked) {
       throw new HTTPException(409, {
         message: 'session changed before regeneration could start',

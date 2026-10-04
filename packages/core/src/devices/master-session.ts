@@ -11,8 +11,8 @@ import {
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
-import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
+import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
 import { announceOneShotRun, insertOneShotRun, type OneShotRunSpec } from '../pipeline/runs.js';
 
@@ -145,8 +145,7 @@ export async function closeMasterSession(args: {
   sessionId: string;
   reason: string;
 }): Promise<boolean> {
-  const rows = await applyKernelTransition(db, {
-    entity: 'session',
+  const rows = (await transitionSessions(db, {
     to: 'completed',
     set: { failureDetail: args.reason, updatedAt: new Date() },
     where: and(
@@ -154,11 +153,10 @@ export async function closeMasterSession(args: {
       eq(agentSessions.deviceId, args.deviceId),
       notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
     ),
-    fromStatus: 'running',
     reason: 'master_session_ended',
     actor: { type: 'system' },
     source: 'master-session',
-  });
+  })).rows;
   return rows.length > 0;
 }
 

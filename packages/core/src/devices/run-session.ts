@@ -25,7 +25,7 @@ import {
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
 import {
   announceOneShotRun,
@@ -477,8 +477,7 @@ export async function closeRunSession(args: {
     return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, args, failing) };
   }
 
-  const flipped = await applyKernelTransition(db, {
-    entity: 'session',
+  const flipped = (await transitionSessions(db, {
     to: failing ? 'failed' : 'completed',
     set: {
       failureReason: failing ? 'agent_exited_without_result' : null,
@@ -486,11 +485,10 @@ export async function closeRunSession(args: {
       updatedAt: new Date(),
     },
     where: and(eq(agentSessions.id, args.sessionId), eq(agentSessions.status, row.status)),
-    fromStatus: row.status,
     reason: `run_session_${args.outcome}`,
     actor: { type: 'system' },
     source: 'run-session-close',
-  });
+  })).rows;
   if (flipped.length === 0) {
     return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, args, failing) };
   }

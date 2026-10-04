@@ -1,9 +1,11 @@
 import { and, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { SESSION_MACHINE } from '@forge/contracts/session-machine';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
+import { notAnEdgeError } from '../lifecycle/transition.js';
 import {
   type AgentSessionStatus,
   agentSessionStatuses,
@@ -39,6 +41,7 @@ import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { agentSessionInteractiveRoutes } from './interactive-routes.js';
 import { kindFromQuery } from './kind-query.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
+import { transitionSessions } from './session-transition.js';
 import { applyTranscriptPatch } from './patch-transcript.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
 import {
@@ -66,7 +69,6 @@ import {
   detectUnexpandedSkillFailure,
   finalizeScheduleSessionFailure,
 } from './session-failure.js';
-import { onTerminalPatch } from './terminal-effects.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
 
@@ -668,22 +670,48 @@ agentSessionRoutes.patch(
     // handled by broadcastTurnAppended so we don't spam clients while the
     // runner streams.
     const messagesPatched = patch.messages !== undefined;
-    const { updated, sync } = await withKernelMarker(db, async (tx) => {
-      const [row] = await tx
-        .update(agentSessions)
-        .set(updates)
-        .where(eq(agentSessions.id, id))
-        .returning();
-      if (!row) throw notFound('agent session not found');
+    type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+    const mirror = async (tx: Tx, rowId: string) => {
       if (transcript.snapshot && patchedMessages) {
         await recordReportedTranscript(tx, id, patchedMessages, patchNow);
       }
-      if (!messagesPatched) return { updated: row, sync: null };
+      if (!messagesPatched) return null;
       const prevMessages = Array.isArray(existing.messages) ? existing.messages : [];
-      const nextMessages = patchedMessages ?? [];
-      const result = await syncTurnsWithMessages(row.id, prevMessages, nextMessages, tx);
-      return { updated: row, sync: result };
-    });
+      return syncTurnsWithMessages(rowId, prevMessages, patchedMessages ?? [], tx);
+    };
+    const { status: nextStatus, ...columns } = updates;
+    let sync = null as Awaited<ReturnType<typeof mirror>>;
+    let updated: typeof existing;
+    if (nextStatus !== undefined && nextStatus !== existing.status) {
+      const [row] = (
+        await transitionSessions(db, {
+          to: nextStatus,
+          set: columns,
+          where: eq(agentSessions.id, id),
+          actor:
+            c.get('principal') === 'device'
+              ? { type: 'runner', id: existing.deviceId }
+              : restActor(c),
+          source: 'session-patch',
+          afterWrite: async (tx, rows) => {
+            if (rows[0]) sync = await mirror(tx, rows[0].id);
+          },
+        })
+      ).rows;
+      if (!row) throw notAnEdgeError(SESSION_MACHINE, existing.status, nextStatus);
+      updated = row;
+    } else {
+      updated = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .update(agentSessions)
+          .set(columns)
+          .where(eq(agentSessions.id, id))
+          .returning();
+        if (!row) throw notFound('agent session not found');
+        sync = await mirror(tx, row.id);
+        return row;
+      });
+    }
 
     if (sync) {
       // First new turn fires immediately so the client learns the turn id.
@@ -718,10 +746,6 @@ agentSessionRoutes.patch(
       isUserCancelled,
       messages: patchedMessages ?? existing.messages,
     });
-
-    if (patch.status !== undefined && TERMINAL_SESSION_STATUSES.has(patch.status)) {
-      await onTerminalPatch(updated);
-    }
 
     return c.json(updated);
   },

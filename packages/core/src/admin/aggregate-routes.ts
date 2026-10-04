@@ -25,7 +25,7 @@ import {
   users,
 } from '../db/schema.js';
 import { NON_OPEN_STATUSES } from '../issues/status-sets.js';
-import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
+import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { listResponse } from '../lib/pagination.js';
 import { utcDateTrunc } from '../lib/time-buckets.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';

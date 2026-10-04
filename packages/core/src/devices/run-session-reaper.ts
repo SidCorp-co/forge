@@ -10,7 +10,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { returnIssuesForRun } from './run-issue-return.js';
@@ -44,8 +44,7 @@ export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
     const sessionId = String(row.id);
     const runId = String(row.pipeline_run_id);
     const issueKeys = (row.issue_keys ?? []) as string[];
-    const flipped = await applyKernelTransition(db, {
-      entity: 'session',
+    const flipped = (await transitionSessions(db, {
       to: 'failed',
       set: {
         failureReason: 'runner_unreachable',
@@ -53,11 +52,10 @@ export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
         updatedAt: new Date(),
       },
       where: and(eq(agentSessions.id, sessionId), eq(agentSessions.status, 'running')),
-      fromStatus: 'running',
       reason: 'run_session_box_silent',
       actor: { type: 'system' },
       source: 'run-session-reaper',
-    });
+    })).rows;
     if (flipped.length === 0) continue;
     const returned = await returnIssuesForRun(runId, {
       reason: 'the box running this issue stopped answering',

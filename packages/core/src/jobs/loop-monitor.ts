@@ -1,7 +1,9 @@
+import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import { and, eq, inArray, isNotNull, lt, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
-import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/transition.js';
+import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
 import { resumeLapsedAnswers } from '../pipeline/answer-resume.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
@@ -28,7 +30,7 @@ import { broadcastZombieTransition, lookupIssueForRun, reapQueueHop } from './qu
 import { RESULT_EVENT_LATERAL, RESULT_GUARD } from './resident-session.js';
 import { CLIENT_SESSION_KINDS, PIPELINE_SESSION_KINDS } from './session-kinds.js';
 import { type SessionLostCause, sessionLostCause } from './session-lost-cause.js';
-import { OCCUPYING_JOB_STATUSES } from './status-sets.js';
+import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 
 type RedispatchFn = (
   sessionId: string,
@@ -175,16 +177,14 @@ async function resolveKillGateDecision(
   if (confirmed) set.killConfirmedAt = new Date();
   if (outcome) set.killOutcome = outcome;
 
-  const [updated] = await applyKernelTransition(db, {
-    entity: 'job',
+  const [updated] = (await transition(db, JOB_MACHINE, {
     to: 'failed',
     set,
     where: cfg.where,
-    fromStatus: cfg.fromStatus,
     reason: cfg.error,
     actor: { type: 'sweeper' },
     source: 'loop-monitor',
-  });
+  })).rows;
   if (!updated) return { phase: 'lost_race' };
 
   return { phase: 'reaped', updated, confirmed };
@@ -315,8 +315,7 @@ export async function reapZombieSessions(
     projectFilter,
   });
 
-  const heartbeatFailed = await applyKernelTransition(db, {
-    entity: 'session',
+  const heartbeatFailed = (await transitionSessions(db, {
     returning: SWEEP_SESSION_COLUMNS,
     to: 'failed',
     set: { failureReason: 'heartbeat_timeout', updatedAt: now },
@@ -348,11 +347,10 @@ export async function reapZombieSessions(
       ),
       ...(projectFilter ? [projectFilter] : []),
     ),
-    fromStatus: 'running',
     reason: 'heartbeat_timeout',
     actor: { type: 'sweeper' },
     source: 'loop-monitor',
-  });
+  })).rows;
 
   for (const z of heartbeatFailed) {
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'heartbeat_timeout');
@@ -372,8 +370,7 @@ export async function reapZombieSessions(
   // that never got a working client — claudeSessionId still NULL and the
   // heartbeat never advanced past creation. The arm is `kind IN
   // CLIENT_SESSION_KINDS`, so a species a pipeline step drives is outside it.
-  const noClientFailed = await applyKernelTransition(db, {
-    entity: 'session',
+  const noClientFailed = (await transitionSessions(db, {
     returning: SWEEP_SESSION_COLUMNS,
     to: 'failed',
     set: { failureReason: 'no_client_ack', updatedAt: now },
@@ -397,11 +394,10 @@ export async function reapZombieSessions(
       ),
       ...(projectFilter ? [projectFilter] : []),
     ),
-    fromStatus: 'running',
     reason: 'no_client_ack',
     actor: { type: 'sweeper' },
     source: 'loop-monitor',
-  });
+  })).rows;
 
   for (const z of noClientFailed) {
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'no_client_ack');

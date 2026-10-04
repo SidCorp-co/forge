@@ -1,3 +1,4 @@
+import { RUN_MACHINE } from '@forge/contracts/run-machine';
 /**
  * ISS-102 — pause / resume / cancel transitions for `pipeline_runs`.
  *
@@ -11,7 +12,7 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
 import type { ActorAgency, TransitionActor } from '../issues/actor-agency.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -172,12 +173,10 @@ export async function cancelPipelineRun(
   const cancelNow = new Date();
 
   const result = await db.transaction(async (tx) => {
-    const [updatedRun] = await applyKernelTransition(tx, {
-      entity: 'run',
+    const [updatedRun] = (await transition(tx, RUN_MACHINE, {
       to: 'cancelled',
       set: { finishedAt: cancelNow, updatedAt: cancelNow },
       where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
-      fromStatus: 'open',
       reason: FAILURE_REASON_PIPELINE_CANCELLED,
       actor: {
         type: 'user',
@@ -185,7 +184,7 @@ export async function cancelPipelineRun(
         ...(opts.actorUserId ? { id: opts.actorUserId } : {}),
       },
       source: 'runs-control',
-    });
+    })).rows;
 
     if (!updatedRun) {
       const [current] = await tx

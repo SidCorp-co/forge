@@ -55,6 +55,7 @@ import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './s
 export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
 import type { DecisionFields } from '@forge/contracts/comments';
+import { MACHINE_ENTITIES } from '@forge/contracts/machines';
 import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
 import { SCHEDULE_KINDS, SCHEDULE_RUN_STATUSES } from '@forge/contracts/schedules';
 import { BODY_FORMATS } from '../body/formats.js';
@@ -799,7 +800,7 @@ export const jobEvents = pgTable(
 // scraping logs. `from_status` is the declared prior status (the CAS guard's
 // expected value); `actor_id` is a bare uuid (no FK) so a system/sweeper actor
 // with no principal records NULL without a join target.
-export const kernelTransitionEntities = ['job', 'session', 'run', 'issue'] as const;
+export const kernelTransitionEntities = MACHINE_ENTITIES;
 export type KernelTransitionEntity = (typeof kernelTransitionEntities)[number];
 
 export const kernelTransitionActorTypes = ['user', 'system', 'runner', 'sweeper'] as const;

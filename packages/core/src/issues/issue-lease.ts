@@ -18,7 +18,7 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
-import { TERMINAL_JOB_STATUSES, UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
+import { TERMINAL_JOB_STATUSES, UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import {
   canonicalIssueKey,
   issueRefPrefixOf,

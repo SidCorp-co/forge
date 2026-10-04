@@ -15,7 +15,7 @@ import {
 } from '../../agent-sessions/session-credential.js';
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
-import { applyKernelTransition } from '../../lifecycle/transition.js';
+import { transitionSessions } from '../../agent-sessions/session-transition.js';
 import { logger } from '../../logger.js';
 import { hasInFlightRoomSession } from './room-delivery.js';
 
@@ -138,12 +138,10 @@ export async function startEscalation(args: StartEscalationArgs): Promise<StartE
       'rocketchat.escalation: chat-turn dispatch failed',
     );
     try {
-      await applyKernelTransition(db, {
-        entity: 'session',
+      await transitionSessions(db, {
         to: 'failed',
         set: { failureReason: 'ws_publish_failed' },
         where: eq(agentSessions.id, session.id),
-        fromStatus: session.status,
         reason: 'ws-publish-failed',
         actor: { type: 'system' },
         source: 'rocketchat.escalation',

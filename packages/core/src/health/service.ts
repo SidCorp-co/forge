@@ -12,7 +12,7 @@ import pkg from '../../package.json' with { type: 'json' };
 import { db } from '../db/client.js';
 import { agentSessions, jobs, projects, runners } from '../db/schema.js';
 import { countInFlightByRunner } from '../jobs/in-flight.js';
-import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
+import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { isBossStarted } from '../queue/boss.js';
 import { isWsListening } from '../ws/server.js';
 

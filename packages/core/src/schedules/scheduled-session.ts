@@ -28,7 +28,7 @@ import { TurnAuthorityRefused } from '../auth/turn-credential.js';
 import { db } from '../db/client.js';
 import { agentSessions, schedules } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
 
 type AgentSessionRow = typeof agentSessions.$inferSelect;
@@ -102,15 +102,13 @@ export async function recordRefusedRun(args: {
     { sessionId: session.id, scheduleId, code: refusal.code },
     'schedule.dispatch: the run may not act as its person; refused',
   );
-  await applyKernelTransition(db, {
-    entity: 'session',
+  await transitionSessions(db, {
     to: 'failed',
     set: {
       failureReason: 'session_authority_refused',
       failureDetail: `${refusal.code}: ${refusal.message}`,
     },
     where: eq(agentSessions.id, session.id),
-    fromStatus: session.status,
     reason: 'session_authority_refused',
     actor: { type: 'system' },
     source: 'schedule',
@@ -121,12 +119,10 @@ export async function recordRefusedRun(args: {
 /** A run whose frame never reached its box is failed, never left `idle` for the sweeper to guess at. */
 export async function failUndeliveredRun(session: AgentSessionRow): Promise<void> {
   try {
-    await applyKernelTransition(db, {
-      entity: 'session',
+    await transitionSessions(db, {
       to: 'failed',
       set: { failureReason: 'ws_publish_failed' },
       where: eq(agentSessions.id, session.id),
-      fromStatus: session.status,
       reason: 'ws-publish-failed',
       actor: { type: 'system' },
       source: 'schedule',

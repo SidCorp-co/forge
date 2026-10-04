@@ -2,7 +2,7 @@ import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
 import { masterSilentSql } from './master-silence.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
@@ -26,8 +26,7 @@ export async function reapSilentMasters(): Promise<number> {
   let closed = 0;
   for (const row of silent) {
     const sessionId = String(row.id);
-    const flipped = await applyKernelTransition(db, {
-      entity: 'session',
+    const flipped = (await transitionSessions(db, {
       to: 'failed',
       set: {
         failureReason: 'runner_unreachable',
@@ -42,7 +41,7 @@ export async function reapSilentMasters(): Promise<number> {
       reason: 'master_session_box_silent',
       actor: { type: 'system' },
       source: 'master-reaper',
-    });
+    })).rows;
     if (flipped.length === 0) continue;
     closed += 1;
     await releaseHoldsForSession(sessionId);

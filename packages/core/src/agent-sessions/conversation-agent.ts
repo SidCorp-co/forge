@@ -24,7 +24,7 @@ import { db } from '../db/client.js';
 import { agentSessions, type MemberLens } from '../db/schema.js';
 import { buildProgressFactsBlock, computeProjectProgress } from '../issues/progress.js';
 import { egressShown } from '../lib/data-egress.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { transitionSessions } from './session-transition.js';
 import { logger } from '../logger.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { getStorage } from '../storage/index.js';
@@ -490,8 +490,7 @@ export async function markSessionFailed(
 ): Promise<void> {
   try {
     const priorMeta = (session.metadata as Record<string, unknown>) ?? {};
-    await applyKernelTransition(db, {
-      entity: 'session',
+    await transitionSessions(db, {
       to: 'failed',
       set: {
         failureReason: 'ws_publish_failed',
@@ -500,7 +499,6 @@ export async function markSessionFailed(
           : {}),
       },
       where: eq(agentSessions.id, session.id),
-      fromStatus: session.status,
       reason: 'ws-publish-failed',
       actor: { type: 'system' },
       source,

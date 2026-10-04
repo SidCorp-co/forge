@@ -3,7 +3,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { withKernelMarker } from '../db/kernel-marker.js';
 import { agentSessions, devices, projects, runners, schedules } from '../db/schema.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import {
@@ -11,8 +10,9 @@ import {
   findChatCapableDeviceForProject,
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
-import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { LIVE_SESSION_STATUSES, SESSION_MACHINE } from '@forge/contracts/session-machine';
+import { notAnEdgeError } from '../lifecycle/transition.js';
+import { transitionSessions } from './session-transition.js';
 import { logger } from '../logger.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -56,16 +56,18 @@ agentSessionLifecycleRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    await ensureSessionOwnerOrAdmin(input.sessionId, userId);
+    const { session } = await ensureSessionOwnerOrAdmin(input.sessionId, userId);
 
-    const [updated] = await withKernelMarker(db, async (tx) =>
-      tx
-        .update(agentSessions)
-        .set({ status: 'idle', updatedAt: new Date() })
-        .where(eq(agentSessions.id, input.sessionId))
-        .returning(),
-    );
-    if (!updated) throw notFound('agent session not found');
+    const [updated] = (
+      await transitionSessions(db, {
+        to: 'idle',
+        set: { updatedAt: new Date() },
+        where: eq(agentSessions.id, input.sessionId),
+        actor: restActor(c),
+        source: 'session-abort',
+      })
+    ).rows;
+    if (!updated) throw notAnEdgeError(SESSION_MACHINE, session.status, 'idle');
 
     // Aborting a pipeline session just flips it to `idle`; the failure path
     // (ISS-393) reverts the issue to its stage entry-status or holds the job,
@@ -112,19 +114,17 @@ agentSessionLifecycleRoutes.post(
     // CAS on the active statuses we observed: a worker write that lands
     // between the SELECT and this UPDATE will not be in queued/running
     // anymore, and we'd silently no-op rather than stomp it.
-    const [updated] = await applyKernelTransition(db, {
-      entity: 'session',
+    const [updated] = (await transitionSessions(db, {
       to: 'failed',
       set: {
         failureReason: 'user_cancelled',
         updatedAt: cancelNow,
       },
       where: and(eq(agentSessions.id, id), inArray(agentSessions.status, LIVE_SESSION_STATUSES)),
-      fromStatus: session.status,
       reason: 'user_cancelled',
       actor: restActor(c),
       source: 'session-cancel',
-    });
+    })).rows;
     if (!updated) {
       // CAS lost — return the current row so the client can re-render.
       const [current] = await db
@@ -240,10 +240,17 @@ agentSessionLifecycleRoutes.post(
           })
         : null;
 
-    const [updated] = await withKernelMarker(db, async (tx) =>
-      tx.update(agentSessions).set(statusSet).where(eq(agentSessions.id, sessionId)).returning(),
-    );
-    if (!updated) throw notFound('agent session not found');
+    const { status: _to, ...columns } = statusSet;
+    const [updated] = (
+      await transitionSessions(db, {
+        to: status,
+        set: columns,
+        where: eq(agentSessions.id, sessionId),
+        actor: restActor(c),
+        source: 'desktop-status',
+      })
+    ).rows;
+    if (!updated) throw notAnEdgeError(SESSION_MACHINE, existing.status, status);
 
     // ISS-101 — close one-shot runs on terminal status writes. No-op on
     // kind='issue' (closed by issue state-machine); fires for pm/interactive.

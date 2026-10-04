@@ -1,13 +1,13 @@
 /**
  * Closing a session closes what it owns.
  *
- * Every flip this writes carries {@link DESCENT_SOURCE}, and the hook in
- * `lifecycle/transition.ts` skips a flip that already came from one: one walk
- * per terminal flip, and a cycle in the parent edge cannot spin.
+ * Every flip this writes carries {@link DESCENT_SOURCE}, and
+ * `session-transition.ts:transitionSessions` skips a flip that already came from one: one walk per
+ * terminal flip, and a cycle in the parent edge cannot spin.
  *
- * `transition.ts` imports this file at call time from inside the chokepoint, so
- * every import here is too — a static edge back leaves this module's own
- * top-level constants in their temporal dead zone while the walk runs.
+ * `session-transition.ts` imports this file at call time, so every import here is too — a static
+ * edge back leaves this module's own top-level constants in their temporal dead zone while the
+ * walk runs.
  */
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -80,9 +80,8 @@ export async function closeSessionsOwnedBy(
         }
       }
 
-      const { applyKernelTransition } = await import('../lifecycle/transition.js');
-      const flipped = await applyKernelTransition(db, {
-        entity: 'session',
+      const { transitionSessions } = await import('./session-transition.js');
+      const flipped = (await transitionSessions(db, {
         to: 'failed',
         set: {
           failureReason: 'session_lost',
@@ -97,7 +96,7 @@ export async function closeSessionsOwnedBy(
         reason: cause.reason,
         actor: { type: 'system' },
         source: DESCENT_SOURCE,
-      });
+      })).rows;
       if (flipped.length === 0) continue;
       result.closed.push(child.id);
 

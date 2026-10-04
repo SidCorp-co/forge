@@ -1,3 +1,4 @@
+import { JOB_MACHINE } from '@forge/contracts/job-machine';
 /**
  * A pool job is briefed with its own `payload.promptString` and nothing else
  * (`prepare-claimed-job.ts:prepareClaimedJob`); a box hands back a job without
@@ -9,7 +10,7 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
-import { applyKernelTransition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
 import { failReconcileRunForFailedJob } from '../skills/reconcile-service.js';
@@ -41,8 +42,7 @@ const NO_PROMPT_SQL = sql`NOT COALESCE(
  * The CAS re-checks the missing prompt, so `false` when the row moved or gained one.
  */
 export async function settleNoPromptJob(job: { id: string; type: string }): Promise<boolean> {
-  const [settled] = await applyKernelTransition(db, {
-    entity: 'job',
+  const [settled] = (await transition(db, JOB_MACHINE, {
     to: 'failed',
     set: {
       finishedAt: new Date(),
@@ -53,12 +53,11 @@ export async function settleNoPromptJob(job: { id: string; type: string }): Prom
       classifierVersion: CLASSIFIER_VERSION,
     },
     where: and(eq(jobs.id, job.id), eq(jobs.status, 'queued'), isNull(jobs.heldBy), NO_PROMPT_SQL),
-    fromStatus: 'queued',
     reason: POOL_JOB_NO_PROMPT,
     actor: { type: 'system' },
     source: 'claim',
     returning: ['id', 'type', 'payload'],
-  });
+  })).rows;
   if (!settled) return false;
   logger.error(
     { jobId: job.id, jobType: job.type, code: POOL_JOB_NO_PROMPT },
