@@ -51,36 +51,12 @@ export async function readNeedsYou(
   return {
     generatedAt: now.toISOString(),
     areas: {
-      requirements: areaOf(
-        requirements,
-        (r) => r.standing.attentionGroup === 'needs_you',
-        (r) => r.standing.waitingOn.act,
-      ),
-      releases: areaOf(
-        releases.releases,
-        (r) => r.attention === 'you',
-        (r) => r.waiting.act,
-      ),
-      feedback: areaOf(
-        items,
-        (f) => f.attention === 'you',
-        (f) => f.waiting.act,
-      ),
-      issues: areaOf(
-        issues.issues,
-        (i) => i.standing.attentionGroup === 'needs_you',
-        (i) => i.standing.waitingOn.act,
-      ),
-      contracts: areaOf(
-        contracts.contracts,
-        (c) => c.attentionGroup === 'needs_you',
-        (c) => c.waitingOn.act,
-      ),
-      automation: areaOf(
-        [...automation.schedules, ...automation.reports],
-        (r) => r.attentionGroup === 'needs_you',
-        (r) => r.waitingOn.act ?? '',
-      ),
+      requirements: areaOf(requirements.map((r) => r.standing)),
+      releases: areaOf(releases.releases),
+      feedback: areaOf(items),
+      issues: areaOf(issues.issues.map((i) => i.standing)),
+      contracts: areaOf(contracts.contracts),
+      automation: areaOf([...automation.schedules, ...automation.reports]),
     },
     requirementsInDelivery: requirements.filter((r) => r.standing.state === 'in_delivery').length,
     untriagedFeedback: items.filter((f) => untriaged(f.phase)).length,

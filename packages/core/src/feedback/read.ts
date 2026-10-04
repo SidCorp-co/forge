@@ -4,15 +4,16 @@
  * target or a carrier with. Phases come from `rules.ts:phaseOf`; nothing here stores one.
  */
 
-import type {
-  FeedbackAttention,
-  FeedbackCaseView,
-  FeedbackDecisionView,
-  FeedbackListResponse,
-  FeedbackPhase,
-  FeedbackRouteView,
-  FeedbackSummary,
-  FeedbackView,
+import {
+  FEEDBACK_ATTENTION_GROUPS,
+  type FeedbackAttentionGroup,
+  type FeedbackCaseView,
+  type FeedbackDecisionView,
+  type FeedbackListResponse,
+  type FeedbackPhase,
+  type FeedbackRouteView,
+  type FeedbackSummary,
+  type FeedbackView,
 } from '@forge/contracts/feedback';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { and, asc, count, desc, eq, ilike, inArray } from 'drizzle-orm';
@@ -42,16 +43,8 @@ import { deliveredAmong } from '../requirements/standing-read.js';
 import { userNames } from '../workflows/service.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { feedbackIdsOfRequirement, NO_FEEDBACK, sourceOf } from './relations.js';
-import {
-  attentionOf,
-  type FeedbackRefusal,
-  type PhaseFacts,
-  phaseOf,
-  searchWithheldRefusal,
-  waitingFor,
-  waitingOf,
-  waitingOnOf,
-} from './rules.js';
+import { type FeedbackRefusal, type PhaseFacts, phaseOf, searchWithheldRefusal } from './rules.js';
+import { feedbackStandingOf } from './standing.js';
 import { targetView } from './target-view.js';
 
 export interface FeedbackActor {
@@ -349,11 +342,17 @@ export function summaryOf(
   const phase = phaseIn(r, l);
   const route = routeView(r, l);
   const reporterName = l.names.get(r.reportedBy) ?? null;
-  const attention = attentionOf(phase, viewer.userId === r.reportedBy);
   const stored = l.cases.get(r.id);
   const kase = stored ? caseView(stored) : null;
   const reporter = reporterName ?? 'The reporter';
-  const waiting = waitingOf(phase, r.route, route?.key ?? null, reporter, kase);
+  const standing = feedbackStandingOf(
+    phase,
+    r.route,
+    route?.key ?? null,
+    reporter,
+    kase,
+    viewer.userId === r.reportedBy,
+  );
   return {
     id: r.id,
     key: feedbackKey(r.fbSeq),
@@ -362,9 +361,7 @@ export function summaryOf(
     severity: r.severity,
     status: r.status,
     phase,
-    attention,
-    waitingOn: waitingOnOf(phase, r.route, route?.key ?? null, reporter, kase),
-    waiting: waitingFor(waiting, attention),
+    ...standing,
     target: targetView(r, l),
     route: withhold && route?.answer ? { ...route, answer: null } : route,
     case: kase,
@@ -413,8 +410,11 @@ export async function listFeedbackAs(
     'the feedback list',
   );
   const listed = query.phases?.length ? all.filter((s) => query.phases?.includes(s.phase)) : all;
-  const counts = { you: 0, moving: 0, others: 0, done: 0 } as Record<FeedbackAttention, number>;
-  for (const s of all) counts[s.attention] += 1;
+  const counts = Object.fromEntries(FEEDBACK_ATTENTION_GROUPS.map((g) => [g, 0])) as Record<
+    FeedbackAttentionGroup,
+    number
+  >;
+  for (const s of all) counts[s.attentionGroup] += 1;
   return { ok: true, list: { feedback: listed, counts, sensitive: level !== 'off' } };
 }
 

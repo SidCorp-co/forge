@@ -3,12 +3,17 @@
 // the web, MCP and the needs-you count read it, so no screen derives a schedule state of its own
 
 import type { AgentReportTriage, AgentReportView } from "./agent-reports.js";
-import type { IssueStatusTone } from "./issue-vocabulary.js";
 import type {
 	ScheduleRunSkipReason,
 	ScheduleRunStatus,
 	ScheduleRunTrigger,
 } from "./schedules.js";
+import type {
+	Standing,
+	StandingGroup,
+	StandingGroupLabels,
+	WaitingKind,
+} from "./standing.js";
 
 export const SCHEDULE_STATES = [
 	"on",
@@ -35,7 +40,7 @@ export const AUTOMATION_ACT_LABELS: Record<AutomationAct, string> = {
 };
 
 /** Whom a schedule, fire or report waits on: the viewer, its owner, the admins or writers, where a
- *  filed report went, or nobody. */
+ *  filed report went, or nobody. `act` is the owed act's label (`AUTOMATION_ACT_LABELS`). */
 export const AUTOMATION_WAITING_KINDS = [
 	"you",
 	"person",
@@ -44,23 +49,16 @@ export const AUTOMATION_WAITING_KINDS = [
 	"issue",
 	"feedback",
 	"none",
-] as const;
+] as const satisfies readonly WaitingKind[];
 export type AutomationWaitingKind = (typeof AUTOMATION_WAITING_KINDS)[number];
 
-export interface AutomationWaitingOn {
-	kind: AutomationWaitingKind;
-	/** Sentence-case name: "You", "Minh", "A project admin", "A project writer", "ISS-12", "Nobody". */
-	who: string;
-	/** The act owed, when somebody owes one; null when nothing waits on a person. */
-	act: AutomationAct | null;
-	/** Why, for the tooltip: the rule in `automation/standing.ts` that put it there. */
-	rule: string;
-	/** The key `who` names when `kind` is issue or feedback; else null. */
-	ref: string | null;
-}
-
 /** The list groups, Needs you first; `waiting` holds what waits on a person who is not the viewer. */
-export const SCHEDULE_GROUPS = ["needs_you", "waiting", "on", "off"] as const;
+export const SCHEDULE_GROUPS = [
+	"needs_you",
+	"waiting",
+	"on",
+	"off",
+] as const satisfies readonly StandingGroup[];
 export type ScheduleGroup = (typeof SCHEDULE_GROUPS)[number];
 
 export const FIRE_GROUPS = [
@@ -69,7 +67,7 @@ export const FIRE_GROUPS = [
 	"produced",
 	"nothing_produced",
 	"failed_or_skipped",
-] as const;
+] as const satisfies readonly StandingGroup[];
 export type FireGroup = (typeof FIRE_GROUPS)[number];
 
 export const REPORT_GROUPS = [
@@ -77,20 +75,10 @@ export const REPORT_GROUPS = [
 	"waiting",
 	"filed",
 	"closed",
-] as const;
+] as const satisfies readonly StandingGroup[];
 export type ReportGroup = (typeof REPORT_GROUPS)[number];
 
-export interface AutomationGroupLabel {
-	label: string;
-	hint: string;
-	tone: IssueStatusTone;
-	collapsed: boolean;
-}
-
-export const SCHEDULE_GROUP_LABELS: Record<
-	ScheduleGroup,
-	AutomationGroupLabel
-> = {
+export const SCHEDULE_GROUP_LABELS: StandingGroupLabels<ScheduleGroup> = {
 	needs_you: {
 		label: "Needs you",
 		hint: "Failing, or the account it runs as is gone",
@@ -112,7 +100,7 @@ export const SCHEDULE_GROUP_LABELS: Record<
 	},
 };
 
-export const FIRE_GROUP_LABELS: Record<FireGroup, AutomationGroupLabel> = {
+export const FIRE_GROUP_LABELS: StandingGroupLabels<FireGroup> = {
 	needs_you: {
 		label: "Needs you",
 		hint: "Its reports wait for triage, or its schedule is failing",
@@ -140,7 +128,7 @@ export const FIRE_GROUP_LABELS: Record<FireGroup, AutomationGroupLabel> = {
 	},
 };
 
-export const REPORT_GROUP_LABELS: Record<ReportGroup, AutomationGroupLabel> = {
+export const REPORT_GROUP_LABELS: StandingGroupLabels<ReportGroup> = {
 	needs_you: {
 		label: "Needs you",
 		hint: "New, high severity first, then oldest",
@@ -184,7 +172,8 @@ export interface ScheduleLastFire {
 	sessionId: string | null;
 }
 
-export interface ScheduleStanding {
+export interface ScheduleStanding
+	extends Standing<ScheduleGroup, AutomationWaitingKind> {
 	id: string;
 	projectId: string;
 	name: string;
@@ -204,8 +193,6 @@ export interface ScheduleStanding {
 	/** Trailing failed fires, a no-device skip counted and already-applied not (alert A5's rule). */
 	streak: number;
 	lastFire: ScheduleLastFire | null;
-	attentionGroup: ScheduleGroup;
-	waitingOn: AutomationWaitingOn;
 	createdAt: string;
 }
 
@@ -222,7 +209,8 @@ export interface FireProduced {
 	notifications: number;
 }
 
-export interface FireStanding {
+export interface FireStanding
+	extends Standing<FireGroup, AutomationWaitingKind> {
 	id: string;
 	scheduleId: string;
 	scheduleName: string;
@@ -238,8 +226,6 @@ export interface FireStanding {
 	finishedAt: string | null;
 	durationSeconds: number | null;
 	produced: FireProduced;
-	attentionGroup: FireGroup;
-	waitingOn: AutomationWaitingOn;
 }
 
 export interface ReportFireRef {
@@ -248,10 +234,10 @@ export interface ReportFireRef {
 	scheduleName: string;
 }
 
-export interface ReportStanding extends AgentReportView {
+export interface ReportStanding
+	extends AgentReportView,
+		Standing<ReportGroup, AutomationWaitingKind> {
 	fire: ReportFireRef | null;
-	attentionGroup: ReportGroup;
-	waitingOn: AutomationWaitingOn;
 }
 
 export interface FireProposal {

@@ -11,6 +11,13 @@ import type {
 	FeedbackSeverity,
 } from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import type {
+	Standing,
+	StandingGroup,
+	StandingGroupLabels,
+	WaitingKind,
+	WaitingOn,
+} from "./standing.js";
 
 export const REQUIREMENT_STATUSES = [
 	"draft",
@@ -131,73 +138,59 @@ export const REVISION_STATE_HINTS: Record<RevisionState, string> = {
 export const REQUIREMENT_ATTENTION_GROUPS = [
 	"needs_you",
 	"moving",
-	"others",
+	"waiting",
 	"stuck",
 	"deferred",
 	"done",
-] as const;
+] as const satisfies readonly StandingGroup[];
 export type RequirementAttentionGroup =
 	(typeof REQUIREMENT_ATTENTION_GROUPS)[number];
 
-export const REQUIREMENT_ATTENTION_LABELS: Record<
-	RequirementAttentionGroup,
-	{ label: string; hint: string | null; tone: StandingTone; collapsed: boolean }
-> = {
-	needs_you: {
-		label: "Needs you",
-		hint: "Approve, accept or break down",
-		tone: "you",
-		collapsed: false,
-	},
-	moving: {
-		label: "Moving",
-		hint: "Issues are being worked",
-		tone: "run",
-		collapsed: false,
-	},
-	others: {
-		label: "Someone else’s turn",
-		hint: null,
-		tone: "neutral",
-		collapsed: false,
-	},
-	stuck: {
-		label: "Stuck",
-		hint: "No owner, or untouched for weeks",
-		tone: "neutral",
-		collapsed: false,
-	},
-	deferred: {
-		label: "Deferred",
-		hint: "Out of the current release",
-		tone: "neutral",
-		collapsed: true,
-	},
-	done: { label: "Done", hint: null, tone: "done", collapsed: true },
-};
+export const REQUIREMENT_ATTENTION_LABELS: StandingGroupLabels<RequirementAttentionGroup> =
+	{
+		needs_you: {
+			label: "Needs you",
+			hint: "Approve, accept or break down",
+			tone: "you",
+			collapsed: false,
+		},
+		moving: {
+			label: "Moving",
+			hint: "Issues are being worked",
+			tone: "run",
+			collapsed: false,
+		},
+		waiting: {
+			label: "Someone else’s turn",
+			hint: null,
+			tone: "neutral",
+			collapsed: false,
+		},
+		stuck: {
+			label: "Stuck",
+			hint: "No owner, or untouched for weeks",
+			tone: "neutral",
+			collapsed: false,
+		},
+		deferred: {
+			label: "Deferred",
+			hint: "Out of the current release",
+			tone: "neutral",
+			collapsed: true,
+		},
+		done: { label: "Done", hint: null, tone: "done", collapsed: true },
+	};
 
 /** Whom a requirement waits on: the viewer, another person, an agent (the master, a draft's agent
  *  author), its issues, or nobody (done, or no owner to act). */
-export const WAITING_ON_KINDS = [
+export const REQUIREMENT_WAITING_KINDS = [
 	"you",
 	"person",
 	"agent",
-	"issues",
+	"issue",
 	"none",
-] as const;
-export type WaitingOnKind = (typeof WAITING_ON_KINDS)[number];
-
-export interface RequirementWaitingOn {
-	kind: WaitingOnKind;
-	/** Sentence-case name: "You", "Minh", "Master", "BA or owner", "No owner". */
-	who: string;
-	/** What they owe, lower-case after the name: "accept r2", "break down", "Running 2 of 5". */
-	act: string;
-	/** Why, for the tooltip: the rule in `requirements/standing.ts` that put it there. */
-	rule: string;
-	/** When what they owe is a task with an SLA, its due time. */
-	dueAt?: string;
-}
+] as const satisfies readonly WaitingKind[];
+export type RequirementWaitingKind = (typeof REQUIREMENT_WAITING_KINDS)[number];
 
 /** The tasks of workflow requirement-to-delivery a requirement holds open, derived on read. */
 export const REQUIREMENT_TASK_KINDS = ["breakdown", "check"] as const;
@@ -319,10 +312,9 @@ export interface RequirementCoverage {
 	issues: CoverageIssue[];
 }
 
-export interface RequirementStanding {
+export interface RequirementStanding
+	extends Standing<RequirementAttentionGroup, RequirementWaitingKind> {
 	state: RequirementState;
-	attentionGroup: RequirementAttentionGroup;
-	waitingOn: RequirementWaitingOn;
 	facts: RequirementFacts;
 	/** The open tasks of the delivery journey, each with its owner and SLA. */
 	tasks: RequirementTask[];
@@ -429,7 +421,7 @@ export interface RequirementSummaryView {
 	currentRevision: number | null;
 	latestRevision: { revision: number; state: string } | null;
 	counts: RequirementFacts;
-	waitingOn: RequirementWaitingOn;
+	waitingOn: WaitingOn<RequirementWaitingKind>;
 	updatedAt: string;
 }
 

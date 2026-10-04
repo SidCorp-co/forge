@@ -2,7 +2,7 @@ import { RUN_GROUP_LABELS, RUN_GROUPS, RUN_LANES, type RunActor, type RunLane, t
 import type { BannerTone, ListGroup, WaitingOnView } from "@/design";
 import { enumLabel, statusReading } from "@/design/vocabulary";
 import { formatCountdown, formatRelativeTime, formatStamp } from "@/lib/utils/format";
-import type { RunStanding, RunWaitingOn } from "./types";
+import type { RunStanding } from "./types";
 
 export const GROUP_MODES = ["attention", "lane", "box"] as const;
 export type GroupMode = (typeof GROUP_MODES)[number];
@@ -30,23 +30,12 @@ export function leaseLeft(r: Pick<RunStanding, "holder">): string | null {
   return ms > 0 ? `expires ${formatCountdown(h.expiresAt)}` : `expired ${formatRelativeTime(h.expiresAt)}`;
 }
 
-/** Core's waiting-on in the shared WaitingOn's words; a run nobody waits on names its holder at work. */
+/** Core's waiting-on, its deadline drawn as a countdown. */
 export function waitingView(r: RunStanding): WaitingOnView {
-  const w: RunWaitingOn = r.waitingOn;
-  if (w.kind === "person") return { kind: w.isViewer ? "you" : "person", who: w.who, act: w.act, rule: w.rule };
-  if (w.kind === "gate") {
-    const resumes = w.resumesAt ? `resumes ${formatCountdown(w.resumesAt)}` : "resumes itself";
-    return { kind: "system", who: enumLabel("runGate", w.gate), act: resumes, rule: `${w.gate}: ${w.rule}` };
-  }
-  if (w.kind === "machine") {
-    return { kind: "system", who: "Machine", act: `no free slot · ${w.slots.inUse} of ${w.slots.max} in use`, rule: w.rule };
-  }
-  if (w.kind === "master") return { kind: "agent", who: w.who, act: r.state === "stuck" ? "acts next" : "dispatches it", rule: w.rule };
-  if (r.holder.source === "held" && r.outcome === null) {
-    const act = [stepLabel(r), leaseLeft(r)].filter(Boolean).join(" · ");
-    return { kind: "agent", who: r.holder.name, act, rule: w.rule };
-  }
-  return { kind: "none", who: "—", act: "", rule: w.rule };
+  const w = r.waitingOn;
+  if (w.kind === "run") return { ...w, act: [w.act, leaseLeft(r)].filter(Boolean).join(" · ") };
+  if (w.kind === "gate" && w.dueAt) return { ...w, act: `resumes ${formatCountdown(w.dueAt)}` };
+  return w;
 }
 
 /** Who an outcome names: the person, else the kind of actor; null where core recorded none. */
@@ -71,10 +60,10 @@ export function runBanner(r: RunStanding): { tone: BannerTone; head: string; bod
   if (o?.kind === "handed_back") return { tone: "calm", head: `${label} ·`, body: o.detail, detail: null, rule: r.rule };
   if (o?.kind === "done") return { tone: "calm", head: `${label} ·`, body: r.rule, detail: null, rule: r.rule };
   const w = waitingView(r);
-  if (r.waitingOn.kind === "person") {
-    return { tone: "you", head: w.kind === "you" ? "Waiting on you ·" : `Waiting on ${w.who} ·`, body: w.act, detail: r.waitingOn.ref, rule: r.rule };
+  if (w.kind === "you" || w.kind === "person") {
+    return { tone: "you", head: w.kind === "you" ? "Waiting on you ·" : `Waiting on ${w.who} ·`, body: w.act, detail: w.rule ?? null, rule: r.rule };
   }
-  if (r.waitingOn.kind === "gate") return { tone: "blocked", head: `${label} ·`, body: `${w.who}, ${w.act}`, detail: null, rule: r.rule };
+  if (w.kind === "gate") return { tone: "blocked", head: `${label} ·`, body: `${w.who}, ${w.act}`, detail: null, rule: r.rule };
   const beat = r.lastBeatAt ? `beat ${formatRelativeTime(r.lastBeatAt)}` : null;
   const step = stepLabel(r);
   const body = [step ? `step ${step}` : null, beat].filter(Boolean).join(" · ") || r.rule;

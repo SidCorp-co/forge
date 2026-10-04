@@ -4,16 +4,16 @@
 // and what they owe; the rule that put it there rides the tooltip. The banner is the same fact as
 // one tinted line at the top of a detail page.
 
+import { WAITING_KIND_MARKS, type WaitingKind } from "@forge/contracts/standing";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
 import { AGENT_TINT } from "../status";
 import { LEGEND, type LegendTone } from "../vocabulary";
-import { WhoMark, type WhoKind } from "./person-chip";
+import { WhoMark } from "./person-chip";
 
+/** Core's waiting-on (`@forge/contracts/standing:WaitingOn`); only what the cell draws is required. */
 export interface WaitingOnView {
-  /** `you` is the viewer; `agent` a master, assistant or run; `issue` another issue or contract;
-   *  `project` another project in an ecosystem; `none` nobody (done, or no owner). */
-  kind: WhoKind | "none";
+  kind: WaitingKind;
   who: string;
   act: string;
   rule?: string;
@@ -28,14 +28,15 @@ export interface WaitingOnProps {
 const fullText = (w: WaitingOnView) => [w.act ? `${w.who} · ${w.act}` : w.who, w.rule].filter(Boolean).join(" — ");
 
 export function WaitingOn({ w, whoNode }: WaitingOnProps) {
-  if (w.kind === "none") {
+  const mark = WAITING_KIND_MARKS[w.kind];
+  if (mark === "none") {
     return (
       <span className="truncate text-12-5 text-subtle" title={fullText(w)} data-testid="waiting-on" data-kind="none">
         {w.act ? `${w.who} · ${w.act}` : w.who}
       </span>
     );
   }
-  const you = w.kind === "you";
+  const you = mark === "you";
   return (
     <span
       className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap text-12-5"
@@ -44,7 +45,7 @@ export function WaitingOn({ w, whoNode }: WaitingOnProps) {
       data-testid="waiting-on"
       data-kind={w.kind}
     >
-      <WhoMark kind={w.kind} who={w.who} />
+      <WhoMark kind={mark} who={w.who} />
       <span className="truncate">
         <b className="font-semibold" style={{ color: you ? LEGEND.you.fg : "var(--fg-default)" }}>
           {whoNode ?? w.who}

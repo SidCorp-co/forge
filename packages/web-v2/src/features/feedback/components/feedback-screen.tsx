@@ -5,7 +5,8 @@
 // whose turn it is or by what each item is about. Whose turn comes from core's read model
 // (`feedback/read.ts`); the URL carries the view (`?group=…&q=…&peek=FB-n`).
 
-import { FEEDBACK_ATTENTION, FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_TONES, } from "@forge/contracts/feedback";
+import { FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_TONES } from "@forge/contracts/feedback";
+import { needsViewer } from "@forge/contracts/standing";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -23,6 +24,7 @@ import {
   ProjectLoader,
   rememberListOrigin,
   StatusBadge,
+  standingGroups,
   statusReading,
   TopBarActions,
   useGroupFold,
@@ -86,7 +88,7 @@ type Grouping = (typeof GROUP_MODES)[number]["value"];
 
 function groupsOf(rows: FeedbackSummary[], by: Grouping): ListGroup<FeedbackSummary>[] {
   if (by === "attention") {
-    return FEEDBACK_ATTENTION.map((a) => ({ id: a, ...FEEDBACK_ATTENTION_LABELS[a], rows: rows.filter((r) => r.attention === a) }));
+    return standingGroups(rows, FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS);
   }
   const byTarget = new Map<string, FeedbackSummary[]>();
   for (const r of rows) {
@@ -94,7 +96,7 @@ function groupsOf(rows: FeedbackSummary[], by: Grouping): ListGroup<FeedbackSumm
     byTarget.set(id, [...(byTarget.get(id) ?? []), r]);
   }
   return [...byTarget.entries()].map(([id, list]) => {
-    const you = list.filter((r) => r.attention === "you").length;
+    const you = list.filter(needsViewer).length;
     return {
       id: `subject:${id}`,
       label: aboutLine(list[0] as FeedbackSummary),
@@ -113,10 +115,10 @@ const rowOf =
     title: r.title,
     facts: [enumLabel("feedbackKind", r.kind), `About ${aboutLine(r)}`, r.reporter.name ?? "Unknown reporter", `Severity ${statusReading("severity", r.severity).label}`],
     state: <StatusBadge family="feedbackPhase" value={r.phase} />,
-    waitingOn: <WaitingOn w={r.waiting} />,
+    waitingOn: <WaitingOn w={r.waitingOn} />,
     owner: <ActorChip name={r.reporter.name ?? "Unknown reporter"} kind={r.reporter.agency} size={20} />,
     age: { text: formatAge(r.updatedAt), title: `Sent ${formatStamp(r.createdAt)} · last changed ${formatStamp(r.updatedAt)}` },
-    dim: r.attention === "done",
+    dim: r.attentionGroup === "done",
   });
 
 export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: string }) {

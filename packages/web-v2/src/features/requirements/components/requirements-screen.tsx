@@ -52,7 +52,7 @@ import { REQUIREMENTS_LIST, requirementHref } from "../routes";
 import type { RequirementSummary } from "../types";
 import { RequirementPeek } from "./requirement-peek";
 import { RefusalLine } from "./refusal";
-import { revisionText, waitingView } from "./standing-bits";
+import { revisionText } from "./standing-bits";
 
 function CreateForm({ projectId, onDone }: { projectId: string; onDone: (key: string) => void }) {
   const create = useCreateRequirement(projectId);
@@ -138,7 +138,7 @@ const rowOf =
     title: r.title,
     facts: factsLine(r),
     state: <StatusBadge family="requirement" value={r.standing.state} />,
-    waitingOn: <WaitingOn w={waitingView(r.standing.waitingOn)} />,
+    waitingOn: <WaitingOn w={r.standing.waitingOn} />,
     owner: r.standing.owner ? (
       <ActorChip name={r.standing.owner.name ?? "Unknown"} kind={r.standing.owner.kind} size={20} />
     ) : (

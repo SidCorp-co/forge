@@ -4,7 +4,6 @@ import { ISSUE_ATTENTION_LABELS } from "@forge/contracts/issue-standing";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import { ActorChip, GroupedList, type ListGroup, type ListRowView, StatusBadge, useGroupFold, WaitingOn } from "@/design";
-import { issueWaitingView } from "@/features/issues/components/issue-standing-bits";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { needHref, needPeekHref } from "../routes";
 import type { OverviewNeed, OverviewNeeds } from "../types";
@@ -24,7 +23,7 @@ export const needRowView =
     title: n.title,
     facts: n.facts,
     state: stateOf(n),
-    waitingOn: <WaitingOn w={issueWaitingView(n.waitingOn)} />,
+    waitingOn: <WaitingOn w={n.waitingOn} />,
     owner: n.owner ? <ActorChip name={n.owner.name ?? "Unknown"} kind={n.owner.kind} size={20} /> : null,
     age: n.touchedAt ? { text: formatAge(n.touchedAt), title: `Last activity ${formatStamp(n.touchedAt)}` } : null,
   });

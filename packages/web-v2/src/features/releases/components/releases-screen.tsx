@@ -1,6 +1,6 @@
 "use client";
 
-import { RELEASE_ATTENTION, RELEASE_ATTENTION_LABELS } from "@forge/contracts/releases";
+import { RELEASE_ATTENTION_GROUPS, RELEASE_ATTENTION_LABELS } from "@forge/contracts/releases";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo } from "react";
 import {
@@ -10,6 +10,7 @@ import {
   GroupedList,
   Icon,
   type ListGroup,
+  standingGroups,
   type ListRowView,
   PageTitle,
   ProjectLoader,
@@ -28,12 +29,11 @@ import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useReleases } from "../hooks";
 import { RELEASES_LIST, releaseHref } from "../routes";
 import type { ReleaseSummary } from "../types";
-import { waitingView } from "./release-bits";
 import { ReleasePeek } from "./release-peek";
 import { ReleaseTrain } from "./release-train";
 
 const groupsOf = (rows: ReleaseSummary[]): ListGroup<ReleaseSummary>[] =>
-  RELEASE_ATTENTION.map((a) => ({ id: a, ...RELEASE_ATTENTION_LABELS[a], rows: rows.filter((r) => r.attention === a) }));
+  standingGroups(rows, RELEASE_ATTENTION_GROUPS, RELEASE_ATTENTION_LABELS);
 
 const requirementsOf = (r: ReleaseSummary) => (r.requirements.length > 0 ? r.requirements.join(", ") : "Maintenance");
 
@@ -50,10 +50,10 @@ const rowOf =
       ...(r.current ? ["Serving production"] : []),
     ],
     state: <StatusBadge family="releaseState" value={r.state} />,
-    waitingOn: <WaitingOn w={waitingView(r.waiting)} />,
+    waitingOn: <WaitingOn w={r.waitingOn} />,
     owner: r.owner ? <ActorChip name={r.owner.name} kind={r.owner.kind} size={20} /> : null,
     age: { text: formatAge(r.at), title: `Last changed ${formatStamp(r.at)}` },
-    dim: r.attention === "done" || r.attention === "stopped",
+    dim: r.attentionGroup === "done" || r.attentionGroup === "stopped",
   });
 
 export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: string }) {

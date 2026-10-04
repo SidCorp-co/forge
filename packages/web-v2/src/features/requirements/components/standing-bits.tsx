@@ -14,7 +14,7 @@ import {
   type RequirementCoverage,
   type RequirementStanding,
   type RequirementState,
-  type RequirementWaitingOn,
+  type RequirementWaitingKind,
 } from "@forge/contracts/requirements";
 import type { ReactNode } from "react";
 import {
@@ -25,11 +25,7 @@ import {
   type MarkView,
   StepBar,
   WaitBanner,
-  type WaitingOnView,
 } from "@/design";
-
-/** Core's `issues` kind is the shared "issue" mark; everything else carries over. */
-export const waitingView = (w: RequirementWaitingOn): WaitingOnView => ({ ...w, kind: w.kind === "issues" ? "issue" : w.kind });
 
 /** Stale is hatched rather than a tone, so it never reads as a verdict of its own colour. */
 const VERDICT_FILL: Partial<Record<BcVerdict, string>> = {
@@ -79,11 +75,11 @@ export function Stepper({ state }: { state: RequirementState }) {
   );
 }
 
-const BANNER_TONE: Record<RequirementWaitingOn["kind"], BannerTone> = {
+const BANNER_TONE: Record<RequirementWaitingKind, BannerTone> = {
   you: "you",
   person: "calm",
   agent: "agent",
-  issues: "run",
+  issue: "run",
   none: "calm",
 };
 

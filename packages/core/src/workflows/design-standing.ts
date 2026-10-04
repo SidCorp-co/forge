@@ -1,6 +1,9 @@
 import type { DesignRevisionState } from '@forge/contracts/design-status';
-import type { DesignBuildGate, DesignWaitingOn } from '@forge/contracts/workflows';
+import type { WaitingOn } from '@forge/contracts/standing';
+import type { DesignBuildGate, DesignWaitingKind } from '@forge/contracts/workflows';
 import type { DesignDecision, DesignStatus } from './design.js';
+
+type DesignWaitingOn = WaitingOn<DesignWaitingKind>;
 
 export interface DesignHeadFacts {
   status: DesignStatus | null;
@@ -14,11 +17,11 @@ export interface DesignStandingInput extends DesignHeadFacts {
 }
 
 const wait = (
-  kind: DesignWaitingOn['kind'],
+  kind: DesignWaitingKind,
   who: string,
   act: string,
   rule: string,
-): DesignWaitingOn => ({ kind, who, act, rule });
+): DesignWaitingOn => ({ kind, who, act, rule, ref: null, dueAt: null });
 
 function proposedWait(input: DesignStandingInput, revision: number): DesignWaitingOn {
   const act = `approve or return revision ${revision}`;

@@ -10,6 +10,12 @@ import type {
 } from "./agent-reports.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import type {
+	Standing,
+	StandingGroup,
+	StandingGroupLabels,
+	WaitingKind,
+} from "./standing.js";
 import { type NodeRef, nodeRefSchema } from "./workflow-health.js";
 
 /** What the reporter says it is; `contract_change` is filed by core for a breaking version (E3). */
@@ -127,8 +133,13 @@ export const FEEDBACK_DECISIONS = [
 export type FeedbackDecision = (typeof FEEDBACK_DECISIONS)[number];
 
 /** Who a row waits on, as the list groups it for the viewer. */
-export const FEEDBACK_ATTENTION = ["you", "moving", "others", "done"] as const;
-export type FeedbackAttention = (typeof FEEDBACK_ATTENTION)[number];
+export const FEEDBACK_ATTENTION_GROUPS = [
+	"needs_you",
+	"moving",
+	"waiting",
+	"done",
+] as const satisfies readonly StandingGroup[];
+export type FeedbackAttentionGroup = (typeof FEEDBACK_ATTENTION_GROUPS)[number];
 
 export const FEEDBACK_KIND_LABELS: Record<FeedbackKind, string> = {
 	bug: "Bug",
@@ -182,11 +193,8 @@ export const FEEDBACK_TARGET_LABELS: Record<FeedbackTargetType, string> = {
 	screen: "Screen",
 };
 
-export const FEEDBACK_ATTENTION_LABELS: Record<
-	FeedbackAttention,
-	{ label: string; hint: string; tone: IssueStatusTone; collapsed: boolean }
-> = {
-	you: {
+export const FEEDBACK_ATTENTION_LABELS: StandingGroupLabels<FeedbackAttentionGroup> = {
+	needs_you: {
 		label: "Needs you",
 		hint: "Triage it, or confirm the fix you reported",
 		tone: "you",
@@ -198,7 +206,7 @@ export const FEEDBACK_ATTENTION_LABELS: Record<
 		tone: "run",
 		collapsed: false,
 	},
-	others: {
+	waiting: {
 		label: "Someone else’s turn",
 		hint: "The reporter confirms the fix",
 		tone: "neutral",
@@ -495,26 +503,20 @@ export interface FeedbackAttachmentView {
 	createdAt: string;
 }
 
-/** One item as a list row reads it; the derived facts are the server's, never the client's. */
-/** Whose turn a row is, as the shared "Waiting on" cell draws it: `you` is the viewer, `issue` a
- *  carrier (an issue, a requirement, a root item), `none` nothing is owed. */
+/** Whose turn a row is: `you` is the viewer, `issue` a carrier (an issue, a requirement, a root
+ *  item), `none` nothing is owed. */
 export const FEEDBACK_WAITING_KINDS = [
 	"you",
 	"person",
 	"agent",
 	"issue",
 	"none",
-] as const;
+] as const satisfies readonly WaitingKind[];
 export type FeedbackWaitingKind = (typeof FEEDBACK_WAITING_KINDS)[number];
 
-export interface FeedbackWaiting {
-	kind: FeedbackWaitingKind;
-	who: string;
-	/** What they owe, after the name: "triage it", "ship". Empty when the name says it all. */
-	act: string;
-}
-
-export interface FeedbackSummary {
+/** One item as a list row reads it; the derived facts are the server's, never the client's. */
+export interface FeedbackSummary
+	extends Standing<FeedbackAttentionGroup, FeedbackWaitingKind> {
 	id: string;
 	key: string;
 	title: string;
@@ -522,11 +524,6 @@ export interface FeedbackSummary {
 	severity: FeedbackSeverity;
 	status: FeedbackStatus;
 	phase: FeedbackPhase;
-	attention: FeedbackAttention;
-	/** Who or what it waits on, in a sentence: "A person to triage it", "ISS-12 to ship". */
-	waitingOn: string;
-	/** The same fact for this viewer, split for the "Waiting on" cell. */
-	waiting: FeedbackWaiting;
 	target: FeedbackTargetView;
 	route: FeedbackRouteView | null;
 	case: FeedbackCaseView | null;
@@ -565,7 +562,7 @@ export interface FeedbackResponse {
 
 export interface FeedbackListResponse {
 	feedback: FeedbackSummary[];
-	counts: Record<FeedbackAttention, number>;
+	counts: Record<FeedbackAttentionGroup, number>;
 	sensitive: boolean;
 }
 

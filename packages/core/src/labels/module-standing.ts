@@ -11,8 +11,9 @@ import {
   type ModuleRef,
   type ModuleRequirementTrace,
   type ModuleStanding,
-  type ModuleWaitingOn,
 } from '@forge/contracts/modules';
+import type { IssueWaitingKind } from '@forge/contracts/issue-standing';
+import type { WaitingOn } from '@forge/contracts/standing';
 
 export interface ModuleNode {
   id: string;
@@ -108,22 +109,25 @@ const newest = (a: OpenIssue, b: OpenIssue) =>
 function waitingOf(
   open: readonly OpenIssue[],
   byKind: Record<ModuleOpenKind, number>,
-): ModuleWaitingOn {
+): { leadIssue: string | null; waitingOn: WaitingOn<IssueWaitingKind> } {
   for (const kind of HEADLINE_ORDER) {
     const lead = open.filter((i) => i.standing.attentionGroup === kind).sort(newest)[0];
-    if (lead) return { ...lead.standing.waitingOn, issueKey: lead.key };
+    if (lead) return { leadIssue: lead.key, waitingOn: lead.standing.waitingOn };
   }
   const parts = [
     byKind.queued > 0 ? `${byKind.queued} queued` : null,
     byKind.paused > 0 ? `${byKind.paused} paused` : null,
   ].filter((p): p is string => p !== null);
   return {
-    kind: 'none',
-    who: 'Nobody',
-    act: parts.length > 0 ? parts.join(' · ') : 'nothing open',
-    rule: 'No issue in this module waits on you, is stuck, or holds a live lease',
-    ref: null,
-    issueKey: null,
+    leadIssue: null,
+    waitingOn: {
+      kind: 'none',
+      who: 'Nobody',
+      act: parts.length > 0 ? parts.join(' · ') : 'nothing open',
+      rule: 'No issue in this module waits on you, is stuck, or holds a live lease',
+      ref: null,
+      dueAt: null,
+    },
   };
 }
 
@@ -216,7 +220,7 @@ export function deriveStandings(input: StandingInput): Map<string, ModuleStandin
       open: open.length,
       openByKind: byKind,
       running: byKind.moving,
-      waitingOn: waitingOf(open, byKind),
+      ...waitingOf(open, byKind),
       lastLanding: landings[0] ?? null,
       requirements: tracesOf(traces.filter((t) => within.has(t.moduleId))),
       childCount: childCount.get(node.id) ?? 0,

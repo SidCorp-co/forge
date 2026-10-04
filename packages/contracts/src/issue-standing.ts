@@ -1,5 +1,11 @@
 import type { IssueStatus } from "./issue-machine.js";
 import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
+import type {
+	Standing,
+	StandingGroup,
+	StandingGroupLabels,
+	WaitingKind,
+} from "./standing.js";
 
 /** The list's attention groups, in the order they are drawn. */
 export const ISSUE_ATTENTION_GROUPS = [
@@ -9,13 +15,10 @@ export const ISSUE_ATTENTION_GROUPS = [
 	"queued",
 	"paused",
 	"done",
-] as const;
+] as const satisfies readonly StandingGroup[];
 export type IssueAttentionGroup = (typeof ISSUE_ATTENTION_GROUPS)[number];
 
-export const ISSUE_ATTENTION_LABELS: Record<
-	IssueAttentionGroup,
-	{ label: string; hint: string; tone: IssueStatusTone; collapsed: boolean }
-> = {
+export const ISSUE_ATTENTION_LABELS: StandingGroupLabels<IssueAttentionGroup> = {
 	needs_you: {
 		label: "Needs you",
 		hint: "Answer, decide or approve",
@@ -65,20 +68,8 @@ export const ISSUE_WAITING_KINDS = [
 	"issue",
 	"release",
 	"none",
-] as const;
+] as const satisfies readonly WaitingKind[];
 export type IssueWaitingKind = (typeof ISSUE_WAITING_KINDS)[number];
-
-export interface IssueWaitingOn {
-	kind: IssueWaitingKind;
-	/** Sentence-case name: "You", "Run", "Master", "Judge", "ISS-12", "A project writer", "Nobody". */
-	who: string;
-	/** What they owe, lower-case after the name: "answer a question", "Test · 12 min", "running". */
-	act: string;
-	/** Why, for the tooltip: the rule in `issues/standing.ts` that put it there. */
-	rule: string;
-	/** The issue key `who` names when `kind` is `issue`; else null. */
-	ref: string | null;
-}
 
 /** An edge that holds this issue back, or one this issue holds back: live `blocks` edges only. */
 export interface IssueEdgeRef {
@@ -159,7 +150,8 @@ export interface IssueStepEntry {
 	endedAt: string | null;
 }
 
-export interface IssueStanding {
+export interface IssueStanding
+	extends Standing<IssueAttentionGroup, IssueWaitingKind> {
 	state: IssueStatus;
 	/** The run's step inside the status (`issue_work_state.step`), null where none is recorded. */
 	step: WorkStep | null;
@@ -167,8 +159,6 @@ export interface IssueStanding {
 	/** The status badge's tone for this project: `awaiting_release` reads `you` only where the
 	 *  project requires a person to approve a release. */
 	tone: IssueStatusTone;
-	attentionGroup: IssueAttentionGroup;
-	waitingOn: IssueWaitingOn;
 	criteria: IssueCriteriaTally;
 	requirement: IssueRequirementRef | null;
 	module: IssueModuleRef | null;
