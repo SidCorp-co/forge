@@ -12,7 +12,7 @@ const FAILURE_LIMIT = 3;
 
 /**
  * Three-strikes guard: when 3 PM jobs fail in the same project within an
- * hour, disable cadence + event triggers and notify the project creator
+ * hour, disable the PM agent and notify the project creator
  * (audit `projects.created_by`). The operator can re-enable from project
  * settings.
  *
@@ -45,7 +45,7 @@ export async function handlePmJobFailedAutoDisable(
   await db.transaction(async (tx) => {
     await tx
       .update(pmConfig)
-      .set({ enabled: false, cadenceCron: null, updatedAt: new Date() })
+      .set({ enabled: false, updatedAt: new Date() })
       .where(eq(pmConfig.projectId, payload.projectId));
 
     const [project] = await tx
@@ -56,7 +56,7 @@ export async function handlePmJobFailedAutoDisable(
     if (!project) return;
 
     if (!emissionAllowed('pm_escalation')) {
-      noteSuppressed('pm_escalation', 'PM cadence auto-disabled');
+      noteSuppressed('pm_escalation', 'PM agent auto-disabled');
       return;
     }
 
@@ -68,8 +68,8 @@ export async function handlePmJobFailedAutoDisable(
         kind: kindOf('pm_escalation'),
         tier: tierOf('pm_escalation'),
         state: INITIAL_STATE[kindOf('pm_escalation')],
-        title: 'PM cadence auto-disabled',
-        body: `PM agent failed ${count} times in the last hour. Cadence and event triggers are off until you re-enable in project settings.`,
+        title: 'PM agent auto-disabled',
+        body: `PM agent failed ${count} times in the last hour. The PM agent is off until you re-enable it in project settings.`,
         issueId: null,
         agentSessionId: null,
       })
@@ -80,5 +80,5 @@ export async function handlePmJobFailedAutoDisable(
 
   if (recordId && recipient) await deliverExisting(recordId, [recipient]);
 
-  logger.warn({ projectId: payload.projectId, failures: count }, 'pm.auto-disable: cadence off');
+  logger.warn({ projectId: payload.projectId, failures: count }, 'pm.auto-disable: PM agent off');
 }

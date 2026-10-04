@@ -109,29 +109,6 @@ export async function recoverUnstartedReleaseBatches(
   return { recovered };
 }
 
-const RECOVERY_QUEUE = 'release-batch-unstarted-recovery';
-let registered = false;
-
-/**
- * Run the pass on a schedule of its own.
- */
-export async function registerReleaseUnstartedRecovery(): Promise<void> {
-  if (registered) return;
-  // The release batch's background work registers as one: the finish job and its sweep with it.
-  const { registerReleaseBatchFinish } = await import('./finish-job.js');
-  await registerReleaseBatchFinish();
-  const { boss } = await import('../queue/boss.js');
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(RECOVERY_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(RECOVERY_QUEUE, async () => {
-    await recoverUnstartedReleaseBatches();
-  });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(RECOVERY_QUEUE, '* * * * *');
-  registered = true;
-}
-
 async function emitWedge(row: UnstartedRow): Promise<void> {
   await emitPipelineWedge({
     projectId: row.project_id,

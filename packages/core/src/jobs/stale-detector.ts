@@ -2,12 +2,9 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
-import { boss } from '../queue/boss.js';
 import { killGraceMs } from './kill-gate.js';
 import { RESULT_QUIET_MINUTES } from './loop-monitor.js';
 import { quietJobCandidateQuery } from './progress-signal.js';
-
-export const STALE_DETECTOR_QUEUE = 'stale-job-detector';
 
 /** Extra quiet time past the loop's threshold before this alarm fires —
  *  covers the loop's 1-minute tick cadence with slack. */
@@ -55,30 +52,4 @@ export async function runStaleSweep(now: Date = new Date()): Promise<{
   // `failed` retains its name for the result-shape consumers (logs/tests) but
   // now counts ALARMED loop misses — this pass performs no terminal writes.
   return { failed: stale.length, durationMs: Date.now() - t0 };
-}
-
-let registered = false;
-
-export async function registerStaleDetector(): Promise<void> {
-  if (registered) return;
-  // pg-boss v10 requires explicit createQueue before schedule/work can reference it.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(STALE_DETECTOR_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(STALE_DETECTOR_QUEUE, async () => {
-    try {
-      const result = await runStaleSweep();
-      logger.info(result, 'stale-job-detector: sweep complete');
-    } catch (err) {
-      logger.error({ err }, 'stale-job-detector: sweep failed');
-      throw err;
-    }
-  });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(STALE_DETECTOR_QUEUE, '*/5 * * * *');
-  registered = true;
-}
-
-export function resetStaleDetectorForTest(): void {
-  registered = false;
 }

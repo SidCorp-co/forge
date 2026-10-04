@@ -1,12 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { logger } from '../logger.js';
-import { boss } from '../queue/boss.js';
 import { projectRoom, runnerRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { insertRunnerEvent } from './runner-events.js';
 
-export const RUNNER_STALE_DETECTOR_QUEUE = 'runner-status-detector';
 const RUNNER_STALE_THRESHOLD = "interval '30 seconds'";
 
 type StaleRunnerRow = {
@@ -51,32 +48,4 @@ export async function runRunnerStaleSweep(): Promise<{
   }
 
   return { markedOffline: rows.length, durationMs: Date.now() - t0 };
-}
-
-let registered = false;
-
-export async function registerRunnerStaleDetector(): Promise<void> {
-  if (registered) return;
-  const queues = boss as unknown as {
-    createQueue(name: string): Promise<void>;
-    work(name: string, handler: () => Promise<void>): Promise<string>;
-  };
-  await queues.createQueue(RUNNER_STALE_DETECTOR_QUEUE);
-  await queues.work(RUNNER_STALE_DETECTOR_QUEUE, async () => {
-    try {
-      const result = await runRunnerStaleSweep();
-      logger.info(result, 'runner-status-detector: sweep complete');
-    } catch (err) {
-      logger.error({ err }, 'runner-status-detector: sweep failed');
-      throw err;
-    }
-  });
-  // ISS-198 — every minute (was */2). Lands the offline flip well inside
-  // the 60s detection budget required by the acceptance criteria.
-  await (boss as any).schedule(RUNNER_STALE_DETECTOR_QUEUE, '* * * * *');
-  registered = true;
-}
-
-export function resetRunnerStaleDetectorForTest(): void {
-  registered = false;
 }

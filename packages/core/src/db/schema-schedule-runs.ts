@@ -9,9 +9,9 @@ import { agentSessions, pipelineRuns, projects, schedules } from './schema.js';
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
-// cm:why one row per fire of every kind (design automation rev 1, steps tick, route, skipped,
-// settle and fires_table; ISS-112). A prompt fire carries the session it started; a fire that ran
-// nothing says why in `reason` or `refusal`, never only on schedules.last_status.
+// One row per fire of every kind (design automation, steps tick, route, skipped, settle and
+// fires_table). A prompt fire carries the session it started; a fire that ran nothing says why in
+// `reason` or `refusal`. A schedule's last status is its newest fire, read, never stored.
 export const scheduleRuns = pgTable(
   'schedule_runs',
   {

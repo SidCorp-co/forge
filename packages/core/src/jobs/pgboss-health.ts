@@ -3,8 +3,6 @@ import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { globalRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 
-/** 30s cadence — twice the smallest meaningful pg-boss tick. */
-const PROBE_INTERVAL_MS = 30_000;
 /** One missed `* * * * *` tick + 30s grace → 90s gap classes as desync. */
 const MISSED_TICK_THRESHOLD_MS = 90_000;
 /** Process must run this long before a null `lastTickAt` counts as missed. */
@@ -16,7 +14,6 @@ const ALERT_COOLDOWN_MS = 300000;
 
 let lastPipelineSweeperTickAt: number | null = null;
 let lastAlertAt: number | null = null;
-let timer: ReturnType<typeof setInterval> | null = null;
 
 export function recordPipelineSweeperTick(now: number = Date.now()): void {
   lastPipelineSweeperTickAt = now;
@@ -72,29 +69,7 @@ function fireAlert(now: number, lastTickAtMs: number | null, gapMs: number): boo
   return true;
 }
 
-let registered = false;
-
-export async function registerPgBossHealthProbe(): Promise<void> {
-  if (registered) return;
-  const startedAt = Date.now();
-  timer = setInterval(() => {
-    try {
-      checkBackstop({ now: Date.now(), uptimeMs: Date.now() - startedAt });
-    } catch (err) {
-      logger.error({ err }, 'pgboss-health: check threw');
-    }
-  }, PROBE_INTERVAL_MS);
-  // Allow the process to exit cleanly during tests / shutdown.
-  timer.unref?.();
-  registered = true;
-}
-
-export function resetPgBossHealthProbeForTest(): void {
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
-  }
-  registered = false;
-  lastPipelineSweeperTickAt = null;
-  lastAlertAt = null;
+/** The process timer's check (`timer-registry.ts`): uptime is this process's own. */
+export function probePgBossBackstop(): void {
+  checkBackstop({ now: Date.now(), uptimeMs: process.uptime() * 1000 });
 }

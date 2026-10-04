@@ -48,7 +48,6 @@ const eventTriggersSchema = z
 const configPatchSchema = z
   .object({
     enabled: z.boolean(),
-    cadenceCron: z.string().trim().min(1).max(120).nullable(),
     eventTriggers: eventTriggersSchema,
     customInstructions: z.string().trim().max(8000).nullable(),
     modelOverride: z.string().trim().min(1).max(120).nullable(),

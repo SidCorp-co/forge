@@ -1,8 +1,8 @@
 "use client";
 
 // The PM sweep's settings, opened from its row on the Schedules page. Real
-// `/api/projects/:projectId/pm/*` data: cadence/config (read + owner-editable)
-// plus the decision audit log timeline.
+// `/api/projects/:projectId/pm/*` data: config (read + owner-editable) plus the
+// decision audit log timeline. A PM run on a timer is a prompt schedule.
 // Loading / empty / error states all render via kit primitives.
 import { useEffect, useState } from "react";
 import {
@@ -28,7 +28,6 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { usePmConfig, usePmDecisions, useUpdatePmConfig } from "../hooks";
 import {
-  PM_CRON_PRESETS,
   PM_MODEL_OPTIONS,
   PM_TRIGGER_LABELS,
   type PmConfig,
@@ -41,7 +40,6 @@ const DECISIONS_PAGE_SIZE = 25;
 function configIsDirty(a: PmConfig, b: PmConfig): boolean {
   return (
     a.enabled !== b.enabled ||
-    a.cadenceCron !== b.cadenceCron ||
     a.customInstructions !== b.customInstructions ||
     a.modelOverride !== b.modelOverride ||
     a.maxRunsPerHour !== b.maxRunsPerHour ||
@@ -49,7 +47,7 @@ function configIsDirty(a: PmConfig, b: PmConfig): boolean {
   );
 }
 
-/** Inline pill picker — shared by the cadence presets and model override. */
+/** Inline pill picker for the model override. */
 function PillPicker<T>({
   options,
   value,
@@ -127,7 +125,6 @@ function PmConfigCard({ projectId, canManage }: { projectId: string; canManage: 
     if (!draft) return;
     update.mutate({
       enabled: draft.enabled,
-      cadenceCron: draft.cadenceCron,
       eventTriggers: draft.eventTriggers,
       customInstructions: draft.customInstructions,
       modelOverride: draft.modelOverride,
@@ -157,24 +154,6 @@ function PmConfigCard({ projectId, canManage }: { projectId: string; canManage: 
             You have read-only access to PM settings. Owner or admin role is required to edit.
           </Banner>
         )}
-
-        <Field label="Cadence" hint="How often the PM Agent runs on a timer.">
-          <div className="space-y-2">
-            <PillPicker
-              options={PM_CRON_PRESETS}
-              value={draft.cadenceCron}
-              disabled={!editable}
-              onSelect={(v) => patch("cadenceCron", v)}
-            />
-            <Input
-              type="text"
-              value={draft.cadenceCron ?? ""}
-              disabled={!editable}
-              placeholder="custom cron (e.g. */30 * * * *)"
-              onChange={(e) => patch("cadenceCron", e.target.value || null)}
-            />
-          </div>
-        </Field>
 
         <fieldset className="space-y-2">
           <legend className="fg-label">Event triggers</legend>
@@ -342,9 +321,4 @@ export function PmSettings({ projectId, canManage }: { projectId: string; canMan
       <PmDecisionsCard projectId={projectId} />
     </div>
   );
-}
-
-export function pmCadenceLabel(config: PmConfig): string {
-  if (!config.cadenceCron) return "On events only";
-  return PM_CRON_PRESETS.find((p) => p.value === config.cadenceCron)?.label ?? config.cadenceCron;
 }

@@ -1,9 +1,5 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { logger } from '../logger.js';
-import { boss } from '../queue/boss.js';
-
-export const PHASE_JOURNAL_BACKFILL_QUEUE = 'phase-journal-backfill';
 
 const DEFAULT_BATCH_RUNS = 200;
 
@@ -72,20 +68,4 @@ export async function backfillPhaseJournal(
   `);
 
   return { runs: runIds.length, rows: (inserted as unknown as { count?: number }).count ?? 0 };
-}
-
-let registered = false;
-
-export async function registerPhaseJournalBackfill(): Promise<void> {
-  if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).createQueue(PHASE_JOURNAL_BACKFILL_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).work(PHASE_JOURNAL_BACKFILL_QUEUE, async () => {
-    const result = await backfillPhaseJournal();
-    if (result.rows > 0) logger.info(result, 'phase-journal-backfill: wrote rows');
-  });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).schedule(PHASE_JOURNAL_BACKFILL_QUEUE, '17 * * * *');
-  registered = true;
 }

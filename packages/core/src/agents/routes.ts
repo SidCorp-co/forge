@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { agentApprovalModes, agentSchedules, agents } from '../db/schema.js';
+import { agentApprovalModes, agents } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { wholeList } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -32,7 +32,6 @@ const createSchema = z
     enabled: z.boolean().optional(),
     focusAreas: z.array(z.string().min(1).max(200)).optional(),
     customInstructions: z.string().max(20_000).nullable().optional(),
-    schedule: z.enum(agentSchedules).optional(),
     approvalMode: z.enum(agentApprovalModes).optional(),
     maxProposals: z.number().int().min(1).max(1000).optional(),
     excludeCategories: z.array(z.string().min(1).max(200)).optional(),
@@ -51,7 +50,6 @@ const patchSchema = z
     enabled: z.boolean().optional(),
     focusAreas: z.array(z.string().min(1).max(200)).optional(),
     customInstructions: z.string().max(20_000).nullable().optional(),
-    schedule: z.enum(agentSchedules).optional(),
     approvalMode: z.enum(agentApprovalModes).optional(),
     maxProposals: z.number().int().min(1).max(1000).optional(),
     excludeCategories: z.array(z.string().min(1).max(200)).optional(),
@@ -118,7 +116,6 @@ agentRoutes.post(
         enabled: input.enabled ?? false,
         ...(input.focusAreas !== undefined ? { focusAreas: input.focusAreas } : {}),
         customInstructions: input.customInstructions ?? null,
-        ...(input.schedule !== undefined ? { schedule: input.schedule } : {}),
         ...(input.approvalMode !== undefined ? { approvalMode: input.approvalMode } : {}),
         ...(input.maxProposals !== undefined ? { maxProposals: input.maxProposals } : {}),
         ...(input.excludeCategories !== undefined
@@ -182,7 +179,6 @@ agentRoutes.patch(
     if (patch.focusAreas !== undefined) updates.focusAreas = patch.focusAreas;
     if (patch.customInstructions !== undefined)
       updates.customInstructions = patch.customInstructions;
-    if (patch.schedule !== undefined) updates.schedule = patch.schedule;
     if (patch.approvalMode !== undefined) updates.approvalMode = patch.approvalMode;
     if (patch.maxProposals !== undefined) updates.maxProposals = patch.maxProposals;
     if (patch.excludeCategories !== undefined) updates.excludeCategories = patch.excludeCategories;

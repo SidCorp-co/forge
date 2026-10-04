@@ -62,7 +62,20 @@ const ADMIN = [
 	"comments.moderate",
 ] as const;
 
-export const PROJECT_PERMISSIONS = [...READ, ...WRITE, ...PERSONAL, ...APPROVE, ...ADMIN] as const;
+/**
+ * Dispatch, cancel or roll back a deploy. Admin's by default; a member or an agent's membership holds
+ * it only where the project's grant names it.
+ */
+const DEPLOY = ["deploys.run"] as const;
+
+export const PROJECT_PERMISSIONS = [
+	...READ,
+	...WRITE,
+	...PERSONAL,
+	...APPROVE,
+	...DEPLOY,
+	...ADMIN,
+] as const;
 export type ProjectPermission = (typeof PROJECT_PERMISSIONS)[number];
 
 /** An organization's own acts; an org owner or admin also holds project `admin` on every project of the org. */
@@ -89,7 +102,7 @@ export type ProjectRole = (typeof PROJECT_ROLES)[number];
 export const ROLE_PERMISSIONS: Readonly<Record<ProjectRole, readonly ProjectPermission[]>> = {
 	viewer: [...READ],
 	member: [...READ, ...WRITE, ...PERSONAL],
-	admin: [...READ, ...WRITE, ...PERSONAL, ...APPROVE, ...ADMIN],
+	admin: [...READ, ...WRITE, ...PERSONAL, ...APPROVE, ...DEPLOY, ...ADMIN],
 };
 
 export const ORG_ROLES = ["member", "admin", "owner"] as const;

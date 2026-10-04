@@ -46,7 +46,6 @@ const HEARTBEAT_MS = 30_000;
 export const FINISH_UNTAKEN_MS = 60_000;
 
 export const RELEASE_FINISH_QUEUE = 'release-batch-finish';
-const RESUME_QUEUE = 'release-batch-finish-resume';
 
 export {
   type FinishRefusal,
@@ -486,11 +485,6 @@ export async function registerReleaseBatchFinish(): Promise<void> {
       if (typeof runId === 'string') startWork(runId);
     }
   });
-  await b.createQueue(RESUME_QUEUE);
-  await b.work(RESUME_QUEUE, async () => {
-    await resumeStrandedFinishes();
-  });
-  await b.schedule(RESUME_QUEUE, '* * * * *');
   registered = true;
 }
 
