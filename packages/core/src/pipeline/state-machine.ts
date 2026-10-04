@@ -57,9 +57,8 @@ export function canTransition(
   return transitions[from].includes(to);
 }
 
-// cm:why the kernel hands an `in_progress` issue nothing holds back to where a master takes it, or a
-// dead run's issue rests there ownerless — the defect ISS-54 removes. Only `recovery: true` reaches it:
-// the kernel's own sweeps, and a judge that failed a criterion and let go (rev 3, REQ-2 BC-10).
+// cm:why an `in_progress` issue nothing holds goes back where a master takes it, or it rests ownerless
+// (ISS-54); only `recovery: true` reaches it: a kernel sweep, or a judge that failed and let go (BC-10).
 export const RECOVERY_EDGES: Readonly<Partial<Record<IssueStatus, readonly IssueStatus[]>>> = {
   in_progress: ['open', 'approved', 'reopen'],
 };
