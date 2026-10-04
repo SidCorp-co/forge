@@ -5,6 +5,8 @@ import { useMemo } from "react";
 import { useCoolifyApplications, useCoolifyTargets } from "../../hooks";
 import type { CoolifyApplication, CoolifyTargetInput } from "../../types";
 
+type Identity = NonNullable<ReturnType<typeof useCoolifyTargets>["data"]>["targets"][number];
+
 const ALIGN_LABEL_COL = "hidden w-40 shrink-0 sm:block";
 const ALIGN_BUTTON_COL = "hidden w-9 shrink-0 sm:block";
 
@@ -41,8 +43,7 @@ export function CoolifyTargetsField({
       })),
     [apps.data],
   );
-  const identityFor = (uuid: string) =>
-    (identities.data?.targets ?? []).find((t) => t.uuid === uuid);
+  const identityFor = (uuid: string) => (identities.data?.targets ?? []).find((t) => t.uuid === uuid);
 
   function updateTarget(idx: number, patch: Partial<CoolifyTargetInput>) {
     onChange(targets.map((t, i) => (i === idx ? { ...t, ...patch } : t)));
@@ -50,117 +51,31 @@ export function CoolifyTargetsField({
 
   return (
     <fieldset className="flex flex-col gap-3 rounded-md border border-subtle p-3">
-      <legend className="fg-label px-1 text-subtle">
-        Deploy targets · this project
-      </legend>
+      <legend className="fg-label px-1 text-subtle">Deploy targets · this project</legend>
       <p className="fg-body-sm text-muted">
-        The Coolify application(s) this binding deploys. Add
-        one row per app — e.g. a separate backend and frontend; they deploy
-        together and the pipeline only completes once all succeed. Give a
-        target a health URL and Forge reads it after every deploy: one that
-        never answers healthy fails the deploy and restores the previous image.
-        {inherited
-          ? " Currently inherited from the shared connection — saving stores project-level targets."
-          : ""}
+        The Coolify application(s) this binding deploys. Add one row per app — e.g. a separate backend and
+        frontend; they deploy together and the pipeline only completes once all succeed. Give a target a
+        health URL and Forge reads it after every deploy: one that never answers healthy fails the deploy and
+        restores the previous image.
+        {inherited ? " Currently inherited from the shared connection — saving stores project-level targets." : ""}
       </p>
       {apps.isError && (
         <p className="fg-body-sm text-muted">
-          Could not read the application list from Coolify — enter the resource
-          UUID by hand, or fix the base URL and token above and try again.
+          Could not read the application list from Coolify — enter the resource UUID by hand, or fix the base
+          URL and token above and try again.
         </p>
       )}
-      {targets.map((t, idx) => {
-        const identity = identityFor(t.resourceUuid);
-        return (
-          <div key={t.id ?? idx} className="flex flex-col gap-1">
-            <div className="flex flex-wrap items-end gap-2 sm:flex-nowrap">
-              <div className="w-full shrink-0 sm:w-40">
-                {idx === 0 && (
-                  <span className="fg-label mb-1 block text-subtle">Label</span>
-                )}
-                <Input
-                  value={t.label}
-                  onChange={(e) => updateTarget(idx, { label: e.target.value })}
-                  placeholder="Backend"
-                />
-              </div>
-              <div className="min-w-0 flex-1">
-                {idx === 0 && (
-                  <span className="fg-label mb-1 block text-subtle">
-                    Coolify application
-                  </span>
-                )}
-                {options.length > 0 ? (
-                  <NativeSelect
-                    aria-label="Coolify application"
-                    value={t.resourceUuid}
-                    options={[
-                      { value: "", label: "Select an application…" },
-                      ...options,
-                    ]}
-                    onChange={(e) =>
-                      updateTarget(idx, { resourceUuid: e.target.value })
-                    }
-                  />
-                ) : (
-                  <Input
-                    value={t.resourceUuid}
-                    onChange={(e) =>
-                      updateTarget(idx, { resourceUuid: e.target.value })
-                    }
-                    placeholder="application uuid from Coolify"
-                  />
-                )}
-              </div>
-              <Button
-                variant="ghost"
-                icon="trash"
-                aria-label="Remove target"
-                disabled={targets.length <= 1}
-                onClick={() =>
-                  onChange(
-                    targets.length <= 1
-                      ? targets
-                      : targets.filter((_, i) => i !== idx),
-                  )
-                }
-              />
-            </div>
-            <div className="flex items-end gap-2">
-              <div className={ALIGN_LABEL_COL} aria-hidden />
-              <div className="min-w-0 flex-1">
-                {idx === 0 && (
-                  <span className="fg-label mb-1 block text-subtle">
-                    Health URL (optional)
-                  </span>
-                )}
-                <Input
-                  aria-label={`Health URL for ${t.label || "this target"}`}
-                  value={t.healthUrl ?? ""}
-                  onChange={(e) =>
-                    updateTarget(idx, { healthUrl: e.target.value })
-                  }
-                  placeholder="https://api.example.com/health"
-                />
-              </div>
-              <div className={ALIGN_BUTTON_COL} aria-hidden />
-            </div>
-            {identity && !identity.found && (
-              <Badge tone="red">Coolify does not list this application</Badge>
-            )}
-            {identity?.found && (
-              <span className="fg-body-sm text-muted">
-                {identity.name ?? "unnamed"}
-                {identity.fqdn ? ` · ${identity.fqdn}` : ""}
-                {identity.gitBranch ? ` · ${identity.gitBranch}` : ""}
-                {identity.gitCommitSha
-                  ? `@${identity.gitCommitSha.slice(0, 7)}`
-                  : ""}
-              </span>
-            )}
-          </div>
-        );
-      })}
+      {targets.map((t, idx) => (
+        <TargetRow
+          key={t.id ?? idx}
+          target={t}
+          first={idx === 0}
+          options={options}
+          identity={identityFor(t.resourceUuid)}
+          onPatch={(patch) => updateTarget(idx, patch)}
+          onRemove={targets.length <= 1 ? undefined : () => onChange(targets.filter((_, i) => i !== idx))}
+        />
+      ))}
       <div>
         <Button
           variant="secondary"
@@ -172,5 +87,77 @@ export function CoolifyTargetsField({
         </Button>
       </div>
     </fieldset>
+  );
+}
+
+/** A column caption, shown above the first row only. */
+function Caption({ show, children }: { show: boolean; children: string }) {
+  return show ? <span className="fg-label mb-1 block text-subtle">{children}</span> : null;
+}
+
+function TargetRow({
+  target: t,
+  first,
+  options,
+  identity,
+  onPatch,
+  onRemove,
+}: {
+  target: CoolifyTargetInput;
+  first: boolean;
+  options: { value: string; label: string }[];
+  identity: Identity | undefined;
+  onPatch: (patch: Partial<CoolifyTargetInput>) => void;
+  onRemove: (() => void) | undefined;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-end gap-2 sm:flex-nowrap">
+        <div className="w-full shrink-0 sm:w-40">
+          <Caption show={first}>Label</Caption>
+          <Input value={t.label} onChange={(e) => onPatch({ label: e.target.value })} placeholder="Backend" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <Caption show={first}>Coolify application</Caption>
+          {options.length > 0 ? (
+            <NativeSelect
+              aria-label="Coolify application"
+              value={t.resourceUuid}
+              options={[{ value: "", label: "Select an application…" }, ...options]}
+              onChange={(e) => onPatch({ resourceUuid: e.target.value })}
+            />
+          ) : (
+            <Input
+              value={t.resourceUuid}
+              onChange={(e) => onPatch({ resourceUuid: e.target.value })}
+              placeholder="application uuid from Coolify"
+            />
+          )}
+        </div>
+        <Button variant="ghost" icon="trash" aria-label="Remove target" disabled={!onRemove} onClick={onRemove} />
+      </div>
+      <div className="flex items-end gap-2">
+        <div className={ALIGN_LABEL_COL} aria-hidden />
+        <div className="min-w-0 flex-1">
+          <Caption show={first}>Health URL (optional)</Caption>
+          <Input
+            aria-label={`Health URL for ${t.label || "this target"}`}
+            value={t.healthUrl ?? ""}
+            onChange={(e) => onPatch({ healthUrl: e.target.value })}
+            placeholder="https://api.example.com/health"
+          />
+        </div>
+        <div className={ALIGN_BUTTON_COL} aria-hidden />
+      </div>
+      {identity && !identity.found && <Badge tone="red">Coolify does not list this application</Badge>}
+      {identity?.found && (
+        <span className="fg-body-sm text-muted">
+          {identity.name ?? "unnamed"}
+          {identity.fqdn ? ` · ${identity.fqdn}` : ""}
+          {identity.gitBranch ? ` · ${identity.gitBranch}` : ""}
+          {identity.gitCommitSha ? `@${identity.gitCommitSha.slice(0, 7)}` : ""}
+        </span>
+      )}
+    </div>
   );
 }
