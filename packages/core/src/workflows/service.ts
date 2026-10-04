@@ -6,7 +6,7 @@ import {
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { peopleOf } from '../lib/people.js';
 import { staleBase } from '../project-config/documents.js';
 import { readProjectDocument } from '../project-config/service.js';
@@ -34,6 +34,7 @@ import {
   workflowsOf,
 } from './store.js';
 import { type ProjectDesign, type ProjectDesigns, projectDesignOf } from './template-check.js';
+import { requireCan } from '../permissions/index.js';
 
 export interface WorkflowWriter {
   userId: string;
@@ -244,7 +245,7 @@ export function workflowView(
 }
 
 export async function listWorkflowsAs(userId: string, projectId: string) {
-  await assertProjectAccess(projectId, userId, 'viewer');
+  await requireCan({ userId }, 'project.read', projectId);
   const rows = await workflowsOf(db, projectId);
   const [names, reasons] = await Promise.all([
     writerNames(rows),
@@ -259,7 +260,7 @@ export async function listWorkflowsAs(userId: string, projectId: string) {
 }
 
 export async function readWorkflowAs(userId: string, projectId: string, id: string) {
-  await assertProjectAccess(projectId, userId, 'viewer');
+  await requireCan({ userId }, 'project.read', projectId);
   const row = await readWorkflow(db, id);
   if (!row || row.projectId !== projectId) {
     throw notFound(`project ${projectId} holds no workflow ${id}`);

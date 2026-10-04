@@ -4,7 +4,6 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { deviceSkills, skillActivityEvents, skills } from '../db/schema.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
@@ -12,6 +11,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { recordSkillActivityEvent, resolvePacketIdForHash } from '../skills/activity.js';
 import { loadDeviceSkillStatus, resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { assertDeviceBoundToProject } from './device-project.js';
+import { requireCan } from '../permissions/index.js';
 
 // Skill Studio 4 (ISS-278) — server-driven device skill sync.
 //
@@ -391,7 +391,7 @@ deviceSkillStatusRoutes.get(
   async (c) => {
     const { projectId, deviceId } = c.req.valid('param');
     const userId = c.get('userId');
-    await assertProjectAccess(projectId, userId, 'viewer');
+    await requireCan({ userId }, 'project.read', projectId);
 
     const status = await loadDeviceSkillStatus(projectId, deviceId);
     return c.json({ skills: status });

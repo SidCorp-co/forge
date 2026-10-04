@@ -16,8 +16,9 @@ import {
   conversationParticipants,
   conversations,
 } from '../db/schema-conversations.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import type { Executor, TxOnly } from './db-executor.js';
+import { holds } from '../permissions/index.js';
 
 const forbidden = (message: string, code: string) =>
   new HTTPException(403, { message, cause: { code } });
@@ -277,7 +278,7 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
   }
 
   const access = await effectiveProjectRole(args.actorUserId, args.projectId);
-  if (!projectRoleAtLeast(access?.role ?? null, 'member')) {
+  if (!(access ? holds(access, 'project.write') : false)) {
     throw forbidden(
       `@${handle.handle} would make this room about project ${args.projectId} and you hold ${access?.role ?? 'no role'} on it; a handle is added to a room by somebody who holds at least a member role on its project`,
       'HANDLE_PROJECT_FORBIDDEN',

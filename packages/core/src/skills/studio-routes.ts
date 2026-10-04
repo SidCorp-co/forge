@@ -4,12 +4,13 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { skills } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { globalEffectiveMd } from './effective.js';
 import { MetaSkillReservedError } from './meta-skills.js';
 import { applyGlobalSkillDefault, SkillAlreadyShadowedError } from './service.js';
+import { requireHeld } from '../permissions/index.js';
 
 /**
  * Skill Studio listing + apply-default (ISS-388). Global skills are immutable
@@ -102,7 +103,7 @@ skillStudioRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can apply a default skill');
+    requireHeld(access, 'project.admin');
 
     const [global] = await db.select().from(skills).where(eq(skills.id, globalSkillId)).limit(1);
     if (!global) throw notFound('skill not found');

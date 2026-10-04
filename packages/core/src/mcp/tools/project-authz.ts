@@ -1,6 +1,7 @@
-import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
+import { effectiveProjectRole } from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { PM_ACTIONS } from './pm-actions.js';
+import { holds } from '../../permissions/index.js';
 
 export async function loadUserProjectRoleFlags(
   userId: string,
@@ -10,8 +11,8 @@ export async function loadUserProjectRoleFlags(
   if (!access) return null;
   return {
     isMember: access.role !== null,
-    isWriter: projectRoleAtLeast(access.role, 'member'),
-    isAdmin: projectRoleAtLeast(access.role, 'admin'),
+    isWriter: holds(access, 'project.write'),
+    isAdmin: holds(access, 'project.admin'),
   };
 }
 

@@ -4,10 +4,11 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentApprovalModes, agentSchedules, agents } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { wholeList } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -108,7 +109,7 @@ agentRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     const [inserted] = await db
       .insert(agents)
@@ -174,7 +175,7 @@ agentRoutes.patch(
     if (!existing) throw notFound('agent not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (patch.name !== undefined) updates.name = patch.name;
@@ -218,7 +219,7 @@ agentRoutes.delete(
     if (!existing) throw notFound('agent not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    assertProjectRole(access, 'admin', 'insufficient permission');
+    requireHeld(access, 'project.admin');
 
     await db.delete(agents).where(eq(agents.id, id));
     return c.body(null, 204);

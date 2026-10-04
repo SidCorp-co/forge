@@ -48,7 +48,7 @@ import { listWindowsForConversation } from '../conversations/windows.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { conversationModes } from '../db/schema-conversations.js';
-import { assertProjectRole, effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -74,6 +74,7 @@ import { ConversationModeSettledError, sendWebConversationMessage } from './conv
 import { conversationToolCallRoutes } from './conversation-tool-calls.js';
 import { threadMarks } from './thread-marks.js';
 import { rememberUiSnapshot } from './ui-snapshot.js';
+import { requireHeld } from '../permissions/index.js';
 
 const READ_WINDOW = 200;
 
@@ -202,7 +203,7 @@ conversationRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     const rows = await listConversationsInProject(projectId, { archived });
     const pinned = await pinnedBy(
@@ -258,7 +259,7 @@ conversationRoutes.get(
   async (c) => {
     const { projectId } = c.req.valid('query');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
     const unavailable = await conversationAgentUnavailableReason(projectId);
     return c.json({ available: unavailable === null, reason: unavailable });
   },
@@ -274,7 +275,7 @@ conversationRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
 
     const handles = input.handles ?? [];
     const people = input.people ?? [];

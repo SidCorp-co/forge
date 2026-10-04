@@ -8,7 +8,7 @@ import {
   upsertIntegrationGuide,
 } from '../../guides/integration-guides.js';
 import { INTEGRATION_PROVIDERS } from '../../integrations/types.js';
-import { loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
+import { loadOrgRole } from '../../lib/authz.js';
 import { findProjectOrgId } from '../../projects/service.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -17,6 +17,7 @@ import {
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { holdsOrg } from '../../permissions/index.js';
 
 const inputSchema = z
   .object({
@@ -42,7 +43,7 @@ async function resolveOrgId(ctx: McpContext, projectIdArg?: string): Promise<str
 async function assertOrgAdmin(ctx: McpContext, orgId: string): Promise<string> {
   const userId = principalUserId(ctx.principal);
   const role = await loadOrgRole(orgId, userId);
-  if (!orgRoleAtLeast(role, 'admin')) {
+  if (!holdsOrg(role, 'org.admin')) {
     throw new Error('FORBIDDEN: writing an integration guide requires org admin or owner');
   }
   return userId;

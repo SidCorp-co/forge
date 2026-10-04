@@ -12,8 +12,8 @@ import { and, eq, ne } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { nearestFeedbackOf } from '../feedback/embeddings.js';
-import { permissionRefusalFor } from '../permissions/index.js';
-import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
+import { permissionRefusalFor, requireCan } from '../permissions/index.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { designNodesIn, nodeSetRefusals } from '../workflows/node-refs.js';
 import { breakdownGuardIn } from './breakdown.js';
@@ -145,7 +145,7 @@ export async function createSuggestion(input: {
   conversationMessageId?: string | null | undefined;
 }): Promise<SuggestionOutcome> {
   const { projectId, kind } = input;
-  await assertProjectAccess(projectId, input.actor.userId, 'member');
+  await requireCan({ userId: input.actor.userId }, 'project.write', projectId);
   if (kind === 'breakdown') {
     const access = await effectiveProjectRole(input.actor.userId, projectId);
     const forbidden = breakdownProposerRefusal(

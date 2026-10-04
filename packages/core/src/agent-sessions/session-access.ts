@@ -4,8 +4,9 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, type ProjectMemberRole } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
+import { holds } from '../permissions/index.js';
 
 export const idParamSchema = z.object({ id: z.uuid() });
 
@@ -60,7 +61,7 @@ export function assertSessionOwnerOrAdmin(
   access: Awaited<ReturnType<typeof loadProjectAccess>>,
   userId: string,
 ) {
-  if (session.userId && session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
+  if (session.userId && session.userId !== userId && !holds(access, 'project.admin')) {
     throw forbidden('not the session owner');
   }
 }
@@ -82,7 +83,7 @@ export function assertAgentChatOwner(
 ) {
   const isAgentChat = (session.metadata as { type?: string } | null)?.type === 'agent';
   if (!isAgentChat) return;
-  if (session.userId !== userId && !projectRoleAtLeast(access.role, 'admin')) {
+  if (session.userId !== userId && !holds(access, 'project.admin')) {
     throw forbidden('not the conversation owner');
   }
 }

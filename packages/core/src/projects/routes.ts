@@ -14,16 +14,7 @@ import {
   projects,
   runners,
 } from '../db/schema.js';
-import {
-  assertOrgAccess,
-  assertOrgRoleOnProject,
-  assertUnfenced,
-  loadPersonalOrgId,
-  loadProjectAccess,
-  maxProjectRole,
-  orgDerivedProjectRole,
-  visibleProjectsWhere,
-} from '../lib/authz.js';
+import { assertUnfenced, loadPersonalOrgId, loadProjectAccess, maxProjectRole, orgDerivedProjectRole, visibleProjectsWhere } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   badRequest,
@@ -53,6 +44,7 @@ import {
   readIssueBranchInputs,
   readProjectBranches,
 } from './service.js';
+import { requireOrgCan, requireOrgHeld } from '../permissions/index.js';
 
 const createProjectFields = {
   slug: z
@@ -127,7 +119,7 @@ projectRoutes.post(
     // any role) or the caller's personal org.
     let orgId: string;
     if (requestedOrgId) {
-      await assertOrgAccess(requestedOrgId, userId, 'member');
+      await requireOrgCan({ userId }, 'org.read', requestedOrgId);
       orgId = requestedOrgId;
     } else {
       const personal = await loadPersonalOrgId(userId);
@@ -297,11 +289,11 @@ projectRoutes.patch(
     // Settings PATCH keeps the legacy owner-only strictness: org owner/admin,
     // not a merely-invited project admin.
     const access = await loadProjectAccess(id, userId);
-    assertOrgRoleOnProject(access, 'admin', 'org admin required');
+    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
     const updates: Record<string, unknown> = {};
     if (patch.orgId !== undefined && patch.orgId !== access.orgId) {
-      await assertOrgAccess(patch.orgId, userId, 'admin');
+      await requireOrgCan({ userId }, 'org.admin', patch.orgId);
       updates.orgId = patch.orgId;
     }
 
@@ -341,7 +333,7 @@ projectRoutes.delete(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    assertOrgRoleOnProject(access, 'admin', 'org admin required');
+    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
     await withKernelMarker(db, async (tx) => tx.delete(projects).where(eq(projects.id, id)));
     return c.body(null, 204);
@@ -377,7 +369,7 @@ projectRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    assertOrgRoleOnProject(access, 'admin', 'org admin required');
+    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
     const [updated] = await db
       .update(projects)
@@ -399,7 +391,7 @@ projectRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    assertOrgRoleOnProject(access, 'admin', 'org admin required');
+    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
     const [updated] = await db
       .update(projects)
@@ -423,7 +415,7 @@ projectRoutes.patch(
     const { id } = c.req.valid('param');
     const { plugins } = c.req.valid('json');
     const access = await loadProjectAccess(id, c.get('userId'));
-    assertOrgRoleOnProject(access, 'admin', 'org admin required');
+    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
     if ((await readAgentConfig(id)) === null) throw notFound();
     await patchAgentConfigKeys(id, { plugins });

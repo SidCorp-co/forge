@@ -3,8 +3,8 @@
 import { isDeepStrictEqual } from 'node:util';
 import type { ProjectMemberRole } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { projectRoleAtLeast } from '../lib/authz.js';
 import type { EcosystemRefusal } from './refusals.js';
+import { holds } from '../permissions/index.js';
 
 export interface ProviderWriterFacts {
   userId: string;
@@ -21,8 +21,8 @@ export function providerWriterRefusal(
   projectId: string,
   code: ProviderWriterCode,
 ): EcosystemRefusal | null {
-  if (facts.agency === 'agent' && projectRoleAtLeast(facts.role, 'member')) return null;
-  if (facts.agency === 'human' && projectRoleAtLeast(facts.role, 'admin')) return null;
+  if (facts.agency === 'agent' && holds(facts, 'project.write')) return null;
+  if (facts.agency === 'human' && holds(facts, 'project.admin')) return null;
   const held =
     facts.agency === 'agent'
       ? `agent ${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}, so it is not this project's own agent`

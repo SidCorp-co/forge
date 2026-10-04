@@ -14,7 +14,6 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import type { ConversationAdapter } from '../../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../../db/schema-speaker-links.js';
-import { assertProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { proposeCandidates, type SpeakerCandidate } from './candidates.js';
@@ -24,6 +23,7 @@ import {
   type SpeakerRefusal,
   sourceUnknownRefusal,
 } from './speaker-link.js';
+import { requireCan } from '../../permissions/index.js';
 
 const speakerBodySchema = z.object({
   source: z.string().optional(),
@@ -46,7 +46,7 @@ const speakerBody = zValidator('json', speakerBodySchema, (result, c) => {
 
 // cm:why project access is refused before the body is read, so a stranger learns nothing from a 400
 const projectAccess: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  await assertProjectAccess(c.req.param('projectId') ?? '', c.get('userId'));
+  await requireCan({ userId: c.get('userId') }, 'project.write', c.req.param('projectId') ?? '');
   await next();
 };
 

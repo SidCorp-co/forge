@@ -3,9 +3,8 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { permissionFactsOf } from '../permissions/index.js';
+import { permissionFactsOf, requireCan } from '../permissions/index.js';
 import {
   type DesignDecision,
   type DesignRefusal,
@@ -121,7 +120,7 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
 }
 
 export async function readDesignAs(viewer: WorkflowWriter, projectId: string, id: string) {
-  await assertProjectAccess(projectId, viewer.userId, 'viewer');
+  await requireCan({ userId: viewer.userId }, 'project.read', projectId);
   return designView(await rowIn(projectId, id), viewer);
 }
 
@@ -255,7 +254,7 @@ export async function linkBuildAs(input: {
   steps?: string[] | undefined;
 }): Promise<DesignOutcome> {
   const { projectId, id, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const issue = await resolveIssueRouteRef(input.issue, projectId, actor.userId);
   if (issue.projectId !== projectId) {
     throw notFound(`issue ${input.issue} is not an issue of project ${projectId}`);

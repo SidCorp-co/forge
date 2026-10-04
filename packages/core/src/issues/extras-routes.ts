@@ -13,7 +13,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { noPromptMessage, POOL_JOB_NO_PROMPT } from '../jobs/pool-served.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
@@ -35,6 +35,7 @@ import {
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
 import { triggerTerminalDispatch } from './transition.js';
+import { holds, requireHeld } from '../permissions/index.js';
 
 const runPipelineStepBodySchema = z.object({}).strict();
 
@@ -114,7 +115,7 @@ issueExtrasRoutes.patch(
       distinctProjects.map(async (projectId): Promise<[string, ProjectAccessState]> => {
         try {
           const access = await loadProjectAccess(projectId, userId);
-          return [projectId, { allowed: projectRoleAtLeast(access.role, 'member') }];
+          return [projectId, { allowed: holds(access, 'project.write') }];
         } catch (err) {
           if (err instanceof HTTPException && err.status === 404) {
             return [projectId, { allowed: false, missing: true }];
@@ -273,7 +274,7 @@ issueExtrasRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     // No enrich prompt is built anywhere, and the job pool runs only the prompt a
     // job is minted with (ISS-1135).

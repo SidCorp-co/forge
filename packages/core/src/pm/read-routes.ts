@@ -9,12 +9,13 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { PM_GRAPH_DEFAULT_DEPTH, PM_GRAPH_MAX_DEPTH, readPmGraph } from './graph-service.js';
 import { readRunnerLoad } from './runner-load-service.js';
 import { readPmSnapshot } from './snapshot-service.js';
+import { requireHeld } from '../permissions/index.js';
 
 const paramSchema = z.object({ id: z.uuid() });
 
@@ -33,7 +34,7 @@ pmReadRoutes.use('/:id/pm/runner-load', requireAuth(), assertEmailVerified());
 
 async function assertMember(projectId: string, userId: string): Promise<void> {
   const access = await loadProjectAccess(projectId, userId);
-  assertProjectRole(access, 'viewer', 'not a project member');
+  requireHeld(access, 'project.read');
 }
 
 pmReadRoutes.get(

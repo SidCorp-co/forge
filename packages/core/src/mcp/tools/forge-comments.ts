@@ -27,7 +27,7 @@ import {
 import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
 import { isCommentIntent } from '../../issues/record-events/kinds.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
+import { effectiveProjectRole } from '../../lib/authz.js';
 import { egressShown } from '../../lib/data-egress.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
@@ -50,6 +50,7 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 import { buildListEnvelope } from './list-envelope.js';
+import { holds } from '../../permissions/index.js';
 
 /**
  * An MCP caller has no channel to declare a capability: `tool.handler(args)`
@@ -453,7 +454,7 @@ async function updateAction(principal: Principal, input: ToolInput): Promise<unk
 async function assertCommentDeletePermission(userId: string, projectId: string): Promise<void> {
   const access = await effectiveProjectRole(userId, projectId);
   if (!access) throw new Error('FORBIDDEN: project not found or not accessible');
-  if (!projectRoleAtLeast(access.role, 'admin')) {
+  if (!holds(access, 'project.admin')) {
     throw new Error('FORBIDDEN: only the comment author or a project admin can delete');
   }
 }

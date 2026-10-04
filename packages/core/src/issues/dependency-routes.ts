@@ -14,7 +14,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issueDependencies, issueDependencyKinds, issues } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, conflict, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -31,6 +31,7 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
+import { requireHeld } from '../permissions/index.js';
 
 const edgeParamSchema = z.object({ id: z.uuid(), edgeId: z.uuid() });
 
@@ -110,7 +111,7 @@ issueDependencyRoutes.post(
     }
 
     const access = await loadProjectAccess(a.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
 
     const input: SetIssueDependencyInput = {
       projectId: a.projectId,
@@ -192,7 +193,7 @@ issueDependencyRoutes.delete(
     // who pairs an arbitrary `:edgeId` with their own `:id` learns whether the
     // edge exists (404 vs 400 vs 403 leaks state).
     const access = await loadProjectAccess(edge.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
 
     if (edge.fromIssueId !== issueId && edge.toIssueId !== issueId) {
       throw badRequest({ message: 'edge does not involve this issue' }, 'EDGE_MISMATCH');

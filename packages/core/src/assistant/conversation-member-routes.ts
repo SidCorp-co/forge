@@ -33,7 +33,7 @@ import {
 import { derivedScope } from '../conversations/scope.js';
 import { getConversation } from '../conversations/store.js';
 import { conversationParticipants } from '../db/schema-conversations.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import {
@@ -42,6 +42,7 @@ import {
   withMembershipLock,
 } from './conversation-access.js';
 import { nameLostReaders, namePeople, withDisplayNames } from './conversation-people.js';
+import { requireHeld } from '../permissions/index.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 const projectQuerySchema = z.object({ projectId: z.uuid() }).strict();
@@ -94,7 +95,7 @@ conversationMemberRoutes.get(
     const { projectId } = c.req.valid('query');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
     const scope = [projectId];
     const [people, handles] = await Promise.all([
       addablePeople(null, scope),

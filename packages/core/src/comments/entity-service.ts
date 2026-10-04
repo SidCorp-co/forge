@@ -12,7 +12,6 @@ import { db, type Tx } from '../db/client.js';
 import { comments } from '../db/schema.js';
 import { commentEvents } from '../db/schema-comments.js';
 import type { ReadDoor } from '../feedback/egress.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
 import { designNodesIn, nodeRefRefusal } from '../workflows/node-refs.js';
@@ -42,6 +41,7 @@ import {
   scopeRefusal,
   sitsOn,
 } from './entity-rules.js';
+import { requireCan } from '../permissions/index.js';
 
 export type EntityCommentOutcome =
   | { ok: true; comment: EntityCommentView; created: boolean }
@@ -131,7 +131,7 @@ async function viewIn(
 }
 
 async function factsOf(actor: EntityCommentActor, projectId: string) {
-  const access = await assertProjectAccess(projectId, actor.userId, 'viewer');
+  const access = await requireCan({ userId: actor.userId }, 'project.read', projectId);
   return { userId: actor.userId, agency: actor.agency, role: access.role };
 }
 

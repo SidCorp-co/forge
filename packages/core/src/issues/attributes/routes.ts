@@ -14,13 +14,14 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
+import { loadProjectAccess } from '../../lib/authz.js';
 import type { AuthVars } from '../../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { loadIssueAttributes } from './read.js';
 import { setIssueAttributes } from './service.js';
 import { AttributeRefusal, type AttributeRefusalCode } from './write.js';
+import { requireHeld } from '../../permissions/index.js';
 
 const attributeSchema = z
   .object({
@@ -68,7 +69,7 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
       const { attributes } = c.req.valid('json');
       const issue = await loadIssueRow(issueId);
       const access = await loadProjectAccess(issue.projectId, c.get('userId'));
-      assertProjectRole(access, 'member');
+      requireHeld(access, 'project.write');
 
       try {
         const result = await setIssueAttributes(
@@ -97,7 +98,7 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
       const { id: issueId } = c.req.valid('param');
       const issue = await loadIssueRow(issueId);
       const access = await loadProjectAccess(issue.projectId, c.get('userId'));
-      assertProjectRole(access, 'viewer');
+      requireHeld(access, 'project.read');
       return c.json({ attributes: await loadIssueAttributes(issue.id) });
     },
   );

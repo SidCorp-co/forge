@@ -12,7 +12,7 @@ import {
   type ScheduleStanding,
 } from '@forge/contracts/automation-standing';
 import { readThresholds } from '../admin/thresholds.js';
-import { loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { readScheduleStreaks } from '../schedules/streak.js';
 import {
   type FireRow,
@@ -36,6 +36,7 @@ import {
   type StewardAction,
   scheduleStandingOf,
 } from './standing.js';
+import { holds } from '../permissions/index.js';
 
 /** The viewer a read addresses its waits to: null when the caller is not a project member. */
 export async function automationViewerOf(
@@ -46,8 +47,8 @@ export async function automationViewerOf(
   if (!access.role) return null;
   return {
     userId,
-    canWrite: projectRoleAtLeast(access.role, 'member'),
-    isAdmin: projectRoleAtLeast(access.role, 'admin'),
+    canWrite: holds(access, 'project.write'),
+    isAdmin: holds(access, 'project.admin'),
   };
 }
 

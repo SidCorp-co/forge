@@ -5,9 +5,10 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { appConfig } from '../db/schema.js';
 import { chatTurnKinds } from '../integrations/llm/registry.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 
 const projectIdParamSchema = z.object({ projectId: z.uuid() });
 
@@ -44,7 +45,7 @@ appConfigRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     const [row] = await db
       .select()
@@ -69,7 +70,7 @@ appConfigRoutes.put(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'insufficient permission');
+    requireHeld(access, 'project.admin');
 
     const updates: Record<string, unknown> = {};
     if (patch.chatProviderId !== undefined) updates.chatProviderId = patch.chatProviderId;

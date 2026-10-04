@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { envelopeOf, refused } from '../project-config/respond.js';
@@ -18,6 +17,7 @@ import { membershipDocument } from './membership-rules.js';
 import type { CommitmentsSetter } from './provider-writer-rules.js';
 import { serialiseRevisions } from './routes.js';
 import { listInterfaceRevisions, membershipsWhere, readEcosystems } from './store.js';
+import { requireCan } from '../permissions/index.js';
 
 export const ecosystemProjectRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -45,7 +45,7 @@ const serialise = (held: HeldInterface, setBy: CommitmentsSetter | null) => ({
 
 ecosystemProjectRoutes.get('/:id/interface', idParam, async (c) => {
   const { id } = c.req.valid('param');
-  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  await requireCan({ userId: c.get('userId') }, 'project.read', id);
   const held = await loadInterface(id);
   return c.json(
     held
@@ -76,7 +76,7 @@ ecosystemProjectRoutes.put(
 
 ecosystemProjectRoutes.get('/:id/interface/revisions', idParam, async (c) => {
   const { id } = c.req.valid('param');
-  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  await requireCan({ userId: c.get('userId') }, 'project.read', id);
   return c.json(serialiseRevisions(await listInterfaceRevisions(id)));
 });
 
@@ -86,7 +86,7 @@ ecosystemProjectRoutes.get('/:id/api-page', idParam, async (c) =>
 
 ecosystemProjectRoutes.get('/:id/ecosystems', idParam, async (c) => {
   const { id } = c.req.valid('param');
-  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  await requireCan({ userId: c.get('userId') }, 'project.read', id);
   const memberships = await membershipsWhere({ projectIds: [id] });
   const ecos = new Map(
     (

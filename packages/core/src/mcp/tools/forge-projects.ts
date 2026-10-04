@@ -1,13 +1,6 @@
 import { z } from 'zod';
 import type { ProjectMemberRole } from '../../db/schema.js';
-import {
-  effectiveProjectRole,
-  loadOrgRole,
-  loadPersonalOrgId,
-  maxProjectRole,
-  orgDerivedProjectRole,
-  orgRoleAtLeast,
-} from '../../lib/authz.js';
+import { effectiveProjectRole, loadOrgRole, loadPersonalOrgId, maxProjectRole, orgDerivedProjectRole } from '../../lib/authz.js';
 import { readProjectConfig, writeProjectConfig } from '../../project-config/service.js';
 import { retiredProjectFieldsMessage } from '../../projects/retired-project-keys.js';
 import {
@@ -21,6 +14,7 @@ import {
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
+import { holdsOrg } from '../../permissions/index.js';
 
 /**
  * Enumerate projects visible to the principal — explicit membership (any
@@ -209,7 +203,7 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
     if (!access?.role) {
       throw new Error('NOT_FOUND: project not found or not accessible');
     }
-    if (!orgRoleAtLeast(access.orgRole, 'admin')) {
+    if (!holdsOrg(access.orgRole, 'org.admin')) {
       throw new Error('FORBIDDEN: requires org admin (project admin role is insufficient)');
     }
 

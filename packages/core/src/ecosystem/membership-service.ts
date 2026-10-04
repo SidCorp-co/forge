@@ -1,5 +1,4 @@
 import { db } from '../db/client.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { pointer } from '../project-config/documents.js';
 import { wakeMastersForBuild } from '../ws/master-wake.js';
 import { assertStewardAdmin, forbidden, notFound, readerProjects, stewardRole } from './access.js';
@@ -22,6 +21,7 @@ import {
   readInterface,
   readMembership,
 } from './store.js';
+import { requireCan } from '../permissions/index.js';
 
 export type MembershipOutcome =
   | { ok: true; membership: MembershipRow }
@@ -88,7 +88,7 @@ async function assertSide(
     await assertStewardAdmin(eco.stewardOrgId, userId, `the ${verb} transition`);
     return;
   }
-  await assertProjectAccess(row.projectId, userId, 'admin');
+  await requireCan({ userId }, 'project.admin', row.projectId);
 }
 
 export async function transition(input: {

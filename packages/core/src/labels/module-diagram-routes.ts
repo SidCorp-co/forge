@@ -10,7 +10,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { loadModuleDiagramSnapshot } from './module-diagram-source.js';
@@ -19,6 +19,7 @@ import {
   ModuleDiagramError,
   moduleDiagramKinds,
 } from './module-diagrams.js';
+import { requireHeld } from '../permissions/index.js';
 
 const paramSchema = z.object({ id: z.uuid(), kind: z.enum(moduleDiagramKinds) });
 
@@ -38,7 +39,7 @@ moduleDiagramRoutes.get(
   async (c) => {
     const { id: projectId, kind } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     const snapshot = await loadModuleDiagramSnapshot(projectId);
     try {

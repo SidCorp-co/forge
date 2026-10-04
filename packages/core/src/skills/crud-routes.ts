@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { skillRegistrations, skills, skillTargets } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { SkillContentBlockedError } from '../security/findings.js';
@@ -17,6 +17,7 @@ import {
   updateProjectSkill,
 } from './service.js';
 import { isSlashCommandSkillName } from './skill-name.js';
+import { requireHeld } from '../permissions/index.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -214,7 +215,7 @@ skillCrudRoutes.post(
     }
 
     const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can create skills');
+    requireHeld(access, 'project.admin');
 
     try {
       const inserted = await createProjectSkill({
@@ -263,7 +264,7 @@ skillCrudRoutes.put(
 
     if (row.projectId) {
       const access = await loadProjectAccess(row.projectId, userId);
-      assertProjectRole(access, 'admin', 'only a project admin can update skills');
+      requireHeld(access, 'project.admin');
     } else {
       // Global skills: only allow CEO/admin via existing admin route.
       throw forbidden('global skills cannot be updated via this endpoint');
@@ -308,7 +309,7 @@ skillCrudRoutes.delete(
 
     if (row.projectId) {
       const access = await loadProjectAccess(row.projectId, userId);
-      assertProjectRole(access, 'admin', 'only a project admin can delete skills');
+      requireHeld(access, 'project.admin');
     } else {
       throw forbidden('global skills cannot be deleted via this endpoint');
     }
@@ -392,7 +393,7 @@ skillCrudRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can push skills');
+    requireHeld(access, 'project.admin');
 
     // Explicit push: signal device-bound runners (or one `deviceId`) over WS;
     // each pulls its effective manifest and reports installed hashes back.

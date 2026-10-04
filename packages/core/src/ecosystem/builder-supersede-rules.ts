@@ -2,11 +2,11 @@
 
 import type { OrgMemberRole, ProjectMemberRole } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { orgRoleAtLeast } from '../lib/authz.js';
 import { type ActRule, actMiss } from '../lib/person-act.js';
 import { isOpenRun } from './link-rules.js';
 import { type BuilderRunWrite, LIMITS } from './link-schema.js';
 import type { Checked, EcosystemRefusal } from './refusals.js';
+import { holdsOrg } from '../permissions/index.js';
 
 export interface SupersederFacts {
   userId: string;
@@ -26,7 +26,7 @@ export function supersederRefusal(
   facts: SupersederFacts,
   projectId: string,
 ): EcosystemRefusal | null {
-  const orgRole = orgRoleAtLeast(facts.stewardRole, 'admin')
+  const orgRole = holdsOrg(facts.stewardRole, 'org.admin')
     ? facts.stewardRole
     : facts.projectOrgRole;
   const miss = actMiss(

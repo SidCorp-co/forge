@@ -5,11 +5,12 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { loadIssuePark } from './park-view.js';
+import { requireHeld } from '../permissions/index.js';
 
 export const issueParkRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -37,7 +38,7 @@ issueParkRoutes.get(
       throw new HTTPException(404, { message: 'issue not found', cause: { code: 'NOT_FOUND' } });
     }
     const access = await loadProjectAccess(issue.projectId, c.get('userId'));
-    assertProjectRole(access, 'viewer');
+    requireHeld(access, 'project.read');
     const body: IssueParkResponse = { park: await loadIssuePark(id) };
     return c.json(body);
   },

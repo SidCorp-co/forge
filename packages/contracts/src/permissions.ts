@@ -35,6 +35,7 @@ const WRITE = [
 	"questionnaires.write",
 	"onboarding.write",
 	"ecosystem-links.write",
+	"contracts.write",
 	"suggestions.write",
 ] as const;
 

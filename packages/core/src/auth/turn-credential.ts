@@ -11,7 +11,7 @@ import { randomBytes } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { personalAccessTokens, users } from '../db/schema.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
 import { mintPat, revokePat } from './pat.js';
@@ -25,6 +25,7 @@ import {
   patGrantCovers,
 } from './pat-permissions.js';
 import { patPrincipalOf } from './pat-principal.js';
+import { holds } from '../permissions/index.js';
 
 /** What an in-process chat turn's tools reach: the tracker verbs the `forge` CLI runs, and the reads beside them. */
 export const CHAT_TURN_MENU: readonly PatPermission[] = [
@@ -99,7 +100,7 @@ export async function resolveTurnAuthority(args: {
   viaTokenId: string | null;
 }): Promise<TurnAuthorityOutcome> {
   const access = await effectiveProjectRole(args.userId, args.projectId);
-  if (!projectRoleAtLeast(access?.role ?? null, 'viewer')) {
+  if (!(access ? holds(access, 'project.read') : false)) {
     return refuse(
       'TURN_NO_ROLE',
       'I cannot act on this: the person asking holds no role on this project, so there is nobody here I may act as. A project admin can add them.',

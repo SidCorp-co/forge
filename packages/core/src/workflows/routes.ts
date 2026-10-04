@@ -4,7 +4,6 @@ import { DESIGN_VIEWS } from '@forge/contracts/workflows';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
@@ -32,6 +31,7 @@ import {
 } from './service.js';
 import { readSystemGraphAs } from './system-graph-read.js';
 import { listProjectTemplatesAs, readProjectTemplateAs } from './template-service.js';
+import { requireCan } from '../permissions/index.js';
 
 export const workflowRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -347,7 +347,7 @@ workflowRoutes.post(
 
 workflowRoutes.get('/:id/workflows/:workflow/observations', workflowRefParam, async (c) => {
   const { id, workflow } = c.req.valid('param');
-  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  await requireCan({ userId: c.get('userId') }, 'project.read', id);
   return c.json(await listObservations(id, workflow));
 });
 
@@ -369,7 +369,7 @@ workflowRoutes.get(
   ),
   async (c) => {
     const { id, workflow, at } = c.req.valid('param');
-    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    await requireCan({ userId: c.get('userId') }, 'project.read', id);
     return c.json({
       observation: await egressForRequest(
         c.get('agency'),

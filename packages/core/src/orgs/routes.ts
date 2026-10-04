@@ -23,6 +23,7 @@ import { sendOrgInvitationEmail } from '../projects/invitation-email.js';
 import { agentAccountRoutes } from './agent-accounts-routes.js';
 import { issueOrgInvitationToken } from './invitations.js';
 import { listOrgMembers, listOrgsForUser } from './service.js';
+import { requireOrgCan } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -128,7 +129,7 @@ orgRoutes.patch(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
 
-    await assertOrgAccess(orgId, userId, 'owner');
+    await requireOrgCan({ userId }, 'org.own', orgId);
 
     const [updated] = await db
       .update(organizations)
@@ -157,7 +158,7 @@ orgRoutes.delete(
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const org = await assertOrgAccess(orgId, userId, 'owner');
+    const org = await requireOrgCan({ userId }, 'org.own', orgId);
     if (org.isPersonal) {
       throw conflict('personal org cannot be deleted', 'PERSONAL_ORG_IMMUTABLE');
     }
@@ -190,7 +191,7 @@ orgRoutes.get(
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    await assertOrgAccess(orgId, userId, 'member');
+    await requireOrgCan({ userId }, 'org.read', orgId);
 
     const rows = await db
       .select({
@@ -215,7 +216,7 @@ orgRoutes.get(
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    await assertOrgAccess(orgId, userId, 'member');
+    await requireOrgCan({ userId }, 'org.read', orgId);
 
     return c.json(await listOrgMembers(orgId));
   },
@@ -236,7 +237,7 @@ orgRoutes.post(
     const { email, role } = c.req.valid('json');
     const callerId = c.get('userId');
 
-    const caller = await assertOrgAccess(orgId, callerId, 'admin');
+    const caller = await requireOrgCan({ userId: callerId }, 'org.admin', orgId);
     if (role === 'owner' && caller.role !== 'owner') {
       throw forbidden('only an org owner can grant the owner role');
     }
@@ -308,7 +309,7 @@ orgRoutes.get(
   async (c) => {
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
-    await assertOrgAccess(orgId, userId, 'admin');
+    await requireOrgCan({ userId }, 'org.admin', orgId);
 
     const rows = await db
       .select({
@@ -343,7 +344,7 @@ orgRoutes.delete(
     const { orgId } = c.req.valid('param');
     const { email } = c.req.valid('query');
     const userId = c.get('userId');
-    await assertOrgAccess(orgId, userId, 'admin');
+    await requireOrgCan({ userId }, 'org.admin', orgId);
 
     const deleted = await db
       .delete(orgInvitations)
@@ -375,7 +376,7 @@ orgRoutes.patch(
     const { role, lenses } = c.req.valid('json');
     const callerId = c.get('userId');
 
-    const caller = await assertOrgAccess(orgId, callerId, 'admin');
+    const caller = await requireOrgCan({ userId: callerId }, 'org.admin', orgId);
 
     const [target] = await db
       .select({ role: organizationMembers.role })

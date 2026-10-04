@@ -41,7 +41,6 @@ import {
 } from '../../ecosystem/link-service.js';
 import type { EcosystemRefusal } from '../../ecosystem/refusals.js';
 import { projectsWhere } from '../../ecosystem/store.js';
-import { assertProjectAccess } from '../../lib/authz.js';
 import {
   WAIT_BY_ACTION,
   WAIT_DESCRIPTION,
@@ -53,6 +52,7 @@ import {
 } from './ecosystem-contract-waits.js';
 import { namedRefusals, type SideCodes, sideOf } from './ecosystem-side.js';
 import { type ContextScopedMcpToolFactory, type McpContext, refusedAnswer } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const READS = [
   'interface',
@@ -223,7 +223,7 @@ const HANDLERS: Record<
   (ctx: McpContext, side: string, a: Args) => Promise<Answer>
 > = {
   interface: async (ctx, side) => {
-    await assertProjectAccess(side, ctx.principal.userId, 'viewer');
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', side);
     const held = await loadInterface(side);
     return held
       ? {
@@ -245,7 +245,7 @@ const HANDLERS: Record<
   },
   builder_run: async (ctx, side, a) => readBuilderRunAs(ctx.principal.userId, side, String(a.run)),
   context: async (ctx, side, a) => {
-    await assertProjectAccess(side, ctx.principal.userId, 'viewer');
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', side);
     const session = typeof a.session === 'string' ? a.session : null;
     if (session && !(await sessionOf(side, session))) {
       return one(

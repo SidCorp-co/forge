@@ -4,9 +4,10 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { knowledgeEdges } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -84,7 +85,7 @@ knowledgeEdgeRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can create edges');
+    requireHeld(access, 'project.admin');
 
     // Application-layer dedup on (project_id, subject, predicate, object, value).
     // Without this an extraction pipeline that re-runs on the same source memory
@@ -146,7 +147,7 @@ knowledgeEdgeRoutes.delete(
     if (!row) throw notFound('knowledge edge not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can delete edges');
+    requireHeld(access, 'project.admin');
 
     await db.delete(knowledgeEdges).where(eq(knowledgeEdges.id, id));
     return c.body(null, 204);

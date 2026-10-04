@@ -10,7 +10,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -21,6 +21,7 @@ import {
   pausePipelineRun,
   resumePipelineRun,
 } from './runs-control.js';
+import { requireHeld } from '../permissions/index.js';
 
 const cancelBodySchema = z.object({ parkIssue: z.boolean().optional() });
 
@@ -31,7 +32,7 @@ async function loadRunWithAccess(runId: string, userId: string): Promise<Pipelin
   const row = await readPipelineRun(runId);
   if (!row) throw notFound('pipeline run not found');
   const access = await loadProjectAccess(row.projectId, userId);
-  assertProjectRole(access, 'member');
+  requireHeld(access, 'project.write');
   return row;
 }
 

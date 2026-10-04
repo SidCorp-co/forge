@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectAccess } from '../lib/authz.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -17,6 +16,7 @@ import {
   readCharterVersions,
   readCurrentCharter,
 } from './master-charter-service.js';
+import { requireCan } from '../permissions/index.js';
 
 /**
  * What a project's master is for, and the rules that bind it (ISS-1313).
@@ -54,7 +54,7 @@ masterCharterRoutes.get(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    await requireCan({ userId: c.get('userId') }, 'project.read', id);
 
     const charter = await readCurrentCharter(id);
     if (!charter) return c.json(UNDECLARED);
@@ -69,7 +69,7 @@ masterCharterRoutes.get(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    await requireCan({ userId: c.get('userId') }, 'project.read', id);
 
     const versions = await readCharterVersions(id);
     return c.json({ versions: versions.map(serialise), returned: versions.length });
@@ -85,7 +85,7 @@ masterCharterRoutes.put(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await assertProjectAccess(id, userId);
+    await requireCan({ userId }, 'project.write', id);
 
     if (restAuthored(c) === 'agent') {
       throw new HTTPException(403, {

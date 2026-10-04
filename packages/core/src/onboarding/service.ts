@@ -27,7 +27,7 @@ import { onboardings } from '../db/schema-onboarding.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { finalizeJobDone } from '../jobs/finalize-done.js';
-import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import type { EgressReader } from '../lib/data-egress.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
@@ -63,6 +63,7 @@ import {
   settlesPhaseJob,
   startRefusal,
 } from './rules.js';
+import { requireCan } from '../permissions/index.js';
 
 export interface OnboardingActor {
   userId: string;
@@ -175,7 +176,7 @@ export async function startOnboarding(input: {
   actor: OnboardingActor;
 }): Promise<OnboardingOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
+  await requireCan({ userId: actor.userId }, 'project.read', projectId);
   const who = personActRefusal(await factsOf(actor, projectId), projectId, 'starting onboarding');
   if (who) return { ok: false, refusals: [who] };
   const [project] = await db
@@ -230,7 +231,7 @@ export async function reanalyzeOnboarding(input: {
   reason?: string | undefined;
 }): Promise<OnboardingOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
+  await requireCan({ userId: actor.userId }, 'project.read', projectId);
   const who = personActRefusal(
     await factsOf(actor, projectId),
     projectId,
@@ -275,7 +276,7 @@ export async function reanalyzeOnboarding(input: {
 
 /** A person of the project joins the onboarding thread, so a thread one person started is everyone's. */
 export async function joinOnboarding(input: { projectId: string; actor: OnboardingActor }) {
-  await assertProjectAccess(input.projectId, input.actor.userId, 'member');
+  await requireCan({ userId: input.actor.userId }, 'project.write', input.projectId);
   const row = await onboardingOf(db, input.projectId);
   if (!row) return { ok: false as const, refusals: [notStarted()] };
   await db.transaction(async (tx) => {
@@ -309,7 +310,7 @@ export async function postOnboardingQuestionnaire(input: {
   body: PostQuestionnaireRequest;
 }): Promise<OnboardingQuestionnaireOutcome> {
   const { projectId, actor, body } = input;
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
+  await requireCan({ userId: actor.userId }, 'project.read', projectId);
   const who = posterRefusal(await factsOf(actor, projectId), projectId);
   if (who) return { ok: false, refusals: [who] };
   let batchId = '';
@@ -360,7 +361,7 @@ export async function postOnboardingUpdate(input: {
   body: PostUpdateRequest;
 }): Promise<OnboardingOutcome> {
   const { projectId, actor, body } = input;
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
+  await requireCan({ userId: actor.userId }, 'project.read', projectId);
   const who = agentWriteRefusal(await factsOf(actor, projectId), projectId);
   if (who) return { ok: false, refusals: [who] };
   let conversationId = '';
@@ -417,7 +418,7 @@ export async function markOnboardingDone(input: {
   text?: string | undefined;
 }): Promise<OnboardingOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
+  await requireCan({ userId: actor.userId }, 'project.read', projectId);
   const who = closeRefusal(await factsOf(actor, projectId), projectId);
   if (who) return { ok: false, refusals: [who] };
   const sensitive = await projectHoldsSensitiveData(projectId);
@@ -486,7 +487,7 @@ export async function afterOnboardingSubmit(batch: BatchRow, submittedBy: string
 }
 
 export async function readAnswers(projectId: string, actor: OnboardingActor & EgressReader) {
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
+  await requireCan({ userId: actor.userId }, 'project.read', projectId);
   const row = await onboardingOf(db, projectId);
   if (!row) return { ok: false as const, refusals: [notStarted()] };
   const questionnaires = await batchesOfConversation(row.conversationId);

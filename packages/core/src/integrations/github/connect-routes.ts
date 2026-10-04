@@ -16,7 +16,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { organizations, projects } from '../../db/schema.js';
-import { loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
+import { loadOrgRole } from '../../lib/authz.js';
 import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { badRequest } from '../../middleware/route-errors.js';
@@ -44,6 +44,7 @@ import {
 } from './connect.js';
 import { findConnectionOwningInstallation } from './install-resolve.js';
 import { listInstallationRepositories } from './repositories.js';
+import { holdsOrg } from '../../permissions/index.js';
 
 const invalidQuery = (result: { success: boolean; error?: z.core.$ZodError }) => {
   if (!result.success && result.error) throw badRequest(z.flattenError(result.error));
@@ -127,7 +128,7 @@ async function ownerOrgForProjectApp(args: {
   }
   if (!args.projectOrgId) return undefined;
   const orgRole = await loadOrgRole(args.projectOrgId, args.userId);
-  if (!orgRoleAtLeast(orgRole, 'admin')) {
+  if (!holdsOrg(orgRole, 'org.admin')) {
     // Its own code, not a bare FORBIDDEN: the web prints one generic sentence
     // for that and drops the server's, which carries the way round.
     throw new HTTPException(403, {

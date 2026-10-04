@@ -4,12 +4,13 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { usageRecords, usageSources } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
 import { utcDayText } from '../lib/time-buckets.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { estimateCost } from './pricing.js';
+import { requireHeld } from '../permissions/index.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -88,7 +89,7 @@ usageRecordRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     const conditions: SQL[] = [eq(usageRecords.projectId, projectId)];
     if (source) conditions.push(eq(usageRecords.source, source));
@@ -126,7 +127,7 @@ usageRecordRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -206,7 +207,7 @@ usageRecordRoutes.get(
     if (!row.projectId) throw notFound('usage record not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     return c.json(row);
   },
@@ -225,7 +226,7 @@ usageRecordRoutes.post(
       throw badRequest({ projectId: 'required' });
     }
     const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
 
     const cost =
       input.estimatedCost ??
@@ -273,7 +274,7 @@ usageRecordRoutes.post(
     );
     for (const projectId of projectIds) {
       const access = await loadProjectAccess(projectId, userId);
-      assertProjectRole(access, 'member', 'not a project member');
+      requireHeld(access, 'project.write');
     }
 
     const values = records.map((r) => ({
@@ -320,7 +321,7 @@ usageRecordRoutes.post(
     );
     for (const projectId of projectIds) {
       const access = await loadProjectAccess(projectId, userId);
-      assertProjectRole(access, 'member', 'not a project member');
+      requireHeld(access, 'project.write');
     }
 
     const values = records.map((r) => ({

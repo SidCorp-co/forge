@@ -4,13 +4,14 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { schedules } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import {
   type ImprovementMessage,
   listImprovementMessages,
 } from '../schedules/messages/registry.js';
+import { requireHeld } from '../permissions/index.js';
 
 const listQuerySchema = z
   .object({
@@ -53,7 +54,7 @@ improvementMessageRoutes.get(
     }
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     const enabledRows = await db
       .select({

@@ -12,8 +12,8 @@ import {
   type WaitOutcome,
 } from '../../ecosystem/waits/service.js';
 import { resolveIssueRouteRef } from '../../issues/issue-route-ref.js';
-import { assertProjectAccess } from '../../lib/authz.js';
 import { type McpContext, refusedAnswer } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 export const WAIT_READS = ['contract_waits', 'contract_requests'] as const;
 export const WAIT_WRITES = ['contract_wait_add', 'contract_wait_retract'] as const;
@@ -86,7 +86,7 @@ export const WAIT_HANDLERS: Record<
     return { ...(await issueContractWaitsOf(found.id, side)) };
   },
   contract_requests: async (ctx, side) => {
-    await assertProjectAccess(side, ctx.principal.userId, 'viewer');
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', side);
     return { requests: await listContractRequests(side) };
   },
   contract_wait_add: async (ctx, side, a) => {

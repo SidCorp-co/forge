@@ -7,11 +7,11 @@ import {
   EMBEDDING_UNAVAILABLE,
   EmbeddingUnavailableError,
 } from '../integrations/embeddings/index.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { memorySearchStrategies, runMemorySearch } from './search-service.js';
+import { requireCan } from '../permissions/index.js';
 
 const searchBodySchema = z.object({
   projectId: z.uuid(),
@@ -43,7 +43,7 @@ memorySearchRoutes.post(
     const body = c.req.valid('json');
     const userId = c.get('userId');
 
-    await assertProjectAccess(body.projectId, userId, 'viewer');
+    await requireCan({ userId }, 'project.read', body.projectId);
 
     let result: Awaited<ReturnType<typeof runMemorySearch>>;
     try {

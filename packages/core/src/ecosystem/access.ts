@@ -1,10 +1,11 @@
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import type { OrgMemberRole } from '../db/schema.js';
-import { loadOrgRole, loadVisibleProjectIds, orgRoleAtLeast } from '../lib/authz.js';
+import { loadOrgRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { RefusalError } from '../lib/refusal.js';
 import type { EcosystemRefusal } from './refusals.js';
 import { activeMembersOf } from './store.js';
+import { holdsOrg } from '../permissions/index.js';
 
 export const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -34,7 +35,7 @@ export async function assertStewardAdmin(
   act: string,
 ): Promise<void> {
   const role = await stewardRole(stewardOrgId, userId);
-  if (!orgRoleAtLeast(role, 'admin')) {
+  if (!holdsOrg(role, 'org.admin')) {
     throw forbidden(`${act} is the steward's: it needs owner or admin of org ${stewardOrgId}`);
   }
 }

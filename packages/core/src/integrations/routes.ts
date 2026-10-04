@@ -15,7 +15,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { integrationDeliveries } from '../db/schema.js';
-import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -52,6 +52,7 @@ import {
   setBindingInboundSecret,
   updateConnection,
 } from './store.js';
+import { holdsOrg } from '../permissions/index.js';
 
 // Owner-scoped connection CRUD lives in its own module; re-exported so
 // `src/index.ts` keeps importing both routers from `./integrations/routes.js`.
@@ -139,7 +140,7 @@ integrationsRoutes.patch(
       (mergedConfig !== undefined || patch.secrets !== undefined)
     ) {
       const access = await effectiveProjectRole(userId, projectId);
-      if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
+      if (!holdsOrg(access?.orgRole ?? null, 'org.admin')) throw forbidden();
     }
 
     let mergedSecrets: Record<string, unknown> | undefined;

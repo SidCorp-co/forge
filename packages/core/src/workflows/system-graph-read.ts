@@ -2,11 +2,11 @@ import type { SystemGraph, SystemGraphRefusalCode } from '@forge/contracts/syste
 import { findTemplate } from '@forge/contracts/workflow-templates';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { readStoredWorkflow, type WorkflowWriteV2 } from './schema.js';
 import { templatesOf } from './service.js';
 import { designsOf, readWorkflow } from './store.js';
 import { type GraphDoc, isSystemContext, systemGraphOf, withRemoved } from './system-graph.js';
+import { requireCan } from '../permissions/index.js';
 
 export interface SystemGraphRefusal {
   code: SystemGraphRefusalCode;
@@ -30,7 +30,7 @@ export async function readSystemGraphAs(input: {
   against?: number | undefined;
 }): Promise<SystemGraphOutcome> {
   const { projectId, workflowId } = input;
-  await assertProjectAccess(projectId, input.userId, 'viewer');
+  await requireCan({ userId: input.userId }, 'project.read', projectId);
   const row = await readWorkflow(db, workflowId);
   if (!row || row.projectId !== projectId) {
     throw new HTTPException(404, {

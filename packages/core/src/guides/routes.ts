@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { INTEGRATION_PROVIDERS } from '../integrations/types.js';
-import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
+import { loadOrgRole } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import {
@@ -14,6 +14,7 @@ import {
   upsertIntegrationGuide,
 } from './integration-guides.js';
 import { getGuide, listGuides } from './registry.js';
+import { holdsOrg } from '../permissions/index.js';
 
 /**
  * Public, read-only surface for Forge capability guides (D2 in the plan —
@@ -42,7 +43,7 @@ orgGuideRoutes.use('*', requireAuth());
 
 async function assertOrgAdmin(orgId: string, userId: string): Promise<void> {
   const role = await loadOrgRole(orgId, userId);
-  if (!orgRoleAtLeast(role, 'admin')) {
+  if (!holdsOrg(role, 'org.admin')) {
     throw new HTTPException(403, {
       message: 'org admin or owner required',
       cause: { code: 'FORBIDDEN' },

@@ -17,7 +17,7 @@ import {
   jobTypes,
   projectMembers,
 } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
@@ -78,6 +78,7 @@ export {
 
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
+import { requireHeld } from '../permissions/index.js';
 
 export const issueCreateSchema = z
   .object({
@@ -142,7 +143,7 @@ issueProjectRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     if (input.assigneeId) await assertAssigneeIsMember(projectId, input.assigneeId);
 
@@ -455,7 +456,7 @@ issueRoutes.patch(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     if (patch.assigneeId) await assertAssigneeIsMember(issue.projectId, patch.assigneeId);
     let resolvedLabelIds: ResolvedLabelAttach[] | undefined;
@@ -551,7 +552,7 @@ issueRoutes.delete(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
+    requireHeld(access, 'project.admin');
 
     const carried = await issueDeleteRefusal(issue);
     if (carried) return c.json(refusalEnvelope([carried], carried.code), 422);

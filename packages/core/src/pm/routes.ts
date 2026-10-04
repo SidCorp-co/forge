@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { comments, issues, pmConfig, pmDecisions, pmPolicies } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { deleteMemory, indexMemoryBestEffort } from '../memory/indexer.js';
@@ -19,6 +19,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { closeEscalationTasks } from '../notifications/close-escalation.js';
 import { hooks } from '../pipeline/hooks.js';
 import { PM_NO_PROMPT_MESSAGE, type SpawnPmSessionResult, spawnPmSession } from './spawner.js';
+import { requireHeld } from '../permissions/index.js';
 
 const projectIdParam = z.object({ projectId: z.uuid() });
 
@@ -126,7 +127,7 @@ pmRoutes.post(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
     const result = await spawnPmSession({
       projectId,
       cause: 'operator',
@@ -161,7 +162,7 @@ pmRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
 
     const [decision] = await db
       .select({ id: pmDecisions.id, eventRef: pmDecisions.eventRef })
@@ -228,7 +229,7 @@ pmRoutes.get(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     const [existing] = await db
       .select()
@@ -269,7 +270,7 @@ pmRoutes.put(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    requireHeld(access, 'project.admin');
 
     await db
       .insert(pmConfig)
@@ -297,7 +298,7 @@ pmRoutes.get(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     const rows = await db
       .select({
@@ -332,7 +333,7 @@ pmRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    requireHeld(access, 'project.admin');
 
     const [inserted] = await db
       .insert(pmPolicies)
@@ -384,7 +385,7 @@ pmRoutes.patch(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    requireHeld(access, 'project.admin');
 
     const [updated] = await db
       .update(pmPolicies)
@@ -429,7 +430,7 @@ pmRoutes.delete(
     const { projectId, id } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    requireHeld(access, 'project.admin');
 
     const deleted = await db
       .delete(pmPolicies)
@@ -459,7 +460,7 @@ pmRoutes.get(
     const { page, pageSize, cause } = c.req.valid('query');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     const conditions = [eq(pmDecisions.projectId, projectId)];
     if (cause) conditions.push(eq(pmDecisions.cause, cause));

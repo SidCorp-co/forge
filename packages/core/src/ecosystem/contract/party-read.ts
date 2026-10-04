@@ -1,11 +1,12 @@
 import { db } from '../../db/client.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
+import { effectiveProjectRole } from '../../lib/authz.js';
 import { fencedBy } from '../access.js';
 import { loadGraph } from '../graph.js';
 import { loadInterface } from '../interface-service.js';
 import { liveEdges } from '../party.js';
 import { activeEcosystemIdsOf, projectsWhere } from '../store.js';
 import { type MeasurementRow, measurementsOf, type StoredVersion, versionsOf } from './store.js';
+import { holds } from '../../permissions/index.js';
 
 // cm:why a consumer reads a provider's contract only through a live consumption edge in an ecosystem the provider still publishes it to, and only as the project it holds a role on
 export async function consumedContract(args: {
@@ -16,7 +17,7 @@ export async function consumedContract(args: {
 }): Promise<{ provider: { id: string; slug: string; name: string }; ecosystems: string[] }> {
   const { userId, consumerId, providerId, contract } = args;
   const access = await effectiveProjectRole(userId, consumerId);
-  if (!projectRoleAtLeast(access?.role ?? null, 'viewer')) {
+  if (!(access ? holds(access, 'project.read') : false)) {
     throw fencedBy({
       code: 'CHANNEL_NO_ROLE',
       path: '/project',

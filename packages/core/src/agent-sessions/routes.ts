@@ -15,7 +15,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { isPipelineSessionKind } from '../jobs/session-kinds.js';
-import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import {
@@ -69,6 +69,7 @@ import {
 import { onTerminalPatch } from './terminal-effects.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
+import { requireHeld } from '../permissions/index.js';
 
 const listQuerySchema = z
   .object({
@@ -279,7 +280,7 @@ agentSessionRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'owner or admin role required');
+    requireHeld(access, 'project.admin');
 
     // ISS-449 — the loop monitor owns session reaps now; the sweeper's
     // sweepZombieSessions was demoted to an alarm pass.
@@ -507,7 +508,7 @@ agentSessionRoutes.patch(
       assertDeviceOwnsSession(c, existing);
     } else {
       const access = await loadProjectAccess(existing.projectId, userId);
-      assertProjectRole(access, 'member');
+      requireHeld(access, 'project.write');
       assertSessionOwnerOrAdmin(existing, access, userId);
     }
 
