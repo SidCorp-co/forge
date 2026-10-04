@@ -9,18 +9,15 @@ import { listProviders, register } from './registry.js';
 const CHAT_PROVIDER_ID = 'openai';
 const ANTHROPIC_PROVIDER_ID = 'anthropic';
 
-const LEGACY_PROVIDER_IDS = ['litellm', 'gemini'] as const;
-
 export function bootstrapChatProviders(): void {
   if (env.LITELLM_API_URL && env.LITELLM_API_KEY) {
-    const factory = () =>
+    register(CHAT_PROVIDER_ID, () =>
       createOpenAIProvider({
         baseUrl: env.LITELLM_API_URL as string,
         apiKey: env.LITELLM_API_KEY as string,
         defaultModel: env.LITELLM_MODEL,
-      });
-    register(CHAT_PROVIDER_ID, factory);
-    for (const legacy of LEGACY_PROVIDER_IDS) register(legacy, factory);
+      }),
+    );
     logger.info({ model: env.LITELLM_MODEL }, 'chat provider registered: openai');
   }
   if (env.ANTHROPIC_API_KEY) {
