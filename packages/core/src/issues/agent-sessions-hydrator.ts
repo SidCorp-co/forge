@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, devices } from '../db/schema.js';
+import { getLoopThresholds } from '../jobs/loop-monitor-thresholds.js';
 
 export type DerivedAgentStatus = 'running' | 'queued' | 'completed' | 'failed' | 'cancelled' | null;
 
@@ -21,6 +22,53 @@ export interface HydratedAgentSession {
   pipelineRunId: string | null;
   claudeSessionId: string | null;
   deviceName: string | null;
+  /** Alive while its heartbeat is newer than the loop monitor's heartbeat timeout. */
+  heartbeat: SessionHeartbeat;
+  /** Whether it resumed its group's Claude session or started fresh, and why. */
+  continuity: SessionContinuity;
+  freshReason: SessionFreshReason | null;
+}
+
+export type SessionHeartbeat = 'alive' | 'stale' | 'unknown';
+export type SessionContinuity = 'resumed' | 'fresh' | 'unknown';
+export type SessionFreshReason = 'first-in-group' | 'different-device' | 'prior-failed' | 'new-session';
+
+function heartbeatOf(at: Date | null, now: number, timeoutMs: number): SessionHeartbeat {
+  if (!at) return 'unknown';
+  return now - at.getTime() <= timeoutMs ? 'alive' : 'stale';
+}
+
+const metaString = (meta: Record<string, unknown> | null, key: string): string | null => {
+  const v = meta?.[key];
+  return typeof v === 'string' && v.trim() ? v : null;
+};
+
+// Oldest first, each session reads against the last one of its group: the same Claude session is
+// resumed; a different one is fresh, because the device moved, the prior failed, or neither.
+function withContinuity(sessions: HydratedAgentSession[]): void {
+  const startOf = (s: HydratedAgentSession) => (s.startedAt ?? s.createdAt).getTime();
+  const last = new Map<string, { claude: string; deviceId: string | null; status: string }>();
+  for (const s of [...sessions].sort((a, b) => startOf(a) - startOf(b))) {
+    const group = metaString(s.metadata, 'sessionGroup');
+    const claude = s.claudeSessionId;
+    if (!group || !claude) continue;
+    const prior = last.get(group);
+    if (!prior) {
+      s.continuity = 'fresh';
+      s.freshReason = 'first-in-group';
+    } else if (prior.claude === claude) {
+      s.continuity = 'resumed';
+    } else {
+      s.continuity = 'fresh';
+      s.freshReason =
+        prior.deviceId !== s.deviceId
+          ? 'different-device'
+          : prior.status === 'failed'
+            ? 'prior-failed'
+            : 'new-session';
+    }
+    last.set(group, { claude, deviceId: s.deviceId, status: s.status });
+  }
 }
 
 export interface HydratedAgentAttachment {
@@ -88,6 +136,8 @@ export async function hydrateAgentSessionsForIssues(
     for (const d of deviceRows) deviceNameById.set(d.id, d.name);
   }
 
+  const now = Date.now();
+  const { heartbeatMs } = getLoopThresholds();
   for (const r of rows) {
     const meta = (r.metadata as Record<string, unknown> | null) ?? null;
     const issueId = typeof meta?.issueId === 'string' ? (meta.issueId as string) : null;
@@ -110,10 +160,14 @@ export async function hydrateAgentSessionsForIssues(
       pipelineRunId: r.pipelineRunId,
       claudeSessionId: r.claudeSessionId,
       deviceName: r.deviceId ? (deviceNameById.get(r.deviceId) ?? null) : null,
+      heartbeat: heartbeatOf(r.lastHeartbeatAt ?? r.updatedAt, now, heartbeatMs),
+      continuity: 'unknown',
+      freshReason: null,
     });
   }
 
   for (const bucket of map.values()) {
+    withContinuity(bucket.agentSessions);
     bucket.agentStatus = deriveAgentStatus(bucket.agentSessions);
   }
 

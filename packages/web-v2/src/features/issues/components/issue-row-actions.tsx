@@ -36,7 +36,7 @@ import {
   queuedChipStatus,
   type QueuedStepView,
 } from "../waiting";
-import { groupedTransitions, transitionLabels } from "../derive";
+import { transitionLabels } from "../derive";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import { sinceLastWrite } from "../waiting";
 import {
@@ -185,9 +185,8 @@ function useRowMenuItems(
     return items;
   }
 
-  const grouped = groupedTransitions(row.status, row.workState?.leftStatus ?? null);
-  const statusNames = transitionLabels(grouped.map((g) => g.to));
-  for (const [i, g] of grouped.entries()) {
+  const statusNames = transitionLabels(row.moves.map((g) => g.to));
+  for (const [i, g] of row.moves.entries()) {
     items.push({
       label: `Status: ${statusNames[i]}`,
       danger: g.kind === "discard",

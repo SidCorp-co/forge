@@ -1,4 +1,4 @@
-import type { IssueStatus } from "./issue-machine.js";
+import type { IssueMove, IssueStatus } from "./issue-machine.js";
 import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
 import type {
 	Standing,
@@ -79,6 +79,8 @@ export interface IssueEdgeRef {
 	/** The other issue's own attention group, so a chip can say "needs you" or "running". */
 	group: IssueAttentionGroup | null;
 	landed: boolean;
+	/** The design revision a settled blocker still waits on approval of; null when none holds it. */
+	designHold: string | null;
 }
 
 export interface IssueCriteriaTally {
@@ -156,6 +158,8 @@ export interface IssueStanding
 	/** The run's step inside the status (`issue_work_state.step`), null where none is recorded. */
 	step: WorkStep | null;
 	stepStartedAt: string | null;
+	/** The moves a person may offer from here, the forward one first. */
+	moves: IssueMove[];
 	/** The status badge's tone for this project: `awaiting_release` reads `you` only where the
 	 *  project requires a person to approve a release. */
 	tone: IssueStatusTone;
@@ -211,8 +215,64 @@ export interface IssueStandingList {
 	releaseApproval: boolean;
 }
 
+/** The one act a blocker banner offers. */
+export const ISSUE_BLOCKER_ACTS = [
+	"provide_info",
+	"resume_park",
+	"resume_run",
+	"open_blocker",
+	"none",
+] as const;
+export type IssueBlockerAct = (typeof ISSUE_BLOCKER_ACTS)[number];
+
+/** Why an issue is not moving and who must act, or null on the detail when it is moving. */
+export interface IssueBlocker {
+	tone: "danger" | "attention" | "info";
+	reason: string;
+	whoMustAct: string;
+	act: { label: string; kind: IssueBlockerAct };
+	/** The paused run `resume_run` resumes; else null. */
+	runId: string | null;
+	/** The status `resume_park` moves to; else null. */
+	resumeAt: IssueStatus | null;
+	/** Live blockers still holding it back. */
+	blockingRefs: IssueEdgeRef[];
+	detail: string | null;
+}
+
+export const ISSUE_STEP_STATES = ["done", "running", "failed"] as const;
+export type IssueStepState = (typeof ISSUE_STEP_STATES)[number];
+
+/** A step's handoff as the run recorded it; `payload` is free-form. */
+export interface IssueStepHandoff {
+	id: string;
+	step: string;
+	attempt: number;
+	pipelineRunId: string;
+	payload: Record<string, unknown> | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+/** One step the issue ran, rolled up from its handoffs and step durations. */
+export interface IssueStepOutcome {
+	/** The job type as the kernel recorded it, never folded onto another name. */
+	step: string;
+	state: IssueStepState;
+	outcomeLabel: string | null;
+	/** Summed over the attempts of the step's latest run; null where none was recorded. */
+	durationSeconds: number | null;
+	costUsd: number | null;
+	handoff: IssueStepHandoff | null;
+	/** When the step last ran. */
+	ranAt: string;
+}
+
 export interface IssueStandingDetail extends IssueStandingRow {
 	/** The run's step log, oldest first. */
 	steps: IssueStepEntry[];
 	releaseApproval: boolean;
+	blocker: IssueBlocker | null;
+	/** The steps it ran, oldest first. */
+	stepOutcomes: IssueStepOutcome[];
 }
