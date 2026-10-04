@@ -10,6 +10,13 @@
 
 ### Security
 
+- **An older token is refused a project's agent sessions, runners and usage reports wherever they are
+  served (ISS-105).** A route nested under a project or issue now takes the age of the data it serves,
+  so a token made before agent sessions, pipeline reports, usage or runners could be granted is refused
+  them under `/api/projects/:id/…` and `/api/issues/:id/cost-summary` as it already was at their own
+  routes, and the project timeseries MCP tool with them. Runner load stays readable for now, because
+  the forge CLI still reads it there.
+
 - **A token's permissions now bound what it can do over MCP too.** A token granted only
   `issues:read` could call every MCP tool its owner's role allowed; a call outside its grant is
   now refused by name. Full-access tokens are unchanged.
