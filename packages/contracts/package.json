@@ -15,8 +15,8 @@
       "default": "./dist/failure-causes.js"
     },
     "./pipeline-registry": {
-      "types": "./src/pipeline-registry.ts",
-      "default": "./src/pipeline-registry.ts"
+      "types": "./dist/pipeline-registry.d.ts",
+      "default": "./dist/pipeline-registry.js"
     },
     "./issue-vocabulary": {
       "types": "./dist/issue-vocabulary.d.ts",
