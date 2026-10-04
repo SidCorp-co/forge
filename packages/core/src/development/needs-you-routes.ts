@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { mayApprove } from '../lib/approval.js';
 import { loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -33,6 +34,7 @@ needsYouRoutes.get(
         userId,
         agency,
         isAdmin: projectRoleAtLeast(access.role, 'admin'),
+        mayApprove: mayApprove({ userId, role: access.role }, 'releases'),
       }),
     );
   },

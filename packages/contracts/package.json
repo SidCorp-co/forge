@@ -1,6 +1,6 @@
 {
   "name": "@forge/contracts",
-  "version": "0.4.0-dev.2",
+  "version": "0.4.0-dev.3",
   "private": true,
   "license": "Apache-2.0",
   "description": "Shared TypeScript types + request schemas derived from @forge/core (Drizzle rows + Zod schemas). Type-only surface — no runtime coupling.",
@@ -89,6 +89,10 @@
     "./mockups": {
       "types": "./dist/mockups.d.ts",
       "default": "./dist/mockups.js"
+    },
+    "./approval": {
+      "types": "./dist/approval.d.ts",
+      "default": "./dist/approval.js"
     },
     "./field-changes": {
       "types": "./dist/field-changes.d.ts",

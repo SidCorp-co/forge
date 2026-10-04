@@ -2,7 +2,6 @@ import type { ReleaseState } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
 import {
   type CompletionFacts,
-  canDecide,
   completionOf,
   headlineOf,
   proofOf,
@@ -15,8 +14,13 @@ import {
 
 const asker = { id: 'u-asker', name: 'Lan', kind: 'human' as const };
 const minh = { id: 'u-minh', name: 'Minh', kind: 'human' as const };
-const admin: ViewerFacts = { userId: 'u-minh', agency: 'human', isAdmin: true };
-const member: ViewerFacts = { userId: 'u-member', agency: 'human', isAdmin: false };
+const admin: ViewerFacts = { userId: 'u-minh', agency: 'human', isAdmin: true, mayApprove: true };
+const member: ViewerFacts = {
+  userId: 'u-member',
+  agency: 'human',
+  isAdmin: false,
+  mayApprove: false,
+};
 
 const pending = { decision: null, requestedBy: asker, reason: null };
 
@@ -120,27 +124,14 @@ describe('whom a release awaiting approval waits on', () => {
     expect(t.waiting).toMatchObject({ kind: 'none', who: 'No approver' });
   });
 
-  it('does not offer the asker their own request', () => {
-    const t = turnOf(
-      facts({
-        state: 'awaiting_approval',
-        approval: pending,
-        viewer: { userId: 'u-asker', agency: 'human', isAdmin: true },
-        approvers: [minh],
-      }),
-    );
-    expect(t.attention).toBe('others');
-  });
-
-  it('never offers an agent the decision', () => {
-    const t = turnOf(
-      facts({
-        state: 'awaiting_approval',
-        approval: pending,
-        viewer: { userId: 'u-agent', agency: 'agent', isAdmin: true },
-      }),
-    );
-    expect(t.attention).toBe('others');
+  it('offers the asker and an agent the decision when they hold releases.approve (ADR 0007)', () => {
+    for (const viewer of [
+      { userId: 'u-asker', agency: 'human' as const, isAdmin: true, mayApprove: true },
+      { userId: 'u-agent', agency: 'agent' as const, isAdmin: true, mayApprove: true },
+    ]) {
+      const t = turnOf(facts({ state: 'awaiting_approval', approval: pending, viewer }));
+      expect(t.attention).toBe('you');
+    }
   });
 });
 
@@ -184,14 +175,14 @@ describe('whom the other states wait on', () => {
 });
 
 describe('who may decide', () => {
-  it('needs a human admin who did not ask, on a request still pending', () => {
-    expect(canDecide(admin, pending)).toBe(true);
-    expect(canDecide(member, pending)).toBe(false);
-    expect(canDecide({ ...admin, agency: 'agent' }, pending)).toBe(false);
-    expect(canDecide({ ...admin, userId: 'u-asker' }, pending)).toBe(false);
-    expect(canDecide(admin, { ...pending, decision: 'approved' })).toBe(false);
-    expect(canDecide(admin, null)).toBe(false);
-    expect(canDecide(null, pending)).toBe(false);
+  it('is a holder of releases.approve on a pending request, an agent or the asker included (ADR 0007)', () => {
+    const turn = (viewer: ViewerFacts | null, approval: TurnFacts['approval']) =>
+      turnOf(facts({ state: 'awaiting_approval', approval, viewer, approvers: [minh] })).attention;
+    expect(turn(admin, pending)).toBe('you');
+    expect(turn({ ...admin, agency: 'agent' }, pending)).toBe('you');
+    expect(turn({ ...admin, userId: 'u-asker' }, pending)).toBe('you');
+    expect(turn(member, pending)).not.toBe('you');
+    expect(turn(null, pending)).not.toBe('you');
   });
 });
 

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { pinnedContractProblem, renderPinnedContracts } from './pinned-contracts.js';
 import {
   type RequirementContextRow,
   renderIssueMockups,
@@ -34,14 +35,8 @@ const traced = (over: Partial<TracedDesignRow> = {}, doc: Doc = design()): Trace
 });
 
 describe('a build job is given the approved design revision its issue builds', () => {
-  it('gives the steps, edges and guards of the approved revision, and none of the code reading itself', () => {
+  it('gives the steps, edges and guards of the approved revision, and none of its stamps', () => {
     const doc = design();
-    doc.steps[0].evidence = {
-      kind: 'storefront',
-      provider: 'autoflow',
-      ref: 'workflow',
-      id: 'SECRET_EVIDENCE_ID',
-    };
     const [loaded] = artifactContext([traced({}, doc)]);
     const text = renderArtifactContext(loaded ? [loaded] : []) ?? '';
 
@@ -59,8 +54,7 @@ describe('a build job is given the approved design revision its issue builds', (
     expect(text).toContain('"when":"episode.risk == high"');
     expect(text).toContain('"onFailure":"retry the feed, then raise to IT"');
     expect(text).toContain('- `his` → `discharged`');
-    expect(text).not.toContain('SECRET_EVIDENCE_ID');
-    expect(text).not.toContain('"status"');
+    expect(text).not.toContain('"createdAt"');
   });
 
   it('says when the design moved on past the revision it gives, never loading the newer one silently', () => {
@@ -77,6 +71,76 @@ describe('a build job is given the approved design revision its issue builds', (
   it('gives an issue that builds no design nothing, and renders no block', () => {
     expect(artifactContext([])).toEqual([]);
     expect(renderArtifactContext([])).toBeNull();
+  });
+});
+
+describe('a job on an issue with a requirement is given the design revisions its baseline pins', () => {
+  const pinned = (currentApproved: number | null) =>
+    traced({ approvedRevision: 2, workflowRevision: 3, pinnedBy: { key: 'REQ-7', currentApproved } });
+
+  it('gives the pinned revision, says who pinned it, and records it', () => {
+    const loaded = artifactContext([pinned(2)]);
+    const text = renderArtifactContext(loaded) ?? '';
+    expect(loaded[0]).toMatchObject({ revision: 2, pinnedBy: 'REQ-7' });
+    expect(text).toContain("## The designs REQ-7's latest baseline pins");
+    expect(text).toContain("`post-discharge` at revision 2, pinned by REQ-7's latest baseline");
+    expect(artifactContextRecord(loaded, 'baseline-pins').artifacts[0]).toMatchObject({
+      revision: 2,
+      pinnedBy: 'REQ-7',
+    });
+  });
+
+  it('refuses a pin the design was approved past, never giving the superseded revision', () => {
+    expect(() => artifactContext([pinned(3)])).toThrow(
+      /^REQUIREMENT_REVISION_NOT_CURRENT: workflow-design post-discharge@2 .*REQ-7's latest baseline pins revision 2, and the design is approved at revision 3 now/,
+    );
+  });
+});
+
+describe('a job is given the contract versions its requirement pins, and nothing else', () => {
+  const versions = [
+    { version: '1.1.0', approval: 'proposed' },
+    { version: '1.0.0', approval: 'approved' },
+    { version: '0.9.0', approval: 'approved' },
+  ];
+
+  it('gives the pinned version while it is the current one', () => {
+    expect(pinnedContractProblem('REQ-7', 'hop/api', '1.0.0', versions)).toBeNull();
+  });
+
+  it('refuses a superseded pin as REQUIREMENT_REVISION_NOT_CURRENT naming the current version', () => {
+    const e = pinnedContractProblem('REQ-7', 'hop/api', '0.9.0', versions);
+    expect(e?.code).toBe('REQUIREMENT_REVISION_NOT_CURRENT');
+    expect(e?.message).toContain('1.0.0 is the current version now');
+  });
+
+  it('refuses a pin naming a version not approved or never recorded, by name', () => {
+    expect(pinnedContractProblem('REQ-7', 'hop/api', '1.1.0', versions)?.message).toMatch(
+      /^ARTIFACT_CONTEXT_UNLOADABLE: contract-version hop\/api@1.1.0: .* it is proposed/,
+    );
+    expect(pinnedContractProblem('REQ-7', 'hop/api', '2.0.0', versions)?.message).toContain(
+      'its provider holds no such version',
+    );
+  });
+
+  it('renders each pinned version with its elements and its artifact route', () => {
+    const text =
+      renderPinnedContracts('REQ-7', [
+        {
+          ref: 'hop/api',
+          providerProjectId: 'p1',
+          contractSlug: 'api',
+          version: '1.0.0',
+          type: 'openapi',
+          elements: ['GET /a'],
+          artifact: '{"openapi":"3.1.0"}',
+          sha256: 'abc',
+        },
+      ]) ?? '';
+    expect(text).toContain("## The contract versions REQ-7's latest baseline pins");
+    expect(text).toContain('### hop/api@1.0.0 (openapi)');
+    expect(text).toContain('/api/projects/p1/contracts/api/versions/1.0.0/artifact');
+    expect(renderPinnedContracts('REQ-7', [])).toBeNull();
   });
 });
 

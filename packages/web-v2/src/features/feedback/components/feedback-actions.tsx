@@ -239,7 +239,7 @@ function routeLine(s: SuggestionView): string {
   return [t.route ? enumLabel("feedbackRoute", t.route) : "Route", carrier].filter(Boolean).join(" → ");
 }
 
-/** An assistant's triage suggestion is an accent bar a person accepts or rejects, never an edit. */
+/** An assistant's triage suggestion is an accent bar an approver accepts or rejects, never an edit. */
 export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const q = useFeedbackProposals(projectId, f.id, f.openSuggestions > 0);
   const decide = useDecideProposal(projectId);

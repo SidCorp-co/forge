@@ -118,8 +118,8 @@ const DESCRIPTION =
   'FEEDBACK_SOURCE_ROUTED_ELSEWHERE. ' +
   'On a sensitive project the text is scrubbed on write; on a no_egress one every answer here carries metadata only. ' +
   `propose_triage: { feedback, triage: { route: ${FEEDBACK_TRIAGE_ROUTES.join(' | ')}, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? } } ` +
-  'writes a feedback_triage suggestion a person accepts (forge_suggestions accept), stamped by core with the nearest item (dedup); an agent proposes, never triages. ' +
-  `triage { feedback, triage } is a person’s act (FEEDBACK_DECIDE_FORBIDDEN for an agent) by the rule table: ${Object.entries(
+  'writes a feedback_triage suggestion a holder of feedback.approve accepts (forge_suggestions accept), stamped by core with the nearest item (dedup). ' +
+  `triage { feedback, triage } takes feedback.approve (project admin, or an org owner or admin), person or agent alike (APPROVE_PERMISSION_REQUIRED without it), by the rule table: ${Object.entries(
     FEEDBACK_KIND_ROUTES,
   )
     .map(([k, r]) => `${k} → ${r.join('/')}`)
@@ -128,8 +128,7 @@ const DESCRIPTION =
   '(FEEDBACK_DUPLICATE_CHAIN when the root is itself one), decline its reason in note (FEEDBACK_DECLINE_REASON_REQUIRED). Triage opens the item’s case: ' +
   'owned by the project master for an issue route and by the BA otherwise, due by severity or at the commitment window. When triage names what carries ' +
   'the route it is written at once; otherwise route { feedback, write: { issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, note? } } ' +
-  'writes it later, by any member of the project, person or agent (FEEDBACK_ROUTE_WRITE_FORBIDDEN below member, ' +
-  'FEEDBACK_CASE_NOT_OPEN when no case waits). verify { note? } / reopen { reason } are a person’s acts (FEEDBACK_VERIFY_FORBIDDEN for an agent); ' +
+  'writes it later with the same permission (FEEDBACK_CASE_NOT_OPEN when no case waits). verify { note? } / reopen { reason } take feedback.approve too; ' +
   'verify only follows resolved (FEEDBACK_NOT_RESOLVED): feedback is never verified automatically. clarify { prompt, needed }: one open question to the ' +
   'reporter per item (FEEDBACK_CLARIFICATION_ALREADY_OPEN); its answer becomes a suggestion, never an edit. ' +
   'delete_reporter_data: a project admin person deletes text, attachments and embedding, keeping the row. ' +

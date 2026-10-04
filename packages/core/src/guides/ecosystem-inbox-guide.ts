@@ -139,10 +139,10 @@ publishes and the versions of its contracts, and a person is not handed that wor
    \`CONTRACT_NOT_PUBLISHED\` (no such publication, or another project's).
    A recorded version is proposed; it is current only once approved:
    \`contract_version_decide { contract, version, decision: approve | return, reason? }\`
-   (REST: \`POST /api/projects/:id/contracts/:contract/versions/:version/decision\`). An org owner or
-   admin decides any version; with the project document's \`contracts.approver: master\` your own agent
-   may approve a non-breaking or initial one, and a breaking or unmeasured one is refused
-   \`CONTRACT_BREAKING_NEEDS_PERSON\` whatever the policy. A contract published in no ecosystem is
+   (REST: \`POST /api/projects/:id/contracts/:contract/versions/:version/decision\`). Whoever holds
+   \`contracts.approve\` on the provider project (project admin, or an org owner or admin) decides any
+   version, breaking included, person or agent alike; without it the call is refused
+   \`APPROVE_PERMISSION_REQUIRED\`. A contract published in no ecosystem is
    in-project: the project's own modules consume it (a \`consumes\` entry or a link naming no
    ecosystem), and naming an ecosystem for it is refused \`SELF_CONSUMPTION\`.
 

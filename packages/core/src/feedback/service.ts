@@ -269,6 +269,7 @@ async function personalAct(
   await assertProjectAccess(projectId, actor.userId, 'viewer');
   const forbidden = verifyActRefusal(
     await roleFacts(actor, projectId),
+    projectId,
     act === 'verified' ? 'verifying feedback' : 'reopening feedback',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };

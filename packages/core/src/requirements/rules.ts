@@ -1,6 +1,6 @@
 /**
  * The guards of workflow `requirement-lifecycle` rev 3, as pure functions over what the service
- * read: who may sign a requirement off, which revision may move where, what an agree pins, and the
+ * read: whether the actor holds requirements.approve, which revision may move where, what an agree pins, and the
  * BC codes a criteria list keeps or takes. Every refusal is named; the service answers it with
  * nothing written.
  */
@@ -10,13 +10,11 @@ import {
   DEFERRABLE_STATUSES,
   type RequirementReadinessGate,
 } from '@forge/contracts/requirements';
-import type { ProjectMemberRole } from '../db/schema.js';
 import type { CriterionForm, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
-import { personActRefusal } from '../lib/person-act.js';
+import { type ApproverFacts, approvalRefusal } from '../lib/approval.js';
 
 export type RequirementRefusalCode =
-  | 'REQUIREMENT_SIGNOFF_FORBIDDEN'
+  | 'APPROVE_PERMISSION_REQUIRED'
   | 'REQUIREMENT_REVISION_STALE'
   | 'REQUIREMENT_REVISION_NOT_CURRENT'
   | 'REQUIREMENT_REVISION_NOT_DRAFT'
@@ -49,20 +47,14 @@ export interface RequirementRefusal {
   detail: string;
 }
 
-export interface SignerFacts {
-  userId: string;
-  agency: ActorAgency;
-  role: ProjectMemberRole | null;
-}
-
-// cm:guard accept, return and agree are a person's acts on this project (S0 agency): an agent, a
-// master or another project's account drafts and proposes, never signs off (REQUIREMENT_SIGNOFF_FORBIDDEN)
+// Accept, return, agree, defer, link and repin are approvals (ADR 0007): whoever holds
+// requirements.approve signs off, an agent or the revision's author included.
 export function signoffRefusal(
-  facts: SignerFacts,
+  facts: ApproverFacts,
   projectId: string,
   act: string,
 ): RequirementRefusal | null {
-  return personActRefusal(facts, projectId, act, 'REQUIREMENT_SIGNOFF_FORBIDDEN');
+  return approvalRefusal(facts, 'requirements', projectId, act);
 }
 
 export function reasonRefusal(reason: string | null | undefined): RequirementRefusal | null {

@@ -29,6 +29,11 @@ export interface IssueIdentities {
   readonly designs?: ReadonlyMap<string, number>;
   /** Each contract's newest approved version, keyed `<project>/<contract>`. */
   readonly contracts?: ReadonlyMap<string, string>;
+  /**
+   * The requirement whose latest baseline `designs` and `contracts` hold instead: for an issue that
+   * delivers one, a design or contract verdict counts against the pinned version both sides built.
+   */
+  readonly pinnedBy?: string;
 }
 
 /** How a verdict's identity resolves; `stands` and `uncorroborated` are the two a criterion is
@@ -84,8 +89,9 @@ function servedSource(value: string, serving: ServingReading): VerdictStanding |
   return served ? 'stands' : 'superseded';
 }
 
-/** A design verdict stands on the revision the workflow is at now, and a later revision supersedes
- *  it as a later commit supersedes a source; a workflow the project no longer holds anchors none.
+/** A design verdict stands on its anchor: the revision the issue's requirement baseline pins, or for
+ *  an issue with no requirement the revision the workflow is at now, which a later one supersedes as
+ *  a later commit supersedes a source; a workflow with no anchor anchors none.
  *  What a host serves says nothing about a design, so no serving reading enters. */
 function designStanding(value: string, identities: IssueIdentities): VerdictStanding {
   const named = parseDesignIdentity(value);
@@ -94,8 +100,9 @@ function designStanding(value: string, identities: IssueIdentities): VerdictStan
   return current === named.revision ? 'stands' : 'superseded';
 }
 
-/** A contract verdict stands on the version that is current, and a later approved version
- *  supersedes it; a contract with no current version anchors none. No serving reading enters. */
+/** A contract verdict stands on its anchor: the version the issue's requirement baseline pins, or for
+ *  an issue with no requirement the current version, which a later approved one supersedes; a
+ *  contract with no anchor anchors none. No serving reading enters. */
 function contractStanding(value: string, identities: IssueIdentities): VerdictStanding {
   const named = parseContractIdentity(value);
   const current = named
@@ -167,6 +174,15 @@ function supersededSentence(
 function designSentence(standing: VerdictStanding, value: string, identities: IssueIdentities) {
   const named = parseDesignIdentity(value);
   const current = named ? identities.designs?.get(named.workflow) : undefined;
+  const pin = identities.pinnedBy;
+  if (pin) {
+    if (standing === 'stands')
+      return `judged against design ${value}, the revision ${pin}'s latest baseline pins`;
+    if (standing === 'superseded') {
+      return `judged against design ${value}, and ${pin}'s latest baseline pins revision ${current}`;
+    }
+    return `judged against design ${value}, which ${pin}'s latest baseline does not pin`;
+  }
   if (standing === 'stands') return `judged against design ${value}, the revision it is at now`;
   if (standing === 'superseded') {
     return `judged against design ${value}, and that workflow is now at revision ${current}`;
@@ -179,6 +195,15 @@ function contractSentence(standing: VerdictStanding, value: string, identities: 
   const current = named
     ? identities.contracts?.get(`${named.project}/${named.contract}`)
     : undefined;
+  const pin = identities.pinnedBy;
+  if (pin) {
+    if (standing === 'stands')
+      return `judged against contract ${value}, the version ${pin}'s latest baseline pins`;
+    if (standing === 'superseded') {
+      return `judged against contract ${value}, and ${pin}'s latest baseline pins version ${current}`;
+    }
+    return `judged against contract ${value}, which ${pin}'s latest baseline does not pin`;
+  }
   if (standing === 'stands') return `judged against contract ${value}, the version that is current`;
   if (standing === 'superseded') {
     return `judged against contract ${value}, and that contract's current version is now ${current}`;

@@ -36,7 +36,7 @@ export const DESIGN_STATUS_GLYPHS: Record<DesignStatus, string> = {
 export const DESIGN_STATUS_HINTS: Record<DesignStatus, string> = {
 	draft: "draft: the master is still drawing it",
 	proposed:
-		"proposed: nothing that builds it is dispatched until a person approves it",
+		"proposed: nothing that builds it is dispatched until an approver approves it",
 	approved: "approved: work that builds it may start",
 	returned: "returned: sent back to the master to revise",
 };

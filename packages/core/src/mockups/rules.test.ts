@@ -21,8 +21,6 @@ const body = (over: Partial<ProposeMockupRequest> = {}): ProposeMockupRequest =>
   ...over,
 });
 
-const person = { userId: 'u1', agency: 'human' as const, role: 'member' as const };
-
 describe('mockup rules (ISS-78)', () => {
   it('takes exactly one of bytes, a document or a source (MOCKUP_CONTENT_REQUIRED)', () => {
     expect(contentRefusal(body())).toBeNull();
@@ -81,15 +79,19 @@ describe('mockup rules (ISS-78)', () => {
     expect(decidedRefusal('MK-1', 'accepted')?.code).toBe('MOCKUP_DECIDED');
   });
 
-  it('leaves accept and return to a person, and accept to someone other than its author', () => {
-    expect(deciderRefusal(person, 'p1', 'MK-1', 'accept', 'u2')).toBeNull();
-    expect(deciderRefusal({ ...person, agency: 'agent' }, 'p1', 'MK-1', 'return', 'u2')?.code).toBe(
-      'MOCKUP_DECIDE_FORBIDDEN',
+  it('leaves accept and return to a holder of mockups.approve, an agent and the author included (ADR 0007)', () => {
+    const agentAdmin = { userId: 'agent-1', role: 'admin' as const };
+    expect(deciderRefusal(agentAdmin, 'p1', 'MK-1', 'accept')).toBeNull();
+    expect(deciderRefusal(agentAdmin, 'p1', 'MK-1', 'return')).toBeNull();
+    const member = deciderRefusal({ userId: 'agent-2', role: 'member' }, 'p1', 'MK-1', 'accept');
+    expect(member).toMatchObject({
+      code: 'APPROVE_PERMISSION_REQUIRED',
+      permission: 'mockups.approve',
+      resource: 'mockups',
+    });
+    expect(deciderRefusal({ userId: 'u3', role: null }, 'p1', 'MK-1', 'return')?.code).toBe(
+      'APPROVE_PERMISSION_REQUIRED',
     );
-    expect(deciderRefusal(person, 'p1', 'MK-1', 'accept', 'u1')?.code).toBe(
-      'MOCKUP_ACCEPT_OWN_FORBIDDEN',
-    );
-    expect(deciderRefusal(person, 'p1', 'MK-1', 'return', 'u1')).toBeNull();
   });
 
   it('returns with a reason (MOCKUP_REASON_REQUIRED), and only its author withdraws', () => {

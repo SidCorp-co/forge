@@ -21,7 +21,7 @@ const hop = hopJson as SystemGraph;
 const hopNow = hopNowJson as SystemGraph;
 
 const stepsOf = (n: number): WorkflowStep[] =>
-  Array.from({ length: n }, (_, i) => ({ id: `s${i}`, does: `step ${i}`, status: "designed", after: [], evidence: null }));
+  Array.from({ length: n }, (_, i) => ({ id: `s${i}`, does: `step ${i}`, after: [] }));
 
 const body: WorkflowBody = {
   version: 2,
@@ -30,11 +30,8 @@ const body: WorkflowBody = {
   kind: "flow",
   title: "f",
   summary: "A design.",
-  status: "designed",
   steps: [],
-  drift: null,
   writtenBy: {},
-  refreshedAtSha: null,
 };
 
 const record = (flow: string, template: string | null, status: DesignStatus | null, updatedAt: string, steps = 3, kind: "flow" | "state" = "flow"): WorkflowRecord => ({

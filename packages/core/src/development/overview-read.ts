@@ -12,16 +12,14 @@ import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
-import { approverRefusal } from '../ecosystem/contract/approval.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { listIssueStanding, STANDING_LIMIT, type StandingViewer } from '../issues/standing-read.js';
+import { mayApprove } from '../lib/approval.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { actMiss, PERSON_ACT } from '../lib/person-act.js';
 import { readMasterStanding } from '../masters/read.js';
 import { slotsNoteOf } from '../masters/rules.js';
-import { readProjectDocument } from '../project-config/service.js';
 import {
   type ContractChangeFact,
   type ContractWaitFact,
@@ -34,7 +32,6 @@ import {
   OPEN_CONTRACT_CHANGE,
   type ProposedVersionFact,
   type ReleaseAskFact,
-  releaseDecidableBy,
   stuckOf,
 } from './overview.js';
 
@@ -208,7 +205,6 @@ async function masterSignal(projectId: string): Promise<OverviewMasterSignal> {
 
 interface Viewer {
   userId: string;
-  isPerson: boolean;
   isAdmin: boolean;
   isMember: boolean;
   access: Awaited<ReturnType<typeof effectiveProjectRole>>;
@@ -216,14 +212,10 @@ interface Viewer {
 
 async function viewerFacts(projectId: string, userId: string | null): Promise<Viewer | null> {
   if (!userId) return null;
-  const [access, people] = await Promise.all([
-    effectiveProjectRole(userId, projectId),
-    peopleOf([userId]),
-  ]);
+  const access = await effectiveProjectRole(userId, projectId);
   const role = access?.role ?? null;
   return {
     userId,
-    isPerson: people.get(userId)?.kind !== 'agent',
     isAdmin: role === 'admin',
     isMember: role === 'admin' || role === 'member',
     access,
@@ -254,7 +246,9 @@ async function releaseAsks(projectId: string, viewer: Viewer | null): Promise<Re
     requestedAt: new Date(f.requested_at).toISOString(),
     requestedBy: names.get(f.requested_by_user)?.name ?? 'someone',
     environment: f.evidence_environment,
-    decidable: viewer ? releaseDecidableBy(viewer, f.requested_by_user) : false,
+    decidable:
+      viewer !== null &&
+      mayApprove({ userId: viewer.userId, role: viewer.access?.role ?? null }, 'releases'),
   }));
 }
 
@@ -276,8 +270,6 @@ async function proposedVersions(
        ORDER BY v.recorded_at DESC`),
   );
   if (found.length === 0) return [];
-  const doc = viewer ? await readProjectDocument(projectId) : null;
-  const approver = doc?.document.contracts?.approver ?? 'owner';
   return found.map((v) => {
     const ref = `${v.slug}/${v.contract_slug}`;
     return {
@@ -287,17 +279,7 @@ async function proposedVersions(
       recordedAt: new Date(v.recorded_at).toISOString(),
       decidable:
         viewer !== null &&
-        approverRefusal(
-          {
-            userId: viewer.userId,
-            agency: viewer.isPerson ? 'human' : 'agent',
-            role: viewer.access?.role ?? null,
-            orgRole: viewer.access?.orgRole ?? null,
-          },
-          { ref: `${ref}@${v.version}`, classification: v.classification },
-          approver,
-          projectId,
-        ) === null,
+        mayApprove({ userId: viewer.userId, role: viewer.access?.role ?? null }, 'contracts'),
     };
   });
 }
@@ -323,14 +305,7 @@ async function contractChanges(
   );
   const actable =
     viewer !== null &&
-    actMiss(
-      {
-        userId: viewer.userId,
-        agency: viewer.isPerson ? 'human' : 'agent',
-        role: viewer.access?.role ?? null,
-      },
-      PERSON_ACT,
-    ) === null;
+    mayApprove({ userId: viewer.userId, role: viewer.access?.role ?? null }, 'feedback');
   return found.map((f) => ({
     feedback: `FB-${f.fb_seq}`,
     contract: `${f.slug}/${f.contract_slug}`,

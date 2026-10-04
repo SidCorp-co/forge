@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { mayApprove } from '../lib/approval.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
@@ -75,7 +76,12 @@ function viewerOf(
   const userId = c.get('userId');
   const agency = c.get('agency');
   if (typeof userId !== 'string' || (agency !== 'human' && agency !== 'agent')) return null;
-  return { userId, agency, isAdmin: projectRoleAtLeast(access.role, 'admin') };
+  return {
+    userId,
+    agency,
+    isAdmin: projectRoleAtLeast(access.role, 'admin'),
+    mayApprove: mayApprove({ userId, role: access.role }, 'releases'),
+  };
 }
 
 releaseVersionRoutes.get('/:projectId/releases', projectParam, async (c) => {
@@ -121,6 +127,6 @@ releaseVersionRoutes.post(
     await loadProjectAccess(projectId, userId);
     await assertRunOfProject(runId, projectId);
     const decision = parseDecision(c.req.valid('json'));
-    return c.json(await decideApproval({ projectId, runId, approvalId, userId, agency, decision }));
+    return c.json(await decideApproval({ projectId, runId, approvalId, userId, decision }));
   },
 );

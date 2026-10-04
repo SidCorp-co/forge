@@ -2414,7 +2414,14 @@
       "idx": 376,
       "version": "7",
       "when": 1815436800000,
-      "tag": "0376_a_feedback_item_holds_one_case",
+      "tag": "0376_the_code_reading_is_an_observation_apart_from_the_design",
+      "breakpoints": true
+    },
+    {
+      "idx": 377,
+      "version": "7",
+      "when": 1815523200000,
+      "tag": "0377_a_feedback_item_holds_one_case",
       "breakpoints": true
     }
   ]

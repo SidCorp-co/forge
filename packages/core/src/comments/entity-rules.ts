@@ -209,3 +209,17 @@ export function recordKeptRefusal(commentId: string, scope: CommentScope): Comme
     detail: `comment ${commentId} sits on a ${scope}; a comment there is a record and is never deleted. Edit it instead, or post a decision that supersedes it`,
   };
 }
+
+// cm:guard decision.node names a node of a workflow, so it sits on a workflow decision only (REQ-17 BC-26)
+export function nodeDecisionScopeRefusal(
+  scope: string,
+  targetKey: string,
+  decision: DecisionFields | undefined,
+): CommentRefusal | null {
+  if (!decision?.node || scope === 'workflow') return null;
+  return {
+    code: 'COMMENT_DECISION_NODE_SCOPE',
+    path: '/decision/node',
+    detail: `decision.node names a step or edge of a workflow; this decision sits on a ${scope} (${targetKey}). Post it on the workflow, or drop the node`,
+  };
+}

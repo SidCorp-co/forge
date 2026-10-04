@@ -148,7 +148,7 @@ function Control({
         </button>
         {d === "accept" && (
           <HoverNote label="Becomes a suggestion" className="text-[11.5px] text-muted">
-            Nothing changes until a person approves it.
+            Nothing changes until an approver approves it.
           </HoverNote>
         )}
         {d === "reject" && <span className="text-[11.5px] text-muted">Will not be suggested again</span>}

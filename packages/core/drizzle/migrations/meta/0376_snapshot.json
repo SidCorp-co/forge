@@ -1,5 +1,5 @@
 {
-  "id": "dfa3a5f6-7bb9-40b3-b5d5-9da7f042960f",
+  "id": "fb022a17-f7a6-4022-bef5-6947be43ea53",
   "prevId": "0b7728f2-23c3-4e08-b800-d8daaefb25f0",
   "version": "7",
   "dialect": "postgresql",
@@ -16950,6 +16950,187 @@
       },
       "isRLSEnabled": false
     },
+    "public.project_workflow_observations": {
+      "name": "project_workflow_observations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workflow_id": {
+          "name": "workflow_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at_sha": {
+          "name": "at_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document": {
+          "name": "document",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "written_by": {
+          "name": "written_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "written_by_agency": {
+          "name": "written_by_agency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "project_workflow_observations_sha_uq": {
+          "name": "project_workflow_observations_sha_uq",
+          "columns": [
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at_sha",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "project_workflow_observations_project_idx": {
+          "name": "project_workflow_observations_project_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "project_workflow_observations_project_id_projects_id_fk": {
+          "name": "project_workflow_observations_project_id_projects_id_fk",
+          "tableFrom": "project_workflow_observations",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "project_workflow_observations_workflow_id_project_workflows_id_fk": {
+          "name": "project_workflow_observations_workflow_id_project_workflows_id_fk",
+          "tableFrom": "project_workflow_observations",
+          "tableTo": "project_workflows",
+          "columnsFrom": [
+            "workflow_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "project_workflow_observations_written_by_users_id_fk": {
+          "name": "project_workflow_observations_written_by_users_id_fk",
+          "tableFrom": "project_workflow_observations",
+          "tableTo": "users",
+          "columnsFrom": [
+            "written_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "project_workflow_observations_sha_chk": {
+          "name": "project_workflow_observations_sha_chk",
+          "value": "\"project_workflow_observations\".\"at_sha\" ~ '^[0-9a-f]{40}$'"
+        },
+        "project_workflow_observations_revision_chk": {
+          "name": "project_workflow_observations_revision_chk",
+          "value": "\"project_workflow_observations\".\"revision\" >= 1"
+        },
+        "project_workflow_observations_source_chk": {
+          "name": "project_workflow_observations_source_chk",
+          "value": "\"project_workflow_observations\".\"source\" IN ('observer', 'migrated')"
+        },
+        "project_workflow_observations_agency_chk": {
+          "name": "project_workflow_observations_agency_chk",
+          "value": "\"project_workflow_observations\".\"written_by_agency\" IN ('human', 'agent')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.project_workflows": {
       "name": "project_workflows",
       "schema": "",
@@ -16978,18 +17159,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "refreshed_at_sha": {
-          "name": "refreshed_at_sha",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "revision": {
           "name": "revision",
@@ -17121,14 +17290,6 @@
         "project_workflows_kind_chk": {
           "name": "project_workflows_kind_chk",
           "value": "\"project_workflows\".\"kind\" IN ('flow', 'state')"
-        },
-        "project_workflows_status_chk": {
-          "name": "project_workflows_status_chk",
-          "value": "\"project_workflows\".\"status\" IN ('writing', 'current', 'rechecking', 'designed')"
-        },
-        "project_workflows_sha_chk": {
-          "name": "project_workflows_sha_chk",
-          "value": "\"project_workflows\".\"refreshed_at_sha\" IS NULL OR \"project_workflows\".\"refreshed_at_sha\" ~ '^[0-9a-f]{40}$'"
         },
         "project_workflows_revision_chk": {
           "name": "project_workflows_revision_chk",
@@ -20422,7 +20583,7 @@
         },
         "feedback_status_route_chk": {
           "name": "feedback_status_route_chk",
-          "value": "\"feedback\".\"status\" <> 'new' OR \"feedback\".\"route\" IS NULL"
+          "value": "(\"feedback\".\"status\" <> 'triaged' OR \"feedback\".\"route\" IS NOT NULL) AND (\"feedback\".\"status\" <> 'new' OR \"feedback\".\"route\" IS NULL)"
         },
         "feedback_duplicate_self_chk": {
           "name": "feedback_duplicate_self_chk",
@@ -20568,199 +20729,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.feedback_cases": {
-      "name": "feedback_cases",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "feedback_id": {
-          "name": "feedback_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "route": {
-          "name": "route",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "owner": {
-          "name": "owner",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "opened_by": {
-          "name": "opened_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "opened_agency": {
-          "name": "opened_agency",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "opened_at": {
-          "name": "opened_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "due_at": {
-          "name": "due_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "routed_at": {
-          "name": "routed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "routed_by": {
-          "name": "routed_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "feedback_cases_feedback_uq": {
-          "name": "feedback_cases_feedback_uq",
-          "columns": [
-            {
-              "expression": "feedback_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "feedback_cases_project_open_idx": {
-          "name": "feedback_cases_project_open_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "due_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "routed_at IS NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "feedback_cases_project_id_projects_id_fk": {
-          "name": "feedback_cases_project_id_projects_id_fk",
-          "tableFrom": "feedback_cases",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "feedback_cases_feedback_id_feedback_id_fk": {
-          "name": "feedback_cases_feedback_id_feedback_id_fk",
-          "tableFrom": "feedback_cases",
-          "tableTo": "feedback",
-          "columnsFrom": [
-            "feedback_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "feedback_cases_opened_by_users_id_fk": {
-          "name": "feedback_cases_opened_by_users_id_fk",
-          "tableFrom": "feedback_cases",
-          "tableTo": "users",
-          "columnsFrom": [
-            "opened_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "feedback_cases_routed_by_users_id_fk": {
-          "name": "feedback_cases_routed_by_users_id_fk",
-          "tableFrom": "feedback_cases",
-          "tableTo": "users",
-          "columnsFrom": [
-            "routed_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "feedback_cases_route_chk": {
-          "name": "feedback_cases_route_chk",
-          "value": "\"feedback_cases\".\"route\" IN ('issue', 'revision', 'new_requirement', 'answer', 'duplicate', 'decline')"
-        },
-        "feedback_cases_owner_chk": {
-          "name": "feedback_cases_owner_chk",
-          "value": "\"feedback_cases\".\"owner\" IN ('ba', 'master')"
-        },
-        "feedback_cases_owner_route_chk": {
-          "name": "feedback_cases_owner_route_chk",
-          "value": "(\"feedback_cases\".\"route\" = 'issue') = (\"feedback_cases\".\"owner\" = 'master')"
-        },
-        "feedback_cases_opened_agency_chk": {
-          "name": "feedback_cases_opened_agency_chk",
-          "value": "\"feedback_cases\".\"opened_agency\" IN ('human', 'agent')"
-        },
-        "feedback_cases_routed_chk": {
-          "name": "feedback_cases_routed_chk",
-          "value": "(\"feedback_cases\".\"routed_at\" IS NULL) = (\"feedback_cases\".\"routed_by\" IS NULL)"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.feedback_decisions": {
@@ -20919,11 +20887,11 @@
       "checkConstraints": {
         "feedback_decisions_decision_chk": {
           "name": "feedback_decisions_decision_chk",
-          "value": "\"feedback_decisions\".\"decision\" IN ('triaged', 'declined', 'verified', 'reopened', 'redacted', 'promoted', 'routed')"
+          "value": "\"feedback_decisions\".\"decision\" IN ('triaged', 'declined', 'verified', 'reopened', 'redacted', 'promoted')"
         },
         "feedback_decisions_route_chk": {
           "name": "feedback_decisions_route_chk",
-          "value": "(\"feedback_decisions\".\"decision\" IN ('triaged', 'routed')) = (\"feedback_decisions\".\"route\" IS NOT NULL)"
+          "value": "(\"feedback_decisions\".\"decision\" = 'triaged') = (\"feedback_decisions\".\"route\" IS NOT NULL)"
         },
         "feedback_decisions_reason_chk": {
           "name": "feedback_decisions_reason_chk",
