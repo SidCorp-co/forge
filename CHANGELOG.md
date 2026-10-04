@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.6] - 2026-10-04
+
+One approval permission, nine MCP tools, and a durable outbox behind every reaction
+
+
 ### Added
 
 - **A business criterion, feedback item, design_change suggestion, build link or workflow decision
