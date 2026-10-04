@@ -11,6 +11,7 @@ export {
   resolveInteractiveClient,
   sessionRoleRefusal,
 } from './interactive-credential.js';
+export { liveMasterSessionId, masterSessionIfOwned } from './master-owner.js';
 export { type AgentSessionsPorts, provideAgentSessionsPorts } from './ports.js';
 export { publishSessionRecoveryChanged } from './recovery-publish.js';
 export {

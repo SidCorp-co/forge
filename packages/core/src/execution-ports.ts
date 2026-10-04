@@ -13,7 +13,7 @@ import {
 } from './comments/index.js';
 import { readContentLanguage } from './content-language/index.js';
 import { registerConversationAgentBridge, resolveProjectHandle } from './conversations/index.js';
-import { provideDevicesPorts } from './devices/index.js';
+import { deviceHolderUserId, provideDevicesPorts } from './devices/index.js';
 import {
   loadContractContext,
   pathsNamedIn,
@@ -27,7 +27,11 @@ import { applyGrantedMcpServers, decryptSecret, isVaultConfigured } from './inte
 import { callFastModel } from './integrations/llm/index.js';
 import { cmpVersion, mainRunnerHead } from './integrations/published-releases/index.js';
 import { readPullRequestsForIssues } from './integrations/source-host/index.js';
-import { provideJobsPorts } from './jobs/index.js';
+import {
+  insertInterventionEvent,
+  provideJobsPorts,
+  resolveSessionMcpServers,
+} from './jobs/index.js';
 import { foreignScriptChars } from './memory/index.js';
 import {
   emitNotification,
@@ -126,6 +130,9 @@ export function provideExecutionPorts(): void {
     settleSessionFires,
     writeBackScheduleSession,
     redispatchScheduleSessionOnFailover,
+    deviceHolderUserId,
+    insertInterventionEvent,
+    resolveSessionMcpServers,
     postSteerComment: async ({ issueId, authorId, body }) =>
       (await insertComment({ issueId, authorId, authorDeviceId: null, body, parentId: null })).row,
   });

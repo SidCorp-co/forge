@@ -1,6 +1,6 @@
 /**
- * Who owns a session, from core's own record. Deliberately thin — reaching
- * `master-session.ts` instead cycles through the pipeline-runs graph.
+ * Who owns a session, from the session's own row. Deliberately thin: devices and jobs both ask, and
+ * `devices/master-session.ts` cycles through the pipeline-runs graph.
  */
 import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { and, eq, notInArray } from 'drizzle-orm';

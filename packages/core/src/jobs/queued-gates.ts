@@ -1,12 +1,12 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
-import { runnerMayTakeJob } from '../devices/release-label.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import {
   claimCapableSql,
   deviceNotDisabled,
   runnerFresh,
+  runnerMayTakeJob,
   runnerUnlimited,
   runnerWorkspaceReady,
 } from '../runners/index.js';

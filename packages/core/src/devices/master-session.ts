@@ -8,8 +8,6 @@ import { lockXact } from '../lib/advisory-lock.js';
 import { logger } from '../observability/logger.js';
 import { insertOneShotRun, type OneShotRunSpec } from '../pipeline/index.js';
 
-export { liveMasterSessionId, masterSessionIfOwned } from './master-owner.js';
-
 export interface MasterSession {
   sessionId: string;
   /** The terminal-multiplexer session name a human attaches to. */

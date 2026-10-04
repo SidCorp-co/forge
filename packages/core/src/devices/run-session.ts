@@ -19,7 +19,11 @@ import {
   RUN_SESSION_KIND,
 } from '@forge/contracts/agent-sessions';
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
-import { insertSessionRow, transitionSessions } from '../agent-sessions/index.js';
+import {
+  insertSessionRow,
+  liveMasterSessionId,
+  transitionSessions,
+} from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
 import {
@@ -35,7 +39,6 @@ import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../
 import { logger } from '../observability/logger.js';
 import { closeRunIfOneShot, insertOneShotRun, type OneShotRunSpec } from '../pipeline/index.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
-import { liveMasterSessionId } from './master-owner.js';
 import { projectAdmission, runnerNotAdmitted } from './pool-admission.js';
 import { devicesPorts } from './ports.js';
 

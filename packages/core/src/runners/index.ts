@@ -24,6 +24,7 @@ export {
 } from './liveness-sql.js';
 export { provideRunnersPorts, type RunnersPorts } from './ports.js';
 export { clearRunnerQuarantine, maybeQuarantineRunner } from './quarantine.js';
+export { releaseLabelVerdict, runnerMayTakeJob } from './release-label.js';
 export { insertRunnerEvent } from './runner-events.js';
 export { getTrippedDeviceIds, onlineCapableDeviceIds } from './select.js';
 export { runRunnerStaleSweep } from './stale-detector.js';

@@ -43,9 +43,9 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { refusalCodeOf } from '../lib/refusal.js';
 import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
+import { releaseLabelVerdict } from '../runners/index.js';
 import { runnerAdmission } from './pool-admission.js';
 import { devicesPorts } from './ports.js';
-import { releaseLabelVerdict } from './release-label.js';
 
 export type PrepareResult =
   | {

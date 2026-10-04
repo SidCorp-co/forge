@@ -3,7 +3,9 @@
 // inside a call, never at import.
 
 import type { ContentLanguageView } from '@forge/contracts/content-language';
+import type { Tx } from '../db/client.js';
 import type { KernelExecutor } from '../db/kernel-marker.js';
+import type { InterventionEventInput, ResolvedJobMcpServers } from '../jobs/index.js';
 import type { EgressScope } from '../lib/data-egress.js';
 import type { KernelActor } from '../lifecycle/index.js';
 
@@ -48,6 +50,12 @@ export interface AgentSessionsPorts {
     sessionId: string,
     opts?: { failureClass?: string | null },
   ): Promise<{ ok: boolean; status: string }>;
+  /** The user holding the box's live personal access token, or null when none is live. */
+  deviceHolderUserId(deviceId: string): Promise<string | null>;
+  /** Records an intervention on the job's event history, inside the caller's transaction. */
+  insertInterventionEvent(tx: Tx, input: InterventionEventInput): Promise<void>;
+  /** The MCP servers a chat turn on this project hands its box. */
+  resolveSessionMcpServers(projectId: string): Promise<ResolvedJobMcpServers>;
   /** Posts the steer text as a comment on the issue the session works. */
   postSteerComment(input: {
     issueId: string;

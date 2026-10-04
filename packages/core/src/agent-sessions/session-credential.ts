@@ -14,7 +14,6 @@ import {
   type TurnAuthority,
   type TurnAuthorityRefusal,
 } from '../credentials/turn-credential.js';
-import { deviceHolderUserId } from '../devices/workspace-credential.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { logger } from '../observability/logger.js';
@@ -24,6 +23,7 @@ import {
   type PermissionFacts,
   resolveTurnAuthority,
 } from '../permissions/index.js';
+import { agentSessionsPorts } from './ports.js';
 
 /** The capability a runner declares on its heartbeat when it runs a session under the token it is handed. */
 export const TURN_CREDENTIAL_CAPABILITY = 'turnCredential';
@@ -67,7 +67,7 @@ export async function resolveSessionAuthority(args: {
     viaTokenId: args.asker.viaTokenId,
   });
   if (!resolved.ok) return resolved;
-  const holder = await deviceHolderUserId(args.deviceId);
+  const holder = await agentSessionsPorts().deviceHolderUserId(args.deviceId);
   const none = { projectId: args.projectId, role: null, grants: [] };
   const holderFacts = (holder ? await effectiveProjectRole(holder, args.projectId) : null) ?? none;
   if (!holds(holderFacts, 'project.read')) {

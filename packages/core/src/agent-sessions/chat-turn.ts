@@ -14,7 +14,6 @@ import {
   type ModelTier,
   memberLenses,
 } from '../db/schema.js';
-import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
 import {
   findAvailableDeviceForProject,
@@ -439,7 +438,9 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   }
 
   const target = deviceId as string;
-  const { mcpServers: mcpServersOverride } = await resolveSessionMcpServers(project.id);
+  const { mcpServers: mcpServersOverride } = await agentSessionsPorts().resolveSessionMcpServers(
+    project.id,
+  );
   // `claudeSessionId`/`resumable` were already resolved above (before the
   // transaction, so the `pendingSkillName` marker could be persisted).
   if (!resumable) {

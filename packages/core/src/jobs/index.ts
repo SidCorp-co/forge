@@ -4,7 +4,11 @@ export { syncAgentSessionLifecycle } from './agent-session-link.js';
 export type { HoldState } from './hold.js';
 export { holdReleasesItself, readHoldState } from './hold.js';
 export { countInFlightByRunner } from './in-flight.js';
-export { appendJobEvent, insertInterventionEvent } from './intervention-event.js';
+export {
+  appendJobEvent,
+  type InterventionEventInput,
+  insertInterventionEvent,
+} from './intervention-event.js';
 export { resolveJobPolicy } from './job-policy.js';
 export {
   jobsOfSession,
@@ -45,7 +49,7 @@ export {
 } from './prepare-claimed-job.js';
 export { buildBarrierFragments } from './queued-gates.js';
 export { NOT_PARKED } from './resident-session.js';
-export { resolveSessionMcpServers } from './resolve-job-mcp-servers.js';
+export { type ResolvedJobMcpServers, resolveSessionMcpServers } from './resolve-job-mcp-servers.js';
 export {
   AGENT_SESSION_KIND_LIST,
   heartbeatReapedSql,

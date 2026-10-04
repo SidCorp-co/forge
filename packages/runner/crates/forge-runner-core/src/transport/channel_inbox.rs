@@ -3,7 +3,7 @@
 //! A `master.wake` with `source: "channel"` says only that the channel moved;
 //! core's room has no buffer, so the sweep reads this state on every pass and
 //! a document is work for the master whether or not its wake was heard. Core
-//! answers it from `devices/channel-inbox-routes.ts`.
+//! answers it from `ecosystem/device-channel-inbox-routes.ts`.
 
 use super::CoreClient;
 use crate::error::{Error, Result};

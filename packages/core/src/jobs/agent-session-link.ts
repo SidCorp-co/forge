@@ -1,5 +1,9 @@
 import { and, eq, ne } from 'drizzle-orm';
-import { insertSessionRow, transitionSessions } from '../agent-sessions/index.js';
+import {
+  insertSessionRow,
+  masterSessionIfOwned,
+  transitionSessions,
+} from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import {
   type AgentSessionKind,
@@ -8,7 +12,6 @@ import {
   issues,
   jobs,
 } from '../db/schema.js';
-import { masterSessionIfOwned } from '../devices/master-owner.js';
 import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
 import { logger } from '../observability/logger.js';
 import { classifyFailure } from '../pipeline/failure-classifier.js';
