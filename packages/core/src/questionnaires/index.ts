@@ -1,1 +1,1 @@
-export { questionnaireRoutes } from './routes.js';
+export {};

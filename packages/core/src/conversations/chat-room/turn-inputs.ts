@@ -13,10 +13,10 @@
  * or it hands the model back the rest of its own question.
  */
 
+import { ESCALATE_TOOL_NAME } from '@forge/contracts/assistant';
 import { agentRefusalText } from '../../agent-sessions/index.js';
 import {
   buildConversationContext,
-  ESCALATE_TOOL_NAME,
   ESCALATION_ACK,
   ESCALATION_DEDUP_REPLY,
   ESCALATION_NO_DEVICE_REPLY,

@@ -1,4 +1,5 @@
 import type { ChannelRefusalCode } from '@forge/contracts/ecosystem';
+import { CHANNEL_ACTIONS, CHANNEL_WRITES, type ChannelAction } from '@forge/contracts/ecosystem';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -13,14 +14,7 @@ import { inbox, outbox, readAs, threadAs, unanswered } from './channel-read.js';
 import { readRegister } from './channel-register.js';
 import { UUID_PATTERN } from './channel-schema.js';
 import { createDraft, editDraft, submit } from './channel-service.js';
-import {
-  CHANNEL_ACTIONS,
-  CHANNEL_INPUT_SCHEMA,
-  CHANNEL_WRITES,
-  type ChannelAction,
-  type ChannelArgs,
-  parseChannelCall,
-} from './channel-tool-args.js';
+import { CHANNEL_INPUT_SCHEMA, type ChannelArgs, parseChannelCall } from './channel-tool-args.js';
 import { decideGateAs, type NamedRefusal } from './channel-tool-gate.js';
 import {
   holdView,

@@ -1,6 +1,6 @@
-// The one route-mount registry: every module's routes, mounted from its public face, in the order
-// Hono matches them. Order is load-bearing: a router's `use('*')` gates every later router mounted
-// under the same prefix.
+// The one route-mount registry: every module's routers, imported from its heavy face (routes.ts) and
+// mounted in the order Hono matches them. Order is load-bearing: a router's `use('*')` gates every
+// later router mounted under the same prefix, so the area functions below run in sequence.
 
 import type { Hono } from 'hono';
 import {
@@ -10,24 +10,23 @@ import {
   adminMetricSeriesRoutes,
   adminRoutes,
   pipelineHealthAdminRoutes,
-} from './admin/index.js';
+} from './admin/routes.js';
 import { adminThresholdRoutes } from './admin-thresholds/routes.js';
-import { agentReportRoutes, feedbackReportsAliasRoutes } from './agent-reports/index.js';
+import { agentReportRoutes, feedbackReportsAliasRoutes } from './agent-reports/routes.js';
 import {
   agentSessionAttachmentRoutes,
   agentSessionProjectReadRoutes,
   agentSessionRoutes,
-} from './agent-sessions/index.js';
-import { agentRoutes } from './agents/index.js';
-import { memoryModelRoutes } from './app-config/memory-model-routes.js';
-import { appConfigRoutes } from './app-config/routes.js';
+} from './agent-sessions/routes.js';
+import { agentRoutes } from './agents/routes.js';
+import { appConfigRoutes, memoryModelRoutes } from './app-config/routes.js';
 import {
   assistantWeeklyRoutes,
   baDoorRoutes,
   conversationRoutes,
   speakerLinkMeRoutes,
   speakerLinkProjectRoutes,
-} from './assistant/index.js';
+} from './assistant/routes.js';
 import {
   authRoutes,
   devForceVerifyRoutes,
@@ -38,12 +37,12 @@ import {
   reauthRoutes,
   refreshRoutes,
   verifyRoutes,
-} from './auth/index.js';
-import { automationRoutes } from './automation/index.js';
-import { chatLogRoutes } from './chat-logs/index.js';
-import { commentRoutes, entityCommentRoutes } from './comments/index.js';
-import { contentLanguageRoutes } from './content-language/index.js';
-import { developmentOverviewRoutes, needsYouRoutes } from './development/index.js';
+} from './auth/routes.js';
+import { automationRoutes } from './automation/routes.js';
+import { chatLogRoutes } from './chat-logs/routes.js';
+import { commentRoutes, entityCommentRoutes } from './comments/routes.js';
+import { contentLanguageRoutes } from './content-language/routes.js';
+import { developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
 import {
   deviceAuthRoutes,
   deviceLoginRoutes,
@@ -56,8 +55,8 @@ import {
   deviceSkillStatusRoutes,
   deviceUserRoutes,
   runLedgerRoutes,
-} from './devices/index.js';
-import { domainTemplateRoutes } from './domain-templates/index.js';
+} from './devices/routes.js';
+import { domainTemplateRoutes } from './domain-templates/routes.js';
 import {
   busRoutes,
   channelProjectRoutes,
@@ -69,13 +68,13 @@ import {
   ecosystemRoutes,
   linkProjectRoutes,
   membershipRoutes,
-} from './ecosystem/index.js';
-import { feedbackRoutes } from './feedback/index.js';
-import { deviceGitCredentialRoutes } from './git/index.js';
-import { guideRoutes } from './guides/index.js';
-import { opsHealthMeRoutes, opsHealthProjectRoutes, publicHealthRoutes } from './health/index.js';
-import { improvementMessageRoutes } from './improvement-messages/index.js';
-import { installRoutes } from './install/index.js';
+} from './ecosystem/routes.js';
+import { feedbackRoutes } from './feedback/routes.js';
+import { deviceGitCredentialRoutes } from './git/routes.js';
+import { guideRoutes } from './guides/routes.js';
+import { opsHealthMeRoutes, opsHealthProjectRoutes, publicHealthRoutes } from './health/routes.js';
+import { improvementMessageRoutes } from './improvement-messages/routes.js';
+import { installRoutes } from './install/routes.js';
 import {
   githubCallbackRoutes,
   githubConnectRoutes,
@@ -83,7 +82,7 @@ import {
   integrationsRoutes,
   integrationTargetRoutes,
   runnerReleaseRoutes,
-} from './integration-door/index.js';
+} from './integration-door/routes.js';
 import {
   attachmentRoutes,
   backlogStreamRoutes,
@@ -102,7 +101,7 @@ import {
   projectActivityRoutes,
   searchRoutes,
   transitionRoutes,
-} from './issues/index.js';
+} from './issues/routes.js';
 import {
   jobEventsListRoutes,
   jobEventsRoutes,
@@ -111,28 +110,28 @@ import {
   jobProjectRoutes,
   jobRoutes,
   jobTestingSecretsRoutes,
-} from './jobs/index.js';
-import { knowledgeIngestRoutes, knowledgeRoutes } from './knowledge/index.js';
-import { knowledgeEdgeRoutes } from './knowledge-edges/index.js';
-import { labelProjectRoutes, labelRoutes, moduleDiagramRoutes } from './labels/index.js';
+} from './jobs/routes.js';
+import { knowledgeIngestRoutes, knowledgeRoutes } from './knowledge/routes.js';
+import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
+import { labelProjectRoutes, labelRoutes, moduleDiagramRoutes } from './labels/routes.js';
 import { isEnabled } from './lib/feature-flags.js';
-import { deviceMasterRoutes, masterStandingRoutes } from './masters/index.js';
+import { deviceMasterRoutes, masterStandingRoutes } from './masters/routes.js';
 import { mcpHandler, mcpRequestClass } from './mcp/index.js';
-import { meAttentionRoutes, mePulseRoutes, meRecentChangesRoutes } from './me/index.js';
+import { meAttentionRoutes, mePulseRoutes, meRecentChangesRoutes } from './me/routes.js';
 import {
   memoryListRoutes,
   memoryMineRoutes,
   memorySearchRoutes,
   memoryWriteRoutes,
-} from './memory/index.js';
-import { projectMetricsRoutes } from './metrics/index.js';
+} from './memory/routes.js';
+import { projectMetricsRoutes } from './metrics/routes.js';
 import type { RequestIdVars } from './middleware/request-id.js';
 import { requirePat } from './middleware/require-pat.js';
-import { mockupRoutes } from './mockups/index.js';
-import { notificationRoutes } from './notifications/index.js';
-import { onboardingRoutes } from './onboarding/index.js';
-import { orgInvitationRoutes, orgRoutes, sshKeyRoutes } from './orgs/index.js';
-import { outboxAdminRoutes, outboxRoutes } from './outbox/index.js';
+import { mockupRoutes } from './mockups/routes.js';
+import { notificationRoutes } from './notifications/routes.js';
+import { onboardingRoutes } from './onboarding/routes.js';
+import { orgInvitationRoutes, orgRoutes, sshKeyRoutes } from './orgs/routes.js';
+import { outboxAdminRoutes, outboxRoutes } from './outbox/routes.js';
 import { patRoutes } from './pat/routes.js';
 import {
   phaseRoutes,
@@ -143,14 +142,14 @@ import {
   pipelineRunRoutes,
   projectCostAnalyticsRoutes,
   stepHandoffRoutes,
-} from './pipeline/index.js';
-import { pmReadRoutes, pmRoutes } from './pm/index.js';
-import { routes as preferenceRoutes } from './preferences/index.js';
+} from './pipeline/routes.js';
+import { pmReadRoutes, pmRoutes } from './pm/routes.js';
+import { preferenceRoutes } from './preferences/routes.js';
 import {
   environmentStateRoutes,
   projectConfigRoutes,
   projectConfigSchemaRoutes,
-} from './project-config/index.js';
+} from './project-config/routes.js';
 import {
   collaboratorsMeRoutes,
   gitCredentialRoutes,
@@ -159,17 +158,17 @@ import {
   memberRoutes,
   projectHealthRoutes,
   projectRoutes,
-} from './projects/index.js';
-import { promptRoutes } from './prompt/index.js';
-import { questionnaireRoutes } from './questionnaires/index.js';
-import { questionRoutes } from './questions/index.js';
-import { releaseBatchRoutes } from './release-batch/index.js';
-import { requirementRoutes } from './requirements/index.js';
+} from './projects/routes.js';
+import { promptRoutes } from './prompt/routes.js';
+import { questionnaireRoutes } from './questionnaires/routes.js';
+import { questionRoutes } from './questions/routes.js';
+import { releaseBatchRoutes } from './release-batch/routes.js';
+import { requirementRoutes } from './requirements/routes.js';
 import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
-import { runnerRoutes } from './runners/index.js';
-import { runStandingRoutes } from './runs/index.js';
-import { scheduleRoutes } from './schedules/index.js';
-import { skillFactsRoutes } from './skill-facts/index.js';
+import { runnerRoutes } from './runners/routes.js';
+import { runStandingRoutes } from './runs/routes.js';
+import { scheduleRoutes } from './schedules/routes.js';
+import { skillFactsRoutes } from './skill-facts/routes.js';
 import {
   divergenceCharterRoutes,
   reconcileRoutes,
@@ -180,16 +179,30 @@ import {
   skillSmokeVerifyRoutes,
   skillStudioRoutes,
   skillSyncRoutes,
-} from './skills/index.js';
-import { suggestionRoutes } from './suggestions/index.js';
-import { taskIssueRoutes, taskRoutes } from './tasks/index.js';
-import { updatePacketRoutes } from './update-packets/index.js';
-import { uploadRoutes } from './uploads/index.js';
-import { usageRecordRoutes } from './usage-records/index.js';
-import { webhookInboundRoutes } from './webhooks/index.js';
-import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/index.js';
+} from './skills/routes.js';
+import { suggestionRoutes } from './suggestions/routes.js';
+import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
+import { updatePacketRoutes } from './update-packets/routes.js';
+import { uploadRoutes } from './uploads/routes.js';
+import { usageRecordRoutes } from './usage-records/routes.js';
+import { webhookInboundRoutes } from './webhooks/routes.js';
+import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/routes.js';
 
 export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
+  mountPublicDoors(app);
+  mountAccountRoutes(app);
+  mountProjectDocumentRoutes(app);
+  mountEcosystemRoutes(app);
+  mountProjectAndOrgRoutes(app);
+  mountProjectWorkRoutes(app);
+  mountIssueAndJobRoutes(app);
+  mountAgentRoutes(app);
+  mountAdminAndDeviceRoutes(app);
+  mountRemainingRoutes(app);
+}
+
+/** The unauthenticated surfaces: health, the MCP endpoint, install, guides and the root. */
+function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
 
   app.use('/mcp', mcpRequestClass(), requirePat());
@@ -200,7 +213,10 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   for (const at of ['/', '/api']) app.route(at, guideRoutes);
 
   app.route('/', rootRoutes);
+}
 
+/** Sign-in, the caller's own account, and project reads mounted ahead of the project router. */
+function mountAccountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/auth', authRoutes);
   app.route('/api/auth', loginRoutes);
   app.route('/api/auth', refreshRoutes);
@@ -220,7 +236,10 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', gitCredentialRoutes);
   app.route('/api/projects', runLedgerRoutes);
   app.route('/api/projects', masterCharterRoutes);
+}
 
+/** The project document, its designs and the entity routes under a project. */
+function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api', projectConfigSchemaRoutes);
   app.route('/api/workflow-templates', workflowTemplateCatalogueRoutes);
   app.route('/api/projects', projectConfigRoutes);
@@ -237,7 +256,10 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', contentLanguageRoutes);
   app.route('/api/projects', entityCommentRoutes);
   app.route('/api/projects', automationRoutes);
+}
 
+/** Ecosystems, their channels, contracts and memberships. */
+function mountEcosystemRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', ecosystemProjectRoutes);
   app.route('/api/projects', channelProjectRoutes);
   app.route('/api/projects', contractRoutes);
@@ -247,7 +269,10 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/ecosystems', ecosystemRoutes);
   app.route('/api/ecosystems', busRoutes);
   app.route('/api/memberships', membershipRoutes);
+}
 
+/** Projects, orgs, integrations, members and skills. */
+function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', projectRoutes);
   app.route('/api/projects', assistantWeeklyRoutes);
   app.route('/api/orgs', orgRoutes);
@@ -270,7 +295,10 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', skillSmokeVerifyRoutes);
   app.route('/api/projects', reconcileRoutes);
   app.route('/api/invitations', invitationRoutes);
+}
 
+/** The work views under a project: issues, standing, labels and jobs. */
+function mountProjectWorkRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', issueProjectRoutes);
   app.route('/api/projects', searchRoutes);
   app.route('/api/projects', issueStandingRoutes);
@@ -284,7 +312,10 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', moduleDiagramRoutes);
   app.route('/api/projects', projectActivityRoutes);
   app.route('/api/projects', jobProjectRoutes);
+}
 
+/** Issues, tasks, comments, attachments, labels, jobs, inbound webhooks and memory. */
+function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', issueAttachmentRoutes);
   app.route('/api/issues', issueExtrasRoutes);
   app.route('/api/issues', issueMergeRoutes);
@@ -313,6 +344,10 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/memory', memoryMineRoutes);
   app.route('/api/memory', memoryListRoutes);
   app.route('/api/memory', memoryWriteRoutes);
+}
+
+/** Prompts, skills, notifications, questions, agents, conversations, sessions and pipeline runs. */
+function mountAgentRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issue-step-contexts', stepHandoffRoutes);
   app.route('/api/prompts', promptRoutes);
   app.route('/api/skill-facts', skillFactsRoutes);
@@ -333,6 +368,10 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/pipeline-runs', pipelineRunReadRoutes);
   app.route('/api/pipeline-runs', pipelineRunRoutes);
   app.route('/api/projects', pipelineRunProjectRoutes);
+}
+
+/** The admin console and the runner devices. */
+function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/admin', adminRoutes);
   app.route('/api/admin', adminAggregateRoutes);
   app.route('/api/admin', adminAlertRoutes);
@@ -352,6 +391,10 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api', deviceOwnerRoutes);
   app.route('/api/projects', deviceUserRoutes);
   app.route('/api/projects', deviceSkillStatusRoutes);
+}
+
+/** Pipeline analytics, release batches, schedules, knowledge and the remaining resources. */
+function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/pipeline/registry', pipelineRegistryRoutes);
   app.route('/api/pipeline', pipelineAnalyticsRoutes);
   app.route('/api/projects', releaseBatchRoutes);

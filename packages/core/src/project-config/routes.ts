@@ -336,3 +336,6 @@ projectConfigRoutes.delete(
     return refused(c, outcome.refusals, 'CONFIG_REFUSED');
   },
 );
+
+export { environmentStateRoutes } from './environment-state-routes.js';
+export { projectConfigSchemaRoutes } from './schema-routes.js';

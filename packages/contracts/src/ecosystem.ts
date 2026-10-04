@@ -150,3 +150,27 @@ export const ECOSYSTEM_REFUSAL_CODES = [
 	...LINK_REFUSAL_CODES,
 ] as const;
 export type EcosystemRefusalCode = (typeof ECOSYSTEM_REFUSAL_CODES)[number];
+
+// The channel tool's actions: reads answer, writes change a channel document.
+export const CHANNEL_READS = [
+	"register",
+	"inbox",
+	"outbox",
+	"unanswered",
+	"read",
+	"thread",
+	"contracts",
+] as const;
+export const CHANNEL_WRITES = [
+	"draft",
+	"reply",
+	"edit",
+	"submit",
+	"hold",
+	"release",
+	"withdraw",
+	"supersede",
+	"gate",
+] as const;
+export const CHANNEL_ACTIONS = [...CHANNEL_READS, ...CHANNEL_WRITES] as const;
+export type ChannelAction = (typeof CHANNEL_ACTIONS)[number];

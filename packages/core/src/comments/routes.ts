@@ -1,3 +1,5 @@
+import type { CommentRefusalCode } from '@forge/contracts/comments';
+import { isCommentIntent } from '@forge/contracts/record-events';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -8,13 +10,11 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from '../issues/issue-route-ref.js';
-import type { CommentRefusalCode } from '@forge/contracts/comments';
-import { isCommentIntent } from '@forge/contracts/record-events';
 import { mirroredEventsFor } from '../issues/record-events/store.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { refuser } from '../lib/refusal.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
+import { refuser } from '../lib/refusal.js';
 import { projectLens } from '../messaging/record-screen.js';
 import {
   type AuthVars,
@@ -30,6 +30,7 @@ import {
 } from '../middleware/client-capabilities.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { commentAttachmentRoutes } from './attachment-routes.js';
 import {
   bodyRefusalHttp,
@@ -56,7 +57,6 @@ import {
   updateCommentBody,
 } from './service.js';
 import { attachAuthors, buildCommentTree } from './tree.js';
-import { requireHeld } from '../permissions/index.js';
 
 const refuse = refuser<CommentRefusalCode>('COMMENT_REFUSED');
 
@@ -245,7 +245,12 @@ commentRoutes.get(
     if (!access.role) throw forbidden('not a project member');
 
     const page = await listReplies(id, limit, offset);
-    const rows = await commentsShown(c, parent.projectId, page.rows, `the replies to comment ${id}`);
+    const rows = await commentsShown(
+      c,
+      parent.projectId,
+      page.rows,
+      `the replies to comment ${id}`,
+    );
 
     return c.json(listResponse(c, rows, page.total, { limit, offset }));
   },
@@ -319,3 +324,5 @@ commentRoutes.delete(
 );
 
 commentRoutes.route('/', commentAttachmentRoutes);
+
+export { entityCommentRoutes } from './entity-routes.js';

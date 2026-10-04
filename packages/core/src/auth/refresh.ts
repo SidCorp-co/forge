@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
-import { assertNotAgentUser } from './agent-login-gate.js';
 import { REFRESH_COOKIE_NAME, setAuthCookie, setRefreshCookie } from '../credentials/cookie.js';
 import { signUserToken } from '../credentials/jwt.js';
 import { refreshTokenPrefix } from '../credentials/refresh-token.js';
+import { assertNotAgentUser } from './agent-login-gate.js';
 import { invalidateRefreshTokens, rotateRefreshToken } from './service.js';
 
 export const refreshRoutes = new Hono();

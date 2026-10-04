@@ -1,16 +1,9 @@
-export { pipelineAnalyticsRoutes, projectCostAnalyticsRoutes } from './analytics-routes.js';
 export { registerAnswerResume } from './answer-resume.js';
 export { registerPipelineOrchestrator } from './orchestrator.js';
 export { registerPausedRunWedgeResolve } from './paused-run-wedge-resolve.js';
 export { backfillPhaseJournal } from './phase-journal-backfill.js';
 export { registerPhaseJournalClose } from './phase-journal-close.js';
-export { phaseRoutes } from './phase-routes.js';
 export { runReconcilerOnce } from './reconciler.js';
-export { pipelineRegistryRoutes } from './registry-routes.js';
 export { runRetentionSweep } from './retention/sweep.js';
-export { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './runs-read-routes.js';
-export { pipelineRunRoutes } from './runs-routes.js';
-export { stepHandoffRoutes } from './step-handoff-routes.js';
 export { registerActivitySubscribers } from './subscribers.js';
 export { runPipelineSweep } from './sweeper.js';
-export { forgeProjectPipelineRunsTool } from './tool.js';

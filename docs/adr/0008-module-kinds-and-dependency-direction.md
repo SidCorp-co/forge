@@ -212,9 +212,10 @@ excluded.
   Barrels load eagerly (Atlassian's removal across 90,000 files cut local test time by about half),
   and every precedent with public entries splits a light one from a heavy one (Grzybek's
   IntegrationEvents, ABP's Application.Contracts, Angular's secondary entry points). index.ts now
-  exports services, read functions and types and constructs nothing at import; **routes.ts** and
-  **tool.ts** are imported only by `packages/core/src/route-registry.ts` and
-  `packages/core/src/mcp/registry.ts`; shared constants and types come from `@forge/contracts`; a
+  exports services, read functions and types and constructs nothing at import; **routes.ts** is
+  imported only by `packages/core/src/route-registry.ts`, and **tool.ts** only by
+  `packages/core/src/mcp/registry.ts` and the assistant's chat toolset
+  (`packages/core/src/assistant/tools/registry.ts`), the second place tools are composed; shared constants and types come from `@forge/contracts`; a
   type-only edge is `import type`, which `verbatimModuleSyntax` (already on in core and contracts)
   erases.
 - **dependency-cruiser replaces the import half of `scripts/check-module-shape.mjs`.** Its

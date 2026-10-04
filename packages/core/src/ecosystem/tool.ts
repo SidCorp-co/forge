@@ -491,3 +491,4 @@ export const forgeEcosystemTool: ContextScopedMcpToolFactory = (ctx) => ({
   },
   handler: (raw) => run(ctx, raw),
 });
+export { forgeChannelTool } from './channel-tool.js';

@@ -124,9 +124,12 @@ throws "Cannot access X before initialization" (ISS-168).
 - **The light face.** Each kernel, domain, read-model, adapter and door module has exactly one
   **index.ts**. It exports the module's services, read functions and types, and nothing else. It
   constructs nothing at import: no router, no tool, no timer, no registration.
-- **The heavy face.** A module's routers are exported from its **routes.ts** and its MCP tool from
-  its **tool.ts**. Only `packages/core/src/route-registry.ts` imports a **routes.ts**, and only
-  `packages/core/src/mcp/registry.ts` a **tool.ts**.
+- **The heavy face.** A module's routers are exported from its **routes.ts** and its MCP tools from
+  its **tool.ts**. Only `packages/core/src/route-registry.ts` imports a **routes.ts**; only the two
+  tool registries import a **tool.ts**: `packages/core/src/mcp/registry.ts` and the assistant's
+  chat toolset (`packages/core/src/assistant/tools/registry.ts:CHAT_TOOL_ALLOWLIST`).
+- **A module whose face is empty says so.** A module that offers other modules nothing has an
+  **index.ts** of `export {};`; another module's import of its internals is then a finding.
 - Another module imports the **index.ts** and never a file behind it.
 - **Shared constants and types come from `@forge/contracts`**, not through a core face.
 - **A type-only edge is written `import type`.** Core and contracts compile with
@@ -146,7 +149,7 @@ One file per responsibility, under `packages/core/src/<module>/`. The references
 | **standing.ts** | The module's derived facts, when it has any, extending `packages/contracts/src/standing.ts:Standing` | Write |
 | **events.ts** | The outbox events this module emits, typed in contracts | Emit an event no module consumes |
 | **routes.ts** | Hono routes: param validators, `strictBody`, the actor, `answer`. It is the heavy face: every router the module serves is exported from it | Hold a rule or a database call (BC-15); be imported by anything but the route registry |
-| **tool.ts** | The MCP door, only when an agent needs what the CLI and the API do not cover (BC-21) | Re-implement a rule; be imported by anything but the MCP registry |
+| **tool.ts** | The MCP door, only when an agent needs what the CLI and the API do not cover (BC-21) | Re-implement a rule; be imported by anything but the two tool registries |
 | **index.ts** | The light face (BC-13): services, read functions, types | Mount anything; export a router or a tool; construct anything at import |
 
 - **Routes hold no queries (BC-15).** A route file validates, calls one service or read function,
@@ -483,7 +486,7 @@ core/src/feedback/events.ts       the outbox events it emits, each with a consum
 core/src/feedback/routes.ts       strictBody(...); answer(outcome) → refused | c.json(view);
                                   imported only by route-registry.ts
 core/src/feedback/tool.ts         only if an agent needs what the CLI and API do not cover;
-                                  imported only by mcp/registry.ts
+                                  imported only by the two tool registries
 core/src/feedback/index.ts        { services, read functions, types }
 web-v2/src/features/feedback/     api.ts, hooks.ts, types.ts, routes.ts, components/
 ```

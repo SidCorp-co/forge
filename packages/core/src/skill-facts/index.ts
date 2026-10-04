@@ -1,1 +1,1 @@
-export { skillFactsRoutes } from './routes.js';
+export {};

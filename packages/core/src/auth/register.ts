@@ -11,17 +11,11 @@ import { logger } from '../observability/logger.js';
 import { sendVerificationEmail } from './email.js';
 import { hashPassword } from './password.js';
 import { evaluatePasswordStrength, MIN_PASSWORD_SCORE } from './password-strength.js';
+import { registerSchema } from './request-schemas.js';
 import { registerUser } from './service.js';
 import { issueVerificationToken } from './verification-token.js';
 
 const refuse = refuser<AuthRefusalCode>('AUTH_REFUSED');
-
-export const registerSchema = z.object({
-  email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
-  password: z.string().min(8).max(1024),
-});
-
-export type RegisterInput = z.infer<typeof registerSchema>;
 
 export const authRoutes = new Hono();
 

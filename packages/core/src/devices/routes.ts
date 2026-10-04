@@ -13,10 +13,10 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld, requireOrgCan } from '../permissions/index.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { withDeclaredSource } from '../project-config/source.js';
+import { patchDeviceRunnerCheckout } from '../runners/index.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { heartbeatGate, withDeviceGate } from './gate-report.js';
 import { heartbeatPatch } from './heartbeat-patch.js';
-import { patchDeviceRunnerCheckout } from '../runners/index.js';
 import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { redeemPairingCode } from './pair.js';
@@ -168,7 +168,11 @@ deviceOwnerRoutes.patch(
     // A revoked device is gone for good — its token is dead and its runners were
     // deleted; "turn on" can't bring it back (re-pair instead).
     if (disabled === false && device.status === 'revoked') {
-      throw refuseDevice('DEVICE_REVOKED', 'device is revoked — re-pair it instead of re-enabling', '/disabled');
+      throw refuseDevice(
+        'DEVICE_REVOKED',
+        'device is revoked — re-pair it instead of re-enabling',
+        '/disabled',
+      );
     }
 
     const patch: { name?: string; disabledAt?: Date | null } = {};
@@ -422,3 +426,10 @@ deviceAuthRoutes.post(
     return c.json(runner);
   },
 );
+
+export { deviceLoginRoutes } from './login-routes.js';
+export { deviceMcpServerRoutes } from './mcp-servers-routes.js';
+export { deviceOrgRoutes } from './org-routes.js';
+export { devicePoolRoutes } from './pool-routes.js';
+export { runLedgerRoutes } from './run-ledger-routes.js';
+export { deviceSkillRoutes, deviceSkillStatusRoutes } from './skills-routes.js';

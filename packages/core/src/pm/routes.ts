@@ -408,3 +408,5 @@ function formatOperatorReply(input: {
   }
   return lines.join('\n');
 }
+
+export { pmReadRoutes } from './read-routes.js';

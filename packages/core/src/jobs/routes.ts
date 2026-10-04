@@ -6,9 +6,9 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/runs.js';
 import { readJob } from './job-queries.js';
-import { refuseJob } from './refusals.js';
 import { noPromptMessage, poolPrompt } from './pool-served.js';
 import { extractPayloadExtras, extractResolvedFlags, type PromptEnvelope } from './prompt-route.js';
 import {
@@ -18,8 +18,8 @@ import {
   listProjectJobs,
   promptBlobContent,
 } from './read.js';
+import { refuseJob } from './refusals.js';
 import { createQueuedJob, patchJob } from './service.js';
-import { requireHeld } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -252,4 +252,6 @@ jobRoutes.get(
   },
 );
 
+export { jobEventsListRoutes, jobEventsRoutes } from './events-routes.js';
+export { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './lifecycle-routes.js';
 export { jobTestingSecretsRoutes } from './testing-secrets-routes.js';

@@ -1,1 +1,1 @@
-export { feedbackRoutes } from './routes.js';
+export {};

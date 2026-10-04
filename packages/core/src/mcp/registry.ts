@@ -5,17 +5,17 @@
 // neither covers it.
 
 import type { McpToolName } from '@forge/contracts/mcp-tools';
-import { forgeAgentReportTool } from '../agent-reports/index.js';
-import { forgeChannelTool, forgeEcosystemTool } from '../ecosystem/index.js';
+import { forgeAgentReportTool } from '../agent-reports/tool.js';
+import { forgeChannelTool, forgeEcosystemTool } from '../ecosystem/tool.js';
 import {
   forgeCoolifyDeployTool,
   forgeGoogleSheetsTool,
   forgeSentryTool,
   forgeSourceTool,
   forgeStorefrontTargetTool,
-} from '../integration-door/index.js';
+} from '../integration-door/tool.js';
 import type { ContextScopedMcpToolFactory } from '../lib/tool.js';
-import { forgeUploadsTool } from '../uploads/index.js';
+import { forgeUploadsTool } from '../uploads/tool.js';
 
 // Each entry defers to its factory, so reading this table never touches a module still loading.
 export const MCP_TOOLS = {

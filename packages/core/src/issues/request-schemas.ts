@@ -1,15 +1,22 @@
 /**
- * The REST issue routes' request schemas, split out of `routes.ts` on size grounds and re-exported
- * from it. Definitions only — nothing here reads a request or the database.
+ * The REST issue routes' request schemas, kept apart from `routes.ts` so the module's light face
+ * can export them without building a router. Definitions only — nothing here reads a request or
+ * the database.
  */
 
+import { ReleaseNotesSchema } from '@forge/contracts/release-notes';
 import { z } from 'zod';
 import { BODY_FORMATS } from '../body/formats.js';
 import { issueComplexities, issuePriorities, issueStatuses } from '../db/schema.js';
 import { paginationSchema } from '../lib/pagination.js';
-import { labelAttachItemSchema, workStatePatchSchema } from './input-schemas.js';
+import { CREATE_ENTRY_STATUSES } from './create-service.js';
+import {
+  attachmentInputSchema,
+  labelAttachItemSchema,
+  workStatePatchSchema,
+} from './input-schemas.js';
 import { issueMetadataSchema } from './metadata.js';
-import { ReleaseNotesSchema } from '@forge/contracts/release-notes';
+import { issueRelationInputSchema } from './relations-service.js';
 import { sessionContextExpectSchema, sessionContextSchema } from './session-context.js';
 import { issueSortValues } from './sort.js';
 
@@ -90,3 +97,23 @@ export const issueFiltersSchema = paginationSchema
   .strict();
 
 export type IssueFilters = z.infer<typeof issueFiltersSchema>;
+
+export const issueCreateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(500),
+    description: z.string().max(100_000).nullable().optional(),
+    descriptionFormat: z.enum(BODY_FORMATS).optional(),
+    priority: z.enum(issuePriorities).optional(),
+    category: z.string().trim().min(1).max(100).nullable().optional(),
+    complexity: z.enum(issueComplexities).nullable().optional(),
+    reportedBy: z.string().trim().min(1).max(200).nullable().optional(),
+    assigneeId: z.uuid().nullable().optional(),
+    labels: z.array(labelAttachItemSchema).max(100).optional(),
+    attachments: z.array(attachmentInputSchema).max(10).optional(),
+    detectorKey: z.string().trim().min(1).max(120).optional(),
+    relations: z.array(issueRelationInputSchema).max(20).optional(),
+    status: z.enum(CREATE_ENTRY_STATUSES).optional(),
+  })
+  .strict();
+
+export type IssueCreateInput = z.infer<typeof issueCreateSchema>;

@@ -6,8 +6,8 @@ import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { listMasterPasses, readMasterStanding } from './read.js';
 import { requireHeld } from '../permissions/index.js';
+import { listMasterPasses, readMasterStanding } from './read.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const noQuery = z.strictObject({});
@@ -59,3 +59,5 @@ masterStandingRoutes.get(
     );
   },
 );
+
+export { deviceMasterRoutes } from './device-routes.js';

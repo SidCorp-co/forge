@@ -1,31 +1,9 @@
+import { CHANNEL_ACTIONS, type ChannelAction } from '@forge/contracts/ecosystem';
 import { z } from 'zod';
 import { REGISTER_STATUSES } from './channel-register.js';
 import { NUMBER_PATTERN, UUID_PATTERN } from './channel-schema.js';
 import type { EcosystemRefusal } from './refusals.js';
 import { DOCUMENT_TYPES } from './schema.js';
-
-export const CHANNEL_READS = [
-  'register',
-  'inbox',
-  'outbox',
-  'unanswered',
-  'read',
-  'thread',
-  'contracts',
-] as const;
-export const CHANNEL_WRITES = [
-  'draft',
-  'reply',
-  'edit',
-  'submit',
-  'hold',
-  'release',
-  'withdraw',
-  'supersede',
-  'gate',
-] as const;
-export const CHANNEL_ACTIONS = [...CHANNEL_READS, ...CHANNEL_WRITES] as const;
-export type ChannelAction = (typeof CHANNEL_ACTIONS)[number];
 
 const number = z.string().regex(NUMBER_PATTERN);
 const ref = z.string().refine((v) => UUID_PATTERN.test(v) || NUMBER_PATTERN.test(v));

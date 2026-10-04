@@ -35,5 +35,4 @@ export {
   targetUndeclaredHold,
   writeReleaseHolds,
 } from './hold.js';
-export { releaseBatchRoutes } from './routes.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';

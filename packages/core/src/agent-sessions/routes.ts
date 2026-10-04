@@ -612,3 +612,6 @@ agentSessionRoutes.route('/', agentSessionPipelineControlRoutes);
 
 // Per-turn handlers: /turns, /turns/:turnId (+ regenerate), /fork, /rerun.
 agentSessionRoutes.route('/', agentSessionTurnsRoutes);
+
+export { agentSessionAttachmentRoutes } from './attachment-routes.js';
+export { agentSessionProjectReadRoutes } from './project-read-routes.js';

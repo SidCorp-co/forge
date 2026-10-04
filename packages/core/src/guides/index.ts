@@ -1,1 +1,1 @@
-export { guideRoutes } from './routes.js';
+export {};

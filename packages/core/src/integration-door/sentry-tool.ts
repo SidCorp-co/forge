@@ -14,12 +14,12 @@
  * one gets read as the other.
  */
 
+import { SENTRY_AGENT_STATUSES } from '@forge/contracts/integrations';
 import { z } from 'zod';
 import {
   isSentryRefusal,
   readProjectSentryIssue,
   readProjectSentryIssues,
-  SENTRY_AGENT_STATUSES,
   SENTRY_LIST_MAX_LIMIT,
   type SentryAgentListRequest,
   SentryRefusal,

@@ -33,3 +33,6 @@ export const NOTE_REFUSAL_CODES = [
 ] as const;
 
 export type NoteRefusalCode = (typeof NOTE_REFUSAL_CODES)[number];
+
+/** The chat tool a room turn calls to hand a question to a runner. */
+export const ESCALATE_TOOL_NAME = "escalate";
