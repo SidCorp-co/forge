@@ -3,8 +3,8 @@ import type { OrgMemberRole } from '../db/schema.js';
 import { loadOrgRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { RefusalError } from '../lib/refusal.js';
 import { requireOrgHeld } from '../permissions/index.js';
+import { activeMembersOf } from './membership-store.js';
 import type { EcosystemRefusal } from './refusals.js';
-import { activeMembersOf } from './store.js';
 
 export { forbidden, notFound } from '../middleware/route-errors.js';
 

@@ -3,8 +3,10 @@
  * answers, with the baseline pin a requirement mockup has and the acts the viewer may take.
  */
 
+import { feedbackKey } from '@forge/contracts/feedback';
 import type { MockupTargetType, MockupView } from '@forge/contracts/mockups';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import { requirementKey } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
@@ -127,8 +129,8 @@ async function targetKeys(projectId: string, rows: readonly MockupRow[]) {
     issueIds.length ? activeIssuePrefix(projectId) : null,
   ]);
   const keys = new Map<string, string>();
-  for (const r of reqs) keys.set(r.id, `REQ-${r.seq}`);
-  for (const f of fbs) keys.set(f.id, `FB-${f.seq}`);
+  for (const r of reqs) keys.set(r.id, requirementKey(r.seq));
+  for (const f of fbs) keys.set(f.id, feedbackKey(f.seq));
   for (const i of iss) keys.set(i.id, formatIssueRef(prefix, i.seq));
   return keys;
 }

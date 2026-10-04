@@ -1,26 +1,19 @@
 import { jsonPointer as pointer } from '../lib/refusal.js';
 import { parseVersionedDocument } from '../project-config/index.js';
 import { contentRefusals, internalNamesOf } from './channel-content.js';
+import { changeNoticeRefusals } from './channel-notice-rules.js';
 import {
   type ChannelDocument,
-  type Classification,
   documentSchema,
-  holdSchema,
   type ThreadHold,
   TYPE_ABBREVIATIONS,
 } from './channel-schema.js';
 import type { ContractFacts } from './contract/citations.js';
 import { elementRefusals } from './contract/element-rules.js';
-import { type ImpactLink, linkImpact, recipientsOf } from './contract/impact.js';
-import { splitContractRef, versionKey } from './interface-rules.js';
-import {
-  type Checked,
-  type EcosystemRefusal,
-  renameDocumentParseRefusals,
-  renameHoldParseRefusals,
-} from './refusals.js';
+import type { ImpactLink } from './contract/impact.js';
+import type { EdgeRow } from './interface-store.js';
+import { type Checked, type EcosystemRefusal, renameDocumentParseRefusals } from './refusals.js';
 import type { DocumentType, EcosystemDocument, InterfaceDocument } from './schema.js';
-import type { EdgeRow } from './store.js';
 
 export type { MeasuredVersion } from './contract/citations.js';
 
@@ -230,105 +223,6 @@ function replyRefusals(d: ChannelDocument, w: ChannelWorld): EcosystemRefusal[] 
   return out;
 }
 
-function changeNoticeRefusals(d: ChannelDocument, w: ChannelWorld): EcosystemRefusal[] {
-  if (d.type !== 'change-notice') return [];
-  const out: EcosystemRefusal[] = [];
-  const b = d.body;
-  const { provider, contract } = splitContractRef(b.contract);
-  const sender = w.slugOf.get(d.from);
-  if (provider !== sender) {
-    out.push({
-      code: 'CONTRACT_NOT_SENDERS',
-      path: '/body/contract',
-      detail: `${b.contract} is ${provider}'s contract; a change notice is sent by the project that publishes the contract.`,
-    });
-    return out;
-  }
-  const known = w.versions.get(versionKey(d.from, contract));
-  if (!known?.has(b.contractVersion)) {
-    out.push({
-      code: 'VERSION_UNKNOWN',
-      path: '/body/contractVersion',
-      detail: `${b.contract} has no recorded version "${b.contractVersion}"; a notice cites a version core has recorded.`,
-    });
-  }
-  const m = w.contracts.measured.get(`${b.contract}@${b.contractVersion}`);
-  if (m) {
-    const rank: Record<Classification, number> = { 'non-breaking': 0, unknown: 1, breaking: 2 };
-    if (m.classification !== 'initial' && rank[b.classification] < rank[m.classification]) {
-      out.push({
-        code: 'CLASSIFICATION_BELOW_MEASURED',
-        path: '/body/classification',
-        detail: `${b.contractVersion} measured ${m.classification}; a notice may raise the classification, never lower it.`,
-      });
-    }
-    for (const c of m.changes.filter((x) => x.level === 'breaking')) {
-      if (!b.changes.some((x) => x.element === c.element)) {
-        out.push({
-          code: 'MEASURED_CHANGE_OMITTED',
-          path: '/body/changes',
-          detail: `the measured breaking change to ${c.element} is not among the changes; every measured breaking change is stated.`,
-        });
-      }
-    }
-  }
-  if (b.classification === 'breaking' && d.dueBy && b.effectiveOn < d.dueBy) {
-    out.push({
-      code: 'EFFECTIVE_BEFORE_DUE',
-      path: '/body/effectiveOn',
-      detail: `a breaking change effective ${b.effectiveOn} lands before the replies due ${d.dueBy}; it takes effect on or after the due date.`,
-    });
-  }
-  const iface = w.interfaces.get(d.from);
-  if (b.deprecation && iface) {
-    const days =
-      (Date.parse(b.deprecation.sunsetOn) - Date.parse(b.deprecation.deprecatedOn)) / 864e5;
-    if (days < iface.commitments.deprecationNoticeDays) {
-      out.push({
-        code: 'SUNSET_BEFORE_NOTICE_PERIOD',
-        path: '/body/deprecation/sunsetOn',
-        detail: `the sunset comes ${days} day(s) after deprecation, and ${sender} promises ${iface.commitments.deprecationNoticeDays}.`,
-      });
-    }
-  }
-  const versioning = iface?.commitments.versioning ?? 'dated';
-  const reachable = w.contracts.versions.get(`${b.contract}@${b.contractVersion}`)?.recordedOn;
-  const notice = iface?.commitments.deprecationNoticeDays ?? 0;
-  if (b.classification === 'breaking' && reachable) {
-    const earliest = addDays(reachable, notice);
-    if (b.effectiveOn < earliest) {
-      out.push({
-        code: 'DEADLINE_BEFORE_REACHABLE',
-        path: '/body/effectiveOn',
-        detail: `${b.contractVersion} was recorded on ${reachable} and ${sender} promises ${notice} day(s) of notice, so a breaking change takes effect on or after ${earliest}, not ${b.effectiveOn}.`,
-      });
-    }
-  }
-  const declared = w.edges
-    .filter(
-      (e) =>
-        e.ecosystemId === w.ecosystemId &&
-        e.providerProjectId === d.from &&
-        e.contractSlug === contract &&
-        w.active.has(e.consumerProjectId),
-    )
-    .map((e) => e.consumerProjectId);
-  const impacts = w.links
-    .filter((l) => l.provider === d.from && l.contractSlug === contract && w.active.has(l.consumer))
-    .map((l) => linkImpact(versioning, b.contractVersion, m ?? null, l));
-  const owed = recipientsOf(declared, impacts);
-  const ids = owed.map((r) => r.consumer);
-  if (JSON.stringify([...d.to].sort()) !== JSON.stringify(ids)) {
-    const names = owed.map((r) => `${w.slugOf.get(r.consumer) ?? r.consumer} (${r.reason})`);
-    out.push({
-      code: 'RECIPIENTS_NOT_DERIVED',
-      path: '/to',
-      detail: `a notice for ${b.contract} ${b.contractVersion} goes to every consumer it breaks, every consumer core could not measure it against and every consumer with no link, and no one else: ${owed.length ? names.join(', ') : 'none is owed one'}.`,
-    });
-  }
-  return out;
-}
-
 function dueRefusals(d: ChannelDocument, w: ChannelWorld): EcosystemRefusal[] {
   if (d.state === 'published' || !d.dueBy) return [];
   const earliest = addDays(w.today, 1);
@@ -444,11 +338,4 @@ export function parseChannelDocument(raw: unknown): Checked<ChannelDocument> {
   return parsed.ok
     ? { ok: true, value: parsed.value }
     : { ok: false, refusals: renameDocumentParseRefusals(parsed.refusals) };
-}
-
-export function parseHold(raw: unknown): Checked<ThreadHold> {
-  const parsed = parseVersionedDocument(holdSchema, raw, 'hold');
-  return parsed.ok
-    ? { ok: true, value: parsed.value }
-    : { ok: false, refusals: renameHoldParseRefusals(parsed.refusals) };
 }

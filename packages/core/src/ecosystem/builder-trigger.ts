@@ -3,8 +3,8 @@
 import { db } from '../db/client.js';
 import { logger } from '../observability/logger.js';
 import { openOwedRun } from './link-service.js';
+import { membershipsWhere } from './membership-store.js';
 import { ecosystemSignals } from './ports.js';
-import { membershipsWhere } from './store.js';
 
 const COMMIT = /^[0-9a-f]{40}$/;
 const NO_COMMIT = /^0{40}$/;

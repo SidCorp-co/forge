@@ -10,7 +10,7 @@ type LinkRow = {
   pinned: number | null;
 };
 
-// cm:why the pin is the one the requirement's latest baseline holds for this design, as the
+// The pin is the one the requirement's latest baseline holds for this design, as the
 // requirement's own standing reads it (`requirements/standing-facts.ts:latestPinsOf`); a requirement
 // agreed before the link pins nothing
 export async function designRequirementsOf(workflowId: string): Promise<DesignRequirementLink[]> {

@@ -6,7 +6,7 @@ import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { memoryFeedbackInputSchema, runMemoryFeedback } from './feedback-service.js';
 import { getMemoryInputSchema, runMemoryGet } from './get-service.js';
 import { deleteMemory } from './indexer.js';
-import { memorySearchStrategies, runMemorySearch } from './search-service.js';
+import { runMemorySearch, memorySearchInputSchema as searchInputSchema } from './search-service.js';
 import { runMemoryWrite, writeMemoryInputSchema } from './write-service.js';
 
 const ACTIONS = ['search', 'write', 'get', 'delete', 'feedback'] as const;
@@ -15,14 +15,6 @@ const deleteInputSchema = z.object({
   projectId: z.uuid(),
   source: z.enum(memorySources),
   sourceRef: z.string().trim().min(1).max(512),
-});
-
-const searchInputSchema = z.object({
-  projectId: z.uuid(),
-  query: z.string().trim().min(1).max(4000),
-  topK: z.number().int().min(1).max(50).default(10),
-  sourceFilter: z.array(z.enum(memorySources)).optional(),
-  strategy: z.enum(memorySearchStrategies).default('semantic'),
 });
 
 /** What the tool lists: every field any action takes, each optional but `action` and `projectId`. */
@@ -43,6 +35,16 @@ const actionOf = z.object({ action: z.enum(ACTIONS) }).loose();
 function withoutAction(args: Record<string, unknown>): Record<string, unknown> {
   const { action: _action, ...rest } = args;
   return rest;
+}
+
+/** An embeddings outage answers the MCP caller as `UNAVAILABLE`, any other failure as itself. */
+async function orUnavailable<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    if (err instanceof EmbeddingUnavailableError) throw new Error(`UNAVAILABLE: ${err.message}`);
+    throw err;
+  }
 }
 
 const DESCRIPTION =
@@ -80,13 +82,7 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
         'project.read',
         projectResource(input.projectId),
       );
-      try {
-        return await runMemorySearch({ ...input, surface: 'agent' });
-      } catch (err) {
-        if (err instanceof EmbeddingUnavailableError)
-          throw new Error(`UNAVAILABLE: ${err.message}`);
-        throw err;
-      }
+      return orUnavailable(() => runMemorySearch({ ...input, surface: 'agent' }));
     }
 
     if (action === 'get') {
@@ -122,11 +118,6 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
 
     const input = writeMemoryInputSchema.parse(rest);
     await requireCan(actorFor(principal.userId), 'project.write', projectResource(input.projectId));
-    try {
-      return await runMemoryWrite(input);
-    } catch (err) {
-      if (err instanceof EmbeddingUnavailableError) throw new Error(`UNAVAILABLE: ${err.message}`);
-      throw err;
-    }
+    return orUnavailable(() => runMemoryWrite(input));
   },
 });

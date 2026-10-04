@@ -21,3 +21,7 @@ export async function peopleOf(ids: readonly (string | null)[]): Promise<Map<str
     .where(inArray(users.id, unique));
   return new Map(rows.map((u) => [u.id, { name: personLabel(u), kind: u.kind }]));
 }
+
+export async function userNames(ids: readonly (string | null)[]): Promise<Map<string, string>> {
+  return new Map([...(await peopleOf(ids))].map(([id, p]) => [id, p.name]));
+}

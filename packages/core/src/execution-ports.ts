@@ -11,7 +11,6 @@ import {
   postIssueNotice,
   postIssueNoticeOnce,
 } from './comments/index.js';
-import { readContentLanguage } from './content-language/index.js';
 import { registerConversationAgentBridge, resolveProjectHandle } from './conversations/index.js';
 import { deviceHolderUserId, provideDevicesPorts } from './devices/index.js';
 import {
@@ -39,6 +38,7 @@ import {
   dispatchStateOf,
   policyRefusal,
   policyRefusalOf,
+  readContentLanguage,
   readDeclaredSource,
   readEffectivePolicy,
   remoteOf,

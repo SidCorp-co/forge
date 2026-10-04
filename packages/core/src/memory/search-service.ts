@@ -1,15 +1,16 @@
 import type { RerankReport } from '@forge/contracts/memory';
+import { z } from 'zod';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
-import { type MemorySource, retrievalAnalytics } from '../db/schema.js';
+import { type MemorySource, memorySources, retrievalAnalytics } from '../db/schema.js';
 import { EmbeddingUnavailableError, embedQuery } from '../integrations/embeddings/index.js';
 import { fastModelConfigured } from '../integrations/llm/index.js';
+import { clampTopK } from '../knowledge/index.js';
 import { logger } from '../observability/logger.js';
 import { expandIssueRelations } from './expand-relations.js';
 import { inRerankHoldout, rerankHits, rerankPoolSize } from './rerank.js';
 import { loadRetrievalFlags, type RetrievalFlags } from './retrieval-flags.js';
 import {
-  clampTopK,
   type HybridBreakdown,
   hybridSearchMemories,
   keywordSearchMemories,
@@ -35,8 +36,17 @@ import {
  * before invoking this function.
  */
 
-export const memorySearchStrategies = ['semantic', 'keyword', 'hybrid'] as const;
+const memorySearchStrategies = ['semantic', 'keyword', 'hybrid'] as const;
 type MemorySearchStrategy = (typeof memorySearchStrategies)[number];
+
+/** A search request as `POST /api/memory/search` and `forge_memory` `search` both take it. */
+export const memorySearchInputSchema = z.object({
+  projectId: z.uuid(),
+  query: z.string().trim().min(1).max(4000),
+  topK: z.number().int().min(1).max(50).default(10),
+  sourceFilter: z.array(z.enum(memorySources)).optional(),
+  strategy: z.enum(memorySearchStrategies).default('semantic'),
+});
 
 const memorySearchSurfaces = ['agent', 'web'] as const;
 type MemorySearchSurface = (typeof memorySearchSurfaces)[number];
@@ -252,19 +262,12 @@ function buildRetrievalMetadata(
   resolved: MemorySearchStrategy,
   requested: MemorySearchStrategy,
   breakdown: HybridBreakdown | undefined,
-  outcome?: SearchOutcome & { hitIds?: string[] | undefined },
+  outcome: SearchOutcome & { hitIds?: string[] | undefined },
 ): Record<string, unknown> {
   return {
     strategy: resolved,
     requestedStrategy: requested,
     ...(breakdown ?? {}),
-    ...outcomeMetadata(outcome),
-  };
-}
-
-function outcomeMetadata(outcome: (SearchOutcome & { hitIds?: string[] | undefined }) | undefined) {
-  if (!outcome) return {};
-  return {
     ...(outcome.reranked ? { reranked: true } : {}),
     ...(outcome.rerank
       ? {

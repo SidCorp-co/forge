@@ -50,17 +50,104 @@ const Field = ({ label, hint, children }: { label: string; hint?: string; childr
   </label>
 );
 
-function Form({ held }: { held: HeldEcosystem | null }) {
-  const router = useRouter();
-  const [doc, setDoc] = useState<EcosystemDocument>(held?.document ?? BLANK);
-  const [members, setMembers] = useState<string[]>([]);
-  const [invited, setInvited] = useState<Refusal[]>([]);
-  const orgs = useOrgs().data ?? [];
-  const stewards = orgs.filter((o) => o.role === "owner" || o.role === "admin");
-  const projects = (useProjects().data ?? []).filter((p) => !p.archivedAt);
-  const steward = doc.ecosystem.steward || stewards[0]?.id || "";
-  const set = (patch: (d: EcosystemDocument) => EcosystemDocument) => setDoc((d) => patch(structuredClone(d)));
+type Patch = (patch: (d: EcosystemDocument) => EcosystemDocument) => void;
 
+function ReplyWindowsField({ doc, set }: { doc: EcosystemDocument; set: Patch }) {
+  return (
+    <Field label="Reply windows" hint="Days a recipient has to reply">
+      <span className="flex flex-wrap gap-3.5 rounded-md border border-line px-2.5 py-1.5 text-13">
+        {WINDOWS.map((t) => (
+          <span key={t} className="inline-flex items-center gap-1.5">
+            {TYPE_LABEL[t]}
+            <input
+              type="number"
+              min={1}
+              max={90}
+              aria-label={`${TYPE_LABEL[t]} reply window in days`}
+              className="w-12 rounded border border-line bg-surface px-1 text-center font-semibold"
+              value={doc.channel.responseDays[t]}
+              onChange={(e) =>
+                set((d) => ({ ...d, channel: { ...d.channel, responseDays: { ...d.channel.responseDays, [t]: Number(e.target.value) } } }))
+              }
+            />
+            days
+          </span>
+        ))}
+      </span>
+    </Field>
+  );
+}
+
+function GateField({ doc, set }: { doc: EcosystemDocument; set: Patch }) {
+  return (
+    <Field label="Before a document is sent">
+      <span className="grid gap-1 rounded-md border border-line px-2.5 py-1.5 text-13">
+        {DOCUMENT_TYPES.map((t) => (
+          <span key={t} className="flex items-center justify-between gap-2">
+            {TYPE_LABEL[t]}
+            <select
+              aria-label={`${TYPE_LABEL[t]}: before it is sent`}
+              className="rounded border border-line bg-surface px-1 font-semibold"
+              value={doc.gate[t]}
+              onChange={(e) => set((d) => ({ ...d, gate: { ...d.gate, [t]: e.target.value as GateMode } }))}
+            >
+              <option value="publish">send at once</option>
+              <option value="approve">an admin approves</option>
+            </select>
+          </span>
+        ))}
+      </span>
+    </Field>
+  );
+}
+
+function MembersField({
+  label,
+  members,
+  setMembers,
+  projects,
+}: {
+  label: string;
+  members: string[];
+  setMembers: (patch: (m: string[]) => string[]) => void;
+  projects: { id: string; slug: string }[];
+}) {
+  const addable = projects.filter((p) => !members.includes(p.id));
+  return (
+    <Field label={label}>
+      <span className="flex flex-wrap items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5">
+        {members.map((id) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setMembers((m) => m.filter((x) => x !== id))}
+            className="rounded-pill px-2 py-px text-11-5 font-semibold"
+            style={{ background: "var(--cobalt-50)", color: "var(--cobalt-700)" }}
+          >
+            {projects.find((p) => p.id === id)?.slug ?? id} ✕
+          </button>
+        ))}
+        <select
+          aria-label="Add a project"
+          className="bg-transparent text-12 text-subtle"
+          value=""
+          onChange={(e) => e.target.value && setMembers((m) => [...m, e.target.value])}
+        >
+          <option value="">add a project…</option>
+          {addable.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.slug}
+            </option>
+          ))}
+        </select>
+      </span>
+    </Field>
+  );
+}
+
+function useSave(held: HeldEcosystem | null, doc: EcosystemDocument, steward: string, members: string[]) {
+  const router = useRouter();
+  const [invited, setInvited] = useState<Refusal[]>([]);
   const save = useChannelWrite(async () => {
     const document: EcosystemDocument = {
       ...doc,
@@ -84,8 +171,18 @@ function Form({ held }: { held: HeldEcosystem | null }) {
         if (refused.length === 0) router.push(ecosystemRoutes.ecosystem(saved.id));
       },
     });
+  return { save, submit, invited };
+}
 
-  const addable = projects.filter((p) => !members.includes(p.id));
+function Form({ held }: { held: HeldEcosystem | null }) {
+  const [doc, setDoc] = useState<EcosystemDocument>(held?.document ?? BLANK);
+  const [members, setMembers] = useState<string[]>([]);
+  const orgs = useOrgs().data ?? [];
+  const stewards = orgs.filter((o) => o.role === "owner" || o.role === "admin");
+  const projects = (useProjects().data ?? []).filter((p) => !p.archivedAt);
+  const steward = doc.ecosystem.steward || stewards[0]?.id || "";
+  const set: Patch = (patch) => setDoc((d) => patch(structuredClone(d)));
+  const { save, submit, invited } = useSave(held, doc, steward, members);
   return (
     <div className="mx-auto grid w-full max-w-[520px] rounded-[14px] border border-line bg-surface shadow-lg">
       <div className="border-b border-line-subtle px-5 py-4">
@@ -123,73 +220,9 @@ function Form({ held }: { held: HeldEcosystem | null }) {
             />
           </Field>
         ) : null}
-        <Field label="Reply windows" hint="Days a recipient has to reply">
-          <span className="flex flex-wrap gap-3.5 rounded-md border border-line px-2.5 py-1.5 text-13">
-            {WINDOWS.map((t) => (
-              <span key={t} className="inline-flex items-center gap-1.5">
-                {TYPE_LABEL[t]}
-                <input
-                  type="number"
-                  min={1}
-                  max={90}
-                  aria-label={`${TYPE_LABEL[t]} reply window in days`}
-                  className="w-12 rounded border border-line bg-surface px-1 text-center font-semibold"
-                  value={doc.channel.responseDays[t]}
-                  onChange={(e) =>
-                    set((d) => ({ ...d, channel: { ...d.channel, responseDays: { ...d.channel.responseDays, [t]: Number(e.target.value) } } }))
-                  }
-                />
-                days
-              </span>
-            ))}
-          </span>
-        </Field>
-        <Field label="Before a document is sent">
-          <span className="grid gap-1 rounded-md border border-line px-2.5 py-1.5 text-13">
-            {DOCUMENT_TYPES.map((t) => (
-              <span key={t} className="flex items-center justify-between gap-2">
-                {TYPE_LABEL[t]}
-                <select
-                  aria-label={`${TYPE_LABEL[t]}: before it is sent`}
-                  className="rounded border border-line bg-surface px-1 font-semibold"
-                  value={doc.gate[t]}
-                  onChange={(e) => set((d) => ({ ...d, gate: { ...d.gate, [t]: e.target.value as GateMode } }))}
-                >
-                  <option value="publish">send at once</option>
-                  <option value="approve">an admin approves</option>
-                </select>
-              </span>
-            ))}
-          </span>
-        </Field>
-        <Field label={held ? "Invite members" : "First members"}>
-          <span className="flex flex-wrap items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5">
-            {members.map((id) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setMembers((m) => m.filter((x) => x !== id))}
-                className="rounded-pill px-2 py-px text-11-5 font-semibold"
-                style={{ background: "var(--cobalt-50)", color: "var(--cobalt-700)" }}
-              >
-                {projects.find((p) => p.id === id)?.slug ?? id} ✕
-              </button>
-            ))}
-            <select
-              aria-label="Add a project"
-              className="bg-transparent text-12 text-subtle"
-              value=""
-              onChange={(e) => e.target.value && setMembers((m) => [...m, e.target.value])}
-            >
-              <option value="">add a project…</option>
-              {addable.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.slug}
-                </option>
-              ))}
-            </select>
-          </span>
-        </Field>
+        <ReplyWindowsField doc={doc} set={set} />
+        <GateField doc={doc} set={set} />
+        <MembersField label={held ? "Invite members" : "First members"} members={members} setMembers={setMembers} projects={projects} />
         {save.isError ? <RefusalNotice refusals={refusalsOf(save.error)} /> : null}
         {invited.length > 0 ? <RefusalNotice title="Saved, but an invitation was refused" refusals={invited} /> : null}
         {stewards.length === 0 && !held ? (

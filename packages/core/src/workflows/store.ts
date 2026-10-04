@@ -1,3 +1,4 @@
+import type { DesignStatus } from '@forge/contracts/design-status';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -7,7 +8,7 @@ import {
   workflowBuilds,
 } from '../db/schema-workflows.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import type { DesignDecision, DesignStatus } from './design.js';
+import type { DesignDecision } from './design.js';
 import type { WorkflowWrite } from './schema.js';
 
 export interface StoredWorkflow {

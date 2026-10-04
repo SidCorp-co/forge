@@ -17,8 +17,7 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { readContentLanguage } from './read.js';
-import { writeContentLanguage } from './service.js';
+import { readContentLanguage, writeContentLanguage } from './content-language.js';
 
 export const contentLanguageRoutes = new Hono<{ Variables: AuthVars }>();
 

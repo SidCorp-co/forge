@@ -11,6 +11,7 @@ import type { ContractVersionDocument } from './version-schema.js';
 interface PublishInput extends UploadBody {
   projectId: string;
   writer: ProviderWriter;
+  /** The publication slug, or `<this project's slug>/<slug>`; another project's slug is refused. */
   contract: string;
   /** The contract kind the caller says the artifact is; checked against what the interface publishes. */
   kind?: string | undefined;
@@ -48,10 +49,22 @@ function kindRefusals(kind: string | undefined, published: string | undefined, r
 
 // cm:why the REST upload and forge_ecosystem contract_version_publish are one service, so the writer rule, the kind check and the version rules are the same at both doors
 export async function publishContractVersion(input: PublishInput): Promise<PublishOutcome> {
-  const { projectId, writer, contract, kind, sourceRef, ...body } = input;
+  const { projectId, writer, contract: named, kind, sourceRef, ...body } = input;
+  const [project] = await projectsWhere(db, { ids: [projectId] });
+  const slash = named.indexOf('/');
+  const owner = named.slice(0, slash);
+  if (slash >= 0 && owner !== project?.slug) {
+    return refused([
+      {
+        code: 'CONTRACT_NOT_PUBLISHED',
+        path: '/contract',
+        detail: `${named} names project ${owner}; a project publishes versions of its own contracts only, and this call acts for ${project?.slug ?? projectId}`,
+      },
+    ]);
+  }
+  const contract = named.slice(slash + 1);
   const denied = await providerWriterMiss(writer, projectId, 'publishing a contract version');
   if (denied) return refused([denied]);
-  const [project] = await projectsWhere(db, { ids: [projectId] });
   if (!project)
     throw new Error(`ecosystem: project ${projectId} passed the writer rule and has no row`);
   const iface = await loadInterface(projectId);

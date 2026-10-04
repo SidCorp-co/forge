@@ -16,7 +16,7 @@ const ORDER: readonly FeedbackPhase[] = [
 ];
 const CLOSED: readonly FeedbackPhase[] = ['verified', 'declined'];
 
-// cm:why ISS-79: the requirement reads back every feedback item about it, by the one link query
+// ISS-79: the requirement reads back every feedback item about it, by the one link query
 // (`feedback-links.ts:feedbackLinksOf`), open first and in the order a person acts on them, each
 // with the path that ties it here and the route that carries it
 export async function requirementFeedbackAs(

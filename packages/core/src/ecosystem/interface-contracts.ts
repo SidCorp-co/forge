@@ -1,6 +1,7 @@
 import { db } from '../db/client.js';
 import { heldInterface } from './interface-service.js';
-import { projectsWhere, readInterfaces } from './store.js';
+import { readInterfaces } from './interface-store.js';
+import { projectsWhere } from './store.js';
 
 /** The contracts `projectId`'s interface publishes and consumes, as `<project>/<contract>` refs; null when it holds none. */
 export async function interfaceContractsOf(

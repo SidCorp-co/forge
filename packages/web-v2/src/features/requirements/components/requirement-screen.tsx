@@ -7,7 +7,7 @@ import { REQUIREMENTS_LIST, requirementsHref } from "../routes";
 import { PrimaryActions, useAssistantDoor } from "./requirement-actions";
 import { RequirementPage, useRequirementTab } from "./requirement-detail";
 
-// cm:why the shell's top bar is the page's sticky header (the shared DetailHeader): the named back
+// The shell's top bar is the page's sticky header (the shared DetailHeader): the named back
 // control, key, title and state, and the one primary act; the bar's Ask Agent opens this
 // requirement's BA assistant room through the ISS-58 door
 export function RequirementScreen({ projectId, slug, reqKey }: { projectId: string; slug: string; reqKey: string }) {

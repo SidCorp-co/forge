@@ -7,15 +7,12 @@
  * says why (`buildsWorkflowOf`), so a master that cannot take it is told what it waits on.
  */
 
+import type { DesignStatus } from '@forge/contracts/design-status';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import {
-  type DesignStatus,
-  designNotApprovedDetail,
-  WorkflowDesignNotApprovedError,
-} from './design.js';
+import { designNotApprovedDetail, WorkflowDesignNotApprovedError } from './design.js';
 
 export function designUnapprovedSql(issueId: SQL): SQL {
   return sql`EXISTS (

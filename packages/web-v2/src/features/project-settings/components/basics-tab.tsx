@@ -15,7 +15,7 @@ import {
   MonoTag,
   SectionTitle,
 } from "@/design";
-import { ContentLanguageField } from "@/features/content-language/components/content-language-field";
+import { ContentLanguageField } from "./content-language-field";
 import type { ProjectDetail } from "@/features/projects/types";
 import { formatApiError } from "@/lib/api/error";
 import { useProjectDocument, useWriteProjectDocument } from "../config-hooks";

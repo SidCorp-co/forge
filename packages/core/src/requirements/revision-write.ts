@@ -145,7 +145,6 @@ export async function newDraftRevisionIn(
   input: {
     requirementId: string;
     head: number | null;
-    open: { revision: number; state: RevisionState } | null;
     baseRevision: number | null;
     actor: RequirementActor;
     write: RevisionWrite;
@@ -153,7 +152,8 @@ export async function newDraftRevisionIn(
 ): Promise<RequirementRefusal[] | null> {
   const { requirementId, write } = input;
   const refusal =
-    openRevisionRefusal(input.open) ?? staleBaseRefusal(input.baseRevision, input.head);
+    openRevisionRefusal(await openRevisionOf(tx, requirementId)) ??
+    staleBaseRefusal(input.baseRevision, input.head);
   if (refusal) return [refusal];
   const [{ next } = { next: 1 }] = await tx
     .select({ next: sql<number>`coalesce(max(${requirementRevisions.revision}), 0)::int + 1` })
@@ -174,7 +174,7 @@ export async function newDraftRevisionIn(
 }
 
 /** The open (draft or proposed) revision of a requirement, if any. */
-export async function openRevisionOf(tx: Tx, requirementId: string) {
+async function openRevisionOf(tx: Tx, requirementId: string) {
   const [open] = await tx
     .select({ revision: requirementRevisions.revision, state: requirementRevisions.state })
     .from(requirementRevisions)

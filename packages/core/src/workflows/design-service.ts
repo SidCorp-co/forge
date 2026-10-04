@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { activeIssuePrefix, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { userNames } from '../lib/people.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import {
   type DesignDecision,
@@ -17,7 +18,7 @@ import { designRequirementsOf } from './design-requirements.js';
 import { buildGateOf, designWaitingOn, revisionStateOf } from './design-standing.js';
 import { nodeSetRefusals, nodesOfDocument } from './node-refs.js';
 import { readStoredWorkflow } from './schema.js';
-import { assertWriter, storedWorkflow, userNames, type WorkflowWriter } from './service.js';
+import { assertWriter, storedWorkflow, type WorkflowWriter } from './service.js';
 import {
   buildOfIssue,
   buildsOf,
@@ -307,7 +308,7 @@ export async function linkBuildAs(input: {
   return { ok: true, design: await designView(await rowIn(projectId, id), actor) };
 }
 
-// cm:why lifting the link lifts the gate, so it is the approver's act and never the master's escape from a design nobody approved
+// Lifting the link lifts the gate, so it is the approver's act and never the master's escape from a design nobody approved
 export async function unlinkBuildAs(input: {
   projectId: string;
   id: string;
