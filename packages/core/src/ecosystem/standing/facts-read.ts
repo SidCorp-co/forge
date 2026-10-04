@@ -2,7 +2,7 @@ import type { FeedbackStatus } from '@forge/contracts/feedback';
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
+import { activeIssuePrefix } from '../../issues/index.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { holds, permissionFactsOf } from '../../permissions/index.js';
 import { versionsOf } from '../contract/store.js';
