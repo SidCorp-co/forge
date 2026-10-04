@@ -1,7 +1,6 @@
+import { globalRoom, roomManager } from '../lib/rooms.js';
 import { logger } from '../observability/logger.js';
 import { traceStep } from '../observability/sentry.js';
-import { globalRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 
 /** One missed `* * * * *` tick + 30s grace → 90s gap classes as desync. */
 const MISSED_TICK_THRESHOLD_MS = 90_000;

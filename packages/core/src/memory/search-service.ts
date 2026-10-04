@@ -1,3 +1,4 @@
+import type { RerankReport } from '@forge/contracts/memory';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { type MemorySource, retrievalAnalytics } from '../db/schema.js';
@@ -67,6 +68,8 @@ export interface MemorySearchResult {
   degraded?: boolean;
   /** True when the fast model ordered the hits; read them by position, `score` is still the RRF value. */
   reranked: boolean;
+  /** Present whenever a rerank was attempted: the path that ordered the hits, the model version, and a degradation when the model path was not taken. */
+  rerank?: RerankReport;
   /** Present only on an eligible search that was deliberately left in RRF order as the pilot's control. */
   rerankHoldout?: true;
   /** True when rows carrying `via` were appended after the ranked hits. */
@@ -78,6 +81,7 @@ export interface MemorySearchResult {
 /** What one search did beyond retrieving — the fields both the response and the analytics row carry. */
 interface SearchOutcome {
   reranked: boolean;
+  rerank?: RerankReport;
   rerankMs?: number;
   rerankHoldout?: true;
   expanded: boolean;
@@ -195,7 +199,8 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
   if (willRerank && retrieved.resolved === 'hybrid') {
     const result = await rerankHits({ query: input.query, hits, topK });
     hits = result.hits;
-    outcome.reranked = result.reranked;
+    outcome.reranked = result.report.path === 'model';
+    outcome.rerank = result.report;
     outcome.rerankMs = result.rerankMs;
   } else if (hits.length > topK) {
     hits = hits.slice(0, topK);
@@ -237,6 +242,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     strategy: retrieved.resolved,
     ...(retrieved.degraded ? { degraded: true } : {}),
     reranked: outcome.reranked,
+    ...(outcome.rerank ? { rerank: outcome.rerank } : {}),
     ...(outcome.rerankHoldout ? { rerankHoldout: true as const } : {}),
     expanded: outcome.expanded,
     ...(outcome.demotedStale ? { demotedStale: outcome.demotedStale } : {}),
@@ -261,7 +267,15 @@ export function buildRetrievalMetadata(
 function outcomeMetadata(outcome: (SearchOutcome & { hitIds?: string[] | undefined }) | undefined) {
   if (!outcome) return {};
   return {
-    ...(outcome.reranked ? { reranked: true, rerankMs: outcome.rerankMs } : {}),
+    ...(outcome.reranked ? { reranked: true } : {}),
+    ...(outcome.rerank
+      ? {
+          rerankMs: outcome.rerankMs,
+          rerankPath: outcome.rerank.path,
+          ...(outcome.rerank.model ? { rerankModel: outcome.rerank.model } : {}),
+          ...(outcome.rerank.degraded ? { rerankDegraded: outcome.rerank.degraded } : {}),
+        }
+      : {}),
     ...(outcome.rerankHoldout ? { rerankHoldout: true } : {}),
     ...(outcome.expanded ? { expanded: true, expandedCount: outcome.expandedCount } : {}),
     ...(outcome.hitIds ? { hitIds: outcome.hitIds } : {}),

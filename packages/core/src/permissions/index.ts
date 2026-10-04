@@ -10,6 +10,14 @@ export type {
 } from '@forge/contracts/permissions';
 export { type Actor, actorFor } from './actor.js';
 export {
+  type AgentCredentialFence,
+  agentCredentialFence,
+  agentCredentialGrant,
+  fenceFor,
+  regrantAgentCredentials,
+  withAgentFenceLock,
+} from './agent-fence.js';
+export {
   can,
   heldPermissions,
   holds,

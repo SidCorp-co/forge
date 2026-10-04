@@ -21,14 +21,13 @@
  */
 
 import { and, eq, isNull } from 'drizzle-orm';
+import { resolveProjectHandle } from '../conversations/handles.js';
 import { lockPatName, mintPat, supersedeNamedToken } from '../credentials/pat.js';
 import { deviceTokenNameFor, workspaceTokenNameFor } from '../credentials/pat-format.js';
-import { resolveProjectHandle } from '../conversations/handles.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens, users } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import { agentCredentialGrant } from '../orgs/agent-fence.js';
-import { holds } from '../permissions/index.js';
+import { agentCredentialGrant, holds } from '../permissions/index.js';
 import { refuseDevice } from './refusals.js';
 
 /**

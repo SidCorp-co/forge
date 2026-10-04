@@ -247,30 +247,6 @@ export function codeOnly(text) {
   return out;
 }
 
-const GLOBAL_FETCH = /(?<![\w$.])fetch(?![\w$])/g;
-const LOCAL_FETCH =
-  /\b(?:const|let|var|function)\s+fetch\b|[(,]\s*fetch\s*\??\s*:\s*[A-Z][\w.]*(?:\[[^\]\n]*\])?\s*[,)=]/;
-
-/**
- * Each reference to the global `fetch` in code: a call, or the function handed on as a value. A
- * file that binds its own `fetch` (a declaration, or a typed parameter) is read as not using the
- * global one at all, which is this scan's one bound: no scope analysis, so such a file reaching
- * the global too would go unseen.
- */
-export function globalFetchLines(text) {
-  const code = codeOnly(text);
-  if (LOCAL_FETCH.test(code)) return [];
-  const lines = [];
-  for (const m of code.matchAll(GLOBAL_FETCH)) {
-    const before = code.slice(Math.max(0, m.index - 16), m.index);
-    const after = code.slice(m.index + 5, m.index + 8);
-    if (/typeof\s+$/.test(before)) continue;
-    if (/^\s*\??:/.test(after)) continue;
-    lines.push(code.slice(0, m.index).split('\n').length);
-  }
-  return lines;
-}
-
 /** Each module a file imports, statically or dynamically, with the line it is named on. */
 export function importedModules(text) {
   const code = codeOnly(text);
@@ -291,8 +267,9 @@ export function isVendorModule(module, sdks) {
 }
 
 /**
- * The external calls in a set of already-read sources that sit outside the adapters: a global
- * `fetch` or a vendor SDK import, in a file that is neither under `adapters` nor a named exception.
+ * The vendor SDK imports in a set of already-read sources that sit outside the adapters, in a file
+ * that is neither under `adapters` nor a named exception. The global `fetch` is the module-shape
+ * lint's (scripts/eslint-module-shape/rules/global-fetch.mjs).
  *
  * @returns `{scanned, offenders: Array<{path, line, what}>}`
  */
@@ -304,7 +281,6 @@ export function scanEgress(entries, { adapters, vendorSdks, exceptions }) {
     if (adapterGlob.test(path)) continue;
     scanned += 1;
     if (isAllowed(path, exceptions)) continue;
-    for (const line of globalFetchLines(text)) offenders.push({ path, line, what: 'fetch' });
     for (const { module, line } of importedModules(text)) {
       if (isVendorModule(module, vendorSdks)) offenders.push({ path, line, what: module });
     }

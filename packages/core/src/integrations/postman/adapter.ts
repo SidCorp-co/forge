@@ -10,13 +10,13 @@
  */
 
 import { logger } from '../../observability/logger.js';
-import { isPreviousCredentialValid } from '../rotation.js';
-import { updateConnection } from '../store.js';
 import {
   declareIntegration,
   type HealthCheckResult,
   type IntegrationAdapterMethods,
-} from '../types.js';
+  isPreviousCredentialValid,
+  updateConnection,
+} from '../index.js';
 import { postmanRestBase } from './endpoints.js';
 import { buildPostmanMcpEntry } from './resolver.js';
 import {

@@ -2,19 +2,21 @@ import { scrubLogText } from '@forge/observability';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
-import { grantHolds } from '../agent-access.js';
 import {
+  type BindingWithConnection,
   describeInboundDoor,
+  effectiveConfig,
+  getIntegration,
+  grantHolds,
   healthWithInboundDoor,
   type InboundDoorState,
   inboundDoorState,
   inboundWebhookUrl,
+  listBindingsForProject,
   readInboundDoorTraffic,
   resolveApiBaseUrl,
-} from '../inbound-door.js';
-import { getIntegration } from '../registry.js';
-import { SourceHostCallError } from '../source-host/errors.js';
-import { type BindingWithConnection, effectiveConfig, listBindingsForProject } from '../store.js';
+} from '../index.js';
+import { SourceHostCallError } from '../source-host/index.js';
 import { buildRepoClient } from './client.js';
 import {
   GitHubAuthError,

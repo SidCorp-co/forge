@@ -1,6 +1,6 @@
 import { logger } from '../../observability/logger.js';
-import { recordDelivery, updateDelivery } from '../deliveries.js';
-import type { AdapterContext, InboundDispatchInput, InboundDispatchResult } from '../types.js';
+import type { AdapterContext, InboundDispatchInput, InboundDispatchResult } from '../index.js';
+import { recordDelivery, updateDelivery } from '../index.js';
 import { projectIssue } from './issues.js';
 import { readTargets, resolveSentryTarget } from './targets.js';
 import type { SentryConfig, SentrySecrets } from './types.js';

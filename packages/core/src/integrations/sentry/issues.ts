@@ -1,6 +1,6 @@
 import { sanitizeUntrusted } from '../../lib/untrusted-text.js';
-import { recordDelivery, updateDelivery } from '../deliveries.js';
-import type { OutboundDispatchInput, OutboundDispatchResult } from '../types.js';
+import type { OutboundDispatchInput, OutboundDispatchResult } from '../index.js';
+import { recordDelivery, updateDelivery } from '../index.js';
 import { callSentry, type SentryAdapterContext } from './call.js';
 import { sentryIssueUrl, sentryOrgIssuesUrl } from './endpoints.js';
 import {

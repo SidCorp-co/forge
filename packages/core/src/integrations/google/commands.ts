@@ -7,15 +7,16 @@
  * of the four ways a call can have nothing to act on.
  */
 
-import { grantHolds, notGrantedMessage } from '../agent-access.js';
-import { getIntegration } from '../registry.js';
-import { isPreviousCredentialValid } from '../rotation.js';
 import {
   type BindingWithConnection,
   decryptConnectionSecrets,
   effectiveConfig,
+  getIntegration,
+  grantHolds,
+  isPreviousCredentialValid,
   listBindingsForProject,
-} from '../store.js';
+  notGrantedMessage,
+} from '../index.js';
 import {
   appendValues,
   type GoogleClientArgs,

@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto';
-import { SourceHostCallError } from '../source-host/errors.js';
 import type {
   HostCompare,
   LiveDivergence,
   SourceHost,
   SourceHostFactory,
   WaitingCommit,
-} from '../source-host/types.js';
+} from '../source-host/index.js';
+import { SourceHostCallError } from '../source-host/index.js';
 import { gitlabAgentVerbs } from './agent-verbs.js';
 import { buildGitLabClient, type GitLabClient } from './client.js';
 import { GITLAB_MERGE_METHODS, mergeGitLabMergeRequest } from './merge.js';

@@ -7,7 +7,7 @@
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { inboundWebhookUrl } from '../inbound-door.js';
+import { inboundWebhookUrl } from '../index.js';
 import { anonymousOctokit, responseOf } from './octokit.js';
 
 const STATE_TTL_MS = 10 * 60_000;

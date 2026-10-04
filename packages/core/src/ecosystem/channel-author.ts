@@ -1,14 +1,14 @@
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { eq } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { isTurnTokenName } from '../credentials/pat-format.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
-import type { Author, PersonVia } from './channel-schema.js';
 import { holds, permissionRefusal } from '../permissions/index.js';
+import type { Author, PersonVia } from './channel-schema.js';
 import type { EcosystemRefusal } from './refusals.js';
 
 export interface Writer {

@@ -12,6 +12,7 @@ import {
   listParticipants,
 } from '../conversations/index.js';
 import type { ConversationShape } from '../db/schema-conversations.js';
+import { roomManager, userRoom } from '../lib/rooms.js';
 import type { SpeakerResolution } from './identity/speaker-link.js';
 
 /** What the Forge UI hands the ports: the room it already read, and who is typing in it. */
@@ -43,28 +44,6 @@ export const WEB_CONVERSATION_PROGRESS_EVENT = 'conversation.progress';
  */
 export const WEB_CONVERSATION_ACCEPTED_EVENT = 'conversation.accepted';
 
-/** Hands one envelope to every open socket of one person; returns how many took it. */
-export type PersonSockets = (userId: string, envelope: { event: string; data: unknown }) => number;
-
-let personSockets: PersonSockets | null = null;
-
-/**
- * The socket door hands the web adapter how a person's sockets are reached, so this domain never
- * imports the door. The process entry provides it at boot.
- */
-export function providePersonSockets(sockets: PersonSockets): void {
-  personSockets = sockets;
-}
-
-function publishToPerson(userId: string, envelope: { event: string; data: unknown }): number {
-  if (!personSockets) {
-    throw new Error(
-      'web conversations: no person socket publisher was provided, so a reply cannot reach a browser; the process entry calls providePersonSockets from the ws door before it serves',
-    );
-  }
-  return personSockets(userId, envelope);
-}
-
 /**
  * Whose sockets may be shown this room, right now.
  */
@@ -87,7 +66,7 @@ export async function publishToConversationReaders(
 ): Promise<number> {
   let sockets = 0;
   for (const userId of await readersOf(conversationId)) {
-    sockets += publishToPerson(userId, envelope);
+    sockets += roomManager.publish(userRoom(userId), envelope);
   }
   return sockets;
 }

@@ -1,7 +1,7 @@
 /** Who writes a provider's own interface and contract versions, and who set the commitments it makes. */
 
 import { isDeepStrictEqual } from 'node:util';
-import type { ActorAgency } from '../issues/actor-agency.js';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 import type { EcosystemRefusal } from './refusals.js';
 

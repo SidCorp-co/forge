@@ -95,7 +95,11 @@ const invalidInput = (result: { success: boolean; error?: z.core.$ZodError }) =>
 
 // cm:why membership is refused before the input is read, so a stranger learns nothing from a 400
 const projectMember: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(c.req.param('projectId') ?? ''));
+  await requireCan(
+    actorFor(c.get('userId')),
+    'project.read',
+    projectResource(c.req.param('projectId') ?? ''),
+  );
   await next();
 };
 
@@ -273,7 +277,7 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
     const existing = await findBindingWithConnectionById(id);
     if (!existing || existing.binding.projectId !== projectId) throw notFound();
     const { bindingReachesProduction, confirmPendingProdDeploy } = await import(
-      '../pipeline/release-coolify.js'
+      '../pipeline/index.js'
     );
     if (!(await bindingReachesProduction(projectId, existing.binding))) {
       throw new HTTPException(400, {

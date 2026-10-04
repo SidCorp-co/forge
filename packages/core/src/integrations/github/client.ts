@@ -17,8 +17,8 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { integrationBindings } from '../../db/schema.js';
-import { SourceHostCallError, SourceHostUnavailable } from '../source-host/errors.js';
-import { decryptConnectionSecrets, findConnectionById } from '../store.js';
+import { decryptConnectionSecrets, findConnectionById } from '../index.js';
+import { SourceHostCallError, SourceHostUnavailable } from '../source-host/index.js';
 import {
   GitHubAuthError,
   installationOctokit,

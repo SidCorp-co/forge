@@ -1,7 +1,7 @@
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, asc, desc, eq, gte, like, lt, lte } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
-import type { ActorAgency } from './actor-agency.js';
 import { issueArchiveSide } from './archive.js';
 
 export const ACTIVITY_ROW_COLUMNS = {

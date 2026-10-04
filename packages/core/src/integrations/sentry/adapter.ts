@@ -1,11 +1,11 @@
 import { logger } from '../../observability/logger.js';
-import { isPreviousCredentialValid } from '../rotation.js';
-import { updateConnection } from '../store.js';
 import {
   declareIntegration,
   type HealthCheckResult,
   type IntegrationAdapterMethods,
-} from '../types.js';
+  isPreviousCredentialValid,
+  updateConnection,
+} from '../index.js';
 import { sentryRestBase } from './endpoints.js';
 import { dispatchSentryOutbound } from './issues.js';
 import { buildSentryMcpEntry } from './resolver.js';

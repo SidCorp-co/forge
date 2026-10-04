@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { devicePlatforms, runnerProvisionStatuses } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { deviceRoom, roomManager, userRoom } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -186,8 +187,6 @@ deviceOwnerRoutes.patch(
     // room watchers so the badge flips without a manual reload. Best-effort.
     if (disabled !== undefined) {
       try {
-        const { roomManager } = await import('../ws/server.js');
-        const { deviceRoom, userRoom } = await import('../ws/rooms.js');
         // `device.statusChanged` is the device-state event the web event-router
         // already invalidates ['devices','me'] (+ project health / attention) on.
         const payload = { event: 'device.statusChanged', data: { deviceId: id, disabled } };
@@ -216,8 +215,6 @@ deviceOwnerRoutes.delete(
     await revokeDevice(id, restActor(c));
 
     try {
-      const { roomManager } = await import('../ws/server.js');
-      const { deviceRoom, userRoom } = await import('../ws/rooms.js');
       roomManager.publish(userRoom(userId), {
         event: 'device.revoked',
         data: { deviceId: id },
@@ -306,8 +303,6 @@ deviceAuthRoutes.post(
     if (!beat) throw unauth();
 
     if (wasOffline) {
-      const { roomManager } = await import('../ws/server.js');
-      const { deviceRoom } = await import('../ws/rooms.js');
       roomManager.publish(deviceRoom(device.id), {
         event: 'device.status',
         data: { deviceId: device.id, status: 'online' },

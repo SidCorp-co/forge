@@ -67,4 +67,4 @@ delivery: pg-boss retries it five times with backoff, then moves it to the
 
 **Adding a system:** name the port by its role, not the vendor; put the vendor under it (or beside
 an existing port that already serves the role); add a row here. A project-bound vendor also
-registers in `register-all.ts`.
+registers in `packages/core/src/integration-registry.ts`.

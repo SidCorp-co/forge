@@ -4,6 +4,7 @@
  */
 
 import type { MockupTargetType, MockupView } from '@forge/contracts/mockups';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, asc, desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
@@ -15,14 +16,13 @@ import {
   requirementBaselines,
   requirements,
 } from '../db/schema-requirements.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { isUuid } from '../issues/issue-route-ref.js';
-import { holds } from '../permissions/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf, egressReading } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { holds } from '../permissions/index.js';
 
 export type MockupRow = typeof mockups.$inferSelect;
 

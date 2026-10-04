@@ -1,11 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
-import { recordDelivery, updateDelivery } from '../deliveries.js';
-import { inboundWebhookUrl, resolveApiBaseUrl } from '../inbound-door.js';
-import { isPreviousCredentialValid } from '../rotation.js';
-import { sourceHostMismatch } from '../source-host/bind.js';
-import { updateConnection } from '../store.js';
 import {
   type AdapterContext,
   declareIntegration,
@@ -14,7 +9,14 @@ import {
   type InboundDispatchResult,
   type InboundFact,
   type IntegrationAdapterMethods,
-} from '../types.js';
+  inboundWebhookUrl,
+  isPreviousCredentialValid,
+  recordDelivery,
+  resolveApiBaseUrl,
+  updateConnection,
+  updateDelivery,
+} from '../index.js';
+import { sourceHostMismatch } from '../source-host/index.js';
 import { gitlabGitCredential } from './git-credential.js';
 import { GITLAB_BINDING_CONFIG_KEYS, gitlabConfigBase, gitlabSecretsSchema } from './schemas.js';
 import { gitlabSourceHost } from './source-host.js';

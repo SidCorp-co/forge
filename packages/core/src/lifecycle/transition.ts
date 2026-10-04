@@ -14,6 +14,7 @@ import {
   type TransitionEventEntity,
   transitionEventType,
 } from '@forge/contracts/outbox-events';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import {
   edgeBetween,
   entriesOf,
@@ -27,7 +28,6 @@ import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { delegationOf } from '../credentials/pat-scope.js';
 import { asKernelStatusWrite, type KernelExecutor } from '../db/kernel-marker.js';
 import { type KernelTransitionActorType, kernelTransitions } from '../db/schema.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { emitEvents } from '../outbox/index.js';
 import { type MachineRow, machineTable } from './machine-tables.js';
