@@ -18,7 +18,6 @@ export function ScheduleItemScreen({ access, scheduleId }: { access: AutomationA
     <div className="min-h-full bg-app" data-testid="schedule-item-screen">
       <DetailHeader
         back={{ href: back, label: "Automation" }}
-        itemKey={s?.name}
         keyTitle={s?.id}
         title={s?.name ?? "Schedule"}
         badge={s ? <StatusBadge family="scheduleStanding" value={s.state} /> : null}
@@ -60,7 +59,7 @@ export function ReportItemScreen({ access, reportId }: { access: AutomationAcces
         back={back}
         itemKey={shortId(reportId)}
         keyTitle={reportId}
-        title={r ? `Report ${shortId(reportId)}` : "Report"}
+        title={r?.summary ?? "Agent report"}
         badge={r ? <StatusBadge family="reportTriage" value={r.triage} /> : null}
         action={r ? <ReportPrimary r={r} projectId={access.projectId} canWrite={access.canWrite} /> : null}
       />
