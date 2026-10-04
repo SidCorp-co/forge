@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { automationViewerOf, readScheduleDetail } from '../../automation/read.js';
+import { egressDeep, egressOr } from '../../lib/data-egress.js';
 import { listImprovementMessages } from '../../schedules/messages/registry.js';
 import {
   createSchedule,
   deleteSchedule,
   getSchedule,
-  listScheduleRuns,
   listSchedulesForMcp,
   readScheduleProjectId,
   runScheduleNow,
@@ -70,6 +71,7 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Requires device or PAT principal. Gate: list/get/runs/catalog → member; create/update/delete → admin; run → writer. ' +
     'list returns a body-free projection (no prompt/script field) to stay under the MCP output cap. ' +
     'catalog returns the full improvement-message registry (static list, no prompt 20k). ' +
+    "runs answers the schedule's fires as forge_automation action=schedule reads them (status, why, produced), newest first, limit (default 20). " +
     "kind='script' runs a standalone sandboxed Node.js script (ctx.log/ctx.http.fetch/ctx.notify/ctx.params) " +
     'on the cron cadence with no agent session and no Claude session — pass `script` instead of `prompt`/`templateKey`. ' +
     'Mirrors REST /api/schedules but accepts device/PAT principals without a user JWT.',
@@ -101,7 +103,15 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
           throw new Error('BAD_REQUEST: scheduleId is required for action=runs');
         const projectId = await readScheduleProjectId(input.scheduleId);
         await assertPrincipalIsMember(principal, projectId);
-        return listScheduleRuns(input.scheduleId, userId, input.limit);
+        const viewer = await automationViewerOf(projectId, userId);
+        if (!viewer) throw new Error(`FORBIDDEN: not a member of project ${projectId}`);
+        const detail = await readScheduleDetail(projectId, input.scheduleId, viewer, {
+          firesLimit: input.limit ?? 20,
+        });
+        if (!detail) throw new Error(`NOT_FOUND: schedule ${input.scheduleId}`);
+        return egressOr(await egressDeep(projectId, 'issue', detail, 'schedule fires'), {
+          scheduleId: input.scheduleId,
+        });
       }
 
       case 'create': {

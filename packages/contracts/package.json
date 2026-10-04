@@ -66,6 +66,10 @@
       "types": "./dist/run-standing.d.ts",
       "default": "./dist/run-standing.js"
     },
+    "./automation-standing": {
+      "types": "./dist/automation-standing.d.ts",
+      "default": "./dist/automation-standing.js"
+    },
     "./issue-standing": {
       "types": "./dist/issue-standing.d.ts",
       "default": "./dist/issue-standing.js"

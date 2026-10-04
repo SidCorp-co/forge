@@ -10,12 +10,13 @@
  * which drizzle expands as a malformed record tuple.
  */
 
-import { SCHEDULE_RUN_STREAK_SKIP_REASONS } from '@forge/contracts/schedules';
-import { sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { schedules } from '../db/schema.js';
 import { runnerMayTakeJob } from '../devices/release-label.js';
 import { buildBarrierFragments } from '../jobs/queued-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
+import { readScheduleStreaks, type ScheduleStreak, streakFails } from '../schedules/streak.js';
 import { readThresholds } from './thresholds.js';
 import type { AdminAlert, AdminAlertId, AdminAlertStatus, AdminThresholds } from './types.js';
 import { ADMIN_THRESHOLD_DEFAULTS } from './types.js';
@@ -46,10 +47,6 @@ const SPEND_MIN_USD = (() => {
 const SPEND_CRIT_FACTOR = 2;
 const SCHEDULE_CRIT_MARGIN = 2;
 const DELIVERY_CRIT_FACTOR = 1.6;
-const SCHEDULE_ACTIVE_WINDOW_HOURS = (() => {
-  const env = Number(process.env.FORGE_ALERT_SCHEDULE_ACTIVE_WINDOW_HOURS);
-  return Number.isFinite(env) && env > 0 ? env : 24 * 8;
-})();
 const DELIVERY_MIN_SAMPLE = 5;
 
 export function opsAlertResolutionKey(id: AdminAlertId): string {
@@ -388,11 +385,41 @@ type PgTimestamp = string | Date;
 type ScheduleStreakRow = {
   schedule_id: string;
   name: string;
-  project_id: string;
-  project_slug: string;
   streak: number;
   streak_started_at: PgTimestamp | null;
 };
+
+async function failingScheduleRows(
+  streaks: readonly ScheduleStreak[],
+  failStreak: number,
+  now: Date,
+): Promise<ScheduleStreakRow[]> {
+  if (streaks.length === 0) return [];
+  const named = await db
+    .select({ id: schedules.id, name: schedules.name, enabled: schedules.enabled })
+    .from(schedules)
+    .where(
+      inArray(
+        schedules.id,
+        streaks.map((s) => s.scheduleId),
+      ),
+    );
+  const byId = new Map(named.map((n) => [n.id, n]));
+  return streaks
+    .flatMap((s) => {
+      const schedule = byId.get(s.scheduleId);
+      if (!schedule || !streakFails(s, schedule, failStreak, now)) return [];
+      return [
+        {
+          schedule_id: s.scheduleId,
+          name: schedule.name,
+          streak: s.streak,
+          streak_started_at: s.streakStartedAt,
+        },
+      ];
+    })
+    .sort((a, b) => b.streak - a.streak);
+}
 
 type DeliveryFailRow = {
   binding_id: string;
@@ -415,52 +442,10 @@ function oldestIso(values: Array<PgTimestamp | null>): string | null {
   return oldest === null ? null : new Date(oldest).toISOString();
 }
 
-const STREAK_SKIP_REASONS_SQL = sql.join(
-  SCHEDULE_RUN_STREAK_SKIP_REASONS.map((r) => sql`${r}`),
-  sql`, `,
-);
-
 /** A5 — two contributors combined into one alert: schedule fail-streaks and integration-delivery fail-rates. */
-async function alertAutomationFailing(thresholds: AdminThresholds): Promise<AdminAlert> {
-  const [scheduleRows, deliveryRows] = await Promise.all([
-    db.execute<ScheduleStreakRow>(sql`
-      WITH schedule_events AS (
-        SELECT schedule_id::text, status = 'success' AS succeeded, created_at
-        FROM schedule_runs
-        WHERE status IN ('success', 'failed')
-           OR (status = 'skipped' AND reason IN (${STREAK_SKIP_REASONS_SQL}))
-      ),
-      ranked AS (
-        SELECT schedule_id, succeeded, created_at,
-               row_number() OVER (PARTITION BY schedule_id ORDER BY created_at DESC) AS rn
-        FROM schedule_events
-      ),
-      first_success AS (
-        SELECT schedule_id, min(rn) AS first_success_rn
-        FROM ranked
-        WHERE succeeded
-        GROUP BY schedule_id
-      ),
-      totals AS (
-        SELECT schedule_id, count(*) AS total_runs, max(created_at) AS last_run_at
-        FROM ranked GROUP BY schedule_id
-      ),
-      streaks AS (
-        SELECT t.schedule_id, t.last_run_at,
-               coalesce(fs.first_success_rn - 1, t.total_runs)::int AS streak
-        FROM totals t
-        LEFT JOIN first_success fs ON fs.schedule_id = t.schedule_id
-      )
-      SELECT s.id AS schedule_id, s.name, s.project_id, p.slug AS project_slug, st.streak,
-             (SELECT min(r2.created_at) FROM ranked r2 WHERE r2.schedule_id = s.id::text AND r2.rn <= st.streak) AS streak_started_at
-      FROM streaks st
-      JOIN schedules s ON s.id::text = st.schedule_id
-      JOIN projects p ON p.id = s.project_id
-      WHERE st.streak >= ${thresholds.scheduleFailStreak}
-        AND s.enabled = true
-        AND st.last_run_at >= now() - (${SCHEDULE_ACTIVE_WINDOW_HOURS}::int * interval '1 hour')
-      ORDER BY st.streak DESC
-    `),
+async function alertAutomationFailing(thresholds: AdminThresholds, now: Date): Promise<AdminAlert> {
+  const [streaks, deliveryRows] = await Promise.all([
+    readScheduleStreaks({ minStreak: thresholds.scheduleFailStreak }),
     db.execute<DeliveryFailRow>(sql`
       SELECT b.id AS binding_id, b.provider, b.project_id, p.slug AS project_slug,
              count(*) FILTER (WHERE d.status = 'failed')::int AS failed,
@@ -476,6 +461,7 @@ async function alertAutomationFailing(thresholds: AdminThresholds): Promise<Admi
     `),
   ]);
 
+  const scheduleRows = await failingScheduleRows(streaks, thresholds.scheduleFailStreak, now);
   const scheduleContributors = scheduleRows.map((r) => ({
     entity: {
       ref: r.schedule_id,
@@ -530,7 +516,7 @@ export async function computeAlerts(opts: AlertQueryOptions = {}): Promise<Admin
     alertStuckJobs(staleSeconds),
     alertRunnerStarved(thresholds.runnerStarvedSeconds),
     alertSpendSpike(now, thresholds),
-    alertAutomationFailing(thresholds),
+    alertAutomationFailing(thresholds, now),
   ]);
   return [a1, a2, a3, a4, a5];
 }

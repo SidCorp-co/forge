@@ -89,21 +89,28 @@ describe('a fire that runs in core', () => {
   });
 });
 
-describe('GET /api/schedules/:id/runs reads the fires alone', () => {
+describe('the schedule read of the automation model reads the fires alone', () => {
   it('lists one entry per fire, newest first, with why each one ran nothing', async () => {
     const scheduleId = await createSchedule({ prompt: 'tidy the backlog' });
     await tick(scheduleId);
     await g.harness.db.execute(sql`DELETE FROM runners`);
     await tick(scheduleId);
 
-    const res = await call('GET', `/api/schedules/${scheduleId}/runs`, await adminBearer());
+    const res = await call(
+      'GET',
+      `/api/projects/${g.projectId}/automation/schedules/${scheduleId}`,
+      await adminBearer(),
+    );
     expect(res.status).toBe(200);
-    const { runs } = (await res.json()) as { runs: Array<Record<string, unknown>> };
+    const { fires: listed } = (await res.json()) as { fires: Array<Record<string, unknown>> };
     const fires = await firesOf(scheduleId);
-    expect(runs.map((r) => r.id)).toEqual(fires.map((f) => f.id).reverse());
-    expect(runs[0]).toMatchObject({ fireStatus: 'skipped', reason: 'no-device', sessionId: null });
-    expect(runs[1]).toMatchObject({ fireStatus: 'running', status: 'running' });
-    expect(runs[1]?.sessionId).toBe(fires[0]?.sessionId);
+    expect(listed.map((r) => r.id)).toEqual(fires.map((f) => f.id).reverse());
+    expect(listed[0]).toMatchObject({ status: 'skipped', reason: 'no-device', sessionId: null });
+    expect(listed[1]).toMatchObject({ status: 'running' });
+    expect(listed[1]?.sessionId).toBe(fires[0]?.sessionId);
+
+    const retired = await call('GET', `/api/schedules/${scheduleId}/runs`, await adminBearer());
+    expect(retired.status).toBe(404);
   });
 });
 

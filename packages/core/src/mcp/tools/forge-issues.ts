@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { fireOfCaller } from '../../agent-reports/service.js';
 import { BODY_FORMATS } from '../../body/formats.js';
 import { bodyText } from '../../body/prepare.js';
 import { issueComplexities, issuePriorities, taskStatuses, waitingKinds } from '../../db/schema.js';
@@ -629,6 +630,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
               createdByDeviceId: principal.deviceId,
               createdVia: 'mcp',
               actor: principalHookActor(principal),
+              scheduleRunId: await fireOfCaller(principal),
             },
           );
         } catch (err) {

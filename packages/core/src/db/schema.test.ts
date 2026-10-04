@@ -361,9 +361,9 @@ describe('db/schema — issues', () => {
     expect(p.enumValues).toEqual([...issuePriorities]);
   });
 
-  it('FKs: project cascade, assignee set null, created_by restrict, created_by_device and release batch run set null, requirement, planned revision and from-suggestion refuse a delete', () => {
+  it('FKs: project cascade, assignee set null, created_by restrict, created_by_device, release batch run and schedule run set null, requirement, planned revision and from-suggestion refuse a delete', () => {
     const cfg = getTableConfig(issues);
-    expect(cfg.foreignKeys).toHaveLength(8);
+    expect(cfg.foreignKeys).toHaveLength(9);
     const planned = cfg.foreignKeys.find((fk) => fk.getName() === 'issues_planned_revision_fk');
     expect(planned?.reference().columns.map((c) => c.name)).toEqual([
       'requirement_id',
@@ -378,6 +378,7 @@ describe('db/schema — issues', () => {
     expect(byCol.get('created_by_id')?.onDelete).toBe('restrict');
     expect(byCol.get('release_batch_run_id')?.onDelete).toBe('set null');
     expect(byCol.get('created_by_device_id')?.onDelete).toBe('set null');
+    expect(byCol.get('schedule_run_id')?.onDelete).toBe('set null');
     expect(byCol.get('requirement_id')?.onDelete ?? 'no action').toBe('no action');
     expect(byCol.get('from_suggestion_id')?.onDelete ?? 'no action').toBe('no action');
   });

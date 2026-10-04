@@ -3,7 +3,7 @@ import { and, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { issueDeleteRefusal } from '../agent-reports/service.js';
+import { fireOfCaller, issueDeleteRefusal } from '../agent-reports/service.js';
 import { BodyInvalidError } from '../body/errors.js';
 import { BODY_FORMATS } from '../body/formats.js';
 import { bodyInvalidHttp } from '../body/http-error.js';
@@ -153,15 +153,19 @@ issueProjectRoutes.post(
 
     if (input.assigneeId) await assertAssigneeIsMember(projectId, input.assigneeId);
 
+    const deviceId = c.get('patDeviceId') ?? null;
     let result: Awaited<ReturnType<typeof createIssue>>;
     try {
       result = await createIssue(
         { ...input, projectId },
         {
           createdById: userId,
-          createdByDeviceId: c.get('patDeviceId') ?? null,
+          createdByDeviceId: deviceId,
           createdVia: 'web',
           actor: restActor(c),
+          scheduleRunId: deviceId
+            ? await fireOfCaller({ deviceId, boundProjectId: projectId })
+            : null,
         },
       );
     } catch (err) {

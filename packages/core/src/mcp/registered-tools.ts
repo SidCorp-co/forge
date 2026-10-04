@@ -10,6 +10,7 @@ export const REGISTERED_TOOLS = [
   'forge_agent_report',
   'forge_agent_sessions.get',
   'forge_agent_sessions.list',
+  'forge_automation',
   'forge_channel',
   'forge_collaborators',
   'forge_comments',
