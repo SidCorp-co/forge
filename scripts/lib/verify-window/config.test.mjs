@@ -92,9 +92,9 @@ describe('parseConfig', () => {
   });
 
   it.each([
-    'eslint.config.mjs',
     'scripts/verify.mjs',
-    'scripts/check-comment-budget.mjs',
+    'scripts/check-size-budget.mjs',
+    'scripts/conformance-audit.mjs',
     'scripts/lib/debt-ratchet.mjs',
   ])('sends a change to the gate-wide surface %s to the whole gate', (path) => {
     const text = readFileSync(

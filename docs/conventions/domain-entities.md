@@ -300,12 +300,11 @@ means `off`).
 
 ## Compat amnesties
 
-- **Form.** A compatibility path is annotated
-  `cm:hack ISS-<n> until:<condition> — <what is traded>`, the codemap grammar.
-- **Where it sits.** The annotation sits on the code that is deleted when the condition holds.
-- **What is checked.** Nothing in this repo checks the form, since the codemap checker was removed;
-  `check-comment-budget` measures comment content only. A grep for `cm:hack` without `ISS-` finds
-  the gap.
+- **Form.** A compatibility path carries one comment naming its issue, the condition that ends it
+  and what is traded: `ISS-<n> until:<condition> — <what is traded>`. Older ones are written
+  `cm:hack ISS-<n> until:…`; the prefix is a plain comment now and is neither required nor read.
+- **Where it sits.** The comment sits on the code that is deleted when the condition holds.
+- **What is checked.** Nothing in this repo checks the form or the content of a comment.
 
 ## Template: a new entity
 

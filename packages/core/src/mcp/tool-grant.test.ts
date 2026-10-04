@@ -357,6 +357,7 @@ describe('a call against the epoch its token was minted at', () => {
         'forge_agent_sessions.get',
         'forge_agent_sessions.list',
         'forge_automation fire',
+        'forge_automation report',
         'forge_automation schedule',
         'forge_automation standing',
         'forge_ecosystem bus',

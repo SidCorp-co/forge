@@ -7,6 +7,7 @@ import {
   type AutomationStandingResponse,
   type FireDetailResponse,
   type FireProposal,
+  type ReportDetailResponse,
   type ScheduleDetailResponse,
   type ScheduleStanding,
 } from '@forge/contracts/automation-standing';
@@ -20,6 +21,7 @@ import {
   producedItems,
   reportCounts,
   reportFacts,
+  reportRow,
   reportRows,
   scheduleFacts,
   stewardActions,
@@ -175,4 +177,13 @@ export async function readFireDetail(
     schedule: publicStanding(standing),
     produced: await producedItems(row, proposals),
   };
+}
+
+export async function readReportDetail(
+  projectId: string,
+  reportId: string,
+  viewer: AutomationViewer,
+): Promise<ReportDetailResponse | null> {
+  const [facts] = await reportFacts(await reportRow(projectId, reportId));
+  return facts ? { report: reportStandingOf(facts, viewer) } : null;
 }
