@@ -2,10 +2,10 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { AgentAccess, BindingRole } from '../db/release-axes.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
-import { lockXact } from '../lib/advisory-lock.js';
 import { loadOrgRole, projectOrgOf } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { holdsOrg } from '../permissions/index.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export interface StoredBinding {
   id: string;

@@ -18,7 +18,6 @@ import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';
-import { projectsPorts } from './ports.js';
 import {
   accountIdByEmail,
   listPendingProjectInvitations,
@@ -26,6 +25,7 @@ import {
   projectMemberRole,
   projectName,
 } from './read.js';
+import { projectsPorts } from './ports.js';
 import { refuse } from './refuse.js';
 import {
   addProjectMemberIfAbsent,

@@ -15,8 +15,8 @@ import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { sourceCommit } from '../observability/source-commit.js';
-import { requireHeld } from '../permissions/index.js';
 import { readLiveness, readOpsHealth } from './service.js';
+import { requireHeld } from '../permissions/index.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const staleQuerySchema = z.object({

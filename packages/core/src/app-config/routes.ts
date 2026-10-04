@@ -85,3 +85,4 @@ appConfigRoutes.put(
     return c.json(row);
   },
 );
+

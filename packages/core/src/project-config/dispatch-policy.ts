@@ -1,4 +1,3 @@
-import { AUTONOMOUS_ENTRY_STATUS } from '@forge/contracts/issue-machine';
 import {
   type DispatchState,
   POLICY_REFUSAL_CODES,
@@ -6,6 +5,7 @@ import {
   type PolicyStateSource,
 } from '@forge/contracts/project-config';
 import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
+import { AUTONOMOUS_ENTRY_STATUS } from '@forge/contracts/issue-machine';
 import { readEffectivePolicy } from './effective.js';
 import { POLICY_STATE_STATUSES, type PolicyDocument } from './schema.js';
 import type { Held } from './service.js';

@@ -169,7 +169,9 @@ export async function listPendingProjectInvitations(projectId: string) {
     })
     .from(projectInvitations)
     .innerJoin(users, eq(users.id, projectInvitations.inviterId))
-    .where(and(eq(projectInvitations.projectId, projectId), isNull(projectInvitations.acceptedAt)));
+    .where(
+      and(eq(projectInvitations.projectId, projectId), isNull(projectInvitations.acceptedAt)),
+    );
 }
 
 /** The live project and org invitations sent to `email`, newest first. */

@@ -86,7 +86,9 @@ export async function routeOne(
   const outcome = await routeWindow({
     window,
     handoffFor: async (windowId) =>
-      (await import('../../conversations/index.js')).conversationAgentTurnForWindow(windowId),
+      (await import('../../conversations/index.js')).conversationAgentTurnForWindow(
+        windowId,
+      ),
     refusalFor: async ({ authorKey, authorLabel }) => {
       if (!authorKey) return null;
       const resolved = await rocketChatConversationPorts.resolveSpeaker({

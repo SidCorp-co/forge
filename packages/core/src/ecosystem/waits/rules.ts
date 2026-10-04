@@ -148,6 +148,7 @@ export function providerLiveMode(
   return modes.length > 0 && modes.every((m) => m === 'off') ? 'off' : 'required';
 }
 
+
 // cm:guard kernel, zero tolerance: a consumer's production release ships past a wait only once the
 // provider's production serves a version at or above it, unless the ecosystem turned that off (E4)
 export function providerLiveShortfall(f: {

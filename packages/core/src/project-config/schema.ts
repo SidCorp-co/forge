@@ -1,13 +1,10 @@
+import { AUTONOMOUS_DRIVER_STATUSES, ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import {
   CONTENT_LANGUAGE_LIMITS,
   keepTermsInEnglishSchema,
 } from '@forge/contracts/content-language';
 import { SENSITIVE_DATA_LEVELS } from '@forge/contracts/data-policy';
 import { deliveryPolicySchema } from '@forge/contracts/delivery-policy';
-import {
-  AUTONOMOUS_DRIVER_STATUSES,
-  ISSUE_TERMINAL_STATUSES,
-} from '@forge/contracts/issue-machine';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
 import {
   projectWorkflowTemplateSchema,
