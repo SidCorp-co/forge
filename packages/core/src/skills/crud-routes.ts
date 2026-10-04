@@ -1,4 +1,3 @@
-import { isSlashCommandSkillName } from '@forge/contracts/skills';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -7,7 +6,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { MANAGED_META_SKILLS, resolveRegisteredEffectiveSkills } from './effective.js';
+import { MANAGED_META_SKILLS } from './effective.js';
 import { listSkills, skillById, skillScopeById } from './read.js';
 import { refuse } from './refuse.js';
 import {
@@ -60,9 +59,6 @@ const listQuerySchema = z
     scope: z.enum(['global', 'project', 'all']).optional(),
   })
   .strict();
-
-const invokableQuerySchema = z.object({ projectId: z.uuid() }).strict();
-
 const bulkPushSchema = z
   .object({
     // `targets` is kept for API back-compat with the web client; its values
@@ -124,39 +120,6 @@ skillCrudRoutes.get(
     return c.json(rows.map((r) => ({ ...r, managedMeta: metaNames.has(r.name) })));
   },
 );
-
-/**
- * `GET /api/skills/invokable?projectId=` — the skills a human may invoke as a
- * slash-command inside an interactive chat on this project, i.e. what populates
- * the composer's `/`-autocomplete (ISS-718).
- *
- * This is `resolveRegisteredEffectiveSkills` narrowed to `installOnly`, which is
- * EXACTLY the set `POST /api/agent-sessions/start` already accepts as
- * `skillName` (ISS-733); reusing that resolver is what keeps the menu from
- * offering a skill the start route would then reject.
- */
-skillCrudRoutes.get(
-  '/invokable',
-  zValidator('query', invokableQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId } = c.req.valid('query');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
-
-    const effective = await resolveRegisteredEffectiveSkills(projectId);
-    const invokable = effective
-      .filter((e) => e.installOnly && isSlashCommandSkillName(e.name))
-      .map((e) => ({ name: e.name, description: e.description }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    return c.json({ skills: invokable });
-  },
-);
-
 skillCrudRoutes.get(
   '/:id',
   zValidator('param', idParamSchema, (r) => {

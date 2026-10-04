@@ -16,10 +16,10 @@ export const PROVISION_FAILURES_HEADER = 'X-Forge-Provision-Failures';
  * Bounded because the count of queued rows is not. What does not fit is counted
  * in `dropped` and is on the row's own `provisionDetail` either way.
  */
-export const PROVISION_FAILURES_BUDGET = 4096;
+const PROVISION_FAILURES_BUDGET = 4096;
 
 /** `omitted` — absent from the response. `degraded` — served, short something. */
-export type ProvisionReportKind = 'omitted' | 'degraded';
+type ProvisionReportKind = 'omitted' | 'degraded';
 
 export interface ProvisionReport {
   runnerId: string;
@@ -31,7 +31,7 @@ export interface ProvisionReport {
   terminal: boolean;
 }
 
-export interface ProvisionRow {
+interface ProvisionRow {
   runnerId: string;
   projectId: string;
   slug: string;
@@ -60,12 +60,12 @@ export interface Provision {
   mcpCredential: string | null;
 }
 
-export interface BuiltProvisionRow {
+interface BuiltProvisionRow {
   provision: Provision | null;
   reports: ProvisionReport[];
 }
 
-export interface ProvisionRowDeps {
+interface ProvisionRowDeps {
   /** Injected so a test can make one row's mint throw. */
   issueCredential(args: {
     deviceId: string;
@@ -75,7 +75,7 @@ export interface ProvisionRowDeps {
   decrypt?(enc: Buffer): string;
 }
 
-export interface ProvisionRowContext {
+interface ProvisionRowContext {
   deviceId: string;
   /** Null when the device has no live credential; no token is minted then. */
   holderUserId: string | null;
@@ -87,7 +87,7 @@ export interface ProvisionRowContext {
  * only cause this code can tell from a blip. Walked, because drizzle wraps what
  * pg threw. Null for anything else.
  */
-export function integrityViolation(err: unknown): string | null {
+function integrityViolation(err: unknown): string | null {
   for (let cur: unknown = err, depth = 0; cur && depth < 5; depth++) {
     const e = cur as { code?: unknown; constraint_name?: unknown };
     if (typeof e.code === 'string' && e.code.startsWith('23')) {

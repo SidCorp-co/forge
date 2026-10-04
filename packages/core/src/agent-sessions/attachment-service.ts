@@ -18,7 +18,7 @@ export { safeName };
 
 const refuse = refuser<AttachmentRefusalCode>('ATTACHMENT_REFUSED');
 
-export interface PersistSessionAttachmentInput {
+interface PersistSessionAttachmentInput {
   sessionId: string;
   name: string;
   mime: string;
@@ -27,7 +27,7 @@ export interface PersistSessionAttachmentInput {
   uploaderDeviceId: string | null;
 }
 
-export interface PersistedSessionAttachment {
+interface PersistedSessionAttachment {
   id: string;
   sessionId: string;
   name: string;

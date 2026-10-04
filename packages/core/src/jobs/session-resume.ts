@@ -6,7 +6,7 @@ import { logger } from '../observability/logger.js';
 export const MAX_RESUME_TOKENS = 150_000;
 
 /** ISS-580 — the peak single-request context any session of this issue reached, as `compact_boundary` counts it. */
-export function issueContextPeakQuery(issueId: string): SQL {
+function issueContextPeakQuery(issueId: string): SQL {
   return sql`
     SELECT MAX(ur.input_tokens + ur.cache_read_tokens) AS peak
     FROM agent_sessions AS s

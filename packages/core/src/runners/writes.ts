@@ -11,7 +11,7 @@ const CHECKOUT_VIEW = {
   status: runners.status,
 } as const;
 
-export type RunnerCheckout = {
+type RunnerCheckout = {
   repoPath?: string | null | undefined;
   branch?: string | null | undefined;
 };

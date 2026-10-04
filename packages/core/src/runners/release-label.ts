@@ -6,7 +6,7 @@ import { runnerLive } from './liveness-sql.js';
 // cm:edge contract -> packages/core/src/project-config/release-path.ts:productionOf — the one
 // production environment's deploy binding, read off the stored project document.
 /** The non-empty `releaseRunnerLabel` the production deploy binding of this job's project declares. */
-export const RELEASE_LABEL_FOR_JOB = sql`(
+const RELEASE_LABEL_FOR_JOB = sql`(
   SELECT NULLIF(
     CASE WHEN b.config ? 'releaseRunnerLabel'
          THEN b.config ->> 'releaseRunnerLabel'
@@ -35,7 +35,7 @@ export const RELEASE_LABEL_FOR_JOB = sql`(
  *
  * Needs `j` (the job row) in scope.
  */
-export function eligibleBoxCarriesReleaseLabel(): SQL {
+function eligibleBoxCarriesReleaseLabel(): SQL {
   return sql`EXISTS (
     SELECT 1
     FROM runners preferred_r
@@ -74,7 +74,7 @@ export function runnerMayTakeJob(labels: SQL = sql`r.labels`): SQL {
   )`;
 }
 
-export type ReleaseLabelVerdict =
+type ReleaseLabelVerdict =
   | { allowed: true; label: string | null; preferenceMet: boolean }
   | { allowed: false; label: string | null; carried: string[] };
 

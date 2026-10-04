@@ -54,8 +54,6 @@ export const PAT_PERMISSION_RESOURCES = {
     reach: 'project',
     prefixes: {
       '/api/skills': 1,
-      '/api/skill-facts': 1,
-      '/api/skill-activity': 2,
     },
   },
   schedules: { reach: 'project', prefixes: { '/api/schedules': 1 } },
@@ -80,7 +78,6 @@ export const PAT_PERMISSION_RESOURCES = {
     reach: 'project',
     prefixes: {
       '/api/agent-reports': 2,
-      '/api/feedback-reports': 2,
     },
   },
   account: {
@@ -185,7 +182,6 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   '/api/devices/pair': DEVICE,
   '/api/devices/login/init': DEVICE,
   '/api/devices/login/poll': DEVICE,
-  'GET /api/jobs/:id/turn-verdict': DEVICE,
   'GET /api/jobs/:id/testing-profiles': JOB,
   'POST /api/jobs/:id/events': DEVICE,
   'POST /api/jobs/:id/ack': DEVICE,

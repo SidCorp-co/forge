@@ -11,7 +11,6 @@ import { requireHeld } from '../permissions/index.js';
 import { nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
 import { type LastFire, lastFires } from './fires.js';
-import { getImprovementMessage } from './messages/registry.js';
 
 const refuse = refuser<ScheduleRefusalCode>('SCHEDULE_REFUSED');
 
@@ -25,7 +24,7 @@ const notFound = (message: string) =>
 // project's admin plant jobs on any project they know the slug of. Require the
 // actor to hold at least `member` on the target project before accepting the
 // slug, both when persisting it (POST/PUT) and when manually triggering.
-export async function assertTargetProjectAccess(
+async function assertTargetProjectAccess(
   slug: string,
   userId: string,
 ): Promise<{ id: string; createdBy: string }> {
@@ -86,7 +85,7 @@ export async function getSchedule(id: string, actorUserId: string) {
   return withLastFire(row, last.get(row.id));
 }
 
-export interface CreateScheduleInput {
+interface CreateScheduleInput {
   projectId: string;
   name: string;
   cron: string;
@@ -97,9 +96,7 @@ export interface CreateScheduleInput {
   enabled?: boolean | undefined;
   targetProjectSlug?: string | null | undefined;
   metadata?: Record<string, unknown> | null | undefined;
-  templateKey?: string | null | undefined;
   params?: Record<string, unknown> | null | undefined;
-  mode?: 'propose' | 'auto' | undefined;
 }
 
 export async function createSchedule(input: CreateScheduleInput, actorUserId: string) {
@@ -118,13 +115,6 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
     await assertTargetProjectAccess(input.targetProjectSlug, actorUserId);
   }
 
-  if (input.templateKey) {
-    const msg = getImprovementMessage(input.templateKey);
-    if (!msg) {
-      throw badRequest(`templateKey '${input.templateKey}' not found in registry`);
-    }
-  }
-
   const kind: ScheduleKind = input.kind ?? 'prompt';
   if (kind === 'script' && !input.script) {
     throw badRequest('script is required when kind is "script"');
@@ -133,7 +123,7 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
     throw badRequest('prompt is required when kind is "prompt"');
   }
   if (kind === 'release_batch' || kind === 'sentry_pull') {
-    const set = (['prompt', 'script', 'templateKey'] as const).filter((f) => input[f] != null);
+    const set = (['prompt', 'script'] as const).filter((f) => input[f] != null);
     if (set.length > 0) {
       throw badRequest(`${set.join(', ')} must be omitted when kind is "${kind}"`);
     }
@@ -141,7 +131,6 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
 
   const enabled = input.enabled ?? true;
   const nextRunAt = enabled ? nextRunFor(input.cron) : null;
-  const mode = input.mode ?? (input.templateKey ? 'propose' : undefined);
 
   // ISS-244 — desktop is the only runner supported on the new interactive
   // dispatch path. Pin to 'desktop' so newly-created schedules are dispatchable.
@@ -159,9 +148,7 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
       targetProjectSlug: input.targetProjectSlug ?? null,
       metadata: (input.metadata as never) ?? null,
       nextRunAt,
-      templateKey: input.templateKey ?? null,
       params: (input.params as never) ?? null,
-      mode: mode ?? null,
       ownerId: actorUserId,
     })
     .returning();
@@ -170,7 +157,7 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
   return inserted;
 }
 
-export interface UpdateSchedulePatch {
+interface UpdateSchedulePatch {
   name?: string | undefined;
   cron?: string | undefined;
   prompt?: string | undefined;
@@ -180,9 +167,7 @@ export interface UpdateSchedulePatch {
   enabled?: boolean | undefined;
   targetProjectSlug?: string | null | undefined;
   metadata?: Record<string, unknown> | null | undefined;
-  templateKey?: string | null | undefined;
   params?: Record<string, unknown> | null | undefined;
-  mode?: 'propose' | 'auto' | undefined;
 }
 
 export async function updateSchedule(id: string, patch: UpdateSchedulePatch, actorUserId: string) {
@@ -194,13 +179,6 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
 
   if (patch.targetProjectSlug !== undefined && patch.targetProjectSlug !== null) {
     await assertTargetProjectAccess(patch.targetProjectSlug, actorUserId);
-  }
-
-  if (patch.templateKey !== undefined && patch.templateKey !== null) {
-    const msg = getImprovementMessage(patch.templateKey);
-    if (!msg) {
-      throw badRequest(`templateKey '${patch.templateKey}' not found in registry`);
-    }
   }
 
   // Cross-field consistency against the PERSISTED row, not just this patch —
@@ -224,9 +202,7 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
   if (patch.script !== undefined) updates.script = patch.script;
   if (patch.targetProjectSlug !== undefined) updates.targetProjectSlug = patch.targetProjectSlug;
   if (patch.metadata !== undefined) updates.metadata = patch.metadata;
-  if (patch.templateKey !== undefined) updates.templateKey = patch.templateKey;
   if (patch.params !== undefined) updates.params = patch.params;
-  if (patch.mode !== undefined) updates.mode = patch.mode;
 
   const cron = patch.cron ?? row.cron;
   const enabled = patch.enabled ?? row.enabled;
@@ -293,11 +269,7 @@ export async function runScheduleNow(
       projectId: schedule.projectId,
       prompt: schedule.prompt,
       targetProjectSlug: schedule.targetProjectSlug ?? null,
-      templateKey: schedule.templateKey ?? null,
       params: (schedule.params as Record<string, unknown> | null) ?? null,
-      mode: schedule.mode ?? null,
-      appliedMessageVersions:
-        (schedule.appliedMessageVersions as Record<string, number> | null) ?? null,
       kind: schedule.kind,
       script: schedule.script ?? null,
       ownerId: schedule.ownerId,
@@ -317,24 +289,4 @@ export async function runScheduleNow(
   }
 
   return { fireId: result.fireId, sessionId: result.sessionId, message: 'Schedule triggered' };
-}
-
-/** The message versions a schedule's runs applied, merged so a version never moves backwards. */
-export async function mergeAppliedMessageVersions(
-  scheduleId: string,
-  versions: Record<string, number>,
-): Promise<void> {
-  const [row] = await db
-    .select({ applied: schedules.appliedMessageVersions })
-    .from(schedules)
-    .where(eq(schedules.id, scheduleId))
-    .limit(1);
-  const merged: Record<string, number> = {
-    ...((row?.applied as Record<string, number> | null) ?? {}),
-  };
-  for (const [key, ver] of Object.entries(versions)) merged[key] = Math.max(merged[key] ?? 0, ver);
-  await db
-    .update(schedules)
-    .set({ appliedMessageVersions: merged })
-    .where(eq(schedules.id, scheduleId));
 }

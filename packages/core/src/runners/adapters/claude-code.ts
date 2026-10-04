@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { HealthInput, HealthResult, RunnerAdapter } from '../types.js';
 
-export const claudeCodeConfigSchema = z
+const claudeCodeConfigSchema = z
   .object({
     skillsDir: z.string().optional(),
     claudeBinary: z.string().optional(),

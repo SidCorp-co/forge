@@ -10,14 +10,7 @@ import { requireHeld } from '../permissions/index.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/index.js';
 import { readJob } from './job-queries.js';
 import { noPromptMessage, poolPrompt } from './pool-served.js';
-import { extractPayloadExtras, extractResolvedFlags, type PromptEnvelope } from './prompt-route.js';
-import {
-  issueProjectId,
-  jobActualUsage,
-  jobDeviceSummary,
-  listProjectJobs,
-  promptBlobContent,
-} from './read.js';
+import { issueProjectId, jobDeviceSummary, listProjectJobs } from './read.js';
 import { refuseJob } from './refusals.js';
 import { createQueuedJob, patchJob } from './service.js';
 
@@ -194,61 +187,6 @@ jobRoutes.patch(
     });
     if (!updated) throw notFound('job not found');
     return c.json(updated);
-  },
-);
-
-// W2.1.2 — Inspector prompt envelope. Returns the snapshot stored by W2.1.1
-// (system prompt resolved through prompt_blobs, inline user prompt, blocks,
-// est tokens, model, actual usage rollup) with MCP headers redacted.
-jobRoutes.get(
-  '/:id/prompt',
-  requireAuth(),
-  assertEmailVerified(),
-  zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const job = await loadJob(id);
-    const access = await loadProjectAccess(job.projectId, userId);
-    requireHeld(access, 'project.read');
-
-    // Archive-path stub (W2.1.5 will land the real fetcher).
-    if (job.archivePath && !job.userPromptSnapshot && !job.systemPromptHash) {
-      return c.json({ archived: true, path: job.archivePath }, 410);
-    }
-
-    const systemPrompt = job.systemPromptHash
-      ? await promptBlobContent(job.systemPromptHash)
-      : null;
-
-    if (!systemPrompt && !job.userPromptSnapshot) {
-      throw notFound('prompt snapshot not stored (pre-v0.1.35 job)');
-    }
-
-    const actualUsage = job.agentSessionId ? await jobActualUsage(job.agentSessionId) : null;
-
-    const payload = (job.payload ?? {}) as Record<string, unknown>;
-
-    const envelope: PromptEnvelope = {
-      jobId: job.id,
-      systemPrompt,
-      systemPromptHash: job.systemPromptHash ?? null,
-      userPrompt: job.userPromptSnapshot,
-      blocks: Array.isArray(job.promptBlocks) ? (job.promptBlocks as unknown[]) : [],
-      estTokens: { input: job.promptInputTokenEst ?? null },
-      actualUsage,
-      model: job.modelUsed,
-      payloadExtras: extractPayloadExtras(payload),
-      resolvedFlags: extractResolvedFlags(payload, {
-        // skillName lives on payload (stamped by orchestrator), not a job column.
-        skillName: typeof payload.skillName === 'string' ? payload.skillName : null,
-        modelUsed: job.modelUsed,
-      }),
-    };
-    return c.json(envelope);
   },
 );
 

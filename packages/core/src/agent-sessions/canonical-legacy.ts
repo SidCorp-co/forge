@@ -1,16 +1,10 @@
 /** What a conversion answers with. */
-export type CanonicalConversion =
+type CanonicalConversion =
   | { ok: true; entry: Record<string, unknown>; converted: boolean }
   | { ok: false; why: string };
 
 /** The key the original entry is kept under when one was actually rewritten. */
-export const CANONICAL_ENTRY_TYPES = [
-  'user',
-  'assistant',
-  'system',
-  'tool_use',
-  'tool_result',
-] as const;
+const CANONICAL_ENTRY_TYPES = ['user', 'assistant', 'system', 'tool_use', 'tool_result'] as const;
 
 const CANONICAL_TYPES: ReadonlySet<string> = new Set(CANONICAL_ENTRY_TYPES);
 
@@ -119,7 +113,7 @@ export function toCanonicalEntry(raw: unknown): CanonicalConversion {
 }
 
 /** What a whole `messages` array converts to, refusing by INDEX so the caller can name the row. */
-export type CanonicalMessages =
+type CanonicalMessages =
   | { ok: true; messages: Record<string, unknown>[]; converted: number }
   | { ok: false; index: number; why: string };
 

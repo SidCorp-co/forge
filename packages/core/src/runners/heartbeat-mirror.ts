@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
 import { transition } from '../lifecycle/index.js';
 
-export interface HeartbeatRunnerTransition {
+interface HeartbeatRunnerTransition {
   id: string;
   project_id: string;
   old_status: string;

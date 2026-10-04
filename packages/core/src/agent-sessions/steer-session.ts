@@ -6,7 +6,7 @@ import { agentSessionsPorts } from './ports.js';
 import { refuseSession } from './refusals.js';
 import { requestSessionSend } from './session-send.js';
 
-export interface SteerOptions {
+interface SteerOptions {
   /** User id of the acting principal — recorded in the audit event. */
   actorUserId: string;
   /**
@@ -21,7 +21,7 @@ export interface SteerOptions {
   source: 'rest' | 'mcp';
 }
 
-export interface SteerResult {
+interface SteerResult {
   agentSessionId: string;
   jobId: string;
   /** The comment carrying the steer text — also the send's idempotency key. */
@@ -31,7 +31,7 @@ export interface SteerResult {
   duplicate: boolean;
 }
 
-export interface SteerableSession {
+interface SteerableSession {
   agentSessionId: string;
   jobId: string;
   runtimeState: string | null;
@@ -44,7 +44,7 @@ export interface SteerableSession {
  * session" from "a session that is parked" to say which door to use, and a
  * query that dropped the parked row would collapse both into one answer.
  */
-export async function steerableSessionFor(issueId: string): Promise<SteerableSession | null> {
+async function steerableSessionFor(issueId: string): Promise<SteerableSession | null> {
   const [row] = await db
     .select({
       agentSessionId: agentSessions.id,

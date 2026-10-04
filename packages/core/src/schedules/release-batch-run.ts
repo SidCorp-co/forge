@@ -14,7 +14,7 @@ import { RefusalError } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
 import { schedulesPorts } from './ports.js';
 
-export interface ScheduledCutOutcome {
+interface ScheduledCutOutcome {
   status: 'success' | 'skipped' | 'failed';
   output: string;
   error?: string;

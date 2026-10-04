@@ -27,7 +27,7 @@ export type FireSettlement =
     }
   | { status: 'failed'; error: string; output?: string | null };
 
-export interface FireSession {
+interface FireSession {
   id: string;
   pipelineRunId: string;
 }

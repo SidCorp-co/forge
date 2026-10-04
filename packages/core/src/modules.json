@@ -1231,13 +1231,6 @@
         "via:skills"
       ]
     },
-    "skill-facts": {
-      "kind": "domain",
-      "context": "execution",
-      "serves": [
-        "REQ-13"
-      ]
-    },
     "skills": {
       "kind": "domain",
       "context": "execution",

@@ -58,7 +58,7 @@ export type Admission = {
 };
 
 /** A project this device serves that admits nothing, and the refusal that says why. */
-export type AdmissionRefusal = { projectId: string; code: PolicyRefusalCode; message: string };
+type AdmissionRefusal = { projectId: string; code: PolicyRefusalCode; message: string };
 
 function admissionOf(
   projectId: string,
@@ -76,7 +76,7 @@ function admissionOf(
  * device principal sees
  * its own bindings and nothing its owner's account could otherwise reach.
  */
-export async function readAdmissions(args: {
+async function readAdmissions(args: {
   deviceId: string;
   projectId?: string | undefined;
 }): Promise<{ admissions: Admission[]; refused: AdmissionRefusal[] }> {

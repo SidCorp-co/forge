@@ -49,7 +49,7 @@ export function alreadyTriagedRefusal(f: TriageFacts): Refusal | null {
 }
 
 // cm:guard step dismiss: a dismissal says why, so "not work" is never an unexplained click
-export function dismissReasonRefusal(reason: string | undefined): Refusal | null {
+function dismissReasonRefusal(reason: string | undefined): Refusal | null {
   if (reason !== undefined && reason.trim() !== '') return null;
   return refusal(
     'AGENT_REPORT_DISMISS_REASON_REQUIRED',

@@ -4,7 +4,7 @@ import { skills } from '../db/schema.js';
 import { recordSkillActivityEvent } from './activity.js';
 import { type SkillRow, skillProjection } from './service.js';
 
-export interface SetSkillPinnedInput {
+interface SetSkillPinnedInput {
   projectId: string;
   skillId: string;
   pinned: boolean;

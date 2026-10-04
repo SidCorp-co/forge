@@ -1,6 +1,6 @@
 import { type CronExpression, CronExpressionParser } from 'cron-parser';
 
-export interface CronValidationResult {
+interface CronValidationResult {
   ok: boolean;
   error?: string;
   nextRunAt?: Date;

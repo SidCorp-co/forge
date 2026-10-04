@@ -30,7 +30,7 @@ interface ScheduleFailoverState {
   triedDeviceIds: string[];
 }
 
-export type ScheduleFailoverResult =
+type ScheduleFailoverResult =
   | {
       ok: true;
       status: 'redispatched';
@@ -259,8 +259,6 @@ async function attemptScheduleFailover(
   const fireId = scheduleRunIdOf(meta);
   if (fireId) nextMeta.scheduleRunId = fireId;
   if (meta.tick) nextMeta.tick = true;
-  if (typeof meta.templateKey === 'string') nextMeta.templateKey = meta.templateKey;
-  if (meta.steward) nextMeta.steward = true;
 
   let session: typeof agentSessions.$inferSelect;
   try {

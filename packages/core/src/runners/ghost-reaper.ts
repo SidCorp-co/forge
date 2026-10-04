@@ -4,7 +4,7 @@ import { logger } from '../observability/logger.js';
 import { runnersPorts } from './ports.js';
 import { setRunnerStatus } from './runner-events.js';
 
-export interface GhostRunnerReapResult {
+interface GhostRunnerReapResult {
   flagged: number;
 }
 

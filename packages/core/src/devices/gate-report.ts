@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { utf16String } from '../lib/utf16-string.js';
 import { logger } from '../observability/logger.js';
 
-export const gateVerdicts = ['clear', 'marked', 'failing_open'] as const;
+const gateVerdicts = ['clear', 'marked', 'failing_open'] as const;
 
 /**
  * The producer's bounds in the producer's unit: `daemon/degraded.rs` clips in
@@ -49,7 +49,7 @@ const conditionSchema = z
   })
   .strict();
 
-export const gateReportSchema = z.object({ degraded: conditionSchema }).strict();
+const gateReportSchema = z.object({ degraded: conditionSchema }).strict();
 
 export const gateConditionSchema = conditionSchema;
 
@@ -57,13 +57,13 @@ export type GateReport = z.infer<typeof gateReportSchema>;
 export type GateCondition = z.infer<typeof conditionSchema>;
 
 /** The stored column: what the box sent, and when core heard it. */
-export type StoredGateReport = GateReport & { receivedAt: string };
+type StoredGateReport = GateReport & { receivedAt: string };
 
 export function storedGateReport(report: GateReport, now: Date): StoredGateReport {
   return { ...report, receivedAt: now.toISOString() };
 }
 
-export function readHeartbeatGate(gate: unknown): {
+function readHeartbeatGate(gate: unknown): {
   report?: GateReport;
   refused?: string;
 } {
@@ -126,7 +126,7 @@ export function withDeviceGate<T extends { gateReport?: unknown }>(
 /** What every surface shows. `null` where this box has never reported a gate. */
 export type DeviceGate = GateCondition & { receivedAt: string };
 
-export function readDeviceGate(stored: unknown): DeviceGate | null {
+function readDeviceGate(stored: unknown): DeviceGate | null {
   if (stored === null || typeof stored !== 'object') return null;
   const { degraded, receivedAt } = stored as { degraded?: unknown; receivedAt?: unknown };
   // Half a condition is worse than none: a count with no verdict behind it.

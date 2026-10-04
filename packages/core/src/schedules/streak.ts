@@ -7,7 +7,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 
 /** How recently a streak's last counted fire must have run for the streak to stand. */
-export const SCHEDULE_ACTIVE_WINDOW_HOURS = (() => {
+const SCHEDULE_ACTIVE_WINDOW_HOURS = (() => {
   const env = Number(process.env.FORGE_ALERT_SCHEDULE_ACTIVE_WINDOW_HOURS);
   return Number.isFinite(env) && env > 0 ? env : 24 * 8;
 })();

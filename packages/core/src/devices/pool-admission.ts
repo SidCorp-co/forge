@@ -3,21 +3,19 @@ import { db } from '../db/client.js';
 import type { RefusalError } from '../lib/refusal.js';
 import { refuseDevice } from './refusals.js';
 
-export const NON_ADMITTED_RUNNER_STATUSES = ['disabled', 'draining'] as const;
+const NON_ADMITTED_RUNNER_STATUSES = ['disabled', 'draining'] as const;
 
 export const ADMITTED_RUNNER = sql`
   r.status NOT IN ('disabled', 'draining')
   AND NOT EXISTS (SELECT 1 FROM devices d WHERE d.id = r.device_id AND d.disabled_at IS NOT NULL)
 `;
 
-export type RunnerAdmissionReason = 'runner_withdrawn' | 'device_disabled' | 'runner_unbound';
+type RunnerAdmissionReason = 'runner_withdrawn' | 'device_disabled' | 'runner_unbound';
 
-export type RunnerAdmission =
-  | { admitted: true }
-  | { admitted: false; reason: RunnerAdmissionReason };
+type RunnerAdmission = { admitted: true } | { admitted: false; reason: RunnerAdmissionReason };
 
 /** What every refusal ends on, so a box told no is also told what yes looks like. */
-export const ADMITTED_BOX =
+const ADMITTED_BOX =
   'An admitted box has a runner on this project whose status is online or offline, on a device that is not disabled.';
 
 const WHAT_WAS_WRONG: Record<RunnerAdmissionReason, string> = {

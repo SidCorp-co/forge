@@ -2,10 +2,10 @@ import { and, asc, eq, or, type SQL } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { skills } from '../db/schema.js';
 
-export type SkillFullRow = typeof skills.$inferSelect;
+type SkillFullRow = typeof skills.$inferSelect;
 
 /** Which skills a list answers: the globals, one project's own, or the globals plus one project's. */
-export type SkillListScope =
+type SkillListScope =
   | { kind: 'global' }
   | { kind: 'project'; projectId: string }
   | { kind: 'global-and-project'; projectId: string };

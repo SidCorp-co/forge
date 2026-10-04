@@ -5,7 +5,7 @@
 import type { NotificationType } from '../db/schema.js';
 
 /** One notification a schedule raises for a person. */
-export interface ScheduleNotice {
+interface ScheduleNotice {
   userId: string;
   projectId: string | null;
   type: NotificationType;
@@ -16,7 +16,7 @@ export interface ScheduleNotice {
   scheduleRunId?: string | null;
 }
 
-export interface SchedulesPorts {
+interface SchedulesPorts {
   emitNotification(input: ScheduleNotice): Promise<unknown>;
   /** The project's release gate and what waits at it; `gateStatus` is null with no gate. */
   loadReleaseRoster(projectId: string): Promise<{

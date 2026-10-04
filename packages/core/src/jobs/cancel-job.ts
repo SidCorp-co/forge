@@ -17,7 +17,7 @@ import { refuseJob } from './refusals.js';
  */
 const NO_DEVICE_STATUSES = new Set(['queued', 'held']);
 
-export interface CancelJobOptions {
+interface CancelJobOptions {
   /** User id of the acting principal — recorded in the audit event. */
   actorUserId: string;
   actorAgency: ActorAgency;
@@ -27,7 +27,7 @@ export interface CancelJobOptions {
   source: 'rest' | 'mcp';
 }
 
-export interface CancelJobResult {
+interface CancelJobResult {
   jobId: string;
   status: string;
   cancellationRequested: boolean;

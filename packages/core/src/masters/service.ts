@@ -23,9 +23,9 @@ import {
 
 type Refused = { ok: false; refusals: MasterRefusal[] };
 
-export type MasterSessionOutcome = { ok: true; session: MasterSessionResponse } | Refused;
-export type OpenPassOutcome = { ok: true; pass: MasterOpenPass } | Refused;
-export type ClosePassOutcome = { ok: true; pass: MasterClosedPass } | Refused;
+type MasterSessionOutcome = { ok: true; session: MasterSessionResponse } | Refused;
+type OpenPassOutcome = { ok: true; pass: MasterOpenPass } | Refused;
+type ClosePassOutcome = { ok: true; pass: MasterClosedPass } | Refused;
 
 const rowsOf = <T>(r: unknown) => [...(r as Iterable<T>)];
 

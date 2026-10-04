@@ -16,7 +16,7 @@ import { logger } from '../observability/logger.js';
 import { closeRunIfOneShot } from '../pipeline/index.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
-export interface ReapedRunSession {
+interface ReapedRunSession {
   sessionId: string;
   runId: string;
   issueKeys: string[];

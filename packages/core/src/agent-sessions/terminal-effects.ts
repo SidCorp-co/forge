@@ -4,15 +4,15 @@ import { logger } from '../observability/logger.js';
 type SessionRow = typeof agentSessions.$inferSelect;
 
 /** How one completion bridge delivers a terminal session's reply. */
-export type TerminalSessionDelivery = (row: SessionRow) => Promise<void>;
+type TerminalSessionDelivery = (row: SessionRow) => Promise<void>;
 
 /**
  * The metadata key each completion bridge is selected by, in firing order. A terminal writer gates
  * on these before it hydrates a row; the delivery behind each is handed in by the module that owns
  * it, so the kernel imports no chat application.
  */
-export const TERMINAL_SESSION_BRIDGE_MARKERS = ['escalation', 'conversationAgent'] as const;
-export type TerminalSessionBridgeMarker = (typeof TERMINAL_SESSION_BRIDGE_MARKERS)[number];
+const TERMINAL_SESSION_BRIDGE_MARKERS = ['escalation', 'conversationAgent'] as const;
+type TerminalSessionBridgeMarker = (typeof TERMINAL_SESSION_BRIDGE_MARKERS)[number];
 
 const deliveries = new Map<TerminalSessionBridgeMarker, TerminalSessionDelivery>();
 
@@ -55,11 +55,4 @@ export async function fireTerminalSessionBridges(row: SessionRow): Promise<void>
       );
     }
   }
-}
-
-/**
- * What a session owes when it goes terminal through the runner's own PATCH.
- */
-export async function onTerminalPatch(updated: SessionRow): Promise<void> {
-  await fireTerminalSessionBridges(updated);
 }
