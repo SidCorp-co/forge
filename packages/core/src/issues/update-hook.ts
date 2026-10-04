@@ -1,7 +1,7 @@
 import { diffFieldValue } from '@forge/contracts/field-changes';
 import type { Tx } from '../db/client.js';
 import { emitEvent } from '../outbox/index.js';
-import type { Actor } from '../pipeline/activity.js';
+import type { Actor } from './activity.js';
 
 type IssueFields = { id: string; projectId: string } & Record<string, unknown>;
 

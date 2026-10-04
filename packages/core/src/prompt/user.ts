@@ -5,15 +5,15 @@
 
 import type { JobType } from '../db/schema.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
-import { handoffInjectSteps } from '../pipeline/handoff-policy.js';
 import {
   type HandoffScope,
   type HandoffStep,
+  handoffInjectSteps,
   isHandoffStep,
   renderDriveTerminationBlock,
   renderTerminationBlock,
   type StepHandoffPayload,
-} from '../pipeline/step-handoff-schema.js';
+} from '../pipeline/index.js';
 
 /** ISS-699 — steps that finished after `sessionContext.lastUpdated`, measured
  *  from the jobs ledger by `loadIssueSnapshot`. null when nothing is newer. */

@@ -9,8 +9,8 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
-import type { Actor } from '../pipeline/activity.js';
 import { leaseWriteTakes } from '../pipeline/session-claim.js';
+import type { Actor } from './activity.js';
 import {
   type AttachmentErrorEntry,
   type Base64AttachmentInput,

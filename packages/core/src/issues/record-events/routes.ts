@@ -19,7 +19,7 @@ import {
 import { badRequest, idParamSchema, notFound } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { requireHeld } from '../../permissions/index.js';
-import type { Actor } from '../../pipeline/activity.js';
+import type { Actor } from '../activity.js';
 import { messageRefusalHttp } from '../ports.js';
 import { issueScopeOf } from '../read-service.js';
 import { listRecordEvents, type RecordEvent } from './store.js';

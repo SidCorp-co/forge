@@ -11,7 +11,7 @@ import { isRefusal, type RefusalError } from '../../lib/refusal.js';
 import { type MessageRefusal, MessageRefusedError } from '../../messaging/contract.js';
 import type { ForgeRecord } from '../../messaging/forge-record.js';
 import { criterionBlocksIn } from '../../messaging/verdict-identity.js';
-import type { Actor } from '../../pipeline/activity.js';
+import type { Actor } from '../activity.js';
 import { recordVerdict, type VerdictAuthor } from './store.js';
 import { draftFromBlock } from './verdict-input.js';
 

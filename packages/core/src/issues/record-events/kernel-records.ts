@@ -3,7 +3,7 @@ import { PARK_STATUSES } from '@forge/contracts/issue-machine';
 import type { Tx } from '../../db/client.js';
 import type { IssueStatus, WaitingKind } from '../../db/schema.js';
 import type { WorkStep } from '../../db/schema-issue-work-state.js';
-import type { Actor } from '../../pipeline/activity.js';
+import type { Actor } from '../activity.js';
 import { actorAgency } from '../actor-agency.js';
 import type { TransitionWriteInput } from '../apply-transition.js';
 import { type RecordEventField, writeKernelRecord } from './store.js';

@@ -9,20 +9,20 @@ import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
 import { commentMentions, comments, issues, users } from '../db/schema.js';
+import type { Actor } from '../issues/index.js';
 import {
   dropCommentMirror,
   mirrorCommentRecord,
   remirrorCommentRecord,
 } from '../issues/record-events/mirror.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
 import { logger } from '../observability/logger.js';
 import { emitEvent } from '../outbox/index.js';
-import type { Actor } from '../pipeline/activity.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import { screenAgentComment, screenRecordFence } from './screen.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 const refuse = refuser<CommentRefusalCode>('COMMENT_REFUSED');
 

@@ -5,8 +5,8 @@ import { db, type Tx } from '../db/client.js';
 import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvents } from '../outbox/index.js';
-import type { Actor } from '../pipeline/activity.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
+import type { Actor } from './activity.js';
 import { type CommitLanding, readCommitLanding } from './commit-landing.js';
 import {
   landingMarkRefusal,

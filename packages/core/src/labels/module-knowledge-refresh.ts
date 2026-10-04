@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, knowledgeEntries, labels } from '../db/schema.js';
+import { type Actor, safeRecordActivity } from '../issues/index.js';
 import { updateKnowledgeLinks } from '../knowledge/service.js';
 import { logger } from '../observability/logger.js';
-import { type Actor, safeRecordActivity } from '../pipeline/activity.js';
 
 /**
  * ISS-948 (Tier 3a of ISS-587) — the module knowledge refresh loop.

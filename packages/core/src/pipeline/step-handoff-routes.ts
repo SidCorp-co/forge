@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { resolveActor } from '../issues/index.js';
 import { resolveIssueKeyInProject } from '../issues/issue-route-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { resolveActor } from './activity.js';
 import { deleteIssueContext, getIssueContexts, writeIssueContext } from './issue-context-store.js';
 import { stepHandoffSchema } from './step-handoff-schema.js';
 

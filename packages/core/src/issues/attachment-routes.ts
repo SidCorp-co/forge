@@ -9,7 +9,7 @@ import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
-import { safeRecordActivity } from '../pipeline/activity.js';
+import { safeRecordActivity } from './activity.js';
 import { deleteIssueAttachment, persistIssueAttachment } from './attachment-service.js';
 import {
   issueRouteIdParamSchema,

@@ -1,3 +1,11 @@
+export {
+  type Actor,
+  type RecordActivityInput,
+  recordActivity,
+  recordActivityTx,
+  resolveActor,
+  safeRecordActivity,
+} from './activity.js';
 export { insertActivityRow } from './activity-log.js';
 export { actorAgency, principalAgency, type TransitionActor } from './actor-agency.js';
 export { TransitionError, transitionIssueStatus } from './apply-transition.js';

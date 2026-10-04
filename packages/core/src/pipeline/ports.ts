@@ -10,6 +10,7 @@ import type { Tx } from '../db/client.js';
 import type { RetentionStatements } from '../db/retention-shape.js';
 import type { IssueStatus, jobs, NotificationType } from '../db/schema.js';
 import type { sessionInbox } from '../db/schema-session-inbox.js';
+import type { Actor } from '../issues/index.js';
 import type { RefusalError } from '../lib/refusal.js';
 import type {
   KernelExecutor,
@@ -17,7 +18,6 @@ import type {
   TransitionArgs,
   TransitionResult,
 } from '../lifecycle/index.js';
-import type { Actor } from './activity.js';
 
 type SessionRow = MachineRow<'session'>;
 

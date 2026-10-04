@@ -17,6 +17,7 @@ export {
   isRealFailureCause,
   resolveFailureCause,
 } from './failure-causes.js';
+export { handoffInjectSteps } from './handoff-policy.js';
 export { type IdleIssuesResult, reconcileIdleIssues } from './idle-issues.js';
 export {
   alarmAgedHolds,
@@ -51,6 +52,14 @@ export {
   reapStaleReleaseBatchClaims,
   type StaleReleaseBatchClaimsResult,
 } from './stale-release-claims.js';
+export {
+  type HandoffScope,
+  type HandoffStep,
+  isHandoffStep,
+  renderDriveTerminationBlock,
+  renderTerminationBlock,
+  type StepHandoffPayload,
+} from './step-handoff-schema.js';
 export {
   detectOwedCloses,
   detectStrandedIssues,
