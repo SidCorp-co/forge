@@ -35,12 +35,8 @@ const LABEL_W = 128;
 const LABEL_LINE = 15;
 const FRAME_PAD = { top: 34, side: 16 } as const;
 
-/**
- * A string's drawn width in the UI face, estimated: semibold titles with Vietnamese diacritics run close
- * to 0.56em, the medium-weight line labels close to 0.52em.
- */
-export const textWidth = (s: string, size: number, em = 0.56) => s.length * size * em;
-const labelWidth = (s: string, size: number) => textWidth(s, size, 0.52);
+/** A string's drawn width in the UI face, estimated: Vietnamese with its diacritics runs close to 0.56em. */
+export const textWidth = (s: string, size: number) => s.length * size * 0.56;
 
 /** A line's words on a diagram: the clause before its first aside, cut at a word inside `max` characters. */
 export function shortLabel(text: string, max = LABEL_MAX): string {
@@ -54,13 +50,13 @@ export function shortLabel(text: string, max = LABEL_MAX): string {
 }
 
 /** Words wrapped into at most `lines` lines inside `width`, the last one cut with an ellipsis. */
-export function wrap(text: string, width: number, size: number, lines = 2, em = 0.56): string[] {
+export function wrap(text: string, width: number, size: number, lines = 2): string[] {
   const words = text.trim().split(/\s+/);
   const out: string[] = [];
   let line = "";
   for (const w of words) {
     const next = line ? `${line} ${w}` : w;
-    if (textWidth(next, size, em) <= width || !line) {
+    if (textWidth(next, size) <= width || !line) {
       line = next;
       continue;
     }
@@ -70,9 +66,9 @@ export function wrap(text: string, width: number, size: number, lines = 2, em = 
   }
   if (out.length < lines && line) out.push(line);
   const used = out.join(" ").split(/\s+/).length;
-  if (used < words.length || textWidth(out[out.length - 1] ?? "", size, em) > width) {
+  if (used < words.length || textWidth(out[out.length - 1] ?? "", size) > width) {
     let last = out[out.length - 1] ?? "";
-    while (last.length > 1 && textWidth(`${last}…`, size, em) > width) last = last.slice(0, -1);
+    while (last.length > 1 && textWidth(`${last}…`, size) > width) last = last.slice(0, -1);
     out[out.length - 1] = `${last.trimEnd()}…`;
   }
   return out;
@@ -131,13 +127,13 @@ type LabelWords = Omit<DLabel, keyof Rect>;
 export function labelOf(e: ViewEdge): LabelWords {
   const text = shortLabel(e.rels[0]?.label ?? "");
   const more = e.rels.length - 1;
-  const lines = text ? wrap(text, LABEL_W - 8, FONT.label, 2, 0.52) : [];
-  const last = labelWidth(lines[lines.length - 1] ?? "", FONT.label);
-  const chipBelow = more > 0 && last + chipWidth(more) > LABEL_W - 8;
+  const lines = text ? wrap(text, LABEL_W - 12, FONT.label) : [];
+  const last = textWidth(lines[lines.length - 1] ?? "", FONT.label);
+  const chipBelow = more > 0 && last + chipWidth(more) > LABEL_W - 12;
   return { text, more, lines, chipBelow };
 }
 
-const chipWidth = (more: number) => labelWidth(`+${more} more`, FONT.chip) + 14;
+const chipWidth = (more: number) => textWidth(`+${more} more`, FONT.chip) + 14;
 
 const sizeOf = (n: ViewNode) => (n.kind === "focal" ? FOCAL_BOX : BOX);
 
@@ -146,9 +142,9 @@ const linesOf = (n: ViewNode) => wrap(n.name, sizeOf(n).w - (n.count === null ? 
 function labelBox(e: ViewEdge): ElkLabel | null {
   const { text, more, lines, chipBelow } = labelOf(e);
   if (!text) return null;
-  const rows = lines.map((l, i) => labelWidth(l, FONT.label) + (more && !chipBelow && i === lines.length - 1 ? chipWidth(more) : 0));
+  const rows = lines.map((l, i) => textWidth(l, FONT.label) + (more && !chipBelow && i === lines.length - 1 ? chipWidth(more) : 0));
   if (chipBelow) rows.push(chipWidth(more));
-  return { id: `${e.id}:label`, text, width: Math.min(LABEL_W, Math.max(...rows) + 8), height: rows.length * LABEL_LINE + 4 };
+  return { id: `${e.id}:label`, text, width: Math.min(LABEL_W, Math.max(...rows) + 12), height: rows.length * LABEL_LINE + 4 };
 }
 
 /**

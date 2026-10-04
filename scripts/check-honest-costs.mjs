@@ -50,11 +50,14 @@ function main() {
     );
     console.error(
       `Add a \`## Honest costs\` section saying what this takes from whoever adopts it — the price of the\n` +
-        `choices it makes, not the boundaries it draws. The convention is in docs/README.md.`,
+        `choices it makes, not the boundaries it draws. Open every docs/proposals/*.md with a\n` +
+        `\`**Removed when:**\` line naming the issue whose landing deletes it. The convention is in docs/README.md.`,
     );
     return 1;
   }
-  console.log(`honest-costs: ${verdict.scanned} document(s) price what choosing them costs`);
+  console.log(
+    `honest-costs: ${verdict.scanned} document(s) price what choosing them costs, and every proposal says when it is removed`,
+  );
   return 0;
 }
 

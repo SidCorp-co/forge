@@ -4,7 +4,13 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseMode, readManifest } from './lib/debt-ratchet.mjs';
-import { allowedFaults, byFile, coverageFaults, scanEntries } from './lib/provider-literals.mjs';
+import {
+  allowedFaults,
+  byFile,
+  coverageFaults,
+  scanEgress,
+  scanEntries,
+} from './lib/provider-literals.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TYPES_PATH = 'packages/core/src/integrations/types.ts';
@@ -58,9 +64,22 @@ if (!Array.isArray(scanRoots) || scanRoots.length === 0) {
 const declared = declaredProviders();
 if (declared.error) die(declared.error);
 
+const egress = cfg.egress;
+const egressFaults = [];
+if (!egress) egressFaults.push('declares no `egress` block — external calls would go unmeasured');
+else {
+  if (typeof egress.root !== 'string') egressFaults.push('egress.root is not a path');
+  if (typeof egress.adapters !== 'string') egressFaults.push('egress.adapters is not a glob');
+  if (!Array.isArray(egress.vendorSdks) || egress.vendorSdks.length === 0) {
+    egressFaults.push('egress.vendorSdks is empty — no SDK import would ever be refused');
+  }
+  egressFaults.push(...allowedFaults(egress.exceptions).map((f) => `egress exception: ${f}`));
+}
+
 const configFaults = [
   ...allowedFaults(cfg.allowed),
   ...coverageFaults(declared.names, cfg.providers, cfg.unscannable),
+  ...egressFaults,
 ];
 if (configFaults.length > 0) {
   console.error(
@@ -98,7 +117,34 @@ for (const excused of cfg.unscannable ?? []) {
 }
 
 console.log(`provider-literals: ${scanned} file(s) scanned`);
-if (offenders.length === 0) process.exit(0);
+
+const egressScan = scanEgress(
+  entries.filter((e) => e.path.startsWith(`${egress.root}/`)),
+  egress,
+);
+if (egressScan.scanned === 0) die(`egress: scanned 0 files under ${egress.root}`);
+console.log(
+  `provider-literals egress: ${egressScan.scanned} file(s) outside ${egress.adapters} scanned, ` +
+    `${egress.exceptions.length} named exception(s)`,
+);
+if (egressScan.offenders.length > 0) {
+  console.error(
+    `\ncheck-provider-literals: ${egressScan.offenders.length} external call(s) outside ` +
+      `${egress.adapters}\n`,
+  );
+  for (const o of egressScan.offenders) {
+    const what = o.what === 'fetch' ? 'the global fetch' : `the vendor SDK '${o.what}'`;
+    console.error(`  ${o.path}:${o.line}  ${what}`);
+  }
+  console.error(
+    '\nEvery external system is reached through one adapter under packages/core/src/integrations/\n' +
+      '(docs/adr/0006-every-external-system-is-reached-through-one-adapter-port.md). Move the call\n' +
+      "behind its port's typed function, or add a port; integrations/README.md lists them. A file\n" +
+      'that genuinely must call out itself is added to checkers["provider-literals"].egress.exceptions\n' +
+      'in .forge/conformance.json WITH the sentence saying why. An entry with no reason is refused.\n',
+  );
+}
+if (offenders.length === 0) process.exit(egressScan.offenders.length > 0 ? 1 : 0);
 
 const grouped = byFile(offenders);
 console.error(

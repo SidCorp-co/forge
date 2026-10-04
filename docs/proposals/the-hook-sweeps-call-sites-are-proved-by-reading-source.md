@@ -1,5 +1,9 @@
 # The hook sweep's call sites are proved by reading source
 
+**Removed when:** a loopback stub core and release manifest drive `daemon::run` and the update loop
+to both hook-repair calls, and the two source-text assertions are deleted, which dev ISS-125
+carries. The change that lands it deletes this file.
+
 **Status:** residual of ISS-1200, left standing deliberately. Not a defect in shipped behaviour —
 the behaviour was driven live and holds. A defect in what proves it.
 

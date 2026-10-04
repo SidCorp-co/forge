@@ -1,5 +1,9 @@
 # What ISS-1191 could not reach
 
+**Removed when:** the master sweep's session-config read tells unreadable from absent and acts on it
+by name, and the direct-mcp authority question is answered on that issue, which dev ISS-122 carries.
+The change that lands it deletes this file.
+
 ISS-1191 made one surface report every source of an agent's MCP servers. Two things it met are not
 that change, and neither is a new issue — the rules refuse filing a residual as one. They are here
 so the next reader finds them attached to evidence rather than rediscovering them.

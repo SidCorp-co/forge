@@ -1,5 +1,9 @@
 # A test reading a named file outside its package is not selected by a change to that file
 
+**Removed when:** a test declares the files outside its package that it reads, and a checker refuses
+a declared path the running job's filter does not match, which dev ISS-134 carries. The change that
+lands it deletes this file.
+
 ISS-1314 made a test whose input is the whole repository run on every change, selected by the
 `@gate-input whole-tree` line it carries. It left alone a narrower case of the same mechanism: a
 test that reads ONE named file outside the paths its CI job is selected by. A change to that file

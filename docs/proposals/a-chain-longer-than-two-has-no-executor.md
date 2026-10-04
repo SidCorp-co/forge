@@ -1,5 +1,8 @@
 # A release path of more than one promotion has no executor
 
+**Removed when:** every promotion of a declared path is either performed and recorded, or refused by
+name before release, which dev ISS-132 carries. The change that lands it deletes this file.
+
 The project document (ADR 0004) lets production deploy from a branch reached by up to five
 `promotions`, and `packages/core/src/release-batch/prompt.ts` prints every crossing in order.
 Nothing in this repository performs a crossing: `packages/core/src/release-batch/plan.ts:releaseBranches`

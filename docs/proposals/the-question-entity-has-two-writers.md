@@ -1,5 +1,9 @@
 # The question entity has two writers, and only one of them creates a question
 
+**Removed when:** an ask, answer or void publishes a realtime event open screens refetch on and
+`blocked.rs`'s `park_for_human` is wired or deleted, and forge-plugin ISS-2317 has shipped `forge
+record question`, which dev ISS-138 carries. The change that lands it deletes this file.
+
 First measured 2026-09-23 against `main` at `710ab641` and the installed plugin at `3.36.262`
 (ISS-1210); rewritten 2026-09-27 by ISS-1257, which coupled a question to the issue it stops
 without letting the question move the issue's status. Written because the split runs across a repository boundary this repo cannot gate, and the

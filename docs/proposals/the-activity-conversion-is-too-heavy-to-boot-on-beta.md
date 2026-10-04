@@ -1,5 +1,9 @@
 # The activity-history conversion is too heavy to run at boot on beta's volume
 
+**Removed when:** 0344 converts nothing at boot and beta's rows are converted by a batched backfill
+or a recorded maintenance-window run, which dev ISS-124 carries. The change that lands it deletes
+this file.
+
 **Status:** owed before migration `0344_an_issue_update_records_what_changed` reaches beta. It is
 safe on dev, which holds a few hundred `issue.updated` rows.
 
@@ -35,3 +39,12 @@ One of two, decided before beta takes 0344:
 Counting beta's `issue.updated` rows (`SELECT count(*), sum(pg_column_size(payload)) FROM
 activity_log WHERE action = 'issue.updated'`) turns the estimate into a number and picks between
 them.
+
+## Honest costs
+
+- **The batched backfill keeps two readings of one row alive.** Until the marker is set, the activity
+  route converts on read, so a reader outside that route sees the old snapshot shape.
+- **The maintenance window takes beta down.** Every project on beta is unreachable for the minutes the
+  conversion runs, and the app has to be stopped by hand before it starts.
+- **Either choice costs a count on beta first.** The estimate above is from a 62-issue sample, and
+  picking without the number risks the failure this page describes.

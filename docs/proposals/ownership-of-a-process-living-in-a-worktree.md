@@ -1,5 +1,9 @@
 # Ownership of a process living in a worktree
 
+**Removed when:** every `logged_while` copy in forge-runner-core is folded into `crate::log_capture`
+and the three field-triggered amnesties are recorded in the doc comments that enforce them, which
+dev ISS-123 carries. The change that lands it deletes this file.
+
 ISS-1271 made a worktree's removal end the processes living in the checkout, attributing them by
 residence: a process belongs to a checkout when `/proc/<pid>/cwd` resolves to it or beneath it, and
 by nothing else. Two residuals were priced rather than closed, and this is where they are written
