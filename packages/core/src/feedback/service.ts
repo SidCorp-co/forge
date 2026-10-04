@@ -19,7 +19,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
-import { deleteFeedbackEmbedding } from '../embeddings/index.js';
+import { deleteFeedbackEmbedding } from '../knowledge/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
