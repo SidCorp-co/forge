@@ -12,16 +12,21 @@
 // disclosure rather than a misdelivery.
 
 import { and, eq } from 'drizzle-orm';
-import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
+import { parseRocketChatVenueId } from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { integrationBindings, integrationConnections } from '../../db/schema.js';
 import type { QuestionOrigin, QuestionStep } from '../../db/schema-questions.js';
-import { parseRocketChatVenueId } from './conversation-port.js';
-import { directRoomFor } from './direct-room.js';
-import { roomForProject } from './project-room.js';
-import { resolveRoomPostAuth } from './room-delivery.js';
-import { questionThread } from './thread-registry.js';
-import type { RocketChatBindingConfig, RocketChatConfig } from './types.js';
+import type {
+  RocketChatBindingConfig,
+  RocketChatConfig,
+} from '../../integrations/rocketchat/index.js';
+import {
+  directRoomFor,
+  namespaceFromServerUrl,
+  questionThread,
+  resolveRoomPostAuth,
+  roomForProject,
+} from '../../integrations/rocketchat/index.js';
 
 /**
  * Where a round goes, or why it goes nowhere.

@@ -4,9 +4,7 @@
  * is agentic — the model gets `rocketchat_history` (50 msgs/call, 3 calls/turn) and decides itself.
  */
 
-import { type ChatToolset, toolError } from '../../assistant/tools/mcp-adapter.js';
-import type { CallToolResult } from '../../lib/tool-result.js';
-import type { ChatTool } from '../llm/types.js';
+import type { ChatTool } from '../../integrations/llm/index.js';
 import {
   buildMessagePermalink,
   fetchMessage,
@@ -15,7 +13,9 @@ import {
   fetchThreadMessages,
   type RocketChatRestAuth,
   type RocketChatRestMessage,
-} from './rest-client.js';
+} from '../../integrations/rocketchat/index.js';
+import type { CallToolResult } from '../../lib/tool-result.js';
+import { type ChatToolset, toolError } from '../tools/mcp-adapter.js';
 
 export const SEED_MESSAGE_COUNT = 20;
 const HISTORY_MAX_PER_CALL = 50;

@@ -20,7 +20,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { notFound } from '../middleware/route-errors.js';
 import { loadDeclaredEdges } from './module-diagram-source.js';
 import { moduleDrift } from './module-drift.js';
-import { moduleRollup } from './module-rollup.js';
+import { levelCouplings, moduleRollup, readIssueModuleSets } from './module-rollup.js';
 import {
   activityDays,
   couplingsOf,
@@ -84,6 +84,14 @@ async function readNodes(projectId: string): Promise<(ModuleNode & { color: stri
     color: r.color,
   }));
 }
+
+const snapshotOf = (n: ModuleNode) => ({
+  id: n.id,
+  name: n.name,
+  slug: n.slug,
+  parentId: n.parentId,
+  node: null,
+});
 
 interface LandingRaw {
   module_id: string;
@@ -222,14 +230,18 @@ export async function moduleRollupWithStanding(
   activeWithinDays: number,
   viewer: ModuleViewer,
 ): Promise<ModuleRollupResponse> {
-  const [counts, nodes, list, prefix, traces] = await Promise.all([
+  const [counts, nodes, list, prefix, traces, issueModules] = await Promise.all([
     moduleRollup(projectId, activeWithinDays),
     readNodes(projectId),
     listIssueStanding(projectId, 'open', { userId: viewer.userId }),
     activeIssuePrefix(projectId),
     readTraces(projectId),
+    readIssueModuleSets(projectId),
   ]);
-  const latest = await readLatestLandings(projectId, prefix);
+  const [latest, declared] = await Promise.all([
+    readLatestLandings(projectId, prefix),
+    loadDeclaredEdges(projectId, nodes.map(snapshotOf)),
+  ]);
   const standings = deriveStandings({
     nodes,
     openIssues: openIssuesOf(list),
@@ -256,6 +268,7 @@ export async function moduleRollupWithStanding(
     activeWithinDays: counts.activeWithinDays,
     generatedAt: counts.generatedAt,
     modules,
+    couplings: levelCouplings({ nodes, declared, issueModules }),
     unassigned: counts.unassigned,
     issuesRead: issuesReadOf(list),
   };
@@ -363,16 +376,7 @@ export async function moduleDetailOf(
       readIssueSeqs(projectId, subtree),
       node.knowledgeEntryId ? readEntry(projectId, node.knowledgeEntryId) : Promise.resolve(null),
       moduleDrift(projectId),
-      loadDeclaredEdges(
-        projectId,
-        nodes.map((n) => ({
-          id: n.id,
-          name: n.name,
-          slug: n.slug,
-          parentId: n.parentId,
-          node: null,
-        })),
-      ),
+      loadDeclaredEdges(projectId, nodes.map(snapshotOf)),
     ]);
 
   const open = openIssuesOf(list);

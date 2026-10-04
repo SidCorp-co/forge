@@ -10,6 +10,12 @@
 // inserted, so a process that dies between the kernel commit and any emit
 // leaves the work to be found rather than lost.
 
+import {
+  COMMENT_MIRROR_STATUSES,
+  type CommentMirrorStatus,
+  QUESTION_DELIVERY_STATUSES,
+  type QuestionDeliveryStatus,
+} from '@forge/contracts/room-delivery-machine';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -25,8 +31,8 @@ import {
 import { comments, integrationConnections, issues } from './schema.js';
 import { agentQuestions } from './schema-questions.js';
 
-export const questionDeliveryStatuses = ['claimed', 'delivered', 'undeliverable'] as const;
-export type QuestionDeliveryStatus = (typeof questionDeliveryStatuses)[number];
+export const questionDeliveryStatuses = QUESTION_DELIVERY_STATUSES;
+export type { QuestionDeliveryStatus };
 
 export const rocketchatQuestionDeliveries = pgTable(
   'rocketchat_question_deliveries',
@@ -46,6 +52,10 @@ export const rocketchatQuestionDeliveries = pgTable(
   (t) => [
     uniqueIndex('rcq_deliveries_question_round_idx').on(t.questionId, t.round),
     index('rcq_deliveries_status_idx').on(t.status, t.nextAttemptAt),
+    check(
+      'rcq_deliveries_status_chk',
+      sql`${t.status} IN (${sql.raw(QUESTION_DELIVERY_STATUSES.map((s) => `'${s}'`).join(', '))})`,
+    ),
   ],
 );
 
@@ -75,12 +85,13 @@ export const rocketchatThreads = pgTable(
 
 export const commentMirrorDirections = ['outbound', 'inbound'] as const;
 export type CommentMirrorDirection = (typeof commentMirrorDirections)[number];
-export const commentMirrorStatuses = ['claimed', 'delivered', 'refused'] as const;
-export type CommentMirrorStatus = (typeof commentMirrorStatuses)[number];
+export const commentMirrorStatuses = COMMENT_MIRROR_STATUSES;
+export type { CommentMirrorStatus };
 
 export const rocketchatCommentMirrors = pgTable(
   'rocketchat_comment_mirrors',
   {
+    id: uuid('id').notNull().defaultRandom().unique('rcq_mirrors_id_key'),
     commentId: uuid('comment_id')
       .primaryKey()
       .references(() => comments.id, { onDelete: 'cascade' }),
@@ -99,6 +110,10 @@ export const rocketchatCommentMirrors = pgTable(
   (t) => [
     uniqueIndex('rcq_mirrors_external_idx').on(t.connectionId, t.externalMessageId),
     index('rcq_mirrors_status_idx').on(t.status, t.nextAttemptAt),
+    check(
+      'rcq_mirrors_status_chk',
+      sql`${t.status} IN (${sql.raw(COMMENT_MIRROR_STATUSES.map((s) => `'${s}'`).join(', '))})`,
+    ),
   ],
 );
 

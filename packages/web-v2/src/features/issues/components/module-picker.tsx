@@ -21,6 +21,7 @@ import {
   Skeleton,
   SlideOver,
 } from "@/design";
+import { ancestorsOf } from "@/features/modules/tree";
 import { formatApiError } from "@/lib/api/error";
 import { useProjectModules, useSetIssueModules } from "../hooks";
 import type { IssueLabel } from "../types";
@@ -62,7 +63,14 @@ export function ModulePicker({
     setPrimary(attached.find((l) => l.isPrimary)?.id ?? NO_PRIMARY);
   }, [open, attached]);
 
-  const modules = modulesQ.modules;
+  // each module named under its ancestors ("Execution › Runs"), so the list reads in tree order
+  const modules = useMemo(
+    () =>
+      modulesQ.modules
+        .map((m) => ({ ...m, label: [...ancestorsOf(modulesQ.modules, m.id).map((a) => a.name), m.name].join(" › ") }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [modulesQ.modules],
+  );
 
   function toggle(id: string, next: boolean) {
     setSelected((prev) => {
@@ -125,7 +133,7 @@ export function ModulePicker({
             <RadioGroup name="primary-module" value={primary} onChange={choosePrimary}>
               <Radio value={NO_PRIMARY} label="No primary module" disabled={save.isPending} />
               {modules.map((m) => (
-                <Radio key={m.id} value={m.id} label={m.name} disabled={save.isPending} />
+                <Radio key={m.id} value={m.id} label={m.label} disabled={save.isPending} />
               ))}
             </RadioGroup>
           </section>
@@ -144,7 +152,7 @@ export function ModulePicker({
                     checked={selected.has(m.id)}
                     onChange={(next) => toggle(m.id, next)}
                     disabled={save.isPending}
-                    label={m.name}
+                    label={m.label}
                   />
                 ))}
             </div>

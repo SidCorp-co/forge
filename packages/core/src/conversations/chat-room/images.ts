@@ -1,20 +1,24 @@
-import { buildEscalationToolset } from '../../assistant/tools/escalate.js';
-import { type ChatToolset, mergeToolsets } from '../../assistant/tools/mcp-adapter.js';
-import { buildChatToolContext } from '../../assistant/tools/principal.js';
-import { buildProjectToolset } from '../../assistant/tools/registry.js';
-import { withTurnImages } from '../../assistant/tools/turn-images.js';
-import type { ImageResolver, TurnImage } from '../../assistant/vision.js';
+import type { ImageResolver, TurnImage } from '../../assistant/index.js';
+import {
+  buildChatToolContext,
+  buildEscalationToolset,
+  buildProjectToolset,
+  buildRocketChatHistoryToolset,
+  buildRocketChatQuoteContextToolset,
+  type ChatToolset,
+  mergeToolsets,
+  withTurnImages,
+} from '../../assistant/index.js';
 import type { TurnCredential } from '../../credentials/turn-credential.js';
-import { buildTranscriptSearchToolset } from '../../conversations/transcript-search-tool.js';
-import type { ChatTurnFacts } from '../../lib/tool.js';
-import { logger } from '../../observability/logger.js';
-import { buildRocketChatHistoryToolset, buildRocketChatQuoteContextToolset } from './context.js';
 import {
   buildMessagePermalink,
   fetchAttachmentBytes,
   type RocketChatImageRef,
   type RocketChatRestAuth,
-} from './rest-client.js';
+} from '../../integrations/rocketchat/index.js';
+import type { ChatTurnFacts } from '../../lib/tool.js';
+import { logger } from '../../observability/logger.js';
+import { buildTranscriptSearchToolset } from '../transcript-search-tool.js';
 
 /**
  * Per-message ceiling. A room can attach a dozen files to one post; the model

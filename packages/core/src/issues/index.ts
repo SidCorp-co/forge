@@ -24,8 +24,9 @@ export {
 } from './field-writes.js';
 export { referenceInHeadRef, resolveIssueForHeadRef } from './head-ref-link.js';
 export { registerHostMergeStamp, stampHostMerge } from './host-merge.js';
-export { recordIssueMerge } from './merge-record.js';
+export { activeIssuePrefix } from './issue-prefix-read.js';
 export { resolveIssueRouteRef } from './issue-route-ref.js';
+export { recordIssueMerge } from './merge-record.js';
 export { issueMergeRoutes } from './merge-routes.js';
 export { claimIssuesForRelease, releaseEndedRunClaims, releaseRunClaims } from './release-claim.js';
 export {

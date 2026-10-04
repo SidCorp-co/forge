@@ -2,7 +2,8 @@
 
 // A full page's sticky header is the shell's top bar: a back control named after where it goes
 // ("← Issues"), the key, the title and the state badge, and exactly one primary action that changes
-// with the state. No breadcrumb. Back lands on the list view the page was opened from — its mode,
+// with the state. An entity that nests (a module under its parent) adds its ancestors between the back
+// control and the title as a trail, "← Modules › Execution › Runs"; nothing else does. Back lands on the list view the page was opened from — its mode,
 // filters and open peek — kept in session storage per list; a page reached by a link goes to the
 // plain list. Below 768px the bar is too narrow for the title, so it heads the main column instead.
 
@@ -44,24 +45,47 @@ export interface DetailHeaderProps {
   action?: ReactNode;
   /** Hover text on the key, e.g. the row's uuid. */
   keyTitle?: string;
+  /** The ancestors between the back control and the title, outermost first. */
+  trail?: { href: string; label: string }[];
+  /** A switch between the page's views, for a page that has more than one. */
+  views?: ReactNode;
 }
 
-export function DetailHeader({ back, itemKey, title, badge, action, keyTitle }: DetailHeaderProps) {
+export function DetailHeader({ back, itemKey, title, badge, action, keyTitle, trail, views }: DetailHeaderProps) {
   return (
     <>
       <PageTitle
         back={
-          <Link
-            href={back.href}
-            className="inline-flex h-[30px] flex-none items-center gap-1.5 whitespace-nowrap rounded-sm bg-sunken pl-2 pr-2.5 text-13 font-semibold text-fg hover:bg-active"
-            data-testid="detail-back"
-            aria-label={`Back to ${back.label}`}
-          >
-            <span aria-hidden className="text-[15px] leading-none text-muted">
-              ←
-            </span>
-            {back.label}
-          </Link>
+          <>
+            <Link
+              href={back.href}
+              className="inline-flex h-[30px] flex-none items-center gap-1.5 whitespace-nowrap rounded-sm bg-sunken pl-2 pr-2.5 text-13 font-semibold text-fg hover:bg-active"
+              data-testid="detail-back"
+              aria-label={`Back to ${back.label}`}
+            >
+              <span aria-hidden className="text-[15px] leading-none text-muted">
+                ←
+              </span>
+              {back.label}
+            </Link>
+            {trail?.length ? (
+              <nav aria-label="Ancestors" className="flex min-w-0 flex-none items-center gap-1.5 text-13 max-md:hidden" data-testid="detail-trail">
+                {trail.map((t) => (
+                  <span key={t.href} className="flex items-center gap-1.5">
+                    <span aria-hidden className="text-subtle">
+                      ›
+                    </span>
+                    <Link href={t.href} className="whitespace-nowrap font-semibold text-link hover:underline">
+                      {t.label}
+                    </Link>
+                  </span>
+                ))}
+                <span aria-hidden className="text-subtle">
+                  ›
+                </span>
+              </nav>
+            ) : null}
+          </>
         }
         after={
           <span className="flex flex-none items-center gap-2 max-md:hidden">
@@ -71,6 +95,7 @@ export function DetailHeader({ back, itemKey, title, badge, action, keyTitle }: 
               </span>
             ) : null}
             {badge}
+            {views}
           </span>
         }
       >

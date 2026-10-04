@@ -10,6 +10,7 @@
 // acceptance, so a post the server took whose mark never landed is posted again.
 // What that buys is that no comment is silently dropped.
 
+import { COMMENT_MIRROR_MACHINE } from '@forge/contracts/room-delivery-machine';
 import { and, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { comments, issues, projects } from '../../db/schema.js';
@@ -18,23 +19,29 @@ import {
   rocketchatCommentMirrors,
   rocketchatThreadOpenings,
 } from '../../db/schema-rocketchat.js';
-import { formatIssueRef } from '../../lib/issue-ref.js';
-import { logger } from '../../observability/logger.js';
-import { problemsOf } from '../../messaging/contract.js';
-import { proven, wholeAgentText } from '../../messaging/proven.js';
-import { consume } from '../../outbox/index.js';
-import { screenCarriedComment } from './comment-carry.js';
-import { threadRootText } from './comment-render.js';
-import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
-import { type RoomBinding, roomForProject } from './project-room.js';
-import { type RoomPostAuth, resolveRoomPostAuth } from './room-delivery.js';
 import {
+  FIXED_REPLY_CONSTANT,
   type IssueThread,
   liveThreadForIssue,
+  type RoomBinding,
+  type RoomPostAuth,
   registerThread,
+  resolveRoomPostAuth,
   retireIssueThread,
-} from './thread-registry.js';
+  roomForProject,
+  screenCarriedComment,
+  sendFixedReply,
+  threadRootText,
+} from '../../integrations/rocketchat/index.js';
+import { formatIssueRef } from '../../lib/issue-ref.js';
+import { type KernelActor, transition } from '../../lifecycle/transition.js';
+import { problemsOf } from '../../messaging/contract.js';
+import { proven, wholeAgentText } from '../../messaging/proven.js';
+import { logger } from '../../observability/logger.js';
+import { consume } from '../../outbox/index.js';
 
+const MIRROR_ACTOR: KernelActor = { type: 'system' };
+const MIRROR_SOURCE = 'chat-room.comment-mirror';
 const RETRY_BACKOFF_MS = 60_000;
 const MAX_BACKOFF_MS = 3_600_000;
 const OPENING_LEASE_MS = 60_000;
@@ -134,14 +141,15 @@ export async function owedComments(
 }
 
 /**
- * Take this comment, so no other core instance posts it too.
+ * Take this comment, so no other core instance posts it too. A first claim writes the row; a
+ * retry, once its backoff has run out, re-claims it through the kernel.
  */
 async function claimComment(owed: OwedComment, connectionId: string, now: Date): Promise<boolean> {
   const attempts = owed.attempts + 1;
   const nextAttemptAt = new Date(
     now.getTime() + Math.min(RETRY_BACKOFF_MS * attempts, MAX_BACKOFF_MS),
   );
-  const claimed = await db
+  const created = await db
     .insert(rocketchatCommentMirrors)
     .values({
       commentId: owed.commentId,
@@ -152,13 +160,26 @@ async function claimComment(owed: OwedComment, connectionId: string, now: Date):
       nextAttemptAt,
       updatedAt: now,
     })
-    .onConflictDoUpdate({
-      target: rocketchatCommentMirrors.commentId,
-      set: { status: 'claimed', connectionId, attempts, nextAttemptAt, updatedAt: now },
-      setWhere: sql`${rocketchatCommentMirrors.direction} = 'outbound' and ${rocketchatCommentMirrors.status} not in ('delivered', 'refused') and (${rocketchatCommentMirrors.nextAttemptAt} is null or ${rocketchatCommentMirrors.nextAttemptAt} <= ${now.toISOString()}::timestamptz)`,
-    })
+    .onConflictDoNothing({ target: rocketchatCommentMirrors.commentId })
     .returning({ commentId: rocketchatCommentMirrors.commentId });
-  return claimed.length > 0;
+  if (created.length > 0) return true;
+  const { rows } = await transition(db, COMMENT_MIRROR_MACHINE, {
+    to: 'claimed',
+    from: 'claimed',
+    where: and(
+      eq(rocketchatCommentMirrors.commentId, owed.commentId),
+      eq(rocketchatCommentMirrors.direction, 'outbound'),
+      or(
+        isNull(rocketchatCommentMirrors.nextAttemptAt),
+        lte(rocketchatCommentMirrors.nextAttemptAt, now),
+      ),
+    ),
+    set: { connectionId, attempts, nextAttemptAt, updatedAt: now },
+    actor: MIRROR_ACTOR,
+    source: MIRROR_SOURCE,
+    returning: ['id'],
+  });
+  return rows.length > 0;
 }
 
 async function settleDelivered(
@@ -166,28 +187,29 @@ async function settleDelivered(
   externalMessageId: string | null,
   now: Date,
 ): Promise<void> {
-  await db
-    .update(rocketchatCommentMirrors)
-    .set({
-      status: 'delivered',
-      externalMessageId,
-      lastError: null,
-      nextAttemptAt: null,
-      updatedAt: now,
-    })
-    .where(eq(rocketchatCommentMirrors.commentId, commentId));
+  await transition(db, COMMENT_MIRROR_MACHINE, {
+    to: 'delivered',
+    from: 'claimed',
+    where: eq(rocketchatCommentMirrors.commentId, commentId),
+    set: { externalMessageId, lastError: null, nextAttemptAt: null, updatedAt: now },
+    actor: MIRROR_ACTOR,
+    source: MIRROR_SOURCE,
+    returning: ['id'],
+  });
 }
 
 async function settleRefused(commentId: string, problems: string, now: Date): Promise<void> {
-  await db
-    .update(rocketchatCommentMirrors)
-    .set({
-      status: 'refused',
-      lastError: `screen refused the comment: ${problems}`,
-      nextAttemptAt: null,
-      updatedAt: now,
-    })
-    .where(eq(rocketchatCommentMirrors.commentId, commentId));
+  const lastError = `screen refused the comment: ${problems}`;
+  await transition(db, COMMENT_MIRROR_MACHINE, {
+    to: 'refused',
+    from: 'claimed',
+    where: eq(rocketchatCommentMirrors.commentId, commentId),
+    set: { lastError, nextAttemptAt: null, updatedAt: now },
+    reason: lastError,
+    actor: MIRROR_ACTOR,
+    source: MIRROR_SOURCE,
+    returning: ['id'],
+  });
 }
 
 async function noteFailure(commentId: string, lastError: string, now: Date): Promise<void> {

@@ -23,6 +23,12 @@ protocol and nothing else:
   (`source-host/merge.ts:mergeStoredChangeRequest`) is given the issue's stamp by its caller, and a
   deploy dispatch reports its targets to `OutboundDispatchInput.onDeployOutcome`, which the release's
   worker (`release-batch/deploy-worker.ts`) turns into holds and confirmations.
+- A vendor connection that stays open hands what it takes in to handlers the owning slices provide at
+  boot: the Rocket.Chat connection owner (`rocketchat/connection-manager.ts`) routes a room message to
+  `rocketchat/room-handlers.ts:RoomHandlers`, which `conversations/chat-room/room-chat.ts` fills. The
+  chat application (conversation ports, window drain, escalation, question and comment lanes) lives
+  in `assistant/chat-room/` and `conversations/chat-room/`; their deliveries settle through the kernel
+  transition (`@forge/contracts/room-delivery-machine`).
 - An adapter holds no HTTP route and no MCP tool. A provider's routes and tools are the integration
   door's (`../integration-door/`, one `<port>-routes.ts` or `<port>-tool.ts` each), which checks the
   caller's permission and calls the port. A change an open view must see is announced through the
@@ -35,7 +41,7 @@ protocol and nothing else:
 | error tracking | `sentry/` | Sentry | project | `error-intake/pull.ts`, `error-intake/sightings.ts`, `integration-door/sentry-tool.ts` |
 | storefront | `epodsystem/`, `autoflow/` | ePodSystem, Autoflow | project | the registry only |
 | documents | `google/` | Google Sheets | project | `integration-door/google-tool.ts` |
-| chat | `rocketchat/` | Rocket.Chat | project | `assistant/identity/directory.ts`, `agent-sessions/terminal-effects.ts`, `index.ts` |
+| chat | `rocketchat/` (the REST and DDP clients, the connection owner, room routing, the thread registry) | Rocket.Chat | project | `assistant/chat-room/*`, `conversations/chat-room/*`, `assistant/identity/directory.ts`, `integration-door/routes.ts`, `index.ts` |
 | contract testing | `postman/` | Postman | project | `integration-door/postman-target-routes.ts` |
 | LLM | `llm/` | OpenAI-compatible endpoints (LiteLLM), Anthropic Messages | deployment | `assistant/*` (the chat turn, BA tools, bench judge, catalog cost), `conversations/turn-runner.ts`, `memory/extraction.ts`, `memory/consolidation.ts`, `memory/rerank.ts`, `agent-sessions/auto-title.ts`, `app-config/routes.ts` |
 | embeddings | `embeddings/` | OpenAI-compatible endpoints | deployment | `memory/*`, `knowledge/*`, `requirements/embeddings.ts`, `embeddings/item-writer.ts`, `issues/backlog/alike-source.ts`, `memory/tool.ts`, `knowledge/tool.ts` |

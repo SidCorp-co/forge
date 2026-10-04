@@ -3,11 +3,13 @@
 
 import { runAlertSweep } from './admin/index.js';
 import {
+  drainRoomCommentMirror,
+  drainRoomQuestions,
   drainWebConversationWindows,
   runAssistantWeeklyOnce,
   runTranscriptIndexSweepOnce,
 } from './assistant/index.js';
-import { runHeartbeatTick } from './conversations/index.js';
+import { drainRoomWindows, runHeartbeatTick } from './conversations/index.js';
 import {
   reapDeadMasterHolds,
   reapDeadRunSessions,
@@ -15,12 +17,11 @@ import {
   runDevicePrune,
   runDeviceStaleSweep,
 } from './devices/index.js';
+import { runIntegrationsHealthSweep } from './integrations/index.js';
 import {
   refetchRunnerRelease,
   servesRunnerReleases,
 } from './integrations/published-releases/index.js';
-import { runIntegrationsHealthSweep } from './integrations/index.js';
-import { rocketChatManager } from './integrations/rocketchat/index.js';
 import { probePgBossBackstop, runStaleSweep } from './jobs/index.js';
 import { logger } from './logger.js';
 import {
@@ -241,21 +242,21 @@ export function coreTimers(): Timer[] {
       name: 'rocketchat.window-drain',
       everyMs: 1_500,
       runAtStart: true,
-      run: () => rocketChatManager.drainWindows(),
+      run: drainRoomWindows,
     },
     {
       kind: 'process',
       name: 'rocketchat.question-drain',
       everyMs: 30_000,
       runAtStart: true,
-      run: () => rocketChatManager.drainQuestions(),
+      run: drainRoomQuestions,
     },
     {
       kind: 'process',
       name: 'rocketchat.comment-mirror',
       everyMs: 30_000,
       runAtStart: true,
-      run: () => rocketChatManager.drainCommentMirror(),
+      run: drainRoomCommentMirror,
     },
     ...(servesRunnerReleases()
       ? [

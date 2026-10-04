@@ -1,11 +1,13 @@
 import type {
   ModuleAttributionCounts,
   ModuleCounts,
+  ModuleLevelCoupling,
   ModuleRollupRow,
 } from '@forge/contracts/modules';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues, labels } from '../db/schema.js';
+import { issueArchiveSide } from '../issues/archive.js';
 
 /**
  * ISS-949 — the backlog read by module instead of by issue.
@@ -231,4 +233,127 @@ export async function moduleRollup(
     modules,
     unassigned: countsOf(unattributed),
   };
+}
+
+/** Each unarchived issue's module labels, for issues that carry at least one. */
+export async function readIssueModuleSets(projectId: string): Promise<Map<string, string[]>> {
+  const rows = await db
+    .select({ issueId: issueLabels.issueId, labelId: issueLabels.labelId })
+    .from(issueLabels)
+    .innerJoin(
+      labels,
+      and(eq(labels.id, issueLabels.labelId), eq(labels.kind, 'module'), eq(labels.projectId, projectId)),
+    )
+    .innerJoin(issues, and(eq(issues.id, issueLabels.issueId), ...issueArchiveSide(false)));
+  const out = new Map<string, string[]>();
+  for (const r of rows) out.set(r.issueId, [...(out.get(r.issueId) ?? []), r.labelId]);
+  return out;
+}
+
+export interface LevelCouplingInput {
+  nodes: readonly { id: string; parentId: string | null }[];
+  declared: readonly { fromId: string; toId: string }[];
+  issueModules: ReadonlyMap<string, readonly string[]>;
+}
+
+/** Each module's chain to its root, itself first; bounded like `orderModules`, so a cycle ends. */
+function chainsOf(nodes: LevelCouplingInput['nodes']): Map<string, string[]> {
+  const parentOf = new Map(nodes.map((n) => [n.id, n.parentId] as const));
+  const out = new Map<string, string[]>();
+  for (const n of nodes) {
+    const chain = [n.id];
+    const seen = new Set(chain);
+    let at = n.parentId;
+    while (at !== null && parentOf.has(at) && !seen.has(at)) {
+      chain.push(at);
+      seen.add(at);
+      at = parentOf.get(at) ?? null;
+    }
+    out.set(n.id, chain);
+  }
+  return out;
+}
+
+interface Meeting {
+  parentId: string | null;
+  /** The sibling holding the first module. */
+  from: string;
+  /** The sibling holding the second. */
+  to: string;
+}
+
+/**
+ * Where a coupling between two modules shows: between the two children of their nearest common
+ * ancestor that hold them, or between their two roots. Null when one module is the other's
+ * ancestor, which the hierarchy already declares.
+ */
+function meetingOf(chains: Map<string, string[]>, x: string, y: string): Meeting | null {
+  const cx = chains.get(x);
+  const cy = chains.get(y);
+  if (!cx || !cy) return null;
+  const inY = new Set(cy);
+  const i = cx.findIndex((id) => inY.has(id));
+  if (i === -1) {
+    return { parentId: null, from: cx[cx.length - 1] as string, to: cy[cy.length - 1] as string };
+  }
+  const j = cy.indexOf(cx[i] as string);
+  if (i === 0 || j === 0) return null;
+  return { parentId: cx[i] as string, from: cx[i - 1] as string, to: cy[j - 1] as string };
+}
+
+/**
+ * ISS-183 — the couplings a module map draws at each level of the tree. Every declared edge and
+ * every issue carrying two modules lands on exactly one sibling pair, so a level's edges are the
+ * couplings of everything beneath its modules, and nothing is counted at two levels.
+ */
+export function levelCouplings(input: LevelCouplingInput): ModuleLevelCoupling[] {
+  const chains = chainsOf(input.nodes);
+  const byKey = new Map<string, ModuleLevelCoupling>();
+  const entry = (m: Meeting): { row: ModuleLevelCoupling; forward: boolean } => {
+    const forward = m.from < m.to;
+    const [aId, bId] = forward ? [m.from, m.to] : [m.to, m.from];
+    const key = `${m.parentId ?? ''}|${aId}|${bId}`;
+    let row = byKey.get(key);
+    if (!row) {
+      row = {
+        parentId: m.parentId,
+        aId,
+        bId,
+        declaredAToB: 0,
+        declaredBToA: 0,
+        sharedIssues: 0,
+        weight: 0,
+        twoWay: false,
+      };
+      byKey.set(key, row);
+    }
+    return { row, forward };
+  };
+
+  for (const e of input.declared) {
+    const m = meetingOf(chains, e.fromId, e.toId);
+    if (!m) continue;
+    const { row, forward } = entry(m);
+    if (forward) row.declaredAToB += 1;
+    else row.declaredBToA += 1;
+  }
+
+  for (const moduleIds of input.issueModules.values()) {
+    const touched = new Set<ModuleLevelCoupling>();
+    for (let i = 0; i < moduleIds.length; i++) {
+      for (let j = i + 1; j < moduleIds.length; j++) {
+        const m = meetingOf(chains, moduleIds[i] as string, moduleIds[j] as string);
+        if (m) touched.add(entry(m).row);
+      }
+    }
+    for (const row of touched) row.sharedIssues += 1;
+  }
+
+  return [...byKey.values()]
+    .map((r) => ({
+      ...r,
+      weight: r.declaredAToB + r.declaredBToA + r.sharedIssues,
+      twoWay: r.declaredAToB > 0 && r.declaredBToA > 0,
+    }))
+    .sort((x, y) => (x.parentId ?? '').localeCompare(y.parentId ?? '') || y.weight - x.weight);
 }

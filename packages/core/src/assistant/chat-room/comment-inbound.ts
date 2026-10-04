@@ -7,16 +7,23 @@
 // to the conversation handler, refusals included.
 
 import { and, eq } from 'drizzle-orm';
-import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
-import { resolveSpeaker } from '../../assistant/identity/speaker-link.js';
 import { insertComment } from '../../comments/index.js';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
 import { rocketchatCommentMirrors } from '../../db/schema-rocketchat.js';
+import type {
+  RocketChatDdpClient,
+  RocketChatIncomingMessage,
+} from '../../integrations/rocketchat/index.js';
+import {
+  FIXED_REPLY_CONSTANT,
+  namespaceFromServerUrl,
+  type ReplyTransport,
+  sendFixedReply,
+} from '../../integrations/rocketchat/index.js';
 import { logger } from '../../observability/logger.js';
 import { emitEvent } from '../../outbox/index.js';
-import type { RocketChatDdpClient, RocketChatIncomingMessage } from './ddp-client.js';
-import { FIXED_REPLY_CONSTANT, type ReplyTransport, sendFixedReply } from './outbound.js';
+import { resolveSpeaker } from '../identity/speaker-link.js';
 
 async function say(transport: ReplyTransport, text: string): Promise<void> {
   try {
