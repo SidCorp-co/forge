@@ -14,13 +14,14 @@ requirements and workflow designs.
   This page says only what to build.
 - **Code that breaks a rule is Wrong**, and is rebuilt to the rule rather than patched.
   `scripts/check-module-shape.mjs` measures the rules a script can read, and `--markers` writes its
-  findings as Wrong markers. It is report-only until ISS-120's Phase 5 flips each rule to a gate.
-  There is no hand-kept list of divergences on this page.
+  findings as Wrong markers. The orchestrator or QA runs it on demand; nothing runs it before a
+  push. There is no hand-kept list of divergences on this page.
 - **The API comes first.** The CLI wraps the routes, and MCP keeps only what neither covers
   ([api-first.md](../proposals/destination/api-first.md)), so every rule below is stated for the
   route first.
-- **Tests on dev.** The owner removed the test suites on dev on 2026-10-04 ("build trước đi đã test
-  gọi QA test sau"): a build lands without tests, and QA verifies it later.
+- **Code only on dev, QA later.** On dev the only check before a push is `tsc --noEmit` on the
+  packages a change touched. Tests, verify, checkers and CI are not run while building; QA is a
+  later phase (owner, 2026-10-04: "build trước đi đã test gọi QA test sau").
 
 ## Module kinds (BC-11)
 
@@ -243,11 +244,16 @@ A write a rule refuses answers **422** with one body, and nothing is written:
 
 ## Permissions (BC-20)
 
-- **One check**: `can(actor, permission, scope)` over the actor's project role and token grant
-  (ADR 0007). Each route and tool action declares its permission in contracts, and REST and MCP
-  read the same declaration.
-- **Approval is a permission.** No rule refuses an actor for being an agent, for being a person or
-  for being the author; whoever holds the permission acts.
+- **One check**: `can(actor, permission, scope)` over the actor's project role and token grant.
+  Each route and tool action declares its permission in contracts, and REST and MCP read the same
+  declaration.
+- **Approval is a permission**
+  ([ADR 0007](../adr/0007-approval-is-a-permission.md)): every approve-type act asks
+  `packages/core/src/lib/approval.ts:mayApprove` and refuses with
+  `packages/core/src/lib/approval.ts:approvalRefusal`. No rule refuses an actor for being an agent,
+  for being a person or for being the author; whoever holds the permission acts. The other
+  who-may-act checks (project roles in `lib/authz`, token grants, the MCP principal checks) move
+  onto the same `can()`.
 - **A slice never compares `agency`.** Agency is recorded on the row and read by no rule.
 
 ## External systems (BC-22)
@@ -376,4 +382,4 @@ web-v2/src/features/feedback/     api.ts, hooks.ts, types.ts, routes.ts, compone
 | The machine as data and one kernel transition | Every status write in core moves into one engine, and a slice can no longer set its own status in a one-line update |
 | One durable outbox | Every reaction is asynchronous and survives a crash, at the price of a table write per event and a consumer that must be idempotent |
 | One 422 for every rule refusal | A client reads `error.code` and never branches on 403 or 409 |
-| Report-only at first | Until a rule flips to gate, new code can break it and stay green; only verify's "rose above the baseline" line says so |
+| The checker runs on demand, not before a push | New code can break a rule and land; the break shows only when the orchestrator or QA next runs the checker |

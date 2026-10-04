@@ -124,6 +124,8 @@ export interface StatusTransitionResult {
   unblockedDependents: UnblockedDependent[];
   /** The step the run is at inside the status after this move, or null. */
   step: WorkStep | null;
+  /** True where the move passed the verdict gate because the project does not require verdicts. */
+  verdictsWaived?: true;
 }
 
 /** WS `issue.statusChanged` publish. The bus subscriber for `transition` deliberately does NOT
@@ -292,6 +294,7 @@ export async function transitionIssueStatus(
     terminal,
     unblockedDependents: txResult.unblockedDependents,
     step,
+    ...(txResult.verdictsWaived ? { verdictsWaived: true as const } : {}),
   };
 }
 
@@ -311,6 +314,7 @@ export type TransitionWriteInput = {
 type TransitionWriteResult = {
   row: { id: string; status: IssueStatus; reopenCount: number; updatedAt: Date };
   unblockedDependents: UnblockedDependent[];
+  verdictsWaived: boolean;
 };
 
 /**
@@ -360,15 +364,20 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
     }
     // cm:guard a guard that cannot be read refuses the move by throwing, never allows it: this runs
     // inside the transition's transaction, which a failed read has already aborted.
+    const waiver = { waived: false };
     const guard = await guardFault({
       issue: { id: issue.id, projectId: issue.projectId },
       from: fromStatus,
       to: toStatus,
       leftStatus: input.leftStatus,
       agency: actorAgency(actor),
+      actorUserId: authorOf(actor),
       transitionReason: options.transitionReason,
       waitingKind: options.waitingKind,
       executor: tx,
+      onVerdictsWaived: () => {
+        waiver.waived = true;
+      },
     });
     if (guard) throw new TransitionError(guard.code, guard.detail, guard.details);
     if (requiresAuthoredReason(fromStatus, requestedStatus)) {
@@ -429,11 +438,11 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
             source: 'issues',
           },
         ]);
-        await recordMove(t, moveOf(input, row.reopenCount));
+        await recordMove(t, moveOf(input, row.reopenCount, waiver.waived));
         await writeWorkStateOfMove(t, input);
         const unblockedDependents =
           toStatus === 'dropped' ? await expireBlocksEdgesOnDrop(t, issue.projectId, issue.id) : [];
-        return { row, unblockedDependents };
+        return { row, unblockedDependents, verdictsWaived: waiver.waived };
       },
     );
     if (!result)

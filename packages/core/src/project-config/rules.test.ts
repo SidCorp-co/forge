@@ -165,6 +165,17 @@ describe('sim_core.py plants (negative)', () => {
 });
 
 describe('the rest of the pure codes', () => {
+  it('APPROVER_POLICY_RETIRED names each retired approver knob (ADR 0007)', () => {
+    const out = refusals((d) => {
+      d.workflows = { designApprover: 'master' };
+      d.contracts = { approver: 'owner' };
+    });
+    expect(pick(out)).toEqual([
+      { code: 'APPROVER_POLICY_RETIRED', path: '/workflows/designApprover' },
+      { code: 'APPROVER_POLICY_RETIRED', path: '/contracts/approver' },
+    ]);
+  });
+
   it('DEFAULT_BRANCH_UNDECLARED', () => {
     const out = refusals((d) => {
       if (d.source.type === 'git') d.source.git.defaultBranch = 'trunk';
@@ -491,7 +502,7 @@ describe('an autoflow project (ISS-51)', () => {
 describe('the code vocabulary', () => {
   it('holds every code of the design table once', () => {
     expect(new Set(CONFIG_REFUSAL_CODES).size).toBe(CONFIG_REFUSAL_CODES.length);
-    expect(CONFIG_REFUSAL_CODES).toHaveLength(34);
+    expect(CONFIG_REFUSAL_CODES).toHaveLength(35);
   });
 
   it('every pure code is emitted by some plant in this file', () => {

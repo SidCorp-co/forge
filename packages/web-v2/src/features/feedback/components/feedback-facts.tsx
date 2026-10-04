@@ -5,6 +5,7 @@
 // column holds only what the reporter said, the acts, and the history.
 
 import Link from "next/link";
+import { FEEDBACK_CASE_OWNER_LABELS } from "@forge/contracts/feedback";
 import { ActorChip, EnumBadge, enumLabel, Fact, FactsEmpty, FactsGroup, StatusBadge, type StatusFamily, StepBar, WaitBanner, WaitingOn } from "@/design";
 import { requirementHref } from "@/features/requirements/routes";
 import { issueHref } from "@/features/issues/routes";
@@ -102,6 +103,14 @@ export function FeedbackFacts({ f, slug }: { f: FeedbackView; slug: string }) {
       </FactsGroup>
 
       <FactsGroup title="Carried by" testId="facts-route">
+        {f.case ? (
+          <Fact label="Case">
+            <span className="text-13" title={`Opened ${f.case.openedAt}`}>
+              {FEEDBACK_CASE_OWNER_LABELS[f.case.owner]} · {enumLabel("feedbackRoute", f.case.route)}
+              {f.case.routedAt ? " · route written" : ` · ${f.case.overdue ? "overdue since" : "due"} ${f.case.dueAt.slice(0, 10)}`}
+            </span>
+          </Fact>
+        ) : null}
         {!r ? (
           <FactsEmpty>Not routed yet.</FactsEmpty>
         ) : (

@@ -3,12 +3,12 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { pipelineRuns, users } from '../db/schema.js';
+import { pipelineRuns } from '../db/schema.js';
 import { type ReleaseApprovalRow, releaseApprovals } from '../db/schema-release-ledger.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
-import { loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { approvalRefusalFor } from '../lib/approval.js';
 import { peopleOf } from '../lib/people.js';
 import { agrees } from '../lib/plural.js';
+import { RefusalError } from '../lib/refusal.js';
 import { environmentsOf, readReleasePath } from '../project-config/release-path.js';
 import { readProjectDocument } from '../project-config/service.js';
 
@@ -34,14 +34,11 @@ export type ApprovalRefusalCode =
   | 'RELEASE_APPROVAL_EVIDENCE_ENVIRONMENT'
   | 'RELEASE_APPROVAL_PATH_UNREADABLE'
   | 'RELEASE_RUN_CONCLUDED'
-  | 'RELEASE_APPROVER_NOT_ADMIN'
-  | 'RELEASE_APPROVER_IS_AGENT'
   | 'RELEASE_DECISION_UNKNOWN'
   | 'RELEASE_RETURN_WITHOUT_REASON'
   | 'RELEASE_AWAITING_APPROVAL'
   | 'RELEASE_APPROVAL_RETURNED'
   | 'RELEASE_APPROVAL_REQUIRED'
-  | 'RELEASE_APPROVAL_SELF'
   | 'RELEASE_VERSION_SHAPE';
 
 export function approvalRefusal(
@@ -222,43 +219,16 @@ export async function decideApproval(input: {
   runId: string;
   approvalId: string;
   userId: string;
-  agency: ActorAgency;
   decision: Decision;
 }): Promise<ApprovalView> {
-  const { projectId, runId, approvalId, userId, agency, decision } = input;
-  if (agency === 'agent') {
-    throw approvalRefusal(
-      403,
-      'RELEASE_APPROVER_IS_AGENT',
-      "a release reaches production on a person's word: an agent asks for approval and never gives it",
-    );
-  }
-  const access = await loadProjectAccess(projectId, userId);
-  if (!projectRoleAtLeast(access?.role ?? null, 'admin')) {
-    throw approvalRefusal(
-      403,
-      'RELEASE_APPROVER_NOT_ADMIN',
-      `approving or returning a release takes admin on project ${projectId}; you hold ${access?.role ?? 'no role'}`,
-    );
-  }
-  const [asked] = await db
-    .select({ requestedByUser: releaseApprovals.requestedByUser })
-    .from(releaseApprovals)
-    .where(
-      and(
-        eq(releaseApprovals.id, approvalId),
-        eq(releaseApprovals.runId, runId),
-        eq(releaseApprovals.projectId, projectId),
-      ),
-    )
-    .limit(1);
-  if (asked && asked.requestedByUser === userId) {
-    throw approvalRefusal(
-      403,
-      'RELEASE_APPROVAL_SELF',
-      `approval request ${approvalId} was asked by you; a release is approved by a person other than the one who asked for it`,
-    );
-  }
+  const { projectId, runId, approvalId, userId, decision } = input;
+  const denied = await approvalRefusalFor(
+    { userId },
+    projectId,
+    'releases',
+    'approving or returning a release',
+  );
+  if (denied) throw new RefusalError([denied], denied.code);
   const [row] = await db
     .update(releaseApprovals)
     .set({
@@ -307,18 +277,14 @@ export async function approvalRequired(projectId: string): Promise<boolean> {
 }
 
 // cm:guard an attempt on a run whose latest request is pending or returned is refused: the attempts of a release run are its production acts, and approval is what lets the master make them
-// cm:guard on a project whose document sets `release.approval.required`, a run with no approval a person other than its asker gave is refused too, so the rule holds whether or not the master asked
+// cm:guard on a project whose document sets `release.approval.required`, a run with no approval is refused too, so the rule holds whether or not the master asked; who approved was gated by releases.approve when it was decided
 export async function assertApprovalAllowsAttempt(runId: string, projectId: string): Promise<void> {
   const [latest] = await db
     .select({
       decision: releaseApprovals.decision,
       reason: releaseApprovals.reason,
-      requestedByUser: releaseApprovals.requestedByUser,
-      decidedByUser: releaseApprovals.decidedByUser,
-      deciderKind: users.kind,
     })
     .from(releaseApprovals)
-    .leftJoin(users, eq(users.id, releaseApprovals.decidedByUser))
     .where(eq(releaseApprovals.runId, runId))
     .orderBy(desc(releaseApprovals.requestedAt), desc(releaseApprovals.id))
     .limit(1);
@@ -332,16 +298,7 @@ export async function assertApprovalAllowsAttempt(runId: string, projectId: stri
       { runId, required: true },
     );
   }
-  if (latest.decision === 'approved') {
-    if (!required) return;
-    if (latest.decidedByUser !== latest.requestedByUser && latest.deciderKind === 'human') return;
-    throw approvalRefusal(
-      409,
-      'RELEASE_APPROVAL_SELF',
-      `release run ${runId} was approved by ${latest.decidedByUser === latest.requestedByUser ? 'the same principal that asked for it' : 'an agent'}; project ${projectId} requires a person other than the asker to approve — ask again`,
-      { runId, required: true },
-    );
-  }
+  if (latest.decision === 'approved') return;
   if (latest.decision === null) {
     throw approvalRefusal(
       409,

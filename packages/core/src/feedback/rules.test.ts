@@ -180,14 +180,17 @@ describe('feedback-lifecycle guards', () => {
   });
 });
 
-describe('who may act, through actMiss', () => {
-  it('an agent never routes or verifies; it proposes (FEEDBACK_DECIDE_FORBIDDEN, FEEDBACK_VERIFY_FORBIDDEN)', () => {
-    expect(decideActRefusal(person, 'routing')).toBeNull();
-    expect(decideActRefusal(agent, 'routing')?.code).toBe('FEEDBACK_DECIDE_FORBIDDEN');
-    expect(decideActRefusal({ ...person, role: 'viewer' }, 'routing')?.code).toBe(
-      'FEEDBACK_DECIDE_FORBIDDEN',
-    );
-    expect(verifyActRefusal(agent, 'verifying')?.code).toBe('FEEDBACK_VERIFY_FORBIDDEN');
+describe('who may act', () => {
+  it('routing and verifying take feedback.approve, an agent holding it included (ADR 0007)', () => {
+    expect(decideActRefusal({ ...agent, role: 'admin' }, 'p', 'routing')).toBeNull();
+    expect(verifyActRefusal({ ...agent, role: 'admin' }, 'p', 'verifying')).toBeNull();
+    for (const role of ['member', 'viewer', null] as const) {
+      expect(decideActRefusal({ ...person, role }, 'p', 'routing')).toMatchObject({
+        code: 'APPROVE_PERMISSION_REQUIRED',
+        permission: 'feedback.approve',
+      });
+    }
+    expect(verifyActRefusal(agent, 'p', 'verifying')?.code).toBe('APPROVE_PERMISSION_REQUIRED');
   });
 
   it('only a project admin person deletes reporter data (FEEDBACK_REDACT_FORBIDDEN)', () => {

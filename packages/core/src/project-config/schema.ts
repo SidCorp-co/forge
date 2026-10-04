@@ -3,6 +3,7 @@ import {
   keepTermsInEnglishSchema,
 } from '@forge/contracts/content-language';
 import { SENSITIVE_DATA_LEVELS } from '@forge/contracts/data-policy';
+import { deliveryPolicySchema } from '@forge/contracts/delivery-policy';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
 import {
   projectWorkflowTemplateSchema,
@@ -162,18 +163,23 @@ export const projectDocumentSchema = z.strictObject({
       'none',
     ]),
   }),
-  // cm:why who approves a plan held as a project rule: `required` makes the kernel refuse a move
-  // into `approved` that a person did not make (`issues/transition-guards.ts:planGuard`, refusal
-  // PLAN_REQUIRED); absent is not required, and a run's own plan checkpoint is enough.
+  // cm:why plan approval held as a project rule: `required` makes the kernel refuse a move into
+  // `approved` by an actor without plans.approve (`issues/transition-guards.ts:planGuard`, refusal
+  // APPROVE_PERMISSION_REQUIRED); absent is not required, and a run's own plan checkpoint is enough.
   plan: z
     .strictObject({
       approval: z.strictObject({ required: z.boolean() }),
     })
     .optional(),
   release: releaseRuleSchema.optional(),
-  // cm:why who decides a workflow design before anything is built from it
-  // (`workflows/design.ts:designApproverRefusal`): `owner` is an org admin person, `master` adds
-  // the project's own master; absent is `owner`. `templates` are the project's own diagram templates
+  // cm:why what the delivery gate asks of an issue (owner ruling on dev, 2026-10-04):
+  // `verdictsRequired: false` lets `awaiting_release` and the release cut pass without a passing
+  // verdict per criterion, and the move's record says `verdicts-waived`
+  // (`issues/transition-guards.ts:verdictGuard`). Absent is `true`.
+  delivery: deliveryPolicySchema.optional(),
+  // `designApprover` is retired (ADR 0007): ISS-159 until:no stored project document carries
+  // it — still parsed so a stored document reads, refused on write (`rules.ts:checkRetiredApprovers`),
+  // never read. `templates` are the project's own diagram templates
   // (policy over the kernel's built-ins, `@forge/contracts/workflow-templates`): complete ones, or
   // extensions that add to a built-in; absent is none.
   workflows: z
@@ -182,10 +188,8 @@ export const projectDocumentSchema = z.strictObject({
       templates: z.array(projectWorkflowTemplateSchema).max(TEMPLATE_LIMITS.templates).optional(),
     })
     .optional(),
-  // cm:why who approves a recorded contract version before it is current
-  // (`ecosystem/contract/approval.ts:approverRefusal`): `owner` is an org admin person, `master` lets
-  // the project's own agent approve a non-breaking version; a breaking or unmeasured one always
-  // needs a person. Absent is `owner`.
+  // `contracts.approver` is retired the same way and under the same amnesty as
+  // `workflows.designApprover` above.
   contracts: z
     .strictObject({
       approver: z.enum(DESIGN_APPROVERS).optional(),

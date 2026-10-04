@@ -3,9 +3,9 @@
  *
  * `PATCH /api/issues/batch` transitions, and it is reachable with a personal
  * access token (`/api/issues` is on the PAT allowlist). Where the project document
- * sets `plan.approval.required` the move to `approved` is a person's (ISS-54), and
- * the ISS-786 merge-claim evidence gate runs on an agent and not on a person, so the
- * question every case here asks is which of the two a credential names.
+ * sets `plan.approval.required` the move to `approved` takes plans.approve, whoever
+ * holds it (ADR 0007); the ISS-786 merge-claim evidence gate runs on an agent and not
+ * on a person, so the question the other cases ask is which of the two a credential names.
  *
  * Each pair is one falsification set: same request, same issue, same rule — only
  * the credential differs. Three credentials appear, and the
@@ -122,10 +122,13 @@ async function seedPlannedIssue() {
  * `kind:'agent'` user. Since ISS-932 wave 4 that ownership is the whole of what
  * makes it read `agency:'agent'` — there is no token name to imitate.
  */
-async function agentPatFor(project: { id: string }): Promise<string> {
+async function agentPatFor(
+  project: { id: string },
+  role: 'admin' | 'member' = 'admin',
+): Promise<string> {
   const agent = await createTestUser(harness.db, { kind: 'agent' });
   await harness.db.execute(
-    sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${project.id}::uuid, ${agent.id}::uuid, 'admin')`,
+    sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${project.id}::uuid, ${agent.id}::uuid, ${role})`,
   );
   const { plaintext } = await mintPat({
     userId: agent.id,
@@ -144,11 +147,22 @@ const advance = (token: string, issueId: string) =>
   });
 
 describe('PATCH /api/issues/batch honours agency, not just device-ness', () => {
-  it('refuses an agent-held token the plan approval a person owes', async () => {
+  it('lets an agent-held token holding plans.approve approve the plan (ADR 0007)', async () => {
     const { project, issueId } = await seedPlannedIssue();
     const res = await advance(await agentPatFor(project), issueId);
 
-    expect(JSON.stringify(await res.json())).toContain('plan_required');
+    expect(JSON.stringify(await res.json())).not.toContain('approve_permission_required');
+    const [row] = await harness.db.execute<{ status: string }>(
+      sql`SELECT status FROM issues WHERE id = ${issueId}::uuid`,
+    );
+    expect(row?.status).toBe('approved');
+  });
+
+  it('refuses a token whose account lacks plans.approve, agent or not', async () => {
+    const { project, issueId } = await seedPlannedIssue();
+    const res = await advance(await agentPatFor(project, 'member'), issueId);
+
+    expect(JSON.stringify(await res.json())).toContain('approve_permission_required');
     const [row] = await harness.db.execute<{ status: string }>(
       sql`SELECT status FROM issues WHERE id = ${issueId}::uuid`,
     );

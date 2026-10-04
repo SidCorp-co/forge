@@ -1,6 +1,6 @@
 /**
- * `forge_suggestions` — an agent proposes a change against a base revision and a person decides it
- * (guide `suggestions`). accept and reject refuse an agent (SUGGESTION_ACCEPT_FORBIDDEN);
+ * `forge_suggestions` — a change proposed against a base revision, decided by a holder of
+ * suggestions.approve (guide `suggestions`, ADR 0007);
  * the REST routes in `suggestions/routes.ts` are the same services.
  */
 
@@ -94,11 +94,10 @@ const DESCRIPTION =
   'triage { note, priority?, category?, route? } on an issue; duplicate { duplicateOf, similarity?, note? }; ' +
   'design_change on `workflow` (uuid or flow), baseRevision null: { steps?, edges?: [{ from, to, label? }], change: change | remove | rewire, reason }; a node the latest revision does not hold is WORKFLOW_NODE_UNKNOWN, and accepting it writes nothing into the design. ' +
   'feedback_triage on `feedback` (FB-n), baseRevision null: { route: issue | revision | new_requirement | answer | duplicate, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }; accepting it writes the route (forge_feedback_items). ' +
-  'accept { suggestionId, reason? } and reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); ' +
+  'accept { suggestionId, reason? } and reject { suggestionId, reason } take suggestions.approve (project admin, or an org owner or admin), person or agent alike, its producer included (APPROVE_PERMISSION_REQUIRED without it); ' +
   'an accept’s reason is kept on the suggestion, and is where the authority behind it is named. ' +
   'revise { suggestionId, payload, reason } is a reviewer’s edit: the original is rejected with the reason and a new suggestion ' +
-  'carrying the whole new payload is proposed by the reviewer, naming the original (revises); the reviewer then cannot accept it ' +
-  '(SUGGESTION_ACCEPT_FORBIDDEN), and its producer cannot revise its own (SUGGESTION_REVISE_FORBIDDEN, withdraw instead); ' +
+  'carrying the whole new payload is proposed by the reviewer, naming the original (revises); revising takes suggestions.approve; ' +
   'an unchanged payload is SUGGESTION_REVISION_UNCHANGED. ' +
   'accepting a revision_diff writes a new DRAFT revision, never a current one. withdraw: the producer retracts its own. ' +
   'list: { requirement | issue, status? } answers each suggestion as { id, kind, status, target, baseRevision, revises, ' +

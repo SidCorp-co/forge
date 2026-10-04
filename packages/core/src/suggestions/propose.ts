@@ -11,8 +11,9 @@ import {
 import { and, eq, ne } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
+import { nearestFeedbackOf } from '../feedback/embeddings.js';
+import { approvalRefusalFor } from '../lib/approval.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
-import { personActRefusalFor } from '../lib/person-act.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { designNodesIn, nodeSetRefusals } from '../workflows/node-refs.js';
 import { breakdownGuardIn } from './breakdown.js';
@@ -36,7 +37,6 @@ import {
   payloadRefusal,
   queueFullRefusal,
   rejectReasonRefusal,
-  reviseProducerRefusal,
   unchangedRevisionRefusal,
 } from './rules.js';
 import {
@@ -157,7 +157,12 @@ export async function createSuggestion(input: {
   const target = await resolveTarget(projectId, input.target, input.actor.userId);
   const invalid = payloadRefusal(kind, target.type, input.payload);
   if (invalid) return { ok: false, refusals: [invalid] };
-  const payload = SUGGESTION_PAYLOADS[kind].schema.parse(input.payload);
+  const parsed = SUGGESTION_PAYLOADS[kind].schema.parse(input.payload);
+  // step triage takes the nearest item as an input: core stamps it, or says dedup did not run
+  const payload =
+    kind === 'feedback_triage' && target.type === 'feedback'
+      ? { ...parsed, dedup: await nearestFeedbackOf(projectId, target.id) }
+      : parsed;
   let id = '';
   const refusals = await inTx(async (tx) => {
     await lockTarget(tx, projectId, target);
@@ -172,7 +177,7 @@ export async function createSuggestion(input: {
         target,
         baseRevision: input.baseRevision,
         payload,
-        fingerprint: fingerprintOf(kind, payload),
+        fingerprint: fingerprintOf(kind, parsed),
         producerKind: input.producerKind,
         producerId: input.producerId,
         model: input.model ?? null,
@@ -191,8 +196,8 @@ export async function createSuggestion(input: {
 
 // cm:why decision on design suggestion-lifecycle (ISS-117): a reviewer's edit is a new suggestion
 // the reviewer produced, naming the original, which is rejected with the reviewer's reason in the
-// same transaction; no state is added, and the two-party rule then holds for the revision as it
-// does for any suggestion, so the editor never accepts their own edit
+// same transaction; no state is added. Revising rejects the original, so it takes
+// suggestions.approve like any decision (ADR 0007)
 export async function reviseSuggestion(input: {
   projectId: string;
   id: string;
@@ -204,16 +209,18 @@ export async function reviseSuggestion(input: {
   const first = await rowOf(db, projectId, input.id);
   if (first.kind === 'breakdown') {
     const access = await effectiveProjectRole(actor.userId, projectId);
-    const refusal = breakdownProposerRefusal({ ...actor, role: access?.role ?? null }, 'person');
+    const refusal = breakdownProposerRefusal(
+      { ...actor, role: access?.role ?? null },
+      actor.agency === 'agent' ? 'agent' : 'person',
+    );
     if (refusal) return { ok: false, refusals: [refusal] };
   }
-  const forbidden =
-    (await personActRefusalFor(
-      actor,
-      projectId,
-      'revising a suggestion',
-      'SUGGESTION_REVISE_FORBIDDEN',
-    )) ?? reviseProducerRefusal(actor.userId, first.producerId);
+  const forbidden = await approvalRefusalFor(
+    actor,
+    projectId,
+    'suggestions',
+    'revising a suggestion',
+  );
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const target = targetOfRow(first);
   const early =
@@ -247,7 +254,7 @@ export async function reviseSuggestion(input: {
         baseRevision: row.baseRevision,
         payload,
         fingerprint,
-        producerKind: 'person',
+        producerKind: actor.agency === 'agent' ? 'agent' : 'person',
         producerId: actor.userId,
         model: null,
         conversationMessageId: null,

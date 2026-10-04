@@ -5,7 +5,7 @@
  * own stored vector with its project's, so reading it sends nothing to a provider.
  */
 
-import type { SimilarFeedbackResponse } from '@forge/contracts/feedback';
+import type { FeedbackDedup, SimilarFeedbackResponse } from '@forge/contracts/feedback';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
@@ -45,6 +45,45 @@ export function embedFeedbackLater(feedbackId: string): void {
         'item_embeddings: the feedback embedding row was not written',
       ),
     );
+}
+
+/** The nearest other item by stored vector, keys only, or why it could not be compared. */
+export async function nearestFeedbackOf(
+  projectId: string,
+  feedbackId: string,
+): Promise<FeedbackDedup> {
+  const [own] = await db
+    .select()
+    .from(itemEmbeddings)
+    .where(eq(itemEmbeddings.feedbackId, feedbackId));
+  if (own?.status !== 'embedded' || !own.embedding || !own.model) {
+    return {
+      ran: false,
+      nearest: null,
+      why: `triage without dedup: the item's vector is ${own ? own.status : 'not written yet'}`,
+    };
+  }
+  const distance = cosineDistance(itemEmbeddings.embedding, own.embedding);
+  const [hit] = await db
+    .select({ seq: feedback.fbSeq, distance: sql<number>`${distance}` })
+    .from(itemEmbeddings)
+    .innerJoin(feedback, eq(feedback.id, itemEmbeddings.feedbackId))
+    .where(
+      and(
+        eq(itemEmbeddings.projectId, projectId),
+        eq(itemEmbeddings.status, 'embedded'),
+        eq(itemEmbeddings.model, own.model),
+        ne(feedback.id, feedbackId),
+      ),
+    )
+    .orderBy(distance)
+    .limit(1);
+  if (!hit) return { ran: true, nearest: null };
+  return {
+    ran: true,
+    nearest: feedbackKey(hit.seq),
+    similarity: Math.round((1 - Number(hit.distance)) * 1000) / 1000,
+  };
 }
 
 export async function similarFeedbackAs(

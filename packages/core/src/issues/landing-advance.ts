@@ -166,17 +166,20 @@ export async function advanceLandedIssue(args: {
     };
   }
   try {
-    await transitionIssueStatus(issue, 'awaiting_release', actor, {
+    const moved = await transitionIssueStatus(issue, 'awaiting_release', actor, {
       reason: 'landing_recorded',
       beforeStatusWrite: async (tx) => {
         if (await runInFlight(tx, issue.id)) throw new RunTookTheIssue();
       },
     });
+    const held = moved.verdictsWaived
+      ? 'this project does not require verdicts to reach the gate (`delivery.verdictsRequired: false`), and the move is recorded as `verdicts-waived`'
+      : 'every criterion already holds a passing verdict';
     return {
       outcome: 'awaiting_release',
       status: 'awaiting_release',
       leaseEnded,
-      detail: `Landing recorded and every criterion already holds a passing verdict, so it moved \`in_progress\` -> \`awaiting_release\` (${guideRef('pipeline-and-issue-lifecycle')}).${leaseClause(leaseEnded)}`,
+      detail: `Landing recorded and ${held}, so it moved \`in_progress\` -> \`awaiting_release\` (${guideRef('pipeline-and-issue-lifecycle')}).${leaseClause(leaseEnded)}`,
     };
   } catch (err) {
     if (err instanceof RunTookTheIssue) return leftToRun(issue.status, leaseEnded);

@@ -146,10 +146,8 @@ const DESCRIPTION =
   'head and the issues that build it. ' +
   VIEW_RULE +
   ' ' +
-  'decide: { workflowId, revision, decision: approve|return, reason } — only the approver the ' +
-  "project's `workflows.designApprover` names: `owner` (default) is an org admin person, and an " +
-  "agent is refused WORKFLOW_DESIGN_APPROVER_NOT_PERSON; `master` lets this project's own master " +
-  'decide too. A return carries its reason. Approving is refused WORKFLOW_DESIGN_BASE_UNAPPROVED while a ' +
+  'decide: { workflowId, revision, decision: approve|return, reason } takes workflow-designs.approve ' +
+  '(project admin, or an org owner or admin), person or agent alike (APPROVE_PERMISSION_REQUIRED without it). A return carries its reason. Approving is refused WORKFLOW_DESIGN_BASE_UNAPPROVED while a ' +
   'design the revision declares in `basedOn` is not approved at the revision it names, naming each base and its state. ' +
   'link: { workflowId, issue } names the issue that builds the workflow; dispatching that issue is ' +
   'then refused WORKFLOW_DESIGN_NOT_APPROVED until the design is approved, and forge_issues get ' +

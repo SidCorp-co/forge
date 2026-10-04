@@ -96,7 +96,7 @@ export function queueFullRefusal(openOnTarget: number): SuggestionRefusal | null
   return {
     code: 'SUGGESTION_QUEUE_FULL',
     path: '/target',
-    detail: `${openOnTarget} suggestions already wait on this target (at most ${SUGGESTION_MAX_OPEN_PER_TARGET}); a person decides one before another is proposed.`,
+    detail: `${openOnTarget} suggestions already wait on this target (at most ${SUGGESTION_MAX_OPEN_PER_TARGET}); one is decided before another is proposed.`,
   };
 }
 
@@ -128,21 +128,7 @@ export function breakdownOpenRefusal(
   return {
     code: 'SUGGESTION_BREAKDOWN_OPEN',
     path: '/target',
-    detail: `breakdown suggestion ${openId} is still open on revision ${revision ?? '?'}; a revision holds one open breakdown. A person accepts or rejects it first.`,
-  };
-}
-
-// cm:guard the person who produced a suggestion never accepts it (SUGGESTION_ACCEPT_FORBIDDEN); that
-// it is a person at all is the shared person-act check
-export function producerRefusal(
-  userId: string,
-  producerId: string | null,
-): SuggestionRefusal | null {
-  if (producerId === null || producerId !== userId) return null;
-  return {
-    code: 'SUGGESTION_ACCEPT_FORBIDDEN',
-    path: '',
-    detail: `${userId} produced this suggestion; somebody else accepts it.`,
+    detail: `breakdown suggestion ${openId} is still open on revision ${revision ?? '?'}; a revision holds one open breakdown. A holder of suggestions.approve accepts or rejects it first.`,
   };
 }
 
@@ -174,21 +160,7 @@ export function withdrawRefusal(
   return {
     code: 'SUGGESTION_WITHDRAW_FORBIDDEN',
     path: '',
-    detail: `${userId} did not produce this suggestion; its producer withdraws it, anybody else rejects it with a reason.`,
-  };
-}
-
-// cm:guard a reviewer's edit is a person's act of somebody other than the producer, who withdraws
-// and proposes again instead; the edit is a new suggestion the editor then produced (ISS-117)
-export function reviseProducerRefusal(
-  userId: string,
-  producerId: string | null,
-): SuggestionRefusal | null {
-  if (producerId === null || producerId !== userId) return null;
-  return {
-    code: 'SUGGESTION_REVISE_FORBIDDEN',
-    path: '',
-    detail: `${userId} produced this suggestion; its producer withdraws it and proposes again, a reviewer revises it.`,
+    detail: `${userId} did not produce this suggestion; its producer withdraws it, a holder of suggestions.approve rejects it with a reason.`,
   };
 }
 
