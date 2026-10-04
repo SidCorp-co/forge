@@ -1,5 +1,4 @@
-import { sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { releaseEndedRunClaims } from '../issues/index.js';
 import { logger } from '../logger.js';
 
 export interface StaleReleaseBatchClaimsResult {
@@ -15,26 +14,7 @@ export interface StaleReleaseBatchClaimsResult {
  */
 export async function reapStaleReleaseBatchClaims(): Promise<StaleReleaseBatchClaimsResult> {
   try {
-    const released = await db.execute<{ id: string }>(sql`
-      UPDATE issues
-      SET release_batch_run_id = NULL, updated_at = now()
-      WHERE release_batch_run_id IS NOT NULL
-        AND EXISTS (
-          SELECT 1 FROM pipeline_runs r
-          WHERE r.id = issues.release_batch_run_id
-            AND r.status NOT IN ('running', 'paused')
-        )
-        AND NOT (
-          issues.status = 'awaiting_release'
-          AND EXISTS (SELECT 1 FROM issue_work_state w WHERE w.issue_id = issues.id AND w.step = 'release')
-          AND EXISTS (
-            SELECT 1 FROM release_attempts a
-            WHERE a.run_id = issues.release_batch_run_id AND a.stage = 'promote'
-          )
-        )
-      RETURNING id
-    `);
-    const count = Array.isArray(released) ? released.length : 0;
+    const count = await releaseEndedRunClaims();
     if (count > 0) {
       logger.info({ count }, 'pipeline-sweeper: stale release-batch claims cleared');
     }

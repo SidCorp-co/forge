@@ -1,6 +1,5 @@
-import { eq, sql } from 'drizzle-orm';
+import { mergeSessionMetadata } from '../../agent-sessions/index.js';
 import { db } from '../../db/client.js';
-import { agentSessions } from '../../db/schema.js';
 import { heldInterface } from '../interface-service.js';
 import { storedLink } from '../link-service.js';
 import { linksWhere } from '../link-store.js';
@@ -66,11 +65,7 @@ export async function recordContractContext(
   loaded: readonly LoadedContract[],
   source: string,
 ): Promise<void> {
-  const patch = { [CONTRACT_CONTEXT_KEY]: contractContextRecord(loaded, source) };
-  await db
-    .update(agentSessions)
-    .set({
-      metadata: sql`coalesce(${agentSessions.metadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
-    })
-    .where(eq(agentSessions.id, agentSessionId));
+  await mergeSessionMetadata(agentSessionId, {
+    [CONTRACT_CONTEXT_KEY]: contractContextRecord(loaded, source),
+  });
 }

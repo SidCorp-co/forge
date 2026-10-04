@@ -29,7 +29,7 @@ import { readJobGate } from './job-queries.js';
 import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { JobResumeError, resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
-import { deriveSessionFinal } from './session-transcript.js';
+import { deriveSessionFinal } from '../agent-sessions/index.js';
 import { jobTurnVerdictRoutes } from './turn-verdict-routes.js';
 import { holds, requireHeld } from '../permissions/index.js';
 

@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { transitionSessions } from '../agent-sessions/session-transition.js';
+import { releaseHoldsOf, releaseHoldsOfDeadMasters } from '../jobs/index.js';
 import { logger } from '../logger.js';
 import { masterSilentSql } from './master-silence.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
@@ -68,49 +69,14 @@ export async function reapSilentMasters(): Promise<number> {
  * job it held one statement later. A TERMINAL master is not guarded.
  */
 export async function reapDeadMasterHolds(): Promise<number> {
-  const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
-
-  const rows = (await db.execute(sql`
-    WITH doomed AS (
-      SELECT j.id, j.held_by,
-             COALESCE(s.status, 'no_session') AS master_status
-      FROM jobs j
-      LEFT JOIN agent_sessions s ON s.id = j.held_by
-      WHERE j.held_by IS NOT NULL
-        AND (
-          s.status IN (${TERMINAL})
-          OR (
-            COALESCE(s.last_heartbeat_at, s.started_at)
-              < now() - make_interval(secs => ${staleSeconds})
-            AND NOT EXISTS (
-              SELECT 1 FROM agent_sessions c
-              WHERE c.parent_session_id = s.id
-                AND c.status NOT IN (${TERMINAL})
-                AND COALESCE(c.last_heartbeat_at, c.started_at)
-                    >= now() - make_interval(secs => ${staleSeconds})
-            )
-          )
-          OR (s.id IS NULL AND j.held_at < now() - make_interval(secs => ${staleSeconds}))
-        )
-    )
-    UPDATE jobs
-    SET held_by = NULL, held_at = NULL
-    WHERE id IN (SELECT id FROM doomed)
-    RETURNING id, (SELECT held_by FROM doomed d WHERE d.id = jobs.id) AS former_holder,
-              (SELECT master_status FROM doomed d WHERE d.id = jobs.id) AS master_status
-  `)) as unknown as Array<Record<string, unknown>>;
-
-  for (const row of rows) {
+  const released = await releaseHoldsOfDeadMasters(SESSION_SILENCE_TIMEOUT_S);
+  for (const row of released) {
     logger.warn(
-      {
-        jobId: String(row.id),
-        masterSessionId: String(row.former_holder),
-        masterStatus: String(row.master_status),
-      },
+      { jobId: row.jobId, masterSessionId: row.formerHolder, masterStatus: row.masterStatus },
       'master-reaper: released a hold whose master is gone',
     );
   }
-  return rows.length;
+  return released.length;
 }
 
 /**
@@ -120,18 +86,12 @@ export async function reapDeadMasterHolds(): Promise<number> {
  * immediately, where the sweep has to wait out a timeout it cannot shorten.
  */
 export async function releaseHoldsForSession(sessionId: string): Promise<number> {
-  const rows = (await db.execute(sql`
-    UPDATE jobs
-    SET held_by = NULL, held_at = NULL
-    WHERE held_by = ${sessionId}
-    RETURNING id
-  `)) as unknown as Array<Record<string, unknown>>;
-
-  if (rows.length > 0) {
+  const released = await releaseHoldsOf(sessionId);
+  if (released > 0) {
     logger.info(
-      { masterSessionId: sessionId, released: rows.length },
+      { masterSessionId: sessionId, released },
       'master-reaper: master disconnected, holds returned to the pool',
     );
   }
-  return rows.length;
+  return released;
 }

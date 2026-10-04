@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, issues } from '../db/schema.js';
+import { postIssueNotice } from '../comments/index.js';
+import { issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import type { TransitionActor } from './actor-agency.js';
@@ -23,14 +24,13 @@ export async function recordDropUnblock(
       ? formatIssueRef(await activeIssuePrefix(issue.projectId), blocker.issSeq)
       : issue.id;
     const authorId = actor.type === 'user' ? actor.id : actor.ownerId;
-    await db.insert(comments).values(
-      dependents.map((dependent) => ({
+    for (const dependent of dependents) {
+      await postIssueNotice({
         issueId: dependent.issueId,
         authorId,
         body: `Unblocked — ${label} was dropped, so its \`blocks\` edge on this issue expired and this issue can dispatch. \`merged_at\` was NOT stamped on ${label}: dropped means the work will not happen, not that it shipped. If this issue genuinely needs that work, re-point the dependency rather than letting it proceed.`,
-        parentId: null,
-      })),
-    );
+      });
+    }
   } catch (error) {
     logger.warn(
       { error, issueId: issue.id, dependents: dependents.length },

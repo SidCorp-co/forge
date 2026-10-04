@@ -1,5 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
-import { deriveChatTurnFinal } from '../jobs/session-transcript.js';
+import { deriveChatTurnFinal } from './session-transcript.js';
 import { toCanonicalMessages } from './canonical-legacy.js';
 import { recordTurnError } from './session-events.js';
 

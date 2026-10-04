@@ -10,9 +10,11 @@
 // requiring one would put the coupling straight back. `merged_at` is required
 // instead, and the residual is priced on ISS-1129.
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, issues, pipelineRuns } from '../db/schema.js';
+import { postIssueNotice } from '../comments/index.js';
+import { claimIssuesForRelease, releaseRunClaims } from '../issues/index.js';
+import { issues, pipelineRuns } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import { accountActor } from '../issues/account-actor.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
@@ -145,18 +147,7 @@ export async function recordPerformedRelease(
     },
   });
 
-  const claimed = await db.execute<{ id: string }>(sql`
-    UPDATE issues
-    SET release_batch_run_id = ${run.id}, updated_at = now()
-    WHERE project_id = ${projectId}
-      AND id IN (${sql.join(
-        issueIds.map((id) => sql`${id}`),
-        sql`, `,
-      )})
-      AND status = ${gateStatus}
-      AND release_batch_run_id IS NULL
-    RETURNING id
-  `);
+  const claimed = await claimIssuesForRelease({ projectId, issueIds, gateStatus, runId: run.id });
 
   if (claimed.length !== issueIds.length) {
     await closeRunIfOneShot(run.id, 'cancelled');
@@ -171,7 +162,7 @@ export async function recordPerformedRelease(
 
   for (const issue of roster) {
     try {
-      await db.insert(comments).values({ issueId: issue.id, authorId: userId, body: note });
+      await postIssueNotice({ issueId: issue.id, authorId: userId, body: note });
     } catch (err) {
       logger.warn({ err, issueId: issue.id, runId: run.id }, 'release-record: comment failed');
       // With no probe the note is the issue's only word that nothing verified it, so no close.
@@ -206,10 +197,7 @@ export async function recordPerformedRelease(
   // claim behind on an issue that could not close would wedge it out of every
   // future batch, which claims only where the column is null. `finishReleaseBatch`
   // clears it the same way and for the same reason.
-  await db.execute(sql`
-    UPDATE issues SET release_batch_run_id = NULL, updated_at = now()
-    WHERE release_batch_run_id = ${run.id}
-  `);
+  await releaseRunClaims(run.id);
 
   await closeRunIfOneShot(run.id, failed.length > 0 ? 'failed' : 'completed');
 

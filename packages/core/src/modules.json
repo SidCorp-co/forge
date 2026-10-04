@@ -76,9 +76,6 @@
         "chatLogs"
       ]
     },
-    "cli": {
-      "kind": "door"
-    },
     "comments": {
       "kind": "domain",
       "owns": [

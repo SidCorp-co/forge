@@ -23,7 +23,8 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type JobType, jobs, pmDecisions, projects } from '../db/schema.js';
+import { type JobType, pmDecisions, projects } from '../db/schema.js';
+import { insertJobRow } from '../jobs/index.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
@@ -190,19 +191,16 @@ async function executeDispatchFallback(
   const run = await openIssueRun({ projectId, issueId });
   let insertedId: string | null = null;
   try {
-    const [inserted] = await db
-      .insert(jobs)
-      .values({
-        projectId,
-        issueId,
-        pipelineRunId: run.id,
-        createdBy: creatorId,
-        type: jobType as never,
-        payload,
-        status: 'queued',
-      } as never)
-      .returning({ id: jobs.id });
-    insertedId = inserted?.id ?? null;
+    const inserted = await insertJobRow(db, {
+      projectId,
+      issueId,
+      pipelineRunId: run.id,
+      createdBy: creatorId,
+      type: jobType as never,
+      payload,
+      status: 'queued',
+    });
+    insertedId = inserted.id;
   } catch (err) {
     if (isUniqueViolation(err)) {
       // Active dispatch of the same type already exists — treat as success

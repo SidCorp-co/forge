@@ -25,6 +25,7 @@ import {
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
+import { insertSessionRow } from '../agent-sessions/index.js';
 import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
 import {
@@ -241,22 +242,18 @@ export async function openRunSession(args: {
       if (winner) return { existing: winner };
     }
     const run = await insertOneShotRun(tx, spec);
-    const [row] = await tx
-      .insert(agentSessions)
-      .values({
-        projectId: args.projectId,
-        deviceId: args.deviceId,
-        pipelineRunId: run.id,
-        title: `run: ${args.name}`,
-        kind: RUN_SESSION_KIND,
-        parentSessionId: masterSessionId,
-        status: 'running',
-        startedAt: new Date(),
-        lastHeartbeatAt: new Date(),
-        metadata: { terminalName: args.name, deviceId: args.deviceId },
-      })
-      .returning({ id: agentSessions.id });
-    if (!row) throw new Error('openRunSession: insert returned no row');
+    const row = await insertSessionRow(tx, {
+      projectId: args.projectId,
+      deviceId: args.deviceId,
+      pipelineRunId: run.id,
+      title: `run: ${args.name}`,
+      kind: RUN_SESSION_KIND,
+      parentSessionId: masterSessionId,
+      status: 'running',
+      startedAt: new Date(),
+      lastHeartbeatAt: new Date(),
+      metadata: { terminalName: args.name, deviceId: args.deviceId },
+    });
     // Inside the transaction on purpose: a key somebody live already holds
     // rolls the run and the session back with it, so a refused open leaves a
     // box with nothing rather than with half a group.

@@ -33,6 +33,7 @@ import {
   skills,
   updatePackets,
 } from '../db/schema.js';
+import { insertJobRow } from '../jobs/index.js';
 import { selectKnowledgeBodies } from '../knowledge/service.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { transition } from '../lifecycle/transition.js';
@@ -592,7 +593,7 @@ async function spawnVerifierJobs(runId: string, projectId: string): Promise<void
 
     const jobId = randomUUID();
     try {
-      await db.insert(jobs).values({
+      await insertJobRow(db, {
         id: jobId,
         projectId,
         issueId: null,
@@ -745,23 +746,19 @@ export async function spawnReconcileRun(input: {
         .returning({ id: reconcileRuns.id });
       if (!run) throw new Error('reconcile_runs insert returned no row');
 
-      const [job] = await tx
-        .insert(jobs)
-        .values({
-          projectId: input.projectId,
-          issueId: null,
-          pipelineRunId: pipelineRun.id,
-          createdBy: input.actorUserId,
-          type: 'reconcile',
-          payload: {
-            reconcileRunId: run.id,
-            skillName: 'forge-reconcile',
-            promptString: buildReconcilePrompt(run.id, reconcileInstructions),
-          },
-          status: 'queued',
-        })
-        .returning({ id: jobs.id });
-      if (!job) throw new Error('reconcile job insert returned no row');
+      const job = await insertJobRow(tx, {
+        projectId: input.projectId,
+        issueId: null,
+        pipelineRunId: pipelineRun.id,
+        createdBy: input.actorUserId,
+        type: 'reconcile',
+        payload: {
+          reconcileRunId: run.id,
+          skillName: 'forge-reconcile',
+          promptString: buildReconcilePrompt(run.id, reconcileInstructions),
+        },
+        status: 'queued',
+      });
 
       await logActivity(tx, {
         eventType: 'reconcile.started',
