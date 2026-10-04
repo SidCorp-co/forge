@@ -1,7 +1,7 @@
 import { contentLanguageProblem } from '@forge/contracts/content-language';
+import { MCP_TOOL_NAMES } from '@forge/contracts/mcp-tools';
 import type { ConfigRefusalCode } from '@forge/contracts/project-config';
 import { resolveProjectTemplates } from '@forge/contracts/workflow-templates';
-import { REGISTERED_TOOLS } from '../mcp/registered-tools.js';
 import {
   type BindingRole,
   type DeploymentTrigger,
@@ -310,10 +310,10 @@ function checkEnvironments(doc: ProjectDocument, ctx: ProjectConfigContext): Con
 
 const FORGE_TOOL_PREFIX = 'mcp__forge__';
 
-// cm:why the grammar (schema.ts:TOOL_PATTERN) cannot see a Forge tool that does not exist; this
-// server knows its own surface, and a deny entry naming no tool denies nothing, silently.
+// The grammar (schema.ts:TOOL_PATTERN) cannot see a Forge tool that does not exist; this server
+// knows its own surface, and a deny entry naming no tool denies nothing, silently.
 const FORGE_TOOLS: ReadonlySet<string> = new Set(
-  REGISTERED_TOOLS.map((name) => `${FORGE_TOOL_PREFIX}${name.replaceAll('.', '_')}`),
+  MCP_TOOL_NAMES.map((name) => `${FORGE_TOOL_PREFIX}${name.replaceAll('.', '_')}`),
 );
 
 function checkDenyEntries(doc: PolicyDocument): ConfigRefusal[] {

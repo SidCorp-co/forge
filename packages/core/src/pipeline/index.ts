@@ -10,3 +10,4 @@ export { pipelineRegistryRoutes } from './registry-routes.js';
 export { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './runs-read-routes.js';
 export { pipelineRunRoutes } from './runs-routes.js';
 export { stepHandoffRoutes } from './step-handoff-routes.js';
+export { forgeProjectPipelineRunsTool } from './tool.js';

@@ -7,25 +7,22 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { HTTPException } from 'hono/http-exception';
 import pkg from '../../package.json' with { type: 'json' };
-import { forgeChannelTool } from '../assistant/tools/forge-channel-tool.js';
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../credentials/mcp-audit.js';
 import { runWithPatScope } from '../credentials/pat-scope.js';
 import { RefusalError } from '../lib/refusal.js';
+import {
+  type McpContext,
+  type McpTool,
+  patEffectiveProjectIds,
+  refusedAnswer,
+} from '../lib/tool.js';
+import { resolveProjectIdFromSlug } from '../projects/index.js';
 import { resolveManagedMetaPrompts } from '../skills/effective.js';
 import { forgeMcpInstructions } from './instructions.js';
+import { MCP_TOOLS } from './registry.js';
 import { toolCallRefusal } from './tool-call-guard.js';
 import { assertToolDeclaresAccess } from './tool-grant.js';
 import { toToolCallContent } from './tool-result.js';
-import { forgeAgentReportTool } from './tools/forge-agent-report.js';
-import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
-import { forgeEcosystemTool } from './tools/forge-ecosystem.js';
-import { forgeGoogleSheetsTool } from './tools/forge-google-sheets.js';
-import { forgeSentryTool } from './tools/forge-sentry.js';
-import { forgeSourceTool } from './tools/forge-source.js';
-import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
-import { forgeUploadsTool } from './tools/forge-uploads.js';
-import { type McpContext, type McpTool, refusedAnswer } from './tools/lib.js';
-import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/project-scope.js';
 
 function classifyError(err: unknown): { code: AuditResultCode; message: string } {
   const message = err instanceof Error ? err.message : String(err);
@@ -48,27 +45,14 @@ function projectIdFromArgs(args: Record<string, unknown>): string | null {
 }
 
 export function mcpTools(ctx: McpContext): McpTool[] {
-  // The REST API is the primary door and the forge CLI sits on it; a tool is served here only
-  // where an agent Forge runs needs it and neither covers it for that agent.
-  const tools: McpTool[] = [
-    // submit reads the caller's live job or session context, which no REST route resolves.
-    forgeAgentReportTool(ctx),
-    // An image attachment comes back as a viewable block; `forge-runner api` prints text only.
-    forgeUploadsTool(ctx),
-    // The channel's unanswered read is device-only over REST and its gate answers across the
-    // ecosystem fence; the ecosystem's contract context has no REST route.
-    forgeChannelTool(ctx),
-    forgeEcosystemTool(ctx),
-    // A core-mediated integration's agent path: the provider credential stays in core, and no REST
-    // route serves these reads and writes (for Coolify, its deployment and runtime logs).
-    forgeSourceTool(ctx),
-    forgeCoolifyDeployTool(ctx),
-    forgeSentryTool(ctx),
-    forgeGoogleSheetsTool(ctx),
-    forgeStorefrontTargetTool(ctx),
-  ];
-  for (const tool of tools) assertToolDeclaresAccess(tool);
-  return tools;
+  return Object.entries(MCP_TOOLS).map(([name, factory]) => {
+    const tool = factory(ctx);
+    if (tool.name !== name) {
+      throw new Error(`mcp registry: the entry ${name} built a tool named ${tool.name}`);
+    }
+    assertToolDeclaresAccess(tool);
+    return tool;
+  });
 }
 
 export function toolListing(tools: McpTool[]) {

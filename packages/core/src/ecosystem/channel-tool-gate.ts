@@ -1,11 +1,11 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { db } from '../../db/client.js';
-import { agentQuestions } from '../../db/schema-questions.js';
-import { RefusalError } from '../../lib/refusal.js';
-import type { Writer } from '../../ecosystem/channel-author.js';
-import { readAs } from '../../ecosystem/channel-read.js';
-import { viewOf } from '../../ecosystem/channel-view.js';
-import { answerAs } from '../../questions/read.js';
+import { db } from '../db/client.js';
+import { agentQuestions } from '../db/schema-questions.js';
+import { RefusalError } from '../lib/refusal.js';
+import { answerAs } from '../questions/read.js';
+import type { Writer } from './channel-author.js';
+import { readAs } from './channel-read.js';
+import { viewOf } from './channel-view.js';
 
 export interface NamedRefusal {
   code: string;

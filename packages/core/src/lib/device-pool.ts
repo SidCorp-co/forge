@@ -19,8 +19,7 @@ export async function findAvailableDeviceForProject(
   const exclude = (opts.excludeDeviceIds ?? []).filter((id): id is string => !!id);
   // Build a parenthesised parameter list and use `NOT IN (...)`. Interpolating a
   // JS array directly (`<> ALL(${exclude}::uuid[])`) expands as a record tuple
-  // ($1,$2,…) → malformed array literal at query time. Same idiom as
-  // mcp/tools/forge-metrics.ts.
+  // ($1,$2,…) → malformed array literal at query time.
   const excludeClause = exclude.length
     ? sql`AND r.device_id NOT IN (${sql.join(
         exclude.map((id) => sql`${id}`),

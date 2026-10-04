@@ -1,16 +1,13 @@
 import { z } from 'zod';
-import { memorySources } from '../../db/schema.js';
-import { EmbeddingUnavailableError } from '../../integrations/embeddings/index.js';
-import { memoryFeedbackInputSchema, runMemoryFeedback } from '../../memory/feedback-service.js';
-import { getMemoryInputSchema, runMemoryGet } from '../../memory/get-service.js';
-import { deleteMemory } from '../../memory/indexer.js';
-import { memorySearchStrategies, runMemorySearch } from '../../memory/search-service.js';
-import { runMemoryWrite, writeMemoryInputSchema } from '../../memory/write-service.js';
-import {
-  type ContextScopedMcpToolFactory,
-  zodToMcpSchema,
-} from './lib.js';
-import { requireCan } from '../../permissions/index.js';
+import { memorySources } from '../db/schema.js';
+import { EmbeddingUnavailableError } from '../integrations/embeddings/index.js';
+import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
+import { requireCan } from '../permissions/index.js';
+import { memoryFeedbackInputSchema, runMemoryFeedback } from './feedback-service.js';
+import { getMemoryInputSchema, runMemoryGet } from './get-service.js';
+import { deleteMemory } from './indexer.js';
+import { memorySearchStrategies, runMemorySearch } from './search-service.js';
+import { runMemoryWrite, writeMemoryInputSchema } from './write-service.js';
 
 const ACTIONS = ['search', 'write', 'get', 'delete', 'feedback'] as const;
 
@@ -82,7 +79,8 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
       try {
         return await runMemorySearch({ ...input, surface: 'agent' });
       } catch (err) {
-        if (err instanceof EmbeddingUnavailableError) throw new Error(`UNAVAILABLE: ${err.message}`);
+        if (err instanceof EmbeddingUnavailableError)
+          throw new Error(`UNAVAILABLE: ${err.message}`);
         throw err;
       }
     }

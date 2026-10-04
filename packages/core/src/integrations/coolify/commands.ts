@@ -1,9 +1,8 @@
 /**
  * The Coolify deploy commands, for every surface that offers them.
  *
- * These lived inside `mcp/tools/forge-coolify-deploy.ts`, which made the MCP
- * tool the only way to reach them. The REST twin under
- * `/api/projects/:projectId/integrations/...` calls the same functions rather
+ * The MCP tool (`integrations/coolify/tool.ts`) and the REST twin under
+ * `/api/projects/:projectId/integrations/...` call the same functions rather
  * than restating the branch rules — `deploy` in particular decides whether a
  * PROD binding may dispatch, and that decision must not exist twice.
  *

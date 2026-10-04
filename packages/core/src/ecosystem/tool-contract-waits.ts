@@ -4,16 +4,12 @@ import {
   CONTRACT_WAIT_LIMITS,
 } from '@forge/contracts/contract-waits';
 import { z } from 'zod';
-import { listContractRequests } from '../../ecosystem/requests/read.js';
-import { issueContractWaitsOf } from '../../ecosystem/waits/read.js';
-import {
-  addContractWait,
-  retractContractWait,
-  type WaitOutcome,
-} from '../../ecosystem/waits/service.js';
-import { resolveIssueRouteRef } from '../../issues/issue-route-ref.js';
-import { type McpContext, refusedAnswer } from './lib.js';
-import { requireCan } from '../../permissions/index.js';
+import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
+import { type McpContext, refusedAnswer } from '../lib/tool.js';
+import { requireCan } from '../permissions/index.js';
+import { listContractRequests } from './requests/read.js';
+import { issueContractWaitsOf } from './waits/read.js';
+import { addContractWait, retractContractWait, type WaitOutcome } from './waits/service.js';
 
 export const WAIT_READS = ['contract_waits', 'contract_requests'] as const;
 export const WAIT_WRITES = ['contract_wait_add', 'contract_wait_retract'] as const;

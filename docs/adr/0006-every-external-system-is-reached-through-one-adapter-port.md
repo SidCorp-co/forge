@@ -109,7 +109,7 @@ sentence that justifies it, and an exception with no reason is refused.
     outside `integrations`, read on 2026-10-04). Ends when that module exports role-typed capture functions and
     no caller names `Sentry`.
   - Three domain files call a vendor directory where a source-hosting port exists:
-    `mcp/tools/forge-source.ts` (`github/opened-pull-request`, `github/review-note`),
+    `integrations/source-host/tool.ts` (`github/opened-pull-request`, `github/review-note`),
     `issues/merge-routes.ts` (`github/projection-health`) and `webhooks/github-adapter.ts`
     (`github/projection-events`). These are GitHub-only behaviours with no GitLab counterpart yet.
     Ends when each is a `source-host` function, at which point the scan can also refuse a domain

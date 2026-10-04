@@ -1,3 +1,5 @@
+import type { McpPrincipal } from '../middleware/require-pat.js';
+
 export type ActorAgency = 'human' | 'agent';
 
 /** The agency an audit row records: a device's is `agent`, a user's is its door's, and none is refused. */
@@ -22,3 +24,8 @@ export type DeviceLite = { id: string; ownerId: string };
 export type TransitionActor =
   | { type: 'user'; id: string; agency: ActorAgency }
   | ({ type: 'device' } & DeviceLite);
+
+/** Who was at the keyboard for an agent-tool call: a paired box is an agent, a token its own agency. */
+export function principalAgency(principal: McpPrincipal): ActorAgency {
+  return principal.deviceId ? 'agent' : actorAgency({ type: 'user', agency: principal.agency });
+}

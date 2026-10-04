@@ -1,21 +1,18 @@
 import type { StorefrontRefusalCode } from '@forge/contracts/storefront';
 import { z } from 'zod';
-import { buildMcpPreview } from '../../integrations/mcp-preview-service.js';
-import { listIntegrations } from '../../integrations/registry.js';
+import { refuser } from '../lib/refusal.js';
+import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
+import { requireCan } from '../permissions/index.js';
+import { resolveEffectiveProjectId } from '../projects/index.js';
+import { buildMcpPreview } from './mcp-preview-service.js';
+import { listIntegrations } from './registry.js';
 import {
   type BindingWithConnection,
   decryptConnectionSecrets,
   effectiveConfig,
   listActiveBindingsForProjectProvider,
-} from '../../integrations/store.js';
-import type { IntegrationDeclaration } from '../../integrations/types.js';
-import { refuser } from '../../lib/refusal.js';
-import {
-  type ContextScopedMcpToolFactory,
-  resolveEffectiveProjectId,
-  zodToMcpSchema,
-} from './lib.js';
-import { requireCan } from '../../permissions/index.js';
+} from './store.js';
+import type { IntegrationDeclaration } from './types.js';
 
 const refuse = refuser<StorefrontRefusalCode>('STOREFRONT_REFUSED');
 

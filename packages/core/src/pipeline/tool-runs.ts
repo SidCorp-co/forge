@@ -5,19 +5,16 @@
  */
 
 import { z } from 'zod';
-import { pipelineRunStatuses } from '../../db/schema.js';
-import type { McpPrincipal } from '../../middleware/require-pat.js';
-import { countRunJobsByStatus, listPipelineRuns, readPipelineRun } from '../../pipeline/runs.js';
-import {
-  cancelPipelineRun,
-  pausePipelineRun,
-  resumePipelineRun,
-} from '../../pipeline/runs-control.js';
-import { laneOf } from '../../pipeline/runs-lane.js';
-import { loadRunLivenessByRunIds, residentMasterOn } from '../../pipeline/runs-liveness.js';
-import { principalAgency, principalUserId } from './lib.js';
-import { requireCan } from '../../permissions/index.js';
-import { buildListEnvelope, overfetch } from './list-envelope.js';
+import { pipelineRunStatuses } from '../db/schema.js';
+import { principalAgency } from '../issues/index.js';
+import { buildListEnvelope, overfetch } from '../lib/list-envelope.js';
+import { principalUserId } from '../lib/tool.js';
+import type { McpPrincipal } from '../middleware/require-pat.js';
+import { requireCan } from '../permissions/index.js';
+import { countRunJobsByStatus, listPipelineRuns, readPipelineRun } from './runs.js';
+import { cancelPipelineRun, pausePipelineRun, resumePipelineRun } from './runs-control.js';
+import { laneOf } from './runs-lane.js';
+import { loadRunLivenessByRunIds, residentMasterOn } from './runs-liveness.js';
 
 export const pipelineRunsListInputSchema = z
   .object({

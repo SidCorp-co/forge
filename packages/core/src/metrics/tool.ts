@@ -1,11 +1,8 @@
 import { z } from 'zod';
-import { jobTypes } from '../../db/schema.js';
-import { BUCKETS, METRICS, runTimeseries, stepDurationsForProject } from '../../metrics/queries.js';
-import {
-  type ContextScopedMcpToolFactory,
-  zodToMcpSchema,
-} from './lib.js';
-import { requireCan } from '../../permissions/index.js';
+import { jobTypes } from '../db/schema.js';
+import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
+import { requireCan } from '../permissions/index.js';
+import { BUCKETS, METRICS, runTimeseries, stepDurationsForProject } from './queries.js';
 
 const stepEnum = z.enum(jobTypes);
 

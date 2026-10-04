@@ -4,10 +4,10 @@ import { buildChatToolContext } from '../../assistant/tools/principal.js';
 import { buildProjectToolset } from '../../assistant/tools/registry.js';
 import { withTurnImages } from '../../assistant/tools/turn-images.js';
 import type { ImageResolver, TurnImage } from '../../assistant/vision.js';
-import type { TurnCredential } from '../../credentials/turn-credential.js';
 import { buildTranscriptSearchToolset } from '../../conversations/transcript-search-tool.js';
+import type { TurnCredential } from '../../credentials/turn-credential.js';
+import type { ChatTurnFacts } from '../../lib/tool.js';
 import { logger } from '../../logger.js';
-import type { ChatTurnFacts } from '../../mcp/tools/lib.js';
 import { buildRocketChatHistoryToolset, buildRocketChatQuoteContextToolset } from './context.js';
 import {
   buildMessagePermalink,

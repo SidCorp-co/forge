@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { REGISTER_STATUSES } from '../../ecosystem/channel-register.js';
-import { NUMBER_PATTERN, UUID_PATTERN } from '../../ecosystem/channel-schema.js';
-import type { EcosystemRefusal } from '../../ecosystem/refusals.js';
-import { DOCUMENT_TYPES } from '../../ecosystem/schema.js';
+import { REGISTER_STATUSES } from './channel-register.js';
+import { NUMBER_PATTERN, UUID_PATTERN } from './channel-schema.js';
+import type { EcosystemRefusal } from './refusals.js';
+import { DOCUMENT_TYPES } from './schema.js';
 
 export const CHANNEL_READS = [
   'register',

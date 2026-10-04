@@ -11,15 +11,15 @@ binding per project. A **deployment-bound** port reads the environment and expor
 
 | Port | Directory | Vendors | Bound to | Called from |
 |---|---|---|---|---|
-| source hosting | `source-host/` over `github/`, `gitlab/` | GitHub, GitLab | project | `ecosystem/builder-head.ts`, `ecosystem/contract/land.ts`, `git/remote-divergence.ts`, `issues/commit-landing.ts`, `issues/merge-routes.ts`, `mcp/tools/forge-source.ts`, `projects/commit-owners.ts`, `projects/live-reach.ts`, `projects/live-reading.ts`, `projects/live-source.ts` |
-| deploy | `../project-config/deploy-adapters` (contract), `coolify/`, `deploy/` | Coolify; a deployed app's runtime probe | project | `project-config/environment-state.ts`, `project-config/environment-state-read.ts`, `release-batch/verify.ts`, `mcp/tools/forge-coolify-deploy.ts` |
-| error tracking | `sentry/` | Sentry | project | `schedules/sentry-pull-dispatch.ts`, `mcp/tools/forge-sentry.ts` |
+| source hosting | `source-host/` over `github/`, `gitlab/` | GitHub, GitLab | project | `ecosystem/builder-head.ts`, `ecosystem/contract/land.ts`, `git/remote-divergence.ts`, `issues/commit-landing.ts`, `issues/merge-routes.ts`, `source-host/tool.ts`, `projects/commit-owners.ts`, `projects/live-reach.ts`, `projects/live-reading.ts`, `projects/live-source.ts` |
+| deploy | `../project-config/deploy-adapters` (contract), `coolify/`, `deploy/` | Coolify; a deployed app's runtime probe | project | `project-config/environment-state.ts`, `project-config/environment-state-read.ts`, `release-batch/verify.ts`, `coolify/tool.ts` |
+| error tracking | `sentry/` | Sentry | project | `schedules/sentry-pull-dispatch.ts`, `sentry/tool.ts` |
 | storefront | `epodsystem/`, `autoflow/` | ePodSystem, Autoflow | project | the registry only |
-| documents | `google/` | Google Sheets | project | `mcp/tools/forge-google-sheets.ts` |
+| documents | `google/` | Google Sheets | project | `google/tool.ts` |
 | chat | `rocketchat/` | Rocket.Chat | project | `assistant/identity/directory.ts`, `agent-sessions/terminal-effects.ts`, `index.ts` |
-| contract testing | `postman/` | Postman | project | `index.ts` (target routes) |
+| contract testing | `postman/` | Postman | project | `route-registry.ts` (target routes) |
 | LLM | `llm/` | OpenAI-compatible endpoints (LiteLLM), Anthropic Messages | deployment | `assistant/*` (the chat turn, BA tools, bench judge, catalog cost), `conversations/turn-runner.ts`, `memory/extraction.ts`, `memory/consolidation.ts`, `memory/rerank.ts`, `agent-sessions/auto-title.ts`, `app-config/routes.ts` |
-| embeddings | `embeddings/` | OpenAI-compatible endpoints | deployment | `memory/*`, `knowledge/*`, `requirements/embeddings.ts`, `embeddings/item-writer.ts`, `issues/backlog/alike-source.ts`, `mcp/tools/forge-memory.ts`, `mcp/tools/forge-knowledge.ts` |
+| embeddings | `embeddings/` | OpenAI-compatible endpoints | deployment | `memory/*`, `knowledge/*`, `requirements/embeddings.ts`, `embeddings/item-writer.ts`, `issues/backlog/alike-source.ts`, `memory/tool.ts`, `knowledge/tool.ts` |
 | mail | `mail/` | SMTP | deployment | `auth/email.ts`, `projects/invitation-email.ts` |
 | identity | `identity/` | GitHub OAuth, Google, generic OIDC | deployment | `auth/oauth/*` |
 | outbound webhooks | `outbound-webhooks/` | a customer's URL | project webhook row | `webhooks/subscribers.ts`, `index.ts` |

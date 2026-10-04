@@ -109,10 +109,11 @@ và CLI hơn thì không cần MCP".
   routes, lives in its module (**tool.ts**), and calls the same service and read functions as the
   route. Its input is one `z.strictObject`; it declares `grant`, `reach` and `route`, and both doors
   refuse a call through `packages/core/src/mcp/tool-call-guard.ts:toolCallRefusal`.
-- **One route-mount registry** in the HTTP door mounts every module's exported `routes`, and one MCP
-  registry registers the remaining tools. Nothing else mounts a router: today's `.route()` calls in
-  `packages/core/src/index.ts` and the slice mounts in `packages/core/src/project-config/mount.ts`
-  and `packages/core/src/issues/mount.ts` move there.
+- **One route-mount registry** in the HTTP door mounts every module's exported `routes`
+  (`packages/core/src/route-registry.ts:mountRoutes`), and one MCP registry registers the remaining
+  tools (`packages/core/src/mcp/registry.ts:MCP_TOOLS`, keyed by
+  `packages/contracts/src/mcp-tools.ts:MCP_TOOL_NAMES`). Nothing else mounts another module's
+  router; `packages/core/src/index.ts` only boots.
 - **Answers.** A list answers summaries and a write answers what it changed: `act`, the entity's
   head, and the relation or revision it touched. A whole document comes only from `get` or
   `view: 'full'`, with the summary field set declared in contracts beside the full shape
@@ -177,8 +178,8 @@ A write a rule refuses answers **422** with one body, and nothing is written:
 ```
 
 - **Both doors** build it with `packages/core/src/lib/refusal.ts:refusalEnvelope`: REST through
-  `packages/core/src/project-config/respond.ts:refused` (moving into platform beside the envelope),
-  MCP through `packages/core/src/mcp/tools/lib.ts:refusedAnswer`, flagged `isError`.
+  `packages/core/src/lib/refusal.ts:refused`, under the module's `<MODULE>_REFUSED` fallback code,
+  MCP through `packages/core/src/lib/tool.ts:refusedAnswer`, flagged `isError`.
 - **A service returns its refusals; it never throws them.** A guard that runs before the service
   throws `packages/core/src/lib/refusal.ts:RefusalError`, built by the module's typed
   `packages/core/src/lib/refusal.ts:refuser`, which `packages/core/src/middleware/error.ts`

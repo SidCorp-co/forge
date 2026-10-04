@@ -243,8 +243,8 @@
           "why": "The one hand-built card, keyed 'github', is derived from `projects.repoUrl` and NOT from any integration binding \u2014 which is exactly why `githubIntegration` declares `presentation: null`, so the registry loop cannot emit a second card that collides with it. Every other card in this file comes from a declaration."
         },
         {
-          "glob": "packages/core/src/mcp/tools/forge-storefront-target.ts",
-          "why": "An MCP tool module dedicated to one provider, sitting in `mcp/tools/` because that is where the MCP server discovers its `forge-*.ts` tools \u2014 the directory is the server's convention, not a generic path. The tool exists only to answer questions about epodsystem; no other provider's request reaches it."
+          "glob": "packages/core/src/integrations/tool.ts",
+          "why": "The `forge_storefront_target` MCP tool, living in the integrations module it reads through `integrations/registry.ts`. It answers only about the storefront providers (epodsystem, autoflow) and names them in the description a model reads; no other provider's request reaches it."
         },
         {
           "glob": "packages/core/src/pipeline/release-coolify.ts",

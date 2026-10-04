@@ -3,7 +3,7 @@
  * the five pipeline-run actions.
  *
  * Implementation lives in the per-action pure handlers exported by
- * `./forge-pipeline-runs.ts`. This file owns input validation, required-field
+ * `./tool-runs.ts`. This file owns input validation, required-field
  * checks per action, and routing. Authorization is re-applied inside each
  * handler — list gates on the projectId argument, the runId-resolved actions
  * gate after the run lookup, both through `requireCan(…, 'project.read', …)` — so the
@@ -11,15 +11,15 @@
  */
 
 import { z } from 'zod';
-import { pipelineRunStatuses } from '../../db/schema.js';
+import { pipelineRunStatuses } from '../db/schema.js';
+import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
 import {
   pipelineRunsCancelHandler,
   pipelineRunsGetHandler,
   pipelineRunsListHandler,
   pipelineRunsPauseHandler,
   pipelineRunsResumeHandler,
-} from './forge-pipeline-runs.js';
-import { type ContextScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
+} from './tool-runs.js';
 
 const inputSchema = z
   .object({

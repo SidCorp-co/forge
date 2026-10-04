@@ -7,7 +7,8 @@
 import { MOCKUP_LIMITS } from '@forge/contracts/mockups';
 import { WIREFRAME_VERSION } from '@forge/contracts/wireframe';
 import { z } from 'zod';
-import { type ContextScopedMcpToolFactory, principalAgency } from '../../mcp/tools/lib.js';
+import { principalAgency } from '../../issues/index.js';
+import type { ContextScopedMcpToolFactory } from '../../lib/tool.js';
 import { proposeMockup } from '../../mockups/service.js';
 
 const drawInput = z.strictObject({

@@ -97,7 +97,7 @@ deleting them would rewrite history rather than correct it; this document is the
 
 | Cost | What it buys, and who pays |
 |---|---|
-| One registry is a refactor of every route and tool | Each capability's filters, projection, ordering and pagination leave its handler. Structural parity is the payoff; the bill is most of `mcp/tools/` and a large share of the route modules, with nothing user-visible to show |
+| One registry is a refactor of every route and tool | Each capability's filters, projection, ordering and pagination leave its handler. Structural parity is the payoff; the bill is most of the tools and a large share of the route modules, with nothing user-visible to show |
 | MCP loses hand-tuning | Several tools shape output for an agent's context budget in ways a REST client does not want. Those differences become declared projections or are given up, and some will be given up |
 | The parity suite blocks merges | That is the point. A drifting pair stops a release until someone fixes it or removes the pair with a written reason. Teams who prefer the drift will feel this as friction, correctly |
 | Dropping the lifecycle tools moves work to the plugin | Step handoffs and phases have 1-to-1 REST routes so core pays nothing — but the plugin must change its calls on its own clock, and nothing here can gate that half |
