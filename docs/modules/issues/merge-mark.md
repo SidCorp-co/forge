@@ -106,7 +106,7 @@ had shipped.
 
 Both doors answer what happened as `lifecycle`, and the audit comment carries the same sentence. The
 strand sweep reads a landed `in_progress` row at step `test` as waiting on a judge, and a landed `open`
-row as waiting on the run that claims it (`pipeline/strand-rules.ts:landedWait`), rather than on the
+row as waiting on the run that claims it (`packages/core/src/pipeline/strand-rules.ts:landedWait`), rather than on the
 claim of the run that landed it.
 
 ## What counts as landed depends on the project's shape

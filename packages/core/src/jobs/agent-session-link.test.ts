@@ -332,17 +332,6 @@ describe('jobs/agent-session-link', () => {
       expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-1', 'cancelled');
     });
 
-    it('ISS-100: every job outcome maps to a session status the session set holds', () => {
-      for (const to of Object.values(SESSION_STATUS_OF_JOB_OUTCOME)) {
-        expect(TERMINAL).toContain(to);
-      }
-      expect(SESSION_STATUS_OF_JOB_OUTCOME).toEqual({
-        done: 'completed',
-        failed: 'failed',
-        cancelled: 'cancelled',
-      });
-    });
-
     it('maps failed → failed and closes one-shot run as failed', async () => {
       await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'failed');
       expect(updateCalls[0]?.set.status).toBe('failed');
@@ -362,6 +351,19 @@ describe('jobs/agent-session-link', () => {
         retryPending: true,
       });
       expect(closeRunIfOneShotMock).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('jobs/agent-session-link — a job outcome is its session status (ISS-100)', () => {
+  it('ISS-100: every job outcome maps to a session status the session set holds', () => {
+    for (const to of Object.values(SESSION_STATUS_OF_JOB_OUTCOME)) {
+      expect(TERMINAL).toContain(to);
+    }
+    expect(SESSION_STATUS_OF_JOB_OUTCOME).toEqual({
+      done: 'completed',
+      failed: 'failed',
+      cancelled: 'cancelled',
     });
   });
 });

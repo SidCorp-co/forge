@@ -444,26 +444,13 @@ describe('reapOrphanedOneShotRuns (ISS-445 — still an ACTIVE reaper)', () => {
     expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-stale', 'failed');
   });
 
-  it('closes a run as completed when the session already finished (missed /desktop/status)', async () => {
+  it.each(['completed', 'cancelled'])('closes a run as %s once its sessions ended', async (to) => {
     dbExecute.mockResolvedValueOnce([{ id: 'run-done' }]);
     sessionsWhere.mockResolvedValueOnce([]);
-    selectWhere.mockResolvedValueOnce([{ status: 'completed' }]);
-
+    selectWhere.mockResolvedValueOnce([{ status: to }]);
     const result = await reapOrphanedOneShotRuns(new Date('2026-06-12T00:00:00Z'));
-
     expect(result.reaped).toBe(1);
-    expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-done', 'completed');
-  });
-
-  it('ISS-100: closes a run whose sessions were only cancelled as cancelled, never failed or completed', async () => {
-    dbExecute.mockResolvedValueOnce([{ id: 'run-cancelled' }]);
-    sessionsWhere.mockResolvedValueOnce([]);
-    selectWhere.mockResolvedValueOnce([{ status: 'cancelled' }]);
-
-    const result = await reapOrphanedOneShotRuns(new Date('2026-06-12T00:00:00Z'));
-
-    expect(result.reaped).toBe(1);
-    expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-cancelled', 'cancelled');
+    expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-done', to);
   });
 
   it('does not let one failing run abort the pass', async () => {

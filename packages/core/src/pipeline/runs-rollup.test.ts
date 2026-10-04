@@ -204,6 +204,16 @@ const GATE_AT_OPEN = (
   ) as { degraded: Record<string, unknown> }
 ).degraded;
 
+const ZERO_COST = {
+  estimatedCost: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 0,
+  requests: 0,
+  sampleCount: 0,
+};
+
 describe('loadPipelineRunSummary', () => {
   it('returns null when the run is missing', async () => {
     runRowQueue.push([]);
@@ -225,17 +235,7 @@ describe('loadPipelineRunSummary', () => {
         hasOpen: 0,
       },
     ]);
-    costQueue.push([
-      {
-        estimatedCost: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        requests: 0,
-        sampleCount: 0,
-      },
-    ]);
+    costQueue.push([ZERO_COST]);
 
     const result = await loadPipelineRunSummary(RUN_ID);
     expect(result?.steps).toHaveLength(1);
@@ -248,35 +248,15 @@ describe('loadPipelineRunSummary', () => {
 
   it('ISS-100: a step whose sessions were only cancelled reads cancelled, not pending or completed', async () => {
     runRowQueue.push([runRow]);
+    const [startedAt, finishedAt] = [new Date('2026-05-12T00:01Z'), new Date('2026-05-12T00:02Z')];
     stepsQueue.push([
-      {
-        jobType: 'drive',
-        latestId: SESS_A,
-        startedAt: new Date('2026-05-12T00:01:00.000Z'),
-        finishedAt: new Date('2026-05-12T00:02:00.000Z'),
-        hasRunning: 0,
-        hasFailed: 0,
-        hasCompleted: 0,
-        hasCancelled: 1,
-        hasOpen: 0,
-      },
+      { jobType: 'drive', latestId: SESS_A, startedAt, finishedAt, hasCancelled: 1 },
     ]);
-    costQueue.push([
-      {
-        estimatedCost: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        requests: 0,
-        sampleCount: 0,
-      },
-    ]);
+    costQueue.push([ZERO_COST]);
 
-    const step = (await loadPipelineRunSummary(RUN_ID))!.steps[0]!;
-    expect(step.status).toBe('cancelled');
-    expect(step.finishedAt).toBe('2026-05-12T00:02:00.000Z');
-    expect(step.durationMs).toBe(60_000);
+    const [step] = (await loadPipelineRunSummary(RUN_ID))?.steps ?? [];
+    expect(step).toMatchObject({ status: 'cancelled', durationMs: 60_000 });
+    expect(step?.finishedAt).toBe('2026-05-12T00:02:00.000Z');
   });
 
   it('terminal step computes durationMs from startedAt → finishedAt', async () => {
@@ -317,17 +297,7 @@ describe('loadPipelineRunSummary', () => {
   it('empty run → steps:[] and cost.sampleCount=0', async () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
-    costQueue.push([
-      {
-        estimatedCost: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        requests: 0,
-        sampleCount: 0,
-      },
-    ]);
+    costQueue.push([ZERO_COST]);
 
     const result = await loadPipelineRunSummary(RUN_ID);
     expect(result?.steps).toEqual([]);
