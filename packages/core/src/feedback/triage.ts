@@ -427,7 +427,6 @@ export async function triageFeedback(input: {
   await assertProjectAccess(projectId, actor.userId, 'viewer');
   const forbidden = decideActRefusal(
     await roleFacts(actor, projectId),
-    projectId,
     'picking a feedback route',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };
@@ -461,7 +460,6 @@ export async function routeFeedback(input: {
   await assertProjectAccess(projectId, actor.userId, 'viewer');
   const forbidden = decideActRefusal(
     await roleFacts(actor, projectId),
-    projectId,
     "writing a feedback case's route",
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };

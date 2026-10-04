@@ -69,7 +69,7 @@ Nothing ever reads an item as \`verified\` on its own.
   (\`FEEDBACK_DECLINE_REASON_REQUIRED\`); it moves the item to \`declined\` and closes its case.
 - **Triage is an approval.** Triage and writing a case's route take \`feedback.approve\` on the project
   (project admin, or an org owner or admin), person or agent alike; without it the call is refused
-  \`APPROVE_PERMISSION_REQUIRED\` naming the permission. Without it, send \`propose_triage\`
+  \`PERMISSION_FORBIDDEN\` naming the permission. Without it, send \`propose_triage\`
   \`{ feedback, triage }\`, which writes a \`feedback_triage\` suggestion stamped by core with the nearest
   item (\`dedup\`, or why dedup did not run); a holder accepts it (\`forge_suggestions accept\`), and the
   accept is the triage (${guideRef('suggestions')}).
@@ -85,7 +85,7 @@ route, declining included, closes the open question.
 ### After it ships
 - \`verify\` follows \`resolved\` and nothing else (\`FEEDBACK_NOT_RESOLVED\`): an item is never verified
   before its fix shipped, and never automatically. It takes \`feedback.approve\`
-  (\`APPROVE_PERMISSION_REQUIRED\` without it).
+  (\`PERMISSION_FORBIDDEN\` without it).
 - \`reopen\` \`{ reason }\` also follows \`resolved\`, says what the fix does not answer
   (\`FEEDBACK_REOPEN_REASON_REQUIRED\`), and sends the item back to triage.
 - Every triage, route write, decline, verify, reopen, redaction and promotion is kept as its own decision record, so
@@ -95,8 +95,9 @@ route, declining included, closes the open question.
 On a project whose data policy is \`redact\` or \`no_egress\`, the title, body, where-seen text, answer and
 every decision reason are scrubbed on write. On a \`no_egress\` project every answer of this door carries
 metadata only, and a text search (\`q\`) is \`FEEDBACK_SEARCH_WITHHELD\`: list by phase instead.
-\`delete_reporter_data\` deletes an item's text, attachments and embedding while keeping the row; it is a
-project admin person's act (\`FEEDBACK_REDACT_FORBIDDEN\`).
+\`delete_reporter_data\` deletes an item's text, attachments and embedding while keeping the row; it takes
+\`feedback.redact\` (project admin), which a token holds only where its own grant names it
+(\`PERMISSION_FORBIDDEN\` without it).
 
 ### Reading the list
 \`list\` \`{ phase?, q?, requirement? }\` answers each item's derived phase and who it waits on: a person to

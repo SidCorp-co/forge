@@ -31,9 +31,9 @@ import { edgeBetween } from '@forge/contracts/state-machine';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
-import { approvalRefusalFor } from '../lib/approval.js';
 import type { Guard, GuardInput } from '../lifecycle/transition.js';
 import type { Refusal } from '../lib/refusal.js';
+import { permissionRefusalFor } from '../permissions/index.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { planDriftOf } from '../requirements/plan-drift.js';
 import type { ActorAgency } from './actor-agency.js';
@@ -51,7 +51,7 @@ export type GuardCode =
   | 'WORKFLOW_DESIGN_NOT_APPROVED'
   | 'CONTRACT_WAIT_UNSETTLED'
   | 'PLAN_REQUIRED'
-  | 'APPROVE_PERMISSION_REQUIRED'
+  | 'PERMISSION_FORBIDDEN'
   | 'NO_WORK_EVIDENCE'
   | 'VERDICT_IDENTITY_REQUIRED'
   | 'VERDICT_PREDATES_REOPEN'
@@ -240,10 +240,10 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
     };
   }
   if (await planApprovalRequired(ctx.issue.projectId)) {
-    const denied = await approvalRefusalFor(
+    const denied = await permissionRefusalFor(
       { userId: ctx.actorUserId },
       ctx.issue.projectId,
-      'plans',
+      'plans.approve',
       'moving an issue to `approved` (project document `plan.approval.required`)',
     );
     if (denied) {
@@ -254,7 +254,7 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
           from: ctx.from,
           to: ctx.to,
           permission: denied.permission,
-          resource: denied.resource,
+          scope: denied.scope,
           rule: 'plan.approval.required',
         },
       };

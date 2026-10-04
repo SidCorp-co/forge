@@ -20,7 +20,8 @@ import { itemEmbeddings } from '../db/schema-item-embeddings.js';
 import { mockups } from '../db/schema-mockups.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
+import { assertProjectAccess } from '../lib/authz.js';
+import { permissionFactsOf } from '../permissions/index.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
 import type { NamedRefusal } from '../project-config/respond.js';
@@ -83,10 +84,8 @@ export async function answer(
   return { ok: true, feedback: await detailAs(viewer, projectId, id), ...extra };
 }
 
-export async function roleFacts(actor: FeedbackActor, projectId: string) {
-  const access = await effectiveProjectRole(actor.userId, projectId);
-  return { userId: actor.userId, agency: actor.agency, role: access?.role ?? null };
-}
+export const roleFacts = (actor: FeedbackActor, projectId: string) =>
+  permissionFactsOf(actor.userId, projectId);
 
 export async function decide(
   tx: Tx,
@@ -270,7 +269,6 @@ async function personalAct(
   await assertProjectAccess(projectId, actor.userId, 'viewer');
   const forbidden = verifyActRefusal(
     await roleFacts(actor, projectId),
-    projectId,
     act === 'verified' ? 'verifying feedback' : 'reopening feedback',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };

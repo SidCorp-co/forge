@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { mayApprove } from '../lib/approval.js';
-import { loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, forbidden } from '../middleware/route-errors.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { holds, requireHeld } from '../permissions/index.js';
 import { readNeedsYou } from './needs-you-read.js';
 
 const projectParam = z.object({ id: z.uuid() });
@@ -28,13 +28,13 @@ needsYouRoutes.get(
     const agency = c.get('agency');
     if (!agency) throw new Error('needs-you: a request reached its handler without an auth gate');
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
     return c.json(
       await readNeedsYou(projectId, {
         userId,
         agency,
-        isAdmin: projectRoleAtLeast(access.role, 'admin'),
-        mayApprove: mayApprove({ userId, role: access.role }, 'releases'),
+        isAdmin: holds(access, 'project.admin'),
+        mayApprove: holds(access, 'releases.approve'),
       }),
     );
   },

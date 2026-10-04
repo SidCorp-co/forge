@@ -3,8 +3,8 @@ import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
-import { approverFactsOf, mayApprove } from '../../lib/approval.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
+import { holds, permissionFactsOf } from '../../permissions/index.js';
 import { versionsOf } from '../contract/store.js';
 import type { StandingViewer, VersionFact } from './standing.js';
 
@@ -14,9 +14,9 @@ export const refOf = (providerSlug: string, slug: string) => `${providerSlug}/${
 
 export async function viewerOf(projectId: string, userId: string | null): Promise<StandingViewer> {
   if (!userId) return { decides: () => false, acts: false };
-  const facts = await approverFactsOf(userId, projectId);
-  const decides = mayApprove(facts, 'contracts');
-  return { decides: () => decides, acts: mayApprove(facts, 'feedback') };
+  const facts = await permissionFactsOf(userId, projectId);
+  const decides = holds(facts, 'contracts.approve');
+  return { decides: () => decides, acts: holds(facts, 'feedback.approve') };
 }
 
 export async function versionFacts(

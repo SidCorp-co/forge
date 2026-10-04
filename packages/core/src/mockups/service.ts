@@ -14,7 +14,7 @@ import { mockups } from '../db/schema-mockups.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import { issueRefIn, requirementRefIn } from '../feedback/refs.js';
-import { approverFactsOf } from '../lib/approval.js';
+import { permissionFactsOf } from '../permissions/index.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
@@ -232,7 +232,7 @@ async function deciderFor(
   key: string,
   act: 'accept' | 'return',
 ) {
-  return deciderRefusal(await approverFactsOf(actor.userId, projectId), projectId, key, act);
+  return deciderRefusal(await permissionFactsOf(actor.userId, projectId), key, act);
 }
 
 /** A holder of mockups.approve accepts a proposed mockup, its author included. */

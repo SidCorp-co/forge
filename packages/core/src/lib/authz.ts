@@ -42,6 +42,8 @@ export type ProjectAccess = {
   role: ProjectMemberRole | null;
   /** Caller's role in the project's org. null = not in the org. */
   orgRole: OrgMemberRole | null;
+  /** Permissions the membership holds beyond its role. */
+  grants: readonly string[];
 };
 
 export function projectRoleAtLeast(
@@ -90,12 +92,13 @@ export async function effectiveProjectRole(
       .where(eq(projects.id, projectId))
       .limit(1);
     if (!row) return null;
-    return { projectId, orgId: row.orgId, role: null, orgRole: null };
+    return { projectId, orgId: row.orgId, role: null, orgRole: null, grants: [] };
   }
   const [row] = await db
     .select({
       orgId: projects.orgId,
       memberRole: projectMembers.role,
+      grants: projectMembers.grants,
       orgRole: organizationMembers.role,
     })
     .from(projects)
@@ -115,6 +118,7 @@ export async function effectiveProjectRole(
     orgId: row.orgId,
     role: maxProjectRole(row.memberRole ?? null, orgDerivedProjectRole(row.orgRole ?? null)),
     orgRole: row.orgRole ?? null,
+    grants: row.grants ?? [],
   };
 }
 

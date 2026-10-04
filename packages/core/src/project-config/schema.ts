@@ -165,7 +165,7 @@ export const projectDocumentSchema = z.strictObject({
   }),
   // cm:why plan approval held as a project rule: `required` makes the kernel refuse a move into
   // `approved` by an actor without plans.approve (`issues/transition-guards.ts:planGuard`, refusal
-  // APPROVE_PERMISSION_REQUIRED); absent is not required, and a run's own plan checkpoint is enough.
+  // PERMISSION_FORBIDDEN); absent is not required, and a run's own plan checkpoint is enough.
   plan: z
     .strictObject({
       approval: z.strictObject({ required: z.boolean() }),

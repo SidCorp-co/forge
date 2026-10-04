@@ -3,7 +3,7 @@
  * whoever holds contracts.approve on the provider project (ADR 0007), a breaking version included.
  */
 
-import { type ApproverFacts, approvalRefusal } from '../../lib/approval.js';
+import { type PermissionFacts, permissionRefusal } from '../../permissions/index.js';
 
 export const CONTRACT_APPROVALS = ['proposed', 'approved', 'returned'] as const;
 export type ContractApproval = (typeof CONTRACT_APPROVALS)[number];
@@ -19,7 +19,7 @@ export type DecidedAs = 'person' | 'agent' | 'before-approval';
 export type ApprovalRefusalCode =
   | 'CONTRACT_VERSION_NOT_PROPOSED'
   | 'CONTRACT_DECISION_REASON_MISSING'
-  | 'APPROVE_PERMISSION_REQUIRED';
+  | 'PERMISSION_FORBIDDEN';
 
 export interface ApprovalRefusal {
   code: ApprovalRefusalCode;
@@ -28,11 +28,10 @@ export interface ApprovalRefusal {
 }
 
 export function approverRefusal(
-  facts: ApproverFacts,
+  facts: PermissionFacts,
   version: { ref: string },
-  projectId: string,
 ): ApprovalRefusal | null {
-  return approvalRefusal(facts, 'contracts', projectId, `deciding ${version.ref}`);
+  return permissionRefusal(facts, 'contracts.approve', `deciding ${version.ref}`);
 }
 
 export function decisionRefusals(input: {

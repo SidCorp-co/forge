@@ -2428,7 +2428,7 @@
       "idx": 378,
       "version": "7",
       "when": 1815609600000,
-      "tag": "0378_a_retired_issue_status_is_stored_nowhere",
+      "tag": "0378_a_membership_carries_a_grant_of_permissions",
       "breakpoints": true
     }
   ]

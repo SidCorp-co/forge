@@ -94,7 +94,7 @@ const DESCRIPTION =
   'triage { note, priority?, category?, route? } on an issue; duplicate { duplicateOf, similarity?, note? }; ' +
   'design_change on `workflow` (uuid or flow), baseRevision null: { steps?, edges?: [{ from, to, label? }], change: change | remove | rewire, reason }; a node the latest revision does not hold is WORKFLOW_NODE_UNKNOWN, and accepting it writes nothing into the design. ' +
   'feedback_triage on `feedback` (FB-n), baseRevision null: { route: issue | revision | new_requirement | answer | duplicate, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }; accepting it writes the route (forge_feedback_items). ' +
-  'accept { suggestionId, reason? } and reject { suggestionId, reason } take suggestions.approve (project admin, or an org owner or admin), person or agent alike, its producer included (APPROVE_PERMISSION_REQUIRED without it); ' +
+  'accept { suggestionId, reason? } and reject { suggestionId, reason } take suggestions.approve (project admin, or an org owner or admin), person or agent alike, its producer included (PERMISSION_FORBIDDEN without it); ' +
   'an accept’s reason is kept on the suggestion, and is where the authority behind it is named. ' +
   'revise { suggestionId, payload, reason } is a reviewer’s edit: the original is rejected with the reason and a new suggestion ' +
   'carrying the whole new payload is proposed by the reviewer, naming the original (revises); revising takes suggestions.approve; ' +

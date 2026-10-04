@@ -392,6 +392,8 @@ export const projectMembers = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     role: text('role', { enum: projectMemberRoles }).notNull().default('member'),
+    /** Permissions held on this project beyond the role's (`@forge/contracts/permissions`). */
+    grants: text('grants').array().notNull().default(sql`ARRAY[]::text[]`),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
