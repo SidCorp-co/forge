@@ -24,9 +24,9 @@ import { createLimiter } from '../lib/bounded-concurrency.js';
 import { logger } from '../observability/logger.js';
 import type { MemoryHit } from './search.js';
 
-export const RERANK_POOL_FACTOR = 3;
-export const RERANK_POOL_CAP = 50;
-export const RERANK_HOLDOUT_ONE_IN = 5;
+const RERANK_POOL_FACTOR = 3;
+const RERANK_POOL_CAP = 50;
+const RERANK_HOLDOUT_ONE_IN = 5;
 const CANDIDATE_CHARS = 1500;
 const GRADE_MAX_TOKENS = 64;
 const CONCURRENT_GRADES = 8;
@@ -35,13 +35,13 @@ const CACHE_MAX = 2000;
 
 const gradeAnswer = z.strictObject({ relevance: z.enum(RERANK_GRADES) });
 
-export interface RerankInput {
+interface RerankInput {
   query: string;
   hits: MemoryHit[];
   topK: number;
 }
 
-export interface RerankResult {
+interface RerankResult {
   hits: MemoryHit[];
   report: RerankReport;
   rerankMs: number;
@@ -61,11 +61,11 @@ export function inRerankHoldout(): boolean {
   return randomInt(RERANK_HOLDOUT_ONE_IN) === 0;
 }
 
-export function shownText(hit: MemoryHit): string {
+function shownText(hit: MemoryHit): string {
   return hit.text;
 }
 
-export function buildGradePrompt(query: string, text: string): string {
+function buildGradePrompt(query: string, text: string): string {
   return [
     'Grade how well the passage answers the query.',
     `Answer with ONLY a JSON object of the form {"relevance": "<grade>"}, where <grade> is one of ${RERANK_GRADES.map((g) => `"${g}"`).join(', ')}: "none" when the passage has nothing to do with the query, "strong" when it answers it directly.`,
@@ -75,7 +75,7 @@ export function buildGradePrompt(query: string, text: string): string {
 }
 
 /** Candidates by grade, strongest first; equal grades keep their fused (RRF) order. */
-export function orderByGrade<T>(candidates: T[], grades: RerankGrade[]): T[] {
+function orderByGrade<T>(candidates: T[], grades: RerankGrade[]): T[] {
   const rank = (g: RerankGrade) => RERANK_GRADES.indexOf(g);
   return candidates
     .map((c, i) => ({ c, i, r: rank(grades[i] as RerankGrade) }))
@@ -83,7 +83,7 @@ export function orderByGrade<T>(candidates: T[], grades: RerankGrade[]): T[] {
     .map((x) => x.c);
 }
 
-export function gradeCacheKey(model: string, query: string, hit: MemoryHit): string {
+function gradeCacheKey(model: string, query: string, hit: MemoryHit): string {
   return createHash('sha256')
     .update(model)
     .update('|')
@@ -133,10 +133,15 @@ async function gradeOne(
   const cached = cacheGet(key, Date.now());
   if (cached) return cached;
   const answer = await limiter.run(() =>
-    callFastModelObject({ surface: 'memory' }, buildGradePrompt(query, shownText(hit)), gradeAnswer, {
-      maxTokens: GRADE_MAX_TOKENS,
-      model,
-    }),
+    callFastModelObject(
+      { surface: 'memory' },
+      buildGradePrompt(query, shownText(hit)),
+      gradeAnswer,
+      {
+        maxTokens: GRADE_MAX_TOKENS,
+        model,
+      },
+    ),
   );
   if (!answer.ok) return { miss: answer.miss, detail: answer.detail };
   const graded = { grade: answer.value.relevance, modelId: answer.modelId };
@@ -178,7 +183,13 @@ export async function rerankHits(input: RerankInput): Promise<RerankResult> {
     const reason = dominantMiss(misses);
     const first = outcomes.find((o): o is { miss: FastModelMiss; detail: string } => 'miss' in o);
     logger.warn(
-      { model, reason, unscored: misses.length, candidates: input.hits.length, detail: first?.detail },
+      {
+        model,
+        reason,
+        unscored: misses.length,
+        candidates: input.hits.length,
+        detail: first?.detail,
+      },
       'memory.rerank: degraded to the fused order, a candidate went ungraded',
     );
     return {

@@ -21,7 +21,7 @@ export function KindBadge({ kind }: { kind: string }) {
   return <EnumBadge family="interfaceType" value={kind} />;
 }
 
-export function windowLeft(dueAt: string, now: number = Date.now()): string {
+function windowLeft(dueAt: string, now: number = Date.now()): string {
   const ms = new Date(dueAt).getTime() - now;
   if (ms <= 0) {
     const ago = Math.max(1, Math.floor(-ms / DAY));
@@ -62,7 +62,7 @@ function bannerHead(row: ContractStandingRow): string {
   return `Waiting on ${w.who}:`;
 }
 
-export function refLink(slug: string, ref: string | null): ReactNode {
+function refLink(slug: string, ref: string | null): ReactNode {
   if (!ref) return null;
   const href = /^FB-\d+$/.test(ref) ? feedbackHref(slug, ref) : /^REQ-\d+$/.test(ref) ? requirementHref(slug, ref) : /^[A-Z][A-Z0-9]*-\d+$/.test(ref) ? issueHref(slug, ref) : null;
   return href ? (
@@ -92,7 +92,7 @@ export function ContractBanner({ row, slug, className }: { row: ContractStanding
   );
 }
 
-export function contractActionOf(row: ContractStandingRow): { label: string; kind: "feedback" | "requirement" | "versions" } | null {
+function contractActionOf(row: ContractStandingRow): { label: string; kind: "feedback" | "requirement" | "versions" } | null {
   if (row.attentionGroup !== "needs_you" || !row.waitingOn.ref) return null;
   const ref = row.waitingOn.ref;
   if (row.direction === "consumed") return { label: `Open ${ref}`, kind: "feedback" };

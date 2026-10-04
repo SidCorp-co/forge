@@ -81,7 +81,7 @@ function describe(row: { description?: unknown; descriptionFormat?: unknown }): 
 
 export const MAX_EMBED_CHARS = 8192;
 
-export interface IndexInput {
+interface IndexInput {
   projectId: string;
   source: MemorySource;
   sourceRef: string;
@@ -111,7 +111,7 @@ export interface IndexResult {
   dedupeScore?: number;
 }
 
-export interface IndexOptions {
+interface IndexOptions {
   nearDuplicateProbe?: boolean;
 }
 

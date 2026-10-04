@@ -35,9 +35,9 @@ import { type MemoryHit, searchMemories } from './search.js';
  * meaning the fix or review was wrong. Nothing of an archived issue is read, signal or memory.
  */
 
-export const MAX_CREATES = 5;
-export const MAX_UPDATES = 5;
-export const MAX_ARCHIVES = 10;
+const MAX_CREATES = 5;
+const MAX_UPDATES = 5;
+const MAX_ARCHIVES = 10;
 const MAX_MEMORIES_FOR_PROMPT = 200;
 const MAX_SIGNAL_COMMENTS = 100;
 const MAX_SIGNAL_STATUS_CHANGES = 200;
@@ -102,7 +102,7 @@ interface ConsolidationActions {
   summary?: unknown;
 }
 
-export interface ConsolidationResult {
+interface ConsolidationResult {
   created: number;
   updated: number;
   archived: number;
@@ -445,13 +445,13 @@ export async function runConsolidationSweep(): Promise<{
 // A thin/`Skip`-section release yields a weak sweep; acceptable per the
 // plan's known-limitations call.
 
-export const MEMORY_RECONCILE_QUEUE = 'memory-reconcile';
+const MEMORY_RECONCILE_QUEUE = 'memory-reconcile';
 
 /** Only memories scoring at/above this cosine floor are considered — bounds
  *  the LLM prompt to genuinely related candidates. */
-export const RECONCILE_SCORE_FLOOR = 0.6;
-export const RECONCILE_TOP_K = 15;
-export const RECONCILE_MAX_CANDIDATES = 10;
+const RECONCILE_SCORE_FLOOR = 0.6;
+const RECONCILE_TOP_K = 15;
+const RECONCILE_MAX_CANDIDATES = 10;
 const RECONCILE_SOURCES = ['note', 'knowledge'] as const;
 
 const runningReconciles = new Set<string>();
@@ -492,7 +492,7 @@ interface ReconcileActions {
   unaffected?: unknown[];
 }
 
-export interface ReconcileResult {
+interface ReconcileResult {
   contradicted: number;
   possiblyStale: number;
   refused: number;

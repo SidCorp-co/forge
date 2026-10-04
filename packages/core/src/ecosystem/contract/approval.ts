@@ -17,7 +17,7 @@ export const CONTRACT_DECISION_REASON_MAX = 2000;
 /** Who decided a version; `before-approval` marks the versions recorded before the gate existed. */
 export type DecidedAs = 'person' | 'agent' | 'before-approval';
 
-export interface ApprovalRefusal {
+interface ApprovalRefusal {
   code: ContractApprovalRefusalCode;
   path: string;
   detail: string;

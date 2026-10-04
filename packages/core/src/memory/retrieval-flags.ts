@@ -8,7 +8,7 @@ export interface RetrievalFlags {
   expandRelations: boolean;
 }
 
-export const RETRIEVAL_FLAGS_OFF: RetrievalFlags = {
+const RETRIEVAL_FLAGS_OFF: RetrievalFlags = {
   rerank: false,
   expandRelations: false,
 };

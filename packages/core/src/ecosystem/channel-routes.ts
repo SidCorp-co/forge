@@ -10,10 +10,10 @@ import type { ChannelOutcome } from './channel-act.js';
 import { type ChannelNeed, channelRoleRefusal, writerOf } from './channel-author.js';
 import { supersede, withdraw } from './channel-ends.js';
 import { holdOrRelease } from './channel-holds.js';
-import { inbox, outbox, readAs, standingOf, threadAs } from './channel-read.js';
+import { inbox, readAs, standingOf, threadAs } from './channel-read.js';
 import { NUMBER_PATTERN } from './channel-schema.js';
 import { createDraft, editDraft, submit } from './channel-service.js';
-import { holdView, inboxView, outboxView, threadView, viewOf } from './channel-view.js';
+import { holdView, inboxView, threadView, viewOf } from './channel-view.js';
 import type { ChannelRefusalCode } from './refusals.js';
 
 export const channelProjectRoutes = new Hono<{ Variables: AuthVars }>();
@@ -218,13 +218,6 @@ channelProjectRoutes.get('/:id/channel/inbox', projectParam, async (c) => {
   await mayAct(c, id, 'read');
   const entries = await inbox(id);
   return c.json({ documents: inboxView(entries), returned: entries.length });
-});
-
-channelProjectRoutes.get('/:id/channel/outbox', projectParam, async (c) => {
-  const { id } = c.req.valid('param');
-  await mayAct(c, id, 'read');
-  const views = await outbox(id);
-  return c.json({ documents: outboxView(views), returned: views.length });
 });
 
 channelProjectRoutes.get('/:id/channel/threads/:number', threadParam, async (c) => {

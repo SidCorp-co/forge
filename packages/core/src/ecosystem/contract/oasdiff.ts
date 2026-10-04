@@ -39,7 +39,7 @@ function asset(platform: string): { name: string; sha256: string } {
   return { name, sha256 };
 }
 
-export function oasdiffPath(env: NodeJS.ProcessEnv = process.env): string {
+function oasdiffPath(env: NodeJS.ProcessEnv = process.env): string {
   return env.OASDIFF_BIN && env.OASDIFF_BIN.length > 0 ? env.OASDIFF_BIN : IMAGE_OASDIFF;
 }
 

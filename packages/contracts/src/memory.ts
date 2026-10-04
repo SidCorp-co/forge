@@ -14,7 +14,7 @@ export const RERANK_GRADES = ["none", "weak", "partial", "strong"] as const;
 export type RerankGrade = (typeof RERANK_GRADES)[number];
 
 // Which path ordered a reranked search: the model's grades, or the fused (RRF) order.
-export const RERANK_PATHS = ["model", "rrf"] as const;
+const RERANK_PATHS = ["model", "rrf"] as const;
 export type RerankPath = (typeof RERANK_PATHS)[number];
 
 // Why a rerank that was asked for fell back to the fused order.

@@ -265,7 +265,7 @@ function objectRules(o: Record<string, unknown>, n: Record<string, unknown>, at:
     );
 }
 
-export function compareSchemas(o: Schema, n: Schema, at: string, out: Out): void {
+function compareSchemas(o: Schema, n: Schema, at: string, out: Out): void {
   if (isDeepStrictEqual(o, n)) return;
   if (typeof o === 'boolean' || typeof n === 'boolean') {
     if (n === true || o === false)

@@ -8,7 +8,7 @@ export function isAudience(value: string): value is Audience {
   return (AUDIENCES as readonly string[]).includes(value);
 }
 
-export interface Door {
+interface Door {
   label: string;
   blurb: string;
   /** Said at the top of every page written for this reader. */

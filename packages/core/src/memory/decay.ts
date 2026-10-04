@@ -3,11 +3,11 @@ import { db } from '../db/client.js';
 import { type MemorySource, memories } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 
-export const DECAY_SOURCES: MemorySource[] = ['note', 'knowledge'];
-export const PRUNE_ZERO_RETRIEVAL_DAYS = 30;
-export const PRUNE_LOW_RETRIEVAL_DAYS = 90;
-export const PRUNE_LOW_RETRIEVAL_THRESHOLD = 3;
-export const PURGE_ARCHIVED_AFTER_DAYS = 90;
+const DECAY_SOURCES: MemorySource[] = ['note', 'knowledge'];
+const PRUNE_ZERO_RETRIEVAL_DAYS = 30;
+const PRUNE_LOW_RETRIEVAL_DAYS = 90;
+const PRUNE_LOW_RETRIEVAL_THRESHOLD = 3;
+const PURGE_ARCHIVED_AFTER_DAYS = 90;
 /** ISS-708: grace period after a stale-flag stamp before it becomes archive-eligible. */
 export const STALE_UNCONFIRMED_DAYS = 14;
 
@@ -21,7 +21,7 @@ function daysAgoParam(days: number): SQL {
   return sqlTimestamp(daysAgo(days));
 }
 
-export interface DecayResult {
+interface DecayResult {
   archived: number;
   purged: number;
   durationMs: number;

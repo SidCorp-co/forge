@@ -11,7 +11,7 @@ export const DOCUMENT_TYPES = [
 ] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
-export const CONTRACT_TYPES = [
+const CONTRACT_TYPES = [
   'openapi',
   'asyncapi',
   'mcp-tools',

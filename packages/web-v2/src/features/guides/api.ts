@@ -13,7 +13,7 @@ export interface Guide {
   body: string;
 }
 
-export type GuideSummary = Omit<Guide, "body">;
+type GuideSummary = Omit<Guide, "body">;
 
 class GuideFetchError extends Error {
   constructor(what: string, url: string, detail: string) {

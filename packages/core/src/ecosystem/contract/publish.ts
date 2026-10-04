@@ -8,7 +8,7 @@ import { versionsOf } from './store.js';
 import { type UploadBody, uploadRefusals } from './upload-rules.js';
 import type { ContractVersionDocument } from './version-schema.js';
 
-export interface PublishInput extends UploadBody {
+interface PublishInput extends UploadBody {
   projectId: string;
   writer: ProviderWriter;
   contract: string;
@@ -17,7 +17,7 @@ export interface PublishInput extends UploadBody {
   sourceRef?: string | undefined;
 }
 
-export type PublishOutcome =
+type PublishOutcome =
   | { ok: true; recorded: boolean; version: ContractVersionDocument }
   | { ok: false; refusals: EcosystemRefusal[] };
 

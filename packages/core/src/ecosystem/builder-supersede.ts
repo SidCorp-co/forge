@@ -20,7 +20,7 @@ import { ecosystemSignals } from './ports.js';
 import type { EcosystemRefusal } from './refusals.js';
 import { activeEcosystemIdsOf, lockKeys } from './store.js';
 
-export type SupersedeOutcome =
+type SupersedeOutcome =
   | { ok: true; superseded: Held<BuilderRunWrite>; opened: Held<BuilderRunWrite> }
   | { ok: false; refusals: EcosystemRefusal[] };
 

@@ -9,7 +9,7 @@ import { type Approved, announceApproved, fileBreakingIn } from './announce.js';
 import { approverRefusal, type ContractDecision, decisionRefusals } from './approval.js';
 import { decideVersion, type StoredVersion, versionsOf } from './store.js';
 
-export interface DecideInput {
+interface DecideInput {
   projectId: string;
   contract: string;
   version: string;
@@ -18,7 +18,7 @@ export interface DecideInput {
   actor: { userId: string; agency: ActorAgency };
 }
 
-export type DecideOutcome =
+type DecideOutcome =
   | { ok: true; version: StoredVersion; filed: string[] }
   | { ok: false; refusals: EcosystemRefusal[] };
 

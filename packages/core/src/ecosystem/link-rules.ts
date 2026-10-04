@@ -35,7 +35,7 @@ const ENUM_RENAMES: readonly [RegExp, LinkRefusalCode, string][] = [
   ],
 ];
 
-export function renameLinkParseRefusals(refusals: readonly ApiRefusal[]): EcosystemRefusal[] {
+function renameLinkParseRefusals(refusals: readonly ApiRefusal[]): EcosystemRefusal[] {
   return refusals.map((r): EcosystemRefusal => {
     if (r.code !== 'SCHEMA_VIOLATION') return r;
     if (r.detail === REPO_PATH_MESSAGE) {
@@ -338,7 +338,7 @@ export const STOREFRONT_BUILDER_STEPS = [
 ] as const;
 
 // cm:why the steps are derived when a run opens and then stored as data: a run already open keeps the steps it was opened with
-export const builderStepsFor = (source: BuilderSource): readonly string[] =>
+const builderStepsFor = (source: BuilderSource): readonly string[] =>
   source.type === 'storefront' ? STOREFRONT_BUILDER_STEPS : REPO_BUILDER_STEPS;
 
 /** Whether a run's stored steps are not the ones its project's source type derives now: it was opened against another source. */

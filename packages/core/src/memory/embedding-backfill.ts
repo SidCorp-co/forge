@@ -1,6 +1,6 @@
-import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { appConfig, knowledgeEntries, memories } from '../db/schema.js';
+import { knowledgeEntries, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
 import { fillKnowledgeEmbedding, knowledgeEmbedInput } from '../knowledge/index.js';
 import { logger } from '../observability/logger.js';
@@ -107,4 +107,3 @@ async function backfillKnowledge(): Promise<{ reembedded: number; aborted: boole
   }
   return { reembedded, aborted };
 }
-

@@ -44,7 +44,7 @@ export async function consumedContract(args: {
 }
 
 /** A recorded version as a consumer reads it: the published diff, never the commit or the person that produced it. */
-export const versionForParty = (v: StoredVersion) => ({
+const versionForParty = (v: StoredVersion) => ({
   contractVersion: v.document.contractVersion,
   previous: v.document.previous ?? null,
   observedAt: v.document.observedAt,

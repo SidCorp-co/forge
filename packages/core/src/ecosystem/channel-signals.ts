@@ -88,7 +88,7 @@ async function signal(what: string, work: () => Promise<unknown>): Promise<void>
 
 const holdKey = (h: ThreadHold, side: string) => `channel-hold:${h.ecosystem}:${h.thread}:${side}`;
 
-export const gateKey = (documentId: string) => `channel-gate:${documentId}`;
+const gateKey = (documentId: string) => `channel-gate:${documentId}`;
 
 // cm:why each side reads the notice under its own project, and a person on both sides is told once
 export async function tellEachSide(

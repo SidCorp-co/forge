@@ -30,7 +30,7 @@ import {
   versionRef,
 } from './standing.js';
 
-export const MODULE_UNAVAILABLE =
+const MODULE_UNAVAILABLE =
   'The interface document names no module for a publication, so nothing records which module provides or consumes it.';
 
 interface World {

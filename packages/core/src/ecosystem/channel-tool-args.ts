@@ -56,7 +56,7 @@ const BY_ACTION = {
 
 export type ChannelArgs<A extends ChannelAction> = z.infer<(typeof BY_ACTION)[A]>;
 
-export type ParsedCall =
+type ParsedCall =
   | { ok: true; action: ChannelAction; args: Record<string, unknown> }
   | { ok: false; refusals: EcosystemRefusal[] };
 

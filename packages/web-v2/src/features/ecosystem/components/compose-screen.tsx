@@ -14,7 +14,7 @@ import { useProjectNames } from "./people";
 import { TYPE_LABEL } from "../types";
 
 /** The body each type carries, as a starting point to fill; core's checks decide whether it stands. */
-export const BODY_TEMPLATES: Record<DocumentType, Record<string, unknown>> = {
+const BODY_TEMPLATES: Record<DocumentType, Record<string, unknown>> = {
   "change-notice": {
     contract: "provider/contract",
     contractVersion: "",

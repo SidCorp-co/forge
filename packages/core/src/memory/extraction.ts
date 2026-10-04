@@ -8,7 +8,7 @@ import { consume } from '../outbox/index.js';
 import { indexMemory } from './indexer.js';
 import { foreignScriptChars } from './script-guard.js';
 
-export const EXTRACTION_JOB_TYPES: ReadonlySet<JobType> = new Set(['review', 'test', 'fix']);
+const EXTRACTION_JOB_TYPES: ReadonlySet<JobType> = new Set(['review', 'test', 'fix']);
 const MAX_FACTS = 3;
 const MAX_COMMENTS = 8;
 const MAX_COMMENT_CHARS = 500;
@@ -58,7 +58,7 @@ Issue: {issue_title}
 Recent activity:
 {comments}`;
 
-export function hasMemoryWorthyContent(texts: string[]): boolean {
+function hasMemoryWorthyContent(texts: string[]): boolean {
   const bodies = texts.map((t) => t.trim()).filter(Boolean);
   if (bodies.length === 0) return false;
 
@@ -75,7 +75,7 @@ interface ParsedExtraction {
 }
 
 /** Tolerant parse of the model output; returns null on garbage. */
-export function parseExtractionOutput(raw: string): ParsedExtraction | null {
+function parseExtractionOutput(raw: string): ParsedExtraction | null {
   const jsonStr = raw
     .trim()
     .replace(/^```json?\s*/, '')
@@ -102,14 +102,14 @@ export function parseExtractionOutput(raw: string): ParsedExtraction | null {
   return { facts };
 }
 
-export interface ExtractionResult {
+interface ExtractionResult {
   facts: number;
   /** Items the model wrote in a script its input never used, dropped unstored (ISS-962). */
   refused: number;
   skipped?: 'disabled' | 'no-signal' | 'gated' | 'llm-failed' | 'parse-failed';
 }
 
-export interface RefusedItem {
+interface RefusedItem {
   text: string;
   chars: string[];
 }
@@ -122,7 +122,7 @@ export interface RefusedItem {
  * never used does not reach `indexMemory`. Pure, so the
  * refusal is testable without a model or a database.
  */
-export function refuseForeignScript(
+function refuseForeignScript(
   parsed: ParsedExtraction,
   source: string,
 ): { kept: ParsedExtraction; refused: RefusedItem[] } {
@@ -144,7 +144,7 @@ export function refuseForeignScript(
   };
 }
 
-export async function runExtractionForIssue(
+async function runExtractionForIssue(
   projectId: string,
   issueId: string,
 ): Promise<ExtractionResult> {

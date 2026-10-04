@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { type MemorySource, memories } from '../db/schema.js';
 import { identifierTsQuery } from '../db/schema-types.js';
-import { memoryOfLiveIssue, memoryOfLiveIssueAs } from './live-issue.js';
+import { memoryOfLiveIssue } from './live-issue.js';
 
 interface BaseSearchInput {
   projectId: string;
@@ -12,11 +12,11 @@ interface BaseSearchInput {
   metadataFilter?: Record<string, string | number | boolean> | undefined;
 }
 
-export interface SearchInput extends BaseSearchInput {
+interface SearchInput extends BaseSearchInput {
   queryVec: number[];
 }
 
-export interface KeywordSearchInput extends BaseSearchInput {
+interface KeywordSearchInput extends BaseSearchInput {
   query: string;
 }
 
@@ -175,7 +175,7 @@ const RRF_K = 60;
 /** Dense-vector weight in hybrid fusion (keyword gets `1 - alpha`). */
 export const HYBRID_ALPHA = 0.5;
 
-export function reciprocalRankFusion(
+function reciprocalRankFusion(
   rankedLists: MemoryHit[][],
   weights: number[],
   limit: number,

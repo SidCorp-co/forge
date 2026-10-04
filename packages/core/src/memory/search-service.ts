@@ -36,12 +36,12 @@ import {
  */
 
 export const memorySearchStrategies = ['semantic', 'keyword', 'hybrid'] as const;
-export type MemorySearchStrategy = (typeof memorySearchStrategies)[number];
+type MemorySearchStrategy = (typeof memorySearchStrategies)[number];
 
-export const memorySearchSurfaces = ['agent', 'web'] as const;
-export type MemorySearchSurface = (typeof memorySearchSurfaces)[number];
+const memorySearchSurfaces = ['agent', 'web'] as const;
+type MemorySearchSurface = (typeof memorySearchSurfaces)[number];
 
-export interface RunMemorySearchInput {
+interface RunMemorySearchInput {
   projectId: string;
   query: string;
   topK?: number | undefined;
@@ -56,7 +56,7 @@ export interface RunMemorySearchInput {
   queryVec?: number[] | undefined;
 }
 
-export interface MemorySearchResult {
+interface MemorySearchResult {
   hits: MemoryHit[];
   model: string;
   took_ms: number;
@@ -249,7 +249,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
 }
 
 /** The `metadata` jsonb of one `retrieval_analytics` row; the breakdown keys exist only when hybrid ran, so their absence means "one list", never "zero hits". */
-export function buildRetrievalMetadata(
+function buildRetrievalMetadata(
   resolved: MemorySearchStrategy,
   requested: MemorySearchStrategy,
   breakdown: HybridBreakdown | undefined,

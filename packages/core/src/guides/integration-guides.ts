@@ -15,7 +15,7 @@ import { integrationGuides } from '../db/schema.js';
 import type { IntegrationProvider } from '../integrations/index.js';
 import { type ForgeGuide, getGuide as getCodeGuide, listGuides } from './registry.js';
 
-export const INTEGRATION_GUIDE_SLUG_PREFIX = 'integration-';
+const INTEGRATION_GUIDE_SLUG_PREFIX = 'integration-';
 
 /** `epodsystem` → `integration-epodsystem`. */
 export function integrationGuideSlug(provider: string): string {
@@ -23,13 +23,13 @@ export function integrationGuideSlug(provider: string): string {
 }
 
 /** `integration-epodsystem` → `epodsystem`; null when the slug isn't one of ours. */
-export function providerFromGuideSlug(slug: string): string | null {
+function providerFromGuideSlug(slug: string): string | null {
   if (!slug.startsWith(INTEGRATION_GUIDE_SLUG_PREFIX)) return null;
   const provider = slug.slice(INTEGRATION_GUIDE_SLUG_PREFIX.length);
   return provider.length > 0 ? provider : null;
 }
 
-export interface IntegrationGuideRow {
+interface IntegrationGuideRow {
   provider: string;
   title: string;
   summary: string;
@@ -130,7 +130,7 @@ export async function loadOrgGuideProviders(orgId: string): Promise<Set<string>>
   return new Set(rows.map((r) => r.provider));
 }
 
-export interface UpsertIntegrationGuideArgs {
+interface UpsertIntegrationGuideArgs {
   orgId: string;
   provider: IntegrationProvider;
   title: string;
