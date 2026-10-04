@@ -12,6 +12,7 @@
     "test": "turbo run test --continue=always --concurrency=2",
     "test:changed": "node scripts/test-changed.mjs",
     "typecheck": "turbo run typecheck --concurrency=2",
+    "tc:changed": "node scripts/tc-changed.mjs",
     "verify": "node scripts/verify.mjs",
     "check:memory": "node scripts/check-memory-anchors.mjs",
     "clean": "turbo run clean && rm -rf node_modules",
@@ -20,6 +21,7 @@
     "lint:code-quality": "node .forge/code-quality/bin/code-quality-gate.mjs"
   },
   "devDependencies": {
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "eslint": "^10.11.0",
     "turbo": "^2.11.4",
     "typescript-eslint": "^8.70.1"
