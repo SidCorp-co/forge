@@ -17,7 +17,7 @@ import {
 } from './facts-read.js';
 import type { RunFacts } from './standing-types.js';
 
-export { BASE_COLUMNS, type BaseRun, RUN_SCOPE_SQL } from './facts-read.js';
+export { BASE_COLUMNS, type BaseRun, MASTER_RUN_SQL, RUN_SCOPE_SQL } from './facts-read.js';
 
 type Display = (key: string) => string;
 
@@ -58,6 +58,16 @@ function issueStatusesOf(b: BaseRun, t: Tables, keys: string[], display: Display
     else if (opened) endStatuses[key] = opened as KernelIssueStatus;
   }
   return { openingStatuses, endStatuses };
+}
+
+// cm:why the idle-issues sweep's finding on the issue (`pipeline/idle-issues.ts:StrandRecord`); a record that
+// names no time or reason is not one this read can stand a stuck rule on
+function strandOf(raw: unknown): { at: Date; status: string; reason: string } | null {
+  const r = metadataObject(raw);
+  const at = str(r.at);
+  const reason = str(r.reason);
+  if (!at || !reason || Number.isNaN(Date.parse(at))) return null;
+  return { at: new Date(at), status: str(r.status) ?? 'unknown', reason };
 }
 
 function sessionFacts(s: Row | undefined, lane: string): RunFacts['session'] {
@@ -203,6 +213,7 @@ function factsOf(
           title: String(primary.title),
           status: primary.status as KernelIssueStatus,
           statusSince: date(primary.status_since),
+          strand: strandOf(primary.strand),
         }
       : null,
     issues: keys.map(display),

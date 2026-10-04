@@ -6,7 +6,7 @@ import {
   resolveFailureCause,
 } from "@forge/contracts/failure-causes";
 import { LIVE_JOB_STATUSES } from "@forge/contracts/status-sets";
-import { sentenceCase } from "@/design/vocabulary";
+import { statusReading } from "@/design/vocabulary";
 import { failureReasonAction, failureReasonLabel } from "@/features/sessions/types";
 import type { PipelineRunAttempt } from "./types";
 
@@ -80,7 +80,7 @@ function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null): string {
   if (a.failureReason && LEGACY_NEUTRAL_REASONS.has(a.failureReason)) {
     return failureReasonLabel(a.failureReason) ?? "Not dispatched";
   }
-  return `Ended · ${sentenceCase(a.status)}`;
+  return `Ended · ${statusReading("job", a.status).label}`;
 }
 
 function detailOf(a: PipelineRunAttempt, cause: FailureCause | null): string | null {

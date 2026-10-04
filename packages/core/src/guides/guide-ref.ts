@@ -22,6 +22,7 @@ export const GUIDE_SLUGS = [
   'requirement-lifecycle',
   'suggestions',
   'feedback-triage',
+  'runs-and-masters',
 ] as const;
 
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];

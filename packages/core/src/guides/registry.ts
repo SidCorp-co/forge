@@ -23,6 +23,7 @@ import { ECOSYSTEM_INBOX_GUIDE } from './ecosystem-inbox-guide.js';
 import { FEEDBACK_TRIAGE_GUIDE } from './feedback-guide.js';
 import { RECORDS_GUIDE } from './records-guide.js';
 import { REQUIREMENT_LIFECYCLE_GUIDE } from './requirements-guide.js';
+import { RUNS_AND_MASTERS_GUIDE } from './runs-guide.js';
 import { SUGGESTIONS_GUIDE } from './suggestions-guide.js';
 import type { CoreGuide, ForgeGuide } from './types.js';
 import { WORKFLOW_DESIGN_GUIDE } from './workflow-design-guide.js';
@@ -703,6 +704,7 @@ section, which is why this migration is what turns the feature on.`,
   REQUIREMENT_LIFECYCLE_GUIDE,
   SUGGESTIONS_GUIDE,
   FEEDBACK_TRIAGE_GUIDE,
+  RUNS_AND_MASTERS_GUIDE,
 ] as const;
 
 const GUIDE_BY_SLUG = new Map<string, ForgeGuide>(FORGE_GUIDES.map((g) => [g.slug, g]));

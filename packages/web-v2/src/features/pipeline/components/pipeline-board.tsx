@@ -17,6 +17,7 @@ import {
   KanbanColumnSkeleton,
   LiveDot,
   PageTitle,
+  StatusBadge,
   Tooltip,
 } from "@/design";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -130,6 +131,9 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
                     status={card.status}
                     statusLabel={card.label}
                     statusDomain={card.domain}
+                    {...(card.pipelineRun
+                      ? { badge: <StatusBadge family="pipelineRun" value={card.pipelineRun} /> }
+                      : {})}
                     held={issue.status === "on_hold"}
                     {...(card.waitingReason ? { waitingReason: card.waitingReason } : {})}
                     {...(card.note ? { note: card.note } : {})}

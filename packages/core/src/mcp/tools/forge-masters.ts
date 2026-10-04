@@ -4,6 +4,7 @@
 
 import { MASTER_PASS_PAGE_DEFAULT, MASTER_PASS_PAGE_MAX } from '@forge/contracts/master-standing';
 import { z } from 'zod';
+import { guideRef } from '../../guides/guide-ref.js';
 import { listMasterPasses, readMasterStanding } from '../../masters/read.js';
 import {
   assertPrincipalIsMember,
@@ -26,7 +27,7 @@ const inputSchema = z
   .strict();
 
 const DESCRIPTION =
-  `The project master (design agent-run-standing, region master). Actions: ${ACTIONS.join(' | ')}. ` +
+  `The project master (${guideRef('runs-and-masters')}). Actions: ${ACTIONS.join(' | ')}. ` +
   'standing: state in_pass | idle | silent | none, the session and its box, the open pass {verb, startedAt, issueKey}, the last closed pass {dispatched, skipped [{issueKey, refusal}], parked}, slots {inUse, max, undeclared} and lastBeatAt. ' +
   `passes: the stored passes, newest first; limit (default ${MASTER_PASS_PAGE_DEFAULT}, max ${MASTER_PASS_PAGE_MAX}), before = the \`next\` a page answered, sessionId to read one master's. Read hasMore before calling the history complete.`;
 

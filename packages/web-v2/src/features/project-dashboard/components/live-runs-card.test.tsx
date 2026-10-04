@@ -35,8 +35,10 @@ describe("the live runs card", () => {
     expect(screen.queryByText("Idle")).toBeNull();
   });
 
-  it("labels a running run with its step", () => {
+  it("labels a running run through the pipelineRun badge, with its step beside it", () => {
     render(<LiveRunsCard runs={[run("running")]} slug="forge-dev" />);
-    expect(screen.getByText("Running · Drive")).toBeInTheDocument();
+    expect(screen.getByTestId("status-badge")).toHaveAttribute("data-value", "running");
+    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.getByText("Drive")).toBeInTheDocument();
   });
 });

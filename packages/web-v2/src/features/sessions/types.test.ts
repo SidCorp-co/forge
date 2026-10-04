@@ -8,7 +8,7 @@ import {
   FAILURE_REASON_LABEL,
   failureReasonAction,
   failureReasonLabel,
-  HEARTBEAT_REAP_MS,
+  heartbeatReapMs,
   STALLED_THRESHOLD_MS,
   deriveLiveness,
   deriveSessionDisplayStatus,
@@ -48,30 +48,37 @@ function running(agoMs: number, over: Partial<SessionRow> = {}): SessionRow {
   };
 }
 
+const runSession = (agoMs: number) => running(agoMs, { metadata: { type: "run_session" } });
+
 describe("deriveLiveness", () => {
-  it("is alive just under the stale threshold (59s)", () => {
-    expect(deriveLiveness(running(59_000), NOW).state).toBe("alive");
+  it("stalls at core's stuck threshold, 3 min, not at 60 s", () => {
+    expect(STALLED_THRESHOLD_MS).toBe(3 * 60_000);
+    expect(deriveLiveness(runSession(61_000), NOW).state).toBe("alive");
+    expect(deriveLiveness(runSession(179_000), NOW).state).toBe("alive");
   });
 
-  it("is stale just over the stale threshold (61s) with a reap countdown", () => {
-    const r = deriveLiveness(running(61_000), NOW);
+  it("a run session is stale past 3 min with a countdown to the 10 min run-session reap", () => {
+    const r = deriveLiveness(runSession(181_000), NOW);
     expect(r.state).toBe("stale");
-    expect(r.reapInMs).toBe(HEARTBEAT_REAP_MS - 61_000);
+    expect(heartbeatReapMs({ metadata: { type: "run_session" } })).toBe(10 * 60_000);
+    expect(r.reapInMs).toBe(10 * 60_000 - 181_000);
   });
 
-  it("is still stale just under the reap bound (179s)", () => {
-    expect(deriveLiveness(running(179_000), NOW).state).toBe("stale");
-  });
-
-  it("is reaping past the reap bound (181s)", () => {
-    const r = deriveLiveness(running(181_000), NOW);
+  it("a run session is reaping past the 10 min reap", () => {
+    const r = deriveLiveness(runSession(601_000), NOW);
     expect(r.state).toBe("reaping");
     expect(r.reapInMs).toBe(0);
   });
 
+  it("a pipeline job session is reaped by the loop monitor at 3 min, so it goes from alive to reaping", () => {
+    expect(heartbeatReapMs({ metadata: { type: "pipeline" } })).toBe(3 * 60_000);
+    expect(deriveLiveness(running(179_000), NOW).state).toBe("alive");
+    expect(deriveLiveness(running(181_000), NOW).state).toBe("reaping");
+  });
+
   it("treats the exact thresholds as the lower band (boundaries inclusive)", () => {
-    expect(deriveLiveness(running(STALLED_THRESHOLD_MS), NOW).state).toBe("alive");
-    expect(deriveLiveness(running(HEARTBEAT_REAP_MS), NOW).state).toBe("stale");
+    expect(deriveLiveness(runSession(STALLED_THRESHOLD_MS), NOW).state).toBe("alive");
+    expect(deriveLiveness(runSession(10 * 60_000), NOW).state).toBe("stale");
   });
 
   it("returns na for an interactive chat session even when long-running", () => {
@@ -96,7 +103,8 @@ describe("deriveLiveness", () => {
 describe("deriveSessionDisplayStatus (single-sourced on deriveLiveness)", () => {
   it("maps alive → running, stale/reaping → stalled", () => {
     expect(deriveSessionDisplayStatus(running(59_000), NOW)).toBe("running");
-    expect(deriveSessionDisplayStatus(running(61_000), NOW)).toBe("stalled");
+    expect(deriveSessionDisplayStatus(running(61_000), NOW)).toBe("running");
+    expect(deriveSessionDisplayStatus(runSession(181_000), NOW)).toBe("stalled");
     expect(deriveSessionDisplayStatus(running(181_000), NOW)).toBe("stalled");
   });
 

@@ -7,6 +7,7 @@ import {
   runSummaryOf,
 } from '@forge/contracts/run-standing';
 import { z } from 'zod';
+import { guideRef } from '../../guides/guide-ref.js';
 import { egressDeep, egressOr } from '../../lib/data-egress.js';
 import { listRunStanding, readRunStanding } from '../../runs/read.js';
 import {
@@ -37,11 +38,11 @@ const inputSchema = z
 type Input = z.infer<typeof inputSchema>;
 
 const DESCRIPTION =
-  `Runs and the project master, as core derives them (design agent-run-standing). Actions: ${ACTIONS.join(' | ')}. ` +
-  'list: every run of the project (pipeline runs, not chats or a master’s own run) with state queued | claimed | running | waiting_person | waiting_gate | done | failed | cancelled | handed_back, ' +
+  `Runs and the project master, as core derives them (${guideRef('runs-and-masters')}). Actions: ${ACTIONS.join(' | ')}. ` +
+  'list: every run of the project (pipeline runs, not chats or a master’s own run) with state queued | claimed | running | waiting_person | waiting_gate | stuck | done | failed | cancelled | handed_back, ' +
   'its holder (expiresAt + expirySource claim | silence_reap | deploy_lock), what it waits on (a person {who, act, ref, since} or a gate {gate, resumesAt or null}), its outcome, attempt {n, retryOf} and master; ' +
   `scope live (default) | finished | all, limit (default ${MCP_LIST_DEFAULT}), offset. Read hasMore before calling a count complete. ` +
-  'stuck reads source not_computed until core computes it (ISS-109): it is no claim that a run is not stuck. ' +
+  'stuck {source: stuck, rule silent | lease_expired | lease_abandoned | disagreement | stranded | overdue, since, evidence {table, id, column, value, at}, failsAt, failsBy} once a live run stands still past 3 min (the reapers fail at their own clocks, 10 min for a run session); clear while it moves, none once finished. ' +
   `get: one run by runId, with every attempt over the same issue. What the project master is doing: forge_masters. ${VIEW_RULE}`;
 
 function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]> {

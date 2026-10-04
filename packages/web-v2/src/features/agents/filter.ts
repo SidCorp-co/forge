@@ -1,4 +1,5 @@
-import { pulse, pulseIsStalling, runState } from "./run-state";
+import type { RunStanding } from "@forge/contracts/run-standing";
+import { runState } from "./run-state";
 import type { RunSessionRow } from "./types";
 
 /** Free-text match over the fields a reader would actually type. */
@@ -19,14 +20,20 @@ export function matches(row: RunSessionRow, q: string): boolean {
 
 export type StateFilter = "all" | "waiting" | "working";
 
-export function inState(row: RunSessionRow, f: StateFilter, nowMs: number): boolean {
+export type StandingBySession = ReadonlyMap<string, RunStanding>;
+
+export function standingOf(row: RunSessionRow, standings: StandingBySession): RunStanding | null {
+  return row.sessionId ? (standings.get(row.sessionId) ?? null) : null;
+}
+
+export function inState(row: RunSessionRow, f: StateFilter, standings: StandingBySession): boolean {
   if (f === "all") return true;
   const s = runState(row);
   const waiting =
     s === "live-blocked" ||
     s === "exited-blocked" ||
     s === "exited-runnable" ||
-    (s === "live-runnable" && pulseIsStalling(pulse(row, nowMs)));
+    standingOf(row, standings)?.state === "stuck";
   return f === "waiting" ? waiting : !waiting;
 }
 
@@ -34,7 +41,7 @@ export function applyFilters(
   rows: RunSessionRow[],
   q: string,
   f: StateFilter,
-  nowMs: number,
+  standings: StandingBySession,
 ): RunSessionRow[] {
-  return rows.filter((r) => inState(r, f, nowMs) && matches(r, q));
+  return rows.filter((r) => inState(r, f, standings) && matches(r, q));
 }

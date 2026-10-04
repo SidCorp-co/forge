@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { at, ctx, facts, flip, job, jobLane, session } from './standing.fixture.js';
-import { runStandingOf, STUCK_NOT_COMPUTED } from './standing.js';
+import { runStandingOf } from './standing.js';
 
 describe('runStandingOf: one state per fixture, from the rows the design names', () => {
   it('queued: a queued job nobody holds waits on the master', () => {
@@ -88,7 +88,14 @@ describe('runStandingOf: the waiting states name who or what moves next', () => 
   it('waiting_person: a parked issue waits since the transition that parked it, and says when none is recorded', () => {
     const parked = runStandingOf(
       facts({
-        issue: { id: 'i-7', key: 'ISS-7', title: 'Seven', status: 'on_hold', statusSince: at(-6) },
+        issue: {
+          id: 'i-7',
+          key: 'ISS-7',
+          title: 'Seven',
+          status: 'on_hold',
+          statusSince: at(-6),
+          strand: null,
+        },
       }),
       ctx(),
     );
@@ -97,7 +104,14 @@ describe('runStandingOf: the waiting states name who or what moves next', () => 
     expect(parked.waitingOn).toMatchObject({ act: 'resume it', since: at(-6).toISOString() });
     const unknown = runStandingOf(
       facts({
-        issue: { id: 'i-7', key: 'ISS-7', title: 'Seven', status: 'needs_info', statusSince: null },
+        issue: {
+          id: 'i-7',
+          key: 'ISS-7',
+          title: 'Seven',
+          status: 'needs_info',
+          statusSince: null,
+          strand: null,
+        },
       }),
       ctx(),
     );
@@ -316,14 +330,5 @@ describe('done never reads as cancelled', () => {
       ctx(),
     );
     expect(cancelled.state).toBe('cancelled');
-  });
-});
-
-describe('the stuck slot', () => {
-  it('reads not_computed with its reason, on every run', () => {
-    expect(runStandingOf(facts(), ctx()).stuck).toEqual({
-      source: 'not_computed',
-      detail: STUCK_NOT_COMPUTED,
-    });
   });
 });

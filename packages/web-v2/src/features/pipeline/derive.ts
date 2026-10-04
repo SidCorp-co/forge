@@ -38,29 +38,13 @@ export function jobTypeToStage(jobType: string | null | undefined): StageKey | n
   }
 }
 
-/** Map a run status to the design-kit `StatusKey` vocabulary (chip + card). */
-export function runStatusToStatusKey(status: PipelineRunStatus): StatusKey {
-  switch (status) {
-    case "running":
-      return "running";
-    case "paused":
-      return "paused";
-    case "completed":
-      return "done";
-    case "failed":
-      return "failed";
-    case "cancelled":
-      return "blocked";
-  }
-}
-
 /**
  * The board drawer header's chip: while the issue's run reading (`runStatusChip`) is `running` or
  * `queued` it shows that; a paused, finished or cancelled run keeps its own status.
  */
-export function drawerRunChip(runStatus: PipelineRunStatus, issueRun: StatusKey | null): StatusKey {
+export function drawerRunChip(runStatus: PipelineRunStatus, issueRun: StatusKey | null): StatusKey | null {
   if (runStatus === "running" && (issueRun === "running" || issueRun === "queued")) return issueRun;
-  return runStatusToStatusKey(runStatus);
+  return null;
 }
 
 /** Format an estimated cost in USD. `$X.XX`, with small-value and zero cases. */
@@ -222,6 +206,7 @@ export function aggregateStepCosts(durations: StepDurationRow[] | undefined): St
  *  lifecycle status. */
 export interface CardStatusView {
   status: StatusKey;
+  pipelineRun?: PipelineRunStatus;
   /** Undefined lets `StatusChip` use the run vocabulary's own label. */
   label: string | undefined;
   domain: "session" | "issue";
@@ -330,7 +315,8 @@ export function cardStatus(
   }
   if (run) {
     return {
-      status: runStatusToStatusKey(run.status),
+      status: run.status === "running" ? "running" : "paused",
+      pipelineRun: run.status,
       label: undefined,
       domain: "session",
       waitingReason: "",
