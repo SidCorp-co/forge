@@ -376,9 +376,9 @@ export interface PinPosition {
 // say "re-pin" and the re-pin act reads it to refuse when nothing moved, so the two cannot disagree
 export function stalePinsOf(
   positions: readonly PinPosition[],
-): { flow: string; pinned: number; approved: number }[] {
+): { flow: string; pinned: number | null; approved: number }[] {
   return positions.flatMap((p) =>
-    p.approved !== null && p.pinned !== null && p.approved > p.pinned
+    p.approved !== null && (p.pinned === null || p.approved > p.pinned)
       ? [{ flow: p.flow, pinned: p.pinned, approved: p.approved }]
       : [],
   );
@@ -409,8 +409,8 @@ export function staleContractPinsOf(
 
 // cm:guard a re-pin writes a baseline of the head with no text revision (ISS-86): an agreed
 // requirement (an accepted one is delivered, and a draft has nothing to move), the head named and
-// current, every linked design approved (the agree's own guards), and at least one design approved
-// past what the latest baseline pins, else REQUIREMENT_PINS_CURRENT
+// current, every linked design approved (the agree's own guards), and at least one linked design
+// unpinned or approved past what the latest baseline pins, else REQUIREMENT_PINS_CURRENT
 export function repinRefusals(input: {
   status: RequirementStatus;
   named: number;
@@ -445,10 +445,11 @@ export function repinRefusals(input: {
     ];
   }
   const pins = input.pins;
-  const positions = input.designs.flatMap((d) => {
-    const pin = pins.find((p) => p.workflowId === d.workflowId);
-    return pin ? [{ flow: d.flow, pinned: pin.designRevision, approved: d.approvedRevision }] : [];
-  });
+  const positions = input.designs.map((d) => ({
+    flow: d.flow,
+    pinned: pins.find((p) => p.workflowId === d.workflowId)?.designRevision ?? null,
+    approved: d.approvedRevision,
+  }));
   const contractsMoved = staleContractPinsOf(input.contracts, input.contractPins).length > 0;
   if (stalePinsOf(positions).length === 0 && !contractsMoved && !input.mockupsMoved) {
     return [

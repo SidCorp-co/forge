@@ -63,19 +63,20 @@ type PinRow = {
 export async function latestPinsOf(ids: readonly string[]) {
   if (ids.length === 0) return [];
   const rows = (await db.execute(sql`
-    SELECT p.requirement_id, w.flow, p.design_revision AS pinned, w.approved_revision AS approved
-      FROM requirement_baseline_pins p
-      JOIN project_workflows w ON w.id = p.workflow_id
-      JOIN requirement_workflows rw
-        ON rw.requirement_id = p.requirement_id AND rw.workflow_id = p.workflow_id
-     WHERE p.requirement_id IN (${sql.join(
+    SELECT rw.requirement_id, w.flow, p.design_revision AS pinned, w.approved_revision AS approved
+      FROM requirement_workflows rw
+      JOIN project_workflows w ON w.id = rw.workflow_id
+      JOIN LATERAL (
+             SELECT b.revision, b.seq FROM requirement_baselines b
+              WHERE b.requirement_id = rw.requirement_id
+              ORDER BY b.revision DESC, b.seq DESC LIMIT 1) lb ON true
+      LEFT JOIN requirement_baseline_pins p
+        ON p.requirement_id = rw.requirement_id AND p.workflow_id = rw.workflow_id
+       AND p.revision = lb.revision AND p.baseline_seq = lb.seq
+     WHERE rw.requirement_id IN (${sql.join(
        ids.map((id) => sql`${id}`),
        sql`, `,
-     )})
-       AND (p.revision, p.baseline_seq) = (
-             SELECT b.revision, b.seq FROM requirement_baselines b
-              WHERE b.requirement_id = p.requirement_id
-              ORDER BY b.revision DESC, b.seq DESC LIMIT 1)`)) as unknown as PinRow[];
+     )})`)) as unknown as PinRow[];
   return [...rows].map((r) => ({
     requirementId: r.requirement_id,
     flow: r.flow,

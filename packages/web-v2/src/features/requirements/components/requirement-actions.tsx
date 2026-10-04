@@ -104,7 +104,7 @@ export function PrimaryActions({
     );
   } else if (d.canSignOff && d.status === "agreed" && head && s.facts.stalePins.length + s.facts.staleContractPins.length > 0) {
     const moved = [
-      ...s.facts.stalePins.map((p) => `${p.flow} r${p.approved} (was r${p.pinned})`),
+      ...s.facts.stalePins.map((p) => `${p.flow} r${p.approved} (${p.pinned === null ? "not pinned" : `was r${p.pinned}`})`),
       ...s.facts.staleContractPins.map((p) => `${p.contract}@${p.current} (was ${p.pinned ?? "unpinned"})`),
     ];
     primary = (
