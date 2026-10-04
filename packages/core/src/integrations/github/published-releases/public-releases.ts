@@ -6,7 +6,7 @@
 
 const USER_AGENT = 'forge-core-release-fetch';
 
-export interface PublicReleaseAsset {
+interface PublicReleaseAsset {
   name: string;
   browser_download_url: string;
 }

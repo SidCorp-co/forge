@@ -6,7 +6,7 @@
  * protection reads; `contents: write` also covers the HTTPS push a runner makes with a minted token.
  */
 const PERMISSION_LEVELS = ['read', 'write', 'admin'] as const;
-export type PermissionLevel = (typeof PERMISSION_LEVELS)[number];
+type PermissionLevel = (typeof PERMISSION_LEVELS)[number];
 
 export const APP_PERMISSIONS: Readonly<Record<string, PermissionLevel>> = {
   metadata: 'read',

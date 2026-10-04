@@ -3,7 +3,7 @@
  * "no binding" from "the credential was rejected" by matching error text would reclassify both the
  * day one is reworded. The wording stays in `message`, the decision is made on `reason`.
  */
-export const SENTRY_REFUSAL_REASONS = [
+const SENTRY_REFUSAL_REASONS = [
   'no_binding',
   'binding_disabled',
   'connection_disabled',

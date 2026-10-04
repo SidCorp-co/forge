@@ -26,7 +26,7 @@ export interface AutoflowSecrets extends Record<string, unknown> {
   previousTokenExpiresAt?: string;
 }
 
-export interface AutoflowStore {
+interface AutoflowStore {
   id?: string | null;
   slug?: string | null;
   name?: string | null;

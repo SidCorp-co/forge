@@ -2,7 +2,7 @@
 // it into an environment's state, whose schema must keep admitting every value named here.
 
 export type DeploymentStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
-export type DeployProvider = 'coolify' | 'shopify' | 'epodsystem' | 'autoflow';
+type DeployProvider = 'coolify' | 'shopify' | 'epodsystem' | 'autoflow';
 export type ArtifactKind = 'container-image' | 'theme' | 'bundle';
 
 export interface DeploymentRecord {

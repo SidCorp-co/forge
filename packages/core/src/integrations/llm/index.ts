@@ -15,7 +15,7 @@ export {
   fastModelConfigured,
   fastModelName,
 } from './fast-model.js';
-export { type ChatTurnKind, chatTurnKinds, resolveForProject } from './registry.js';
+export { type ChatTurnKind, resolveForProject } from './registry.js';
 export type {
   ChatContentPart,
   ChatMessage,

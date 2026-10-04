@@ -249,10 +249,8 @@ integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) 
 integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
-  const _existing = await projectBinding(projectId, id, c.get('userId'));
-
-  const rows = await listBindingDeliveries(id);
-  return c.json({ items: rows });
+  await projectBinding(projectId, id, c.get('userId'));
+  return c.json({ items: await listBindingDeliveries(id) });
 });
 
 // Re-dispatch a failed outbound delivery. Async by design: we re-enqueue the SAME outbound path

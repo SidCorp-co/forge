@@ -21,7 +21,7 @@ export interface OAuthIdentity {
 }
 
 /** The per-login secrets the browser carries between start and callback, in the signed cookie. */
-export interface LoginChecks {
+interface LoginChecks {
   state: string;
   nonce: string;
   codeVerifier: string;

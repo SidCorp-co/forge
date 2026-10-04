@@ -7,7 +7,7 @@ const REFRESH_PREFIX = "srt_";
 const CLIENT_PREFIX = "mcpc_";
 
 /** The refresh pair is optional, but the platform redeems a refresh token only with its client. */
-export function refreshPairError(refreshToken: string, clientId: string): string | null {
+function refreshPairError(refreshToken: string, clientId: string): string | null {
   const r = refreshToken.trim();
   const c = clientId.trim();
   if (!r && !c) return null;
@@ -16,7 +16,7 @@ export function refreshPairError(refreshToken: string, clientId: string): string
   return null;
 }
 
-export interface TokenPair {
+interface TokenPair {
   token: string;
   refreshToken: string;
   clientId: string;

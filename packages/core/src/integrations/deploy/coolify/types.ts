@@ -24,7 +24,7 @@ export interface CoolifySecrets extends Record<string, unknown> {
 }
 
 /** One entry of Coolify v4's `deployments[]` deploy response. */
-export interface CoolifyDeployItem {
+interface CoolifyDeployItem {
   deployment_uuid: string;
   resource_uuid?: string;
   message?: string;
