@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { StatusKey, AvatarHue } from "@/design/status";
 import { MonoTag } from "@/design/primitives/mono-tag";
 import { Avatar } from "@/design/primitives/avatar";
@@ -14,6 +15,7 @@ export interface KanbanCardProps {
   /** Chip vocabulary (ISS-360): `issue` lifecycle pill vs `session` execution
    *  chip (used when a live run's status is shown). Defaults to `issue`. */
   statusDomain?: "issue" | "session";
+  badge?: ReactNode;
   cost?: string;
   /** When true, render a small amber "hold" glyph — the issue is on manual
    *  hold so the dispatcher won't pick up new jobs (ISS-386). */
@@ -31,6 +33,7 @@ export function KanbanCard({
   status,
   statusLabel,
   statusDomain = "issue",
+  badge,
   cost,
   held,
   waitingReason,
@@ -67,7 +70,7 @@ export function KanbanCard({
       {/* Real status, visible WITHOUT opening the panel (ISS-436). */}
       <div className="flex items-center justify-between gap-2">
         <span title={waitingReason}>
-          <StatusChip status={status} size="sm" domain={statusDomain} label={statusLabel} />
+          {badge ?? <StatusChip status={status} size="sm" domain={statusDomain} label={statusLabel} />}
         </span>
         {cost && <Stat icon="dollar">{cost}</Stat>}
       </div>

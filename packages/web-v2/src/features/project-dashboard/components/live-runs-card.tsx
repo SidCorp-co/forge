@@ -7,7 +7,8 @@ import {
   CardTitle,
   Icon,
   LiveDot,
-  StatusChip,
+  StatusBadge,
+  enumLabel,
 } from "@/design";
 import { stageColor } from "@/design/stages";
 import { formatUsd } from "@/features/pipeline/derive";
@@ -63,13 +64,10 @@ export function LiveRunsCard({
                     className="flex w-full items-center gap-2.5 rounded-md border border-line bg-surface px-2.5 py-2 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
                   >
                     <span className="size-2 flex-none rounded-full" style={{ background: stageColor(run.currentStep ?? "") }} />
-                    <StatusChip
-                      status={run.status === "paused" ? "paused" : "running"}
-                      stage={run.status === "paused" ? undefined : (run.currentStep ?? undefined)}
-                      label={run.status === "paused" ? "Paused" : undefined}
-                      domain="session"
-                      size="sm"
-                    />
+                    <StatusBadge family="pipelineRun" value={run.status} />
+                    {run.status === "running" && run.currentStep ? (
+                      <span className="fg-caption flex-none text-muted">{enumLabel("jobType", run.currentStep)}</span>
+                    ) : null}
                     <span className="fg-body-sm min-w-0 flex-1 truncate text-muted">
                       {run.issueRef ? (
                         <>

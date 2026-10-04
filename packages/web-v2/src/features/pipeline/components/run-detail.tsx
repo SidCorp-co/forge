@@ -117,6 +117,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   // A session-styled chip is the run's; the issue's own status is never drawn in it.
   const issueRun = issue ? runStatusChip(issue) : null;
   const chipStatus = run ? drawerRunChip(run.status, issueRun) : issueRun;
+  const runBadge = run && chipStatus === null ? run.status : null;
   const issueStatus = issue ? (issue.status as IssueStatus) : null;
   // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
   // the running agent — only Cancel does). So a paused run with a step still
@@ -185,15 +186,10 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
           {issueStatus && !canWrite && (
             <StatusBadge family="issue" value={issueStatus} step={workStepOf(issue ?? {})} size="sm" />
           )}
-          {/* The session vocabulary reads `paused` as an idle session; a pipeline run that is paused says so. */}
-          {chipStatus && (
-            <StatusChip
-              status={chipStatus}
-              stage={chipStep}
-              size="sm"
-              domain="session"
-              label={chipStatus === "paused" ? "Paused" : undefined}
-            />
+          {chipStatus && <StatusChip status={chipStatus} stage={chipStep} size="sm" domain="session" />}
+          {runBadge && <StatusBadge family="pipelineRun" value={runBadge} />}
+          {runBadge === "running" && chipStep && (
+            <span className="fg-caption text-muted">{enumLabel("jobType", chipStep)}</span>
           )}
         </span>
       }

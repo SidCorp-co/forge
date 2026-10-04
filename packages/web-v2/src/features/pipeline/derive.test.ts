@@ -132,6 +132,11 @@ describe("cardStatus", () => {
     expect(card.waitingReason).toBe("");
   });
 
+  it("draws a card's run through the pipelineRun family, a cancelled run included", () => {
+    const card = cardStatus(issue({}), { status: "cancelled" });
+    expect(card.pipelineRun).toBe("cancelled");
+  });
+
   it("keeps the run's status when a session is live", () => {
     const card = cardStatus(
       issue({ pipelineHealth: queuedHealth("runner_stale"), agentStatus: "running" }),
@@ -320,18 +325,18 @@ describe("drawerRunChip — the drawer header reads the issue's run while its pi
   it("shows a running step under a running run as running", () => {
     expect(drawerRunChip("running", "running")).toBe("running");
   });
-  it("keeps the run's own status when the issue's reading is not live", () => {
-    expect(drawerRunChip("running", null)).toBe("running");
-    expect(drawerRunChip("running", "done")).toBe("running");
-    expect(drawerRunChip("running", "failed")).toBe("running");
+  it("hands the run's own status to the pipelineRun badge when the issue's reading is not live", () => {
+    expect(drawerRunChip("running", null)).toBeNull();
+    expect(drawerRunChip("running", "done")).toBeNull();
+    expect(drawerRunChip("running", "failed")).toBeNull();
   });
-  it("keeps a paused run paused whatever the issue's session or queued job says", () => {
-    expect(drawerRunChip("paused", "running")).toBe("paused");
-    expect(drawerRunChip("paused", "queued")).toBe("paused");
+  it("hands a paused run to the badge whatever the issue's session or queued job says", () => {
+    expect(drawerRunChip("paused", "running")).toBeNull();
+    expect(drawerRunChip("paused", "queued")).toBeNull();
   });
-  it("keeps a finished or cancelled run's own status", () => {
-    expect(drawerRunChip("completed", "queued")).toBe("done");
-    expect(drawerRunChip("failed", "running")).toBe("failed");
-    expect(drawerRunChip("cancelled", "queued")).toBe("blocked");
+  it("hands a finished or cancelled run to the badge, so cancelled never reads Blocked", () => {
+    expect(drawerRunChip("completed", "queued")).toBeNull();
+    expect(drawerRunChip("failed", "running")).toBeNull();
+    expect(drawerRunChip("cancelled", "queued")).toBeNull();
   });
 });

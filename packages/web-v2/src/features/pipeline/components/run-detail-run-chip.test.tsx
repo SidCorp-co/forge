@@ -124,11 +124,22 @@ describe("the board drawer's run chips", () => {
     expect(within(header()).queryByText("Idle")).toBeNull();
   });
 
-  it("reads the run's own status with no issue row", () => {
+  it("reads the run's own status with no issue row, through the pipelineRun badge and its step", () => {
     run = summary("running");
     render(<RunDetail open onClose={vi.fn()} issue={null} runId="r1" slug="forge-dev" />);
-    expect(within(screen.getByText("run r1").parentElement as HTMLElement).getByText("Running · Drive")).toBeInTheDocument();
+    const head = within(screen.getByText("run r1").parentElement as HTMLElement);
+    expect(head.getByTestId("status-badge")).toHaveAttribute("data-value", "running");
+    expect(head.getByText("Running")).toBeInTheDocument();
+    expect(head.getByText("Drive")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Change status/ })).toBeNull();
+  });
+
+  it("reads a cancelled run Cancelled, never the session vocabulary's Blocked", () => {
+    run = summary("cancelled");
+    render(<RunDetail open onClose={vi.fn()} issue={null} runId="r1" slug="forge-dev" />);
+    const head = within(screen.getByText("run r1").parentElement as HTMLElement);
+    expect(head.getByText("Cancelled")).toBeInTheDocument();
+    expect(head.queryByText("Blocked")).toBeNull();
   });
 });
 
