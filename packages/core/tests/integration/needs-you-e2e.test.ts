@@ -85,6 +85,10 @@ async function listCounts() {
   const issues = (await ok('/issues/standing')) as { counts: { needsYou: number } };
   const releases = (await ok('/releases')) as { counts: { you: number } };
   const contracts = (await ok('/contract-standing')).contracts as Array<{ attentionGroup: string }>;
+  const automation = (await ok('/automation/standing')) as {
+    schedules: Array<{ attentionGroup: string }>;
+    reports: Array<{ attentionGroup: string }>;
+  };
   return {
     requirements: requirements.filter((r) => r.standing.attentionGroup === 'needs_you').length,
     inDelivery: requirements.filter((r) => r.standing.state === 'in_delivery').length,
@@ -93,6 +97,9 @@ async function listCounts() {
     issues: issues.counts.needsYou,
     releases: releases.counts.you,
     contracts: contracts.filter((c) => c.attentionGroup === 'needs_you').length,
+    automation: [...automation.schedules, ...automation.reports].filter(
+      (r) => r.attentionGroup === 'needs_you',
+    ).length,
   };
 }
 
@@ -102,6 +109,7 @@ function expectAgrees(n: NeedsYouResponse, lists: Awaited<ReturnType<typeof list
   expect(n.areas.issues.you).toBe(lists.issues);
   expect(n.areas.releases.you).toBe(lists.releases);
   expect(n.areas.contracts.you).toBe(lists.contracts);
+  expect(n.areas.automation.you).toBe(lists.automation);
   expect(n.requirementsInDelivery).toBe(lists.inDelivery);
   expect(n.untriagedFeedback).toBe(lists.untriaged);
   for (const area of Object.values(n.areas)) {
@@ -112,7 +120,7 @@ function expectAgrees(n: NeedsYouResponse, lists: Awaited<ReturnType<typeof list
 describe('GET /api/projects/:id/needs-you', () => {
   it('reads nothing waiting on a project with nothing in it, as every list does', async () => {
     const n = await needsYou();
-    expect(Object.values(n.areas).map((a) => a.you)).toEqual([0, 0, 0, 0, 0]);
+    expect(Object.values(n.areas).map((a) => a.you)).toEqual([0, 0, 0, 0, 0, 0]);
     expectAgrees(n, await listCounts());
   });
 

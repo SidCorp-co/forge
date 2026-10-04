@@ -1,7 +1,7 @@
 import { enumLabel } from "@/design/vocabulary";
 import type { AgentReport } from "@/features/agent-reports/types";
+import type { FireProposal, ReportStanding } from "@/features/automation/types";
 import type { FeedbackDraft } from "@/features/feedback/components/feedback-form";
-import type { ScheduleRun } from "@/features/schedules/types";
 
 export const IMPROVEMENT_FILTERS = ["all", "reports", "proposals", "done"] as const;
 export type ImprovementFilter = (typeof IMPROVEMENT_FILTERS)[number];
@@ -16,7 +16,7 @@ export type ImprovementRow =
       from: string;
       state: ImprovementState;
       at: string;
-      report: AgentReport;
+      report: ReportStanding;
     }
   | {
       id: string;
@@ -28,47 +28,41 @@ export type ImprovementRow =
       sessionId: string;
     };
 
-export interface LoopRuns {
-  title: string;
-  runs: ScheduleRun[];
-}
+const AWAITING_TRIAGE: ReadonlySet<ReportStanding["attentionGroup"]> = new Set(["needs_you", "waiting"]);
 
-function reportRow(r: AgentReport): ImprovementRow {
+function reportRow(r: ReportStanding): ImprovementRow {
   return {
     id: `report:${r.id}`,
     source: "report",
     title: r.summary,
     from: `${enumLabel("agentReportKind", r.kind)} · ${enumLabel("agentReportTarget", r.target)}${r.targetRef ? ` ${r.targetRef}` : ""}`,
-    state: r.triage === "new" ? "report" : "done",
+    state: AWAITING_TRIAGE.has(r.attentionGroup) ? "report" : "done",
     at: r.createdAt,
     report: r,
   };
 }
 
-function proposalRows(loop: LoopRuns): ImprovementRow[] {
-  return loop.runs.flatMap((run) => {
-    const sessionId = run.sessionId;
-    if (!sessionId) return [];
-    return (run.stewardReport?.actions ?? []).flatMap((a, i): ImprovementRow[] =>
-      a.kind === "proposed" || a.kind === "applied"
-        ? [
-            {
-              id: `proposal:${sessionId}:${i}`,
-              source: "proposal",
-              title: a.summary,
-              from: `${loop.title} · ${a.skill}`,
-              state: a.kind === "proposed" ? "proposal" : "done",
-              at: run.finishedAt ?? run.startedAt ?? "",
-              sessionId,
-            },
-          ]
-        : [],
-    );
-  });
+function proposalRow(p: FireProposal, i: number, loopTitle: (scheduleId: string) => string): ImprovementRow {
+  return {
+    id: `proposal:${p.fireId}:${i}`,
+    source: "proposal",
+    title: p.summary,
+    from: `${loopTitle(p.scheduleId)} · ${p.skill}`,
+    state: p.kind === "proposed" ? "proposal" : "done",
+    at: p.at,
+    sessionId: p.sessionId,
+  };
 }
 
-export function improvementRows(reports: readonly AgentReport[], loops: readonly LoopRuns[]): ImprovementRow[] {
-  return [...reports.map(reportRow), ...loops.flatMap(proposalRows)].sort((a, b) => b.at.localeCompare(a.at));
+/** The read model's reports and the proposals of the fires it served, on one list, newest first. */
+export function improvementRows(
+  reports: readonly ReportStanding[],
+  proposals: readonly FireProposal[],
+  loopTitle: (scheduleId: string) => string,
+): ImprovementRow[] {
+  return [...reports.map(reportRow), ...proposals.map((p, i) => proposalRow(p, i, loopTitle))].sort((a, b) =>
+    b.at.localeCompare(a.at),
+  );
 }
 
 export function matchesFilter(row: ImprovementRow, f: ImprovementFilter): boolean {

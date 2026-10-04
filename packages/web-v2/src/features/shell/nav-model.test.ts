@@ -115,6 +115,7 @@ describe("the project menu", () => {
           feedback: area(0, ""),
           issues: area(12, "take on or drop"),
           contracts: area(1, "adopt 2.0"),
+          automation: area(2, "triage_report"),
         },
         requirementsInDelivery: 0,
         untriagedFeedback: 0,
@@ -128,10 +129,13 @@ describe("the project menu", () => {
       "proj-releases": 1,
       "proj-feedback": 0,
       "proj-contracts": 1,
-      "proj-automation": undefined,
+      "proj-automation": 2,
     });
     expect(flat.find((i) => i.key === "proj-requirements")?.badgeHint).toBe(
       "Requirements · waiting on you 3: accept r2 (3)",
+    );
+    expect(flat.find((i) => i.key === "proj-automation")?.badgeHint).toBe(
+      "Automation · waiting on you 2: triage a report (2)",
     );
     const rail = projectRailItems(badges).flatMap((e) => (isRailGroup(e) ? e.items : [e]));
     expect(rail.find((i) => i.key === "proj-releases")?.badge).toBe(1);

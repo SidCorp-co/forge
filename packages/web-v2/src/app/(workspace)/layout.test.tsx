@@ -52,6 +52,7 @@ vi.mock("@/features/needs-you/hooks", () => {
         feedback: area(4, "triage it"),
         issues: area(1, "answer a question"),
         contracts: area(0, ""),
+        automation: area(0, ""),
       },
       requirementsInDelivery: 0,
       untriagedFeedback: 4,

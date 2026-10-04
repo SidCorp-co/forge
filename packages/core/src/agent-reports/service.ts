@@ -32,6 +32,7 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { announceIssueCreated } from '../issues/create-service.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
+import { type PipelineCaller, resolvePipelineContext } from '../jobs/active-job-context.js';
 import { maxProjectRole, orgDerivedProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
@@ -143,6 +144,14 @@ export async function fireOfSession(sessionId: string | null): Promise<string | 
     .where(eq(agentSessions.id, sessionId))
     .limit(1);
   return row?.id ?? null;
+}
+
+// cm:why design automation rev 1 (step settle; REQ-16 BC-2, ISS-114): an issue a scheduled session
+// files names that session's fire, resolved as a report's is: the box credential's one live session
+// on its project, then the fire on that session's metadata; a person's own credential names none
+export async function fireOfCaller(caller: PipelineCaller): Promise<string | null> {
+  const resolved = await resolvePipelineContext(caller);
+  return resolved.ok ? fireOfSession(resolved.context.agentSessionId) : null;
 }
 
 export type NewAgentReport = typeof agentReports.$inferInsert;

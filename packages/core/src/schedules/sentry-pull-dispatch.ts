@@ -4,6 +4,7 @@ import { resolveScheduleTargetProject } from './release-batch-dispatch.js';
 
 export async function routeScheduleSentryPullFire(
   input: DispatchScheduleInput,
+  fireId: string,
 ): Promise<RoutedFire> {
   const resolved = await resolveScheduleTargetProject(input);
   if (!resolved) {
@@ -14,7 +15,10 @@ export async function routeScheduleSentryPullFire(
   }
   const { projectId } = resolved;
 
-  const outcome: SentryPullOutcome = await runSentryPull({ projectId }).catch((err: unknown) => ({
+  const outcome: SentryPullOutcome = await runSentryPull({
+    projectId,
+    scheduleRunId: fireId,
+  }).catch((err: unknown) => ({
     status: 'failed' as const,
     output: '',
     error: `sentry pull: ${err instanceof Error ? err.message : 'unknown error'}`,

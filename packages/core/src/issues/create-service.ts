@@ -86,6 +86,8 @@ export type IssueCreateWriter = {
   createdByDeviceId: string | null;
   createdVia: IssueCreatedVia;
   actor: Actor;
+  /** The schedule fire whose session or inline run files it; absent for any other create. */
+  scheduleRunId?: string | null;
 };
 
 export type IssueCreateRow = typeof issues.$inferSelect;
@@ -215,6 +217,7 @@ export async function createIssue(
       createdById: writer.createdById,
       createdByDeviceId: writer.createdByDeviceId,
       createdVia: writer.createdVia,
+      scheduleRunId: writer.scheduleRunId ?? null,
       detectorKey,
       plan: input.plan ?? null,
       acceptanceCriteria: input.acceptanceCriteria ?? null,

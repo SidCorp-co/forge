@@ -77,7 +77,6 @@ import {
   CONTRACT_STATE_LABELS,
   CONTRACT_STATE_TONES,
 } from "@forge/contracts/contract-standing";
-import { AGENT_REPORT_TRIAGE_LABELS } from "@forge/contracts/agent-reports";
 import { ENUM_LABELS, type Reading, STATE_READINGS } from "@forge/contracts/ui-vocabulary";
 import { type ColorMeta, TONE_META } from "./status";
 
@@ -199,7 +198,6 @@ export const ENUM_FAMILIES = {
   contractDirection: CONTRACT_DIRECTION_LABELS,
   step: WORK_STEP_LABELS,
   notificationType: NOTIFICATION_TYPE_LABELS,
-  agentReportTriage: AGENT_REPORT_TRIAGE_LABELS,
   ...ENUM_LABELS,
 } as const satisfies Record<string, Record<string, string>>;
 

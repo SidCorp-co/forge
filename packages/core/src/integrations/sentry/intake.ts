@@ -4,7 +4,12 @@ import {
   buildContextFromBinding,
   listActiveBindingsForProjectProvider,
 } from '../store.js';
-import { intakeSentryIssue, projectCreatedById, readSentryThresholds } from './intake-issue.js';
+import {
+  intakeSentryIssue,
+  projectCreatedById,
+  readSentryThresholds,
+  type SentryIntakeContext,
+} from './intake-issue.js';
 import { listSentryIssues, type SentryAdapterContext } from './issues.js';
 import { SENTRY_LIST_DEFAULT_LIMIT, SentryListingFailed } from './listing.js';
 import { resolveSentryTargets } from './targets.js';
@@ -34,9 +39,7 @@ export interface SentryPullOutcome {
 async function pullOneTarget(
   ctx: SentryAdapterContext,
   target: SentryTarget,
-  projectId: string,
-  createdById: string,
-  thresholds: { minEventCount: number; minUserCount: number },
+  intake: Omit<SentryIntakeContext, 'target'>,
   report: string[],
 ): Promise<{ filed: number; commented: number; reopened: number }> {
   const listing = await listSentryIssues(ctx, { targetLabel: target.label });
@@ -59,12 +62,7 @@ async function pullOneTarget(
 
   try {
     for (const issue of listing.issues) {
-      const outcome = await intakeSentryIssue(issue, {
-        projectId,
-        createdById,
-        thresholds,
-        target: listing.target,
-      });
+      const outcome = await intakeSentryIssue(issue, { ...intake, target: listing.target });
       if (outcome.kind === 'filed') filed += 1;
       else if (outcome.kind === 'commented') commented += 1;
       else if (outcome.kind === 'refreshed') refreshed += 1;
@@ -89,7 +87,11 @@ async function pullOneTarget(
  * be made. A project with no Sentry binding FAILS by name; it does not report a successful empty
  * pull, which is the same thing as saying nothing happened when in fact nothing could.
  */
-export async function runSentryPull(args: { projectId: string }): Promise<SentryPullOutcome> {
+export async function runSentryPull(args: {
+  projectId: string;
+  /** The schedule fire running this pull, written on every issue it files. */
+  scheduleRunId: string | null;
+}): Promise<SentryPullOutcome> {
   let bindings: BindingWithConnection[];
   try {
     bindings = await listActiveBindingsForProjectProvider(args.projectId, 'sentry');
@@ -140,7 +142,12 @@ export async function runSentryPull(args: { projectId: string }): Promise<Sentry
 
   for (const target of targets) {
     try {
-      const got = await pullOneTarget(ctx, target, args.projectId, createdById, thresholds, report);
+      const got = await pullOneTarget(
+        ctx,
+        target,
+        { projectId: args.projectId, createdById, thresholds, scheduleRunId: args.scheduleRunId },
+        report,
+      );
       filed += got.filed;
       commented += got.commented;
       reopened += got.reopened;

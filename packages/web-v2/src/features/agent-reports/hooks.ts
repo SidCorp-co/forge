@@ -1,19 +1,11 @@
 "use client";
 
 import type { TriageAgentReportRequest } from "@forge/contracts/agent-reports";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { automationKey } from "@/features/automation/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { agentReportsApi } from "./api";
-import type { AgentReportFilters } from "./types";
-
-export function useAgentReports(projectId: string | undefined, filters?: AgentReportFilters) {
-  return useQuery({
-    queryKey: ["agent-reports", projectId, filters],
-    queryFn: () => agentReportsApi.list(projectId as string, filters),
-    enabled: !!projectId,
-  });
-}
 
 const DONE: Record<TriageAgentReportRequest["act"], string> = {
   file: "Filed",
@@ -29,6 +21,7 @@ export function useTriageAgentReport(projectId: string | undefined) {
     mutationFn: ({ id, act }: { id: string; act: TriageAgentReportRequest }) => agentReportsApi.triage(id, act),
     onSuccess: ({ effect }, { act }) => {
       qc.invalidateQueries({ queryKey: ["agent-reports", projectId] });
+      qc.invalidateQueries({ queryKey: automationKey(projectId) });
       toast({ title: effect.issue ? `${DONE[act.act]} as ${effect.issue.key}` : DONE[act.act], tone: "success" });
     },
     onError: (err) => {

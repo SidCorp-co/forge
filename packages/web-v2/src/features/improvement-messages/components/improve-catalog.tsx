@@ -5,7 +5,6 @@
 // mode/cadence config, and an expandable per-run log.
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import {
   Badge,
   Button,
@@ -16,17 +15,14 @@ import {
   MonoTag,
   Select,
   Skeleton,
-  Spinner,
-  StatusBadge,
   Toggle,
-  Tooltip,
   Input,
   EnumBadge,
 } from "@/design";
+import { FireHistory } from "@/features/automation/components/fire-history";
 import { formatApiError } from "@/lib/api/error";
 import {
   useImprovementMessages,
-  useImprovementMessageRuns,
   useEnableImprovementMessage,
   useToggleImprovementMessage,
   useRunImprovementMessage,
@@ -36,102 +32,10 @@ import {
   CATEGORY_LABELS,
   MODE_OPTIONS,
   type ImprovementMessageEntry,
-  type ScheduleRun,
 } from "../types";
 
 interface ImproveScreenProps {
   scope: { projectId: string; canManage: boolean };
-}
-
-function fmtTime(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function fmtDuration(seconds: number | null): string {
-  if (seconds == null) return "—";
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}m ${String(s).padStart(2, "0")}s`;
-}
-
-/** One past run in the expandable history panel. */
-function RunItem({ run, slug }: { run: ScheduleRun; slug: string | undefined }) {
-  const body = (
-    <div className="flex flex-wrap items-center gap-2 py-1.5">
-      <EnumBadge family="trigger" value={run.trigger} />
-      <StatusBadge family={run.sessionId ? "session" : "scheduleRun"} value={run.status} />
-      <span className="fg-caption text-subtle">{fmtTime(run.startedAt)}</span>
-      <span className="fg-caption font-mono text-subtle">{fmtDuration(run.durationSeconds)}</span>
-      {run.failureReason && (
-        <Tooltip label={run.failureReason}>
-          <span className="fg-caption text-danger underline decoration-dotted">why?</span>
-        </Tooltip>
-      )}
-      {slug && run.sessionId && (
-        <span className="fg-caption text-accent">View session →</span>
-      )}
-    </div>
-  );
-  if (slug && run.sessionId) {
-    return (
-      <Link
-        href={`/projects/${slug}/agents/${run.sessionId}`}
-        className="block rounded-md px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-      >
-        {body}
-      </Link>
-    );
-  }
-  return body;
-}
-
-/** Expandable run log for one message's schedule. */
-function RunLog({
-  projectId,
-  scheduleId,
-  slug,
-}: {
-  projectId: string;
-  scheduleId: string;
-  slug: string | undefined;
-}) {
-  const runsQ = useImprovementMessageRuns(projectId, scheduleId, true);
-  const runs = runsQ.data?.runs ?? [];
-
-  return (
-    <div className="mt-3 border-t border-line-subtle pt-3">
-      <p className="fg-label mb-1 text-subtle">Recent runs</p>
-      {runsQ.isLoading && (
-        <span className="inline-flex items-center gap-2 fg-caption text-subtle">
-          <Spinner size={14} /> Loading runs…
-        </span>
-      )}
-      {runsQ.isError && (
-        <span className="fg-caption text-danger">
-          Couldn&apos;t load run history — {formatApiError(runsQ.error)}
-        </span>
-      )}
-      {!runsQ.isLoading && !runsQ.isError && runs.length === 0 && (
-        <span className="fg-caption text-subtle">No runs yet.</span>
-      )}
-      {runs.length > 0 && (
-        <div className="divide-y divide-line-subtle">
-          {runs.map((r) => (
-            <RunItem key={r.id} run={r} slug={slug} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 /** Inline enable form: mode + cadence pickers + Save. Shown when the card's
@@ -351,13 +255,10 @@ function MessageCard({
           />
         )}
 
-        {/* Run log */}
         {showRunLog && entry.enablement && (
-          <RunLog
-            projectId={projectId}
-            scheduleId={entry.enablement.scheduleId}
-            slug={slug}
-          />
+          <div className="mt-3 border-t border-line-subtle pt-3">
+            <FireHistory projectId={projectId} scheduleId={entry.enablement.scheduleId} slug={slug} />
+          </div>
         )}
       </CardContent>
     </Card>

@@ -19,6 +19,7 @@ import {
   forgeAgentSessionsGetTool,
   forgeAgentSessionsListTool,
 } from './tools/forge-agent-sessions.js';
+import { forgeAutomationTool } from './tools/forge-automation.js';
 import { forgeCollaboratorsTool } from './tools/forge-collaborators.js';
 import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
@@ -169,6 +170,7 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     forgeRequirementsTool(ctx),
     forgeSuggestionsTool(ctx),
     forgeRunsTool(ctx),
+    forgeAutomationTool(ctx),
     forgeMastersTool(ctx),
     forgeOnboardingTool(ctx),
     forgeFeedbackItemsTool(ctx),

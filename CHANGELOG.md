@@ -167,6 +167,15 @@
   these public guides instead of designs only Forge's own project could read, as do the issue
   status refusals.
 
+- **Every schedule kind and fire reads as words (ISS-115).** `forge_schedules` creates release
+  batch and Sentry pull schedules, and schedule state, fire status, fire trigger and report triage
+  each have one badge.
+
+- **Automation says where each schedule, fire and report stands (ISS-114).**
+  `GET /api/projects/:id/automation/standing` and `forge_automation` give each schedule its state
+  and owner, each fire what it produced, and each report whom it waits on. Needs you counts
+  automation.
+
 - **An agent report records its triage, who decided and when (ISS-113).** Filing makes a draft
   issue, a dismissal needs a reason, and a scheduled run's report links that run. Improvements
   shows triage and offers Dismiss.
@@ -2715,6 +2724,8 @@
   (ISS-1313)
 
 ### Removed
+- **`GET /api/schedules/:id/runs` is gone (ISS-114).** A schedule's fires are read at
+  `GET /api/projects/:id/automation/schedules/:scheduleId`.
 - **An agent report has no reviewed flag (ISS-113).** `POST /api/agent-reports/:id/reviewed`,
   the `reviewed` list filter and `forge_agent_report action=review` are gone; triage replaces them,
   and the issue a report was filed into cannot be deleted until it is reopened.

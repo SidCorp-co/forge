@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
+import { automationKey } from "@/features/automation/hooks";
 import { schedulesApi } from "./api";
 
 export function useSchedules(projectId: string | undefined) {
@@ -12,21 +13,6 @@ export function useSchedules(projectId: string | undefined) {
     queryKey: ["schedules", projectId, "list"],
     queryFn: () => schedulesApi.list(projectId as string),
     enabled: !!projectId,
-  });
-}
-
-/** Run history for one schedule. Lazy — only fetches when `enabled` (the row is
- *  expanded). Keyed under `['schedules', projectId, …]` so a run mutation's
- *  `invalidateQueries(['schedules', projectId])` refreshes it too. */
-export function useScheduleRuns(
-  projectId: string | undefined,
-  scheduleId: string,
-  enabled: boolean,
-) {
-  return useQuery({
-    queryKey: ["schedules", projectId, "runs", scheduleId],
-    queryFn: () => schedulesApi.runs(scheduleId),
-    enabled: enabled && !!projectId,
   });
 }
 
@@ -41,6 +27,7 @@ function useScheduleMutation<TArgs>(
     mutationFn: fn,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["schedules", projectId] });
+      qc.invalidateQueries({ queryKey: automationKey(projectId) });
       toast({ title: successMessage, tone: "success" });
     },
     onError: (err) => {

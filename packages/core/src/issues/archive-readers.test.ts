@@ -25,6 +25,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'admin/pipeline-health-routes.ts':
     'reads only `needs_info`, a park an archived issue never holds',
   'agent-reports/service.ts': 'by issue id',
+  'automation/facts.ts':
+    'the issues a fire filed or a report was filed into, by id: an archived one is still what the fire produced',
   'agent-sessions/interactive-routes.ts': "titles of the session's own issue ids",
   'agent-sessions/routes.ts': 'the one issue a session names',
   'assistant/tools/issue-dedup.ts':

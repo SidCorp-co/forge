@@ -66,6 +66,8 @@ export interface SentryIntakeContext {
   thresholds: SentryAdmissionThresholds;
   /** The declared target this issue was confined to, named in the filed issue's body. */
   target: { label: string; organizationSlug: string; projectSlug?: string };
+  /** The schedule fire that pulled it, or null for the webhook door. */
+  scheduleRunId: string | null;
 }
 
 /**
@@ -290,14 +292,13 @@ async function observe(
 }
 
 async function file(
-  projectId: string,
-  createdById: string,
+  ctx: Pick<SentryIntakeContext, 'projectId' | 'createdById' | 'scheduleRunId'>,
   row: SentryIssueRow,
   baseline: SentrySightingRecord,
 ): Promise<'filed' | 'raced'> {
   const inserted = await db.execute<{ id: string }>(sql`
-    INSERT INTO issues (project_id, title, description, created_by_id, source, external_id, detector_key, status, created_via, metadata)
-    VALUES (${projectId}, ${row.title}, ${row.description}, ${createdById}, ${row.source}, ${row.externalId}, ${row.detectorKey}, ${row.status}, 'system', ${JSON.stringify({ sentry: baseline })}::jsonb)
+    INSERT INTO issues (project_id, title, description, created_by_id, source, external_id, detector_key, status, created_via, metadata, schedule_run_id)
+    VALUES (${ctx.projectId}, ${row.title}, ${row.description}, ${ctx.createdById}, ${row.source}, ${row.externalId}, ${row.detectorKey}, ${row.status}, 'system', ${JSON.stringify({ sentry: baseline })}::jsonb, ${ctx.scheduleRunId})
     ON CONFLICT (project_id, source, external_id) WHERE external_id IS NOT NULL DO NOTHING
     RETURNING id
   `);
@@ -404,8 +405,7 @@ export async function intakeSentryIssue(
   if (!verdict.admit) return { kind: 'refused', reason: verdict.reason };
 
   const outcome = await file(
-    ctx.projectId,
-    ctx.createdById,
+    ctx,
     buildSentryIssueRow(issue, verdict.externalId, verdict.detectorKey, ctx.target),
     sighting(issue, verdict.externalId, null),
   );

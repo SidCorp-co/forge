@@ -13,7 +13,6 @@ import {
   createSchedule,
   deleteSchedule,
   getSchedule,
-  listScheduleRuns,
   listSchedules,
   runScheduleNow,
   updateSchedule,
@@ -25,12 +24,6 @@ const listQuerySchema = z
   .object({
     projectId: z.uuid(),
     enabled: z.enum(['true', 'false']).optional(),
-  })
-  .strict();
-
-const runsQuerySchema = z
-  .object({
-    limit: z.coerce.number().int().min(1).max(50).optional(),
   })
   .strict();
 
@@ -168,22 +161,6 @@ scheduleRoutes.get(
     const { id } = c.req.valid('param');
     const row = await getSchedule(id, c.get('userId'));
     return c.json(row);
-  },
-);
-
-scheduleRoutes.get(
-  '/:id/runs',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  zValidator('query', runsQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const { limit } = c.req.valid('query');
-    const result = await listScheduleRuns(id, c.get('userId'), limit);
-    return c.json(result);
   },
 );
 

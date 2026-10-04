@@ -1,7 +1,6 @@
 // web-v2 feature module: improvement-messages — shapes verified against
 // `packages/core/src/improvement-messages/routes.ts` (ISS-549).
 // Cross-app parity type is also exported from packages/contracts/src/rows.ts.
-import type { ScheduleRun } from "@/features/schedules/types";
 
 export type ImprovementMessageCategory =
   | "code-quality"
@@ -79,7 +78,3 @@ export const CATEGORY_LABELS: Record<ImprovementMessageCategory, string> = {
   steward: "Steward",
   general: "General",
 };
-
-// Re-export ScheduleRun for use in the run log since improvement messages
-// use the same /api/schedules/:id/runs endpoint.
-export type { ScheduleRun };

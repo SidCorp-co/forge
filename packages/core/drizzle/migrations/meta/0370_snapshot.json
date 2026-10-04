@@ -1,5 +1,5 @@
 {
-  "id": "a8d2d7c7-a01d-47ae-b975-f4281d3e76fe",
+  "id": "d495f493-372a-450a-a787-c06f961b2dc9",
   "prevId": "e631334e-65b8-4cab-afad-15cc704eb001",
   "version": "7",
   "dialect": "postgresql",
@@ -4516,6 +4516,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "schedule_run_id": {
+          "name": "schedule_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "ident_search": {
           "name": "ident_search",
           "type": "tsvector",
@@ -4729,6 +4735,22 @@
           "method": "btree",
           "with": {}
         },
+        "issues_schedule_run_idx": {
+          "name": "issues_schedule_run_idx",
+          "columns": [
+            {
+              "expression": "schedule_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "schedule_run_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "issues_project_updated_at_idx": {
           "name": "issues_project_updated_at_idx",
           "columns": [
@@ -4888,6 +4910,19 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "issues_schedule_run_id_schedule_runs_id_fk": {
+          "name": "issues_schedule_run_id_schedule_runs_id_fk",
+          "tableFrom": "issues",
+          "tableTo": "schedule_runs",
+          "columnsFrom": [
+            "schedule_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "issues_planned_revision_fk": {
@@ -18477,12 +18512,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "revises_id": {
-          "name": "revises_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "status": {
           "name": "status",
           "type": "text",
@@ -18661,22 +18690,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "suggestions_revises_uq": {
-          "name": "suggestions_revises_uq",
-          "columns": [
-            {
-              "expression": "revises_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "revises_id IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -18730,19 +18743,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "suggestions_revises_id_suggestions_id_fk": {
-          "name": "suggestions_revises_id_suggestions_id_fk",
-          "tableFrom": "suggestions",
-          "tableTo": "suggestions",
-          "columnsFrom": [
-            "revises_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "suggestions_producer_id_users_id_fk": {
