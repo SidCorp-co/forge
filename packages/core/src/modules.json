@@ -346,10 +346,6 @@
       "kind": "adapter",
       "context": "adapters"
     },
-    "integrations/google": {
-      "kind": "adapter",
-      "context": "adapters"
-    },
     "integrations/identity": {
       "kind": "adapter",
       "context": "adapters"

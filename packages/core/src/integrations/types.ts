@@ -12,7 +12,6 @@ export type IntegrationProvider =
   | 'rocketchat'
   | 'github'
   | 'gitlab'
-  | 'google'
   | 'agent'
   | 'autoflow';
 
@@ -23,7 +22,6 @@ export const INTEGRATION_PROVIDERS = [
   'rocketchat',
   'github',
   'gitlab',
-  'google',
   'agent',
   'autoflow',
 ] as const satisfies readonly IntegrationProvider[];

@@ -21,7 +21,6 @@ const FIELDS: Readonly<Record<string, readonly string[]>> = {
   gitlab: ['projectPath', 'projectId'],
   sentry: [],
   rocketchat: ['rids'],
-  google: ['defaultSpreadsheetId'],
   agent: [],
 };
 

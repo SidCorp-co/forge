@@ -380,7 +380,6 @@ const BINDING_TARGETS = [
   }),
   targetOf('sentry', {}),
   targetOf('rocketchat', { rids: z.array(z.string().min(1).max(200)).min(1).max(20).optional() }),
-  targetOf('google', { defaultSpreadsheetId: z.string().min(1).max(200).optional() }),
   targetOf('agent', {}),
 ] as const;
 
