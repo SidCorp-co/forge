@@ -16,7 +16,6 @@ import { and, eq } from 'drizzle-orm';
 import { recordContentLanguage } from '../content-language/read.js';
 import { db } from '../db/client.js';
 import { devices, issues, jobs, runners } from '../db/schema.js';
-import { recordNamedContracts } from '../ecosystem/contract/named-context.js';
 import { recordContractContext } from '../ecosystem/contract/run-context-service.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -135,7 +134,7 @@ export async function prepareClaimedJob(args: {
     policy: args.policy,
     subject: `prepare refused job ${job.id}`,
   });
-  const { systemPrompt, blocks, deniedTools, designs, requirement, contracts, namedContracts } =
+  const { systemPrompt, blocks, deniedTools, designs, requirement, contracts, pinnedContracts } =
     built;
 
   const payloadIn = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
@@ -178,8 +177,9 @@ export async function prepareClaimedJob(args: {
     await recordArtifactContext(
       agentSessionId,
       designs,
-      requirement ? 'workflow-builds+requirement' : 'workflow-builds',
+      requirement ? 'baseline-pins+requirement' : 'workflow-builds',
       requirement,
+      pinnedContracts,
     );
   }
   // cm:why the language the preamble told this job is on its session beside `artifactContext`, so a
@@ -188,7 +188,6 @@ export async function prepareClaimedJob(args: {
     await recordContentLanguage(agentSessionId, built.contentLanguage);
   }
   if (contracts.length) await recordContractContext(agentSessionId, contracts, 'issue-paths');
-  if (namedContracts.length) await recordNamedContracts(agentSessionId, namedContracts);
 
   return {
     jobId: job.id,

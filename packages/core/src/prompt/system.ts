@@ -39,7 +39,7 @@ export type PreambleBlockId =
   | 'state-block'
   | 'contract-context'
   | 'artifact-context'
-  | 'named-contract-context'
+  | 'pinned-contract-context'
   | 'content-language';
 
 export interface PreambleBlock {
