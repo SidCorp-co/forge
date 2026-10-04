@@ -10,14 +10,13 @@
  * themselves be the thing that is missing.
  */
 
-import { buildAppJwt } from './app-auth.js';
 import {
   appPermissionsPageUrl,
   describeShortfall,
   installationShortfall,
   type PermissionShortfall,
 } from './app-permissions.js';
-import { GITHUB_API_BASE } from './types.js';
+import { appOctokit, responseOf } from './octokit.js';
 
 const READ_TIMEOUT_MS = 6000;
 
@@ -38,42 +37,35 @@ export type AppIdentity =
 async function askGitHub(args: {
   appId: string;
   privateKey: string;
-  method: 'GET';
   path: string;
   apiBaseUrl?: string;
   fetchImpl?: typeof fetch;
-  nowMs?: number;
 }): Promise<{ ok: true; body: unknown } | { ok: false; reason: string }> {
-  const base = (args.apiBaseUrl ?? GITHUB_API_BASE).replace(/\/+$/, '');
-  const doFetch = args.fetchImpl ?? fetch;
-  const url = `${base}${args.path}`;
-  let res: Response;
   try {
-    res = await doFetch(url, {
-      headers: {
-        Authorization: `Bearer ${await buildAppJwt(args.appId, args.privateKey, args.nowMs ?? Date.now())}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+    const res = await appOctokit(args).request({
+      method: 'GET',
+      url: args.path,
+      request: { signal: AbortSignal.timeout(READ_TIMEOUT_MS) },
     });
+    if (!res.data || typeof res.data !== 'object') {
+      return { ok: false, reason: `GitHub's answer at ${args.path} was not JSON` };
+    }
+    return { ok: true, body: res.data };
   } catch (err) {
+    const status = responseOf(err)?.status;
+    if (status === 401) {
+      return {
+        ok: false,
+        reason: `GitHub rejected the App JWT at ${args.path} — check the App id and private key`,
+      };
+    }
+    if (status !== undefined) {
+      return { ok: false, reason: `GitHub answered HTTP ${status} at ${args.path}` };
+    }
     return {
       ok: false,
       reason: `GitHub could not be reached at ${args.path}: ${err instanceof Error ? err.message : String(err)}`,
     };
-  }
-  if (res.status === 401) {
-    return {
-      ok: false,
-      reason: `GitHub rejected the App JWT at ${args.path} — check the App id and private key`,
-    };
-  }
-  if (!res.ok) return { ok: false, reason: `GitHub answered HTTP ${res.status} at ${args.path}` };
-  try {
-    return { ok: true, body: await res.json() };
-  } catch {
-    return { ok: false, reason: `GitHub's answer at ${args.path} was not JSON` };
   }
 }
 
@@ -90,13 +82,8 @@ export async function readInstallationGrants(args: {
   installationId: number;
   apiBaseUrl?: string;
   fetchImpl?: typeof fetch;
-  nowMs?: number;
 }): Promise<InstallationGrants> {
-  const got = await askGitHub({
-    ...args,
-    method: 'GET',
-    path: `/app/installations/${args.installationId}`,
-  });
+  const got = await askGitHub({ ...args, path: `/app/installations/${args.installationId}` });
   if (!got.ok) return { read: false, reason: got.reason };
   const body = got.body as { permissions?: Record<string, string>; html_url?: string };
   if (!body.permissions || typeof body.permissions !== 'object') {
@@ -114,9 +101,8 @@ export async function readAppIdentity(args: {
   privateKey: string;
   apiBaseUrl?: string;
   fetchImpl?: typeof fetch;
-  nowMs?: number;
 }): Promise<AppIdentity> {
-  const got = await askGitHub({ ...args, method: 'GET', path: '/app' });
+  const got = await askGitHub({ ...args, path: '/app' });
   if (!got.ok) return { read: false, reason: got.reason };
   const body = got.body as { slug?: string; owner?: { login?: string; type?: string } };
   if (!body.slug || !body.owner?.login) {
@@ -150,7 +136,6 @@ export async function checkInstallationGrant(args: {
   repository: string;
   apiBaseUrl?: string;
   fetchImpl?: typeof fetch;
-  nowMs?: number;
 }): Promise<GrantVerdict> {
   const grants = await readInstallationGrants(args);
   if (!grants.read) return { kind: 'unread', reason: grants.reason };

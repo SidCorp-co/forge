@@ -1,12 +1,10 @@
-import { createHash, createPrivateKey } from 'node:crypto';
-import { SignJWT } from 'jose';
+import { createHash } from 'node:crypto';
+import { gaxios, JWT } from 'google-auth-library';
 import { GoogleAuthError, type ServiceAccountKey } from './types.js';
 
+/** The only token endpoint a key may name; google-auth-library posts the assertion here. */
 const DEFAULT_TOKEN_URI = 'https://oauth2.googleapis.com/token';
-const ASSERTION_LIFETIME_S = 3600;
-const TOKEN_REFRESH_MARGIN_MS = 60_000;
 const MINT_TIMEOUT_MS = 10_000;
-const JWT_BEARER_GRANT = 'urn:ietf:params:oauth:grant-type:jwt-bearer';
 
 const KEY_SHAPE_REFUSAL =
   'the stored Google credential is not a service-account key file — expected JSON with "type":"service_account", "client_email" and "private_key". Re-enter the key file Google issued, unchanged.';
@@ -44,29 +42,6 @@ export function parseServiceAccountKey(json: string): ServiceAccountKey {
   return key as unknown as ServiceAccountKey;
 }
 
-export async function buildAssertion(
-  key: ServiceAccountKey,
-  scope: string,
-  nowMs: number = Date.now(),
-): Promise<string> {
-  const now = Math.floor(nowMs / 1000);
-  // The constant and not `key.token_uri`: `parseServiceAccountKey` has already
-  // refused any other value, so reading the field back would be a second,
-  // weaker copy of that rule.
-  const aud = DEFAULT_TOKEN_URI;
-  return new SignJWT({ scope })
-    .setProtectedHeader({
-      alg: 'RS256',
-      typ: 'JWT',
-      ...(key.private_key_id ? { kid: key.private_key_id } : {}),
-    })
-    .setIssuer(key.client_email)
-    .setAudience(aud)
-    .setIssuedAt(now - 60)
-    .setExpirationTime(now - 60 + ASSERTION_LIFETIME_S)
-    .sign(createPrivateKey(key.private_key));
-}
-
 export interface GoogleAccessToken {
   token: string;
   expiresAt: number;
@@ -76,7 +51,8 @@ function credentialFingerprint(serviceAccountJson: string): string {
   return createHash('sha256').update(serviceAccountJson).digest('hex').slice(0, 16);
 }
 
-const cache = new Map<string, GoogleAccessToken>();
+/** One google-auth-library client per connection, scope and key: its own token cache. */
+const clients = new Map<string, JWT>();
 
 export interface MintArgs {
   /** Cache key half. One connection's token is never reused for another. */
@@ -85,19 +61,22 @@ export interface MintArgs {
   scope: string;
   /** Skip the cache and exchange a fresh assertion. */
   forceMint?: boolean;
-  fetchImpl?: typeof fetch;
-  nowMs?: number;
 }
 
-/** What the token endpoint returns on the happy path. */
-interface TokenResponse {
-  access_token?: string;
-  expires_in?: number;
-}
-
-function describeTokenFailure(status: number): GoogleAuthError {
-  const rejected = status === 400 || status === 401 || status === 403;
-  if (rejected) {
+function describeMintFailure(err: unknown): GoogleAuthError {
+  if (!(err instanceof gaxios.GaxiosError)) {
+    // Signing failed before anything was sent: the key itself does not parse.
+    return new GoogleAuthError(400, 'rejected', KEY_SHAPE_REFUSAL);
+  }
+  const status = err.response?.status;
+  if (status === undefined) {
+    return new GoogleAuthError(
+      0,
+      'transport',
+      `could not reach Google's token endpoint: ${err.message}`,
+    );
+  }
+  if (status === 400 || status === 401 || status === 403) {
     return new GoogleAuthError(
       status,
       'rejected',
@@ -112,56 +91,32 @@ function describeTokenFailure(status: number): GoogleAuthError {
 }
 
 /**
- * Mint (or reuse) an access token for one connection at one scope. Google
- * issues these for an hour; the cache hands one back until a minute before it
- * lapses, and `forceMint` bypasses that — which is what test-connection uses,
- * so the credential stored NOW is the credential tested rather than whichever
- * one minted the token still sitting in the cache.
+ * Mint (or reuse) an access token for one connection at one scope. google-auth-library holds it
+ * until it nears expiry; `forceMint` builds a fresh client — which is what test-connection uses,
+ * so the credential stored NOW is the credential tested rather than whichever one minted the
+ * token still sitting in the cache.
  */
 export async function googleAccessToken(args: MintArgs): Promise<GoogleAccessToken> {
-  const now = args.nowMs ?? Date.now();
   const cacheKey = `${args.connectionId}|${args.scope}|${credentialFingerprint(args.serviceAccountJson)}`;
-  if (!args.forceMint) {
-    const hit = cache.get(cacheKey);
-    if (hit && hit.expiresAt - TOKEN_REFRESH_MARGIN_MS > now) return hit;
-  }
-
-  const key = parseServiceAccountKey(args.serviceAccountJson);
-  const doFetch = args.fetchImpl ?? fetch;
-
-  let assertion: string;
-  try {
-    assertion = await buildAssertion(key, args.scope, now);
-  } catch {
-    throw new GoogleAuthError(400, 'rejected', KEY_SHAPE_REFUSAL);
-  }
-
-  let res: Response;
-  try {
-    res = await doFetch(DEFAULT_TOKEN_URI, {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: JWT_BEARER_GRANT, assertion }).toString(),
-      signal: AbortSignal.timeout(MINT_TIMEOUT_MS),
+  let jwt = args.forceMint ? undefined : clients.get(cacheKey);
+  if (!jwt) {
+    const key = parseServiceAccountKey(args.serviceAccountJson);
+    jwt = new JWT({
+      email: key.client_email,
+      key: key.private_key,
+      ...(key.private_key_id ? { keyId: key.private_key_id } : {}),
+      scopes: [args.scope],
+      transporterOptions: { timeout: MINT_TIMEOUT_MS },
     });
+  }
+
+  let token: string | null | undefined;
+  try {
+    ({ token } = await jwt.getAccessToken());
   } catch (err) {
-    throw new GoogleAuthError(
-      0,
-      'transport',
-      `could not reach Google's token endpoint: ${err instanceof Error ? err.message : 'unknown error'}`,
-    );
+    throw describeMintFailure(err);
   }
-
-  if (!res.ok) throw describeTokenFailure(res.status);
-
-  const body = (await res.json()) as TokenResponse;
-  if (!body.access_token) {
-    throw new GoogleAuthError(res.status, 'transport', 'Google returned no access_token');
-  }
-  const minted: GoogleAccessToken = {
-    token: body.access_token,
-    expiresAt: now + (body.expires_in ?? 3600) * 1000,
-  };
-  cache.set(cacheKey, minted);
-  return minted;
+  if (!token) throw new GoogleAuthError(200, 'transport', 'Google returned no access_token');
+  clients.set(cacheKey, jwt);
+  return { token, expiresAt: jwt.credentials.expiry_date ?? Date.now() + 3600_000 };
 }

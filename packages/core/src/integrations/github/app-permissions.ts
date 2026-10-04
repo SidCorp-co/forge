@@ -107,7 +107,7 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     auth: 'app-jwt',
     permission: null,
     level: null,
-    callSites: ['app-auth.ts:installationTokenWithExpiry'],
+    callSites: ['octokit.ts:mintInstallationToken'],
     docs: `${REST}/apps/apps#create-an-installation-access-token-for-an-app`,
   },
   {
@@ -127,7 +127,7 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     level: 'read',
     callSites: [
       'adapter.ts:healthcheck',
-      'runner-release-repo.ts:readRepositoryHead',
+      'runner-release-repo.ts:readDefaultBranch',
       'runner-release-repo.ts:readDefaultBranch',
     ],
     docs: `${REST}/repos/repos#get-a-repository`,
@@ -192,10 +192,7 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     auth: 'installation',
     permission: 'contents',
     level: 'read',
-    callSites: [
-      'projection-refresh.ts:refreshPullRequestRow',
-      'live-divergence.ts:readLiveDivergence',
-    ],
+    callSites: ['projection-refresh.ts:readRefreshFacts', 'live-divergence.ts:readLiveDivergence'],
     docs: `${REST}/commits/commits#compare-two-commits`,
   },
   {
@@ -280,7 +277,7 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
       'agent-ops.ts:readPullRequestDiff',
       'agent-ops.ts:submitReview',
       'merge-read.ts:readPullRequest',
-      'projection-refresh.ts:refreshPullRequestRow',
+      'projection-refresh.ts:readRefreshFacts',
     ],
     docs: `${REST}/pulls/pulls#get-a-pull-request`,
   },
@@ -290,7 +287,7 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     auth: 'installation',
     permission: 'contents',
     level: 'write',
-    callSites: ['merge.ts:mergePullRequest'],
+    callSites: ['merge.ts:mergeGitHubPullRequest'],
     docs: `${REST}/pulls/pulls#merge-a-pull-request`,
   },
   {

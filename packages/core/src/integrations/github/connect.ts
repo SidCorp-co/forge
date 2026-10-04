@@ -8,7 +8,7 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { inboundWebhookUrl } from '../inbound-door.js';
-import { GITHUB_API_BASE } from './types.js';
+import { anonymousOctokit, responseOf } from './octokit.js';
 
 const STATE_TTL_MS = 10 * 60_000;
 
@@ -109,25 +109,25 @@ export async function convertManifestCode(args: {
   apiBaseUrl?: string;
   fetchImpl?: typeof fetch;
 }): Promise<ConvertedApp> {
-  const base = (args.apiBaseUrl ?? GITHUB_API_BASE).replace(/\/+$/, '');
-  const doFetch = args.fetchImpl ?? fetch;
-  const res = await doFetch(`${base}/app-manifests/${encodeURIComponent(args.code)}/conversions`, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-  });
-  if (!res.ok) {
-    throw new Error(`github: converting the manifest code returned HTTP ${res.status}`);
-  }
-  const body = (await res.json()) as {
+  let body: {
     id?: number;
     pem?: string;
     webhook_secret?: string;
     slug?: string;
     html_url?: string;
   };
+  try {
+    body = (
+      await anonymousOctokit(args).request({
+        method: 'POST',
+        url: `/app-manifests/${encodeURIComponent(args.code)}/conversions`,
+      })
+    ).data as typeof body;
+  } catch (err) {
+    const status = responseOf(err)?.status;
+    if (status === undefined) throw err;
+    throw new Error(`github: converting the manifest code returned HTTP ${status}`);
+  }
   if (!body.id || !body.pem || !body.webhook_secret) {
     throw new Error('github: the manifest conversion returned an incomplete credential');
   }

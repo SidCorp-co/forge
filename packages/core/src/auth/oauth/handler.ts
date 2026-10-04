@@ -1,6 +1,6 @@
 /**
  * Shared OAuth flow — handles both /:provider/start and /:provider/callback.
- * Provider-specific logic lives in integrations/identity (github.ts, oidc-provider.ts); this file
+ * Provider-specific logic lives in integrations/identity (github.ts, oidc.ts); this file
  * is the connective tissue (cookie state, find-or-create-user, set the
  * auth cookie, redirect).
  */
@@ -30,9 +30,6 @@ import { assertNotAgentUser } from '../agent-login-gate.js';
 import { getCallbackUrl, getProvider } from './providers.js';
 import {
   clearStateCookie,
-  generateNonce,
-  generatePkceVerifier,
-  pkceChallenge,
   STATE_COOKIE_NAME,
   setStateCookie,
   signState,
@@ -107,29 +104,20 @@ export async function handleStart(
       cause: { code: 'PROVIDER_NOT_ENABLED' },
     });
   }
-  const impl = providerImpls[providerId];
-  const redirectUri = getCallbackUrl(providerId);
-  const nonce = generateNonce();
-  const verifier = generatePkceVerifier();
-  const challenge = await pkceChallenge(verifier);
+  const { url, checks } = await providerImpls[providerId].start(cfg, getCallbackUrl(providerId));
   const target = safeRedirect(query.redirect);
 
   const cookieJwt = await signState({
     p: providerId,
-    n: nonce,
-    v: verifier,
+    s: checks.state,
+    n: checks.nonce,
+    v: checks.codeVerifier,
     r: target,
     mode: options.mode ?? 'login',
     ...(options.uid ? { uid: options.uid } : {}),
   });
   setStateCookie(c, cookieJwt);
 
-  const url = await impl.buildAuthorizeUrl(cfg, {
-    state: nonce,
-    codeChallenge: challenge,
-    nonce,
-    redirectUri,
-  });
   return c.redirect(url, 302);
 }
 
@@ -234,7 +222,7 @@ export async function handleCallback(c: Context, providerId: ProviderId, query: 
     clearStateCookie(c);
     return oauthErrorRedirect(c, 'session_expired');
   }
-  if (payload.p !== providerId || payload.n !== state) {
+  if (payload.p !== providerId || payload.s !== state) {
     clearStateCookie(c);
     return oauthErrorRedirect(c, 'session_expired');
   }
@@ -242,13 +230,13 @@ export async function handleCallback(c: Context, providerId: ProviderId, query: 
   // network blip on the token exchange can't leave a replayable state.
   clearStateCookie(c);
 
-  const impl = providerImpls[providerId];
-  const redirectUri = getCallbackUrl(providerId);
-  const identity = await impl.callback(cfg, {
-    code,
-    codeVerifier: payload.v,
-    nonce: payload.n,
-    redirectUri,
+  // The registered callback URL, not the request's own: behind a proxy the request sees an
+  // internal host, and the token exchange must name the redirect_uri the provider was given.
+  const callbackUrl = new URL(getCallbackUrl(providerId));
+  callbackUrl.search = new URL(c.req.url).search;
+  const identity = await providerImpls[providerId].finish(cfg, {
+    callbackUrl,
+    checks: { state: payload.s, nonce: payload.n, codeVerifier: payload.v },
   });
 
   const appBase = env.APP_BASE_URL.replace(/\/+$/, '');
