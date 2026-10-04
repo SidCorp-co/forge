@@ -22,7 +22,7 @@ import { requireHeld } from '../permissions/index.js';
 import type { Executor, TxOnly } from './db-executor.js';
 import { refuseConversation } from './refusals.js';
 
-export interface ParticipantRow {
+interface ParticipantRow {
   id: string;
   kind: ConversationParticipantKind;
   userId: string | null;
@@ -96,7 +96,7 @@ async function projectsOfHandle(handleUserId: string, tx: Executor = defaultDb):
 }
 
 /** A room's live handles with the name each answers to; `handle` is null where the org has minted none yet. */
-export interface RoomHandle {
+interface RoomHandle {
   userId: string;
   handle: string | null;
 }
@@ -180,7 +180,7 @@ export async function handleForProject(
   return row?.userId ?? null;
 }
 
-export interface AddHandleArgs {
+interface AddHandleArgs {
   conversationId: string;
   handleUserId: string;
   /**
@@ -291,7 +291,7 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
     .onConflictDoNothing();
 }
 
-export interface AddPersonArgs {
+interface AddPersonArgs {
   conversationId: string;
   userId?: string | null;
   externalKey?: string | null;
@@ -321,7 +321,7 @@ export async function addPerson(args: AddPersonArgs): Promise<void> {
     .onConflictDoNothing();
 }
 
-export interface RemoveParticipantArgs {
+interface RemoveParticipantArgs {
   conversationId: string;
   participantId: string;
   /**

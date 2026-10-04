@@ -1,19 +1,10 @@
 /**
- * A conversation turn answered by a Claude Code session on a paired box.
- *
- * ISS-727 built this for Rocket.Chat and built it in Rocket.Chat's vocabulary:
- * a connection id, a room id, a thread id and a bot name. ISS-1039 makes the
- * same lane the Forge UI's Agent mode, so what a turn is about here is a VENUE,
- * a window and a delivery key — the three things `conversations/ports.ts`
- * already addresses a room by — and the reply goes out through that venue's own
- * transport rather than through one transport's REST client.
- *
- * Nothing in this file names a transport. A second copy of it parameterised for
- * `web` is the two-live-paths defect the conversation store was extracted to
- * end, which is why there is one.
+ * A conversation turn answered by a Claude Code session on a paired box, addressed by venue, window
+ * and delivery key (ISS-1039). Nothing here names a transport: one lane serves every venue, because
+ * a second copy per transport is the two-live-paths defect the conversation store was extracted to end.
  */
 
-import { and, eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import {
   createChatSessionRow,
   dispatchChatTurn,
@@ -21,11 +12,10 @@ import {
   noTurnCredentialDeviceReason,
   pickTurnCredentialDevice,
   resolveSessionAuthority,
-  type SessionAsker,
   transitionSessions,
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
-import { agentSessions } from '../db/schema.js';
+import { agentSessions, type MemberLens } from '../db/schema.js';
 import { buildProgressFactsBlock, computeProjectProgress } from '../issues/index.js';
 import { egressShown } from '../lib/data-egress.js';
 import { logger } from '../observability/logger.js';
@@ -40,48 +30,71 @@ import {
 import { hasInFlightConversationAgentTurn } from './conversation-agent-read.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
+type Authorised = Extract<Awaited<ReturnType<typeof resolveSessionAuthority>>, { ok: true }>;
 
 export const TITLE_MAX = 80;
 
-export async function startConversationAgentTurn(
-  args: ConversationAgentTurnArgs,
-): Promise<ConversationAgentTurnResult> {
-  if (await hasInFlightConversationAgentTurn(args.venue.projectId, args.conversationId)) {
-    return { started: false, reason: 'deduped' };
-  }
-
-  const spoken = await egressShown(
-    args.venue.projectId,
-    'conversation',
-    { question: args.question, conversationContext: args.conversationContext },
-    `conversation ${args.conversationId}`,
-  );
-  const deviceId = await pickTurnCredentialDevice(args.venue.projectId);
-  if (!deviceId) {
-    return { started: false, reason: await noTurnCredentialDeviceReason(args.venue.projectId) };
-  }
-  const asker: SessionAsker = { userId: args.asker.userId, viaTokenId: args.asker.viaTokenId };
-  const authorised = await resolveSessionAuthority({
-    asker,
-    projectId: args.venue.projectId,
-    deviceId,
+/** The session row a runner-hosted conversation turn runs in, carrying its marker. */
+export function createAgentSession(input: {
+  projectId: string;
+  userId: string;
+  title: string;
+  parentSessionId?: string;
+  marker: ConversationAgentMeta;
+  lensOverride?: unknown;
+  progressFacts: unknown;
+}): Promise<SessionRow> {
+  return createChatSessionRow({
+    projectId: input.projectId,
+    userId: input.userId,
+    title: input.title,
+    ...(input.parentSessionId ? { parentSessionId: input.parentSessionId } : {}),
+    runKind: 'system',
+    runMetadata: { source: 'conversation.agentTurn', conversationId: input.marker.conversationId },
+    metadata: {
+      [CONVERSATION_AGENT_MARKER]: input.marker,
+      ...(input.lensOverride ? { lensOverride: input.lensOverride } : {}),
+      progressFacts: input.progressFacts ?? null,
+    },
   });
-  if (!authorised.ok) {
-    return { started: false, reason: 'authority-refused', message: authorised.refusal.message };
-  }
+}
 
-  const progress = await computeProjectProgress(args.venue.projectId);
-  const progressFacts = progress
-    ? {
-        shipped: progress.shipped,
-        closedUnshipped: progress.closedUnshipped,
-        inFlight: progress.inFlight,
-        remaining: progress.remaining,
-        total: progress.total,
-      }
-    : null;
+/** Mint the asker's credential for this session and hand the turn to the box; the ack is then due. */
+export async function dispatchAgentTurn(input: {
+  session: SessionRow;
+  project: { id: string; slug: string };
+  deviceId: string;
+  authorised: Authorised;
+  message: string;
+  marker: ConversationAgentMeta;
+  attachmentIds?: string[];
+  forceLenses?: readonly MemberLens[];
+}): Promise<SessionRow> {
+  const credential = await mintSessionCredential({
+    sessionId: input.session.id,
+    deviceId: input.deviceId,
+    value: input.authorised.value,
+  });
+  const dispatched = await dispatchChatTurn({
+    session: input.session,
+    project: input.project,
+    client: { deviceId: input.deviceId, isLocal: false, migrated: false },
+    credential,
+    message: input.message,
+    ...(input.attachmentIds?.length ? { attachmentIds: input.attachmentIds } : {}),
+    ...(input.forceLenses ? { forceLenses: input.forceLenses } : {}),
+    broadcastEvent: 'agent-session.created',
+  });
+  scheduleAck(dispatched.id, input.marker);
+  return dispatched;
+}
 
-  const marker: ConversationAgentMeta = {
+/** The marker a fresh turn's session carries: what the bridge needs to deliver its reply. */
+function markerOf(
+  args: ConversationAgentTurnArgs,
+  asker: ConversationAgentMeta['asker'],
+): ConversationAgentMeta {
+  return {
     venue: args.venue,
     conversationId: args.conversationId,
     windowId: args.windowId,
@@ -97,17 +110,43 @@ export async function startConversationAgentTurn(
     deliveredAt: null,
     failure: null,
   };
+}
 
-  const session = await createChatSessionRow({
-    projectId: args.venue.projectId,
+export async function startConversationAgentTurn(
+  args: ConversationAgentTurnArgs,
+): Promise<ConversationAgentTurnResult> {
+  const projectId = args.venue.projectId;
+  if (await hasInFlightConversationAgentTurn(projectId, args.conversationId)) {
+    return { started: false, reason: 'deduped' };
+  }
+  const spoken = await egressShown(
+    projectId,
+    'conversation',
+    { question: args.question, conversationContext: args.conversationContext },
+    `conversation ${args.conversationId}`,
+  );
+  const deviceId = await pickTurnCredentialDevice(projectId);
+  if (!deviceId) return { started: false, reason: await noTurnCredentialDeviceReason(projectId) };
+  const asker = { userId: args.asker.userId, viaTokenId: args.asker.viaTokenId };
+  const authorised = await resolveSessionAuthority({ asker, projectId, deviceId });
+  if (!authorised.ok) {
+    return { started: false, reason: 'authority-refused', message: authorised.refusal.message };
+  }
+
+  const progress = await computeProjectProgress(projectId);
+  const marker = markerOf(args, asker);
+  const session = await createAgentSession({
+    projectId,
     userId: asker.userId,
     title: `Chat: ${spoken.question.slice(0, TITLE_MAX)}`,
-    runKind: 'system',
-    runMetadata: { source: 'conversation.agentTurn', conversationId: args.conversationId },
-    metadata: {
-      [CONVERSATION_AGENT_MARKER]: marker,
-      ...(args.forceLenses ? { lensOverride: [...args.forceLenses] } : {}),
-      progressFacts,
+    marker,
+    lensOverride: args.forceLenses ? [...args.forceLenses] : undefined,
+    progressFacts: progress && {
+      shipped: progress.shipped,
+      closedUnshipped: progress.closedUnshipped,
+      inFlight: progress.inFlight,
+      remaining: progress.remaining,
+      total: progress.total,
     },
   });
 
@@ -120,17 +159,13 @@ export async function startConversationAgentTurn(
   }
 
   try {
-    const credential = await mintSessionCredential({
-      sessionId: session.id,
-      deviceId,
-      value: authorised.value,
-    });
-    await dispatchChatTurn({
+    await dispatchAgentTurn({
       session,
       project: args.project,
-      client: { deviceId, isLocal: false, migrated: false },
-      credential,
-      ...(carried.ids.length ? { attachmentIds: carried.ids } : {}),
+      deviceId,
+      authorised,
+      marker,
+      attachmentIds: carried.ids,
       message: buildConversationAgentPrompt({
         persona: args.persona,
         conversationContext: spoken.conversationContext,
@@ -139,7 +174,6 @@ export async function startConversationAgentTurn(
         progressFacts: progress ? buildProgressFactsBlock(progress) : null,
       }),
       ...(args.forceLenses ? { forceLenses: args.forceLenses } : {}),
-      broadcastEvent: 'agent-session.created',
     });
   } catch (err) {
     logger.error(
@@ -149,8 +183,6 @@ export async function startConversationAgentTurn(
     await markSessionFailed(session, 'conversation-agent');
     return { started: false, reason: 'dispatch-failed' };
   }
-
-  scheduleAck(session.id, marker);
   return { started: true, sessionId: session.id };
 }
 

@@ -20,7 +20,8 @@ import {
 import { namesHandle } from './presence.js';
 import type { StoredConversationMessage } from './store.js';
 import { recordDeliveredReply } from './transcript.js';
-import { reserveDelivery, type WindowClaim } from './windows.js';
+import { reserveDelivery } from './window-claim.js';
+import type { WindowClaim } from './windows.js';
 
 /** The message an explicit request is anchored on: what is marked received, and what the status threads under. */
 export interface ExplicitAnchor {
