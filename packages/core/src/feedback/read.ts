@@ -6,6 +6,7 @@
 
 import type {
   FeedbackAttention,
+  FeedbackCaseView,
   FeedbackDecisionView,
   FeedbackListResponse,
   FeedbackPhase,
@@ -18,7 +19,12 @@ import { and, asc, count, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { issues, pipelineRuns, projects } from '../db/schema.js';
-import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
+import {
+  feedback,
+  feedbackAttachments,
+  feedbackCases,
+  feedbackDecisions,
+} from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
@@ -26,14 +32,14 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { isUuid } from '../issues/issue-route-ref.js';
+import { findIssueById } from '../issues/read-service.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { holds } from '../permissions/index.js';
-import { requirementKey } from '../requirements/read.js';
+import { requirementKey, rowIn as requirementRowIn } from '../requirements/read.js';
 import { deliveredAmong } from '../requirements/standing-read.js';
 import { userNames } from '../workflows/service.js';
-import { type CaseRow, casesOf, caseView } from './case.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { feedbackIdsOfRequirement, NO_FEEDBACK, sourceOf } from './relations.js';
 import {
@@ -77,6 +83,62 @@ export async function rowIn(tx: Tx, projectId: string, ref: string, lock = false
   const [row] = lock ? await query.for('update') : await query;
   if (!row) throw notFound(`project ${projectId} holds no feedback ${ref}`);
   return row;
+}
+
+export type CaseRow = typeof feedbackCases.$inferSelect;
+
+export async function caseIn(tx: Tx, feedbackId: string): Promise<CaseRow | null> {
+  const [row] = await tx
+    .select()
+    .from(feedbackCases)
+    .where(eq(feedbackCases.feedbackId, feedbackId));
+  return row ?? null;
+}
+
+async function casesOf(feedbackIds: readonly string[]): Promise<Map<string, CaseRow>> {
+  if (feedbackIds.length === 0) return new Map();
+  const rows = await db
+    .select()
+    .from(feedbackCases)
+    .where(inArray(feedbackCases.feedbackId, [...feedbackIds]));
+  return new Map(rows.map((r) => [r.feedbackId, r]));
+}
+
+export function caseView(c: CaseRow, now: Date = new Date()): FeedbackCaseView {
+  return {
+    route: c.route,
+    owner: c.owner,
+    openedAt: c.openedAt.toISOString(),
+    dueAt: c.dueAt.toISOString(),
+    routedAt: c.routedAt?.toISOString() ?? null,
+    overdue: c.routedAt === null && now.getTime() > c.dueAt.getTime(),
+  };
+}
+
+/** The keys of the items marked duplicates of `feedbackId`, oldest first. */
+export async function duplicateKeysOf(tx: Tx, feedbackId: string): Promise<string[]> {
+  const rows = await tx
+    .select({ seq: feedback.fbSeq })
+    .from(feedback)
+    .where(eq(feedback.duplicateOf, feedbackId))
+    .orderBy(asc(feedback.fbSeq));
+  return rows.map((r) => feedbackKey(r.seq));
+}
+
+export interface TargetRequirement {
+  id: string;
+  key: string;
+  status: string;
+}
+
+/** The requirement an item is about: its target, or the requirement its target issue delivers. */
+export async function targetRequirementOf(tx: Tx, row: Row): Promise<TargetRequirement | null> {
+  const id =
+    row.requirementId ??
+    (row.issueId ? ((await findIssueById(row.issueId))?.requirementId ?? null) : null);
+  if (!id) return null;
+  const req = await requirementRowIn(tx, row.projectId, id);
+  return { id: req.id, key: requirementKey(req.reqSeq), status: req.status };
 }
 
 /** Everything the rows point at, loaded once for a page of rows. */
@@ -394,11 +456,7 @@ export async function detailAs(
         .where(eq(agentQuestions.feedbackId, row.id))
         .orderBy(desc(agentQuestions.createdAt))
         .limit(1),
-      db
-        .select({ seq: feedback.fbSeq })
-        .from(feedback)
-        .where(eq(feedback.duplicateOf, row.id))
-        .orderBy(asc(feedback.fbSeq)),
+      duplicateKeysOf(db, row.id),
       db
         .select({ n: count() })
         .from(suggestions)
@@ -418,7 +476,7 @@ export async function detailAs(
       body: withhold ? null : row.body,
       whereSeen: withhold ? null : row.whereSeen,
       duplicateOf: root ? feedbackKey(root.fbSeq) : null,
-      duplicates: pointing.map((p) => feedbackKey(p.seq)),
+      duplicates: pointing,
       source:
         source && withhold ? { agentReport: { ...source.agentReport, targetRef: null } } : source,
       decisions: decisions.map(

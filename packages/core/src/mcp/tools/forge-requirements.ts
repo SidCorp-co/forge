@@ -130,7 +130,7 @@ const DESCRIPTION =
   'Statement form is the default; form "scenario" must read Given / When / Then (CRITERION_SCENARIO_UNPARSEABLE). ' +
   'accept: { requirement, revision, reason? } makes a proposed revision current (the head) and supersedes the previous ' +
   'one (reason is the re-baseline sign-off on an agreed requirement); return: { requirement, revision, reason } sends it back to draft; agree: { requirement, revision } ' +
-  'signs the head off and writes a baseline pinning every linked design and every linked contract\'s current version, refused REQUIREMENT_DESIGN_UNAPPROVED ' +
+  "signs the head off and writes a baseline pinning every linked design and every linked contract's current version, refused REQUIREMENT_DESIGN_UNAPPROVED " +
   'naming each unapproved design and REQUIREMENT_REVISION_NOT_CURRENT unless the head is current. accept, return ' +
   'and agree take requirements.approve (project admin, or an org owner or admin), person or agent alike, the author included; without it PERMISSION_FORBIDDEN. ' +
   'repin: { requirement, revision, reason? } writes a new baseline of the head pinning each linked design’s approved ' +

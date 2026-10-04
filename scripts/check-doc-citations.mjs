@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TEST_FILE_RE } from './lib/test-reachability.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
@@ -202,7 +203,9 @@ export function judge(citations, world) {
       // The ignore question is asked about the path the citation RESOLVES to, not the
       // text it was written as: `./generated/client.ts` under an ignored package
       // directory is unverifiable, and asking git about the raw token would call it dead.
-      (world.ignored(originOf(c)) ? unverifiable : dead).push({ ...c, home });
+      // cm:hack ISS-172 until:QA phase on dev — a test file the removal took is unverifiable, not dead, while no test is tracked
+      const removedTest = world.noTests === true && TEST_FILE_RE.test(c.token);
+      (world.ignored(originOf(c)) || removedTest ? unverifiable : dead).push({ ...c, home });
       continue;
     }
     if (hits.length > 1) {
@@ -257,6 +260,7 @@ function world(cfg) {
     }).trim() === 'true';
   return {
     files,
+    noTests: !files.some((p) => TEST_FILE_RE.test(p)),
     shallow,
     dirs: [...dirs],
     manifestDirs,

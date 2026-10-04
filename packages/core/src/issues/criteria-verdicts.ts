@@ -2,6 +2,7 @@
 // `issue_criteria` and `criterion_verdicts` (`criteria/store.ts`), the same rows the
 // `awaiting_release` gate reads (`release-evidence.ts`), so the two never disagree about a verdict.
 
+import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issueAttachments, issues, projects } from '../db/schema.js';
@@ -13,6 +14,7 @@ import {
   longestSpelling,
   parseStorefrontDraftRuntime,
 } from '../messaging/verdict-identity.js';
+import { readProjectDocument } from '../project-config/service.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
 import { type CriterionWithVerdict, type LatestVerdict, listCriteria } from './criteria/store.js';
 import { withCurrentDrafts } from './criteria/storefront-draft.js';
@@ -411,6 +413,8 @@ async function reportFor(
 
 /**
  * Every criterion these issues cannot be shown to have earned, and why each one is not earned.
+ * A project whose document says `delivery.verdictsRequired: false` owes none: its issues report
+ * nothing unearned, as the `awaiting_release` guard lets them through alike.
  *
  * `serving` is ONE reading the caller took, shared by every issue here: one project, one answer
  * about it, one moment. It is required rather than defaulted, because a missing reading earns every
@@ -439,8 +443,16 @@ export async function unearnedCriteriaReports(
     currentContracts(projectIds),
     pinnedAnchorsOf(rows.map((row) => row.id)),
   ]);
+  const required = new Map<string, boolean>();
+  for (const id of projectIds) {
+    required.set(id, verdictsRequiredOf((await readProjectDocument(id))?.document.delivery));
+  }
   const out: IssueCriteriaReport[] = [];
   for (const row of [...rows].sort(byMerge)) {
+    if (required.get(row.projectId) === false) {
+      out.push({ issueId: row.id, unearned: [], broken: [], serving, uncorroborated: [] });
+      continue;
+    }
     const pin = pinned.get(row.id);
     out.push(
       await reportFor(

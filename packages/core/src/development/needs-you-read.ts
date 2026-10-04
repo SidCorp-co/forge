@@ -13,7 +13,7 @@ export interface NeedsYouViewer {
   userId: string;
   agency: ActorAgency;
   isAdmin: boolean;
-  /** Holds releases.approve (`lib/approval.ts:mayApprove`). */
+  /** Holds releases.approve (`permissions/can.ts:holds`). */
   mayApprove: boolean;
 }
 

@@ -166,6 +166,7 @@
       "owns": [
         "feedback",
         "feedbackAttachments",
+        "feedbackCases",
         "feedbackDecisions"
       ]
     },

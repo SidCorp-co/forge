@@ -9,6 +9,7 @@ import type { IssueStatusTone } from '@forge/contracts/issue-vocabulary';
 import {
   type BcVerdict,
   BREAKDOWN_SLA_WORKING_DAYS,
+  CHECK_SLA_WORKING_DAYS,
   type CoverageIssue,
   type RequirementAttentionGroup,
   type RequirementCoverage,
@@ -51,6 +52,8 @@ export interface StandingIssue {
   /** The status's tone on this project; awaiting_release is amber only where a release needs approval. */
   tone: IssueStatusTone;
   updatedAt: Date;
+  /** When it last moved to closed; null while it is not closed. */
+  closedAt: Date | null;
   /** Its plan was written against another revision than the current one. */
   changedSincePlan: boolean;
 }
@@ -60,6 +63,7 @@ export interface StandingIssueCriterion {
   n: number;
   requirementCriterionId: string;
   verdict: CoverageIssue['verdict'];
+  verdictAt: Date | null;
 }
 
 export interface StandingInput {
@@ -178,7 +182,7 @@ function feedbackTurn(input: StandingInput): Turn | null {
 // done unless feedback waits on triage; 2. a proposed revision → a signer; 3. a draft revision →
 // its author; 4. a draft requirement → a signer agrees it; 4b. untriaged feedback → a signer
 // triages it (ISS-79); 5. a design approved past the pin → a signer re-pins it (ISS-86); 6. every
-// issue closed → a signer accepts the delivery, a BC unproven → the master proves it; 7. an open
+// issue closed and every BC proven → the BA's check task, a BC unproven → the master proves it; 7. an open
 // breakdown → a signer; 8. an issue planned on an earlier revision or baseline → the master
 // re-plans it; 9. no issue → the master breaks it down; 10. only drafts → a person promotes them;
 // 11. else moving. Unless it needs you: no owner, or untouched STUCK_AFTER_DAYS → stuck.
@@ -247,8 +251,13 @@ function turnOf(
     const owner = input.owner?.kind === 'human' ? input.owner.name : null;
     return { group: 'others', waitingOn: wait('person', owner ?? SIGNER, act, rule) };
   }
-  if (input.phase === 'delivered' && live.length > 0) {
-    return signerWait(viewer, 'accept delivery', 'every linked issue is closed');
+  const check = checkTaskOf(input, live);
+  if (check) {
+    const act = `check ${coverage.map((c) => c.code).join(', ')} against the traceability matrix, ${check.overdue ? 'overdue since' : 'due'} ${check.dueAt.slice(0, 10)}`;
+    const rule = `delivered at r${check.revision}; the BA checks the business criteria by ${check.dueAt.slice(0, 10)}, ${CHECK_SLA_WORKING_DAYS} working days after delivery${check.overdue ? ', and it is overdue' : ''}`;
+    return viewer?.canSignOff
+      ? { group: 'needs_you', waitingOn: { ...wait('you', 'You', act, rule), dueAt: check.dueAt } }
+      : { group: 'others', waitingOn: { ...wait('person', 'BA', act, rule), dueAt: check.dueAt } };
   }
   const unproven = coverage.filter((c) => c.verdict !== 'passing').map((c) => c.code);
   if (live.length > 0 && live.every((i) => i.status === 'closed') && unproven.length > 0) {
@@ -285,7 +294,9 @@ function turnOf(
         ...wait(
           'agent',
           'Master',
-          'break down',
+          task
+            ? `break down, ${task.overdue ? 'overdue since' : 'due'} ${task.dueAt.slice(0, 10)}`
+            : 'break down',
           task
             ? `agreed with no linked issue; the breakdown is due ${task.dueAt.slice(0, 10)}, ${BREAKDOWN_SLA_WORKING_DAYS} working days after the agree`
             : 'agreed with no linked issue',
@@ -352,6 +363,27 @@ export function breakdownTaskOf(
   );
 }
 
+// workflow requirement-to-delivery step `check`: a requirement delivered at its current revision holds
+// one acceptance check for that revision, owned by the BA and due 5 working days after the evidence
+// completed (the last live issue closed, or the newest passing traced verdict). `input.phase` is the
+// proven phase, so the task is read from the same computation as delivered
+export function checkTaskOf(
+  input: StandingInput,
+  live: readonly StandingIssue[],
+): RequirementTask | null {
+  if (input.status !== 'agreed' || input.phase !== 'delivered') return null;
+  if (input.currentRevision === null || live.length === 0) return null;
+  const ids = new Set(live.map((i) => i.id));
+  const times = [
+    ...live.map((i) => i.closedAt ?? i.updatedAt),
+    ...input.issueCriteria
+      .filter((c) => ids.has(c.issueId) && c.verdict === 'pass')
+      .flatMap((c) => (c.verdictAt ? [c.verdictAt] : [])),
+  ];
+  const openedAt = new Date(Math.max(...times.map((t) => t.getTime())));
+  return taskOf('check', 'BA', input.currentRevision, openedAt, CHECK_SLA_WORKING_DAYS, input.now);
+}
+
 export function touchedAt(input: StandingInput): Date {
   const times = [
     input.updatedAt,
@@ -406,7 +438,9 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
       feedbackOpen: input.feedback.open,
       feedbackUntriaged: input.feedback.untriaged.length,
     },
-    tasks: [breakdownTaskOf(input, live)].filter((t): t is RequirementTask => t !== null),
+    tasks: [breakdownTaskOf(input, live), checkTaskOf(input, live)].filter(
+      (t): t is RequirementTask => t !== null,
+    ),
     shownRevision,
     coverage,
     owner: input.owner,
