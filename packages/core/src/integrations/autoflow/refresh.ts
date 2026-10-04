@@ -123,79 +123,18 @@ export function reauthDetail(reason: string, baseUrl: string): string {
   return `Autoflow refresh refused (${reason}); the token chain is dead and nothing will retry it — sign in again at ${baseUrl} through an MCP client and store the new access token, refresh token and client id`;
 }
 
-type FreshOpts = {
-  connectionId: string;
-  config: Record<string, unknown>;
-  minLifetimeMs: number;
-  refusedToken?: string;
-};
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-function refreshDue(secrets: AutoflowSecrets, opts: FreshOpts, now: number): boolean {
-  if (opts.refusedToken !== undefined) return secrets.accessToken === opts.refusedToken;
-  // An expiry nobody recorded is learned by refreshing, where a refresh token exists.
-  return expiresWithin(secrets, opts.minLifetimeMs, now) ?? Boolean(secrets.refreshToken);
-}
-
-/** Drop the spent refresh token and record why, so the card says the chain is dead. */
-async function recordRefusal(
-  tx: Tx,
-  opts: FreshOpts,
-  secrets: AutoflowSecrets,
-  reason: string,
-  now: number,
-) {
-  const { refreshToken: _dead, ...rest } = secrets;
-  const next: AutoflowSecrets = {
-    ...rest,
-    refreshRefusedAt: new Date(now).toISOString(),
-    refreshRefusedReason: reason,
-  };
-  await writeConnectionSecrets(tx, opts.connectionId, encryptJson(next), new Date(now), {
-    status: 'needs_reauth',
-    detail: reauthDetail(reason, autoflowBaseUrl(opts.config)),
-  });
-  logger.warn(
-    { connectionId: opts.connectionId, reason },
-    'autoflow: refresh refused, connection needs re-auth',
-  );
-}
-
-function rotated(
-  secrets: AutoflowSecrets,
-  answer: Extract<RefreshAnswer, { kind: 'ok' }>,
-  now: number,
-): AutoflowSecrets {
-  const {
-    refreshRefusedAt: _at,
-    refreshRefusedReason: _why,
-    previousAccessToken: _prev,
-    previousTokenExpiresAt: _prevAt,
-    ...kept
-  } = secrets;
-  const oldStillValid = stillUnexpired(secrets, now) && secrets.accessTokenExpiresAt;
-  return {
-    ...kept,
-    accessToken: answer.accessToken,
-    accessTokenExpiresAt: new Date(now + answer.expiresInSec * 1000).toISOString(),
-    refreshToken: answer.refreshToken,
-    // The replaced token is still admitted until its own expiry; a run handed it keeps working.
-    ...(oldStillValid
-      ? {
-          previousAccessToken: secrets.accessToken,
-          previousTokenExpiresAt: secrets.accessTokenExpiresAt,
-        }
-      : {}),
-  };
-}
-
 /**
  * The connection's access token, refreshed and persisted first when it expires within
  * `minLifetimeMs` or when `refusedToken` (the token a call was just refused with) is still the one
  * stored. Holds the connection row's lock across the refresh, so concurrent callers rotate the
  * chain exactly once.
  */
-export async function ensureFreshAutoflowToken(opts: FreshOpts): Promise<AutoflowFreshToken> {
+export async function ensureFreshAutoflowToken(opts: {
+  connectionId: string;
+  config: Record<string, unknown>;
+  minLifetimeMs: number;
+  refusedToken?: string;
+}): Promise<AutoflowFreshToken> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select({ secretsEnc: integrationConnections.secretsEnc })
@@ -205,11 +144,19 @@ export async function ensureFreshAutoflowToken(opts: FreshOpts): Promise<Autoflo
     if (!row?.secretsEnc) return { kind: 'needs_reauth', reason: 'no_credential' };
     const secrets = decryptJson<AutoflowSecrets>(row.secretsEnc);
     const now = Date.now();
-    const keepStored = opts.refusedToken === undefined && stillUnexpired(secrets, now);
-    if (!refreshDue(secrets, opts, now)) return { kind: 'ok', secrets, rotated: false };
+
+    const due =
+      opts.refusedToken !== undefined
+        ? secrets.accessToken === opts.refusedToken
+        : (expiresWithin(secrets, opts.minLifetimeMs, now) ??
+          // An expiry nobody recorded is learned by refreshing, where a refresh token exists.
+          Boolean(secrets.refreshToken));
+    if (!due) return { kind: 'ok', secrets, rotated: false };
 
     if (!secrets.refreshToken || !secrets.clientId) {
-      if (keepStored) return { kind: 'ok', secrets, rotated: false };
+      if (opts.refusedToken === undefined && stillUnexpired(secrets, now)) {
+        return { kind: 'ok', secrets, rotated: false };
+      }
       return {
         kind: 'needs_reauth',
         reason: secrets.refreshRefusedReason
@@ -218,23 +165,64 @@ export async function ensureFreshAutoflowToken(opts: FreshOpts): Promise<Autoflo
       };
     }
 
+    const baseUrl = autoflowBaseUrl(opts.config);
     const answer = await requestRefresh(
       autoflowTokenUrl(opts.config),
       secrets.clientId,
       secrets.refreshToken,
     );
+
     if (answer.kind === 'transient') {
       logger.warn(
         { connectionId: opts.connectionId, reason: answer.reason },
         'autoflow: refresh not answered, keeping the stored token',
       );
-      return { kind: 'unavailable', reason: answer.reason, secrets: keepStored ? secrets : null };
+      return {
+        kind: 'unavailable',
+        reason: answer.reason,
+        secrets: opts.refusedToken === undefined && stillUnexpired(secrets, now) ? secrets : null,
+      };
     }
+
     if (answer.kind === 'refused') {
-      await recordRefusal(tx, opts, secrets, answer.reason, now);
+      const { refreshToken: _dead, ...rest } = secrets;
+      const next: AutoflowSecrets = {
+        ...rest,
+        refreshRefusedAt: new Date(now).toISOString(),
+        refreshRefusedReason: answer.reason,
+      };
+      await writeConnectionSecrets(tx, opts.connectionId, encryptJson(next), new Date(now), {
+        status: 'needs_reauth',
+        detail: reauthDetail(answer.reason, baseUrl),
+      });
+      logger.warn(
+        { connectionId: opts.connectionId, reason: answer.reason },
+        'autoflow: refresh refused, connection needs re-auth',
+      );
       return { kind: 'needs_reauth', reason: `refresh_refused: ${answer.reason}` };
     }
-    const next = rotated(secrets, answer, now);
+
+    const {
+      refreshRefusedAt: _at,
+      refreshRefusedReason: _why,
+      previousAccessToken: _prev,
+      previousTokenExpiresAt: _prevAt,
+      ...kept
+    } = secrets;
+    const oldStillValid = stillUnexpired(secrets, now) && secrets.accessTokenExpiresAt;
+    const next: AutoflowSecrets = {
+      ...kept,
+      accessToken: answer.accessToken,
+      accessTokenExpiresAt: new Date(now + answer.expiresInSec * 1000).toISOString(),
+      refreshToken: answer.refreshToken,
+      // The replaced token is still admitted until its own expiry; a run handed it keeps working.
+      ...(oldStillValid
+        ? {
+            previousAccessToken: secrets.accessToken,
+            previousTokenExpiresAt: secrets.accessTokenExpiresAt,
+          }
+        : {}),
+    };
     await writeConnectionSecrets(tx, opts.connectionId, encryptJson(next), new Date(now));
     return { kind: 'ok', secrets: next, rotated: true };
   });
