@@ -1,4 +1,4 @@
-import type { Canvas, CanvasEdge } from "./model";
+import { type Canvas, type CanvasEdge, edgeText, lineLabel, titleOf } from "./model";
 
 /** 0 stages only · 1 step titles · 2 full cards; zoom decides it, at these scales. */
 export type Lod = 0 | 1 | 2;
@@ -76,7 +76,20 @@ export function buildView(c: Canvas, s: ViewState): View {
   return { nodes, edges, keyOf };
 }
 
-/** A merged line's words: how many design lines it stands for; each one's own words show once its bands open. */
-export function mergedLabel(e: ViewEdge): string {
-  return e.src.length === 1 ? "1 link" : `${e.src.length} links`;
+/**
+ * A merged line's words: the first line's own words and "+N more", never a count of links (REQ-12 BC-9);
+ * `full`, for the hover, lists every line it stands for.
+ */
+export function mergedLabel(e: ViewEdge, c: Canvas): { text: string; full: string } {
+  const first = e.src[0];
+  const words = first ? lineLabel(first).text || first.kind.label : "";
+  const more = e.src.length - 1;
+  const name = (id: string) => {
+    const s = c.steps.get(id);
+    return s ? titleOf(s) : id;
+  };
+  return {
+    text: more > 0 ? `${words} +${more} more` : words,
+    full: e.src.map((s) => `${name(s.from)} → ${name(s.to)}: ${edgeText(s) || s.kind.label}`).join("\n"),
+  };
 }
