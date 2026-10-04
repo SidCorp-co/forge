@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.2] - 2026-10-04
+
+Mockups on requirements, feedback and issues; automation and run states read clearly
+
+
 ### Added
 
 - **A requirement, a feedback item or an issue can carry mockups (ISS-78).** A wireframe board, a
