@@ -30,7 +30,6 @@
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/**"]
     },
     "typecheck": {
-      "dependsOn": ["^build"],
       "outputs": []
     },
     "clean": {

@@ -13,7 +13,16 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "incremental": true,
+    "tsBuildInfoFile": "node_modules/.cache/tsc/typecheck.tsbuildinfo",
+    "paths": {
+      "@forge/contracts": ["../contracts/src/index.ts"],
+      "@forge/contracts/*": ["../contracts/src/*"],
+      "@forge/core/public": ["../core/src/public.ts"],
+      "@forge/core/admin-types": ["../core/src/admin/types.ts"],
+      "@forge/observability": ["../observability/src/index.ts"]
+    }
   },
   "include": ["src/**/*"]
 }
