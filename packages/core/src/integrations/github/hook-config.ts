@@ -5,8 +5,7 @@
  * App itself — the JWT, not an installation token — so it needs no installation permission.
  */
 
-import { buildAppJwt } from './app-auth.js';
-import { GITHUB_API_BASE } from './types.js';
+import { appOctokit, responseOf } from './octokit.js';
 
 const HOOK_CONFIG_TIMEOUT_MS = 8000;
 
@@ -25,43 +24,37 @@ export async function readAppHookConfig(args: {
   privateKey: string;
   apiBaseUrl?: string;
   fetchImpl?: typeof fetch;
-  nowMs?: number;
 }): Promise<AppHookConfig> {
-  const base = (args.apiBaseUrl ?? GITHUB_API_BASE).replace(/\/+$/, '');
-  const doFetch = args.fetchImpl ?? fetch;
-  let res: Response;
+  let body: { url?: unknown; active?: unknown };
   try {
-    res = await doFetch(`${base}/app/hook/config`, {
-      headers: {
-        Authorization: `Bearer ${await buildAppJwt(args.appId, args.privateKey, args.nowMs ?? Date.now())}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-      signal: AbortSignal.timeout(HOOK_CONFIG_TIMEOUT_MS),
-    });
+    body = (
+      await appOctokit(args).request({
+        method: 'GET',
+        url: '/app/hook/config',
+        request: { signal: AbortSignal.timeout(HOOK_CONFIG_TIMEOUT_MS) },
+      })
+    ).data as typeof body;
   } catch (err) {
+    const status = responseOf(err)?.status;
+    if (status === 401) {
+      return {
+        read: false,
+        reason:
+          "GitHub rejected the App JWT when asked for this App's webhook configuration — check the App id and private key",
+      };
+    }
+    if (status !== undefined) {
+      return {
+        read: false,
+        reason: `asking GitHub for this App's webhook configuration returned HTTP ${status}`,
+      };
+    }
     return {
       read: false,
       reason: `GitHub could not be asked for this App's webhook configuration: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
-  if (res.status === 401) {
-    return {
-      read: false,
-      reason:
-        "GitHub rejected the App JWT when asked for this App's webhook configuration — check the App id and private key",
-    };
-  }
-  if (!res.ok) {
-    return {
-      read: false,
-      reason: `asking GitHub for this App's webhook configuration returned HTTP ${res.status}`,
-    };
-  }
-  let body: { url?: unknown; active?: unknown };
-  try {
-    body = (await res.json()) as { url?: unknown; active?: unknown };
-  } catch {
+  if (!body || typeof body !== 'object') {
     return { read: false, reason: "GitHub's webhook configuration was not JSON" };
   }
   return {

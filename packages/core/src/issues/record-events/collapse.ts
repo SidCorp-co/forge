@@ -16,6 +16,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
 import { activityLog } from '../../db/schema-activity.js';
+import { sqlTimestamp } from '../../db/sql-timestamp.js';
 
 /** How many issues one pass collapses, so a first run over years of history is bounded. */
 const ISSUES_PER_PASS = 500;
@@ -60,7 +61,7 @@ async function candidates(cutoff: Date, actions: string[], limit: number): Promi
     .where(
       and(
         inArray(issues.status, [...ISSUE_TERMINAL_STATUSES]),
-        sql`${closedAt} < ${cutoff}`,
+        sql`${closedAt} < ${sqlTimestamp(cutoff)}`,
         sql`EXISTS (SELECT 1 FROM activity_log a WHERE a.issue_id = ${issues.id}
           AND a.action IN (${sql.join(
             actions.map((a) => sql`${a}`),

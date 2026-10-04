@@ -12,6 +12,7 @@ import { db } from '../../db/client.js';
 import { issues, organizations, projects } from '../../db/schema.js';
 import { agentQuestions, type QuestionOrigin } from '../../db/schema-questions.js';
 import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
+import { sqlTimestamp } from '../../db/sql-timestamp.js';
 import {
   registerThread,
   releaseQuestionThread,
@@ -170,7 +171,7 @@ async function claimRound(owed: OwedRound, now: Date): Promise<number | null> {
           ),
           set: {
             attempts,
-            nextAttemptAt: sql`${now.toISOString()}::timestamptz + (${RETRY_BACKOFF_MS} * (${attempts})) * interval '1 millisecond'`,
+            nextAttemptAt: sql`${sqlTimestamp(now)} + (${RETRY_BACKOFF_MS} * (${attempts})) * interval '1 millisecond'`,
             updatedAt: now,
           },
           actor: DELIVERY_ACTOR,

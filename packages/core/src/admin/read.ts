@@ -17,6 +17,7 @@ import {
   usageRecords,
   users,
 } from '../db/schema.js';
+import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { buildIlikePattern } from '../issues/search-predicate.js';
 import { utcDateTrunc } from '../lib/time-buckets.js';
 import { computeAlerts } from './alert-queries.js';
@@ -136,25 +137,24 @@ export async function readAdminAdoption(
   const buckets = bucketBoundaries(bucket, bucketCount, now);
   const firstBucketStart = buckets[0] as string;
 
-  const [newUsersRows, activeWorkspaceRows, [{ n: baselineUsers } = { n: 0 }]] =
-    await Promise.all([
-      db.execute(sql`
+  const [newUsersRows, activeWorkspaceRows, [{ n: baselineUsers } = { n: 0 }]] = await Promise.all([
+    db.execute(sql`
         SELECT ${utcDateTrunc(bucket, sql`created_at`)} AS bucket, count(*)::int AS n
         FROM users
         WHERE created_at >= ${firstBucketStart}::timestamptz
         GROUP BY 1
       `) as unknown as Promise<Array<{ bucket: unknown; n: number }>>,
-      db.execute(sql`
+    db.execute(sql`
         SELECT ${utcDateTrunc(bucket, sql`started_at`)} AS bucket, count(distinct project_id)::int AS n
         FROM pipeline_runs
         WHERE started_at >= ${firstBucketStart}::timestamptz
         GROUP BY 1
       `) as unknown as Promise<Array<{ bucket: unknown; n: number }>>,
-      db
-        .select({ n: count() })
-        .from(users)
-        .where(sql`${users.createdAt} < ${firstBucketStart}::timestamptz`),
-    ]);
+    db
+      .select({ n: count() })
+      .from(users)
+      .where(sql`${users.createdAt} < ${firstBucketStart}::timestamptz`),
+  ]);
 
   const newUsersByBucket = toBucketMap(newUsersRows, 'n');
   const activeWorkspacesByBucket = toBucketMap(activeWorkspaceRows, 'n');
@@ -377,7 +377,7 @@ export async function listAdminAudit({
   const where: ReturnType<typeof and>[] = [];
   if (action) where.push(eq(activityLog.action, action));
   if (actorId) where.push(eq(activityLog.actorId, actorId));
-  if (since) where.push(sql`${activityLog.createdAt} >= ${since}`);
+  if (since) where.push(sql`${activityLog.createdAt} >= ${sqlTimestamp(since)}`);
   const whereExpr = where.length === 0 ? undefined : where.length === 1 ? where[0] : and(...where);
 
   const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(activityLog).where(whereExpr);

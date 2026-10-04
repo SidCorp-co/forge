@@ -12,6 +12,7 @@ import {
 } from '@forge/contracts/modules';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { listFeedbackAs } from '../feedback/read.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
@@ -200,7 +201,7 @@ async function readActivity(
         JOIN pm ON pm.issue_id = i.id
        WHERE i.project_id = ${projectId} AND i.archived_at IS NULL
          AND pm.label_id IN (${idList(moduleIds)})
-         AND a.created_at >= ${since.toISOString()}::timestamptz
+         AND a.created_at >= ${sqlTimestamp(since)}
        GROUP BY 1`),
   );
 }

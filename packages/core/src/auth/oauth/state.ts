@@ -14,8 +14,11 @@ export type StateMode = 'login' | 'reauth';
 export interface StatePayload {
   /** Provider id this state belongs to. */
   p: ProviderId;
+  /** The OAuth `state` the callback must echo. */
+  s: string;
+  /** The OIDC nonce the id_token must carry. */
   n: string;
-  /** PKCE code_verifier (43-128 char URL-safe random string). */
+  /** PKCE code_verifier. */
   v: string;
   /** Post-callback redirect path; always relative — never absolute URLs. */
   r: string;
@@ -34,28 +37,6 @@ function key(): Uint8Array {
   return cachedKey;
 }
 
-function randomUrlSafe(byteLen: number): string {
-  const buf = new Uint8Array(byteLen);
-  crypto.getRandomValues(buf);
-  // Base64url without padding — RFC 7636 PKCE format.
-  return Buffer.from(buf).toString('base64url');
-}
-
-export function generateNonce(): string {
-  return randomUrlSafe(32);
-}
-
-export function generatePkceVerifier(): string {
-  // 64 bytes → 86 base64url chars, well within RFC 7636's 43-128 range.
-  return randomUrlSafe(64);
-}
-
-export async function pkceChallenge(verifier: string): Promise<string> {
-  const data = new TextEncoder().encode(verifier);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return Buffer.from(digest).toString('base64url');
-}
-
 export async function signState(payload: StatePayload): Promise<string> {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: ALG })
@@ -69,6 +50,7 @@ export async function verifyState(token: string): Promise<StatePayload> {
   const { payload } = await jwtVerify(token, key(), { issuer: ISSUER });
   if (
     typeof payload.p !== 'string' ||
+    typeof payload.s !== 'string' ||
     typeof payload.n !== 'string' ||
     typeof payload.v !== 'string' ||
     typeof payload.r !== 'string'
@@ -79,6 +61,7 @@ export async function verifyState(token: string): Promise<StatePayload> {
   const mode: StateMode = payload.mode === 'reauth' ? 'reauth' : 'login';
   const out: StatePayload = {
     p: payload.p as ProviderId,
+    s: payload.s,
     n: payload.n,
     v: payload.v,
     r: payload.r,

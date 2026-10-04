@@ -19,6 +19,7 @@ import {
   type RunnerReleaseTagState,
   runnerReleases,
 } from '../../db/schema-runner-release.js';
+import { sqlTimestamp } from '../../db/sql-timestamp.js';
 
 export type { RunnerReleaseRow };
 
@@ -42,7 +43,7 @@ export async function openRunnerRelease(args: OpenArgs): Promise<OpenOutcome> {
     INSERT INTO runner_releases
       (project_id, binding_id, repository, version, tag, requested_by_id, deadline_at)
     VALUES (${args.projectId}, ${args.bindingId}, ${args.repository}, ${args.version},
-            ${args.tag}, ${args.requestedById}, ${args.deadlineAt.toISOString()})
+            ${args.tag}, ${args.requestedById}, ${sqlTimestamp(args.deadlineAt)})
     ON CONFLICT (project_id, tag) DO UPDATE SET
       binding_id = EXCLUDED.binding_id,
       repository = EXCLUDED.repository,
@@ -168,7 +169,7 @@ export async function advance(id: string, attempt: number, args: AdvanceArgs): P
   if (args.tagState) sets.push(sql`tag_state = ${args.tagState}`);
   if (args.commitSha) sets.push(sql`commit_sha = ${args.commitSha}`);
   if (args.tagCommitSha) sets.push(sql`tag_commit_sha = ${args.tagCommitSha}`);
-  if (args.tagCutAt) sets.push(sql`tag_cut_at = ${args.tagCutAt.toISOString()}`);
+  if (args.tagCutAt) sets.push(sql`tag_cut_at = ${sqlTimestamp(args.tagCutAt)}`);
   if (args.workflowRunId) sets.push(sql`workflow_run_id = ${args.workflowRunId}`);
   if (args.workflowUrl) sets.push(sql`workflow_url = ${args.workflowUrl}`);
   const rows = await db.execute<{ id: string }>(sql`
@@ -217,7 +218,7 @@ export async function settleFailed(
   if (args.workflowUrl) sets.push(sql`workflow_url = ${args.workflowUrl}`);
   if (args.releaseUrl) sets.push(sql`release_url = ${args.releaseUrl}`);
   if (args.buildReportedAt)
-    sets.push(sql`build_reported_at = ${args.buildReportedAt.toISOString()}`);
+    sets.push(sql`build_reported_at = ${sqlTimestamp(args.buildReportedAt)}`);
   const guard = args.ifUnchanged
     ? sql` AND step = ${args.ifUnchanged.step} AND tag_state = ${args.ifUnchanged.tagState}`
     : sql``;
@@ -254,7 +255,7 @@ export async function settlePublished(
            workflow_run_id = ${args.workflowRunId},
            workflow_url = ${args.workflowUrl},
            release_url = ${args.releaseUrl},
-           build_reported_at = ${args.buildReportedAt.toISOString()},
+           build_reported_at = ${sqlTimestamp(args.buildReportedAt)},
            settled_at = now(),
            updated_at = now()
      WHERE id = ${id} AND attempt = ${attempt} AND settled_at IS NULL
