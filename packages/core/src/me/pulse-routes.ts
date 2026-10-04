@@ -9,11 +9,8 @@
  * would have had to fan out over every project it can see.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
@@ -25,6 +22,7 @@ import { readPulseLiveness } from './pulse-liveness.js';
 import { readPulseQuality } from './pulse-quality.js';
 import { PULSE_THRESHOLDS, type PulseResponse, type PulseWork } from './pulse-types.js';
 import { readPulseWork } from './pulse-work.js';
+import { projectIdsInOrg } from './read.js';
 
 const pulseQuerySchema = z.object({ orgId: z.uuid().optional() });
 
@@ -88,14 +86,7 @@ mePulseRoutes.get(
     const visibleIds = await loadVisibleProjectIds(c.get('userId'));
     if (visibleIds.length === 0) return c.json(emptyPulse(now));
 
-    const projectIds = orgId
-      ? (
-          await db
-            .select({ id: projects.id })
-            .from(projects)
-            .where(and(inArray(projects.id, visibleIds), eq(projects.orgId, orgId)))
-        ).map((r) => r.id)
-      : visibleIds;
+    const projectIds = orgId ? await projectIdsInOrg(visibleIds, orgId) : visibleIds;
 
     if (projectIds.length === 0) return c.json(emptyPulse(now));
 

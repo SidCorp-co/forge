@@ -1,14 +1,13 @@
-import { and, count, desc, eq, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { pipelineRunStatuses, pipelineRuns } from '../db/schema.js';
+import { pipelineRunStatuses } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { listItemsFromRows, loadPipelineRunSummary } from './runs-rollup.js';
+import { listProjectPipelineRuns, pipelineRunProjectId } from './read.js';
+import { loadPipelineRunSummary } from './runs-rollup.js';
 import { requireHeld } from '../permissions/index.js';
 
 const listFiltersSchema = paginationSchema.extend({
@@ -29,14 +28,10 @@ pipelineRunReadRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [row] = await db
-      .select({ projectId: pipelineRuns.projectId })
-      .from(pipelineRuns)
-      .where(eq(pipelineRuns.id, id))
-      .limit(1);
-    if (!row) throw notFound('pipeline run not found');
+    const projectId = await pipelineRunProjectId(id);
+    if (!projectId) throw notFound('pipeline run not found');
 
-    const access = await loadProjectAccess(row.projectId, userId);
+    const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
     const summary = await loadPipelineRunSummary(id);
@@ -65,22 +60,7 @@ pipelineRunProjectRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const conds: SQL[] = [eq(pipelineRuns.projectId, projectId)];
-    if (q.status) conds.push(eq(pipelineRuns.status, q.status));
-    if (q.issueId) conds.push(eq(pipelineRuns.issueId, q.issueId));
-    const where = conds.length === 1 ? conds[0] : and(...conds);
-
-    const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(pipelineRuns).where(where);
-
-    const rows = await db
-      .select()
-      .from(pipelineRuns)
-      .where(where)
-      .orderBy(desc(pipelineRuns.startedAt))
-      .limit(q.limit)
-      .offset(q.offset);
-
-    const items = await listItemsFromRows(rows);
-    return c.json(listResponse(c, items, Number(n), q));
+    const { items, total } = await listProjectPipelineRuns(projectId, q);
+    return c.json(listResponse(c, items, total, q));
   },
 );

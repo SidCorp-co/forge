@@ -3,18 +3,17 @@
  * Console's Tier 1 thresholds and spend ceiling.
  *
  * Own `requireAdmin()` router (mirrors `alert-routes.ts`) so it is importable
- * standalone in an integration test. Reading lives in `thresholds.ts`; this
- * file only validates the body and upserts the singleton.
+ * standalone in an integration test. Reading lives in `thresholds.ts`, the
+ * upsert in `service.ts`; this file only validates the body.
  */
 
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { ADMIN_THRESHOLDS_ID, adminThresholds } from '../db/schema-admin-thresholds.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { saveThresholds } from './service.js';
 import { readThresholds } from './thresholds.js';
 import { SENTRY_THRESHOLD_MAX, SENTRY_THRESHOLD_MIN } from './types.js';
 
@@ -48,20 +47,6 @@ adminThresholdRoutes.put(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const patch = c.req.valid('json');
-    const next = { ...(await readThresholds()), ...patch };
-    await db
-      .insert(adminThresholds)
-      .values({
-        id: ADMIN_THRESHOLDS_ID,
-        ...next,
-        updatedBy: c.get('userId'),
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: adminThresholds.id,
-        set: { ...next, updatedBy: c.get('userId'), updatedAt: new Date() },
-      });
-    return c.json(next);
+    return c.json(await saveThresholds(c.req.valid('json'), c.get('userId')));
   },
 );
