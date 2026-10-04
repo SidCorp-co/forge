@@ -2,61 +2,55 @@ import type {
   DeadOutboxDeliveriesResponse,
   DeadOutboxDelivery,
 } from '@forge/contracts/outbox-consumers';
-import type { OutboxEventType } from '@forge/contracts/outbox-events';
 import { sql } from 'drizzle-orm';
+import type { JobWithMetadata } from 'pg-boss';
 import { db } from '../db/client.js';
 import { requireCan } from '../permissions/index.js';
+import { BOSS_SCHEMA, boss } from '../queue/boss.js';
+import { DEAD_QUEUE, type DeliveryJob } from './queues.js';
 
-type PgTime = Date | string;
-
-interface DeadRow extends Record<string, unknown> {
-  id: string;
-  event_id: string;
-  type: OutboxEventType;
-  consumer: string;
-  project_id: string | null;
-  issue_id: string | null;
-  attempts: number;
-  last_error: string | null;
-  created_at: PgTime;
-  dead_at: PgTime;
-  total: number;
+function errorOf(output: object | null): string | null {
+  if (!output) return null;
+  const message = (output as { message?: unknown }).message;
+  return typeof message === 'string' ? message : JSON.stringify(output);
 }
 
-const iso = (t: PgTime) => (t instanceof Date ? t : new Date(t)).toISOString();
-
-function viewOf(r: DeadRow): DeadOutboxDelivery {
+function viewOf(copy: JobWithMetadata<DeliveryJob>): DeadOutboxDelivery {
+  const d = copy.data;
   return {
-    id: r.id,
-    eventId: r.event_id,
-    type: r.type,
-    consumer: r.consumer,
-    projectId: r.project_id,
-    issueId: r.issue_id,
-    attempts: r.attempts,
-    lastError: r.last_error,
-    createdAt: iso(r.created_at),
-    deadAt: iso(r.dead_at),
+    id: d.deliveryId,
+    eventId: d.eventId,
+    type: d.type,
+    consumer: d.consumer,
+    projectId: d.projectId,
+    issueId: d.issueId,
+    attempts: (copy.sourceRetryCount ?? 0) + 1,
+    lastError: errorOf(copy.sourceOutput),
+    createdAt: d.createdAt,
+    deadAt: new Date(copy.createdOn).toISOString(),
   };
 }
 
-/** Dead deliveries, newest first; `projectId` null reads every project's and the project-less ones. */
+/**
+ * Every dead delivery, newest first: pg-boss copies a consumer's job into `DEAD_QUEUE` when it runs
+ * out of attempts, and replay deletes the copy. `projectId` null reads every project's and the
+ * project-less ones.
+ */
+async function readAllDead(projectId: string | null): Promise<DeadOutboxDelivery[]> {
+  const copies = await boss.findJobs<DeliveryJob>(
+    DEAD_QUEUE,
+    projectId === null ? {} : { data: { projectId } },
+  );
+  return copies.map(viewOf).sort((a, b) => b.deadAt.localeCompare(a.deadAt));
+}
+
 async function readDead(
   projectId: string | null,
   limit: number,
   offset: number,
 ): Promise<DeadOutboxDeliveriesResponse> {
-  const rows = await db.execute<DeadRow>(sql`
-    SELECT d.id, d.event_id, e.type, d.consumer, e.project_id, e.issue_id, d.attempts,
-           d.last_error, e.created_at, d.dead_at, count(*) OVER ()::int AS total
-      FROM outbox_deliveries d
-      JOIN pipeline_outbox e ON e.id = d.event_id
-     WHERE d.status = 'dead'
-       ${projectId === null ? sql`` : sql`AND e.project_id = ${projectId}`}
-     ORDER BY d.dead_at DESC
-     LIMIT ${limit} OFFSET ${offset}
-  `);
-  return { deliveries: rows.map(viewOf), total: rows[0]?.total ?? 0 };
+  const all = await readAllDead(projectId);
+  return { deliveries: all.slice(offset, offset + limit), total: all.length };
 }
 
 export async function listDeadDeliveries(input: {
@@ -76,36 +70,39 @@ export function listAllDeadDeliveries(limit: number, offset: number) {
 
 export interface DeadDeliveryTally {
   count: number;
-  oldestDeadAt: PgTime | null;
+  oldestDeadAt: string | null;
   sample: DeadOutboxDelivery[];
 }
 
 /** How many deliveries are dead, the oldest, and the newest few: what the ops alert reads. */
 export async function tallyDeadDeliveries(sampleSize: number): Promise<DeadDeliveryTally> {
-  const [head] = await db.execute<{ count: number; oldest: PgTime | null }>(sql`
-    SELECT count(*)::int AS count, min(dead_at) AS oldest
-      FROM outbox_deliveries WHERE status = 'dead'
-  `);
-  const count = head?.count ?? 0;
-  if (count === 0) return { count: 0, oldestDeadAt: null, sample: [] };
-  const { deliveries } = await readDead(null, sampleSize, 0);
-  return { count, oldestDeadAt: head?.oldest ?? null, sample: deliveries };
+  const all = await readAllDead(null);
+  return {
+    count: all.length,
+    oldestDeadAt: all.at(-1)?.deadAt ?? null,
+    sample: all.slice(0, sampleSize),
+  };
 }
 
 /**
- * Claimable deliveries whose attempt is overdue by more than `overdueMs`: the worker is not
- * draining. One held back behind an earlier delivery of its issue is waiting, not overdue.
+ * Deliveries their worker could take now that have waited more than `overdueMs`: the workers are
+ * not draining. pg-boss has no count of this, so it is read from its job table with the head rule
+ * its `key_strict_fifo` fetch applies: one held behind an active, retrying, dead or earlier delivery
+ * of its issue is waiting, not overdue.
  */
 export async function countOverdueDeliveries(overdueMs: number): Promise<number> {
+  const job = sql`${sql.identifier(BOSS_SCHEMA)}.job`;
   const [row] = await db.execute<{ count: number }>(sql`
-    SELECT count(*)::int AS count FROM outbox_deliveries c
-     WHERE c.status = 'pending'
-       AND c.next_attempt_at < now() - ${overdueMs}::int * interval '1 millisecond'
-       AND (c.leased_until IS NULL OR c.leased_until < now())
-       AND (c.issue_id IS NULL OR NOT EXISTS (
-             SELECT 1 FROM outbox_deliveries p
-              WHERE p.consumer = c.consumer AND p.issue_id = c.issue_id
-                AND p.status = 'pending' AND p.seq < c.seq))
+    SELECT count(*)::int AS count FROM ${job} j
+     WHERE j.name LIKE 'outbox.%' AND j.name <> ${DEAD_QUEUE}
+       AND j.state IN ('created', 'retry')
+       AND j.start_after < now() - ${overdueMs}::int * interval '1 millisecond'
+       AND NOT EXISTS (
+             SELECT 1 FROM ${job} b
+              WHERE b.name = j.name AND b.singleton_key = j.singleton_key AND b.id <> j.id
+                AND (b.state IN ('active', 'retry', 'failed')
+                     OR (j.state = 'created' AND b.state = 'created' AND b.start_after <= now()
+                         AND (b.created_on, b.id) < (j.created_on, j.id))))
   `);
   return row?.count ?? 0;
 }

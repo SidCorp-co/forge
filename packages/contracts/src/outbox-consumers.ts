@@ -1,7 +1,7 @@
 // Who consumes each outbox event, and what one delivery looks like (pattern v2, BC-18; ADR 0008).
-// The emitting transaction writes one `outbox_deliveries` row per consumer named here, so the list is
-// data every process reads the same way, whether or not it runs the worker. The worker refuses to
-// start when a registered consumer and this list disagree.
+// The emitting transaction sends one pg-boss job per consumer named here, each on that consumer's
+// own queue, so the list is data every process reads the same way, whether or not it runs the
+// workers. The workers refuse to start when a registered consumer and this list disagree.
 
 import type { OutboxEventType } from "./outbox-events.js";
 
@@ -73,22 +73,15 @@ export function consumersOfType(
 }
 
 /**
- * `pending` until the consumer is through (`delivered`) or every attempt is spent (`dead`). A dead
- * delivery is replayed back to `pending` by an act; nothing moves it on its own.
- */
-export const OUTBOX_DELIVERY_STATUSES = ["pending", "delivered", "dead"] as const;
-export type OutboxDeliveryStatus = (typeof OUTBOX_DELIVERY_STATUSES)[number];
-
-/**
- * How many times a delivery is started before it is dead, and the backoff between starts: the
- * delay doubles from `OUTBOX_RETRY_BASE_MS` up to `OUTBOX_RETRY_CAP_MS`, each jittered by up to a
- * quarter either way, so the last attempt lands roughly six hours after the first.
+ * How many times a delivery is started before it is dead, and the backoff between starts: pg-boss
+ * doubles the delay from `OUTBOX_RETRY_DELAY_SECONDS` up to `OUTBOX_RETRY_DELAY_MAX_SECONDS`, each
+ * drawn between the delay and twice it, so the last attempt lands roughly seven hours after the first.
  */
 export const OUTBOX_MAX_ATTEMPTS = 15;
-export const OUTBOX_RETRY_BASE_MS = 10_000;
-export const OUTBOX_RETRY_CAP_MS = 60 * 60_000;
+export const OUTBOX_RETRY_DELAY_SECONDS = 10;
+export const OUTBOX_RETRY_DELAY_MAX_SECONDS = 60 * 60;
 
-/** Delivered rows, and events left with no delivery, are pruned after this many days. */
+/** Delivered jobs, and events, are pruned after this many days. A dead delivery is never pruned. */
 export const OUTBOX_RETENTION_DAYS = 7;
 
 /** One dead delivery, as `GET …/outbox/dead` lists it. */

@@ -512,7 +512,6 @@
       "kind": "kernel",
       "context": "platform",
       "owns": [
-        "outboxDeliveries",
         "pipelineOutbox"
       ]
     },
