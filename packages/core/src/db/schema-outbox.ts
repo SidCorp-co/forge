@@ -3,8 +3,7 @@ import { sql } from 'drizzle-orm';
 import { bigint, check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { issues, projects } from './schema.js';
 
-const inList = (values: readonly string[]) =>
-  sql.raw(values.map((v) => `'${v}'`).join(', '));
+const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
 // The one durable outbox (pattern v2 BC-18): one row per event, written in the transaction of the
 // act it reports (`outbox/emit.ts:emitEvents`) with one pg-boss job per consumer. `seq` is folded

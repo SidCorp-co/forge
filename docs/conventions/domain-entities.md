@@ -315,31 +315,37 @@ written:
   `packages/contracts/src/outbox-events.ts:OUTBOX_EVENT_TYPES`. There is no in-memory bus.
 - **Every consumer is declared in contracts** (`packages/contracts/src/outbox-consumers.ts:OUTBOX_CONSUMERS`)
   and registered under that name (`packages/core/src/outbox/consumers.ts:consume`, from
-  `packages/core/src/outbox-consumers.ts:registerOutboxConsumers`). The worker refuses to start
+  `packages/core/src/outbox-consumers.ts:registerOutboxConsumers`). The workers refuse to start
   while the two disagree.
-- **One delivery row per event and consumer** (`packages/core/src/db/schema-outbox.ts:outboxDeliveries`),
-  written with the event, holds that consumer's status (`pending`, `delivered`, `dead`), attempts,
-  next attempt, lease and last error. Consumers are independent: one failing never retries or holds
-  back another.
-- **The delivery row is the consumer's inbox.** A consumer whose effect is rows writes them inside
-  `Delivery.inbox(tx => …)`, which marks the delivery `delivered` in the same transaction, so a
-  redelivery after the commit writes nothing again. A consumer whose effect leaves the database (a
-  push, a queue send) is marked by the worker when it returns, and is delivered at least once.
-- **Retries back off over hours** (`OUTBOX_MAX_ATTEMPTS` starts, doubling from
-  `OUTBOX_RETRY_BASE_MS` to `OUTBOX_RETRY_CAP_MS`, jittered), then the delivery is `dead`. Dead
-  deliveries are listed at `GET /api/projects/:id/outbox/dead` (and every project's, project-less
-  events included, at `GET /api/admin/outbox/dead`), replayed by
+- **One pg-boss job per event and consumer**, sent in the act's transaction through pg-boss's
+  Drizzle executor (`packages/core/src/outbox/emit.ts:emitEvents`) onto that consumer's own queue
+  (`packages/core/src/outbox/queues.ts:queueOf`). Consumers are independent: one failing never
+  retries or holds back another. The job carries the event whole, so it outlives the event's row.
+- **Completing the job is the consumer's inbox.** A consumer whose effect is rows writes them inside
+  `Delivery.inbox(tx => …)`, which completes the job in the same transaction, fenced to the attempt
+  it holds, so a redelivery after the commit writes nothing again. A consumer whose effect leaves
+  the database (a push, a queue send) is completed by pg-boss when it returns, and is delivered at
+  least once.
+- **Retries back off over hours** (`OUTBOX_MAX_ATTEMPTS` starts, pg-boss doubling the delay from
+  `OUTBOX_RETRY_DELAY_SECONDS` to `OUTBOX_RETRY_DELAY_MAX_SECONDS`), then the job is `failed`, which
+  is dead, and pg-boss copies it into `outbox.dead`. Dead deliveries are listed from that queue at
+  `GET /api/projects/:id/outbox/dead` (and every project's, project-less events included, at
+  `GET /api/admin/outbox/dead`), replayed with a fresh attempt count by
   `POST /api/projects/:id/outbox/deliveries/:did/replay` under `outbox.replay`, and raised as the
   `A6` ops alert (`packages/core/src/admin/alert-queries.ts:computeAlerts`). A consumer with a row
   of its own waiting on the delivery settles it in `onDeadLetter`.
-- **An issue's events reach each consumer in order**: a delivery waits while an earlier event of the
-  same issue is still pending for the same consumer, backoff included. A dead one no longer holds
-  the issue back; replaying it delivers it after its successors.
-- **The lease is renewed while a consumer runs**, so a slow consumer is never claimed twice.
-- **The worker is woken in-process after the emitting transaction commits**
+- **An issue's events reach each consumer in order**: each queue is `key_strict_fifo` keyed by
+  issue, so a delivery waits behind an active, retrying or dead one of the same issue for the same
+  consumer. **A dead delivery blocks the issue for that consumer until it is replayed**; the block
+  is loud through `A6`. Within a key pg-boss orders by the emitting transaction's start, then by job
+  id, which leads with the event's `seq` (`packages/core/src/outbox/queues.ts:deliveryJobId`).
+- **A heartbeat holds the job while a consumer runs** (`heartbeatSeconds`), so a slow consumer is
+  never handed to a second worker, and a crashed one is retried.
+- **Each consumer's worker is woken in-process after the emitting transaction commits**
   (`packages/core/src/db/client.ts:afterCommit`); nothing is signalled from inside the transaction,
-  and polling backs it up. Delivered rows, and events left with no delivery, are pruned after
-  `OUTBOX_RETENTION_DAYS` by the `outbox-retention` timer (`packages/core/src/timer-registry.ts`).
+  and polling backs it up. pg-boss deletes nothing from the consumer queues: delivered jobs and
+  events are pruned after `OUTBOX_RETENTION_DAYS` by the `outbox-retention` timer
+  (`packages/core/src/outbox/service.ts:pruneOutbox`), and a dead job is never pruned.
 - **An event nobody consumes is not emitted**, and a subscription to an event nobody emits is
   removed. Each event node of an approved design maps to an event kind or to "the row is the
   record".

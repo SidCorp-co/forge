@@ -10,7 +10,7 @@ import { afterCommit, db } from '../db/client.js';
 import type { Refusal } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { BOSS_SCHEMA, boss } from '../queue/boss.js';
+import { affectedBy, BOSS_SCHEMA, boss } from '../queue/boss.js';
 import { consumerOfDeliveryId, DEAD_QUEUE, type DeliveryJob, queueOf } from './queues.js';
 import { wakeConsumers } from './worker.js';
 
@@ -45,8 +45,8 @@ async function replay(deliveryId: string, projectId: string | null): Promise<Rep
       throw notFound('outbox delivery not found');
     }
     if (job.state !== 'failed') return notDead(deliveryId, job.state);
-    const { affected } = await boss.retry(queue, deliveryId, { db: executor });
-    if (affected !== 1) return notDead(deliveryId, 'no longer dead');
+    const retried = await boss.retry(queue, deliveryId, { db: executor });
+    if (affectedBy(retried) !== 1) return notDead(deliveryId, 'no longer dead');
     await boss.update(queue, undefined, {
       id: deliveryId,
       retryLimit: job.retryCount + OUTBOX_MAX_ATTEMPTS,
@@ -77,7 +77,12 @@ export async function replayDelivery(input: {
   projectId: string;
   deliveryId: string;
 }): Promise<ReplayOutcome> {
-  await requireCan(actorFor(input.userId), 'outbox.replay', projectResource(input.projectId), 'Replaying an outbox delivery');
+  await requireCan(
+    actorFor(input.userId),
+    'outbox.replay',
+    projectResource(input.projectId),
+    'Replaying an outbox delivery',
+  );
   return replay(input.deliveryId, input.projectId);
 }
 

@@ -110,5 +110,10 @@ export type OutboxRefusalCode = (typeof OUTBOX_REFUSAL_CODES)[number];
 /** `POST …/outbox/deliveries/:id/replay`: the delivery is pending again with a fresh attempt count. */
 export interface ReplayOutboxDeliveryResponse {
 	act: "replayed";
-	delivery: { id: string; status: "pending"; consumer: string; eventId: string };
+	delivery: {
+		id: string;
+		status: "pending";
+		consumer: string;
+		eventId: string;
+	};
 }

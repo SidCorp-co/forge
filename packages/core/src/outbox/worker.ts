@@ -3,7 +3,7 @@ import { fromDrizzle, type JobWithMetadata } from 'pg-boss';
 import { db } from '../db/client.js';
 import { logger } from '../observability/logger.js';
 import { traceStep } from '../observability/sentry.js';
-import { boss } from '../queue/boss.js';
+import { affectedBy, boss } from '../queue/boss.js';
 import { consumerOf, type Delivery, registryMismatches } from './consumers.js';
 import { CONSUMER_NAMES, type DeliveryJob, queueOf } from './queues.js';
 
@@ -27,8 +27,9 @@ async function runDelivery(consumerName: string, job: JobWithMetadata<DeliveryJo
     inbox: (write) =>
       db.transaction(async (tx) => {
         const out = await write(tx);
-        const { affected } = await boss.complete(queue, attempt, null, { db: fromDrizzle(tx, sql) });
-        if (affected !== 1) throw new LeaseLost(`delivery ${job.id} is no longer this worker's`);
+        const completed = await boss.complete(queue, attempt, null, { db: fromDrizzle(tx, sql) });
+        if (affectedBy(completed) !== 1)
+          throw new LeaseLost(`delivery ${job.id} is no longer this worker's`);
         return out;
       }),
   };
@@ -54,9 +55,11 @@ async function runDelivery(consumerName: string, job: JobWithMetadata<DeliveryJo
       data: { deliveryId: job.id, type, consumer: consumerName, attempt: delivery.attempt, error },
     });
     if (died && consumer?.onDeadLetter) {
-      await consumer.onDeadLetter(payload, error, delivery).catch((hookErr: unknown) =>
-        logger.error({ err: hookErr, deliveryId: job.id }, 'outbox: dead-letter handler failed'),
-      );
+      await consumer
+        .onDeadLetter(payload, error, delivery)
+        .catch((hookErr: unknown) =>
+          logger.error({ err: hookErr, deliveryId: job.id }, 'outbox: dead-letter handler failed'),
+        );
     }
     throw err;
   }
@@ -78,13 +81,15 @@ export async function startOutboxWorker(): Promise<void> {
   if (workers.size > 0) return;
   const mismatches = registryMismatches();
   if (mismatches.length > 0) {
-    throw new Error(`outbox: the registered consumers disagree with OUTBOX_CONSUMERS: ${mismatches.join('; ')}`);
+    throw new Error(
+      `outbox: the registered consumers disagree with OUTBOX_CONSUMERS: ${mismatches.join('; ')}`,
+    );
   }
   for (const consumer of CONSUMER_NAMES) {
-    const id = await boss.work<DeliveryJob>(
+    const id = await boss.work(
       queueOf(consumer),
       { batchSize: 1, includeMetadata: true, pollingIntervalSeconds: POLL_SECONDS },
-      async ([job]) => {
+      async ([job]: JobWithMetadata<DeliveryJob>[]) => {
         if (job) await runDelivery(consumer, job);
       },
     );

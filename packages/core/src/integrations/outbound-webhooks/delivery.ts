@@ -3,7 +3,7 @@ import { Webhook } from 'standardwebhooks';
 import { db } from '../../db/client.js';
 import { projectWebhooks } from '../../db/schema.js';
 import { logger } from '../../observability/logger.js';
-import { boss } from '../../queue/boss.js';
+import { boss, declareQueue, KEEP_WAITING_JOBS_SECONDS } from '../../queue/boss.js';
 
 export const WEBHOOK_DELIVERY_QUEUE = 'webhook-delivery';
 /** Where a delivery lands once its retries are spent; nothing works it, it is the record. */
@@ -87,8 +87,12 @@ let registered = false;
 
 export async function registerOutboundDeliveryWorker(): Promise<void> {
   if (registered) return;
-  // The dead-letter queue first: a job naming it references the queue row.
-  await boss.createQueue(WEBHOOK_DEAD_LETTER_QUEUE);
+  // The dead-letter queue first: a job naming it references the queue row. Its copies wait for
+  // ever, so retention is set past any horizon rather than left at pg-boss's 14 days.
+  await declareQueue(WEBHOOK_DEAD_LETTER_QUEUE, {
+    retentionSeconds: KEEP_WAITING_JOBS_SECONDS,
+    deleteAfterSeconds: 0,
+  });
   await boss.createQueue(WEBHOOK_DELIVERY_QUEUE);
   await boss.work<DeliveryJob>(WEBHOOK_DELIVERY_QUEUE, { batchSize: 1 }, async (jobs) => {
     for (const job of jobs) {

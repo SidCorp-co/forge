@@ -52,7 +52,10 @@ function toInsert(job: V10Job, now: number): JobInsert {
     startAfter: startAfter.toISOString(),
     ...(job.singleton_key ? { singletonKey: job.singleton_key } : {}),
     expireInSeconds: Math.max(1, Math.round(job.expire_seconds)),
-    retentionSeconds: Math.max(1, Math.ceil((keepUntil - Math.max(startAfter.getTime(), now)) / 1000)),
+    retentionSeconds: Math.max(
+      1,
+      Math.ceil((keepUntil - Math.max(startAfter.getTime(), now)) / 1000),
+    ),
     ...(job.dead_letter ? { deadLetter: job.dead_letter } : {}),
   };
 }
@@ -122,10 +125,14 @@ export async function carryOverV10Jobs(boss: PgBoss): Promise<void> {
       if (wanted.has(name)) return;
       const q = queues.get(name);
       if (!q) {
-        throw new CarryOverRefused(`boss: a v10 job names queue \`${name}\`, which \`${V10_SCHEMA}.queue\` does not hold`);
+        throw new CarryOverRefused(
+          `boss: a v10 job names queue \`${name}\`, which \`${V10_SCHEMA}.queue\` does not hold`,
+        );
       }
       if (!V10_POLICIES.has(q.policy ?? 'standard')) {
-        throw new CarryOverRefused(`boss: v10 queue \`${name}\` has policy \`${q.policy}\`, which pg-boss 12 does not read the same way`);
+        throw new CarryOverRefused(
+          `boss: v10 queue \`${name}\` has policy \`${q.policy}\`, which pg-boss 12 does not read the same way`,
+        );
       }
       if (q.dead_letter) want(q.dead_letter);
       wanted.add(name);
@@ -154,8 +161,11 @@ export async function carryOverV10Jobs(boss: PgBoss): Promise<void> {
     const executor = fromDrizzle(tx, sql);
     for (const [name, group] of byQueue) {
       const inserted = new Set(
-        (await boss.insert(name, group.map((j) => toInsert(j, now)), { db: executor, returnId: true })) ??
-          [],
+        (await boss.insert(
+          name,
+          group.map((j) => toInsert(j, now)),
+          { db: executor, returnId: true },
+        )) ?? [],
       );
       const refused = group.filter((j) => !inserted.has(j.id));
       if (refused.length > 0) {

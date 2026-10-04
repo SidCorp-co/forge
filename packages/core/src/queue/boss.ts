@@ -1,4 +1,4 @@
-import { PgBoss, type Queue } from 'pg-boss';
+import { type CommandResponse, PgBoss, type Queue } from 'pg-boss';
 import { env } from '../config/env.js';
 import { carryOverV10Jobs } from './v10-carry-over.js';
 
@@ -55,6 +55,20 @@ export async function declareQueue(name: string, options: Omit<Queue, 'name'> = 
   }
   const { policy: _policy, partition: _partition, ...updatable } = options;
   if (Object.keys(updatable).length > 0) await boss.updateQueue(name, updatable);
+}
+
+/**
+ * How many jobs a pg-boss command changed. pg-boss 12.36 returns `{ jobs, requested, affected }` and
+ * declares `CommandResponse` empty, so the count is read here once, and its absence is refused.
+ */
+export function affectedBy(response: CommandResponse): number {
+  const affected = (response as { affected?: unknown }).affected;
+  if (typeof affected !== 'number') {
+    throw new Error(
+      'pg-boss returned no affected count; this build reads the 12.36 command response',
+    );
+  }
+  return affected;
 }
 
 let started = false;

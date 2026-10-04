@@ -74,13 +74,28 @@ The choices inside that, and why:
   outbox makes every reaction durable, and an event nobody consumes is not emitted. Durable is not
   enough on its own: a single row with one shared attempt counter let one failing consumer spend the
   retries of every other, gave up after three quick attempts, and left the row unprocessed for ever
-  with nobody told, which breaks `VISION: state-never-lies`. So each consumer has its own delivery
-  row, which is also its inbox, retries back off over hours, and a delivery that runs out ends
-  `dead`, listed, alerted and replayable. pg-boss, already a core dependency, was weighed for this
-  and covers roughly 60% of it: it sends in a transaction, keeps queues independent, backs off and
-  prunes, but it keeps no order per issue through a retry, renews no lease, and archives a failed
-  job out of sight after a retention window, so a dead delivery would stop being visible before
-  anyone replayed it.
+  with nobody told, which breaks `VISION: state-never-lies`. So each consumer gets its own pg-boss
+  job, sent in the act's transaction through pg-boss's Drizzle executor; its retries back off over
+  hours, and a job that runs out ends `dead`, listed, alerted and replayable. Measured on **pg-boss
+  12.36.0** (ISS-192), it covers six of the nine requirements as shipped, one more with a derived job
+  id, and two are built: a transactional send, one queue per consumer, backoff up to a cap, a
+  heartbeat that holds a running job, a dead-letter copy with retry of the failed job, and
+  `key_strict_fifo`, which holds an issue's later jobs behind an active, retrying or failed one.
+  That last is the rule chosen on
+  2026-10-05: **a dead delivery blocks its issue for that consumer until it is replayed**, loudly,
+  through A6. Three gaps are built here. pg-boss's retention deletes a failed job with the completed
+  ones, which would release the block and hide the dead, so the consumer queues delete nothing and a
+  timer prunes only delivered jobs. Within a key pg-boss orders by the emitting transaction's start,
+  then by id, so a job id leads with the event's `seq` and events written in one transaction keep
+  their order; across transactions the order is by transaction start, where the hand-rolled claim
+  ordered by `seq` taken at insert, and neither follows commit order. pg-boss counts no overdue job
+  that excludes the ones a key holds back, so that count reads its job table. The earlier 60% reading
+  was of 10.4.2. pg-boss 12 cannot migrate the version-24 schema 10.4.2 wrote, so it lives in
+  `pgboss_v12` and core copies the jobs 10.4.2 left waiting on first start
+  (`packages/core/src/queue/v10-carry-over.ts`); `pgboss` is only read, so a code revert returns to
+  10.4.2. **`pgboss` is dropped once** every environment that ran 10.4.2 has booted this build, the
+  boot log there names no job written to `pgboss` after the copy, and a revert to 10.4.2 is no longer
+  wanted.
 - **Refusals stay one envelope**, and the error-class and `HTTPException` shapes are retired rather
   than mapped, because a client that has to read four shapes reads none of them reliably.
 - **Permission is [ADR 0007](0007-approval-is-a-permission.md)'s**, not restated here: approval
