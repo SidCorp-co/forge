@@ -148,6 +148,11 @@
 
 ### Added
 
+- **An agent report says what was decided about it, by whom and when (ISS-113).** Its triage is
+  new, filed, dismissed or duplicate; filing makes a draft issue in the same write, a dismissal
+  needs a reason, and a report from a scheduled run links that run. Older reports are mapped, and
+  the Improvements list shows triage and offers Dismiss.
+
 - **Every schedule run is one row in its history (ISS-112).** A run of any kind records how it
   started, ended and why, and links its session; older runs are rebuilt. A run skipped for want of a
   box now counts toward the failing-automation alert.
@@ -2681,6 +2686,9 @@
   (ISS-1313)
 
 ### Removed
+- **An agent report has no reviewed flag (ISS-113).** `POST /api/agent-reports/:id/reviewed`,
+  the `reviewed` list filter and `forge_agent_report action=review` are gone; triage replaces them,
+  and the issue a report was filed into cannot be deleted until it is reopened.
 - **A binding is written only as its binding document.** Connecting, sharing a connection and
   picking a GitHub repository all write it; the old binding routes refuse by name and point there.
   A binding holds no rollback.

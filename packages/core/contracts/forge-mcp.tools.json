@@ -4,22 +4,51 @@
   "generator": "packages/core/src/api-contract/generate.ts",
   "tools": [
     {
-      "description": "Submit, list, get, or review agent friction reports. action=submit: report friction, skill gaps, unclear steps, or learnings mid-run. Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it. Required fields: projectId, kind, target, summary. projectId names the project the report is ABOUT, which need not be the one you are working in; it is REQUIRED and never inferred, because a report filed into the wrong feed is never read (`forge_projects.list` prints it beside each slug — it is its own tool, not an action on one). Optional: severity (default low), targetRef, detail, suggestion. Returns {ok:true,id,signalKey} on success; {ok:false,reason:\"rate_limited\"} when the per-job cap is hit (not a 500 — agent continues). action=list: read the friction feed. Supports filters.kind/target/severity/reviewed, limit (default 25, fleet default 50). scope=\"project\" (default) reads the resolved project; scope=\"all\" unions every project you own or are a member of and adds projectId/projectSlug to each row. EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete. `truncated:true` + `truncatedBy` say which cap bit (your limit, or the hard response-size cap). action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. A report promoted into product feedback carries `feedback` { key, phase, route } and stays reviewed: reviewed:false or a linkedIssueId on it is AGENT_REPORT_PROMOTED (promote with forge_feedback_items action=promote). action=review: stamp reviewedAt on report(s) once triaged/addressed (reviewed:false clears the stamp). reportId stamps a single report (unchanged single-project behaviour). When folding a report into an issue, also pass linkedIssueId (must belong to the same project as the report, or NOT_FOUND) — it is stamped atomically with reviewedAt and returned, so the report becomes traceable to what it became. Omitting linkedIssueId on a later review call leaves any existing link untouched (back-compat); reviewed:false clears BOTH reviewedAt and linkedIssueId. Curators (e.g. forge-memory-curator, or anyone triaging reports into an issue) SHOULD pass linkedIssueId so the loop closes. signalKey bulk-stamps every report sharing that signalKey — add scope=\"all\" to bulk-stamp across every project you can see (scope=\"all\" without signalKey is a BAD_REQUEST); returns {ok:true,count,scope,linkedIssueId}. linkedIssueId IS supported on the bulk path: N duplicate reports of one Forge defect fold into ONE issue in a single call. A report is ABOUT FORGE — its projectId records where the defect was OBSERVED, not who owns the fix — so linkedIssueId may name an issue in ANY project you can see (normally the Forge project), not just the one the report was filed from. reviewed:false clears reviewedAt AND linkedIssueId.",
+      "description": "Submit, list, get, or triage agent friction reports. action=submit: report friction, skill gaps, unclear steps, or learnings mid-run. Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it; a report filed from a scheduled run also carries scheduleRunId, the fire that ran it. Required fields: projectId, kind, target, summary. projectId names the project the report is ABOUT, which need not be the one you are working in; it is REQUIRED and never inferred, because a report filed into the wrong feed is never read (`forge_projects.list` prints it beside each slug — it is its own tool, not an action on one). Optional: severity (default low), targetRef, detail, suggestion. Returns {ok:true,id,signalKey} on success; {ok:false,reason:\"rate_limited\"} when the per-job cap is hit (not a 500 — agent continues). action=list: read the friction feed. Supports filters.kind/target/severity/triage (new | filed | dismissed | duplicate), limit (default 25, fleet default 50). scope=\"project\" (default) reads the resolved project; scope=\"all\" unions every project you own or are a member of and adds projectId/projectSlug to each row. EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete. `truncated:true` + `truncatedBy` say which cap bit (your limit, or the hard response-size cap). action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. Every report carries triage (new | filed | dismissed | duplicate) with triagedBy, triagedAt and triageReason; a filed one has exactly one target, linkedIssueId or `feedback` { key, phase, route } (promote with forge_feedback_items action=promote, which files it). action=triage: decide what a report is, with act: file (exactly one of issue: <uuid of an issue in any project you can see> | createIssue: { title?, description? }, which creates the issue at draft in the report's project with the report as its evidence) · dismiss (reason REQUIRED: AGENT_REPORT_DISMISS_REASON_REQUIRED) · duplicate (duplicateOf: an earlier report of the same project, else AGENT_REPORT_DUPLICATE_UNKNOWN; reason?) · reopen (back to new; AGENT_REPORT_NOT_TRIAGED when it is new already, AGENT_REPORT_PROMOTED when it became feedback). A report is triaged once: a second file, dismiss or duplicate is AGENT_REPORT_ALREADY_TRIAGED naming who triaged it and how — reopen it first. reportId triages one report (projectId resolves which project it must sit in). signalKey triages every report sharing it — add scope=\"all\" for every project you can see (scope=\"all\" without signalKey is a BAD_REQUEST; createIssue needs scope project). A bulk act moves the reports it applies to (file, dismiss and duplicate move the new ones, reopen the triaged ones) and lists the others under `untouched`; N reports of one defect fold into ONE issue in a single call. Returns { effect: { act, triage, reports, issue: { id, key, created } | null, untouched } }.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "act": {
+            "enum": [
+              "file",
+              "dismiss",
+              "duplicate",
+              "reopen"
+            ],
+            "type": "string"
+          },
           "action": {
             "enum": [
               "submit",
               "list",
-              "review",
+              "triage",
               "get"
             ],
             "type": "string"
           },
+          "createIssue": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              "title": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "detail": {
             "maxLength": 5000,
+            "type": "string"
+          },
+          "duplicateOf": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "type": "string"
           },
           "filters": {
@@ -36,9 +65,6 @@
                   "suggestion"
                 ],
                 "type": "string"
-              },
-              "reviewed": {
-                "type": "boolean"
               },
               "severity": {
                 "enum": [
@@ -59,9 +85,23 @@
                   "other"
                 ],
                 "type": "string"
+              },
+              "triage": {
+                "enum": [
+                  "new",
+                  "filed",
+                  "dismissed",
+                  "duplicate"
+                ],
+                "type": "string"
               }
             },
             "type": "object"
+          },
+          "issue": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
           },
           "kind": {
             "enum": [
@@ -80,23 +120,19 @@
             "minimum": 1,
             "type": "integer"
           },
-          "linkedIssueId": {
+          "projectId": {
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "type": "string"
           },
-          "projectId": {
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "reason": {
+            "maxLength": 2000,
             "type": "string"
           },
           "reportId": {
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "type": "string"
-          },
-          "reviewed": {
-            "type": "boolean"
           },
           "scope": {
             "enum": [
@@ -1084,22 +1120,51 @@
       "name": "forge_ecosystem"
     },
     {
-      "description": "[DEPRECATED alias — use forge_agent_report; every result carries a `deprecation` field] Submit, list, get, or review agent friction reports. action=submit: report friction, skill gaps, unclear steps, or learnings mid-run. Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it. Required fields: projectId, kind, target, summary. projectId names the project the report is ABOUT, which need not be the one you are working in; it is REQUIRED and never inferred, because a report filed into the wrong feed is never read (`forge_projects.list` prints it beside each slug — it is its own tool, not an action on one). Optional: severity (default low), targetRef, detail, suggestion. Returns {ok:true,id,signalKey} on success; {ok:false,reason:\"rate_limited\"} when the per-job cap is hit (not a 500 — agent continues). action=list: read the friction feed. Supports filters.kind/target/severity/reviewed, limit (default 25, fleet default 50). scope=\"project\" (default) reads the resolved project; scope=\"all\" unions every project you own or are a member of and adds projectId/projectSlug to each row. EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete. `truncated:true` + `truncatedBy` say which cap bit (your limit, or the hard response-size cap). action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. A report promoted into product feedback carries `feedback` { key, phase, route } and stays reviewed: reviewed:false or a linkedIssueId on it is AGENT_REPORT_PROMOTED (promote with forge_feedback_items action=promote). action=review: stamp reviewedAt on report(s) once triaged/addressed (reviewed:false clears the stamp). reportId stamps a single report (unchanged single-project behaviour). When folding a report into an issue, also pass linkedIssueId (must belong to the same project as the report, or NOT_FOUND) — it is stamped atomically with reviewedAt and returned, so the report becomes traceable to what it became. Omitting linkedIssueId on a later review call leaves any existing link untouched (back-compat); reviewed:false clears BOTH reviewedAt and linkedIssueId. Curators (e.g. forge-memory-curator, or anyone triaging reports into an issue) SHOULD pass linkedIssueId so the loop closes. signalKey bulk-stamps every report sharing that signalKey — add scope=\"all\" to bulk-stamp across every project you can see (scope=\"all\" without signalKey is a BAD_REQUEST); returns {ok:true,count,scope,linkedIssueId}. linkedIssueId IS supported on the bulk path: N duplicate reports of one Forge defect fold into ONE issue in a single call. A report is ABOUT FORGE — its projectId records where the defect was OBSERVED, not who owns the fix — so linkedIssueId may name an issue in ANY project you can see (normally the Forge project), not just the one the report was filed from. reviewed:false clears reviewedAt AND linkedIssueId.",
+      "description": "[DEPRECATED alias — use forge_agent_report; every result carries a `deprecation` field] Submit, list, get, or triage agent friction reports. action=submit: report friction, skill gaps, unclear steps, or learnings mid-run. Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it; a report filed from a scheduled run also carries scheduleRunId, the fire that ran it. Required fields: projectId, kind, target, summary. projectId names the project the report is ABOUT, which need not be the one you are working in; it is REQUIRED and never inferred, because a report filed into the wrong feed is never read (`forge_projects.list` prints it beside each slug — it is its own tool, not an action on one). Optional: severity (default low), targetRef, detail, suggestion. Returns {ok:true,id,signalKey} on success; {ok:false,reason:\"rate_limited\"} when the per-job cap is hit (not a 500 — agent continues). action=list: read the friction feed. Supports filters.kind/target/severity/triage (new | filed | dismissed | duplicate), limit (default 25, fleet default 50). scope=\"project\" (default) reads the resolved project; scope=\"all\" unions every project you own or are a member of and adds projectId/projectSlug to each row. EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete. `truncated:true` + `truncatedBy` say which cap bit (your limit, or the hard response-size cap). action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. Every report carries triage (new | filed | dismissed | duplicate) with triagedBy, triagedAt and triageReason; a filed one has exactly one target, linkedIssueId or `feedback` { key, phase, route } (promote with forge_feedback_items action=promote, which files it). action=triage: decide what a report is, with act: file (exactly one of issue: <uuid of an issue in any project you can see> | createIssue: { title?, description? }, which creates the issue at draft in the report's project with the report as its evidence) · dismiss (reason REQUIRED: AGENT_REPORT_DISMISS_REASON_REQUIRED) · duplicate (duplicateOf: an earlier report of the same project, else AGENT_REPORT_DUPLICATE_UNKNOWN; reason?) · reopen (back to new; AGENT_REPORT_NOT_TRIAGED when it is new already, AGENT_REPORT_PROMOTED when it became feedback). A report is triaged once: a second file, dismiss or duplicate is AGENT_REPORT_ALREADY_TRIAGED naming who triaged it and how — reopen it first. reportId triages one report (projectId resolves which project it must sit in). signalKey triages every report sharing it — add scope=\"all\" for every project you can see (scope=\"all\" without signalKey is a BAD_REQUEST; createIssue needs scope project). A bulk act moves the reports it applies to (file, dismiss and duplicate move the new ones, reopen the triaged ones) and lists the others under `untouched`; N reports of one defect fold into ONE issue in a single call. Returns { effect: { act, triage, reports, issue: { id, key, created } | null, untouched } }.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "act": {
+            "enum": [
+              "file",
+              "dismiss",
+              "duplicate",
+              "reopen"
+            ],
+            "type": "string"
+          },
           "action": {
             "enum": [
               "submit",
               "list",
-              "review",
+              "triage",
               "get"
             ],
             "type": "string"
           },
+          "createIssue": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              "title": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "detail": {
             "maxLength": 5000,
+            "type": "string"
+          },
+          "duplicateOf": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "type": "string"
           },
           "filters": {
@@ -1116,9 +1181,6 @@
                   "suggestion"
                 ],
                 "type": "string"
-              },
-              "reviewed": {
-                "type": "boolean"
               },
               "severity": {
                 "enum": [
@@ -1139,9 +1201,23 @@
                   "other"
                 ],
                 "type": "string"
+              },
+              "triage": {
+                "enum": [
+                  "new",
+                  "filed",
+                  "dismissed",
+                  "duplicate"
+                ],
+                "type": "string"
               }
             },
             "type": "object"
+          },
+          "issue": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
           },
           "kind": {
             "enum": [
@@ -1160,23 +1236,19 @@
             "minimum": 1,
             "type": "integer"
           },
-          "linkedIssueId": {
+          "projectId": {
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "type": "string"
           },
-          "projectId": {
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "reason": {
+            "maxLength": 2000,
             "type": "string"
           },
           "reportId": {
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "type": "string"
-          },
-          "reviewed": {
-            "type": "boolean"
           },
           "scope": {
             "enum": [

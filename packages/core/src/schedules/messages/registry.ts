@@ -188,12 +188,12 @@ export const improvementMessages: ImprovementMessage[] = [
   },
   {
     key: 'feedback-triage-digest',
-    title: 'Standing fleet feedback digest — weekly unreviewed-feedback rollup',
+    title: 'Standing fleet feedback digest — weekly untriaged-report rollup',
     message:
-      'The feedback-digest agent pulls unreviewed forge_agent_report reports fleet-wide ' +
-      '(scope="all", reviewed=false), dedupes by signalKey, groups by target then ' +
+      'The feedback-digest agent pulls untriaged forge_agent_report reports fleet-wide ' +
+      '(scope="all", triage=new), dedupes by signalKey, groups by target then ' +
       'severity, and files ONE draft issue into forge-dev per run summarizing the ' +
-      'backlog (top clusters, counts per project, capped). It never reviews or ' +
+      'backlog (top clusters, counts per project, capped). It never triages or ' +
       'edits agent reports itself — a human triages the underlying reports.',
     rationale:
       'Without a standing digest, triage of forge_agent_report reports depends on a ' +

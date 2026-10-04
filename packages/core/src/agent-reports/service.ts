@@ -1,25 +1,40 @@
 /**
- * The friction-report store, for whichever surface asks.
+ * The agent-report store, for whichever surface asks.
  *
  * `reportColumns` is the shape every read answers with — it joins the project
- * slug in, so a caller reading the feed never has to resolve one itself.
+ * slug and the triager's name in, so a caller reading the feed never resolves either itself.
  */
 
-import type { AgentReportView } from '@forge/contracts/agent-reports';
-import { and, count, desc, eq, inArray, isNotNull, type SQL } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import type {
+  AgentReportTriage,
+  AgentReportTriageEffect,
+  AgentReportView,
+  TriageAgentReportRequest,
+} from '@forge/contracts/agent-reports';
+import { and, asc, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { db, type Tx } from '../db/client.js';
 import {
   type AgentReportKind,
   type AgentReportSeverity,
   type AgentReportTarget,
   agentReports,
+  agentSessions,
   issues,
   projects,
+  scheduleRuns,
 } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { reportLinksOf } from '../feedback/about.js';
+import { feedbackKey } from '../feedback/read.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
+import { announceIssueCreated } from '../issues/create-service.js';
+import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { writeRecordEvent } from '../issues/record-events/store.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
+import { peopleOf } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
-import { promotedRefusals } from './rules.js';
+import { fileIssueIn, type IssueChannel } from './file.js';
+import { bulkMoves, filedIntoIssueRefusal, type TriageFacts, triageRefusals } from './rules.js';
 
 export const reportColumns = {
   id: agentReports.id,
@@ -38,7 +53,12 @@ export const reportColumns = {
   suggestion: agentReports.suggestion,
   signalKey: agentReports.signalKey,
   sessionId: agentReports.sessionId,
-  reviewedAt: agentReports.reviewedAt,
+  scheduleRunId: agentReports.scheduleRunId,
+  triage: agentReports.triage,
+  triagedById: agentReports.triagedBy,
+  triagedAt: agentReports.triagedAt,
+  triageReason: agentReports.triageReason,
+  duplicateOf: agentReports.duplicateOf,
   linkedIssueId: agentReports.linkedIssueId,
   feedbackId: agentReports.feedbackId,
   createdAt: agentReports.createdAt,
@@ -73,15 +93,36 @@ export async function readReport(reportId: string) {
   return row ?? null;
 }
 
-/** Does this issue exist inside any of `projectIds`? */
-export async function issueVisibleIn(issueId: string, projectIds: string[]): Promise<boolean> {
-  if (projectIds.length === 0) return false;
+/** The issue a file act links, when it sits in one of `projectIds`; null is the caller's 404. */
+export async function visibleIssue(
+  issueId: string,
+  projectIds: string[],
+): Promise<{ id: string; key: string } | null> {
+  if (projectIds.length === 0) return null;
   const [row] = await db
-    .select({ id: issues.id })
+    .select({ id: issues.id, projectId: issues.projectId, seq: issues.issSeq })
     .from(issues)
     .where(and(eq(issues.id, issueId), inArray(issues.projectId, projectIds)))
     .limit(1);
-  return row !== undefined;
+  if (!row) return null;
+  return { id: row.id, key: formatIssueRef(await activeIssuePrefix(row.projectId), row.seq) };
+}
+
+// cm:why design automation rev 1 (step report; REQ-16 BC-2): the fire a session runs for is named
+// on its metadata (`scheduleRunId`, ISS-112); a report takes the fire only when that row exists, so a
+// session whose fire went with its schedule files an unlinked report rather than a dangling id
+export async function fireOfSession(sessionId: string | null): Promise<string | null> {
+  if (!sessionId) return null;
+  const [row] = await db
+    .select({ id: scheduleRuns.id })
+    .from(agentSessions)
+    .innerJoin(
+      scheduleRuns,
+      sql`${scheduleRuns.id}::text = ${agentSessions.metadata} ->> 'scheduleRunId'`,
+    )
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1);
+  return row?.id ?? null;
 }
 
 export type NewAgentReport = typeof agentReports.$inferInsert;
@@ -106,45 +147,206 @@ export async function reportViews(rows: readonly ReportRow[]): Promise<AgentRepo
       await Promise.all([...byProject].map(([projectId, ids]) => reportLinksOf(projectId, ids)))
     ).flatMap((m) => [...m]),
   );
-  return rows.map(({ feedbackId, ...r }) => ({
+  const people = await peopleOf(rows.map((r) => r.triagedById));
+  return rows.map(({ feedbackId, triagedById, ...r }) => ({
     ...r,
-    reviewedAt: r.reviewedAt?.toISOString() ?? null,
+    triagedBy: triagedById
+      ? { id: triagedById, name: people.get(triagedById)?.name ?? null }
+      : null,
+    triagedAt: r.triagedAt?.toISOString() ?? null,
     createdAt: r.createdAt.toISOString(),
     feedback: feedbackId ? (links.get(feedbackId) ?? null) : null,
   }));
 }
 
-export type ReviewOutcome =
-  | { ok: true; rows: { id: string; reviewedAt: Date | null; linkedIssueId: string | null }[] }
+export interface ReportActor {
+  userId: string;
+  agency: ActorAgency;
+}
+
+async function lockedFacts(tx: Tx, scope: SQL[]) {
+  const rows = await tx
+    .select({
+      id: agentReports.id,
+      projectId: agentReports.projectId,
+      triage: agentReports.triage,
+      triagedAt: agentReports.triagedAt,
+      triageReason: agentReports.triageReason,
+      duplicateOf: agentReports.duplicateOf,
+      triagedBy: agentReports.triagedBy,
+      issueSeq: issues.issSeq,
+      issueProjectId: issues.projectId,
+      feedbackSeq: feedback.fbSeq,
+      summary: agentReports.summary,
+      detail: agentReports.detail,
+      suggestion: agentReports.suggestion,
+      kind: agentReports.kind,
+      severity: agentReports.severity,
+      target: agentReports.target,
+      targetRef: agentReports.targetRef,
+    })
+    .from(agentReports)
+    .leftJoin(issues, eq(issues.id, agentReports.linkedIssueId))
+    .leftJoin(feedback, eq(feedback.id, agentReports.feedbackId))
+    .where(and(...scope))
+    .orderBy(asc(agentReports.createdAt), asc(agentReports.id))
+    .for('update', { of: agentReports });
+  const people = await peopleOf(rows.map((r) => r.triagedBy));
+  const prefixes = new Map<string, string | null>();
+  for (const r of rows) {
+    if (r.issueProjectId && !prefixes.has(r.issueProjectId))
+      prefixes.set(r.issueProjectId, await activeIssuePrefix(r.issueProjectId));
+  }
+  return rows.map((r) => ({
+    ...r,
+    facts: {
+      id: r.id,
+      projectId: r.projectId,
+      triage: r.triage,
+      triagedByName: r.triagedBy ? (people.get(r.triagedBy)?.name ?? null) : null,
+      triagedAt: r.triagedAt,
+      triageReason: r.triageReason,
+      duplicateOf: r.duplicateOf,
+      linkedIssueKey:
+        r.issueSeq === null || !r.issueProjectId
+          ? null
+          : formatIssueRef(prefixes.get(r.issueProjectId) ?? null, r.issueSeq),
+      feedbackKey: r.feedbackSeq === null ? null : feedbackKey(r.feedbackSeq),
+    } satisfies TriageFacts,
+  }));
+}
+
+export type LockedReport = Awaited<ReturnType<typeof lockedFacts>>[number];
+
+const TO: Record<TriageAgentReportRequest['act'], AgentReportTriage> = {
+  file: 'filed',
+  dismiss: 'dismissed',
+  duplicate: 'duplicate',
+  reopen: 'new',
+};
+
+export type TriageOutcome =
+  | { ok: true; effect: AgentReportTriageEffect; createdIssueId: string | null }
   | { ok: false; refusals: Refusal[] };
 
-export async function stampReviewed(
-  scope: Array<SQL | undefined>,
-  patch: { reviewed: boolean; linkedIssueId?: string | null },
-): Promise<ReviewOutcome> {
-  const touchesRoute = !patch.reviewed || typeof patch.linkedIssueId === 'string';
-  const promoted = touchesRoute
-    ? await db
-        .select({ id: agentReports.id, seq: feedback.fbSeq })
+// cm:why design automation rev 1 (steps triage, file, dismiss; REQ-16 BC-3): every triage act, from
+// either door, single or by signal, is this one write: the reports are locked, every rule is read
+// before anything is written, a file creates its draft issue in the same transaction, and each row
+// carries its own triagedBy. A bulk act moves the reports its act applies to and names the rest
+export async function triageReports(input: {
+  scope: SQL[];
+  bulk: boolean;
+  act: TriageAgentReportRequest;
+  actor: ReportActor;
+  channel: IssueChannel;
+  linkIssue: { id: string; key: string } | null;
+}): Promise<TriageOutcome> {
+  const { act, actor } = input;
+  return db.transaction(async (tx) => {
+    const locked = await lockedFacts(tx, input.scope);
+    let original: { id: string; projectId: string } | null = null;
+    if (act.act === 'duplicate') {
+      const [o] = await tx
+        .select({ id: agentReports.id, projectId: agentReports.projectId })
         .from(agentReports)
-        .innerJoin(feedback, eq(feedback.id, agentReports.feedbackId))
-        .where(and(...scope, isNotNull(agentReports.feedbackId)))
-    : [];
-  const refusals = promotedRefusals(promoted, patch.reviewed);
-  if (refusals.length > 0) return { ok: false, refusals };
+        .where(eq(agentReports.id, act.duplicateOf));
+      original = o ?? null;
+    }
+    const moving = input.bulk ? locked.filter((r) => bulkMoves(r.facts, act)) : locked;
+    const untouched = locked
+      .filter((r) => !moving.includes(r))
+      .map((r) => ({ id: r.id, triage: r.triage }));
+    const refusals = moving.flatMap((r) => triageRefusals(r.facts, act, original));
+    if (refusals.length > 0) return { ok: false, refusals };
+    const to = TO[act.act];
+    if (moving.length === 0) {
+      return {
+        ok: true,
+        effect: { act: act.act, triage: to, reports: [], issue: null, untouched },
+        createdIssueId: null,
+      };
+    }
+    let issue: AgentReportTriageEffect['issue'] = null;
+    if (act.act === 'file') {
+      issue = input.linkIssue
+        ? { ...input.linkIssue, created: false }
+        : await fileIssueIn(tx, moving, act.createIssue ?? {}, actor, input.channel);
+    }
+    const now = new Date();
+    const triaged = act.act !== 'reopen';
+    const ids = moving.map((r) => r.id);
+    await tx
+      .update(agentReports)
+      .set({
+        triage: to,
+        triagedBy: triaged ? actor.userId : null,
+        triagedAgency: triaged ? actor.agency : null,
+        triagedAt: triaged ? now : null,
+        triageReason:
+          act.act === 'dismiss' || act.act === 'duplicate' ? (act.reason ?? null) : null,
+        duplicateOf: act.act === 'duplicate' ? act.duplicateOf : null,
+        linkedIssueId: issue ? issue.id : null,
+      })
+      .where(inArray(agentReports.id, ids));
+    if (issue) await recordFiled(tx, issue, ids, actor);
+    return {
+      ok: true,
+      effect: { act: act.act, triage: to, reports: ids, issue, untouched },
+      createdIssueId: issue?.created ? issue.id : null,
+    };
+  });
+}
+
+/** After the triage committed: a created draft issue gets the hook every issue create emits. */
+export async function announceFiled(out: TriageOutcome, actor: ReportActor): Promise<void> {
+  if (!out.ok || !out.createdIssueId) return;
+  const [issue] = await db.select().from(issues).where(eq(issues.id, out.createdIssueId));
+  if (issue)
+    await announceIssueCreated(issue, { type: 'user', id: actor.userId, agency: actor.agency });
+}
+
+async function recordFiled(
+  tx: Tx,
+  issue: { id: string; created: boolean },
+  reportIds: string[],
+  actor: ReportActor,
+) {
+  await writeRecordEvent(
+    {
+      issueId: issue.id,
+      actor: { type: 'user', id: actor.userId, agency: actor.agency },
+      kind: 'decision',
+      contract: 1,
+      fields: [
+        {
+          key: 'lead',
+          value: `${reportIds.length} agent report(s) filed into this issue as its evidence`,
+        },
+        { key: 'agent-reports', value: reportIds.join(', ') },
+        { key: 'outcome', value: issue.created ? 'filed' : 'linked' },
+      ],
+    },
+    tx,
+  );
+}
+
+/** The refusal an issue delete meets while reports are filed into it, else null. */
+export async function issueDeleteRefusal(issue: {
+  id: string;
+  projectId: string;
+  issSeq: number;
+}): Promise<Refusal | null> {
   const rows = await db
-    .update(agentReports)
-    .set({
-      reviewedAt: patch.reviewed ? new Date() : null,
-      ...(patch.linkedIssueId !== undefined ? { linkedIssueId: patch.linkedIssueId } : {}),
-    })
-    .where(and(...scope))
-    .returning({
-      id: agentReports.id,
-      reviewedAt: agentReports.reviewedAt,
-      linkedIssueId: agentReports.linkedIssueId,
-    });
-  return { ok: true, rows };
+    .select({ id: agentReports.id })
+    .from(agentReports)
+    .where(eq(agentReports.linkedIssueId, issue.id))
+    .orderBy(asc(agentReports.createdAt));
+  if (rows.length === 0) return null;
+  const key = formatIssueRef(await activeIssuePrefix(issue.projectId), issue.issSeq);
+  return filedIntoIssueRefusal(
+    key,
+    rows.map((r) => r.id),
+  );
 }
 
 export type { AgentReportKind, AgentReportSeverity, AgentReportTarget };

@@ -1,5 +1,13 @@
-import { eq, inArray, isNotNull, isNull, type SQL } from 'drizzle-orm';
-import { Hono } from 'hono';
+import {
+  AGENT_REPORT_TRIAGES,
+  TRIAGE_AGENT_REPORT_SHAPE,
+  TRIAGE_AGENT_REPORTS_BY_SIGNAL_SHAPE,
+  type TriageAgentReportRequest,
+  triageAgentReportRequestSchema,
+  triageAgentReportsBySignalRequestSchema,
+} from '@forge/contracts/agent-reports';
+import { eq, inArray, type SQL } from 'drizzle-orm';
+import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
@@ -9,10 +17,19 @@ import {
   agentReportTargets,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
-import { refused } from '../project-config/respond.js';
-import { issueVisibleIn, listReports, readReport, reportViews, stampReviewed } from './service.js';
+import { refusalEnvelope } from '../lib/refusal.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import {
+  announceFiled,
+  listReports,
+  type ReportActor,
+  readReport,
+  reportViews,
+  type TriageOutcome,
+  triageReports,
+  visibleIssue,
+} from './service.js';
 
 const listQuerySchema = z
   .object({
@@ -24,20 +41,8 @@ const listQuerySchema = z
     kind: z.enum(agentReportKinds).optional(),
     severity: z.enum(agentReportSeverities).optional(),
     target: z.enum(agentReportTargets).optional(),
-    reviewed: z
-      .union([z.literal('true'), z.literal('false'), z.boolean()])
-      .optional()
-      .transform((v) => (v === undefined ? undefined : v === true || v === 'true')),
+    triage: z.enum(AGENT_REPORT_TRIAGES).optional(),
     limit: z.coerce.number().int().min(1).max(200).optional(),
-  })
-  .strict();
-
-const markReviewedBodySchema = z
-  .object({
-    reviewed: z.boolean(),
-    // The issue this report was curated INTO (distinct from the source
-    // issue). Must belong to the same project as the report, or 404.
-    linkedIssueId: z.uuid().optional(),
   })
   .strict();
 
@@ -46,6 +51,27 @@ const badRequest = (details: unknown) =>
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
+
+type Ctx = Context<{ Variables: AuthVars }>;
+
+/** The issue a file act names, when the caller can see it; anything else is the design's NOT_FOUND. */
+async function linkOf(c: Ctx, act: TriageAgentReportRequest) {
+  if (act.act !== 'file' || !act.issue) return null;
+  const issue = await visibleIssue(act.issue, await loadVisibleProjectIds(c.get('userId')));
+  if (!issue) throw notFound(`issue ${act.issue} not found in any project you can see`);
+  return issue;
+}
+
+function actorOf(c: Ctx): ReportActor {
+  const { id, agency } = restActor(c);
+  return { userId: id, agency };
+}
+
+async function answer(c: Ctx, out: TriageOutcome) {
+  if (!out.ok) return c.json(refusalEnvelope(out.refusals, 'AGENT_REPORT_REFUSED'), 422);
+  await announceFiled(out, actorOf(c));
+  return c.json({ effect: out.effect });
+}
 
 export const agentReportRoutes = new Hono<{ Variables: AuthVars }>();
 agentReportRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -56,7 +82,7 @@ agentReportRoutes.get(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { projectId, scope, kind, severity, target, reviewed, limit } = c.req.valid('query');
+    const { projectId, scope, kind, severity, target, triage, limit } = c.req.valid('query');
     const userId = c.get('userId');
     let scoped: SQL;
     if (scope === 'all') {
@@ -75,8 +101,7 @@ agentReportRoutes.get(
         kind ? eq(agentReports.kind, kind) : undefined,
         severity ? eq(agentReports.severity, severity) : undefined,
         target ? eq(agentReports.target, target) : undefined,
-        reviewed === true ? isNotNull(agentReports.reviewedAt) : undefined,
-        reviewed === false ? isNull(agentReports.reviewedAt) : undefined,
+        triage ? eq(agentReports.triage, triage) : undefined,
       ],
       limit ?? 50,
     );
@@ -85,43 +110,57 @@ agentReportRoutes.get(
 );
 
 agentReportRoutes.post(
-  '/:id/reviewed',
-  zValidator('json', markReviewedBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
+  '/triage',
+  strictBody(triageAgentReportsBySignalRequestSchema, TRIAGE_AGENT_REPORTS_BY_SIGNAL_SHAPE),
+  async (c) => {
+    const body = c.req.valid('json');
+    const userId = c.get('userId');
+    let scoped: SQL;
+    if (body.scope === 'all') {
+      if (body.triage.act === 'file' && body.triage.createIssue) {
+        throw badRequest(
+          'createIssue files into one project, so a scope=all triage names an existing issue instead',
+        );
+      }
+      scoped = inArray(agentReports.projectId, await loadVisibleProjectIds(userId));
+    } else {
+      if (!body.projectId) throw badRequest('projectId is required unless scope=all');
+      const access = await loadProjectAccess(body.projectId, userId);
+      assertProjectRole(access, 'member', 'not a project member');
+      scoped = eq(agentReports.projectId, body.projectId);
+    }
+    const out = await triageReports({
+      scope: [scoped, eq(agentReports.signalKey, body.signalKey)],
+      bulk: true,
+      act: body.triage,
+      actor: actorOf(c),
+      channel: 'web',
+      linkIssue: await linkOf(c, body.triage),
+    });
+    return answer(c, out);
+  },
+);
+
+agentReportRoutes.post(
+  '/:id/triage',
+  strictBody(triageAgentReportRequestSchema, TRIAGE_AGENT_REPORT_SHAPE),
   async (c) => {
     const reportId = c.req.param('id');
-    if (!z.string().uuid().safeParse(reportId).success) {
-      throw badRequest('id must be a valid uuid');
-    }
-    const { reviewed, linkedIssueId } = c.req.valid('json');
-    const userId = c.get('userId');
-
+    if (!z.uuid().safeParse(reportId).success) throw badRequest('id must be a valid uuid');
+    const act = c.req.valid('json');
     const existing = await readReport(reportId);
-    if (!existing) throw notFound('agent report not found');
-
-    const access = await loadProjectAccess(existing.projectId, userId);
+    if (!existing) throw notFound(`agent report ${reportId} not found`);
+    const access = await loadProjectAccess(existing.projectId, c.get('userId'));
     assertProjectRole(access, 'member', 'not a project member');
-
-    let link: { linkedIssueId?: string | null } = {};
-    if (!reviewed) link = { linkedIssueId: null };
-    else if (linkedIssueId) {
-      if (!(await issueVisibleIn(linkedIssueId, await loadVisibleProjectIds(userId)))) {
-        throw notFound('linkedIssueId not found in any project you can see');
-      }
-      link = { linkedIssueId };
-    }
-
-    const out = await stampReviewed([eq(agentReports.id, reportId)], { reviewed, ...link });
-    if (!out.ok) return refused(c, out.refusals);
-    const [updated] = out.rows;
-    if (!updated) throw notFound('agent report not found after update');
-
-    return c.json({
-      id: updated.id,
-      reviewedAt: updated.reviewedAt?.toISOString() ?? null,
-      linkedIssueId: updated.linkedIssueId ?? null,
+    const out = await triageReports({
+      scope: [eq(agentReports.id, reportId)],
+      bulk: false,
+      act,
+      actor: actorOf(c),
+      channel: 'web',
+      linkIssue: await linkOf(c, act),
     });
+    return answer(c, out);
   },
 );
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentReport } from "@/features/agent-reports/types";
 import type { ScheduleRun } from "@/features/schedules/types";
-import { feedbackDraftOf, improvementRows, issueFromReport, matchesFilter } from "./improvements";
+import { feedbackDraftOf, improvementRows, matchesFilter } from "./improvements";
 
 const report = (over: Partial<AgentReport> = {}): AgentReport => ({
   id: "f1",
@@ -20,7 +20,12 @@ const report = (over: Partial<AgentReport> = {}): AgentReport => ({
   suggestion: "Add the boundary case",
   signalKey: "k",
   sessionId: null,
-  reviewedAt: null,
+  scheduleRunId: null,
+  triage: "new",
+  triagedBy: null,
+  triagedAt: null,
+  triageReason: null,
+  duplicateOf: null,
   linkedIssueId: null,
   feedback: null,
   createdAt: "2026-10-01T09:00:00.000Z",
@@ -61,9 +66,9 @@ describe("the Improvements list", () => {
     ]);
   });
 
-  it("counts reviewed reports and applied changes as done, and leaves skipped actions out", () => {
+  it("counts triaged reports and applied changes as done, and leaves skipped actions out", () => {
     const rows = improvementRows(
-      [report({ reviewedAt: "2026-10-01T11:00:00.000Z" })],
+      [report({ triage: "dismissed", triagedAt: "2026-10-01T11:00:00.000Z", triageReason: "already fixed" })],
       [
         {
           title: "Review",
@@ -83,11 +88,9 @@ describe("the Improvements list", () => {
     expect(rows.filter((r) => matchesFilter(r, "proposals"))).toHaveLength(0);
   });
 
-  it("files an issue from an agent report that names the report it came from", () => {
-    const body = issueFromReport(report());
-    expect(body.title).toBe("The boundary axis is missed");
-    expect(body.description).toContain("Suggested: Add the boundary case");
-    expect(body.description).toContain("Agent report f1");
+  it("keeps a new report waiting and lists each other triage as done", () => {
+    const states = (["new", "filed", "dismissed", "duplicate"] as const).map((triage) => improvementRows([report({ triage })], [])[0]?.state);
+    expect(states).toEqual(["report", "done", "done", "done"]);
   });
 });
 
@@ -110,7 +113,7 @@ describe("promoting a report into feedback (ISS-93)", () => {
   });
 
   it("lists a promoted report as done", () => {
-    const promoted = report({ reviewedAt: "2026-10-04T09:00:00.000Z", feedback: { id: "fb", key: "FB-7", phase: "new", route: null } });
+    const promoted = report({ triage: "filed", triagedAt: "2026-10-04T09:00:00.000Z", feedback: { id: "fb", key: "FB-7", phase: "new", route: null } });
     expect(improvementRows([promoted], [])[0]?.state).toBe("done");
   });
 });
