@@ -240,6 +240,7 @@ describe('a Sentry regression on an archived closed issue', () => {
         createdById: userId,
         thresholds: await readSentryThresholds(),
         target: { label: 'proj', organizationSlug: 'org' },
+        scheduleRunId: null,
       },
     );
     expect(outcome).toEqual({

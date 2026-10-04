@@ -261,10 +261,14 @@ async function expectRefusedRun(scheduleId: string, code: string): Promise<void>
   expect(session.status).toBe('failed');
   expect(session.failureReason).toBe('session_authority_refused');
   expect(session.failureDetail).toMatch(new RegExp(`^${code}: `));
-  const runs = await call('GET', `/api/schedules/${scheduleId}/runs`, await as(adminId));
-  const listed = ((await runs.json()) as { runs: Array<Record<string, unknown>> }).runs;
-  expect(listed[0]?.failureReason).toBe('session_authority_refused');
-  expect(String(listed[0]?.failureDetail)).toMatch(new RegExp(`^${code}: `));
+  const read = await call(
+    'GET',
+    `/api/projects/${projectId}/automation/schedules/${scheduleId}`,
+    await as(adminId),
+  );
+  const listed = ((await read.json()) as { fires: Array<Record<string, unknown>> }).fires;
+  expect(listed[0]).toMatchObject({ status: 'failed', refusal: code });
+  expect(String(listed[0]?.error)).toMatch(new RegExp(`^session_authority_refused: ${code}: `));
 }
 
 describe("a member's schedule on a box an admin paired", () => {

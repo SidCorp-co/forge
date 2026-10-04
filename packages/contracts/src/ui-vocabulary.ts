@@ -3,9 +3,16 @@
 // through the shared badge and never prints the stored token. An enum that moves into contracts
 // takes its reading with it (domain-entities.md, "Badges"); until then this file is its one reading.
 
+import type { AgentReportTriage } from "./agent-reports.js";
+import type { ScheduleState } from "./automation-standing.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import type { MasterState } from "./master-standing.js";
 import type { RunState } from "./run-standing.js";
+import type {
+	ScheduleKind,
+	ScheduleRunStatus,
+	ScheduleRunTrigger,
+} from "./schedules.js";
 
 /** A state value's reading: sentence-case label, legend tone, and the glyph drawn for its dot. */
 export type Reading = readonly [
@@ -203,13 +210,28 @@ export const STATE_READINGS = {
 		escalated: ["Escalated", "you", "!"],
 		failed: ["Failed", "err", "×"],
 	},
-	/** A schedule's last run, and a script schedule's run (web `schedules/types.ts:ScheduleLastStatus`). */
+	/** A fire's status (contracts `schedules.ts:SCHEDULE_RUN_STATUSES`). */
 	scheduleRun: {
 		success: ["Succeeded", "ready", "✓"],
 		failed: ["Failed", "err", "×"],
 		running: ["Running", "run", "●"],
 		skipped: ["Skipped", "done", "–"],
-	},
+	} satisfies Record<ScheduleRunStatus, Reading>,
+	/** A schedule's standing (contracts `automation-standing.ts:SCHEDULE_STATES`). */
+	scheduleStanding: {
+		on: ["On", "ready", "●"],
+		firing: ["Firing", "run", "●"],
+		failing: ["Failing", "err", "×"],
+		owner_gone: ["Owner gone", "you", "!"],
+		off: ["Off", "done", "–"],
+	} satisfies Record<ScheduleState, Reading>,
+	/** What a person decided an agent report is (contracts `agent-reports.ts:AGENT_REPORT_TRIAGES`). */
+	reportTriage: {
+		new: ["New", "you", "●"],
+		filed: ["Filed", "ready", "✓"],
+		dismissed: ["Dismissed", "done", "–"],
+		duplicate: ["Duplicate", "done", "="],
+	} satisfies Record<AgentReportTriage, Reading>,
 	/** Whether a C4 design names an outside system's integration as settled (web `workflows/c4/geometry.ts:IntegrationState`). */
 	integration: {
 		confirmed: ["Confirmed", "ready", "✓"],
@@ -479,13 +501,20 @@ export const ENUM_LABELS = {
 		stranded: "Stranded",
 		overdue: "Gate overdue",
 	},
-	/** What a schedule runs (web `schedules/types.ts:ScheduleKind`, plus the PM and improve rows). */
+	/** What a schedule runs (contracts `schedules.ts:SCHEDULE_KINDS`, plus the PM and improve rows). */
 	scheduleKind: {
 		prompt: "Prompt",
 		script: "Script",
+		release_batch: "Release batch",
+		sentry_pull: "Sentry pull",
 		pm: "PM",
 		improve: "Improve",
-	},
+	} satisfies Record<ScheduleKind | "pm" | "improve", string>,
+	/** How a fire started (contracts `schedules.ts:SCHEDULE_RUN_TRIGGERS`). */
+	fireTrigger: {
+		manual: "Manual",
+		scheduled: "Scheduled",
+	} satisfies Record<ScheduleRunTrigger, string>,
 } as const satisfies Record<string, Record<string, string>>;
 
 export type EnumLabelFamily = keyof typeof ENUM_LABELS;

@@ -2372,7 +2372,28 @@
       "idx": 370,
       "version": "7",
       "when": 1814918400000,
-      "tag": "0370_a_mockup_is_a_proposal_pinned_beside_the_designs",
+      "tag": "0370_an_issue_names_the_fire_that_filed_it",
+      "breakpoints": true
+    },
+    {
+      "idx": 371,
+      "version": "7",
+      "when": 1815004800000,
+      "tag": "0371_a_suggestion_names_the_one_it_revises",
+      "breakpoints": true
+    },
+    {
+      "idx": 372,
+      "version": "7",
+      "when": 1815091200000,
+      "tag": "0372_a_release_version_may_be_a_prerelease",
+      "breakpoints": true
+    },
+    {
+      "idx": 373,
+      "version": "7",
+      "when": 1815177600000,
+      "tag": "0373_a_mockup_is_a_proposal_pinned_beside_the_designs",
       "breakpoints": true
     }
   ]

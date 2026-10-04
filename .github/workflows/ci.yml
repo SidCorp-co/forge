@@ -24,8 +24,11 @@ name: CI
 on:
   push:
     branches: [main, dev]
+    # cm:hack ISS-118 until:dev is promoted to main or the owner re-enables CI — every push and pull request on dev skips CI (owner, 2026-10-04); main runs its own copy of this file
+    paths-ignore: ['**']
   pull_request:
     branches: [main, dev]
+    paths-ignore: ['**']
   # The heavy jobs a pull request no longer waits on also run nightly, 19:00 UTC (ISS-1370), so a
   # red one is found on a day nothing landed as well.
   schedule:

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { fireOfCaller } from '../../agent-reports/service.js';
 import { BODY_FORMATS } from '../../body/formats.js';
 import { bodyText } from '../../body/prepare.js';
 import { issueComplexities, issuePriorities, taskStatuses, waitingKinds } from '../../db/schema.js';
@@ -450,6 +451,23 @@ function parseDate(value: string, field: string): Date {
   return d;
 }
 
+async function createdIssueOut(
+  result: Extract<Awaited<ReturnType<typeof createIssue>>, { deduped: false }>,
+): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = serialize(
+    result.issue as IssueRow,
+    await activeIssuePrefix(result.issue.projectId),
+  );
+  out.labels = result.labelIds.length > 0 ? await listIssueLabels(result.issue.id) : [];
+  if (result.relations.length > 0) out.relations = result.relations;
+  if (result.attachments.length > 0 || result.attachmentErrors.length > 0) {
+    out.attachments = result.attachments;
+    if (result.attachmentErrors.length > 0) out.attachmentErrors = result.attachmentErrors;
+  }
+  if (result.bodyWarnings.length > 0) out.warnings = result.bodyWarnings;
+  return out;
+}
+
 export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
   reach: 'project',
@@ -629,6 +647,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
               createdByDeviceId: principal.deviceId,
               createdVia: 'mcp',
               actor: principalHookActor(principal),
+              scheduleRunId: await fireOfCaller(principal),
             },
           );
         } catch (err) {
@@ -648,18 +667,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           } as Record<string, unknown>;
         }
 
-        const out: Record<string, unknown> = serialize(
-          result.issue as IssueRow,
-          await activeIssuePrefix(result.issue.projectId),
-        );
-        out.labels = result.labelIds.length > 0 ? await listIssueLabels(result.issue.id) : [];
-        if (result.relations.length > 0) out.relations = result.relations;
-        if (result.attachments.length > 0 || result.attachmentErrors.length > 0) {
-          out.attachments = result.attachments;
-          if (result.attachmentErrors.length > 0) out.attachmentErrors = result.attachmentErrors;
-        }
-        if (result.bodyWarnings.length > 0) out.warnings = result.bodyWarnings;
-        return out;
+        return createdIssueOut(result);
       }
       case 'update': {
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');

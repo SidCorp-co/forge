@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { AgentReport } from "@/features/agent-reports/types";
-import type { ScheduleRun } from "@/features/schedules/types";
+import type { AutomationWaitingOn, FireProposal, ReportStanding } from "@/features/automation/types";
 import { feedbackDraftOf, improvementRows, matchesFilter } from "./improvements";
 
-const report = (over: Partial<AgentReport> = {}): AgentReport => ({
+const NOBODY: AutomationWaitingOn = { kind: "none", who: "Nobody", act: null, rule: "", ref: null };
+
+const report = (over: Partial<ReportStanding> = {}): ReportStanding => ({
   id: "f1",
   projectId: "p1",
   projectSlug: "eco-a",
@@ -29,58 +30,40 @@ const report = (over: Partial<AgentReport> = {}): AgentReport => ({
   linkedIssueId: null,
   feedback: null,
   createdAt: "2026-10-01T09:00:00.000Z",
+  fire: null,
+  attentionGroup: over.triage && over.triage !== "new" ? (over.triage === "filed" ? "filed" : "closed") : "needs_you",
+  waitingOn: NOBODY,
   ...over,
 });
 
-const run = (actions: NonNullable<ScheduleRun["stewardReport"]>["actions"]): ScheduleRun => ({
-  id: "f1",
+const proposal = (over: Partial<FireProposal> = {}): FireProposal => ({
+  fireId: "fire-1",
+  scheduleId: "sch-1",
+  scheduleName: "improve:skills",
   sessionId: "s1",
-  pipelineRunId: null,
-  status: "completed",
-  fireStatus: "success",
-  runStatus: null,
-  trigger: "scheduled",
-  reason: null,
-  refusal: null,
-  disposition: null,
-  output: null,
-  error: null,
-  title: null,
-  failureReason: null,
-  failureDetail: null,
-  startedAt: "2026-10-01T10:00:00.000Z",
-  finishedAt: "2026-10-01T10:05:00.000Z",
-  durationSeconds: 300,
-  stewardReport: { weakestDomain: "testing", skillsAssessed: [], actions, memoryWrites: [], idempotencySkips: [] },
+  skill: "forge-test",
+  kind: "proposed",
+  summary: "Tighten the checklist",
+  at: "2026-10-01T10:05:00.000Z",
+  ...over,
 });
 
+const loop = (scheduleId: string) => (scheduleId === "sch-1" ? "Review" : "Improvement loop");
+
 describe("the Improvements list", () => {
-  it("puts agent reports in and the loop's proposals out on one list, newest first", () => {
-    const rows = improvementRows(
-      [report()],
-      [{ title: "Review", runs: [run([{ skill: "forge-test", kind: "proposed", summary: "Tighten the checklist" }])] }],
-    );
-    expect(rows.map((r) => [r.source, r.state, r.title])).toEqual([
-      ["proposal", "proposal", "Tighten the checklist"],
-      ["report", "report", "The boundary axis is missed"],
+  it("puts agent reports in and the loop's proposals out on one list, newest first, named by their loop", () => {
+    const rows = improvementRows([report()], [proposal()], loop);
+    expect(rows.map((r) => [r.source, r.state, r.title, r.from])).toEqual([
+      ["proposal", "proposal", "Tighten the checklist", "Review · forge-test"],
+      ["report", "report", "The boundary axis is missed", "Friction · Skill forge-test"],
     ]);
   });
 
-  it("counts triaged reports and applied changes as done, and leaves skipped actions out", () => {
+  it("counts triaged reports and applied changes as done", () => {
     const rows = improvementRows(
       [report({ triage: "dismissed", triagedAt: "2026-10-01T11:00:00.000Z", triageReason: "already fixed" })],
-      [
-        {
-          title: "Review",
-          runs: [
-            run([
-              { skill: "a", kind: "applied", summary: "Applied one" },
-              { skill: "b", kind: "skipped", summary: "Skipped one" },
-              { skill: "c", kind: "feedback", summary: "Feedback one" },
-            ]),
-          ],
-        },
-      ],
+      [proposal({ kind: "applied", summary: "Applied one" })],
+      loop,
     );
     expect(rows.map((r) => r.state)).toEqual(["done", "done"]);
     expect(rows.filter((r) => matchesFilter(r, "done"))).toHaveLength(2);
@@ -88,9 +71,11 @@ describe("the Improvements list", () => {
     expect(rows.filter((r) => matchesFilter(r, "proposals"))).toHaveLength(0);
   });
 
-  it("keeps a new report waiting and lists each other triage as done", () => {
-    const states = (["new", "filed", "dismissed", "duplicate"] as const).map((triage) => improvementRows([report({ triage })], [])[0]?.state);
-    expect(states).toEqual(["report", "done", "done", "done"]);
+  it("keeps a report the read model groups as awaiting triage waiting, whoever owes it, and the rest done", () => {
+    const states = (["needs_you", "waiting", "filed", "closed"] as const).map(
+      (attentionGroup) => improvementRows([report({ attentionGroup })], [], loop)[0]?.state,
+    );
+    expect(states).toEqual(["report", "report", "done", "done"]);
   });
 });
 
@@ -114,6 +99,6 @@ describe("promoting a report into feedback (ISS-93)", () => {
 
   it("lists a promoted report as done", () => {
     const promoted = report({ triage: "filed", triagedAt: "2026-10-04T09:00:00.000Z", feedback: { id: "fb", key: "FB-7", phase: "new", route: null } });
-    expect(improvementRows([promoted], [])[0]?.state).toBe("done");
+    expect(improvementRows([promoted], [], loop)[0]?.state).toBe("done");
   });
 });

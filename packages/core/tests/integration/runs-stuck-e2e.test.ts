@@ -160,4 +160,18 @@ describe('stuck, computed in core (ISS-109)', () => {
     expect(r.state).toBe('waiting_person');
     expect(r.stuck.source).toBe('clear');
   });
+  it('the one-shot sweep leaves a silent run session stuck until its 10 min reap, even on a box nobody sees', async () => {
+    const { reapOrphanedOneShotRuns } = await import('../../src/pipeline/sweeper.js');
+    await issue(1, 'in_progress');
+    const run = await openRun(1);
+    await harness.db.execute(
+      sql`UPDATE runners SET last_seen_at = NULL WHERE device_id = ${deviceId}`,
+    );
+    await backdate(run, 4);
+    expect((await reapOrphanedOneShotRuns(new Date())).reaped).toBe(0);
+    expect((await one(run.runId)).state).toBe('stuck');
+    await backdate(run, 11);
+    expect((await reapOrphanedOneShotRuns(new Date())).reaped).toBe(1);
+    expect((await one(run.runId)).state).toBe('failed');
+  });
 });

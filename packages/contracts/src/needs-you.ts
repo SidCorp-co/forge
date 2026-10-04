@@ -8,6 +8,7 @@ export const NEEDS_YOU_AREAS = [
 	"feedback",
 	"issues",
 	"contracts",
+	"automation",
 ] as const;
 export type NeedsYouAreaKey = (typeof NEEDS_YOU_AREAS)[number];
 
@@ -17,6 +18,7 @@ export const NEEDS_YOU_AREA_LABELS: Record<NeedsYouAreaKey, string> = {
 	feedback: "Feedback",
 	issues: "Issues",
 	contracts: "Contracts",
+	automation: "Automation",
 };
 
 export interface NeedsYouAct {

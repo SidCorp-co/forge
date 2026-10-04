@@ -214,14 +214,14 @@ describe('forge_sentry over /mcp', () => {
     const { runSentryPull } = await import('../../src/integrations/sentry/intake.js');
 
     stubSentry([sentryIssue]);
-    const belowThreshold = await runSentryPull({ projectId });
+    const belowThreshold = await runSentryPull({ projectId, scheduleRunId: null });
     expect(belowThreshold.status, belowThreshold.output).not.toBe('failed');
     expect(belowThreshold.output).toContain('0 issue(s) filed');
     expect(new URL(asked[0] as string).searchParams.get('statsPeriod')).toBeNull();
 
     asked = [];
     stubSentry([{ ...sentryIssue, count: 40, userCount: 9 }]);
-    const aboveThreshold = await runSentryPull({ projectId });
+    const aboveThreshold = await runSentryPull({ projectId, scheduleRunId: null });
     expect(aboveThreshold.output).toContain('1 issue(s) filed');
   });
 

@@ -1,32 +1,19 @@
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { refusalError } from '../agent-sessions/interactive-credential.js';
 import type { SessionAsker } from '../agent-sessions/session-credential.js';
 import { db } from '../db/client.js';
-import {
-  agentSessions,
-  pipelineRuns,
-  projects,
-  type ScheduleKind,
-  scheduleRuns,
-  schedules,
-} from '../db/schema.js';
+import { projects, type ScheduleKind, schedules } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
 import { getImprovementMessage } from './messages/registry.js';
-import type { StewardRunReport } from './messages/skill-steward-prompt.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-export type {
-  StewardRunReport,
-  StewardRunReportAction,
-} from './messages/skill-steward-prompt.js';
 
 // Cross-project routing via `targetProjectSlug` would otherwise let a source
 // project's admin plant jobs on any project they know the slug of. Require the
@@ -113,73 +100,6 @@ export async function getSchedule(id: string, actorUserId: string) {
   return row;
 }
 
-export async function listScheduleRuns(id: string, actorUserId: string, limit?: number) {
-  const [schedule] = await db
-    .select({ projectId: schedules.projectId })
-    .from(schedules)
-    .where(eq(schedules.id, id))
-    .limit(1);
-  if (!schedule) throw notFound('schedule not found');
-
-  const access = await loadProjectAccess(schedule.projectId, actorUserId);
-  assertProjectRole(access, 'viewer', 'not a project member');
-
-  const rows = await db
-    .select({
-      id: scheduleRuns.id,
-      sessionId: scheduleRuns.sessionId,
-      pipelineRunId: scheduleRuns.pipelineRunId,
-      fireStatus: scheduleRuns.status,
-      trigger: scheduleRuns.trigger,
-      reason: scheduleRuns.reason,
-      refusal: scheduleRuns.refusal,
-      disposition: scheduleRuns.disposition,
-      output: scheduleRuns.output,
-      error: scheduleRuns.error,
-      startedAt: scheduleRuns.startedAt,
-      finishedAt: scheduleRuns.finishedAt,
-      sessionStatus: agentSessions.status,
-      title: agentSessions.title,
-      failureReason: agentSessions.failureReason,
-      failureDetail: agentSessions.failureDetail,
-      stewardReport: sql<unknown>`${agentSessions.metadata} -> 'stewardReport'`,
-      runStatus: pipelineRuns.status,
-    })
-    .from(scheduleRuns)
-    .leftJoin(agentSessions, eq(agentSessions.id, scheduleRuns.sessionId))
-    .leftJoin(pipelineRuns, eq(pipelineRuns.id, scheduleRuns.pipelineRunId))
-    .where(eq(scheduleRuns.scheduleId, id))
-    .orderBy(desc(scheduleRuns.createdAt))
-    .limit(limit ?? 20);
-
-  const toIso = (d: Date | null): string | null => (d == null ? null : d.toISOString());
-  const runs = rows.map((r) => ({
-    id: r.id,
-    sessionId: r.sessionId,
-    pipelineRunId: r.pipelineRunId,
-    status: r.sessionStatus ?? r.fireStatus,
-    fireStatus: r.fireStatus,
-    runStatus: r.runStatus,
-    trigger: r.trigger,
-    reason: r.reason,
-    refusal: r.refusal,
-    disposition: r.disposition,
-    title: r.title,
-    failureReason: r.failureReason,
-    failureDetail: r.failureDetail,
-    startedAt: toIso(r.startedAt),
-    finishedAt: toIso(r.finishedAt),
-    durationSeconds: r.finishedAt
-      ? Math.max(0, Math.round((r.finishedAt.getTime() - r.startedAt.getTime()) / 1000))
-      : null,
-    stewardReport: (r.stewardReport as StewardRunReport | null) ?? null,
-    output: r.output,
-    error: r.error,
-  }));
-
-  return { runs };
-}
-
 export interface CreateScheduleInput {
   projectId: string;
   name: string;
@@ -225,6 +145,12 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
   }
   if (kind === 'prompt' && !input.prompt) {
     throw badRequest('prompt is required when kind is "prompt"');
+  }
+  if (kind === 'release_batch' || kind === 'sentry_pull') {
+    const set = (['prompt', 'script', 'templateKey'] as const).filter((f) => input[f] != null);
+    if (set.length > 0) {
+      throw badRequest(`${set.join(', ')} must be omitted when kind is "${kind}"`);
+    }
   }
 
   const enabled = input.enabled ?? true;

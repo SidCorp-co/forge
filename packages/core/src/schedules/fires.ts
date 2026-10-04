@@ -16,7 +16,7 @@ import { scheduleRuns, schedules } from '../db/schema.js';
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export type FireSettlement =
-  | { status: 'success'; output?: string | null }
+  | { status: 'success'; output?: string | null; pipelineRunId?: string | null }
   | {
       status: 'skipped';
       reason: ScheduleRunSkipReason;
@@ -103,6 +103,9 @@ export async function settleFire(fireId: string, settlement: FireSettlement): Pr
     error: settlement.status === 'failed' ? settlement.error : null,
   };
   if (settlement.output !== undefined) set.output = settlement.output;
+  if (settlement.status === 'success' && settlement.pipelineRunId) {
+    set.pipelineRunId = settlement.pipelineRunId;
+  }
   return db.transaction(async (tx) => {
     const [fire] = await tx
       .update(scheduleRuns)

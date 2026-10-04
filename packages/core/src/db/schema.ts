@@ -56,7 +56,7 @@ export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
 import type { DecisionFields } from '@forge/contracts/comments';
 import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
-import { SCHEDULE_RUN_STATUSES } from '@forge/contracts/schedules';
+import { SCHEDULE_KINDS, SCHEDULE_RUN_STATUSES } from '@forge/contracts/schedules';
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import { COMMENT_INTENTS } from '../issues/record-events/kinds.js';
@@ -64,6 +64,7 @@ import type { ReleaseNotes } from '../issues/release-notes.js';
 import { activityLog, actorAgencies } from './schema-activity.js';
 import { feedback } from './schema-feedback.js';
 import { requirementRevisions, requirements } from './schema-requirements.js';
+import { scheduleRuns } from './schema-schedule-runs.js';
 import { suggestions } from './schema-suggestions.js';
 import { projectWorkflows } from './schema-workflows.js';
 
@@ -1072,6 +1073,12 @@ export const issues = pgTable(
     fromSuggestionId: uuid('from_suggestion_id').references((): AnyPgColumn => suggestions.id, {
       onDelete: 'no action',
     }),
+    // cm:why the fire an issue was filed in (design automation rev 1, step settle; ISS-114): resolved
+    // at create through the creating session's fire, or written by the fire that filed it inline, so
+    // Fire.produced counts issues by join; a person's own create carries none
+    scheduleRunId: uuid('schedule_run_id').references((): AnyPgColumn => scheduleRuns.id, {
+      onDelete: 'set null',
+    }),
     identSearch: identSearchColumn(
       (): SQL =>
         sql`left(${issues.title} || ' ' || coalesce(${issues.description}, '') || ' ' || coalesce(${issues.plan}, '') || ' ' || coalesce(${issues.acceptanceCriteria}, ''), 100000)`,
@@ -1108,6 +1115,9 @@ export const issues = pgTable(
       sql`${t.acceptanceCriteria} gin_trgm_ops`,
     ),
     projectCreatedAtIdx: index('issues_project_created_at_idx').on(t.projectId, t.createdAt),
+    scheduleRunIdx: index('issues_schedule_run_idx')
+      .on(t.scheduleRunId)
+      .where(sql`schedule_run_id IS NOT NULL`),
     projectUpdatedAtIdx: index('issues_project_updated_at_idx').on(t.projectId, t.updatedAt),
     releaseBatchRunIdIdx: index('issues_release_batch_run_id_idx')
       .on(t.releaseBatchRunId)
@@ -1788,7 +1798,7 @@ export type ScheduleStatus = (typeof scheduleStatuses)[number];
 export const scheduleModes = ['propose', 'auto'] as const;
 export type ScheduleMode = (typeof scheduleModes)[number];
 
-export const scheduleKinds = ['prompt', 'script', 'release_batch', 'sentry_pull'] as const;
+export const scheduleKinds = SCHEDULE_KINDS;
 
 export type ScheduleKind = (typeof scheduleKinds)[number];
 

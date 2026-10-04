@@ -32,6 +32,8 @@ export interface ScheduledCutOutcome {
   code?: string;
   /** Every reason standing when the cut was refused or failed, the thrown one first. */
   reasons?: string[];
+  /** The release run a `success` cut started. */
+  runId?: string;
 }
 
 // Carrying a readiness blocker makes an error a refusal; these classes name one thrown without.
@@ -71,6 +73,7 @@ export async function cutWaitingRelease(args: {
       status: 'success',
       output: `cut ${counted(result.issueIds.length, 'issue')} as run ${result.runId}`,
       named,
+      runId: result.runId,
     };
   } catch (err) {
     const code =

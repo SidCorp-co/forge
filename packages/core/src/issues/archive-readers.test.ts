@@ -25,6 +25,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'admin/pipeline-health-routes.ts':
     'reads only `needs_info`, a park an archived issue never holds',
   'agent-reports/service.ts': 'by issue id',
+  'automation/facts.ts':
+    'the issues a fire filed or a report was filed into, by id: an archived one is still what the fire produced',
   'agent-sessions/interactive-routes.ts': "titles of the session's own issue ids",
   'agent-sessions/routes.ts': 'the one issue a session names',
   'assistant/tools/issue-dedup.ts':
@@ -188,8 +190,9 @@ const NOT_DISCOVERY: Record<string, string> = {
     'the issues a requirement links; an archived one still delivered it, so its status is counted',
   'requirements/standing-read.ts':
     'the issues a requirement links; an archived one still delivered it, so its status is counted',
-  'suggestions/effects.ts':
-    'by issue id: the issue a triage targets, and the drafts a breakdown just filed',
+  'suggestions/breakdown.ts':
+    'by issue id or key: the blockers a breakdown names, and the drafts its accept just filed',
+  'suggestions/effects.ts': 'by issue id: the issue a triage targets',
   'suggestions/service.ts':
     'by issue id: the issue a duplicate names, and the drafts an accept filed',
   'runners/routes.ts': 'issues of dispatched or running jobs',

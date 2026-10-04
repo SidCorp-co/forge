@@ -114,7 +114,8 @@ const FIELD: Partial<Record<EnumFamily, string>> = {
   dependencyKind: "kind",
   pauseKind: "kind",
   notificationType: "type",
-  agentReportTriage: "triage",
+  fireTrigger: "trigger",
+  scheduleKind: "kind",
 };
 
 export interface EnumBadgeProps {
