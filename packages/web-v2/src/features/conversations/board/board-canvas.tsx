@@ -114,20 +114,23 @@ function toScene(doc: WireframeDoc) {
   ];
 }
 
-export default function BoardCanvas() {
+/** The read-only board: the chat dock's own (the store's document), or a given one, as a mockup page shows a stored board. */
+export default function BoardCanvas({ doc: given }: { doc?: WireframeDoc } = {}) {
   const board = useBoard();
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
-  const shown = useRef(-1);
+  const shown = useRef<unknown>(null);
+  const doc = given ?? board.doc;
+  const version = given ?? board.loaded;
 
   useEffect(() => {
-    if (!api || shown.current === board.loaded || !board.doc) return;
-    shown.current = board.loaded;
-    api.updateScene({ elements: toScene(board.doc), captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+    if (!api || shown.current === version || !doc) return;
+    shown.current = version;
+    api.updateScene({ elements: toScene(doc), captureUpdate: CaptureUpdateAction.IMMEDIATELY });
     api.scrollToContent(undefined, { fitToContent: true });
-  }, [api, board.loaded, board.doc]);
+  }, [api, version, doc]);
 
   useEffect(() => {
-    if (!api) return;
+    if (!api || given) return;
     boardExporter.set(async () => {
       const svg = await exportToSvg({
         elements: api.getSceneElements(),
@@ -137,7 +140,7 @@ export default function BoardCanvas() {
       return svg.outerHTML;
     });
     return () => boardExporter.set(null);
-  }, [api]);
+  }, [api, given]);
 
   return (
     <div className="h-full w-full" data-testid="board-canvas">
