@@ -1,6 +1,5 @@
 export {
 	CONTENT_LANGUAGE_CHOICES,
-	CONTENT_LANGUAGE_DEFAULT,
 	type ContentLanguageView,
 	type ContentLanguageWrite,
 	contentLanguageName,

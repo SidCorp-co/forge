@@ -5,18 +5,18 @@ import type { WorkflowRefusal } from './rules.js';
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
 import type { StoredWorkflow } from './store.js';
 
-export interface DesignBase {
+interface DesignBase {
   readonly workflow: string;
   readonly revision: number;
 }
 
-export interface BaseReading extends DesignBase {
+interface BaseReading extends DesignBase {
   readonly designStatus: DesignStatus | null | 'missing';
   readonly approvedRevision: number | null;
 }
 
-export function basesOf(doc: WorkflowWrite | null): readonly DesignBase[] {
-  return doc?.version === 2 ? (doc.basedOn ?? []) : [];
+function basesOf(doc: WorkflowWrite | null): readonly DesignBase[] {
+  return doc?.basedOn ?? [];
 }
 
 export const basesOfStored = (raw: unknown): readonly DesignBase[] =>

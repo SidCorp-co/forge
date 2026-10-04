@@ -3,7 +3,7 @@ import type { RequirementFeedbackVia } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 
-export interface FeedbackLink {
+interface FeedbackLink {
   requirementId: string;
   feedbackId: string;
   fbSeq: number;
@@ -77,7 +77,7 @@ export async function feedbackLinksOf(
 const UNTRIAGED: readonly FeedbackStatus[] = ['new', 'reopened'];
 const CLOSED: readonly FeedbackStatus[] = ['verified', 'declined'];
 
-export interface FeedbackCounts {
+interface FeedbackCounts {
   open: number;
   untriaged: string[];
 }

@@ -19,8 +19,6 @@ import { embeddingsConfigured, embedWithModel } from '../integrations/embeddings
 import { dataPolicyOf, type EgressSurface, egressAt, egressText } from '../lib/data-egress.js';
 import { logger } from '../observability/logger.js';
 
-export { EMBEDDING_PROVIDER_NOT_CONFIGURED };
-
 interface HeadText {
   projectId: string;
   revision: number;
@@ -70,9 +68,7 @@ async function headText(requirementId: string): Promise<HeadText | null> {
 }
 
 /** Embeds the requirement's head revision, replacing whatever vector it held; returns the row status. */
-export async function embedRequirementHead(
-  requirementId: string,
-): Promise<ItemEmbeddingStatus | null> {
+async function embedRequirementHead(requirementId: string): Promise<ItemEmbeddingStatus | null> {
   const head = await headText(requirementId);
   if (!head) return null;
   const [req] = await db
@@ -101,7 +97,7 @@ export function embedRequirementHeadLater(requirementId: string): void {
     );
 }
 
-export type SimilarRequirements =
+type SimilarRequirements =
   | {
       status: 'ok';
       model: string;

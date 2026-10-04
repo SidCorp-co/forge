@@ -3,11 +3,8 @@ import type { FeedbackRouteWrite, FeedbackTriage } from "@forge/contracts/feedba
 
 export type {
   CreateFeedbackRequest,
-  FeedbackCaseView,
   FeedbackDedup,
   FeedbackRouteWrite,
-  FeedbackAttentionGroup,
-  FeedbackDecisionView,
   FeedbackKind,
   FeedbackListResponse,
   FeedbackPhase,
@@ -15,7 +12,6 @@ export type {
   FeedbackResponse,
   FeedbackRoute,
   FeedbackSeverity,
-  FeedbackSourceView,
   FeedbackSummary,
   FeedbackTargetType,
   FeedbackTriage,
