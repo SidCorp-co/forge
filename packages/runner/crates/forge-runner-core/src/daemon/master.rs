@@ -1157,6 +1157,8 @@ pub async fn run(
     }
     let mut passes = tokio::time::interval(master_pass::TICK);
     passes.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let sweep_due = tokio::time::sleep(delay);
+    tokio::pin!(sweep_due);
     loop {
         tokio::select! {
             _ = passes.tick() => {
@@ -1164,10 +1166,11 @@ pub async fn run(
                     master_pass::reconcile(&client, &shared.masters, &shared.activity, led, master_pass::this_process(), None).await;
                 }
             }
-            _ = tokio::time::sleep(delay) => {
+            _ = &mut sweep_due => {
                 delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
+                sweep_due.as_mut().reset(tokio::time::Instant::now() + delay);
             }
             Some(w) = wake.recv() => {
                 let since = last_sweep.elapsed();
@@ -1178,6 +1181,7 @@ pub async fn run(
                 delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
+                sweep_due.as_mut().reset(tokio::time::Instant::now() + delay);
             }
             _ = cancel.changed() => { if *cancel.borrow() { break; } }
         }
