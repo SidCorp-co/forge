@@ -31,6 +31,8 @@ that is badly off is deleted and rebuilt to its design, not patched.
 ### Phase 2 — observe
 - [ ] An observer agent reads the code of one workflow and writes its observed layer, citing a file
       and symbol for every node and edge.
+  - [x] Pilot observed (file form); product import owed to Phase 1. See
+        [Phase 2 — pilot observation](#phase-2--pilot-observation-requirement-to-delivery).
 
 ### Phase 3 — decide
 - [ ] Every marked node gets keep / rewrite / delete as a decision comment on its design.
@@ -94,6 +96,118 @@ yet; it joins the pattern column when it lands.
    r3 is approved. A re-pin flags every issue planned against the old baseline as changed since
    plan, so it is the orchestrator's decision, not done here.
 6. REQ-9, REQ-14 and REQ-17 are drafts with no BCs.
+
+## Phase 2 — pilot observation (requirement-to-delivery)
+
+The approved revision r2 (39 steps, 47 edges) read against the code at `8bea1e165` on dev. Four
+read-only observer agents split the journey (requirement and agree, breakdown and build, contracts
+and release, feedback); every observed step cites a file and symbol, checked to exist. The observed
+layer is a workflow-v2 document (`observed-requirement-to-delivery.json`), attached to ISS-120 with
+the script that diffs it (`diff_observed.py`) and its output (`marks-requirement-to-delivery.json`).
+The files go once REQ-17's observation table lands (REQ-18 decision). The script derives the marks
+by REQ-17 BC-22 to BC-25: a planned step with no observed step is Upcoming, an observed step with no
+planned step is Not in design, and a step in both that differs is Wrong, naming each differing aspect
+(behaviour, data, wiring). A divergent line counts toward the step it feeds. Rewrite is due at two
+aspects, three markers, or two problem builds in 30 days. Only the aspect rule can fire today: no
+evidence markers exist, and no build traces to a step.
+
+| | Matched | Upcoming | Not in design | Wrong |
+|---|---|---|---|---|
+| Steps | 10 | 6 | 17 | 23 |
+| Edges | 27 | 10 | 0 | 10 |
+
+Matched steps: `forge`, `similar`, `live-issues`, `provider-live`, `approve`, `broken-down`, `publish`,
+`contract-result`, `issue-result`, `released`.
+
+**Known-answer check.** The same observer ran blind on `suggestion-lifecycle` r2. It agreed with
+the expected answer: `withdrawn` and the `feedback_triage` kind came back as not in design, and every
+other state matched. It also marked `accepted` partly wrong (an issue triage or duplicate accept
+leaves no `from_suggestion_id`) and three of the four edges wrong. So it is reliable on Upcoming and
+Not in design, and stricter than the known answer on lines.
+
+**Workflow-v2 refuses the observed layer on one count:** 50 steps against the 40-step cap. An
+observation holds the built steps plus everything the design does not draw, so the Phase 1 store
+needs its own cap.
+
+### Marked planned steps and the recommended decision
+
+The decision is the orchestrator's (Phase 3), written as `node:<stepId> — keep|rewrite|delete`.
+Upcoming steps are recommended **rewrite**, which here means building the node to the design.
+
+| Step | Mark | Aspects | Code | Recommendation |
+|---|---|---|---|---|
+| `accept` | Upcoming | — | — | **rewrite**: Nothing writes accepted_at; build it. |
+| `accept-result` | Upcoming | — | — | **rewrite**: Build it. |
+| `acceptance` | Upcoming | — | — | **rewrite**: Build it. |
+| `contract-first` | Upcoming | — | — | **rewrite**: Build it, with obs-contract-wait removed. |
+| `delivery` | Upcoming | — | — | **rewrite**: Build the case. |
+| `expect-breakdown` | Upcoming | — | — | **rewrite**: Build it. |
+| `agreed` | Wrong | behaviour | `requirements/service.ts:agreeRequirement` | **rewrite**: Pin contract versions in the agree transaction, with pins. |
+| `breakdown` | Wrong | behaviour, data | `suggestions/propose.ts:proposeIn` | **rewrite** (due): One open breakdown per revision, BC traces required, master as proposer. |
+| `build` | Wrong | behaviour, data | `workflows/run-context-service.ts:tracedDesignsOf` | **rewrite** (due): Load the pinned design and contract revisions, not the latest approved and issue-text refs (REQ-1 BC-7, REQ-4 BC-12); delete the second path. |
+| `check` | Wrong | behaviour, data | `requirements/standing.ts:coverageOf` | **rewrite** (due): Build the acceptance task with its SLA on the coverage read that exists. |
+| `contract-recorded` | Wrong | data | `ecosystem/contract/record.ts:recordVersion` | **keep**: Same as drafted. |
+| `delivered` | Wrong | behaviour | `requirements/read.ts:deliveryOf` | **rewrite**: Write the requirement.delivered notice the acceptance case opens from. |
+| `drafted` | Wrong | data | `requirements/service.ts:writeRevision` | **keep**: The row is the record and nothing consumes the event; revise the design to say so (one revision for the four event nodes). |
+| `fb-case` | Wrong | behaviour, wiring | `feedback/rules.ts:phaseOf` | **rewrite** (due): Threshold reached; build the case the design draws, or the orchestrator revises the design to make the FB-n row the case. |
+| `fb-filed` | Wrong | data | `feedback/service.ts:createFeedback` | **keep**: Same as drafted. |
+| `impact` | Wrong | behaviour, data, wiring | `requirements/rules.ts:changedSincePlan` | **rewrite** (due): Differs in behaviour, data and wiring; delete the flag-only code and the second computation, build impact on read with the gate the design draws. |
+| `pins` | Wrong | data, wiring | `requirements/baselines.ts:latestBaselineIn` | **rewrite** (due): Contract pins are never written and bindings never read; build the pin set to the design with req-head and agreed. |
+| `ready` | Wrong | behaviour | `requirements/rules.ts:agreeRefusals` | **keep**: REQ-4 BC-4 lets any person member sign; revise the design from "BA or owner". |
+| `release-gate` | Wrong | behaviour | `release-batch/blockers.ts:rosterBlockers` | **rewrite**: Small: record gate off on the batch. |
+| `release-requested` | Wrong | data | `release-batch/service.ts:createReleaseBatch` | **keep**: Same as drafted; also drop environment, a batch is production only. |
+| `req-head` | Wrong | data | `requirements/read.ts:detailOf` | **rewrite**: Add the requirement-to-contract link; agreed and pins cannot pin contracts without it (REQ-5). |
+| `rollup` | Wrong | behaviour | `requirements/standing.ts:provenPhase` | **rewrite**: One phase computation: the view, not the view plus TypeScript; decide short. |
+| `route` | Wrong | wiring | `feedback/triage.ts:triageIn` | **keep**: Its only divergence is that triage and route are one act; settled by the fb-case decision. |
+| `route-result` | Wrong | data | `feedback.ts:FEEDBACK_ROUTES` | **keep**: Same revision as routed: take the route values from feedback-triage. |
+| `routed` | Wrong | behaviour | `feedback/triage.ts:triageIn` | **keep**: feedback-triage r3 draws decline and answer as the code does; revise this design to reference it. |
+| `runs` | Wrong | data | `issues/criteria/verdict-input.ts:VerdictIdentity` | **rewrite**: REQ-6 BC-2 names four identities; storefront_draft and short-as-pass are outside it. |
+| `stalled` | Wrong | behaviour | `requirements/standing.ts:turnOf` | **rewrite**: Build the 2-day expectation and its breach on the master pass instead of the instant standing line. |
+| `triage` | Wrong | behaviour, data, wiring | `feedback/triage.ts:triageFeedback` | **rewrite** (due): Routes, deadline and requirement_id differ from the rule table; rebuild to it, decline included. |
+| `verdict-result` | Wrong | behaviour, data | `issues/criteria-verdicts.ts:currentContracts` | **rewrite** (due): Judge against the pinned version both sides built, with a contract-test verdict. |
+
+### Not in design
+
+| Observed | Code | What it does | Recommendation |
+|---|---|---|---|
+| `obs-repin` | `requirements/repin.ts:repinRequirement` | A person writes a further baseline of the same head pinning designs approved past their pin (REQUIREMENT_PINS_CURRENT). | **keep**: REQ-4 needs it once a pinned design moves; draw it beside agreed. |
+| `obs-defer` | `requirements/deferral.ts:deferRequirement` | Status deferred with insert-only deferral rows and five refusal codes. | **keep**: A person act on the requirement; belongs in requirement-lifecycle, which owes it. |
+| `obs-mockup-pins` | `requirements/baselines.ts:acceptedMockupIds` | Accepted mockups are pinned beside designs and given to jobs. | **keep**: ISS-78 is a build of this design; the pins node owes the mockup output. |
+| `obs-readiness-mode` | `requirements/rules.ts:baselineReadiness` | Readiness gate off, warn or block (default off), copied onto the baseline. | **keep**: It is the design's "where the project turns it on"; draw the copy onto the baseline. |
+| `obs-link-issue` | `requirements/issue-links.ts:linkIssue` | An existing issue links to the requirement and stamps planned_revision. | **keep**: REQ-4 BC-8 and BC-9. |
+| `obs-csp-second` | `issues/standing-read.ts:changedSincePlan` | planned < current only, ignoring re-pins; disagrees with requirements/rules.ts:changedSincePlan. | **delete**: Two answers to one question; the impact rewrite owns the only one. |
+| `obs-standing` | `requirements/standing.ts:deriveStanding` | Attention groups and whom a requirement waits on (re-pin, prove BC-n, approve breakdown). | **keep**: The read model the stalled, acceptance and re-plan nodes should be served from; draw it. |
+| `obs-build-gate` | `workflows/build-gate.ts:assertDesignApprovedForIssue` | An issue linked as a build is held from claim until its design is approved (WORKFLOW_DESIGN_NOT_APPROVED). | **keep**: REQ-1 BC-6; draw it on delivery to build. |
+| `obs-link-build` | `suggestions/breakdown.ts:breakdownEffect` | Each breakdown issue is linked as a build of one pinned design (SUGGESTION_BUILD_UNNAMED, SUGGESTION_BUILD_UNPINNED); issues are filed at draft. | **keep**: Traceability step markers need; draw it, and decide whether draft issues wait on a promote. |
+| `obs-context-budget` | `workflows/run-context.ts:ARTIFACT_CONTEXT_CAP_CHARS` | 24k design and 12k requirement budgets with named trims (ARTIFACT_CONTEXT_OVER_BUDGET); egress checks the blocks. | **keep**: REQ-1 BC-5. |
+| `obs-contract-wait` | `ecosystem/waits/gate.ts:assertWaitsSettledForIssue` | An issue waiting on a contract version is held from claim until the provider approves it (CONTRACT_WAIT_UNSETTLED). | **rewrite**: Contradicts the design, which builds both sides in parallel against the generated mock; rebuild with contract-first. |
+| `obs-named-contracts` | `ecosystem/contract/named-context.ts:loadNamedContracts` | A job gets the contract versions its issue text names, and a link-pin diff (ecosystem/contract/run-context-service.ts:loadContractContext). | **delete**: A second pin path beside the baseline; removed when build loads contract pins. |
+| `obs-release-hold` | `pipeline/release-hold.ts:criteriaHold` | RELEASE_CRITERIA_UNEARNED re-checks verdicts against the serving runtime. | **keep**: Guards released; draw it on release-gate. |
+| `obs-contract-approve` | `ecosystem/contract/decide.ts:decideContractVersion` | A recorded version is proposed until approved or returned; breaking needs a person. | **keep**: REQ-5 BC-5 to BC-10; the publish node owes the approval. |
+| `obs-breaking-feedback` | `ecosystem/contract/announce.ts:fileBreakingIn` | Approving a breaking version files feedback per consumer with the commitment window. | **keep**: Design files it at record; draw it at approval. |
+| `obs-landing-contract` | `ecosystem/contract/drift.ts:landingDriftRefusal` | Marking merged must name the current contract version (CONTRACT_LANDING_UNNAMED, CONTRACT_DRIFT). | **keep**: REQ-5 BC-13. |
+| `obs-feedback-acts` | `feedback/service.ts:verifyFeedback` | Verify, reopen, clarify, redact, hard delete, promote from an agent report, the answer route and the screen target. | **keep**: Drawn in feedback-triage, feedback-lifecycle and automation; this design references them rather than redrawing. |
+
+### Top rewrite candidates
+
+1. **`build`**: a job loads each design at its latest approved revision and takes contract versions
+   from the issue text, not from the baseline pins that REQ-1 BC-7 and REQ-4 BC-12 name. Two
+   context paths answer one question. Delete `obs-named-contracts` with it.
+2. **`impact`**: wrong on all three aspects. Changed-since-plan is a flag on the issue read and
+   never refuses at awaiting_release, where the design says it does. Nothing lists screens or
+   requirements, and a second computation disagrees (`obs-csp-second`, delete).
+3. **`pins` with `agreed` and `req-head`**: the pin table has contract columns but no code writes a
+   contract pin, because a requirement has no contract link. The contract half of the journey
+   (`contract-first`, `verdict-result`, `release-gate`) rests on this.
+4. **`verdict-result`**: a contract or design verdict counts against the newest approved version,
+   not the one both sides built against.
+5. **`breakdown`, `triage`, `fb-case`, `check`**: past the threshold; each differs in behaviour and
+   data from its rule table.
+
+**Keep, revise the design:** the four event nodes (the row is the record; nothing consumes an
+event), `ready` (REQ-4 BC-4 lets any person member sign), and `routed` / `route-result` (take them
+from feedback-triage r3, which draws the code's routes). These revisions go to the approver of
+requirement-to-delivery; they change no code.
 
 ## Honest costs
 
