@@ -23,8 +23,7 @@ issue, branch, head, arrival time, priority and entry-gate record. Priority is `
 entry-gate record is `entry: { at, record }`: the commit its own run's `pnpm verify --entry` passed
 at, and where that run recorded it.
 
-A member waits as a pushed branch and opens no pull request (owner ruling, 2026-09-30,
-`docs/proposals/release-train.md`). A member's own pull request would pay the whole CI once per
+A member waits as a pushed branch and opens no pull request (owner ruling, 2026-09-30). A member's own pull request would pay the whole CI once per
 member and put the others behind at every landing. So no check ever reports at a member's head, and
 its own proof is the entry-gate record. `ci-passed` stays the required check, read at the window's
 one pull request.
@@ -41,7 +40,7 @@ one pull request.
    nothing ineligible.
 2. **`fire`** — `size` members waiting, the oldest member's wait from its recorded arrival reaching
    `minutes`, or a critical member; a window above an optional `maxSize` is refused. These are the
-   release train's keys (`docs/proposals/release-train.md`), which this project has not yet set, so
+   release train's keys, which this project has not yet set, so
    a manifest declaring none is refused and there is no default. A declared value that is not
    positive, or a `size` or `maxSize` that is not whole, is refused as that value. So is an
    `arrivedAt` later than the time the window is judged at.

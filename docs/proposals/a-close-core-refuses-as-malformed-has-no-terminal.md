@@ -1,5 +1,9 @@
 # A close core refuses as malformed has no terminal on this side
 
+**Removed when:** a close core refuses with a constraint answer is recorded in a ledger mark of its
+own that takes the row out of `ended_with_open_session`, which dev ISS-139 carries. The change that
+lands it deletes this file.
+
 ISS-1284 stopped one of the two forever-loops in
 `forge-runner-core::daemon::run_record`. This is the other one, left standing on purpose and
 written down rather than worked around.

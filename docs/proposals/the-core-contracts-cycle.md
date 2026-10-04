@@ -1,5 +1,9 @@
 # @forge/core and @forge/contracts declare each other, so nothing can order their builds
 
+**Removed when:** `@forge/contracts` no longer declares `@forge/core` as a runtime dependency and
+turbo prints no cycle warning, with the race reproduced before and closed after, which dev ISS-137
+carries. The change that lands it deletes this file.
+
 Found while repairing CI on 2026-09-23, not fixed there: removing the cycle means deciding whether
 `@forge/contracts` may declare `@forge/core` at all, which is ISS-1170's surface, and the repair was
 made while `main` was red.

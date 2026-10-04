@@ -1,5 +1,9 @@
 # A refused registration reports "no master pane placed" while the pane keeps running
 
+**Removed when:** whether a pane is running is an input to `Unplaced::lead`, so a refused
+registration under a live pane says it runs unregistered, which dev ISS-128 carries. The change that
+lands it deletes this file.
+
 Found while working ISS-1233, which owns the master-session route. Left here rather than fixed,
 because the change is in `packages/runner/crates/forge-runner-core/src/daemon/master.rs` and that
 file was declared held by another run's tree when this one was dispatched.

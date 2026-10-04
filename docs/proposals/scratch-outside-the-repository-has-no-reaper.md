@@ -1,5 +1,9 @@
 # Scratch outside a repository has no reaper, and the one inside it is too slow to be one
 
+**Removed when:** the daemon sweeps the scratch root, keeping what a live run holds, removing what
+an ended run left and naming what it cannot attribute, which dev ISS-136 carries. The change that
+lands it deletes this file.
+
 A runner box fills with directories that no owner removes, and on 2026-09-25 one of them filled far
 enough that an agent lost its shell: `/tmp` on `sid-xeon-1` — a 61G tmpfs, so RAM — reached
 `ENOSPC`, and every shell call that agent made died before it ran with
@@ -66,7 +70,8 @@ Measured across the five repositories this box drives: 17 run-id records, **zero
 `mktemp -d`, each one does, and the result is a tree no record names.
 
 That half is `github.com/SidCorp-co/forge-plugin`, which this repository reaches by issue and never
-by diff. It is filed as forge-plugin ISS-2525.
+by diff. It shipped as forge-plugin ISS-2524 (ISS-2525 was its dropped duplicate), so a dispatched
+run's scratch now carries a record.
 
 ## What the next change here needs
 

@@ -1,5 +1,9 @@
 # Hoisting is kept, the gigabytes are elsewhere, and what it hides is the reason to look again
 
+**Removed when:** a `pnpm verify` check fails whenever a root-level consumer reaches a package no
+root manifest declares, with today's couplings baselined; that change also rewrites the `.npmrc`
+comment pointing here, which dev ISS-140 carries. The change that lands it deletes this file.
+
 `.npmrc` at the repository root has set `node-linker=hoisted` and `shamefully-hoist=true` since
 ISS-136 created this workspace, under a comment that read *"Strapi and some plugins expect flat
 node_modules"*. This repository has no Strapi: the only occurrence of the word in a manifest is

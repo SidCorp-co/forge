@@ -1,5 +1,9 @@
 # The guard that makes every refusal say its body counts one spelling of reading one
 
+**Removed when:** one function answers for what a refused call prints, and the transport guard
+counts body reads by what the code reads rather than by the literal `.text().await`, which dev
+ISS-127 carries. The change that lands it deletes this file.
+
 Found while merging `main` into ISS-1206's branch, which owns the provision pull's refusal line and
 not the guard. Left here rather than fixed, because closing the blind spot makes the guard refuse
 ISS-1206's own site, and which of two specs the provision body answers to is a decision nobody has
