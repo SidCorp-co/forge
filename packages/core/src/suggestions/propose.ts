@@ -12,7 +12,7 @@ import { and, eq, ne } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { nearestFeedbackOf } from '../feedback/embeddings.js';
-import { approvalRefusalFor } from '../lib/approval.js';
+import { permissionRefusalFor } from '../permissions/index.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { designNodesIn, nodeSetRefusals } from '../workflows/node-refs.js';
@@ -215,10 +215,10 @@ export async function reviseSuggestion(input: {
     );
     if (refusal) return { ok: false, refusals: [refusal] };
   }
-  const forbidden = await approvalRefusalFor(
+  const forbidden = await permissionRefusalFor(
     actor,
     projectId,
-    'suggestions',
+    'suggestions.approve',
     'revising a suggestion',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };

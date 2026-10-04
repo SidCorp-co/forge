@@ -90,9 +90,9 @@
       "types": "./dist/mockups.d.ts",
       "default": "./dist/mockups.js"
     },
-    "./approval": {
-      "types": "./dist/approval.d.ts",
-      "default": "./dist/approval.js"
+    "./permissions": {
+      "types": "./dist/permissions.d.ts",
+      "default": "./dist/permissions.js"
     },
     "./field-changes": {
       "types": "./dist/field-changes.d.ts",

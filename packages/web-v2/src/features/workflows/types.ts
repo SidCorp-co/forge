@@ -1,4 +1,4 @@
-import type { ApprovalPermission } from "@forge/contracts/approval";
+import type { ApprovalPermission } from "@forge/contracts/permissions";
 import type { DesignRevisionState } from "@forge/contracts/design-status";
 import type {
   Boundary,

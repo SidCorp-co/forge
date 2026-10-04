@@ -380,6 +380,9 @@
         "patFenceChanges"
       ]
     },
+    "permissions": {
+      "kind": "kernel"
+    },
     "pipeline": {
       "kind": "kernel",
       "owns": [

@@ -401,7 +401,6 @@ export async function triageFeedback(input: {
   await assertProjectAccess(projectId, actor.userId, 'viewer');
   const forbidden = decideActRefusal(
     await roleFacts(actor, projectId),
-    projectId,
     'picking a feedback route',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };
@@ -447,7 +446,7 @@ export async function routeFeedback(input: {
       throw new Error(`feedback_cases: ${row.id} reads open with no route left to write`);
     }
     const early =
-      decideActRefusal(facts, projectId, "writing a feedback case's route") ??
+      decideActRefusal(facts, "writing a feedback case's route") ??
       routeWriteShapeRefusal(kase.route, write);
     if (early) return [early];
     const done = await writeRouteIn(tx, {

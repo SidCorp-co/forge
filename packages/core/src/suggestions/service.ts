@@ -25,7 +25,7 @@ import {
   writeIssueRelations,
 } from '../issues/relations-service.js';
 import { emitIssueFieldUpdate } from '../issues/update-hook.js';
-import { approvalRefusalFor } from '../lib/approval.js';
+import { permissionRefusalFor } from '../permissions/index.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -197,10 +197,10 @@ export async function acceptSuggestion(input: {
   const { projectId, actor } = input;
   const reason = input.reason?.trim() || null;
   const first = await rowOf(db, projectId, input.id);
-  const forbidden = await approvalRefusalFor(
+  const forbidden = await permissionRefusalFor(
     actor,
     projectId,
-    'suggestions',
+    'suggestions.approve',
     'accepting a suggestion',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };
@@ -251,10 +251,10 @@ export async function rejectSuggestion(input: {
   reason: string | null | undefined;
 }): Promise<SuggestionOutcome> {
   const { projectId, actor } = input;
-  const forbidden = await approvalRefusalFor(
+  const forbidden = await permissionRefusalFor(
     actor,
     projectId,
-    'suggestions',
+    'suggestions.approve',
     'rejecting a suggestion',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };

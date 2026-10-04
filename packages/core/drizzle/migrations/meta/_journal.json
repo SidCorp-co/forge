@@ -2423,6 +2423,13 @@
       "when": 1815523200000,
       "tag": "0377_a_feedback_item_holds_one_case",
       "breakpoints": true
+    },
+    {
+      "idx": 378,
+      "version": "7",
+      "when": 1815609600000,
+      "tag": "0378_a_membership_carries_a_grant_of_permissions",
+      "breakpoints": true
     }
   ]
 }

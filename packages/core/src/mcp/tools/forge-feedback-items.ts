@@ -119,7 +119,7 @@ const DESCRIPTION =
   'On a sensitive project the text is scrubbed on write; on a no_egress one every answer here carries metadata only. ' +
   `propose_triage: { feedback, triage: { route: ${FEEDBACK_TRIAGE_ROUTES.join(' | ')}, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? } } ` +
   'writes a feedback_triage suggestion a holder of feedback.approve accepts (forge_suggestions accept), stamped by core with the nearest item (dedup). ' +
-  `triage { feedback, triage } takes feedback.approve (project admin, or an org owner or admin), person or agent alike (APPROVE_PERMISSION_REQUIRED without it), by the rule table: ${Object.entries(
+  `triage { feedback, triage } takes feedback.approve (project admin, or an org owner or admin), person or agent alike (PERMISSION_FORBIDDEN without it), by the rule table: ${Object.entries(
     FEEDBACK_KIND_ROUTES,
   )
     .map(([k, r]) => `${k} → ${r.join('/')}`)

@@ -89,7 +89,7 @@ from.
 Anyone on the project creates, revises, edits and proposes revisions, and links designs. Accept,
 return, agree, repin, defer, undefer, linking an issue and \`adoptPlan\` take \`requirements.approve\`
 on the project (project admin, or an org owner or admin), person or agent alike, the revision's author
-included; without it the call is refused \`APPROVE_PERMISSION_REQUIRED\` naming the permission. Whoever
+included; without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Whoever
 lacks it proposes and stops; the requirement's \`waitingOn\` names whose turn it is. A change an agent
 proposes without writing the revision itself is a \`revision_diff\` suggestion (${guideRef('suggestions')}),
 and accepting one writes a new **draft** revision, never a current one.`,

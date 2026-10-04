@@ -19,8 +19,7 @@ import {
 } from '@forge/contracts/feedback';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import type { NodeRef } from '@forge/contracts/workflow-health';
-import { approvalRefusal } from '../lib/approval.js';
-import { type ActorFacts, actMiss, PERSON_ADMIN_ACT } from '../lib/person-act.js';
+import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
 export type { FeedbackRefusal, FeedbackRefusalCode } from '@forge/contracts/feedback';
 
@@ -293,23 +292,14 @@ export function redactedRefusal(redactedAt: Date | null): FeedbackRefusal | null
 }
 
 /** Picking a route, declining, marking a duplicate, verifying, reopening: approvals (ADR 0007). */
-export const decideActRefusal = (facts: ActorFacts, projectId: string, act: string) =>
-  approvalRefusal(facts, 'feedback', projectId, act);
+export const decideActRefusal = (facts: PermissionFacts, act: string) =>
+  permissionRefusal(facts, 'feedback.approve', act);
 
 export const verifyActRefusal = decideActRefusal;
 
-/** Deleting reporter data (UC15): a project admin person. */
-export function redactActRefusal(facts: ActorFacts): FeedbackRefusal | null {
-  const miss = actMiss(facts, PERSON_ADMIN_ACT);
-  if (!miss) return null;
-  return refusal(
-    'FEEDBACK_REDACT_FORBIDDEN',
-    '',
-    miss.kind === 'person-not-allowed' || miss.kind === 'agent-not-allowed'
-      ? `${facts.userId} acts as an agent; deleting a reporter's data is a project admin person's act.`
-      : `${facts.userId} holds ${facts.role ?? 'no role'} on this project; deleting a reporter's data needs a project admin person.`,
-  );
-}
+/** Deleting reporter data (UC15). */
+export const redactActRefusal = (facts: PermissionFacts) =>
+  permissionRefusal(facts, 'feedback.redact', "deleting a reporter's data");
 
 export interface PromoteFacts {
   reportId: string;

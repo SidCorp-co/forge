@@ -142,7 +142,7 @@ publishes and the versions of its contracts, and a person is not handed that wor
    (REST: \`POST /api/projects/:id/contracts/:contract/versions/:version/decision\`). Whoever holds
    \`contracts.approve\` on the provider project (project admin, or an org owner or admin) decides any
    version, breaking included, person or agent alike; without it the call is refused
-   \`APPROVE_PERMISSION_REQUIRED\`. A contract published in no ecosystem is
+   \`PERMISSION_FORBIDDEN\`. A contract published in no ecosystem is
    in-project: the project's own modules consume it (a \`consumes\` entry or a link naming no
    ecosystem), and naming an ecosystem for it is refused \`SELF_CONSUMPTION\`.
 

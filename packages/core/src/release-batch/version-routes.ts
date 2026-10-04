@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { mayApprove } from '../lib/approval.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { holds, requireHeld } from '../permissions/index.js';
 import {
   approvalRefusal,
   approvalRequestSchema,
@@ -79,22 +79,22 @@ function viewerOf(
   return {
     userId,
     agency,
-    isAdmin: projectRoleAtLeast(access.role, 'admin'),
-    mayApprove: mayApprove({ userId, role: access.role }, 'releases'),
+    isAdmin: holds(access, 'project.admin'),
+    mayApprove: holds(access, 'releases.approve'),
   };
 }
 
 releaseVersionRoutes.get('/:projectId/releases', projectParam, async (c) => {
   const { projectId } = c.req.valid('param');
   const access = await loadProjectAccess(projectId, c.get('userId'));
-  assertProjectRole(access, 'viewer');
+  requireHeld(access, 'project.read');
   return c.json(await listReleases(projectId, viewerOf(c, access)));
 });
 
 releaseVersionRoutes.get('/:projectId/releases/:version', versionParam, async (c) => {
   const { projectId, version } = c.req.valid('param');
   const access = await loadProjectAccess(projectId, c.get('userId'));
-  assertProjectRole(access, 'viewer');
+  requireHeld(access, 'project.read');
   return c.json({ release: await readRelease(projectId, version, viewerOf(c, access)) });
 });
 
@@ -105,7 +105,7 @@ releaseVersionRoutes.post(
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     const userId = c.get('userId');
-    assertProjectRole(await loadProjectAccess(projectId, userId), 'member');
+    requireHeld(await loadProjectAccess(projectId, userId), 'project.write');
     await assertRunOfProject(runId, projectId);
     return c.json(
       await requestApproval({ projectId, runId, userId, body: c.req.valid('json') }),

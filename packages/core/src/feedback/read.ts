@@ -26,11 +26,10 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { isUuid } from '../issues/issue-route-ref.js';
-import { mayApprove } from '../lib/approval.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { actMiss, PERSON_ADMIN_ACT } from '../lib/person-act.js';
+import { holds } from '../permissions/index.js';
 import { requirementKey } from '../requirements/read.js';
 import { deliveredAmong } from '../requirements/standing-read.js';
 import { userNames } from '../workflows/service.js';
@@ -409,7 +408,7 @@ export async function detailAs(
   const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
   const summary = summaryOf(row, linked, viewer, withhold);
   const deciders = await userNames(decisions.map((d) => d.decidedBy));
-  const facts = { userId: viewer.userId, agency: viewer.agency, role: access?.role ?? null };
+  const facts = { projectId, role: access?.role ?? null, grants: access?.grants ?? [] };
   const q = questions[0];
   const step = q?.steps.at(-1);
   const root = row.duplicateOf ? linked.roots.get(row.duplicateOf) : undefined;
@@ -458,14 +457,14 @@ export async function detailAs(
       openSuggestions: open?.n ?? 0,
       can: {
         triage:
-          mayApprove(facts, 'feedback') && ['new', 'triaged', 'reopened'].includes(summary.phase),
+          holds(facts, 'feedback.approve') && ['new', 'triaged', 'reopened'].includes(summary.phase),
         route:
           summary.phase === 'triaged' &&
           summary.case !== null &&
           summary.case.routedAt === null &&
-          mayApprove(facts, 'feedback'),
-        verify: mayApprove(facts, 'feedback') && summary.phase === 'resolved',
-        redact: !actMiss(facts, PERSON_ADMIN_ACT) && row.redactedAt === null,
+          holds(facts, 'feedback.approve'),
+        verify: holds(facts, 'feedback.approve') && summary.phase === 'resolved',
+        redact: holds(facts, 'feedback.redact') && row.redactedAt === null,
       },
       sensitive: level !== 'off',
     },

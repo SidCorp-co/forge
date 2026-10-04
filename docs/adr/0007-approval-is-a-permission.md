@@ -22,21 +22,23 @@ agent access token holding the permission approves too).
 
 - **Every approve-type act asks one question**: does the actor hold `<resource>.approve` on the
   project? The resources are `requirements`, `mockups`, `suggestions`, `workflow-designs`,
-  `contracts`, `feedback`, `releases` and `plans` (`@forge/contracts/approval:APPROVAL_RESOURCES`).
-- **One helper decides it**: `packages/core/src/lib/approval.ts` — `mayApprove` for a read flag,
-  `approvalRefusal` / `approvalRefusalFor` for a write. Nothing else compares agency or authorship
-  for an approval.
-- **The grant is the effective project role**, read the way every other permission reads it
-  (`packages/core/src/lib/authz.ts:effectiveProjectRole`): an org owner or admin holds `admin` on
-  every project of the org. By default `admin` holds every approve permission
-  (`@forge/contracts/approval:APPROVAL_GRANTS`); member and viewer hold none.
-- **An agent is an account like any other.** An agent token approves when its account's role grants
-  the permission and its token reaches the route (the route's `<resource>:write` grant, as for any
-  write). The orchestrator's dev agents hold it by being given `admin` on their projects.
+  `contracts`, `feedback`, `releases` and `plans` (`@forge/contracts/permissions:APPROVAL_RESOURCES`).
+- **The one permission check decides it**: `packages/core/src/permissions/can.ts` — `holds` for a
+  read flag, `permissionRefusal` / `permissionRefusalFor` for a write, the same check every other
+  permission in core goes through. Nothing compares agency or authorship for an approval.
+- **The grant is the effective project role plus the membership's grant**: an org owner or admin
+  holds `admin` on every project of the org, and `project_members.grants` names permissions held
+  beyond the role. By default `admin` holds every approve permission
+  (`@forge/contracts/permissions:ROLE_PERMISSIONS`); member and viewer hold none.
+- **An agent is an account like any other.** An agent token approves when its account holds the
+  permission and its token reaches the route (the route's `<resource>:write` grant, as for any
+  write). The orchestrator's dev agents are members holding a grant of the approve permissions
+  they need, not admins.
 - **No author rule.** The author of a proposal, the asker of a release and the producer of a
   suggestion approve their own when they hold the permission.
-- **One refusal**: `APPROVE_PERMISSION_REQUIRED`, 422 in the envelope, carrying `permission` and
-  `resource` beside `code`, `path` and `detail`. The old codes are deleted:
+- **One refusal**: `PERMISSION_FORBIDDEN`, 422 in the envelope, carrying `permission` and `scope`
+  beside `code`, `path` and `detail`, the same refusal every missing permission answers. The old
+  codes are deleted:
   `MOCKUP_DECIDE_FORBIDDEN`, `MOCKUP_ACCEPT_OWN_FORBIDDEN`, `REQUIREMENT_SIGNOFF_FORBIDDEN`,
   `SUGGESTION_ACCEPT_FORBIDDEN`, `SUGGESTION_REVISE_FORBIDDEN`, `WORKFLOW_DESIGN_APPROVER_NOT_PERSON`,
   `WORKFLOW_DESIGN_APPROVER_NOT_ADMIN`, `WORKFLOW_DESIGN_APPROVER_NOT_PROJECT`,
@@ -54,13 +56,8 @@ agent access token holding the permission approves too).
 ## Consequences
 
 - A project member who signed off requirements, decided suggestions and mockups or triaged feedback
-  as a person no longer does by default: those acts now take `admin`. Making a member an approver is
-  a role change, not a new rule.
-- An agent given `admin` on a project also holds every other admin power there (configuration,
-  members). A finer grant that gives approval without the rest is a later decision; until then the
-  role is the whole grant.
-- `lib/person-act.ts:actMiss` keeps deciding the acts that are not approvals (who writes a design,
-  who answers a questionnaire, who deletes reporter data). It never sees an approval.
-- The other permission checks (`lib/authz.ts`, the MCP principal checks, token grants, session and
-  conversation access) are not folded into this helper by this decision; they are the next step of
-  the one-permission-check work.
+  as a person no longer does by default: those acts now take `admin`. Making members approvers is
+  one line in `ROLE_PERMISSIONS`; making one member an approver is a grant
+  (`PATCH /api/projects/:id/members/:userId { grants }`), not a new rule.
+- A grant gives approval without configuration or member powers, which a role change to `admin`
+  would also hand over.

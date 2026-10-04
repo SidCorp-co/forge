@@ -74,14 +74,14 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
 ### Deciding
 - **accept** \`{ suggestionId, reason? }\` and **reject** \`{ suggestionId, reason }\` take
   \`suggestions.approve\` on the project (project admin, or an org owner or admin), person or agent alike,
-  its producer included; without it the call is refused \`APPROVE_PERMISSION_REQUIRED\`. An accept's reason is kept on the suggestion and is where the authority
+  its producer included; without it the call is refused \`PERMISSION_FORBIDDEN\`. An accept's reason is kept on the suggestion and is where the authority
   behind it is named. A rejection must say why (\`SUGGESTION_REJECT_REASON_REQUIRED\`), and that reason
   is what keeps the next suggestion on the target from repeating it.
 - **revise** \`{ suggestionId, payload, reason }\` is a reviewer's edit. The original is rejected with
   the reason, and a new suggestion carrying the whole new payload is proposed by the reviewer in the
   same write, naming the original in \`revises\`; every check a new suggestion takes applies to it.
   Revising rejects the original, so it takes \`suggestions.approve\` like any decision
-  (\`APPROVE_PERMISSION_REQUIRED\`), and a payload that changes nothing is
+  (\`PERMISSION_FORBIDDEN\`), and a payload that changes nothing is
   \`SUGGESTION_REVISION_UNCHANGED\`.
 - **withdraw** is the producer retracting its own (\`SUGGESTION_WITHDRAW_FORBIDDEN\` for anybody else,
   who rejects or revises it instead).
